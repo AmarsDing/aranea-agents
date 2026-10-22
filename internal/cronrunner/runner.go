@@ -85,11 +85,12 @@ type CronRegistrySyncAgent interface {
 
 // Runner executes due cron_task rows on an interval (ported from pkg/backend CronRunner).
 type Runner struct {
-	deps   Deps
-	lg     loggateway.Logger
-	mu     sync.Mutex
-	taskMu taskMutexRegistry
-	lease  taskLease
+	deps         Deps
+	lg           loggateway.Logger
+	mu           sync.Mutex
+	taskMu       taskMutexRegistry
+	lease        taskLease
+	tickInterval time.Duration
 }
 
 func NewRunner(deps Deps, lg loggateway.Logger) *Runner {
@@ -106,6 +107,22 @@ func (r *Runner) WithLease(lease taskLease) *Runner {
 		r.lease = lease
 	}
 	return r
+}
+
+// WithTickInterval overrides the tick interval used by missed-run grace budgets (tests).
+func (r *Runner) WithTickInterval(d time.Duration) *Runner {
+	if r != nil {
+		r.tickInterval = d
+	}
+	return r
+}
+
+// tick returns the effective tick interval (default 1m when unset/invalid).
+func (r *Runner) tick() time.Duration {
+	if r == nil || r.tickInterval <= 0 {
+		return time.Minute
+	}
+	return r.tickInterval
 }
 
 // flowEmitter builds a run-scoped flow-log emitter for cron lifecycle events.
@@ -142,6 +159,7 @@ func (r *Runner) Start(ctx context.Context, interval time.Duration) {
 	if interval <= 0 {
 		interval = time.Minute
 	}
+	r.tickInterval = interval
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	r.runDue(ctx)
@@ -179,13 +197,14 @@ func (r *Runner) runDue(ctx context.Context) {
 		cfg, err := parseCronTaskConfig(task.ConfigJSON)
 		if err != nil || strings.TrimSpace(cfg.Message) == "" {
 			badCfg, _ := parseCronTaskConfig(task.ConfigJSON)
-			r.recordScheduleFailure(ctx, task, badCfg, now, strutil.FirstNonEmpty(errString(err), "cron message is required"))
+			// 配置不可求值：记 skipped 原地等修复（连续同字节折叠），不推进死信（H11）。
+			r.recordUnevaluable(ctx, task, badCfg, now, strutil.FirstNonEmpty(errString(err), "cron message is required"))
 			continue
 		}
 		meta := parseCronTaskMetadata(task.MetadataJSON, r.lg)
 		dueAt, due, err := cronTaskDueAt(task.UpdatedAt, cfg, meta, now)
 		if err != nil {
-			r.recordScheduleFailure(ctx, task, cfg, now, err.Error())
+			r.recordUnevaluable(ctx, task, cfg, now, err.Error())
 			continue
 		}
 		if !due {
@@ -194,6 +213,27 @@ func (r *Runner) runDue(ctx context.Context) {
 				r.persistMetadata(ctx, task, meta)
 			}
 			continue
+		}
+		// 宕机补跑宽限（H10/orca dispatch-refusal）：周期任务滞后超过 grace+2×tick 时
+		// 记 skipped_missed 并直接翻页（finalizeRun 内 advance NextRunAt），不补跑。
+		// once 任务豁免：一次性任务错过窗口仍应补跑，由用户显式处置。
+		if cfg.ScheduleType != "once" {
+			if lateBy, beyond := missedBeyondGrace(cfg, dueAt, now, r.tick()); beyond {
+				r.lg.Warn("定时任务错过补跑窗口，记 skipped_missed 并翻页",
+					loggateway.StepID("cron.skipped_missed"),
+					loggateway.Str("job_id", task.ID),
+					loggateway.Str("due_at", dueAt.Format(time.RFC3339)),
+					loggateway.Str("late_by", lateBy.String()))
+				if flow := r.flowEmitter(ctx, "", ""); flow != nil {
+					flow.LogSkip("system.cron.skipped_missed", "定时任务错过补跑窗口，跳过",
+						event.P("job_id", task.ID),
+						event.P("due_at", dueAt.Format(time.RFC3339)),
+						event.P("late_by", lateBy.String()),
+						event.P("tick", r.tick().String()))
+				}
+				r.recordPreExecuteOutcome(ctx, task, cfg, now, cronRunStatusSkippedMissed, errCronSkippedMissed.Error())
+				continue
+			}
 		}
 		if flow := r.flowEmitter(ctx, "", ""); flow != nil {
 			flow.LogStart("cron.job.trigger", "定时任务触发",

@@ -17,6 +17,9 @@ type runOutcome struct {
 	result cronDispatchResult
 	status string
 	errMsg string
+	// foldBase: 本次跳过/失败被折叠进的历史行已代表的执行次数（0 = 未折叠，新起一行）。
+	// finalizeRun 将其+1 写入 output.fold_count。
+	foldBase int
 }
 
 func (r *Runner) lockTask(taskID string) func() {
@@ -96,6 +99,9 @@ func (r *Runner) finalizeRun(
 		"agent_message_id": outcome.result.AgentMessageID,
 		"run_id":           outcome.result.SessionID,
 	}
+	if outcome.foldBase > 0 {
+		output["fold_count"] = outcome.foldBase + 1
+	}
 	outJSON := mustMarshalJSON(output)
 	if err := r.deps.Cron.UpdateCronTaskRun(ctx, runID, outcome.status, finished, outJSON, outcome.errMsg); err != nil {
 		r.lg.Warn("update cron_task_run failed", loggateway.Str("task_id", task.ID), loggateway.Str("run_id", runID), loggateway.Err(err))
@@ -111,11 +117,15 @@ func (r *Runner) finalizeRun(
 	case "success":
 		meta.SuccessCount++
 		meta.LastError = ""
+		meta.SkipCount = 0
 		// Any successful execution (manual or scheduled) proves the task is
 		// healthy, so reset the consecutive failure counter.
 		meta.FailureCount = 0
-	case "skipped":
+	case "skipped", cronRunStatusSkippedMissed:
+		// 跳过一族（会话忙/错过补跑窗口/配置不可求值）不推进死信计数：
+		// 它们不是「执行失败」，独立累计 skip_count 供观测（H11/orca recordUnevaluable*）。
 		meta.LastError = outcome.errMsg
+		meta.SkipCount++
 	case "failure":
 		meta.LastError = outcome.errMsg
 		meta.RecentFailure = append([]cronFailureSummary{{
@@ -258,24 +268,71 @@ func isSessionBusyErr(err error) bool {
 }
 
 // recordPreExecuteOutcome writes a cron_task_run without dispatch, using the same finalize path as executeTask.
-// status must be "failure" (config/schedule errors, counts toward dead letter) or "skipped" (transient pre-dispatch abort).
+// status must be "failure" (execution-level failure, counts toward dead letter),
+// "skipped" / "skipped_missed" (pre-dispatch skips, never count toward dead letter).
+// 跳过一族优先折叠：若该任务最新一行执行记录与本行「状态+原因」逐字节一致（H11/orca
+// skipped 折叠纪律），则原地累加 fold_count、不再新增行，避免每 tick 刷屏。
 func (r *Runner) recordPreExecuteOutcome(ctx context.Context, task biz.CronTask, cfg cronTaskConfig, now time.Time, status, message string) {
-	if status != "failure" && status != "skipped" {
+	switch status {
+	case "failure", "skipped", cronRunStatusSkippedMissed:
+	default:
 		status = "failure"
 	}
 	unlock := r.lockTask(task.ID)
 	defer unlock()
 
-	runID, started, ok := r.insertPendingRun(ctx, task.ID, "schedule", now)
-	if !ok {
-		r.lg.Warn("insert cron_task_run failed", loggateway.Str("task_id", task.ID), loggateway.Str("status", status), loggateway.Str("error", message))
-		return
+	runID, started, foldBase := "", now.UTC().Format(time.RFC3339), 0
+	if status != "failure" {
+		if prev, ok := r.latestFoldableRun(ctx, task.ID, status, message); ok {
+			runID, started, foldBase = prev.ID, prev.StartedAt, prevFoldCount(prev)
+		}
 	}
-	r.finishTaskRun(ctx, task.ID, runID, started, "schedule", cfg, runOutcome{status: status, errMsg: message})
+	if runID == "" {
+		var ok bool
+		runID, started, ok = r.insertPendingRun(ctx, task.ID, "schedule", now)
+		if !ok {
+			r.lg.Warn("insert cron_task_run failed", loggateway.Str("task_id", task.ID), loggateway.Str("status", status), loggateway.Str("error", message))
+			return
+		}
+	}
+	r.finishTaskRun(ctx, task.ID, runID, started, "schedule", cfg, runOutcome{status: status, errMsg: message, foldBase: foldBase})
 }
 
-// recordScheduleFailure records invalid config/schedule as a failed run (not skipped).
-func (r *Runner) recordScheduleFailure(ctx context.Context, task biz.CronTask, cfg cronTaskConfig, now time.Time, message string) {
-	r.recordPreExecuteOutcome(ctx, task, cfg, now, "failure", message)
+// latestFoldableRun 返回可折叠的最新执行行：状态与原因逐字节一致才折叠
+// （orca skipped folding 的字节级同构纪律——原因串任何漂移都促生新行，保证语义可分辨）。
+func (r *Runner) latestFoldableRun(ctx context.Context, taskID, status, message string) (biz.CronTaskRun, bool) {
+	runs, _, err := r.deps.Cron.ListCronTaskRuns(ctx, biz.CronTaskRunQuery{TaskID: taskID, Limit: 1})
+	if err != nil {
+		r.lg.Warn("查询最近 cron_task_run 失败，跳过折叠", loggateway.Str("task_id", taskID), loggateway.Err(err))
+		return biz.CronTaskRun{}, false
+	}
+	if len(runs) == 0 {
+		return biz.CronTaskRun{}, false
+	}
+	latest := runs[0]
+	if latest.Status == status && latest.ErrorMessage == message {
+		return latest, true
+	}
+	return biz.CronTaskRun{}, false
 }
 
+// prevFoldCount 读取一行执行记录已代表的执行次数（无 fold_count 字段时视为 1）。
+func prevFoldCount(run biz.CronTaskRun) int {
+	if run.OutputJSON == "" {
+		return 1
+	}
+	var out struct {
+		FoldCount int `json:"fold_count"`
+	}
+	if err := json.Unmarshal([]byte(run.OutputJSON), &out); err == nil && out.FoldCount > 1 {
+		return out.FoldCount
+	}
+	return 1
+}
+
+// recordUnevaluable mirrors orca's recordUnevaluableAutomation: 配置/调度不可求值
+// （表达式无解、配置解析失败等静态问题）记 skipped 原地等修复——连续同字节原因折叠
+// 进同一行，不推进死信计数。只有真实「执行失败」才计入 FailureCount 并可能致死。
+func (r *Runner) recordUnevaluable(ctx context.Context, task biz.CronTask, cfg cronTaskConfig, now time.Time, message string) {
+	r.recordPreExecuteOutcome(ctx, task, cfg, now, "skipped", message)
+}

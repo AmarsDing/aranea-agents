@@ -11,17 +11,23 @@ import (
 )
 
 type cronTaskConfig struct {
-	TargetType       string   `json:"target_type"`
-	TeamID           string   `json:"team_id"`
-	ScheduleType     string   `json:"schedule_type"`
-	CronExpression   string   `json:"cron_expression"`
-	IntervalSeconds  int      `json:"interval_seconds"`
-	RunAt            string   `json:"run_at"`
-	Timezone         string   `json:"timezone"`
-	Message          string   `json:"message"`
-	RetryMaxAttempts *int     `json:"retry_max_attempts"`
-	FeedURLs         []string `json:"feed_urls"`    // mvp_rss_ingest
-	WorkspaceID      string   `json:"workspace_id"` // mvp_rss_ingest
+	TargetType       string `json:"target_type"`
+	TeamID           string `json:"team_id"`
+	ScheduleType     string `json:"schedule_type"`
+	CronExpression   string `json:"cron_expression"`
+	IntervalSeconds  int    `json:"interval_seconds"`
+	RunAt            string `json:"run_at"`
+	Timezone         string `json:"timezone"`
+	Message          string `json:"message"`
+	RetryMaxAttempts *int   `json:"retry_max_attempts"`
+	// MissedRunGraceSeconds 宕机补跑宽限（orca automations 同款 dispatch-refusal）：
+	//   nil/缺省 = 特性关闭，到期一律补跑（历史行为，默认保兼容）；
+	//   设置后：到期时刻滞后超过 grace + 2×tick 的周期任务记 skipped_missed 并翻页，不执行。
+	// 取舍（为何否决用「进程活性标志」兜底）：挂起的进程宿主机休眠后 start time 不变，
+	// 活性标志会把休眠期间到期的任务当作正常补跑放行；只有比较「滞后时长」不会被骗。
+	MissedRunGraceSeconds *int     `json:"missed_run_grace_seconds"`
+	FeedURLs              []string `json:"feed_urls"`    // mvp_rss_ingest
+	WorkspaceID           string   `json:"workspace_id"` // mvp_rss_ingest
 }
 
 const defaultRetryMaxAttempts = 3
@@ -51,6 +57,7 @@ type cronTaskMetadata struct {
 	RunCount      int                  `json:"run_count"`
 	SuccessCount  int                  `json:"success_count"`
 	FailureCount  int                  `json:"failure_count"`
+	SkipCount     int                  `json:"skip_count"`
 	LastRunAt     string               `json:"last_run_at"`
 	LastRunStatus string               `json:"last_run_status"`
 	LastError     string               `json:"last_error"`
@@ -110,6 +117,35 @@ func cronTaskDueAt(updatedAt string, cfg cronTaskConfig, meta cronTaskMetadata, 
 		}
 	}
 	return next, false, nil
+}
+
+// cronRunStatusSkippedMissed 标记「宕机/停机期间到期且已超过宽限」的周期任务执行行。
+const cronRunStatusSkippedMissed = "skipped_missed"
+
+// missedBeyondGrace 判定到期时刻是否已超过补跑预算（grace + 2×tick，orca 同款抖动
+// 预算防边界抖动）。未配置 missed_run_grace_seconds 时永远返回 false（历史行为：
+// 到期一律补跑）。返回值 lateBy 为实际滞后时长（供诊断）。
+//
+// 为什么不用「进程是否一直在跑」的活性标志兜底：进程宿主机被挂起（sleep/休眠）时
+// 其 start time 不变，活性标志会把休眠期间到期的任务全部当作正常补跑放行——滞后
+// 时长是不可伪造的正向证据。
+func missedBeyondGrace(cfg cronTaskConfig, dueAt, now time.Time, tick time.Duration) (lateBy time.Duration, beyond bool) {
+	if cfg.MissedRunGraceSeconds == nil {
+		return 0, false
+	}
+	grace := time.Duration(*cfg.MissedRunGraceSeconds) * time.Second
+	if grace < 0 {
+		grace = 0
+	}
+	if tick <= 0 {
+		tick = time.Minute
+	}
+	budget := grace + 2*tick
+	lateBy = now.Sub(dueAt)
+	if lateBy <= 0 || lateBy <= budget {
+		return lateBy, false
+	}
+	return lateBy, true
 }
 
 func nextCronRunAfter(cfg cronTaskConfig, after time.Time) (time.Time, error) {

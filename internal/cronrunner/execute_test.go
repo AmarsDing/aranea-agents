@@ -136,13 +136,15 @@ func TestFinalizeRun_SkippedDoesNotIncrementFailureCount(t *testing.T) {
 	}
 }
 
-func TestRecordScheduleFailure_CreatesRunAndIncrementsFailure(t *testing.T) {
+// H11（orca recordUnevaluableAutomation 同款）：配置不可求值记 skipped 原地等修复，
+// 不再按 failure 每 tick 推进死信计数。
+func TestRecordUnevaluable_SkippedWithoutFailureCount(t *testing.T) {
 	repo := newMemCronExecRepo()
 	r := &Runner{deps: Deps{Cron: repo}, lg: loggateway.NewNoop()}
 	now := time.Now().UTC()
 	cfg, _ := parseCronTaskConfig(`{"message":"","schedule_type":"interval","interval_seconds":60}`)
 
-	r.recordScheduleFailure(context.Background(), repo.tasks["t1"], cfg, now, "cron message is required")
+	r.recordUnevaluable(context.Background(), repo.tasks["t1"], cfg, now, "cron message is required")
 
 	if len(repo.runs) != 1 {
 		t.Fatalf("expected 1 cron_task_run, got %d", len(repo.runs))
@@ -151,16 +153,19 @@ func TestRecordScheduleFailure_CreatesRunAndIncrementsFailure(t *testing.T) {
 	for _, item := range repo.runs {
 		run = item
 	}
-	if run.Status != "failure" {
-		t.Fatalf("expected run status failure, got %s", run.Status)
+	if run.Status != "skipped" {
+		t.Fatalf("expected run status skipped, got %s", run.Status)
 	}
 	var meta map[string]any
 	_ = json.Unmarshal([]byte(repo.tasks["t1"].MetadataJSON), &meta)
-	if meta["failure_count"].(float64) != 2 {
-		t.Fatalf("expected failure_count incremented to 2, got %v", meta["failure_count"])
+	if meta["failure_count"].(float64) != 1 {
+		t.Fatalf("unevaluable skip must not increment failure_count, got %v", meta["failure_count"])
 	}
-	if meta["last_run_status"] != "failure" {
-		t.Fatalf("expected last_run_status=failure, got %v", meta["last_run_status"])
+	if meta["skip_count"].(float64) != 1 {
+		t.Fatalf("expected skip_count=1, got %v", meta["skip_count"])
+	}
+	if meta["last_run_status"] != "skipped" {
+		t.Fatalf("expected last_run_status=skipped, got %v", meta["last_run_status"])
 	}
 }
 
