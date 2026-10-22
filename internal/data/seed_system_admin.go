@@ -518,8 +518,10 @@ func SeedCronTasks(ctx context.Context, client *ent.Client, d Dialect, lg loggat
 	}
 	// upsert 语义：
 	// - 新行：插入完整配置。
-	// - 已存在且为旧 schema（无 schedule_type，runner/前端无法解析，必然每分钟失败并进死信）：
-	//   修复 config 并复活（重置 dead 状态与失败计数）——死信是该配置 bug 导致的，非用户意图。
+	// - 已存在且为旧 schema（无 schedule_type，runner/前端无法解析）：
+	//   修复 config 并复活（重置 dead 状态与失败计数）——历史死信是该配置 bug 导致、非用户意图；
+	//   2026-10-22 起不可评估配置只记 skipped 折叠原地等修复、不再进死信（见
+	//   docs/development/21-cron.design.md §4.7），但既有 dead 行仍需本逻辑复活。
 	// - 已存在且为新 schema：视为用户已在管理面板编辑过，不做任何覆盖，保留用户修改。
 	const q = `INSERT INTO cron_task (
 		id, task_key, name, description, status, enabled, sort_order,
