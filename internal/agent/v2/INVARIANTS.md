@@ -10,7 +10,7 @@
 
 ## INV-V2-2 Seq 只由 Sequencer 在发布期分配
 
-- **不变量**：事件序号（Seq）由 Sequencer 发布时单调分配；biz.Event 信封不携带 Seq，生产端禁止自行编号。
+- **不变量**：事件序号（Seq）的**分配权**独占于 Sequencer 发布期（经共享 SeqAssigner 单调分配）；生产端禁止自行编号。biz.Event 信封上的 Seq 字段（如 `deliverySeqCarrier`、RunStatusEvent.Seq / SystemNoticeEvent.Seq）仅承载已分配值用于投递/回放定位，不是编号来源。
 - **为什么**：发布期统一编序是全序与重放的根基；分布式预编号必然出现空洞/乱序。
 - **违反代价**：重放序错乱，projector 状态腐坏。
 

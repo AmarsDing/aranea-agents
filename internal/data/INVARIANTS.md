@@ -22,7 +22,7 @@
 
 ## INV-DATA-4 PG 单引擎
 
-- **不变量**：数据层只面向 PostgreSQL（SQLite 已全量移除，14fcb6d79）；`.ent-head-overlay-parked` 保持 parked 状态勿改回；测试容器须走 `ARANEA_TEST_PG_DSN`（密码 postgres，非 123456）。
+- **不变量**：数据层只面向 PostgreSQL（SQLite 已全量移除，14fcb6d79）；`.ent-head-overlay-parked` 保持 parked 状态勿改回；测试用真实 PG（默认 DSN 内置 `postgres://postgres:123456@127.0.0.1:55432/aranea_test`，见 testhelper/pg.go；CI/非标环境用 `ARANEA_TEST_PG_DSN` 覆盖）。
 - **为什么**：数据库架构红线（docs/development/66-database-architecture.md）。
 - **违反代价**：双引擎语义漂移用测试绿伪装、生产炸。
 
