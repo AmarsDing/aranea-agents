@@ -58,6 +58,9 @@ type Usecase struct {
 	// noPricingLogged dedups the P2-2 no-pricing Warn per provider|model so
 	// high-frequency unpriced calls (e.g. local ollama) don't flood the log.
 	noPricingLogged sync.Map
+	// pricingCache memoizes resolvePricing results（hit 与 miss 同缓存）for
+	// pricingLookupTTL — see usage_pricing.go（对抗评审 C9 修正）。
+	pricingCache sync.Map
 	lg              loggateway.Logger
 }
 

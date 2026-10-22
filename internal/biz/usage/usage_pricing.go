@@ -68,28 +68,57 @@ func (u *Usecase) enrichPricing(ctx context.Context, e *TokenUsageEvent) bool {
 	if prov != "" && mod != "" &&
 		e.InputPriceUSDPer1M == 0 && e.OutputPriceUSDPer1M == 0 &&
 		e.InputPriceMicroUSDPer1K == 0 && e.OutputPriceMicroUSDPer1K == 0 {
-		if snap, ok, err := u.repo.GetActiveModelPricing(ctx, prov, mod); err == nil && ok {
+		if snap, ok, err := u.resolvePricing(ctx, prov, mod); err == nil && ok {
 			applyPricingUSDToEvent(e, snap)
 			ApplyTokenUsageCosts(e)
 			return true
-		}
-		// H25（orca 计价前模型 ID 归一化同款）：上报侧 ID 常带网关前缀
-		// （openai/gpt-4o）或日期戳（claude-sonnet-4-5-20250929），精确键查不到
-		// 时按归一键再查一次；仍查不到才落到 no_pricing——绝不猜价。
-		if norm := normalizeModelLookupKey(mod); norm != mod {
-			if snap, ok, err := u.repo.GetActiveModelPricing(ctx, prov, norm); err == nil && ok {
-				applyPricingUSDToEvent(e, snap)
-				ApplyTokenUsageCosts(e)
-				return true
-			}
 		}
 	}
 	ApplyTokenUsageCosts(e)
 	return hasAnyPrice(e)
 }
 
+// resolvePricing 顺序：精确键 →（miss 时）归一键。H25（orca 计价前模型 ID 归一化
+// 同款）：上报侧 ID 常带网关前缀（openai/gpt-4o）或日期戳
+// （claude-sonnet-4-5-20250929）导致精确键 miss；仍查不到才落到 no_pricing——
+// 绝不猜价。结果（含 miss）进程内缓存 pricingLookupTTL：热路径上未定价模型不再
+// 每事件至多 4×SELECT（对抗评审 C9）；价格规则更新最长延迟一个 TTL 生效；repo 错误
+// 不缓存。
+const pricingLookupTTL = time.Minute
+
+type pricingLookupEntry struct {
+	snap ModelPricingSnapshot
+	ok   bool
+	exp  time.Time
+}
+
+func (u *Usecase) resolvePricing(ctx context.Context, prov, mod string) (ModelPricingSnapshot, bool, error) {
+	key := prov + "\x00" + mod
+	now := time.Now().UTC()
+	if u.now != nil {
+		now = u.now()
+	}
+	if v, hit := u.pricingCache.Load(key); hit {
+		if e, okc := v.(pricingLookupEntry); okc && now.Before(e.exp) {
+			return e.snap, e.ok, nil
+		}
+	}
+	snap, ok, err := u.repo.GetActiveModelPricing(ctx, prov, mod)
+	if err == nil && !ok {
+		if norm := normalizeModelLookupKey(mod); norm != mod {
+			snap, ok, err = u.repo.GetActiveModelPricing(ctx, prov, norm)
+		}
+	}
+	if err != nil {
+		return ModelPricingSnapshot{}, false, err
+	}
+	u.pricingCache.Store(key, pricingLookupEntry{snap: snap, ok: ok, exp: now.Add(pricingLookupTTL)})
+	return snap, ok, nil
+}
+
 // normalizeModelLookupKey 把上报侧模型 ID 归一成计价规则表的常用键：取最后一个
-// '/' 之后段（去网关/渠道前缀），再去尾部日期戳（-YYYYMMDD，8 位数字）。
+// '/' 之后段（去网关/渠道前缀），再去尾部日期戳（-YYYYMMDD，8 位数字且年段落在
+// 19xx/20xx——对抗评审 C7：避免把 8 位数字版本号/序号串误剥成另一个模型名）。
 // 纯函数、保守裁剪——只剥「必然是路由/版本装饰」的部分，不做大小写折叠或模糊匹配。
 func normalizeModelLookupKey(mod string) string {
 	mod = strings.TrimSpace(mod)
@@ -100,7 +129,9 @@ func normalizeModelLookupKey(mod string) string {
 		mod = mod[i+1:]
 	}
 	if len(mod) > 9 && mod[len(mod)-9] == '-' && isAllDigits(mod[len(mod)-8:]) {
-		mod = mod[:len(mod)-9]
+		if y := mod[len(mod)-8 : len(mod)-4]; y >= "1900" && y < "2100" {
+			mod = mod[:len(mod)-9]
+		}
 	}
 	return mod
 }
