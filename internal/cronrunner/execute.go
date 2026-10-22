@@ -188,6 +188,13 @@ func (r *Runner) finishTaskRun(
 ) {
 	task, err := r.deps.Cron.GetCronTask(ctx, taskID)
 	if err != nil {
+		// 折叠复用的是已定稿的历史跳过行（含 fold_count 与原始原因）；覆写为
+		// failure/{} 会销毁折叠史——宁可丢本次增量（对抗评审 C2）。
+		if outcome.foldBase > 0 {
+			r.lg.Warn("reload task before finalize failed; drop fold increment to protect folded row",
+				loggateway.Str("task_id", taskID), loggateway.Str("run_id", runID), loggateway.Err(err))
+			return
+		}
 		finished := time.Now().UTC().Format(time.RFC3339)
 		if uerr := r.deps.Cron.UpdateCronTaskRun(ctx, runID, "failure", finished, "{}", err.Error()); uerr != nil {
 			r.lg.Warn("update cron_task_run on reload failure failed", loggateway.Str("task_id", taskID), loggateway.Str("run_id", runID), loggateway.Err(uerr))
@@ -281,6 +288,19 @@ func (r *Runner) recordPreExecuteOutcome(ctx context.Context, task biz.CronTask,
 	unlock := r.lockTask(task.ID)
 	defer unlock()
 
+	// C-26：预执行簿记也走跨实例租约——多实例同时灾后恢复时由持有者记账，
+	// 避免同一次错过被各实例重复记行/折叠计数互相覆盖（对抗评审 C1）。
+	// 租约获取失败为 fail-open（pg 异常路径保持单实例既有行为）。
+	releaseLease, ok := r.acquireTaskLease(ctx, task.ID)
+	if !ok {
+		r.lg.Info("cron pre-execute bookkeeping skipped: lease held by another instance",
+			loggateway.StepID("cron.lease_skip"),
+			loggateway.Str("task_id", task.ID),
+			loggateway.Str("status", status))
+		return
+	}
+	defer releaseLease()
+
 	runID, started, foldBase := "", now.UTC().Format(time.RFC3339), 0
 	if status != "failure" {
 		if prev, ok := r.latestFoldableRun(ctx, task.ID, status, message); ok {
@@ -288,11 +308,21 @@ func (r *Runner) recordPreExecuteOutcome(ctx context.Context, task biz.CronTask,
 		}
 	}
 	if runID == "" {
-		var ok bool
-		runID, started, ok = r.insertPendingRun(ctx, task.ID, "schedule", now)
-		if !ok {
+		var insOk bool
+		runID, started, insOk = r.insertPendingRun(ctx, task.ID, "schedule", now)
+		if !insOk {
 			r.lg.Warn("insert cron_task_run failed", loggateway.Str("task_id", task.ID), loggateway.Str("status", status), loggateway.Str("error", message))
 			return
+		}
+		if status != "failure" {
+			// 每个新原因起一行时 Warn 一次（折叠增量保持静默）：跳过一族的观测面
+			// = 此 Warn + cronJobRunsTotal{status} + skip_count，刻意不进死信（C3）。
+			r.lg.Warn("定时任务执行前跳过",
+				loggateway.StepID("cron.pre_skip"),
+				loggateway.Str("task_id", task.ID),
+				loggateway.Str("task_key", task.TaskKey),
+				loggateway.Str("status", status),
+				loggateway.Str("error", message))
 		}
 	}
 	r.finishTaskRun(ctx, task.ID, runID, started, "schedule", cfg, runOutcome{status: status, errMsg: message, foldBase: foldBase})
