@@ -73,9 +73,48 @@ func (u *Usecase) enrichPricing(ctx context.Context, e *TokenUsageEvent) bool {
 			ApplyTokenUsageCosts(e)
 			return true
 		}
+		// H25（orca 计价前模型 ID 归一化同款）：上报侧 ID 常带网关前缀
+		// （openai/gpt-4o）或日期戳（claude-sonnet-4-5-20250929），精确键查不到
+		// 时按归一键再查一次；仍查不到才落到 no_pricing——绝不猜价。
+		if norm := normalizeModelLookupKey(mod); norm != mod {
+			if snap, ok, err := u.repo.GetActiveModelPricing(ctx, prov, norm); err == nil && ok {
+				applyPricingUSDToEvent(e, snap)
+				ApplyTokenUsageCosts(e)
+				return true
+			}
+		}
 	}
 	ApplyTokenUsageCosts(e)
 	return hasAnyPrice(e)
+}
+
+// normalizeModelLookupKey 把上报侧模型 ID 归一成计价规则表的常用键：取最后一个
+// '/' 之后段（去网关/渠道前缀），再去尾部日期戳（-YYYYMMDD，8 位数字）。
+// 纯函数、保守裁剪——只剥「必然是路由/版本装饰」的部分，不做大小写折叠或模糊匹配。
+func normalizeModelLookupKey(mod string) string {
+	mod = strings.TrimSpace(mod)
+	if mod == "" {
+		return mod
+	}
+	if i := strings.LastIndex(mod, "/"); i >= 0 && i < len(mod)-1 {
+		mod = mod[i+1:]
+	}
+	if len(mod) > 9 && mod[len(mod)-9] == '-' && isAllDigits(mod[len(mod)-8:]) {
+		mod = mod[:len(mod)-9]
+	}
+	return mod
+}
+
+func isAllDigits(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 // hasAnyPrice reports whether any price field is non-zero (caller-supplied or
