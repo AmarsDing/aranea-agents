@@ -983,6 +983,11 @@ func ensurePostgresSchemas(pg *sql.DB, vdim int, lg loggateway.Logger) error {
 			lg.Error("postgres schema step failed", loggateway.StepID("data.schema.knowledge"), loggateway.Err(err))
 			return fmt.Errorf("knowledge schema: %w", err)
 		}
+	} else if err := BackfillKnowledgeG32(ctxPG, pg, 200, lg); err != nil {
+		// G-32 回填为富化非门闩（空串 行按现算键等价）：Warn 不阻断 readiness，
+		// 下次启动断点续跑。
+		lg.Warn("knowledge G-32 backfill incomplete (non-blocking; retried next boot)",
+			loggateway.StepID("data.schema.knowledge_g32_backfill"), loggateway.Err(err))
 	}
 	if err := ensurePostgresPhase1Schema(ctxPG, pg, lg); err != nil {
 		lg.Error("postgres phase1 schema step failed", loggateway.StepID("data.schema.postgres_phase1"), loggateway.Err(err))

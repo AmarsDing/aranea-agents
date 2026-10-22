@@ -487,8 +487,23 @@ var ddlMigrationsLate = []ddlMigration{
 	{Version: 20261292, Name: "memory_facts_cjk_bigram_fts", SQL: "sql/migrations/20261292_memory_facts_cjk_bigram_fts.sql"},
 	// 20261293 memory_facts_embedding_due_idx（AMC C3 修复 #7）：
 	// MemoryFactIndexSweeper 每 30s 按 (embedding_status IN stale/pending/failed,
-	// status='active', deleted_at='', attempts 上限+退避) ORDER BY updated_at
+	// status='active', deleted_at=空串, attempts 上限+退避) ORDER BY updated_at
 	// 拾取行批——无支撑索引时 38 万行/8.2GB 表每 30s 全表排序扫描并挤压
 	// 评测期 32 并发搜索。部分索引只覆盖 due 候选谓词，体积极小写放大趋零。
 	{Version: 20261293, Name: "memory_facts_embedding_due_idx", SQL: "sql/migrations/20261293_memory_facts_embedding_due_idx.sql"},
+	// 20261294 document_versions_chunk_archive（G-32 内容版本链+增量重建基座，
+	// 2026-10-22 拍板，ADR-KN-20261022-I）：document_versions 轻版本账本
+	//（seed|create|edit|rename|supersede|tombstone）+ chunk_archive（删块同事务
+	// 物化归档，无 FK，cited_count 快照随行）+ chunk_embeddings_archive（死化身
+	// 向量镜档，与 20261290 同型——embedding 列与 per-dim partial HNSW 由
+	// EnsureKnowledgeSchema 双轨补齐，迁移轨道免 pgvector 依赖先例）+
+	// knowledge_chunks.content_key 稳定键列（'sha1:'+hex 口径登记）+
+	// (doc_id, content_key) 索引 + knowledge_chunk_incarnations 化身区间视图
+	//（G-05 as-of 向 chunk 推广的全量时态读基座）。种子=迁移内一次性纯 SQL
+	//（content_hash=空串 未知档+asset_hash=正文列值），Ensure 不挂种子循环；
+	// 存量 content_key 与文本档版本行 body-hash 富化由 Go 启动回填 runner
+	// 幂等分批跑。初稿占用 20261292，当日 C3 连占 20261292/20261293
+	//（ee29fca85）→ 顺延（canonical 铁律：SQL 文件名/注册行/设计引用同改
+	// 同 commit）；TK-G39-01 DROP 顺延 ≥20261295。
+	{Version: 20261294, Name: "document_versions_chunk_archive", SQL: "sql/migrations/20261294_document_versions_chunk_archive.sql"},
 }

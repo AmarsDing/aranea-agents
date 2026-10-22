@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"time"
 
 	"aranea-agents/pkg/loggateway"
 )
@@ -48,6 +49,18 @@ func graphCardDimHNSWIndexSQL(dim int) string {
 	return fmt.Sprintf(`CREATE INDEX CONCURRENTLY IF NOT EXISTS %s
 			ON knowledge_graph_embeddings USING hnsw ((embedding::vector(%d)) vector_cosine_ops) WITH (m = 16, ef_construction = 64)
 			WHERE dim = %d`, graphCardDimHNSWIndexName(dim), dim, dim)
+}
+
+// chunkEmbeddingArchiveDimHNSWIndexSQL G-32 向量档案档 per-dim partial HNSW
+// （ADR-KN-20261022-I 决策 12④；与侧表/卡片档同约——表达式 cast + partial
+// WHERE dim = N，CONCURRENTLY 在线构建由 ensureIndexConcurrent 兜底）。
+func chunkEmbeddingArchiveDimHNSWIndexName(dim int) string {
+	return fmt.Sprintf("chunk_embeddings_archive_hnsw_d%d", dim)
+}
+func chunkEmbeddingArchiveDimHNSWIndexSQL(dim int) string {
+	return fmt.Sprintf(`CREATE INDEX CONCURRENTLY IF NOT EXISTS %s
+			ON chunk_embeddings_archive USING hnsw ((embedding::vector(%d)) vector_cosine_ops) WITH (m = 16, ef_construction = 64)
+			WHERE dim = %d`, chunkEmbeddingArchiveDimHNSWIndexName(dim), dim, dim)
 }
 
 // ensureKnowledgeEmbeddingHNSW drops the legacy IVFFlat ANN index and creates
@@ -375,6 +388,126 @@ func EnsureKnowledgeSchema(ctx context.Context, db *sql.DB, dim int, lg ...logga
 			ON knowledge_governance_proposal (collection_id, status, risk)`,
 
 		`ALTER TABLE knowledge_documents ADD COLUMN IF NOT EXISTS stale_at TIMESTAMPTZ`,
+
+		// --- G-32 内容版本链+增量重建基座（ADR-KN-20261022-I，2026-10-22 拍板；
+		// fresh 形态，存量库由迁移 20261294 建三表/列/视图+种子——迁移轨道免
+		// pgvector 依赖，向量档案 embedding 列与 per-dim partial HNSW 走
+		// ALTER/ensure 双轨；种子纯 SQL 仅迁移内一次性，Ensure 不挂种子循环）。
+		// 置 stmts 末位：化身视图与前表引用 cited_count/parent_chunk_id/chunk_role
+		// 等先行列 ---
+		// document_versions：轻版本账本，PK (doc_id, version_no)；change_kind 值空间
+		// 一次入列（seed|create|edit|rename|supersede|tombstone，producer 渐进）。
+		// 不设 FK——物理删文档不得级联抹账：tombstone 行与归档化身区间的
+		// valid_to 连接点必须存活（决策12「tombstone 可回放」），清理由
+		// TK-G32-03 GC 挂账负责（与 chunk_archive 无 FK 同源设计）。
+		`CREATE TABLE IF NOT EXISTS document_versions (
+			doc_id       TEXT NOT NULL,
+			version_no   INT  NOT NULL CHECK (version_no > 0),
+			content_hash TEXT NOT NULL DEFAULT '',
+			asset_hash   TEXT NOT NULL DEFAULT '',
+			change_kind  TEXT NOT NULL DEFAULT 'seed'
+			             CHECK (change_kind IN ('seed','create','edit','rename','supersede','tombstone')),
+			chunk_stats  JSONB NOT NULL DEFAULT '{}',
+			producer     TEXT NOT NULL DEFAULT '',
+			created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+			PRIMARY KEY (doc_id, version_no)
+		)`,
+		// chunk_archive：删块同事务物化归档，无 FK（cited_count 快照随行；
+		// 「授权用当下、内容用历史」，GC 挂 TK-G32-03）。content_key=稳定键
+		//（口径 'sha1:'+hex 裸字节，与 knowledge_chunks.content_key 同登记）。
+		`CREATE TABLE IF NOT EXISTS chunk_archive (
+			doc_id          TEXT NOT NULL,
+			chunk_id        TEXT NOT NULL,
+			revision_no     INT  NOT NULL CHECK (revision_no > 0),
+			collection_id   TEXT NOT NULL,
+			content         TEXT NOT NULL,
+			content_key     TEXT NOT NULL DEFAULT '',
+			chunk_role      TEXT NOT NULL DEFAULT 'child',
+			parent_chunk_id TEXT NOT NULL DEFAULT '',
+			chunk_index     INT  NOT NULL DEFAULT 0,
+			cited_count     INT  NOT NULL DEFAULT 0,
+			metadata        JSONB NOT NULL DEFAULT '{}',
+			archived_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+			PRIMARY KEY (doc_id, chunk_id, revision_no)
+		)`,
+		`CREATE INDEX IF NOT EXISTS chunk_archive_chunk_idx
+			ON chunk_archive (chunk_id)`,
+		`CREATE INDEX IF NOT EXISTS chunk_archive_collection_idx
+			ON chunk_archive (collection_id, archived_at)`,
+		// chunk_embeddings_archive：死化身向量镜档（决策 12②，与 chunk_embeddings
+		// 同型去 FK）；namespace 下死化身行永不 JOIN current 读面，零横切保
+		// G-05 条款①。embedding 裸型列存量库由下行 ALTER 幂等补齐。
+		`CREATE TABLE IF NOT EXISTS chunk_embeddings_archive (
+			chunk_id      TEXT NOT NULL,
+			dim           INT  NOT NULL CHECK (dim > 0),
+			collection_id TEXT NOT NULL,
+			doc_id        TEXT NOT NULL,
+			model         TEXT NOT NULL DEFAULT '',
+			embedding     vector,
+			archived_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+			PRIMARY KEY (chunk_id, dim)
+		)`,
+		`ALTER TABLE chunk_embeddings_archive ADD COLUMN IF NOT EXISTS embedding vector`,
+		`CREATE INDEX IF NOT EXISTS chunk_embeddings_archive_collection_dim_idx
+			ON chunk_embeddings_archive (collection_id, dim)`,
+		// 稳定键列（决策 2）：配对权威恒 Go 侧现算，列仅寻址/审计/回填加速。
+		`ALTER TABLE knowledge_chunks ADD COLUMN IF NOT EXISTS content_key TEXT NOT NULL DEFAULT ''`,
+		`CREATE INDEX IF NOT EXISTS knowledge_chunks_doc_content_key_idx
+			ON knowledge_chunks (doc_id, content_key)`,
+		// 化身区间视图（决策 12①）：as-of 时态读唯一区间推导口——出生版本由
+		// 代际命名空间段解析，legacy 位置 ID 归 seed 版本档；死亡=归档
+		// revision_no 版本 created_at；current 化身 valid_to='infinity'。
+		// 归档腿 valid_to 对 valid_from GREATEST clamp（CON-13 双轨镜像——
+		// 与迁移 20261294 视图文本逐字符一致：时钟回拨不产生负区间；
+		// 同 tick [t,t) 坍缩根治挂 T4 写入侧钳位，偏差登记开发计划）。
+		`CREATE OR REPLACE VIEW knowledge_chunk_incarnations AS
+WITH vers AS (
+  SELECT doc_id, version_no, created_at FROM document_versions
+),
+firstv AS (
+  SELECT doc_id, MIN(created_at) AS t0 FROM vers GROUP BY doc_id
+)
+SELECT
+  c.id AS chunk_id,
+  c.doc_id,
+  c.collection_id,
+  c.content,
+  c.content_key,
+  c.chunk_role,
+  c.parent_chunk_id,
+  c.chunk_index,
+  c.cited_count,
+  c.metadata,
+  COALESCE(vb.created_at, fv.t0, c.created_at) AS valid_from,
+  'infinity'::timestamptz AS valid_to,
+  FALSE AS archived,
+  NULL::timestamptz AS archived_at
+FROM knowledge_chunks c
+LEFT JOIN vers vb ON vb.doc_id = c.doc_id
+  AND vb.version_no = COALESCE(substring(c.id from '-v([0-9]+)-(?:ch|p)-[0-9]+$')::int, 1)
+LEFT JOIN firstv fv ON fv.doc_id = c.doc_id
+UNION ALL
+SELECT
+  a.chunk_id,
+  a.doc_id,
+  a.collection_id,
+  a.content,
+  a.content_key,
+  a.chunk_role,
+  a.parent_chunk_id,
+  a.chunk_index,
+  a.cited_count,
+  a.metadata,
+  COALESCE(vb.created_at, fv.t0, a.archived_at) AS valid_from,
+  GREATEST(COALESCE(vd.created_at, a.archived_at),
+           COALESCE(vb.created_at, fv.t0, a.archived_at)) AS valid_to,
+  TRUE AS archived,
+  a.archived_at
+FROM chunk_archive a
+LEFT JOIN vers vb ON vb.doc_id = a.doc_id
+  AND vb.version_no = COALESCE(substring(a.chunk_id from '-v([0-9]+)-(?:ch|p)-[0-9]+$')::int, 1)
+LEFT JOIN vers vd ON vd.doc_id = a.doc_id AND vd.version_no = a.revision_no
+LEFT JOIN firstv fv ON fv.doc_id = a.doc_id`,
 	}
 	for _, s := range stmts {
 		if _, err := db.ExecContext(ctx, s); err != nil {
@@ -462,19 +595,32 @@ func ensureMultiDimEmbeddingLayer(ctx context.Context, db *sql.DB, dim int, lg l
 				loggateway.Int("collections", int(n)))
 		}
 	}
-	return ensureChunkEmbeddingDimIndexes(ctx, db, dim)
+	if err := ensureChunkEmbeddingDimIndexes(ctx, db, dim); err != nil {
+		return err
+	}
+	// CON-15 回填加速器（G-32）：content_key 空串 谓词无索引支撑时 backfill
+	// 每批次 seq scan 全表。partial index 只覆盖 content_key=空串 行，本体
+	// 回填完成后体积趋零、维护代价趋零（决策 2：回填不构成配对阻塞，此索引
+	// 纯属加速器）。与 dim 索引同走 CONCURRENTLY 注册轨（多副本竞态由
+	// ensureIndexConcurrent 的复查-重试容忍）。
+	return ensureIndexConcurrent(ctx, db,
+		"knowledge_chunks_content_key_pending_idx",
+		`CREATE INDEX CONCURRENTLY IF NOT EXISTS knowledge_chunks_content_key_pending_idx
+			ON knowledge_chunks (id) WHERE content_key = ''`)
 }
 
-// ensureChunkEmbeddingDimIndexes 为侧表/卡片档注册 per-dim partial HNSW。
+// ensureChunkEmbeddingDimIndexes 为侧表/卡片档/向量档案档（G-32）注册 per-dim partial HNSW。
 // 纯增量：存在且健康（indisvalid）的索引零动作；空表建 HNSW 瞬时完成，因此
 // 把当前 embedder dim 一并预注册（首次插入后首个查询不走 seq scan）。dim 集合
-// = 侧表现存 dims ∪ 卡片档 dims（>0）∪ embedder 当前 dim。存量旧 dim 索引永不
+// = 侧表现存 dims ∪ 向量档案 dims ∪ 卡片档 dims（>0）∪ embedder 当前 dim。存量旧 dim 索引永不
 // DROP（回滚浸泡）；索引注册表收敛见 TK-G39-03。构建一律 CONCURRENTLY
 // （F1-B2：首启对大语料表不持 SHARE 锁，就绪路径不被长构建阻塞；
 // CONCURRENTLY 不能进事务块，Ensure 各语句本就独立 Exec）。
 func ensureChunkEmbeddingDimIndexes(ctx context.Context, db *sql.DB, curDim int) error {
 	rows, err := db.QueryContext(ctx, `
 		SELECT dim FROM chunk_embeddings
+		UNION
+		SELECT dim FROM chunk_embeddings_archive
 		UNION
 		SELECT dim FROM knowledge_graph_embeddings WHERE dim > 0`)
 	if err != nil {
@@ -504,6 +650,9 @@ func ensureChunkEmbeddingDimIndexes(ctx context.Context, db *sql.DB, curDim int)
 		if err := ensureIndexConcurrent(ctx, db, graphCardDimHNSWIndexName(d), graphCardDimHNSWIndexSQL(d)); err != nil {
 			return fmt.Errorf("knowledge multi-dim layer: card hnsw dim=%d: %w", d, err)
 		}
+		if err := ensureIndexConcurrent(ctx, db, chunkEmbeddingArchiveDimHNSWIndexName(d), chunkEmbeddingArchiveDimHNSWIndexSQL(d)); err != nil {
+			return fmt.Errorf("knowledge multi-dim layer: archive hnsw dim=%d: %w", d, err)
+		}
 	}
 	return nil
 }
@@ -511,6 +660,12 @@ func ensureChunkEmbeddingDimIndexes(ctx context.Context, db *sql.DB, curDim int)
 // ensureIndexConcurrent 单张索引的健康性注册：存在且 indisvalid → 零动作；
 // 存在但 INVALID（历史上 CONCURRENTLY 构建中断的残留）→ 先 DROP 再以
 // CONCURRENTLY 重建；不存在 → 直接 CONCURRENTLY 创建。
+//
+// 并发创建竞态容忍（对抗评审 CON-10）：IF NOT EXISTS 在 PG 对同名索引并发
+// 创建是 TOCTOU（存在性检查早于堆创建），多副本同刻首启可 42P07 失败环。
+// 创建报错后进入复查-重试：赢家副本完成构建后本副本复查到 indisvalid 即视为
+// 成功返回 nil；约 3×300ms 窗口内仍不可见才上抛原始错误（单副本真实语法/
+// 空间错误不因重试被吞——最多多等 ~900ms）。
 func ensureIndexConcurrent(ctx context.Context, db *sql.DB, name, createSQL string) error {
 	var valid bool
 	err := db.QueryRowContext(ctx,
@@ -526,8 +681,24 @@ func ensureIndexConcurrent(ctx context.Context, db *sql.DB, name, createSQL stri
 	case !errors.Is(err, sql.ErrNoRows):
 		return fmt.Errorf("probe index %s: %w", name, err)
 	}
-	if _, err := db.ExecContext(ctx, createSQL); err != nil {
-		return fmt.Errorf("create index %s: %w", name, err)
+	if _, err := db.ExecContext(ctx, createSQL); err == nil {
+		return nil
+	} else {
+		createErr := err
+		for i := 0; i < 3; i++ {
+			select {
+			case <-ctx.Done():
+				return fmt.Errorf("create index %s: %w", name, createErr)
+			case <-time.After(300 * time.Millisecond):
+			}
+			valid = false
+			perr := db.QueryRowContext(ctx,
+				`SELECT i.indisvalid FROM pg_class c JOIN pg_index i ON i.indexrelid = c.oid
+			 	 WHERE c.relkind = 'i' AND c.relname = $1`, name).Scan(&valid)
+			if perr == nil && valid {
+				return nil // 并发赢家副本已建成——竞态失败已收敛
+			}
+		}
+		return fmt.Errorf("create index %s: %w", name, createErr)
 	}
-	return nil
 }
