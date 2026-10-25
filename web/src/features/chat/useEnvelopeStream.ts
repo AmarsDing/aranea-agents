@@ -21,6 +21,8 @@ import type { V2WsEnvelope } from './v2Types';
 
 export type ChatStreamFactoryOpts = {
   lastEventId?: string;
+  /** E2E-C2: 每次（重）连时实时取最新 replayable 游标（channelWsCursor）。 */
+  getLastEventId?: () => string | undefined;
   onConnected?: () => void;
   onDisconnected?: () => void;
   onServerShutdown?: (reason: string) => void;
@@ -37,6 +39,7 @@ export function createChatStream(sessionId: string, streamOpts?: ChatStreamFacto
     channels: ['chat', 'system'],
     autoConnect: false,
     lastEventId: streamOpts?.lastEventId,
+    getLastEventId: streamOpts?.getLastEventId,
     onConnected: () => streamOpts?.onConnected?.(),
     onDisconnected: () => streamOpts?.onDisconnected?.(),
     onServerShutdown: streamOpts?.onServerShutdown,
@@ -49,6 +52,8 @@ export function createTeamStream(
   sessionId: string,
   streamOpts?: {
     lastEventId?: string;
+    /** E2E-C2: 每次（重）连时实时取最新 replayable 游标（channelWsCursor）。 */
+    getLastEventId?: () => string | undefined;
     onConnected?: () => void;
     onDisconnected?: () => void;
     onServerShutdown?: (reason: string) => void;
@@ -61,6 +66,7 @@ export function createTeamStream(
     channels: ['chat', 'team', 'system'],
     autoConnect: false,
     lastEventId: streamOpts?.lastEventId,
+    getLastEventId: streamOpts?.getLastEventId,
     onConnected: () => streamOpts?.onConnected?.(),
     onDisconnected: () => streamOpts?.onDisconnected?.(),
     onServerShutdown: streamOpts?.onServerShutdown,

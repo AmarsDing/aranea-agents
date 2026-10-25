@@ -95,6 +95,8 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
 
     chatStream = createChatStream(sessionId, {
       lastEventId: getChannelWsCursor(sessionId),
+      // E2E-C2: transport 自动重连时实时回传最新游标（live 推进只进 cursor 表）。
+      getLastEventId: () => getChannelWsCursor(sessionId),
       onConnected: () => {
         deps.runtimeStore.setWsConnected(sessionId, true);
         void deps.refreshRunStatus(sessionId);
@@ -152,6 +154,8 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
 
     teamStream = createTeamStream(sessionId, {
       lastEventId: getChannelWsCursor(sessionId),
+      // E2E-C2: transport 自动重连时实时回传最新游标（live 推进只进 cursor 表）。
+      getLastEventId: () => getChannelWsCursor(sessionId),
       onServerShutdown: () => {
         // F4: 持久 toast 的 action 必须真正可关闭（详见上方 chatStream 同注释）。
         const dismiss = $q.notify({

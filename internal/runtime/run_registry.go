@@ -304,8 +304,23 @@ func (r *RunRegistry) Finish(sessionID, runID string) {
 	// polling can observe the terminal state instead of getting 404. Non-terminal
 	// entries at Finish time (abnormal path) are dropped immediately. Expired
 	// terminal entries are lazily removed by GetStatus.
-	if entry, ok := r.runStatuses.load(sessionID); !ok || !IsRunStatusTerminal(entry.Status) {
-		r.runStatuses.delete(sessionID)
+	// E2E-B1: two non-terminal survivors. (1) A "paused" entry must outlive the
+	// cancelled runner's deferred Finish — PauseSession cancels the active run
+	// and then re-marks the session paused, so teardown arrives AFTER the paused
+	// marker and used to wipe it, leaving ResumeSession's registry gate
+	// conflicted (409) forever. (2) An entry tagged with a different runID
+	// belongs to a newer run lifecycle; a stale Finish must not wipe it either.
+	if entry, ok := r.runStatuses.load(sessionID); ok {
+		switch {
+		case IsRunStatusTerminal(entry.Status):
+			// keep for the polling window
+		case entry.Status == RunStatusPaused:
+			// keep: lifecycle hold survives teardown of the run it paused
+		case runID != "" && entry.RunID != "" && entry.RunID != runID:
+			// keep: belongs to a newer run than the one finishing
+		default:
+			r.runStatuses.delete(sessionID)
+		}
 	}
 	r.pendingCancels.delete(sessionID)
 }

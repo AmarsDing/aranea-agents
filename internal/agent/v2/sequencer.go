@@ -717,6 +717,13 @@ func (s *Sequencer) insertCriticalOutbox(ctx context.Context, e biz.Event) strin
 				}
 			}
 		}
+		// E2E-C1: the durable outbox row for this event does NOT exist — strip
+		// the delivery seq stamped above so the live fan-out carries no outbox
+		// cursor event_id (ws_v2_subscriber only stamps event_id when seq > 0),
+		// and clients never advance their replay cursor to a phantom position
+		// (on reconnect ListAfter would find no row for it and replay nothing —
+		// the H1 invariant "cursor advances only on replayable frames").
+		de.SetDeliverySeqValue(0)
 		// R4: throttled — fires per critical event while the outbox table is
 		// down. The outbox skip itself is unchanged (best-effort).
 		if ok, suppressed := s.throttles.outboxInsertWarn.Allow(); ok {

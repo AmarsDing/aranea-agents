@@ -394,9 +394,14 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 				failCtx := context.Background()
 				o.setRunStatus(failCtx, sessionID, runID, "failed", safeErrMsgForWS(turnErr))
 				o.transitionSessionStatus(failCtx, sessionID, sessstatus.SessionStatusInterrupted, sessstatus.StatusReasonError)
-			}
-			if turnErr != nil {
-				o.publishTurnFailure(sessionID, runID, "chat-service", turnErr, "")
+				// E2E-B2: publish task.failed only for genuine failures. On
+				// user-cancel the projector already emits the authoritative
+				// task.cancelled; publishing a fabricated failed Task here
+				// upserts a ghost failure card next to the real cancelled one
+				// (two conflicting terminal states for the same turn).
+				if turnErr != nil {
+					o.publishTurnFailure(sessionID, runID, "chat-service", turnErr, "")
+				}
 			}
 		}
 		o.runs.Finish(sessionID, runID)

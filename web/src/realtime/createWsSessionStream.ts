@@ -32,6 +32,8 @@ export type WsSessionStreamOptions = {
   sessionId: string;
   channels?: string[];
   lastEventId?: string;
+  /** E2E-C2: 每次（重）连时实时取最新 replayable 游标（见 ws-transport 同名选项）。 */
+  getLastEventId?: () => string | undefined;
   autoConnect?: boolean;
   logEnabled?: boolean;
   onConnected?: (info: { sessionId: string; lastEventId?: string }) => void;
@@ -109,6 +111,7 @@ export function createWsSessionStream(opts: WsSessionStreamOptions): WsSessionSt
     const t = createWsTransport({
       sessionId: opts.sessionId,
       lastEventId: lastEventId.value,
+      getLastEventId: opts.getLastEventId,
       logEnabled: opts.logEnabled,
       onMonitorEvent: opts.onMonitorEvent ? (event) => opts.onMonitorEvent!(event) : undefined,
       onBackpressure: opts.onBackpressure ? (payload) => opts.onBackpressure!(payload) : undefined,

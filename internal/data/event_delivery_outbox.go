@@ -228,12 +228,24 @@ func (r *eventDeliveryOutboxRepo) ListAfter(ctx context.Context, sessionID, afte
 	if cursorSeq < 0 {
 		cursorSeq = 0
 	}
+	// E2E-C2: a stale reconnect cursor (client transport re-uses the
+	// establishment-time last_event_id) can sit far behind the current tail.
+	// Plain `ORDER BY seq ASC LIMIT ?` would then replay the OLDEST 100 rows
+	// after the cursor — ancient frames the client no longer cares about —
+	// while the truly-missed LATEST critical frames (e.g. team_summary, which
+	// REST never carries) fall outside the window and are lost permanently.
+	// Fetch the NEWEST `limit` rows after the cursor (inner DESC), then
+	// re-order ascending (outer) so on-the-wire replay order stays causal.
 	q := d.RenumberPlaceholders(
 		`SELECT id, session_id, seq, event_id, kind, entity_id, payload, published_at, created_at
-		 FROM event_delivery_outbox
-		 WHERE session_id=? AND seq>?
-		 ORDER BY seq ASC
-		 LIMIT ?`,
+		 FROM (
+			SELECT id, session_id, seq, event_id, kind, entity_id, payload, published_at, created_at
+			FROM event_delivery_outbox
+			WHERE session_id=? AND seq>?
+			ORDER BY seq DESC
+			LIMIT ?
+		 ) AS tail
+		 ORDER BY seq ASC`,
 	)
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, q, sessionID, cursorSeq, limit)
 	if err != nil {

@@ -106,4 +106,52 @@ describe('useChatRunStatus', () => {
     expect(runStatus.value).toBe('awaiting_user');
     expect(applyAwaitRunStatus).toHaveBeenCalled();
   });
+
+  // E2E-B3：PauseSession 取消链同 runId 连发 cancelled→paused 两帧。
+  describe('E2E-B3 paused lifecycle hold', () => {
+    function setup() {
+      const applyAwaitRunStatus = vi.fn();
+      return {
+        applyAwaitRunStatus,
+        ...useChatRunStatus({ applyAwaitRunStatus }),
+      };
+    }
+
+    it('accepts paused frame after terminal cancelled for the same run', () => {
+      const { runStatus, applyFromActivityEvent } = setup();
+      applyFromActivityEvent(activityEvent({ status: 'running', run_id: 'run-1' }));
+      applyFromActivityEvent(activityEvent({ status: 'cancelled', run_id: 'run-1' }));
+      applyFromActivityEvent(activityEvent({ status: 'paused', run_id: 'run-1' }));
+      expect(runStatus.value).toBe('paused');
+    });
+
+    it('keeps terminal stickiness against plain non-terminal regression (running after cancelled rejected)', () => {
+      const { runStatus, applyFromActivityEvent } = setup();
+      applyFromActivityEvent(activityEvent({ status: 'cancelled', run_id: 'run-1' }));
+      applyFromActivityEvent(activityEvent({ status: 'running', run_id: 'run-1' }));
+      expect(runStatus.value).toBe('cancelled');
+    });
+
+    it('accepts resume (running) after paused for the same run', () => {
+      const { runStatus, applyFromActivityEvent } = setup();
+      applyFromActivityEvent(activityEvent({ status: 'cancelled', run_id: 'run-1' }));
+      applyFromActivityEvent(activityEvent({ status: 'paused', run_id: 'run-1' }));
+      applyFromActivityEvent(activityEvent({ status: 'running', run_id: 'run-1' }));
+      expect(runStatus.value).toBe('running');
+    });
+
+    it('treats paused as settled across runIds (new turn frame accepted)', () => {
+      const { runStatus, applyFromActivityEvent } = setup();
+      applyFromActivityEvent(activityEvent({ status: 'paused', run_id: 'run-1' }));
+      applyFromActivityEvent(activityEvent({ status: 'running', run_id: 'run-2' }));
+      expect(runStatus.value).toBe('running');
+    });
+
+    it('accepts terminal after paused for the same run', () => {
+      const { runStatus, applyFromActivityEvent } = setup();
+      applyFromActivityEvent(activityEvent({ status: 'paused', run_id: 'run-1' }));
+      applyFromActivityEvent(activityEvent({ status: 'completed', run_id: 'run-1' }));
+      expect(runStatus.value).toBe('completed');
+    });
+  });
 });

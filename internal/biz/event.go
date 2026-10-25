@@ -92,7 +92,11 @@ func IsCriticalDeliveryEvent(e Event) bool {
 			// team_summary 是团队汇总结果的唯一 WS 载体（teamRunWire 无
 			// summary 字段，outbox/REST 均不携带）：Informational 通道在
 			// 断线时丢弃后无法重放（2026-10-20 升级，P2 裁决）。
-			"team_summary":
+			"team_summary",
+			// send_failed 是 HTTP 异步提交后台执行失败的唯一通知载体（E2E-C3）：
+			// ACK 已返回，若 live 帧丢失则失败无声消失——升级 Critical 换
+			// outbox 持久化 + 重连重放。
+			"send_failed":
 			return true
 		}
 	}

@@ -18,11 +18,18 @@ const HYDRATE_DELAY_MS = 400;
 // REST 对账响应：
 //   R1 终态粘性 —— runId 相同且已接受 terminal 时拒绝非终态回落（idle 除外）；
 //     接受 idle 后进入复位语义：同一 run 的任何迟到回放帧（含 terminal）不再复活旧状态。
+//     E2E-B3 例外：paused 生命周期挂起帧可穿透粘性——PauseSession 的取消链按
+//     cancelled→paused 顺序同 runId 连发两帧，拒绝 paused 会让前端恒停 cancelled。
 //   R2 runId 绑定 —— 跨 runId 仅在上个 run 已 terminal/idle/未知时接受；
+//     E2E-B3：paused（生命周期挂起）亦视为「上个 run 已结算」，否则暂停后新
+//     消息的首帧被保守丢弃、前端滞留 paused。
 //     non-terminal + 异 runId 保守丢弃，由 orphan 对账 / 下次切会话 hydrate 兜回。
 //   R3 REST 单调 —— 同 runId 且双方带服务端时间时拒绝更旧快照。
 //   runId 为空的 legacy 帧按当前 runId 处理且不回写 lastRunId。
 const TERMINAL_RUN_STATUSES = new Set<string>(['completed', 'failed', 'cancelled']);
+// E2E-B3：paused 是生命周期挂起帧，不是终态，但必须穿透 R1 终态粘性、且在
+// R2 跨 runId 裁决中等价于「上个 run 已结算」。
+const LIFECYCLE_HOLD_STATUSES = new Set<string>(['paused']);
 
 function shouldAcceptRunStatus(
   last: { runId: string; status: string; serverMs: number },
@@ -30,11 +37,14 @@ function shouldAcceptRunStatus(
 ): boolean {
   const lastTerminal = TERMINAL_RUN_STATUSES.has(last.status);
   const candTerminal = TERMINAL_RUN_STATUSES.has(cand.status);
+  const lastHold = LIFECYCLE_HOLD_STATUSES.has(last.status);
+  const candHold = LIFECYCLE_HOLD_STATUSES.has(cand.status);
   const effectiveRunId = cand.runId || last.runId; // legacy 空 runId 帧按当前 runId 处理
   const sameRun = effectiveRunId !== '' && last.runId !== '' && effectiveRunId === last.runId;
 
   if (sameRun) {
-    if (lastTerminal) return candTerminal || cand.status === 'idle'; // R1 终态粘性
+    // R1 终态粘性（E2E-B3：+ candHold 挂起帧穿透——cancelled→paused 同 run 连发）
+    if (lastTerminal) return candTerminal || cand.status === 'idle' || candHold;
     if (last.status === 'idle') return cand.status === 'idle'; // 复位语义：同 run 不再复活
     // 同 run 非终态上：REST 服务端 updatedAt 单调
     if (
@@ -49,8 +59,8 @@ function shouldAcceptRunStatus(
   }
 
   if (cand.runId !== '' && last.runId !== '' && cand.runId !== last.runId) {
-    // R2 跨 runId：仅上个 run 已 terminal/idle 时接受（lastRunId 为空 = 上个 run 未知 → 接受）
-    return lastTerminal || last.status === 'idle';
+    // R2 跨 runId：上个 run 已 terminal/idle/paused 时接受（lastRunId 为空 = 上个 run 未知 → 接受）
+    return lastTerminal || lastHold || last.status === 'idle';
   }
   return true;
 }

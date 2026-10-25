@@ -101,6 +101,13 @@ function classifyMessagePriority(upstream: WsUpstream): 'control' | 'business' {
 export type WsTransportOptions = {
   sessionId: string;
   lastEventId?: string;
+  /**
+   * E2E-C2: 游标回传——每次（重）连时实时取最新 replayable 游标。自动重连
+   * 复用同一 transport，其内部 _lastEventId 停留在建流时刻；live 推进的
+   * 游标只进 channelWsCursor 表，必须通过此 getter 在 reconnect 建 URL 前
+   * 回流，否则重放窗口反复从陈旧位置开始（最新 critical 帧被挤出）。
+   */
+  getLastEventId?: () => string | undefined;
   token?: string;
   logEnabled?: boolean;
   /**
@@ -187,7 +194,8 @@ export function createWsTransport(opts: WsTransportOptions): WsTransport {
       opts.url ??
       buildWsUrl({
         sessionId: opts.sessionId,
-        lastEventId: _lastEventId,
+        // E2E-C2: 重连优先取调用方回传的最新游标，内部快照兜底。
+        lastEventId: opts.getLastEventId?.() || _lastEventId,
         token: opts.token,
         logEnabled: opts.logEnabled,
       });

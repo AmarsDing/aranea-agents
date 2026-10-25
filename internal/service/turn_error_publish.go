@@ -101,8 +101,11 @@ func (o *ChatOrchestrator) failTurn(
 		}
 		o.setRunStatus(failCtx, sessionID, runID, "failed", safeErrMsgForWS(err))
 		o.transitionSessionStatus(failCtx, sessionID, sessstatus.SessionStatusInterrupted, sessstatus.StatusReasonError)
+		// E2E-B2: publish task.failed only for genuine failures; on user-cancel
+		// the projector's task.cancelled is authoritative and a failure event
+		// would upsert a ghost card with a conflicting terminal state.
+		o.publishTurnFailure(sessionID, runID, opt.source, err, "")
 	}
-	o.publishTurnFailure(sessionID, runID, opt.source, err, "")
 	return biz.ChatMessage{}, biz.ChatMessage{}, err
 }
 
@@ -128,5 +131,10 @@ func (o *ChatOrchestrator) markAndPublish(
 	err error,
 ) {
 	markTurnError(turnStatus, turnErr, turnErrMsg, err)
-	o.publishTurnFailure(sessionID, runID, "chat-service", err, "")
+	// E2E-B2: same ghost-failure class as failTurn / the EXECUTE defer — skip
+	// the failure event when the turn was user-cancelled; the projector's
+	// task.cancelled is the single authoritative terminal.
+	if !o.runWasCancelled(context.Background(), sessionID, err) {
+		o.publishTurnFailure(sessionID, runID, "chat-service", err, "")
+	}
 }

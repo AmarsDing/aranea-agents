@@ -1,3 +1,5 @@
+import { Notify } from 'quasar';
+import { useI18n } from 'vue-i18n';
 import { useChatSessionStore } from '../../../stores/chat/sessionStore';
 import { useChatMessageStore } from '../../../stores/chat/messageStore';
 import { useChatRuntimeStore } from '../../../stores/chat/runtimeStore';
@@ -50,6 +52,7 @@ export function useChatV2EventHandlers(deps: {
   const activityStore = useChatActivityStore();
   const llmRetryStore = useLlmRetryStore();
   const eventRouter = useChatEventRouter(activityStore);
+  const { t } = useI18n();
 
   // v2 WS event handler — dispatched by the stream manager's onV2Event callback.
   function handleV2Event(envelope: V2WsEnvelope) {
@@ -235,6 +238,16 @@ export function useChatV2EventHandlers(deps: {
     if (noticeType === 'contract_mismatch') {
       activityStore.noteContractMismatch(sid, meta);
     }
+    // E2E-C3：HTTP 异步提交的后台执行失败（ACK 已返回）。此前三处 default
+    // 吞掉此 notice——ACK 后失败无声消失。复位 sending 门 + 固定文案负向
+    // toast（meta.message 为后端原始错误串，不渲染进 UI 防内部细节外泄）。
+    if (noticeType === 'send_failed') {
+      if (deps.sender.sending.value) {
+        deps.sender.markSendingDone();
+      }
+      deps.contextualLoading.clearMessage();
+      Notify.create({ type: 'negative', message: t('chat.sendFailed', '发送失败，请重试'), position: 'top' });
+    }
     spiritStore.handleSystemNotice(noticeType, meta);
     deps.contextualLoading.onSpiritNoticeType(noticeType);
   }
@@ -254,6 +267,11 @@ export function useChatV2EventHandlers(deps: {
     }
     const sid = deps.selectedSessionId();
     if (!sid) return;
+    // E2E-B4：member pause/resume 帧搭载 spirit root envelope、携带 member
+    // 自己的 runID。补完 member 卡后必须就此打住——若继续进 root 追踪器，
+    // 异 runID 会让 R2 跨 runId 保守裁决拒掉 root 之后全部新运行帧，
+    // sending 卡死仅整页重载可解。
+    if (chatSessionId && chatSessionId !== sid) return;
     applyV2RunStatusSideEffects(payload);
     // Terminal run statuses end any in-flight retry loop — clear the banner.
     const runStatus = String(payload.Status ?? payload.Meta?.status ?? '').trim();
