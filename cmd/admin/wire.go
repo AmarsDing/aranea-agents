@@ -3906,11 +3906,20 @@ func providePlanExecutor(
 	seq *v2.Sequencer,
 	taskPlanRepo biz.TaskPlanRepository,
 	leasePort biz.BoardRunLeasePort,
+	waiterPort biz.ExecutorWaiterDecisionPort,
+	teamRunReader biz.TeamRunV2Reader,
 	lg loggateway.Logger,
 ) *service.PlanExecutor {
 	pe := service.NewPlanExecutorFromV2Repos(planStep, teamStage, planBoard, graphStage, graphNode, orch, seq, lg)
 	pe.SetTaskPlanUpdater(taskPlanRepo)
 	pe.SetBoardRunLeasePort(leasePort) // nil 不入线（字节级旧行为）
+	// D6（97）：waiter 决议端口与 team 完成轮询读端口同 flag 门控——
+	// 仅 waiterPort 非 nil（flag=mem|pg）时两者同时入线；off 档双 nil，
+	// 无轮询分支、零决议表/team_runs_v2 读，字节级旧行为。
+	if waiterPort != nil {
+		pe.SetWaiterDecisionPort(waiterPort)
+		pe.SetTeamRunReader(teamRunReader)
+	}
 	return pe
 }
 
@@ -3932,6 +3941,30 @@ func provideBoardRunLeasePort(d *data.Data, lg loggateway.Logger) biz.BoardRunLe
 			return nil
 		}
 		return service.NewPGBoardRunLease(data.NewBoardRunLeaseRepo(d), service.PGBoardRunLeaseOptions{Logger: lg})
+	default:
+		return nil
+	}
+}
+
+// provideExecutorWaiterPort P0-6 阶段 1b（D6，97-multi-replica-executor-waiters）
+// capability flag：ARANEA_EXECUTOR_WAITER 缺省/off → nil（waiter 决议纯进程内
+// playbookConfirmDecided + confirmSteps 兜底、无轮询分支，字节级旧行为）；
+// mem → InMem 端口试跑档（端口语义等价性灰度，无跨进程语义）；pg →
+// executor_waiter_decisions 表 CAS 决议（迁移 20261302）。pg + 无 DB 形态
+// fail-closed 落 nil（等同旧行为），不在启动面中断装配。
+// wire-gen-hand-merge-convention：wire_gen.go 须手工同体镜像。
+func provideExecutorWaiterPort(d *data.Data, lg loggateway.Logger) biz.ExecutorWaiterDecisionPort {
+	switch service.ResolveExecutorWaiterMode(os.Getenv) {
+	case service.ExecutorWaiterModeMem:
+		return service.NewInMemExecutorWaiterDecisions()
+	case service.ExecutorWaiterModePG:
+		if d == nil {
+			lg.Warn("executor waiter flag=pg 但无 DB 数据源，fail-closed 回落进程内模式",
+				loggateway.Str("component", "executor_waiter_decision"),
+				loggateway.StepID("executor_waiter_decision.wire"))
+			return nil
+		}
+		return data.NewExecutorWaiterDecisionRepo(d)
 	default:
 		return nil
 	}

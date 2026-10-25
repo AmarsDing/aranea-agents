@@ -99,6 +99,16 @@ type PlanExecutor struct {
 	// 释放/HasActiveRunForSession 放行端口决议，running 继续保留进程内
 	// cancel 簿记（CancelPlanBoard/Stop 消费不变）。
 	leasePort biz.BoardRunLeasePort
+	// waiterDecisions 是 P0-6 阶段 1b（D6，97-multi-replica-executor-waiters）
+	// 跨副本执行等待器决议端口（ARANEA_EXECUTOR_WAITER=mem|pg，wire 注入）。
+	// nil=off 档字节级旧行为——waiter 决议纯进程内 playbookConfirmDecided
+	// sync.Map + confirmSteps 兜底，holdPlaybookConfirm 无轮询分支，
+	// WaitBoardStartup 无决议表慢路径。
+	waiterDecisions biz.ExecutorWaiterDecisionPort
+	// teamRuns 是 team 完成跨副本轮询读端口（D6，与 waiterDecisions 同 flag
+	// 门控注入）。nil=off 档 dispatchStep 单 chan select 零 DB 读字节级旧行为；
+	// 非 nil 时 select 增加定时轮询分支查 team_runs_v2 终态行。
+	teamRuns biz.TeamRunV2Reader
 	// 2026-08-06 P0-2 修复（流式空壳契约）：publishV2BoardShell 先发 Steps=nil
 	// 的 PlanBoardCreatedEvent（供前端先渲染看板），steps 就绪后由 PublishV2Board
 	// 发 PlanBoardUpdatedEvent。shellTimeout 是空壳等待 steps 的兜底超时，
@@ -182,9 +192,27 @@ type startupResult struct {
 }
 
 // signalStartup 非阻塞发送 board 启动信号；仅首个信号有效（chan buffered 1）。
+// D6 决议表化：waiterDecisions 在籍时同事 TryRecord（CAS 先到者赢，与
+// buffered-1 chan 首发有效语义对齐）——跨副本/重启后 WaitBoardStartup
+// 慢路径可从此表对账（off 档 nil 跳过零写）。
 func (e *PlanExecutor) signalStartup(boardID string, ok bool, reason string) {
 	if e == nil || boardID == "" {
 		return
+	}
+	if e.waiterDecisions != nil {
+		if _, err := e.waiterDecisions.TryRecordDecision(context.Background(), biz.ExecutorWaiterDecision{
+			ExecutorWaiterDecisionKey: biz.ExecutorWaiterDecisionKey{
+				Kind:    biz.WaiterDecisionKindBoardStartup,
+				ScopeID: boardID,
+			},
+			Approved:  ok,
+			Reason:    reason,
+			Actor:     "plan_executor.startup",
+			DecidedAt: time.Now().UTC(),
+		}); err != nil {
+			e.lg.Warn("record board startup decision failed (决议表兜底缺失，慢路径回落看板终态)",
+				loggateway.Str("board_id", boardID), loggateway.Err(err))
+		}
 	}
 	v, loaded := e.startup.Load(boardID)
 	if !loaded {
@@ -235,10 +263,27 @@ func (e *PlanExecutor) WaitBoardStartup(ctx context.Context, boardID string, tim
 				}
 			}
 		}
-		// 通道未注册（事件尚未分发或信号已消费）：board 已到终态则直接对账。
-		// Completed/PartialFailure 都代表确有 team 落地（partial = 至少一个
-		// step 成功完成），声明的「running」属实，不误报。
+		// 通道未注册（事件尚未分发或信号已消费）：D6 决议表慢路径优先对账
+		//（跨副本/重启后首批信号唯一持久面；off 档 nil 跳过零读）；
+		// 随后保留看板终态 DB 兜底语义。
+		if e.waiterDecisions != nil {
+			if dec, found, err := e.waiterDecisions.LoadDecision(ctx, biz.ExecutorWaiterDecisionKey{
+				Kind:    biz.WaiterDecisionKindBoardStartup,
+				ScopeID: boardID,
+			}); err == nil && found {
+				if dec.Approved {
+					return true, ""
+				}
+				reason := dec.Reason
+				if reason == "" {
+					reason = "board startup decision recorded without reason"
+				}
+				return false, reason
+			}
+		}
 		if board, err := e.repos.GetPlanBoard(ctx, boardID); err == nil && biz.IsPlanBoardTerminal(board.Status) {
+			// Completed/PartialFailure 都代表确有 team 落地（partial = 至少一个
+			// step 成功完成），声明的「running」属实，不误报。
 			if board.Status == biz.PlanStatusCompleted || board.Status == biz.PlanStatusPartialFailure {
 				return true, ""
 			}
@@ -334,6 +379,25 @@ func (e *PlanExecutor) SetBoardRunLeasePort(p biz.BoardRunLeasePort) {
 		return
 	}
 	e.leasePort = p
+}
+
+// SetWaiterDecisionPort 注入跨副本执行等待器决议端口（P0-6 阶段 1b，D6；
+// option 模式——nil 不入线，off 档 waiter 决议纯进程内存量路径不变）。
+func (e *PlanExecutor) SetWaiterDecisionPort(p biz.ExecutorWaiterDecisionPort) {
+	if e == nil {
+		return
+	}
+	e.waiterDecisions = p
+}
+
+// SetTeamRunReader 注入 team 完成跨副本轮询读端口（P0-6 阶段 1b，D6；
+// 与 SetWaiterDecisionPort 同 flag 门控——nil 不入线，dispatchStep 维持
+// 单 chan select 零 DB 读）。
+func (e *PlanExecutor) SetTeamRunReader(r biz.TeamRunV2Reader) {
+	if e == nil {
+		return
+	}
+	e.teamRuns = r
 }
 
 // planExecutorQuotaPort 是 DAG 扇出配额闸门（发现#7）所需的窄查询端口：

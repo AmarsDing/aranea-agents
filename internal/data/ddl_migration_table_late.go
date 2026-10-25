@@ -537,4 +537,16 @@ var ddlMigrationsLate = []ddlMigration{
 	// 落值（声明只能更严）。列同时由 ent schema 声明，双写幂等。
 	// 编号顺延当时最大值（20261296）+1，无撞号。幂等，重跑安全。
 	{Version: 20261297, Name: "skill_trust_columns", SQL: "sql/migrations/20261297_skill_trust_columns.sql", Func: ddlSkillTrustBackfill},
+	// 20261302 executor_waiter_decisions（P0-6 阶段 1b，deferred 战役 D6，
+	// 2026-10-26）：跨副本执行等待器决议表——(kind,session_id,scope_id) 三列
+	// 主键，TryRecordDecision=INSERT ON CONFLICT DO NOTHING CAS（先到者赢，
+	// 严禁 UPDATE 翻案；0 行命中→LoadDecision 读现值）。kind=playbook_confirm
+	//（R18 阶段确认）/board_startup（P2-② 首次团队派发对账）/team_agent_loads
+	//（DEV-03 槽位快照）。decision BOOLEAN；decided_at 定宽布局同
+	// board_run_leases 律。行生命周期：无 sweeper（行量≈决议次数低频有界，
+	// 看板清理带删评估记档 97 三件套）。编号顺延当时最大值（20261301
+	// knowledge 外商占满 298-301）+1；消费面藏 ARANEA_EXECUTOR_WAITER 档位
+	//（缺省 off 字节级旧行为）之后，off 档零写零读。仅建表：不加 ent schema、
+	// 不播种。幂等，重跑安全。
+	{Version: 20261302, Name: "executor_waiter_decisions", SQL: "sql/migrations/20261302_executor_waiter_decisions.sql"},
 }

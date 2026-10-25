@@ -119,12 +119,48 @@ func (e *PlanExecutor) finalizePlaybookConfirmCard(ctx context.Context, step biz
 	e.seq.Publish(ctx, biz.NewStepUpdatedEvent(step))
 }
 
+// NotePlaybookConfirmDecision 决议入口（signalPlaybookConfirm 单点调用）：
+// 进程内 map 双键同写；D6 waiterDecisions 在籍时决议表双写——CAS 先到者
+// 赢，0 行命中＝别副本已决议（严禁 UPDATE 翻案），读现值并收敛本进程缓存
+//（双副本并行 approve/deny 冲突仅留 Warn 审计，先到决议不变）。
 func (e *PlanExecutor) NotePlaybookConfirmDecision(sessionID, id string, approved bool) {
 	if e == nil {
 		return
 	}
 	for _, keyID := range playbookConfirmLookupIDs(sessionID, id) {
-		e.playbookConfirmDecided.Store(playbookConfirmKey(sessionID, keyID), approved)
+		value := approved
+		if e.waiterDecisions != nil {
+			key := biz.ExecutorWaiterDecisionKey{
+				Kind:      biz.WaiterDecisionKindPlaybookConfirm,
+				SessionID: strings.TrimSpace(sessionID),
+				ScopeID:   keyID,
+			}
+			recorded, err := e.waiterDecisions.TryRecordDecision(context.Background(), biz.ExecutorWaiterDecision{
+				ExecutorWaiterDecisionKey: key,
+				Approved:                  approved,
+				Actor:                     "chat.playbook_confirm",
+				DecidedAt:                 time.Now().UTC(),
+			})
+			switch {
+			case err != nil:
+				// 决议表写失败不堵同进程 waiter 流（进程内语义兜底）；
+				// 跨副本收敛责任留 waiter 侧确认步已持久卡（confirmSteps 读径）。
+				e.lg.Warn("record playbook confirm decision failed (跨副本收敛降级为进程内语义)",
+					loggateway.Str("session_id", sessionID),
+					loggateway.Str("scope_id", keyID), loggateway.Err(err))
+			case !recorded:
+				if dec, found, lerr := e.waiterDecisions.LoadDecision(context.Background(), key); lerr == nil && found {
+					if dec.Approved != approved {
+						e.lg.Warn("playbook confirm 双副本并行决议冲突，保留先到决议",
+							loggateway.Str("session_id", sessionID),
+							loggateway.Str("scope_id", keyID),
+							loggateway.Str("recorded_actor", dec.Actor))
+					}
+					value = dec.Approved
+				}
+			}
+		}
+		e.playbookConfirmDecided.Store(playbookConfirmKey(sessionID, keyID), value)
 	}
 }
 
@@ -136,6 +172,23 @@ func (e *PlanExecutor) lookupPlaybookConfirmDecision(sessionID, stepID string) (
 		if v, loaded := e.playbookConfirmDecided.Load(playbookConfirmKey(sessionID, id)); loaded {
 			approved, ok = v.(bool)
 			return approved, ok
+		}
+	}
+	// D6（97）：决议表读径（waiterDecisions 在籍才读；off 档 nil 跳过零读）——
+	// 跨副本决议的唯一持久快路径，不依赖别副本确认卡定案的持久化时序。
+	// 命中即收敛本进程缓存（后续 tick/chan 同值短路，与 NotePlaybookConfirmDecision
+	// 的 CAS 收敛同向）。
+	if e.waiterDecisions != nil {
+		for _, id := range playbookConfirmLookupIDs(sessionID, stepID) {
+			dec, found, err := e.waiterDecisions.LoadDecision(context.Background(), biz.ExecutorWaiterDecisionKey{
+				Kind:      biz.WaiterDecisionKindPlaybookConfirm,
+				SessionID: strings.TrimSpace(sessionID),
+				ScopeID:   id,
+			})
+			if err == nil && found {
+				e.playbookConfirmDecided.Store(playbookConfirmKey(sessionID, id), dec.Approved)
+				return dec.Approved, true
+			}
 		}
 	}
 	if e.confirmSteps == nil {
@@ -179,6 +232,26 @@ func (e *PlanExecutor) abortPlaybookConfirmWaiters(ctx context.Context, sessionI
 	}
 }
 
+// settlePlaybookConfirmWaiters D6（97-multi-replica-executor-waiters）：
+// 轮询拍醒/dispatchStep ctx 终查命中决议后的 waiter 清理与确认卡定案——
+// 与 ResolvePlaybookStageConfirm 尾部同构但无 chan 发送（轮询方自持决议
+// 返回，决议表/进程内图为唯一事实源；chan 侧迟到的 Resolve 因登记已删
+// 变 no-op，双定案竞态与 abort/Resolve 既有竞态同类、终值一致）。
+// 只负责 waiter 与确认卡；plan_step 终态转移仍归 dispatchStep 的
+// abort/skip 消费链。
+func (e *PlanExecutor) settlePlaybookConfirmWaiters(ctx context.Context, sessionID, stepID string, approved bool) {
+	if e == nil {
+		return
+	}
+	w := e.loadPlaybookConfirmWait(sessionID, stepID)
+	for _, id := range playbookConfirmLookupIDs(sessionID, stepID) {
+		e.playbookConfirm.Delete(playbookConfirmKey(sessionID, id))
+	}
+	if w != nil {
+		e.finalizePlaybookConfirmCard(ctx, w.confirmStep(), approved)
+	}
+}
+
 func (r *dagRun) abortPlaybookConfirm(ctx context.Context, step *biz.PlanStep) {
 	if r == nil || r.pe == nil || step == nil {
 		return
@@ -201,11 +274,33 @@ func (r *dagRun) holdPlaybookConfirm(ctx context.Context, step *biz.PlanStep) (a
 	}
 	wait := r.pe.registerPlaybookConfirm(r.board.SessionID, step.ID)
 	r.publishConfirmRequired(ctx, step, wait)
-	select {
-	case approved = <-wait.ch:
-		return approved, true
-	case <-ctx.Done():
-		return false, true
+	// D6（97-multi-replica-executor-waiters）：waiterDecisions 在籍时叠加
+	// 跨副本决议轮询——off 档 nil 跳过，纯 wait.ch+ctx.Done 双 case 字节级
+	// 旧行为。醒后先复查再消费，消费即 settle（finalize 真卡+清登记）。
+	var tick <-chan time.Time
+	var ticker *time.Ticker
+	if r.pe.waiterDecisions != nil {
+		ticker = time.NewTicker(executorWaiterPollInterval)
+		tick = ticker.C
+		defer ticker.Stop()
+	}
+	for {
+		select {
+		case approved = <-wait.ch:
+			return approved, true
+		case <-tick:
+			if decided, ok := r.pe.lookupPlaybookConfirmDecision(r.board.SessionID, step.ID); ok {
+				r.pe.settlePlaybookConfirmWaiters(ctx, r.board.SessionID, step.ID, decided)
+				return decided, true
+			}
+		case <-ctx.Done():
+			// D6：ctx 死亡前终查决议（confirmSteps/决议表单读兜底）——
+			// 跨副本已批准绝不允许被误判为取消；卡片定案统一归 dispatchStep。
+			if decided, ok := r.pe.lookupPlaybookConfirmDecision(r.board.SessionID, step.ID); ok {
+				return decided, true
+			}
+			return false, true
+		}
 	}
 }
 

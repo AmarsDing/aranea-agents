@@ -186,6 +186,9 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.SelfImprovement, *co
 		// P0-6 阶段 1a（90-multi-replica-board-lease）：跨副本行租约端口 provider
 		// 注册进 ProviderSet（对抗评审 #4：漏注册会让 wire regen 丢接线）。
 		provideBoardRunLeasePort,
+		// P0-6 阶段 1b（D6，97-multi-replica-executor-waiters）：跨副本执行
+		// 等待器决议端口 provider 注册（同上评审教训）。
+		provideExecutorWaiterPort,
 		provideTeamTurnDeps,
 		provideChannelTurnJobDeps,
 		provideChannelNotifierDeps,

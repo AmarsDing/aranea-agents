@@ -37,8 +37,18 @@ func (r *dagRun) dispatch(ctx context.Context, step *biz.PlanStep) {
 func (r *dagRun) dispatchStep(ctx context.Context, step *biz.PlanStep) {
 	if approved, held := r.holdPlaybookConfirm(ctx, step); held {
 		if ctx.Err() != nil {
-			r.abortPlaybookConfirm(ctx, step)
-			return
+			// D6（97-multi-replica-executor-waiters）验收堵口：ctx 死亡瞬间
+			// 先终查决议（同进程 noted 图 / 决议表 / 持久确认卡，off 档同样
+			// 生效的存量读径）——已有决议按决议定案并清 waiter，绝不落
+			// abort 取消路径（跨副本批准被误杀为 cancelled 的链路在此截断；
+			// 顺带修复 chan 已送达但 select 抢中 ctx.Done 的同进程误杀窗）。
+			if decided, ok := r.pe.lookupPlaybookConfirmDecision(r.board.SessionID, step.ID); ok {
+				r.pe.settlePlaybookConfirmWaiters(ctx, r.board.SessionID, step.ID, decided)
+				approved = decided
+			} else {
+				r.abortPlaybookConfirm(ctx, step)
+				return
+			}
 		}
 		if !approved {
 			r.skipPlaybookConfirmDenied(ctx, step)
@@ -99,6 +109,24 @@ func (r *dagRun) dispatchStep(ctx context.Context, step *biz.PlanStep) {
 	// 对账通过（plan_and_execute 声明的编排确有 team_run 落地）。
 	r.pe.signalStartup(r.board.ID, true, "")
 	r.pe.trackTeamAgentLoads(result.Team.ID, runningStep.AgentKeys)
+	// D6：team 槽位快照落决议表（waiterDecisions 在籍才写；跨副本孤儿收养
+	// 对账的消费面随收养链批次定稿，本批仅保证快照不丢）。
+	if r.pe.waiterDecisions != nil {
+		if _, err := r.pe.waiterDecisions.TryRecordDecision(ctx, biz.ExecutorWaiterDecision{
+			ExecutorWaiterDecisionKey: biz.ExecutorWaiterDecisionKey{
+				Kind:      biz.WaiterDecisionKindTeamAgentLoads,
+				SessionID: r.board.SessionID,
+				ScopeID:   result.Team.ID,
+			},
+			Approved:  true,
+			Reason:    strings.Join(runningStep.AgentKeys, ","),
+			Actor:     "plan_executor.dispatch",
+			DecidedAt: time.Now().UTC(),
+		}); err != nil {
+			r.pe.lg.Warn("record team agent loads snapshot failed",
+				loggateway.Str("team_id", result.Team.ID), loggateway.Err(err))
+		}
+	}
 
 	// 2026-07-04 问题 P5/D1 修复：标记此 task 已派发 team。
 	// OnTurnEnd 检查此标记，若为 true 则跳过 task.completed，
@@ -172,17 +200,94 @@ func (r *dagRun) dispatchStep(ctx context.Context, step *biz.PlanStep) {
 	step.MappedTeamStageID = result.TeamStageID
 	r.mu.Unlock()
 	// 7. Await completion (single event then channel closes).
+	// D6（97-multi-replica-executor-waiters）：teamRuns 在籍时叠加
+	// team_runs_v2 终态轮询（与 playbook confirm 共用
+	// executorWaiterPollInterval 拍）——完成通知落在别副本/进程内 chan
+	// 丢失时按 DB 终态行推进。chan 与轮询同 select 同拍唤醒单推进
+	//（handleCompletion 唯一调用点），并发重复推进由 UpsertPlanStep
+	// VersionLT 乐观守卫兜底；off 档 teamRuns=nil → tick 为 nil chan 永不
+	// 触发，单 chan select 零 DB 读，字节级旧行为。
 	ch := result.CompletionChan
-	select {
-	case ev, ok := <-ch:
-		if !ok {
-			r.failStep(ctx, step, "orchestrator channel closed without event")
+	var tick <-chan time.Time
+	var ticker *time.Ticker
+	if r.pe.teamRuns != nil {
+		ticker = time.NewTicker(executorWaiterPollInterval)
+		tick = ticker.C
+		defer ticker.Stop()
+	}
+	for {
+		select {
+		case ev, ok := <-ch:
+			if !ok {
+				r.failStep(ctx, step, "orchestrator channel closed without event")
+				return
+			}
+			r.handleCompletion(ctx, step, ev)
+			return
+		case <-tick:
+			if ev, done := r.pollTeamRunTerminal(ctx, result.TeamStageID, step.ID); done {
+				r.handleCompletion(ctx, step, ev)
+				return
+			}
+		case <-ctx.Done():
 			return
 		}
-		r.handleCompletion(ctx, step, ev)
-	case <-ctx.Done():
-		return
 	}
+}
+
+// pollTeamRunTerminal 是 D6 跨副本 team 完成轮询的单拍实现：取
+// teamStageID 下 Seq 最大的 run（重试/假启动对账会产生同 stage 多 run，
+// 仅最新一条权威），终态才合成 TeamCompleteEvent——Completed/
+// PartialFailure 等同成功（镜像 spirit_team_handle_result.go 的
+// NotifyTeamCompletion 映射：partial_failure 交付物门已过，对下游等同
+// 成功）；Cancelled 错误为空时补 "team_cancelled" 让 L4 分类器命中
+// cancel 类（不消耗自动重试预算）。读失败/无行/非终态返回 ok=false
+// 等下一拍。
+func (r *dagRun) pollTeamRunTerminal(ctx context.Context, teamStageID, stepID string) (biz.TeamCompleteEvent, bool) {
+	if r == nil || r.pe == nil || r.pe.teamRuns == nil || teamStageID == "" {
+		return biz.TeamCompleteEvent{}, false
+	}
+	runs, err := r.pe.teamRuns.ListTeamRunsByStage(ctx, teamStageID)
+	if err != nil {
+		r.pe.lg.Warn("team completion poll failed (下一拍重试)",
+			loggateway.Str("team_stage_id", teamStageID),
+			loggateway.Str("step_id", stepID), loggateway.Err(err))
+		return biz.TeamCompleteEvent{}, false
+	}
+	if len(runs) == 0 {
+		return biz.TeamCompleteEvent{}, false
+	}
+	latest := runs[0]
+	for _, run := range runs[1:] {
+		if run.Seq > latest.Seq {
+			latest = run
+		}
+	}
+	if !biz.IsTeamRunV2Terminal(latest.Status) {
+		return biz.TeamCompleteEvent{}, false
+	}
+	ev := biz.TeamCompleteEvent{StepID: stepID, TeamRunID: latest.ID}
+	switch latest.Status {
+	case biz.TeamRunV2StatusCompleted, biz.TeamRunV2StatusPartialFailure:
+		ev.Success = true
+		ev.ErrorMsg = latest.Error
+	case biz.TeamRunV2StatusCancelled:
+		ev.ErrorMsg = strings.TrimSpace(latest.Error)
+		if ev.ErrorMsg == "" {
+			ev.ErrorMsg = "team_cancelled"
+		}
+	default: // failed
+		ev.ErrorMsg = strings.TrimSpace(latest.Error)
+		if ev.ErrorMsg == "" {
+			ev.ErrorMsg = "team run failed"
+		}
+	}
+	r.pe.lg.Info("team completion 经跨副本轮询推进（chan 未先触发）",
+		loggateway.Str("team_stage_id", teamStageID),
+		loggateway.Str("team_run_id", latest.ID),
+		loggateway.Str("step_id", stepID),
+		loggateway.Str("status", string(latest.Status)))
+	return ev, true
 }
 
 // handleCompletion processes a TeamCompleteEvent: marks the step completed or
