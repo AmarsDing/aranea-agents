@@ -103,9 +103,10 @@ func (o *ChatOrchestrator) buildTurnRunner(
 	emitter.LogDone("chat.runner.create", "Runner 已创建")
 	o.runs.StoreRunner(sessionID, runID, runner)
 	if o.subAgentService() != nil {
-		o.subAgentService().SetRunner(runner)
-
-		o.subAgentService().SetAttribution(prov, mod, ag.ID, ag.AgentKey)
+		// E2E-H4: runner/attribution 按本会话注入（turn 不可变），spawn 时逐
+		// run 快照——旧服务级 SetRunner 单例末写者胜，存在无锁读 data race
+		// 与跨会话错身份执行/计费分叉。
+		o.subAgentService().SetTurnContext(sessionID, runner, prov, mod, ag.ID, ag.AgentKey)
 		if ag.Settings != nil {
 			o.subAgentService().SetSessionRunes(sessionID, ag.Settings.SubagentsStoredResultRunes, ag.Settings.SubagentsStoredSummaryRunes)
 		}

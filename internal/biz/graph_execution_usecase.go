@@ -703,15 +703,24 @@ func (uc *GraphExecutionUsecase) convergeStreamEnd(exec *GraphExecution, gen int
 	// prematurely and must not be overridden either.
 	if exec.Status == string(GraphExecRunning) && !exec.evicted {
 		now := time.Now()
-		if sawDone {
+		switch {
+		case sawDone:
 			uc.applyExecTransition(exec, GraphExecEventComplete)
 			completed = true
-		} else {
+			exec.FinishedAt = &now
+		default:
+			// E2E-H1: 收敛到终态 failed 之前，先查持久化 interrupt
+			// checkpoint——事件载体被背压丢弃（executor 有界重试仍超时）
+			// 的 HITL 暂停绝不可按 failed 收敛（FSM failed→resume 非法，
+			// 永久不可恢复）。
+			if uc.recoverDroppedInterruptLocked(exec, execID, graphID) {
+				break
+			}
 			exec.ErrorMessage = "graph execution stream terminated without completion event"
 			uc.applyExecTransition(exec, GraphExecEventFail)
 			failMsg = exec.ErrorMessage
+			exec.FinishedAt = &now
 		}
-		exec.FinishedAt = &now
 	}
 	// D6-F1: observer 收口改由 FSM 终态判定（不再以"流关闭"为 done 信号）。
 	terminal := IsGraphExecutionTerminal(ParseGraphExecutionState(exec.Status))
@@ -753,6 +762,60 @@ func (uc *GraphExecutionUsecase) convergeStreamEnd(exec *GraphExecution, gen int
 	if terminal && onComplete != nil {
 		onComplete()
 	}
+}
+
+// graphCheckpointSourceInterrupt 与 trpc graph 包的 CheckpointSourceInterrupt
+// 同值（biz 不反向依赖 trpc 包，按值对齐，有测试钉住两端字面量一致）。
+const graphCheckpointSourceInterrupt = "interrupt"
+
+// recoverDroppedInterruptLocked 实现 E2E-H1 的 converge 侧失败补偿：生产不开
+// StreamModeCheckpoints 时，Pregel interrupt 事件是 DomainEventGraphInterrupt
+// 的唯一载体；它在 detached ctx 上有界重试（executor emitInterruptEventWithRetry）
+// 仍可能因消费持续停顿被丢弃。丢弃后流直接结束，fail-closed 会把仍在 running
+// 的执行误判 failed——而 FSM failed→resume 非法，waiting_human 将永久不可恢复。
+// interrupt checkpoint 先于事件落库（PutFull, source=interrupt），故以这条持久
+// 事实兜底：最新 checkpoint 为 interrupt 源 ⇒ 该流是被 interrupt 终止的，收敛
+// 到 waiting_human 保持 resume 合法。InterruptNode 不经 checkpoint header 携带
+// （CurrentNode 已由最后一次 NodeStart 事件落位）。调用方必须持 exec.execMu。
+// 返回是否已完成 waiting_human 迁移（false ⇒ 调用方继续按 fail-closed 处理）。
+func (uc *GraphExecutionUsecase) recoverDroppedInterruptLocked(exec *GraphExecution, execID, graphID string) bool {
+	if uc == nil || exec == nil || exec.runtime == nil {
+		return false
+	}
+	lineageID := exec.LineageID
+	if lineageID == "" {
+		return false
+	}
+	probeParent := exec.ctx
+	if probeParent == nil {
+		probeParent = context.Background()
+	}
+	probeCtx, cancel := context.WithTimeout(context.WithoutCancel(probeParent), 5*time.Second)
+	defer cancel()
+	// ListCheckpoints/History 按 ts DESC；interrupt 与流终止之间不会再产生
+	// 新 checkpoint，故最新一条为 interrupt 源即可判定。
+	list, err := exec.runtime.ListCheckpoints(probeCtx, lineageID, "", 1)
+	if err != nil || len(list) == 0 || list[0].Source != graphCheckpointSourceInterrupt {
+		return false
+	}
+	if transErr := uc.applyExecTransition(exec, GraphExecEventInterrupt); transErr != nil {
+		uc.lg.Warn("graph: interrupt recovery transition rejected; keeping fail-closed",
+			loggateway.StepID("graph.interrupt_recover"),
+			loggateway.Str("execution_id", execID),
+			loggateway.Str("graph_id", graphID),
+			loggateway.Err(transErr))
+		return false
+	}
+	exec.interruptMu.Lock()
+	exec.interrupted = true
+	exec.interruptMu.Unlock()
+	uc.lg.Error("graph: interrupt event dropped upstream; recovered to waiting_human via durable checkpoint (E2E-H1)",
+		loggateway.StepID("graph.interrupt_recovered"),
+		loggateway.Str("execution_id", execID),
+		loggateway.Str("graph_id", graphID),
+		loggateway.Str("lineage_id", lineageID),
+		loggateway.Str("checkpoint_id", list[0].Ref.CheckpointID))
+	return true
 }
 
 // persistRunWithRetry 持久化终态/等待态快照，失败时在消费 goroutine 内同步

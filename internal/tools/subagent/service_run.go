@@ -45,7 +45,15 @@ func (s *Service) runChild(
 		trpcagent.WithToolCallTextRepairEnabled(true),
 	}
 
-	evts, err := s.runner.Run(
+	// E2E-H4: execute on the runner captured at Spawn (spawning turn's own,
+	// immutable per run) — the old s.runner singleton was an unlocked read
+	// racing SetRunner's locked write (interface two-word tear = panic
+	// hazard) and could bind the child to ANOTHER session's agent identity.
+	runner := record.runner
+	if runner == nil {
+		return apierror.Internal(apierror.DomainSubagent, "run record has no captured runner")
+	}
+	evts, err := runner.Run(
 		ctx,
 		record.OwnerUserID,
 		started.childSession,

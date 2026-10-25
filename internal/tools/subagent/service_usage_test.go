@@ -63,7 +63,7 @@ func TestUsageAccum_PromptShrinkCountsAsNewRound(t *testing.T) {
 func TestUsageAccum_NilAndEmptyEvents(t *testing.T) {
 	a := &usageAccum{}
 	a.consume(nil)
-	a.consume(&trpcevent.Event{}) // no response
+	a.consume(&trpcevent.Event{})                                // no response
 	a.consume(&trpcevent.Event{Response: &trpcmodel.Response{}}) // no usage
 	if p, c, cached, _, _ := a.totals(); p != 0 || c != 0 || cached != 0 {
 		t.Fatalf("totals = (%d,%d,%d), want zeros", p, c, cached)
@@ -224,14 +224,15 @@ func TestRecordRunUsage_StatusMapping(t *testing.T) {
 	}
 }
 
-// SetAttribution + Spawn snapshot: the record must capture the attribution
-// current at spawn time, immune to later rotation.
+// SetTurnContext + Spawn snapshot: the record must capture the attribution
+// bound to the PARENT SESSION at spawn time, immune to later rotation on
+// any session (E2E-H4 replaced the service-wide last-writer-wins field).
 func TestSpawnSnapshotsAttribution(t *testing.T) {
 	svc := newUsageTestService(t, nil)
 	svc.Start(context.Background())
 	defer func() { _ = svc.Close() }()
 
-	svc.SetAttribution("prov-a", "mod-a", "agent-a", "key-a")
+	svc.SetTurnContext("s1", nil, "prov-a", "mod-a", "agent-a", "key-a")
 	svc.mu.Lock()
 	record := svc.newRunRecord(SpawnRequest{
 		OwnerUserID:     "u1",

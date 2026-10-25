@@ -19,12 +19,21 @@ import (
 )
 
 type Service struct {
-	path           string
-	runner         trpcrunner.Runner
+	path string
+	// E2E-H4: defaultRunner 仅作构造期兜底（wire 注入 nil）。业务路径的
+	// runner 一律按父会话从 turnCtx 取——构造期 runner 一旦注入即不可变
+	// （openclaw taskruninprocess.NewService 同款先例），不存在写竞争。
+	defaultRunner  trpcrunner.Runner
 	lg             loggateway.Logger
 	outboundRouter *outbound.Router // optional: for completion notifications
 	usageRecorder  UsageRecorder    // optional: nil skips aux usage recording
-	attribution    runAttribution   // latest turn's attribution (set alongside SetRunner)
+	// E2E-H4: turnCtx 按父会话绑定当前 turn 的 runner + attribution，由
+	// 编排层 buildTurn 经 SetTurnContext 注入。旧实现是服务级单例字段
+	// 末写者胜：runChild 无锁读 vs SetRunner 持锁写 = data race（interface
+	// 双字撕裂可 panic），且执行时 runner/attribution 可能已被另一会话的
+	// turn 轮换 → 错身份执行 + 计费归属分叉持久落库。Spawn 时把条目捕获进
+	// runRecord（per-run 不可变），执行期不再回读服务级状态。
+	turnCtx map[string]turnRunnerContext
 
 	runes *runesManager
 
@@ -79,12 +88,13 @@ func NewService(stateDir string, r trpcrunner.Runner, lg loggateway.Logger) (*Se
 
 	svc := &Service{
 		path:                    path,
-		runner:                  r,
+		defaultRunner:           r,
 		lg:                      lg,
 		runes:                   newRunesManager(),
 		clock:                   time.Now,
 		runs:                    runs,
 		running:                 make(map[string]*runningRun),
+		turnCtx:                 make(map[string]turnRunnerContext),
 		maxConcurrent:           resolveSubagentMaxConcurrency(),
 		runBudgetInputTokens:    resolveSubagentTokenBudget(envSubagentRunTokenBudget, defaultRunTokenBudgetInputTokens),
 		parentBudgetInputTokens: resolveSubagentTokenBudget(envSubagentParentTokenBudget, defaultParentTokenBudgetInputTokens),
@@ -98,14 +108,45 @@ func NewService(stateDir string, r trpcrunner.Runner, lg loggateway.Logger) (*Se
 	return svc, nil
 }
 
-// SetRunner sets the runner for subagent execution. This allows deferred
-// runner initialization when the runner cannot be provided at construction time.
-func (s *Service) SetRunner(r trpcrunner.Runner) {
-	if s != nil {
-		s.mu.Lock()
-		s.runner = r
-		s.mu.Unlock()
+// SetTurnContext binds the current turn's runner and provider/model/agent
+// attribution to the parent session (E2E-H4). Must be called by the
+// orchestrator at buildTurn, after StoreRunner: Spawn snapshots the entry
+// into the run record, so the asynchronous child executes on the SPAWNING
+// turn's runner — never a later/another session's (末写者胜单例已拆除：
+// runChild 无锁读 vs SetRunner 持锁写的 data race 与跨会话错身份执行 +
+// 计费归属分叉由此根除）。Entry is overwritten on the session's next
+// turn; session turns serialize, so no read can observe a half-written pair.
+func (s *Service) SetTurnContext(sessionID string, r trpcrunner.Runner, provider, model, agentID, agentKey string) {
+	if s == nil {
+		return
 	}
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return
+	}
+	s.mu.Lock()
+	s.turnCtx[sessionID] = turnRunnerContext{
+		runner: r,
+		attribution: runAttribution{
+			Provider: strings.TrimSpace(provider),
+			Model:    strings.TrimSpace(model),
+			AgentID:  strings.TrimSpace(agentID),
+			AgentKey: strings.TrimSpace(agentKey),
+		},
+	}
+	s.mu.Unlock()
+}
+
+// turnContextFor resolves the runner/attribution bound to the parent
+// session's current turn, falling back to the construction-time default
+// runner (wire-time nil in prod; test harnesses inject a stub there).
+// Caller must hold s.mu.
+func (s *Service) turnContextFor(parentSessionID string) turnRunnerContext {
+	tc := s.turnCtx[strings.TrimSpace(parentSessionID)]
+	if tc.runner == nil {
+		tc.runner = s.defaultRunner
+	}
+	return tc
 }
 
 // SetUsageRecorder injects the aux-usage recorder (P1-2, 2026-08-19).
@@ -114,23 +155,6 @@ func (s *Service) SetUsageRecorder(ur UsageRecorder) {
 	if s != nil {
 		s.mu.Lock()
 		s.usageRecorder = ur
-		s.mu.Unlock()
-	}
-}
-
-// SetAttribution snapshots the current turn's provider/model/agent identity.
-// Must be called alongside SetRunner (same turn-build site): subagent runs
-// execute asynchronously, so billing attribution is captured at Spawn time
-// from this snapshot (last-writer-wins, same semantics as the runner itself).
-func (s *Service) SetAttribution(provider, model, agentID, agentKey string) {
-	if s != nil {
-		s.mu.Lock()
-		s.attribution = runAttribution{
-			Provider: strings.TrimSpace(provider),
-			Model:    strings.TrimSpace(model),
-			AgentID:  strings.TrimSpace(agentID),
-			AgentKey: strings.TrimSpace(agentKey),
-		}
 		s.mu.Unlock()
 	}
 }

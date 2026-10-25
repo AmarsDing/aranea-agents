@@ -42,9 +42,9 @@ func TestSpawnTool_NonNestedCtxPassesDepthGuard(t *testing.T) {
 	}
 }
 
-// Nil runner is allowed at construction; SetRunner is called later at runtime.
-
-// Spawn should fail gracefully when runner is not yet configured.
+// Nil construction-time runner is allowed; the per-session turn context is
+// injected later via SetTurnContext (E2E-H4). Spawn must fail gracefully
+// when neither is configured.
 
 type stubRunner struct{}
 

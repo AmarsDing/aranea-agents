@@ -276,8 +276,13 @@ func (r *Runner) TriggerTask(ctx context.Context, taskID string) (biz.CronTaskRu
 		return biz.CronTaskRun{}, errors.New("cron trigger failed to create run record")
 	}
 	cfgSnapshot := cfg
-	safego.Go(ctx, "cron.manual_trigger", func() {
-		r.runManualTask(ctx, taskID, runID, started, cfgSnapshot)
+	// E2E-H5: 手动触发的异步执行不得挂在 HTTP 请求 ctx 上——handler 返回即
+	// 取消，秒级~分钟级 turn 必以 context canceled 夭折、finalize 回写同死
+	// ctx 失败、cron_task_run 行永久 pending。参照样板
+	// channel_ingress_async.go:205 以 WithoutCancel 剥离取消传播（保留值）。
+	bgCtx := context.WithoutCancel(ctx)
+	safego.Go(bgCtx, "cron.manual_trigger", func() {
+		r.runManualTask(bgCtx, taskID, runID, started, cfgSnapshot)
 	})
 	return r.deps.Cron.GetCronTaskRun(ctx, runID)
 }

@@ -4870,11 +4870,64 @@ func (e *Executor) handleInterrupt(
 		WithPregelEventCheckpointNS(GetNamespace(checkpointConfig)),
 	)
 	if shouldEmitPregelStepEvents(invocation) {
-		agent.EmitEvent(eventCtx, invocation, execCtx.EventChan, interruptEvent)
+		// E2E-H1: with StreamModeCheckpoints off this event is the ONLY
+		// carrier of the domain interrupt signal; a silent 1s-window drop
+		// strands the execution forever (stream converges to failed, and
+		// failed→resume is an illegal FSM transition). Emit with a bounded
+		// retry budget instead, detached from the (possibly cancelled)
+		// parent ctx; the durable checkpoint saved above remains the
+		// converge-side compensation source if delivery still fails.
+		emitInterruptEventWithRetry(invocation, execCtx, interruptEvent,
+			interruptEmitAttemptTimeout, interruptEmitMaxAttempts,
+			interrupt.NodeID, step)
 	}
 
 	// Return the interrupt error to propagate it to the caller.
 	return interrupt
+}
+
+// Interrupt-event delivery backpressure budget (E2E-H1). Consumer stalls in
+// production are typically caused by synchronous PG writes per node-end
+// event, which clear in seconds; 3×10s bounds the emit so a genuinely dead
+// consumer cannot hang the executor goroutine forever.
+const (
+	interruptEmitAttemptTimeout = 10 * time.Second
+	interruptEmitMaxAttempts    = 3
+)
+
+// emitInterruptEventWithRetry delivers the Pregel interrupt event with a
+// bounded blocking retry (E2E-H1). Each attempt uses a fresh detached ctx so
+// a cancelled parent ctx cannot drop the only interrupt carrier; the old
+// fire-and-forget call ignored the emit error entirely. On final failure it
+// logs loud (alert trail) — the durable interrupt checkpoint saved just
+// before is the converge-side fallback that keeps resume legal.
+func emitInterruptEventWithRetry(
+	invocation *agent.Invocation,
+	execCtx *ExecutionContext,
+	interruptEvent *event.Event,
+	attemptTimeout time.Duration,
+	maxAttempts int,
+	nodeID string,
+	step int,
+) {
+	for attempt := 1; ; attempt++ {
+		emitCtx, cancel := context.WithTimeout(context.Background(), attemptTimeout)
+		err := agent.EmitEvent(emitCtx, invocation, execCtx.EventChan, interruptEvent)
+		cancel()
+		if err == nil {
+			return
+		}
+		if attempt >= maxAttempts {
+			log.ErrorfContext(
+				context.Background(),
+				"E2E-H1: interrupt event dropped after %d attempts "+
+					"(invocation=%s node=%s step=%d): %v — converge must "+
+					"recover via the durable interrupt checkpoint",
+				attempt, execCtx.InvocationID, nodeID, step, err,
+			)
+			return
+		}
+	}
 }
 
 func (e *Executor) maybeEmitCheckpointInterruptEvent(

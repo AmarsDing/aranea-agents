@@ -76,6 +76,10 @@ var contextOverflowMarkers = []string{
 	"maximum context length",
 	"token limit exceeded",
 	"request too large",
+	// E2E-H3: Anthropic 400 规范文案（同仓 channel_provider_errors.go /
+	// summarizer.go 已知）。缺失时 400→RetryFatal 且 SDK 不重试——
+	// shrink-retry 0.7/0.5/0.35 阶梯在 Anthropic 通道整体失效。
+	"prompt is too long",
 }
 
 // contentFilterMarkers match provider safety-system rejections; these should

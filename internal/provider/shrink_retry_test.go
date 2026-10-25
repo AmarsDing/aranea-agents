@@ -381,6 +381,8 @@ func TestIsContextOverflow_MarkerPin(t *testing.T) {
 		"request too large: 5.2 MB",
 		"ERROR 400: token limit exceeded",
 		"prompt exceeds context window",
+		// E2E-H3: Anthropic 400 规范文案——不得漏出 shrink-retry 触发集。
+		`POST /v1/messages: 400 {"type":"error","error":{"type":"invalid_request_error","message":"prompt is too long: 213452 tokens > 200000 maximum"}}`,
 	}
 	for _, msg := range positives {
 		if !IsContextOverflow(msg) {

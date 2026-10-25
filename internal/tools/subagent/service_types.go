@@ -8,6 +8,7 @@ import (
 	"aranea-agents/internal/biz"
 
 	trpcsubagent "trpc.group/trpc-go/trpc-agent-go/openclaw/subagent"
+	trpcrunner "trpc.group/trpc-go/trpc-agent-go/runner"
 )
 
 const (
@@ -161,6 +162,17 @@ type runAttribution struct {
 	AgentKey string `json:"agent_key,omitempty"`
 }
 
+// turnRunnerContext binds the spawning turn's immutable runner + billing
+// attribution to one parent session (E2E-H4). Written wholesale under s.mu
+// by SetTurnContext at the orchestrator's buildTurn; snapshotted into each
+// runRecord at Spawn. Never mutated in place — per-turn injection replaces
+// the old service-wide last-writer-wins singleton (data race + wrong-agent
+// identity + billing attribution divergence).
+type turnRunnerContext struct {
+	runner      trpcrunner.Runner
+	attribution runAttribution
+}
+
 // runesManager manages per-session rune limits for subagent results.
 // Extracted from Service to reduce cognitive complexity (AS-COG-02).
 type runesManager struct {
@@ -218,6 +230,11 @@ type runRecord struct {
 	// attribution snapshots the parent turn's provider/model/agent at Spawn
 	// time, for aux usage billing of the asynchronous run (P1-2).
 	Attribution runAttribution `json:"attribution,omitempty"`
+	// runner is the SPAWNING turn's runner, captured at Spawn under s.mu and
+	// immutable for the run's lifetime (E2E-H4). In-memory only: reloaded
+	// records have nil, but normalizeLoadedRuns already fails all
+	// non-terminal runs on boot, so no loaded record ever reaches runChild.
+	runner trpcrunner.Runner `json:"-"`
 }
 
 type storeFile struct {

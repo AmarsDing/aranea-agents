@@ -32,7 +32,11 @@ func (s *Service) Spawn(ctx context.Context, req SpawnRequest) (trpcsubagent.Run
 	}
 
 	s.mu.Lock()
-	if s.runner == nil {
+	// E2E-H4: resolve the runner bound to the PARENT SESSION's current turn
+	// (injected at buildTurn via SetTurnContext), falling back to the
+	// construction-time default. Never a cross-session last-writer singleton.
+	tc := s.turnContextFor(req.ParentSessionID)
+	if tc.runner == nil {
 		s.mu.Unlock()
 		return trpcsubagent.Run{}, apierror.Internal(apierror.DomainSubagent, "runner not configured")
 	}
@@ -68,6 +72,10 @@ func (s *Service) Spawn(ctx context.Context, req SpawnRequest) (trpcsubagent.Run
 	}
 
 	record := s.newRunRecord(req)
+	// Capture the spawning turn's runner into the record (immutable for the
+	// run's whole async lifetime); attribution is resolved inside
+	// newRunRecord from the same per-session context.
+	record.runner = tc.runner
 	s.runs[record.ID] = record
 	view := record.publicView()
 	s.mu.Unlock()
@@ -137,7 +145,7 @@ func (s *Service) newRunRecord(req SpawnRequest) *runRecord {
 		ResultRunes:  resultRunes,
 		SummaryRunes: summaryRunes,
 
-		Attribution: s.attribution,
+		Attribution: s.turnContextFor(req.ParentSessionID).attribution,
 	}
 }
 

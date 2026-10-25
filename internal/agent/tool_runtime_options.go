@@ -97,6 +97,15 @@ func buildToolRetryPolicy(s *biz.AgentRuntimeSettings) *trpctool.RetryPolicy {
 // P1-2：timeout 由固定值改为每调用查询（timeoutFn，生产上即
 // toolExecutionTimeoutFor 的 resolver 查询闭包）——策略变更经 resolver Reload/Set
 // 后即对新调用生效，无需重建 agent。timeoutFn 出口已规范化（恒 >0）。
+//
+// E2E-H2：AfterTool 取消钩的 priority 必须高于链上一切消费 ctx 的下游
+// after-hook（记录器 50 / 输出限流器·spill 60 / 补偿·提醒 60）。链是
+// (Layer,Priority) 稳定升序，旧值 0 首执行即无条件 cancel()，priority60 的
+// 输出限流器收到已取消 ctx → spill 支路 PutWithRetry 见 ctx.Err() 直接弃重
+// 试 → spill 灰闸 ON 部署下超大结果全量透传给模型（spill_failed/preserved
+// 信封无定位符无截断），ReportSpillFailed 对取消 ctx 降级 Warn = 告警面不
+// 可见。移至 90（最大现有 after 优先级 60 之上）后：下游钩子全程活 ctx，
+// cancel 仍在本次工具调用的链尾同步执行，防泄漏语义不变。
 func toolExecutionTimeoutHooks(timeoutFn func() time.Duration, lg loggateway.Logger) []trpccallbacks.Callback {
 	if timeoutFn == nil {
 		return nil
@@ -118,7 +127,9 @@ func toolExecutionTimeoutHooks(timeoutFn func() time.Duration, lg loggateway.Log
 		return &trpctool.BeforeToolResult{Context: timeoutCtx}, nil
 	})
 
-	after := trpccallbacks.NewAfterToolHook(0, func(ctx context.Context, args *trpctool.AfterToolArgs) (*trpctool.AfterToolResult, error) {
+	// E2E-H2: 90 = 晚于输出限流器(60)/补偿(60)/提醒(60)，保证 cancel 不再
+	// 抢先撕掉下游 after-hook 的 ctx（见函数注释）。
+	after := trpccallbacks.NewAfterToolHook(90, func(ctx context.Context, args *trpctool.AfterToolArgs) (*trpctool.AfterToolResult, error) {
 		key := toolCallCancelKeyFromAfter(args)
 		var applied time.Duration
 		if v, ok := pendingCancels.LoadAndDelete(key); ok {
