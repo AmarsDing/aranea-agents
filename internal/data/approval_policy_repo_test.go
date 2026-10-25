@@ -56,17 +56,17 @@ func TestApprovalPolicyRepo_Roundtrip(t *testing.T) {
 	now := time.Now().Unix()
 
 	p := biztool.ApprovalPolicy{
-		ID:           "ap-test-1",
-		Scope:        string(biztool.ApprovalScopeSession),
-		ScopeKey:     "sess-rp-1",
-		ToolPattern:  "*",
-		Mode:         string(biztool.ApprovalModeAsk),
-		Priority:     200,
-		Enabled:      true,
-		ShadowOnly:   false,
-		ExpiresAt:    0,
-		CreatedAt:    now,
-		CreatedBy:    "test",
+		ID:          "ap-test-1",
+		Scope:       string(biztool.ApprovalScopeSession),
+		ScopeKey:    "sess-rp-1",
+		ToolPattern: "*",
+		Mode:        string(biztool.ApprovalModeAsk),
+		Priority:    200,
+		Enabled:     true,
+		ShadowOnly:  false,
+		ExpiresAt:   0,
+		CreatedAt:   now,
+		CreatedBy:   "test",
 	}
 	if err := repo.UpsertApprovalPolicy(ctx, p); err != nil {
 		t.Fatalf("UpsertApprovalPolicy create: %v", err)
@@ -144,7 +144,7 @@ func TestApprovalPolicyRepo_UpsertRejectsInvalid(t *testing.T) {
 		ToolPattern: "*", Mode: string(biztool.ApprovalModeAsk),
 	}
 	bad := base
-	bad.Mode = "auto" // 第四档未立项（§6.8 defer③），写入期拒收
+	bad.Mode = "assisted" // 非法 mode（D5-f F10："auto" 已随 D5 第四档合法化，负钉换 token）
 	if err := repo.UpsertApprovalPolicy(ctx, bad); err == nil {
 		t.Fatal("invalid mode must be rejected")
 	}
@@ -157,6 +157,44 @@ func TestApprovalPolicyRepo_UpsertRejectsInvalid(t *testing.T) {
 	bad.Scope = "org"
 	if err := repo.UpsertApprovalPolicy(ctx, bad); err == nil {
 		t.Fatal("scope outside session|agent must be rejected")
+	}
+}
+
+// TestApprovalPolicyRepo_UpsertConflictPreservesCreatedBy 钉死 D5-f F6：ON
+// CONFLICT 分支无条件保留既有 created_at/created_by——并发双新建同一 id 时
+// 审计元数据归属恒为最先落库者，不随服务层读-改-写时序翻转（update 意图
+// 携带的 stamped 值绝不覆写）。
+func TestApprovalPolicyRepo_UpsertConflictPreservesCreatedBy(t *testing.T) {
+	t.Parallel()
+	d := openTestData(t)
+	ensureApprovalPolicyTable(t, d)
+	repo := NewApprovalPolicyRepo(d)
+	ctx := context.Background()
+
+	first := biztool.ApprovalPolicy{
+		ID: "ap-conflict-1", Scope: string(biztool.ApprovalScopeSession), ScopeKey: "s",
+		ToolPattern: "*", Mode: string(biztool.ApprovalModeAsk),
+		CreatedAt: 1700000000, CreatedBy: "creator",
+	}
+	if err := repo.UpsertApprovalPolicy(ctx, first); err != nil {
+		t.Fatalf("first upsert: %v", err)
+	}
+	second := first
+	second.Mode = string(biztool.ApprovalModeAuto)
+	second.CreatedAt = 1800000000
+	second.CreatedBy = "imposter"
+	if err := repo.UpsertApprovalPolicy(ctx, second); err != nil {
+		t.Fatalf("conflict upsert: %v", err)
+	}
+	got, err := repo.GetApprovalPolicyByID(ctx, first.ID)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if got.CreatedBy != "creator" || got.CreatedAt != 1700000000 {
+		t.Fatalf("F6: conflict must preserve created_at/created_by, got %+v", got)
+	}
+	if got.Mode != string(biztool.ApprovalModeAuto) {
+		t.Fatalf("conflict must still update stance fields, got mode=%q", got.Mode)
 	}
 }
 

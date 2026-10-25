@@ -473,6 +473,8 @@ var ddlMigrationsLate = []ddlMigration{
 	// 会话/Agent 作用域的确定性审批姿态表（ask|never|trusted × tool_pattern ×
 	// command_prefix × args_pattern × priority × shadow_only × expires_at），
 	// 消费链 BeforeTool 审批策略 gate（paramRuleGate 之后、循环守卫之前）。
+	// 档位枚举不落 CHECK（mode TEXT）——D5（P0-5 phase 2）增补 auto 第四档
+	// 零迁移直接可写（96-approval-policy-phase2）。
 	// 仅建表：不加 ent schema、不播种内置规则；幂等，重跑安全。编号紧跟 20261290。
 	{Version: 20261291, Name: "session_approval_policies", SQL: "sql/migrations/20261291_session_approval_policies.sql"},
 	// 20261292 memory_facts_cjk_bigram_fts（AMC C3-B 召回基建，2026-10-20 trgm

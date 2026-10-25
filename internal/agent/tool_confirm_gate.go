@@ -95,9 +95,16 @@ const (
 )
 
 // confirmDecision is the outcome of the confirmation decision chain.
+//
+// policyAskDriven 标记本裁定由审批策略 ask/auto 分支驱动（含该分支内 grant
+// 满足的 grant_skip 出口）；param rule / catalog / plugin 分支恒为 false。
+// D5-f 裁决：source_mode=auto 投影以本位为显式驱动开关，param_rule_ask
+// 驱动流程即使 ctx 携带 auto verdict 也不再误标（param 分支先于 policy
+// 分支，auto 未驱动该流程）。
 type confirmDecision struct {
-	needsConfirm bool
-	reason       string
+	needsConfirm    bool
+	reason          string
+	policyAskDriven bool
 }
 
 // defaultToolGrantStore is the process-wide session-grant store. Session
@@ -154,12 +161,12 @@ func (g *toolConfirmGate) decide(ctx context.Context, sessionID, agentID, toolNa
 		switch pv.mode {
 		case biztool.ApprovalModeAsk, biztool.ApprovalModeAuto:
 			if g.persistedGrant != nil && g.persistedGrant(ctx, agentID, toolName) {
-				return confirmDecision{needsConfirm: false, reason: confirmReasonGrantPersisted}
+				return confirmDecision{needsConfirm: false, reason: confirmReasonGrantPersisted, policyAskDriven: true}
 			}
 			if g.sessionGrants != nil && g.sessionGrants.HasSession(sessionID, agentID, toolName) {
-				return confirmDecision{needsConfirm: false, reason: confirmReasonGrantSession}
+				return confirmDecision{needsConfirm: false, reason: confirmReasonGrantSession, policyAskDriven: true}
 			}
-			return confirmDecision{needsConfirm: true, reason: confirmReasonPolicyAsk}
+			return confirmDecision{needsConfirm: true, reason: confirmReasonPolicyAsk, policyAskDriven: true}
 		case biztool.ApprovalModeTrusted:
 			return confirmDecision{needsConfirm: false, reason: confirmReasonPolicyTrusted}
 		}

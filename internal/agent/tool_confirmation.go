@@ -90,10 +90,12 @@ func (h *toolConfirmationBeforeHook) HandleBeforeTool(ctx context.Context, args 
 	if v := paramRuleVerdictFromCtx(ctx); v != nil && v.effect == policyrule.EffectAsk {
 		paramAskPending = true
 	}
-	// P0-5：审批策略 ask 裁定同样排除插件 allow 早退（与 param rule ask 同一
-	// 防静默放行不变量）；trusted 裁定不拦早退——trusted 与 allow 同为放行语义。
+	// P0-5：审批策略 ask 裁定同样排除插件 allow 早退；trusted 裁定不拦早
+	// 退——trusted 与 allow 同为放行语义。D5-f F1：auto 等同 ask 消费，必须
+	// 同认——若漏此守卫，auto 规则在插件 allow 路径被静默放行，decide()
+	// 根本不运行（auto 档空转，第四档形同虚设）。
 	policyAskPending := false
-	if pv := approvalPolicyVerdictFromCtx(ctx); pv != nil && pv.mode == biztool.ApprovalModeAsk {
+	if pv := approvalPolicyVerdictFromCtx(ctx); pv != nil && (pv.mode == biztool.ApprovalModeAsk || pv.mode == biztool.ApprovalModeAuto) {
 		policyAskPending = true
 	}
 	if !paramAskPending && !policyAskPending && h.gate.pluginAllowWithoutChannel(toolKey, args.Arguments) {
@@ -126,7 +128,7 @@ func (h *toolConfirmationBeforeHook) HandleBeforeTool(ctx context.Context, args 
 			// 确认闸策略不一致。shell_safe 是 E1 免确认设计（非人工授权事件），
 			// 不进 hitl_approval。
 			if decision.reason == confirmReasonGrantSession || decision.reason == confirmReasonGrantPersisted {
-				h.emitToolConfirmDecisionRecord(ctx, toolKey, args.ToolCallID, decision.reason, "grant_skip", "", args.Arguments, "", "")
+				h.emitToolConfirmDecisionRecord(ctx, toolKey, args.ToolCallID, decision.reason, "grant_skip", "", args.Arguments, "", "", decision.policyAskDriven)
 			}
 		}
 		// P1-10 不变量对放行态同样成立（2026-08-27 三轮审查根修）：产品
@@ -184,7 +186,7 @@ func (h *toolConfirmationBeforeHook) HandleBeforeTool(ctx context.Context, args 
 						// P0-5 对偶审计：首张确认卡发出即落 approval.asked 半部；
 						// correlation 锚定首个卡片 id，重试补发卡沿用（1:1 成对）。
 						if confirmActivityID == "" {
-							h.emitToolConfirmAskedRecord(ctx, toolKey, args.ToolCallID, decision.reason, id, args.Arguments)
+							h.emitToolConfirmAskedRecord(ctx, toolKey, args.ToolCallID, decision.reason, id, args.Arguments, decision.policyAskDriven)
 						}
 						confirmActivityID = id
 					}
@@ -261,7 +263,7 @@ func (h *toolConfirmationBeforeHook) HandleBeforeTool(ctx context.Context, args 
 						ToolCallID:   args.ToolCallID,
 						ParamsJSON:   paramsJSONFromToolArgs(args.Arguments),
 					}, nil, h.ag, h.deps)
-					h.emitToolConfirmDecisionRecord(ctx, toolKey, args.ToolCallID, decision.reason, "timeout", "", args.Arguments, timeoutBlockCause(toolKey), confirmActivityID)
+					h.emitToolConfirmDecisionRecord(ctx, toolKey, args.ToolCallID, decision.reason, "timeout", "", args.Arguments, timeoutBlockCause(toolKey), confirmActivityID, decision.policyAskDriven)
 				}
 				timeoutMsg := toolConfirmTimeoutMessage(toolKey, attempts, effectiveConfirmTimeout)
 				// P2-③ 方案 C 回执：存在未核销副作用时引导模型先补偿清除而非重发。
@@ -297,7 +299,7 @@ func (h *toolConfirmationBeforeHook) HandleBeforeTool(ctx context.Context, args 
 			h.applyGrantOutcome(ctx, sessionID, toolKey, reply)
 			h.maybeSessionGrantBatchTool(sessionID, toolKey)
 			if !follower {
-				h.emitToolConfirmDecisionRecord(ctx, toolKey, args.ToolCallID, decision.reason, "approved", reply, args.Arguments, "", confirmActivityID)
+				h.emitToolConfirmDecisionRecord(ctx, toolKey, args.ToolCallID, decision.reason, "approved", reply, args.Arguments, "", confirmActivityID, decision.policyAskDriven)
 				metrics.PluginInvokeTotal.WithLabelValues("confirm_gate", "before_tool", "success").Inc()
 				h.deps.Logger().Info("tool confirmation approved",
 					loggateway.StepID("agent.tool_confirm"),
@@ -325,7 +327,7 @@ func (h *toolConfirmationBeforeHook) HandleBeforeTool(ctx context.Context, args 
 				ToolCallID:   args.ToolCallID,
 				ParamsJSON:   paramsJSONFromToolArgs(args.Arguments),
 			}, nil, h.ag, h.deps)
-			h.emitToolConfirmDecisionRecord(ctx, toolKey, args.ToolCallID, decision.reason, "rejected", reply, args.Arguments, "", confirmActivityID)
+			h.emitToolConfirmDecisionRecord(ctx, toolKey, args.ToolCallID, decision.reason, "rejected", reply, args.Arguments, "", confirmActivityID, decision.policyAskDriven)
 		}
 		denyMsg := fmt.Sprintf("%s: 用户拒绝了工具 \"%s\" 的执行。这是用户的明确决定，不是系统故障。禁止重试相同或等价的工具调用；请直接向用户说明该操作已被取消，并询问接下来如何处理。", errToolConfirmationRequired, toolKey)
 		// P2-③ 方案 C 回执：存在未核销副作用时引导模型先补偿清除而非重发。
@@ -351,7 +353,7 @@ func (h *toolConfirmationBeforeHook) HandleBeforeTool(ctx context.Context, args 
 		ToolCallID:   args.ToolCallID,
 		ParamsJSON:   paramsJSONFromToolArgs(args.Arguments),
 	}, nil, h.ag, h.deps)
-	h.emitToolConfirmDecisionRecord(ctx, toolKey, args.ToolCallID, decision.reason, "rejected", "", args.Arguments, "no_reply_channel", "")
+	h.emitToolConfirmDecisionRecord(ctx, toolKey, args.ToolCallID, decision.reason, "rejected", "", args.Arguments, "no_reply_channel", "", decision.policyAskDriven)
 	noChannelMsg := fmt.Sprintf("%s: 工具 \"%s\" 需要用户确认后才能执行，但当前运行环境无法向用户发起确认请求（无回复通道）。该工具本次不可执行，不要重试；请向用户说明情况，并请用户在支持确认的会话中重新发起该操作。", errToolConfirmationRequired, toolKey)
 	if cue := planCCompensationCue(ctx, toolKey); cue != "" {
 		noChannelMsg += " " + cue

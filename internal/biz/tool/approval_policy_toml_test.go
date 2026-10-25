@@ -128,6 +128,50 @@ func TestParseApprovalPoliciesTOML_RowCountLimit(t *testing.T) {
 	if _, _, err := ParseApprovalPoliciesTOML([]byte(b.String())); err == nil || !strings.Contains(err.Error(), "上限") {
 		t.Fatalf("row count over limit must be rejected, got %v", err)
 	}
+	// F16：恰在上限（5000 行）必须放行——上限只拒超界，不误伤合法大批量
+	// 导入（200+ 岗位的 agent 作用域姿态表可逼近千行量级，边界放行须钉死）。
+	var ok strings.Builder
+	for i := 0; i < approvalPolicyTOMLMaxRows; i++ {
+		ok.WriteString(row)
+	}
+	policies, rowErrs, err := ParseApprovalPoliciesTOML([]byte(ok.String()))
+	if err != nil || len(rowErrs) != 0 {
+		t.Fatalf("at-limit doc must parse clean: err=%v rowErrs=%v", err, rowErrs)
+	}
+	if len(policies) != approvalPolicyTOMLMaxRows {
+		t.Fatalf("at-limit rows = %d, want %d", len(policies), approvalPolicyTOMLMaxRows)
+	}
+}
+
+// TestParseApprovalPoliciesTOML_ByteLimit 钉死字节上限（D5-f F5/F9）：超
+// 1MiB 载荷在 toml.Unmarshal 之前拒收——行数上限只能挡海量短行，单行长
+// payload 的攻击面由字节级闸门封住；合法小文档不误伤。
+func TestParseApprovalPoliciesTOML_ByteLimit(t *testing.T) {
+	t.Parallel()
+	over := make([]byte, approvalPolicyTOMLMaxBytes+1)
+	copy(over, "[[policies]]\n")
+	if _, _, err := ParseApprovalPoliciesTOML(over); err == nil || !strings.Contains(err.Error(), "字节") {
+		t.Fatalf("over-size payload must be rejected pre-unmarshal, got %v", err)
+	}
+	doc := "[[policies]]\nid = \"x\"\nscope = \"session\"\nscope_key = \"s\"\ntool_pattern = \"*\"\nmode = \"ask\"\n"
+	policies, rowErrs, err := ParseApprovalPoliciesTOML([]byte(doc))
+	if err != nil || len(rowErrs) != 0 || len(policies) != 1 {
+		t.Fatalf("small valid doc must parse: err=%v rowErrs=%v policies=%v", err, rowErrs, policies)
+	}
+}
+
+// TestMarshalApprovalPoliciesTOML_EmptyRoundtrip D5-f F17：空集合导出→导入
+// 回环=0 行零错误（空文档不得触发语法错误或幻影行）。
+func TestMarshalApprovalPoliciesTOML_EmptyRoundtrip(t *testing.T) {
+	t.Parallel()
+	data, err := MarshalApprovalPoliciesTOML(nil)
+	if err != nil {
+		t.Fatalf("marshal empty: %v", err)
+	}
+	policies, rowErrs, err := ParseApprovalPoliciesTOML(data)
+	if err != nil || len(rowErrs) != 0 || len(policies) != 0 {
+		t.Fatalf("empty roundtrip must yield zero rows: policies=%v rowErrs=%v err=%v", policies, rowErrs, err)
+	}
 }
 
 // TestMarshalApprovalPoliciesTOML_Roundtrip 钉死导出→导入回环：交换格式不

@@ -137,6 +137,10 @@ func (r *approvalPolicyRepo) UpsertApprovalPolicy(ctx context.Context, p biztool
 	if err := biztool.ValidateApprovalPolicy(p); err != nil {
 		return err
 	}
+	// D5-f F6：ON CONFLICT 分支无条件保留既有 created_at/created_by（不取
+	// excluded 值）——并发双新建同一 id 时审计元数据归属恒为最先落库者，
+	// 不随服务层读-改-写时序翻转。service 层 Get→copy 保留逻辑仍有效
+	//（InMem 仓无 ON CONFLICT 语义，更新路径需其承接）。
 	enabledInt, shadowInt := 0, 0
 	if p.Enabled {
 		enabledInt = 1
@@ -153,7 +157,9 @@ func (r *approvalPolicyRepo) UpsertApprovalPolicy(ctx context.Context, p biztool
 		   tool_pattern = excluded.tool_pattern, command_prefix = excluded.command_prefix,
 		   args_pattern = excluded.args_pattern, mode = excluded.mode, priority = excluded.priority,
 		   enabled = excluded.enabled, shadow_only = excluded.shadow_only,
-		   expires_at = excluded.expires_at, created_at = excluded.created_at, created_by = excluded.created_by`),
+		   expires_at = excluded.expires_at,
+		   created_at = session_approval_policies.created_at,
+		   created_by = session_approval_policies.created_by`),
 		p.ID, p.Scope, p.ScopeKey, p.ToolPattern, p.CommandPrefix, p.ArgsPattern, p.Mode,
 		p.Priority, enabledInt, shadowInt, p.ExpiresAt, p.CreatedAt, p.CreatedBy,
 	)

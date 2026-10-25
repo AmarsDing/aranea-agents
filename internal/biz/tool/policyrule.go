@@ -1,6 +1,7 @@
 package tool
 
 import (
+	"math"
 	"strings"
 
 	"aranea-agents/internal/biz/policyrule"
@@ -84,8 +85,18 @@ func ValidateApprovalPolicy(p ApprovalPolicy) error {
 			return apierror.BadRequest("TOOL", "args_pattern 不可编译: "+err.Error())
 		}
 	}
+	// D5-f F3：PG 列 INTEGER（迁移 20261291）——priority/expires_at 超 int32
+	// 域的值写入即溢出报错，写入期单源拒收优于落库期随机失败。expires_at
+	// 超 int32 的 2038+ 远期 TTL 拓宽属后续迁移（记档 96 设计文档），不在
+	// 本批。
+	if p.Priority < math.MinInt32 || p.Priority > math.MaxInt32 {
+		return apierror.BadRequest("TOOL", "priority must fit int32 range")
+	}
 	if p.ExpiresAt < 0 {
 		return apierror.BadRequest("TOOL", "expires_at must be >= 0 (0 = no expiry)")
+	}
+	if p.ExpiresAt > math.MaxInt32 {
+		return apierror.BadRequest("TOOL", "expires_at must fit int32 range")
 	}
 	return nil
 }

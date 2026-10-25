@@ -52,12 +52,20 @@ type approvalPolicyTOMLRow struct {
 
 const approvalPolicyTOMLMaxRows = 5000 // 防御性上限：单文档行数，防巨型载荷拖垮管理面
 
+// approvalPolicyTOMLMaxBytes 防御性上限：单文档字节数（1MiB，对齐项目
+// LimitReader 1<<20 惯例）。在 toml.Unmarshal 之前检查——行数上限只能挡海量
+// 短行，单行长 payload 仍需字节级闸门。D5-f F5/F9。
+const approvalPolicyTOMLMaxBytes = 1 << 20
+
 // ParseApprovalPoliciesTOML 解析 TOML 文档为经 ValidateApprovalPolicy 单源校验
 // 的策略行集合。文档级语法错误返回 err（脱敏后结构化信息——不回显原文，防
 // TOML 解析器把载荷片段拼进错误消息造成信息回流）；行级校验失败不中断整批，
 // 逐条收入 rowErrs（"policies[i]: …" 预脱敏格式），合法行照常返回交由调用方
 // 决定部分导入策略。enabled 缺省视为 true（与表列默认对齐）。
 func ParseApprovalPoliciesTOML(data []byte) (policies []ApprovalPolicy, rowErrs []string, err error) {
+	if len(data) > approvalPolicyTOMLMaxBytes {
+		return nil, nil, fmt.Errorf("approval policies TOML 大小 %d 字节超过上限 %d", len(data), approvalPolicyTOMLMaxBytes)
+	}
 	var doc approvalPolicyTOMLDoc
 	if uerr := toml.Unmarshal(data, &doc); uerr != nil {
 		var derr *toml.DecodeError

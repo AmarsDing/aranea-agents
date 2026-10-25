@@ -10,6 +10,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/biz/shared"
 	biztool "aranea-agents/internal/biz/tool"
+	"aranea-agents/internal/tools/preview"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/auth"
 
@@ -132,7 +133,11 @@ func (s *ToolService) UpsertApprovalPolicy(ctx context.Context, req *v1.UpsertAp
 		Action:     biz.AuditAction(biz.AuditVerbUpdate, "approval_policy"),
 		Resource:   "approval_policy",
 		ResourceID: p.ID,
-		Summary:    fmt.Sprintf("scope=%s:%s tool_pattern=%s mode=%s enabled=%v shadow_only=%v", p.Scope, p.ScopeKey, p.ToolPattern, p.Mode, p.Enabled, p.ShadowOnly),
+		// D5-f F7 信息论裁剪：运行时用于拒收 never 的规则刻意只暴露规则 ID
+		//（审计区分点）；Summary 若携带 tool_pattern+scope_key，经无本表 admin
+		// 门禁的 GET /v1/monitor/audit 即可侧信道拼出完整规则面，架空该保护。
+		// 对齐 param_rule 先例（Summary 只带规则键与姿态值，不展开匹配面）。
+		Summary: fmt.Sprintf("id=%s scope=%s mode=%s enabled=%v shadow_only=%v", p.ID, p.Scope, p.Mode, p.Enabled, p.ShadowOnly),
 	})
 	stored, err := s.uc.GetApprovalPolicyByID(ctx, p.ID)
 	if err != nil {
@@ -172,21 +177,30 @@ func (s *ToolService) ImportApprovalPoliciesTOML(ctx context.Context, req *v1.Im
 	actor := approvalPolicyActor(ctx)
 	imported := 0
 	errs := append([]string{}, rowErrs...)
+	// D5-f F4：同文档同 id 重复行——后写覆盖同键徒增审计噪声且语义歧义
+	//（不可预期最终姿态）；逐条计入错误平面不静默吞（与 rowErrs 同平面）。
+	seen := make(map[string]struct{}, len(policies))
 	for i := range policies {
 		p := policies[i]
+		if _, dup := seen[p.ID]; dup {
+			errs = append(errs, fmt.Sprintf("%s: duplicate id in document", p.ID))
+			continue
+		}
+		seen[p.ID] = struct{}{}
 		// 导入路径同 upsert 纪律：审计元数据 server 权威——既有行保留原
-		// CreatedBy/CreatedAt，新行=操作者+now。
+		// CreatedBy/CreatedAt，新行=操作者+now。错误面统一预脱敏（D5-f F8：
+		// 底层错误可能拼入 DSN/表名等内部细节，不复邮寄给导入调用方）。
 		if existing, gerr := s.uc.GetApprovalPolicyByID(ctx, p.ID); gerr == nil {
 			p.CreatedBy = existing.CreatedBy
 			p.CreatedAt = existing.CreatedAt
 		} else if errors.Is(gerr, shared.ErrNotFound) {
 			p.CreatedBy = actor
 		} else {
-			errs = append(errs, fmt.Sprintf("%s: lookup failed: %v", p.ID, gerr))
+			errs = append(errs, fmt.Sprintf("%s: lookup failed: %s", p.ID, preview.RedactAndTruncate(gerr.Error(), 200)))
 			continue
 		}
 		if uerr := s.uc.UpsertApprovalPolicy(ctx, p); uerr != nil {
-			errs = append(errs, fmt.Sprintf("%s: %v", p.ID, uerr))
+			errs = append(errs, fmt.Sprintf("%s: %s", p.ID, preview.RedactAndTruncate(uerr.Error(), 200)))
 			continue
 		}
 		imported++

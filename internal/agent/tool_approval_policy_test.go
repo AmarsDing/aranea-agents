@@ -12,6 +12,7 @@ import (
 	"aranea-agents/internal/biz/decision"
 	"aranea-agents/internal/biz/policyrule"
 	biztool "aranea-agents/internal/biz/tool"
+	plugintrpc "aranea-agents/internal/plugin/trpc"
 	serviceawaitreply "aranea-agents/internal/tools/serviceawaitreply"
 
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
@@ -170,6 +171,11 @@ func TestApprovalPolicyGate_ShadowZeroEnforce(t *testing.T) {
 	}
 	if res.CustomResult != nil {
 		t.Fatalf("shadow must never reject, got %v", res.CustomResult)
+	}
+	// D5-f F15：shadow 分支零 verdict 写——shadow=纯观测语义，绝不产生
+	// 消费侧裁定（下游 decide() 不得见到本规则的 verdict）。
+	if v := approvalPolicyVerdictFromCtx(res.Context); v != nil {
+		t.Fatalf("shadow must not write ctx verdict (零强制语义), got %+v", v)
 	}
 	if len(cc.recs) != 1 {
 		t.Fatalf("shadow audit record expected, got %d", len(cc.recs))
@@ -600,5 +606,177 @@ func TestToolConfirm_AutoSourceModeProjection(t *testing.T) {
 		if got := cc.recs[i].Metadata["source_mode"]; got != nil {
 			t.Fatalf("rec[%d] ask path must not project source_mode, got %v", i, got)
 		}
+	}
+}
+
+// ─── D5-f（P0-5 phase 2 评审修复批）：17 确认项行为钉板 ───────────────────
+
+// TestApprovalPolicyGate_ShadowAutoZeroEnforce D5-f F15：shadow+auto 同守
+// 「零拒绝、必落 shadow 审计、零 verdict 写」——shadow 语义对四档一律纯观测
+// （enforce switch 的 auto 分支只覆盖非 shadow 路径）。
+func TestApprovalPolicyGate_ShadowAutoZeroEnforce(t *testing.T) {
+	t.Parallel()
+	cc := &captureDecisionCollector{}
+	store := biztool.NewInMemApprovalPolicyStore()
+	if err := store.UpsertApprovalPolicy(context.Background(), approvalPolicyTestRule("shadow-auto-1", string(biztool.ApprovalModeAuto), true)); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	deps := TRPCBuilderDeps{}
+	deps.DecisionCollector = cc
+	hook := newApprovalPolicyGateBeforeHook(biz.Agent{ID: "agent-1"}, deps,
+		CompositeApprovalPolicyLookup(store, "sess-1", "agent-1", time.Now().Unix()))
+	if hook == nil {
+		t.Fatal("hook should be registered")
+	}
+	em := &fakeConfirmEmitter{}
+	ctx := approvalPolicyCtxWithEmitter(context.Background(), em)
+	res, err := hook.HandleBeforeTool(ctx, &trpctool.BeforeToolArgs{
+		ToolName: "exec_command", Arguments: []byte(`{"command":"rm -rf /tmp/x"}`), ToolCallID: "call-sa",
+	})
+	if err != nil {
+		t.Fatalf("HandleBeforeTool: %v", err)
+	}
+	if res.CustomResult != nil {
+		t.Fatalf("shadow auto must not reject/enforce, got %v", res.CustomResult)
+	}
+	if v := approvalPolicyVerdictFromCtx(res.Context); v != nil {
+		t.Fatalf("shadow must not write ctx verdict (D5-f F15), got %+v", v)
+	}
+	if len(cc.recs) != 1 || cc.recs[0].Outcome != "tripped" ||
+		cc.recs[0].Metadata["trigger_rule"] != triggerApprovalPolicyShadow ||
+		cc.recs[0].Metadata["shadow_only"] != true {
+		t.Fatalf("shadow auto audit record wrong: %+v", cc.recs)
+	}
+}
+
+// TestToolConfirm_AutoVerdict_BlocksPluginAllowSilentBypass 钉死 D5-f F1
+// （major）：approval policy ask/auto 裁定与 param rule ask 同认——插件 allow
+// 早退守卫不得绕过。若漏此守卫，auto 规则在插件 allow 路径被静默放行，
+// decide() 根本不运行（auto 档空转）：零决策记录、零拒绝。无回复通道场景
+// 下正确行为=进入确认流程被拒（no_reply_channel），且记录投射
+// source_mode=auto。
+func TestToolConfirm_AutoVerdict_BlocksPluginAllowSilentBypass(t *testing.T) {
+	t.Parallel()
+	cc := &captureDecisionCollector{}
+	deps := TRPCBuilderDeps{}
+	deps.DecisionCollector = cc
+	gate := &toolConfirmGate{
+		sessionGrants: newToolGrantStore(time.Now),
+		hasPlugin:     true,
+		plugin: plugintrpc.ConfirmationGuardConfig{
+			ConfirmTools:  []string{"db_migrate"},
+			DefaultAction: "allow",
+		},
+	}
+	h := newToolConfirmationBeforeHook(gate, biz.Agent{ID: "agent-1", AgentKey: "spirit"}, deps)
+	em := &fakeConfirmEmitter{confirmID: "act-f1"}
+	ctx := approvalPolicyCtxWithEmitter(decisionTestCtx("sess-1", "u-1", nil), em)
+	ctx = context.WithValue(ctx, approvalPolicyVerdictCtxKey{}, &approvalPolicyVerdict{mode: biztool.ApprovalModeAuto, ruleID: "r-auto"})
+
+	if _, err := h.HandleBeforeTool(ctx, &trpctool.BeforeToolArgs{
+		ToolName: "db_migrate", Arguments: []byte(`{"q":"drop table t"}`), ToolCallID: "tc-f1",
+	}); err != nil {
+		t.Fatalf("HandleBeforeTool: %v", err)
+	}
+	if len(cc.recs) != 1 {
+		t.Fatalf("auto verdict must NOT silently pass the plugin allow path (F1): got %d records, want 1", len(cc.recs))
+	}
+	r := cc.recs[0]
+	if r.Outcome != "rejected" || r.Metadata["block_cause"] != "no_reply_channel" {
+		t.Fatalf("no-channel exit expected rejected/no_reply_channel, got outcome=%q block_cause=%v", r.Outcome, r.Metadata["block_cause"])
+	}
+	if got := r.Metadata["source_mode"]; got != "auto" {
+		t.Fatalf("policy auto driven record must project source_mode=auto, got %v", got)
+	}
+	if got := r.Metadata["decision_reason"]; got != confirmReasonPolicyAsk {
+		t.Fatalf("decision_reason = %v, want %q", got, confirmReasonPolicyAsk)
+	}
+}
+
+// TestToolConfirm_ParamRuleAskDriven_NoAutoProjection 钉死 D5-f F2：param
+// rule ask 驱动的记录绝不投影 source_mode=auto——裁决链 param 分支先于
+// policy 分支，ctx 同时携带 auto verdict 也不表示 auto 驱动了本次流程。
+func TestToolConfirm_ParamRuleAskDriven_NoAutoProjection(t *testing.T) {
+	t.Parallel()
+	cc := &captureDecisionCollector{}
+	deps := TRPCBuilderDeps{}
+	deps.DecisionCollector = cc
+	gate := &toolConfirmGate{sessionGrants: newToolGrantStore(time.Now)}
+	h := newToolConfirmationBeforeHook(gate, biz.Agent{ID: "agent-1", AgentKey: "spirit"}, deps)
+	em := &fakeConfirmEmitter{confirmID: "act-f2"}
+	ctx := approvalPolicyCtxWithEmitter(decisionTestCtx("sess-1", "u-1", nil), em)
+	ctx = context.WithValue(ctx, paramRuleVerdictCtxKey{}, &paramRuleVerdict{effect: policyrule.EffectAsk, ruleID: "builtin-ask"})
+	ctx = context.WithValue(ctx, approvalPolicyVerdictCtxKey{}, &approvalPolicyVerdict{mode: biztool.ApprovalModeAuto, ruleID: "r-auto"})
+
+	if _, err := h.HandleBeforeTool(ctx, &trpctool.BeforeToolArgs{
+		ToolName: "gns3_exec", Arguments: []byte(`{"command":"reload"}`), ToolCallID: "tc-f2",
+	}); err != nil {
+		t.Fatalf("HandleBeforeTool: %v", err)
+	}
+	if len(cc.recs) != 1 {
+		t.Fatalf("got %d records, want 1 (no_reply_channel rejected)", len(cc.recs))
+	}
+	if got := cc.recs[0].Metadata["decision_reason"]; got != confirmReasonParamRuleAsk {
+		t.Fatalf("decision_reason = %v, want %q", got, confirmReasonParamRuleAsk)
+	}
+	if got := cc.recs[0].Metadata["source_mode"]; got != nil {
+		t.Fatalf("param_rule_ask driven record must not project source_mode (D5-f F2), got %v", got)
+	}
+}
+
+// TestToolConfirm_GrantSkipSourceModeProjection 钉死 D5-f F13/F14 裁决：
+// grant 秒过记录的 source_mode 投影取决于驱动分支——审批策略 ask/auto 分支
+// 内 grant 满足（policyAskDriven=true）照常投影 source_mode=auto（auto 审计
+// 区分点不因秒过丢失）；param rule ask 分支内 grant 满足不投影（param 分支
+// 先于 policy 分支求值，auto 未驱动该流程）。
+func TestToolConfirm_GrantSkipSourceModeProjection(t *testing.T) {
+	t.Parallel()
+	mk := func(withParamAsk bool) (*captureDecisionCollector, *toolConfirmationBeforeHook, context.Context) {
+		cc := &captureDecisionCollector{}
+		deps := TRPCBuilderDeps{}
+		deps.DecisionCollector = cc
+		gate := &toolConfirmGate{
+			sessionGrants:  newToolGrantStore(time.Now),
+			persistedGrant: func(context.Context, string, string) bool { return true },
+		}
+		em := &fakeConfirmEmitter{confirmID: "act-f14"}
+		ctx := approvalPolicyCtxWithEmitter(decisionTestCtx("sess-1", "u-1", nil), em)
+		if withParamAsk {
+			ctx = context.WithValue(ctx, paramRuleVerdictCtxKey{}, &paramRuleVerdict{effect: policyrule.EffectAsk, ruleID: "builtin-ask"})
+		}
+		ctx = context.WithValue(ctx, approvalPolicyVerdictCtxKey{}, &approvalPolicyVerdict{mode: biztool.ApprovalModeAuto, ruleID: "r-x"})
+		return cc, newToolConfirmationBeforeHook(gate, biz.Agent{ID: "agent-1", AgentKey: "spirit"}, deps), ctx
+	}
+	// A：auto verdict、无 param 规则——policy 分支 grant 秒过，投影 auto。
+	cc, h, ctx := mk(false)
+	if _, err := h.HandleBeforeTool(ctx, &trpctool.BeforeToolArgs{
+		ToolName: "uncatalogued_tool", Arguments: []byte(`{"x":"y"}`), ToolCallID: "tc-f14a",
+	}); err != nil {
+		t.Fatalf("HandleBeforeTool A: %v", err)
+	}
+	if len(cc.recs) != 1 {
+		t.Fatalf("A: want 1 grant_skip record, got %d", len(cc.recs))
+	}
+	if cc.recs[0].Outcome != "grant_skip" || cc.recs[0].Metadata["decision_reason"] != confirmReasonGrantPersisted {
+		t.Fatalf("A: grant_skip persisted expected, got %+v", cc.recs[0])
+	}
+	if got := cc.recs[0].Metadata["source_mode"]; got != "auto" {
+		t.Fatalf("A: policy auto + grant_skip must project source_mode=auto (F13/F14), got %v", got)
+	}
+	// B：param ask + auto verdict——param 分支 grant 秒过，零投影（F2 grant 变体）。
+	cc, h, ctx = mk(true)
+	if _, err := h.HandleBeforeTool(ctx, &trpctool.BeforeToolArgs{
+		ToolName: "gns3_exec", Arguments: []byte(`{"command":"reload"}`), ToolCallID: "tc-f14b",
+	}); err != nil {
+		t.Fatalf("HandleBeforeTool B: %v", err)
+	}
+	if len(cc.recs) != 1 {
+		t.Fatalf("B: want 1 grant_skip record, got %d", len(cc.recs))
+	}
+	if cc.recs[0].Outcome != "grant_skip" || cc.recs[0].Metadata["decision_reason"] != confirmReasonGrantPersisted {
+		t.Fatalf("B: grant_skip persisted expected, got %+v", cc.recs[0])
+	}
+	if got := cc.recs[0].Metadata["source_mode"]; got != nil {
+		t.Fatalf("B: param branch grant_skip must not project source_mode (F2 grant variant), got %v", got)
 	}
 }

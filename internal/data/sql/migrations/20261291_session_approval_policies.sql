@@ -1,6 +1,8 @@
 -- Version 20261291: session_approval_policies（P0-5 审批工程化，批 A11）
 -- 会话/Agent 作用域的确定性审批姿态表：ask|never|trusted × tool_pattern ×
 -- command_prefix × args_pattern × priority × shadow_only × expires_at。
+-- 档位枚举不落 CHECK（mode TEXT）——D5（P0-5 phase 2）增补 auto 第四档
+-- 零迁移直接可写（96-approval-policy-phase2）。
 -- 消费链：BeforeTool 审批策略 gate（p3，paramRuleGate 之后、循环守卫之前）——
 -- never 确定性拒绝（文案不给 pattern，镜像 param_rule_deny）；trusted 作为新
 -- grant 档在确认门禁 decide() 的 computer-use danger floor 之后消费。

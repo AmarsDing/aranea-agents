@@ -29,7 +29,7 @@ import (
 // 可回收）。无确认卡的出口（grant_skip / no_reply_channel）传空串（此时也无
 // approval.asked 半部，语义诚实：无人被真正询问过）。事件定级 AS-EVT-01=
 // Important（decision_records 经 outbox BlockUpTo；不进 Critical lane）。
-func (h *toolConfirmationBeforeHook) emitToolConfirmDecisionRecord(ctx context.Context, toolKey, toolCallID, gateReason, outcome, reply string, arguments []byte, blockCause string, correlationID string) {
+func (h *toolConfirmationBeforeHook) emitToolConfirmDecisionRecord(ctx context.Context, toolKey, toolCallID, gateReason, outcome, reply string, arguments []byte, blockCause string, correlationID string, policyAskDriven bool) {
 	userID := toolConfirmUserID(ctx)
 	if userID == "" {
 		userID = "unknown"
@@ -45,7 +45,7 @@ func (h *toolConfirmationBeforeHook) emitToolConfirmDecisionRecord(ctx context.C
 	if correlationID != "" {
 		metadata["correlation_id"] = correlationID
 	}
-	projectApprovalSourceMode(ctx, metadata)
+	projectApprovalSourceMode(ctx, metadata, policyAskDriven)
 
 	reasoning := ""
 	if outcome == "approved" || outcome == "rejected" {
@@ -96,7 +96,7 @@ func (h *toolConfirmationBeforeHook) emitToolConfirmDecisionRecord(ctx context.C
 // 首个 id，保证整场确认流程 1:1 成对）。事件定级 AS-EVT-01=Important（同
 // decided 半部：decision_records 经 outbox BlockUpTo，不进 Critical lane）。
 // collector=nil 时 flowlog 仍落（EmitDecision D1 不变量）。
-func (h *toolConfirmationBeforeHook) emitToolConfirmAskedRecord(ctx context.Context, toolKey, toolCallID, gateReason, correlationID string, arguments []byte) {
+func (h *toolConfirmationBeforeHook) emitToolConfirmAskedRecord(ctx context.Context, toolKey, toolCallID, gateReason, correlationID string, arguments []byte, policyAskDriven bool) {
 	if strings.TrimSpace(correlationID) == "" {
 		return
 	}
@@ -108,7 +108,7 @@ func (h *toolConfirmationBeforeHook) emitToolConfirmAskedRecord(ctx context.Cont
 		"decision_reason": gateReason,
 		"correlation_id":  correlationID,
 	}
-	projectApprovalSourceMode(ctx, metadata)
+	projectApprovalSourceMode(ctx, metadata, policyAskDriven)
 	entities := []decision.EntityRef{{Type: "tool", Key: toolKey}}
 	if h.ag.AgentKey != "" {
 		entities = append(entities, decision.EntityRef{Type: "agent", Key: h.ag.AgentKey})
@@ -138,7 +138,16 @@ func (h *toolConfirmationBeforeHook) emitToolConfirmAskedRecord(ctx context.Cont
 // 的确认记录携带 source_mode=auto——auto 与 ask 同消费路径（reason=policy_ask），
 // auto_review_verdict 审计经此字段区分两种来源；ask/trusted/无 verdict 路径不
 // 投影（缺省即普通 HITL，零存量记录污染）。
-func projectApprovalSourceMode(ctx context.Context, metadata map[string]any) {
+//
+// D5-f 裁决（policyAskDriven 显式驱动位）：投影仅在「审批策略 ask/auto 分支
+// 驱动」的记录上生效。param rule ask 驱动的记录（reason=param_rule_ask）即使
+// ctx 同时携带 auto verdict 也不投影——裁决链 param 分支先于 policy 分支，
+// auto 未驱动该流程。auto+grant 秒过（policy 分支内 grant 满足，grant_skip
+// 出口）policyAskDriven=true，投影照常。
+func projectApprovalSourceMode(ctx context.Context, metadata map[string]any, policyAskDriven bool) {
+	if !policyAskDriven {
+		return
+	}
 	if pv := approvalPolicyVerdictFromCtx(ctx); pv != nil && pv.mode == biztool.ApprovalModeAuto {
 		metadata["source_mode"] = string(biztool.ApprovalModeAuto)
 	}

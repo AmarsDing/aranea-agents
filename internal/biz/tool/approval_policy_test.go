@@ -3,6 +3,7 @@ package tool
 import (
 	"context"
 	"errors"
+	"math"
 	"testing"
 
 	"aranea-agents/internal/biz/shared"
@@ -44,6 +45,19 @@ func TestValidateApprovalPolicy_BadInputRejected(t *testing.T) {
 			return p
 		},
 		"negative_expiry": func(p ApprovalPolicy) ApprovalPolicy { p.ExpiresAt = -1; return p },
+		// D5-f F3：PG 列 INTEGER——超 int32 域写入即溢出，写入期单源拒收。
+		"priority_over_int32": func(p ApprovalPolicy) ApprovalPolicy {
+			p.Priority = math.MaxInt32 + 1
+			return p
+		},
+		"priority_under_int32": func(p ApprovalPolicy) ApprovalPolicy {
+			p.Priority = math.MinInt32 - 1
+			return p
+		},
+		"expiry_over_int32": func(p ApprovalPolicy) ApprovalPolicy {
+			p.ExpiresAt = math.MaxInt32 + 1
+			return p
+		},
 	}
 	for name, mutate := range cases {
 		t.Run(name, func(t *testing.T) {
