@@ -199,7 +199,12 @@ func (s *KnowledgeService) replayPromotedDocChunks(ctx context.Context, target b
 			if td.Created || (doc.Status != "indexed" && doc.ChunkCount == 0) {
 				docDelta = 1
 			}
-			_, err = s.uc.CommitIndexedDocument(docCtx, target.ID, doc.ID, chunks, docDelta)
+			var stats bizknowledge.ChunkDiffStats
+			stats, err = s.uc.CommitIndexedDocument(docCtx, target.ID, doc.ID, chunks, docDelta)
+			if err == nil {
+				// G-32 T5 决策9：晋升重放通道自此有帧（原静默）——producer=promote。
+				s.publishKnowledgeChunksDiff(target.ID, doc.ID, stats, "promote")
+			}
 		}
 		if err != nil {
 			failed++

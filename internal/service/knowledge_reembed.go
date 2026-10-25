@@ -342,10 +342,13 @@ func (s *KnowledgeService) reembedOneDocument(ctx context.Context, uc *biz.Knowl
 		docDelta = 1
 	}
 	versionCtx := bizknowledge.WithDocumentContentVersion(ctx, doc.ID, doc.ContentText)
-	if _, err := uc.CommitIndexedDocument(versionCtx, col.ID, doc.ID, bizChunks, docDelta); err != nil {
+	commitStats, err := uc.CommitIndexedDocument(versionCtx, col.ID, doc.ID, bizChunks, docDelta)
+	if err != nil {
 		fail("commit_indexed", err)
 		return false
 	}
+	// G-32 T5 决策9：diff 帧先于终态 indexed 帧。
+	s.publishKnowledgeChunksDiff(col.ID, doc.ID, commitStats, "reembed")
 	s.publishKnowledgeIngest(col.ID, doc.ID, "indexed", "", childCount)
 	if err := uc.RebuildCurrentBlockIndex(ctx, doc.ID); err != nil {
 		s.lg.Warn("重嵌入完成，链接索引等待修复", loggateway.StepID("knowledge.reembed.doc_done"), loggateway.Err(err))

@@ -247,12 +247,26 @@ type ChunkRepo interface {
 // compare-and-skip 未实写行）；FastPath=true 表示正文 hash 未变且 chunk
 // 多重集恒等——chunks/档案/版本行全零写，仅 guard/计数/syncMeta 原序执行；
 // 此时 VersionNo=当前 head 版本号（无账本行的历史形态为 0）。
+// Exact=true 表示本值来自 IngestCommitter 十三步权威 diff-commit（生产 PG
+// 通道）；退化顺序写路径（单元 fakes 无 IngestCommitter）返回伪全量汇总，
+// Exact=false——T5 WS 帧哨兵：非 Exact 零发布（决策9「repo 不支持
+// DiffStats 时零发布」），避免 fakes/降级路径广播虚构 diff。
+//
+// 双口径纪律（T5 终审 wf_f76a9b06-996 R-2）：Added/Deleted/Kept 为全行权威
+// 口径（含 parent 语境行），驱动 fast-path 多重集判定、双条件版本行与账本
+// chunkStats JSON；ChildAdded/ChildKept 为子块口径（不含 parent 行，与
+// 文档/集合计数台账同轨），是 WS knowledge_chunks_diff 帧 chunk_count
+// 的唯一取值源——两口径脱节会让帧值与台账自相矛盾（chunker 混合父行入
+// chunks 切片时 Added 含父、台账只数子）。
 type ChunkDiffStats struct {
-	Added     int
-	Deleted   int
-	Kept      int
-	VersionNo int
-	FastPath  bool
+	Added      int
+	Deleted    int
+	Kept       int
+	ChildAdded int
+	ChildKept  int
+	VersionNo  int
+	FastPath   bool
+	Exact      bool
 }
 
 // IngestCommitter persists a chunk diff-commit + indexed status + collection
@@ -722,7 +736,11 @@ func (u *Usecase) commitIndexedDocument(ctx context.Context, collectionID, docID
 		return ChunkDiffStats{}, apierror.BadRequest(apierror.DomainKnowledge, "illegal document status %s → indexed", from)
 	}
 	if c, ok := u.documents.(IngestCommitter); ok {
-		return c.CommitIndexedDocument(ctx, collectionID, docID, chunks, docDelta, syncMeta)
+		stats, err := c.CommitIndexedDocument(ctx, collectionID, docID, chunks, docDelta, syncMeta)
+		if err == nil {
+			stats.Exact = true // 权威 diff-commit 通道（T5 WS 帧发布哨兵）
+		}
+		return stats, err
 	}
 	if err := u.DeleteChunksByDocument(ctx, docID); err != nil {
 		return ChunkDiffStats{}, err
@@ -750,7 +768,7 @@ func (u *Usecase) commitIndexedDocument(ctx context.Context, collectionID, docID
 		return ChunkDiffStats{}, err
 	}
 	// 顺序写退化路径（单元 fakes）：全量重插语义，整体计为 Added。
-	return ChunkDiffStats{Added: childCount}, nil
+	return ChunkDiffStats{Added: childCount, ChildAdded: childCount}, nil
 }
 
 // UpdateDocumentContent 回写文档正文与整理标记（Phase 9 图片异步提取完成后调用）。

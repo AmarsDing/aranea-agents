@@ -75,12 +75,20 @@ func TestServeSearchAsOf_SpanReachesQuery(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body.String())
 	}
-	got := repo.lastSearchQ
-	if got.Query != "gateway timeout" || got.TopK != 5 || got.CollectionID != "c1" {
-		t.Errorf("query fields wrong: %+v", got)
+	// G-32 T4 钉迁：span 非零经 Retriever 时态 dense 腿断 ChunkTemporalReader
+	// 端口（查询正文已向量化为 vec），不再经 repo.SearchChunks。
+	got := repo.lastDenseAsOf
+	if !got.Called {
+		t.Fatal("span 非零必须触达时态 dense 腿（端口未接线将结构性 Unavailable）")
 	}
-	if !got.Temporal.ValidAt.Equal(validAt) || !got.Temporal.RecordedAt.Equal(recordedAt) {
-		t.Errorf("Temporal = %+v, want (%v, %v)", got.Temporal, validAt, recordedAt)
+	if got.CollectionID != "c1" || got.TopK != 5 || len(got.Vec) == 0 {
+		t.Errorf("dense 腿查询字段 wrong（collection/topk/向量化查询）: %+v", got)
+	}
+	if !got.Span.ValidAt.Equal(validAt) || !got.Span.RecordedAt.Equal(recordedAt) {
+		t.Errorf("Temporal = %+v, want (%v, %v)", got.Span, validAt, recordedAt)
+	}
+	if repo.lastSearchQ.Query != "" {
+		t.Errorf("span 非零不得旁路 current 快报路径（SearchChunks 被触达 %+v）", repo.lastSearchQ)
 	}
 	// 空结果集 chunks 形状：[] 而非 null（前端 .map 契约）。
 	var resp map[string]any
@@ -100,7 +108,7 @@ func TestServeSearchAsOf_SingleAxisAndZeroSpan(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("T-only status = %d: %s", rec.Code, rec.Body.String())
 	}
-	if got := repo.lastSearchQ.Temporal; !got.ValidOn() || got.RecordedOn() {
+	if got := repo.lastDenseAsOf.Span; !got.ValidOn() || got.RecordedOn() {
 		t.Errorf("T-only Temporal wrong: %+v", got)
 	}
 	// 双轴皆空 → 零 span（纯字符串空白同样按零处理）。

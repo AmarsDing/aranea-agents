@@ -1830,11 +1830,17 @@ func provideVaultSyncSupervisor(
 	entityPipeline *knowledge.EntityPipeline,
 	relationExtractor *knowledge.RelationExtractor,
 	registry *knowledge.ExtractorRegistry,
+	eventBus biz.EventBus,
 	lg loggateway.Logger,
 ) *knowledge.VaultSyncSupervisor {
 	engine := bizknowledge.NewSyncEngine(lg)
 	applier := knowledge.NewVaultSyncApplier(uc, filer, embedder, lg)
 	applier.SetCompiler(knowledge.NewBodyCompiler(registry))
+	// G-32 T5 决策9：vault 通道 diff 帧接线（同 publishKnowledgeIngest 的 v2
+	// SystemNoticeEvent 通道；stats.Exact=false 零发布由帧函数兜底）。
+	applier.SetDiffStatsHook(func(collectionID, docID string, stats bizknowledge.ChunkDiffStats) {
+		service.PublishKnowledgeChunksDiffFrame(eventBus, collectionID, docID, stats, "vault")
+	})
 	if entityPipeline != nil {
 		applier.SetEntityHook(func(collectionID, docID string) {
 			safego.Go(appctx.Ctx(), "knowledge.entity_pipeline", func() {

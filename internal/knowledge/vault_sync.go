@@ -19,14 +19,15 @@ import (
 // 可靠性契约：content_hash 只在 chunks 索引成功后落库——索引失败时下轮扫描
 // 仍判为变更（DB hash 落后），自动重试自愈。
 type VaultSyncApplier struct {
-	uc           *bizknowledge.Usecase
-	filer        *bizknowledge.VaultFiler
-	embedder     Embedder // nil = 无语义层（R-4）
-	lg           loggateway.Logger
-	summaryHook  func(root, relPath string)       // nil = 不触发摘要生成
-	entityHook   func(collectionID, docID string) // nil = 不触发实体抽取
-	relationHook func(collectionID, docID string) // nil = 不触发 typed 关系抽取
-	compiler     BodyCompiler                     // nil = 二进制文件降级 error（M0）
+	uc            *bizknowledge.Usecase
+	filer         *bizknowledge.VaultFiler
+	embedder      Embedder // nil = 无语义层（R-4）
+	lg            loggateway.Logger
+	summaryHook   func(root, relPath string)                                          // nil = 不触发摘要生成
+	entityHook    func(collectionID, docID string)                                    // nil = 不触发实体抽取
+	relationHook  func(collectionID, docID string)                                    // nil = 不触发 typed 关系抽取
+	diffStatsHook func(collectionID, docID string, stats bizknowledge.ChunkDiffStats) // nil = 不发 diff 帧（G-32 T5）
+	compiler      BodyCompiler                                                        // nil = 二进制文件降级 error（M0）
 }
 
 // BodyCompiler 把需抽取的文件（office/图片）原始字节编译为 Markdown 正文（M0 摄取编译）。
@@ -65,6 +66,14 @@ func (a *VaultSyncApplier) SetEntityHook(hook func(collectionID, docID string)) 
 // 冷文档不再等热度工人；抽取器内部 content_hash 幂等。
 func (a *VaultSyncApplier) SetRelationHook(hook func(collectionID, docID string)) {
 	a.relationHook = hook
+}
+
+// SetDiffStatsHook 注入 diff-commit 成功统计消费钩子（G-32 T5 决策9）：索引
+// 成功提交后调用（stats.Exact=false 的退化路径零发布由 service 帧函数兜底判，
+// 本层不二判）。同步/异步约定同 SetSummaryHook；生产接线=
+// service.PublishKnowledgeChunksDiffFrame（producer=vault）。
+func (a *VaultSyncApplier) SetDiffStatsHook(hook func(collectionID, docID string, stats bizknowledge.ChunkDiffStats)) {
+	a.diffStatsHook = hook
 }
 
 // SetCompiler 注入二进制编译端口（M0 摄取编译）：office/图片经抽取器编译为 Markdown。
@@ -262,15 +271,20 @@ func (a *VaultSyncApplier) upsertDoc(ctx context.Context, vault bizknowledge.Col
 		docDelta = 1
 	}
 	// 索引成功：chunks 替换 + hash/摘要卡 + indexed + 集合计数同一提交。
-	if _, err := a.uc.CommitIndexedDocumentMeta(ctx, vault.ID, doc.ID, chunks, docDelta, bizknowledge.DocumentSyncMeta{
+	commitStats, err := a.uc.CommitIndexedDocumentMeta(ctx, vault.ID, doc.ID, chunks, docDelta, bizknowledge.DocumentSyncMeta{
 		ContentHash: ev.Snapshot.Hash,
 		Summary:     fm.Summary,
 		SummaryHash: fm.SummaryHash,
 		Tags:        fm.Tags,
 		DocType:     fm.Type,
-	}); err != nil {
+	})
+	if err != nil {
 		a.markError(ctx, doc.ID, err)
 		return err
+	}
+	// G-32 T5 决策9：vault 通道自此有帧（原静默），producer=vault（装配侧打标）。
+	if a.diffStatsHook != nil {
+		a.diffStatsHook(vault.ID, doc.ID, commitStats)
 	}
 
 	// SP2 #9 熔断状态维护：embed 失败递增计数（退避加深，K3 降级）；embed 成功且

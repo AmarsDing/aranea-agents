@@ -25,6 +25,20 @@ type us14MemRepo struct {
 	documents   map[string]biz.KnowledgeDocument
 	// lastSearchQ 捕获最近一次 SearchChunks 收到的查询（G3-B7 映射验证用）。
 	lastSearchQ biz.KnowledgeSearchQuery
+	// G-32 T4 时态腿捕获：span 非零的 chunk 检索改断 ChunkTemporalReader
+	// 端口（不再经 SearchChunks）——dense/sparse 各自记录端口实收参数。
+	lastDenseAsOf  us14AsOfCapture
+	lastSparseAsOf us14AsOfCapture
+}
+
+// us14AsOfCapture 时态读端口实收参数捕获（ServeSearchAsOf 钉迁锚点）。
+type us14AsOfCapture struct {
+	Called       bool
+	CollectionID string
+	Query        string // sparse 腿原文；dense 腿为空（查询已向量化为 Vec）
+	Vec          []float32
+	Span         bizknowledge.TemporalSpan
+	TopK         int
 }
 
 func newUS14MemRepo() *us14MemRepo {
@@ -253,6 +267,27 @@ func (m *us14MemRepo) SearchChunks(_ context.Context, q biz.KnowledgeSearchQuery
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.lastSearchQ = q
+	return nil, nil
+}
+
+// us14MemRepo 实现 bizknowledge.ChunkTemporalReader（G-32 T4 装配面：span
+// 非零的 chunk 检索走本口——fake 空召回，双轴透传只管记录；RecordedAt 拒绝
+// 哨兵属 data 内核口径，由 PG 钉 resolveAsOfInstant 守卫另钉）。
+func (m *us14MemRepo) ListChunksAsOf(_ context.Context, _ string, _ bizknowledge.TemporalSpan, _ string) ([]bizknowledge.KnowledgeChunkIncarnation, error) {
+	return nil, nil
+}
+
+func (m *us14MemRepo) RecallChunksAsOf(_ context.Context, collectionID string, queryEmbedding []float32, span bizknowledge.TemporalSpan, topK int, _ string) ([]bizknowledge.KnowledgeChunkIncarnation, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.lastDenseAsOf = us14AsOfCapture{Called: true, CollectionID: collectionID, Vec: queryEmbedding, Span: span, TopK: topK}
+	return nil, nil
+}
+
+func (m *us14MemRepo) SparseRecallChunksAsOf(_ context.Context, collectionID, query string, span bizknowledge.TemporalSpan, topK int, _ string) ([]bizknowledge.KnowledgeChunkIncarnation, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.lastSparseAsOf = us14AsOfCapture{Called: true, CollectionID: collectionID, Query: query, Span: span, TopK: topK}
 	return nil, nil
 }
 

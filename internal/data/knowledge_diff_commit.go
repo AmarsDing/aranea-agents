@@ -21,33 +21,35 @@ import (
 // 逐条对齐）。
 //
 // 版本行 producer 值空间扩展登记（决策 9；新增值须同步三件套决策 9 行）：
-//   ingest              摄取 diff 管道（本文件 ⑫）
-//   user-delete         前台删除墓碑（knowledge_documents.go DeleteDocument）
-//   g32-tombstone-mint  零账本 seed 护栏（内核 tombstoneDocumentTx 固定值）
-//   governance          治理回放（治理线既有登记）
-//   connector_source_*  保留给 G-38 连接器（37-knowledge.design.md §G-38⑧）
+//
+//	ingest              摄取 diff 管道（本文件 ⑫）
+//	user-delete         前台删除墓碑（knowledge_documents.go DeleteDocument）
+//	g32-tombstone-mint  零账本 seed 护栏（内核 tombstoneDocumentTx 固定值）
+//	governance          治理回放（治理线既有登记）
+//	connector_source_*  保留给 G-38 连接器（37-knowledge.design.md §G-38⑧）
 const knowledgeDiffProducerIngest = "ingest"
 
 // commitIndexedDocumentTx 十三步同 tx（维度批次断言由包外入口完成）：
-//  ① FOR UPDATE 锁行（content_text/collection_id/content_hash 同读；决策 8 doc 行锁
-//    唯一串行点；content_hash 供 ②⑫ 复用免于二次查询）→
-//  ② fast-path（同 body 且 chunk 多重集恒等：chunks/侧表/档案/版本行全零写，仅 ⑬
-//    guard/计数/syncMeta 原序执行——判定实现依赖 ④⑤，故代码序按数据依赖排）→
-//  ③ nextDocVersionNoTx → ④ loadChunksForPairingTx → ⑤ PairChunksForDiff →
-//  ⑥ mirrorChunkEmbeddingsArchiveTx(deleted) → ⑦ archiveChunksForVersionTx →
-//  ⑧ 删孤儿（FK CASCADE 扫 chunk_embeddings 侧表，⑥ 已镜档故归档腿无损）→
-//  ⑨ kept compare-and-skip（chunk_index/parent_chunk_id/metadata 实变才 UPDATE；
-//    IS DISTINCT FROM 谓词内嵌——jsonb 结构等价由 PG 判，杜绝 jsonb::text 空白伪漂移）→
-//  ⑩ added 代际命名 insertChunksTx（<docID>-v<ver>-ch-<idx> / -p-<idx>，决策 5⑧
-//    化身出生版本解析唯一锚点）→
-//  ⑪ 缺 dim 条件补齐（kept 行带新向量且 (chunk_id,dim) NOT EXISTS 时侧表落行——
-//    G-39 换 dim 同 content 重嵌 added=∅ 场景下新向量的唯一落盘通道；缺此步则
-//    新向量静默丢弃、pending-reembed 死循环）→
-//  ⑫ 版本行双条件：head 行缺失 OR head.content_hash≠正文 hash OR added>0∧deleted>0；
-//    head.content_hash 空串=未知档视为相等（CON-19：同 body 重嵌防伪版本——此时
-//    added=∅∧deleted=∅ 天然不触发本步，head hash 亦相等）→
-//  ⑬ guard CAS/计数/syncMeta 原序不动 + ChunkDiffStats（决策 5⑬ 透出，T5 WS
-//    knowledge_chunks_diff 帧消费）。
+//
+//	① FOR UPDATE 锁行（content_text/collection_id/content_hash 同读；决策 8 doc 行锁
+//	  唯一串行点；content_hash 供 ②⑫ 复用免于二次查询）→
+//	② fast-path（同 body 且 chunk 多重集恒等：chunks/侧表/档案/版本行全零写，仅 ⑬
+//	  guard/计数/syncMeta 原序执行——判定实现依赖 ④⑤，故代码序按数据依赖排）→
+//	③ nextDocVersionNoTx → ④ loadChunksForPairingTx → ⑤ PairChunksForDiff →
+//	⑥ mirrorChunkEmbeddingsArchiveTx(deleted) → ⑦ archiveChunksForVersionTx →
+//	⑧ 删孤儿（FK CASCADE 扫 chunk_embeddings 侧表，⑥ 已镜档故归档腿无损）→
+//	⑨ kept compare-and-skip（chunk_index/parent_chunk_id/metadata 实变才 UPDATE；
+//	  IS DISTINCT FROM 谓词内嵌——jsonb 结构等价由 PG 判，杜绝 jsonb::text 空白伪漂移）→
+//	⑩ added 代际命名 insertChunksTx（<docID>-v<ver>-ch-<idx> / -p-<idx>，决策 5⑧
+//	  化身出生版本解析唯一锚点）→
+//	⑪ 缺 dim 条件补齐（kept 行带新向量且 (chunk_id,dim) NOT EXISTS 时侧表落行——
+//	  G-39 换 dim 同 content 重嵌 added=∅ 场景下新向量的唯一落盘通道；缺此步则
+//	  新向量静默丢弃、pending-reembed 死循环）→
+//	⑫ 版本行双条件：head 行缺失 OR head.content_hash≠正文 hash OR added>0∧deleted>0；
+//	  head.content_hash 空串=未知档视为相等（CON-19：同 body 重嵌防伪版本——此时
+//	  added=∅∧deleted=∅ 天然不触发本步，head hash 亦相等）→
+//	⑬ guard CAS/计数/syncMeta 原序不动 + ChunkDiffStats（决策 5⑬ 透出，T5 WS
+//	  knowledge_chunks_diff 帧消费）。
 func (r *knowledgeRepo) commitIndexedDocumentTx(ctx context.Context, tx *sql.Tx, collectionID, docID string, chunks []biz.KnowledgeChunk, docDelta int, syncMeta *biz.KnowledgeDocumentSyncMeta) (bizknowledge.ChunkDiffStats, error) {
 	stats := bizknowledge.ChunkDiffStats{}
 
@@ -83,6 +85,20 @@ func (r *knowledgeRepo) commitIndexedDocumentTx(ctx context.Context, tx *sql.Tx,
 	stats.Added = len(plan.Added)
 	stats.Deleted = len(plan.Deleted)
 	stats.Kept = len(plan.Kept)
+	// 子块口径（T5 终审 wf_f76a9b06-996 R-2）：parent 行由 chunker 混入
+	// chunks 切片并参与配对（pass 0 父父配对），plan.Added/Kept 可能含父；
+	// 帧 chunk_count 与文档/集合台账同轨只数子块。此值在两处返回点
+	// （fast-path 与 ⑬ 前终返回）共用，必须在此一次现算。
+	for _, idx := range plan.Added {
+		if idx >= 0 && idx < len(chunks) && !chunks[idx].IsParent {
+			stats.ChildAdded++
+		}
+	}
+	for _, kp := range plan.Kept {
+		if kp.NewIdx >= 0 && kp.NewIdx < len(chunks) && !chunks[kp.NewIdx].IsParent {
+			stats.ChildKept++
+		}
+	}
 
 	// ② fast-path：同 body 且多重集恒等 → 零写，仅 ⑬ 原序。VersionNo 透出当前 head
 	// （无账本行的历史形态=0）。

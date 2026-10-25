@@ -678,7 +678,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	lifecycleManager := provideLifecycleManager(buildCache, mcpToolSetPool, shardCache, policyResolver, monitorBus, evolutionService, loggatewayLogger)
 	wsv2Subscriber := provideWSV2Subscriber(v2Bus, wsServer, loggatewayLogger)
 	trpcBuilderDeps := provideTRPCBuilderDeps(llmProviderModelUsecase, toolUsecase, agentUsecase, agentRepository, systemSettingRepo, skillUsecase, persistenceSet, repository, factory, retriever, knowledgeUsecase, manager, organizationUsecase, toolResultGate, router, subagentService, a2aUsecase, circuitBreakerRegistry, bridge, runtime, lifecycle, loggatewayLogger, dataData, finishObserverHooks)
-	vaultSyncSupervisor := provideVaultSyncSupervisor(knowledgeUsecase, vaultFiler, multiProviderEmbedder, entityPipeline, relationExtractor, extractorRegistry, loggatewayLogger)
+	vaultSyncSupervisor := provideVaultSyncSupervisor(knowledgeUsecase, vaultFiler, multiProviderEmbedder, entityPipeline, relationExtractor, extractorRegistry, v2Bus, loggatewayLogger)
 	app := newApp(logger, loggatewayLogger, pipeline, arg, grpcServer, httpServer, wsServer, eventBusSideConsumers, infra, memoryDataMigrationWorker, agentUsecase, teamUsecase, organizationUsecase, dataData, sessionStatusGuard, orchestrationCache, sessionUsecase, mcpServerUsecase, chatService, spiritTeamUsecase, teamStarter, lifecycleManager, wsv2Subscriber, trpcBuilderDeps, knowledgeService, vaultSyncSupervisor, multiProviderEmbedder, channelGateCards, agentBridgeService, sandboxManager, lifecycle, lifecycle, teamService, plugintrpcRuntime)
 	watchRunner := provideSkillWatchRunner(skillUsecase, skillUsecase, systemSettingRepo, monitorBus, monitorUsecase, loggatewayLogger)
 	l4GraphWriter := provideL4GraphWriter(dataData, l4CascadeUsecase, loggatewayLogger)
@@ -2467,11 +2467,17 @@ func provideVaultSyncSupervisor(
 	entityPipeline *knowledge.EntityPipeline,
 	relationExtractor *knowledge.RelationExtractor,
 	registry *knowledge.ExtractorRegistry,
+	eventBus biz.EventBus,
 	lg loggateway.Logger,
 ) *knowledge.VaultSyncSupervisor {
 	engine := knowledge2.NewSyncEngine(lg)
 	applier := knowledge.NewVaultSyncApplier(uc, filer, embedder, lg)
 	applier.SetCompiler(knowledge.NewBodyCompiler(registry))
+	// G-32 T5 决策9：vault 通道 diff 帧接线（v2 SystemNoticeEvent；与 wire.go
+	// 手工镜像同 hunk——本文件自包含约定）。
+	applier.SetDiffStatsHook(func(collectionID, docID string, stats knowledge2.ChunkDiffStats) {
+		service.PublishKnowledgeChunksDiffFrame(eventBus, collectionID, docID, stats, "vault")
+	})
 	if entityPipeline != nil {
 		applier.SetEntityHook(func(collectionID, docID string) {
 			safego.Go(appctx.Ctx(), "knowledge.entity_pipeline", func() {

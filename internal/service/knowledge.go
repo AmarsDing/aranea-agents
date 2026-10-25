@@ -788,7 +788,8 @@ func (s *KnowledgeService) runIngestPipeline(
 			return
 		}
 
-		if _, err := uc.CommitIndexedDocument(ingestCtx, col.ID, doc.ID, bizChunks, 1); err != nil {
+		commitStats, err := uc.CommitIndexedDocument(ingestCtx, col.ID, doc.ID, bizChunks, 1)
+		if err != nil {
 			// 二轮复核 F5 收口：并发/陈旧认领竞态的败者不得回写 error——无条件
 			// UPDATE 会把胜者已提交的 indexed 终态踩回 error 并清 chunk_count，
 			// 前端以最后一帧为终（error），且下次重试再 commit 使 collection
@@ -816,6 +817,8 @@ func (s *KnowledgeService) runIngestPipeline(
 				event.P("error", err.Error()))
 			return
 		}
+		// G-32 T5 决策9：diff 帧先于终态 indexed 帧（增量提示在前，终态真值兜底）。
+		s.publishKnowledgeChunksDiff(col.ID, doc.ID, commitStats, "ingest")
 		// SP1-C：team/上传文档与 local 同管线——块级双链索引（块/refs + explicit 投影）。
 		// 失败降级记日志，不回滚摄取主流程（最终一致，下次重建自愈）。
 		if err := uc.RebuildBlockIndex(ingestCtx, col.ID, doc.ID, params.Text); err != nil {
@@ -1219,6 +1222,45 @@ func (s *KnowledgeService) publishKnowledgeIngest(collectionID, docID, status, e
 	}
 	msg := "Knowledge document ingest: " + status
 	s.eventBus.Publish(context.Background(), biz.NewSystemNoticeEvent("", "knowledge_ingest", msg, meta))
+}
+
+// KnowledgeChunksDiffMeta knowledge_chunks_diff 帧 meta 键集中央构造（G-32 T5，
+// 设计档 §G-32 决策9）：服务层方法与 wire 层 vault 钩子共用同一份键集定义——
+// 键集改动唯一改这里+契钉同步（键集+逐值相等钳制，不容分散复制）。
+// chunk_count=当前子块总行数（ChildAdded+ChildKept；子块口径与文档/集合
+// 台账一致，不含 parent 语境行——T5 终审 wf_f76a9b06-996 R-2 对位决策：
+// added/deleted/kept 三键仍为全行权威口径透传，仅 chunk_count 收敛子块）。
+func KnowledgeChunksDiffMeta(collectionID, docID string, stats bizknowledge.ChunkDiffStats, producer string) map[string]any {
+	return map[string]any{
+		"event_type":    "knowledge_chunks_diff",
+		"collection_id": collectionID,
+		"document_id":   docID,
+		"added":         stats.Added,
+		"deleted":       stats.Deleted,
+		"kept":          stats.Kept,
+		"chunk_count":   stats.ChildAdded + stats.ChildKept,
+		"producer":      producer,
+	}
+}
+
+// PublishKnowledgeChunksDiffFrame 经 eventBus 广播 diff-commit 成功帧（G-32 T5
+// 决策9；v2 SystemNoticeEvent，不持久化，WS-only）。双闸：nil bus 静默；
+// stats.Exact=false（退化顺序写路径/单元 fakes 伪全量）零发布——「repo 不支持
+// DiffStats 时零发布」。与 knowledge_ingest 终态帧并存不冒充；调义=先 diff
+// 帧后终态帧（at-least-once 语义锚：终态帧恒真兜底，diff 帧为增量提示）。
+func PublishKnowledgeChunksDiffFrame(eventBus biz.EventBus, collectionID, docID string, stats bizknowledge.ChunkDiffStats, producer string) {
+	if eventBus == nil || !stats.Exact {
+		return
+	}
+	meta := KnowledgeChunksDiffMeta(collectionID, docID, stats, producer)
+	msg := fmt.Sprintf("Knowledge chunks diff: doc=%s +%d -%d =%d", docID, stats.Added, stats.Deleted, stats.Kept)
+	eventBus.Publish(context.Background(), biz.NewSystemNoticeEvent("", "knowledge_chunks_diff", msg, meta))
+}
+
+// publishKnowledgeChunksDiff 服务层薄包（s.eventBus 自供；publishKnowledgeIngest
+// 对型）。producer 取值域：ingest / reembed / promote / vault。
+func (s *KnowledgeService) publishKnowledgeChunksDiff(collectionID, docID string, stats bizknowledge.ChunkDiffStats, producer string) {
+	PublishKnowledgeChunksDiffFrame(s.eventBus, collectionID, docID, stats, producer)
 }
 
 // --- proto conversion helpers ---
