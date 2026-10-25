@@ -12,6 +12,13 @@ import (
 	"aranea-agents/pkg/loggateway"
 )
 
+// evalStaticEmbedder keeps the pre-P3 deterministic vector regression fixture.
+type evalStaticEmbedder struct{}
+
+func (evalStaticEmbedder) Embed(context.Context, string) ([]float32, error) {
+	return []float32{1, 0, 0, 0}, nil
+}
+
 // evalC3Facts returns every fact row (including invalidated) for the user.
 func evalC3AllFacts(t *testing.T, r *l3FactRepo, userID string) []map[string]any {
 	t.Helper()
@@ -30,10 +37,24 @@ func evalC3AllFacts(t *testing.T, r *l3FactRepo, userID string) []map[string]any
 	return out
 }
 
+// Atom count assertions exclude derived projections and lifecycle controls.
+func evalC3AtomFacts(t *testing.T, r *l3FactRepo, userID string) []map[string]any {
+	t.Helper()
+	facts := evalC3AllFacts(t, r, userID)
+	out := make([]map[string]any, 0, len(facts))
+	for _, f := range facts {
+		if stmt, _ := f["statement"].(string); biz.IsEvalRollupStatement(stmt) || f["source_kind"] == evalControlSource {
+			continue
+		}
+		out = append(out, f)
+	}
+	return out
+}
+
 func evalC3FindFact(t *testing.T, facts []map[string]any, contains string) map[string]any {
 	t.Helper()
 	for _, f := range facts {
-		if stmt, _ := f["statement"].(string); strings.Contains(stmt, contains) {
+		if stmt, _ := f["statement"].(string); strings.Contains(stmt, contains) && !biz.IsEvalRollupStatement(stmt) {
 			return f
 		}
 	}
@@ -59,7 +80,7 @@ func TestEvalStore_AtomizesMultiSentenceChinese_PG(t *testing.T) {
 	if stored != 1 {
 		t.Fatalf("stored=%d, want 1 (messages, not atoms)", stored)
 	}
-	facts := evalC3AllFacts(t, r, "u-atom")
+	facts := evalC3AtomFacts(t, r, "u-atom")
 	if len(facts) != 3 {
 		t.Fatalf("facts=%d, want 3 atoms", len(facts))
 	}
@@ -89,7 +110,7 @@ func TestEvalStore_AtomizesMultiSentenceChinese_PG(t *testing.T) {
 	if stored != 1 {
 		t.Fatalf("replay stored=%d, want 1", stored)
 	}
-	if got := len(evalC3AllFacts(t, r, "u-atom")); got != 3 {
+	if got := len(evalC3AtomFacts(t, r, "u-atom")); got != 3 {
 		t.Fatalf("replay facts=%d, want 3 (fingerprint upsert idempotency)", got)
 	}
 }
@@ -103,17 +124,17 @@ func TestEvalStore_RelativeDateSupersede_PG(t *testing.T) {
 	store := NewEvalMemoryStore(r.data, nil, loggateway.NewNoop())
 	ctx := context.Background()
 	if _, err := store.AddMessages(ctx, "u-rd", "s-rd", []biz.EvalMessage{
-		{Role: "user", Content: "我最喜欢的旅行城市是杭州", MessageID: "m1"},
+		{Role: "user", Content: "我最喜欢的旅行城市是杭州", MessageID: "m1", Timestamp: "2025-05-01T09:00:00Z"},
 	}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := store.AddMessages(ctx, "u-rd", "s-rd", []biz.EvalMessage{
-		{Role: "user", Content: "我上个月把最喜欢的旅行城市改成上海了", MessageID: "m2"},
+		{Role: "user", Content: "我上个月把最喜欢的旅行城市改成上海了", MessageID: "m2", Timestamp: "2025-05-07T09:00:00Z"},
 	}); err != nil {
 		t.Fatal(err)
 	}
 
-	facts := evalC3AllFacts(t, r, "u-rd")
+	facts := evalC3AtomFacts(t, r, "u-rd")
 	if len(facts) != 2 {
 		t.Fatalf("facts=%d, want 2", len(facts))
 	}
@@ -151,9 +172,7 @@ func TestEvalStore_RelativeDateSupersede_PG(t *testing.T) {
 	}
 
 	// event_dates resolves 上个月 → first day of the previous month.
-	nowUTC := time.Now().UTC()
-	y, mo, _ := nowUTC.Date()
-	wantDay := time.Date(y, mo-1, 1, 0, 0, 0, 0, time.UTC).Format("2006-01-02")
+	wantDay := "2025-04-01"
 	dates, _ := meta["event_dates"].([]any)
 	if len(dates) != 1 || dates[0] != wantDay {
 		t.Fatalf("event_dates=%v, want [%s]", meta["event_dates"], wantDay)
@@ -176,9 +195,13 @@ func TestEvalStore_RelativeDateSupersede_PG(t *testing.T) {
 // TestEvalStore_ChronologicalOrder_PG covers A3/Q6 chronological mode: a
 // 顺序/先后 query orders evidence by the resolved evidence day ascending
 // (event_dates win over valid_from) and the Q9 evidence prefix is attached.
+// AMC P3 评审 #0/#6：模式经 VIR 路由，测试按新契约接确定性嵌入 double
+// （查询句本身是 chronological pos 锚点，锚表直接供向量）。
 func TestEvalStore_ChronologicalOrder_PG(t *testing.T) {
 	r := setupL3FTSTestRepo(t, nil, 0)
-	store := NewEvalMemoryStore(r.data, nil, loggateway.NewNoop())
+	emb := newEvalIntentTestEmbedder(nil)
+	store := NewEvalMemoryStore(r.data, emb, loggateway.NewNoop()).(*evalMemoryStore)
+	store.syncer = nil
 	ctx := context.Background()
 	if _, err := store.AddMessages(ctx, "u-chron", "s-chron", []biz.EvalMessage{
 		{Role: "user", Content: "昨天我搬家到了上海", MessageID: "m1", Timestamp: "2025-03-05T08:00:00Z"},
@@ -239,10 +262,14 @@ func TestEvalStore_DateRangeFilter_PG(t *testing.T) {
 }
 
 // TestEvalStore_AggregateAppendsEpisodes_PG covers A5/Q8a: aggregate mode
-// attaches the user's recent L2 episodes as evidence (deduped by id).
+// retains both sessions while avoiding transcripts already covered by L3.
 func TestEvalStore_AggregateAppendsEpisodes_PG(t *testing.T) {
 	r := setupL3FTSTestRepo(t, nil, 0)
-	store := NewEvalMemoryStore(r.data, nil, loggateway.NewNoop())
+	emb := newEvalIntentTestEmbedder(map[string][]float32{
+		"总结一下我最喜欢的水果和饮料": evalIntentTestAxis(evalIntentAxesTable[biz.EvalIntentAggregate], 1),
+	})
+	store := NewEvalMemoryStore(r.data, emb, loggateway.NewNoop()).(*evalMemoryStore)
+	store.syncer = nil
 	ctx := context.Background()
 	if _, err := store.AddMessages(ctx, "u-agg", "s-agg-a", []biz.EvalMessage{
 		{Role: "user", Content: "我最喜欢的水果是芒果", MessageID: "m1"},
@@ -265,11 +292,11 @@ func TestEvalStore_AggregateAppendsEpisodes_PG(t *testing.T) {
 			l2Count++
 		}
 	}
-	if l2Count != 2 {
-		t.Fatalf("l2 episodes attached=%d, want 2 (one per session): %v", l2Count, evalContents(items))
+	if l2Count > 2 {
+		t.Fatalf("duplicate L2 episodes attached=%d: %v", l2Count, evalContents(items))
 	}
 	joined := evalContents(items)
-	if !strings.Contains(joined, "芒果") || !strings.Contains(joined, "红茶") {
+	if !strings.Contains(joined, "芒果") || !strings.Contains(joined, "红茶") || !strings.Contains(joined, "sess-s-agg-a]") || !strings.Contains(joined, "sess-s-agg-b]") {
 		t.Fatalf("aggregate evidence incomplete: %s", joined)
 	}
 }
@@ -312,9 +339,11 @@ func TestEvalStore_AggregateEpisodeDedup(t *testing.T) {
 
 // TestEvalStore_ReplayDoesNotResurrectSuperseded_PG covers AMC C3 修复
 // #0/#4（红线「被 supersede 的旧值永不回流」）：平台重试重放旧请求时——
-//   (a) 已墓碑的旧行不得被指纹 upsert 起死（valid_until 保留）；
-//   (b) 重放的旧语句不得经同槽通道再次失效事件时间更晚的新行（时序守卫）；
-//   (c) 新行 metadata.previous_values 审计留痕不得被重放抹掉。
+//
+//	(a) 已墓碑的旧行不得被指纹 upsert 起死（valid_until 保留）；
+//	(b) 重放的旧语句不得经同槽通道再次失效事件时间更晚的新行（时序守卫）；
+//	(c) 新行 metadata.previous_values 审计留痕不得被重放抹掉。
+//
 // 该测试在修复前于 (a)/(b) 均失败。
 func TestEvalStore_ReplayDoesNotResurrectSuperseded_PG(t *testing.T) {
 	r := setupL3FTSTestRepo(t, nil, 0)
@@ -396,7 +425,7 @@ func TestEvalStore_SameRequestSupersedesEarlierMessage_PG(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	facts := evalC3AllFacts(t, r, "u-sbr")
+	facts := evalC3AtomFacts(t, r, "u-sbr")
 	if len(facts) != 2 {
 		t.Fatalf("facts=%d, want 2", len(facts))
 	}
@@ -435,7 +464,7 @@ func TestEvalStore_PerAtomEventDates_PG(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	facts := evalC3AllFacts(t, r, "u-pad")
+	facts := evalC3AtomFacts(t, r, "u-pad")
 	if len(facts) != 2 {
 		t.Fatalf("facts=%d, want 2 atoms", len(facts))
 	}
@@ -450,32 +479,6 @@ func TestEvalStore_PerAtomEventDates_PG(t *testing.T) {
 		dates, _ := meta["event_dates"].([]any)
 		if len(dates) != 1 || dates[0] != want {
 			t.Fatalf("atom %q event_dates=%v, want [%s]", kw, meta["event_dates"], want)
-		}
-	}
-}
-
-// TestHasEvalCorrectionCue_Tightened covers AMC C3 修复 #8：裸「改」收紧为
-// 明确改口句式——改变/改天/改善 不再触发向量矛盾扫描。
-func TestHasEvalCorrectionCue_Tightened(t *testing.T) {
-	t.Parallel()
-	cases := []struct {
-		stmt string
-		want bool
-	}{
-		{"我把城市改成上海了", true},
-		{"不对，我没去过北京", true},
-		{"其实我记错了", true},
-		{"不是杭州而是上海", true},
-		{"Actually I have already moved", true},
-		{"天气突然改变了", false},
-		{"我们改天再约", false},
-		{"最近伙食改善了", false},
-		{"routine check passed", false},
-		{"", false},
-	}
-	for _, tc := range cases {
-		if got := HasEvalCorrectionCue(tc.stmt); got != tc.want {
-			t.Errorf("HasEvalCorrectionCue(%q) = %v, want %v", tc.stmt, got, tc.want)
 		}
 	}
 }
@@ -508,8 +511,8 @@ func TestEvalStore_MaskEvidence_PG(t *testing.T) {
 	if !strings.Contains(joined, "110101********1234") || strings.Contains(joined, "110101199001011234") {
 		t.Fatalf("id number not masked: %s", joined)
 	}
-	if !strings.Contains(joined, "alice@example.com") {
-		t.Fatalf("email must never be masked: %s", joined)
+	if strings.Contains(joined, "alice@example.com") || !strings.Contains(joined, "[email redacted]") {
+		t.Fatalf("unrequested email must be masked: %s", joined)
 	}
 
 	items, err = store.SearchMemories(ctx, "u-mask", "用户的手机号是多少", 10)
@@ -521,22 +524,24 @@ func TestEvalStore_MaskEvidence_PG(t *testing.T) {
 	}
 }
 
-// evalStaticEmbedder is a deterministic biz.EmbeddingService double for the
-// vector-correction path (the canned vector hits come from fakeVectorStore).
-type evalStaticEmbedder struct{}
-
-func (evalStaticEmbedder) Embed(context.Context, string) ([]float32, error) {
-	return []float32{1, 0, 0, 0}, nil
-}
-
+// AMC P3 VIR: the former evalStaticEmbedder (uniform {1,0,0,0}) has been
+// replaced by newEvalIntentTestEmbedder (memory_eval_intent_test.go), a
+// router-aware double putting each intent's anchors on its own basis axis so
+// biz.EvalIntentRouter.Match routes statements deterministically. Statement
+// overrides below pin each PG scenario's intent routing.
+//
 // TestEvalStore_VectorCorrectionSupersedes_PG covers A4/Q7: with an embedder
-// wired, a correction-cued statement invalidates a semantically-near older
+// wired, a correction-intent statement invalidates a semantically-near older
 // fact (cosine >= 0.82) even across different preference slots; a sub-threshold
 // hit must invalidate nothing.
 func TestEvalStore_VectorCorrectionSupersedes_PG(t *testing.T) {
 	r := setupL3FTSTestRepo(t, nil, 0)
 	fvs := &fakeVectorStore{}
-	store := NewEvalMemoryStore(r.data, evalStaticEmbedder{}, loggateway.NewNoop()).(*evalMemoryStore)
+	emb := newEvalIntentTestEmbedder(map[string][]float32{
+		// 评审 #1：意图路由比对 stripEvalRolePrefix 后的裸文本，键必须去前缀。
+		"Actually, I hate blue now": evalIntentTestAxis(evalIntentAxesTable[biz.EvalIntentCorrection], 1),
+	})
+	store := NewEvalMemoryStore(r.data, emb, loggateway.NewNoop()).(*evalMemoryStore)
 	store.facts = newL3FactRepo(r.data, fvs)
 	store.syncer = nil
 	ctx := context.Background()
@@ -591,5 +596,393 @@ func TestEvalStore_VectorCorrectionSupersedes_PG(t *testing.T) {
 	oldLo = evalC3FindFact(t, loFacts, "favorite color is blue")
 	if vu, _ := oldLo["valid_until"].(string); vu != "" {
 		t.Fatalf("sub-threshold vector hit invalidated old fact: %v", oldLo)
+	}
+}
+
+// TestEvalStore_ForgetCueVectorSupersede_PG covers AMC P3 / D3：遗忘请求经
+// 向量近邻通道失效旧事实；假设式遗忘（如果我忘了…就…）与强化式说法
+// （don't forget）绝不能触发失效。AMC P3 VIR：遗忘意图由路由器判定，强化
+// 句由反向锚点压制（don't forget → forget 轴 -1 方向），假设句仍由
+// biz.IsHypotheticalStatement 形状守卫拦截。
+func TestEvalStore_ForgetCueVectorSupersede_PG(t *testing.T) {
+	r := setupL3FTSTestRepo(t, nil, 0)
+	fvs := &fakeVectorStore{}
+	emb := newEvalIntentTestEmbedder(map[string][]float32{
+		// 评审 #1：意图路由比对 stripEvalRolePrefix 后的裸文本，键必须去前缀。
+		"please forget my old phone number": evalIntentTestAxis(evalIntentAxesTable[biz.EvalIntentForget], 1),
+		// 假设式遗忘：同样命中 forget 意图——只剩假设守卫能拦截（守卫回归面）。
+		"如果我把零食忘了就提醒我": evalIntentTestAxis(evalIntentAxesTable[biz.EvalIntentForget], 1),
+		// 强化式说法：与 neg 锚点同向，路由器必须判否。
+		"please don't forget my birthday": evalIntentTestAxis(evalIntentAxesTable[biz.EvalIntentForget], -1),
+	})
+	store := NewEvalMemoryStore(r.data, emb, loggateway.NewNoop()).(*evalMemoryStore)
+	store.facts = newL3FactRepo(r.data, fvs)
+	store.syncer = nil
+	ctx := context.Background()
+
+	// 场景 A：显式遗忘走持久化控制通道，历史查询也不得恢复目标。
+	if _, err := store.AddMessages(ctx, "u-forget", "s-forget", []biz.EvalMessage{
+		{Role: "user", Content: "My old phone number is 13800001111", MessageID: "m1"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	factsA := evalC3AllFacts(t, r, "u-forget")
+	oldA := evalC3FindFact(t, factsA, "old phone number is 138")
+	oldAID, _ := oldA["id"].(string)
+	fvs.hits = []vector.VectorHit{{ID: oldAID, Score: 0.9}}
+	if _, err := store.AddMessages(ctx, "u-forget", "s-forget", []biz.EvalMessage{
+		{Role: "user", Content: "please forget my old phone number", MessageID: "m2"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for _, q := range []string{"What is my old phone number?", "What was my old phone number previously?", "Summarize all conversations"} {
+		items, err := store.SearchMemories(ctx, "u-forget", q, 100)
+		if err != nil || strings.Contains(evalContents(items), "13800001111") || strings.Contains(evalContents(items), "forget my old phone") {
+			t.Fatalf("forgotten source or control command leaked: %s %v", evalContents(items), err)
+		}
+	}
+	policies, err := store.evalMemoryPolicies(ctx, "u-forget")
+	if err != nil || len(policies) != 1 || policies[0].Mode != biz.EvalControlForget {
+		t.Fatalf("missing durable forget control: %+v %v", policies, err)
+	}
+
+	// 场景 B：假设式遗忘（如果…就…）绝不失效旧事实。
+	if _, err := store.AddMessages(ctx, "u-forget-hyp", "s-forget-hyp", []biz.EvalMessage{
+		{Role: "user", Content: "我最喜欢的零食是薯片", MessageID: "m1"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	factsB := evalC3AllFacts(t, r, "u-forget-hyp")
+	oldB := evalC3FindFact(t, factsB, "零食是薯片")
+	oldBID, _ := oldB["id"].(string)
+	fvs.hits = []vector.VectorHit{{ID: oldBID, Score: 0.9}}
+	if _, err := store.AddMessages(ctx, "u-forget-hyp", "s-forget-hyp", []biz.EvalMessage{
+		{Role: "user", Content: "如果我把零食忘了就提醒我", MessageID: "m2"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	factsB = evalC3AllFacts(t, r, "u-forget-hyp")
+	oldB = evalC3FindFact(t, factsB, "零食是薯片")
+	if vu, _ := oldB["valid_until"].(string); vu != "" {
+		t.Fatalf("hypothetical forget must not invalidate: %v", oldB)
+	}
+
+	// 场景 C：强化式说法（don't forget）不是遗忘请求，旧事实必须存活。
+	if _, err := store.AddMessages(ctx, "u-forget-keep", "s-forget-keep", []biz.EvalMessage{
+		{Role: "user", Content: "my birthday is May 1", MessageID: "m1"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	factsC := evalC3AllFacts(t, r, "u-forget-keep")
+	oldC := evalC3FindFact(t, factsC, "birthday is May 1")
+	oldCID, _ := oldC["id"].(string)
+	fvs.hits = []vector.VectorHit{{ID: oldCID, Score: 0.9}}
+	if _, err := store.AddMessages(ctx, "u-forget-keep", "s-forget-keep", []biz.EvalMessage{
+		{Role: "user", Content: "please don't forget my birthday", MessageID: "m2"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	factsC = evalC3AllFacts(t, r, "u-forget-keep")
+	oldC = evalC3FindFact(t, factsC, "birthday is May 1")
+	if vu, _ := oldC["valid_until"].(string); vu != "" {
+		t.Fatalf("reinforcement phrasing must not invalidate: %v", oldC)
+	}
+}
+
+// TestEvalStore_NumericDigest_PG covers AMC P3-c / G4：同键主题数值序列滚动
+// digest 的端到端生命周期——
+//
+//	(a) 多天同主题观测聚成一条 active digest（历史轮转行带 valid_until）；
+//	(b) 计数/极值/首末日/趋势由写侧滚动维护且 canonical 行可解析回放；
+//	(c) 平台回放过期观测时 counters 不倒卷（时序守卫，C3 #0/#4 同思路）；
+//	(d) trend 模式查询把 digest 行置顶返回（置顶 + floor 豁免同验证）。
+func TestEvalStore_NumericDigest_PG(t *testing.T) {
+	r := setupL3FTSTestRepo(t, nil, 0)
+	emb := newEvalIntentTestEmbedder(map[string][]float32{
+		"按这个趋势我下周的步数大概是多少": evalIntentTestAxis(evalIntentAxesTable[biz.EvalIntentTrend], 1),
+	})
+	store := NewEvalMemoryStore(r.data, emb, loggateway.NewNoop()).(*evalMemoryStore)
+	store.syncer = nil
+	ctx := context.Background()
+
+	add := func(content, ts, msgID string) {
+		t.Helper()
+		if _, err := store.AddMessages(ctx, "u-num", "s-num", []biz.EvalMessage{
+			{Role: "user", Content: content, MessageID: msgID, Timestamp: ts},
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	add("今天步数3200步", "2025-05-01T08:00:00Z", "m1")
+	add("今天步数4500步", "2025-05-03T08:00:00Z", "m2")
+	add("今天步数2800步", "2025-05-05T08:00:00Z", "m3")
+	add("今天步数5600步", "2025-05-07T08:00:00Z", "m4")
+
+	// (a)(b) 恰好一条 active digest，counter 全对，canonical 行 round-trip。
+	activeDigest := func() biz.EvalNumSeries {
+		t.Helper()
+		var actives []biz.EvalNumSeries
+		rotations := 0
+		for _, f := range evalC3AllFacts(t, r, "u-num") {
+			stmt, _ := f["statement"].(string)
+			if !strings.HasPrefix(stmt, "[series-digest: 步数]") {
+				continue
+			}
+			if vu, _ := f["valid_until"].(string); vu != "" {
+				rotations++
+				continue
+			}
+			series, ok := biz.ParseEvalSeriesDigest(stmt)
+			if !ok {
+				t.Fatalf("active digest row does not round-trip: %q", stmt)
+			}
+			actives = append(actives, series)
+		}
+		if len(actives) != 1 {
+			t.Fatalf("active digest rows=%d, want exactly 1", len(actives))
+		}
+		if rotations == 0 {
+			t.Fatal("expected rotated (invalidated) digest rows from rolling updates")
+		}
+		return actives[0]
+	}
+	s := activeDigest()
+	if s.Count != 4 || s.Last != 5600 || s.FirstValue != 3200 || s.Min != 2800 || s.Max != 5600 {
+		t.Fatalf("digest counters wrong: %+v", s)
+	}
+	if s.FirstDay != "2025-05-01" || s.LastDay != "2025-05-07" {
+		t.Fatalf("digest day window wrong: %+v", s)
+	}
+
+	// (c) 回放过期观测（day1）：counters/窗口一律不动。
+	add("今天步数3200步", "2025-05-01T08:00:00Z", "m1-replay")
+	s = activeDigest()
+	if s.Count != 4 || s.Last != 5600 || s.LastDay != "2025-05-07" {
+		t.Fatalf("stale replay rewound the digest: %+v", s)
+	}
+
+	// (d) trend 查询：digest 行置顶。
+	items, err := store.SearchMemories(ctx, "u-num", "按这个趋势我下周的步数大概是多少", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) == 0 {
+		t.Fatal("trend query returned no evidence")
+	}
+	if !strings.Contains(items[0].Content, "[series-digest: 步数]") {
+		t.Fatalf("trend query must pin the digest row first, got: %q", items[0].Content)
+	}
+	if !strings.Contains(items[0].Content, "count=4") {
+		t.Fatalf("pinned digest missing counters: %q", items[0].Content)
+	}
+}
+
+// TestEvalStore_ProfileDigestRollup_PG covers AMC P3-a（F1 摘要/长历史全局
+// 综合）：确定性 rollup 写侧+读侧端到端。
+//
+//	(a) profile digest 恰一条 active 行、分区正确、不回收已失效旧值；
+//	(b) 改口后 slot-history 行成链（旧值在前且带"已失效"标注）；
+//	(c) aggregate 查询经 VIR 路由后 rollup 行置顶（两种 rollup 行占据前二，
+//	    普通事实一律排后）。
+func TestEvalStore_ProfileDigestRollup_PG(t *testing.T) {
+	r := setupL3FTSTestRepo(t, nil, 0)
+	// 查询句本身是 aggregate 正向锚点（锚表直接供向量）；改口走词级 cue
+	// 通道（同总成 supersede），无需向量近邻。
+	emb := newEvalIntentTestEmbedder(nil)
+	store := NewEvalMemoryStore(r.data, emb, loggateway.NewNoop()).(*evalMemoryStore)
+	store.syncer = nil
+	ctx := context.Background()
+
+	add := func(content, ts, msgID string) {
+		t.Helper()
+		if _, err := store.AddMessages(ctx, "u-prof", "s-prof", []biz.EvalMessage{
+			{Role: "user", Content: content, MessageID: msgID, Timestamp: ts},
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	add("我叫张三", "2025-03-01T08:00:00Z", "m1")
+	add("我最喜欢的旅行城市是杭州", "2025-04-01T08:00:00Z", "m2")
+	add("我上个月把最喜欢的旅行城市改成上海了", "2025-05-01T08:00:00Z", "m3")
+
+	activeByPrefix := func(prefix string) []string {
+		t.Helper()
+		var stmts []string
+		for _, f := range evalC3AllFacts(t, r, "u-prof") {
+			stmt, _ := f["statement"].(string)
+			if !strings.HasPrefix(stmt, prefix) {
+				continue
+			}
+			if vu, _ := f["valid_until"].(string); vu != "" {
+				continue
+			}
+			stmts = append(stmts, stmt)
+		}
+		return stmts
+	}
+
+	// (a) profile digest：恰一条 active、分区齐、旧值（杭州）已失效不入 digest。
+	digests := activeByPrefix("[profile-digest]")
+	if len(digests) != 1 {
+		t.Fatalf("active profile digests=%d, want exactly 1: %v", len(digests), digests)
+	}
+	d := digests[0]
+	if !strings.Contains(d, "身份: 我叫张三") {
+		t.Fatalf("digest missing identity section: %q", d)
+	}
+	if !strings.Contains(d, "偏好: ") || !strings.Contains(d, "上海") {
+		t.Fatalf("digest missing preference section with current value: %q", d)
+	}
+	if strings.Contains(d, "杭州") {
+		t.Fatalf("superseded value leaked into profile digest: %q", d)
+	}
+
+	// (b) slot-history：恰一条 active、链序正确、旧值带"已失效"标注。
+	histories := activeByPrefix("[slot-history: favorite:旅行城市]")
+	if len(histories) != 1 {
+		t.Fatalf("active slot histories=%d, want exactly 1: %v", len(histories), histories)
+	}
+	h := histories[0]
+	iOld, iNew := strings.Index(h, "杭州"), strings.Index(h, "上海")
+	if iOld < 0 || iNew < 0 || iOld > iNew {
+		t.Fatalf("chain must order old value before new: %q", h)
+	}
+	if !strings.Contains(h, "已失效") || !strings.Contains(h, " → ") {
+		t.Fatalf("chain markers wrong: %q", h)
+	}
+	// 身份/name 槽单值不成链。
+	if got := activeByPrefix("[slot-history: name]"); len(got) != 0 {
+		t.Fatalf("single-value slot must not render a history row: %v", got)
+	}
+
+	// (c) aggregate 查询（VIR 路由，锚点原句）：两条 rollup 行占据前二，
+	// 普通事实一律排后。
+	items, err := store.SearchMemories(ctx, "u-prof", "总结一下我们聊了什么", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) < 2 {
+		t.Fatalf("aggregate query returned %d items, want >=2", len(items))
+	}
+	p0, p1 := "", ""
+	if len(items) > 0 {
+		p0 = items[0].Content
+	}
+	if len(items) > 1 {
+		p1 = items[1].Content
+	}
+	isRollup := map[string]bool{}
+	for i, c := range []string{p0, p1} {
+		isRollup[c] = biz.IsEvalProfileDigestStatement(c) || biz.IsEvalSlotHistoryStatement(c)
+		if !isRollup[c] {
+			t.Fatalf("items[%d] must be a rollup row, got: %q", i, c)
+		}
+	}
+	if p0 == p1 {
+		t.Fatalf("two distinct rollup rows must lead: %q vs %q", p0, p1)
+	}
+}
+
+// TestEvalStore_RelationalChain_PG covers AMC P3-d（B1/B3 证据链）读侧：
+// Relational 查询（VIR 路由，锚点原句）命中集复用 Q6 时序语义按事件日升序
+// 成链输出。判别点：晚事件「合租室友」与查询词面重叠最高（"我和老王"+关
+// 系词），纯分数排序会把它置顶；链式排序必须仍让早期事件先行。
+func TestEvalStore_RelationalChain_PG(t *testing.T) {
+	r := setupL3FTSTestRepo(t, nil, 0)
+	emb := newEvalIntentTestEmbedder(nil)
+	store := NewEvalMemoryStore(r.data, emb, loggateway.NewNoop()).(*evalMemoryStore)
+	store.syncer = nil
+	ctx := context.Background()
+	if _, err := store.AddMessages(ctx, "u-rel", "s-rel", []biz.EvalMessage{
+		{Role: "user", Content: "老王介绍我去他们公司上班", MessageID: "m1", Timestamp: "2025-04-01T08:00:00Z"},
+		{Role: "user", Content: "老王邀我参加了他的婚礼", MessageID: "m2", Timestamp: "2025-04-03T08:00:00Z"},
+		{Role: "user", Content: "我和老王现在合租在一起也是多年好友", MessageID: "m3", Timestamp: "2025-04-05T08:00:00Z"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	items, err := store.SearchMemories(ctx, "u-rel", "我和老王是什么关系", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	idxJob, idxWedding, idxMate := -1, -1, -1
+	for i, it := range items {
+		if strings.Contains(it.Content, "上班") && idxJob < 0 {
+			idxJob = i
+		}
+		if strings.Contains(it.Content, "婚礼") && idxWedding < 0 {
+			idxWedding = i
+		}
+		if strings.Contains(it.Content, "合租") && idxMate < 0 {
+			idxMate = i
+		}
+	}
+	if idxJob < 0 || idxWedding < 0 || idxMate < 0 {
+		t.Fatalf("chain evidence incomplete, job=%d wedding=%d mate=%d: %s",
+			idxJob, idxWedding, idxMate, evalContents(items))
+	}
+	if !(idxJob < idxWedding && idxWedding < idxMate) {
+		t.Fatalf("relational chain must order evidence by day asc, job@%d wedding@%d mate@%d: %s",
+			idxJob, idxWedding, idxMate, evalContents(items))
+	}
+}
+
+// TestEvalStore_DigestSurvivesHotUserWindow_PG covers AMC P3 评审 C1 (high)：
+// 数值 digest 的查找必须按系列键前缀定向（per-key prefix lookup），而不是
+// 共享的 40 行 updated_at 窗口。热点用户连续写入 >40 条其它事实后，旧的
+// 步数 digest 会被挤出窗口——若 found=false 则 counters 清零重滚、同一
+// 序列出现两条 active digest。本用例先写一条步数事实，再写 45 条无数字
+// 填充事实把 digest 挤出旧窗口边界，然后写第二条步数事实：必须命中既有
+// digest 滚动成 count=2 且全库恰好一条 active digest 行。
+func TestEvalStore_DigestSurvivesHotUserWindow_PG(t *testing.T) {
+	r := setupL3FTSTestRepo(t, nil, 0)
+	store := NewEvalMemoryStore(r.data, nil, loggateway.NewNoop())
+	ctx := context.Background()
+	if _, err := store.AddMessages(ctx, "u-hot", "s-hot", []biz.EvalMessage{
+		{Role: "user", Content: "今天步数3200步", MessageID: "m-walk-1", Timestamp: "2025-05-01T08:00:00Z"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// 45 条无数字填充事实：把 digest 挤出 ORDER BY updated_at DESC LIMIT 40
+	// 的共享窗口（评审 C1 复现条件）。
+	letters := "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+	fillers := make([]biz.EvalMessage, 0, 45)
+	for i := 0; i < 45; i++ {
+		code := string(letters[i/26]) + string(letters[i%26])
+		fillers = append(fillers, biz.EvalMessage{
+			Role: "user", Content: "我喜欢风格" + code,
+			MessageID: "m-fill-" + code, Timestamp: "2025-05-02T08:00:00Z",
+		})
+	}
+	if _, err := store.AddMessages(ctx, "u-hot", "s-hot", fillers); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.AddMessages(ctx, "u-hot", "s-hot", []biz.EvalMessage{
+		{Role: "user", Content: "今天步数4500步", MessageID: "m-walk-2", Timestamp: "2025-05-03T08:00:00Z"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// 断言：恰好一条 active 步数 digest，且 counters 是滚动累加（count=2）
+	// 而非清零重滚。
+	facts := evalC3AllFacts(t, r, "u-hot")
+	activeDigests := 0
+	for _, f := range facts {
+		stmt, _ := f["statement"].(string)
+		if !biz.IsEvalSeriesDigestStatement(stmt) || !strings.Contains(stmt, "[series-digest: 步数]") {
+			continue
+		}
+		if u, _ := f["valid_until"].(string); u != "" {
+			continue
+		}
+		activeDigests++
+		if !strings.Contains(stmt, "count=2") {
+			t.Fatalf("digest must roll forward to count=2 (counters reset = C1 starvation), got %q", stmt)
+		}
+		if !strings.Contains(stmt, "mean=3850.0") {
+			t.Fatalf("digest mean must reconcile both observations, got %q", stmt)
+		}
+	}
+	if activeDigests != 1 {
+		t.Fatalf("exactly one active 步数 digest expected, got %d", activeDigests)
 	}
 }

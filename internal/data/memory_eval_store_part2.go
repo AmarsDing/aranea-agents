@@ -30,10 +30,15 @@ func normalizeEvalTimestamp(ts string) string {
 		return t.UTC().Format(time.RFC3339Nano)
 	}
 	if n, err := strconv.ParseInt(ts, 10, 64); err == nil {
-		if n > 1e12 {
+		if n >= 1e11 || n <= -1e11 {
 			return time.UnixMilli(n).UTC().Format(time.RFC3339Nano)
 		}
 		return time.Unix(n, 0).UTC().Format(time.RFC3339Nano)
+	}
+	for _, layout := range []string{"2006-01-02", "2006-01-02 15:04:05", "2006-01-02 15:04", "2006-01-02 15:04:05.999999999Z07:00", "2006-01-02 15:04:05.999999999Z07"} {
+		if t, err := time.Parse(layout, ts); err == nil {
+			return t.UTC().Format(time.RFC3339Nano)
+		}
 	}
 	return ""
 }
@@ -103,6 +108,16 @@ func evalDayPart(ts string) string {
 // metadata.event_dates[0] first, then valid_from, then created_at (AMC C3-A
 // Q6/Q9).
 func EvalEvidenceDate(metadataJSON, validFrom, createdAt string) string {
+	var spans struct {
+		Spans []struct {
+			Start string `json:"start"`
+		} `json:"event_spans"`
+	}
+	if json.Unmarshal([]byte(metadataJSON), &spans) == nil && len(spans.Spans) > 0 {
+		if day := evalDayPart(spans.Spans[0].Start); day != "" {
+			return day
+		}
+	}
 	if day := evalEventDatesFirst(metadataJSON); day != "" {
 		return day
 	}
@@ -151,13 +166,22 @@ var (
 	// evalPIIBankCardRe matches 13–19 consecutive-digit card numbers.
 	evalPIIBankCardRe = regexp.MustCompile(`\b\d{13,19}\b`)
 	// evalPIIPhoneRe matches mainland mobile numbers (1[3-9]xxxxxxxxx).
-	evalPIIPhoneRe = regexp.MustCompile(`\b1[3-9]\d{9}\b`)
+	evalPIIPhoneRe     = regexp.MustCompile(`\b1[3-9]\d{9}\b`)
+	evalPIIPassportRe  = regexp.MustCompile(`\b[EGPegp]\d{8}\b`)
+	evalPIICarPlateRe  = regexp.MustCompile(`[京津沪渝冀豫云辽黑湘皖鲁新苏浙赣鄂桂甘晋蒙陕吉闽贵粤青藏川宁琼使领][A-Za-z][·\-]?[A-Za-z0-9]{5}`)
+	evalPIIEmailRe     = regexp.MustCompile(`(?i)[a-z0-9.!#$%&'*+/=?^_` + "`" + `{|}~-]+@[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?\.[a-z]{2,}`)
+	evalPIISSNRe       = regexp.MustCompile(`\b\d{3}-\d{2}-\d{4}\b`)
+	evalPIISecretRe    = regexp.MustCompile(`(?i)(?:api[_ -]?key|access[_ -]?token|password|密码|密钥)\s*(?:[:=：]|\bis\b|是|为)\s*(?:"[^"\r\n]+"|'[^'\r\n]+'|[^\s,;，；。]+)`)
+	evalPIIIntlPhoneRe = regexp.MustCompile(`(?:\+\d{1,3}[ -]?)?(?:\(\d{3}\)|\b\d{3})[ -]?\d{3}[ -]\d{4}\b`)
+	evalPIIE164PhoneRe = regexp.MustCompile(`\+[1-9]\d{7,14}\b`)
+	evalPIIStreetENRe  = regexp.MustCompile(`(?i)\b\d{1,6}\s+(?:[a-z][a-z.'-]*\s+){1,6}(?:street|st|road|rd|avenue|ave|lane|ln|boulevard|blvd|drive|dr|court|ct)\b`)
+	evalPIIStreetCNRe  = regexp.MustCompile(`[\p{Han}]{2,}(?:路|街|巷|弄)\d{1,6}号(?:\d{1,5}室)?`)
 )
 
 func evalQueryAsksAbout(query string, words ...string) bool {
 	q := strings.ToLower(query)
 	for _, w := range words {
-		if strings.Contains(q, w) {
+		if w[0] >= 128 && strings.Contains(q, w) || w[0] < 128 && regexp.MustCompile(`\b`+regexp.QuoteMeta(w)+`\b`).MatchString(q) {
 			return true
 		}
 	}
@@ -167,16 +191,34 @@ func evalQueryAsksAbout(query string, words ...string) bool {
 // MaskEvalEvidence deterministically masks high-entropy identifiers in content
 // when the query does not explicitly ask about that category (AMC C3-A Q9):
 // 18-char ID numbers (middle 8 masked), 1[3-9]xxxxxxxxx phone numbers (middle
-// 4), and 13–19 digit bank card numbers (middle 6+). Emails, addresses and
-// preferences are never masked.
+// 4), bank cards, email addresses and SSNs. Credentials are always redacted.
+// A request for one identifier category does not disclose the other categories.
 func MaskEvalEvidence(content, query string) string {
 	out := content
+	if !evalQueryAsksAbout(query, "address", "住址", "地址", "门牌") {
+		out = evalPIIStreetENRe.ReplaceAllString(out, "[street address redacted]")
+		out = evalPIIStreetCNRe.ReplaceAllString(out, "[street address redacted]")
+	}
+	if !evalQueryAsksAbout(query, "邮箱", "电子邮件", "email", "e-mail") {
+		out = evalPIIEmailRe.ReplaceAllString(out, "[email redacted]")
+	}
+	if !evalQueryAsksAbout(query, "social security", "ssn", "社保号") {
+		out = evalPIISSNRe.ReplaceAllString(out, "***-**-****")
+	}
+	// Credential values are not needed as memory evidence for any query.
+	out = evalPIISecretRe.ReplaceAllStringFunc(out, func(value string) string {
+		i := strings.IndexAny(value, ":=：")
+		if i < 0 {
+			return "[credential redacted]"
+		}
+		return value[:i] + ": [redacted]"
+	})
 	if !evalQueryAsksAbout(query, "身份证", "id number") {
 		out = evalPIIIDCardRe.ReplaceAllStringFunc(out, func(m string) string {
 			return m[:6] + "********" + m[len(m)-4:]
 		})
 	}
-	if !evalQueryAsksAbout(query, "卡号", "card") {
+	if !evalQueryAsksAbout(query, "卡号", "bank card", "credit card", "debit card", "card number") {
 		askID := evalQueryAsksAbout(query, "身份证", "id number")
 		out = evalPIIBankCardRe.ReplaceAllStringFunc(out, func(m string) string {
 			// An 18-digit ID-card-shaped number stays readable when the query
@@ -201,8 +243,29 @@ func MaskEvalEvidence(content, query string) string {
 		})
 	}
 	if !evalQueryAsksAbout(query, "手机号", "电话", "phone") {
+		out = evalPIIE164PhoneRe.ReplaceAllString(out, "[phone redacted]")
+		out = evalPIIIntlPhoneRe.ReplaceAllString(out, "[phone redacted]")
 		out = evalPIIPhoneRe.ReplaceAllStringFunc(out, func(m string) string {
 			return m[:3] + "****" + m[len(m)-4:]
+		})
+	}
+	if !evalQueryAsksAbout(query, "护照", "passport") {
+		out = evalPIIPassportRe.ReplaceAllStringFunc(out, func(m string) string {
+			return m[:1] + "******" + m[len(m)-2:]
+		})
+	}
+	if !evalQueryAsksAbout(query, "车牌", "plate", "license plate") {
+		out = evalPIICarPlateRe.ReplaceAllStringFunc(out, func(m string) string {
+			r := []rune(m)
+			var b strings.Builder
+			for i, c := range r {
+				if i < 2 || c == '·' {
+					b.WriteRune(c)
+				} else {
+					b.WriteRune('*')
+				}
+			}
+			return b.String()
 		})
 	}
 	return out

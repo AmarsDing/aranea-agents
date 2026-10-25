@@ -130,11 +130,18 @@ func main() {
 	lg.Info("memoryeval stopped", loggateway.StepID("memoryeval.shutdown"))
 }
 
-// singleEmbedder adapts knowledge.QueryEmbedder onto biz.EmbeddingService.
-type singleEmbedder struct{ e knowledge.QueryEmbedder }
+// singleEmbedder adapts the knowledge embedder onto biz.EmbeddingService AND
+// biz.EmbeddingBatchService (AMC P3 评审 #4/#7：缺少批路径会让 VIR 锚点建
+// 构与 per-message 原子嵌入退化为逐条串行往返——生产唯一服役 binary 上的
+// 死路径，且违反 Add 热路径延迟契约)。
+type singleEmbedder struct{ e *knowledge.MultiProviderEmbedder }
 
 func (a singleEmbedder) Embed(ctx context.Context, text string) ([]float32, error) {
 	return a.e.EmbedSingle(ctx, text)
+}
+
+func (a singleEmbedder) EmbedBatch(ctx context.Context, texts []string) ([][]float32, error) {
+	return a.e.Embed(ctx, texts)
 }
 
 func envOr(key, def string) string {

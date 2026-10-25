@@ -4,10 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"sort"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 )
@@ -18,7 +21,7 @@ const (
 	evalSessionHopTop   = 5
 	evalSessionHopLimit = 12
 	evalLinkHopTop      = 8
-	evalSupersedeLook   = 40
+	evalSupersedeLook   = 2048
 	evalEpisodeMaxChars = 32768
 	// evalRecallMinScore is the deterministic evidence floor for the eval
 	// search path (AMC C3-A Q9): biz.AdaptiveRecallMinScore treats a
@@ -28,10 +31,7 @@ const (
 	evalRecallMinScore = 0.12
 	// evalAggregateRecentEpisodes is how many recent L2 episodes the
 	// aggregate query mode (总结/总体/overall/…) merges on top of fact hits.
-	evalAggregateRecentEpisodes = 5
-	// evalRangeFactListLimit bounds the user-scoped fact scan used for
-	// date-range filtering.
-	evalRangeFactListLimit = 200
+	evalAggregateRecentEpisodes = 64
 	// evalCorrectionCosine is the minimum cosine similarity between a
 	// correction statement and an older fact for the vector-correction
 	// supersede path (AMC C3-A Q7) to invalidate the old value.
@@ -48,11 +48,15 @@ const (
 // so benchmark evidence stays searchable. Embed index sync is scheduled
 // after the Add response so long histories cannot time out the contract.
 type evalMemoryStore struct {
-	facts    *l3FactRepo
-	episodes *l2EpisodeRepo
-	vec      *biz.MemoryUsecase
-	syncer   biz.MemoryFactIndexSyncer
-	lg       loggateway.Logger
+	facts       *l3FactRepo
+	episodes    *l2EpisodeRepo
+	vec         *biz.MemoryUsecase
+	syncer      biz.MemoryFactIndexSyncer
+	lg          loggateway.Logger
+	emb         biz.EmbeddingService
+	routerMu    sync.Mutex
+	router      *biz.EvalIntentRouter
+	routerErrAt time.Time
 }
 
 var _ biz.EvalMemoryStore = (*evalMemoryStore)(nil)
@@ -68,6 +72,7 @@ func NewEvalMemoryStore(d *Data, emb biz.EmbeddingService, lg loggateway.Logger)
 		facts:    newL3FactRepo(d, d.VectorStore()),
 		episodes: newL2EpisodeRepo(d, d.VectorStore()),
 		lg:       lg.With(loggateway.Domain("memory_eval")),
+		emb:      emb,
 	}
 	if emb != nil {
 		s.vec = biz.NewMemoryUsecase(NewMemoryRepo(d), emb)
@@ -76,14 +81,21 @@ func NewEvalMemoryStore(d *Data, emb biz.EmbeddingService, lg loggateway.Logger)
 	return s
 }
 
-func (s *evalMemoryStore) AddMessages(ctx context.Context, userID, sessionID string, msgs []biz.EvalMessage) (int, error) {
+func (s *evalMemoryStore) addMessages(ctx context.Context, userID, sessionID string, msgs []biz.EvalMessage, indexed *[]evalWrittenFact) (int, error) {
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
 		sessionID = "eval-default"
 	}
 	stored := 0
 	var written []evalWrittenFact
+	var derivedWritten []evalWrittenFact
+	touchedSlots := map[string]struct{}{}
+	changed := false
 	batchIDs := map[string]struct{}{}
+	policies, err := s.evalMemoryPolicies(ctx, userID)
+	if err != nil {
+		return 0, err
+	}
 	for i, m := range msgs {
 		eventAt := normalizeEvalTimestamp(m.Timestamp)
 		anchor := time.Now().UTC()
@@ -91,12 +103,42 @@ func (s *evalMemoryStore) AddMessages(ctx context.Context, userID, sessionID str
 			if t, err := time.Parse(time.RFC3339Nano, eventAt); err == nil {
 				anchor = t
 			}
+			if local, err := time.Parse(time.RFC3339Nano, m.Timestamp); err == nil {
+				anchor = local // Calendar words use the source's own offset.
+			}
 		}
 		// A1/Q4 atomization: split each message into atomic statements, each
 		// atom keeps the role prefix and is classified / superseded / stored
 		// independently; stored still counts messages, not atoms.
 		atoms := biz.SplitEvalStatements(m.Content, biz.EvalMaxStatementAtoms)
+		_, directControl := biz.ParseEvalMemoryDirective(m.Role, m.Content)
+		controlMessage := len(atoms) == 1 && directControl
+		var atomEmbeddings, routeEmbeddings map[int][]float32
+		if !controlMessage && s.emb != nil {
+			statements := make([]string, len(atoms))
+			for j, atom := range atoms {
+				statements[j] = atom
+				if m.Role != "" {
+					statements[j] = m.Role + ": " + atom
+				}
+			}
+			atomEmbeddings, routeEmbeddings = s.embedEvalStatements(ctx, statements)
+		}
+		var headingSpans []biz.EvalDateSpan
 		for j, atom := range atoms {
+			if controlMessage {
+				if directive, ok := biz.ParseEvalMemoryDirective(m.Role, atom); ok {
+					policy, created, err := s.applyEvalMemoryDirective(ctx, userID, sessionID, m, j, directive)
+					if err != nil {
+						return stored, err
+					}
+					if created {
+						policies = append(policies, policy)
+						changed = true
+					}
+					continue
+				}
+			}
 			// AMC C3 修复 #3：相对时间按原子解析（此前只用 atoms[0] 的结果
 			// 复用到全部原子，「…。前天…。」第二枚原子丢失/错配 event_dates，
 			// Q6 区间/时序题与 Q9 前缀全部错位）。
@@ -105,15 +147,36 @@ func (s *evalMemoryStore) AddMessages(ctx context.Context, userID, sessionID str
 			if m.Role != "" {
 				statement = m.Role + ": " + atom
 			}
+			if evalPolicyBlocks(policies, statement, eventAt) {
+				continue
+			}
+			spans := biz.ResolveEvalDateSpans(atom, anchor)
+			if eventAt == "" {
+				spans = evalAbsoluteSpans(atom)
+				atomDates = nil
+			}
+			if heading := biz.EvalDateHeadingSpans(atom, anchor); len(heading) > 0 {
+				if eventAt == "" {
+					heading = evalAbsoluteSpans(atom)
+				}
+				headingSpans = heading
+			} else if len(spans) == 0 && len(headingSpans) > 0 {
+				spans = append([]biz.EvalDateSpan(nil), headingSpans...)
+			}
+			fingerprint := evalOccurrenceFingerprint(userID, sessionID, m, j, statement)
+			if exists, err := s.evalOccurrenceExists(ctx, userID, fingerprint); err != nil {
+				return stored, err
+			} else if exists {
+				continue
+			}
 			kind := biz.ClassifyEvalFactKind(statement)
 			imp := 0.5
 			if kind != "event" {
 				imp = 0.7
 			}
-			prevs, err := s.supersedeContradictions(ctx, userID, kind, statement, eventAt, batchIDs)
+			prevs, validUntil, err := s.supersedeContradictions(ctx, userID, kind, statement, eventAt, batchIDs, atomEmbeddings[j], routeEmbeddings[j])
 			if err != nil {
-				s.lg.Warn("eval supersede skipped",
-					loggateway.StepID("memoryeval.supersede"), loggateway.Err(err))
+				return stored, err
 			}
 			raw, err := s.facts.UpsertFactRow(ctx, biz.FactUpsert{
 				ScopeType:       "user",
@@ -121,6 +184,7 @@ func (s *evalMemoryStore) AddMessages(ctx context.Context, userID, sessionID str
 				UserID:          userID,
 				AgentID:         userID,
 				Statement:       statement,
+				Fingerprint:     fingerprint,
 				FactKind:        kind,
 				Confidence:      1.0,
 				Importance:      imp,
@@ -131,8 +195,9 @@ func (s *evalMemoryStore) AddMessages(ctx context.Context, userID, sessionID str
 				SourceMessageID: m.MessageID,
 				CreatedAt:       eventAt,
 				ValidFrom:       eventAt,
+				ValidUntil:      validUntil,
 				SkipPIIRedact:   true,
-				MetadataJSON:    evalMetadataJSON(sessionID, i, j, atomDates, prevs),
+				MetadataJSON:    evalSourceMetadata(sessionID, i, j, atomDates, prevs, spans, eventAt, anchor.Format(time.RFC3339Nano), statement),
 			})
 			if err != nil {
 				return stored, err
@@ -142,18 +207,39 @@ func (s *evalMemoryStore) AddMessages(ctx context.Context, userID, sessionID str
 				batchIDs[id] = struct{}{}
 			}
 			written = append(written, evalWrittenFact{id: id, raw: raw})
+			changed = true
+			if slot := biz.EvalFactSlot(statement); slot != "" {
+				touchedSlots[slot] = struct{}{}
+			}
+			for _, prev := range prevs {
+				if slot := biz.EvalFactSlot(prev.Statement); slot != "" {
+					touchedSlots[slot] = struct{}{}
+				}
+			}
+			if err := s.upsertNumericDigests(ctx, userID, sessionID, i, j, statement, eventAt, atomDates, batchIDs, &derivedWritten); err != nil {
+				return stored, err
+			}
 		}
 		stored++
 	}
 	if err := s.linkEvalSiblings(ctx, written); err != nil {
-		s.lg.Warn("eval sibling links skipped",
-			loggateway.StepID("memoryeval.links"), loggateway.Err(err))
+		return stored, err
 	}
-	if err := s.upsertEvalEpisode(ctx, userID, sessionID, msgs); err != nil {
-		s.lg.Warn("eval L2 episode skipped",
-			loggateway.StepID("memoryeval.l2"), loggateway.Err(err))
+	if len(written) > 0 {
+		active, err := s.evalActiveWrittenMessages(ctx, userID, written)
+		if err != nil {
+			return stored, err
+		}
+		if err := s.upsertEvalEpisode(ctx, userID, sessionID, active); err != nil {
+			return stored, err
+		}
 	}
-	s.scheduleEmbed(written)
+	if changed {
+		if err := s.rollupEvalDerivedRows(ctx, userID, sessionID, touchedSlots, batchIDs, &derivedWritten); err != nil {
+			return stored, err
+		}
+	}
+	*indexed = append(written, derivedWritten...)
 	return stored, nil
 }
 
@@ -161,16 +247,48 @@ func (s *evalMemoryStore) AddMessages(ctx context.Context, userID, sessionID str
 // (metadata.event_dates[0] else valid_from else created_at) used by the
 // range filter, chronological ordering and the Q9 evidence prefix.
 type evalCollectedItem struct {
-	item biz.EvalMemoryItem
-	day  string
-	sess string
+	item         biz.EvalMemoryItem
+	day          string
+	sess         string
+	raw          []byte
+	spans        []biz.EvalDateSpan
+	sourceTime   string
+	messageIndex int
+	atomIndex    int
+	invalidUntil string
+	semantic     float64
+	relevance    float64
+	kind         string
+	historical   bool
+	evidenceUnit bool
+	support      string
 }
 
-func (c evalCollectedItem) prefix() string { return evalItemPrefix(c.day, c.sess) }
+func (c evalCollectedItem) prefix() string {
+	day := c.day
+	if len(c.spans) > 0 && c.spans[0].Start != c.spans[0].End {
+		day = c.spans[0].Start + ".." + c.spans[0].End
+	}
+	return evalItemPrefix(day, c.sess)
+}
 
-func (s *evalMemoryStore) SearchMemories(ctx context.Context, userID, query string, topK int32) ([]biz.EvalMemoryItem, error) {
+func (s *evalMemoryStore) SearchMemories(ctx context.Context, userID, query string, topK int32, options ...string) ([]biz.EvalMemoryItem, error) {
+	if strings.TrimSpace(userID) == "" {
+		return nil, apierror.BadRequest("MEMORY_EVAL", "user_id is required")
+	}
 	now := time.Now().UTC()
-	qa := biz.AnalyzeEvalQuery(query, now)
+	anchor, known, err := s.evalSearchAnchor(ctx, userID, now)
+	if err != nil {
+		return nil, err
+	}
+	qa := biz.AnalyzeEvalQuery(query, anchor)
+	if !known {
+		a, b := biz.AnalyzeEvalQuery(query, now), biz.AnalyzeEvalQuery(query, now.AddDate(-3, -2, -1))
+		if !evalSameRange(a, b) {
+			qa.RangeStart, qa.RangeEnd = nil, nil
+		}
+	}
+	queries := biz.EvalRetrievalQueries(query, options...)
 	var embedding []float32
 	if s.vec != nil {
 		if v, err := s.vec.EmbedText(ctx, query); err == nil {
@@ -180,29 +298,79 @@ func (s *evalMemoryStore) SearchMemories(ctx context.Context, userID, query stri
 				loggateway.StepID("memoryeval.search_degrade"), loggateway.Err(err))
 		}
 	}
-	rows, err := s.facts.RecallL3Facts(ctx, "user", userID, userID, query, embedding, topK, 0)
+	poolLimit := evalCandidateLimit(topK)
+	s.applyEvalQueryModes(ctx, &qa, embedding)
+	// A future horizon in a trend question asks for a forecast, not evidence
+	// recorded in that future window. Keep the observed series available.
+	if qa.Trend && qa.RangeStart != nil && qa.RangeStart.After(anchor) {
+		qa.RangeStart, qa.RangeEnd = nil, nil
+	}
+	rows, err := s.facts.RecallL3Facts(ctx, "user", userID, userID, query, embedding, poolLimit, 0)
 	if err != nil {
 		return nil, err
 	}
+	for _, expanded := range queries[1:] {
+		var optionEmbedding []float32
+		if s.vec != nil {
+			var embedErr error
+			optionEmbedding, embedErr = s.vec.EmbedText(ctx, expanded)
+			if embedErr != nil {
+				s.lg.Warn("eval option embedding failed, using lexical evidence", loggateway.StepID("memoryeval.options"), loggateway.Err(embedErr))
+			}
+		}
+		extra, err := s.facts.RecallL3Facts(ctx, "user", userID, userID, expanded, optionEmbedding, poolLimit, 0)
+		if err != nil {
+			return nil, err
+		}
+		rows = append(rows, extra...)
+	}
 	seen := map[string]struct{}{}
+	seenIndex := map[string]int{}
 	var items []evalCollectedItem
 	appendRow := func(raw []byte, fallback float64) {
 		env, ok := evalFactEnvelope(raw, fallback)
 		if !ok || env.item.ID == "" {
 			return
 		}
+		if evalIsDerivedRaw(raw) {
+			if env.invalidUntil != "" || qa.RangeStart != nil || qa.RangeEnd != nil {
+				return
+			}
+			allowed := qa.Aggregate && biz.IsEvalProfileDigestStatement(env.item.Content) ||
+				(qa.Aggregate || qa.Historical) && biz.IsEvalSlotHistoryStatement(env.item.Content) ||
+				qa.Trend && biz.IsEvalSeriesDigestStatement(env.item.Content)
+			if !allowed {
+				return
+			}
+		}
 		if _, dup := seen[env.item.ID]; dup {
+			idx := seenIndex[env.item.ID]
+			if env.semantic > items[idx].semantic {
+				items[idx].semantic = env.semantic
+			}
+			if env.item.Score > items[idx].item.Score {
+				items[idx].item.Score = env.item.Score
+			}
 			return
 		}
 		seen[env.item.ID] = struct{}{}
+		seenIndex[env.item.ID] = len(items)
 		items = append(items, env)
 	}
 	for _, raw := range rows {
 		appendRow(raw, 0)
 	}
+	if err := s.appendEvalDerivedCandidates(ctx, userID, qa, appendRow); err != nil {
+		return nil, err
+	}
 	s.appendSessionHop(ctx, userID, rows, appendRow)
 	s.appendLinkHop(ctx, userID, rows, appendRow)
-	if s.episodes != nil {
+	if qa.Historical || qa.Aggregate || qa.Procedural || qa.Relational || qa.Trend || qa.RangeStart != nil || qa.RangeEnd != nil || len(biz.EvalBackgroundFacets(query)) > 0 {
+		if err := s.appendEvalCandidates(ctx, userID, queries, qa, int(poolLimit), appendRow); err != nil {
+			return nil, err
+		}
+	}
+	if s.episodes != nil && qa.RangeStart == nil && qa.RangeEnd == nil && !qa.Chronological && !qa.Relational {
 		l2lim := evalL2SearchLimit
 		if int(topK) > 0 && int(topK) < l2lim {
 			l2lim = int(topK)
@@ -225,29 +393,14 @@ func (s *evalMemoryStore) SearchMemories(ctx context.Context, userID, query stri
 			}
 		}
 	}
-	// A3/Q6 range mode: widen the candidate pool with the full user fact list
-	// (deterministic keyword scoring), then keep only evidence whose
-	// COALESCE(event_dates[0], valid_from, created_at) falls inside the range.
-	if qa.RangeStart != nil || qa.RangeEnd != nil {
-		ranged, rerr := s.facts.ListFactRowsForUser(ctx, "user", userID, userID, "", evalRangeFactListLimit, 0)
-		if rerr != nil {
-			s.lg.Warn("eval range widen skipped",
-				loggateway.StepID("memoryeval.range_widen"), loggateway.Err(rerr))
-		} else {
-			tokens := tokenizeQuery(query)
-			for _, raw := range ranged {
-				var row map[string]any
-				if json.Unmarshal(raw, &row) != nil {
-					continue
-				}
-				bd := scoreFactRow(row, tokens, embedding, nil, now)
-				appendRow(annotateFactScores(raw, bd), bd.Total)
-			}
-		}
-		items = filterEvalItemsByRange(items, qa)
-	}
+	items = filterEvalItemsByRange(items, qa)
+	items = rankEvalEvidence(items, queries, qa)
 	// A6/Q9 evidence gating: strict adaptive floor — empty stays empty.
-	items = filterEvalItemsByFloor(items, evalRecallMinScore)
+	if qa.Aggregate && len(evalMeaningfulTokens(evalTopicQuery(query))) == 0 {
+		items = filterEvalItemsByMinimum(items, evalRecallMinScore)
+	} else {
+		items = filterEvalItemsByFloor(items, evalRecallMinScore, qa)
+	}
 	if len(items) == 0 {
 		return []biz.EvalMemoryItem{}, nil
 	}
@@ -257,34 +410,103 @@ func (s *evalMemoryStore) SearchMemories(ctx context.Context, userID, query stri
 	// The dedup set is rebuilt from the surviving items: the default L2 path
 	// marks episode ids seen before the floor, and episodes that did not pass
 	// the floor must still be attachable here.
-	if qa.Aggregate && s.episodes != nil {
+	if qa.Aggregate && s.episodes != nil && qa.RangeStart == nil && qa.RangeEnd == nil && !qa.Chronological && !qa.Relational {
 		seen = make(map[string]struct{}, len(items))
 		for _, env := range items {
 			seen[env.item.ID] = struct{}{}
 		}
 		s.appendAggregateEpisodes(ctx, userID, query, now, seen, &items)
+		items = rankEvalEvidence(items, queries, qa)
+		items = filterEvalItemsByRange(items, qa)
 	}
+	items = s.appendEvalContext(ctx, userID, query, items, qa, topK)
+	if qa.Relational {
+		items = s.appendEvalRelations(ctx, userID, query, items, qa)
+	}
+	items = filterEvalItemsByRange(items, qa)
+	items = evalRemoveCoveredEpisodes(items)
+	items = evalEvidenceUnits(items, qa)
 	// A3/Q6 chronological mode: order by the evidence day ascending and skip
 	// the MMR cap (topK still bounds the result count).
 	if qa.Chronological {
+		// Select relevant evidence before chronology so an early noisy row
+		// cannot displace the only relevant later event at small top_k.
 		sort.SliceStable(items, func(i, j int) bool {
-			if items[i].day != items[j].day {
-				return items[i].day < items[j].day
+			if items[i].item.Score != items[j].item.Score {
+				return items[i].item.Score > items[j].item.Score
 			}
-			return items[i].item.Score > items[j].item.Score
+			return items[i].item.ID < items[j].item.ID
 		})
 		if lim := int(topK); lim > 0 && len(items) > lim {
 			items = items[:lim]
 		}
+		sort.SliceStable(items, func(i, j int) bool {
+			if items[i].day != items[j].day {
+				return items[i].day < items[j].day
+			}
+			if items[i].sourceTime != items[j].sourceTime {
+				a, ea := time.Parse(time.RFC3339Nano, items[i].sourceTime)
+				b, eb := time.Parse(time.RFC3339Nano, items[j].sourceTime)
+				if ea == nil && eb == nil && !a.Equal(b) {
+					return a.Before(b)
+				}
+			}
+			if items[i].messageIndex != items[j].messageIndex {
+				return items[i].messageIndex < items[j].messageIndex
+			}
+			if items[i].atomIndex != items[j].atomIndex {
+				return items[i].atomIndex < items[j].atomIndex
+			}
+			return items[i].item.ID < items[j].item.ID
+		})
+		if lim := int(topK); lim > 0 && len(items) > lim {
+			items = items[:lim]
+		}
+	} else if qa.Relational {
+		items = evalRelationalCapItems(items, topK)
+	} else if qa.Aggregate {
+		broad := len(evalMeaningfulTokens(evalTopicQuery(query))) == 0
+		items = evalAggregateCoverageCapItems(items, topK, broad)
+	} else if qa.Trend {
+		items = evalTrendCapItems(items, topK)
+	} else if qa.Enumerative {
+		items = evalEnumerativeCapItems(items, topK)
 	} else {
 		items = evalMMRCapItems(items, topK)
 	}
 	out := make([]biz.EvalMemoryItem, 0, len(items))
-	for _, env := range items {
+	remaining := 36000
+	for i, env := range items {
+		if remaining < 128 {
+			break
+		}
 		it := env.item
 		// Q9 evidence gating: identifier masking, then the evidence prefix
 		// (which goes before the role prefix inside the statement).
-		it.Content = env.prefix() + MaskEvalEvidence(it.Content, query)
+		budget := 1800
+		if env.evidenceUnit {
+			budget = 6000
+		}
+		// Reserve a fair share for each selected evidence unit so the fixed
+		// total budget cannot silently discard all later sources.
+		if fair := remaining / (len(items) - i); fair < budget {
+			budget = fair
+		}
+		if remaining < budget {
+			budget = remaining
+		}
+		content := evalEvidenceExcerpt(MaskEvalEvidence(it.Content, query), queries, budget)
+		remaining -= len([]rune(content))
+		if env.invalidUntil != "" {
+			content = "[superseded; valid_until=" + env.invalidUntil + "] " + content
+		}
+		if env.support != "" {
+			content = "[linked_source=" + env.support + "] " + content
+		}
+		if qa.Chronological || qa.Historical {
+			content = "[timestamp=" + env.sourceTime + "; message_index=" + strconv.Itoa(env.messageIndex) + "; atom_index=" + strconv.Itoa(env.atomIndex) + "] " + content
+		}
+		it.Content = env.prefix() + content
 		out = append(out, it)
 	}
 	return out, nil
@@ -305,6 +527,31 @@ func filterEvalItemsByRange(items []evalCollectedItem, qa biz.EvalQueryAnalysis)
 	}
 	out := items[:0]
 	for _, env := range items {
+		// Linked causal support may precede the question's event window, but
+		// cannot supply events strictly after its upper bound.
+		if env.support != "" && (endDay == "" || env.day == "" || env.day <= endDay) {
+			out = append(out, env)
+			continue
+		}
+		if qa.Historical && len(env.spans) == 0 && evalDurableStateKind(env.kind) {
+			if evalStateIntersectsRange(env, qa) {
+				out = append(out, env)
+			}
+			continue
+		}
+		if len(env.spans) > 0 {
+			match := false
+			for _, span := range env.spans {
+				if (startDay == "" || span.End >= startDay) && (endDay == "" || span.Start <= endDay) {
+					match = true
+					break
+				}
+			}
+			if match {
+				out = append(out, env)
+			}
+			continue
+		}
 		if env.day == "" {
 			continue
 		}
@@ -322,7 +569,11 @@ func filterEvalItemsByRange(items []evalCollectedItem, qa biz.EvalQueryAnalysis)
 // filterEvalItemsByFloor applies biz.AdaptiveRecallMinScore with a positive
 // base so effective = max(base, top1*ratio). Zero-score noise (e.g. unscored
 // hop rows) never passes when a floor exists; empty stays empty.
-func filterEvalItemsByFloor(items []evalCollectedItem, base float64) []evalCollectedItem {
+func filterEvalItemsByFloor(items []evalCollectedItem, base float64, analyses ...biz.EvalQueryAnalysis) []evalCollectedItem {
+	var qa biz.EvalQueryAnalysis
+	if len(analyses) > 0 {
+		qa = analyses[0]
+	}
 	if len(items) == 0 {
 		return items
 	}
@@ -338,7 +589,7 @@ func filterEvalItemsByFloor(items []evalCollectedItem, base float64) []evalColle
 	}
 	out := items[:0]
 	for _, env := range items {
-		if env.item.Score >= floor {
+		if env.item.Score >= floor || evalFloorExempt(env, qa) {
 			out = append(out, env)
 		}
 	}
@@ -349,7 +600,7 @@ func filterEvalItemsByFloor(items []evalCollectedItem, base float64) []evalColle
 // summary-style queries (AMC C3-A Q8a). Episodes carry their deterministic
 // keyword/importance score so the downstream cap ranks them consistently.
 func (s *evalMemoryStore) appendAggregateEpisodes(ctx context.Context, userID, query string, now time.Time, seen map[string]struct{}, items *[]evalCollectedItem) {
-	recent, err := s.episodes.ListEpisodeRowsForRecall(ctx, userID, "", evalAggregateRecentEpisodes)
+	recent, err := s.listEvalAggregateEpisodes(ctx, userID, query)
 	if err != nil {
 		s.lg.Warn("eval aggregate episodes skipped",
 			loggateway.StepID("memoryeval.aggregate_l2"), loggateway.Err(err))
@@ -424,51 +675,63 @@ func HasEvalCorrectionCue(statement string) bool {
 // 旧语句绝不能失效事件时间（valid_from）严格更晚的事实；两通道统一执行。
 // 墓碑行（valid_until 非空）直接跳过，避免重放时无效翻动审计时戳。
 // 向量通道在 embedding 失败或未接线时整体跳过（warn-only）。
-func (s *evalMemoryStore) supersedeContradictions(ctx context.Context, userID, newKind, newStmt, newEventAt string, batchIDs map[string]struct{}) ([]evalPrevValue, error) {
-	if !evalGovernableKindForStore(newKind) {
-		return nil, nil
+func (s *evalMemoryStore) supersedeContradictions(ctx context.Context, userID, newKind, newStmt, newEventAt string, batchIDs map[string]struct{}, embeddings ...[]float32) ([]evalPrevValue, string, error) {
+	if !evalGovernableKindForStore(newKind) || biz.IsHypotheticalStatement(stripEvalRolePrefix(newStmt)) {
+		return nil, "", nil
 	}
-	rows, err := s.facts.ListFactRowsForUser(ctx, "user", userID, userID, "", evalSupersedeLook, 0)
+	correction := HasEvalCorrectionCue(newStmt)
+	if len(embeddings) > 1 && len(embeddings[1]) > 0 {
+		if router := s.intentRouter(ctx); router != nil {
+			correction = correction || router.Match(embeddings[1], biz.EvalIntentCorrection)
+		}
+	}
+	if biz.EvalFactSlot(newStmt) == "" && (s.vec == nil || !correction) {
+		return nil, "", nil
+	}
+	rows, err := s.listEvalGovernableFacts(ctx, userID, newStmt)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	var prevs []evalPrevValue
+	var successor string
 	invalidated := map[string]struct{}{}
-	invalidate := func(old evalFactRow) {
+	invalidate := func(old evalFactRow) error {
 		if old.id == "" || old.statement == "" {
-			return
+			return nil
 		}
-		if old.validUntil != "" {
-			return
+		if old.validUntil != "" && (newEventAt == "" || !evalStrictlyAfter(old.validUntil, newEventAt)) {
+			return nil
 		}
 		if _, dup := invalidated[old.id]; dup {
-			return
+			return nil
 		}
-		if _, invErr := s.facts.InvalidateFact(ctx, old.id); invErr != nil {
-			s.lg.Warn("eval invalidate failed",
-				loggateway.StepID("memoryeval.invalidate"), loggateway.Err(invErr),
-				loggateway.Str("fact_id", old.id))
-			return
+		if invErr := s.invalidateEvalOccurrence(ctx, userID, old.id, newEventAt); invErr != nil {
+			return invErr
 		}
 		invalidated[old.id] = struct{}{}
 		prevs = append(prevs, evalPrevValue{
 			Statement:  old.statement,
-			ValidUntil: time.Now().UTC().Format(time.RFC3339Nano),
+			ValidUntil: evalValidityBoundary(newEventAt),
 		})
-		if old.sourceSessionID != "" {
+		if old.sourceSessionID != "" && s.episodes != nil {
 			// The merged eval episode keeps every appended turn, so a
 			// superseded statement must also leave the L2 transcript,
 			// otherwise recall keeps surfacing the stale value.
 			if stripErr := s.episodes.StripEpisodeStatement(ctx, userID, old.sourceSessionID, old.statement); stripErr != nil {
-				s.lg.Warn("eval episode strip failed",
-					loggateway.StepID("memoryeval.episode_strip"), loggateway.Err(stripErr))
+				return stripErr
 			}
 		}
+		return nil
 	}
 	for _, raw := range rows {
 		old := decodeEvalFactRow(raw)
 		if old.id == "" || old.statement == "" {
 			continue
+		}
+		if evalStrictlyAfter(old.validFrom, newEventAt) && biz.ShouldSupersedeEvalFact(newKind, newStmt, old.kind, old.statement) {
+			if successor == "" || evalStrictlyAfter(successor, old.validFrom) {
+				successor = old.validFrom
+			}
 		}
 		if !biz.ShouldSupersedeEvalFact(old.kind, old.statement, newKind, newStmt) {
 			continue
@@ -476,27 +739,36 @@ func (s *evalMemoryStore) supersedeContradictions(ctx context.Context, userID, n
 		if !evalTimeAllowsInvalidate(old.validFrom, newEventAt) {
 			continue
 		}
-		invalidate(old)
+		if err := invalidate(old); err != nil {
+			return nil, "", err
+		}
 	}
 	// Vector-correction pass (Q7): a correction cue plus a semantically near
 	// older fact (cosine >= 0.82, normalization-inequivalent) invalidates the
 	// stale value even when it occupies a different slot.
-	if s.vec == nil || !HasEvalCorrectionCue(newStmt) || s.facts.vectorStore == nil {
-		return prevs, nil
+	if s.vec == nil || !correction || s.facts.vectorStore == nil {
+		return prevs, successor, nil
 	}
-	emb, embErr := s.vec.EmbedText(ctx, newStmt)
+	var emb []float32
+	var embErr error
+	if len(embeddings) > 0 {
+		emb = embeddings[0]
+	}
+	if len(emb) == 0 {
+		emb, embErr = s.vec.EmbedText(ctx, newStmt)
+	}
 	if embErr != nil || len(emb) == 0 {
 		if embErr != nil {
 			s.lg.Warn("eval correction embed failed, vector supersede skipped",
 				loggateway.StepID("memoryeval.correction_embed"), loggateway.Err(embErr))
 		}
-		return prevs, nil
+		return prevs, successor, nil
 	}
 	hits, searchErr := s.facts.vectorStore.Search(ctx, float32To64(emb), evalCorrectionTopK, 0)
 	if searchErr != nil {
 		s.lg.Warn("eval correction vector search failed, vector supersede skipped",
 			loggateway.StepID("memoryeval.correction_search"), loggateway.Err(searchErr))
-		return prevs, nil
+		return prevs, successor, nil
 	}
 	var ids []string
 	for _, h := range hits {
@@ -509,19 +781,27 @@ func (s *evalMemoryStore) supersedeContradictions(ctx context.Context, userID, n
 		ids = append(ids, h.ID)
 	}
 	if len(ids) == 0 {
-		return prevs, nil
+		return prevs, successor, nil
 	}
 	candRows, qErr := s.facts.queryFactRowsByIDs(ctx, ids, "user", userID, userID, false)
 	if qErr != nil {
-		return prevs, qErr
+		return prevs, successor, qErr
 	}
-	defer candRows.Close()
+	var candidates []evalFactRow
 	for candRows.Next() {
 		raw, scanErr := scanFactRowJSON(candRows)
 		if scanErr != nil {
 			continue
 		}
 		old := decodeEvalFactRow(raw)
+		candidates = append(candidates, old)
+	}
+	rowsErr := candRows.Err()
+	candRows.Close()
+	if rowsErr != nil {
+		return nil, "", rowsErr
+	}
+	for _, old := range candidates {
 		if old.id == "" || old.statement == "" {
 			continue
 		}
@@ -531,9 +811,14 @@ func (s *evalMemoryStore) supersedeContradictions(ctx context.Context, userID, n
 		if !evalTimeAllowsInvalidate(old.validFrom, newEventAt) {
 			continue
 		}
-		invalidate(old)
+		if !biz.EvalCorrectionTargetsFact(old.statement, newStmt) {
+			continue
+		}
+		if err := invalidate(old); err != nil {
+			return nil, "", err
+		}
 	}
-	return prevs, candRows.Err()
+	return prevs, successor, nil
 }
 
 // evalTimeAllowsInvalidate is the replay-safety guard (AMC C3 修复 #0/#4):
@@ -569,23 +854,36 @@ func (s *evalMemoryStore) linkEvalSiblings(ctx context.Context, written []evalWr
 	if len(written) < 2 {
 		return nil
 	}
-	ids := make([]string, 0, len(written))
+	groups := map[string][]string{}
 	for _, w := range written {
 		if w.id != "" {
-			ids = append(ids, w.id)
+			key := factJSONString(w.raw, "source_message_id")
+			var meta struct {
+				MessageIndex int    `json:"message_index"`
+				SourceTime   string `json:"source_timestamp"`
+			}
+			if json.Unmarshal([]byte(factJSONString(w.raw, "metadata_json")), &meta) != nil {
+				return apierror.Internal("MEMORY_EVAL", "invalid source metadata")
+			}
+			if key == "" {
+				key = "position:" + strconv.Itoa(meta.MessageIndex)
+			}
+			key = evalStableHash(key, meta.SourceTime)
+			groups[key] = append(groups[key], w.id)
 		}
 	}
-	if len(ids) < 2 {
-		return nil
-	}
-	payload, err := json.Marshal(ids)
-	if err != nil {
-		return err
-	}
-	links := string(payload)
-	for _, id := range ids {
-		if err := s.facts.setFactLinks(ctx, id, links); err != nil {
+	for _, ids := range groups {
+		if len(ids) < 2 {
+			continue
+		}
+		payload, err := json.Marshal(ids)
+		if err != nil {
 			return err
+		}
+		for _, id := range ids {
+			if err := s.facts.setFactLinks(ctx, id, string(payload)); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
@@ -618,7 +916,7 @@ func (s *evalMemoryStore) upsertEvalEpisode(ctx context.Context, userID, session
 	return s.episodes.InsertL1ArchiveEpisode(ctx, biz.L1ArchiveEpisodeInsert{
 		SessionID:      sessionID,
 		AgentID:        userID,
-		TaskID:         "eval:" + sessionID,
+		TaskID:         evalEpisodeTaskID(userID, sessionID),
 		TaskTitle:      title,
 		Status:         "completed",
 		Goal:           goal,
@@ -788,6 +1086,9 @@ func evalItemFromFactJSON(raw []byte, fallback float64) (biz.EvalMemoryItem, boo
 // (metadata.event_dates[0] else valid_from else created_at) and the source
 // session for the Q9 evidence prefix.
 func evalFactEnvelope(raw []byte, fallback float64) (evalCollectedItem, bool) {
+	if factJSONString(raw, "source_kind") == evalControlSource {
+		return evalCollectedItem{}, false
+	}
 	item, ok := evalItemFromFactJSON(raw, fallback)
 	if !ok {
 		return evalCollectedItem{}, false
@@ -795,7 +1096,50 @@ func evalFactEnvelope(raw []byte, fallback float64) (evalCollectedItem, bool) {
 	meta := factJSONString(raw, "metadata_json")
 	sess := factJSONString(raw, "source_session_id")
 	day := EvalEvidenceDate(meta, item.Timestamp, item.CreatedAt)
-	return evalCollectedItem{item: item, day: day, sess: sess}, true
+	var metadata struct {
+		Spans        []biz.EvalDateSpan `json:"event_spans"`
+		EventDates   []string           `json:"event_dates"`
+		SourceTime   *string            `json:"source_timestamp"`
+		LocalTime    string             `json:"source_local_timestamp"`
+		Historical   bool               `json:"historical_context"`
+		Structured   bool               `json:"structured"`
+		MessageIndex int                `json:"message_index"`
+		AtomIndex    int                `json:"atom_index"`
+	}
+	if json.Unmarshal([]byte(meta), &metadata) != nil {
+		metadata.SourceTime = nil
+	}
+	if len(metadata.Spans) == 0 {
+		for _, date := range metadata.EventDates {
+			if d := evalDayPart(date); d != "" {
+				metadata.Spans = append(metadata.Spans, biz.EvalDateSpan{Start: d, End: d})
+			}
+		}
+	}
+	sourceTime := item.Timestamp
+	if metadata.SourceTime != nil {
+		sourceTime = *metadata.SourceTime
+		item.Timestamp = sourceTime
+		if sourceTime == "" {
+			day = EvalEvidenceDate(meta, "", "")
+		}
+	}
+	if len(metadata.Spans) == 0 && len(metadata.EventDates) == 0 && metadata.LocalTime != "" {
+		if local, err := time.Parse(time.RFC3339Nano, metadata.LocalTime); err == nil {
+			day = local.Format("2006-01-02")
+		}
+	}
+	var scores struct {
+		Scores struct {
+			Vector float64 `json:"vector"`
+		} `json:"scores"`
+	}
+	if json.Unmarshal(raw, &scores) != nil {
+		scores.Scores.Vector = 0
+	}
+	return evalCollectedItem{item: item, day: day, sess: sess, raw: raw, spans: metadata.Spans,
+		sourceTime: sourceTime, messageIndex: metadata.MessageIndex, atomIndex: metadata.AtomIndex,
+		invalidUntil: factJSONString(raw, "valid_until"), semantic: scores.Scores.Vector, kind: factJSONString(raw, "fact_kind"), historical: metadata.Historical, evidenceUnit: metadata.Structured}, true
 }
 
 func evalItemFromEpisodeJSON(raw []byte) (biz.EvalMemoryItem, bool) {
@@ -821,6 +1165,9 @@ func evalItemFromEpisodeJSON(raw []byte) (biz.EvalMemoryItem, bool) {
 // evalEpisodeEnvelope wraps evalItemFromEpisodeJSON with the same evidence
 // metadata used for fact rows.
 func evalEpisodeEnvelope(raw []byte, fallback float64) (evalCollectedItem, bool) {
+	if evalEmptySessionEpisode(raw) {
+		return evalCollectedItem{}, false
+	}
 	item, ok := evalItemFromEpisodeJSON(raw)
 	if !ok {
 		return evalCollectedItem{}, false
@@ -830,8 +1177,8 @@ func evalEpisodeEnvelope(raw []byte, fallback float64) (evalCollectedItem, bool)
 	}
 	meta := factJSONString(raw, "metadata_json")
 	sess := factJSONString(raw, "session_id")
-	day := EvalEvidenceDate(meta, "", item.CreatedAt)
-	return evalCollectedItem{item: item, day: day, sess: sess}, true
+	day := EvalEvidenceDate(meta, "", "")
+	return evalCollectedItem{item: item, day: day, sess: sess, raw: raw}, true
 }
 
 func factJSONString(raw []byte, key string) string {

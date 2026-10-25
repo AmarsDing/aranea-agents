@@ -2,22 +2,29 @@ package biz
 
 import (
 	"regexp"
-	"strconv"
 	"strings"
 	"time"
 )
 
-// memory_eval_query.go — AMC C3-A Q6 deterministic query-mode analysis.
+// memory_eval_query.go — AMC C3-A Q6 deterministic query analysis.
 //
-// AnalyzeEvalQuery classifies a search query (chronological / aggregate /
-// date-range) without any LLM involvement so Search can switch ranking and
-// evidence filtering deterministically.
+// AnalyzeEvalQuery preserves deterministic date parsing and offline query
+// modes. The data layer enriches these modes with the optional vector router;
+// embedding outages must not disable the existing Add/Search contract.
 
 // EvalQueryAnalysis is the deterministic parse of one eval search query.
 // RangeStart/RangeEnd are inclusive day bounds (nil = open side).
+// Deterministic modes remain available without an embedding service. Vector
+// routing may add modes without clearing explicit calendar or workflow intent.
 type EvalQueryAnalysis struct {
 	Chronological bool
 	Aggregate     bool
+	Historical    bool
+	Procedural    bool
+	Enumerative   bool
+	Relational    bool
+	Stepwise      bool
+	Trend         bool
 	RangeStart    *time.Time
 	RangeEnd      *time.Time
 }
@@ -25,11 +32,12 @@ type EvalQueryAnalysis struct {
 var (
 	evalChronoCues = []string{
 		"顺序", "先后", "第几", "之前", "之后", "最早", "最近第一次",
-		"order", "before", "after", "first time", "sequence",
+		"order", "before", "after", "first time", "sequence", "timeline", "chronological",
 	}
 	evalAggregateCues = []string{
-		"总结", "总体", "一共", "总共", "概括",
-		"overall", "summary", "total", "how many times",
+		"总结", "总体", "一共", "总共", "概括", "介绍一下",
+		"overall", "summary", "summarize", "summarise", "total", "how many", "over time", "throughout",
+		"profile", "what do you know about", "what do you remember about",
 	}
 
 	evalAbsDateCNRe  = regexp.MustCompile(`(\d{4})年(\d{1,2})月(\d{1,2})日?`)
@@ -44,21 +52,42 @@ var (
 // vocabulary is semantics-insensitive to casing, e.g. "Order" / "BEFORE").
 func evalQueryContainsAny(low string, cues []string) bool {
 	for _, c := range cues {
-		if strings.Contains(low, c) {
-			return true
+		for offset := 0; offset < len(low); {
+			i := strings.Index(low[offset:], c)
+			if i < 0 {
+				break
+			}
+			i += offset
+			end := i + len(c)
+			if c[0] >= 128 || ((i == 0 || !evalASCIIWord(low[i-1])) && (end == len(low) || !evalASCIIWord(low[end]))) {
+				return true
+			}
+			offset = end
 		}
 	}
 	return false
 }
 
-// AnalyzeEvalQuery parses query into chronological / aggregate / range
-// modes. now anchors relative-date resolution for range bounds.
+// AnalyzeEvalQuery parses date ranges and deterministic modes. now anchors
+// relative dates; semantic intent enrichment is optional in the data layer.
 func AnalyzeEvalQuery(query string, now time.Time) EvalQueryAnalysis {
 	low := strings.ToLower(query)
 	var qa EvalQueryAnalysis
 	qa.Chronological = evalQueryContainsAny(low, evalChronoCues)
 	qa.Aggregate = evalQueryContainsAny(low, evalAggregateCues)
+	qa.Historical = qa.Chronological || evalQueryContainsAny(low, []string{"以前", "曾经", "原来", "之前", "历次", "变迁", "变化", "previous", "previously", "used to", "formerly", "history", "changed", "over time"})
+	qa.Historical = qa.Historical || qa.Aggregate && evalQueryContainsAny(low, []string{"all conversations", "entire history", "life story", "所有对话", "全部对话", "完整经历"})
+	qa.Procedural = len(EvalRuleAnchors(query)) > 0 || evalQueryContainsAny(low, []string{"规则", "按照", "根据", "推断", "模拟", "规律", "输出", "输入", "函数", "类推", "编码", "解码", "rule", "rules", "apply", "according to", "predict", "pattern", "simulate", "decode", "encode", "instruction", "instructions", "infer", "compute", "calculate", "output", "mapping", "based on examples"})
+	qa.Enumerative = evalQueryContainsAny(low, []string{"list all", "enumerate", "all members", "all owners", "fields", "which items", "集合", "枚举", "字段", "清单", "所有成员", "全部成员", "有哪些"})
+	qa.Relational = evalQueryContainsAny(low, []string{"end up", "ultimately", "received", "handoff", "path", "chain", "depends", "cause", "caused", "why", "connected", "related", "relationship between", "转交", "传递", "归属", "依赖", "导致", "原因", "证据链", "路径", "最终", "谁接收", "什么关系"})
+	qa.Stepwise = evalQueryContainsAny(low, []string{"steps", "workflow", "procedure", "playbook", "checklist", "步骤", "流程", "程序"})
+	trajectory := evalQueryContainsAny(low, []string{"evolve", "evolved", "evolution", "trajectory", "progression", "轨迹", "演变", "历程"})
+	qa.Chronological = qa.Chronological || trajectory
+	qa.Historical = qa.Historical || trajectory
+	qa.Aggregate = qa.Aggregate || qa.Enumerative
+	qa.Procedural = qa.Procedural || qa.Stepwise || evalQueryContainsAny(low, []string{"format", "response format", "格式", "输出约束"})
 	qa.RangeStart, qa.RangeEnd = evalQueryDateRange(query, low, now)
+	qa.Historical = qa.Historical || qa.RangeStart != nil || qa.RangeEnd != nil
 	return qa
 }
 
@@ -66,98 +95,44 @@ func AnalyzeEvalQuery(query string, now time.Time) EvalQueryAnalysis {
 // MM/DD/YYYY) and relative date mentions combined with range connectives
 // (之后/以前/从…到…/between X and Y/since X) into inclusive day bounds.
 func evalQueryDateRange(query, low string, now time.Time) (*time.Time, *time.Time) {
-	type absHit struct {
-		day        time.Time
-		start, end int
-	}
-	var hits []absHit
-	addAbs := func(re *regexp.Regexp, mk func(y, m, d int) time.Time) {
-		for _, m := range re.FindAllStringSubmatchIndex(query, -1) {
-			y, _ := strconv.Atoi(query[m[2]:m[3]])
-			mo, _ := strconv.Atoi(query[m[4]:m[5]])
-			d, _ := strconv.Atoi(query[m[6]:m[7]])
-			hits = append(hits, absHit{day: mk(y, mo, d), start: m[0], end: m[1]})
-		}
-	}
-	addAbs(evalAbsDateCNRe, func(y, m, d int) time.Time {
-		return time.Date(y, time.Month(m), d, 0, 0, 0, 0, now.Location())
-	})
-	addAbs(evalAbsDateISORe, func(y, m, d int) time.Time {
-		return time.Date(y, time.Month(m), d, 0, 0, 0, 0, now.Location())
-	})
-	// MM/DD/YYYY keeps the US month-first order.
-	for _, m := range evalAbsDateUSRe.FindAllStringSubmatchIndex(query, -1) {
-		mo, _ := strconv.Atoi(query[m[2]:m[3]])
-		d, _ := strconv.Atoi(query[m[4]:m[5]])
-		y, _ := strconv.Atoi(query[m[6]:m[7]])
-		hits = append(hits, absHit{day: time.Date(y, time.Month(mo), d, 0, 0, 0, 0, now.Location()), start: m[0], end: m[1]})
-	}
-	for _, h := range resolveEvalDateExprs(query, now) {
-		hits = append(hits, absHit{day: h.day, start: h.start, end: h.end})
-	}
-	if len(hits) == 0 {
+	return evalQuerySpanRange(query, low, now)
+}
+
+func evalASCIIWord(b byte) bool {
+	return b >= 'a' && b <= 'z' || b >= 'A' && b <= 'Z' || b >= '0' && b <= '9' || b == '_'
+}
+
+// Absolute-date scanning is shared with Add so source mentions and query
+// ranges use the same calendar validation and granularity.
+func evalQuerySpanRange(query, low string, now time.Time) (*time.Time, *time.Time) {
+	spans := ResolveEvalDateSpans(query, now)
+	if len(spans) == 0 {
 		return nil, nil
 	}
-	// Sort by start, longest first on ties; drop overlapping spans.
-	for i := 1; i < len(hits); i++ {
-		for j := i; j > 0; j-- {
-			a, b := hits[j-1], hits[j]
-			if a.start < b.start || (a.start == b.start && a.end-a.start >= b.end-b.start) {
-				break
-			}
-			hits[j-1], hits[j] = hits[j], hits[j-1]
+	dayPtr := func(day string) *time.Time {
+		t, err := time.ParseInLocation("2006-01-02", day, now.Location())
+		if err != nil {
+			return nil
+		}
+		return &t
+	}
+	start, end := spans[0].Start, spans[0].End
+	for _, span := range spans[1:] {
+		if span.Start < start {
+			start = span.Start
+		}
+		if span.End > end {
+			end = span.End
 		}
 	}
-	uniq := hits[:0]
-	lastEnd := -1
-	for _, h := range hits {
-		if h.start < lastEnd {
-			continue
-		}
-		lastEnd = h.end
-		uniq = append(uniq, h)
+	since := evalQueryContainsAny(low, evalRangeSinceCues)
+	until := evalQueryContainsAny(low, evalRangeUntilCues)
+	between := strings.Contains(low, "between") || strings.Contains(query, "从") && (strings.Contains(query, "到") || strings.Contains(query, "至"))
+	if !between && since && !until {
+		return dayPtr(start), nil
 	}
-	hits = uniq
-
-	dayPtr := func(t time.Time) *time.Time {
-		d := evalDayFloor(t)
-		return &d
+	if !between && until && !since {
+		return nil, dayPtr(end)
 	}
-	minDay := func(a, b time.Time) time.Time {
-		if a.Before(b) {
-			return a
-		}
-		return b
-	}
-	maxDay := func(a, b time.Time) time.Time {
-		if a.After(b) {
-			return a
-		}
-		return b
-	}
-	hasSince := evalQueryContainsAny(low, evalRangeSinceCues)
-	hasUntil := evalQueryContainsAny(low, evalRangeUntilCues)
-	hasBetween := strings.Contains(low, "between") || (strings.Contains(query, "从") && (strings.Contains(query, "到") || strings.Contains(query, "至")))
-
-	switch {
-	case len(hits) >= 2 && hasBetween:
-		return dayPtr(minDay(hits[0].day, hits[1].day)), dayPtr(maxDay(hits[0].day, hits[1].day))
-	case len(hits) >= 2 && hasSince && hasUntil:
-		return dayPtr(minDay(hits[0].day, hits[1].day)), dayPtr(maxDay(hits[0].day, hits[1].day))
-	case hasSince:
-		return dayPtr(hits[0].day), nil
-	case hasUntil:
-		return nil, dayPtr(hits[len(hits)-1].day)
-	case len(hits) == 1:
-		// A bare absolute/relative date pins the whole day.
-		return dayPtr(hits[0].day), dayPtr(hits[0].day)
-	default:
-		start := hits[0].day
-		end := hits[0].day
-		for _, h := range hits[1:] {
-			start = minDay(start, h.day)
-			end = maxDay(end, h.day)
-		}
-		return dayPtr(start), dayPtr(end)
-	}
+	return dayPtr(start), dayPtr(end)
 }

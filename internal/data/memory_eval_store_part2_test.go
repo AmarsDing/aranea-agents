@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+
+	"aranea-agents/internal/biz"
 )
 
 func TestMaskEvalEvidence_TableDriven(t *testing.T) {
@@ -64,10 +66,11 @@ func TestMaskEvalEvidence_TableDriven(t *testing.T) {
 			wantAbsent:   []string{"1234567890123"},
 		},
 		{
-			name:         "email address preference never masked",
+			name:         "unrequested contact fields masked and preference preserved",
 			content:      "我的邮箱是alice@example.com，住在杭州西湖区文三路100号，最喜欢蓝色",
 			query:        "介绍一下",
-			wantContains: []string{"alice@example.com", "杭州西湖区文三路100号", "最喜欢蓝色"},
+			wantContains: []string{"[email redacted]", "[street address redacted]", "最喜欢蓝色"},
+			wantAbsent:   []string{"alice@example.com", "文三路100号"},
 		},
 		{
 			name:         "english ask words",
@@ -75,6 +78,39 @@ func TestMaskEvalEvidence_TableDriven(t *testing.T) {
 			query:        "what is the id number",
 			wantContains: []string{"110101199001011234"},
 			wantAbsent:   []string{},
+		},
+		{
+			// Passport/plate coverage keeps dev's stricter SSN masking policy.
+			name:    "neutral query masks passport ssn plate",
+			content: "我的护照是E12345678，SSN 是 123-45-6789，车牌是浙A12345",
+			query:   "介绍一下用户",
+			wantContains: []string{
+				"E******78",
+				"***-**-****",
+				"浙A*****",
+			},
+			wantAbsent: []string{"E12345678", "123-45-6789"},
+		},
+		{
+			name:         "asking passport unmasks passport only",
+			content:      "我的护照是E12345678，SSN 是 123-45-6789，车牌是浙A12345",
+			query:        "用户的护照号是多少",
+			wantContains: []string{"E12345678", "***-**-****", "浙A*****"},
+			wantAbsent:   []string{"123-45-6789"},
+		},
+		{
+			name:         "asking plate unmasks plate only",
+			content:      "我的护照是E12345678，车牌是浙A12345",
+			query:        "用户的车牌是什么",
+			wantContains: []string{"浙A12345", "E******78"},
+			wantAbsent:   []string{"E12345678"},
+		},
+		{
+			name:         "plate with middle dot keeps dot",
+			content:      "车牌是浙A·12345",
+			query:        "介绍一下",
+			wantContains: []string{"浙A·*****"},
+			wantAbsent:   []string{"浙A·12345"},
 		},
 	}
 	for _, tc := range cases {
@@ -168,28 +204,24 @@ func TestEvalItemPrefix_Shapes(t *testing.T) {
 	}
 }
 
-func TestHasEvalCorrectionCue_TableDriven(t *testing.T) {
+// TestEvalEnumerativeCapItems covers AMC P3 / A3：枚举模式纯按分数降序、
+// 无 MMR 多样性惩罚；同分保入序（stable）；topK 截断仍然生效。
+func TestEvalEnumerativeCapItems(t *testing.T) {
 	t.Parallel()
-	cases := []struct {
-		stmt string
-		want bool
-	}{
-		{"我改主意了", true},
-		{"其实我喜欢红色", true},
-		{"不对，应该是周二", true},
-		{"错了，会议是八点", true},
-		{"不是蓝色而是红色", true},
-		{"Actually I prefer tea", true},
-		{"correction: the date is May 5", true},
-		{"I am no longer using Gmail", true},
-		{"in fact I moved last week", true},
-		{"我住在杭州，喜欢龙井虾仁", false},
-		{"I like coffee in the morning", false},
-		{"", false},
+	mk := func(id string, score float64) evalCollectedItem {
+		return evalCollectedItem{item: biz.EvalMemoryItem{ID: id, Content: "member " + id, Score: score}}
 	}
-	for _, tc := range cases {
-		if got := HasEvalCorrectionCue(tc.stmt); got != tc.want {
-			t.Errorf("HasEvalCorrectionCue(%q) = %v, want %v", tc.stmt, got, tc.want)
-		}
+	items := []evalCollectedItem{mk("a", 0.5), mk("b", 0.9), mk("c", 0.9), mk("d", 0.2)}
+	out := evalEnumerativeCapItems(items, 3)
+	if len(out) != 3 {
+		t.Fatalf("topK cap broken: %d items", len(out))
+	}
+	if out[0].item.ID != "b" || out[1].item.ID != "c" || out[2].item.ID != "a" {
+		t.Fatalf("score-desc/stable order wrong: %v %v %v", out[0].item.ID, out[1].item.ID, out[2].item.ID)
+	}
+	// topK<=0 / 超集不截断；同分集合成员全部保序通过（MMR 会在此裁掉 c）。
+	out = evalEnumerativeCapItems([]evalCollectedItem{mk("a", 0.5), mk("b", 0.9), mk("c", 0.9)}, 10)
+	if len(out) != 3 || out[0].item.ID != "b" || out[1].item.ID != "c" || out[2].item.ID != "a" {
+		t.Fatalf("same-score members must all survive in score order: %+v", out)
 	}
 }
