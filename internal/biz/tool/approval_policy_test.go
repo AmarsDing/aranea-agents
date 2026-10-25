@@ -82,6 +82,34 @@ func TestValidateApprovalPolicy_BadInputRejected(t *testing.T) {
 	}
 }
 
+// TestValidateApprovalPolicy_Int32BoundaryAccepted D5-f F3 补钉：恰在 int32
+// 边界上的值必须放行（双查是「超界拒收」而非「边界误杀」——MaxInt32/MinInt32
+// 均在 PG INTEGER 域内）。
+func TestValidateApprovalPolicy_Int32BoundaryAccepted(t *testing.T) {
+	t.Parallel()
+	cases := map[string]func(ApprovalPolicy) ApprovalPolicy{
+		"priority_max_int32": func(p ApprovalPolicy) ApprovalPolicy {
+			p.Priority = math.MaxInt32
+			return p
+		},
+		"priority_min_int32": func(p ApprovalPolicy) ApprovalPolicy {
+			p.Priority = math.MinInt32
+			return p
+		},
+		"expiry_max_int32": func(p ApprovalPolicy) ApprovalPolicy {
+			p.ExpiresAt = math.MaxInt32
+			return p
+		},
+	}
+	for name, mutate := range cases {
+		t.Run(name, func(t *testing.T) {
+			if err := ValidateApprovalPolicy(mutate(validPolicy("p-bnd"))); err != nil {
+				t.Fatalf("int32 boundary must be accepted, got %v", err)
+			}
+		})
+	}
+}
+
 // TestInMemApprovalPolicyStore_Roundtrip 覆盖读写回路、作用域过滤、编译期拒收、
 // 排序确定性（Priority 升序、同档 ID 字典序）与过期/禁用过滤。
 func TestInMemApprovalPolicyStore_Roundtrip(t *testing.T) {
