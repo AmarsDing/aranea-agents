@@ -2686,6 +2686,8 @@ var (
 		{Name: "evolution_reason", Type: field.TypeString, Size: 2147483647, Default: ""},
 		{Name: "lifecycle_status", Type: field.TypeString, Size: 64, Default: "active"},
 		{Name: "workspace_id", Type: field.TypeString, Default: ""},
+		{Name: "trust_level", Type: field.TypeString, Nullable: true, Size: 2147483647},
+		{Name: "source", Type: field.TypeString, Nullable: true, Size: 2147483647},
 	}
 	// SkillTable holds the schema information for the "skill" table.
 	SkillTable = &schema.Table{

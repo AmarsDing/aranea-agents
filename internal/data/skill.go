@@ -208,9 +208,26 @@ func (r *skillRepo) UpdateSkillEnabled(ctx context.Context, id string, enabled b
 }
 
 func (r *skillRepo) DuplicateSkill(ctx context.Context, id string) (biz.Skill, error) {
-	tx, err := r.data.RW().Write(ctx).Tx(ctx)
+	var newID string
+	err := retrySkillIDConflict(func() error {
+		var onceErr error
+		newID, onceErr = r.duplicateSkillOnce(ctx, id)
+		return onceErr
+	})
 	if err != nil {
 		return biz.Skill{}, entErrToBizErr(err, apierror.DomainSkill)
+	}
+	return r.GetSkillByID(ctx, newID)
+}
+
+// duplicateSkillOnce 单次复制尝试（返回原始错误供 23505 判定，翻译统一在
+// 调用方——NotFound 亦走 entErrToBizErr 的 Ent NotFound→404 规则，语义同改前）。
+// trust_level/source 对原行**指针级 verbatim 携带**（含 NULL——复制件不擅自
+// 提级/降级，与建行路径的声明解析语义无关）。
+func (r *skillRepo) duplicateSkillOnce(ctx context.Context, id string) (string, error) {
+	tx, err := r.data.RW().Write(ctx).Tx(ctx)
+	if err != nil {
+		return "", err
 	}
 	defer func() { _ = tx.Rollback() }()
 
@@ -218,19 +235,16 @@ func (r *skillRepo) DuplicateSkill(ctx context.Context, id string) (biz.Skill, e
 		Where(platformskill.IDEQ(id), platformskill.DeletedAtEQ("")).
 		Only(ctx)
 	if err != nil {
-		if dataent.IsNotFound(err) {
-			return biz.Skill{}, apierror.NotFound(apierror.DomainSkill, "not found")
-		}
-		return biz.Skill{}, entErrToBizErr(err, apierror.DomainSkill)
+		return "", err
 	}
 	latestVer, verErr := tx.SkillVersion.Query().
 		Where(skillversion.SkillIDEQ(id)).
 		Order(skillversion.ByCreatedAt(entsql.OrderDesc())).
 		First(ctx)
 	if verErr != nil && !dataent.IsNotFound(verErr) {
-		return biz.Skill{}, entErrToBizErr(verErr, apierror.DomainSkill)
+		return "", verErr
 	}
-	newID := fmt.Sprintf("skill_%d", time.Now().UTC().UnixNano())
+	newID := bizskill.NewSkillID()
 	newKey := fmt.Sprintf("%s-copy-%d", cur.SkillKey, time.Now().UTC().Unix())
 	if strings.TrimSpace(cur.SkillKey) == "" {
 		newKey = newID
@@ -252,8 +266,10 @@ func (r *skillRepo) DuplicateSkill(ctx context.Context, id string) (biz.Skill, e
 		SetUpdatedAt(now).
 		SetDeletedAt("").
 		SetWorkspaceID(cur.WorkspaceID).
+		SetNillableTrustLevel(cur.TrustLevel).
+		SetNillableSource(cur.Source).
 		Save(ctx); err != nil {
-		return biz.Skill{}, entErrToBizErr(err, apierror.DomainSkill)
+		return "", err
 	}
 	if latestVer != nil {
 		verID := fmt.Sprintf("skillver_%d", time.Now().UTC().UnixNano())
@@ -269,13 +285,13 @@ func (r *skillRepo) DuplicateSkill(ctx context.Context, id string) (biz.Skill, e
 			SetCreatedAt(now).
 			SetUpdatedAt(now).
 			Save(ctx); err != nil {
-			return biz.Skill{}, entErrToBizErr(err, apierror.DomainSkill)
+			return "", err
 		}
 	}
 	if err = tx.Commit(); err != nil {
-		return biz.Skill{}, entErrToBizErr(err, apierror.DomainSkill)
+		return "", err
 	}
-	return r.GetSkillByID(ctx, newID)
+	return newID, nil
 }
 
 func (r *skillRepo) DeleteSkill(ctx context.Context, id string) error {

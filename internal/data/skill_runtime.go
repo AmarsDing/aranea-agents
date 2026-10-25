@@ -92,6 +92,17 @@ func (r *skillRepo) ListEnabledPublishedSkillCandidates(ctx context.Context) ([]
 		if len(tags) == 0 {
 			tags = parseSkillTags(row.ConfigJSON)
 		}
+		// P0-7 批 D1：信任分级两列透出（含 NULL 防御——迁移 20261297 回填后
+		// 生产不应再见 NULL；nil 按零值 "" 透出，biz 侧经
+		// DefaultTrustForSource 归一为存量默认 T3，与门禁上线前行为一致）。
+		trustLevel := ""
+		if row.TrustLevel != nil {
+			trustLevel = *row.TrustLevel
+		}
+		source := ""
+		if row.Source != nil {
+			source = *row.Source
+		}
 		out = append(out, biz.SkillRuntimeCandidate{
 
 			SkillID:       row.ID,
@@ -101,6 +112,8 @@ func (r *skillRepo) ListEnabledPublishedSkillCandidates(ctx context.Context) ([]
 			Tags:          tags,
 			TaxonomyPaths: mergeTaxonomyPaths(r.data.lg, row.MetadataJSON, row.ConfigJSON),
 			Triggers:      parseSkillTriggers(row.MetadataJSON),
+			TrustLevel:    trustLevel,
+			Source:        source,
 		})
 	}
 	return out, nil

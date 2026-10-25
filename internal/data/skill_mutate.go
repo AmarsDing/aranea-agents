@@ -3,6 +3,7 @@ package data
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -10,13 +11,16 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	bizskill "aranea-agents/internal/biz/skill"
 	dataent "aranea-agents/internal/data/ent"
 	"aranea-agents/internal/data/ent/platformskill"
 	"aranea-agents/internal/data/ent/skillversion"
+	"aranea-agents/internal/skill/manifest"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 
 	entsql "entgo.io/ent/dialect/sql"
+	"github.com/lib/pq"
 )
 
 func (r *skillRepo) CreateSkillWithVersion(ctx context.Context, in biz.SkillCreateInput) (biz.Skill, error) {
@@ -27,16 +31,40 @@ func (r *skillRepo) CreateSkillWithVersion(ctx context.Context, in biz.SkillCrea
 	if in.Name == "" || in.Slug == "" || in.Body == "" {
 		return biz.Skill{}, apierror.BadRequest(apierror.DomainSkill, "skill name, slug and body are required")
 	}
-	skillID := fmt.Sprintf("skill_%d", time.Now().UTC().UnixNano())
-	versionID := fmt.Sprintf("skillver_%d", time.Now().UTC().UnixNano())
 	metaJSON, err := encodeSkillMetadata(in.Tags, in.StorageDir, in.SyncOrigin, in.Triggers)
 	if err != nil {
 		return biz.Skill{}, err
 	}
+	// P0-7 批 D1：信任分级两列落值。manifest 声明只能更严、绝不覆盖
+	// provenance（§8.4③⑤ fail-closed）。
+	mf := manifest.Parse(in.Body)
+	source, trust := biz.ResolveSkillTrustForPersist(in.SyncOrigin, mf.Source, mf.TrustLevel)
+	var skillID string
+	err = retrySkillIDConflict(func() error {
+		var onceErr error
+		skillID, onceErr = r.createSkillWithVersionOnce(ctx, in, metaJSON, string(source), string(trust))
+		return onceErr
+	})
+	if err != nil {
+		return biz.Skill{}, entErrToBizErr(err, apierror.DomainSkill)
+	}
+	return r.GetSkillByID(ctx, skillID)
+}
+
+// createSkillWithVersionOnce 单次建仓尝试（返回原始错误供 23505 判定，翻译
+// 统一在调用方）。skill 行 id 走 bizskill.NewSkillID（128bit ULID 语义随机段
+// 替换旧 UnixNano——纳秒戳在同进程高并发下仍可见尾数碰撞面）；skillver id
+// 维持存量 skillver_%d 不动。pk 撞号重试=整事务重开（25P02 铁律：出错后旧
+// 事务已 abort，必须 Rollback 回收到位再 Begin 新事务），由 retrySkillIDConflict
+// 驱动且仅认 skill 主键（skill_key 冲突 23505 属真实业务冲突，不重试、
+// 上浮 CodeConflict）。
+func (r *skillRepo) createSkillWithVersionOnce(ctx context.Context, in biz.SkillCreateInput, metaJSON, source, trust string) (string, error) {
+	skillID := bizskill.NewSkillID()
+	versionID := fmt.Sprintf("skillver_%d", time.Now().UTC().UnixNano())
 	now := nowRFC3339()
 	tx, err := r.data.RW().Write(ctx).Tx(ctx)
 	if err != nil {
-		return biz.Skill{}, entErrToBizErr(err, apierror.DomainSkill)
+		return "", err
 	}
 	defer func() { _ = tx.Rollback() }()
 	if _, err = tx.PlatformSkill.Create().
@@ -48,15 +76,17 @@ func (r *skillRepo) CreateSkillWithVersion(ctx context.Context, in biz.SkillCrea
 		SetEnabled(false).
 		SetSortOrder(0).
 		SetConfigJSON("{}").
-		SetMetadataJSON(string(metaJSON)).
+		SetMetadataJSON(metaJSON).
 		SetVisibility(in.Visibility).
 		SetFallbackConfigJSON(in.DefaultConfigJSON).
 		SetCreatedAt(now).
 		SetUpdatedAt(now).
 		SetDeletedAt("").
 		SetWorkspaceID(in.WorkspaceID).
+		SetTrustLevel(trust).
+		SetSource(source).
 		Save(ctx); err != nil {
-		return biz.Skill{}, entErrToBizErr(err, apierror.DomainSkill)
+		return "", err
 	}
 	if _, err = tx.SkillVersion.Create().
 		SetID(versionID).
@@ -64,16 +94,47 @@ func (r *skillRepo) CreateSkillWithVersion(ctx context.Context, in biz.SkillCrea
 		SetVersion("1.0.0").
 		SetStatus("pass").
 		SetContentMarkdown(in.Body).
-		SetMetadataJSON(string(metaJSON)).
+		SetMetadataJSON(metaJSON).
 		SetCreatedAt(now).
 		SetUpdatedAt(now).
 		Save(ctx); err != nil {
-		return biz.Skill{}, entErrToBizErr(err, apierror.DomainSkill)
+		return "", err
 	}
 	if err = tx.Commit(); err != nil {
-		return biz.Skill{}, entErrToBizErr(err, apierror.DomainSkill)
+		return "", err
 	}
-	return r.GetSkillByID(ctx, skillID)
+	return skillID, nil
+}
+
+// skillIDConflictMaxAttempts：skill 主键撞号重试上限。NewSkillID 128bit 随机
+// 段下 3 次连撞概率天文物理级、实为失败信号灯（ID 生成器故障）。
+const skillIDConflictMaxAttempts = 3
+
+// isSkillIDConflict 仅认 skill 表主键的 23505（constraint=skill_pkey 或
+// ent 语义的 platform_skill_pkey）。skill_key 唯一冲突是真实业务冲突，
+// 绝不重试（重试只会原地再撞）。
+func isSkillIDConflict(err error) bool {
+	var pgErr *pq.Error
+	if !errors.As(err, &pgErr) {
+		return false
+	}
+	if pgErr.Code != "23505" {
+		return false
+	}
+	return pgErr.Constraint == "skill_pkey" || pgErr.Constraint == "platform_skill_pkey"
+}
+
+// retrySkillIDConflict 驱动 skill 建仓/复制整事务重试：op 必须返回**原始**
+// 错误（entErrToBizErr 会把 23505 翻成 CodeConflict 丢 constraint 名，判定
+// 失效）；每次重入 op 内重新 Begin 事务（25P02：出错事务不可复用）。
+func retrySkillIDConflict(op func() error) error {
+	var err error
+	for attempt := 0; attempt < skillIDConflictMaxAttempts; attempt++ {
+		if err = op(); !isSkillIDConflict(err) {
+			return err
+		}
+	}
+	return err
 }
 
 type skillMetadataEnvelope struct {

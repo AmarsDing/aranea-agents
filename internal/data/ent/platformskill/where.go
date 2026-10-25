@@ -193,6 +193,16 @@ func WorkspaceID(v string) predicate.PlatformSkill {
 	return predicate.PlatformSkill(sql.FieldEQ(FieldWorkspaceID, v))
 }
 
+// TrustLevel applies equality check predicate on the "trust_level" field. It's identical to TrustLevelEQ.
+func TrustLevel(v string) predicate.PlatformSkill {
+	return predicate.PlatformSkill(sql.FieldEQ(FieldTrustLevel, v))
+}
+
+// Source applies equality check predicate on the "source" field. It's identical to SourceEQ.
+func Source(v string) predicate.PlatformSkill {
+	return predicate.PlatformSkill(sql.FieldEQ(FieldSource, v))
+}
+
 // SkillKeyEQ applies the EQ predicate on the "skill_key" field.
 func SkillKeyEQ(v string) predicate.PlatformSkill {
 	return predicate.PlatformSkill(sql.FieldEQ(FieldSkillKey, v))
@@ -1746,6 +1756,156 @@ func WorkspaceIDEqualFold(v string) predicate.PlatformSkill {
 // WorkspaceIDContainsFold applies the ContainsFold predicate on the "workspace_id" field.
 func WorkspaceIDContainsFold(v string) predicate.PlatformSkill {
 	return predicate.PlatformSkill(sql.FieldContainsFold(FieldWorkspaceID, v))
+}
+
+// TrustLevelEQ applies the EQ predicate on the "trust_level" field.
+func TrustLevelEQ(v string) predicate.PlatformSkill {
+	return predicate.PlatformSkill(sql.FieldEQ(FieldTrustLevel, v))
+}
+
+// TrustLevelNEQ applies the NEQ predicate on the "trust_level" field.
+func TrustLevelNEQ(v string) predicate.PlatformSkill {
+	return predicate.PlatformSkill(sql.FieldNEQ(FieldTrustLevel, v))
+}
+
+// TrustLevelIn applies the In predicate on the "trust_level" field.
+func TrustLevelIn(vs ...string) predicate.PlatformSkill {
+	return predicate.PlatformSkill(sql.FieldIn(FieldTrustLevel, vs...))
+}
+
+// TrustLevelNotIn applies the NotIn predicate on the "trust_level" field.
+func TrustLevelNotIn(vs ...string) predicate.PlatformSkill {
+	return predicate.PlatformSkill(sql.FieldNotIn(FieldTrustLevel, vs...))
+}
+
+// TrustLevelGT applies the GT predicate on the "trust_level" field.
+func TrustLevelGT(v string) predicate.PlatformSkill {
+	return predicate.PlatformSkill(sql.FieldGT(FieldTrustLevel, v))
+}
+
+// TrustLevelGTE applies the GTE predicate on the "trust_level" field.
+func TrustLevelGTE(v string) predicate.PlatformSkill {
+	return predicate.PlatformSkill(sql.FieldGTE(FieldTrustLevel, v))
+}
+
+// TrustLevelLT applies the LT predicate on the "trust_level" field.
+func TrustLevelLT(v string) predicate.PlatformSkill {
+	return predicate.PlatformSkill(sql.FieldLT(FieldTrustLevel, v))
+}
+
+// TrustLevelLTE applies the LTE predicate on the "trust_level" field.
+func TrustLevelLTE(v string) predicate.PlatformSkill {
+	return predicate.PlatformSkill(sql.FieldLTE(FieldTrustLevel, v))
+}
+
+// TrustLevelContains applies the Contains predicate on the "trust_level" field.
+func TrustLevelContains(v string) predicate.PlatformSkill {
+	return predicate.PlatformSkill(sql.FieldContains(FieldTrustLevel, v))
+}
+
+// TrustLevelHasPrefix applies the HasPrefix predicate on the "trust_level" field.
+func TrustLevelHasPrefix(v string) predicate.PlatformSkill {
+	return predicate.PlatformSkill(sql.FieldHasPrefix(FieldTrustLevel, v))
+}
+
+// TrustLevelHasSuffix applies the HasSuffix predicate on the "trust_level" field.
+func TrustLevelHasSuffix(v string) predicate.PlatformSkill {
+	return predicate.PlatformSkill(sql.FieldHasSuffix(FieldTrustLevel, v))
+}
+
+// TrustLevelIsNil applies the IsNil predicate on the "trust_level" field.
+func TrustLevelIsNil() predicate.PlatformSkill {
+	return predicate.PlatformSkill(sql.FieldIsNull(FieldTrustLevel))
+}
+
+// TrustLevelNotNil applies the NotNil predicate on the "trust_level" field.
+func TrustLevelNotNil() predicate.PlatformSkill {
+	return predicate.PlatformSkill(sql.FieldNotNull(FieldTrustLevel))
+}
+
+// TrustLevelEqualFold applies the EqualFold predicate on the "trust_level" field.
+func TrustLevelEqualFold(v string) predicate.PlatformSkill {
+	return predicate.PlatformSkill(sql.FieldEqualFold(FieldTrustLevel, v))
+}
+
+// TrustLevelContainsFold applies the ContainsFold predicate on the "trust_level" field.
+func TrustLevelContainsFold(v string) predicate.PlatformSkill {
+	return predicate.PlatformSkill(sql.FieldContainsFold(FieldTrustLevel, v))
+}
+
+// SourceEQ applies the EQ predicate on the "source" field.
+func SourceEQ(v string) predicate.PlatformSkill {
+	return predicate.PlatformSkill(sql.FieldEQ(FieldSource, v))
+}
+
+// SourceNEQ applies the NEQ predicate on the "source" field.
+func SourceNEQ(v string) predicate.PlatformSkill {
+	return predicate.PlatformSkill(sql.FieldNEQ(FieldSource, v))
+}
+
+// SourceIn applies the In predicate on the "source" field.
+func SourceIn(vs ...string) predicate.PlatformSkill {
+	return predicate.PlatformSkill(sql.FieldIn(FieldSource, vs...))
+}
+
+// SourceNotIn applies the NotIn predicate on the "source" field.
+func SourceNotIn(vs ...string) predicate.PlatformSkill {
+	return predicate.PlatformSkill(sql.FieldNotIn(FieldSource, vs...))
+}
+
+// SourceGT applies the GT predicate on the "source" field.
+func SourceGT(v string) predicate.PlatformSkill {
+	return predicate.PlatformSkill(sql.FieldGT(FieldSource, v))
+}
+
+// SourceGTE applies the GTE predicate on the "source" field.
+func SourceGTE(v string) predicate.PlatformSkill {
+	return predicate.PlatformSkill(sql.FieldGTE(FieldSource, v))
+}
+
+// SourceLT applies the LT predicate on the "source" field.
+func SourceLT(v string) predicate.PlatformSkill {
+	return predicate.PlatformSkill(sql.FieldLT(FieldSource, v))
+}
+
+// SourceLTE applies the LTE predicate on the "source" field.
+func SourceLTE(v string) predicate.PlatformSkill {
+	return predicate.PlatformSkill(sql.FieldLTE(FieldSource, v))
+}
+
+// SourceContains applies the Contains predicate on the "source" field.
+func SourceContains(v string) predicate.PlatformSkill {
+	return predicate.PlatformSkill(sql.FieldContains(FieldSource, v))
+}
+
+// SourceHasPrefix applies the HasPrefix predicate on the "source" field.
+func SourceHasPrefix(v string) predicate.PlatformSkill {
+	return predicate.PlatformSkill(sql.FieldHasPrefix(FieldSource, v))
+}
+
+// SourceHasSuffix applies the HasSuffix predicate on the "source" field.
+func SourceHasSuffix(v string) predicate.PlatformSkill {
+	return predicate.PlatformSkill(sql.FieldHasSuffix(FieldSource, v))
+}
+
+// SourceIsNil applies the IsNil predicate on the "source" field.
+func SourceIsNil() predicate.PlatformSkill {
+	return predicate.PlatformSkill(sql.FieldIsNull(FieldSource))
+}
+
+// SourceNotNil applies the NotNil predicate on the "source" field.
+func SourceNotNil() predicate.PlatformSkill {
+	return predicate.PlatformSkill(sql.FieldNotNull(FieldSource))
+}
+
+// SourceEqualFold applies the EqualFold predicate on the "source" field.
+func SourceEqualFold(v string) predicate.PlatformSkill {
+	return predicate.PlatformSkill(sql.FieldEqualFold(FieldSource, v))
+}
+
+// SourceContainsFold applies the ContainsFold predicate on the "source" field.
+func SourceContainsFold(v string) predicate.PlatformSkill {
+	return predicate.PlatformSkill(sql.FieldContainsFold(FieldSource, v))
 }
 
 // And groups predicates with the AND operator between them.

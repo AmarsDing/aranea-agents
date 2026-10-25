@@ -191,3 +191,51 @@ Body.`
 		t.Errorf("Description = %q, want %q", m.Description, "Build with the Claude API.")
 	}
 }
+
+// P0-7 批 D1 钉板：source / trust_level 为原始字面量载体——解析层只做
+// 去引号原样透出，可信性归 biz.ResolveSkillTrustForPersist（声明只能更严、
+// 绝不覆盖 provenance；解析层自身不做任何归一/校验，未知值原样带出由
+// biz 判为无效声明后忽略）。
+func TestParse_SourceAndTrustLevelRaw(t *testing.T) {
+	input := `---
+name: community-rds
+source: llm_evolution
+trust_level: "t2"
+---
+Body.`
+	m := Parse(input)
+	if m.Source != "llm_evolution" {
+		t.Errorf("Source = %q, want %q", m.Source, "llm_evolution")
+	}
+	if m.TrustLevel != "t2" {
+		t.Errorf("TrustLevel = %q, want raw %q (大小写不归一，归一在 biz)", m.TrustLevel, "t2")
+	}
+}
+
+func TestParse_SourceAndTrustLevelAbsentStayEmpty(t *testing.T) {
+	input := `---
+name: minimal
+description: no trust keys
+---
+Body.`
+	m := Parse(input)
+	if m.Source != "" || m.TrustLevel != "" {
+		t.Errorf("Source/TrustLevel = (%q, %q), want empty when undeclared", m.Source, m.TrustLevel)
+	}
+}
+
+func TestParse_SourceAndTrustLevelSingleQuotedCaseInsensitiveKey(t *testing.T) {
+	input := `---
+name: q
+Source: 'zip_import'
+TRUST_LEVEL: 'T4'
+---
+Body.`
+	m := Parse(input)
+	if m.Source != "zip_import" {
+		t.Errorf("Source = %q, want %q", m.Source, "zip_import")
+	}
+	if m.TrustLevel != "T4" {
+		t.Errorf("TrustLevel = %q, want %q", m.TrustLevel, "T4")
+	}
+}

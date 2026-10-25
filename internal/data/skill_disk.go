@@ -8,9 +8,11 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	bizskill "aranea-agents/internal/biz/skill"
 	dataent "aranea-agents/internal/data/ent"
 	"aranea-agents/internal/data/ent/platformskill"
 	"aranea-agents/internal/data/ent/skillversion"
+	"aranea-agents/internal/skill/manifest"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 
@@ -73,10 +75,31 @@ func (r *skillRepo) UpsertSkillFromDisk(ctx context.Context, in biz.SkillDiskSyn
 	if in.Name == "" || in.Slug == "" || in.Body == "" {
 		return biz.Skill{}, biz.SkillDiskSyncOutcome{}, apierror.BadRequest(apierror.DomainSkill, "skill name, slug and body are required")
 	}
+	// P0-7 批 D1：建行分支信任分级落值（filesystem provenance → user_created
+	// 默认 T3，manifest 声明只能更严，§8.4③⑤）。
+	mf := manifest.Parse(in.Body)
+	source, trust := biz.ResolveSkillTrustForPersist(biz.SkillSyncOriginFilesystem, mf.Source, mf.TrustLevel)
+	var sk biz.Skill
+	var outcome biz.SkillDiskSyncOutcome
+	err := retrySkillIDConflict(func() error {
+		var onceErr error
+		sk, outcome, onceErr = r.upsertSkillFromDiskOnce(ctx, in, string(source), string(trust))
+		return onceErr
+	})
+	if err != nil {
+		return biz.Skill{}, biz.SkillDiskSyncOutcome{}, entErrToBizErr(err, apierror.DomainSkill)
+	}
+	return sk, outcome, nil
+}
 
+// upsertSkillFromDiskOnce 单次同步尝试（返回原始错误供 23505 判定，翻译统一
+// 在调用方）。pk 撞号重试只发生在建行分支（更新分支用既有 skillRow.ID 无碰撞
+// 面）；重试重查 skillRow——并发建仓者先落成时自然转入更新路径（等价于
+// 抢锁成功后的汇合语义）。
+func (r *skillRepo) upsertSkillFromDiskOnce(ctx context.Context, in biz.SkillDiskSyncInput, source, trust string) (biz.Skill, biz.SkillDiskSyncOutcome, error) {
 	tx, txErr := r.data.RW().Write(ctx).Tx(ctx)
 	if txErr != nil {
-		return biz.Skill{}, biz.SkillDiskSyncOutcome{}, entErrToBizErr(txErr, apierror.DomainSkill)
+		return biz.Skill{}, biz.SkillDiskSyncOutcome{}, txErr
 	}
 	defer func() { _ = tx.Rollback() }()
 
@@ -85,7 +108,7 @@ func (r *skillRepo) UpsertSkillFromDisk(ctx context.Context, in biz.SkillDiskSyn
 		Only(ctx)
 
 	if dataent.IsNotFound(err) {
-		skillID := fmt.Sprintf("skill_%d", time.Now().UTC().UnixNano())
+		skillID := bizskill.NewSkillID()
 		versionID := fmt.Sprintf("skillver_%d", time.Now().UTC().UnixNano())
 		metaJSON, encErr := encodeSkillMetadata(in.Tags, in.StorageDir, biz.SkillSyncOriginFilesystem, in.Triggers)
 		if encErr != nil {
@@ -106,8 +129,10 @@ func (r *skillRepo) UpsertSkillFromDisk(ctx context.Context, in biz.SkillDiskSyn
 			SetCreatedAt(now).
 			SetUpdatedAt(now).
 			SetDeletedAt("").
+			SetTrustLevel(trust).
+			SetSource(source).
 			Save(ctx); createErr != nil {
-			return biz.Skill{}, biz.SkillDiskSyncOutcome{}, entErrToBizErr(createErr, apierror.DomainSkill)
+			return biz.Skill{}, biz.SkillDiskSyncOutcome{}, createErr
 		}
 		if _, createErr := tx.SkillVersion.Create().
 			SetID(versionID).
@@ -119,16 +144,16 @@ func (r *skillRepo) UpsertSkillFromDisk(ctx context.Context, in biz.SkillDiskSyn
 			SetCreatedAt(now).
 			SetUpdatedAt(now).
 			Save(ctx); createErr != nil {
-			return biz.Skill{}, biz.SkillDiskSyncOutcome{}, entErrToBizErr(createErr, apierror.DomainSkill)
+			return biz.Skill{}, biz.SkillDiskSyncOutcome{}, createErr
 		}
 		if commitErr := tx.Commit(); commitErr != nil {
-			return biz.Skill{}, biz.SkillDiskSyncOutcome{}, entErrToBizErr(commitErr, apierror.DomainSkill)
+			return biz.Skill{}, biz.SkillDiskSyncOutcome{}, commitErr
 		}
 		sk, getErr := r.GetSkillByID(ctx, skillID)
 		return sk, biz.SkillDiskSyncOutcome{}, getErr
 	}
 	if err != nil {
-		return biz.Skill{}, biz.SkillDiskSyncOutcome{}, entErrToBizErr(err, apierror.DomainSkill)
+		return biz.Skill{}, biz.SkillDiskSyncOutcome{}, err
 	}
 
 	outcome := biz.SkillDiskSyncOutcome{}

@@ -398,6 +398,46 @@ func (_u *PlatformSkillUpdate) SetNillableWorkspaceID(v *string) *PlatformSkillU
 	return _u
 }
 
+// SetTrustLevel sets the "trust_level" field.
+func (_u *PlatformSkillUpdate) SetTrustLevel(v string) *PlatformSkillUpdate {
+	_u.mutation.SetTrustLevel(v)
+	return _u
+}
+
+// SetNillableTrustLevel sets the "trust_level" field if the given value is not nil.
+func (_u *PlatformSkillUpdate) SetNillableTrustLevel(v *string) *PlatformSkillUpdate {
+	if v != nil {
+		_u.SetTrustLevel(*v)
+	}
+	return _u
+}
+
+// ClearTrustLevel clears the value of the "trust_level" field.
+func (_u *PlatformSkillUpdate) ClearTrustLevel() *PlatformSkillUpdate {
+	_u.mutation.ClearTrustLevel()
+	return _u
+}
+
+// SetSource sets the "source" field.
+func (_u *PlatformSkillUpdate) SetSource(v string) *PlatformSkillUpdate {
+	_u.mutation.SetSource(v)
+	return _u
+}
+
+// SetNillableSource sets the "source" field if the given value is not nil.
+func (_u *PlatformSkillUpdate) SetNillableSource(v *string) *PlatformSkillUpdate {
+	if v != nil {
+		_u.SetSource(*v)
+	}
+	return _u
+}
+
+// ClearSource clears the value of the "source" field.
+func (_u *PlatformSkillUpdate) ClearSource() *PlatformSkillUpdate {
+	_u.mutation.ClearSource()
+	return _u
+}
+
 // Mutation returns the PlatformSkillMutation object of the builder.
 func (_u *PlatformSkillUpdate) Mutation() *PlatformSkillMutation {
 	return _u.mutation
@@ -567,6 +607,18 @@ func (_u *PlatformSkillUpdate) sqlSave(ctx context.Context) (_node int, err erro
 	}
 	if value, ok := _u.mutation.WorkspaceID(); ok {
 		_spec.SetField(platformskill.FieldWorkspaceID, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.TrustLevel(); ok {
+		_spec.SetField(platformskill.FieldTrustLevel, field.TypeString, value)
+	}
+	if _u.mutation.TrustLevelCleared() {
+		_spec.ClearField(platformskill.FieldTrustLevel, field.TypeString)
+	}
+	if value, ok := _u.mutation.Source(); ok {
+		_spec.SetField(platformskill.FieldSource, field.TypeString, value)
+	}
+	if _u.mutation.SourceCleared() {
+		_spec.ClearField(platformskill.FieldSource, field.TypeString)
 	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
@@ -959,6 +1011,46 @@ func (_u *PlatformSkillUpdateOne) SetNillableWorkspaceID(v *string) *PlatformSki
 	return _u
 }
 
+// SetTrustLevel sets the "trust_level" field.
+func (_u *PlatformSkillUpdateOne) SetTrustLevel(v string) *PlatformSkillUpdateOne {
+	_u.mutation.SetTrustLevel(v)
+	return _u
+}
+
+// SetNillableTrustLevel sets the "trust_level" field if the given value is not nil.
+func (_u *PlatformSkillUpdateOne) SetNillableTrustLevel(v *string) *PlatformSkillUpdateOne {
+	if v != nil {
+		_u.SetTrustLevel(*v)
+	}
+	return _u
+}
+
+// ClearTrustLevel clears the value of the "trust_level" field.
+func (_u *PlatformSkillUpdateOne) ClearTrustLevel() *PlatformSkillUpdateOne {
+	_u.mutation.ClearTrustLevel()
+	return _u
+}
+
+// SetSource sets the "source" field.
+func (_u *PlatformSkillUpdateOne) SetSource(v string) *PlatformSkillUpdateOne {
+	_u.mutation.SetSource(v)
+	return _u
+}
+
+// SetNillableSource sets the "source" field if the given value is not nil.
+func (_u *PlatformSkillUpdateOne) SetNillableSource(v *string) *PlatformSkillUpdateOne {
+	if v != nil {
+		_u.SetSource(*v)
+	}
+	return _u
+}
+
+// ClearSource clears the value of the "source" field.
+func (_u *PlatformSkillUpdateOne) ClearSource() *PlatformSkillUpdateOne {
+	_u.mutation.ClearSource()
+	return _u
+}
+
 // Mutation returns the PlatformSkillMutation object of the builder.
 func (_u *PlatformSkillUpdateOne) Mutation() *PlatformSkillMutation {
 	return _u.mutation
@@ -1158,6 +1250,18 @@ func (_u *PlatformSkillUpdateOne) sqlSave(ctx context.Context) (_node *PlatformS
 	}
 	if value, ok := _u.mutation.WorkspaceID(); ok {
 		_spec.SetField(platformskill.FieldWorkspaceID, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.TrustLevel(); ok {
+		_spec.SetField(platformskill.FieldTrustLevel, field.TypeString, value)
+	}
+	if _u.mutation.TrustLevelCleared() {
+		_spec.ClearField(platformskill.FieldTrustLevel, field.TypeString)
+	}
+	if value, ok := _u.mutation.Source(); ok {
+		_spec.SetField(platformskill.FieldSource, field.TypeString, value)
+	}
+	if _u.mutation.SourceCleared() {
+		_spec.ClearField(platformskill.FieldSource, field.TypeString)
 	}
 	_node = &PlatformSkill{config: _u.config}
 	_spec.Assign = _node.assignValues

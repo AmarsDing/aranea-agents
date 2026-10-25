@@ -81514,6 +81514,8 @@ type PlatformSkillMutation struct {
 	evolution_reason     *string
 	lifecycle_status     *string
 	workspace_id         *string
+	trust_level          *string
+	source               *string
 	clearedFields        map[string]struct{}
 	done                 bool
 	oldValue             func(context.Context) (*PlatformSkill, error)
@@ -82580,6 +82582,104 @@ func (m *PlatformSkillMutation) ResetWorkspaceID() {
 	m.workspace_id = nil
 }
 
+// SetTrustLevel sets the "trust_level" field.
+func (m *PlatformSkillMutation) SetTrustLevel(s string) {
+	m.trust_level = &s
+}
+
+// TrustLevel returns the value of the "trust_level" field in the mutation.
+func (m *PlatformSkillMutation) TrustLevel() (r string, exists bool) {
+	v := m.trust_level
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTrustLevel returns the old "trust_level" field's value of the PlatformSkill entity.
+// If the PlatformSkill object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PlatformSkillMutation) OldTrustLevel(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTrustLevel is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTrustLevel requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTrustLevel: %w", err)
+	}
+	return oldValue.TrustLevel, nil
+}
+
+// ClearTrustLevel clears the value of the "trust_level" field.
+func (m *PlatformSkillMutation) ClearTrustLevel() {
+	m.trust_level = nil
+	m.clearedFields[platformskill.FieldTrustLevel] = struct{}{}
+}
+
+// TrustLevelCleared returns if the "trust_level" field was cleared in this mutation.
+func (m *PlatformSkillMutation) TrustLevelCleared() bool {
+	_, ok := m.clearedFields[platformskill.FieldTrustLevel]
+	return ok
+}
+
+// ResetTrustLevel resets all changes to the "trust_level" field.
+func (m *PlatformSkillMutation) ResetTrustLevel() {
+	m.trust_level = nil
+	delete(m.clearedFields, platformskill.FieldTrustLevel)
+}
+
+// SetSource sets the "source" field.
+func (m *PlatformSkillMutation) SetSource(s string) {
+	m.source = &s
+}
+
+// Source returns the value of the "source" field in the mutation.
+func (m *PlatformSkillMutation) Source() (r string, exists bool) {
+	v := m.source
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSource returns the old "source" field's value of the PlatformSkill entity.
+// If the PlatformSkill object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PlatformSkillMutation) OldSource(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSource is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSource requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSource: %w", err)
+	}
+	return oldValue.Source, nil
+}
+
+// ClearSource clears the value of the "source" field.
+func (m *PlatformSkillMutation) ClearSource() {
+	m.source = nil
+	m.clearedFields[platformskill.FieldSource] = struct{}{}
+}
+
+// SourceCleared returns if the "source" field was cleared in this mutation.
+func (m *PlatformSkillMutation) SourceCleared() bool {
+	_, ok := m.clearedFields[platformskill.FieldSource]
+	return ok
+}
+
+// ResetSource resets all changes to the "source" field.
+func (m *PlatformSkillMutation) ResetSource() {
+	m.source = nil
+	delete(m.clearedFields, platformskill.FieldSource)
+}
+
 // Where appends a list predicates to the PlatformSkillMutation builder.
 func (m *PlatformSkillMutation) Where(ps ...predicate.PlatformSkill) {
 	m.predicates = append(m.predicates, ps...)
@@ -82614,7 +82714,7 @@ func (m *PlatformSkillMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *PlatformSkillMutation) Fields() []string {
-	fields := make([]string, 0, 26)
+	fields := make([]string, 0, 28)
 	if m.skill_key != nil {
 		fields = append(fields, platformskill.FieldSkillKey)
 	}
@@ -82693,6 +82793,12 @@ func (m *PlatformSkillMutation) Fields() []string {
 	if m.workspace_id != nil {
 		fields = append(fields, platformskill.FieldWorkspaceID)
 	}
+	if m.trust_level != nil {
+		fields = append(fields, platformskill.FieldTrustLevel)
+	}
+	if m.source != nil {
+		fields = append(fields, platformskill.FieldSource)
+	}
 	return fields
 }
 
@@ -82753,6 +82859,10 @@ func (m *PlatformSkillMutation) Field(name string) (ent.Value, bool) {
 		return m.LifecycleStatus()
 	case platformskill.FieldWorkspaceID:
 		return m.WorkspaceID()
+	case platformskill.FieldTrustLevel:
+		return m.TrustLevel()
+	case platformskill.FieldSource:
+		return m.Source()
 	}
 	return nil, false
 }
@@ -82814,6 +82924,10 @@ func (m *PlatformSkillMutation) OldField(ctx context.Context, name string) (ent.
 		return m.OldLifecycleStatus(ctx)
 	case platformskill.FieldWorkspaceID:
 		return m.OldWorkspaceID(ctx)
+	case platformskill.FieldTrustLevel:
+		return m.OldTrustLevel(ctx)
+	case platformskill.FieldSource:
+		return m.OldSource(ctx)
 	}
 	return nil, fmt.Errorf("unknown PlatformSkill field %s", name)
 }
@@ -83005,6 +83119,20 @@ func (m *PlatformSkillMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetWorkspaceID(v)
 		return nil
+	case platformskill.FieldTrustLevel:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTrustLevel(v)
+		return nil
+	case platformskill.FieldSource:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSource(v)
+		return nil
 	}
 	return fmt.Errorf("unknown PlatformSkill field %s", name)
 }
@@ -83049,7 +83177,14 @@ func (m *PlatformSkillMutation) AddField(name string, value ent.Value) error {
 // ClearedFields returns all nullable fields that were cleared during this
 // mutation.
 func (m *PlatformSkillMutation) ClearedFields() []string {
-	return nil
+	var fields []string
+	if m.FieldCleared(platformskill.FieldTrustLevel) {
+		fields = append(fields, platformskill.FieldTrustLevel)
+	}
+	if m.FieldCleared(platformskill.FieldSource) {
+		fields = append(fields, platformskill.FieldSource)
+	}
+	return fields
 }
 
 // FieldCleared returns a boolean indicating if a field with the given name was
@@ -83062,6 +83197,14 @@ func (m *PlatformSkillMutation) FieldCleared(name string) bool {
 // ClearField clears the value of the field with the given name. It returns an
 // error if the field is not defined in the schema.
 func (m *PlatformSkillMutation) ClearField(name string) error {
+	switch name {
+	case platformskill.FieldTrustLevel:
+		m.ClearTrustLevel()
+		return nil
+	case platformskill.FieldSource:
+		m.ClearSource()
+		return nil
+	}
 	return fmt.Errorf("unknown PlatformSkill nullable field %s", name)
 }
 
@@ -83146,6 +83289,12 @@ func (m *PlatformSkillMutation) ResetField(name string) error {
 		return nil
 	case platformskill.FieldWorkspaceID:
 		m.ResetWorkspaceID()
+		return nil
+	case platformskill.FieldTrustLevel:
+		m.ResetTrustLevel()
+		return nil
+	case platformskill.FieldSource:
+		m.ResetSource()
 		return nil
 	}
 	return fmt.Errorf("unknown PlatformSkill field %s", name)

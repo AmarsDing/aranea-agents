@@ -29,7 +29,7 @@ var ddlMigrationsLate = []ddlMigration{
 	// 20261118 memory_episodes_l1_task_unique（原 20260802，版本碰撞重编号；
 	// 20261116/20261117 已被生产 pack_it_ops_v1 种子记录占用，故取 20261118）：
 	// memory_episodes 两个部分唯一索引——L1 归档 episode 按 (session_id,l1_task_id)
-	// 去重，consolidation episode 按 (session_id,title,agent_id) WHERE l1_task_id=''
+	// 去重，consolidation episode 按 (session_id,title,agent_id) WHERE l1_task_id=空串
 	// 去重。缺索引时 ON CONFLICT ... WHERE 报 42P10，episode 写入全部失败。
 	{Version: 20261118, Name: "memory_episodes_l1_task_unique", SQL: "sql/migrations/20261118_memory_episodes_l1_task_unique.sql"},
 	// 20261119 cascade_saga_id_type_fix（原 20260803，版本碰撞重编号）：
@@ -102,7 +102,7 @@ var ddlMigrationsLate = []ddlMigration{
 	{Version: 20261208, Name: "builtin_platform_tools_cua_reseed", Func: ddlBuiltinPlatformTools},
 	// 20261209 mcp_partial_unique_index（MCP 管理模块 R1 修复）：mcp_server.server_key
 	// 列级 UNIQUE 与 mcp_server_user_credential 复合唯一索引均含软删除墓碑行，
-	// 同 key 软删后重建报 23505。改为仅约束活跃行（deleted_at = ''）的部分唯一索引。
+	// 同 key 软删后重建报 23505。改为仅约束活跃行（deleted_at = 空串）的部分唯一索引。
 	// 新索引已声明进 Ent Schema（新库自动创建）；本迁移清理存量库旧约束/索引并补齐，
 	// 逐句 IF EXISTS/IF NOT EXISTS 幂等。生产 Schema.Create 不删索引（无 WithDropIndex），
 	// dev 模式 Ent 会先自动删旧建新，本迁移兜底 no-op。
@@ -178,7 +178,7 @@ var ddlMigrationsLate = []ddlMigration{
 	// 加 task_state_json 列，承载压缩 LLM 产出的结构化任务状态段（双段化）。
 	{Version: 20261224, Name: "session_summaries_task_state_json", SQL: "sql/migrations/20261224_session_summaries_task_state_json.sql"},
 	// 20261225 agents_position_variant_partial_unique: BUG-01（2026-08-17 真机 P1）——
-	// 原全量唯一索引把无岗位 agent（position_key=''）与软删墓碑行纳入唯一键，
+	// 原全量唯一索引把无岗位 agent（position_key=空串）与软删墓碑行纳入唯一键，
 	// 无岗位创建必败、岗位删后无法重建。改部分唯一：仅约束「一岗一变体一在任」。
 	{Version: 20261225, Name: "agents_position_variant_partial_unique", Func: ddlAgentsPositionPartialUnique},
 	// 20261226 drop_retired_legacy_tables: BUG-02 F4 附带处置——activities/event_store
@@ -220,8 +220,8 @@ var ddlMigrationsLate = []ddlMigration{
 	// ent schema 默认值已同步（800 / true）；存量库补列，默认保持旧行为。
 	{Version: 20261232, Name: "agent_runtime_token_budget", SQL: "sql/migrations/20261232_agent_runtime_token_budget.sql"},
 
-	// 20261233: cron 深度审查 F1 — 内置任务 model-registry-sync 的 cron_task.id 为 ''
-	//（seed 直插 repo 绕过 ID 生成），其 cron_task_run.task_id 亦全为 ''，导致 UI 启停/触发
+	// 20261233: cron 深度审查 F1 — 内置任务 model-registry-sync 的 cron_task.id 为 空串
+	//（seed 直插 repo 绕过 ID 生成），其 cron_task_run.task_id 亦全为 空串，导致 UI 启停/触发
 	// 禁用碰撞、编辑死胡同、执行历史无法按该任务筛选。统一改为显式 ID 并回填运行记录。
 	{Version: 20261233, Name: "cron_model_registry_sync_id", SQL: "sql/migrations/20261233_cron_model_registry_sync_id.sql"},
 
@@ -422,7 +422,7 @@ var ddlMigrationsLate = []ddlMigration{
 	{Version: 20261284, Name: "knowledge_shared_visibility", SQL: "sql/migrations/20261284_knowledge_shared_visibility.sql"},
 	// 20261285 tool_invocations_workspace（A2，tools 端到端审计跟进）：tool_invocations
 	// 加 workspace_id 列 + (workspace_id, started_at) 索引 + 自 agents 表按 agent_id
-	// backfill；宿主缺失行保持 ''（仅系统调用方在 KPI 聚合可见）。Postgres-only
+	// backfill；宿主缺失行保持 空串（仅系统调用方在 KPI 聚合可见）。Postgres-only
 	// （SQLite/测试由 Ent schema 建列）；不加 RLS（本表租户边界一直在 service 层）。
 	// dev 分支原编号 20261279 与 origin/dev 合并重排的 skill_invocation_analysis_retry
 	//（20261278→20261279，见 ddlMigrationsMergeAuditFixes）撞号，重编号至 20261285
@@ -506,4 +506,33 @@ var ddlMigrationsLate = []ddlMigration{
 	//（ee29fca85）→ 顺延（canonical 铁律：SQL 文件名/注册行/设计引用同改
 	// 同 commit）；TK-G39-01 DROP 顺延 ≥20261295。
 	{Version: 20261294, Name: "document_versions_chunk_archive", SQL: "sql/migrations/20261294_document_versions_chunk_archive.sql"},
+	// 20261295 board_run_leases（P0-6 阶段 1a，90-multi-replica-board-lease，
+	// 2026-10-22）：PlanBoard DAG 执行租约 PG 行锁表——board_id 主键 +
+	// owner_id/expires_at 心跳取址，TryClaim ON CONFLICT 仅过期可收养；
+	// (session_id, expires_at) 索引支撑 HasActiveForSession 跨副本门控。
+	// 编号顺延当时最大值（20261294）+1，无撞号；仅建表，默认 flag=off
+	// 字节级旧行为，ARANEA_BOARD_RUN_LEASE=pg 才消费。幂等，重跑安全。
+	{Version: 20261295, Name: "board_run_leases", SQL: "sql/migrations/20261295_board_run_leases.sql"},
+	// 20261296 tool_result_spills（C-5 PG SpillStore，91-multi-replica-spill-store，
+	// 2026-10-24）：toolspill.Store PG 第二实现——content BYTEA 原字节落行、
+	// created_at 定宽布局（C-e #0/#11 教训，不抄 RFC3339Nano 先例）、
+	// (session_hash, created_at) 联合索引服务 Put 会话配额 SUM（leading 列
+	// 等值，跨会话行过滤走主键）；GC 全表扫为刻意选择（C-f SPILL-PG-01/GC-3
+	// 裁断：表量受 MaxTotalBytes 缺省 64MiB 界限定，Q7 接线时再评估单列
+	// created_at 索引）。
+	// 编号顺延当时最大值（20261295）+1，无撞号。默认 env=fs 档字节级旧行为，
+	// ARANEA_TOOLSPILL_STORE=pg 才消费。仅建表：不加 ent schema。幂等，重跑安全。
+	{Version: 20261296, Name: "tool_result_spills", SQL: "sql/migrations/20261296_tool_result_spills.sql"},
+	// 20261297 skill_trust_columns（P0-7 批 D1，deferred ① Skills ent 两列落账，
+	// 2026-10-25）：skill 表增 trust_level/source 两列（TEXT 可空零默认，
+	// NULL=未回填）；Func 段 ddlSkillTrustBackfill 三档 value-guarded UPDATE
+	// 幂等回填——source 凭 metadata_json.sync_origin 溯源（import→zip_import
+	// 余→user_created），trust T2=绑定岗位（agent_runtime_settings 表存在性
+	// 探测 + skill_runtime_json.allowed_slugs 与 skill_key 之 SQL 转写
+	// NormalizeSlug 比对，CASE 铸型 + jsonb_typeof 双防卫畸形 JSON/非标量行）、
+	// T3=存量兼容默认档、T1 本轮恒空集。回填顺序 T2 先于 T3（T3 兜底否则
+	// 吃掉 T2 候选）。三处写入路径 Go 侧由 biz.ResolveSkillTrustForPersist
+	// 落值（声明只能更严）。列同时由 ent schema 声明，双写幂等。
+	// 编号顺延当时最大值（20261296）+1，无撞号。幂等，重跑安全。
+	{Version: 20261297, Name: "skill_trust_columns", SQL: "sql/migrations/20261297_skill_trust_columns.sql", Func: ddlSkillTrustBackfill},
 }

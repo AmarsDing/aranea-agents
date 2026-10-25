@@ -158,6 +158,40 @@ func ResolveSkillTrust(source SkillSource, declared string) SkillTrustLevel {
 	return StricterTrust(base, d)
 }
 
+// SkillSourceForSyncOrigin 把写入侧 provenance（metadata_json.sync_origin）
+// 映射为信任来源（P0-7 批 D1 落列口径，与 20261297 回填 SQL 逐档一致）：
+//
+//	import     → zip_import（外部供应链最严档）
+//	manual     → user_created
+//	filesystem → user_created
+//	未知/空    → user_created（fail-closed 不新增枚举，存量兼容 T3 口径）
+func SkillSourceForSyncOrigin(syncOrigin string) SkillSource {
+	if strings.EqualFold(strings.TrimSpace(syncOrigin), string(skillpkg.SyncOriginImport)) {
+		return SkillSourceZipImport
+	}
+	return SkillSourceUserCreated
+}
+
+// ResolveSkillTrustForPersist 解析新 Skill 行落列的 (source, trust_level)
+// （P0-7 批 D1，三处写入路径共用：importer 注册 / 磁盘同步建行 / UI 创建）：
+//
+//	source 列 = provenance 真实来源（SkillSourceForSyncOrigin）——manifest
+//	声明的 source 绝不覆盖真实 provenance（防供应链提权）；
+//	trust_level 列 = 来源默认档，依次与 manifest 声明的 source 默认档、
+//	manifest 声明的 trust_level 取更严档（§8.4③⑤，fail-closed：声明只能
+//	使结果更严，永不更宽）。
+func ResolveSkillTrustForPersist(syncOrigin, declaredSource, declaredTrust string) (SkillSource, SkillTrustLevel) {
+	source := SkillSourceForSyncOrigin(syncOrigin)
+	level := DefaultTrustForSource(source)
+	if ds, ok := ParseSkillSource(declaredSource); ok {
+		level = StricterTrust(level, DefaultTrustForSource(ds))
+	}
+	if dt, ok := ParseSkillTrustLevel(declaredTrust); ok {
+		level = StricterTrust(level, dt)
+	}
+	return source, level
+}
+
 // DefaultLegacySkillTrust：存量 Skill 默认信任包（T3 可加载）。
 func DefaultLegacySkillTrust() SkillTrust {
 	return SkillTrust{Level: SkillTrustT3Standard}

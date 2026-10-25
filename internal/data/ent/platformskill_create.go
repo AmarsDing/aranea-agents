@@ -370,6 +370,34 @@ func (_c *PlatformSkillCreate) SetNillableWorkspaceID(v *string) *PlatformSkillC
 	return _c
 }
 
+// SetTrustLevel sets the "trust_level" field.
+func (_c *PlatformSkillCreate) SetTrustLevel(v string) *PlatformSkillCreate {
+	_c.mutation.SetTrustLevel(v)
+	return _c
+}
+
+// SetNillableTrustLevel sets the "trust_level" field if the given value is not nil.
+func (_c *PlatformSkillCreate) SetNillableTrustLevel(v *string) *PlatformSkillCreate {
+	if v != nil {
+		_c.SetTrustLevel(*v)
+	}
+	return _c
+}
+
+// SetSource sets the "source" field.
+func (_c *PlatformSkillCreate) SetSource(v string) *PlatformSkillCreate {
+	_c.mutation.SetSource(v)
+	return _c
+}
+
+// SetNillableSource sets the "source" field if the given value is not nil.
+func (_c *PlatformSkillCreate) SetNillableSource(v *string) *PlatformSkillCreate {
+	if v != nil {
+		_c.SetSource(*v)
+	}
+	return _c
+}
+
 // SetID sets the "id" field.
 func (_c *PlatformSkillCreate) SetID(v string) *PlatformSkillCreate {
 	_c.mutation.SetID(v)
@@ -774,6 +802,14 @@ func (_c *PlatformSkillCreate) createSpec() (*PlatformSkill, *sqlgraph.CreateSpe
 		_spec.SetField(platformskill.FieldWorkspaceID, field.TypeString, value)
 		_node.WorkspaceID = value
 	}
+	if value, ok := _c.mutation.TrustLevel(); ok {
+		_spec.SetField(platformskill.FieldTrustLevel, field.TypeString, value)
+		_node.TrustLevel = &value
+	}
+	if value, ok := _c.mutation.Source(); ok {
+		_spec.SetField(platformskill.FieldSource, field.TypeString, value)
+		_node.Source = &value
+	}
 	return _node, _spec
 }
 
@@ -1141,6 +1177,42 @@ func (u *PlatformSkillUpsert) SetWorkspaceID(v string) *PlatformSkillUpsert {
 // UpdateWorkspaceID sets the "workspace_id" field to the value that was provided on create.
 func (u *PlatformSkillUpsert) UpdateWorkspaceID() *PlatformSkillUpsert {
 	u.SetExcluded(platformskill.FieldWorkspaceID)
+	return u
+}
+
+// SetTrustLevel sets the "trust_level" field.
+func (u *PlatformSkillUpsert) SetTrustLevel(v string) *PlatformSkillUpsert {
+	u.Set(platformskill.FieldTrustLevel, v)
+	return u
+}
+
+// UpdateTrustLevel sets the "trust_level" field to the value that was provided on create.
+func (u *PlatformSkillUpsert) UpdateTrustLevel() *PlatformSkillUpsert {
+	u.SetExcluded(platformskill.FieldTrustLevel)
+	return u
+}
+
+// ClearTrustLevel clears the value of the "trust_level" field.
+func (u *PlatformSkillUpsert) ClearTrustLevel() *PlatformSkillUpsert {
+	u.SetNull(platformskill.FieldTrustLevel)
+	return u
+}
+
+// SetSource sets the "source" field.
+func (u *PlatformSkillUpsert) SetSource(v string) *PlatformSkillUpsert {
+	u.Set(platformskill.FieldSource, v)
+	return u
+}
+
+// UpdateSource sets the "source" field to the value that was provided on create.
+func (u *PlatformSkillUpsert) UpdateSource() *PlatformSkillUpsert {
+	u.SetExcluded(platformskill.FieldSource)
+	return u
+}
+
+// ClearSource clears the value of the "source" field.
+func (u *PlatformSkillUpsert) ClearSource() *PlatformSkillUpsert {
+	u.SetNull(platformskill.FieldSource)
 	return u
 }
 
@@ -1560,6 +1632,48 @@ func (u *PlatformSkillUpsertOne) SetWorkspaceID(v string) *PlatformSkillUpsertOn
 func (u *PlatformSkillUpsertOne) UpdateWorkspaceID() *PlatformSkillUpsertOne {
 	return u.Update(func(s *PlatformSkillUpsert) {
 		s.UpdateWorkspaceID()
+	})
+}
+
+// SetTrustLevel sets the "trust_level" field.
+func (u *PlatformSkillUpsertOne) SetTrustLevel(v string) *PlatformSkillUpsertOne {
+	return u.Update(func(s *PlatformSkillUpsert) {
+		s.SetTrustLevel(v)
+	})
+}
+
+// UpdateTrustLevel sets the "trust_level" field to the value that was provided on create.
+func (u *PlatformSkillUpsertOne) UpdateTrustLevel() *PlatformSkillUpsertOne {
+	return u.Update(func(s *PlatformSkillUpsert) {
+		s.UpdateTrustLevel()
+	})
+}
+
+// ClearTrustLevel clears the value of the "trust_level" field.
+func (u *PlatformSkillUpsertOne) ClearTrustLevel() *PlatformSkillUpsertOne {
+	return u.Update(func(s *PlatformSkillUpsert) {
+		s.ClearTrustLevel()
+	})
+}
+
+// SetSource sets the "source" field.
+func (u *PlatformSkillUpsertOne) SetSource(v string) *PlatformSkillUpsertOne {
+	return u.Update(func(s *PlatformSkillUpsert) {
+		s.SetSource(v)
+	})
+}
+
+// UpdateSource sets the "source" field to the value that was provided on create.
+func (u *PlatformSkillUpsertOne) UpdateSource() *PlatformSkillUpsertOne {
+	return u.Update(func(s *PlatformSkillUpsert) {
+		s.UpdateSource()
+	})
+}
+
+// ClearSource clears the value of the "source" field.
+func (u *PlatformSkillUpsertOne) ClearSource() *PlatformSkillUpsertOne {
+	return u.Update(func(s *PlatformSkillUpsert) {
+		s.ClearSource()
 	})
 }
 
@@ -2146,6 +2260,48 @@ func (u *PlatformSkillUpsertBulk) SetWorkspaceID(v string) *PlatformSkillUpsertB
 func (u *PlatformSkillUpsertBulk) UpdateWorkspaceID() *PlatformSkillUpsertBulk {
 	return u.Update(func(s *PlatformSkillUpsert) {
 		s.UpdateWorkspaceID()
+	})
+}
+
+// SetTrustLevel sets the "trust_level" field.
+func (u *PlatformSkillUpsertBulk) SetTrustLevel(v string) *PlatformSkillUpsertBulk {
+	return u.Update(func(s *PlatformSkillUpsert) {
+		s.SetTrustLevel(v)
+	})
+}
+
+// UpdateTrustLevel sets the "trust_level" field to the value that was provided on create.
+func (u *PlatformSkillUpsertBulk) UpdateTrustLevel() *PlatformSkillUpsertBulk {
+	return u.Update(func(s *PlatformSkillUpsert) {
+		s.UpdateTrustLevel()
+	})
+}
+
+// ClearTrustLevel clears the value of the "trust_level" field.
+func (u *PlatformSkillUpsertBulk) ClearTrustLevel() *PlatformSkillUpsertBulk {
+	return u.Update(func(s *PlatformSkillUpsert) {
+		s.ClearTrustLevel()
+	})
+}
+
+// SetSource sets the "source" field.
+func (u *PlatformSkillUpsertBulk) SetSource(v string) *PlatformSkillUpsertBulk {
+	return u.Update(func(s *PlatformSkillUpsert) {
+		s.SetSource(v)
+	})
+}
+
+// UpdateSource sets the "source" field to the value that was provided on create.
+func (u *PlatformSkillUpsertBulk) UpdateSource() *PlatformSkillUpsertBulk {
+	return u.Update(func(s *PlatformSkillUpsert) {
+		s.UpdateSource()
+	})
+}
+
+// ClearSource clears the value of the "source" field.
+func (u *PlatformSkillUpsertBulk) ClearSource() *PlatformSkillUpsertBulk {
+	return u.Update(func(s *PlatformSkillUpsert) {
+		s.ClearSource()
 	})
 }
 

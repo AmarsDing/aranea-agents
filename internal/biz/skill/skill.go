@@ -1093,10 +1093,10 @@ type RuntimeCandidate struct {
 	// Triggers 来自 SKILL.md frontmatter 的确定性触发词（P1-3）。
 	// 命中用户输入时在路由层强制纳入并置顶，不依赖模型自觉加载。
 	Triggers []string
-	// TrustLevel / Source 承载 P0-7 信任元数据（ent 列 trust_level/source 与
-	// 回填迁移随 Batch B 落地后由 data 层填充）；当前恒零值，经
-	// biz.DefaultTrustForSource 解析为存量默认档（T3 可加载），
-	// 与门禁上线前行为一致。
+	// TrustLevel / Source 承载 P0-7 信任元数据（ent 列 trust_level/source +
+	// 回填迁移 20261297 随批 D1 落地，data 层 ListEnabledPublishedSkillCandidates
+	// 填充）；空值（未回填防御）经 biz.DefaultTrustForSource 解析为存量默认档
+	// （T3 可加载），与门禁上线前行为一致。
 	TrustLevel string
 	Source     string
 }

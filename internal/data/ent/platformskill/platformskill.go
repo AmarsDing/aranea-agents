@@ -63,6 +63,10 @@ const (
 	FieldLifecycleStatus = "lifecycle_status"
 	// FieldWorkspaceID holds the string denoting the workspace_id field in the database.
 	FieldWorkspaceID = "workspace_id"
+	// FieldTrustLevel holds the string denoting the trust_level field in the database.
+	FieldTrustLevel = "trust_level"
+	// FieldSource holds the string denoting the source field in the database.
+	FieldSource = "source"
 	// Table holds the table name of the platformskill in the database.
 	Table = "skill"
 )
@@ -96,6 +100,8 @@ var Columns = []string{
 	FieldEvolutionReason,
 	FieldLifecycleStatus,
 	FieldWorkspaceID,
+	FieldTrustLevel,
+	FieldSource,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -313,4 +319,14 @@ func ByLifecycleStatus(opts ...sql.OrderTermOption) OrderOption {
 // ByWorkspaceID orders the results by the workspace_id field.
 func ByWorkspaceID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldWorkspaceID, opts...).ToFunc()
+}
+
+// ByTrustLevel orders the results by the trust_level field.
+func ByTrustLevel(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldTrustLevel, opts...).ToFunc()
+}
+
+// BySource orders the results by the source field.
+func BySource(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldSource, opts...).ToFunc()
 }

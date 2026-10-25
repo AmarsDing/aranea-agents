@@ -13,7 +13,13 @@ type Manifest struct {
 	Triggers    []string
 	Tools       []string
 	Variables   map[string]string
-	Body        string
+	// Source / TrustLevel：P0-7 批 D1 信任分级 frontmatter 声明键（source /
+	// trust_level）。本包只承载原始字面值——可信性与归一化由
+	// biz.ResolveSkillTrustForPersist 双向取严（声明只能往更严档归一，永不
+	// 提升），写侧调用方据此落 ent 列。
+	Source     string
+	TrustLevel string
+	Body       string
 }
 
 func Parse(body string) Manifest {
@@ -87,6 +93,10 @@ func Parse(body string) Manifest {
 							m.Tools = append(m.Tools, t)
 						}
 					}
+				case "source":
+					m.Source = strings.Trim(value, `"'`)
+				case "trust_level":
+					m.TrustLevel = strings.Trim(value, `"'`)
 				default:
 					if strings.HasPrefix(strings.ToLower(key), "var_") || strings.HasPrefix(strings.ToLower(key), "variable_") {
 						if m.Variables == nil {

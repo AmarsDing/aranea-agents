@@ -67,7 +67,11 @@ type PlatformSkill struct {
 	// LifecycleStatus holds the value of the "lifecycle_status" field.
 	LifecycleStatus string `json:"lifecycle_status,omitempty"`
 	// owning workspace ID; empty = shared/system builtin
-	WorkspaceID  string `json:"workspace_id,omitempty"`
+	WorkspaceID string `json:"workspace_id,omitempty"`
+	// skill trust level T1-T4; NULL = not backfilled
+	TrustLevel *string `json:"trust_level,omitempty"`
+	// skill source builtin/llm_evolution/zip_import/user_created; NULL = not backfilled
+	Source       *string `json:"source,omitempty"`
 	selectValues sql.SelectValues
 }
 
@@ -80,7 +84,7 @@ func (*PlatformSkill) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullBool)
 		case platformskill.FieldSortOrder:
 			values[i] = new(sql.NullInt64)
-		case platformskill.FieldID, platformskill.FieldSkillKey, platformskill.FieldName, platformskill.FieldDescription, platformskill.FieldStatus, platformskill.FieldConfigJSON, platformskill.FieldMetadataJSON, platformskill.FieldCreatedAt, platformskill.FieldUpdatedAt, platformskill.FieldDeletedAt, platformskill.FieldParentID, platformskill.FieldLevel, platformskill.FieldAgentID, platformskill.FieldProvider, platformskill.FieldModel, platformskill.FieldKind, platformskill.FieldRiskLevel, platformskill.FieldEntryPath, platformskill.FieldVisibility, platformskill.FieldFallbackConfigJSON, platformskill.FieldParentVersionID, platformskill.FieldEvolutionReason, platformskill.FieldLifecycleStatus, platformskill.FieldWorkspaceID:
+		case platformskill.FieldID, platformskill.FieldSkillKey, platformskill.FieldName, platformskill.FieldDescription, platformskill.FieldStatus, platformskill.FieldConfigJSON, platformskill.FieldMetadataJSON, platformskill.FieldCreatedAt, platformskill.FieldUpdatedAt, platformskill.FieldDeletedAt, platformskill.FieldParentID, platformskill.FieldLevel, platformskill.FieldAgentID, platformskill.FieldProvider, platformskill.FieldModel, platformskill.FieldKind, platformskill.FieldRiskLevel, platformskill.FieldEntryPath, platformskill.FieldVisibility, platformskill.FieldFallbackConfigJSON, platformskill.FieldParentVersionID, platformskill.FieldEvolutionReason, platformskill.FieldLifecycleStatus, platformskill.FieldWorkspaceID, platformskill.FieldTrustLevel, platformskill.FieldSource:
 			values[i] = new(sql.NullString)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -259,6 +263,20 @@ func (_m *PlatformSkill) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.WorkspaceID = value.String
 			}
+		case platformskill.FieldTrustLevel:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field trust_level", values[i])
+			} else if value.Valid {
+				_m.TrustLevel = new(string)
+				*_m.TrustLevel = value.String
+			}
+		case platformskill.FieldSource:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field source", values[i])
+			} else if value.Valid {
+				_m.Source = new(string)
+				*_m.Source = value.String
+			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
 		}
@@ -372,6 +390,16 @@ func (_m *PlatformSkill) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("workspace_id=")
 	builder.WriteString(_m.WorkspaceID)
+	builder.WriteString(", ")
+	if v := _m.TrustLevel; v != nil {
+		builder.WriteString("trust_level=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.Source; v != nil {
+		builder.WriteString("source=")
+		builder.WriteString(*v)
+	}
 	builder.WriteByte(')')
 	return builder.String()
 }

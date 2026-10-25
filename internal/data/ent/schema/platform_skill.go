@@ -50,6 +50,12 @@ func (PlatformSkill) Fields() []ent.Field {
 		// P2-B: tenant isolation. empty = shared/legacy (visible to all workspaces);
 		// non-empty = tenant-private (visible only to owning workspace).
 		field.String("workspace_id").Default("").Comment("owning workspace ID; empty = shared/system builtin"),
+		// P0-7 批 D1（deferred ① 落账）：信任分级两列。可空无默认——NULL=未
+		// 回填（存量行迁移前天然 NULL，value-guarded UPDATE 幂等回填 T1-T4/
+		// biz 字面值，migration 20261297 + ddl 回填 hook 同 commit）。biz 侧
+		// SkillTrust 结构不内嵌（§8.4② AS-COG-01：详情 DTO 透出另批）。
+		field.Text("trust_level").Optional().Nillable().Comment("skill trust level T1-T4; NULL = not backfilled"),
+		field.Text("source").Optional().Nillable().Comment("skill source builtin/llm_evolution/zip_import/user_created; NULL = not backfilled"),
 	}
 }
 

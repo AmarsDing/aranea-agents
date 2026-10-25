@@ -483,3 +483,101 @@ func ddlHealRecordMetadataColumn(ctx context.Context, rawDB *sql.DB, _ *ent.Clie
 	}
 	return nil
 }
+
+// ddlSkillTrustBackfill backfills skill.trust_level / skill.source for legacy
+// rows (P0-7 批 D1，迁移 20261297，2026-10-25）：列可空零默认、NULL=未回填，
+// 三档 value-guarded UPDATE（WHERE ... IS NULL）天然幂等、重跑安全：
+//
+//	① source：metadata_json.sync_origin='import' → 'zip_import'，其余 →
+//	   'user_created'——与 biz.SkillSourceForSyncOrigin 同源语义（provenance
+//	   是唯一真源，manifest 声明绝不回写 source 列，§8.4⑤ 防供应链提权）；
+//	   CASE 铸型（`~ '^\s*\{' 先判、::jsonb 仅在 THEN 分支求值）保证畸形
+//	   JSON 行不炸全表（PG 对非常量子表达不做计划期常量折叠，安全先例同
+//	   ddlToolGrantsExpiresAt 的正则守卫）。
+//	② trust='T2'：skill_key 命中任一 agent_runtime_settings 行的
+//	   skill_runtime_json.allowed_slugs——候选值经 SQL 转写的
+//	   biz.NormalizeSlug（lower(btrim) → regexp_replace '[^a-z0-9_-]+'→'-'
+//	   'g' → btrim '-_'）后与 skill_key 等值比较；顶层 jsonb_typeof='array'
+//	   + 元素级 jsonb_typeof='string' 双层守卫（嵌套数组/对象/数字元素与运行
+//	   时解析语义一致地剔出候选——jsonb_array_elements_text 会把非标量元素渲
+//	   染成 JSON 文本，经归一化可能误碰撞 skill_key 造成 T2 过授，D1-f 修复
+//	   批 2026-10-25），元素文本经 #>> '{}' 提取（等价 Go json.Unmarshal
+//	   []string 语义），CASE 铸型守卫顶层畸形 JSON，settings 表缺失则整档跳
+//	   过（全新库零行）。
+//	③ trust='T3'：存量兼容默认档（§8.5① 可加载）兜底所有剩余 NULL。
+//	T1（builtin）本轮恒空集——内置种子行由 Go 侧 ResolveSkillTrustForPersist
+//	落值，不从存量推断。回填顺序 T2 必须先于 T3（T3 兜底会吃掉 T2 候选行）。
+//
+// Postgres-only；nil rawDB（非 PG）直接跳过。分层计数单条 Info 落账。
+func ddlSkillTrustBackfill(ctx context.Context, rawDB *sql.DB, _ *ent.Client, d Dialect, lg loggateway.Logger) error {
+	if rawDB == nil {
+		lg.Info("skill_trust_backfill skipped (non-postgres or nil db)",
+			loggateway.StepID("data.ddl_migration.skill_trust_backfill"))
+		return nil
+	}
+	hasSettings, err := d.TableExists(ctx, rawDB, "agent_runtime_settings")
+	if err != nil {
+		return fmt.Errorf("probe agent_runtime_settings: %w", err)
+	}
+	var srcRows, t2Rows, t3Rows int64
+
+	res, err := rawDB.ExecContext(ctx, `
+		UPDATE skill
+		SET source = CASE
+			WHEN (CASE WHEN metadata_json ~ '^\s*\{' THEN metadata_json::jsonb ELSE '{}'::jsonb END) ->> 'sync_origin' = 'import'
+				THEN 'zip_import'
+			ELSE 'user_created'
+		END
+		WHERE source IS NULL
+	`)
+	if err != nil {
+		return fmt.Errorf("backfill skill.source: %w", err)
+	}
+	srcRows, _ = res.RowsAffected()
+
+	if hasSettings {
+		res, err = rawDB.ExecContext(ctx, `
+			UPDATE skill sk
+			SET trust_level = 'T2'
+			WHERE sk.trust_level IS NULL
+			  AND EXISTS (
+			    SELECT 1
+			    FROM agent_runtime_settings ars
+			    WHERE EXISTS (
+			      SELECT 1
+			      FROM jsonb_array_elements(
+			        CASE WHEN jsonb_typeof(
+			          (CASE WHEN ars.skill_runtime_json ~ '^\s*\{' THEN ars.skill_runtime_json::jsonb ELSE '{}'::jsonb END) -> 'allowed_slugs'
+			        ) = 'array'
+			          THEN (CASE WHEN ars.skill_runtime_json ~ '^\s*\{' THEN ars.skill_runtime_json::jsonb ELSE '{}'::jsonb END) -> 'allowed_slugs'
+			          ELSE '[]'::jsonb
+			        END
+			      ) AS elem
+			      WHERE jsonb_typeof(elem.value) = 'string'
+			        AND btrim(regexp_replace(lower(btrim(elem.value #>> '{}')), '[^a-z0-9_-]+', '-', 'g'), '-_') = sk.skill_key
+			    )
+			  )
+		`)
+		if err != nil {
+			return fmt.Errorf("backfill skill.trust_level T2: %w", err)
+		}
+		t2Rows, _ = res.RowsAffected()
+	}
+
+	res, err = rawDB.ExecContext(ctx, `
+		UPDATE skill
+		SET trust_level = 'T3'
+		WHERE trust_level IS NULL
+	`)
+	if err != nil {
+		return fmt.Errorf("backfill skill.trust_level T3: %w", err)
+	}
+	t3Rows, _ = res.RowsAffected()
+
+	lg.Info("skill trust/source backfilled",
+		loggateway.StepID("data.ddl_migration.skill_trust_backfill"),
+		loggateway.Int("source_rows", int(srcRows)),
+		loggateway.Int("t2_rows", int(t2Rows)),
+		loggateway.Int("t3_rows", int(t3Rows)))
+	return nil
+}
