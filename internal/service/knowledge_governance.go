@@ -18,6 +18,9 @@ import (
 // MergeKnowledgeEntities merges mergee entities into the keeper atomically
 // (G5-F B10); returns rewrite counts for inline UI feedback.
 func (s *KnowledgeService) MergeKnowledgeEntities(ctx context.Context, req *v1.MergeKnowledgeEntitiesRequest) (*v1.MergeKnowledgeEntitiesResponse, error) {
+	if err := assertKnowledgeGovernanceAdmin(ctx); err != nil {
+		return nil, err
+	}
 	if req.GetKeeperId() <= 0 {
 		return nil, apierror.BadRequest("KNOWLEDGE", "keeper_id is required")
 	}
@@ -28,7 +31,7 @@ func (s *KnowledgeService) MergeKnowledgeEntities(ctx context.Context, req *v1.M
 	if err != nil {
 		return nil, err
 	}
-	if err := s.assertCollectionAccess(ctx, col); err != nil {
+	if err := s.assertCollectionMutateAccess(ctx, col); err != nil {
 		return nil, err
 	}
 
@@ -62,6 +65,9 @@ func (s *KnowledgeService) MergeKnowledgeEntities(ctx context.Context, req *v1.M
 // conflict groups first, then embedding-similar pairs by similarity desc.
 // Embedder nil/failure degrades to norm-only (NFR-15); read-only, no flow log.
 func (s *KnowledgeService) ListEntityMergeSuggestions(ctx context.Context, req *v1.ListEntityMergeSuggestionsRequest) (*v1.ListEntityMergeSuggestionsResponse, error) {
+	if err := assertKnowledgeGovernanceAdmin(ctx); err != nil {
+		return nil, err
+	}
 	col, err := s.uc.GetCollection(ctx, req.GetCollectionId())
 	if err != nil {
 		return nil, err
@@ -99,6 +105,9 @@ func (s *KnowledgeService) ListEntityMergeSuggestions(ctx context.Context, req *
 // Read-only, no flow log. status/limit 收口在 biz 层（非法 status → CodeBadRequest）；
 // G-30 offset 分页：total 与 items 同 WHERE 口径回填。
 func (s *KnowledgeService) ListGovernanceProposals(ctx context.Context, req *v1.ListGovernanceProposalsRequest) (*v1.ListGovernanceProposalsResponse, error) {
+	if err := assertKnowledgeGovernanceAdmin(ctx); err != nil {
+		return nil, err
+	}
 	if req.GetCollectionId() != "" {
 		col, err := s.uc.GetCollection(ctx, req.GetCollectionId())
 		if err != nil {
@@ -145,6 +154,20 @@ func (s *KnowledgeService) ResolveGovernanceProposal(ctx context.Context, req *v
 	decision := strings.ToLower(strings.TrimSpace(req.GetDecision()))
 	if decision != "applied" && decision != "rejected" && decision != "keep_old" && decision != "keep_new" {
 		return nil, apierror.BadRequest("KNOWLEDGE", "decision must be applied, rejected, keep_old, or keep_new")
+	}
+	if err := assertKnowledgeGovernanceAdmin(ctx); err != nil {
+		return nil, err
+	}
+	proposal, err := s.uc.GetGovernanceProposal(ctx, req.GetId())
+	if err != nil {
+		return nil, err
+	}
+	col, err := s.uc.GetCollection(ctx, proposal.CollectionID)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.assertCollectionMutateAccess(ctx, col); err != nil {
+		return nil, err
 	}
 
 	flow := s.knowledgeFlow(ctx)

@@ -353,6 +353,8 @@ func v2EventPayloadToWire(e biz.Event) (any, error) {
 		return teamRunEventWire{TeamRun: teamRunToWire(ev.TeamRun)}, nil
 	case *biz.TeamRunFailedEvent:
 		return teamRunEventWire{TeamRun: teamRunToWire(ev.TeamRun)}, nil
+	case *biz.TeamRunCancelledEvent:
+		return teamRunEventWire{TeamRun: teamRunToWire(ev.TeamRun)}, nil
 	// MemberSession
 	case *biz.MemberSessionCreatedEvent:
 		return memberSessionEventWire{MemberSession: memberSessionToWire(ev.MemberSession)}, nil

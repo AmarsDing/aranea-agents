@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+
+	bizknowledge "aranea-agents/internal/biz/knowledge"
 )
 
 // Searcher abstracts the retrieval system under evaluation. Implementations
@@ -17,6 +19,13 @@ type Hit struct {
 	ChunkID string  `json:"chunk_id"`
 	DocID   string  `json:"doc_id"`
 	Score   float64 `json:"score"`
+}
+
+// TemporalSearcher 是 G-05-asof 时态评估窄接口（可选能力）：GoldenCase 携带
+// valid_at/recorded_at 时 runner 经类型断言走 SearchAsOf；检索器未实现该端口
+// 的时态用例记 Err（GateSearchError 卡红），零 span 用例对旧检索器字节级不变。
+type TemporalSearcher interface {
+	SearchAsOf(ctx context.Context, query string, topK int, span bizknowledge.TemporalSpan) ([]Hit, error)
 }
 
 // Runner evaluates an EvalSet against a Searcher.
@@ -97,7 +106,23 @@ func (r *Runner) Run(ctx context.Context, set EvalSet, topK int) (RunReport, err
 
 func (r *Runner) evalCase(ctx context.Context, gc GoldenCase, topK int) CaseResult {
 	res := CaseResult{CaseID: gc.ID, Query: gc.Query}
-	hits, err := r.searcher.Search(ctx, gc.Query, topK)
+	span, serr := gc.temporalSpan()
+	var hits []Hit
+	var err error
+	switch {
+	case serr != nil:
+		res.Err = serr.Error()
+	case span.Any():
+		// 时态用例机会断言：检索器须实现 TemporalSearcher（G-05-asof 决策 d）。
+		ts, ok := r.searcher.(TemporalSearcher)
+		if !ok {
+			res.Err = fmt.Sprintf("eval: case %q carries temporal span but searcher %T lacks SearchAsOf", gc.ID, r.searcher)
+			break
+		}
+		hits, err = ts.SearchAsOf(ctx, gc.Query, topK, span)
+	default:
+		hits, err = r.searcher.Search(ctx, gc.Query, topK)
+	}
 	if err != nil {
 		res.Err = err.Error()
 	}

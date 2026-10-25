@@ -1,0 +1,174 @@
+{
+  "set_name": "gold-temporal-1hop",
+  "top_k": 8,
+  "cases": [
+    {
+      "case_id": "current-zero-span",
+      "query": "从时态中枢顺出",
+      "ranked_chunk_ids": [
+        "hub-c0",
+        "persist-c0",
+        "future-c0"
+      ],
+      "ranked_doc_ids": [
+        "hub",
+        "persist",
+        "future"
+      ],
+      "chunk": {
+        "recall_at_k": 1,
+        "mrr": 1,
+        "hit": 1,
+        "first_hit_rank": 1
+      },
+      "doc": {
+        "recall_at_k": 1,
+        "mrr": 1,
+        "hit": 1,
+        "first_hit_rank": 1
+      }
+    },
+    {
+      "case_id": "asof-t1-includes-closed",
+      "query": "从时态中枢顺出",
+      "ranked_chunk_ids": [
+        "hub-c0",
+        "persist-c0",
+        "closed-c0"
+      ],
+      "ranked_doc_ids": [
+        "hub",
+        "persist",
+        "closed"
+      ],
+      "chunk": {
+        "recall_at_k": 1,
+        "mrr": 1,
+        "hit": 1,
+        "first_hit_rank": 1
+      },
+      "doc": {
+        "recall_at_k": 1,
+        "mrr": 1,
+        "hit": 1,
+        "first_hit_rank": 1
+      }
+    },
+    {
+      "case_id": "asof-t2-excludes-closed",
+      "query": "从时态中枢顺出",
+      "ranked_chunk_ids": [
+        "hub-c0",
+        "persist-c0",
+        "future-c0"
+      ],
+      "ranked_doc_ids": [
+        "hub",
+        "persist",
+        "future"
+      ],
+      "chunk": {
+        "recall_at_k": 1,
+        "mrr": 1,
+        "hit": 1,
+        "first_hit_rank": 1
+      },
+      "doc": {
+        "recall_at_k": 1,
+        "mrr": 1,
+        "hit": 1,
+        "first_hit_rank": 1
+      }
+    },
+    {
+      "case_id": "asof-r0-before-C-recorded",
+      "query": "从时态中枢顺出",
+      "ranked_chunk_ids": [
+        "hub-c0",
+        "persist-c0",
+        "closed-c0"
+      ],
+      "ranked_doc_ids": [
+        "hub",
+        "persist",
+        "closed"
+      ],
+      "chunk": {
+        "recall_at_k": 1,
+        "mrr": 1,
+        "hit": 1,
+        "first_hit_rank": 1
+      },
+      "doc": {
+        "recall_at_k": 1,
+        "mrr": 1,
+        "hit": 1,
+        "first_hit_rank": 1
+      }
+    },
+    {
+      "case_id": "dual-t1-r0",
+      "query": "从时态中枢顺出",
+      "ranked_chunk_ids": [
+        "hub-c0",
+        "persist-c0",
+        "closed-c0"
+      ],
+      "ranked_doc_ids": [
+        "hub",
+        "persist",
+        "closed"
+      ],
+      "chunk": {
+        "recall_at_k": 1,
+        "mrr": 1,
+        "hit": 1,
+        "first_hit_rank": 1
+      },
+      "doc": {
+        "recall_at_k": 1,
+        "mrr": 1,
+        "hit": 1,
+        "first_hit_rank": 1
+      }
+    },
+    {
+      "case_id": "dual-t2-rmid",
+      "query": "从时态中枢顺出",
+      "ranked_chunk_ids": [
+        "hub-c0",
+        "persist-c0",
+        "future-c0"
+      ],
+      "ranked_doc_ids": [
+        "hub",
+        "persist",
+        "future"
+      ],
+      "chunk": {
+        "recall_at_k": 1,
+        "mrr": 1,
+        "hit": 1,
+        "first_hit_rank": 1
+      },
+      "doc": {
+        "recall_at_k": 1,
+        "mrr": 1,
+        "hit": 1,
+        "first_hit_rank": 1
+      }
+    }
+  ],
+  "chunk_agg": {
+    "case_count": 6,
+    "recall_at_k": 1,
+    "mrr": 1,
+    "hit_rate": 1
+  },
+  "doc_agg": {
+    "case_count": 6,
+    "recall_at_k": 1,
+    "mrr": 1,
+    "hit_rate": 1
+  }
+}

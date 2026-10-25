@@ -349,3 +349,65 @@ func TestHandleTeamTurnResult_Standalone_Cancelled_TerminalPass(t *testing.T) {
 		t.Errorf("no member session interrupted transition, want running sessions interrupted on cancel")
 	}
 }
+
+// ── D1-F2：standalone cancelled 现态守卫（87-orchestration-chain-hardening）──
+// 破除「调用方已转换」假设：runner 取消回调（StartTeamTurn 取消分流）进入
+// standalone 终态 pass 时 teams 现态仍是 running，service 必须补 CAS 转移
+// cancelled（FSM 已有 running→cancelled 边）；已 cancelled 的重放（如
+// biz.CancelTeam 显式清理）保持零转移幂等。
+
+func TestHandleTeamTurnResult_Standalone_Cancelled_TransitionsIfRunning(t *testing.T) {
+	team := biz.Team{
+		ID: "team-sa-x2", DisplayName: "独立团队", SpiritSessionID: "",
+		AutoCreated: false, Status: biz.TeamStatusRunning,
+	}
+	repo := &f10SessionRepo{sessions: []biz.Session{
+		{ID: "sess-sa-x2", TeamID: team.ID, SessionType: "team", Status: string(sessstatus.SessionStatusRunning)},
+		{ID: "sess-sa-x2-a", TeamID: team.ID, SessionType: "agent", MemberAgentKey: "agent-a", Status: string(sessstatus.SessionStatusRunning)},
+	}}
+	controller := &stubSpiritTeamController{}
+	writer := &stubTeamWriter{}
+	seq := &capturingSeq{}
+	s := newStandaloneStarterFromRepo(team, controller, writer, repo, seq)
+
+	s.HandleTeamTurnResult(context.Background(), "", team.ID, biz.TeamStatusCancelled, "context canceled", "sess-sa-x2")
+
+	var cancelled bool
+	for _, tr := range writer.snapshotTransitions() {
+		if tr.id == team.ID && tr.newStatus == biz.TeamStatusCancelled && tr.expectCurrent == biz.TeamStatusRunning {
+			cancelled = true
+		}
+	}
+	if !cancelled {
+		t.Errorf("standalone teams transition (running → cancelled) missing, got %#v", writer.snapshotTransitions())
+	}
+	if len(repo.interruptCalls) == 0 {
+		t.Errorf("no member session interrupted transition, want running sessions interrupted on cancel")
+	}
+}
+
+// standalone cancelled 同态重放（biz.CancelTeam 已转换的显式清理路径）：
+// 零转移、成员收敛不重复（成员 session 已 interrupted 不再处理）。
+func TestHandleTeamTurnResult_Standalone_Cancelled_AlreadyCancelled_Idempotent(t *testing.T) {
+	team := biz.Team{
+		ID: "team-sa-x3", DisplayName: "独立团队", SpiritSessionID: "",
+		AutoCreated: false, Status: biz.TeamStatusCancelled,
+	}
+	repo := &f10SessionRepo{sessions: []biz.Session{
+		{ID: "sess-sa-x3", TeamID: team.ID, SessionType: "team", Status: string(sessstatus.SessionStatusInterrupted)},
+		{ID: "sess-sa-x3-a", TeamID: team.ID, SessionType: "agent", MemberAgentKey: "agent-a", Status: string(sessstatus.SessionStatusInterrupted)},
+	}}
+	controller := &stubSpiritTeamController{}
+	writer := &stubTeamWriter{}
+	seq := &capturingSeq{}
+	s := newStandaloneStarterFromRepo(team, controller, writer, repo, seq)
+
+	s.HandleTeamTurnResult(context.Background(), "", team.ID, biz.TeamStatusCancelled, "context canceled", "")
+
+	if trs := writer.snapshotTransitions(); len(trs) != 0 {
+		t.Errorf("teams transitions = %+v, want none (already cancelled)", trs)
+	}
+	if len(repo.interruptCalls) != 0 {
+		t.Errorf("interrupt calls = %v, want none (no running sessions to converge)", repo.interruptCalls)
+	}
+}

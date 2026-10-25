@@ -645,6 +645,83 @@ func TestSequencer_CriticalOutboxInsert(t *testing.T) {
 	}
 }
 
+// TestSequencer_CriticalOutboxInsert_TeamRunCancelled pins 87-D4-3: the
+// dedicated team_run.cancelled kind rides the Critical lane end to end —
+// publishCritical produces exactly one durable outbox row whose Kind is
+// team_run.cancelled (NOT team_run.failed), with a monotonic delivery seq and
+// exactly one MarkPublished. Mirrors the TestSequencer_CriticalOutboxInsert
+// (task.cancelled B-06 同构) skeleton.
+func TestSequencer_CriticalOutboxInsert_TeamRunCancelled(t *testing.T) {
+	t.Parallel()
+
+	rs := &fakeRepoSet{}
+	bus := &fakeBus{}
+	outbox := &fakeOutbox{}
+	s := NewSequencer(rs, bus, loggateway.NewNoop(),
+		WithPublishBuffer(16),
+		WithPersistBuffer(16),
+		WithDeltaBatchInterval(time.Millisecond*4),
+		WithEventOutbox(outbox),
+	)
+	t.Cleanup(func() { _ = s.Close() })
+
+	ctx := context.Background()
+	tr := biz.TeamRun{
+		ID:              "tr-outbox",
+		TeamStageID:     "ts-1",
+		TaskID:          "task-1",
+		SessionID:       "sess-team-1",
+		SpiritSessionID: "sess-1",
+		Status:          biz.TeamRunV2StatusCancelled,
+		Version:         3,
+	}
+	ev := biz.NewTeamRunCancelledEvent(tr)
+	s.Publish(ctx, ev)
+	if err := s.Flush(ctx); err != nil {
+		t.Fatalf("Flush: %v", err)
+	}
+
+	outbox.mu.Lock()
+	defer outbox.mu.Unlock()
+	if len(outbox.inserted) != 1 {
+		t.Fatalf("outbox inserts = %d, want 1", len(outbox.inserted))
+	}
+	row := outbox.inserted[0]
+	if row.Kind != string(biz.EventKindTeamRunCancelled) {
+		t.Fatalf("outbox row Kind = %q, want %q", row.Kind, biz.EventKindTeamRunCancelled)
+	}
+	wantID := biz.DeliveryEventID(ev, 1)
+	if row.EventID != wantID {
+		t.Fatalf("event_id = %q, want %q", row.EventID, wantID)
+	}
+	if row.Seq != 1 || row.SessionID != "sess-1" {
+		t.Fatalf("row = %+v", row)
+	}
+	if got := ev.DeliverySeqValue(); got != 1 {
+		t.Fatalf("event delivery seq = %d, want 1", got)
+	}
+	var env map[string]any
+	if err := json.Unmarshal(row.Payload, &env); err != nil {
+		t.Fatalf("payload json: %v", err)
+	}
+	if env["type"] != "v2_event" || env["kind"] != "team_run.cancelled" {
+		t.Fatalf("envelope type/kind = %v/%v", env["type"], env["kind"])
+	}
+	if env["event_id"] != wantID {
+		t.Fatalf("envelope event_id = %v, want %s", env["event_id"], wantID)
+	}
+	// Persist side: the cancelled TeamRun lands via UpsertTeamRun exactly once,
+	// entity status stays cancelled.
+	rs.mu.Lock()
+	defer rs.mu.Unlock()
+	if len(rs.runs) != 1 || rs.runs[0].ID != "tr-outbox" || rs.runs[0].Status != biz.TeamRunV2StatusCancelled {
+		t.Fatalf("repo runs = %+v, want one cancelled tr-outbox row", rs.runs)
+	}
+	if len(outbox.markPublished) != 1 || outbox.markPublished[0] != row.ID {
+		t.Fatalf("MarkPublished = %v, want [%s]", outbox.markPublished, row.ID)
+	}
+}
+
 // TestSequencer_CriticalOutboxSeqMonotonic is the H1 regression test
 // (2026-10-18 review): one session emitting terminal events whose DOMAIN seqs
 // come from different counter spaces (turn counter 1,2,3… vs shared entity

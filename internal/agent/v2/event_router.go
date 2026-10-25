@@ -118,6 +118,11 @@ func describePersist(e biz.Event) *persistDescriptor {
 		return &persistDescriptor{EntityKindTeamRun, PersistOpUpsert, ev.TeamRun}
 	case *biz.TeamRunFailedEvent:
 		return &persistDescriptor{EntityKindTeamRun, PersistOpUpsert, ev.TeamRun}
+	case *biz.TeamRunCancelledEvent:
+		// 87-D4-3：cancelled 专用 kind 与 completed/failed 同走 UpsertTeamRun
+		// （实体真实状态以 TeamRun.Status=cancelled 为准，与事件类型无关）；
+		// 不加此 case 事件被 describePersist 判 nil 静默不落库。
+		return &persistDescriptor{EntityKindTeamRun, PersistOpUpsert, ev.TeamRun}
 
 	case *biz.MemberSessionCreatedEvent:
 		return &persistDescriptor{EntityKindMemberSession, PersistOpUpsert, ev.MemberSession}

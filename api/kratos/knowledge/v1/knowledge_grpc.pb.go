@@ -27,6 +27,7 @@ const (
 	KnowledgeService_IngestDocument_FullMethodName             = "/kratos.knowledge.v1.KnowledgeService/IngestDocument"
 	KnowledgeService_ListDocuments_FullMethodName              = "/kratos.knowledge.v1.KnowledgeService/ListDocuments"
 	KnowledgeService_GetDocumentContent_FullMethodName         = "/kratos.knowledge.v1.KnowledgeService/GetDocumentContent"
+	KnowledgeService_GetDocument_FullMethodName                = "/kratos.knowledge.v1.KnowledgeService/GetDocument"
 	KnowledgeService_DeleteDocument_FullMethodName             = "/kratos.knowledge.v1.KnowledgeService/DeleteDocument"
 	KnowledgeService_MoveDocument_FullMethodName               = "/kratos.knowledge.v1.KnowledgeService/MoveDocument"
 	KnowledgeService_MoveDocumentToDir_FullMethodName          = "/kratos.knowledge.v1.KnowledgeService/MoveDocumentToDir"
@@ -71,6 +72,7 @@ type KnowledgeServiceClient interface {
 	IngestDocument(ctx context.Context, in *IngestDocumentRequest, opts ...grpc.CallOption) (*KnowledgeDocument, error)
 	ListDocuments(ctx context.Context, in *ListDocumentsRequest, opts ...grpc.CallOption) (*ListDocumentsResponse, error)
 	GetDocumentContent(ctx context.Context, in *GetDocumentContentRequest, opts ...grpc.CallOption) (*DocumentContent, error)
+	GetDocument(ctx context.Context, in *GetDocumentRequest, opts ...grpc.CallOption) (*KnowledgeDocument, error)
 	DeleteDocument(ctx context.Context, in *DeleteDocumentRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	MoveDocument(ctx context.Context, in *MoveDocumentRequest, opts ...grpc.CallOption) (*KnowledgeDocument, error)
 	// MoveDocumentToDir moves a vault document to another directory within the same
@@ -242,6 +244,16 @@ func (c *knowledgeServiceClient) GetDocumentContent(ctx context.Context, in *Get
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(DocumentContent)
 	err := c.cc.Invoke(ctx, KnowledgeService_GetDocumentContent_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *knowledgeServiceClient) GetDocument(ctx context.Context, in *GetDocumentRequest, opts ...grpc.CallOption) (*KnowledgeDocument, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(KnowledgeDocument)
+	err := c.cc.Invoke(ctx, KnowledgeService_GetDocument_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -551,6 +563,7 @@ type KnowledgeServiceServer interface {
 	IngestDocument(context.Context, *IngestDocumentRequest) (*KnowledgeDocument, error)
 	ListDocuments(context.Context, *ListDocumentsRequest) (*ListDocumentsResponse, error)
 	GetDocumentContent(context.Context, *GetDocumentContentRequest) (*DocumentContent, error)
+	GetDocument(context.Context, *GetDocumentRequest) (*KnowledgeDocument, error)
 	DeleteDocument(context.Context, *DeleteDocumentRequest) (*emptypb.Empty, error)
 	MoveDocument(context.Context, *MoveDocumentRequest) (*KnowledgeDocument, error)
 	// MoveDocumentToDir moves a vault document to another directory within the same
@@ -678,6 +691,9 @@ func (UnimplementedKnowledgeServiceServer) ListDocuments(context.Context, *ListD
 }
 func (UnimplementedKnowledgeServiceServer) GetDocumentContent(context.Context, *GetDocumentContentRequest) (*DocumentContent, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetDocumentContent not implemented")
+}
+func (UnimplementedKnowledgeServiceServer) GetDocument(context.Context, *GetDocumentRequest) (*KnowledgeDocument, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetDocument not implemented")
 }
 func (UnimplementedKnowledgeServiceServer) DeleteDocument(context.Context, *DeleteDocumentRequest) (*emptypb.Empty, error) {
 	return nil, status.Error(codes.Unimplemented, "method DeleteDocument not implemented")
@@ -909,6 +925,24 @@ func _KnowledgeService_GetDocumentContent_Handler(srv interface{}, ctx context.C
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(KnowledgeServiceServer).GetDocumentContent(ctx, req.(*GetDocumentContentRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _KnowledgeService_GetDocument_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetDocumentRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(KnowledgeServiceServer).GetDocument(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: KnowledgeService_GetDocument_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(KnowledgeServiceServer).GetDocument(ctx, req.(*GetDocumentRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1469,6 +1503,10 @@ var KnowledgeService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetDocumentContent",
 			Handler:    _KnowledgeService_GetDocumentContent_Handler,
+		},
+		{
+			MethodName: "GetDocument",
+			Handler:    _KnowledgeService_GetDocument_Handler,
 		},
 		{
 			MethodName: "DeleteDocument",

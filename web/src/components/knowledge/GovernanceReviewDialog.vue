@@ -92,6 +92,7 @@ import type { GovernanceProposalItem } from '../../features/knowledge/types';
 import {
   decisionsForProposal,
   isFactConflict,
+  mocMembers,
   parseProposalPayload,
   proposalSummary,
   type GovernanceDecision,
@@ -149,6 +150,8 @@ function kindLabel(kind: string, payload: Record<string, string>): string {
   if (isFactConflict(kind, payload)) return t('knowledgePage.workbench.govKindFact');
   if (kind === 'orphan') return t('knowledgePage.workbench.govKindOrphan');
   if (kind === 'conflict') return t('knowledgePage.workbench.govKindDoc');
+  if (kind === 'moc_emerge') return t('knowledgePage.workbench.govKindMOC');
+  if (kind === 'entity_merge') return t('knowledgePage.workbench.govKindEntityMerge');
   return kind;
 }
 
@@ -160,6 +163,20 @@ function proposalCaption(kind: string, payload: Record<string, string>): string 
     const days = payload.last_access_days;
     return days ? t('knowledgePage.workbench.govOrphanDays', { n: days }) : payload.doc_id;
   }
+  // G-34 MOC 簇：前 8 个成员预览 + 总数，超 8 追加省略记号。
+  if (kind === 'moc_emerge') {
+    const members = mocMembers(payload);
+    if (!members.length) return payload.hub_rel_path || '';
+    const preview = members.slice(0, 8).join(' · ') + (members.length > 8 ? ' …' : '');
+    return t('knowledgePage.workbench.govMOCMembers', { n: members.length, preview });
+  }
+  // G-37 实体消解：相似度居首，ALGO 裁决理由随后（auto 档无理由则仅相似度）。
+  if (kind === 'entity_merge') {
+    const sim = payload.similarity || payload.dedup_key || '';
+    const parts = [t('knowledgePage.workbench.govEntityMergeSim', { sim })];
+    if (payload.llm_reason) parts.push(payload.llm_reason);
+    return parts.join(' · ');
+  }
   return payload.context || '';
 }
 
@@ -169,6 +186,8 @@ function decisionLabel(decision: GovernanceDecision, kind: string, payload: Reco
   if (decision === 'rejected') return t('knowledgePage.workbench.govReject');
   if (kind === 'orphan') return t('knowledgePage.workbench.govApplyOrphan');
   if (kind === 'conflict' && !isFactConflict(kind, payload)) return t('knowledgePage.workbench.govApplyDoc');
+  if (kind === 'moc_emerge') return t('knowledgePage.workbench.govApplyMOC');
+  if (kind === 'entity_merge') return t('knowledgePage.workbench.govApplyEntityMerge');
   return t('knowledgePage.workbench.govApply');
 }
 

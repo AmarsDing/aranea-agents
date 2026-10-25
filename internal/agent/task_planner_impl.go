@@ -759,7 +759,7 @@ func (impl *taskPlannerImpl) queryMemory(ctx context.Context, input biz.PlanInpu
 	}
 
 	// Try SuggestTopology first for a quick hit
-	topology, hit := impl.orchCache.SuggestTopology(input.UserMessage)
+	topology, hit := impl.orchCache.SuggestTopology(ctx, input.UserMessage)
 	if !hit {
 		return nil
 	}
@@ -787,6 +787,7 @@ func (impl *taskPlannerImpl) queryMemory(ctx context.Context, input biz.PlanInpu
 		AgentKeysUsed:         best.AgentKeys,
 		DomainPath:            best.DomainPath,
 		Specialties:           append([]string(nil), best.Specialties...),
+		PlaybookID:            best.PlaybookID,
 		ConstraintFingerprint: best.ConstraintFingerprint,
 	}
 }

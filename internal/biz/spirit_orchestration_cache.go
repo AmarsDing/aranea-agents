@@ -10,12 +10,24 @@ import (
 	"sync/atomic"
 	"time"
 
+	"aranea-agents/internal/workspace"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 )
 
+// 编排配方缓存（OrchestrationCache）。
+//
+// D7 经验复用缓存契约（docs/development/87-orchestration-chain-hardening）：
+//   - F1 双向学习信号：失败（dq<0.5）乘法衰减 ×0.8，≤0.1 触底淘汰；
+//   - F2 指纹溯源：provenance 落库 + RecipeKeysReusable fail-closed（playbook.go）；
+//   - F4 同分确定性全序：DQ 降序 → UpdatedAt 降序 → TaskPattern 字典序升序；
+//   - F5 持久化分行：orchestration_cache_entries 表逐条 upsert/delete，
+//     InitFromRepo 一次性 legacy JSON 导入后接 EvictStale 启动清理；
+//   - F6 workspace 隔离：配方按 workspace 分桶，system 归一 default，无跨租户泄漏。
 type OrchestrationCacheEntry struct {
-	TaskPattern           string       `json:"task_pattern"`
+	TaskPattern string `json:"task_pattern"`
+	// WorkspaceID 配方所属租户桶（D7-F6）。空值视为 default（legacy 兼容）。
+	WorkspaceID           string       `json:"workspace_id,omitempty"`
 	Topology              TopologyType `json:"topology"`
 	DQScore               float64      `json:"dq_score"`
 	TeamCount             int          `json:"team_count"`
@@ -28,14 +40,32 @@ type OrchestrationCacheEntry struct {
 	UpdatedAt             string       `json:"updated_at"`
 }
 
+// RecipeProvenance 配方来源（D7-F2）：记录配方由哪个 playbook/约束指纹产出。
+type RecipeProvenance struct {
+	PlaybookID            string
+	ConstraintFingerprint string
+}
+
 type OrchestrationCacheRepo interface {
+	// LoadCacheJSON 读 legacy system_settings 整包 JSON——仅用于 InitFromRepo
+	// 一次性导入（D7-F5）。新表非空后不再被调用。
 	LoadCacheJSON(ctx context.Context) (string, error)
-	SaveCacheJSON(ctx context.Context, jsonStr string) error
+	// LoadEntries 读 orchestration_cache_entries 全量行。
+	LoadEntries(ctx context.Context) ([]OrchestrationCacheEntry, error)
+	UpsertEntry(ctx context.Context, entry OrchestrationCacheEntry) error
+	DeleteEntry(ctx context.Context, workspaceID, taskPattern string) error
 }
 
 // OrchestrationCacheTTL is the default time-to-live for cache entries.
 // Entries older than this are considered stale and will be evicted on access.
 const OrchestrationCacheTTL = 30 * 24 * time.Hour // 30 days
+
+// cacheKeySep 隔离 map 键的分隔符（ws + "\x1f" + pattern），避免与用户文本冲突。
+const cacheKeySep = "\x1f"
+
+// DQRecipeFailureDecay 失败信号乘法衰减系数（D7-F1）。
+// 0.9 起始约 10 次连续失败触底；0.6 起始约 9 次。
+const DQRecipeFailureDecay = 0.8
 
 type OrchestrationCacheStats struct {
 	Hits   uint64 `json:"hits"`
@@ -45,7 +75,7 @@ type OrchestrationCacheStats struct {
 
 type OrchestrationCache struct {
 	mu      sync.RWMutex
-	entries map[string]*OrchestrationCacheEntry
+	entries map[string]*OrchestrationCacheEntry // key = ws + "\x1f" + pattern
 	repo    OrchestrationCacheRepo
 	lg      loggateway.Logger
 	hits    atomic.Uint64
@@ -63,10 +93,29 @@ func NewOrchestrationCache(lg loggateway.Logger, repo OrchestrationCacheRepo) *O
 	return c
 }
 
+// InitFromRepo 启动灌入（D7-F5）：
+//  1. 新表 orchestration_cache_entries 非空 → 直接 seed；
+//  2. 否则一次性导入 legacy system_settings JSON（逐条 upsert 回新表）；
+//  3. 尾调 EvictStale 做启动清理。
 func (c *OrchestrationCache) InitFromRepo(ctx context.Context) {
 	if c.repo == nil {
 		return
 	}
+	entries, err := c.repo.LoadEntries(ctx)
+	if err != nil {
+		c.lg.Warn("加载编排配方缓存行失败",
+			loggateway.StepID("spirit.orchestration_cache.load_entries"),
+			loggateway.Err(err),
+		)
+		return
+	}
+	if len(entries) > 0 {
+		c.seedEntries(entries)
+		c.EvictStale(ctx)
+		return
+	}
+
+	// legacy 一次性导入。
 	jsonStr, err := c.repo.LoadCacheJSON(ctx)
 	if err != nil {
 		c.lg.Warn("从数据库加载编排缓存失败",
@@ -75,17 +124,53 @@ func (c *OrchestrationCache) InitFromRepo(ctx context.Context) {
 		)
 		return
 	}
+	if strings.TrimSpace(jsonStr) == "" {
+		c.EvictStale(ctx)
+		return
+	}
 	if err := c.LoadFromJSON(jsonStr); err != nil {
 		c.lg.Warn("解析编排缓存 JSON 失败",
 			loggateway.StepID("spirit.orchestration_cache.parse"),
 			loggateway.Err(err),
 		)
+		return
 	}
+	for _, e := range c.List() {
+		c.persistEntry(ctx, e)
+	}
+	c.EvictStale(ctx)
 }
 
+// wsOf 取本次调用的租户桶（D7-F6）：缺省/system 归一 default，
+// 保证后台 cron 学习的配方不会跨租户泄漏。
+func wsOf(ctx context.Context) string {
+	id := workspace.IDFromContext(ctx)
+	return normalizeCacheWorkspace(id)
+}
+
+// normalizeCacheWorkspace 归一 workspace 标识：空 / __system__ → default。
+func normalizeCacheWorkspace(id string) string {
+	id = strings.TrimSpace(id)
+	if id == "" || id == workspace.SystemWorkspaceID {
+		return workspace.DefaultWorkspaceID
+	}
+	return id
+}
+
+func scopeKey(ws, pattern string) string {
+	return ws + cacheKeySep + pattern
+}
+
+// Get returns an entry by task pattern from the default bucket（向后兼容的无
+// ctx 入口）。租户感知的读取走 getForWorkspace / 各 Suggest* 方法。
 func (c *OrchestrationCache) Get(taskPattern string) (*OrchestrationCacheEntry, bool) {
+	return c.getForWorkspace(workspace.DefaultWorkspaceID, taskPattern)
+}
+
+func (c *OrchestrationCache) getForWorkspace(ws, taskPattern string) (*OrchestrationCacheEntry, bool) {
+	key := scopeKey(normalizeCacheWorkspace(ws), taskPattern)
 	c.mu.RLock()
-	entry, ok := c.entries[taskPattern]
+	entry, ok := c.entries[key]
 	if !ok {
 		c.mu.RUnlock()
 		c.misses.Add(1)
@@ -95,9 +180,10 @@ func (c *OrchestrationCache) Get(taskPattern string) (*OrchestrationCacheEntry, 
 	if isEntryStale(entry) {
 		c.mu.RUnlock()
 		c.mu.Lock()
-		delete(c.entries, taskPattern)
+		delete(c.entries, key)
 		c.mu.Unlock()
 		c.misses.Add(1)
+		c.deleteRepoEntry(context.Background(), entry)
 		return nil, false
 	}
 	c.mu.RUnlock()
@@ -116,25 +202,28 @@ func (c *OrchestrationCache) GetStats() OrchestrationCacheStats {
 	}
 }
 
-// EvictStale removes all entries older than OrchestrationCacheTTL.
+// EvictStale removes all entries older than OrchestrationCacheTTL（D7-F5：
+// 同步对新表逐条 DeleteEntry）。
 func (c *OrchestrationCache) EvictStale(ctx context.Context) int {
 	c.mu.Lock()
-	evicted := 0
+	evictedEntries := make([]OrchestrationCacheEntry, 0)
 	for key, entry := range c.entries {
 		if isEntryStale(entry) {
+			evictedEntries = append(evictedEntries, *entry)
 			delete(c.entries, key)
-			evicted++
 		}
 	}
 	c.mu.Unlock()
-	if evicted > 0 {
+	if len(evictedEntries) > 0 {
 		c.lg.Info("编排缓存过期清理",
 			loggateway.StepID("spirit.orchestration_cache.evict"),
-			loggateway.Int("evicted", evicted),
+			loggateway.Int("evicted", len(evictedEntries)),
 		)
-		c.persistToRepo(ctx)
+		for _, e := range evictedEntries {
+			c.deleteRepoEntry(ctx, &e)
+		}
 	}
-	return evicted
+	return len(evictedEntries)
 }
 
 func isEntryStale(entry *OrchestrationCacheEntry) bool {
@@ -163,6 +252,16 @@ func (c *OrchestrationCache) listLocked() []OrchestrationCacheEntry {
 	return result
 }
 
+// seedEntries 批量灌入（D7-F5/F6）：空 workspace 归一 default 桶。
+func (c *OrchestrationCache) seedEntries(entries []OrchestrationCacheEntry) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for _, e := range entries {
+		e.WorkspaceID = normalizeCacheWorkspace(e.WorkspaceID)
+		c.entries[scopeKey(e.WorkspaceID, e.TaskPattern)] = &e
+	}
+}
+
 func (c *OrchestrationCache) LoadFromJSON(jsonStr string) error {
 	if jsonStr == "" {
 		return nil
@@ -172,11 +271,7 @@ func (c *OrchestrationCache) LoadFromJSON(jsonStr string) error {
 		c.lg.Warn("加载 orchestration cache 失败", loggateway.StepID("spirit.orchestration_cache"), loggateway.Err(err))
 		return apierror.Wrap(err, apierror.CodeInternal, "SPIRIT")
 	}
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	for _, e := range entries {
-		c.entries[e.TaskPattern] = &e
-	}
+	c.seedEntries(entries)
 	return nil
 }
 
@@ -284,67 +379,60 @@ func (c *OrchestrationCache) RecordCompletion(ctx context.Context, taskPattern s
 }
 
 func (c *OrchestrationCache) RecordCompletionWithAgents(ctx context.Context, taskPattern string, topology TopologyType, dqScore float64, teamCount int, avgDurationMs int64, agentKeys []string) {
-	c.mu.Lock()
-	existing, found := c.entries[taskPattern]
-	if found && existing.DQScore >= dqScore {
-		c.mu.Unlock()
-		return
-	}
-	entry := OrchestrationCacheEntry{
-		TaskPattern:   taskPattern,
-		Topology:      topology,
-		DQScore:       dqScore,
-		TeamCount:     teamCount,
-		AvgDurationMs: avgDurationMs,
-		AgentKeys:     agentKeys,
-		Specialties:   nil,
-		UpdatedAt:     time.Now().UTC().Format(time.RFC3339),
-	}
-	c.entries[taskPattern] = &entry
-	c.mu.Unlock()
+	c.RecordCompletionWithAgentsWithProvenance(ctx, taskPattern, topology, dqScore, teamCount, avgDurationMs, agentKeys, RecipeProvenance{})
+}
 
-	c.lg.Info("编排缓存更新",
-		loggateway.StepID("spirit.orchestration_cache"),
-		loggateway.Str("task_pattern", taskPattern),
-		loggateway.Str("topology", string(topology)),
-	)
-	c.persistToRepo(ctx)
+// RecordCompletionWithAgentsWithProvenance 记录一次任务完成信号（D7-F1/F2）。
+// dqScore < biz.DQSuccessThreshold 视为失败信号：既有条目 DQ ×0.8 衰减，≤0.1 淘汰；
+// 空缓存上的失败信号为零操作（不造负面首条）。成功信号维持 strict-upgrade。
+func (c *OrchestrationCache) RecordCompletionWithAgentsWithProvenance(ctx context.Context, taskPattern string, topology TopologyType, dqScore float64, teamCount int, avgDurationMs int64, agentKeys []string, prov RecipeProvenance) {
+	c.recordRecipeSignal(ctx, taskPattern, "", topology, dqScore, teamCount, avgDurationMs, agentKeys, prov)
 }
 
 // QueryByTaskPattern returns cache entries matching the task pattern derived from
-// the given description. Returns entries sorted by DQScore descending.
+// the given description（D7-F6：仅查当前调用方租户桶）.
 func (c *OrchestrationCache) QueryByTaskPattern(ctx context.Context, taskDescription string) ([]OrchestrationCacheEntry, error) {
 	pattern := ExtractTaskPattern(taskDescription)
-	entry, found := c.Get(pattern)
+	entry, found := c.getForWorkspace(wsOf(ctx), pattern)
 	if !found {
 		return nil, nil
 	}
 	return []OrchestrationCacheEntry{*entry}, nil
 }
 
-func (c *OrchestrationCache) persistToRepo(ctx context.Context) {
+// persistEntry 逐条写回新表（D7-F5）。repo 失败仅告警，不阻塞学习主路。
+func (c *OrchestrationCache) persistEntry(ctx context.Context, entry OrchestrationCacheEntry) {
 	if c.repo == nil {
 		return
 	}
-	jsonStr, err := c.ToJSON()
-	if err != nil {
-		c.lg.Warn("序列化编排缓存失败",
-			loggateway.StepID("spirit.orchestration_cache.marshal"),
+	entry.WorkspaceID = normalizeCacheWorkspace(entry.WorkspaceID)
+	if err := c.repo.UpsertEntry(ctx, entry); err != nil {
+		c.lg.Warn("持久化编排配方失败",
+			loggateway.StepID("spirit.orchestration_cache.upsert"),
+			loggateway.Str("task_pattern", entry.TaskPattern),
 			loggateway.Err(err),
-		)
-		return
-	}
-	if saveErr := c.repo.SaveCacheJSON(ctx, jsonStr); saveErr != nil {
-		c.lg.Warn("持久化编排缓存失败",
-			loggateway.StepID("spirit.orchestration_cache.save"),
-			loggateway.Err(saveErr),
 		)
 	}
 }
 
-func (c *OrchestrationCache) SuggestTopology(taskDescription string) (TopologyType, bool) {
+func (c *OrchestrationCache) deleteRepoEntry(ctx context.Context, entry *OrchestrationCacheEntry) {
+	if c.repo == nil || entry == nil {
+		return
+	}
+	ws := normalizeCacheWorkspace(entry.WorkspaceID)
+	if err := c.repo.DeleteEntry(ctx, ws, entry.TaskPattern); err != nil {
+		c.lg.Warn("删除编排配方行失败",
+			loggateway.StepID("spirit.orchestration_cache.delete"),
+			loggateway.Str("task_pattern", entry.TaskPattern),
+			loggateway.Str("workspace_id", ws),
+			loggateway.Err(err),
+		)
+	}
+}
+
+func (c *OrchestrationCache) SuggestTopology(ctx context.Context, taskDescription string) (TopologyType, bool) {
 	pattern := ExtractTaskPattern(taskDescription)
-	entry, found := c.Get(pattern)
+	entry, found := c.getForWorkspace(wsOf(ctx), pattern)
 	if !found {
 		return "", false
 	}
@@ -357,14 +445,22 @@ func (c *OrchestrationCache) SuggestTopology(taskDescription string) (TopologyTy
 // AgentKeys, and be within TTL. Callers must pass an already-normalized
 // domain path (normalization lives in internal/agent to avoid an import
 // cycle; this function compares strings only).
-func (c *OrchestrationCache) BestRecipeForDomain(domainPath string) (*OrchestrationCacheEntry, bool) {
+//
+// D7-F4 同分确定性全序：DQ 降序 → UpdatedAt 降序 → TaskPattern 字典序升序，
+// 任何重启/回放同输入必须选出同一条配方（消除 map 遍历随机序）。
+// D7-F6：仅匹配当前调用方租户桶内的配方。
+func (c *OrchestrationCache) BestRecipeForDomain(ctx context.Context, domainPath string) (*OrchestrationCacheEntry, bool) {
 	query := strings.TrimSpace(domainPath)
 	if query == "" {
 		return nil, false
 	}
+	ws := wsOf(ctx)
 	c.mu.RLock()
 	var best *OrchestrationCacheEntry
 	for _, e := range c.entries {
+		if normalizeCacheWorkspace(e.WorkspaceID) != ws {
+			continue
+		}
 		if e.DomainPath == "" || len(e.AgentKeys) == 0 {
 			continue
 		}
@@ -377,7 +473,7 @@ func (c *OrchestrationCache) BestRecipeForDomain(domainPath string) (*Orchestrat
 		if !domainPathPrefixMatch(query, e.DomainPath) {
 			continue
 		}
-		if best == nil || e.DQScore > best.DQScore {
+		if best == nil || recipeEntryStrictlyBetter(e, best) {
 			best = e
 		}
 	}
@@ -391,6 +487,20 @@ func (c *OrchestrationCache) BestRecipeForDomain(domainPath string) (*Orchestrat
 	return &cp, true
 }
 
+// recipeEntryStrictlyBetter D7-F4 全序比较器：
+// DQ 降序 → UpdatedAt（RFC3339）降序 → TaskPattern 字典序升序（不可解析时间按零值）。
+func recipeEntryStrictlyBetter(a, b *OrchestrationCacheEntry) bool {
+	if a.DQScore != b.DQScore {
+		return a.DQScore > b.DQScore
+	}
+	at, _ := time.Parse(time.RFC3339, a.UpdatedAt)
+	bt, _ := time.Parse(time.RFC3339, b.UpdatedAt)
+	if !at.Equal(bt) {
+		return at.After(bt)
+	}
+	return a.TaskPattern < b.TaskPattern
+}
+
 // domainPathPrefixMatch reports whether two normalized domain paths are equal
 // or one is a path-boundary prefix of the other ("创作" ↔ "创作/文学").
 func domainPathPrefixMatch(a, b string) bool {
@@ -400,40 +510,98 @@ func domainPathPrefixMatch(a, b string) bool {
 	return strings.HasPrefix(b, a+"/") || strings.HasPrefix(a, b+"/")
 }
 
-// RecordDomainRecipe records a successful orchestration as a reusable recipe
-// keyed by "domain:<domainPath>" (B.10.21.7). Only a higher DQ score replaces
-// an existing recipe. Empty domainPath is a no-op.
+// RecordDomainRecipe records an orchestration signal keyed by
+// "domain:<domainPath>" (B.10.21.7 / D7-F1)。仅更高 DQ 的成功信号替换既有配方；
+// 失败信号（dq<0.5）走乘法衰减，≤0.1 触底淘汰。Empty domainPath is a no-op.
 func (c *OrchestrationCache) RecordDomainRecipe(ctx context.Context, domainPath string, topology TopologyType, dqScore float64, teamCount int, agentKeys []string) {
+	c.RecordDomainRecipeWithProvenance(ctx, domainPath, topology, dqScore, teamCount, agentKeys, RecipeProvenance{})
+}
+
+// RecordDomainRecipeWithProvenance 同 RecordDomainRecipe，额外落 provenance（D7-F2）。
+func (c *OrchestrationCache) RecordDomainRecipeWithProvenance(ctx context.Context, domainPath string, topology TopologyType, dqScore float64, teamCount int, agentKeys []string, prov RecipeProvenance) {
 	dp := strings.TrimSpace(domainPath)
 	if dp == "" {
 		return
 	}
-	key := "domain:" + dp
+	c.recordRecipeSignal(ctx, "domain:"+dp, dp, topology, dqScore, teamCount, 0, agentKeys, prov)
+}
+
+// recordRecipeSignal D7-F1 共享核心：成功 strict-upgrade；失败衰减/触底淘汰。
+// key 为未加 ws 前缀的原始 pattern；domainPath 仅领域配方传入（写入条目的
+// DomainPath 字段），pattern 键传空串。
+func (c *OrchestrationCache) recordRecipeSignal(ctx context.Context, key, domainPath string, topology TopologyType, dqScore float64, teamCount int, avgDurationMs int64, agentKeys []string, prov RecipeProvenance) {
+	ws := wsOf(ctx)
+	skey := scopeKey(ws, key)
+	now := time.Now().UTC().Format(time.RFC3339)
+
+	if dqScore < DQSuccessThreshold {
+		// 失败信号：降权不毁配方体——AgentKeys/Topology/provenance 保留，只衰减 DQ。
+		c.mu.Lock()
+		existing, found := c.entries[skey]
+		if !found {
+			c.mu.Unlock()
+			return // 空缓存上的失败信号为零操作（不造负面首条）
+		}
+		decayed := existing.DQScore * DQRecipeFailureDecay
+		fromDQ := existing.DQScore
+		if decayed <= DQScoreMin {
+			evicted := *existing
+			delete(c.entries, skey)
+			c.mu.Unlock()
+			c.lg.Warn("编排配方失败触底淘汰",
+				loggateway.StepID("spirit.orchestration_cache.evict_floor"),
+				loggateway.Str("task_pattern", key),
+				loggateway.Str("workspace_id", ws),
+				loggateway.Float64("dq_from", fromDQ),
+			)
+			c.deleteRepoEntry(ctx, &evicted)
+			return
+		}
+		existing.DQScore = decayed
+		existing.UpdatedAt = now // TTL 从最近信号起算
+		snapshot := *existing
+		c.mu.Unlock()
+		c.lg.Warn("编排配方失败降权",
+			loggateway.StepID("spirit.orchestration_cache.decay"),
+			loggateway.Str("task_pattern", key),
+			loggateway.Str("workspace_id", ws),
+			loggateway.Float64("dq_score", decayed),
+		)
+		c.persistEntry(ctx, snapshot)
+		return
+	}
+
+	// 成功信号：strict-upgrade。
 	c.mu.Lock()
-	if existing, found := c.entries[key]; found && existing.DQScore >= dqScore {
+	if existing, found := c.entries[skey]; found && existing.DQScore >= dqScore {
 		c.mu.Unlock()
 		return
 	}
-	c.entries[key] = &OrchestrationCacheEntry{
-		TaskPattern:   key,
-		DomainPath:    dp,
-		Topology:      topology,
-		DQScore:       dqScore,
-		TeamCount:     teamCount,
-		AvgDurationMs: 0,
-		AgentKeys:     agentKeys,
-		Specialties:   nil,
-		UpdatedAt:     time.Now().UTC().Format(time.RFC3339),
+	entry := OrchestrationCacheEntry{
+		TaskPattern:           key,
+		WorkspaceID:           ws,
+		DomainPath:            domainPath,
+		Topology:              topology,
+		DQScore:               dqScore,
+		TeamCount:             teamCount,
+		AvgDurationMs:         avgDurationMs,
+		AgentKeys:             agentKeys,
+		Specialties:           nil,
+		PlaybookID:            prov.PlaybookID,
+		ConstraintFingerprint: prov.ConstraintFingerprint,
+		UpdatedAt:             now,
 	}
+	c.entries[skey] = &entry
 	c.mu.Unlock()
 
-	c.lg.Info("领域配方已记录",
+	c.lg.Info("编排缓存更新",
 		loggateway.StepID("spirit.orchestration_cache"),
-		loggateway.Str("domain_path", dp),
+		loggateway.Str("task_pattern", key),
+		loggateway.Str("workspace_id", ws),
 		loggateway.Str("topology", string(topology)),
 		loggateway.Float64("dq_score", dqScore),
 	)
-	c.persistToRepo(ctx)
+	c.persistEntry(ctx, entry)
 }
 
 // SetEntrySpecialties stores the specialty-slot skeleton on an existing
@@ -442,27 +610,41 @@ func (c *OrchestrationCache) SetEntrySpecialties(ctx context.Context, taskPatter
 	if c == nil || strings.TrimSpace(taskPattern) == "" {
 		return
 	}
+	ws := wsOf(ctx)
+	skey := scopeKey(ws, taskPattern)
 	c.mu.Lock()
-	if e, ok := c.entries[taskPattern]; ok {
+	e, ok := c.entries[skey]
+	var snapshot OrchestrationCacheEntry
+	if ok {
 		e.Specialties = append([]string(nil), specialties...)
+		snapshot = *e
 	}
 	c.mu.Unlock()
-	c.persistToRepo(ctx)
+	if !ok {
+		return
+	}
+	c.persistEntry(ctx, snapshot)
 }
 
-func (c *OrchestrationCache) SuggestBestAlternativeTopology(taskDescription string, excludeTopology TopologyType) (TopologyType, bool) {
+// SuggestBestAlternativeTopology 在当前租户桶内找同 pattern 下非 exclude
+// 的次优配方（D7-F4 同分确定性复用同一全序比较器）。
+func (c *OrchestrationCache) SuggestBestAlternativeTopology(ctx context.Context, taskDescription string, excludeTopology TopologyType) (TopologyType, bool) {
 	pattern := ExtractTaskPattern(taskDescription)
+	ws := wsOf(ctx)
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	var bestEntry *OrchestrationCacheEntry
 	for _, e := range c.entries {
+		if normalizeCacheWorkspace(e.WorkspaceID) != ws {
+			continue
+		}
 		if e.Topology == excludeTopology {
 			continue
 		}
 		if e.TaskPattern != pattern {
 			continue
 		}
-		if bestEntry == nil || e.DQScore > bestEntry.DQScore {
+		if bestEntry == nil || recipeEntryStrictlyBetter(e, bestEntry) {
 			bestEntry = e
 		}
 	}

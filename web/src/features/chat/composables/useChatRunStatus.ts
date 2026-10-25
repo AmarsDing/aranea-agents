@@ -13,6 +13,48 @@ import {
 
 const HYDRATE_DELAY_MS = 400;
 
+// D9-19：终态集合与 run_status 接受谓词。freshness 追踪器（lastRunId /
+// lastStatus / lastServerMs）由 useChatRunStatus 闭包持有，统一裁决 WS 帧与
+// REST 对账响应：
+//   R1 终态粘性 —— runId 相同且已接受 terminal 时拒绝非终态回落（idle 除外）；
+//     接受 idle 后进入复位语义：同一 run 的任何迟到回放帧（含 terminal）不再复活旧状态。
+//   R2 runId 绑定 —— 跨 runId 仅在上个 run 已 terminal/idle/未知时接受；
+//     non-terminal + 异 runId 保守丢弃，由 orphan 对账 / 下次切会话 hydrate 兜回。
+//   R3 REST 单调 —— 同 runId 且双方带服务端时间时拒绝更旧快照。
+//   runId 为空的 legacy 帧按当前 runId 处理且不回写 lastRunId。
+const TERMINAL_RUN_STATUSES = new Set<string>(['completed', 'failed', 'cancelled']);
+
+function shouldAcceptRunStatus(
+  last: { runId: string; status: string; serverMs: number },
+  cand: { status: string; runId: string; serverMs: number },
+): boolean {
+  const lastTerminal = TERMINAL_RUN_STATUSES.has(last.status);
+  const candTerminal = TERMINAL_RUN_STATUSES.has(cand.status);
+  const effectiveRunId = cand.runId || last.runId; // legacy 空 runId 帧按当前 runId 处理
+  const sameRun = effectiveRunId !== '' && last.runId !== '' && effectiveRunId === last.runId;
+
+  if (sameRun) {
+    if (lastTerminal) return candTerminal || cand.status === 'idle'; // R1 终态粘性
+    if (last.status === 'idle') return cand.status === 'idle'; // 复位语义：同 run 不再复活
+    // 同 run 非终态上：REST 服务端 updatedAt 单调
+    if (
+      !candTerminal &&
+      Number.isFinite(last.serverMs) &&
+      Number.isFinite(cand.serverMs) &&
+      cand.serverMs < last.serverMs
+    ) {
+      return false; // R3 旧快照
+    }
+    return true;
+  }
+
+  if (cand.runId !== '' && last.runId !== '' && cand.runId !== last.runId) {
+    // R2 跨 runId：仅上个 run 已 terminal/idle 时接受（lastRunId 为空 = 上个 run 未知 → 接受）
+    return lastTerminal || last.status === 'idle';
+  }
+  return true;
+}
+
 type UseChatRunStatusDeps = {
   applyAwaitRunStatus: (rs: RunStatus) => void;
 };
@@ -29,6 +71,12 @@ export function useChatRunStatus(deps: UseChatRunStatusDeps) {
   let hydrateTimer: ReturnType<typeof setTimeout> | null = null;
   let hydrateSessionId = '';
 
+  // D9-19 新鲜度追踪器（见模块级 TERMINAL_RUN_STATUSES / shouldAcceptRunStatus）。
+  // lastRunId='' / lastStatus='' 表示未接受过任何帧（上个 run 未知）。
+  let lastRunId = '';
+  let lastStatus = '';
+  let lastServerMs = Number.NaN;
+
   function clearHydrateTimer() {
     if (hydrateTimer) {
       clearTimeout(hydrateTimer);
@@ -36,15 +84,32 @@ export function useChatRunStatus(deps: UseChatRunStatusDeps) {
     }
   }
 
+  function lastTracker() {
+    return { runId: lastRunId, status: lastStatus, serverMs: lastServerMs };
+  }
+
+  /** 接受一帧后更新追踪器。legacy 空 runId 不回写 lastRunId；WS 帧无服务端时间则保留既有值。 */
+  function noteAcceptedRunStatus(candRunId: string, status: RunStatusValue, serverMs: number) {
+    if (candRunId) lastRunId = candRunId;
+    lastStatus = status;
+    if (Number.isFinite(serverMs)) lastServerMs = serverMs;
+  }
+
   function resetRunStatus() {
     clearHydrateTimer();
     wsAuthoritative = false;
     hydrateSessionId = '';
+    // 清空全部追踪器（复位至初始未知态）
+    lastRunId = '';
+    lastStatus = '';
+    lastServerMs = Number.NaN;
     runStatus.value = 'idle';
     runMeta.value = null;
   }
 
   function applyRunStatusFields(rs: RunStatusFromWs) {
+    // WS 入口统一过新鲜度谓词：WS 帧不带服务端时间（updatedAt 恒为空串）。
+    if (!shouldAcceptRunStatus(lastTracker(), { status: rs.status, runId: rs.runId, serverMs: Number.NaN })) return;
     wsAuthoritative = true;
     clearHydrateTimer();
     runStatus.value = rs.status;
@@ -58,6 +123,7 @@ export function useChatRunStatus(deps: UseChatRunStatusDeps) {
       updatedAt: '',
     };
     runMeta.value = meta;
+    noteAcceptedRunStatus(rs.runId, rs.status, Number.NaN);
     deps.applyAwaitRunStatus(meta);
   }
 
@@ -92,8 +158,12 @@ export function useChatRunStatus(deps: UseChatRunStatusDeps) {
       const runtime = useChatRuntimeStore();
       const rs = await runtime.fetchRunStatus(sessionId);
       if (sessionId !== hydrateSessionId || wsAuthoritative) return;
+      // REST 入口统一过新鲜度谓词（带服务端 updatedAt，供 R3 单调裁决）。
+      const serverMs = Date.parse(rs.updatedAt || '');
+      if (!shouldAcceptRunStatus(lastTracker(), { status: rs.status, runId: rs.runId, serverMs })) return;
       runStatus.value = rs.status;
       runMeta.value = rs;
+      noteAcceptedRunStatus(rs.runId, rs.status, serverMs);
       deps.applyAwaitRunStatus(rs);
     } catch {
       /* ignore transient hydrate failures */
@@ -132,8 +202,13 @@ export function useChatRunStatus(deps: UseChatRunStatusDeps) {
     // 切换会话——旧会话的迟到响应必须整个丢弃，不得写 runStatus/runMeta 或 apply；
     // 否则旧状态会覆盖当前会话面板，watchdog 读到过期终态还会误判并复位 sending。
     if (sessionId !== hydrateSessionId) return null;
+    // 新鲜度守卫（D9-19）：同 run 内终端 WS 帧恒赢迟到 REST running；REST 同 runId
+    // 旧快照不得回退。被丢弃时维持 REG-2 null 语义（未获后端新确认）。
+    const serverMs = Date.parse(rs.updatedAt || '');
+    if (!shouldAcceptRunStatus(lastTracker(), { status: rs.status, runId: rs.runId, serverMs })) return null;
     runStatus.value = rs.status;
     runMeta.value = rs;
+    noteAcceptedRunStatus(rs.runId, rs.status, serverMs);
     deps.applyAwaitRunStatus(rs);
     return rs.status;
   }
@@ -154,6 +229,11 @@ export function useChatRunStatus(deps: UseChatRunStatusDeps) {
     wsAuthoritative = true;
     clearHydrateTimer();
     runStatus.value = status;
+    // 重置追踪器：lastStatus 置为强制值；lastRunId 保留至「被复位」的 run，
+    // 使该 run 的迟到回放帧经同 run 复位语义丢弃，不得复活旧状态（D9-19 ⑧）。
+    lastRunId = runMeta.value?.runId || lastRunId;
+    lastStatus = status;
+    lastServerMs = Number.NaN;
     if (status === 'idle') {
       runMeta.value = null;
     }

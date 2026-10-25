@@ -84,18 +84,23 @@ func (a *SpiritAssembly) AssembleTeam(ctx context.Context, params SpiritTeamPara
 		}
 	}
 
-	// 2026-07-28 Fix: a single-member team has nothing to coordinate — normalize
-	// coordinator to sequential so buildSpiritTeamDefinitionJSON builds the only
-	// member as a worker (executes tools) instead of a synthesizer (coordination
-	// role; hallucinated success with zero tool calls on install-style tasks).
-	// Normalized here (not inside the builder) so Team.Topology stays consistent
-	// with DefinitionJSON. Also satisfies validateTeamDefinition, which rejects
-	// coordinator teams without a synthesizer/coordinator member.
-	if mode == TeamModeCoordinator && len(agentIDs) <= 1 {
-		mode = TeamModeSequential
-	}
+	// 终态 mode 不变量（D8-6，2026-10-21）：单成员团队无协调对象。
+	// ResolveGraphTemplateRoute 先行——它是纯 id→mode 映射（dispatch/adaptive →
+	// coordinator、review_loop → critic_loop、parallel_review → parallel、
+	// pipeline → sequential），消费方（graph_template_route.go 单测、
+	// team/graph_compile.go CompileTemplateIDPreferringDefinition）零改动；
+	// 归一化殿后作用于终态 mode——builtin 模板对 ≤1 成员的 coordinator 覆盖
+	// 同样被归一化（2026-07-28 Fix 的根因路径：synthesizer 是协调角色、禁执行
+	// 成员工作，单成员授 synthesizer ⇒ 零工具调用假成功）。Normalized here
+	// (not inside the builder) keeps Team.Topology 与 DefinitionJSON 一致，
+	// 并满足 validateTeamDefinition 对 coordinator 团队的 synthesizer/coordinator
+	// 成员要求。graph_template_id 仅作来源凭证，由 ApplyAssembleOrgFaces 写入
+	// defJSON（snapshot TemplateId=dispatch 不变）。
 	if route := ResolveGraphTemplateRoute(mode, params.GraphTemplateID); route.Builtin && route.Mode != "" {
 		mode = route.Mode
+	}
+	if mode == TeamModeCoordinator && len(agentIDs) <= 1 {
+		mode = TeamModeSequential
 	}
 
 	// F9 (Phase 11): a solo system-admin team with a skill-install intent gets

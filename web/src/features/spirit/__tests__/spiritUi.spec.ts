@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   mapSpiritStatusToSession,
   spiritTeamStatusToLabel,
+  spiritMemberStatusToLabel,
   STATUS_LABEL_CONFIG,
   type AgentNodeStatusLabel,
 } from '../spiritUi';
@@ -43,5 +44,46 @@ describe('spiritUi partial_failure 映射', () => {
       const label: AgentNodeStatusLabel = spiritTeamStatusToLabel(s);
       expect(STATUS_LABEL_CONFIG[label], `STATUS_LABEL_CONFIG[${label}]`).toBeDefined();
     }
+  });
+});
+
+// D10-F1（发现#23）：spiritMemberStatusToLabel 以 v2 词表
+// （internal/biz/member_session.go MemberSessionStatus：pending/running/paused/
+// completed/failed/skipped）为主键，legacy 词表（idle/error/waiting/blocked）
+// 作为别名层保留。
+describe('spiritMemberStatusToLabel（D10-F1：v2 词表权威）', () => {
+  const V2_CASES: Array<[string, AgentNodeStatusLabel]> = [
+    ['pending', 'queued'],
+    ['running', 'active'],
+    ['paused', 'suspended'],
+    ['completed', 'done'],
+    ['failed', 'failed'],
+    ['skipped', 'skipped'],
+  ];
+
+  it.each(V2_CASES)('v2 词表 %s → %s', (status, expected) => {
+    expect(spiritMemberStatusToLabel(status)).toBe(expected);
+  });
+
+  it('v2 终态/暂停值不再兜底为 queued（#23 失败先行锚点）', () => {
+    for (const s of ['failed', 'skipped', 'paused'] as const) {
+      expect(spiritMemberStatusToLabel(s), `${s} 不应回落到 queued`).not.toBe('queued');
+    }
+  });
+
+  const LEGACY_CASES: Array<[string, AgentNodeStatusLabel]> = [
+    ['idle', 'queued'],
+    ['error', 'failed'],
+    ['waiting', 'suspended'],
+    ['blocked', 'tool_blocked'],
+  ];
+
+  it.each(LEGACY_CASES)('legacy 键 %s → %s 回归不变', (status, expected) => {
+    expect(spiritMemberStatusToLabel(status)).toBe(expected);
+  });
+
+  it('未知字符串（含空串）→ queued 兜底不变', () => {
+    expect(spiritMemberStatusToLabel('')).toBe('queued');
+    expect(spiritMemberStatusToLabel('some_future_status')).toBe('queued');
   });
 });

@@ -200,10 +200,15 @@ export function useContextualLoadingMessage(isReplaying: Ref<boolean>) {
       return;
     }
 
-    // 4. Clear message on team completion/failure
+    // 4. Clear message on team completion/failure.
+    // team interrupted/cancelled 是边界终态：采用「清除」而非「提示」——
+    // 不设 ORCHESTRATION_LOADING_MAP 项，自身不产生新 loading 文案，
+    // 仅清掉陈旧的「正在…」。
     if (
       envType === 'spirit_team_completed' ||
       envType === 'spirit_team_failed' ||
+      envType === 'spirit_team_interrupted' ||
+      envType === 'spirit_team_cancelled' ||
       envType === 'spirit_teams_all_completed' ||
       envType === 'butler.orchestration.completed' ||
       envType === 'butler.orchestration.failed'

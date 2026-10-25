@@ -9,7 +9,7 @@ import WorkbenchSidebar from '../workbench/WorkbenchSidebar.vue';
 import KnowledgeWorkbench from '../workbench/KnowledgeWorkbench.vue';
 import { createKnowledgeWorkbench, type WorkbenchTab } from '../../../features/knowledge/useKnowledgeWorkbench';
 import { useKnowledgeStore } from '../../../stores/knowledge';
-import type { KnowledgeCollection, VaultTreeNode } from '../../../features/knowledge/types';
+import type { KnowledgeCollection, KnowledgeDocument, VaultTreeNode } from '../../../features/knowledge/types';
 
 vi.mock('quasar', () => ({
   useQuasar: () => ({ notify: vi.fn(), dialog: vi.fn() }),
@@ -177,6 +177,13 @@ describe('workbench skeleton', () => {
     const pinia = createPinia();
     setActivePinia(pinia);
     const store = useKnowledgeStore();
+    store.loadDocument = vi.fn().mockResolvedValue({
+      id: 'd1',
+      collection_id: 'v1',
+      rel_path: 'docs/note.md',
+      source: 'note.md',
+      mime_type: 'text/markdown',
+    } as KnowledgeDocument);
     store.loadBlockBacklinks = vi.fn().mockResolvedValue([]);
     store.loadDanglingLinks = vi.fn().mockResolvedValue([]);
     store.loadDocumentLinks = vi.fn().mockResolvedValue([]);

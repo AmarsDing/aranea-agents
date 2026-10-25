@@ -18,6 +18,13 @@ func (s *KnowledgeService) WriteBackSessionFacts(ctx context.Context, in bizknow
 
 // replayWriteBackChunks 写回飞轮 chunk 重放钩子（注入 biz Usecase）。
 func (s *KnowledgeService) replayWriteBackChunks(ctx context.Context, col bizknowledge.Collection, touched []bizknowledge.PromoteTouchedDoc) error {
+	deferred := false
+	for _, doc := range touched {
+		deferred = bizknowledge.DeferKnowledgeReplay(ctx, doc.DocID) || deferred
+	}
+	if deferred {
+		return nil
+	}
 	replayed, failed := s.replayPromotedDocChunks(ctx, col, touched)
 	if failed > 0 {
 		s.lg.Warn("写回飞轮 chunk 重放部分失败",

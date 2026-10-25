@@ -175,6 +175,18 @@ describe('updateDocumentVisibility', () => {
     expect(mockPost).toHaveBeenCalledWith('/v1/knowledge/documents/doc%2F%E7%89%B9%E6%AE%8A%20id/visibility', {
       visibility: 'private',
     });
-    expect(out).toEqual({ id: 'd1', visibility: 'private', owner_user_id: '7' });
+    expect(out).toEqual({ id: 'd1', visibility: 'private', owner_user_id: '7', shared_with: [] });
   });
+});
+
+it('sends scoped Agent sharing targets without changing them to human membership', async () => {
+  mockPost.mockResolvedValueOnce({
+    data: { id: 'd', visibility: 'shared', owner_user_id: '7', shared_with: ['department-1', 'position-2'] },
+  });
+  const result = await updateDocumentVisibility('d', 'shared', ['department-1', 'position-2']);
+  expect(mockPost).toHaveBeenLastCalledWith('/v1/knowledge/documents/d/visibility', {
+    visibility: 'shared',
+    shared_with: ['department-1', 'position-2'],
+  });
+  expect(result.shared_with).toEqual(['department-1', 'position-2']);
 });

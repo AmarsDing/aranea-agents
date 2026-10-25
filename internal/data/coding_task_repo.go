@@ -36,6 +36,12 @@ func entCodingTaskToBiz(e *dataent.CodingTask) *bridge.CodingTask {
 		Summary:       e.Summary,
 		Error:         e.Error,
 		ProgressCount: e.ProgressCount,
+		// M4 P0-2b：子进程 PID + 活跃性监管字段
+		ChildPID:      e.ChildPid,
+		LastActiveAt:  e.LastActiveAt,
+		LastExcerpt:   e.LastExcerpt,
+		HeartbeatMiss: e.HeartbeatMiss,
+		LivenessState: e.LivenessState,
 		CreatedAt:     e.CreatedAt,
 		UpdatedAt:     e.UpdatedAt,
 		CompletedAt:   e.CompletedAt,
@@ -101,6 +107,22 @@ func (r *codingTaskRepo) UpdateStatus(ctx context.Context, id string, from, to b
 	}
 	if patch.ProgressCount != nil {
 		upd = upd.SetProgressCount(*patch.ProgressCount)
+	}
+	// M4 P0-2b：child_pid + 活跃性监管补丁
+	if patch.ChildPID != nil {
+		upd = upd.SetChildPid(*patch.ChildPID)
+	}
+	if patch.LastActiveAt != nil {
+		upd = upd.SetLastActiveAt(*patch.LastActiveAt)
+	}
+	if patch.LastExcerpt != nil {
+		upd = upd.SetLastExcerpt(*patch.LastExcerpt)
+	}
+	if patch.HeartbeatMiss != nil {
+		upd = upd.SetHeartbeatMiss(*patch.HeartbeatMiss)
+	}
+	if patch.LivenessState != nil {
+		upd = upd.SetLivenessState(*patch.LivenessState)
 	}
 	n, err := upd.Save(ctx)
 	if err != nil {

@@ -271,3 +271,94 @@ describe('useChatSender watchdog reconcile', () => {
     expect(reconcileRunStatus).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * 孤儿态自愈对账契约（D9-19）：终态 WS/eWS 帧丢失而 task.completed 已停表时，
+ * markSendingDone 若见 runStatus 仍非终态，延迟 10s 单次触发既有 reconcile 通道
+ *（复用 watchdogReconciling 重入锁，不发「已同步最新运行状态」通知）。
+ * 计时口径：CHAT_RUN_ORPHAN_RECONCILE_DELAY_MS = 10s（features/constants/timeouts.ts）。
+ */
+describe('useChatSender orphan reconcile (D9-19)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('⑨ 收表时 runStatus=running → 10s 后恰好一次对账；终态落定后不再触发、无恢复通知', async () => {
+    const { sender, reconcileRunStatus } = setup();
+    sender.markSending('sess-1');
+    sender.markSendingDone();
+
+    await vi.advanceTimersByTimeAsync(9_999);
+    expect(reconcileRunStatus).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(1);
+    expect(reconcileRunStatus).toHaveBeenCalledTimes(1);
+    expect(recoveredNotified()).toBe(false);
+
+    // 默认桩已把 runStatus 置为 completed 并返回终态 → 后续推进不再触发。
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(reconcileRunStatus).toHaveBeenCalledTimes(1);
+    expect(recoveredNotified()).toBe(false);
+  });
+
+  it.each(['idle', 'completed', 'failed', 'cancelled'])(
+    '⑩ markSendingDone 时 runStatus 已终态（%s）→ 不登记定时器、不对账',
+    async (status) => {
+      const { sender, runStatus, reconcileRunStatus } = setup();
+      runStatus.value = status;
+      sender.markSending('sess-1');
+      sender.markSendingDone();
+
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(reconcileRunStatus).not.toHaveBeenCalled();
+    },
+  );
+
+  it('⑪ orphan 定时器挂起时再 markSending → 旧定时器清除、窗口重计', async () => {
+    const { sender, reconcileRunStatus } = setup();
+    sender.markSending('sess-1');
+    sender.markSendingDone();
+
+    await vi.advanceTimersByTimeAsync(5_000);
+    // 新一轮发送：旧 orphan 定时器清除；此 10s 内不得对账。
+    sender.markSending('sess-1');
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(reconcileRunStatus).not.toHaveBeenCalled();
+
+    // 再次收表：窗口重计，10s 后恰好一次。
+    sender.markSendingDone();
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(reconcileRunStatus).toHaveBeenCalledTimes(1);
+  });
+
+  it('⑫ watchdog 对账在途时 orphan 对账被拒入（watchdogReconciling 复用）', async () => {
+    let resolveReconcile: (() => void) | undefined;
+    const reconcileRunStatus = vi.fn(
+      () =>
+        new Promise<string | null>((resolve) => {
+          resolveReconcile = () => resolve(null);
+        }),
+    );
+    const { sender } = setup({ reconcileRunStatus });
+    sender.markSending('sess-1');
+
+    // T120：watchdog 对账触发且挂起（Promise 未决），重入锁持有。
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect(reconcileRunStatus).toHaveBeenCalledTimes(1);
+
+    // 发送侧收表（task.completed 兜底路径）→ orphan 定时器登记；
+    // 10s 后 orphan 触发但被共用的 watchdogReconciling 锁拒入。
+    sender.markSendingDone();
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(reconcileRunStatus).toHaveBeenCalledTimes(1);
+
+    resolveReconcile?.();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(reconcileRunStatus).toHaveBeenCalledTimes(1);
+  });
+});

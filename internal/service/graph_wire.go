@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"os"
 	"strconv"
 	"time"
@@ -20,12 +21,29 @@ func ProvideGraphUsecase(
 	lg loggateway.Logger,
 ) *biz.GraphUsecase {
 	observer := compositeGraphExecutionObserver{telemetry, orchProjector}
-	return biz.NewGraphUsecase(biz.GraphUsecaseDeps{
+	uc := biz.NewGraphUsecase(biz.GraphUsecaseDeps{
 		Repo: repo, RunRepo: runRepo, Factory: factory,
 		Observer: observer, CompiledTeam: compiledTeamRepo,
 		TeamReader: teamReader, Lg: lg,
 		GCConfig: resolveGraphGCConfig(lg),
 	})
+	// D6-F4（87-orchestration-chain-hardening）：构造期启动对账一次——standalone
+	// 孤儿 graph_executions（无 team_graph_sessions 行的 running 行）终态化。
+	// 对齐 chat_orchestrator.go 构造期 RecoverSessions 先例；失败非致命仅 Warn，
+	// 多副本交叠由 FSM 终态守卫幂等兜底。team 行被 SQL 排除，随后
+	// ChatOrchestrator 构造期的 crash-resume 照常接管，两者无竞态。
+	sweepCtx, cancelSweep := context.WithTimeout(context.Background(), 10*time.Second)
+	if n, err := uc.FinalizeOrphanedStandaloneExecutions(sweepCtx); err != nil {
+		lg.Warn("graph: orphaned standalone execution sweep failed on startup",
+			loggateway.StepID("graph.orphan_sweep"),
+			loggateway.Err(err))
+	} else if n > 0 {
+		lg.Info("graph: orphaned standalone executions finalized on startup",
+			loggateway.StepID("graph.orphan_sweep"),
+			loggateway.Int("finalized", n))
+	}
+	cancelSweep()
+	return uc
 }
 
 // resolveGraphGCConfig builds a GraphGCConfig from environment variables,

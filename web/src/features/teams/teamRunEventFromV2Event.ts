@@ -107,6 +107,19 @@ export function teamRunEventFromV2Event(envelope: V2WsEnvelope, defaultTeamID = 
         payload: asRecord(tr),
       };
     }
+    case 'team_run.cancelled': {
+      const tr = payload.TeamRun as V2TeamRun | undefined;
+      if (!tr) return null;
+      const run = wireTeamRunFromV2(tr, defaultTeamID);
+      return {
+        type: 'team_run_cancelled',
+        team_id: defaultTeamID || run.team_id,
+        run_id: run.id,
+        session_id: sessionId || run.session_id,
+        run,
+        payload: asRecord(tr),
+      };
+    }
     case 'member_session.created':
     case 'member_session.updated': {
       const ms = payload.MemberSession as MemberSession | undefined;

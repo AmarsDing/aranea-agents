@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"aranea-agents/internal/biz"
 	bizknowledge "aranea-agents/internal/biz/knowledge"
@@ -44,14 +45,31 @@ type FixtureCardDecl struct {
 	Host string `json:"host"` // 宿主文档 id（必须指向 docs）
 }
 
+// FixtureEdgeDecl 语料时态边声明（G-05-asof）：一条 knowledge_links 式双时态
+// 关联。声明即接线——NewFixtureSearcher 在声明了 edges 时自动装配 active（当前
+// 快照）+ temporal（四象限谓词）双腿进生产 GraphExpander，与装配层同款断言。
+type FixtureEdgeDecl struct {
+	ID         string `json:"id"`
+	Doc        string `json:"doc"`
+	Target     string `json:"target"`
+	LinkType   string `json:"link_type"` // explicit | semantic | entity（co_activated 显式禁止）
+	Relation   string `json:"relation,omitempty"`
+	ValidFrom  string `json:"valid_from"`  // RFC3339
+	ValidTo    string `json:"valid_to,omitempty"` // 缺省 = 存续
+	RecordedAt string `json:"recorded_at"` // RFC3339
+}
+
 // FixtureCorpus 金标语料：docs + seeds（查询原文 → 种子文档 id）。
 // seeds 与 EvalSet 的查询一一对应；缺锚点的查询在 Search 时显式报错，
 // 让快照门禁把「语料与评测集漂移」作为失败而非静默 vacuous success。
 // cards 为可选扩展（G-33 实体/边卡第三腿探针——非 strict Unmarshal 零破坏）。
+// edges 为可选时态扩展（G-05-asof 四象限探针——未声明的语料双腿不接线，
+// 既有 14 用例快照字节级不变）。
 type FixtureCorpus struct {
 	Docs  []FixtureDoc                 `json:"docs"`
 	Seeds map[string]string            `json:"seeds"`
 	Cards map[string][]FixtureCardDecl `json:"cards,omitempty"`
+	Edges []FixtureEdgeDecl            `json:"edges,omitempty"`
 }
 
 // fixtureCollection 是 fixture 世界内固定的 collection id。
@@ -120,8 +138,167 @@ func (c FixtureCorpus) validate() error {
 			}
 		}
 	}
+	edgeIDs := make(map[string]struct{}, len(c.Edges))
+	for i, e := range c.Edges {
+		if strings.TrimSpace(e.ID) == "" {
+			return fmt.Errorf("edges: decl %d: id is required", i)
+		}
+		if _, dup := edgeIDs[e.ID]; dup {
+			return fmt.Errorf("edges: decl %d: duplicate id %q", i, e.ID)
+		}
+		edgeIDs[e.ID] = struct{}{}
+		if _, ok := ids[e.Doc]; !ok {
+			return fmt.Errorf("edges: decl %q: unknown doc %q", e.ID, e.Doc)
+		}
+		if _, ok := ids[e.Target]; !ok {
+			return fmt.Errorf("edges: decl %q: unknown target %q", e.ID, e.Target)
+		}
+		switch strings.TrimSpace(e.LinkType) {
+		case bizknowledge.LinkTypeExplicit, bizknowledge.LinkTypeSemantic, bizknowledge.LinkTypeEntity:
+		case bizknowledge.LinkTypeCoActivated:
+			// 时态端口一刀切排除 co_activated（ADR-KN-20261020-J）——fixture 声明
+			// 该类型等于永远观测不到的谎言，语法期而非运行期爆出。
+			return fmt.Errorf("edges: decl %q: co_activated edges are not observable through as-of ports", e.ID)
+		default:
+			return fmt.Errorf("edges: decl %q: link_type %q must be explicit/semantic/entity", e.ID, e.LinkType)
+		}
+	}
+	// 时间审计语法单源：与 buildFixtureSearcher 装配共用同一解析器。
+	if _, err := parseFixtureEdges(c.Edges); err != nil {
+		return err
+	}
 	return nil
 }
+
+// fixtureEdge 编译态时态边：RFC3339 声明已解析为 time.Time（validTo 零值 = 存续）。
+type fixtureEdge struct {
+	id, doc, target, linkType, relation string
+	validFrom, validTo, recordedAt      time.Time
+}
+
+// parseFixtureEdges 校验并解析边时间审计三列（valid_to 可空，其余两列 RFC3339
+// 必填）。validate 与装配共用，防止「加载能过、装配爆」双口径漂移。
+func parseFixtureEdges(decls []FixtureEdgeDecl) ([]fixtureEdge, error) {
+	out := make([]fixtureEdge, 0, len(decls))
+	for _, d := range decls {
+		vf, err := time.Parse(time.RFC3339, strings.TrimSpace(d.ValidFrom))
+		if err != nil {
+			return nil, fmt.Errorf("edges: decl %q: valid_from must be RFC3339, got %q", d.ID, d.ValidFrom)
+		}
+		var vt time.Time
+		if raw := strings.TrimSpace(d.ValidTo); raw != "" {
+			vt, err = time.Parse(time.RFC3339, raw)
+			if err != nil {
+				return nil, fmt.Errorf("edges: decl %q: valid_to must be RFC3339, got %q", d.ID, d.ValidTo)
+			}
+		}
+		rc, err := time.Parse(time.RFC3339, strings.TrimSpace(d.RecordedAt))
+		if err != nil {
+			return nil, fmt.Errorf("edges: decl %q: recorded_at must be RFC3339, got %q", d.ID, d.RecordedAt)
+		}
+		out = append(out, fixtureEdge{
+			id: d.ID, doc: d.Doc, target: d.Target,
+			linkType: strings.TrimSpace(d.LinkType), relation: d.Relation,
+			validFrom: vf, validTo: vt, recordedAt: rc,
+		})
+	}
+	return out, nil
+}
+
+// visibleAsOf 复刻 data 层四象限谓词（knowledge_links_asof.go 的 Go 镜像，
+// 与 SQL 文本同一规范：valid_to 排他、recorded_at 含端点、dual-OR 双分支）。
+func (e fixtureEdge) visibleAsOf(span bizknowledge.TemporalSpan) bool {
+	tOn, rOn := span.ValidOn(), span.RecordedOn()
+	switch {
+	case tOn && rOn:
+		if e.recordedAt.After(span.RecordedAt) {
+			return false
+		}
+		inside := !e.validFrom.After(span.ValidAt) && (e.validTo.IsZero() || e.validTo.After(span.ValidAt))
+		knownOpen := !e.validTo.IsZero() && !e.validFrom.After(span.ValidAt) && e.validTo.After(span.RecordedAt)
+		return inside || knownOpen
+	case tOn:
+		return !e.validFrom.After(span.ValidAt) && (e.validTo.IsZero() || e.validTo.After(span.ValidAt))
+	case rOn:
+		return !e.recordedAt.After(span.RecordedAt) && (e.validTo.IsZero() || e.validTo.After(span.RecordedAt))
+	default:
+		return e.validTo.IsZero()
+	}
+}
+
+// fixtureEdgeSet 双腿共享的边存储（生产装配亦然：active/temporal 两端口指向
+// 同一 repo）。
+type fixtureEdgeSet struct {
+	edges []fixtureEdge
+}
+
+func (f fixtureEdgeSet) touching(docIDs []string) []fixtureEdge {
+	in := make(map[string]struct{}, len(docIDs))
+	for _, id := range docIDs {
+		in[id] = struct{}{}
+	}
+	var out []fixtureEdge
+	for _, e := range f.edges {
+		_, docIn := in[e.doc]
+		_, tgtIn := in[e.target]
+		if docIn || tgtIn {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
+func toFixtureActiveLinks(es []fixtureEdge) []bizknowledge.ActiveLink {
+	out := make([]bizknowledge.ActiveLink, 0, len(es))
+	for _, e := range es {
+		out = append(out, bizknowledge.ActiveLink{
+			DocID: e.doc, TargetDocID: e.target,
+			LinkType: e.linkType, Relation: e.relation, WeightF: 1,
+		})
+	}
+	return out
+}
+
+func (f fixtureEdgeSet) currentView(docIDs []string) []bizknowledge.ActiveLink {
+	var kept []fixtureEdge
+	for _, e := range f.touching(docIDs) {
+		if e.validTo.IsZero() {
+			kept = append(kept, e)
+		}
+	}
+	return toFixtureActiveLinks(kept)
+}
+
+func (f fixtureEdgeSet) asOfView(docIDs []string, span bizknowledge.TemporalSpan) []bizknowledge.ActiveLink {
+	if !span.Any() {
+		return f.currentView(docIDs) // 零 span 字节级委托（与 data 层同约）
+	}
+	var kept []fixtureEdge
+	for _, e := range f.touching(docIDs) {
+		if e.visibleAsOf(span) {
+			kept = append(kept, e)
+		}
+	}
+	return toFixtureActiveLinks(kept)
+}
+
+// fixtureActiveLinkReader / fixtureTemporalLinkReader 复刻生产装配的双端口。
+type fixtureActiveLinkReader struct{ edges fixtureEdgeSet }
+
+func (r fixtureActiveLinkReader) ListActiveLinks(_ context.Context, _ string, docIDs []string) ([]bizknowledge.ActiveLink, error) {
+	return r.edges.currentView(docIDs), nil
+}
+
+type fixtureTemporalLinkReader struct{ edges fixtureEdgeSet }
+
+func (r fixtureTemporalLinkReader) ListActiveLinksAsOf(_ context.Context, _ string, docIDs []string, span bizknowledge.TemporalSpan) ([]bizknowledge.ActiveLink, error) {
+	return r.edges.asOfView(docIDs, span), nil
+}
+
+var (
+	_ bizknowledge.ActiveLinkReader         = fixtureActiveLinkReader{}
+	_ bizknowledge.TemporalActiveLinkReader = fixtureTemporalLinkReader{}
+)
 
 // fixtureSearcher 以种子锚点为起点的确定性 Searcher。无词法打分——种子即
 // 最坏假设下的混合检索命中，后续全部交给生产扩展/合并组件。cards 为 G-33
@@ -225,6 +402,18 @@ func buildFixtureSearcher(c FixtureCorpus, withCards bool) (Searcher, error) {
 		fixtureChunkLister{byDoc: s.chunks},
 		nil, // GraphExpander 对 nil logger 自降级为 Noop
 	)
+	// G-05-asof：声明式时态边（决策 c）——edges 非空即双腿接线（active 当前快照 +
+	// temporal 四象限），随后整库扩散走 spreadExpand（含零 span 零改动委托语义）；
+	// 未声明语料双腿不接线，既有 1 跳行为与快照字节级不变。
+	if len(c.Edges) > 0 {
+		parsed, err := parseFixtureEdges(c.Edges)
+		if err != nil {
+			return nil, fmt.Errorf("eval: parse fixture edges: %w", err)
+		}
+		set := fixtureEdgeSet{edges: parsed}
+		s.expander.SetActiveLinks(fixtureActiveLinkReader{edges: set})
+		s.expander.SetTemporalActiveLinks(fixtureTemporalLinkReader{edges: set})
+	}
 	if withCards && len(c.Cards) > 0 {
 		byQuery := make(map[string][]biz.KnowledgeChunk, len(c.Cards))
 		for q, decls := range c.Cards {
@@ -241,6 +430,18 @@ func buildFixtureSearcher(c FixtureCorpus, withCards bool) (Searcher, error) {
 // （Runner 记入 CaseResult.Err 并继续），由快照测试汇总成失败。卡片腿失败
 // 复刻生产语义（warn 降级为种子集），fixture 桩实际不失败。
 func (s *fixtureSearcher) Search(ctx context.Context, query string, topK int) ([]Hit, error) {
+	return s.searchOwned(ctx, query, topK, bizknowledge.TemporalSpan{})
+}
+
+// SearchAsOf 实现 eval.TemporalSearcher（G-05-asof）：同 Search 但携带时态窗口，
+// 经 SearchQuery.Temporal 值拷贝进生产 GraphExpander 的时态腿。零 span 字节级委托。
+func (s *fixtureSearcher) SearchAsOf(ctx context.Context, query string, topK int, span bizknowledge.TemporalSpan) ([]Hit, error) {
+	return s.searchOwned(ctx, query, topK, span)
+}
+
+var _ TemporalSearcher = (*fixtureSearcher)(nil)
+
+func (s *fixtureSearcher) searchOwned(ctx context.Context, query string, topK int, span bizknowledge.TemporalSpan) ([]Hit, error) {
 	docID, ok := s.seeds[query]
 	if !ok {
 		return nil, fmt.Errorf("eval: fixture corpus has no seed anchor for query %q", query)
@@ -253,6 +454,7 @@ func (s *fixtureSearcher) Search(ctx context.Context, query string, topK int) ([
 		CollectionID: fixtureCollection,
 		Query:        query,
 		TopK:         topK,
+		Temporal:     span,
 	}
 	// 拷贝再并，避免 append 写回种子底层数组（多查询复跑同一 docID 时重复卡片）。
 	cands := append([]biz.KnowledgeChunk{}, seeds...)

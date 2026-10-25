@@ -8,7 +8,32 @@ import (
 
 	"aranea-agents/internal/biz"
 	bizknowledge "aranea-agents/internal/biz/knowledge"
+	"aranea-agents/internal/workspace"
+	"aranea-agents/pkg/auth"
 )
+
+func TestEmitKnowledgeRecalledNotice_CardSnapshotAndViewerStamp(t *testing.T) {
+	rec := &noticeRecorder{}
+	ctx := workspace.WithContext(context.Background(), "ws-1")
+	ctx = auth.NewContext(ctx, &auth.Auth{UserID: 42})
+	ctx = bizknowledge.WithOrgScope(ctx, []string{"dept-a"})
+	ctx = biz.WithActivityEmitter(ctx, rec)
+	text := "平台 depends-on 数据库 — 已归档的关系证据"
+	emitKnowledgeRecalledNotice(ctx, []biz.KnowledgeChunk{{
+		ID: "g33r/11/doc-1", DocID: "doc-1", CollectionID: "col-1", Content: text,
+	}}, true)
+	var payload knowledgeRecalledNoticePayload
+	if err := json.Unmarshal([]byte(rec.calls[0].content), &payload); err != nil {
+		t.Fatal(err)
+	}
+	ch := payload.Chunks[0]
+	if ch.EvidenceKind != "edge" || ch.EvidenceContent != text || ch.EvidenceHash != bizknowledge.GraphCardSourceHash(text) || ch.CollectionID != "col-1" || ch.N != 1 {
+		t.Fatalf("derived evidence snapshot lost: %+v", ch)
+	}
+	if payload.WorkspaceID != "ws-1" || payload.ViewerUserID != 42 || len(payload.OrgScope) != 1 || payload.OrgScope[0] != "dept-a" {
+		t.Fatalf("trusted viewer context lost: %+v", payload)
+	}
+}
 
 // ── knowledge_recalled notice (29-token P2-2: cited 回采) ─────────────────
 

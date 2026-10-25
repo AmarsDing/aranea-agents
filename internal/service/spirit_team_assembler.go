@@ -9,10 +9,8 @@ import (
 
 	"aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
-	sessstatus "aranea-agents/internal/biz/session"
 	rt "aranea-agents/internal/runtime"
 	"aranea-agents/pkg/loggateway"
-	"aranea-agents/pkg/safego"
 
 	"github.com/google/uuid"
 )
@@ -77,20 +75,15 @@ func (a *SpiritTeamAssembler) AssembleTeam(ctx context.Context, params biz.Spiri
 
 	a.publishSpiritTeamAssembled(ctx, spiritSessionID, result.Team, result.Session, params.Mode, params.TaskDescription, params.TopologyReason, params.AgentKeys, result.MemberSessions)
 
-	if params.AutoStart && a.teamStarter != nil && result.Team.Status == biz.TeamStatusPending && strings.TrimSpace(params.TaskDescription) != "" {
-		sessionID := result.Session.ID
-		taskDesc := params.TaskDescription
-		safego.Go(ctx, "spirit-auto-start", func() {
-			startCtx := context.WithoutCancel(ctx)
-			if startErr := a.teamStarter.StartTeamTurn(startCtx, sessionID, taskDesc); startErr != nil {
-				a.lg.Warn("自动启动团队 Turn 失败",
-					loggateway.StepID("spirit.auto_start_fail"),
-					loggateway.Str("team_id", result.Team.ID),
-					loggateway.Err(startErr),
-				)
-			}
-		})
-	}
+	// D8-P3（87-orchestration-chain-hardening）：组装 ≠ 启动。
+	// AutoStart 死路径（原 80-93）已删除——它绕过 BuildTeamTurnInput（DAG 队
+	// 首轮输入缺上游前缀与强制交付协议后缀，叠 Fix-1 零交付门必然误判 failed），
+	// 且唯一生产调用方 RealTeamOrchestrator.Orchestrate 恒传 AutoStart=false
+	// （completion channel 必须先于 StartTeamTurn 注册进 pending map）。
+	// 唯一启动入口 = RealTeamOrchestrator.Orchestrate → StartTeamTurn（完整
+	// BuildTeamTurnInput 管道）；lazy DAG 激活走 biz.scheduleDependentTeams。
+	// AutoStart 字段语义降级为文档化占位：初始状态恒 pending，启动由编排调用
+	// 方负责。
 
 	a.lg.Info("精灵团队组装完成",
 		loggateway.StepID("spirit.team.assemble_done"),
@@ -99,25 +92,6 @@ func (a *SpiritTeamAssembler) AssembleTeam(ctx context.Context, params biz.Spiri
 	)
 
 	return result.Team, result.Session, result.MemberSessions, nil
-}
-
-func (a *SpiritTeamAssembler) FindTeamSessionAndStartTurn(ctx context.Context, teamID string, taskDesc string) {
-	result, searchErr := a.spiritUC.SearchSessions(ctx, sessstatus.SessionSearchQuery{TeamID: teamID, Limit: 1})
-	if searchErr != nil || len(result.Items) == 0 {
-		a.lg.Warn("查找团队 session 失败",
-			loggateway.StepID("spirit.find_session_fail"),
-			loggateway.Str("team_id", teamID),
-			loggateway.Err(searchErr),
-		)
-		return
-	}
-	if startErr := a.teamStarter.StartTeamTurn(ctx, result.Items[0].ID, taskDesc); startErr != nil {
-		a.lg.Warn("自动启动团队 Turn 失败",
-			loggateway.StepID("spirit.auto_start_fail"),
-			loggateway.Str("team_id", teamID),
-			loggateway.Err(startErr),
-		)
-	}
 }
 
 func (a *SpiritTeamAssembler) ListActiveTeams(ctx context.Context, spiritSessionID string) ([]biz.Team, error) {
@@ -225,7 +199,7 @@ func (a *SpiritTeamAssembler) SuggestTopology(ctx context.Context, taskDescripti
 	if a.orchCache == nil {
 		return "", false
 	}
-	topology, found := a.orchCache.SuggestTopology(taskDescription)
+	topology, found := a.orchCache.SuggestTopology(ctx, taskDescription)
 	if found {
 		a.lg.Info("编排缓存命中，推荐拓扑",
 			loggateway.StepID("spirit.suggest_topology"),

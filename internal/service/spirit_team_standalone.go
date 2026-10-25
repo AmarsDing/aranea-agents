@@ -152,7 +152,11 @@ func (s *TeamStarter) handleStandaloneTeamTurnResult(
 		}
 	}
 
-	// teams 表状态转换（cancelled 由调用方已转换，与 AutoCreated 路径同一姿态）。
+	// teams 表状态转换。completed/failed 直接转；cancelled 破除「调用方已
+	// 转换」假设（D1-F2，与 AutoCreated 路径同一姿态）：runner 取消回调等
+	// 入口进入本 pass 时现态可能仍是 running，需补 CAS 转移（FSM 已有
+	// pending/running→cancelled 边）；已 cancelled 的重放（biz.CancelTeam
+	// 显式清理）跳过——BadRequest/Conflict 拒绝容忍 Warn（幂等/竞态）。
 	switch status {
 	case biz.TeamStatusCompleted, biz.TeamStatusPartialFailure:
 		if _, updateErr := s.team.TeamUC.TransitionStatus(ctx, teamID, status); updateErr != nil {
@@ -170,6 +174,16 @@ func (s *TeamStarter) handleStandaloneTeamTurnResult(
 				loggateway.Str("team_id", teamID),
 				loggateway.Err(updateErr),
 			)
+		}
+	case biz.TeamStatusCancelled:
+		if team.Status != biz.TeamStatusCancelled {
+			if _, updateErr := s.team.TeamUC.TransitionStatus(ctx, teamID, biz.TeamStatusCancelled); updateErr != nil {
+				s.lg.Warn("standalone 团队状态转换到 cancelled 失败（幂等容忍）",
+					loggateway.StepID("spirit.standalone.cancelled_err"),
+					loggateway.Str("team_id", teamID),
+					loggateway.Err(updateErr),
+				)
+			}
 		}
 	}
 

@@ -15,6 +15,7 @@ import (
 const evalTimeout = 10 * time.Second
 
 type RetrievalAssessment struct {
+	Evaluated       bool
 	Sufficient      bool
 	Confidence      float32
 	SupplementQuery string
@@ -36,20 +37,15 @@ func (e *RetrievalEvaluator) Evaluate(ctx context.Context, query string, chunks 
 		return &RetrievalAssessment{Sufficient: false, Confidence: 0, SupplementQuery: query}, nil
 	}
 
-	// Degradation strategy 1 (conservative): when no LLM is configured, assume
-	// existing results are sufficient. The caller can still decide to do a
-	// follow-up search based on domain heuristics.
+	// 未评估不等于信息充分；保留零置信度并显式报告 Evaluated=false。
 	if e.llm == nil {
-		return &RetrievalAssessment{Sufficient: true, Confidence: 1.0}, nil
+		return &RetrievalAssessment{}, nil
 	}
 
-	// Degradation strategy 2 (conservative): when the LLM model cannot be
-	// resolved (e.g. no evaluation model configured in system settings), treat
-	// existing results as sufficient rather than triggering unnecessary
-	// supplementary searches that would waste tokens and latency.
+	// 模型不可用时同样保持未知，不触发伪评估或额外补检索。
 	provider, model, err := e.resolveModel(ctx)
 	if err != nil {
-		return &RetrievalAssessment{Sufficient: true, Confidence: 0.5}, nil
+		return &RetrievalAssessment{}, nil
 	}
 
 	evalCtx, cancel := context.WithTimeout(ctx, evalTimeout)
@@ -127,17 +123,21 @@ func parseAssessment(raw string) (*RetrievalAssessment, error) {
 	raw = stripCodeFence(raw)
 
 	type assessJSON struct {
-		Sufficient      bool    `json:"sufficient"`
-		Confidence      float32 `json:"confidence"`
-		SupplementQuery string  `json:"supplement_query"`
+		Sufficient      *bool    `json:"sufficient"`
+		Confidence      *float32 `json:"confidence"`
+		SupplementQuery string   `json:"supplement_query"`
 	}
 	var a assessJSON
 	if err := parseJSONLoose(raw, &a); err != nil {
-		return &RetrievalAssessment{Sufficient: true, Confidence: 0.5}, nil
+		return &RetrievalAssessment{}, nil
+	}
+	if a.Sufficient == nil || a.Confidence == nil || *a.Confidence < 0 || *a.Confidence > 1 {
+		return &RetrievalAssessment{}, nil
 	}
 	return &RetrievalAssessment{
-		Sufficient:      a.Sufficient,
-		Confidence:      a.Confidence,
+		Evaluated:       true,
+		Sufficient:      *a.Sufficient,
+		Confidence:      *a.Confidence,
 		SupplementQuery: strings.TrimSpace(a.SupplementQuery),
 	}, nil
 }

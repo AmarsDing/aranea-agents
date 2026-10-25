@@ -34,6 +34,15 @@
 
     <!-- 快速动作 -->
     <q-btn
+      unelevated
+      dense
+      no-caps
+      color="primary"
+      icon="upload_file"
+      :label="t('knowledgeWorkflow.upload')"
+      @click="$emit('upload')"
+    />
+    <q-btn
       flat
       dense
       no-caps
@@ -44,106 +53,111 @@
     >
       <q-tooltip>Ctrl+Shift+F</q-tooltip>
     </q-btn>
-    <q-btn
-      flat
-      dense
-      no-caps
-      icon="bolt"
-      :label="t('knowledgePage.workbench.quickSwitcher')"
-      class="kb-topbar__action"
-      @click="$emit('open-quick-switcher')"
-    >
-      <q-tooltip>Ctrl+O</q-tooltip>
-    </q-btn>
-    <q-btn
-      flat
-      dense
-      no-caps
-      icon="terminal"
-      :label="t('knowledgePage.workbench.commandPalette')"
-      class="kb-topbar__action"
-      @click="$emit('open-command-palette')"
-    >
-      <q-tooltip>Ctrl+K</q-tooltip>
-    </q-btn>
-    <!-- SP3-P3 审查待办徽章：治理提案 + 写回待审（60s 轮询 + 聚焦刷新，失败静默降级） -->
-    <q-btn
-      flat
-      dense
-      round
-      icon="notifications"
-      :title="t('knowledgePage.workbench.reviewBadge.title')"
-      class="kb-topbar__icon"
-    >
-      <q-badge v-if="reviewTotal > 0" color="negative" floating :label="reviewTotal > 99 ? '99+' : reviewTotal" />
-      <q-tooltip>
-        <div>
-          {{ t('knowledgePage.workbench.reviewBadge.governance') }}:
-          {{ formatReviewCount(reviewCounts.governancePending) }}
-        </div>
-        <div>
-          {{ t('knowledgePage.workbench.reviewBadge.writeback') }}:
-          {{ formatReviewCount(reviewCounts.writebackPending) }}
-        </div>
-        <div>{{ t('knowledgePage.workbench.reviewBadge.lastRefresh', { time: reviewLastRefreshText }) }}</div>
-      </q-tooltip>
-      <q-menu>
-        <q-list dense class="kb-topbar__vault-list kb-topbar__review-list">
-          <q-item v-close-popup clickable @click="$emit('open-review-governance')">
-            <q-item-section avatar>
-              <q-icon name="gavel" size="18px" />
-            </q-item-section>
-            <q-item-section>{{ t('knowledgePage.workbench.reviewBadge.governance') }}</q-item-section>
-            <q-item-section side>
-              <span class="kb-topbar__review-count">{{ formatReviewCount(reviewCounts.governancePending) }}</span>
-            </q-item-section>
-          </q-item>
-          <q-item v-close-popup clickable @click="$emit('open-review-writeback')">
-            <q-item-section avatar>
-              <q-icon name="rate_review" size="18px" />
-            </q-item-section>
-            <q-item-section>{{ t('knowledgePage.workbench.reviewBadge.writeback') }}</q-item-section>
-            <q-item-section side>
-              <span class="kb-topbar__review-count">{{ formatReviewCount(reviewCounts.writebackPending) }}</span>
-            </q-item-section>
-          </q-item>
-          <q-separator />
-          <q-item v-close-popup clickable @click="refreshReviewBadge()">
-            <q-item-section avatar>
-              <q-icon name="refresh" size="18px" />
-            </q-item-section>
-            <q-item-section>{{ t('knowledgePage.workbench.reviewBadge.refresh') }}</q-item-section>
-          </q-item>
-        </q-list>
-      </q-menu>
-    </q-btn>
-    <q-btn
-      flat
-      dense
-      round
-      icon="science"
-      :title="tt('hitTest')"
-      class="kb-topbar__icon"
-      @click="$emit('open-hit-test')"
-    />
-    <q-btn
-      flat
-      dense
-      round
-      icon="hub"
-      :title="t('knowledgePage.workbench.openGraph')"
-      class="kb-topbar__icon"
-      @click="$emit('open-graph')"
-    />
-    <q-btn
-      flat
-      dense
-      round
-      icon="tune"
-      :title="t('knowledgePage.workbench.openSettings')"
-      class="kb-topbar__icon"
-      @click="$emit('open-settings')"
-    />
+    <q-btn-dropdown flat dense no-caps icon="more_horiz" :label="t('knowledgeWorkflow.advanced')">
+      <div class="column q-pa-sm">
+        <q-btn
+          flat
+          dense
+          no-caps
+          icon="bolt"
+          :label="t('knowledgePage.workbench.quickSwitcher')"
+          class="kb-topbar__action"
+          @click="$emit('open-quick-switcher')"
+        >
+          <q-tooltip>Ctrl+O</q-tooltip>
+        </q-btn>
+        <q-btn
+          flat
+          dense
+          no-caps
+          icon="terminal"
+          :label="t('knowledgePage.workbench.commandPalette')"
+          class="kb-topbar__action"
+          @click="$emit('open-command-palette')"
+        >
+          <q-tooltip>Ctrl+K</q-tooltip>
+        </q-btn>
+        <!-- SP3-P3 审查待办徽章：治理提案 + 写回待审（60s 轮询 + 聚焦刷新，失败静默降级） -->
+        <q-btn
+          flat
+          dense
+          round
+          icon="notifications"
+          :title="t('knowledgePage.workbench.reviewBadge.title')"
+          class="kb-topbar__icon"
+        >
+          <q-badge v-if="reviewTotal > 0" color="negative" floating :label="reviewTotal > 99 ? '99+' : reviewTotal" />
+          <q-tooltip>
+            <div>
+              {{ t('knowledgePage.workbench.reviewBadge.governance') }}:
+              {{ formatReviewCount(reviewCounts.governancePending) }}
+            </div>
+            <div>
+              {{ t('knowledgePage.workbench.reviewBadge.writeback') }}:
+              {{ formatReviewCount(reviewCounts.writebackPending) }}
+            </div>
+            <div>{{ t('knowledgePage.workbench.reviewBadge.lastRefresh', { time: reviewLastRefreshText }) }}</div>
+          </q-tooltip>
+          <q-menu>
+            <q-list dense class="kb-topbar__vault-list kb-topbar__review-list">
+              <q-item v-close-popup clickable @click="$emit('open-review-governance')">
+                <q-item-section avatar>
+                  <q-icon name="gavel" size="18px" />
+                </q-item-section>
+                <q-item-section>{{ t('knowledgePage.workbench.reviewBadge.governance') }}</q-item-section>
+                <q-item-section side>
+                  <span class="kb-topbar__review-count">{{ formatReviewCount(reviewCounts.governancePending) }}</span>
+                </q-item-section>
+              </q-item>
+              <q-item v-close-popup clickable @click="$emit('open-review-writeback')">
+                <q-item-section avatar>
+                  <q-icon name="rate_review" size="18px" />
+                </q-item-section>
+                <q-item-section>{{ t('knowledgePage.workbench.reviewBadge.writeback') }}</q-item-section>
+                <q-item-section side>
+                  <span class="kb-topbar__review-count">{{ formatReviewCount(reviewCounts.writebackPending) }}</span>
+                </q-item-section>
+              </q-item>
+              <q-separator />
+              <q-item v-close-popup clickable @click="refreshReviewBadge()">
+                <q-item-section avatar>
+                  <q-icon name="refresh" size="18px" />
+                </q-item-section>
+                <q-item-section>{{ t('knowledgePage.workbench.reviewBadge.refresh') }}</q-item-section>
+              </q-item>
+            </q-list>
+          </q-menu>
+        </q-btn>
+        <q-btn
+          flat
+          dense
+          round
+          icon="science"
+          :title="tt('hitTest')"
+          class="kb-topbar__icon"
+          @click="$emit('open-hit-test')"
+        />
+        <q-btn
+          flat
+          dense
+          round
+          icon="hub"
+          :title="t('knowledgePage.workbench.openGraph')"
+          class="kb-topbar__icon"
+          @click="$emit('open-graph')"
+        />
+        <q-btn
+          v-if="canConfigure"
+          flat
+          dense
+          round
+          icon="tune"
+          :title="t('knowledgePage.workbench.openSettings')"
+          class="kb-topbar__icon"
+          @click="$emit('open-settings')"
+        />
+      </div>
+    </q-btn-dropdown>
   </div>
 </template>
 
@@ -157,6 +171,7 @@ import type { KnowledgeCollection } from '../../../features/knowledge/types';
 const props = defineProps<{
   collections: KnowledgeCollection[];
   currentVaultId: string;
+  canConfigure?: boolean;
 }>();
 
 defineEmits<{
@@ -164,6 +179,7 @@ defineEmits<{
   'open-quick-switcher': [];
   'open-command-palette': [];
   'open-search': [];
+  upload: [];
   'open-graph': [];
   'open-settings': [];
   'open-hit-test': [];

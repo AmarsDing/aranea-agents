@@ -254,7 +254,7 @@ func EnsureKnowledgeSchema(ctx context.Context, db *sql.DB, dim int, lg ...logga
 		`CREATE INDEX IF NOT EXISTS idx_knowledge_chunk_citations_turn
 			ON knowledge_chunk_citations(turn_id)`,
 		// --- 父子分块（G-06，2026-10-20；fresh 形态，存量库由迁移 20261283 补列） ---
-		// parent_chunk_id：子块→父块行 ID（'' = 独立块/父块自身；不加自引用 FK，
+		// parent_chunk_id：子块→父块行 ID（空串 = 独立块/父块自身；不加自引用 FK，
 		// 应用层单事务维护）；chunk_role：child|parent，父块仅语境回填不进召回。
 		`ALTER TABLE knowledge_chunks ADD COLUMN IF NOT EXISTS parent_chunk_id TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE knowledge_chunks ADD COLUMN IF NOT EXISTS chunk_role TEXT NOT NULL DEFAULT 'child'`,
@@ -285,6 +285,11 @@ func EnsureKnowledgeSchema(ctx context.Context, db *sql.DB, dim int, lg ...logga
 			ON knowledge_links USING GIST (tstzrange(valid_from, COALESCE(valid_to, 'infinity')))`,
 		`CREATE INDEX IF NOT EXISTS knowledge_links_active_idx
 			ON knowledge_links (collection_id, doc_id) WHERE valid_to IS NULL`,
+		// G-05-asof R 轴读索引（ADR-KN-20261020-J；fresh 形态，存量库由迁移 20261287 补）：
+		// R-only/双轴谓词 recorded_at <= $R 驱动范围，collection_id 前置等值——
+		// 无它则全库 as-of 图读退化全表 seq scan（历史行只增不删）。
+		`CREATE INDEX IF NOT EXISTS knowledge_links_recorded_idx
+			ON knowledge_links (collection_id, recorded_at)`,
 		`CREATE TABLE IF NOT EXISTS knowledge_access_log (
 			id BIGSERIAL PRIMARY KEY,
 			collection_id TEXT NOT NULL,

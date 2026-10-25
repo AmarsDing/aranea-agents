@@ -6,7 +6,7 @@ import (
 )
 
 // extractorCompiler 把 ExtractorRegistry 适配为 VaultSyncApplier 的 BodyCompiler 端口（M0）。
-// 职责：按 relPath 推 MIME → 路由到对应 Extractor → 统一返回 text/markdown。
+// 职责：按 relPath 推 MIME → 路由到对应 Extractor → 返回正文并保留原件 MIME。
 type extractorCompiler struct {
 	reg *ExtractorRegistry
 }
@@ -28,5 +28,7 @@ func (c *extractorCompiler) Compile(ctx context.Context, relPath string, raw []b
 		return "", "", err
 	}
 	md = strings.TrimSpace(md)
-	return md, "text/markdown", nil
+	// The body is Markdown, but the document still points at the original file.
+	// Preserve its MIME so previews and editors never treat binary originals as notes.
+	return md, mime, nil
 }

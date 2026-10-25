@@ -3,6 +3,8 @@ package knowledge
 import (
 	"context"
 	"strings"
+
+	"aranea-agents/pkg/loggateway"
 )
 
 // ── G4-B8：单库全量图谱（3D 知识图谱数据源，设计 §V12.3 B8 / §V12.7） ────────
@@ -42,6 +44,12 @@ func (u *Usecase) SetGraphRepo(links CollectionLinkReader) {
 	u.graphLinks = links
 }
 
+// SetTemporalGraphRepo 接线时态库级关联读取（G-05-asof，可选）；
+// 未接线时 as-of 图回退当前快照（降级不报错，与扩散时态腿同纪律）。
+func (u *Usecase) SetTemporalGraphRepo(links TemporalCollectionLinkReader) {
+	u.temporalGraphLinks = links
+}
+
 // maxGraphDocs 单库图谱节点上限保护（与 maxLinkCandidates 同级）。
 const maxGraphDocs = 10000
 
@@ -59,6 +67,18 @@ func normalizeGraphPrefix(p string) string {
 // 边 = 关联（linkTypes 过滤；端点须在节点集内——出范围/悬空剔除），degree 按入边集统计。
 // 未接线 CollectionLinkReader 时降级为仅节点（与 ListDocumentLinks 未接线降级一致）。
 func (u *Usecase) ListCollectionGraph(ctx context.Context, collectionID string, linkTypes []string, pathPrefix string) (*CollectionGraph, error) {
+	return u.listCollectionGraph(ctx, collectionID, linkTypes, pathPrefix, TemporalSpan{})
+}
+
+// ListCollectionGraphAsOf 时态版全量图谱（G-05-asof，ADR-KN-20261020-J/K）：
+// 节点集/路径裁剪/degree 组装口径与 ListCollectionGraph 一致（「边时态 × 当前
+// 节点集 × 当前权限」——文档集天然当前）；边源 span 非零时走时态端口。
+// span 零值经上方委托零改动旧路径；时态端口未接线回退当前快照。
+func (u *Usecase) ListCollectionGraphAsOf(ctx context.Context, collectionID string, linkTypes []string, pathPrefix string, span TemporalSpan) (*CollectionGraph, error) {
+	return u.listCollectionGraph(ctx, collectionID, linkTypes, pathPrefix, span)
+}
+
+func (u *Usecase) listCollectionGraph(ctx context.Context, collectionID string, linkTypes []string, pathPrefix string, span TemporalSpan) (*CollectionGraph, error) {
 	if err := u.requireRepo(); err != nil {
 		return nil, err
 	}
@@ -84,7 +104,15 @@ func (u *Usecase) ListCollectionGraph(ctx context.Context, collectionID string, 
 			DocType: d.DocType,
 		})
 	}
-	if u.graphLinks == nil {
+	temporalOn := span.Any() && u.temporalGraphLinks != nil
+	if span.Any() && u.temporalGraphLinks == nil {
+		// 与扩散时态腿同纪律（knowledge.graph_spread.temporal_fallback 同款）：
+		// 回退当前快照必须留可观测痕迹，as-of 审计面不允许静默降级。
+		u.lg.Warn("as-of 窗口已设但未接线时态图端口，图回退当前快照",
+			loggateway.StepID("knowledge.graph.temporal_fallback"),
+			loggateway.Str("collection_id", collectionID))
+	}
+	if !temporalOn && u.graphLinks == nil {
 		return g, nil
 	}
 	// 空串类型过滤（前端 chips 全不选语义 = 全部，但防御空串混入微废 ANY 匹配）。
@@ -94,7 +122,12 @@ func (u *Usecase) ListCollectionGraph(ctx context.Context, collectionID string, 
 			types = append(types, lt)
 		}
 	}
-	links, err := u.graphLinks.ListCollectionLinks(ctx, collectionID, types)
+	var links []Link
+	if temporalOn {
+		links, err = u.temporalGraphLinks.ListCollectionLinksAsOf(ctx, collectionID, types, span)
+	} else {
+		links, err = u.graphLinks.ListCollectionLinks(ctx, collectionID, types)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -137,6 +170,33 @@ func (u *Usecase) ListDocumentNeighborhood(ctx context.Context, docID string, ho
 		hops = maxNeighborhoodHops
 	}
 	full, err := u.ListCollectionGraph(ctx, doc.CollectionID, nil, "")
+	if err != nil {
+		return nil, err
+	}
+	return bfsNeighborhood(full, doc.ID, hops), nil
+}
+
+// ListDocumentNeighborhoodAsOf 时态版邻域子图（G-05-asof）：BFS 沿时态边集
+// 传播——经全量图内部复用自动覆盖（ListCollectionGraphAsOf）。span 零值字节
+// 级委托旧路径。
+func (u *Usecase) ListDocumentNeighborhoodAsOf(ctx context.Context, docID string, hops int, span TemporalSpan) (*CollectionGraph, error) {
+	if !span.Any() {
+		return u.ListDocumentNeighborhood(ctx, docID, hops)
+	}
+	if err := u.requireRepo(); err != nil {
+		return nil, err
+	}
+	doc, err := u.GetDocument(ctx, docID)
+	if err != nil {
+		return nil, err
+	}
+	if hops <= 0 {
+		hops = defaultNeighborhoodHops
+	}
+	if hops > maxNeighborhoodHops {
+		hops = maxNeighborhoodHops
+	}
+	full, err := u.ListCollectionGraphAsOf(ctx, doc.CollectionID, nil, "", span)
 	if err != nil {
 		return nil, err
 	}

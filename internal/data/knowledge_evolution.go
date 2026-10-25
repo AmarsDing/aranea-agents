@@ -25,7 +25,7 @@ func (r *knowledgeRepo) InsertFactVersion(ctx context.Context, v bizknowledge.Fa
 	if id := strings.TrimSpace(v.FactID); id != "" {
 		factID = &id
 	}
-	_, err := r.data.Postgres().ExecContext(ctx,
+	_, err := r.knowledgeDB(ctx).ExecContext(ctx,
 		`INSERT INTO knowledge_fact_version (collection_id, doc_id, fact_id, old_body, new_body)
 		 VALUES ($1,$2,$3,$4,$5)`,
 		v.CollectionID, v.DocID, factID, v.OldBody, v.NewBody)

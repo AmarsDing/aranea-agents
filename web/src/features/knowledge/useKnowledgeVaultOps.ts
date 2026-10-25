@@ -59,7 +59,13 @@ export function useKnowledgeVaultOps(deps: KnowledgeVaultOpsDeps) {
 
   const createOpen = ref(false);
   const createLoading = ref(false);
-  const createForm = ref({ name: '', description: '', embedding_model: '', root_path: '' });
+  const createForm = ref({
+    name: '',
+    description: '',
+    embedding_model: '',
+    root_path: '',
+    vault_backend: 'team' as 'team' | 'local',
+  });
   const removedDocId = ref('');
   const moveOpen = ref(false);
   const moveLoading = ref(false);
@@ -79,7 +85,8 @@ export function useKnowledgeVaultOps(deps: KnowledgeVaultOpsDeps) {
       .map((c) => ({
         label: c.name || c.id,
         value: c.id,
-        disable: !!current && c.dim !== current.dim,
+        disable:
+          !!current && (c.dim !== current.dim || current.vault_backend === 'local' || c.vault_backend === 'local'),
         dim: c.dim,
       }));
   });
@@ -89,7 +96,7 @@ export function useKnowledgeVaultOps(deps: KnowledgeVaultOpsDeps) {
   );
 
   function openCreateCollection() {
-    createForm.value = { name: '', description: '', embedding_model: '', root_path: '' };
+    createForm.value = { name: '', description: '', embedding_model: '', root_path: '', vault_backend: 'team' };
     createOpen.value = true;
   }
 
@@ -98,7 +105,7 @@ export function useKnowledgeVaultOps(deps: KnowledgeVaultOpsDeps) {
       $q.notify({ type: 'warning', message: t('knowledgePage.createNameRequired') });
       return;
     }
-    if (!createForm.value.root_path.trim()) {
+    if (createForm.value.vault_backend === 'local' && !createForm.value.root_path.trim()) {
       $q.notify({ type: 'warning', message: t('knowledgePage.createRootPathRequired') });
       return;
     }
@@ -108,7 +115,8 @@ export function useKnowledgeVaultOps(deps: KnowledgeVaultOpsDeps) {
         name: createForm.value.name.trim(),
         description: createForm.value.description.trim(),
         embedding_model: createForm.value.embedding_model.trim(),
-        root_path: createForm.value.root_path.trim(),
+        root_path: createForm.value.vault_backend === 'local' ? createForm.value.root_path.trim() : '',
+        vault_backend: createForm.value.vault_backend,
       });
       createOpen.value = false;
       await deps.loadCollections();
@@ -240,7 +248,7 @@ export function useKnowledgeVaultOps(deps: KnowledgeVaultOpsDeps) {
     const doc = deps.documents.value.find((d) => d.id === id);
     const node = deps.explorer.selectedNode.value;
     promoteDocId.value = id;
-    promoteDocName.value = doc?.rel_path || doc?.source || (node?.kind === 'file' ? node.path || node.name : id);
+    promoteDocName.value = doc?.rel_path || doc?.source || (node?.kind === 'file' ? node.path || node.name || id : id);
     promoteTargetId.value = promoteOptions.value[0]?.value ?? '';
     promoteResult.value = null;
     promoteOpen.value = true;
@@ -262,6 +270,10 @@ export function useKnowledgeVaultOps(deps: KnowledgeVaultOpsDeps) {
   }
 
   function promptCreateVaultDir(target: { collectionId: string; prefix: string }, preset = '') {
+    if (deps.collections.value.find((c) => c.id === target.collectionId)?.vault_backend === 'team') {
+      $q.notify({ type: 'info', message: t('knowledgeWorkflow.teamFolderHint') });
+      return;
+    }
     $q.dialog({
       title: t('knowledgePage.newDirTitle'),
       prompt: {

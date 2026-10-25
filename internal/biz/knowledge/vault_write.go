@@ -2,6 +2,7 @@ package knowledge
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -9,6 +10,58 @@ import (
 
 	"aranea-agents/pkg/apierror"
 )
+
+// VaultDocumentEditable distinguishes the original file format from its extracted body.
+// Older binary documents may have been incorrectly labelled text/markdown.
+func VaultDocumentEditable(doc Document) bool {
+	if NeedsExtraction(doc.RelPath) || NeedsExtraction(doc.Source) {
+		return false
+	}
+	m := strings.ToLower(strings.TrimSpace(doc.MimeType))
+	return m == "" || strings.HasPrefix(m, "text/") || m == "application/json" || m == "application/xml"
+}
+
+// prepareLocalDocumentDelete moves the authoritative file before deleting its mirror.
+// Already missing files are handled by the sync deletion path.
+func (u *Usecase) prepareLocalDocumentDelete(ctx context.Context, id string) (func() error, error) {
+	doc, err := u.documents.GetDocument(ctx, id)
+	if err != nil {
+		if apierror.IsCode(err, apierror.CodeNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	if doc.RelPath == "" {
+		return nil, nil
+	}
+	col, err := u.collections.GetCollection(ctx, doc.CollectionID)
+	if err != nil {
+		return nil, err
+	}
+	if col.RootPath == "" {
+		return nil, nil
+	}
+	if u.filer == nil {
+		return nil, apierror.Unavailable("KNOWLEDGE", "vault filer not configured")
+	}
+	if _, err := u.filer.SnapshotDoc(col.RootPath, doc.RelPath); err != nil {
+		if apierror.IsCode(err, apierror.CodeNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	trash, err := u.filer.MoveToTrash(col.RootPath, doc.RelPath)
+	if err != nil {
+		return nil, err
+	}
+	return func() error { return u.filer.RestoreTrash(col.RootPath, doc.RelPath, trash) }, nil
+}
+
+// DocumentPathReplacer atomically removes an overwritten mirror and moves the source.
+// Stability: Internal.
+type DocumentPathReplacer interface {
+	ReplaceDocumentPath(ctx context.Context, collectionID, sourceID, targetID, newRelPath string) error
+}
 
 // G1-B2：树内新建目录/文档（Vault 写路径）。
 // 经 VaultFiler 落盘（sanitize + 原子写）；文档写后立即触发单文档 apply
@@ -211,6 +264,9 @@ func (u *Usecase) GetVaultDocumentRaw(ctx context.Context, docID string) (string
 	if err != nil {
 		return "", "", err
 	}
+	if !VaultDocumentEditable(doc) {
+		return "", "", apierror.BadRequest("KNOWLEDGE", "binary originals cannot be edited as notes")
+	}
 	vd, hash, err := u.filer.ReadDocWithHash(col.RootPath, doc.RelPath)
 	if err != nil {
 		return "", "", err
@@ -233,6 +289,9 @@ func (u *Usecase) UpdateVaultDocumentContent(ctx context.Context, docID, content
 	if err != nil {
 		return Document{}, false, err
 	}
+	if !VaultDocumentEditable(doc) {
+		return Document{}, false, apierror.BadRequest("KNOWLEDGE", "binary originals cannot be edited as notes")
+	}
 	// 读出现有 frontmatter（文件可能刚被外部删除——ReadDoc 失败时以空 doc 重建，
 	// CAS 会以「expectedHash 非空但文件消失」判冲突，语义一致）。
 	vd, _, readErr := u.filer.ReadDocWithHash(col.RootPath, doc.RelPath)
@@ -240,12 +299,12 @@ func (u *Usecase) UpdateVaultDocumentContent(ctx context.Context, docID, content
 		vd = &VaultDoc{}
 	}
 	vd.Body = u.MaybeAutolinkOutgoing(ctx, col.ID, doc.ID, "", content)
-	conflict, err := u.filer.WriteDocCAS(col.RootPath, doc.RelPath, vd, baseHash)
+	conflict, writtenHash, err := u.filer.WriteDocCASWithHash(col.RootPath, doc.RelPath, vd, baseHash)
 	if err != nil {
 		return Document{}, false, err
 	}
 	if u.applier == nil {
-		return Document{ID: doc.ID, CollectionID: col.ID, RelPath: doc.RelPath, Status: "pending"}, conflict, nil
+		return Document{ID: doc.ID, CollectionID: col.ID, RelPath: doc.RelPath, ContentHash: writtenHash, Status: "pending"}, conflict, nil
 	}
 	if err := u.applier.ApplyOne(ctx, col, doc.RelPath); err != nil {
 		return Document{}, false, apierror.Wrap(err, apierror.CodeInternal, apierror.DomainKnowledge)
@@ -254,6 +313,7 @@ func (u *Usecase) UpdateVaultDocumentContent(ctx context.Context, docID, content
 	if err != nil {
 		return Document{}, false, err
 	}
+	updated.ContentHash = writtenHash
 	return updated, conflict, nil
 }
 
@@ -294,12 +354,45 @@ func (u *Usecase) MoveVaultDocumentToDir(ctx context.Context, docID, targetDir, 
 	if newRel == doc.RelPath {
 		return doc, nil
 	}
-	finalRel, err := u.filer.Move(col.RootPath, doc.RelPath, newRel, conflictPolicy)
+	var overwritten Document
+	var replacer DocumentPathReplacer
+	if conflictPolicy == "overwrite" {
+		overwritten, err = u.documents.GetDocumentByRelPath(ctx, col.ID, newRel)
+		if err != nil && !apierror.IsCode(err, apierror.CodeNotFound) {
+			return Document{}, err
+		}
+		if overwritten.ID != "" && overwritten.ID != doc.ID {
+			if !DocumentVisibleTo(ctx, overwritten) {
+				return Document{}, apierror.NotFound("KNOWLEDGE", "document not found")
+			}
+			var ok bool
+			replacer, ok = u.documents.(DocumentPathReplacer)
+			if !ok {
+				return Document{}, apierror.Unavailable("KNOWLEDGE", "atomic overwrite is not configured")
+			}
+		}
+	}
+	finalRel, displacedTrash, err := u.filer.moveFile(col.RootPath, doc.RelPath, newRel, conflictPolicy)
 	if err != nil {
 		return Document{}, err
 	}
-	if err := u.documents.UpdateDocumentRelPath(ctx, doc.ID, finalRel); err != nil {
+	if replacer != nil {
+		err = replacer.ReplaceDocumentPath(ctx, col.ID, doc.ID, overwritten.ID, finalRel)
+	} else {
+		err = u.documents.UpdateDocumentRelPath(ctx, doc.ID, finalRel)
+	}
+	if err != nil {
+		_, restoreErr := u.filer.Move(col.RootPath, finalRel, doc.RelPath, "")
+		if restoreErr == nil && displacedTrash != "" {
+			restoreErr = u.filer.RestoreTrash(col.RootPath, newRel, displacedTrash)
+		}
+		if restoreErr != nil {
+			return Document{}, apierror.Internal("KNOWLEDGE", "path update failed and file restore failed").WithCause(errors.Join(err, restoreErr))
+		}
 		return Document{}, err
+	}
+	if replacer != nil {
+		u.removeLinkIndexDoc(ctx, overwritten.ID)
 	}
 	// 入链修复：重建引用本文档的其他文档的 explicit 出链（失败降级记日志，
 	// 不回滚移动——链接最终一致，引用方下次变更时自愈）。

@@ -114,11 +114,20 @@ func (impl *agentAllocatorImpl) Allocate(ctx context.Context, taskPlan *biz.Task
 
 	assignable := filterHeuristicAssignable(capabilities)
 
+	// D7-F2：当前任务受约束的剧约束指纹在 Allocate 入口统一解算一次，经 ctx
+	// 透传至全部 L0 配方查询（含 soft-gate 重匹配），保证 fail-closed 判定一致。
+	var orgReader biz.OrganizationReader
+	if impl.capBuilder != nil {
+		orgReader = impl.capBuilder.org
+	}
+	wantFp := playbookConstraintFingerprintForTask(ctx, orgReader, taskPlan.UserMessage)
+	matchCtx := withRecipeWantFingerprint(ctx, wantFp)
+
 	isDAG := taskPlan.Strategy == biz.StrategyDAG
 	totalSubTasks := len(taskPlan.SubTasks)
 
 	matchStart := time.Now()
-	results := impl.runPhaseAMatch(ctx, taskPlan.SubTasks, assignable, traceID)
+	results := impl.runPhaseAMatch(matchCtx, taskPlan.SubTasks, assignable, traceID)
 	matchMs := time.Since(matchStart).Milliseconds()
 	staffStart := time.Now()
 
@@ -193,7 +202,7 @@ func (impl *agentAllocatorImpl) Allocate(ctx context.Context, taskPlan *biz.Task
 
 	if len(taskPlan.SubTasks) == 0 {
 		pool, prune := impl.matchingPool(taskPlan.DomainPath, assignable, traceID)
-		allocation, err := impl.matchWholePlan(ctx, taskPlan, pool, traceID)
+		allocation, err := impl.matchWholePlan(matchCtx, taskPlan, pool, traceID)
 		if err != nil {
 			st := biz.SubTask{ID: "whole", Name: taskPlan.UserMessage, DomainPath: taskPlan.DomainPath}
 			if staffed, ok := impl.tryStaffing(ctx, st, pool, prune, traceID); ok {
@@ -232,8 +241,8 @@ func (impl *agentAllocatorImpl) Allocate(ctx context.Context, taskPlan *biz.Task
 		impl.publishOrchestrationProgress(ctx, taskPlan.SpiritSessionID, "collaborating", sketch.meta())
 	}
 
-		allocations = impl.applyCapacitySoftGate(ctx, taskPlan, allocations, assignable, traceID)
-plan := &biz.AllocationPlan{
+	allocations = impl.applyCapacitySoftGate(matchCtx, taskPlan, allocations, assignable, traceID)
+	plan := &biz.AllocationPlan{
 		ID:              "ap_" + uuid.NewString(),
 		TaskPlanID:      taskPlan.ID,
 		SpiritSessionID: taskPlan.SpiritSessionID,

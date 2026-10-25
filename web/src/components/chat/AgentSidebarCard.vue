@@ -110,24 +110,46 @@ function onCardActivate() {
 }
 
 /** 将 SpiritMember.status + teamStatus + 阻塞信息映射为显示状态。
- * 成员自身已达终态（completed/failed）时优先展示成员终态——团队可能带失败成员
- * 整体完成，若让团队状态覆盖成员终态会导致侧栏与流程图显示不一致。
- * 成员状态滞后（未推送终态）时回退到团队终态同步。
+ * 优先级契约（自上而下）：
+ *  1. blockedInfo.blocked → blocked（工具确认阻塞 UX 优先权最高）
+ *  2. 成员自身终态优先：completed/failed/skipped——团队可能带失败成员整体完成，
+ *     若让团队状态覆盖成员终态会导致侧栏与流程图显示不一致。
+ *  3. 团队终态回填：成员状态滞后（未推送终态）时同步显示团队终态；
+ *     cancelled/interrupted/partial_failure 独立成态，不再并入 failed。
+ *  4. 成员运行/挂起态：paused 视为可恢复挂起（→blocked，复用 resume 按钮语义）。
+ *  5. 团队运行中时成员未明确终态 → running（触发暂停按钮）。
+ *  6. 兜底 pending。
+ * 重试按钮出现的充要条件：displayStatus === 'failed'（成员 failed/error 或团队 failed）。
  */
-const displayStatus = computed<'running' | 'blocked' | 'completed' | 'failed' | 'pending'>(() => {
+const displayStatus = computed<
+  | 'running'
+  | 'blocked'
+  | 'completed'
+  | 'failed'
+  | 'pending'
+  | 'cancelled'
+  | 'interrupted'
+  | 'partial_failure'
+  | 'skipped'
+>(() => {
   if (props.blockedInfo?.blocked) return 'blocked';
 
   const s = props.member.status;
   if (s === 'completed' || s === 'ok' || s === 'done') return 'completed';
   if (s === 'failed' || s === 'error') return 'failed';
+  if (s === 'skipped') return 'skipped';
 
   const ts = props.teamStatus;
   if (ts === 'completed' || ts === 'archived') return 'completed';
   if (ts === 'failed') return 'failed';
-  if (ts === 'cancelled' || ts === 'interrupted') return 'failed';
+  if (ts === 'partial_failure') return 'partial_failure';
+  if (ts === 'cancelled') return 'cancelled';
+  if (ts === 'interrupted') return 'interrupted';
 
   if (s === 'running' || s === 'executing') return 'running';
   if (s === 'blocked' || s === 'stuck') return 'blocked';
+  // 成员暂停 = 可恢复挂起，复用 resume 按钮语义（emit 'resume' 与 blocked 路径同 RPC）
+  if (s === 'paused') return 'blocked';
   // 团队运行中时，成员未明确终态则显示为 running（触发暂停按钮）
   if (ts === 'running' || ts === 'pending') return 'running';
   return 'pending';
@@ -143,6 +165,14 @@ const statusText = computed(() => {
       return t('chat.agentSidebar.statusCompleted');
     case 'failed':
       return t('chat.agentSidebar.statusFailed');
+    case 'cancelled':
+      return t('chat.agentSidebar.statusCancelled');
+    case 'interrupted':
+      return t('chat.agentSidebar.statusInterrupted');
+    case 'partial_failure':
+      return t('chat.agentSidebar.statusPartialFailure');
+    case 'skipped':
+      return t('chat.agentSidebar.statusSkipped');
     default:
       return t('chat.agentSidebar.statusPending');
   }
@@ -189,6 +219,20 @@ const statusText = computed(() => {
   &--pending
     border-left-color: var(--color-icon-muted)
 
+  &--cancelled
+    border-left-color: var(--color-text-tertiary)
+    opacity: 0.85
+
+  &--skipped
+    border-left-color: var(--color-text-tertiary)
+    opacity: 0.85
+
+  &--interrupted
+    border-left-color: var(--color-warning)
+
+  &--partial_failure
+    border-left-color: var(--color-warning)
+
   &__name
     font-size: 12px
     font-weight: 600
@@ -233,6 +277,16 @@ const statusText = computed(() => {
       background: color-mix(in srgb, var(--color-text-tertiary) 12%, transparent)
       color: var(--color-text-secondary)
 
+    &--cancelled,
+    &--skipped
+      background: color-mix(in srgb, var(--color-text-tertiary) 12%, transparent)
+      color: var(--color-text-secondary)
+
+    &--interrupted,
+    &--partial_failure
+      background: color-mix(in srgb, var(--color-warning) 18%, transparent)
+      color: var(--color-warning)
+
   &__status-text
     overflow: hidden
     text-overflow: ellipsis
@@ -258,6 +312,12 @@ const statusText = computed(() => {
       background: currentColor
 
     &--pending
+      background: currentColor
+
+    &--cancelled,
+    &--skipped,
+    &--interrupted,
+    &--partial_failure
       background: currentColor
 
   &__action-btn

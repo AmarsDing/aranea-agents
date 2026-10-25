@@ -50,13 +50,30 @@ func (impl *taskPlannerImpl) eachCompanyMetadata(ctx context.Context) []string {
 	return out
 }
 
-func (impl *taskPlannerImpl) currentConstraintFingerprint(ctx context.Context, taskText string) string {
-	for _, meta := range impl.eachCompanyMetadata(ctx) {
-		if pb, _, ok := biz.TryPlaybookForTask(meta, taskText); ok {
+// playbookConstraintFingerprintForTask（D7-F2）：对 taskText 解算当前任务受
+// 哪个已授权剧本约束（命名命中即约束），返回其指纹；无约束 / org 不可用 → ""。
+// Allocate 入口据此做 RecipeKeysReusable fail-closed 判定。
+func playbookConstraintFingerprintForTask(ctx context.Context, org biz.OrganizationReader, taskText string) string {
+	if org == nil {
+		return ""
+	}
+	companies, err := org.ListOrgNodesByLevel(ctx, "company")
+	if err != nil {
+		return ""
+	}
+	for _, c := range companies {
+		if pb, _, ok := biz.TryPlaybookForTask(c.MetadataJSON, taskText); ok {
 			return biz.ConstraintFingerprint(pb.ID, nil)
 		}
 	}
 	return ""
+}
+
+func (impl *taskPlannerImpl) currentConstraintFingerprint(ctx context.Context, taskText string) string {
+	if impl == nil {
+		return ""
+	}
+	return playbookConstraintFingerprintForTask(ctx, impl.org, taskText)
 }
 
 func (impl *taskPlannerImpl) lookupNamedPlaybook(ctx context.Context, taskText string) (biz.Playbook, []biz.SubTask, bool) {

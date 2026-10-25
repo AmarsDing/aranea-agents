@@ -219,8 +219,12 @@ type GraphExecution struct {
 	ctx            context.Context // detached context preserving trace info for background DB writes
 	// streamGen identifies the active event-stream generation (Y2). Run/Resume
 	// increment it before spawning a consumer; a stale consumer (older gen)
-	// must not converge terminal state or apply status-mutating events, or the
-	// old stream ending would falsely fail the new, still-running stream.
+	// must not converge terminal state nor apply ANY state-mutating /
+	// side-effecting event (D6-F2 全对称守卫：GraphDone 的 FinalState 覆写、
+	// NodeStart 的 CurrentNode + taskCoord 看板 / runEventSink 通知、NodeEnd
+	// 的 Steps upsert + UpdateRun + OnNodeCompleted、NodeError /
+	// ExecutionError / Interrupt)，否则旧流结束会误杀或幽灵写入仍在运行的
+	// 新流状态。
 	streamGen int64
 }
 
@@ -411,6 +415,21 @@ type GraphRunRepo interface {
 	GetRun(ctx context.Context, id string) (*GraphExecution, error)
 	ListRunsByGraph(ctx context.Context, graphID string, pageSize int, pageToken string, opts ...GraphRunListOption) ([]*GraphExecution, string, error)
 	UpdateRun(ctx context.Context, exec *GraphExecution) error
+}
+
+// GraphOrphanRunScanner 是 standalone 孤儿执行启动扫描的窄端口（D6-F4，
+// 87-orchestration-chain-hardening）。
+// Stability:evolving
+//
+// 刻意不侵入 GraphRunRepo 大接口（存量 fakes 不受影响）：biz 层以类型断言
+// 探测实现，未实现的 repo 视为空扫描。实现方（internal/data）以 raw SQL
+// 排除 team_graph_sessions 行——team 行归 RecoverSessions /
+// team_orphan_recovery 终态化（ADR-86 F-B 边界铁律），standalone 行归
+// GraphExecutionUsecase.FinalizeOrphanedStandaloneExecutions 启动扫描。
+type GraphOrphanRunScanner interface {
+	// ListOrphanedStandaloneRuns 返回 status 匹配且无 team_graph_sessions
+	// 行的 standalone 执行，按 started_at 升序、至多 limit 条。
+	ListOrphanedStandaloneRuns(ctx context.Context, status string, limit int) ([]*GraphExecution, error)
 }
 
 type GraphRunListOption struct {

@@ -18,6 +18,10 @@ export const KNOWLEDGE_RECALLED_NOTICE_TYPE = 'knowledge_recalled';
 export interface KnowledgeRecallChunk {
   chunk_id: string;
   doc_id?: string;
+  collection_id?: string;
+  evidence_kind?: 'entity' | 'edge';
+  evidence_hash?: string;
+  evidence_content?: string;
   score: number;
   line: string;
   /** 1-based [n] aligned with ## Retrieved Knowledge. */
@@ -57,6 +61,10 @@ export function parseKnowledgeRecallChunks(content: string): KnowledgeRecallChun
       score: typeof h.score === 'number' ? h.score : 0,
       ...(typeof h.doc_id === 'string' && h.doc_id.trim() ? { doc_id: h.doc_id } : {}),
       ...(n !== undefined ? { n } : {}),
+      ...(typeof h.collection_id === 'string' ? { collection_id: h.collection_id } : {}),
+      ...(h.evidence_kind === 'entity' || h.evidence_kind === 'edge' ? { evidence_kind: h.evidence_kind } : {}),
+      ...(typeof h.evidence_hash === 'string' ? { evidence_hash: h.evidence_hash } : {}),
+      ...(typeof h.evidence_content === 'string' ? { evidence_content: h.evidence_content } : {}),
     };
   });
 }
@@ -121,7 +129,8 @@ export function linkKnowledgeCitations(html: string, chunks: KnowledgeRecallChun
       const doc = hit.doc_id ? ` data-doc-id="${escapeAttr(hit.doc_id)}"` : '';
       // G-17：chunk_id 同时写出，点击时经它回填 line 锚参数，精确跳引用现场。
       const ck = hit.chunk_id ? ` data-chunk-id="${escapeAttr(hit.chunk_id)}"` : '';
-      return `<button type="button" class="kb-cite" data-n="${n}"${doc}${ck}>[${n}]</button>`;
+      const kind = hit.evidence_kind ? ` data-evidence-kind="${hit.evidence_kind}" title="Graph-derived evidence"` : '';
+      return `<button type="button" class="kb-cite" data-n="${n}"${doc}${ck}${kind}>[${n}]</button>`;
     },
   );
 }
@@ -135,11 +144,13 @@ const ROUTE_LINE_MAX = 96;
  */
 export function knowledgeDocRoute(
   docId: string,
-  hint?: { line?: string },
+  hint?: { line?: string; evidence_kind?: 'entity' | 'edge'; collection_id?: string },
 ): { path: string; query: Record<string, string> } {
   const query: Record<string, string> = { doc: docId };
   const line = hint?.line?.trim() ?? '';
   // 码点切片：UTF-16 slice 可能切断代理对，vue-router 对残缺 URL 编码序列抛错。
-  if (line) query.line = [...line].slice(0, ROUTE_LINE_MAX).join('');
+  if (hint?.evidence_kind) query.evidence_kind = hint.evidence_kind;
+  if (hint?.collection_id) query.collection = hint.collection_id;
+  if (line && !hint?.evidence_kind) query.line = [...line].slice(0, ROUTE_LINE_MAX).join('');
   return { path: '/knowledge', query };
 }

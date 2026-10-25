@@ -23,12 +23,13 @@ import (
 
 // fakeTimeoutTeamUC is a minimal SpiritTeamAssembler fake for timeout tests.
 type fakeTimeoutTeamUC struct {
-	mu           sync.Mutex
-	team         Team
-	runs         []TeamRunRecord
-	runsErr      error
-	getErr       error // 非空时 Get 失败（模拟瞬时 DB 抖动）
-	transitioned []string
+	mu            sync.Mutex
+	team          Team
+	runs          []TeamRunRecord
+	runsErr       error
+	getErr        error // 非空时 Get 失败（模拟瞬时 DB 抖动）
+	transitionErr error // 非空时 TransitionStatus 失败（模拟落地瞬断，D2-P6）
+	transitioned  []string
 }
 
 func (f *fakeTimeoutTeamUC) Create(_ context.Context, in Team) (Team, error) { return in, nil }
@@ -56,9 +57,26 @@ func (f *fakeTimeoutTeamUC) Update(_ context.Context, _ string, patch Team) (Tea
 func (f *fakeTimeoutTeamUC) TransitionStatus(_ context.Context, id string, newStatus string) (Team, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.transitionErr != nil {
+		return Team{}, f.transitionErr
+	}
 	f.transitioned = append(f.transitioned, newStatus)
 	f.team.Status = newStatus
 	return f.team, nil
+}
+
+// clearTransitionErr 清除 TransitionStatus 故障注入（模拟 DB 恢复，D2-P6）。
+func (f *fakeTimeoutTeamUC) clearTransitionErr() {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.transitionErr = nil
+}
+
+// transitionedStatuses 返回已记录的落地状态序列（测试断言用）。
+func (f *fakeTimeoutTeamUC) transitionedStatuses() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]string(nil), f.transitioned...)
 }
 func (f *fakeTimeoutTeamUC) ListBySpiritSessionID(_ context.Context, _ string) ([]Team, error) {
 	return nil, nil
@@ -473,3 +491,111 @@ func TestTeamTimeout_GetFailureRearms(t *testing.T) {
 // （等价旧 wall-clock 语义），仍受 maxLifetime 兜底。
 
 // probe=nil：delivery.stepReader 未配置 → 活动=run 起点（10 分钟前）→ idle 判死。
+
+// ---------------------------------------------------------------------------
+// D2-P6（87-orchestration-chain-hardening）：watchdog TransitionStatus 落地
+// 失败必须 re-arm 一个窗口——timer 已被 claim LoadAndDelete，若落地失败即
+// return，团队在 timeouts registry 中永续缺席（永久弃犬）。失败观与
+// Get 失败顺延 / probe 失败顺延一致：顺延一个窗口重试。
+// ---------------------------------------------------------------------------
+
+// TransitionStatus 落地失败 → re-arm：timeouts registry 必须重新持有该团队
+// 的 timer（可再次 claim），且成功路径专属的 handler 不得被调用。
+func TestFailTeamOnTimeout_TransitionError_Rearms(t *testing.T) {
+	teamUC := &fakeTimeoutTeamUC{
+		team:          Team{ID: "t-rearm", Status: TeamStatusRunning, SpiritSessionID: "spirit-1"},
+		transitionErr: fmt.Errorf("transition db down"),
+	}
+	orch, handler := newTimeoutTestOrchestration(teamUC, &fakeTimeoutSessionUC{}, nil)
+
+	// TeamTimeoutSeconds=3600：re-arm 的 timer 在测试进程生命周期内不会再
+	// 触发——本用例只断言 registry 占位（re-arm 的产物），不断言二次触发
+	// （二次触发由 TestOnTeamTimeout_IDleFailButTransitionError_* 端到端覆盖）。
+	cfg := ParallelConfig{TeamTimeoutSeconds: 3600, TimeoutHandlerDBTimeoutSec: 5}
+	ctx := context.Background()
+	orch.failTeamOnTimeout(ctx, ctx, cfg, teamUC.team)
+
+	if !orch.timeouts.claim("t-rearm") {
+		t.Fatal("transition error must re-arm: timeouts registry should hold a new timer for t-rearm (permanent watchdog loss)")
+	}
+	handler.mu.Lock()
+	defer handler.mu.Unlock()
+	if len(handler.calls) != 0 {
+		t.Fatalf("timeout handler must not be called when transition failed, got %v", handler.calls)
+	}
+}
+
+// 成功路径零改动回归：落地成功不 re-arm（registry 无占位），timeoutHandler
+// 照常路由（HandleTeamTimeout）。
+func TestFailTeamOnTimeout_Success_NoRearm(t *testing.T) {
+	teamUC := &fakeTimeoutTeamUC{
+		team: Team{ID: "t-norearm", Status: TeamStatusRunning, SpiritSessionID: "spirit-1"},
+	}
+	orch, handler := newTimeoutTestOrchestration(teamUC, &fakeTimeoutSessionUC{}, nil)
+
+	cfg := ParallelConfig{TeamTimeoutSeconds: 3600, TimeoutHandlerDBTimeoutSec: 5}
+	ctx := context.Background()
+	orch.failTeamOnTimeout(ctx, ctx, cfg, teamUC.team)
+
+	if orch.timeouts.claim("t-norearm") {
+		t.Fatal("success path must not re-arm: timeouts registry should not hold a timer for t-norearm")
+	}
+	handler.mu.Lock()
+	defer handler.mu.Unlock()
+	if len(handler.calls) != 1 || handler.calls[0] != "t-norearm" {
+		t.Fatalf("timeout handler calls=%v, want exactly [t-norearm]", handler.calls)
+	}
+	if got := teamUC.transitionedStatuses(); len(got) != 1 || got[0] != TeamStatusFailed {
+		t.Fatalf("transitions=%v, want exactly [failed]", got)
+	}
+}
+
+// 端到端 recoverability：第一窗口 idle 判死 + TransitionStatus 落地失败 →
+// re-arm；第二窗口 timer 再次触发，DB 恢复后落地成功，团队最终转 failed。
+func TestOnTeamTimeout_IdleFailButTransitionError_ReArmedTimerFiresAgain(t *testing.T) {
+	teamUC := &fakeTimeoutTeamUC{
+		team: Team{ID: "t-recover", Status: TeamStatusRunning, SpiritSessionID: "spirit-1"},
+		runs: []TeamRunRecord{{
+			ID:        "run-1",
+			TeamID:    "t-recover",
+			SessionID: "team-sess-1",
+			StartedAt: time.Now().Add(-10 * time.Minute).UTC().Format(time.RFC3339),
+		}},
+		transitionErr: fmt.Errorf("transition db down"),
+	}
+	// idle 团队：最后一次活动停在 10 分钟前，idle 窗口 1s → 每次触发都判死。
+	probe := &fakeStepActivityProbe{latest: time.Now().Add(-10 * time.Minute)}
+	orch, handler := newTimeoutTestOrchestration(teamUC, &fakeTimeoutSessionUC{}, probe)
+
+	orch.registerTeamTimeout(context.Background(), ParallelConfig{
+		TeamTimeoutSeconds:         1,
+		TeamMaxLifetimeSeconds:     14400,
+		TimeoutHandlerDBTimeoutSec: 5,
+	}, "t-recover")
+
+	// 首轮触发 (~1s) 判死 + 落地失败 → re-arm；确认故障窗口内状态仍是 running。
+	time.Sleep(1500 * time.Millisecond)
+	got, _ := teamUC.Get(context.Background(), "t-recover")
+	if got.Status != TeamStatusRunning {
+		t.Fatalf("transition-error team status=%q before recovery, want running (re-arm, not fail-closed write)", got.Status)
+	}
+	if n := len(teamUC.transitionedStatuses()); n != 0 {
+		t.Fatalf("transitions before recovery=%d, want 0 (failed writes must not be recorded)", n)
+	}
+	teamUC.clearTransitionErr()
+
+	// 第二窗口 (~2s) timer 再次触发 → 落地成功 → 最终转 failed。
+	ok := waitForCondition(4*time.Second, func() bool {
+		got, err := teamUC.Get(context.Background(), "t-recover")
+		return err == nil && got.Status == TeamStatusFailed
+	})
+	if !ok {
+		got, _ := teamUC.Get(context.Background(), "t-recover")
+		t.Fatalf("re-armed watchdog team status=%q, want failed (re-armed timer must fire again after recovery)", got.Status)
+	}
+	handler.mu.Lock()
+	defer handler.mu.Unlock()
+	if len(handler.calls) != 1 || handler.calls[0] != "t-recover" {
+		t.Fatalf("timeout handler calls=%v, want exactly [t-recover]", handler.calls)
+	}
+}

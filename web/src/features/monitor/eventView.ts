@@ -202,6 +202,10 @@ export function wsEventToView(t: Translate, event: TeamRunEvent, seq: number): M
       title = t('monitorPage.events.title.teamRunFailed');
       subtitle = String(run?.error_message || '').trim();
       break;
+    case 'team_run_cancelled':
+      title = t('monitorPage.events.title.teamRunCancelled');
+      subtitle = String(run?.error_message || '').trim();
+      break;
     case 'team_step_started':
       title = t('monitorPage.events.title.stepStarted', { name: actor || '?' });
       subtitle = sessionId ? t('monitorPage.events.summary.session', { id: shortSession(sessionId) }) : '';

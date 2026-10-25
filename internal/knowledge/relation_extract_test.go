@@ -26,6 +26,7 @@ type stubRelationLLM struct {
 	calls     int
 	lastUser  string
 	err       error
+	tokens    int // 成功回报 token 数（默认 0：provider 漏报口径）
 }
 
 func (s *stubRelationLLM) Call(_ context.Context, req biz.LLMCallRequest) (string, int, error) {
@@ -37,7 +38,7 @@ func (s *stubRelationLLM) Call(_ context.Context, req biz.LLMCallRequest) (strin
 	if s.calls > len(s.responses) {
 		return "", 0, errors.New("unexpected LLM call")
 	}
-	return s.responses[s.calls-1], 0, nil
+	return s.responses[s.calls-1], s.tokens, nil
 }
 
 type stubRelationSys struct{}

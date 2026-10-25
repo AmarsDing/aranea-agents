@@ -221,6 +221,7 @@ export function useKnowledgePage() {
     loadCollections,
     loadDocuments,
     loadMoreDocuments: () => loadDocuments({ append: true }),
+    loadDocument: (id: string) => knowledgeStore.loadDocument(id),
     loadEmbedderConfig,
     selectCollection,
     applyGraphDelta,

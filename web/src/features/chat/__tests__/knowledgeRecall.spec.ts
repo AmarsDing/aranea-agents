@@ -65,9 +65,7 @@ describe('knowledgeRecall', () => {
   });
 
   it('rewrites reply [n] into footnote buttons and skips code', () => {
-    const chunks = assignCitationNumbers([
-      { chunk_id: 'k1', doc_id: 'd1', line: 'SLA', score: 1, n: 1 },
-    ]);
+    const chunks = assignCitationNumbers([{ chunk_id: 'k1', doc_id: 'd1', line: 'SLA', score: 1, n: 1 }]);
     const html = '<p>值班 [1] 见 <code>[1]</code></p>';
     expect(linkKnowledgeCitations(html, chunks)).toBe(
       '<p>值班 <button type="button" class="kb-cite" data-n="1" data-doc-id="d1" data-chunk-id="k1">[1]</button> 见 <code>[1]</code></p>',
@@ -98,5 +96,38 @@ describe('knowledgeRecall', () => {
     const long = '一'.repeat(200);
     const r = knowledgeDocRoute('d1', { line: long });
     expect(r.query.line).toHaveLength(96);
+  });
+});
+
+describe('graph-derived citation evidence', () => {
+  it('keeps evidence lineage and opens the host without a fabricated source-line anchor', () => {
+    const chunks = parseKnowledgeRecallChunks(
+      JSON.stringify({
+        chunks: [
+          {
+            chunk_id: 'g33e/7',
+            doc_id: 'host',
+            collection_id: 'vault',
+            evidence_kind: 'entity',
+            evidence_hash: 'proof',
+            evidence_content: 'Derived entity card',
+            line: 'not in the original',
+            score: 0.5,
+            n: 1,
+          },
+        ],
+      }),
+    );
+    expect(chunks[0]).toMatchObject({
+      evidence_kind: 'entity',
+      evidence_hash: 'proof',
+      evidence_content: 'Derived entity card',
+      collection_id: 'vault',
+    });
+    expect(knowledgeDocRoute('host', chunks[0])).toEqual({
+      path: '/knowledge',
+      query: { doc: 'host', evidence_kind: 'entity', collection: 'vault' },
+    });
+    expect(linkKnowledgeCitations('<p>Evidence [1]</p>', chunks)).toContain('data-evidence-kind="entity"');
   });
 });

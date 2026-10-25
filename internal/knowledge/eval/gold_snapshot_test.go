@@ -22,16 +22,49 @@ const (
 	goldCorpusPath   = "gold-corpus.json"
 	goldSetPath      = "gold-set.json"
 	goldSnapshotPath = "gold-snapshot.json"
+	// G-05-asof 时态金色探针（决策 e）：独立第二 EvalSet/语料/快照——主集与旧
+	// 快照字节级不动；GateStale 键 = SetName+TopK，独立集名即独立基线档案，
+	// 互不遮蔽。CI 第二 goldeval 腿另待协调窗（本轮红线：不触 workflows）。
+	goldTemporalCorpusPath   = "gold-corpus-temporal.json"
+	goldTemporalSetPath      = "gold-set-temporal.json"
+	goldTemporalSnapshotPath = "gold-snapshot-temporal.json"
+	// G-34 MOC 金色探针（第三档）：独立第三 EvalSet/语料/快照——门禁实际锚定
+	// 范围（终审 F13 勘正）：全局主题问题经 seed 字面锚定 moc/* 页 +
+	// explicit 成员边一跳扩散的【接线】（MOC 不出链/边物化断即 recall 跌幅）。
+	// 摘要文本身不进门禁断言：fixtureSearcher 无词法打分（seed 语义即
+	// 「最坏假设只命中锚点」），LLM 摘要偏离/写空不影响本档指标——摘要质量
+	// 由 biz 契约钉（moc_summary/moc_summarizer 套件）担保，非金标职责。
+	goldMOCCorpusPath   = "gold-corpus-moc.json"
+	goldMOCSetPath      = "gold-set-moc.json"
+	goldMOCSnapshotPath = "gold-snapshot-moc.json"
 	// goldTopK 与 gold_recall_test.go 的 Expand TopK 同口径（种子∪邻居全集容纳得下）。
 	goldTopK = 8
 )
 
 func TestGoldSnapshotRegression(t *testing.T) {
-	corpus, err := LoadFixtureCorpus(filepath.Join("testdata", goldCorpusPath))
+	runGoldSnapshot(t, goldCorpusPath, goldSetPath, goldSnapshotPath)
+}
+
+// TestGoldSnapshotTemporalRegression 时态探针门禁：四象限用例经同一判定链
+// （ValidateGoldExpectations → Runner → CheckGoldGate），警线含 —— 时态接线
+// （SetTemporalActiveLinks 被摘）或谓词回归都会被 recall 跌幅/MRR 跌幅捕获。
+func TestGoldSnapshotTemporalRegression(t *testing.T) {
+	runGoldSnapshot(t, goldTemporalCorpusPath, goldTemporalSetPath, goldTemporalSnapshotPath)
+}
+
+// TestGoldSnapshotMOCRegression G-34 第三档门禁：MOC 摘要锚定 + explicit 成员
+// 扩散经同一判定链（ValidateGoldExpectations → Runner → CheckGoldGate）。
+func TestGoldSnapshotMOCRegression(t *testing.T) {
+	runGoldSnapshot(t, goldMOCCorpusPath, goldMOCSetPath, goldMOCSnapshotPath)
+}
+
+func runGoldSnapshot(t *testing.T, corpusPath, setPath, snapshotPath string) {
+	t.Helper()
+	corpus, err := LoadFixtureCorpus(filepath.Join("testdata", corpusPath))
 	if err != nil {
 		t.Fatalf("load corpus: %v", err)
 	}
-	set, err := LoadEvalSet(filepath.Join("testdata", goldSetPath))
+	set, err := LoadEvalSet(filepath.Join("testdata", setPath))
 	if err != nil {
 		t.Fatalf("load set: %v", err)
 	}
@@ -48,7 +81,7 @@ func TestGoldSnapshotRegression(t *testing.T) {
 		t.Fatalf("run: %v", err)
 	}
 
-	snapPath := filepath.Join("testdata", goldSnapshotPath)
+	snapPath := filepath.Join("testdata", snapshotPath)
 	if *goldUpdate {
 		// 带错或降级的快照一旦入库，其后所有 diff 都对着弱化参照量——拒写。
 		if err := ValidateGoldBaseline(report); err != nil {

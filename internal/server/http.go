@@ -107,7 +107,9 @@ func NewHTTPServer(c *conf.Server, s *ServiceRegistry, wsSrv *WSServer, voiceSrv
 	// P0-6 阶段 0：replica-safety 启动自检（未声明/声明 1 静默通过任何路径；
 	// 声明 >1 逐项 Warn，ENFORCE 开启时仅 Error 级上报——硬中止接线属批 B
 	// 部署立场拍板项，见 docs/development/replica-safety.md）。
-	if _, rerr := service.RunReplicaSafetyStartupCheck(lg, nil); rerr != nil {
+	// 批 C Q3（2026-10-22）：server.declared_replicas conf 挂载（>0 优先于
+	// ARANEA_DECLARED_REPLICAS env 回落）。
+	if _, rerr := service.RunReplicaSafetyStartupCheckWithOverride(lg, nil, c.ParsedDeclaredReplicas()); rerr != nil {
 		lg.Error("replica-safety 启动自检触发 fail-fast 灰度",
 			loggateway.Err(rerr))
 	}
@@ -190,6 +192,9 @@ func registerProtoServices(srv *kratoshttp.Server, s *ServiceRegistry) {
 //   - /v1/knowledge/documents/{id}/asset: raw file streaming (G2-B6, Range/inline media)
 //   - /v1/knowledge/documents/{id}/autolink-preview|autolink: confirm-then-apply outgoing wikilinks
 //   - /v1/knowledge/collections/{id}/health|experts|writeback-pending: SP7 G7/G8 + pending gate
+//   - /v1/knowledge/search/asof + /v1/knowledge/vaults/{id}/graph/asof:
+//     G-05 as-of 双时态读面（custom JSON 避免 make api，ADR-KN-20261020-K；
+//     鉴权同默认 JWT Filter + assertCollectionAccess 404 反 IDOR）
 //   - /api/v1/config-graph/rebuild|status|nodes|nodes/{type}/{ref}/impact|dependencies|edges|health:
 //     M81 config-asset graph (handwritten JSON, generation-scoped reads;
 //     async rebuild trigger must outlive the request ctx)
@@ -288,6 +293,16 @@ func registerCustomRoutes(
 			knowledgeSvc.ServeWriteBackHome(ctx.Response(), ctx.Request())
 			return nil
 		})
+		// G-05-asof（ADR-KN-20261020-K）：as-of 时态读面——检索快照（POST，body 复用
+		// search 现字段集 + valid_at/recorded_at）与图快照（GET，query 参数同义）。
+		srv.Route("/").POST("/v1/knowledge/search/asof", func(ctx kratoshttp.Context) error {
+			knowledgeSvc.ServeSearchAsOf(ctx.Response(), ctx.Request())
+			return nil
+		})
+		srv.Route("/").GET("/v1/knowledge/vaults/{id}/graph/asof", func(ctx kratoshttp.Context) error {
+			knowledgeSvc.ServeCollectionGraphAsOf(ctx.Response(), ctx.Request(), ctx.Vars().Get("id"))
+			return nil
+		})
 	}
 	if a2aPublic != nil {
 		auth.RegisterNoAuthPathPrefix(a2atrpc.PublicPathPrefix)
@@ -372,7 +387,6 @@ func registerCustomRoutes(
 		srv.HandlePrefix(twinOpenAPI.Path(), lazyCompatHandler(twinOpenAPI))
 	}
 }
-
 
 // compatHandler is the minimal interface satisfied by all three compat
 // service wrappers (AGUICompatService, OpenAISessionCompatService,

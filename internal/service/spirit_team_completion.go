@@ -205,13 +205,15 @@ func (s *TeamStarter) publishV2TeamRunCompletion(
 		s.seq.Publish(ctx, biz.NewTeamRunCompletedEvent(tr))
 	case biz.TeamRunV2StatusFailed:
 		s.seq.Publish(ctx, biz.NewTeamRunFailedEvent(tr))
+	case biz.TeamRunV2StatusCancelled:
+		// 87-D4-2：cancelled 终态改用专用 kind team_run.cancelled——此前复用
+		// team_run.failed + Status=cancelled，CriticalJournal 按 kind 回放时
+		// 无法区分取消与失败。持久化行为不变（event_router 两个 kind 都路由
+		// UpsertTeamRun，RepoSet.persistTeamRun 以 tr.Status 为准）。
+		s.seq.Publish(ctx, biz.NewTeamRunCancelledEvent(tr))
 	default:
-		// 2026-07-04 问题 4 修复：cancelled 状态改用 NewTeamRunFailedEvent（语义更接近）。
-		// 原来用 NewTeamRunStartedEvent 作为 placeholder 语义错误（Started 表示开始而非取消）。
-		// event_router.go 中 FailedEvent 与 StartedEvent 都路由到 UpsertTeamRun，
-		// RepoSet.persistTeamRun 根据 tr.Status 字段（Cancelled）更新实体，与事件类型无关。
-		// 使用 FailedEvent 让日志和事件流更易诊断：cancelled 是一种非成功终止。
-		s.seq.Publish(ctx, biz.NewTeamRunFailedEvent(tr))
+		// 防御性 return：上方 trEvent 开关已对未知态 return，不可达。
+		return
 	}
 
 	// 查询团队成员会话，为每个成员发布 MemberSessionUpdatedEvent。

@@ -32,7 +32,7 @@ func TestEvalStore_PreservesAddressAndClassifiesPreference(t *testing.T) {
 	if n != 2 {
 		t.Fatalf("stored=%d, want 2", n)
 	}
-	items, err := store.SearchMemories(ctx, "u-pii", "Where does the user live?", 10)
+	items, err := store.SearchMemories(ctx, "u-pii", "What is the user's street address?", 10)
 	if err != nil {
 		t.Fatal(err)
 	}

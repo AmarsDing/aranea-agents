@@ -1,0 +1,868 @@
+{"Time":"2026-10-22T22:28:44.2832441+08:00","Action":"start","Package":"aranea-agents/internal/biz"}
+{"Time":"2026-10-22T22:28:44.9339728+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_TableDriven"}
+{"Time":"2026-10-22T22:28:44.9339728+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_TableDriven","Output":"=== RUN   TestSplitEvalStatements_TableDriven\n"}
+{"Time":"2026-10-22T22:28:44.9339728+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_TableDriven","Output":"=== PAUSE TestSplitEvalStatements_TableDriven\n"}
+{"Time":"2026-10-22T22:28:44.9339728+08:00","Action":"pause","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_TableDriven"}
+{"Time":"2026-10-22T22:28:44.9339728+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_MaxAtomsMergesTail"}
+{"Time":"2026-10-22T22:28:44.9339728+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_MaxAtomsMergesTail","Output":"=== RUN   TestSplitEvalStatements_MaxAtomsMergesTail\n"}
+{"Time":"2026-10-22T22:28:44.9339728+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_MaxAtomsMergesTail","Output":"=== PAUSE TestSplitEvalStatements_MaxAtomsMergesTail\n"}
+{"Time":"2026-10-22T22:28:44.9339728+08:00","Action":"pause","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_MaxAtomsMergesTail"}
+{"Time":"2026-10-22T22:28:44.9339728+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_ZeroMaxUsesDefault"}
+{"Time":"2026-10-22T22:28:44.9339728+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_ZeroMaxUsesDefault","Output":"=== RUN   TestSplitEvalStatements_ZeroMaxUsesDefault\n"}
+{"Time":"2026-10-22T22:28:44.9339728+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_ZeroMaxUsesDefault","Output":"=== PAUSE TestSplitEvalStatements_ZeroMaxUsesDefault\n"}
+{"Time":"2026-10-22T22:28:44.9339728+08:00","Action":"pause","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_ZeroMaxUsesDefault"}
+{"Time":"2026-10-22T22:28:44.9339728+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_AbbreviationGuard"}
+{"Time":"2026-10-22T22:28:44.9349728+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_AbbreviationGuard","Output":"=== RUN   TestSplitEvalStatements_AbbreviationGuard\n"}
+{"Time":"2026-10-22T22:28:44.9349728+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_AbbreviationGuard","Output":"=== PAUSE TestSplitEvalStatements_AbbreviationGuard\n"}
+{"Time":"2026-10-22T22:28:44.9349728+08:00","Action":"pause","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_AbbreviationGuard"}
+{"Time":"2026-10-22T22:28:44.9349728+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestClassifyEvalFactKind"}
+{"Time":"2026-10-22T22:28:44.9349728+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestClassifyEvalFactKind","Output":"=== RUN   TestClassifyEvalFactKind\n"}
+{"Time":"2026-10-22T22:28:44.9349728+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestClassifyEvalFactKind","Output":"=== PAUSE TestClassifyEvalFactKind\n"}
+{"Time":"2026-10-22T22:28:44.9349728+08:00","Action":"pause","Package":"aranea-agents/internal/biz","Test":"TestClassifyEvalFactKind"}
+{"Time":"2026-10-22T22:28:44.9349728+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestShouldSupersedeEvalFact"}
+{"Time":"2026-10-22T22:28:44.9349728+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestShouldSupersedeEvalFact","Output":"=== RUN   TestShouldSupersedeEvalFact\n"}
+{"Time":"2026-10-22T22:28:44.9349728+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestShouldSupersedeEvalFact","Output":"=== PAUSE TestShouldSupersedeEvalFact\n"}
+{"Time":"2026-10-22T22:28:44.9349728+08:00","Action":"pause","Package":"aranea-agents/internal/biz","Test":"TestShouldSupersedeEvalFact"}
+{"Time":"2026-10-22T22:28:44.9349728+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestEvalMemoryDirectiveOnlyAcceptsExplicitUserControl"}
+{"Time":"2026-10-22T22:28:44.9349728+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestEvalMemoryDirectiveOnlyAcceptsExplicitUserControl","Output":"=== RUN   TestEvalMemoryDirectiveOnlyAcceptsExplicitUserControl\n"}
+{"Time":"2026-10-22T22:28:44.9349728+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestEvalMemoryDirectiveOnlyAcceptsExplicitUserControl","Output":"--- PASS: TestEvalMemoryDirectiveOnlyAcceptsExplicitUserControl (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9349728+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestEvalMemoryDirectiveOnlyAcceptsExplicitUserControl","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9349728+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestEvalMemorySelectorPreservesOwnerWithoutPlaintextTargets"}
+{"Time":"2026-10-22T22:28:44.9349728+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestEvalMemorySelectorPreservesOwnerWithoutPlaintextTargets","Output":"=== RUN   TestEvalMemorySelectorPreservesOwnerWithoutPlaintextTargets\n"}
+{"Time":"2026-10-22T22:28:44.9349728+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestEvalMemorySelectorPreservesOwnerWithoutPlaintextTargets","Output":"--- PASS: TestEvalMemorySelectorPreservesOwnerWithoutPlaintextTargets (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9349728+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestEvalMemorySelectorPreservesOwnerWithoutPlaintextTargets","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9349728+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestEvalContextStructuredSourcesAndQueryModes"}
+{"Time":"2026-10-22T22:28:44.9349728+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestEvalContextStructuredSourcesAndQueryModes","Output":"=== RUN   TestEvalContextStructuredSourcesAndQueryModes\n"}
+{"Time":"2026-10-22T22:28:44.9349728+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestEvalContextStructuredSourcesAndQueryModes","Output":"--- PASS: TestEvalContextStructuredSourcesAndQueryModes (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9349728+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestEvalContextStructuredSourcesAndQueryModes","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9349728+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestEvalContextScopesInstructionsWithoutExecutingQuotations"}
+{"Time":"2026-10-22T22:28:44.9349728+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestEvalContextScopesInstructionsWithoutExecutingQuotations","Output":"=== RUN   TestEvalContextScopesInstructionsWithoutExecutingQuotations\n"}
+{"Time":"2026-10-22T22:28:44.9349728+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestEvalContextScopesInstructionsWithoutExecutingQuotations","Output":"--- PASS: TestEvalContextScopesInstructionsWithoutExecutingQuotations (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.935973+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestEvalContextScopesInstructionsWithoutExecutingQuotations","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.935973+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestEvalContextPersonalBackgroundIsRelevantAndAttributed"}
+{"Time":"2026-10-22T22:28:44.935973+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestEvalContextPersonalBackgroundIsRelevantAndAttributed","Output":"=== RUN   TestEvalContextPersonalBackgroundIsRelevantAndAttributed\n"}
+{"Time":"2026-10-22T22:28:44.935973+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestEvalContextPersonalBackgroundIsRelevantAndAttributed","Output":"--- PASS: TestEvalContextPersonalBackgroundIsRelevantAndAttributed (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.935973+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestEvalContextPersonalBackgroundIsRelevantAndAttributed","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.935973+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestEvalSupersession_PastStateIsNotCurrentUpdate"}
+{"Time":"2026-10-22T22:28:44.935973+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestEvalSupersession_PastStateIsNotCurrentUpdate","Output":"=== RUN   TestEvalSupersession_PastStateIsNotCurrentUpdate\n"}
+{"Time":"2026-10-22T22:28:44.935973+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestEvalSupersession_PastStateIsNotCurrentUpdate","Output":"--- PASS: TestEvalSupersession_PastStateIsNotCurrentUpdate (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.935973+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestEvalSupersession_PastStateIsNotCurrentUpdate","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.935973+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestEvalSupersession_IndependentSingleValueAttributes"}
+{"Time":"2026-10-22T22:28:44.935973+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestEvalSupersession_IndependentSingleValueAttributes","Output":"=== RUN   TestEvalSupersession_IndependentSingleValueAttributes\n"}
+{"Time":"2026-10-22T22:28:44.935973+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestEvalSupersession_IndependentSingleValueAttributes","Output":"--- PASS: TestEvalSupersession_IndependentSingleValueAttributes (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.935973+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestEvalSupersession_IndependentSingleValueAttributes","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.935973+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalDateSpans_CurrentPeriodsAndYearlessDates"}
+{"Time":"2026-10-22T22:28:44.935973+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalDateSpans_CurrentPeriodsAndYearlessDates","Output":"=== RUN   TestResolveEvalDateSpans_CurrentPeriodsAndYearlessDates\n"}
+{"Time":"2026-10-22T22:28:44.935973+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalDateSpans_CurrentPeriodsAndYearlessDates","Output":"--- PASS: TestResolveEvalDateSpans_CurrentPeriodsAndYearlessDates (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.935973+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalDateSpans_CurrentPeriodsAndYearlessDates","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.935973+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalDateSpans_InvalidDateDoesNotBecomeCoarserPeriod"}
+{"Time":"2026-10-22T22:28:44.935973+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalDateSpans_InvalidDateDoesNotBecomeCoarserPeriod","Output":"=== RUN   TestResolveEvalDateSpans_InvalidDateDoesNotBecomeCoarserPeriod\n"}
+{"Time":"2026-10-22T22:28:44.935973+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalDateSpans_InvalidDateDoesNotBecomeCoarserPeriod","Output":"--- PASS: TestResolveEvalDateSpans_InvalidDateDoesNotBecomeCoarserPeriod (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.935973+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalDateSpans_InvalidDateDoesNotBecomeCoarserPeriod","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.935973+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_LearnedFunctionAndFullHistory"}
+{"Time":"2026-10-22T22:28:44.935973+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_LearnedFunctionAndFullHistory","Output":"=== RUN   TestAnalyzeEvalQuery_LearnedFunctionAndFullHistory\n"}
+{"Time":"2026-10-22T22:28:44.935973+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_LearnedFunctionAndFullHistory","Output":"--- PASS: TestAnalyzeEvalQuery_LearnedFunctionAndFullHistory (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.935973+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_LearnedFunctionAndFullHistory","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.935973+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_ChronologicalCues"}
+{"Time":"2026-10-22T22:28:44.935973+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_ChronologicalCues","Output":"=== RUN   TestAnalyzeEvalQuery_ChronologicalCues\n"}
+{"Time":"2026-10-22T22:28:44.935973+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_ChronologicalCues","Output":"=== PAUSE TestAnalyzeEvalQuery_ChronologicalCues\n"}
+{"Time":"2026-10-22T22:28:44.935973+08:00","Action":"pause","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_ChronologicalCues"}
+{"Time":"2026-10-22T22:28:44.935973+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_AggregateCues"}
+{"Time":"2026-10-22T22:28:44.935973+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_AggregateCues","Output":"=== RUN   TestAnalyzeEvalQuery_AggregateCues\n"}
+{"Time":"2026-10-22T22:28:44.935973+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_AggregateCues","Output":"=== PAUSE TestAnalyzeEvalQuery_AggregateCues\n"}
+{"Time":"2026-10-22T22:28:44.935973+08:00","Action":"pause","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_AggregateCues"}
+{"Time":"2026-10-22T22:28:44.935973+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_DateRanges"}
+{"Time":"2026-10-22T22:28:44.935973+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_DateRanges","Output":"=== RUN   TestAnalyzeEvalQuery_DateRanges\n"}
+{"Time":"2026-10-22T22:28:44.935973+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_DateRanges","Output":"=== PAUSE TestAnalyzeEvalQuery_DateRanges\n"}
+{"Time":"2026-10-22T22:28:44.935973+08:00","Action":"pause","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_DateRanges"}
+{"Time":"2026-10-22T22:28:44.935973+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_LosslessBoundaries"}
+{"Time":"2026-10-22T22:28:44.935973+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_LosslessBoundaries","Output":"=== RUN   TestSplitEvalStatements_LosslessBoundaries\n"}
+{"Time":"2026-10-22T22:28:44.935973+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_LosslessBoundaries/Mira_bought_tea._Noah_bought_coffee._Leo_bought_milk."}
+{"Time":"2026-10-22T22:28:44.935973+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_LosslessBoundaries/Mira_bought_tea._Noah_bought_coffee._Leo_bought_milk.","Output":"=== RUN   TestSplitEvalStatements_LosslessBoundaries/Mira_bought_tea._Noah_bought_coffee._Leo_bought_milk.\n"}
+{"Time":"2026-10-22T22:28:44.935973+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_LosslessBoundaries/Mira_bought_tea._Noah_bought_coffee._Leo_bought_milk.","Output":"--- PASS: TestSplitEvalStatements_LosslessBoundaries/Mira_bought_tea._Noah_bought_coffee._Leo_bought_milk. (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.935973+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_LosslessBoundaries/Mira_bought_tea._Noah_bought_coffee._Leo_bought_milk.","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.935973+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_LosslessBoundaries/Mira_bought_tea._她选了绿茶。Noah_left."}
+{"Time":"2026-10-22T22:28:44.935973+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_LosslessBoundaries/Mira_bought_tea._她选了绿茶。Noah_left.","Output":"=== RUN   TestSplitEvalStatements_LosslessBoundaries/Mira_bought_tea._她选了绿茶。Noah_left.\n"}
+{"Time":"2026-10-22T22:28:44.935973+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_LosslessBoundaries/Mira_bought_tea._她选了绿茶。Noah_left.","Output":"--- PASS: TestSplitEvalStatements_LosslessBoundaries/Mira_bought_tea._她选了绿茶。Noah_left. (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.935973+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_LosslessBoundaries/Mira_bought_tea._她选了绿茶。Noah_left.","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.935973+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_LosslessBoundaries/A=1_B=2_C=3"}
+{"Time":"2026-10-22T22:28:44.935973+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_LosslessBoundaries/A=1_B=2_C=3","Output":"=== RUN   TestSplitEvalStatements_LosslessBoundaries/A=1_B=2_C=3\n"}
+{"Time":"2026-10-22T22:28:44.935973+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_LosslessBoundaries/A=1_B=2_C=3","Output":"--- PASS: TestSplitEvalStatements_LosslessBoundaries/A=1_B=2_C=3 (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.935973+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_LosslessBoundaries/A=1_B=2_C=3","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.935973+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_LosslessBoundaries","Output":"--- PASS: TestSplitEvalStatements_LosslessBoundaries (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.935973+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_LosslessBoundaries","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.935973+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestEvalSupersession_RequiresSameSubjectAndAttribute"}
+{"Time":"2026-10-22T22:28:44.935973+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestEvalSupersession_RequiresSameSubjectAndAttribute","Output":"=== RUN   TestEvalSupersession_RequiresSameSubjectAndAttribute\n"}
+{"Time":"2026-10-22T22:28:44.935973+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestEvalSupersession_RequiresSameSubjectAndAttribute/user:_My_favorite_color_is_red"}
+{"Time":"2026-10-22T22:28:44.935973+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestEvalSupersession_RequiresSameSubjectAndAttribute/user:_My_favorite_color_is_red","Output":"=== RUN   TestEvalSupersession_RequiresSameSubjectAndAttribute/user:_My_favorite_color_is_red\n"}
+{"Time":"2026-10-22T22:28:44.935973+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestEvalSupersession_RequiresSameSubjectAndAttribute/user:_My_favorite_color_is_red","Output":"--- PASS: TestEvalSupersession_RequiresSameSubjectAndAttribute/user:_My_favorite_color_is_red (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.935973+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestEvalSupersession_RequiresSameSubjectAndAttribute/user:_My_favorite_color_is_red","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.935973+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestEvalSupersession_RequiresSameSubjectAndAttribute/user:_Bob_lives_in_Oslo"}
+{"Time":"2026-10-22T22:28:44.935973+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestEvalSupersession_RequiresSameSubjectAndAttribute/user:_Bob_lives_in_Oslo","Output":"=== RUN   TestEvalSupersession_RequiresSameSubjectAndAttribute/user:_Bob_lives_in_Oslo\n"}
+{"Time":"2026-10-22T22:28:44.935973+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestEvalSupersession_RequiresSameSubjectAndAttribute/user:_Bob_lives_in_Oslo","Output":"--- PASS: TestEvalSupersession_RequiresSameSubjectAndAttribute/user:_Bob_lives_in_Oslo (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.935973+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestEvalSupersession_RequiresSameSubjectAndAttribute/user:_Bob_lives_in_Oslo","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.935973+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestEvalSupersession_RequiresSameSubjectAndAttribute/user:_My_friend_Bob_lives_in_Oslo"}
+{"Time":"2026-10-22T22:28:44.935973+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestEvalSupersession_RequiresSameSubjectAndAttribute/user:_My_friend_Bob_lives_in_Oslo","Output":"=== RUN   TestEvalSupersession_RequiresSameSubjectAndAttribute/user:_My_friend_Bob_lives_in_Oslo\n"}
+{"Time":"2026-10-22T22:28:44.935973+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestEvalSupersession_RequiresSameSubjectAndAttribute/user:_My_friend_Bob_lives_in_Oslo","Output":"--- PASS: TestEvalSupersession_RequiresSameSubjectAndAttribute/user:_My_friend_Bob_lives_in_Oslo (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.935973+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestEvalSupersession_RequiresSameSubjectAndAttribute/user:_My_friend_Bob_lives_in_Oslo","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.935973+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestEvalSupersession_RequiresSameSubjectAndAttribute/user:_我的朋友小陈住在上海"}
+{"Time":"2026-10-22T22:28:44.935973+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestEvalSupersession_RequiresSameSubjectAndAttribute/user:_我的朋友小陈住在上海","Output":"=== RUN   TestEvalSupersession_RequiresSameSubjectAndAttribute/user:_我的朋友小陈住在上海\n"}
+{"Time":"2026-10-22T22:28:44.935973+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestEvalSupersession_RequiresSameSubjectAndAttribute/user:_我的朋友小陈住在上海","Output":"--- PASS: TestEvalSupersession_RequiresSameSubjectAndAttribute/user:_我的朋友小陈住在上海 (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.935973+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestEvalSupersession_RequiresSameSubjectAndAttribute/user:_我的朋友小陈住在上海","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.935973+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestEvalSupersession_RequiresSameSubjectAndAttribute/user:_My_favorite_type_of_music_changed_to_folk"}
+{"Time":"2026-10-22T22:28:44.935973+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestEvalSupersession_RequiresSameSubjectAndAttribute/user:_My_favorite_type_of_music_changed_to_folk","Output":"=== RUN   TestEvalSupersession_RequiresSameSubjectAndAttribute/user:_My_favorite_type_of_music_changed_to_folk\n"}
+{"Time":"2026-10-22T22:28:44.935973+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestEvalSupersession_RequiresSameSubjectAndAttribute/user:_My_favorite_type_of_music_changed_to_folk","Output":"--- PASS: TestEvalSupersession_RequiresSameSubjectAndAttribute/user:_My_favorite_type_of_music_changed_to_folk (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.935973+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestEvalSupersession_RequiresSameSubjectAndAttribute/user:_My_favorite_type_of_music_changed_to_folk","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.935973+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestEvalSupersession_RequiresSameSubjectAndAttribute/assistant:_I_live_in_Oslo"}
+{"Time":"2026-10-22T22:28:44.935973+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestEvalSupersession_RequiresSameSubjectAndAttribute/assistant:_I_live_in_Oslo","Output":"=== RUN   TestEvalSupersession_RequiresSameSubjectAndAttribute/assistant:_I_live_in_Oslo\n"}
+{"Time":"2026-10-22T22:28:44.935973+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestEvalSupersession_RequiresSameSubjectAndAttribute/assistant:_I_live_in_Oslo","Output":"--- PASS: TestEvalSupersession_RequiresSameSubjectAndAttribute/assistant:_I_live_in_Oslo (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.935973+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestEvalSupersession_RequiresSameSubjectAndAttribute/assistant:_I_live_in_Oslo","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.935973+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestEvalSupersession_RequiresSameSubjectAndAttribute/user:_My_employee_id_is_A17"}
+{"Time":"2026-10-22T22:28:44.935973+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestEvalSupersession_RequiresSameSubjectAndAttribute/user:_My_employee_id_is_A17","Output":"=== RUN   TestEvalSupersession_RequiresSameSubjectAndAttribute/user:_My_employee_id_is_A17\n"}
+{"Time":"2026-10-22T22:28:44.935973+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestEvalSupersession_RequiresSameSubjectAndAttribute/user:_My_employee_id_is_A17","Output":"--- PASS: TestEvalSupersession_RequiresSameSubjectAndAttribute/user:_My_employee_id_is_A17 (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.935973+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestEvalSupersession_RequiresSameSubjectAndAttribute/user:_My_employee_id_is_A17","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.935973+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestEvalSupersession_RequiresSameSubjectAndAttribute/user:_I_now_like_tea"}
+{"Time":"2026-10-22T22:28:44.935973+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestEvalSupersession_RequiresSameSubjectAndAttribute/user:_I_now_like_tea","Output":"=== RUN   TestEvalSupersession_RequiresSameSubjectAndAttribute/user:_I_now_like_tea\n"}
+{"Time":"2026-10-22T22:28:44.935973+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestEvalSupersession_RequiresSameSubjectAndAttribute/user:_I_now_like_tea","Output":"--- PASS: TestEvalSupersession_RequiresSameSubjectAndAttribute/user:_I_now_like_tea (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.935973+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestEvalSupersession_RequiresSameSubjectAndAttribute/user:_I_now_like_tea","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.935973+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestEvalSupersession_RequiresSameSubjectAndAttribute/user:_我现在不喜欢咖啡了"}
+{"Time":"2026-10-22T22:28:44.935973+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestEvalSupersession_RequiresSameSubjectAndAttribute/user:_我现在不喜欢咖啡了","Output":"=== RUN   TestEvalSupersession_RequiresSameSubjectAndAttribute/user:_我现在不喜欢咖啡了\n"}
+{"Time":"2026-10-22T22:28:44.9369727+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestEvalSupersession_RequiresSameSubjectAndAttribute/user:_我现在不喜欢咖啡了","Output":"--- PASS: TestEvalSupersession_RequiresSameSubjectAndAttribute/user:_我现在不喜欢咖啡了 (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9369727+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestEvalSupersession_RequiresSameSubjectAndAttribute/user:_我现在不喜欢咖啡了","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9369727+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestEvalSupersession_RequiresSameSubjectAndAttribute/user:_I_now_like_coffee"}
+{"Time":"2026-10-22T22:28:44.9369727+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestEvalSupersession_RequiresSameSubjectAndAttribute/user:_I_now_like_coffee","Output":"=== RUN   TestEvalSupersession_RequiresSameSubjectAndAttribute/user:_I_now_like_coffee\n"}
+{"Time":"2026-10-22T22:28:44.9369727+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestEvalSupersession_RequiresSameSubjectAndAttribute/user:_I_now_like_coffee","Output":"--- PASS: TestEvalSupersession_RequiresSameSubjectAndAttribute/user:_I_now_like_coffee (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9369727+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestEvalSupersession_RequiresSameSubjectAndAttribute/user:_I_now_like_coffee","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9369727+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestEvalSupersession_RequiresSameSubjectAndAttribute/user:_我的工号是5271"}
+{"Time":"2026-10-22T22:28:44.9369727+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestEvalSupersession_RequiresSameSubjectAndAttribute/user:_我的工号是5271","Output":"=== RUN   TestEvalSupersession_RequiresSameSubjectAndAttribute/user:_我的工号是5271\n"}
+{"Time":"2026-10-22T22:28:44.9369727+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestEvalSupersession_RequiresSameSubjectAndAttribute/user:_我的工号是5271","Output":"--- PASS: TestEvalSupersession_RequiresSameSubjectAndAttribute/user:_我的工号是5271 (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9369727+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestEvalSupersession_RequiresSameSubjectAndAttribute/user:_我的工号是5271","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9369727+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestEvalSupersession_RequiresSameSubjectAndAttribute/user:_我现在搬到上海了"}
+{"Time":"2026-10-22T22:28:44.9369727+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestEvalSupersession_RequiresSameSubjectAndAttribute/user:_我现在搬到上海了","Output":"=== RUN   TestEvalSupersession_RequiresSameSubjectAndAttribute/user:_我现在搬到上海了\n"}
+{"Time":"2026-10-22T22:28:44.9369727+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestEvalSupersession_RequiresSameSubjectAndAttribute/user:_我现在搬到上海了","Output":"--- PASS: TestEvalSupersession_RequiresSameSubjectAndAttribute/user:_我现在搬到上海了 (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9369727+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestEvalSupersession_RequiresSameSubjectAndAttribute/user:_我现在搬到上海了","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9369727+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestEvalSupersession_RequiresSameSubjectAndAttribute/user:_If_I_actually_moved_to_Oslo_then_I_would_sell_my_home"}
+{"Time":"2026-10-22T22:28:44.9369727+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestEvalSupersession_RequiresSameSubjectAndAttribute/user:_If_I_actually_moved_to_Oslo_then_I_would_sell_my_home","Output":"=== RUN   TestEvalSupersession_RequiresSameSubjectAndAttribute/user:_If_I_actually_moved_to_Oslo_then_I_would_sell_my_home\n"}
+{"Time":"2026-10-22T22:28:44.9369727+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestEvalSupersession_RequiresSameSubjectAndAttribute/user:_If_I_actually_moved_to_Oslo_then_I_would_sell_my_home","Output":"--- PASS: TestEvalSupersession_RequiresSameSubjectAndAttribute/user:_If_I_actually_moved_to_Oslo_then_I_would_sell_my_home (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9369727+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestEvalSupersession_RequiresSameSubjectAndAttribute/user:_If_I_actually_moved_to_Oslo_then_I_would_sell_my_home","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9369727+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestEvalSupersession_RequiresSameSubjectAndAttribute/user:_我打算搬到上海"}
+{"Time":"2026-10-22T22:28:44.9369727+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestEvalSupersession_RequiresSameSubjectAndAttribute/user:_我打算搬到上海","Output":"=== RUN   TestEvalSupersession_RequiresSameSubjectAndAttribute/user:_我打算搬到上海\n"}
+{"Time":"2026-10-22T22:28:44.9369727+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestEvalSupersession_RequiresSameSubjectAndAttribute/user:_我打算搬到上海","Output":"--- PASS: TestEvalSupersession_RequiresSameSubjectAndAttribute/user:_我打算搬到上海 (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9369727+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestEvalSupersession_RequiresSameSubjectAndAttribute/user:_我打算搬到上海","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9369727+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestEvalSupersession_RequiresSameSubjectAndAttribute","Output":"--- PASS: TestEvalSupersession_RequiresSameSubjectAndAttribute (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9369727+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestEvalSupersession_RequiresSameSubjectAndAttribute","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9369727+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestEvalCorrectionTargetsFact_ReferenceIsNotContradiction"}
+{"Time":"2026-10-22T22:28:44.9369727+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestEvalCorrectionTargetsFact_ReferenceIsNotContradiction","Output":"=== RUN   TestEvalCorrectionTargetsFact_ReferenceIsNotContradiction\n"}
+{"Time":"2026-10-22T22:28:44.9369727+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestEvalCorrectionTargetsFact_ReferenceIsNotContradiction","Output":"--- PASS: TestEvalCorrectionTargetsFact_ReferenceIsNotContradiction (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9369727+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestEvalCorrectionTargetsFact_ReferenceIsNotContradiction","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9369727+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_CalendarAndCueBoundaries"}
+{"Time":"2026-10-22T22:28:44.9369727+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_CalendarAndCueBoundaries","Output":"=== RUN   TestAnalyzeEvalQuery_CalendarAndCueBoundaries\n"}
+{"Time":"2026-10-22T22:28:44.9369727+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_CalendarAndCueBoundaries","Output":"--- PASS: TestAnalyzeEvalQuery_CalendarAndCueBoundaries (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9369727+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_CalendarAndCueBoundaries","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9369727+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalDateSpans_PrecisionAndUnits"}
+{"Time":"2026-10-22T22:28:44.9369727+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalDateSpans_PrecisionAndUnits","Output":"=== RUN   TestResolveEvalDateSpans_PrecisionAndUnits\n"}
+{"Time":"2026-10-22T22:28:44.9369727+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalDateSpans_PrecisionAndUnits","Output":"--- PASS: TestResolveEvalDateSpans_PrecisionAndUnits (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9369727+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalDateSpans_PrecisionAndUnits","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9369727+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese"}
+{"Time":"2026-10-22T22:28:44.9369727+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese","Output":"=== RUN   TestResolveEvalRelativeTimes_Chinese\n"}
+{"Time":"2026-10-22T22:28:44.9369727+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese","Output":"=== PAUSE TestResolveEvalRelativeTimes_Chinese\n"}
+{"Time":"2026-10-22T22:28:44.9369727+08:00","Action":"pause","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese"}
+{"Time":"2026-10-22T22:28:44.9369727+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English"}
+{"Time":"2026-10-22T22:28:44.9369727+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English","Output":"=== RUN   TestResolveEvalRelativeTimes_English\n"}
+{"Time":"2026-10-22T22:28:44.9369727+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English","Output":"=== PAUSE TestResolveEvalRelativeTimes_English\n"}
+{"Time":"2026-10-22T22:28:44.9369727+08:00","Action":"pause","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"cont","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_TableDriven"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_TableDriven","Output":"=== CONT  TestSplitEvalStatements_TableDriven\n"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"cont","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_ZeroMaxUsesDefault"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_ZeroMaxUsesDefault","Output":"=== CONT  TestSplitEvalStatements_ZeroMaxUsesDefault\n"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"cont","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_MaxAtomsMergesTail"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_MaxAtomsMergesTail","Output":"=== CONT  TestSplitEvalStatements_MaxAtomsMergesTail\n"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_ZeroMaxUsesDefault","Output":"--- PASS: TestSplitEvalStatements_ZeroMaxUsesDefault (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_ZeroMaxUsesDefault","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_TableDriven/empty_passthrough"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_TableDriven/empty_passthrough","Output":"=== RUN   TestSplitEvalStatements_TableDriven/empty_passthrough\n"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"cont","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_ChronologicalCues"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_ChronologicalCues","Output":"=== CONT  TestAnalyzeEvalQuery_ChronologicalCues\n"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_TableDriven/empty_passthrough","Output":"=== PAUSE TestSplitEvalStatements_TableDriven/empty_passthrough\n"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"pause","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_TableDriven/empty_passthrough"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_MaxAtomsMergesTail","Output":"--- PASS: TestSplitEvalStatements_MaxAtomsMergesTail (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_MaxAtomsMergesTail","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_TableDriven/single_sentence_unchanged"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_TableDriven/single_sentence_unchanged","Output":"=== RUN   TestSplitEvalStatements_TableDriven/single_sentence_unchanged\n"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_TableDriven/single_sentence_unchanged","Output":"=== PAUSE TestSplitEvalStatements_TableDriven/single_sentence_unchanged\n"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"pause","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_TableDriven/single_sentence_unchanged"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"cont","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English","Output":"=== CONT  TestResolveEvalRelativeTimes_English\n"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"cont","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese","Output":"=== CONT  TestResolveEvalRelativeTimes_Chinese\n"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"cont","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_DateRanges"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_DateRanges","Output":"=== CONT  TestAnalyzeEvalQuery_DateRanges\n"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"cont","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_AggregateCues"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_AggregateCues","Output":"=== CONT  TestAnalyzeEvalQuery_AggregateCues\n"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/today"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/today","Output":"=== RUN   TestResolveEvalRelativeTimes_English/today\n"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"cont","Package":"aranea-agents/internal/biz","Test":"TestShouldSupersedeEvalFact"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestShouldSupersedeEvalFact","Output":"=== CONT  TestShouldSupersedeEvalFact\n"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/empty"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/empty","Output":"=== RUN   TestResolveEvalRelativeTimes_Chinese/empty\n"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/empty","Output":"=== PAUSE TestResolveEvalRelativeTimes_Chinese/empty\n"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"pause","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/empty"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"cont","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_AbbreviationGuard"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_AbbreviationGuard","Output":"=== CONT  TestSplitEvalStatements_AbbreviationGuard\n"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/no_date_expr"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/no_date_expr","Output":"=== RUN   TestResolveEvalRelativeTimes_Chinese/no_date_expr\n"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/no_date_expr","Output":"=== PAUSE TestResolveEvalRelativeTimes_Chinese/no_date_expr\n"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"pause","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/no_date_expr"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"cont","Package":"aranea-agents/internal/biz","Test":"TestClassifyEvalFactKind"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestClassifyEvalFactKind","Output":"=== CONT  TestClassifyEvalFactKind\n"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_AbbreviationGuard/honorific_Dr_keeps_sentence"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_AbbreviationGuard/honorific_Dr_keeps_sentence","Output":"=== RUN   TestSplitEvalStatements_AbbreviationGuard/honorific_Dr_keeps_sentence\n"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_AbbreviationGuard/honorific_Dr_keeps_sentence","Output":"=== PAUSE TestSplitEvalStatements_AbbreviationGuard/honorific_Dr_keeps_sentence\n"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"pause","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_AbbreviationGuard/honorific_Dr_keeps_sentence"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/今天"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/今天","Output":"=== RUN   TestResolveEvalRelativeTimes_Chinese/今天\n"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_AggregateCues/总结"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_AggregateCues/总结","Output":"=== RUN   TestAnalyzeEvalQuery_AggregateCues/总结\n"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_AggregateCues/总结","Output":"=== PAUSE TestAnalyzeEvalQuery_AggregateCues/总结\n"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"pause","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_AggregateCues/总结"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/today","Output":"=== PAUSE TestResolveEvalRelativeTimes_English/today\n"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"pause","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/today"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_DateRanges/无日期"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_DateRanges/无日期","Output":"=== RUN   TestAnalyzeEvalQuery_DateRanges/无日期\n"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_DateRanges/无日期","Output":"=== PAUSE TestAnalyzeEvalQuery_DateRanges/无日期\n"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"pause","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_DateRanges/无日期"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/今天","Output":"=== PAUSE TestResolveEvalRelativeTimes_Chinese/今天\n"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"pause","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/今天"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_ChronologicalCues/先后"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_ChronologicalCues/先后","Output":"=== RUN   TestAnalyzeEvalQuery_ChronologicalCues/先后\n"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_ChronologicalCues/先后","Output":"=== PAUSE TestAnalyzeEvalQuery_ChronologicalCues/先后\n"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"pause","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_ChronologicalCues/先后"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_DateRanges/中文绝对日期单日"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_DateRanges/中文绝对日期单日","Output":"=== RUN   TestAnalyzeEvalQuery_DateRanges/中文绝对日期单日\n"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/yesterday"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/yesterday","Output":"=== RUN   TestResolveEvalRelativeTimes_English/yesterday\n"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_ChronologicalCues/顺序"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_ChronologicalCues/顺序","Output":"=== RUN   TestAnalyzeEvalQuery_ChronologicalCues/顺序\n"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_ChronologicalCues/顺序","Output":"=== PAUSE TestAnalyzeEvalQuery_ChronologicalCues/顺序\n"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"pause","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_ChronologicalCues/顺序"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_DateRanges/中文绝对日期单日","Output":"=== PAUSE TestAnalyzeEvalQuery_DateRanges/中文绝对日期单日\n"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"pause","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_DateRanges/中文绝对日期单日"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestShouldSupersedeEvalFact","Output":"--- PASS: TestShouldSupersedeEvalFact (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestShouldSupersedeEvalFact","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_AggregateCues/一共"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_AggregateCues/一共","Output":"=== RUN   TestAnalyzeEvalQuery_AggregateCues/一共\n"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_AbbreviationGuard/honorific_mid-sentence"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_AbbreviationGuard/honorific_mid-sentence","Output":"=== RUN   TestSplitEvalStatements_AbbreviationGuard/honorific_mid-sentence\n"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/yesterday","Output":"=== PAUSE TestResolveEvalRelativeTimes_English/yesterday\n"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"pause","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/yesterday"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_ChronologicalCues/第几"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_ChronologicalCues/第几","Output":"=== RUN   TestAnalyzeEvalQuery_ChronologicalCues/第几\n"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestClassifyEvalFactKind","Output":"--- PASS: TestClassifyEvalFactKind (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestClassifyEvalFactKind","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_ChronologicalCues/第几","Output":"=== PAUSE TestAnalyzeEvalQuery_ChronologicalCues/第几\n"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"pause","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_ChronologicalCues/第几"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_AbbreviationGuard/honorific_mid-sentence","Output":"=== PAUSE TestSplitEvalStatements_AbbreviationGuard/honorific_mid-sentence\n"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"pause","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_AbbreviationGuard/honorific_mid-sentence"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/tomorrow"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/tomorrow","Output":"=== RUN   TestResolveEvalRelativeTimes_English/tomorrow\n"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/tomorrow","Output":"=== PAUSE TestResolveEvalRelativeTimes_English/tomorrow\n"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"pause","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/tomorrow"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_ChronologicalCues/最早"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_ChronologicalCues/最早","Output":"=== RUN   TestAnalyzeEvalQuery_ChronologicalCues/最早\n"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_ChronologicalCues/最早","Output":"=== PAUSE TestAnalyzeEvalQuery_ChronologicalCues/最早\n"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"pause","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_ChronologicalCues/最早"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_TableDriven/single_sentence_keeps_trailing_punct"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_TableDriven/single_sentence_keeps_trailing_punct","Output":"=== RUN   TestSplitEvalStatements_TableDriven/single_sentence_keeps_trailing_punct\n"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_ChronologicalCues/最近第一次"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_ChronologicalCues/最近第一次","Output":"=== RUN   TestAnalyzeEvalQuery_ChronologicalCues/最近第一次\n"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_ChronologicalCues/最近第一次","Output":"=== PAUSE TestAnalyzeEvalQuery_ChronologicalCues/最近第一次\n"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"pause","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_ChronologicalCues/最近第一次"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_TableDriven/single_sentence_keeps_trailing_punct","Output":"=== PAUSE TestSplitEvalStatements_TableDriven/single_sentence_keeps_trailing_punct\n"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"pause","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_TableDriven/single_sentence_keeps_trailing_punct"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/昨天"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/昨天","Output":"=== RUN   TestResolveEvalRelativeTimes_Chinese/昨天\n"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_ChronologicalCues/英文_order"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_ChronologicalCues/英文_order","Output":"=== RUN   TestAnalyzeEvalQuery_ChronologicalCues/英文_order\n"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/昨天","Output":"=== PAUSE TestResolveEvalRelativeTimes_Chinese/昨天\n"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"pause","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/昨天"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_TableDriven/chinese_sentence_delimiters"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_TableDriven/chinese_sentence_delimiters","Output":"=== RUN   TestSplitEvalStatements_TableDriven/chinese_sentence_delimiters\n"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_TableDriven/chinese_sentence_delimiters","Output":"=== PAUSE TestSplitEvalStatements_TableDriven/chinese_sentence_delimiters\n"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"pause","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_TableDriven/chinese_sentence_delimiters"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_ChronologicalCues/英文_order","Output":"=== PAUSE TestAnalyzeEvalQuery_ChronologicalCues/英文_order\n"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"pause","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_ChronologicalCues/英文_order"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_DateRanges/ISO_单日"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_DateRanges/ISO_单日","Output":"=== RUN   TestAnalyzeEvalQuery_DateRanges/ISO_单日\n"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/前天"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/前天","Output":"=== RUN   TestResolveEvalRelativeTimes_Chinese/前天\n"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_DateRanges/ISO_单日","Output":"=== PAUSE TestAnalyzeEvalQuery_DateRanges/ISO_单日\n"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"pause","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_DateRanges/ISO_单日"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_AbbreviationGuard/St_mid-sentence"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_AbbreviationGuard/St_mid-sentence","Output":"=== RUN   TestSplitEvalStatements_AbbreviationGuard/St_mid-sentence\n"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/last_week"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/last_week","Output":"=== RUN   TestResolveEvalRelativeTimes_English/last_week\n"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/last_week","Output":"=== PAUSE TestResolveEvalRelativeTimes_English/last_week\n"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"pause","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/last_week"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_AggregateCues/一共","Output":"=== PAUSE TestAnalyzeEvalQuery_AggregateCues/一共\n"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"pause","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_AggregateCues/一共"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_TableDriven/english_period-space-uppercase"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_TableDriven/english_period-space-uppercase","Output":"=== RUN   TestSplitEvalStatements_TableDriven/english_period-space-uppercase\n"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_AbbreviationGuard/St_mid-sentence","Output":"=== PAUSE TestSplitEvalStatements_AbbreviationGuard/St_mid-sentence\n"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"pause","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_AbbreviationGuard/St_mid-sentence"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_TableDriven/english_period-space-uppercase","Output":"=== PAUSE TestSplitEvalStatements_TableDriven/english_period-space-uppercase\n"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"pause","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_TableDriven/english_period-space-uppercase"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/next_week"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/next_week","Output":"=== RUN   TestResolveEvalRelativeTimes_English/next_week\n"}
+{"Time":"2026-10-22T22:28:44.9579722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/next_week","Output":"=== PAUSE TestResolveEvalRelativeTimes_English/next_week\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"pause","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/next_week"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_TableDriven/english_period-space-lowercase_no_split"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_TableDriven/english_period-space-lowercase_no_split","Output":"=== RUN   TestSplitEvalStatements_TableDriven/english_period-space-lowercase_no_split\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_TableDriven/english_period-space-lowercase_no_split","Output":"=== PAUSE TestSplitEvalStatements_TableDriven/english_period-space-lowercase_no_split\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"pause","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_TableDriven/english_period-space-lowercase_no_split"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/前天","Output":"=== PAUSE TestResolveEvalRelativeTimes_Chinese/前天\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"pause","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/前天"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_ChronologicalCues/英文_first_time"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_ChronologicalCues/英文_first_time","Output":"=== RUN   TestAnalyzeEvalQuery_ChronologicalCues/英文_first_time\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_AbbreviationGuard/abbrev_etc_keeps_tail"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_AbbreviationGuard/abbrev_etc_keeps_tail","Output":"=== RUN   TestSplitEvalStatements_AbbreviationGuard/abbrev_etc_keeps_tail\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_ChronologicalCues/英文_first_time","Output":"=== PAUSE TestAnalyzeEvalQuery_ChronologicalCues/英文_first_time\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"pause","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_ChronologicalCues/英文_first_time"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_AbbreviationGuard/abbrev_etc_keeps_tail","Output":"=== PAUSE TestSplitEvalStatements_AbbreviationGuard/abbrev_etc_keeps_tail\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"pause","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_AbbreviationGuard/abbrev_etc_keeps_tail"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_DateRanges/US_单日"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_DateRanges/US_单日","Output":"=== RUN   TestAnalyzeEvalQuery_DateRanges/US_单日\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_DateRanges/US_单日","Output":"=== PAUSE TestAnalyzeEvalQuery_DateRanges/US_单日\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"pause","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_DateRanges/US_单日"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_AggregateCues/总共"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_AggregateCues/总共","Output":"=== RUN   TestAnalyzeEvalQuery_AggregateCues/总共\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_AggregateCues/总共","Output":"=== PAUSE TestAnalyzeEvalQuery_AggregateCues/总共\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"pause","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_AggregateCues/总共"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_ChronologicalCues/普通查询不命中"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_ChronologicalCues/普通查询不命中","Output":"=== RUN   TestAnalyzeEvalQuery_ChronologicalCues/普通查询不命中\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/last_month"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/last_month","Output":"=== RUN   TestResolveEvalRelativeTimes_English/last_month\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_ChronologicalCues/普通查询不命中","Output":"=== PAUSE TestAnalyzeEvalQuery_ChronologicalCues/普通查询不命中\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"pause","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_ChronologicalCues/普通查询不命中"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_DateRanges/相对日期单日"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_DateRanges/相对日期单日","Output":"=== RUN   TestAnalyzeEvalQuery_DateRanges/相对日期单日\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_TableDriven/newline_split"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_TableDriven/newline_split","Output":"=== RUN   TestSplitEvalStatements_TableDriven/newline_split\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_TableDriven/newline_split","Output":"=== PAUSE TestSplitEvalStatements_TableDriven/newline_split\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"pause","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_TableDriven/newline_split"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/last_month","Output":"=== PAUSE TestResolveEvalRelativeTimes_English/last_month\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"pause","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/last_month"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_AggregateCues/概括"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_AggregateCues/概括","Output":"=== RUN   TestAnalyzeEvalQuery_AggregateCues/概括\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_TableDriven/exclamation_question_semicolon"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_TableDriven/exclamation_question_semicolon","Output":"=== RUN   TestSplitEvalStatements_TableDriven/exclamation_question_semicolon\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_AggregateCues/概括","Output":"=== PAUSE TestAnalyzeEvalQuery_AggregateCues/概括\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"pause","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_AggregateCues/概括"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_TableDriven/exclamation_question_semicolon","Output":"=== PAUSE TestSplitEvalStatements_TableDriven/exclamation_question_semicolon\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"pause","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_TableDriven/exclamation_question_semicolon"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_ChronologicalCues/无线索"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_ChronologicalCues/无线索","Output":"=== RUN   TestAnalyzeEvalQuery_ChronologicalCues/无线索\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/next_month"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/next_month","Output":"=== RUN   TestResolveEvalRelativeTimes_English/next_month\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_ChronologicalCues/无线索","Output":"=== PAUSE TestAnalyzeEvalQuery_ChronologicalCues/无线索\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"pause","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_ChronologicalCues/无线索"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_DateRanges/相对日期单日","Output":"=== PAUSE TestAnalyzeEvalQuery_DateRanges/相对日期单日\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"pause","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_DateRanges/相对日期单日"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/next_month","Output":"=== PAUSE TestResolveEvalRelativeTimes_English/next_month\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"pause","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/next_month"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"cont","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_ChronologicalCues/无线索"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_ChronologicalCues/无线索","Output":"=== CONT  TestAnalyzeEvalQuery_ChronologicalCues/无线索\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_AbbreviationGuard/plain_sentence_still_splits"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_AbbreviationGuard/plain_sentence_still_splits","Output":"=== RUN   TestSplitEvalStatements_AbbreviationGuard/plain_sentence_still_splits\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/大前天"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/大前天","Output":"=== RUN   TestResolveEvalRelativeTimes_Chinese/大前天\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_AbbreviationGuard/plain_sentence_still_splits","Output":"=== PAUSE TestSplitEvalStatements_AbbreviationGuard/plain_sentence_still_splits\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"pause","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_AbbreviationGuard/plain_sentence_still_splits"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_TableDriven/short_fragments_preserved"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_TableDriven/short_fragments_preserved","Output":"=== RUN   TestSplitEvalStatements_TableDriven/short_fragments_preserved\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/大前天","Output":"=== PAUSE TestResolveEvalRelativeTimes_Chinese/大前天\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"pause","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/大前天"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"cont","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_AbbreviationGuard/honorific_mid-sentence"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_AbbreviationGuard/honorific_mid-sentence","Output":"=== CONT  TestSplitEvalStatements_AbbreviationGuard/honorific_mid-sentence\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_TableDriven/short_fragments_preserved","Output":"=== PAUSE TestSplitEvalStatements_TableDriven/short_fragments_preserved\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"pause","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_TableDriven/short_fragments_preserved"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_AbbreviationGuard/honorific_mid-sentence","Output":"--- PASS: TestSplitEvalStatements_AbbreviationGuard/honorific_mid-sentence (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_AbbreviationGuard/honorific_mid-sentence","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"cont","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_ChronologicalCues/先后"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_ChronologicalCues/先后","Output":"=== CONT  TestAnalyzeEvalQuery_ChronologicalCues/先后\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_ChronologicalCues/无线索","Output":"--- PASS: TestAnalyzeEvalQuery_ChronologicalCues/无线索 (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_ChronologicalCues/无线索","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"cont","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_ChronologicalCues/最早"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_ChronologicalCues/最早","Output":"=== CONT  TestAnalyzeEvalQuery_ChronologicalCues/最早\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_DateRanges/之后区间起点"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_DateRanges/之后区间起点","Output":"=== RUN   TestAnalyzeEvalQuery_DateRanges/之后区间起点\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_DateRanges/之后区间起点","Output":"=== PAUSE TestAnalyzeEvalQuery_DateRanges/之后区间起点\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"pause","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_DateRanges/之后区间起点"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"cont","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_ChronologicalCues/最近第一次"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_ChronologicalCues/最近第一次","Output":"=== CONT  TestAnalyzeEvalQuery_ChronologicalCues/最近第一次\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_ChronologicalCues/先后","Output":"--- PASS: TestAnalyzeEvalQuery_ChronologicalCues/先后 (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_ChronologicalCues/先后","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_DateRanges/since_英文区间"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_DateRanges/since_英文区间","Output":"=== RUN   TestAnalyzeEvalQuery_DateRanges/since_英文区间\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"cont","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_ChronologicalCues/第几"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_ChronologicalCues/第几","Output":"=== CONT  TestAnalyzeEvalQuery_ChronologicalCues/第几\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_DateRanges/since_英文区间","Output":"=== PAUSE TestAnalyzeEvalQuery_DateRanges/since_英文区间\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"pause","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_DateRanges/since_英文区间"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"cont","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_ChronologicalCues/普通查询不命中"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_ChronologicalCues/普通查询不命中","Output":"=== CONT  TestAnalyzeEvalQuery_ChronologicalCues/普通查询不命中\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_DateRanges/以前区间终点"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_DateRanges/以前区间终点","Output":"=== RUN   TestAnalyzeEvalQuery_DateRanges/以前区间终点\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"cont","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_ChronologicalCues/英文_first_time"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_ChronologicalCues/英文_first_time","Output":"=== CONT  TestAnalyzeEvalQuery_ChronologicalCues/英文_first_time\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_DateRanges/以前区间终点","Output":"=== PAUSE TestAnalyzeEvalQuery_DateRanges/以前区间终点\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"pause","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_DateRanges/以前区间终点"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_AggregateCues/英文_summary"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_AggregateCues/英文_summary","Output":"=== RUN   TestAnalyzeEvalQuery_AggregateCues/英文_summary\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_AggregateCues/英文_summary","Output":"=== PAUSE TestAnalyzeEvalQuery_AggregateCues/英文_summary\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"pause","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_AggregateCues/英文_summary"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/last_monday"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/last_monday","Output":"=== RUN   TestResolveEvalRelativeTimes_English/last_monday\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/last_monday","Output":"=== PAUSE TestResolveEvalRelativeTimes_English/last_monday\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"pause","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/last_monday"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"cont","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_ChronologicalCues/英文_order"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_ChronologicalCues/英文_order","Output":"=== CONT  TestAnalyzeEvalQuery_ChronologicalCues/英文_order\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"cont","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_AbbreviationGuard/honorific_Dr_keeps_sentence"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_AbbreviationGuard/honorific_Dr_keeps_sentence","Output":"=== CONT  TestSplitEvalStatements_AbbreviationGuard/honorific_Dr_keeps_sentence\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_AggregateCues/英文_overall"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_AggregateCues/英文_overall","Output":"=== RUN   TestAnalyzeEvalQuery_AggregateCues/英文_overall\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_AggregateCues/英文_overall","Output":"=== PAUSE TestAnalyzeEvalQuery_AggregateCues/英文_overall\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"pause","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_AggregateCues/英文_overall"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_AbbreviationGuard/honorific_Dr_keeps_sentence","Output":"--- PASS: TestSplitEvalStatements_AbbreviationGuard/honorific_Dr_keeps_sentence (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_AbbreviationGuard/honorific_Dr_keeps_sentence","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"cont","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_AbbreviationGuard/abbrev_etc_keeps_tail"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_AbbreviationGuard/abbrev_etc_keeps_tail","Output":"=== CONT  TestSplitEvalStatements_AbbreviationGuard/abbrev_etc_keeps_tail\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"cont","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_AbbreviationGuard/St_mid-sentence"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_AbbreviationGuard/St_mid-sentence","Output":"=== CONT  TestSplitEvalStatements_AbbreviationGuard/St_mid-sentence\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/明天"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/明天","Output":"=== RUN   TestResolveEvalRelativeTimes_Chinese/明天\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_AbbreviationGuard/abbrev_etc_keeps_tail","Output":"--- PASS: TestSplitEvalStatements_AbbreviationGuard/abbrev_etc_keeps_tail (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_AbbreviationGuard/abbrev_etc_keeps_tail","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/明天","Output":"=== PAUSE TestResolveEvalRelativeTimes_Chinese/明天\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"pause","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/明天"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_AbbreviationGuard/St_mid-sentence","Output":"--- PASS: TestSplitEvalStatements_AbbreviationGuard/St_mid-sentence (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_AbbreviationGuard/St_mid-sentence","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_TableDriven/all_short_fragments_preserved"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_TableDriven/all_short_fragments_preserved","Output":"=== RUN   TestSplitEvalStatements_TableDriven/all_short_fragments_preserved\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_ChronologicalCues/最早","Output":"--- PASS: TestAnalyzeEvalQuery_ChronologicalCues/最早 (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_ChronologicalCues/最早","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_ChronologicalCues/最近第一次","Output":"--- PASS: TestAnalyzeEvalQuery_ChronologicalCues/最近第一次 (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_ChronologicalCues/最近第一次","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_ChronologicalCues/普通查询不命中","Output":"--- PASS: TestAnalyzeEvalQuery_ChronologicalCues/普通查询不命中 (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_ChronologicalCues/普通查询不命中","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_ChronologicalCues/第几","Output":"--- PASS: TestAnalyzeEvalQuery_ChronologicalCues/第几 (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_ChronologicalCues/第几","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_ChronologicalCues/英文_first_time","Output":"--- PASS: TestAnalyzeEvalQuery_ChronologicalCues/英文_first_time (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_ChronologicalCues/英文_first_time","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"cont","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_ChronologicalCues/顺序"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_ChronologicalCues/顺序","Output":"=== CONT  TestAnalyzeEvalQuery_ChronologicalCues/顺序\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_DateRanges/between_两端"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_DateRanges/between_两端","Output":"=== RUN   TestAnalyzeEvalQuery_DateRanges/between_两端\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_DateRanges/between_两端","Output":"=== PAUSE TestAnalyzeEvalQuery_DateRanges/between_两端\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"pause","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_DateRanges/between_两端"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"cont","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_AbbreviationGuard/plain_sentence_still_splits"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_AbbreviationGuard/plain_sentence_still_splits","Output":"=== CONT  TestSplitEvalStatements_AbbreviationGuard/plain_sentence_still_splits\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/last_wednesday"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/last_wednesday","Output":"=== RUN   TestResolveEvalRelativeTimes_English/last_wednesday\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_AbbreviationGuard/plain_sentence_still_splits","Output":"--- PASS: TestSplitEvalStatements_AbbreviationGuard/plain_sentence_still_splits (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_AbbreviationGuard/plain_sentence_still_splits","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/last_wednesday","Output":"=== PAUSE TestResolveEvalRelativeTimes_English/last_wednesday\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"pause","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/last_wednesday"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_AbbreviationGuard","Output":"--- PASS: TestSplitEvalStatements_AbbreviationGuard (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_AbbreviationGuard","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_TableDriven/all_short_fragments_preserved","Output":"=== PAUSE TestSplitEvalStatements_TableDriven/all_short_fragments_preserved\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"pause","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_TableDriven/all_short_fragments_preserved"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"cont","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_TableDriven/empty_passthrough"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_TableDriven/empty_passthrough","Output":"=== CONT  TestSplitEvalStatements_TableDriven/empty_passthrough\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_AggregateCues/英文_how_many_times"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_AggregateCues/英文_how_many_times","Output":"=== RUN   TestAnalyzeEvalQuery_AggregateCues/英文_how_many_times\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"cont","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_TableDriven/single_sentence_keeps_trailing_punct"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_TableDriven/single_sentence_keeps_trailing_punct","Output":"=== CONT  TestSplitEvalStatements_TableDriven/single_sentence_keeps_trailing_punct\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_AggregateCues/英文_how_many_times","Output":"=== PAUSE TestAnalyzeEvalQuery_AggregateCues/英文_how_many_times\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"pause","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_AggregateCues/英文_how_many_times"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"cont","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_TableDriven/single_sentence_unchanged"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_TableDriven/single_sentence_unchanged","Output":"=== CONT  TestSplitEvalStatements_TableDriven/single_sentence_unchanged\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/后天"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/后天","Output":"=== RUN   TestResolveEvalRelativeTimes_Chinese/后天\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/后天","Output":"=== PAUSE TestResolveEvalRelativeTimes_Chinese/后天\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"pause","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/后天"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_ChronologicalCues/英文_order","Output":"--- PASS: TestAnalyzeEvalQuery_ChronologicalCues/英文_order (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_ChronologicalCues/英文_order","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_TableDriven/empty_passthrough","Output":"--- PASS: TestSplitEvalStatements_TableDriven/empty_passthrough (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_TableDriven/empty_passthrough","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/本周三"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/本周三","Output":"=== RUN   TestResolveEvalRelativeTimes_Chinese/本周三\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_TableDriven/single_sentence_keeps_trailing_punct","Output":"--- PASS: TestSplitEvalStatements_TableDriven/single_sentence_keeps_trailing_punct (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_TableDriven/single_sentence_keeps_trailing_punct","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_TableDriven/single_sentence_unchanged","Output":"--- PASS: TestSplitEvalStatements_TableDriven/single_sentence_unchanged (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_TableDriven/single_sentence_unchanged","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"cont","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_TableDriven/all_short_fragments_preserved"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_TableDriven/all_short_fragments_preserved","Output":"=== CONT  TestSplitEvalStatements_TableDriven/all_short_fragments_preserved\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_DateRanges/从…到…_两端"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_DateRanges/从…到…_两端","Output":"=== RUN   TestAnalyzeEvalQuery_DateRanges/从…到…_两端\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_DateRanges/从…到…_两端","Output":"=== PAUSE TestAnalyzeEvalQuery_DateRanges/从…到…_两端\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"pause","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_DateRanges/从…到…_两端"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/本周三","Output":"=== PAUSE TestResolveEvalRelativeTimes_Chinese/本周三\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"pause","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/本周三"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_TableDriven/all_short_fragments_preserved","Output":"--- PASS: TestSplitEvalStatements_TableDriven/all_short_fragments_preserved (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_TableDriven/all_short_fragments_preserved","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_DateRanges/两日期无连接词取_min..max"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_DateRanges/两日期无连接词取_min..max","Output":"=== RUN   TestAnalyzeEvalQuery_DateRanges/两日期无连接词取_min..max\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_DateRanges/两日期无连接词取_min..max","Output":"=== PAUSE TestAnalyzeEvalQuery_DateRanges/两日期无连接词取_min..max\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"pause","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_DateRanges/两日期无连接词取_min..max"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"cont","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_TableDriven/short_fragments_preserved"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_TableDriven/short_fragments_preserved","Output":"=== CONT  TestSplitEvalStatements_TableDriven/short_fragments_preserved\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/本周日"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/本周日","Output":"=== RUN   TestResolveEvalRelativeTimes_Chinese/本周日\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"cont","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_DateRanges/ISO_单日"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_DateRanges/ISO_单日","Output":"=== CONT  TestAnalyzeEvalQuery_DateRanges/ISO_单日\n"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"cont","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_DateRanges/两日期无连接词取_min..max"}
+{"Time":"2026-10-22T22:28:44.9589719+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_DateRanges/两日期无连接词取_min..max","Output":"=== CONT  TestAnalyzeEvalQuery_DateRanges/两日期无连接词取_min..max\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"cont","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_DateRanges/中文绝对日期单日"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_DateRanges/中文绝对日期单日","Output":"=== CONT  TestAnalyzeEvalQuery_DateRanges/中文绝对日期单日\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"cont","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_DateRanges/从…到…_两端"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_DateRanges/从…到…_两端","Output":"=== CONT  TestAnalyzeEvalQuery_DateRanges/从…到…_两端\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"cont","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_TableDriven/newline_split"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_TableDriven/newline_split","Output":"=== CONT  TestSplitEvalStatements_TableDriven/newline_split\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"cont","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_TableDriven/english_period-space-lowercase_no_split"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_TableDriven/english_period-space-lowercase_no_split","Output":"=== CONT  TestSplitEvalStatements_TableDriven/english_period-space-lowercase_no_split\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_DateRanges/中文绝对日期单日","Output":"--- PASS: TestAnalyzeEvalQuery_DateRanges/中文绝对日期单日 (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_DateRanges/中文绝对日期单日","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"cont","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_TableDriven/english_period-space-uppercase"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_TableDriven/english_period-space-uppercase","Output":"=== CONT  TestSplitEvalStatements_TableDriven/english_period-space-uppercase\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"cont","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_TableDriven/chinese_sentence_delimiters"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_TableDriven/chinese_sentence_delimiters","Output":"=== CONT  TestSplitEvalStatements_TableDriven/chinese_sentence_delimiters\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/in_5_days"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/in_5_days","Output":"=== RUN   TestResolveEvalRelativeTimes_English/in_5_days\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/in_5_days","Output":"=== PAUSE TestResolveEvalRelativeTimes_English/in_5_days\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"pause","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/in_5_days"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_ChronologicalCues/顺序","Output":"--- PASS: TestAnalyzeEvalQuery_ChronologicalCues/顺序 (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_ChronologicalCues/顺序","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_ChronologicalCues","Output":"--- PASS: TestAnalyzeEvalQuery_ChronologicalCues (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_ChronologicalCues","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"cont","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_DateRanges/无日期"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_DateRanges/无日期","Output":"=== CONT  TestAnalyzeEvalQuery_DateRanges/无日期\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_AggregateCues/普通查询不命中"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_AggregateCues/普通查询不命中","Output":"=== RUN   TestAnalyzeEvalQuery_AggregateCues/普通查询不命中\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_AggregateCues/普通查询不命中","Output":"=== PAUSE TestAnalyzeEvalQuery_AggregateCues/普通查询不命中\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"pause","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_AggregateCues/普通查询不命中"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"cont","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_DateRanges/between_两端"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_DateRanges/between_两端","Output":"=== CONT  TestAnalyzeEvalQuery_DateRanges/between_两端\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"cont","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_AggregateCues/普通查询不命中"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_AggregateCues/普通查询不命中","Output":"=== CONT  TestAnalyzeEvalQuery_AggregateCues/普通查询不命中\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"cont","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_AggregateCues/一共"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_AggregateCues/一共","Output":"=== CONT  TestAnalyzeEvalQuery_AggregateCues/一共\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"cont","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_DateRanges/以前区间终点"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_DateRanges/以前区间终点","Output":"=== CONT  TestAnalyzeEvalQuery_DateRanges/以前区间终点\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"cont","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_DateRanges/since_英文区间"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_DateRanges/since_英文区间","Output":"=== CONT  TestAnalyzeEvalQuery_DateRanges/since_英文区间\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"cont","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_DateRanges/之后区间起点"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_DateRanges/之后区间起点","Output":"=== CONT  TestAnalyzeEvalQuery_DateRanges/之后区间起点\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"cont","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_DateRanges/相对日期单日"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_DateRanges/相对日期单日","Output":"=== CONT  TestAnalyzeEvalQuery_DateRanges/相对日期单日\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"cont","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_DateRanges/US_单日"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_DateRanges/US_单日","Output":"=== CONT  TestAnalyzeEvalQuery_DateRanges/US_单日\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/本周日","Output":"=== PAUSE TestResolveEvalRelativeTimes_Chinese/本周日\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"pause","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/本周日"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"cont","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_TableDriven/exclamation_question_semicolon"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_TableDriven/exclamation_question_semicolon","Output":"=== CONT  TestSplitEvalStatements_TableDriven/exclamation_question_semicolon\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_TableDriven/short_fragments_preserved","Output":"--- PASS: TestSplitEvalStatements_TableDriven/short_fragments_preserved (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_TableDriven/short_fragments_preserved","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_DateRanges/ISO_单日","Output":"--- PASS: TestAnalyzeEvalQuery_DateRanges/ISO_单日 (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_DateRanges/ISO_单日","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/上周三"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/上周三","Output":"=== RUN   TestResolveEvalRelativeTimes_Chinese/上周三\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_DateRanges/US_单日","Output":"--- PASS: TestAnalyzeEvalQuery_DateRanges/US_单日 (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_DateRanges/US_单日","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/上周三","Output":"=== PAUSE TestResolveEvalRelativeTimes_Chinese/上周三\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"pause","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/上周三"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/3_days_ago"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/3_days_ago","Output":"=== RUN   TestResolveEvalRelativeTimes_English/3_days_ago\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_DateRanges/两日期无连接词取_min..max","Output":"--- PASS: TestAnalyzeEvalQuery_DateRanges/两日期无连接词取_min..max (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_DateRanges/两日期无连接词取_min..max","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/3_days_ago","Output":"=== PAUSE TestResolveEvalRelativeTimes_English/3_days_ago\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"pause","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/3_days_ago"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/上周天"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/上周天","Output":"=== RUN   TestResolveEvalRelativeTimes_Chinese/上周天\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/上周天","Output":"=== PAUSE TestResolveEvalRelativeTimes_Chinese/上周天\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"pause","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/上周天"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_DateRanges/无日期","Output":"--- PASS: TestAnalyzeEvalQuery_DateRanges/无日期 (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_DateRanges/无日期","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_DateRanges/between_两端","Output":"--- PASS: TestAnalyzeEvalQuery_DateRanges/between_两端 (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_DateRanges/between_两端","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_DateRanges/以前区间终点","Output":"--- PASS: TestAnalyzeEvalQuery_DateRanges/以前区间终点 (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_DateRanges/以前区间终点","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_DateRanges/since_英文区间","Output":"--- PASS: TestAnalyzeEvalQuery_DateRanges/since_英文区间 (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_DateRanges/since_英文区间","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/case_insensitive"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/case_insensitive","Output":"=== RUN   TestResolveEvalRelativeTimes_English/case_insensitive\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/case_insensitive","Output":"=== PAUSE TestResolveEvalRelativeTimes_English/case_insensitive\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"pause","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/case_insensitive"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"cont","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_AggregateCues/总结"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_AggregateCues/总结","Output":"=== CONT  TestAnalyzeEvalQuery_AggregateCues/总结\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/下周一"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/下周一","Output":"=== RUN   TestResolveEvalRelativeTimes_Chinese/下周一\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/下周一","Output":"=== PAUSE TestResolveEvalRelativeTimes_Chinese/下周一\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"pause","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/下周一"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/no_english_date"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/no_english_date","Output":"=== RUN   TestResolveEvalRelativeTimes_English/no_english_date\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"cont","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_AggregateCues/英文_overall"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_AggregateCues/英文_overall","Output":"=== CONT  TestAnalyzeEvalQuery_AggregateCues/英文_overall\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/no_english_date","Output":"=== PAUSE TestResolveEvalRelativeTimes_English/no_english_date\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"pause","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/no_english_date"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/上个周日"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/上个周日","Output":"=== RUN   TestResolveEvalRelativeTimes_Chinese/上个周日\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"cont","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/case_insensitive"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/case_insensitive","Output":"=== CONT  TestResolveEvalRelativeTimes_English/case_insensitive\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"cont","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_AggregateCues/英文_summary"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_AggregateCues/英文_summary","Output":"=== CONT  TestAnalyzeEvalQuery_AggregateCues/英文_summary\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/上个周日","Output":"=== PAUSE TestResolveEvalRelativeTimes_Chinese/上个周日\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"pause","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/上个周日"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"cont","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/3_days_ago"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/3_days_ago","Output":"=== CONT  TestResolveEvalRelativeTimes_English/3_days_ago\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"cont","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_AggregateCues/概括"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_AggregateCues/概括","Output":"=== CONT  TestAnalyzeEvalQuery_AggregateCues/概括\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/case_insensitive","Output":"--- PASS: TestResolveEvalRelativeTimes_English/case_insensitive (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/case_insensitive","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"cont","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/last_monday"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/last_monday","Output":"=== CONT  TestResolveEvalRelativeTimes_English/last_monday\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"cont","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/next_month"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/next_month","Output":"=== CONT  TestResolveEvalRelativeTimes_English/next_month\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/3_days_ago","Output":"--- PASS: TestResolveEvalRelativeTimes_English/3_days_ago (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/3_days_ago","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"cont","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_AggregateCues/总共"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_AggregateCues/总共","Output":"=== CONT  TestAnalyzeEvalQuery_AggregateCues/总共\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/next_month","Output":"--- PASS: TestResolveEvalRelativeTimes_English/next_month (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/next_month","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_AggregateCues/普通查询不命中","Output":"--- PASS: TestAnalyzeEvalQuery_AggregateCues/普通查询不命中 (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_AggregateCues/普通查询不命中","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_TableDriven/exclamation_question_semicolon","Output":"--- PASS: TestSplitEvalStatements_TableDriven/exclamation_question_semicolon (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_TableDriven/exclamation_question_semicolon","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_TableDriven/newline_split","Output":"--- PASS: TestSplitEvalStatements_TableDriven/newline_split (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_TableDriven/newline_split","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_TableDriven/english_period-space-lowercase_no_split","Output":"--- PASS: TestSplitEvalStatements_TableDriven/english_period-space-lowercase_no_split (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_TableDriven/english_period-space-lowercase_no_split","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"cont","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_AggregateCues/英文_how_many_times"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_AggregateCues/英文_how_many_times","Output":"=== CONT  TestAnalyzeEvalQuery_AggregateCues/英文_how_many_times\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_DateRanges/之后区间起点","Output":"--- PASS: TestAnalyzeEvalQuery_DateRanges/之后区间起点 (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_DateRanges/之后区间起点","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"cont","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/today"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/today","Output":"=== CONT  TestResolveEvalRelativeTimes_English/today\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_DateRanges/相对日期单日","Output":"--- PASS: TestAnalyzeEvalQuery_DateRanges/相对日期单日 (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_DateRanges/相对日期单日","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_DateRanges/从…到…_两端","Output":"--- PASS: TestAnalyzeEvalQuery_DateRanges/从…到…_两端 (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_DateRanges/从…到…_两端","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"cont","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/no_english_date"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/no_english_date","Output":"=== CONT  TestResolveEvalRelativeTimes_English/no_english_date\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_DateRanges","Output":"--- PASS: TestAnalyzeEvalQuery_DateRanges (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_DateRanges","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/上个月"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/上个月","Output":"=== RUN   TestResolveEvalRelativeTimes_Chinese/上个月\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/上个月","Output":"=== PAUSE TestResolveEvalRelativeTimes_Chinese/上个月\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"pause","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/上个月"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"cont","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/last_week"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/last_week","Output":"=== CONT  TestResolveEvalRelativeTimes_English/last_week\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"cont","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/tomorrow"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/tomorrow","Output":"=== CONT  TestResolveEvalRelativeTimes_English/tomorrow\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/下个月"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/下个月","Output":"=== RUN   TestResolveEvalRelativeTimes_Chinese/下个月\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/下个月","Output":"=== PAUSE TestResolveEvalRelativeTimes_Chinese/下个月\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"pause","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/下个月"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"cont","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/last_month"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/last_month","Output":"=== CONT  TestResolveEvalRelativeTimes_English/last_month\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"cont","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/next_week"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/next_week","Output":"=== CONT  TestResolveEvalRelativeTimes_English/next_week\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/去年"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/去年","Output":"=== RUN   TestResolveEvalRelativeTimes_Chinese/去年\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/去年","Output":"=== PAUSE TestResolveEvalRelativeTimes_Chinese/去年\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"pause","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/去年"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"cont","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/last_wednesday"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/last_wednesday","Output":"=== CONT  TestResolveEvalRelativeTimes_English/last_wednesday\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/明年"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/明年","Output":"=== RUN   TestResolveEvalRelativeTimes_Chinese/明年\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"cont","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/yesterday"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/yesterday","Output":"=== CONT  TestResolveEvalRelativeTimes_English/yesterday\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/明年","Output":"=== PAUSE TestResolveEvalRelativeTimes_Chinese/明年\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"pause","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/明年"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"cont","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/in_5_days"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/in_5_days","Output":"=== CONT  TestResolveEvalRelativeTimes_English/in_5_days\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/三天前"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/三天前","Output":"=== RUN   TestResolveEvalRelativeTimes_Chinese/三天前\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/三天前","Output":"=== PAUSE TestResolveEvalRelativeTimes_Chinese/三天前\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"pause","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/三天前"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_AggregateCues/概括","Output":"--- PASS: TestAnalyzeEvalQuery_AggregateCues/概括 (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_AggregateCues/概括","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/10天后"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/10天后","Output":"=== RUN   TestResolveEvalRelativeTimes_Chinese/10天后\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_TableDriven/english_period-space-uppercase","Output":"--- PASS: TestSplitEvalStatements_TableDriven/english_period-space-uppercase (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_TableDriven/english_period-space-uppercase","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/last_monday","Output":"--- PASS: TestResolveEvalRelativeTimes_English/last_monday (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/last_monday","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/10天后","Output":"=== PAUSE TestResolveEvalRelativeTimes_Chinese/10天后\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"pause","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/10天后"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_AggregateCues/总结","Output":"--- PASS: TestAnalyzeEvalQuery_AggregateCues/总结 (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_AggregateCues/总结","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_TableDriven/chinese_sentence_delimiters","Output":"--- PASS: TestSplitEvalStatements_TableDriven/chinese_sentence_delimiters (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_TableDriven/chinese_sentence_delimiters","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/today","Output":"--- PASS: TestResolveEvalRelativeTimes_English/today (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/today","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/last_month","Output":"--- PASS: TestResolveEvalRelativeTimes_English/last_month (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/last_month","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/next_week","Output":"--- PASS: TestResolveEvalRelativeTimes_English/next_week (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/next_week","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/yesterday","Output":"--- PASS: TestResolveEvalRelativeTimes_English/yesterday (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/yesterday","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/last_wednesday","Output":"--- PASS: TestResolveEvalRelativeTimes_English/last_wednesday (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/last_wednesday","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_AggregateCues/一共","Output":"--- PASS: TestAnalyzeEvalQuery_AggregateCues/一共 (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_AggregateCues/一共","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_TableDriven","Output":"--- PASS: TestSplitEvalStatements_TableDriven (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestSplitEvalStatements_TableDriven","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_AggregateCues/英文_overall","Output":"--- PASS: TestAnalyzeEvalQuery_AggregateCues/英文_overall (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_AggregateCues/英文_overall","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9599722+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_AggregateCues/英文_summary","Output":"--- PASS: TestAnalyzeEvalQuery_AggregateCues/英文_summary (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_AggregateCues/英文_summary","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/no_english_date","Output":"--- PASS: TestResolveEvalRelativeTimes_English/no_english_date (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/no_english_date","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_AggregateCues/总共","Output":"--- PASS: TestAnalyzeEvalQuery_AggregateCues/总共 (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_AggregateCues/总共","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/两周前"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/两周前","Output":"=== RUN   TestResolveEvalRelativeTimes_Chinese/两周前\n"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/last_week","Output":"--- PASS: TestResolveEvalRelativeTimes_English/last_week (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/last_week","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_AggregateCues/英文_how_many_times","Output":"--- PASS: TestAnalyzeEvalQuery_AggregateCues/英文_how_many_times (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_AggregateCues/英文_how_many_times","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/tomorrow","Output":"--- PASS: TestResolveEvalRelativeTimes_English/tomorrow (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/tomorrow","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/两周前","Output":"=== PAUSE TestResolveEvalRelativeTimes_Chinese/两周前\n"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"pause","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/两周前"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_AggregateCues","Output":"--- PASS: TestAnalyzeEvalQuery_AggregateCues (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestAnalyzeEvalQuery_AggregateCues","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/in_5_days","Output":"--- PASS: TestResolveEvalRelativeTimes_English/in_5_days (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English/in_5_days","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/3周后"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/3周后","Output":"=== RUN   TestResolveEvalRelativeTimes_Chinese/3周后\n"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/3周后","Output":"=== PAUSE TestResolveEvalRelativeTimes_Chinese/3周后\n"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"pause","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/3周后"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/一个月前"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/一个月前","Output":"=== RUN   TestResolveEvalRelativeTimes_Chinese/一个月前\n"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English","Output":"--- PASS: TestResolveEvalRelativeTimes_English (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_English","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/一个月前","Output":"=== PAUSE TestResolveEvalRelativeTimes_Chinese/一个月前\n"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"pause","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/一个月前"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/两个月后"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/两个月后","Output":"=== RUN   TestResolveEvalRelativeTimes_Chinese/两个月后\n"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/两个月后","Output":"=== PAUSE TestResolveEvalRelativeTimes_Chinese/两个月后\n"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"pause","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/两个月后"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"run","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/multiple_deduped"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/multiple_deduped","Output":"=== RUN   TestResolveEvalRelativeTimes_Chinese/multiple_deduped\n"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/multiple_deduped","Output":"=== PAUSE TestResolveEvalRelativeTimes_Chinese/multiple_deduped\n"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"pause","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/multiple_deduped"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"cont","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/empty"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/empty","Output":"=== CONT  TestResolveEvalRelativeTimes_Chinese/empty\n"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"cont","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/上个周日"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/上个周日","Output":"=== CONT  TestResolveEvalRelativeTimes_Chinese/上个周日\n"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"cont","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/昨天"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/昨天","Output":"=== CONT  TestResolveEvalRelativeTimes_Chinese/昨天\n"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"cont","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/10天后"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/10天后","Output":"=== CONT  TestResolveEvalRelativeTimes_Chinese/10天后\n"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/empty","Output":"--- PASS: TestResolveEvalRelativeTimes_Chinese/empty (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/empty","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"cont","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/no_date_expr"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/no_date_expr","Output":"=== CONT  TestResolveEvalRelativeTimes_Chinese/no_date_expr\n"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"cont","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/上个月"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/上个月","Output":"=== CONT  TestResolveEvalRelativeTimes_Chinese/上个月\n"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"cont","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/两周前"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/两周前","Output":"=== CONT  TestResolveEvalRelativeTimes_Chinese/两周前\n"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"cont","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/上周三"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/上周三","Output":"=== CONT  TestResolveEvalRelativeTimes_Chinese/上周三\n"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"cont","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/本周日"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/本周日","Output":"=== CONT  TestResolveEvalRelativeTimes_Chinese/本周日\n"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"cont","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/本周三"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/本周三","Output":"=== CONT  TestResolveEvalRelativeTimes_Chinese/本周三\n"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"cont","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/后天"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/后天","Output":"=== CONT  TestResolveEvalRelativeTimes_Chinese/后天\n"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"cont","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/明天"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/明天","Output":"=== CONT  TestResolveEvalRelativeTimes_Chinese/明天\n"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"cont","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/大前天"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/大前天","Output":"=== CONT  TestResolveEvalRelativeTimes_Chinese/大前天\n"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"cont","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/前天"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/前天","Output":"=== CONT  TestResolveEvalRelativeTimes_Chinese/前天\n"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"cont","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/下周一"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/下周一","Output":"=== CONT  TestResolveEvalRelativeTimes_Chinese/下周一\n"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"cont","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/今天"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/今天","Output":"=== CONT  TestResolveEvalRelativeTimes_Chinese/今天\n"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"cont","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/一个月前"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/一个月前","Output":"=== CONT  TestResolveEvalRelativeTimes_Chinese/一个月前\n"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"cont","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/三天前"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/三天前","Output":"=== CONT  TestResolveEvalRelativeTimes_Chinese/三天前\n"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"cont","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/multiple_deduped"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/multiple_deduped","Output":"=== CONT  TestResolveEvalRelativeTimes_Chinese/multiple_deduped\n"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"cont","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/明年"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/明年","Output":"=== CONT  TestResolveEvalRelativeTimes_Chinese/明年\n"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"cont","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/去年"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/去年","Output":"=== CONT  TestResolveEvalRelativeTimes_Chinese/去年\n"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/10天后","Output":"--- PASS: TestResolveEvalRelativeTimes_Chinese/10天后 (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/10天后","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/明年","Output":"--- PASS: TestResolveEvalRelativeTimes_Chinese/明年 (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/明年","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"cont","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/下个月"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/下个月","Output":"=== CONT  TestResolveEvalRelativeTimes_Chinese/下个月\n"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/去年","Output":"--- PASS: TestResolveEvalRelativeTimes_Chinese/去年 (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/去年","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"cont","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/上周天"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/上周天","Output":"=== CONT  TestResolveEvalRelativeTimes_Chinese/上周天\n"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/下个月","Output":"--- PASS: TestResolveEvalRelativeTimes_Chinese/下个月 (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/下个月","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/multiple_deduped","Output":"--- PASS: TestResolveEvalRelativeTimes_Chinese/multiple_deduped (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/multiple_deduped","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"cont","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/3周后"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/3周后","Output":"=== CONT  TestResolveEvalRelativeTimes_Chinese/3周后\n"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/上个周日","Output":"--- PASS: TestResolveEvalRelativeTimes_Chinese/上个周日 (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/上个周日","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"cont","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/两个月后"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/两个月后","Output":"=== CONT  TestResolveEvalRelativeTimes_Chinese/两个月后\n"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/3周后","Output":"--- PASS: TestResolveEvalRelativeTimes_Chinese/3周后 (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/3周后","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/两个月后","Output":"--- PASS: TestResolveEvalRelativeTimes_Chinese/两个月后 (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/两个月后","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/no_date_expr","Output":"--- PASS: TestResolveEvalRelativeTimes_Chinese/no_date_expr (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/no_date_expr","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/上个月","Output":"--- PASS: TestResolveEvalRelativeTimes_Chinese/上个月 (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/上个月","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/两周前","Output":"--- PASS: TestResolveEvalRelativeTimes_Chinese/两周前 (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/两周前","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/本周日","Output":"--- PASS: TestResolveEvalRelativeTimes_Chinese/本周日 (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/本周日","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/本周三","Output":"--- PASS: TestResolveEvalRelativeTimes_Chinese/本周三 (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/本周三","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/上周三","Output":"--- PASS: TestResolveEvalRelativeTimes_Chinese/上周三 (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/上周三","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/后天","Output":"--- PASS: TestResolveEvalRelativeTimes_Chinese/后天 (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/后天","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/明天","Output":"--- PASS: TestResolveEvalRelativeTimes_Chinese/明天 (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/明天","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/大前天","Output":"--- PASS: TestResolveEvalRelativeTimes_Chinese/大前天 (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/大前天","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/前天","Output":"--- PASS: TestResolveEvalRelativeTimes_Chinese/前天 (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/前天","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/今天","Output":"--- PASS: TestResolveEvalRelativeTimes_Chinese/今天 (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/今天","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/一个月前","Output":"--- PASS: TestResolveEvalRelativeTimes_Chinese/一个月前 (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/一个月前","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/下周一","Output":"--- PASS: TestResolveEvalRelativeTimes_Chinese/下周一 (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/下周一","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/三天前","Output":"--- PASS: TestResolveEvalRelativeTimes_Chinese/三天前 (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/三天前","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/昨天","Output":"--- PASS: TestResolveEvalRelativeTimes_Chinese/昨天 (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/昨天","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/上周天","Output":"--- PASS: TestResolveEvalRelativeTimes_Chinese/上周天 (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese/上周天","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"output","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese","Output":"--- PASS: TestResolveEvalRelativeTimes_Chinese (0.00s)\n"}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Test":"TestResolveEvalRelativeTimes_Chinese","Elapsed":0}
+{"Time":"2026-10-22T22:28:44.9609718+08:00","Action":"output","Package":"aranea-agents/internal/biz","Output":"PASS\n"}
+{"Time":"2026-10-22T22:28:44.9659728+08:00","Action":"output","Package":"aranea-agents/internal/biz","Output":"ok  \taranea-agents/internal/biz\t0.683s\n"}
+{"Time":"2026-10-22T22:28:44.9659728+08:00","Action":"pass","Package":"aranea-agents/internal/biz","Elapsed":0.683}

@@ -93,6 +93,7 @@ function mapDocument(raw: unknown): KnowledgeDocument {
     doc_type: pickStr(r, 'doc_type', 'docType'),
     visibility: pickStr(r, 'visibility', 'visibility') || 'collection',
     owner_user_id: pickStr(r, 'owner_user_id', 'ownerUserId'),
+    shared_with: pickStrList(r, 'shared_with', 'sharedWith'),
   };
 }
 
@@ -170,7 +171,7 @@ export async function createCollection(input: CreateCollectionInput): Promise<Kn
     description: input.description ?? '',
     embeddingModel: input.embedding_model ?? '',
     rootPath: input.root_path,
-    vaultBackend: undefined,
+    vaultBackend: input.vault_backend ?? 'team',
   });
   return mapCollection(raw);
 }
@@ -203,6 +204,7 @@ export async function ingestDocument(input: IngestDocumentInput): Promise<Knowle
     chunkStrategy: input.chunk_strategy ?? '',
     organizeToMarkdown: input.organize_to_markdown,
     targetDir: input.target_dir ?? '',
+    parentChunkSize: undefined,
   });
   return mapDocument(raw);
 }
@@ -218,17 +220,23 @@ export async function getDocumentContent(id: string): Promise<KnowledgeDocumentC
   };
 }
 
+/** 单篇元数据按权限读取；深链/跨库命中不能依赖当前分页列表。 */
+export async function getDocument(id: string): Promise<KnowledgeDocument> {
+  return mapDocument(await svc.GetDocument({ id }));
+}
+
 /** updateDocumentContent 编辑保存（G2-B5）：body 写回 vault 文件（frontmatter 保留），
  *  CAS 冲突仍写入并留双份（返回 conflict=true，前端提示重载）。 */
 export async function updateDocumentContent(
   id: string,
   content: string,
   baseHash: string,
-): Promise<{ document: KnowledgeDocument; conflict: boolean }> {
+): Promise<{ document: KnowledgeDocument; conflict: boolean; base_hash?: string }> {
   const r = asRecord(await svc.UpdateDocumentContent({ id, content, baseHash }));
   return {
     document: mapDocument(r.document ?? r.Document),
     conflict: pickBool(r, 'conflict', 'conflict'),
+    base_hash: pickStr(r, 'base_hash', 'baseHash'),
   };
 }
 
@@ -263,6 +271,7 @@ export async function reembedDocuments(
       docIds: docIds ?? [],
       chunkSize: chunkSize ?? 0,
       chunkOverlap: chunkOverlap ?? 0,
+      chunkStrategy: undefined,
     }),
   );
   return {
@@ -535,12 +544,14 @@ export async function getWriteBackHome(): Promise<WriteBackHome> {
 
 export async function updateDocumentVisibility(
   id: string,
-  visibility: 'collection' | 'private',
-): Promise<{ id: string; visibility: string; owner_user_id: string }> {
+  visibility: 'collection' | 'private' | 'shared',
+  sharedWith: string[] = [],
+): Promise<{ id: string; visibility: string; owner_user_id: string; shared_with?: string[] }> {
   const r = asRecord(
     (
       await kratosApi.post(`/v1/knowledge/documents/${encodeURIComponent(id)}/visibility`, {
         visibility,
+        ...(visibility === 'shared' ? { shared_with: sharedWith } : {}),
       })
     ).data,
   );
@@ -548,6 +559,7 @@ export async function updateDocumentVisibility(
     id: pickStr(r, 'id', 'id'),
     visibility: pickStr(r, 'visibility', 'visibility') || 'collection',
     owner_user_id: pickStr(r, 'owner_user_id', 'ownerUserId'),
+    shared_with: pickStrList(r, 'shared_with', 'sharedWith'),
   };
 }
 

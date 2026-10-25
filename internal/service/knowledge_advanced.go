@@ -65,6 +65,10 @@ func NewKnowledgeGraphExpander(repo biz.KnowledgeRepo, lg loggateway.Logger) *kn
 	if active, ok := repo.(bizknowledge.ActiveLinkReader); ok {
 		expander.SetActiveLinks(active)
 	}
+	// G-05-asof：repo 实现时态读端口时启用 as-of 扩散腿（同实例窄接口断言）。
+	if temporal, ok := repo.(bizknowledge.TemporalActiveLinkReader); ok {
+		expander.SetTemporalActiveLinks(temporal)
+	}
 	return expander
 }
 

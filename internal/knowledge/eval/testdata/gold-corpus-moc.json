@@ -1,0 +1,20 @@
+{
+  "docs": [
+    {"id": "moc", "title": "发布体系", "body": "摘要：本簇梳理发布全链路公共主题，覆盖放量策略与可逆保障两个互补关注点。"},
+    {"id": "hub", "title": "发布体系核心", "body": "核心词条正文：统筹发布过程的两要素。"},
+    {"id": "gray", "title": "灰度放量", "body": "放量词条正文：按比例逐步扩大流量，降低全量事故面。"},
+    {"id": "rollback", "title": "回滚预案", "body": "可逆词条正文：异常时秒级回退至稳定版本。"},
+    {"id": "noise", "title": "无关文档", "body": "无关文档正文：不与任何文档成链的其它主题。"}
+  ],
+  "seeds": {
+    "发布全链路的公共主题是什么": "moc"
+  },
+  "edges": [
+    {"id": "E-hub", "doc": "moc", "target": "hub", "link_type": "explicit",
+     "valid_from": "2026-01-01T00:00:00Z", "recorded_at": "2026-01-01T00:00:00Z"},
+    {"id": "E-gray", "doc": "moc", "target": "gray", "link_type": "explicit",
+     "valid_from": "2026-01-01T00:00:00Z", "recorded_at": "2026-01-01T00:00:00Z"},
+    {"id": "E-rollback", "doc": "moc", "target": "rollback", "link_type": "explicit",
+     "valid_from": "2026-01-01T00:00:00Z", "recorded_at": "2026-01-01T00:00:00Z"}
+  ]
+}

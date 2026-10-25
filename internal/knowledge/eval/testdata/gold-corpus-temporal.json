@@ -1,0 +1,21 @@
+{
+  "docs": [
+    {"id": "hub", "title": "时态中枢", "body": "中枢正文：本句不含任何其它文档标题。"},
+    {"id": "persist", "title": "存续目标", "body": "存续目标正文：整段一句话。"},
+    {"id": "closed", "title": "闭合目标", "body": "闭合目标正文：整段一句话。"},
+    {"id": "future", "title": "未来目标", "body": "未来目标正文：整段一句话。"},
+    {"id": "distract", "title": "孤立文档", "body": "孤立文档正文：不与任何文档成链。"}
+  ],
+  "seeds": {
+    "从时态中枢顺出": "hub"
+  },
+  "edges": [
+    {"id": "A-persist", "doc": "hub", "target": "persist", "link_type": "explicit",
+     "valid_from": "2026-01-01T00:00:00Z", "recorded_at": "2026-01-01T00:00:00Z"},
+    {"id": "B-closed", "doc": "hub", "target": "closed", "link_type": "semantic",
+     "valid_from": "2026-01-01T00:00:00Z", "valid_to": "2026-02-01T00:00:00Z",
+     "recorded_at": "2026-01-01T00:00:00Z"},
+    {"id": "C-future", "doc": "hub", "target": "future", "link_type": "semantic",
+     "valid_from": "2026-02-01T00:00:00Z", "recorded_at": "2026-02-01T00:00:00Z"}
+  ]
+}

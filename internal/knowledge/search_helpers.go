@@ -5,6 +5,8 @@ import (
 	"strings"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/workspace"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -55,16 +57,17 @@ func SearchWithEvaluation(ctx context.Context, searcher ChunkSearcher, assessor 
 // dense 路径对 NULL embedding 排序恒空，静默返回空结果且用户无感知
 // （2026-08-10 运行时事故）。
 //
-// GetCollection 失败（如集合不存在）时返回 false：保持原路径，
-// 由 SearchChunks 产生原有错误语义。collectionID 为空（federated 逐集合
-// 分发前）同样返回 false——调用方保证逐集合设置后再检索。
-func collectionLacksSemanticLayer(ctx context.Context, repo biz.KnowledgeRepo, collectionID string) bool {
+// 库读取与 workspace 授权是所有检索分支的共同前置条件；失败不得降级继续。
+func collectionLacksSemanticLayer(ctx context.Context, repo biz.KnowledgeRepo, collectionID string) (bool, error) {
 	if repo == nil || collectionID == "" {
-		return false
+		return false, apierror.BadRequest(apierror.DomainKnowledge, "collection_id is required")
 	}
 	col, err := repo.GetCollection(ctx, collectionID)
 	if err != nil {
-		return false
+		return false, err
 	}
-	return strings.TrimSpace(col.EmbeddingModel) == ""
+	if err := workspace.AssertWorkspaceOrShared(workspace.IDFromContext(ctx), col.Workspace); err != nil {
+		return false, apierror.NotFound(apierror.DomainKnowledge, "knowledge collection not found")
+	}
+	return strings.TrimSpace(col.EmbeddingModel) == "", nil
 }

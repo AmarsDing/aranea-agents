@@ -97,6 +97,7 @@ describe('WorkbenchSidebar 重嵌入入口（B1）', () => {
 
   it('文件行菜单含仅自己可见 / 库内可见并发射 file-action', async () => {
     const w = mountSidebar(semanticVault);
+    await w.setProps({ isAdmin: true });
     await w.find('[data-test="file-private"]').trigger('click');
     await w.find('[data-test="file-collection"]').trigger('click');
     expect(w.emitted('file-action')).toEqual([
@@ -104,4 +105,11 @@ describe('WorkbenchSidebar 重嵌入入口（B1）', () => {
       ['collection', fileNode],
     ]);
   });
+});
+
+it('does not allow a reader to change visibility of an unowned document', async () => {
+  const w = mountSidebar(semanticVault);
+  expect(w.find('[data-test="file-private"]').attributes('data-disabled')).toBe('true');
+  await w.find('[data-test="file-private"]').trigger('click');
+  expect(w.emitted('file-action')).toBeUndefined();
 });

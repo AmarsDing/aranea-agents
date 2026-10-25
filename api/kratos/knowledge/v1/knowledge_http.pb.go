@@ -29,6 +29,7 @@ const OperationKnowledgeServiceDeleteCollection = "/kratos.knowledge.v1.Knowledg
 const OperationKnowledgeServiceDeleteDocument = "/kratos.knowledge.v1.KnowledgeService/DeleteDocument"
 const OperationKnowledgeServiceEnableCollectionSemantic = "/kratos.knowledge.v1.KnowledgeService/EnableCollectionSemantic"
 const OperationKnowledgeServiceGetCollection = "/kratos.knowledge.v1.KnowledgeService/GetCollection"
+const OperationKnowledgeServiceGetDocument = "/kratos.knowledge.v1.KnowledgeService/GetDocument"
 const OperationKnowledgeServiceGetDocumentContent = "/kratos.knowledge.v1.KnowledgeService/GetDocumentContent"
 const OperationKnowledgeServiceGetEmbedderConfig = "/kratos.knowledge.v1.KnowledgeService/GetEmbedderConfig"
 const OperationKnowledgeServiceIngestDocument = "/kratos.knowledge.v1.KnowledgeService/IngestDocument"
@@ -79,6 +80,7 @@ type KnowledgeServiceHTTPServer interface {
 	// B1 re-embed pipeline. CodeBadRequest when the embedder is not configured.
 	EnableCollectionSemantic(context.Context, *EnableCollectionSemanticRequest) (*EnableCollectionSemanticResponse, error)
 	GetCollection(context.Context, *GetCollectionRequest) (*KnowledgeCollection, error)
+	GetDocument(context.Context, *GetDocumentRequest) (*KnowledgeDocument, error)
 	GetDocumentContent(context.Context, *GetDocumentContentRequest) (*DocumentContent, error)
 	GetEmbedderConfig(context.Context, *GetEmbedderConfigRequest) (*EmbedderConfig, error)
 	// IngestDocument Documents
@@ -175,6 +177,7 @@ func RegisterKnowledgeServiceHTTPServer(s *http.Server, srv KnowledgeServiceHTTP
 	r.POST("/v1/knowledge/documents", _KnowledgeService_IngestDocument0_HTTP_Handler(srv))
 	r.GET("/v1/knowledge/documents", _KnowledgeService_ListDocuments0_HTTP_Handler(srv))
 	r.GET("/v1/knowledge/documents/{id}/content", _KnowledgeService_GetDocumentContent0_HTTP_Handler(srv))
+	r.GET("/v1/knowledge/documents/{id}", _KnowledgeService_GetDocument0_HTTP_Handler(srv))
 	r.DELETE("/v1/knowledge/documents/{id}", _KnowledgeService_DeleteDocument0_HTTP_Handler(srv))
 	r.POST("/v1/knowledge/documents/{id}/move", _KnowledgeService_MoveDocument0_HTTP_Handler(srv))
 	r.POST("/v1/knowledge/documents/{id}/move_to_dir", _KnowledgeService_MoveDocumentToDir0_HTTP_Handler(srv))
@@ -351,6 +354,28 @@ func _KnowledgeService_GetDocumentContent0_HTTP_Handler(srv KnowledgeServiceHTTP
 			return err
 		}
 		reply := out.(*DocumentContent)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _KnowledgeService_GetDocument0_HTTP_Handler(srv KnowledgeServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in GetDocumentRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationKnowledgeServiceGetDocument)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.GetDocument(ctx, req.(*GetDocumentRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*KnowledgeDocument)
 		return ctx.Result(200, reply)
 	}
 }
@@ -1070,6 +1095,7 @@ type KnowledgeServiceHTTPClient interface {
 	// B1 re-embed pipeline. CodeBadRequest when the embedder is not configured.
 	EnableCollectionSemantic(ctx context.Context, req *EnableCollectionSemanticRequest, opts ...http.CallOption) (rsp *EnableCollectionSemanticResponse, err error)
 	GetCollection(ctx context.Context, req *GetCollectionRequest, opts ...http.CallOption) (rsp *KnowledgeCollection, err error)
+	GetDocument(ctx context.Context, req *GetDocumentRequest, opts ...http.CallOption) (rsp *KnowledgeDocument, err error)
 	GetDocumentContent(ctx context.Context, req *GetDocumentContentRequest, opts ...http.CallOption) (rsp *DocumentContent, err error)
 	GetEmbedderConfig(ctx context.Context, req *GetEmbedderConfigRequest, opts ...http.CallOption) (rsp *EmbedderConfig, err error)
 	// IngestDocument Documents
@@ -1286,6 +1312,19 @@ func (c *KnowledgeServiceHTTPClientImpl) GetCollection(ctx context.Context, in *
 	pattern := "/v1/knowledge/collections/{id}"
 	path := binding.EncodeURL(pattern, in, true)
 	opts = append(opts, http.Operation(OperationKnowledgeServiceGetCollection))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *KnowledgeServiceHTTPClientImpl) GetDocument(ctx context.Context, in *GetDocumentRequest, opts ...http.CallOption) (*KnowledgeDocument, error) {
+	var out KnowledgeDocument
+	pattern := "/v1/knowledge/documents/{id}"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationKnowledgeServiceGetDocument))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
 	if err != nil {

@@ -7,7 +7,7 @@
  * - 点击超点 → 触发 focus-group 事件（父组件过滤右侧面板 + 飞行相机到组中心）
  */
 import * as THREE from 'three';
-import type { GraphModel } from '../../../features/knowledge/graph3d/model';
+import type { GraphModel } from '../../../../features/knowledge/graph3d/model';
 
 /** 超点半径系数（√成员数 × 系数）。 */
 export const AGG_SIZE_BASE = 4.0;

@@ -142,6 +142,9 @@ const MEMBER_STATUS_KEY_MAP: Record<string, string> = {
   completed: 'observe.statusCompleted',
   failed: 'observe.statusFailed',
   skipped: 'observe.statusSkipped',
+  paused: 'observe.statusPaused',
+  // MemberSessionStatus 无 cancelled，属防御性补全
+  cancelled: 'observe.statusCancelled',
 };
 
 function memberStatusLabel(status: string): string {
@@ -275,8 +278,12 @@ function memberStatusLabel(status: string): string {
   &--failed
     background: var(--color-danger)
 
+  &--paused
+    background: var(--color-warning)
+
   &--pending,
-  &--skipped
+  &--skipped,
+  &--cancelled
     background: var(--color-text-tertiary)
 
 .observe-node-detail__member-info
@@ -312,8 +319,12 @@ function memberStatusLabel(status: string): string {
   &--failed
     color: var(--color-danger)
 
+  &--paused
+    color: var(--color-warning)
+
   &--pending,
-  &--skipped
+  &--skipped,
+  &--cancelled
     color: var(--color-text-tertiary)
 
 .observe-node-detail__media-grid

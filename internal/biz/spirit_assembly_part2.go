@@ -19,7 +19,10 @@ func buildSpiritTeamDefinitionJSON(mode string, agentKeys []string, lg loggatewa
 	roles := make([]string, len(agentKeys))
 	for i := range agentKeys {
 		role := RoleWorker
-		if mode == TeamModeCoordinator && i == 0 {
+		// D8-6 防御纵深：合成者前提=存在其他成员产出——coordinator 分支与
+		// parallel 末成员规则同源，任何不经 AssembleTeam 归一化（或归一化
+		// 被未来调用方绕过）的调用方在此也不会给单成员授 synthesizer。
+		if mode == TeamModeCoordinator && i == 0 && len(agentKeys) > 1 {
 			role = RoleSynthesizer
 		}
 		if mode == TeamModeParallel && i == len(agentKeys)-1 && len(agentKeys) > 1 {

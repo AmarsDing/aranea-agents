@@ -211,3 +211,45 @@ export type CacheHitRatioStat = {
   /** 单轮命中率中位数——llm.cache_hit_ratio_low 告警以此为键。 */
   p50_ratio: number;
 };
+
+/* ---------------- 概览页·注意力队列（attention board） ---------------- */
+
+/** 注意力条目的严重度（与语义色一一对应）。 */
+export type AttentionSeverity = 'critical' | 'warning' | 'info';
+
+/** 注意力队列分栏。 */
+export type AttentionLane = 'alerts' | 'failed_runs' | 'call_errors' | 'backlog';
+
+export type AttentionItem = {
+  id: string;
+  lane: AttentionLane;
+  severity: AttentionSeverity;
+  /** 主体名（告警名 / 任务名 / Agent 名 / 模型名）。 */
+  title: string;
+  /** 触发值或错误摘要（已截断）。 */
+  detail: string;
+  /** ISO 时间戳；用于 age 展示。 */
+  occurred_at: string;
+  /** 下钻路由（vue-router LocationRaw）；无合适落点则为空（不渲染箭头）。 */
+  to?: { path: string; query?: Record<string, string> };
+};
+
+export type AttentionLaneState = {
+  lane: AttentionLane;
+  items: AttentionItem[];
+  /** 分栏计数徽标（可能与 items.length 不同，如聚合计数或未截断总数）。 */
+  count: number;
+};
+
+export type AttentionBoard = {
+  lanes: AttentionLaneState[];
+  /** 全页裁决：critical→红、warning→琥珀、ok→绿。 */
+  worstSeverity: 'critical' | 'warning' | 'ok';
+  /** 裁决横幅上的分项计数（按 lane）。 */
+  counts: Record<AttentionLane, number>;
+  /** 各数据源最新一次成功拉取时间（ISO）。 */
+  updatedAt: string;
+};
+
+/** Anomaly / 失败调用视为异常的状态集合（排除用户主动取消）。 */
+export const ATTENTION_ERROR_STATUSES = new Set(['failed', 'error', 'timeout']);

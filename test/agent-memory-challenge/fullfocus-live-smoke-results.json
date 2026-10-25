@@ -1,0 +1,207 @@
+{
+  "created_at": "2026-10-22T22:54:12.4730633+08:00",
+  "checks": [
+    {
+      "check": "health",
+      "passed": true
+    },
+    {
+      "check": "Add synchronous acknowledgement and identifiers",
+      "passed": true
+    },
+    {
+      "check": "Add synchronous acknowledgement and identifiers",
+      "passed": true
+    },
+    {
+      "check": "top_k respected",
+      "passed": true
+    },
+    {
+      "check": "forgotten evidence absent from current history and transcript",
+      "passed": true
+    },
+    {
+      "check": "top_k respected",
+      "passed": true
+    },
+    {
+      "check": "forgotten evidence absent from current history and transcript",
+      "passed": true
+    },
+    {
+      "check": "top_k respected",
+      "passed": true
+    },
+    {
+      "check": "forgotten evidence absent from current history and transcript",
+      "passed": true
+    },
+    {
+      "check": "Add synchronous acknowledgement and identifiers",
+      "passed": true
+    },
+    {
+      "check": "top_k respected",
+      "passed": true
+    },
+    {
+      "check": "deletion remains scoped and quoted commands are data",
+      "passed": true
+    },
+    {
+      "check": "Add synchronous acknowledgement and identifiers",
+      "passed": true
+    },
+    {
+      "check": "top_k respected",
+      "passed": true
+    },
+    {
+      "check": "persistent suppression blocks new matching facts",
+      "passed": true
+    },
+    {
+      "check": "Add synchronous acknowledgement and identifiers",
+      "passed": true
+    },
+    {
+      "check": "top_k respected",
+      "passed": true
+    },
+    {
+      "check": "explicit resume accepts fresh data without reviving deleted data",
+      "passed": true
+    },
+    {
+      "check": "Add synchronous acknowledgement and identifiers",
+      "passed": true
+    },
+    {
+      "check": "top_k respected",
+      "passed": true
+    },
+    {
+      "check": "JSON fields and collection preserved in one result",
+      "passed": true
+    },
+    {
+      "check": "Add synchronous acknowledgement and identifiers",
+      "passed": true
+    },
+    {
+      "check": "top_k respected",
+      "passed": true
+    },
+    {
+      "check": "workflow headers and ordered steps preserved",
+      "passed": true
+    },
+    {
+      "check": "Add synchronous acknowledgement and identifiers",
+      "passed": true
+    },
+    {
+      "check": "Add synchronous acknowledgement and identifiers",
+      "passed": true
+    },
+    {
+      "check": "Add synchronous acknowledgement and identifiers",
+      "passed": true
+    },
+    {
+      "check": "Add synchronous acknowledgement and identifiers",
+      "passed": true
+    },
+    {
+      "check": "top_k respected",
+      "passed": true
+    },
+    {
+      "check": "two-hop support crosses sessions with original sources",
+      "passed": true
+    },
+    {
+      "check": "Add synchronous acknowledgement and identifiers",
+      "passed": true
+    },
+    {
+      "check": "top_k respected",
+      "passed": true
+    },
+    {
+      "check": "relevant personal background does not borrow friend health",
+      "passed": true
+    },
+    {
+      "check": "Add synchronous acknowledgement and identifiers",
+      "passed": true
+    },
+    {
+      "check": "top_k respected",
+      "passed": true
+    },
+    {
+      "check": "same-project format updates and cross-project exclusions",
+      "passed": true
+    },
+    {
+      "check": "top_k respected",
+      "passed": true
+    },
+    {
+      "check": "other project format survives independent update",
+      "passed": true
+    },
+    {
+      "check": "Add synchronous acknowledgement and identifiers",
+      "passed": true
+    },
+    {
+      "check": "top_k respected",
+      "passed": true
+    },
+    {
+      "check": "historical query respects source local midnight",
+      "passed": true
+    },
+    {
+      "check": "top_k respected",
+      "passed": true
+    },
+    {
+      "check": "expired state excluded at exact midnight boundary",
+      "passed": true
+    },
+    {
+      "check": "top_k respected",
+      "passed": true
+    },
+    {
+      "check": "no evidence seed remains empty",
+      "passed": true
+    },
+    {
+      "check": "Add synchronous acknowledgement and identifiers",
+      "passed": true
+    },
+    {
+      "check": "top_k respected",
+      "passed": true
+    },
+    {
+      "check": "forget all leaves no searchable transcript",
+      "passed": true
+    },
+    {
+      "check": "top_k respected",
+      "passed": true
+    },
+    {
+      "check": "forget all never crosses user scope",
+      "passed": true
+    }
+  ],
+  "passed": 50,
+  "failed": 0
+}

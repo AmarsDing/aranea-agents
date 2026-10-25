@@ -38,11 +38,13 @@ type NeighborChunkLister interface {
 
 // GraphExpander 在向量/混合检索种子上叠加图扩展。
 // 接线 ActiveLinkReader 后走 M1-4 受限扩散激活（2 跳 BFS）；否则保持 1 跳旧行为。
+// 接线 TemporalActiveLinkReader 且查询携带时态窗口（G-05-asof）时逐跳改走时态读。
 type GraphExpander struct {
-	links  NeighborLinkReader
-	chunks NeighborChunkLister
-	active bizknowledge.ActiveLinkReader
-	lg     loggateway.Logger
+	links          NeighborLinkReader
+	chunks         NeighborChunkLister
+	active         bizknowledge.ActiveLinkReader
+	temporalActive bizknowledge.TemporalActiveLinkReader
+	lg             loggateway.Logger
 }
 
 func NewGraphExpander(links NeighborLinkReader, chunks NeighborChunkLister, lg loggateway.Logger) *GraphExpander {
@@ -61,6 +63,15 @@ func (e *GraphExpander) SetActiveLinks(r bizknowledge.ActiveLinkReader) {
 		return
 	}
 	e.active = r
+}
+
+// SetTemporalActiveLinks 接线时态边读取（G-05-asof）。查询携带 span 时逐跳
+// 改走该端口；未接线则回退当前 active 快照并记 warn（任一依赖降级不阻断）。
+func (e *GraphExpander) SetTemporalActiveLinks(r bizknowledge.TemporalActiveLinkReader) {
+	if e == nil {
+		return
+	}
+	e.temporalActive = r
 }
 
 // Expand 返回种子 ∪ 邻居文档 chunks，按分数截断到 q.TopK（<=0 时默认 5）。
@@ -87,6 +98,11 @@ func (e *GraphExpander) Expand(ctx context.Context, q biz.KnowledgeSearchQuery, 
 
 	seedDocs := uniqueSeedDocs(seeds, graphExpandSeedDocs)
 	if e.active != nil {
+		if q.Temporal.Any() && e.temporalActive == nil {
+			e.lg.Warn("as-of 窗口已设但未接线时态读端口，扩散回退当前快照",
+				loggateway.StepID("knowledge.graph_spread.temporal_fallback"),
+				loggateway.Str("collection_id", q.CollectionID))
+		}
 		return e.spreadExpand(expandCtx, q, seeds, seedDocs, topK)
 	}
 	neighbors := e.collectNeighbors(expandCtx, q.CollectionID, seedDocs)
@@ -94,7 +110,7 @@ func (e *GraphExpander) Expand(ctx context.Context, q biz.KnowledgeSearchQuery, 
 		return trimChunks(seeds, topK)
 	}
 
-	neighborChunks, err := e.chunks.ListChunksByDocuments(expandCtx, q.CollectionID, neighbors, graphExpandChunksPerDoc)
+	neighborChunks, err := scopedNeighborChunks(expandCtx, e.chunks, q, neighbors, graphExpandChunksPerDoc)
 	if err != nil {
 		e.lg.Warn("图扩展取邻居 chunks 失败，使用种子结果",
 			loggateway.StepID("knowledge.graph_expand.chunks_fail"),
@@ -264,7 +280,15 @@ func (e *GraphExpander) spreadExpand(ctx context.Context, q biz.KnowledgeSearchQ
 	energy := 1.0
 	for hop := 0; hop < graphSpreadHops && len(frontier) > 0; hop++ {
 		energy *= graphSpreadHopDecay
-		links, err := e.active.ListActiveLinks(ctx, q.CollectionID, frontier)
+		// G-05-asof：span 非零且时态端口已接线 → 逐跳走时态读（双跳共用同一
+		// span，时态一致性天然）；否则旧端口 current 快照字节级等价。
+		var links []bizknowledge.ActiveLink
+		var err error
+		if q.Temporal.Any() && e.temporalActive != nil {
+			links, err = e.temporalActive.ListActiveLinksAsOf(ctx, q.CollectionID, frontier, q.Temporal)
+		} else {
+			links, err = e.active.ListActiveLinks(ctx, q.CollectionID, frontier)
+		}
 		if err != nil {
 			e.lg.Warn("扩散激活读 active 边失败，截断扩散",
 				loggateway.StepID("knowledge.graph_spread.links_fail"),
@@ -328,7 +352,7 @@ func (e *GraphExpander) spreadExpand(ctx context.Context, q biz.KnowledgeSearchQ
 		ordered = ordered[:graphExpandActivationCap]
 	}
 
-	neighborChunks, err := e.chunks.ListChunksByDocuments(ctx, q.CollectionID, ordered, graphExpandChunksPerDoc)
+	neighborChunks, err := scopedNeighborChunks(ctx, e.chunks, q, ordered, graphExpandChunksPerDoc)
 	if err != nil {
 		e.lg.Warn("扩散激活取邻居 chunks 失败，使用种子结果",
 			loggateway.StepID("knowledge.graph_spread.chunks_fail"),

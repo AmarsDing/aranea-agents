@@ -216,8 +216,8 @@ function onSelect(key: string | null) {
   if (key) emit('select-node', key);
 }
 
-function onExpanded(keys: string[]) {
-  emit('update:expanded-keys', keys);
+function onExpanded(keys: readonly string[]) {
+  emit('update:expanded-keys', [...keys]);
 }
 
 function onLazy(payload: VaultLazyLoadPayload) {

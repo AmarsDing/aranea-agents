@@ -297,8 +297,12 @@ const durationLabel = computed(() => formatDuration(props.data.durationMs));
   &--failed
     background: var(--color-danger)
 
+  &--paused
+    background: var(--color-warning)
+
   &--pending,
-  &--skipped
+  &--skipped,
+  &--cancelled
     background: var(--color-text-tertiary)
 
 .observe-node__member-names

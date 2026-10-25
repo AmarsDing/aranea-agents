@@ -41,6 +41,18 @@ func ProvideChatService(deps ChatOrchestratorDeps, planExec *PlanExecutor, v2Bus
 	if setter, ok := deps.Team.TeamStarter.(interface{ SetTurnGateway(biz.TurnGateway) }); ok {
 		setter.SetTurnGateway(cs)
 	}
+	// D2-②（87-orchestration-chain-hardening）：dispatch 入口向 TeamStarter
+	// 回填运行注册 + 会话互斥 + 排干钩子，与 chat 入口（executeTeamTurnViaHooks）
+	// 共享同一 RunRegistry——消除调度链/chat 对同一 team session 的双跑
+	// （INV-M4：busy skip 返 nil）。与 SetTurnGateway 同一接口断言模式，
+	// TeamStarterPort 接口不变。
+	if setter, ok := deps.Team.TeamStarter.(interface{ SetRunGuard(*TeamRunGuard) }); ok {
+		setter.SetRunGuard(&TeamRunGuard{
+			Runs:         cs.orch.runs,
+			Lock:         cs.orch.lockSession,
+			DrainPending: cs.orch.drainPendingAfterDispatchTeamTurn,
+		})
+	}
 	// M71: backfill TurnExecutorGateway into the dept mailbox waker to break
 	// the Wire cycle: ChatService → RuntimeTooling → DeptMailboxUsecase →
 	// MailboxWaker → TurnExecutorGateway → ChatService.
@@ -77,6 +89,12 @@ func ProvideChatService(deps ChatOrchestratorDeps, planExec *PlanExecutor, v2Bus
 		if v2Bus != nil {
 			planExec.SetEventBus(v2Bus)
 			planExec.StartSubscription()
+		}
+		// 发现#7（87-orchestration-chain-hardening Wave-2）：注入
+		// per-spirit-session 扇出配额端口——与 plan_and_execute 入口门同源
+		// 的 SpiritAssembler（窄端口子集，天然满足 planExecutorQuotaPort）。
+		if deps.Team.SpiritAssembler != nil {
+			planExec.SetQuotaPort(deps.Team.SpiritAssembler)
 		}
 	}
 	// 2026-07-04 问题 4 修复：注入 SpiritTeamAssembler、TeamStarter 和

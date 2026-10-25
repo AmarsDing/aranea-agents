@@ -49,13 +49,14 @@ type boardRunRegistry struct {
 	m sync.Map
 }
 
-func (r *boardRunRegistry) Store(key, value any) { r.m.Store(key, value) }
+func (r *boardRunRegistry) Store(key, value any)     { r.m.Store(key, value) }
 func (r *boardRunRegistry) Load(key any) (any, bool) { return r.m.Load(key) }
 func (r *boardRunRegistry) LoadOrStore(key, value any) (any, bool) {
 	return r.m.LoadOrStore(key, value)
 }
-func (r *boardRunRegistry) Delete(key any) { r.m.Delete(key) }
+func (r *boardRunRegistry) Delete(key any)                    { r.m.Delete(key) }
 func (r *boardRunRegistry) Range(f func(key, value any) bool) { r.m.Range(f) }
+
 // PlanExecutor is the forward DAG scheduler that replaces spirit_team's
 // reverse-sync updatePlanStepForTeam. It dispatches PlanSteps to a
 // TeamOrchestrator, correlates team completions, and cascades downstream
@@ -92,6 +93,12 @@ type PlanExecutor struct {
 	// when the same PlanBoardCreatedEvent is delivered multiple times (replay,
 	// multi-instance, or event bus redelivery). Key: board.ID, Value: *boardRunLease.
 	running boardRunRegistry
+	// leasePort 是 P0-6 阶段 1a（90-multi-replica-board-lease）capability flag
+	// 接线的跨副本租约端口（ARANEA_BOARD_RUN_LEASE=mem|pg，wire 注入）。
+	// nil = 字节级旧行为（纯进程内 boardRunRegistry 语义）；非 nil 时认领/
+	// 释放/HasActiveRunForSession 放行端口决议，running 继续保留进程内
+	// cancel 簿记（CancelPlanBoard/Stop 消费不变）。
+	leasePort biz.BoardRunLeasePort
 	// 2026-08-06 P0-2 修复（流式空壳契约）：publishV2BoardShell 先发 Steps=nil
 	// 的 PlanBoardCreatedEvent（供前端先渲染看板），steps 就绪后由 PublishV2Board
 	// 发 PlanBoardUpdatedEvent。shellTimeout 是空壳等待 steps 的兜底超时，
@@ -110,6 +117,11 @@ type PlanExecutor struct {
 	// 修复 TS9-BUG-1：用户可见的 plan 状态此前永远滞留 confirmed。
 	// 可选依赖：nil 时跳过传播（测试 / v1-only 部署）。
 	taskPlans taskPlanStatusUpdater
+	// quota 是 DAG 扇出配额端口（发现#7，87-orchestration-chain-hardening
+	// Wave-2）：per-spirit-session 槽位上限与 plan_and_execute 入口门同源
+	// （GetMaxParallelTeams/ListActiveTeams）。可选依赖：nil 时配额闸门
+	// fail-open（不限），对齐入口门 maxParallel>0 才限的语义。
+	quota planExecutorQuotaPort
 	// subStop 取消 StartSubscription 的事件循环并立刻从 EventBus 摘除订阅
 	// （V2Bus 的 cancel 只摘 fan-out，channel 永不关闭）。Start 写入、Stop 调用；
 	// 生产路径为 ProvideChatService → ChatService.Close 串行。
@@ -313,6 +325,34 @@ type taskPlanStatusUpdater interface {
 // 后注入风格与 SetCompletionNotifier 一致。
 func (e *PlanExecutor) SetTaskPlanUpdater(u taskPlanStatusUpdater) {
 	e.taskPlans = u
+}
+
+// SetBoardRunLeasePort 注入跨副本租约端口（P0-6 阶段 1a；option 模式——
+// nil 不入线，纯进程内 boardRunRegistry 字节级旧行为不变）。
+func (e *PlanExecutor) SetBoardRunLeasePort(p biz.BoardRunLeasePort) {
+	if e == nil {
+		return
+	}
+	e.leasePort = p
+}
+
+// planExecutorQuotaPort 是 DAG 扇出配额闸门（发现#7）所需的窄查询端口：
+// tools.SpiritTeamQueryPort 的 2 方法子集，*SpiritTeamAssembler 天然满足
+// （spirit_team_assembler.go GetMaxParallelTeams/ListActiveTeams）。
+// 配额维度 per-spirit-session，与 plan_and_execute 入口门同源；dagRun 不
+// 做 per-board 独立额度。Stability:internal
+type planExecutorQuotaPort interface {
+	GetMaxParallelTeams(ctx context.Context, spiritSessionID string) int
+	ListActiveTeams(ctx context.Context, spiritSessionID string) ([]biz.Team, error)
+}
+
+// SetQuotaPort 注入 DAG 扇出配额端口（发现#7）。后注入风格与
+// SetTaskPlanUpdater 一致；nil 时配额闸门 fail-open（不限）。
+func (e *PlanExecutor) SetQuotaPort(p planExecutorQuotaPort) {
+	if e == nil {
+		return
+	}
+	e.quota = p
 }
 
 // SetConfirmStepReader lets holdPlaybookConfirm see a persisted ConfirmBlock

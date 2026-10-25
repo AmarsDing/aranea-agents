@@ -1,5 +1,13 @@
 import type { KnowledgeCollection, KnowledgeDocument } from './types';
 
+export function canManageKnowledgeVisibility(
+  doc: KnowledgeDocument | undefined,
+  viewerId: string,
+  isAdmin = false,
+): boolean {
+  return isAdmin || !!(doc?.owner_user_id && viewerId && doc.owner_user_id === viewerId);
+}
+
 export function knowledgeStatusColor(status: string): string {
   if (status === 'active' || status === 'indexed') return 'positive';
   if (status === 'error') return 'negative';

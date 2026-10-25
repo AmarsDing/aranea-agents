@@ -9,16 +9,13 @@ import (
 	"aranea-agents/pkg/apierror"
 )
 
-// runWasCancelled reports whether the run should be treated as user-cancelled
-// rather than failed (C-10). Checks in-memory status first, then context /
-// turn error cancellation signals.
-func (o *ChatOrchestrator) runWasCancelled(ctx context.Context, sessionID string, turnErr error) bool {
-	if o != nil && o.runs != nil {
-		if entry, ok := o.runs.GetStatus(sessionID); ok && entry.Status == biz.SessionRunPhaseCancelled {
-			return true
-		}
-	}
-	if turnErr != nil && errors.Is(turnErr, context.Canceled) {
+// isUserCancelledErr 是三处团队回调（executeTeamTurnViaHooks / pending-queue
+// / StartTeamTurn）共用的「用户取消」判别（87-orchestration-chain-hardening
+// D1-F1）：err 链 context.Canceled / ctx.Err() / context.Cause(ctx) 三源
+// 任一命中即视为用户取消。显式不把 context.DeadlineExceeded 判为取消——
+// TeamMaxLifetime 墙钟超时是 infra 失败语义，必须走 failed 路径。
+func isUserCancelledErr(ctx context.Context, err error) bool {
+	if err != nil && errors.Is(err, context.Canceled) {
 		return true
 	}
 	if ctx == nil {
@@ -31,6 +28,20 @@ func (o *ChatOrchestrator) runWasCancelled(ctx context.Context, sessionID string
 		return true
 	}
 	return false
+}
+
+// runWasCancelled reports whether the run should be treated as user-cancelled
+// rather than failed (C-10). Checks in-memory status first, then context /
+// turn error cancellation signals.
+func (o *ChatOrchestrator) runWasCancelled(ctx context.Context, sessionID string, turnErr error) bool {
+	if o != nil && o.runs != nil {
+		if entry, ok := o.runs.GetStatus(sessionID); ok && entry.Status == biz.SessionRunPhaseCancelled {
+			return true
+		}
+	}
+	// D1-F1：取消信号判别委托给包级 isUserCancelledErr，TeamStarter 侧
+	// （spirit_team.go StartTeamTurn）共享同一实现，三处回调分流口径一致。
+	return isUserCancelledErr(ctx, turnErr)
 }
 
 // publishTurnFailure emits a WS-visible error envelope for HTTP turn failures.

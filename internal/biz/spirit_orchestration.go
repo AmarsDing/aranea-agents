@@ -166,6 +166,12 @@ func (o *SpiritOrchestration) StartBackgroundPolling(ctx context.Context, interv
 // This is a moderate-frequency backup for the event-driven path
 // (HandleTeamTurnResult → checkAllTeamsCompleted). The polling itself does
 // not generate frontend-visible activity events.
+//
+// D3-FIX-1（87-orchestration-chain-hardening）：running 扫描之外追加
+// interrupted 复活扫描——「持久失败类中断（error/timeout/server_shutdown
+// /unexpected_shutdown）且所有团队已达终态」的精灵会话也需要一次完成
+// 兜底通知，否则进程重启/超时收割后 synthesis 永久丢失（dedup/CAS/budget
+// 仍在 service 侧守门，本函数只读不重入）。
 func (o *SpiritOrchestration) pollTeamCompletions(ctx context.Context) {
 	spiritAgentID := o.resolveSpiritAgentID(ctx)
 	if spiritAgentID == "" {
@@ -173,6 +179,21 @@ func (o *SpiritOrchestration) pollTeamCompletions(ctx context.Context) {
 			loggateway.StepID("spirit.poller.no_spirit_agent"),
 		)
 		return
+	}
+	// running 扫描（既有语义；分页满即止）。
+	notifyIfAllDone := func(sessionID string) {
+		result := o.CheckAllTeamsCompleted(ctx, sessionID)
+		if !result.AllDone {
+			return
+		}
+		o.lg.Info("spirit poller: all teams completed for session",
+			loggateway.StepID("spirit.poller.all_done"),
+			loggateway.Str("spirit_session_id", sessionID),
+			loggateway.Int("total_teams", result.TotalTeams),
+		)
+		if o.completionNotifier != nil {
+			o.completionNotifier.NotifyAllTeamsCompleted(ctx, sessionID)
+		}
 	}
 	for page := 0; page < SpiritPollerMaxPages; page++ {
 		sessions, err := o.sessionUC.Search(ctx, SessionSearchQuery{
@@ -193,23 +214,55 @@ func (o *SpiritOrchestration) pollTeamCompletions(ctx context.Context) {
 			if sess.ID == "" {
 				continue
 			}
-			result := o.CheckAllTeamsCompleted(ctx, sess.ID)
-			if !result.AllDone {
-				continue
-			}
-			o.lg.Info("spirit poller: all teams completed for session",
-				loggateway.StepID("spirit.poller.all_done"),
-				loggateway.Str("spirit_session_id", sess.ID),
-				loggateway.Int("total_teams", result.TotalTeams),
-			)
-			if o.completionNotifier != nil {
-				o.completionNotifier.NotifyAllTeamsCompleted(ctx, sess.ID)
-			}
+			notifyIfAllDone(sess.ID)
 		}
 		if len(sessions.Items) < SpiritPollerPageSize {
-			return
+			break
 		}
 	}
+	// interrupted 复活扫描（D3-FIX-1）：白名单中断原因重试，其余
+	// （user_cancelled/user_escalated/manual_override/clarification
+	// /context_overflow 等用户意图/人工介入类）跳过。
+	for page := 0; page < SpiritPollerMaxPages; page++ {
+		sessions, err := o.sessionUC.Search(ctx, SessionSearchQuery{
+			Status:   string(session.SessionStatusInterrupted),
+			AgentID:  spiritAgentID,
+			RootOnly: true,
+			Limit:    SpiritPollerPageSize,
+			Offset:   page * SpiritPollerPageSize,
+		})
+		if err != nil {
+			o.lg.Warn("spirit poller: failed to search interrupted sessions",
+				loggateway.StepID("spirit.poller.search_interrupted_err"),
+				loggateway.Err(err),
+			)
+			return
+		}
+		for _, sess := range sessions.Items {
+			if sess.ID == "" || !isRevivableInterruptedReason(sess.StatusReason) {
+				continue
+			}
+			notifyIfAllDone(sess.ID)
+		}
+		if len(sessions.Items) < SpiritPollerPageSize {
+			break
+		}
+	}
+}
+
+// revivableInterruptedReasons 是 D3-FIX-1 的复活白名单：仅持久失败类中断
+// 原因可复活重试（进程重启/超时收割/运行错误）；用户/澄清类中断属于用户
+// 意图，不得复活。显式集合（白名单），新中断原因默认不复活。
+var revivableInterruptedReasons = map[session.SessionStatusReason]struct{}{
+	session.StatusReasonError:              {},
+	session.StatusReasonTimeout:            {},
+	session.StatusReasonServerShutdown:     {},
+	session.StatusReasonUnexpectedShutdown: {},
+}
+
+func isRevivableInterruptedReason(reason string) bool {
+	_, ok := revivableInterruptedReasons[session.SessionStatusReason(reason)]
+	return ok
 }
 
 // resolveSpiritAgentID returns the catalog ID of the built-in spirit agent.

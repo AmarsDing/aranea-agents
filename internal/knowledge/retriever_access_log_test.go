@@ -84,6 +84,38 @@ func TestRetriever_AccessLog_EmptyHits_NoLog(t *testing.T) {
 	}
 }
 
+// G-05-asof（对抗评审 F1）：access_log 是 Router 守卫之外的第三个热度写口，
+// 同样须对 as-of 查询关闭——审计/回放查询不得向当下注入热度信号。
+// 双边契约：span 非零不写；零 span 照写。
+func TestRetriever_AccessLog_SpanSkipsHeatWrite(t *testing.T) {
+	repo := &stubKnowledgeRepo{chunks: accessLogTestChunks}
+	access := &stubAccessLogRepo{}
+	ret := NewRetriever(stubEmbedder{}, repo, nil, loggateway.NewNoop())
+	ret.SetAccessLog(access)
+
+	if _, err := ret.Search(context.Background(), biz.KnowledgeSearchQuery{
+		CollectionID: "col", Query: "q", TopK: 5,
+		Temporal: bizknowledge.TemporalSpan{ValidAt: time.Now()},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// 异步写留一个窗口后断言从未发生。
+	time.Sleep(250 * time.Millisecond)
+	if logged := access.loggedEntries(); len(logged) != 0 {
+		t.Fatalf("as-of query must not write access_log, got %+v", logged)
+	}
+
+	// 零 span 同检索面仍照记（热度双边契约不被 as-of 守卫误伤）。
+	if _, err := ret.Search(context.Background(), biz.KnowledgeSearchQuery{
+		CollectionID: "col", Query: "q", TopK: 5,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if !waitForAccessLog(access, 2) {
+		t.Fatalf("zero-span query must still log access, got %+v", access.loggedEntries())
+	}
+}
+
 type errAccessLogRepo struct{ bizknowledge.AccessLogRepo }
 
 func (errAccessLogRepo) LogAccess(context.Context, []bizknowledge.AccessLogEntry) error {

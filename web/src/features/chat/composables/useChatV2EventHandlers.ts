@@ -245,15 +245,12 @@ export function useChatV2EventHandlers(deps: {
   function handleV2RunStatus(payload: RunStatusEventPayload) {
     // Patch MemberSession card when pause/resume publishes chat_session_id
     // (MemberSessionUpdatedEvent is the primary path; this covers race/late WS).
+    // D9-20：走专用状态补丁（终态汇点、免伪造 Version）——旧 upsertMemberSession
+    // 同 Version 会被乐观并发守卫拒收，迟到 paused/running 补丁被死代码吞掉。
     const chatSessionId = String(payload.Meta?.chat_session_id ?? '').trim();
     const status = String(payload.Status ?? payload.Meta?.status ?? '').trim();
     if (chatSessionId && (status === 'paused' || status === 'running')) {
-      for (const ms of activityStore.memberSessions.values()) {
-        if (ms.SessionID === chatSessionId && ms.Status !== status) {
-          activityStore.upsertMemberSession({ ...ms, Status: status as typeof ms.Status });
-          break;
-        }
-      }
+      activityStore.patchMemberSessionStatusByChatSession(chatSessionId, status);
     }
     const sid = deps.selectedSessionId();
     if (!sid) return;

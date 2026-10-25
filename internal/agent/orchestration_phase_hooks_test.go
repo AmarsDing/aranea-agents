@@ -113,7 +113,9 @@ func TestOrchestrationPhasePromoteBeforeHook_ActivatesReadyTools(t *testing.T) {
 	if !ok {
 		t.Fatal("expected BeforeAgentHook")
 	}
-	inv := &trpcagent.Invocation{Session: &trpcsession.Session{ID: "spirit-s1"}}
+	// 进程级激活注册表按 session ID 共享（deferred.activation registry），
+	// 与 IdleSkips 用同一 ID 会互相污染——两测试各用独立 ID。
+	inv := &trpcagent.Invocation{Session: &trpcsession.Session{ID: "spirit-ready-s1"}}
 	ctx := biz.WithSpiritTurnOrchestration(
 		trpcagent.NewInvocationContext(context.Background(), inv),
 		biz.SpiritTurnOrchestration{Phase: biz.SpiritPhaseReady},
@@ -135,7 +137,7 @@ func TestOrchestrationPhasePromoteBeforeHook_IdleSkips(t *testing.T) {
 	if !ok {
 		t.Fatal("expected BeforeAgentHook")
 	}
-	inv := &trpcagent.Invocation{Session: &trpcsession.Session{ID: "spirit-s1"}}
+	inv := &trpcagent.Invocation{Session: &trpcsession.Session{ID: "spirit-idle-s1"}}
 	ctx := biz.WithSpiritTurnOrchestration(
 		trpcagent.NewInvocationContext(context.Background(), inv),
 		biz.SpiritTurnOrchestration{Phase: biz.SpiritPhaseIdle},

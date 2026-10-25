@@ -51,6 +51,9 @@ message KnowledgeDocument {
   string summary = 14;        // LLM summary card (may be stale; empty when unavailable)
   repeated string tags = 15;  // LLM tags from summary card
   string doc_type = 16;       // report | manual | note | faq | ...
+  string visibility = 17;    // collection | private | shared
+  string owner_user_id = 18;
+  repeated string shared_with = 19; // department/position IDs for specialist Agent access
 }
 
 // DocumentContent is the full extracted/organized text of one document (preview).
@@ -153,6 +156,11 @@ message IngestDocumentRequest {
 }
 
 message GetDocumentContentRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+// Resolves a visible document without relying on a partially loaded document list.
+message GetDocumentRequest {
   string id = 1 [(google.api.field_behavior) = REQUIRED];
 }
 
@@ -565,6 +573,8 @@ message UpdateDocumentContentResponse {
   // conflict=true: the file changed on disk since base_hash; the edit was still
   // written and the disk version backed up to .aranea/trash (both copies kept).
   bool conflict = 2;
+  // Hash of the version committed by this request, not a later remote version.
+  string base_hash = 3;
 }
 
 message SearchRequest {
@@ -685,6 +695,11 @@ service KnowledgeService {
   rpc GetDocumentContent(GetDocumentContentRequest) returns (DocumentContent) {
     option (google.api.http) = {
       get: "/v1/knowledge/documents/{id}/content"
+    };
+  }
+  rpc GetDocument(GetDocumentRequest) returns (KnowledgeDocument) {
+    option (google.api.http) = {
+      get: "/v1/knowledge/documents/{id}"
     };
   }
   rpc DeleteDocument(DeleteDocumentRequest) returns (google.protobuf.Empty) {

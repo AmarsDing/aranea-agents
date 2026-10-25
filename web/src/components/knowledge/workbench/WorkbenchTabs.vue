@@ -16,7 +16,7 @@
         :aria-selected="tab.docId === activeTabId"
         draggable="true"
         @click="$emit('activate', tab.docId)"
-        @mousedown.middle.prevent="$emit('close', tab.docId)"
+        @mousedown.middle.prevent="onCloseClick(tab.docId)"
         @dragstart="onDragStart(i, $event)"
         @dragover.prevent="onDragOver(i)"
         @drop.prevent="onDrop(i)"
@@ -31,7 +31,7 @@
           class="kb-tabs__conflict"
           :title="t('knowledgePage.workbench.conflictHint')"
         />
-        <q-btn flat dense round size="xs" icon="close" class="kb-tabs__close" @click.stop="$emit('close', tab.docId)" />
+        <q-btn flat dense round size="xs" icon="close" class="kb-tabs__close" @click.stop="onCloseClick(tab.docId)" />
       </div>
 
       <div class="kb-tabs__bar-spacer" />
@@ -74,19 +74,32 @@
     <!-- 内容区 -->
     <div class="kb-tabs__body">
       <template v-if="activeTab">
+        <div v-if="!activeTab.editable" class="kb-tabs__conflict-banner">
+          <q-icon name="lock_outline" size="16px" />
+          <span>{{ t('knowledgeWorkflow.originalReadOnly') }}</span>
+        </div>
         <div v-if="activeTab.conflict" class="kb-tabs__conflict-banner">
           <q-icon name="warning_amber" size="16px" />
           <span>{{ t('knowledgePage.workbench.conflictHint') }}</span>
+          <q-btn
+            flat
+            dense
+            no-caps
+            :label="t('knowledgeWorkflow.reloadStored')"
+            :disable="activeTab.saving"
+            @click="$emit('reload', activeTab.docId)"
+          />
         </div>
         <NoteEditor
           v-if="activeTab.mode === 'edit'"
           ref="editorRef"
           :key="`${activeTab.docId}:edit`"
           :content="activeTab.content"
+          :document-id="activeTab.docId"
           :candidates="candidates"
           :get-headings="getHeadings"
           :link-recency-rank="linkRecencyRank"
-          @update-content="(c: string) => $emit('update-content', activeTab!.docId, c)"
+          @update-content="(c: string, id?: string) => $emit('update-content', id || activeTab!.docId, c)"
           @save="$emit('save', activeTab!.docId)"
           @open-doc="(target: string, heading?: string) => $emit('open-doc', target, heading)"
           @create-doc="(target: string) => $emit('create-doc', target)"
@@ -122,8 +135,17 @@
             <span class="kb-tabs__recent-path ellipsis">{{ dirOf(d) }}</span>
           </button>
         </div>
+        <p class="text-caption">{{ t('knowledgeWorkflow.importHint') }}</p>
         <q-btn
           unelevated
+          no-caps
+          color="primary"
+          icon="upload_file"
+          :label="t('knowledgeWorkflow.upload')"
+          @click="$emit('upload')"
+        />
+        <q-btn
+          flat
           no-caps
           color="primary"
           icon="add"
@@ -159,9 +181,11 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
+  upload: [];
   activate: [docId: string];
   close: [docId: string];
   save: [docId: string];
+  reload: [docId: string];
   'toggle-mode': [docId: string];
   'update-content': [docId: string, content: string];
   'open-doc': [target: string, heading?: string];
@@ -244,6 +268,11 @@ function scrollToOffsetPassive(offset: number) {
 function flushPendingContent() {
   if (activeTab.value?.mode === 'preview') previewRef.value?.flushPendingContent();
   else editorRef.value?.flushPendingContent();
+}
+
+function onCloseClick(docId: string) {
+  flushPendingContent();
+  emit('close', docId);
 }
 
 /** 工具栏保存按钮：先 flush 再上报 save，保证父级 tab.content 为最新。 */

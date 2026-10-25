@@ -451,6 +451,11 @@ func (o *ChatOrchestrator) processPendingQueue(sessionID string, sess biz.Sessio
 				Content:   pendingContent,
 			}
 			var err error
+			// D1-F1（87-orchestration-chain-hardening）：pending 团队分支取消
+			// 分流——用户停止不是失败：根 Task cancelled + 会话 interrupted
+			// (user_cancelled) + 终态回调 cancelled（WithoutCancel 落账），跳过
+			// publishTurnFailure 与 DLQ Enqueue（取消不是失败邮件）。
+			pendingCancelled := false
 			if isTeam {
 				// S-5b（2026-08-05）：pending-queue 团队 turn 与入口路径
 				// （executeTeamTurnViaHooks, S-5）同一姿态——每条出队消息是新的
@@ -462,7 +467,15 @@ func (o *ChatOrchestrator) processPendingQueue(sessionID string, sess biz.Sessio
 				o.ensureTeamTurnRootTask(bgCtx, sess, pendingInput, string(pendingRootTaskID))
 				o.transitionSessionStatus(bgCtx, sessionID, sessstatus.SessionStatusRunning, "")
 				_, _, err = o.team().TeamsNative.RunTurnFromInput(bgCtx, sess, pendingInput)
-				if err != nil {
+				if err != nil && o.runWasCancelled(bgCtx, sessionID, err) {
+					pendingCancelled = true
+					bookCtx := context.WithoutCancel(bgCtx)
+					o.terminalizeTeamTurnRootTask(bookCtx, string(pendingRootTaskID), biz.TaskStatusCancelled)
+					o.transitionSessionStatus(bookCtx, sessionID, sessstatus.SessionStatusInterrupted, sessstatus.StatusReasonUserCancelled)
+					if spiritSessionID != "" && teamID != "" {
+						o.teamStarter().HandleTeamTurnResult(bookCtx, spiritSessionID, teamID, biz.TeamStatusCancelled, err.Error(), sessionID)
+					}
+				} else if err != nil {
 					o.terminalizeTeamTurnRootTask(bgCtx, string(pendingRootTaskID), biz.TaskStatusFailed)
 					o.publishTurnFailure(sessionID, "", "pending-queue", err, pendingEntryID)
 					o.transitionSessionStatus(bgCtx, sessionID, sessstatus.SessionStatusInterrupted, sessstatus.StatusReasonError)
@@ -499,14 +512,18 @@ func (o *ChatOrchestrator) processPendingQueue(sessionID string, sess biz.Sessio
 				// operators can inspect/retry/discard via admin API instead of
 				// silent loss. When DLQ is nil (not configured), degrade to
 				// legacy behavior (log only).
-				if dlq := o.deadLetterQueue(); dlq != nil {
-					dlq.Enqueue(lifecycle.DeadLetterMessage{
-						ID:         uuid.NewString(),
-						Source:     "pending-queue",
-						Original:   pendingContent,
-						Error:      err.Error(),
-						MaxRetries: 3,
-					})
+				// D1-F1: 用户取消不是失败邮件——跳过 DLQ（取消 turn 的终态已由
+				// cancel 路径落账，重投会把用户明确停止的任务再次执行）。
+				if !pendingCancelled {
+					if dlq := o.deadLetterQueue(); dlq != nil {
+						dlq.Enqueue(lifecycle.DeadLetterMessage{
+							ID:         uuid.NewString(),
+							Source:     "pending-queue",
+							Original:   pendingContent,
+							Error:      err.Error(),
+							MaxRetries: 3,
+						})
+					}
 				}
 			} else {
 				pendingEmitter.LogDone("chat.pending_dequeue", "排队消息处理完成",

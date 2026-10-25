@@ -333,7 +333,7 @@ export function useKnowledgeUpload(deps: KnowledgeUploadDeps) {
       const col = deps.collections.value.find((c) => c.id === target.collectionId);
       if (col) {
         targetId = col.id;
-        targetDir = col.root_path ? target.prefix || '/' : '';
+        targetDir = target.prefix || '/';
         targetLabel = target.prefix ? `${col.name} / ${target.prefix}` : col.name;
         await deps.selectTreeNode(target.prefix ? dirNodeKey(col.id, target.prefix) : vaultNodeKey(col.id));
       }

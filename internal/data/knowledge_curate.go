@@ -284,13 +284,22 @@ func (r *knowledgeRepo) HasProposal(ctx context.Context, collectionID, kind, ded
 
 // ResolveGovernanceProposal 人工二审闭环：pending → applied/rejected（其他状态不动）。
 func (r *knowledgeRepo) ResolveGovernanceProposal(ctx context.Context, id int64, status string) error {
-	res, err := r.data.Postgres().ExecContext(ctx,
-		`UPDATE knowledge_governance_proposal SET status = $2, resolved_at = NOW()
-		 WHERE id = $1 AND status = 'pending'`, id, status)
+	query := `UPDATE knowledge_governance_proposal SET status = $2, resolved_at = NOW()
+		 WHERE id = $1 AND status = 'pending'`
+	args := []any{id, status}
+	if scope, more := governanceCollectionPredicate(ctx, 3, true); scope != "" {
+		query += " AND " + scope
+		args = append(args, more...)
+	}
+	res, err := r.knowledgeDB(ctx).ExecContext(ctx, query, args...)
 	if err != nil {
 		return entErrToBizErr(err, "knowledge")
 	}
-	if n, aerr := res.RowsAffected(); aerr == nil && n == 0 {
+	n, err := res.RowsAffected()
+	if err != nil {
+		return entErrToBizErr(err, "knowledge")
+	}
+	if n == 0 {
 		return apierror.NotFound(apierror.DomainKnowledge, "proposal %d not found or not pending", id)
 	}
 	return nil
@@ -301,9 +310,14 @@ func (r *knowledgeRepo) GetGovernanceProposal(ctx context.Context, id int64) (bi
 	var v bizknowledge.GovernanceProposalView
 	var raw []byte
 	var resolvedAt sql.NullTime
-	err := r.data.PostgresRead().QueryRowContext(ctx,
-		`SELECT id, collection_id, kind, risk, status, payload, created_at, resolved_at
-		 FROM knowledge_governance_proposal WHERE id = $1`, id).
+	query := `SELECT id, collection_id, kind, risk, status, payload, created_at, resolved_at
+		 FROM knowledge_governance_proposal WHERE id = $1`
+	args := []any{id}
+	if scope, more := governanceCollectionPredicate(ctx, 2, false); scope != "" {
+		query += " AND " + scope
+		args = append(args, more...)
+	}
+	err := r.knowledgeDB(ctx).QueryRowContext(ctx, query, args...).
 		Scan(&v.ID, &v.CollectionID, &v.Kind, &v.Risk, &v.Status, &raw, &v.CreatedAt, &resolvedAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -328,7 +342,7 @@ func (r *knowledgeRepo) CloseContradictsEdges(ctx context.Context, collectionID,
 	if len(targetDocIDs) == 0 {
 		return 0, nil
 	}
-	res, err := r.data.Postgres().ExecContext(ctx,
+	res, err := r.knowledgeDB(ctx).ExecContext(ctx,
 		`UPDATE knowledge_links SET valid_to = NOW()
 		 WHERE collection_id = $1 AND link_type = 'semantic' AND relation = 'contradicts'
 		   AND valid_to IS NULL
@@ -376,18 +390,22 @@ func (r *knowledgeRepo) ListGovernanceProposals(ctx context.Context, collectionI
 		args = append(args, status)
 		where = append(where, fmt.Sprintf("status = $%d", len(args)))
 	}
+	if scope, more := governanceCollectionPredicate(ctx, len(args)+1, false); scope != "" {
+		where = append(where, scope)
+		args = append(args, more...)
+	}
 	if len(where) > 0 {
 		q += ` WHERE ` + strings.Join(where, ` AND `)
 		countQ += ` WHERE ` + strings.Join(where, ` AND `)
 	}
 	var total int
-	if err := r.data.PostgresRead().QueryRowContext(ctx, countQ, args...).Scan(&total); err != nil {
+	if err := r.knowledgeDB(ctx).QueryRowContext(ctx, countQ, args...).Scan(&total); err != nil {
 		return nil, 0, entErrToBizErr(err, "knowledge")
 	}
 	args = append(args, limit, offset)
 	q += fmt.Sprintf(` ORDER BY id DESC LIMIT $%d OFFSET $%d`, len(args)-1, len(args))
 
-	rows, err := r.data.PostgresRead().QueryContext(ctx, q, args...)
+	rows, err := r.knowledgeDB(ctx).QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, 0, entErrToBizErr(err, "knowledge")
 	}
@@ -412,4 +430,31 @@ func (r *knowledgeRepo) ListGovernanceProposals(ctx context.Context, collectionI
 		return nil, 0, entErrToBizErr(err, "knowledge")
 	}
 	return out, total, nil
+}
+
+// ListPendingMOCSummaries MOC 摘要待补页扫描（G-34 ADR-C）：moc/ 前缀下「## 摘要」
+// 段仍为占位文的页（content_text LIKE 占位锚），按 doc id 升序（确定性，与 biz 预算
+// 扣减次序一致——靠前的页先补）。占位锚文本是 biz mocSummaryPlaceholder 的SQL镜像，
+// 两处同步维护。
+func (r *knowledgeRepo) ListPendingMOCSummaries(ctx context.Context, collectionID string, limit int) ([]bizknowledge.MOCPendingSummaryDoc, error) {
+	rows, err := r.data.PostgresRead().QueryContext(ctx,
+		`SELECT d.id, d.rel_path, d.content_text
+		 FROM knowledge_documents d
+		 WHERE d.collection_id = $1 AND d.rel_path LIKE 'moc/%'
+		   AND d.content_text LIKE '%（摘要待治理巡检自动补齐）%'
+		 ORDER BY d.id
+		 LIMIT $2`, collectionID, limit)
+	if err != nil {
+		return nil, entErrToBizErr(err, "knowledge")
+	}
+	defer rows.Close()
+	var out []bizknowledge.MOCPendingSummaryDoc
+	for rows.Next() {
+		var p bizknowledge.MOCPendingSummaryDoc
+		if err := rows.Scan(&p.DocID, &p.RelPath, &p.Body); err != nil {
+			return nil, entErrToBizErr(err, "knowledge")
+		}
+		out = append(out, p)
+	}
+	return out, entErrToBizErr(rows.Err(), "knowledge")
 }

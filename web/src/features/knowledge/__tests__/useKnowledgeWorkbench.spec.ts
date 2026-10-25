@@ -35,12 +35,38 @@ function makeDeps(over: Partial<WorkbenchDeps> = {}): WorkbenchDeps {
     updateDocumentContent: vi.fn(async (id: string, _content: string) => ({
       document: doc({ id }),
       conflict: false,
+      base_hash: 'saved-hash',
     })),
     ...over,
   };
 }
 
 describe('useKnowledgeWorkbench', () => {
+  it('reloads a conflicting draft only when explicitly requested', async () => {
+    const deps = makeDeps();
+    const wb = createKnowledgeWorkbench(deps);
+    await wb.openDoc(doc({ id: 'reload' }));
+    wb.updateContent('reload', '# local draft');
+    wb.activeTab.value!.conflict = true;
+    expect(await wb.reloadTab('reload')).toBe(true);
+    expect(wb.activeTab.value).toMatchObject({
+      content: '# content of reload',
+      baseHash: 'hash-reload',
+      dirty: false,
+      conflict: false,
+    });
+  });
+
+  it('preserves the draft when reloading is denied', async () => {
+    const deps = makeDeps();
+    const wb = createKnowledgeWorkbench(deps);
+    await wb.openDoc(doc({ id: 'denied-reload' }));
+    wb.updateContent('denied-reload', '# keep this draft');
+    vi.mocked(deps.getDocumentContent).mockRejectedValueOnce(new Error('not found'));
+    await expect(wb.reloadTab('denied-reload')).rejects.toThrow('not found');
+    expect(wb.activeTab.value).toMatchObject({ content: '# keep this draft', dirty: true, saving: false });
+  });
+
   it('openDoc fetches content and activates a new tab', async () => {
     const wb = createKnowledgeWorkbench(makeDeps());
     await wb.openDoc(doc({ id: 'd1' }));
@@ -203,5 +229,88 @@ describe('useKnowledgeWorkbench', () => {
     wb.reorderTabs(-1, 1);
     wb.reorderTabs(0, 5);
     expect(wb.tabs.value.map((t) => t.docId)).toEqual(['d1', 'd2']);
+  });
+});
+
+describe('knowledge repair regressions', () => {
+  it('keeps edits made while saving dirty and rolls forward only the submitted hash', async () => {
+    let finish!: (value: { document: KnowledgeDocument; conflict: boolean; base_hash: string }) => void;
+    const update = vi.fn(
+      () =>
+        new Promise<{ document: KnowledgeDocument; conflict: boolean; base_hash: string }>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const wb = createKnowledgeWorkbench(makeDeps({ updateDocumentContent: update }));
+    await wb.openDoc(doc({ id: 'race' }));
+    wb.updateContent('race', '# submitted');
+    const pending = wb.saveTab('race');
+    wb.updateContent('race', '# typed during save');
+    expect(await wb.saveTab('race')).toBe(false);
+    finish({ document: doc({ id: 'race' }), conflict: false, base_hash: 'submitted-hash' });
+    expect(await pending).toBe(false);
+    expect(wb.activeTab.value).toMatchObject({
+      content: '# typed during save',
+      dirty: true,
+      baseHash: 'submitted-hash',
+    });
+    expect(update).toHaveBeenCalledWith('race', '# submitted', 'hash-race');
+  });
+
+  it('deduplicates two concurrent opens instead of creating duplicate tabs', async () => {
+    const deps = makeDeps();
+    const wb = createKnowledgeWorkbench(deps);
+    await Promise.all([wb.openDoc(doc({ id: 'same' })), wb.openDoc(doc({ id: 'same' }))]);
+    expect(wb.tabs.value).toHaveLength(1);
+    expect(deps.getDocumentContent).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps legacy binary originals read-only even when their stored MIME says markdown', async () => {
+    const deps = makeDeps();
+    const wb = createKnowledgeWorkbench(deps);
+    await wb.openDoc(doc({ id: 'pdf', rel_path: 'original.pdf', mime_type: 'text/markdown' }));
+    expect(wb.activeTab.value).toMatchObject({ editable: false, mode: 'preview', collectionId: 'c1' });
+    wb.updateContent('pdf', '# do not overwrite');
+    expect(await wb.saveTab('pdf')).toBe(false);
+    expect(deps.updateDocumentContent).not.toHaveBeenCalled();
+  });
+
+  it('restores drafts only after checking current document access and original hash', async () => {
+    const rows = new Map<string, string>();
+    const storage = {
+      getItem: (key: string) => rows.get(key) ?? null,
+      setItem: (key: string, value: string) => {
+        rows.set(key, value);
+      },
+      removeItem: (key: string) => {
+        rows.delete(key);
+      },
+    };
+    const drafts = { key: 'user-1:workspace', storage };
+    const wb = createKnowledgeWorkbench(makeDeps(), drafts);
+    await wb.openDoc(doc({ id: 'draft' }));
+    wb.updateContent('draft', '# keep me');
+    const getDocument = vi.fn(async (id: string) => doc({ id, collection_id: 'actual-vault' }));
+    const restored = createKnowledgeWorkbench(makeDeps({ getDocument }), drafts);
+    expect(await restored.restoreDrafts()).toBe(1);
+    expect(getDocument).toHaveBeenCalledWith('draft');
+    expect(restored.activeTab.value).toMatchObject({ content: '# keep me', dirty: true, collectionId: 'actual-vault' });
+    const denied = createKnowledgeWorkbench(
+      makeDeps({ getDocument: vi.fn().mockRejectedValue(new Error('not found')) }),
+      drafts,
+    );
+    expect(await denied.restoreDrafts()).toBe(0);
+    expect(denied.tabs.value).toHaveLength(0);
+  });
+
+  it('retains the old CAS hash when a legacy response is followed by somebody else’s write', async () => {
+    const deps = makeDeps({
+      updateDocumentContent: vi.fn(async (id: string) => ({ document: doc({ id }), conflict: false })),
+    });
+    const wb = createKnowledgeWorkbench(deps);
+    await wb.openDoc(doc({ id: 'changed' }));
+    wb.updateContent('changed', '# ours');
+    expect(await wb.saveTab('changed')).toBe(false);
+    expect(wb.activeTab.value).toMatchObject({ dirty: true, conflict: true, baseHash: 'hash-changed' });
   });
 });

@@ -48,6 +48,7 @@ export const RUN_LIVE_REFRESH_EVENT_TYPES = [
   'team_run_started',
   'team_run_finished',
   'team_run_failed',
+  'team_run_cancelled',
 ] as const;
 
 /** 事件类型是否为运行生命周期事件（新运行出现 / 运行终结 → 列表需刷新） */

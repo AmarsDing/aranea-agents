@@ -24,6 +24,7 @@ import (
 	"aranea-agents/internal/tools/security"
 	subagenttool "aranea-agents/internal/tools/subagent"
 	"aranea-agents/internal/voice"
+	"aranea-agents/pkg/appctx"
 	"aranea-agents/pkg/ctxuser"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
@@ -240,7 +241,7 @@ func (o *ChatOrchestrator) taskV2Writer() biz.TaskV2Writer       { return o.core
 // 会在"最后几次共享计数分配是关键事件"时把 SeqAssigner 重启到 outbox 水位
 // 之下，随后 critical insert 静默撞 UNIQUE(session_id, seq) 整批丢帧；
 // H2 折入 tasks，FR-9 再折入 outbox。各位独立容错，任一读到即恢复
-//（全失败 ok=false → 沿用出厂 1 起始，与 B-06 前行为一致）。outbox 经
+// （全失败 ok=false → 沿用出厂 1 起始，与 B-06 前行为一致）。outbox 经
 // EventOutboxWatermarkReader 窄口断言——fakes/旧 repo 未实现即静默跳过。
 func (o *ChatOrchestrator) restoredSharedSeqMax(ctx context.Context, sessionID string) (int64, bool) {
 	var maxSeq int64
@@ -967,6 +968,33 @@ func (o *ChatOrchestrator) lockSession(sessionID string) func() {
 // ctx 化变体：会话互斥上的等待随 ctx 取消解除（见 biz.LockSessionCtx）。
 func (o *ChatOrchestrator) lockSessionCtx(ctx context.Context, sessionID string) (func(), error) {
 	return o.chatUC.LockSessionCtx(ctx, sessionID)
+}
+
+// drainPendingAfterDispatchTeamTurn 在调度/dispatch 路径的 team turn 结束后
+// 排空会话排队队列（D2-②，87-orchestration-chain-hardening）。此前排队消息
+// 只有 chat 入口（executeTeamTurnViaHooks defer，team_turn_hooks.go:82-92）
+// 会排干——调度链启动的 team turn 结束后队列无人消费，「等当前任务结束再
+// 执行」类消息静默丢失。镜像入口 defer 语义：后台 ctx 重新读取 session
+// （在飞 sess 值已过期）→ 非 pending 循环内 → processPendingQueue。
+// TeamRunGuard.DrainPending 的生产回填；注册表 Finish 已由调用方完成。
+func (o *ChatOrchestrator) drainPendingAfterDispatchTeamTurn(sessionID string) {
+	if o == nil || strings.TrimSpace(sessionID) == "" || o.core.TD.Sessions == nil {
+		return
+	}
+	ctx := appctx.Ctx()
+	// 无 inPendingLoop 检查：appctx.Ctx() 是全局生命周期 ctx，永不携带
+	// pendingQueueLoopKey，检查恒假（死代码已删，P0 FR-1）。并发排空由
+	// processPendingQueue 入口的 pendingLoops single-flight 统一合并。
+	sess, err := o.core.TD.Sessions.Get(ctx, sessionID)
+	if err != nil {
+		o.lg().Warn("drain pending after dispatch team turn: get session failed",
+			loggateway.StepID("chat.dispatch_team.drain_pending_get_err"),
+			loggateway.Str("session_id", sessionID),
+			loggateway.Err(err))
+		return
+	}
+	o.processPendingQueue(sessionID, sess, biz.Agent{}, "", "", "",
+		string(chatagent.RootTaskActivityIDFromCtx(ctx)))
 }
 
 // AttachNativeTurnAfterHook sets the post-turn hook.

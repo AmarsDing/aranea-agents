@@ -20,6 +20,51 @@ import (
 	"github.com/pgvector/pgvector-go"
 )
 
+// ListChunksByDocumentsForSearch keeps graph expansion/card projection inside
+// the same path, metadata and ACL scope as the initial lexical/vector search.
+func (r *knowledgeRepo) ListChunksByDocumentsForSearch(ctx context.Context, q biz.KnowledgeSearchQuery, docIDs []string, limitPerDoc int) ([]biz.KnowledgeChunk, error) {
+	if strings.TrimSpace(q.CollectionID) == "" || len(docIDs) == 0 || limitPerDoc <= 0 {
+		return nil, nil
+	}
+	args := []any{q.CollectionID, pq.Array(docIDs)}
+	clauses := ""
+	if c, a := pathPrefixClause(q.PathPrefix, "$1", len(args)+1); c != "" {
+		clauses += "\n" + c
+		args = append(args, a)
+	}
+	if c, a := pathExcludeClause(q.ExcludePathPrefixes, "$1", len(args)+1); c != "" {
+		clauses += "\n" + c
+		args = append(args, a...)
+	}
+	if q.FilterJSON != "" {
+		clauses += fmt.Sprintf("\nAND metadata @> $%d::jsonb", len(args)+1)
+		args = append(args, json.RawMessage(q.FilterJSON))
+	}
+	if c, a := docChunkVisibilityClause(ctx, "$1", len(args)+1); c != "" {
+		clauses += "\n" + c
+		args = append(args, a...)
+	}
+	limitPH := len(args) + 1
+	args = append(args, limitPerDoc)
+	raw := fmt.Sprintf(`
+SELECT id, doc_id, collection_id, content, metadata::text, chunk_index, parent_chunk_id, 0::float4 AS score
+FROM (
+  SELECT id, doc_id, collection_id, content, metadata, chunk_index, parent_chunk_id,
+         ROW_NUMBER() OVER (PARTITION BY doc_id ORDER BY chunk_index) AS rn
+  FROM knowledge_chunks
+  WHERE collection_id = $1 AND chunk_role = 'child' AND doc_id = ANY($2)
+  %s
+) t
+WHERE rn <= $%d
+ORDER BY doc_id, chunk_index`, clauses, limitPH)
+	rows, err := r.data.PostgresRead().QueryContext(ctx, raw, args...)
+	if err != nil {
+		return nil, entErrToBizErr(err, "knowledge")
+	}
+	defer rows.Close()
+	return scanChunks(rows)
+}
+
 // recencyDecayLambda 检索轻时间衰减系数（P1，2026-08-15 评审修订），单位 s⁻¹。
 // 取 λ = -ln(0.9) / (180×86400) ≈ 6.774e-9：文档 180 天未更新 ≈ ×0.9，
 // 月尺度微调排序，不压倒语义分；5 年旧文 ≈ ×0.34。时间源用

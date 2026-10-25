@@ -2,6 +2,7 @@ package data
 
 import (
 	"context"
+	"database/sql"
 	"encoding/base64"
 	"encoding/json"
 	"time"
@@ -47,10 +48,11 @@ type graphRepo struct {
 }
 
 var (
-	_ biz.GraphRepo    = (*graphRepo)(nil)
-	_ biz.GraphReader  = (*graphRepo)(nil)
-	_ biz.GraphWriter  = (*graphRepo)(nil)
-	_ biz.GraphRunRepo = (*graphRunRepo)(nil)
+	_ biz.GraphRepo             = (*graphRepo)(nil)
+	_ biz.GraphReader           = (*graphRepo)(nil)
+	_ biz.GraphWriter           = (*graphRepo)(nil)
+	_ biz.GraphRunRepo          = (*graphRunRepo)(nil)
+	_ biz.GraphOrphanRunScanner = (*graphRunRepo)(nil)
 )
 
 func NewGraphRepo(data *Data) biz.GraphRepo {
@@ -527,4 +529,76 @@ func entGraphRunToBiz(row *ent.GraphExecution, lg loggateway.Logger) *biz.GraphE
 		lg.Warn("graph json unmarshal failed", loggateway.StepID("data.graph"), loggateway.Err(err))
 	}
 	return exec
+}
+
+// ListOrphanedStandaloneRuns 扫描无 team_graph_sessions 行的 standalone
+// graph_executions（D6-F4，biz.GraphOrphanRunScanner 窄端口实现）。
+//
+// team_graph_sessions 是 raw-SQL 表（非 ent），NOT IN 排除条件必须走 raw DB
+// 而非 ent predicate；team 行归 RecoverSessions/team_orphan_recovery
+// 终态化（ADR-86 F-B 边界铁律），standalone 行归启动扫描。LIMIT 由方言
+// RenumberPlaceholders 统一占位符。
+func (r *graphRunRepo) ListOrphanedStandaloneRuns(ctx context.Context, status string, limit int) ([]*biz.GraphExecution, error) {
+	db := r.data.RWDB().ReadDB(ctx)
+	if db == nil {
+		return nil, nil
+	}
+	if limit <= 0 {
+		limit = 500
+	}
+	rows, err := db.QueryContext(ctx,
+		r.data.Dialect().RenumberPlaceholders(`
+SELECT id, graph_id, session_id, spirit_session_id, definition_hash,
+  status, current_node, lineage_id, error_message, current_state_json,
+  steps_json, started_at, finished_at
+FROM graph_executions
+WHERE status=? AND id NOT IN (SELECT exec_id FROM team_graph_sessions)
+ORDER BY started_at LIMIT ?`),
+		status, limit)
+	if err != nil {
+		return nil, entErrToBizErr(err, "GRAPH_RUN")
+	}
+	defer rows.Close()
+	var out []*biz.GraphExecution
+	for rows.Next() {
+		var (
+			id, graphID, sessionID, spiritSessionID, definitionHash string
+			statusVal, currentNode, lineageID, errorMessage         string
+			currentStateJSON, stepsJSON                             string
+			startedAt                                               time.Time
+			finishedAt                                              sql.NullTime
+		)
+		if err := rows.Scan(&id, &graphID, &sessionID, &spiritSessionID, &definitionHash,
+			&statusVal, &currentNode, &lineageID, &errorMessage,
+			&currentStateJSON, &stepsJSON, &startedAt, &finishedAt); err != nil {
+			return nil, entErrToBizErr(err, "GRAPH_RUN")
+		}
+		exec := &biz.GraphExecution{
+			ID:              id,
+			GraphID:         graphID,
+			SessionID:       sessionID,
+			SpiritSessionID: spiritSessionID,
+			DefinitionHash:  definitionHash,
+			Status:          statusVal,
+			CurrentNode:     currentNode,
+			LineageID:       lineageID,
+			ErrorMessage:    errorMessage,
+			StartedAt:       startedAt,
+		}
+		if finishedAt.Valid {
+			fa := finishedAt.Time
+			exec.FinishedAt = &fa
+		}
+		if err := json.Unmarshal([]byte(currentStateJSON), &exec.CurrentState); err != nil {
+			r.data.lg.Warn("graph json unmarshal failed", loggateway.StepID("data.graph"), loggateway.Err(err))
+		}
+		if err := json.Unmarshal([]byte(stepsJSON), &exec.Steps); err != nil {
+			r.data.lg.Warn("graph json unmarshal failed", loggateway.StepID("data.graph"), loggateway.Err(err))
+		}
+		out = append(out, exec)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, entErrToBizErr(err, "GRAPH_RUN")
+	}
+	return out, nil
 }

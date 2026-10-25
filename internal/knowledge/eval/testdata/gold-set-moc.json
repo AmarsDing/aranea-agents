@@ -1,0 +1,12 @@
+{
+  "name": "gold-moc-1hop",
+  "cases": [
+    {
+      "id": "g34-global-theme-anchors-moc",
+      "query": "发布全链路的公共主题是什么",
+      "expected_chunk_ids": ["moc-c0", "hub-c0", "gray-c0", "rollback-c0"],
+      "expected_doc_ids": ["moc", "hub", "gray", "rollback"],
+      "notes": "G-34 ADR-A/C：全局主题问题经摘要锚定 MOC 页为种子，explicit 成员边（簇成员 wikilink 物化）一跳扩散 hub 与成员；无关文档不进期望"
+    }
+  ]
+}

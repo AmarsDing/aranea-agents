@@ -24,12 +24,26 @@ type dagRun struct {
 	// canceled is set when the Subscribe ctx is cancelled. Terminal publish
 	// uses a fresh context budget, so this flag (not ctx.Err()) drives Fail/
 	// Interrupt classification after the worker barrier.
+	//
+	// 锁契约（发现#17，87-orchestration-chain-hardening Wave-2）：全部写
+	// 必须持 r.mu（run() 的 ctx.Done 分支，且在 wg 屏障 <-done 之前）；
+	// 全部读要么持锁（maybeRetryStep），要么在屏障后的 run goroutine 程序
+	// 序内（publishPlanBoardTerminal/publishGraphStageTerminal）。新增读点
+	// 必须遵守同一契约，否则重新引入与持锁读之间的 data race。
 	canceled bool
 
 	mu         sync.Mutex
 	stepsByID  map[string]*biz.PlanStep
 	dependents map[string][]string // stepID → stepIDs that depend on it
 	wg         sync.WaitGroup
+
+	// quotaRearmActive 是发现#7 配额活性兜底的单飞臂章（r.mu 保护）：
+	// 本 run 在飞=0 且就绪步骤被配额全数延滞时置位，重扫 goroutine 退出
+	// 时清除并重调 admitReadySteps；臂章期间 wg 持一槽防 run() 误判终态。
+	quotaRearmActive bool
+	// quotaRearmDelay 是单飞重扫周期（默认 defaultQuotaRearmDelay；
+	// 测试可收窄）。
+	quotaRearmDelay time.Duration
 
 	// attempts 记录各 step 已消耗的自动重试次数（F2，2026-09-03）。memory-only
 	// （与 PlanStep.Mode/DepartmentID 同模式）：进程重启后重试预算重置，
@@ -61,6 +75,8 @@ func newDagRun(pe *PlanExecutor, board biz.PlanBoard) *dagRun {
 		stepsByID:    stepsByID,
 		dependents:   dependents,
 		attempts:     make(map[string]int),
+		// 发现#7：配额活性兜底重扫周期默认值（测试可收窄字段）。
+		quotaRearmDelay: defaultQuotaRearmDelay,
 	}
 }
 
@@ -120,7 +136,8 @@ func (r *dagRun) run(ctx context.Context) error {
 	// Dispatch every pending step whose dependencies are already completed.
 	// Fresh boards: only roots (empty DependsOn). Restart recover: completed
 	// ancestors leave pending confirm_before / downstream ready to resume.
-	r.dispatchReadyPending(ctx)
+	// 发现#15：唯一调度入口改为 admitReadySteps（锁内预标记+配额闸门）。
+	r.admitReadySteps(ctx)
 	// Wait for all goroutines (root + downstream) to finish.
 	done := make(chan struct{})
 	safego.Go(ctx, "plan_executor.wg_wait."+r.board.ID, func() {
@@ -133,11 +150,19 @@ func (r *dagRun) run(ctx context.Context) error {
 		runErr = nil
 	case <-ctx.Done():
 		runErr = ctx.Err()
+		// 发现#17：canceled 的全部写必须持 r.mu——与 maybeRetryStep 的持锁
+		// 读构成 happens-before；屏障后的 publish 读点在 run goroutine 程序
+		// 序内，天然有序（见 dagRun.canceled 字段注释的锁契约）。
+		r.mu.Lock()
 		r.canceled = true
+		r.mu.Unlock()
 		// P1 (audit): do not compute terminal state until in-flight workers
 		// exit. Previously <-ctx.Done() raced ahead of wg.Wait(), so
 		// publish*Terminal could run while dispatch goroutines still wrote.
 		<-done
+		// 取消拦截假启动：首发有效（成功信号已投递则本信号被丢弃），
+		// 尚未派发首步即被取消的板让 WaitBoardStartup 拿到失败原因而非超时。
+		r.pe.signalStartup(r.board.ID, false, "plan board run canceled")
 	}
 	// Terminal persist/publish needs a live context: the Subscribe ctx may
 	// already be cancelled. Keep a short independent budget after cancel.

@@ -25,6 +25,7 @@ import {
   searchKnowledge,
   getEmbedderConfig,
   getDocumentContent,
+  getDocument,
   updateDocumentContent,
   updateEmbedderConfig,
   updateDocumentVisibility,
@@ -54,6 +55,8 @@ import type {
 export const useKnowledgeStore = defineStore('knowledge', () => {
   const collections = ref<KnowledgeCollection[]>([]);
   const collectionsTotal = ref(0);
+  const removedDocumentIds = ref<string[]>([]);
+  const removedCollectionIds = ref<string[]>([]);
   /** Documents keyed by collection_id */
   // TECH-DEBT: no TTL or invalidation — long-running sessions may serve stale data.
   // Consider adding a per-key expiry or a "lastFetchedAt" timestamp.
@@ -210,6 +213,7 @@ export const useKnowledgeStore = defineStore('knowledge', () => {
 
   async function removeCollection(id: string): Promise<void> {
     await deleteCollection(id);
+    removedCollectionIds.value = [...removedCollectionIds.value.slice(-255), id];
     collections.value = collections.value.filter((c) => c.id !== id);
     delete documentsByCollection.value[id];
     delete danglingByCollection.value[id];
@@ -241,6 +245,7 @@ export const useKnowledgeStore = defineStore('knowledge', () => {
     const doc = await ingestDocument(input);
     // US-14：collection_id 留空时由后端落入默认知识库，缓存键以返回文档的实际归属为准。
     const key = doc.collection_id || input.collection_id;
+    if (!key) throw new Error('ingest returned no collection id');
     const existing = documentsByCollection.value[key] ?? [];
     const i = existing.findIndex((d) => d.id === doc.id);
     if (i >= 0) existing[i] = { ...existing[i], ...doc };
@@ -266,6 +271,7 @@ export const useKnowledgeStore = defineStore('knowledge', () => {
 
   async function removeDocument(id: string, collectionId: string): Promise<void> {
     await deleteDocument(id);
+    removedDocumentIds.value = [...removedDocumentIds.value.slice(-255), id];
     if (documentsByCollection.value[collectionId]) {
       documentsByCollection.value[collectionId] = documentsByCollection.value[collectionId].filter((d) => d.id !== id);
     }
@@ -295,7 +301,15 @@ export const useKnowledgeStore = defineStore('knowledge', () => {
 
   // US-14：跨库移动文档；本地缓存由页面侧 reload 刷新（源/目标库计数均变化）。
   async function moveDoc(id: string, targetCollectionId: string): Promise<KnowledgeDocument> {
-    return moveDocument(id, targetCollectionId);
+    const doc = await moveDocument(id, targetCollectionId);
+    for (const [collectionId, list] of Object.entries(documentsByCollection.value)) {
+      if (collectionId !== doc.collection_id)
+        documentsByCollection.value[collectionId] = list.filter((item) => item.id !== id);
+      invalidateTree(collectionId);
+    }
+    const target = documentsByCollection.value[doc.collection_id] ?? [];
+    documentsByCollection.value[doc.collection_id] = [...target.filter((item) => item.id !== id), doc];
+    return doc;
   }
 
   // G3-B4：库内跨目录移动；文档身份保留（更新缓存 rel_path/source），失效树缓存供重载。
@@ -313,13 +327,19 @@ export const useKnowledgeStore = defineStore('knowledge', () => {
 
   async function setDocumentVisibility(
     id: string,
-    visibility: 'collection' | 'private',
-  ): Promise<{ id: string; visibility: string; owner_user_id: string }> {
-    const got = await updateDocumentVisibility(id, visibility);
+    visibility: 'collection' | 'private' | 'shared',
+    sharedWith: string[] = [],
+  ): Promise<{ id: string; visibility: string; owner_user_id: string; shared_with?: string[] }> {
+    const got = await updateDocumentVisibility(id, visibility, sharedWith);
     for (const list of Object.values(documentsByCollection.value)) {
       const i = list.findIndex((d) => d.id === id);
       if (i >= 0) {
-        list[i] = { ...list[i], visibility: got.visibility, owner_user_id: got.owner_user_id };
+        list[i] = {
+          ...list[i],
+          visibility: got.visibility,
+          owner_user_id: got.owner_user_id,
+          shared_with: got.shared_with ?? (visibility === 'shared' ? sharedWith : []),
+        };
       }
     }
     return got;
@@ -353,11 +373,21 @@ export const useKnowledgeStore = defineStore('knowledge', () => {
     return getDocumentContent(id);
   }
 
+  async function loadDocument(id: string): Promise<KnowledgeDocument> {
+    const doc = await getDocument(id);
+    const list = documentsByCollection.value[doc.collection_id] ?? [];
+    const index = list.findIndex((d) => d.id === doc.id);
+    if (index >= 0) list[index] = doc;
+    else list.push(doc);
+    documentsByCollection.value[doc.collection_id] = list;
+    return doc;
+  }
+
   async function saveDocumentContent(
     id: string,
     content: string,
     baseHash: string,
-  ): Promise<{ document: KnowledgeDocument; conflict: boolean }> {
+  ): Promise<{ document: KnowledgeDocument; conflict: boolean; base_hash?: string }> {
     const res = await updateDocumentContent(id, content, baseHash);
     if (res.document?.id) {
       upsertDocument(res.document);
@@ -375,6 +405,8 @@ export const useKnowledgeStore = defineStore('knowledge', () => {
   return {
     collections,
     collectionsTotal,
+    removedDocumentIds,
+    removedCollectionIds,
     documentsByCollection,
     documentsTruncatedByCollection,
     loading,
@@ -414,6 +446,7 @@ export const useKnowledgeStore = defineStore('knowledge', () => {
     loadEmbedderConfig,
     saveEmbedderConfig,
     loadDocumentContent,
+    loadDocument,
     saveDocumentContent,
   };
 });

@@ -23,6 +23,9 @@ import (
 // 双倍提案破坏）；进度/终态经 knowledge WS 频道广播 event_type=knowledge_curate。
 // dry_run=true 仅探测不应用（decay/置位/提案均不落库），用于治理效果预演。
 func (s *KnowledgeService) CurateKnowledgeNow(ctx context.Context, req *v1.CurateKnowledgeNowRequest) (*v1.CurateKnowledgeNowResponse, error) {
+	if err := assertKnowledgeGovernanceAdmin(ctx); err != nil {
+		return nil, err
+	}
 	col, err := s.uc.GetCollection(ctx, req.GetCollectionId())
 	if err != nil {
 		return nil, err

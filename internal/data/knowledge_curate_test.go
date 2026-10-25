@@ -21,6 +21,12 @@ func setupCurateRepo(t *testing.T) *knowledgeRepo {
 	if err := EnsureKnowledgeSchema(context.Background(), db, 3); err != nil {
 		t.Fatalf("ensure knowledge schema: %v", err)
 	}
+	// Governance fixtures represent tenant-owned libraries, not shared read-only assets.
+	if _, err := db.ExecContext(context.Background(), `INSERT INTO knowledge_collections
+		(id, name, embedding_model, workspace, vault_backend) VALUES
+		('c1','c1','m','default','team')`); err != nil {
+		t.Fatal(err)
+	}
 	repo, ok := NewKnowledgeRepo(&Data{rawDB: db, pg: db, pgRead: db, dialect: DialectPostgres},
 		loggateway.NewNoop()).(*knowledgeRepo)
 	if !ok {
@@ -359,6 +365,10 @@ func TestKnowledgeRepo_HasProposalAndResolve(t *testing.T) {
 func TestKnowledgeRepo_ListGovernanceProposals(t *testing.T) {
 	repo := setupCurateRepo(t)
 	ctx := context.Background()
+	if _, err := repo.data.Postgres().ExecContext(ctx,
+		`INSERT INTO knowledge_collections (id,name,embedding_model,workspace) VALUES ('c2','c2','m','default')`); err != nil {
+		t.Fatal(err)
+	}
 
 	for _, p := range []bizknowledge.GovernanceProposal{
 		{CollectionID: "c1", Kind: bizknowledge.ProposalKindOrphan, Risk: bizknowledge.ProposalRiskHigh,
@@ -640,5 +650,61 @@ func TestKnowledgeRepo_DeleteDocument_AccessLogPurged(t *testing.T) {
 	}
 	if n != 0 {
 		t.Fatalf("access_log residue = %d, want 0", n)
+	}
+}
+
+// ── G-34 ADR-C：MOC 摘要待补页扫描（PG 集成） ──────────────────────────────────
+// 契约：moc/ 前缀 + 占位锚双条件命中；人工摘要页/entries 前缀/他库页不命中；
+// 结果按 doc id 升序；limit 截断。
+func TestKnowledgeRepo_ListPendingMOCSummaries(t *testing.T) {
+	repo := setupCurateRepo(t)
+	ctx := context.Background()
+	raw := repo.data.Postgres()
+
+	placeholder := "## 摘要\n\n（摘要待治理巡检自动补齐）\n"
+	seed := func(id, relPath, content string) {
+		t.Helper()
+		seedCurateDoc(t, repo, id, relPath)
+		if _, err := raw.ExecContext(ctx, `UPDATE knowledge_documents SET content_text=$1 WHERE id=$2`, content, id); err != nil {
+			t.Fatal(err)
+		}
+	}
+	seed("d-moc-1", "moc/发布体系.md", placeholder)           // 命中
+	seed("d-moc-3", "moc/告警体系.md", placeholder)           // 命中（序钉：第三个 id）
+	seed("d-moc-2", "moc/发布体系-2.md", "## 摘要\n\n人工已定稿。\n") // 人工摘要 → 不命中
+	seed("d-entry-1", "entries/灰度.md", placeholder)       // 非 moc 前缀 → 不命中
+	seedCurateDoc(t, repo, "d-moc-c2", "moc/别库.md")       // 他库同占位 → 不跨库
+	if _, err := raw.ExecContext(ctx, `INSERT INTO knowledge_collections (id, name, embedding_model) VALUES ('c2','c2','m') ON CONFLICT (id) DO NOTHING`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := raw.ExecContext(ctx, `UPDATE knowledge_documents SET collection_id='c2', content_text=$1 WHERE id='d-moc-c2'`, placeholder); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := repo.ListPendingMOCSummaries(ctx, "c1", 32)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got[0].DocID != "d-moc-1" || got[1].DocID != "d-moc-3" {
+		t.Fatalf("pending = %+v", got)
+	}
+	if got[0].RelPath != "moc/发布体系.md" || got[0].Body != placeholder {
+		t.Fatalf("row = %+v", got[0])
+	}
+	// limit 截断：升序取先。
+	limited, err := repo.ListPendingMOCSummaries(ctx, "c1", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(limited) != 1 || limited[0].DocID != "d-moc-1" {
+		t.Fatalf("limited = %+v", limited)
+	}
+	// 他库视角：仅本库行。
+	c2got, err := repo.ListPendingMOCSummaries(ctx, "c2", 32)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(c2got) != 1 || c2got[0].DocID != "d-moc-c2" {
+		t.Fatalf("c2 pending = %+v", c2got)
 	}
 }

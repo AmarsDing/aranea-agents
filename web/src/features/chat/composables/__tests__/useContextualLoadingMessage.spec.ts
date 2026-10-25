@@ -402,6 +402,41 @@ describe('useContextualLoadingMessage', () => {
       onSpiritActivityEvent(makeActivityEvent({ kind: 'team_stage', stage: 'summary', event: 'completed' }));
       expect(loadingMessage.value).toBeNull();
     });
+
+    // D10-F4（P7）：team_stage interrupted/cancelled 是边界终态，
+    // 陈旧「正在…」文案必须清除，但自身不产生新 loading 文案（MAP 无项）。
+    it('spirit_team_interrupted clears stale loadingMessage（失败先行）', () => {
+      const isReplaying = ref(false);
+      const { loadingMessage, onSpiritActivityEvent } = useContextualLoadingMessage(isReplaying);
+
+      onSpiritActivityEvent(makeActivityEvent({ kind: 'plan' }));
+      expect(loadingMessage.value).not.toBeNull();
+
+      onSpiritActivityEvent(makeActivityEvent({ kind: 'team_stage', stage: 'interrupted', event: 'updated' }));
+      expect(loadingMessage.value).toBeNull();
+    });
+
+    it('spirit_team_cancelled clears stale loadingMessage', () => {
+      const isReplaying = ref(false);
+      const { loadingMessage, onSpiritActivityEvent } = useContextualLoadingMessage(isReplaying);
+
+      onSpiritActivityEvent(makeActivityEvent({ kind: 'plan' }));
+      expect(loadingMessage.value).not.toBeNull();
+
+      onSpiritActivityEvent(makeActivityEvent({ kind: 'team_stage', stage: 'cancelled', event: 'updated' }));
+      expect(loadingMessage.value).toBeNull();
+    });
+
+    it('spirit_team_interrupted/cancelled 自身不产生新 loadingMessage（此前无文案时仍为 null）', () => {
+      const isReplaying = ref(false);
+      const { loadingMessage, onSpiritActivityEvent } = useContextualLoadingMessage(isReplaying);
+
+      onSpiritActivityEvent(makeActivityEvent({ kind: 'team_stage', stage: 'interrupted', event: 'updated' }));
+      expect(loadingMessage.value).toBeNull();
+
+      onSpiritActivityEvent(makeActivityEvent({ kind: 'team_stage', stage: 'cancelled', event: 'updated' }));
+      expect(loadingMessage.value).toBeNull();
+    });
   });
 
   describe('replay suppression', () => {

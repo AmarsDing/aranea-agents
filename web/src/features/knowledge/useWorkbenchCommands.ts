@@ -3,7 +3,7 @@
 // TECH-DEBT(FL5): 一次性编辑器命令直调 features/knowledge/api（writeback/governance/health/experts/
 // backfill/rebuild/recency/autolink）——无共享状态，照 useTeamCompilePreview 先例；有缓存语义的
 // （新建文档/目录、全库检索）走 knowledge store，保证树/文档缓存一致性。
-import { computed, ref, watch, type Ref } from 'vue';
+import { computed, getCurrentScope, onScopeDispose, ref, watch, type Ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useQuasar } from 'quasar';
 import { useKnowledgeStore } from '../../stores/knowledge';
@@ -60,6 +60,8 @@ export interface WorkbenchCommandsDeps {
   events: {
     /** 文档结构变化（新建/落链/写回/治理）后通知页面刷新树。 */
     refreshTree: () => void;
+    createVault?: () => void;
+    flushEditor?: () => void;
     switchVault: (id: string) => void;
     openGraph: (focusDocId?: string) => void;
     promoteActive: (docId: string) => void;
@@ -73,6 +75,33 @@ export function useWorkbenchCommands(deps: WorkbenchCommandsDeps) {
   const { t } = useI18n();
   const $q = useQuasar();
   const knowledgeStore = useKnowledgeStore();
+  const contextVaultId = computed(() => deps.workbench.activeTab.value?.collectionId || deps.currentVaultId.value);
+  const contextDocuments = computed(
+    () =>
+      knowledgeStore.documentsByCollection?.[contextVaultId.value] ??
+      deps.documents.value.filter((doc) => doc.collection_id === contextVaultId.value),
+  );
+
+  watch(
+    () => knowledgeStore.removedCollectionIds,
+    (ids) => {
+      for (const tab of [...deps.workbench.tabs.value]) {
+        if (tab.collectionId && ids?.includes(tab.collectionId)) deps.workbench.onDocRemoved(tab.docId);
+      }
+    },
+  );
+  watch(
+    () => knowledgeStore.removedDocumentIds,
+    (ids) => {
+      for (const id of ids ?? []) deps.workbench.onDocRemoved(id);
+    },
+  );
+  watch(
+    () => Object.values(knowledgeStore.documentsByCollection ?? {}).flat(),
+    (documents) => {
+      for (const doc of documents) deps.workbench.onDocRenamed?.(doc);
+    },
+  );
 
   // ---------- wikilink 落链 recency（B4 #8） ----------
   // 归一化名 → 名次（0=最近）；仅空查询补全消费。库切换时整表拉取一次（≤32 条），
@@ -86,7 +115,7 @@ export function useWorkbenchCommands(deps: WorkbenchCommandsDeps) {
     }
     try {
       const items = await listRecentLinkUses(vaultId);
-      const byId = new Map(deps.documents.value.filter((d) => d.collection_id === vaultId).map((d) => [d.id, d]));
+      const byId = new Map(contextDocuments.value.filter((d) => d.collection_id === vaultId).map((d) => [d.id, d]));
       const rank = new Map<string, number>();
       for (const it of items) {
         const doc = byId.get(it.doc_id);
@@ -100,11 +129,11 @@ export function useWorkbenchCommands(deps: WorkbenchCommandsDeps) {
     }
   }
 
-  watch(deps.currentVaultId, (id) => void loadLinkRecency(id), { immediate: true });
+  watch(contextVaultId, (id) => void loadLinkRecency(id), { immediate: true });
 
   function onPickLink(target: string) {
-    const doc = deps.documents.value.find(
-      (d) => d.collection_id === deps.currentVaultId.value && (d.rel_path || d.source) === target,
+    const doc = contextDocuments.value.find(
+      (d) => d.collection_id === contextVaultId.value && (d.rel_path || d.source) === target,
     );
     if (!doc) return;
     // 乐观置顶：目标 rank 0，其余按原名次顺延。
@@ -115,7 +144,7 @@ export function useWorkbenchCommands(deps: WorkbenchCommandsDeps) {
       if (k !== name) next.set(k, next.size);
     }
     linkRecencyRank.value = next;
-    recordLinkUse(deps.currentVaultId.value, doc.id).catch(() => undefined);
+    recordLinkUse(contextVaultId.value, doc.id).catch(() => undefined);
   }
 
   // ---------- ⌘O / ⌘K 浮层状态（SP2-6） ----------
@@ -137,6 +166,7 @@ export function useWorkbenchCommands(deps: WorkbenchCommandsDeps) {
   const searchQuery = ref('');
   const searchItems = ref<WorkbenchSearchItem[]>([]);
   const searchLoading = ref(false);
+  const searchError = ref('');
   let searchSeq = 0;
   let searchTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -148,6 +178,7 @@ export function useWorkbenchCommands(deps: WorkbenchCommandsDeps) {
       return;
     }
     searchLoading.value = true;
+    searchError.value = '';
     try {
       // US-14：工作台搜索默认全部可见知识库（collection_id 留空走联邦路由）。
       const chunks = await knowledgeStore.search({
@@ -155,8 +186,26 @@ export function useWorkbenchCommands(deps: WorkbenchCommandsDeps) {
         top_k: 12,
       });
       if (seq !== searchSeq) return; // 已有更新的查询
+      const metadata = new Map<string, KnowledgeDocument>();
+      await Promise.all(
+        [...new Set(chunks.map((chunk) => chunk.doc_id))].map(async (id) => {
+          const cached =
+            Object.values(knowledgeStore.documentsByCollection ?? {})
+              .flat()
+              .find((doc) => doc.id === id) ?? deps.documents.value.find((doc) => doc.id === id);
+          if (cached) metadata.set(id, cached);
+          else {
+            try {
+              metadata.set(id, await knowledgeStore.loadDocument(id));
+            } catch {
+              /* 点击时重试权限读取 */
+            }
+          }
+        }),
+      );
+      if (seq !== searchSeq) return;
       searchItems.value = chunks.map((chunk) => {
-        const doc = deps.documents.value.find((d) => d.id === chunk.doc_id);
+        const doc = metadata.get(chunk.doc_id);
         const rel = doc?.rel_path || doc?.source || chunk.doc_id;
         const name = rel.split('/').filter(Boolean).pop() || rel;
         const snip = buildSearchSnippet(chunk.content, q);
@@ -164,14 +213,17 @@ export function useWorkbenchCommands(deps: WorkbenchCommandsDeps) {
           chunk,
           docId: chunk.doc_id,
           name,
-          path: rel,
+          path: `${deps.collections.value.find((c) => c.id === chunk.collection_id)?.name || chunk.collection_id} / ${rel}`,
           snippet: snip.text,
           marks: snip.marks,
           score: chunk.score,
         };
       });
-    } catch {
-      if (seq === searchSeq) searchItems.value = [];
+    } catch (error) {
+      if (seq === searchSeq) {
+        searchItems.value = [];
+        searchError.value = error instanceof Error ? error.message : t('knowledgeWorkflow.searchFailed');
+      }
     } finally {
       if (seq === searchSeq) searchLoading.value = false;
     }
@@ -181,6 +233,11 @@ export function useWorkbenchCommands(deps: WorkbenchCommandsDeps) {
     if (searchTimer) clearTimeout(searchTimer);
     searchTimer = setTimeout(() => void runSearch(q), 300);
   });
+  if (getCurrentScope())
+    onScopeDispose(() => {
+      if (searchTimer) clearTimeout(searchTimer);
+      searchSeq++;
+    });
 
   watch(searchOpen, (on) => {
     if (on) return;
@@ -198,9 +255,31 @@ export function useWorkbenchCommands(deps: WorkbenchCommandsDeps) {
     searchOpen.value = true;
   }
 
-  function onSearchPick(it: WorkbenchSearchItem) {
-    const doc = deps.documents.value.find((d) => d.id === it.docId);
-    if (doc) void deps.workbench.openDoc(doc);
+  async function onSearchPick(it: WorkbenchSearchItem) {
+    try {
+      const doc = await knowledgeStore.loadDocument(it.docId);
+      if (doc.collection_id !== deps.currentVaultId.value) deps.events.switchVault(doc.collection_id);
+      await deps.workbench.openDoc(doc);
+    } catch (error) {
+      $q.notify({
+        type: 'negative',
+        message: error instanceof Error ? error.message : t('knowledgeWorkflow.openFailed'),
+      });
+    }
+  }
+
+  async function openDocumentById(id: string): Promise<KnowledgeDocument | null> {
+    try {
+      const doc = await knowledgeStore.loadDocument(id);
+      await deps.workbench.openDoc(doc);
+      return doc;
+    } catch (error) {
+      $q.notify({
+        type: 'negative',
+        message: error instanceof Error ? error.message : t('knowledgeWorkflow.openFailed'),
+      });
+      return null;
+    }
   }
 
   // ---------- 命令面板（SP2-6） ----------
@@ -239,7 +318,10 @@ export function useWorkbenchCommands(deps: WorkbenchCommandsDeps) {
 
   /** 新建笔记（命令面板/侧栏共用）：当前目录落点 + 打开 + 刷新树；走 store 保证树缓存失效。 */
   function createNote() {
-    if (!deps.currentVaultId.value) return;
+    if (!deps.currentVaultId.value) {
+      deps.events.createVault?.();
+      return;
+    }
     $q.dialog({
       title: t('knowledgePage.workbench.commands.new-note'),
       prompt: { model: '', type: 'text', label: t('knowledgePage.workbench.noteNamePrompt') },
@@ -262,6 +344,10 @@ export function useWorkbenchCommands(deps: WorkbenchCommandsDeps) {
 
   function createFolder() {
     if (!deps.currentVaultId.value) return;
+    if (deps.collections.value.find((c) => c.id === deps.currentVaultId.value)?.vault_backend === 'team') {
+      $q.notify({ type: 'info', message: t('knowledgeWorkflow.teamFolderHint') });
+      return;
+    }
     $q.dialog({
       title: t('knowledgePage.workbench.commands.new-folder'),
       prompt: { model: '', type: 'text', label: t('knowledgePage.workbench.folderNamePrompt') },
@@ -280,10 +366,12 @@ export function useWorkbenchCommands(deps: WorkbenchCommandsDeps) {
 
   /** dangling 链接点击：当前目录新建 `target.md` 并打开 + 刷新树（Obsidian 语义）。 */
   async function createDocByName(target: string) {
-    if (!deps.currentVaultId.value) return;
-    const relPath = `${deps.currentPrefix.value}${normalizeTargetName(target) || target}.md`;
+    if (!contextVaultId.value) return;
+    const activePath = deps.workbench.activeTab.value?.relPath || '';
+    const prefix = activePath.includes('/') ? activePath.slice(0, activePath.lastIndexOf('/') + 1) : '';
+    const relPath = `${prefix}${normalizeTargetName(target) || target}.md`;
     try {
-      const doc = await knowledgeStore.addVaultDocument(deps.currentVaultId.value, relPath);
+      const doc = await knowledgeStore.addVaultDocument(contextVaultId.value, relPath);
       deps.events.refreshTree();
       await deps.workbench.openDoc(doc);
     } catch (e) {
@@ -293,9 +381,14 @@ export function useWorkbenchCommands(deps: WorkbenchCommandsDeps) {
 
   /** 外部保存入口（命令面板/快捷键/标签页保存按钮）：flush + CAS 保存，冲突时提示保留 tab。 */
   async function saveDoc(docId: string) {
-    const ok = await deps.events.saveDoc(docId);
-    if (!ok) {
-      $q.notify({ type: 'warning', message: t('knowledgePage.workbench.conflictHint'), timeout: 6000 });
+    try {
+      const ok = await deps.events.saveDoc(docId);
+      if (!ok) $q.notify({ type: 'warning', message: t('knowledgeWorkflow.savePending'), timeout: 6000 });
+    } catch (error) {
+      $q.notify({
+        type: 'negative',
+        message: error instanceof Error ? error.message : t('knowledgeWorkflow.saveFailed'),
+      });
     }
   }
 
@@ -626,6 +719,7 @@ export function useWorkbenchCommands(deps: WorkbenchCommandsDeps) {
         void reviewGovernance();
         break;
       case 'close-tab':
+        deps.events.flushEditor?.();
         if (active) deps.workbench.closeTab(active.docId);
         break;
       case 'switch-vault':
@@ -679,8 +773,12 @@ export function useWorkbenchCommands(deps: WorkbenchCommandsDeps) {
     searchQuery,
     searchItems,
     searchLoading,
+    searchError,
+    contextVaultId,
+    contextDocuments,
     openSearch,
     onSearchPick,
+    openDocumentById,
     // 命令面板
     commandMru,
     commandItems,

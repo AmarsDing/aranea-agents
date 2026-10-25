@@ -35,6 +35,19 @@ func TestClassifyStepFailure(t *testing.T) {
 		{"空消息", "", StepFailureTransient},
 		// 大小写不敏感
 		{"大写 TIMEOUT", "LLM TIMEOUT waiting first token", StepFailureTransient},
+		// 用户取消（D1-F3）：cancel 优先级置 capability 之前
+		{"context canceled", "context canceled", StepFailureCancel},
+		{"取消包装前缀", "graph aborted: context canceled", StepFailureCancel},
+		{"英式拼写取消", "context cancelled by user", StepFailureCancel},
+		{"user_cancel", "user_cancel", StepFailureCancel},
+		{"user_cancelled 包装", "member exited: user_cancelled", StepFailureCancel},
+		{"team_cancel", "team_cancel: stopped", StepFailureCancel},
+		// 对照 pin（D1-F3）：deadline exceeded 维持 transient（TeamMaxLifetime
+		// 墙钟属 infra 超时）；既有既有归类不回退。
+		{"deadline 维持 transient", "context deadline exceeded", StepFailureTransient},
+		{"rate limit 429 维持 transient", "rate limit 429", StepFailureTransient},
+		{"agent not found 维持 capability", "agent not found", StepFailureCapability},
+		{"空串维持 transient", "", StepFailureTransient},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

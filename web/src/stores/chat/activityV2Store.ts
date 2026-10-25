@@ -317,6 +317,31 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
     }
   }
 
+  // D9-20：MemberSession 终态汇点（与后端「已终态记录直接跳过」同口径，
+  // chat_pause.go 哨兵版本带纪律）。
+  const TERMINAL_MEMBER_SESSION_STATUSES = new Set<MemberSession['Status']>(['completed', 'failed', 'skipped']);
+
+  /**
+   * pause/resume 迟到补丁的受控旁路（D9-20）：run_status 帧携带 chat_session_id +
+   * paused/running 时按 SessionID 直接覆写成员 Status。绕开 Version 守卫是故意的
+   * 例外（仅限 paused/running 两个生命周期态；终态汇点不可被补丁回退），且
+   * Version 不被本路径伪造——后续权威 member_session.updated 的 Version++/哨兵带
+   * 仲裁完全复用 upsertMemberSession 的既有守卫。返回是否实际改写。
+   */
+  function patchMemberSessionStatusByChatSession(chatSessionId: string, status: MemberSession['Status']): boolean {
+    const sid = String(chatSessionId || '').trim();
+    if (!sid) return false;
+    if (status !== 'paused' && status !== 'running') return false;
+    for (const ms of memberSessions.value.values()) {
+      if (ms.SessionID !== sid) continue;
+      if (ms.Status === status) return false;
+      if (TERMINAL_MEMBER_SESSION_STATUSES.has(ms.Status)) return false;
+      ms.Status = status; // 仅覆写 Status；Version/资料字段保持不动
+      return true;
+    }
+    return false;
+  }
+
   function upsertPlanBoard(pb: PlanBoard) {
     const ex = planBoards.value.get(pb.ID);
     if (ex && pb.Version <= ex.Version) return;
@@ -341,33 +366,65 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
     }
   }
 
-  function upsertGraphStage(gs: GraphStage) {
+  function upsertGraphStage(gs: GraphStage, source: GraphSource = 'live') {
     const ex = graphStages.value.get(gs.ID);
     if (ex && gs.Version <= ex.Version) return;
     graphStages.value.set(gs.ID, { ...gs });
     if (gs.Nodes && gs.Nodes.length > 0) {
       for (const gn of gs.Nodes) {
-        // GraphNode 无 Version 字段，直接覆盖
-        graphNodes.value.set(gn.ID, { ...gn });
+        // 内嵌 Nodes 与 stage 同源透传，消除直写盲区（D9-21）。
+        upsertGraphNode(gn, source);
       }
     }
   }
 
-  function upsertGraphNode(gn: GraphNode) {
+  // D9-21：GraphNode 生命周期秩 —— pending < running < terminal（三终态同秩，
+  // 等价秩间终态细调允许，如 snapshot failed→interrupted）。
+  type GraphSource = 'live' | 'snapshot';
+  const GRAPH_NODE_RANK: Record<GraphNode['Status'], number> = {
+    pending: 0,
+    running: 1,
+    completed: 2,
+    failed: 2,
+    interrupted: 2,
+  };
+
+  /**
+   * GraphNode 终态粘性守卫（D9-21）：
+   * - snapshot 来源仅允许 rank 单调不降（Status 回退时保留 ex.Status，但
+   *   TeamStageID/DependsOn/Label/DagNodeID 元数据照常合并）；
+   * - live 来源（WS 单信道按 Sequencer 序可信）放行全部后端合法转移（含 resume 的
+   *   failed→pending），仅防御性拒绝 completed→非 completed（后端 machines 中
+   *   completed 为真汇点，见 plan_executor_resume.go）。
+   */
+  function mergeGraphNode(ex: GraphNode, gn: GraphNode, source: GraphSource): GraphNode {
+    const exRank = GRAPH_NODE_RANK[ex.Status] ?? 0;
+    const gnRank = GRAPH_NODE_RANK[gn.Status] ?? 0;
+    let status = gn.Status;
+    if (source === 'snapshot' && gnRank < exRank) {
+      status = ex.Status; // snapshot 不得让任何节点秩回退
+    } else if (source === 'live' && ex.Status === 'completed' && gn.Status !== 'completed') {
+      status = ex.Status; // completed 对一切来源为汇点
+    }
+    return {
+      ...ex,
+      ...gn,
+      Status: status,
+      // 合并：终态事件可能不带 TeamStageID/DependsOn/Label，不得用空值擦除已有字段。
+      TeamStageID: gn.TeamStageID || ex.TeamStageID,
+      DependsOn: gn.DependsOn?.length ? gn.DependsOn : ex.DependsOn,
+      Label: gn.Label || ex.Label,
+      DagNodeID: gn.DagNodeID || ex.DagNodeID,
+    };
+  }
+
+  function upsertGraphNode(gn: GraphNode, source: GraphSource = 'live') {
     const ex = graphNodes.value.get(gn.ID);
     if (!ex) {
       graphNodes.value.set(gn.ID, { ...gn });
       return;
     }
-    // 合并：终态事件可能不带 TeamStageID/DependsOn/Label，不得用空值擦除已有字段。
-    graphNodes.value.set(gn.ID, {
-      ...ex,
-      ...gn,
-      TeamStageID: gn.TeamStageID || ex.TeamStageID,
-      DependsOn: gn.DependsOn?.length ? gn.DependsOn : ex.DependsOn,
-      Label: gn.Label || ex.Label,
-      DagNodeID: gn.DagNodeID || ex.DagNodeID,
-    });
+    graphNodes.value.set(gn.ID, mergeGraphNode(ex, gn, source));
   }
 
   // === Streaming delta (does NOT bump version) ===
@@ -823,7 +880,8 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
     for (const ts of teamStagesL) upsertTeamStage(ts);
     for (const pb of planBoardsL) upsertPlanBoard(pb);
     for (const ps of planStepsL) upsertPlanStep(ps);
-    for (const gs of graphStagesL) upsertGraphStage(gs);
+    // D9-21：水合快照不得让任何节点秩回退（live 帧已知的终态由守卫保留）。
+    for (const gs of graphStagesL) upsertGraphStage(gs, 'snapshot');
 
     // Drill-down: team_runs → member_sessions (metadata only; member step
     // content stays lazy per A.4.7), graph_nodes per graph_stage.
@@ -847,7 +905,7 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
       graphStagesL.map((gs) => listGraphNodesV2(gs.ID).catch(catchHydrationError<GraphNode>('graph_nodes', gs.ID))),
     );
     for (const nodes of graphNodeLists) {
-      for (const gn of nodes) upsertGraphNode(gn);
+      for (const gn of nodes) upsertGraphNode(gn, 'snapshot');
     }
 
     if (hydrationErrors.value.length > errorsBefore) {
@@ -901,6 +959,7 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
     upsertTeamStage,
     upsertTeamRun,
     upsertMemberSession,
+    patchMemberSessionStatusByChatSession,
     upsertPlanBoard,
     upsertPlanStep,
     upsertGraphStage,

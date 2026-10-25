@@ -15,11 +15,11 @@ func TestRetrievalEvaluator_NilLLM(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !assessment.Sufficient {
-		t.Error("nil LLM should default to sufficient=true")
+	if assessment.Sufficient || assessment.Evaluated {
+		t.Error("nil LLM must report unevaluated rather than sufficient")
 	}
-	if assessment.Confidence != 1.0 {
-		t.Errorf("nil LLM confidence = %v, want 1.0", assessment.Confidence)
+	if assessment.Confidence != 0 {
+		t.Errorf("nil LLM confidence = %v, want 0", assessment.Confidence)
 	}
 }
 
@@ -67,10 +67,10 @@ func TestParseAssessment(t *testing.T) {
 			supplement: "",
 		},
 		{
-			name:       "invalid json defaults sufficient",
+			name:       "invalid json remains unevaluated",
 			raw:        "not json at all",
-			sufficient: true,
-			confidence: 0.5,
+			sufficient: false,
+			confidence: 0,
 			supplement: "",
 		},
 		{
@@ -108,6 +108,15 @@ func TestBuildChunksSummary(t *testing.T) {
 	summary := buildChunksSummary(chunks, 100)
 	if summary == "" {
 		t.Error("summary should not be empty")
+	}
+}
+
+func TestParseAssessment_RequiresCompleteEvaluatedDecision(t *testing.T) {
+	for _, raw := range []string{`{}`, `{"sufficient":true}`, `{"confidence":1}`, `{"sufficient":true,"confidence":2}`} {
+		got, err := parseAssessment(raw)
+		if err != nil || got.Evaluated || got.Sufficient || got.Confidence != 0 {
+			t.Fatalf("incomplete/invalid assessment must remain unknown: raw=%s got=%+v err=%v", raw, got, err)
+		}
 	}
 }
 

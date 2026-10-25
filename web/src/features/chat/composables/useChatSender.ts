@@ -1,7 +1,7 @@
 // TECH-DEBT resolved: moved sendMessage to runtimeStore.send — chat optimization
 // TECH-DEBT: WS send (deps.sendChatViaWs + sendCommand) bypasses Store action —
 // see aranea-frontend-guide §3.1 (API → Store → Composable → Page).
-import { ref, reactive, computed, type Ref, type ComputedRef } from 'vue';
+import { ref, reactive, computed, getCurrentScope, onScopeDispose, type Ref, type ComputedRef } from 'vue';
 import { useQuasar } from 'quasar';
 import { useRouter } from 'vue-router';
 import { useI18n } from 'vue-i18n';
@@ -27,6 +27,7 @@ import {
   CHAT_RUN_RECONCILE_THRESHOLD_MS,
   CHAT_STALL_NOTIFY_DURATION_MS,
   CHAT_FIRST_BYTE_NOTIFY_DURATION_MS,
+  CHAT_RUN_ORPHAN_RECONCILE_DELAY_MS,
   firstByteNotifyThresholdMs,
 } from '../../constants/timeouts';
 
@@ -109,6 +110,10 @@ export function useChatSender(deps: SenderDeps) {
   let lastRunEventAt = 0;
   let stallCheckInterval: ReturnType<typeof setInterval> | null = null;
   let watchdogReconciling = false;
+  // D9-19 孤儿态自愈：markSendingDone 后 runStatus 仍非终态时（终态 WS/eWS 帧丢失
+  // 而 task.completed 已停表），延迟 CHAT_RUN_ORPHAN_RECONCILE_DELAY_MS 单次触发
+  // 既有对账通道的定时器。与 watchdog 共用 watchdogReconciling 重入锁、不发恢复通知。
+  let orphanReconcileTimer: ReturnType<typeof setTimeout> | null = null;
   // 当前发送会话 id（final-review REG-3）：touchRunActivity 只统计本会话的活动帧，
   // 其他会话/团队流的事件不得顺延本会话的 90s 对账窗口。
   let sendingSessionId: string | undefined;
@@ -176,7 +181,43 @@ export function useChatSender(deps: SenderDeps) {
     }, CHAT_RUN_STALL_CHECK_INTERVAL_MS);
   }
 
+  function clearOrphanReconcileTimer() {
+    if (orphanReconcileTimer != null) {
+      clearTimeout(orphanReconcileTimer);
+      orphanReconcileTimer = null;
+    }
+  }
+
+  // D9-19 孤儿对账：复用 watchdogReconciling 重入锁；静默（不发恢复通知）、
+  // 不重排期（网络失败留待下次发送/切会话自然带上新对账）。
+  async function orphanReconcileRunState() {
+    if (watchdogReconciling) return;
+    watchdogReconciling = true;
+    try {
+      await deps.reconcileRunStatus();
+    } catch {
+      // 网络失败：放弃本次自愈节拍。
+    } finally {
+      watchdogReconciling = false;
+    }
+  }
+
+  // markSendingDone 收表时 runStatus 仍非终态（idle/completed/failed/cancelled）→
+  // 延迟短节拍恰好一次孤儿对账；sending=true 期间由 90s watchdog 负责，不叠加。
+  function scheduleOrphanReconcile() {
+    clearOrphanReconcileTimer();
+    if (isTerminalRunStatus(deps.runStatus.value)) return;
+    orphanReconcileTimer = setTimeout(() => {
+      orphanReconcileTimer = null;
+      // 窗口内可能已由权威帧落定终态 —— 再查一次，避免无谓对账。
+      if (isTerminalRunStatus(deps.runStatus.value)) return;
+      void orphanReconcileRunState();
+    }, CHAT_RUN_ORPHAN_RECONCILE_DELAY_MS);
+  }
+
   function markSending(sessionId?: string) {
+    // 新一轮发送：挂起的孤儿对账定时器作废（窗口由本轮 markSendingDone 重计）。
+    clearOrphanReconcileTimer();
     sending.value = true;
     sendingSessionId = sessionId;
     // 发送时刻即 run 活动基线（final-review #2）：『发送后全程无事件』恰是最需要
@@ -191,6 +232,7 @@ export function useChatSender(deps: SenderDeps) {
     sendingSessionId = undefined;
     clearFirstByteNotice();
     clearStallCheck();
+    scheduleOrphanReconcile();
   }
 
   function clearFirstByteNotice() {
@@ -734,6 +776,12 @@ export function useChatSender(deps: SenderDeps) {
 
   async function sendTeamMessage(content: string, reusePendingId?: string) {
     await sendUserContent('team', content, reusePendingId);
+  }
+
+  // 组件销毁路径：挂起的孤儿对账定时器随作用域回收清理（单测在组件外调用，
+  // onScopeDispose 需作用域守卫）。
+  if (getCurrentScope()) {
+    onScopeDispose(clearOrphanReconcileTimer);
   }
 
   return {

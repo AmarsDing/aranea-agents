@@ -268,13 +268,19 @@ func FilterRecipeAgentKeys(keys []string) []string {
 	return out
 }
 
-// RecipeKeysReusable reports whether historical AgentKeys may be reused.
-// Empty fingerprints (legacy recipes or unknown current constraints) stay compatible.
+// RecipeKeysReusable reports whether historical AgentKeys may be reused（D7-F2 fail-closed）。
+//   - want == ""（当前任务不受剧本约束）→ 放行，旧条目继续服务；
+//   - want != "" 且 have == ""（旧条目无 provenance）→ 一次性降级：keys 不复用
+//     （Topology/Specialties 骨架仍可复用），不删数据；
+//   - 两侧均非空 → 仅指纹完全一致才复用。
 func RecipeKeysReusable(entryFingerprint, wantFingerprint string) bool {
 	want := strings.TrimSpace(wantFingerprint)
 	have := strings.TrimSpace(entryFingerprint)
-	if want == "" || have == "" {
+	if want == "" {
 		return true
+	}
+	if have == "" {
+		return false
 	}
 	return want == have
 }

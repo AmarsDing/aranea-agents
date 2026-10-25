@@ -160,11 +160,11 @@ func SetupTestPGRaw(t *testing.T) *sql.DB {
 func withSearchPath(dsn, schema string) string {
 	if u, err := url.Parse(dsn); err == nil && u.Scheme != "" {
 		q := u.Query()
-		q.Set("search_path", schema)
+		q.Set("search_path", schema+",public")
 		u.RawQuery = q.Encode()
 		return u.String()
 	}
-	return dsn + " search_path=" + schema
+	return dsn + " search_path=" + schema + ",public"
 }
 
 func randHex(t *testing.T, n int) string {

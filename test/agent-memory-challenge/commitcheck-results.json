@@ -1,0 +1,67 @@
+{
+  "checked_at": "2026-10-23T14:06:19.8126137+08:00",
+  "base_commit": "6b9258fea6f51a77cd0ebfac8a69398be8180cbd",
+  "target_branch": "dev",
+  "verification": "Isolated checkout plus only task changes; 37 memory source hashes match fullfocus-source-hashes.json",
+  "go": "go1.26.3",
+  "postgres": "18.3 disposable native instance",
+  "tests": [
+    {
+      "suite": "contract",
+      "passed": 21,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "suite": "domain",
+      "passed": 26,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "suite": "store",
+      "passed": 73,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "suite": "race",
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0
+    }
+  ],
+  "http": [
+    {
+      "suite": "fullfocus",
+      "passed": 50,
+      "failed": 0
+    },
+    {
+      "suite": "quality",
+      "passed": 25,
+      "failed": 0
+    },
+    {
+      "suite": "contract",
+      "passed": 21,
+      "failed": 0
+    }
+  ],
+  "builds": [
+    {
+      "Path": "F:\\myproject\\aranea-agents\\bin\\memoryeval-amc-commitcheck-20261023.exe",
+      "Hash": "EF771A0B2A3BD90D2D7D694826935BE983E4116CA8DE18FD226119E650F4089B"
+    },
+    {
+      "Path": "F:\\myproject\\aranea-agents\\bin\\memoryeval-amc-commitcheck-20261023-linux-amd64",
+      "Hash": "F2E6B3FC771F6AB2B44AF3EBD0B90ECB551F1167E0C9541C6C4DAFE0DCC71A35"
+    }
+  ],
+  "real_embedding_configured": false,
+  "formal_evaluation_run": false,
+  "runtime_stopped": true,
+  "database_stopped": true,
+  "database_data_removed": false,
+  "database_data_retained": "test/agent-memory-challenge/commitcheck-pg-1980423d (ignored local test artifact)"
+}

@@ -26,6 +26,11 @@ export const CHAT_RUN_STALL_NOTIFY_THRESHOLD_MS = 60_000; // Show stall warning 
 // run — it only resets the sending state when the backend confirms a terminal /
 // no-active-run state (covers lost terminal WS frames; stop stays user-driven).
 export const CHAT_RUN_RECONCILE_THRESHOLD_MS = 90_000; // REST reconcile after 90s silence
+// CHAT_RUN_ORPHAN_RECONCILE_DELAY_MS: markSendingDone 后 runStatus 仍非终态时
+//（终态 WS/eWS 帧丢失而 task.completed 已停表的孤儿态），延迟此节拍单次触发既有
+// 对账通道（复用 watchdogReconciling 重入锁、不发恢复通知）。90s watchdog 之外的
+// 短自愈节拍；sending=true 期间由 watchdog 负责，不叠加。
+export const CHAT_RUN_ORPHAN_RECONCILE_DELAY_MS = 10_000;
 export const CHAT_STALL_NOTIFY_DURATION_MS = 8_000; // Stall warning notification display duration
 export const CHAT_FIRST_BYTE_NOTIFY_THRESHOLD_MS = 30_000; // Notify-only fallback; model pack first_byte_timeout_sec may wait longer
 export const CHAT_FIRST_BYTE_NOTIFY_MAX_MS = 90_000;

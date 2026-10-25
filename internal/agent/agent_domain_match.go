@@ -35,12 +35,32 @@ const (
 )
 
 // tryDomainRecipe is the L0 domain-recipe reuse matcher.
-func (impl *agentAllocatorImpl) tryDomainRecipe(domainPath string, capabilities []biz.AgentCapability, traceID string) (biz.AgentCapability, []string, float64, bool) {
+//
+// D7-F2：RecipeKeysReusable fail-closed——受剧约束任务（wantFp != ""）绝不复用
+// 无 provenance 或指纹相左的旧配方 keys（一次性降级，Topology/Specialties 骨架仍
+// 由 SuggestTopology 等路径复用）。
+// D7-F3：读路径归一领域路径并双重禁「其他」——空路径/「其他」永不命中 L0。
+// D7-F4：有效 DQ 按配方成员存活率折算（lead+幸存成员 / 配方键数），低于
+// DomainRecipeMinDQ 即 miss，防 half-dead 配方虚高复用。
+func (impl *agentAllocatorImpl) tryDomainRecipe(ctx context.Context, domainPath, wantFp string, capabilities []biz.AgentCapability, traceID string) (biz.AgentCapability, []string, float64, bool) {
 	if impl.orchCache == nil {
 		return biz.AgentCapability{}, nil, 0, false
 	}
-	entry, ok := impl.orchCache.BestRecipeForDomain(domainPath)
+	spec := NormalizeDomainPath(domainPath)
+	if spec == "" || spec == domainLexiconOther {
+		return biz.AgentCapability{}, nil, 0, false
+	}
+	entry, ok := impl.orchCache.BestRecipeForDomain(ctx, spec)
 	if !ok || entry == nil || len(entry.AgentKeys) == 0 {
+		return biz.AgentCapability{}, nil, 0, false
+	}
+	if !biz.RecipeKeysReusable(entry.ConstraintFingerprint, wantFp) {
+		impl.lg.Warn("L0 领域配约束指纹不匹配（或旧配方无 provenance），keys 一次性降级不复用",
+			loggateway.StepID(biz.SpiritStepAllocatorMatch),
+			loggateway.Str("trace_id", traceID),
+			loggateway.Str("domain_path", spec),
+			loggateway.Str("want_fp", wantFp),
+		)
 		return biz.AgentCapability{}, nil, 0, false
 	}
 	// lead agent 必须仍存在于存活能力列表（已删除的 agent 不复用）。
@@ -49,7 +69,7 @@ func (impl *agentAllocatorImpl) tryDomainRecipe(domainPath string, capabilities 
 		impl.lg.Warn("L0 领域配方 lead agent 已删除或不可分配，跳过复用",
 			loggateway.StepID(biz.SpiritStepAllocatorMatch),
 			loggateway.Str("trace_id", traceID),
-			loggateway.Str("domain_path", domainPath),
+			loggateway.Str("domain_path", spec),
 			loggateway.AgentKey(entry.AgentKeys[0]),
 		)
 		return biz.AgentCapability{}, nil, 0, false
@@ -61,15 +81,31 @@ func (impl *agentAllocatorImpl) tryDomainRecipe(domainPath string, capabilities 
 			members = append(members, key)
 		}
 	}
+	// D7-F4：有效 DQ 按成员存活率折算。
+	total := len(entry.AgentKeys)
+	retained := 1 + len(members)
+	effectiveDQ := entry.DQScore * float64(retained) / float64(total)
+	if effectiveDQ < biz.DomainRecipeMinDQ {
+		impl.lg.Warn("L0 领域配方成员缩水，有效 DQ 跌破服务阈值，跳过复用",
+			loggateway.StepID(biz.SpiritStepAllocatorMatch),
+			loggateway.Str("trace_id", traceID),
+			loggateway.Str("domain_path", spec),
+			loggateway.Float64("dq_score", entry.DQScore),
+			loggateway.Float64("effective_dq", effectiveDQ),
+			loggateway.Int("retained", retained),
+			loggateway.Int("total", total),
+		)
+		return biz.AgentCapability{}, nil, 0, false
+	}
 	impl.lg.Info("L0 领域配方命中",
 		loggateway.StepID(biz.SpiritStepAllocatorMatch),
 		loggateway.Str("trace_id", traceID),
-		loggateway.Str("domain_path", domainPath),
+		loggateway.Str("domain_path", spec),
 		loggateway.AgentKey(lead.AgentKey),
-		loggateway.Float64("dq_score", entry.DQScore),
+		loggateway.Float64("dq_score", effectiveDQ),
 		loggateway.Int("member_count", len(members)),
 	)
-	return lead, members, entry.DQScore, true
+	return lead, members, effectiveDQ, true
 }
 
 // tryMissionMatch is the L1 mission-driven matcher. Returns the matched

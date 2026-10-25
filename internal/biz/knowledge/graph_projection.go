@@ -257,7 +257,9 @@ func (w *GraphProjectionWorker) RunOnce(ctx context.Context) (GraphProjectionSta
 		if !planned {
 			continue // 集合级失败（plan 已计 Failed）
 		}
-		budget -= len(upserts) + len(deletes)
+		// G-33 对抗审查修正（wiring-worker/medium）：预算按【成功行数】后扣——
+		// 预扣会让持续失败行每轮白吃预算（墓碑/漂移行下轮必重进 plan），前序
+		// 集合（ORDER BY id 字典序）持续失败即永久饿死后续集合的第三腿召回。
 		// 墓碑批。
 		if len(deletes) > 0 {
 			if err := w.store.DeleteGraphCards(ctx, deletes); err != nil {
@@ -268,6 +270,7 @@ func (w *GraphProjectionWorker) RunOnce(ctx context.Context) (GraphProjectionSta
 				stats.Failed += len(deletes)
 			} else {
 				stats.Deleted += len(deletes)
+				budget -= len(deletes)
 			}
 		}
 		// 重嵌批（GraphProjectionEmbedBatch 一批一嵌入；批失败只丢该批）。
@@ -309,6 +312,7 @@ func (w *GraphProjectionWorker) RunOnce(ctx context.Context) (GraphProjectionSta
 				continue
 			}
 			stats.Upserted += len(rows)
+			budget -= len(rows)
 		}
 		stats.Collections++
 	}

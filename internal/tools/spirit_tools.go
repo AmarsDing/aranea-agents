@@ -207,7 +207,10 @@ func NewPlanAndExecuteTool(planner biz.TaskPlannerPort, allocator biz.AgentAlloc
 				deps.bus.Publish(ctx, biz.NewSystemNoticeEvent(spiritSessionID, "orchestration_started", "", meta))
 			}
 
-			// Check parallel quota before proceeding.
+			// Check parallel quota before proceeding. Seat accounting (D2-P2):
+			// only pending+running teams occupy a seat — interrupted teams are
+			// recoverable-but-not-executing and must not permanently wedge
+			// plan_and_execute (see biz.IsTeamSlotOccupied).
 			if deps.teamQuery != nil {
 				maxParallel := deps.teamQuery.GetMaxParallelTeams(ctx, spiritSessionID)
 				if maxParallel > 0 {
@@ -217,8 +220,16 @@ func NewPlanAndExecuteTool(planner biz.TaskPlannerPort, allocator biz.AgentAlloc
 							loggateway.StepID("spirit.quota_check_err"),
 							loggateway.Err(listErr),
 						)
-					} else if len(activeTeams) >= maxParallel {
-						return PlanAndExecuteOutput{}, apierror.BadRequest(apierror.DomainSpirit, fmt.Sprintf("并行团队数已达上限 (%d/%d)，请等待当前团队完成后再试", len(activeTeams), maxParallel))
+					} else {
+						occupied := 0
+						for _, at := range activeTeams {
+							if biz.IsTeamSlotOccupied(at.Status) {
+								occupied++
+							}
+						}
+						if occupied >= maxParallel {
+							return PlanAndExecuteOutput{}, apierror.BadRequest(apierror.DomainSpirit, fmt.Sprintf("并行团队数已达上限 (%d/%d)，请等待当前团队完成后再试", occupied, maxParallel))
+						}
 					}
 				}
 			}

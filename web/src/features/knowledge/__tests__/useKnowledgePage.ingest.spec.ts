@@ -12,6 +12,7 @@ vi.mock('vue-i18n', async (importOriginal) => {
 });
 
 const mockStore = {
+  addCollection: vi.fn().mockResolvedValue({ id: 'managed-kb' }),
   embedderConfig: null,
   collections: [],
   documentsByCollection: {},
@@ -67,4 +68,19 @@ describe('useKnowledgePage submitIngest US-14', () => {
     const arg = mockStore.ingest.mock.calls[0][0] as { collection_id?: string };
     expect(arg.collection_id).toBe('col-1');
   });
+});
+
+it('defaults explicit creation to a managed team vault without a server path', async () => {
+  const page = useKnowledgePage();
+  page.openCreateCollection();
+  page.createForm.value.name = 'My sources';
+  await page.submitCreateCollection();
+  expect(mockStore.addCollection).toHaveBeenCalledWith({
+    name: 'My sources',
+    description: '',
+    embedding_model: '',
+    root_path: '',
+    vault_backend: 'team',
+  });
+  expect(page.selectedId.value).toBe('managed-kb');
 });

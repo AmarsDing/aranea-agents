@@ -259,4 +259,8 @@ func (r *dagRun) skipPlaybookConfirmDenied(ctx context.Context, step *biz.PlanSt
 	r.pe.seq.Publish(ctx, biz.NewPlanStepSkippedEvent(skipped, r.board.SessionID, "playbook stage confirmation denied"))
 	r.updateGraphNode(ctx, step.ID, biz.GraphNodeStatusInterrupted, "")
 	r.cascadeSkip(ctx, step.ID)
+	// 发现#7：确认拒绝释放预标记时持有的配额槽位（confirm_before 步骤
+	// 持槽等待是保守语义），终态转移后全局重扫准入后续就绪 pending；
+	// cascade 子树内部已全量 skipped，不会产生子树内准入。
+	r.admitReadySteps(ctx)
 }

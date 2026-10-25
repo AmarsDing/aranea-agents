@@ -42,9 +42,10 @@ export type KnowledgeDocument = {
   tags: string[];
   /** report | manual | note | faq | ... */
   doc_type: string;
-  /** collection (default) | private */
+  /** collection (default) | private | shared (专项 Agent 名单) */
   visibility?: string;
   owner_user_id?: string;
+  shared_with?: string[];
 };
 
 /** VaultTreeNode 是 vault 文件夹懒加载列表的一项（P3 资源管理器）。 */
@@ -185,8 +186,9 @@ export type CreateCollectionInput = {
   description?: string;
   /** V2：可选；留空 = 仅词法检索库（无语义层）。 */
   embedding_model?: string;
-  /** V2：Vault 根目录（本地文件夹绝对路径），必填。 */
+  /** local 挂载目录；team 托管库为空。 */
   root_path: string;
+  vault_backend?: 'team' | 'local';
 };
 
 export type IngestDocumentInput = {

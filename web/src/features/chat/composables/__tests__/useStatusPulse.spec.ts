@@ -79,6 +79,80 @@ describe('useStatusPulse', () => {
     expect(pulseColor('team-1')).toBe('');
   });
 
+  // D10-F5（P8）：PULSE_COLOR_MAP 补 partial_failure/cancelled/paused/pending 四键，
+  // SpiritTeamStatus 十值中除 archived（纯展示折叠）外其余转移均产生确定性脉冲。
+  it('partial_failure triggers warning pulse for 2000ms（失败先行）', () => {
+    const isReplaying = ref(false);
+    const { onTeamStatusChanged, isPulsing, pulseColor, pulseStates } = useStatusPulse(isReplaying);
+
+    onTeamStatusChanged('team-1', 'partial_failure');
+
+    expect(isPulsing('team-1')).toBe(true);
+    expect(pulseColor('team-1')).toBe('var(--color-warning)');
+    expect(pulseStates.value.get('team-1')?.durationMs).toBe(2000);
+
+    vi.advanceTimersByTime(2000);
+    expect(isPulsing('team-1')).toBe(false);
+  });
+
+  it('cancelled triggers tertiary pulse for 1500ms', () => {
+    const isReplaying = ref(false);
+    const { onTeamStatusChanged, isPulsing, pulseColor, pulseStates } = useStatusPulse(isReplaying);
+
+    onTeamStatusChanged('team-1', 'cancelled');
+
+    expect(pulseColor('team-1')).toBe('var(--color-text-tertiary)');
+    expect(pulseStates.value.get('team-1')?.durationMs).toBe(1500);
+
+    vi.advanceTimersByTime(1500);
+    expect(isPulsing('team-1')).toBe(false);
+  });
+
+  it('paused triggers warning pulse for 1000ms', () => {
+    const isReplaying = ref(false);
+    const { onTeamStatusChanged, isPulsing, pulseColor, pulseStates } = useStatusPulse(isReplaying);
+
+    onTeamStatusChanged('team-1', 'paused');
+
+    expect(pulseColor('team-1')).toBe('var(--color-warning)');
+    expect(pulseStates.value.get('team-1')?.durationMs).toBe(1000);
+
+    vi.advanceTimersByTime(1000);
+    expect(isPulsing('team-1')).toBe(false);
+  });
+
+  it('pending triggers tertiary pulse for 800ms（团队首次出现的弱提示）', () => {
+    const isReplaying = ref(false);
+    const { onTeamStatusChanged, isPulsing, pulseColor, pulseStates } = useStatusPulse(isReplaying);
+
+    onTeamStatusChanged('team-1', 'pending');
+
+    expect(pulseColor('team-1')).toBe('var(--color-text-tertiary)');
+    expect(pulseStates.value.get('team-1')?.durationMs).toBe(800);
+
+    vi.advanceTimersByTime(800);
+    expect(isPulsing('team-1')).toBe(false);
+  });
+
+  it('四旧键行为与时长回归不变', () => {
+    const isReplaying = ref(false);
+    const { onTeamStatusChanged, pulseColor, pulseStates } = useStatusPulse(isReplaying);
+
+    onTeamStatusChanged('t-running', 'running');
+    onTeamStatusChanged('t-completed', 'completed');
+    onTeamStatusChanged('t-failed', 'failed');
+    onTeamStatusChanged('t-interrupted', 'interrupted');
+
+    expect(pulseColor('t-running')).toBe('var(--color-accent)');
+    expect(pulseStates.value.get('t-running')?.durationMs).toBe(1000);
+    expect(pulseColor('t-completed')).toBe('var(--color-success)');
+    expect(pulseStates.value.get('t-completed')?.durationMs).toBe(1500);
+    expect(pulseColor('t-failed')).toBe('var(--color-danger)');
+    expect(pulseStates.value.get('t-failed')?.durationMs).toBe(2000);
+    expect(pulseColor('t-interrupted')).toBe('var(--color-warning)');
+    expect(pulseStates.value.get('t-interrupted')?.durationMs).toBe(1500);
+  });
+
   it('isPulsing(teamId) returns true during active pulse', () => {
     const isReplaying = ref(false);
     const { onTeamStatusChanged, isPulsing } = useStatusPulse(isReplaying);

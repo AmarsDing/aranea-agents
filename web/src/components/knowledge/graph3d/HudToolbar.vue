@@ -128,7 +128,7 @@ defineProps<{
   /** 图例弹层：doc_type 计数（Top8）。 */
   nodeLegend: { type: string; count: number; color: string }[];
   /** 图例弹层：边类型清单。 */
-  linkTypes: string[];
+  linkTypes: readonly string[];
 }>();
 
 defineEmits<{

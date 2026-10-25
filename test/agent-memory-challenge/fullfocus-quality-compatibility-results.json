@@ -1,0 +1,102 @@
+[
+  {
+    "check": "health",
+    "passed": true
+  },
+  {
+    "check": "authentication required",
+    "passed": true
+  },
+  {
+    "check": "synchronous Add echoes contract",
+    "passed": true
+  },
+  {
+    "check": "top_k respected",
+    "passed": true
+  },
+  {
+    "check": "late middle state preserves current",
+    "passed": true
+  },
+  {
+    "check": "top_k respected",
+    "passed": true
+  },
+  {
+    "check": "as-of interval chain has unique middle state",
+    "passed": true
+  },
+  {
+    "check": "top_k respected",
+    "passed": true
+  },
+  {
+    "check": "past residence does not replace current",
+    "passed": true
+  },
+  {
+    "check": "city query minimizes street and credential disclosure",
+    "passed": true
+  },
+  {
+    "check": "top_k respected",
+    "passed": true
+  },
+  {
+    "check": "retrospective residence remains retrievable",
+    "passed": true
+  },
+  {
+    "check": "top_k respected",
+    "passed": true
+  },
+  {
+    "check": "one evidence slot retains rule and demonstrations",
+    "passed": true
+  },
+  {
+    "check": "top_k respected",
+    "passed": true
+  },
+  {
+    "check": "learned function returns original demonstrations",
+    "passed": true
+  },
+  {
+    "check": "top_k respected",
+    "passed": true
+  },
+  {
+    "check": "date heading dates later diary atoms",
+    "passed": true
+  },
+  {
+    "check": "top_k respected",
+    "passed": true
+  },
+  {
+    "check": "source timezone anchors calendar day",
+    "passed": true
+  },
+  {
+    "check": "top_k respected",
+    "passed": true
+  },
+  {
+    "check": "credential assignment always masked",
+    "passed": true
+  },
+  {
+    "check": "function retrieval preserves user isolation",
+    "passed": true
+  },
+  {
+    "check": "top_k respected",
+    "passed": true
+  },
+  {
+    "check": "replay preserves current state",
+    "passed": true
+  }
+]

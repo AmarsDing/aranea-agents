@@ -4,6 +4,19 @@ import type { V2WsEnvelope, EventKind } from '../v2Types';
 
 type Store = ReturnType<typeof useChatActivityStore>;
 
+// D9-22：未知 kind / 非 v2_event 帧的纯可观测性提示。逐键 60s 节流防异常帧洪泛
+// 刷屏；键集合有界（kind 枚举 + type）。Map 为模块级单例随页面生命周期存在。
+const WS_FRAME_WARN_INTERVAL_MS = 60_000;
+const lastFrameWarnAt = new Map<string, number>();
+
+function warnDroppedFrameThrottled(key: string, message: string, detail: unknown) {
+  const now = Date.now();
+  const last = lastFrameWarnAt.get(key) ?? -Infinity;
+  if (now - last < WS_FRAME_WARN_INTERVAL_MS) return;
+  lastFrameWarnAt.set(key, now);
+  console.warn(message, detail);
+}
+
 /**
  * useChatEventRouter dispatches v2 WS events into Pinia store mutations.
  *
@@ -13,7 +26,18 @@ type Store = ReturnType<typeof useChatActivityStore>;
  */
 export function useChatEventRouter(store: Store) {
   function dispatch(env: V2WsEnvelope) {
-    if (env.type !== 'v2_event') return;
+    if (env.type !== 'v2_event') {
+      // 非 v2_event 帧：忽略但打点（前向兼容不变，行为语义不动）。
+      warnDroppedFrameThrottled(
+        `type:${env.type}:${String((env as { kind?: unknown }).kind ?? '')}`,
+        '[chat] ws frame dropped: non-v2_event',
+        {
+          type: env.type,
+          kind: (env as { kind?: unknown }).kind,
+        },
+      );
+      return;
+    }
     handleKind(env.kind, env.payload);
   }
 
@@ -80,6 +104,7 @@ export function useChatEventRouter(store: Store) {
       case 'team_run.started':
       case 'team_run.completed':
       case 'team_run.failed':
+      case 'team_run.cancelled':
         if (p.TeamRun) store.upsertTeamRun(p.TeamRun as never);
         break;
 
@@ -133,7 +158,8 @@ export function useChatEventRouter(store: Store) {
         break;
 
       default:
-        // Unknown event kind — silently ignore (forward compatibility)
+        // Unknown event kind — silently ignore (forward compatibility), 仅节流打点。
+        warnDroppedFrameThrottled(`kind:${String(kind)}`, '[chat] unknown v2 event kind', kind);
         break;
     }
   }

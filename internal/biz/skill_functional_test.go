@@ -11,6 +11,7 @@ import (
 	"aranea-agents/internal/data/ent/skillinvocation"
 	"aranea-agents/internal/data/ent/skillversion"
 	skillpkg "aranea-agents/internal/skill"
+	authpkg "aranea-agents/pkg/auth"
 )
 
 // ── T1 自我进化：CuratorFlow → LLM draft → 审批 → Reload 新版本 ──────────────
@@ -353,7 +354,9 @@ func TestSkillDedup_ProposalLevel(t *testing.T) {
 // T3c DetectDuplicateGroups：真实 repo + Jaccard 相似度引擎检测重复 skill 分组。
 func TestSkillDedup_DetectDuplicateGroups(t *testing.T) {
 	env := newSkillFuncEnv(t)
-	ctx := context.Background()
+	// 审计 H1：全库去重扫描已收束为管理员治理操作（skill.RequireAdminAccess），
+	// 必须用管理员 ctx，否则 FORBIDDEN。
+	ctx := authpkg.NewContext(context.Background(), &authpkg.Auth{UserID: 1, Access: "admin"})
 
 	bodyA := "---\nname: web-search-assistant\n---\n# 网页搜索助手\n\n## 步骤\n1. 接收查询\n2. 调用 web_search\n3. 总结结果\n"
 	bodyB := "---\nname: web-search-assistant-v2\n---\n# 网页搜索助手\n\n## 步骤\n1. 接收查询\n2. 调用 web_search\n3. 总结结果并输出\n"
@@ -397,7 +400,9 @@ func TestSkillDedup_DetectDuplicateGroups(t *testing.T) {
 // 标签并集。
 func TestSkillMerge_FuseAndApply(t *testing.T) {
 	env := newSkillFuncEnv(t)
-	ctx := context.Background()
+	// 审计 H2：跨 skill 合并（target 写新版本 + source 废弃）收束为管理员操作，
+	// 必须用管理员 ctx，否则 FORBIDDEN。
+	ctx := authpkg.NewContext(context.Background(), &authpkg.Auth{UserID: 1, Access: "admin"})
 
 	targetBody := "---\nname: data_analysis\n---\n# 数据分析技能\n\n## 触发条件\n用户要求分析数据时触发\n\n## 步骤\n1. 读取数据文件\n2. 统计分析\n"
 	sourceBody := "---\nname: data_analysis_pro\n---\n# 数据分析技能增强版\n\n## 触发条件\n用户要求分析数据时触发\n\n## 可视化\n1. 自动生成图表\n2. 支持 matplotlib 输出\n"

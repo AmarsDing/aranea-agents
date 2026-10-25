@@ -29,8 +29,8 @@ type mockKnowledgeRepo struct {
 func (m *mockKnowledgeRepo) CreateCollection(_ context.Context, c biz.KnowledgeCollection) (biz.KnowledgeCollection, error) {
 	return c, nil
 }
-func (m *mockKnowledgeRepo) GetCollection(_ context.Context, _ string) (biz.KnowledgeCollection, error) {
-	return biz.KnowledgeCollection{}, biz.ErrNotFound
+func (m *mockKnowledgeRepo) GetCollection(_ context.Context, id string) (biz.KnowledgeCollection, error) {
+	return biz.KnowledgeCollection{ID: id, EmbeddingModel: "test"}, nil
 }
 func (m *mockKnowledgeRepo) GetCollectionByName(_ context.Context, _, _ string) (biz.KnowledgeCollection, error) {
 	return biz.KnowledgeCollection{}, biz.ErrNotFound
@@ -294,8 +294,8 @@ func TestReflectTool_SuccessWithFederatedRetriever(t *testing.T) {
 	if out.Chunks[0].ID != "ch-fed" {
 		t.Fatalf("expected chunk ID ch-fed, got %s", out.Chunks[0].ID)
 	}
-	if !out.Sufficient {
-		t.Fatal("expected Sufficient=true by default")
+	if out.Sufficient || out.Evaluated || out.Confidence != 0 {
+		t.Fatal("missing evaluator must remain unknown")
 	}
 }
 
@@ -360,11 +360,11 @@ func TestReflectTool_WithEvaluator(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected reflectOutput, got %T", result)
 	}
-	if !out.Sufficient {
-		t.Fatal("expected Sufficient=true from nil-LLM evaluator degradation")
+	if out.Sufficient || out.Evaluated {
+		t.Fatal("nil-LLM evaluator must remain unknown")
 	}
-	if out.Confidence != 1.0 {
-		t.Fatalf("expected Confidence=1.0 from nil-LLM evaluator, got %f", out.Confidence)
+	if out.Confidence != 0 {
+		t.Fatalf("expected zero confidence from nil-LLM evaluator, got %f", out.Confidence)
 	}
 }
 
@@ -397,8 +397,8 @@ func TestReflectTool_CollectionIDsFromScopedContext(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected reflectOutput, got %T", result)
 	}
-	if !out.Sufficient {
-		t.Fatal("expected Sufficient=true")
+	if out.Sufficient || out.Evaluated || out.Confidence != 0 || len(out.Chunks) != 0 {
+		t.Fatal("empty retrieval must be insufficient with zero confidence")
 	}
 }
 

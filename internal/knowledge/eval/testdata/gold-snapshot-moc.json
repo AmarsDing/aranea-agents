@@ -1,0 +1,46 @@
+{
+  "set_name": "gold-moc-1hop",
+  "top_k": 8,
+  "cases": [
+    {
+      "case_id": "g34-global-theme-anchors-moc",
+      "query": "发布全链路的公共主题是什么",
+      "ranked_chunk_ids": [
+        "moc-c0",
+        "gray-c0",
+        "hub-c0",
+        "rollback-c0"
+      ],
+      "ranked_doc_ids": [
+        "moc",
+        "gray",
+        "hub",
+        "rollback"
+      ],
+      "chunk": {
+        "recall_at_k": 1,
+        "mrr": 1,
+        "hit": 1,
+        "first_hit_rank": 1
+      },
+      "doc": {
+        "recall_at_k": 1,
+        "mrr": 1,
+        "hit": 1,
+        "first_hit_rank": 1
+      }
+    }
+  ],
+  "chunk_agg": {
+    "case_count": 1,
+    "recall_at_k": 1,
+    "mrr": 1,
+    "hit_rate": 1
+  },
+  "doc_agg": {
+    "case_count": 1,
+    "recall_at_k": 1,
+    "mrr": 1,
+    "hit_rate": 1
+  }
+}

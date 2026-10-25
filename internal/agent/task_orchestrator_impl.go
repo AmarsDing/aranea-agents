@@ -178,6 +178,14 @@ func (o *TaskOrchestratorImpl) Synthesize(ctx context.Context, orchestrationID s
 	if o.synthesis != nil {
 		output, err := o.synthesis.SynthesizeResults(ctx, handle.SpiritSessionID, "")
 		if err != nil {
+			// D7-F1 双向学习信号：合成失败同样回写缓存（dq=0 走失败衰减分支），
+			// 故意不触碰 perfRepo——失败合成没有团队结果，组员履历只在成功路径记账。
+			o.lg.Warn("TaskOrchestrator: 合成失败，回写配方失败信号",
+				loggateway.StepID(biz.SpiritStepOrchestratorSynthesize),
+				loggateway.Str("orchestration_id", orchestrationID),
+				loggateway.Err(err),
+			)
+			o.learnRecipeFailure(ctx, handle)
 			return nil, err
 		}
 		// Persist synthesis result to handle so it survives process restarts.
@@ -444,7 +452,7 @@ func (o *TaskOrchestratorImpl) learnFromOrchestration(ctx context.Context, handl
 	}
 
 	dqScore := computeDQScoreFromSynthesis(synthesis)
-	primaryDomainPath, specialties := o.resolvePlanLearningHint(ctx, handle)
+	primaryDomainPath, specialties, prov := o.resolvePlanLearningHint(ctx, handle)
 
 	o.lg.Info("在线学习: 更新编排缓存和 Agent 性能",
 		loggateway.StepID(biz.SpiritStepOrchestratorLearn),
@@ -454,20 +462,14 @@ func (o *TaskOrchestratorImpl) learnFromOrchestration(ctx context.Context, handl
 	)
 
 	// 1. Update OrchestrationCache with DQ score
-	topology := biz.TopologyCoordinator
-	switch handle.Strategy {
-	case biz.StrategyDirect:
-		topology = biz.TopologyDirect
-	case biz.StrategyParallel:
-		topology = biz.TopologyParallel
-	case biz.StrategyDAG:
-		topology = biz.TopologyHybrid
-	}
+	topology := topologyFromStrategy(handle.Strategy)
 	if o.orchCache != nil {
 		agentKeys := extractAgentKeysFromHandle(handle)
-		if primaryDomainPath != "" {
+		if primaryDomainPath != "" && primaryDomainPath != domainLexiconOther {
 			// B.10.21.7: 配方以 domain key 记录，使同类任务可复用。
-			o.orchCache.RecordDomainRecipe(ctx, primaryDomainPath, topology, dqScore, len(handle.TeamIDs), agentKeys)
+			// D7-F2: provenance（plan.MemoryHit）随记录落库，L0 复用做指纹门。
+			// D7-F3 双重禁：「其他」不写 domain 键（读侧归一后永不命中，命单侧也拒写）。
+			o.orchCache.RecordDomainRecipeWithProvenance(ctx, primaryDomainPath, topology, dqScore, len(handle.TeamIDs), agentKeys, prov)
 			o.orchCache.SetEntrySpecialties(ctx, "domain:"+primaryDomainPath, specialties)
 			o.lg.Info("在线学习: 领域配方已更新",
 				loggateway.StepID(biz.SpiritStepOrchestratorLearn),
@@ -475,7 +477,7 @@ func (o *TaskOrchestratorImpl) learnFromOrchestration(ctx context.Context, handl
 				loggateway.Float64("dq_score", dqScore),
 			)
 		} else {
-			// 无域回退：旧 key 行为（orchestration ID 派生，write-only 兼容）。
+			// 无域/「其他」回退：旧 key 行为（orchestration ID 派生，write-only 兼容）。
 			taskPattern := biz.ExtractTaskPattern(handle.ID)
 			o.orchCache.RecordCompletionWithAgents(ctx, taskPattern, topology, dqScore, len(handle.TeamIDs), 0, agentKeys)
 			o.orchCache.SetEntrySpecialties(ctx, taskPattern, specialties)
@@ -549,13 +551,15 @@ func (o *TaskOrchestratorImpl) learnFromOrchestration(ctx context.Context, handl
 // resolvePrimaryDomainPath 取 handle 对应 plan 的主导域（首个非空 subtask
 // DomainPath）。查询失败或无域返回空——调用方回退旧 key 行为（B.10.21.7）。
 func (o *TaskOrchestratorImpl) resolvePrimaryDomainPath(ctx context.Context, handle *biz.OrchestrationHandle) string {
-	path, _ := o.resolvePlanLearningHint(ctx, handle)
+	path, _, _ := o.resolvePlanLearningHint(ctx, handle)
 	return path
 }
 
-func (o *TaskOrchestratorImpl) resolvePlanLearningHint(ctx context.Context, handle *biz.OrchestrationHandle) (string, []string) {
+// resolvePlanLearningHint 返回（主导域, 专题槽位骨架, 配方 provenance[D7-F2]）。
+// provenance 取自 plan.MemoryHit（剧本展开/缓存回放时由 planner 写入）。
+func (o *TaskOrchestratorImpl) resolvePlanLearningHint(ctx context.Context, handle *biz.OrchestrationHandle) (string, []string, biz.RecipeProvenance) {
 	if o.plans == nil || handle.TaskPlanID == "" {
-		return "", nil
+		return "", nil, biz.RecipeProvenance{}
 	}
 	plan, err := o.plans.getTaskPlan(ctx, handle.TaskPlanID)
 	if err != nil || plan == nil {
@@ -566,9 +570,50 @@ func (o *TaskOrchestratorImpl) resolvePlanLearningHint(ctx context.Context, hand
 				loggateway.Err(err),
 			)
 		}
-		return "", nil
+		return "", nil, biz.RecipeProvenance{}
 	}
-	return PrimaryDomainPath(plan.SubTasks), collectSpecialtySlots(plan.SubTasks)
+	prov := biz.RecipeProvenance{}
+	if plan.MemoryHit != nil {
+		prov = biz.RecipeProvenance{
+			PlaybookID:            plan.MemoryHit.PlaybookID,
+			ConstraintFingerprint: plan.MemoryHit.ConstraintFingerprint,
+		}
+	}
+	return PrimaryDomainPath(plan.SubTasks), collectSpecialtySlots(plan.SubTasks), prov
+}
+
+// topologyFromStrategy 映射 plan strategy → 配方拓扑（D7-F1 提取共享，
+// learnFromOrchestration / learnRecipeFailure 两处学习写路径一致）。
+func topologyFromStrategy(strategy biz.OrchestrationStrategy) biz.TopologyType {
+	switch strategy {
+	case biz.StrategyDirect:
+		return biz.TopologyDirect
+	case biz.StrategyParallel:
+		return biz.TopologyParallel
+	case biz.StrategyDAG:
+		return biz.TopologyHybrid
+	}
+	return biz.TopologyCoordinator
+}
+
+// learnRecipeFailure（D7-F1）：合成失败（SynthesizeResults 返回 err）也是学习
+// 信号——dq=0 走缓存失败衰减/触底淘汰分支；故意不更新 AgentPerformance（失败
+// 合成没有团队结果，组员履历只在成功路径记账，避免双计）。
+func (o *TaskOrchestratorImpl) learnRecipeFailure(ctx context.Context, handle *biz.OrchestrationHandle) {
+	if o.orchCache == nil || handle == nil {
+		return
+	}
+	primaryDomainPath, _, _ := o.resolvePlanLearningHint(ctx, handle)
+	topology := topologyFromStrategy(handle.Strategy)
+	agentKeys := extractAgentKeysFromHandle(handle)
+	if primaryDomainPath != "" && primaryDomainPath != domainLexiconOther {
+		o.orchCache.RecordDomainRecipe(ctx, primaryDomainPath, topology, 0, len(handle.TeamIDs), agentKeys)
+		return
+	}
+	// 无 plan / 无域 / 「其他」：旧 key 分支同一失败语义——空缓存零操作，既有
+	// 条目衰减至 ≤0.1 淘汰。
+	taskPattern := biz.ExtractTaskPattern(handle.ID)
+	o.orchCache.RecordCompletionWithAgents(ctx, taskPattern, topology, 0, len(handle.TeamIDs), 0, agentKeys)
 }
 
 func collectSpecialtySlots(subtasks []biz.SubTask) []string {
@@ -625,7 +670,7 @@ func (o *TaskOrchestratorImpl) maybeCreateEvolutionSuggestion(ctx context.Contex
 
 	content := fmt.Sprintf("编排 %q 的 DQ Score 为 %.2f（低于阈值 %.1f），当前拓扑 %s 执行效果不佳。", handle.ID, dqScore, biz.DQEvolutionThreshold, topology)
 	if o.orchCache != nil {
-		altTopology, altFound := o.orchCache.SuggestBestAlternativeTopology(handle.ID, topology)
+		altTopology, altFound := o.orchCache.SuggestBestAlternativeTopology(ctx, handle.ID, topology)
 		if altFound {
 			content += fmt.Sprintf("建议尝试 %s 拓扑。", altTopology)
 		} else {

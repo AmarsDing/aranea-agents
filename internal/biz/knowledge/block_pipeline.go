@@ -24,6 +24,9 @@ func (u *Usecase) SetBlockIndexRepos(blocks BlockIndexRepo, idx ResolveIndex) {
 // （SP1-H/F-SP1-10，best-effort 副作用，不影响本重建的返回）。
 // 索引期会把未链接提及编译成 wikilink 再解析（歧义跳过），不回写源文/content_text。
 func (u *Usecase) RebuildBlockIndex(ctx context.Context, collectionID, docID, body string) error {
+	if deferred, err := u.deferGovernanceBlockIndex(ctx, docID); deferred {
+		return err
+	}
 	return u.rebuildBlockIndex(ctx, collectionID, docID, body, nil, true)
 }
 

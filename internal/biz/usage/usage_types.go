@@ -35,6 +35,13 @@ const (
 	// KindAuxAllocatorMatch marks spirit allocator LLM cold-start matching
 	// calls (per-subtask / whole-plan). Previously unrecorded (M83 LBG-6).
 	KindAuxAllocatorMatch = "aux_allocator_match"
+	// KindAuxMOCSummary marks knowledge-governance MOC summary backfill calls
+	// (G-34 ADR-C: curate round fills '## 摘要' placeholders on moc/ pages).
+	KindAuxMOCSummary = "aux_moc_summary"
+	// KindAuxEntityMerge marks knowledge-governance entity-merge gray-zone
+	// adjudication calls (G-37 ADR-F: curate round adjudicates [0.80,0.90)
+	// similarity candidate pairs).
+	KindAuxEntityMerge = "aux_entity_merge"
 	// KindUnknown is the fallback for persisted events whose caller did not
 	// classify the usage. Previously defaulted to the non-enum literal "chat"
 	// (valid enum is chat_turn), which the UI source filter could not map —

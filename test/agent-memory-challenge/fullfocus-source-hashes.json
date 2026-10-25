@@ -1,0 +1,150 @@
+[
+  {
+    "Path": "F:\\myproject\\aranea-agents\\internal\\biz\\memory_eval_calendar.go",
+    "Hash": "9C28217B463C60D469A0389DF7F9513178809970BE056F7095ADD87AE895352E"
+  },
+  {
+    "Path": "F:\\myproject\\aranea-agents\\internal\\biz\\memory_eval_classify_atoms_test.go",
+    "Hash": "BE14FFD02E8F88CB0A30D959F70602CB90731470CB1DF6FA81738573B7C02EA9"
+  },
+  {
+    "Path": "F:\\myproject\\aranea-agents\\internal\\biz\\memory_eval_classify_test.go",
+    "Hash": "240FACC1870750E075ACA57E3C9FE3D99A6801D8974F53F31505F19643DC2B33"
+  },
+  {
+    "Path": "F:\\myproject\\aranea-agents\\internal\\biz\\memory_eval_classify.go",
+    "Hash": "B8AFAB38C5D18541A556C6459F866F8FCB09C8859861A2F33E8F0631AABE1F26"
+  },
+  {
+    "Path": "F:\\myproject\\aranea-agents\\internal\\biz\\memory_eval_context.go",
+    "Hash": "667204882AB6A9B79ED4DB22246A6EEF9DD05D098493EA676E608CB0584A40F1"
+  },
+  {
+    "Path": "F:\\myproject\\aranea-agents\\internal\\biz\\memory_eval_control.go",
+    "Hash": "D7416065B22BDD7824E2083D9FBBB3B3AB278C2615578A9251CD1BC9F768EF11"
+  },
+  {
+    "Path": "F:\\myproject\\aranea-agents\\internal\\biz\\memory_eval_dates.go",
+    "Hash": "FEA227BE700829FB2E5466AB7663F1B92D5DB6BE4517767650235F374FA33779"
+  },
+  {
+    "Path": "F:\\myproject\\aranea-agents\\internal\\biz\\memory_eval_full_test.go",
+    "Hash": "6E927F4EA8DF861B1EF16E0C8B8C87FF6B4B9A68E923AE1D99E56AA4A16AF0FB"
+  },
+  {
+    "Path": "F:\\myproject\\aranea-agents\\internal\\biz\\memory_eval_quality_test.go",
+    "Hash": "A0C5DACBCF8C847C680C658A86F9E03421F91287B1FCDCEF52AA5561D7415B7D"
+  },
+  {
+    "Path": "F:\\myproject\\aranea-agents\\internal\\biz\\memory_eval_query_test.go",
+    "Hash": "2BD2C3027C38E138F151E3215F226A7821D056A6B0DA018443F38253853D1D85"
+  },
+  {
+    "Path": "F:\\myproject\\aranea-agents\\internal\\biz\\memory_eval_query.go",
+    "Hash": "C37F052602329E922C9172BB371418E0B5BF2BA2D18529647CDA013CB128EAC9"
+  },
+  {
+    "Path": "F:\\myproject\\aranea-agents\\internal\\biz\\memory_eval_regression_test.go",
+    "Hash": "BBDC2AEA8888343CAD1395DB7EA907FDD446D7B1CC8B75E560B030543915F33F"
+  },
+  {
+    "Path": "F:\\myproject\\aranea-agents\\internal\\biz\\memory_eval_retrieval.go",
+    "Hash": "E91999287E09540AB1D51961BFE54BD9C9773BE2214F002EF378D2E9869CFC22"
+  },
+  {
+    "Path": "F:\\myproject\\aranea-agents\\internal\\biz\\memory_eval_subject.go",
+    "Hash": "B67FF5568018AF4D78DEDE6A5D3CDC06408A81D571262B323C847F9D503FFA6E"
+  },
+  {
+    "Path": "F:\\myproject\\aranea-agents\\internal\\biz\\memory_eval_time_test.go",
+    "Hash": "D9CF72CCD7FD5331592D4B339651F2CF29F595E2516E0AEE5919E52DF9EFE064"
+  },
+  {
+    "Path": "F:\\myproject\\aranea-agents\\internal\\biz\\memory_eval_time.go",
+    "Hash": "7FBCD8014DB341FB47D9F7C17210B59BEF5395BBFB7C0204CB9210A06B081E7D"
+  },
+  {
+    "Path": "F:\\myproject\\aranea-agents\\internal\\biz\\memory_eval.go",
+    "Hash": "525F7F45EA3CA4B137C29A38EDF0F56C0B5D3D461434DB168044AA633E136F04"
+  },
+  {
+    "Path": "F:\\myproject\\aranea-agents\\internal\\data\\memory_eval_applicability.go",
+    "Hash": "DFAE47A45D2AD0C0E543A99634B44D568B8E5603327B2D466E941F4D1668A2FA"
+  },
+  {
+    "Path": "F:\\myproject\\aranea-agents\\internal\\data\\memory_eval_candidates.go",
+    "Hash": "F133423D323F4E5507F95A8B2EA0266E5A64BF488A9683A47CE87FB659A1FB6E"
+  },
+  {
+    "Path": "F:\\myproject\\aranea-agents\\internal\\data\\memory_eval_control.go",
+    "Hash": "95763D7E6F031E367C7DAA8D943B500357B119CB74F1E590D96FDA76DDBADECE"
+  },
+  {
+    "Path": "F:\\myproject\\aranea-agents\\internal\\data\\memory_eval_evidence.go",
+    "Hash": "496CB0C55ACAF8B7234F856A842E75E6EB19810D22A19E84BD0A52D6E50000C7"
+  },
+  {
+    "Path": "F:\\myproject\\aranea-agents\\internal\\data\\memory_eval_excerpt.go",
+    "Hash": "B6C010C57C84F602D0013A7A17C7083BBB1ACF3E392E75D14B4C8818614C3BD1"
+  },
+  {
+    "Path": "F:\\myproject\\aranea-agents\\internal\\data\\memory_eval_full_test.go",
+    "Hash": "44FF7E06E0E7F576393473662641BB98A9163AB13F6351C51E9C1E44E3A0EF14"
+  },
+  {
+    "Path": "F:\\myproject\\aranea-agents\\internal\\data\\memory_eval_ingest.go",
+    "Hash": "411E6184B0A3A6BB6E857D6FE5DDA36082484D0AF70CC0F2B8C53C83453AF223"
+  },
+  {
+    "Path": "F:\\myproject\\aranea-agents\\internal\\data\\memory_eval_quality_test.go",
+    "Hash": "5E55371C7743AD01AFF24094D8ADBD86E617EA2CC12DECD87E53B1708D6E42E5"
+  },
+  {
+    "Path": "F:\\myproject\\aranea-agents\\internal\\data\\memory_eval_regression_test.go",
+    "Hash": "DEDBF0E40CC67342FFF2055015A63DE2016E28AB3D471157109361A29BC56698"
+  },
+  {
+    "Path": "F:\\myproject\\aranea-agents\\internal\\data\\memory_eval_relations.go",
+    "Hash": "9F907A6FC8406D13455761F6AC4795C7910E7BFC6CE7C422FB631EDDBE4CC36A"
+  },
+  {
+    "Path": "F:\\myproject\\aranea-agents\\internal\\data\\memory_eval_search.go",
+    "Hash": "A4EA7E33282C4295864911F1B56B2CBD527B37CCD0B682AAE62DDA7C332D475B"
+  },
+  {
+    "Path": "F:\\myproject\\aranea-agents\\internal\\data\\memory_eval_store_c3_test.go",
+    "Hash": "1D69A585422DB3CE408C822385B90E72516F66ACE4E1A5BA47921FECFDAF064D"
+  },
+  {
+    "Path": "F:\\myproject\\aranea-agents\\internal\\data\\memory_eval_store_part2_test.go",
+    "Hash": "93E6B712232C6A799B05FB7A8B127B2D93AD64E21976E428A424FC9E2D52BC0C"
+  },
+  {
+    "Path": "F:\\myproject\\aranea-agents\\internal\\data\\memory_eval_store_part2.go",
+    "Hash": "5019AF8AB0510ADB64A4B64E94AB52F7DBC0464473B4289FCB5D627FC693887F"
+  },
+  {
+    "Path": "F:\\myproject\\aranea-agents\\internal\\data\\memory_eval_store_test.go",
+    "Hash": "6EFA1E7C198A9978901835D2A82E001BC887206CA092F53A228D784CC7BF9FC7"
+  },
+  {
+    "Path": "F:\\myproject\\aranea-agents\\internal\\data\\memory_eval_store.go",
+    "Hash": "6A970D2FB28CBAA953A29AF347146D215711FC399E40CC8B5786F3C0B80E9EBB"
+  },
+  {
+    "Path": "F:\\myproject\\aranea-agents\\internal\\data\\memory_eval_validity.go",
+    "Hash": "31796D771A6C8709306942EB9869C7B1197CA033F698D2B2A7D2C642F69CE283"
+  },
+  {
+    "Path": "F:\\myproject\\aranea-agents\\cmd\\memoryeval\\handler_test.go",
+    "Hash": "1F91E04852FAAA53D369794E9D73F9049CCC2E6A875C86B668D195BE9C9250A5"
+  },
+  {
+    "Path": "F:\\myproject\\aranea-agents\\cmd\\memoryeval\\handler.go",
+    "Hash": "57EF6AD28166DCC4A7D6A7380542962540B194330F7451076062E102BB3A8F79"
+  },
+  {
+    "Path": "F:\\myproject\\aranea-agents\\cmd\\memoryeval\\main.go",
+    "Hash": "87352B1D16101465A1E759046CF6C4D1F050C2FC46C77D58D5A2B210B3C90142"
+  }
+]

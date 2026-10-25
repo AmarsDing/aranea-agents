@@ -1,294 +1,175 @@
 <template>
-  <q-page class="app-standard-page overview-page">
-    <div class="overview-page__shell">
-      <CommandCenterHero
-        :username="username"
-        :active-agent-count="agentStats.active"
-        :provider-count="providerCount"
-        :category-count="categoryCount"
-        :team-count="teamCount"
-        :today-call-count="todayCallCount"
-        :today-token-count="overview?.today?.total_tokens ?? 0"
-        @navigate="onMetricNavigate"
-      >
-        <template #actions>
-          <OverviewMonitorQuickLinks />
-          <q-btn
-            outline
-            no-caps
-            class="overview-primary-btn"
-            icon="warning_amber"
-            :label="t('overviewPage.btnAlerts')"
-            @click="scrollToAlerts"
-          />
-          <q-btn
-            unelevated
-            no-caps
-            class="overview-primary-btn"
-            icon="receipt_long"
-            :label="t('overviewPage.btnDetails')"
-            :to="eventsPageQuery"
-          />
+  <q-page class="app-standard-page ov-page">
+    <div class="ov-page__shell">
+      <q-banner v-if="error" class="ov-error" role="alert">
+        <template #avatar>
+          <q-icon name="warning" size="18px" />
         </template>
-      </CommandCenterHero>
+        {{ t('overviewPage.v2.loadFailed') }}: {{ error }}
+        <template #action>
+          <q-btn flat dense :label="t('overviewPage.v2.refresh')" @click="onRefresh" />
+        </template>
+      </q-banner>
 
-      <CommandCenterQuickActions />
-
-      <CommandCenterStatusPanels
-        :agent-stats="agentStats"
-        :today-call-count="todayCallCount"
-        :session-sparkline="sessionSparkline"
-        :sparkline-granularity="trendGranularity"
-        :provider-health="providerHealthSummary"
-        :runner-stats="runnerStats"
+      <OverviewVerdictBanner
+        class="ov-page__sticky"
+        :verdict="verdict"
+        :headline="headline"
+        :subline="subline"
+        :chips="chips"
+        :updated-at="updatedAtClock"
+        :stale="stale"
         :loading="loading"
-      />
-
-      <div class="overview-filter-bar">
-        <div class="overview-filter-bar__inner">
+        @refresh="onRefresh"
+      >
+        <template #filters>
           <q-select
-            v-model="filters.range"
+            :model-value="filters.range"
             dense
             outlined
             emit-value
             map-options
             :label="t('overviewPage.filterRange')"
             :options="rangeOptions"
-            class="overview-filter-field"
-            @update:model-value="onRangeChange"
+            class="ov-filter"
+            @update:model-value="(v) => setRange(String(v))"
           />
           <q-select
-            v-model="filters.provider_code"
+            :model-value="filters.provider_code || undefined"
             dense
             outlined
-            clearable
             emit-value
             map-options
+            clearable
             :label="t('overviewPage.filterProvider')"
             :options="providerOptions"
-            class="overview-filter-field"
-            @update:model-value="onProviderChange"
+            class="ov-filter ov-filter--wide"
+            @update:model-value="(v) => setProvider(v ? String(v) : '')"
           />
-          <q-select
-            v-model="filters.model_api_id"
-            dense
-            outlined
-            clearable
-            emit-value
-            map-options
-            :label="t('overviewPage.filterModel')"
-            :options="modelOptions"
-            class="overview-filter-field"
-            @update:model-value="loadOverview"
-          />
-          <q-select
-            v-model="filters.status"
-            dense
-            outlined
-            clearable
-            emit-value
-            map-options
-            :label="t('overviewPage.filterStatus')"
-            :options="statusOptions"
-            class="overview-filter-field"
-            @update:model-value="loadOverview"
-          />
-          <q-select
-            v-model="trendGranularity"
-            dense
-            outlined
-            emit-value
-            map-options
-            :label="t('overviewPage.filterGranularity')"
-            :options="granularityOptions"
-            class="overview-filter-field"
-            @update:model-value="loadOverview"
-          />
-        </div>
-      </div>
+        </template>
+      </OverviewVerdictBanner>
 
-      <div class="overview-content" :class="{ 'overview-content--loading': loading }">
-        <q-inner-loading :showing="loading" color="primary">
-          <q-spinner size="42px" />
-        </q-inner-loading>
+      <OverviewAttentionQueue :lanes="board.lanes" @drill="onDrillItem" />
 
-        <q-banner v-if="error" class="bg-negative text-white overview-error" rounded>
-          <template #avatar><q-icon name="error" /></template>
-          {{ t('overviewPage.errorBanner') }}：{{ error }}
-          <template #action><q-btn flat :label="t('overviewPage.btnRetry')" @click="loadOverview" /></template>
-        </q-banner>
+      <OverviewRedStrip
+        :model-tiles="modelTiles"
+        :run-tiles="runTiles"
+        :run-window="runnerWindowMinutes"
+        :run-window-options="runnerWindowOptions"
+        @update:run-window="onRunWindow"
+        @drill="onTileDrill"
+      />
 
-        <UsageMetricCards :overview="overview" :range="filters.range" @navigate="onMetricNavigate" />
+      <OverviewCostBoard
+        :cost-value-usd="costValueUsd"
+        :cost-delta="costDelta"
+        :budget="budget"
+        :unpriced-count="unpricedRows.length"
+        :top-bars="topModelBars"
+        :cache="cacheView"
+        @drill="onTileDrill"
+      />
 
-        <div class="overview-chart-row">
-          <div class="overview-chart-row__main">
-            <UsageTrendChart :points="overview?.trends ?? []" :hourly="trendGranularity === 'hour'" />
-          </div>
-          <div class="overview-chart-row__side">
-            <q-card flat class="overview-panel overview-summary-panel">
-              <q-card-section>
-                <div class="overview-section-title">{{ t('overviewPage.sectionSummary') }}</div>
-                <div class="overview-section-caption">{{ t('overviewPage.summaryCaption') }}</div>
-              </q-card-section>
-              <q-separator class="overview-separator" />
-              <q-card-section class="q-py-sm">
-                <div class="overview-summary-grid">
-                  <div class="overview-summary-item">
-                    <div class="overview-summary-item__label">{{ t('overviewPage.totalCalls') }}</div>
-                    <div class="overview-summary-item__value">{{ formatCount(overview?.range.call_count) }}</div>
-                  </div>
-                  <div class="overview-summary-item">
-                    <div class="overview-summary-item__label">{{ t('overviewPage.totalTokens') }}</div>
-                    <div class="overview-summary-item__value">{{ formatCount(overview?.range.total_tokens) }}</div>
-                  </div>
-                  <div class="overview-summary-item">
-                    <div class="overview-summary-item__label">{{ t('overviewPage.totalCost') }}</div>
-                    <div class="overview-summary-item__value overview-summary-item__value--accent">
-                      {{ formatMoney(overview?.range.total_cost_micro_usd) }}
-                    </div>
-                  </div>
-                  <div class="overview-summary-item">
-                    <div class="overview-summary-item__label">{{ t('overviewPage.successRate') }}</div>
-                    <div class="overview-summary-item__value">{{ formatPercent(overview?.range.success_rate) }}</div>
-                  </div>
-                </div>
-              </q-card-section>
-              <q-separator class="overview-separator" />
-              <q-card-section>
-                <div class="overview-section-title overview-section-title--sm">
-                  {{ t('overviewPage.tokenComposition') }}
-                </div>
-                <UsageTokenComposition :summary="overview?.range" />
-              </q-card-section>
-            </q-card>
-          </div>
-        </div>
+      <OverviewTrendBoard
+        :labels="trendLabels"
+        :calls="trendCalls"
+        :failures="trendFailures"
+        :costs-usd="trendCosts"
+        :granularity="trendGranularity"
+      />
 
-        <div class="overview-mid-row">
-          <UsageModelCostPie :top-models="overview?.top_models ?? []" />
-          <UsageProviderCostPie :top-models="overview?.top_models ?? []" />
-          <OverviewProviderHealth :models="providerModels" :loading="providerHealthLoading" />
-        </div>
+      <OverviewOrgBoard
+        :orgs="inventory.orgs"
+        :teams="inventory.teams"
+        :agents-total="inventory.agentsTotal"
+        :agents-enabled="inventory.agentsEnabled"
+        :worst-agents="worstAgentRows"
+        @drill="router.push('/agents')"
+      />
 
-        <div class="overview-ranks">
-          <UsageTopModels :rows="overview?.top_models ?? []" />
-          <UsageTopAgents :rows="overview?.top_agents ?? []" />
-        </div>
-
-        <AllModelsBreakdownTable :range="filters.range || '30d'" :provider-code="filters.provider_code || ''" />
-
-        <div class="overview-section">
-          <OverviewRunnerMetrics
-            :metrics="runnerMetrics"
-            :loading="runnerLoading"
-            :window-minutes="runnerWindowMinutes"
-            @update:window-minutes="
-              runnerWindowMinutes = $event;
-              reloadRunnerMetrics();
-            "
-            @refresh="reloadRunnerMetrics()"
-            @drill="openRunsTab({ tab: 'traces' })"
-          />
-        </div>
-
-        <div class="overview-section">
-          <UsageCacheHitRatio />
-        </div>
-
-        <div ref="alertStackRef" class="overview-alert-stack">
-          <UsageInefficientModels
-            v-if="(overview?.inefficient_models?.length ?? 0) > 0"
-            :rows="overview?.inefficient_models ?? []"
-          />
-          <div class="overview-alert-stack__row">
-            <UsageAnomalyList :rows="overview?.anomalies ?? []" />
-            <UsageFallbackEvents :anomalies="overview?.anomalies ?? []" />
-          </div>
-        </div>
-      </div>
+      <OverviewFreshnessFooter :sources="footSources" :notes="footNotes" />
     </div>
   </q-page>
 </template>
 
 <script setup lang="ts">
-import { computed, defineAsyncComponent, ref } from 'vue';
+import { computed } from 'vue';
 import { useRouter } from 'vue-router';
 import { useOverviewPage } from '../features/usage/useOverviewPage';
-import CommandCenterHero from '../components/usage/CommandCenterHero.vue';
-import CommandCenterStatusPanels from '../components/usage/CommandCenterStatusPanels.vue';
-import CommandCenterQuickActions from '../components/usage/CommandCenterQuickActions.vue';
-import OverviewMonitorQuickLinks from '../components/usage/OverviewMonitorQuickLinks.vue';
-import OverviewRunnerMetrics from '../components/usage/OverviewRunnerMetrics.vue';
-import OverviewProviderHealth from '../components/usage/OverviewProviderHealth.vue';
-import UsageAnomalyList from '../components/usage/UsageAnomalyList.vue';
-import UsageCacheHitRatio from '../components/usage/UsageCacheHitRatio.vue';
-import UsageFallbackEvents from '../components/usage/UsageFallbackEvents.vue';
-import UsageInefficientModels from '../components/usage/UsageInefficientModels.vue';
-import UsageMetricCards from '../components/usage/UsageMetricCards.vue';
-import UsageTokenComposition from '../components/usage/UsageTokenComposition.vue';
-import UsageTopAgents from '../components/usage/UsageTopAgents.vue';
-import UsageTopModels from '../components/usage/UsageTopModels.vue';
-import UsageModelCostPie from '../components/usage/UsageModelCostPie.vue';
-import UsageProviderCostPie from '../components/usage/UsageProviderCostPie.vue';
-import AllModelsBreakdownTable from '../components/usage/AllModelsBreakdownTable.vue';
-
-const UsageTrendChart = defineAsyncComponent(() => import('../components/usage/UsageTrendChart.vue'));
-
-const {
-  t,
-  overview,
-  loading,
-  error,
-  trendGranularity,
-  filters,
-  rangeOptions,
-  statusOptions,
-  granularityOptions,
-  providerOptions,
-  modelOptions,
-  onProviderChange,
-  onRangeChange,
-  loadOverview,
-  formatCount,
-  formatMoney,
-  formatPercent,
-  providerModels,
-  providerHealthLoading,
-  runnerMetrics,
-  runnerLoading,
-  runnerWindowMinutes,
-  reloadRunnerMetrics,
-  openRunsTab,
-  agentStats,
-  providerCount,
-  categoryCount,
-  teamCount,
-  username,
-  providerHealthSummary,
-  todayCallCount,
-  sessionSparkline,
-  runnerStats,
-} = useOverviewPage();
-
-const alertStackRef = ref<HTMLElement | null>(null);
+import { useOverviewView } from '../features/usage/useOverviewView';
+import { useAttentionBoard } from '../features/usage/useAttentionBoard';
+import type { AttentionItem } from '../features/usage/types';
+import OverviewVerdictBanner from '../components/overview/OverviewVerdictBanner.vue';
+import OverviewAttentionQueue from '../components/overview/OverviewAttentionQueue.vue';
+import OverviewRedStrip from '../components/overview/OverviewRedStrip.vue';
+import OverviewCostBoard from '../components/overview/OverviewCostBoard.vue';
+import OverviewTrendBoard from '../components/overview/OverviewTrendBoard.vue';
+import OverviewOrgBoard from '../components/overview/OverviewOrgBoard.vue';
+import OverviewFreshnessFooter from '../components/overview/OverviewFreshnessFooter.vue';
 
 const router = useRouter();
+const page = useOverviewPage();
+const {
+  t,
+  error,
+  loading,
+  filters,
+  rangeOptions,
+  providerOptions,
+  setRange,
+  setProvider,
+  trendGranularity,
+  costDelta,
+  unpricedRows,
+  topModelBars,
+  runnerWindowMinutes,
+  runnerWindowOptions,
+  loadRunnerMetrics,
+  inventory,
+  refreshAll,
+} = page;
 
-function scrollToAlerts() {
-  alertStackRef.value?.scrollIntoView({ behavior: 'smooth' });
+const anomalies = computed(() => page.overview.value?.anomalies ?? []);
+const { board } = useAttentionBoard(anomalies);
+const {
+  verdict,
+  headline,
+  subline,
+  chips,
+  updatedAtClock,
+  stale,
+  modelTiles,
+  runTiles,
+  costValueUsd,
+  budget,
+  cacheView,
+  trendLabels,
+  trendCalls,
+  trendFailures,
+  trendCosts,
+  worstAgentRows,
+  footSources,
+  footNotes,
+} = useOverviewView(page, board);
+
+// —— 交互（路由下钻全部收在 Page 层） ——
+function onRefresh() {
+  void refreshAll();
 }
-
-function onMetricNavigate(action: string) {
-  if (action === 'tokens') {
-    router.push(eventsPageQuery.value);
+function onRunWindow(v: number) {
+  runnerWindowMinutes.value = v;
+  void loadRunnerMetrics();
+}
+function onDrillItem(item: AttentionItem) {
+  if (item.to) void router.push(item.to);
+}
+function onTileDrill(key: string) {
+  if (key === 'unpriced') {
+    void router.push('/models');
+    return;
+  }
+  if (key === 'calls' || key === 'callSuccessRate' || key === 'burnRate' || key === 'detail') {
+    void router.push('/usage/events');
   }
 }
-
-const eventsPageQuery = computed(() => {
-  const query: Record<string, string> = { range: filters.range || '30d' };
-  if (filters.provider_code) query.provider_code = filters.provider_code;
-  if (filters.model_api_id) query.model_api_id = filters.model_api_id;
-  if (filters.status) query.status = filters.status;
-  return { path: '/usage/events', query };
-});
 </script>

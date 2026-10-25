@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	chatagent "aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
 	"aranea-agents/pkg/loggateway"
@@ -166,5 +167,74 @@ func TestCheckAllTeamsCompleted_NilPlanExecutor_GateOpen(t *testing.T) {
 
 	if got := len(gw.snapshot()); got != 1 {
 		t.Fatalf("ExecuteTurn called %d times, want 1 (nil planExecutor → gate open)", got)
+	}
+}
+
+// ── D3-FIX-2（87-orchestration-chain-hardening）：lease 释放通知注入根 Task
+// releaseLeaseAndNotifyCompletion 必须把 board.TaskID 注入通知 ctx
+// （RootTaskActivityID），否则 resolveLatestUserTaskID 的 ctx 权威分支恒走
+// 不到、挂靠只能依赖「DB 最新 user task」推断（重启/重排场景会错挂轮次）。
+
+// ctxRecordingNotifier 记录每次通知时刻的 RootTaskActivityID。
+type ctxRecordingNotifier struct {
+	mu    sync.Mutex
+	calls []string
+	rtIDs []string
+}
+
+func (n *ctxRecordingNotifier) NotifyAllTeamsCompleted(ctx context.Context, spiritSessionID string) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	n.calls = append(n.calls, spiritSessionID)
+	n.rtIDs = append(n.rtIDs, string(chatagent.RootTaskActivityIDFromCtx(ctx)))
+}
+
+func TestDagRunReleaseLeaseNotify_InjectsRootTaskID(t *testing.T) {
+	repos := newFakeReposForExecutor()
+	seq := &fakeSeq{repos: repos}
+	orch := newFakeOrchestrator().withSeq(seq)
+	pe := NewPlanExecutor(repos, orch, seq, loggateway.NewNoop())
+
+	notifier := &ctxRecordingNotifier{}
+	pe.SetCompletionNotifier(notifier)
+
+	board := biz.PlanBoard{ID: "board-rt", TaskID: "task-notify", SessionID: "sess-rt"}
+	dr := newDagRun(pe, board)
+	dr.releaseLeaseAndNotifyCompletion()
+
+	notifier.mu.Lock()
+	defer notifier.mu.Unlock()
+	if len(notifier.calls) != 1 || notifier.calls[0] != "sess-rt" {
+		t.Fatalf("NotifyAllTeamsCompleted calls=%v, want [sess-rt]", notifier.calls)
+	}
+	if notifier.rtIDs[0] != "task-notify" {
+		t.Errorf("RootTaskActivityID in notify ctx = %q, want %q (attach-integrity fix)",
+			notifier.rtIDs[0], "task-notify")
+	}
+}
+
+// board.TaskID 为空（孤儿兜底场景）：通知仍送达一次，ctx 不携带根 Task，
+// 不 panic —— 由 service 侧 attach-integrity（parentTaskID=="" → CAS 释放）
+// 守住降级。
+func TestDagRunReleaseLeaseNotify_EmptyTaskIDStillNotifies(t *testing.T) {
+	repos := newFakeReposForExecutor()
+	seq := &fakeSeq{repos: repos}
+	orch := newFakeOrchestrator().withSeq(seq)
+	pe := NewPlanExecutor(repos, orch, seq, loggateway.NewNoop())
+
+	notifier := &ctxRecordingNotifier{}
+	pe.SetCompletionNotifier(notifier)
+
+	board := biz.PlanBoard{ID: "board-orphan", SessionID: "sess-orphan"}
+	dr := newDagRun(pe, board)
+	dr.releaseLeaseAndNotifyCompletion()
+
+	notifier.mu.Lock()
+	defer notifier.mu.Unlock()
+	if len(notifier.calls) != 1 || notifier.calls[0] != "sess-orphan" {
+		t.Fatalf("NotifyAllTeamsCompleted calls=%v, want [sess-orphan]", notifier.calls)
+	}
+	if notifier.rtIDs[0] != "" {
+		t.Errorf("RootTaskActivityID = %q, want empty when board.TaskID empty", notifier.rtIDs[0])
 	}
 }

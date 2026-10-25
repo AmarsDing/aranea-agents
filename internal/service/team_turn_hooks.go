@@ -93,6 +93,26 @@ func (o *ChatOrchestrator) executeTeamTurnViaHooks(
 
 	userMsg, assistantMsg, err = o.team().TeamsNative.RunTurnFromInput(teamCtx, sess, input)
 	if err != nil {
+		// D1-F1（87-orchestration-chain-hardening）：用户停止导致的 runner
+		// 中断 → 根 Task 落 cancelled、终态回调 cancelled（errMsg 保留原文供
+		// 下游分类器），跳过 SetRunStatus(failed) 与 transitionSessionStatus
+		// (interrupted,error)——cancelActiveRun 已落 cancelled/user_cancelled，
+		// 失败级联会覆盖取消终态。终态落账一律在 context.WithoutCancel 之后的
+		// 上下文执行，保证取消不传染持久化。
+		if o.runWasCancelled(teamCtx, sessionID, err) {
+			bookCtx := context.WithoutCancel(teamCtx)
+			if !isContinuation {
+				o.terminalizeTeamTurnRootTask(bookCtx, string(rootTaskID), biz.TaskStatusCancelled)
+			}
+			if teamID := strings.TrimSpace(sess.TeamID); teamID != "" {
+				spiritID := strings.TrimSpace(sess.ParentSessionID)
+				if spiritID == "" {
+					spiritID = sessionID
+				}
+				o.teamStarter().HandleTeamTurnResult(bookCtx, spiritID, teamID, biz.TeamStatusCancelled, err.Error(), "")
+			}
+			return userMsg, assistantMsg, err
+		}
 		if !isContinuation {
 			o.terminalizeTeamTurnRootTask(ctx, string(rootTaskID), biz.TaskStatusFailed)
 		}

@@ -136,13 +136,27 @@ export function agentNodeStatusToLabel(status: string): AgentNodeStatusLabel {
   return AGENT_NODE_STATUS_MAP[status] ?? 'queued';
 }
 
-/** Maps SpiritMember.status (idle/running/error/completed/waiting/blocked) to aggregate display label */
+/**
+ * Maps SpiritMember.status to an aggregate display label.
+ * 主键为 v2 词表（internal/biz/member_session.go 的 MemberSessionStatus：
+ * pending/running/paused/completed/failed/skipped），经
+ * upsertTeamFromV2TeamStage / updateMemberFromV2MemberSession 原样落入
+ * SpiritMember.status；legacy 词表（idle/error/waiting/blocked）作为别名层保留，
+ * 兼容 REST 旧行原样透传的值。未知字符串兜底 'queued'（与
+ * agentNodeStatusToLabel 的静默回退风格一致）。
+ */
 export function spiritMemberStatusToLabel(status: string): AgentNodeStatusLabel {
   const mapping: Record<string, AgentNodeStatusLabel> = {
-    idle: 'queued',
+    // v2 词表（权威主键）
+    pending: 'queued',
     running: 'active',
-    error: 'failed',
+    paused: 'suspended',
     completed: 'done',
+    failed: 'failed',
+    skipped: 'skipped',
+    // legacy 词表（别名层，兼容 API 旧行）
+    idle: 'queued',
+    error: 'failed',
     waiting: 'suspended',
     blocked: 'tool_blocked',
   };

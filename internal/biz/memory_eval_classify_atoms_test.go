@@ -22,8 +22,8 @@ func TestSplitEvalStatements_TableDriven(t *testing.T) {
 		{"english period-space-lowercase no split", "I like coffee. then she left", 8, []string{"I like coffee. then she left"}},
 		{"newline split", "我今天去了北京。她昨天回了上海", 8, []string{"我今天去了北京。", "她昨天回了上海"}},
 		{"exclamation question semicolon", "你今天好吗？我很好啊！我们一起去吃饭吧；就这么定了。", 8, []string{"你今天好吗？", "我很好啊！", "我们一起去吃饭吧；", "就这么定了。"}},
-		{"short fragments dropped", "好的。我最喜欢的颜色是红色。", 8, []string{"我最喜欢的颜色是红色。"}},
-		{"all fragments fallback to trimmed whole", "啊。哦。嗯。", 8, []string{"啊。哦。嗯。"}},
+		{"short fragments preserved", "好的。我最喜欢的颜色是红色。", 8, []string{"好的。", "我最喜欢的颜色是红色。"}},
+		{"all short fragments preserved", "啊。哦。嗯。", 8, []string{"啊。", "哦。", "嗯。"}},
 	}
 	for _, tc := range cases {
 		tc := tc

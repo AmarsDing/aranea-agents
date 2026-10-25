@@ -4,6 +4,7 @@ import (
 	"crypto/sha1"
 	"encoding/binary"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -285,13 +286,19 @@ func normalizeVaultText(data []byte) string {
 // 冲突语义（保守默认：留双份）：磁盘当前版本备份进 .aranea/trash，仍写入新版本，
 // conflict=true 供调用方感知/告警。覆盖即备份是 WriteDoc 既有契约（R-6），不区分冲突与否。
 func (f *VaultFiler) WriteDocCAS(root, relPath string, doc *VaultDoc, expectedHash string) (bool, error) {
+	conflict, _, err := f.WriteDocCASWithHash(root, relPath, doc, expectedHash)
+	return conflict, err
+}
+
+// WriteDocCASWithHash returns the hash of these exact submitted bytes, never a later read.
+func (f *VaultFiler) WriteDocCASWithHash(root, relPath string, doc *VaultDoc, expectedHash string) (bool, string, error) {
 	rel, err := SanitizeRelPath(relPath)
 	if err != nil {
-		return false, err
+		return false, "", err
 	}
 	target, err := resolve(root, rel)
 	if err != nil {
-		return false, err
+		return false, "", err
 	}
 	conflict := false
 	data, readErr := os.ReadFile(target)
@@ -305,10 +312,11 @@ func (f *VaultFiler) WriteDocCAS(root, relPath string, doc *VaultDoc, expectedHa
 			conflict = true
 		}
 	default:
-		return false, apierror.Internal("knowledge", "vault: read for cas %s", rel).WithCause(readErr)
+		return false, "", apierror.Internal("knowledge", "vault: read for cas %s", rel).WithCause(readErr)
 	}
+	writtenHash := HashContent(marshalVaultDoc(doc))
 	if err := f.WriteDoc(root, rel, doc); err != nil {
-		return false, err
+		return false, "", err
 	}
 	if conflict {
 		f.lg.Warn("vault write conflict, both copies kept",
@@ -316,7 +324,7 @@ func (f *VaultFiler) WriteDocCAS(root, relPath string, doc *VaultDoc, expectedHa
 			loggateway.Str("expected_hash", expectedHash),
 		)
 	}
-	return conflict, nil
+	return conflict, writtenHash, nil
 }
 
 // Move 原子移动 vault 内文件（G3-B4 库内跨目录移动）。
@@ -328,65 +336,79 @@ func (f *VaultFiler) WriteDocCAS(root, relPath string, doc *VaultDoc, expectedHa
 // 单个 os.Rename 在文件系统层面产生 DELETE+CREATE 两个事件，均需过滤）。
 // 返回实际落盘的 sanitized 目标相对路径（rename 策略下与 dstRel 不同）。
 func (f *VaultFiler) Move(root, srcRel, dstRel, conflictPolicy string) (string, error) {
+	final, _, err := f.moveFile(root, srcRel, dstRel, conflictPolicy)
+	return final, err
+}
+
+// moveFile also returns a displaced target's trash path for DB-failure compensation.
+func (f *VaultFiler) moveFile(root, srcRel, dstRel, conflictPolicy string) (finalRel, displacedTrash string, retErr error) {
+	defer func() {
+		if retErr != nil && displacedTrash != "" {
+			if err := f.RestoreTrash(root, dstRel, displacedTrash); err != nil {
+				retErr = apierror.Internal("KNOWLEDGE", "move failed and target restore failed").WithCause(errors.Join(retErr, err))
+			}
+		}
+	}()
 	src, err := SanitizeRelPath(srcRel)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	dst, err := SanitizeRelPath(dstRel)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	srcAbs, err := resolve(root, src)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	info, err := os.Stat(srcAbs)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return "", apierror.NotFound("knowledge", "vault: move source not found: %s", src)
+			return "", "", apierror.NotFound("knowledge", "vault: move source not found: %s", src)
 		}
-		return "", apierror.Internal("knowledge", "vault: stat move source %s", src).WithCause(err)
+		return "", "", apierror.Internal("knowledge", "vault: stat move source %s", src).WithCause(err)
 	}
 	if info.IsDir() {
-		return "", apierror.BadRequest("knowledge", "vault: move source is a directory: %s", src)
+		return "", "", apierror.BadRequest("knowledge", "vault: move source is a directory: %s", src)
 	}
 	// 读出内容算 hash（自写标记用；vault 文档为文本/小二进制，一次性读入可接受）。
 	data, err := os.ReadFile(srcAbs)
 	if err != nil {
-		return "", apierror.Internal("knowledge", "vault: read move source %s", src).WithCause(err)
+		return "", "", apierror.Internal("knowledge", "vault: read move source %s", src).WithCause(err)
 	}
 	dstAbs, err := resolve(root, dst)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	if _, statErr := os.Stat(dstAbs); statErr == nil {
 		switch conflictPolicy {
 		case "":
-			return "", apierror.Conflict("knowledge", "file already exists: %s", dst)
+			return "", "", apierror.Conflict("knowledge", "file already exists: %s", dst)
 		case "overwrite":
-			if _, err := f.MoveToTrash(root, dst); err != nil {
-				return "", err
+			displacedTrash, err = f.MoveToTrash(root, dst)
+			if err != nil {
+				return "", displacedTrash, err
 			}
 		case "rename":
 			dst, err = uniqueSiblingRel(root, dst)
 			if err != nil {
-				return "", err
+				return "", "", err
 			}
 			dstAbs, err = resolve(root, dst)
 			if err != nil {
-				return "", err
+				return "", "", err
 			}
 		default:
-			return "", apierror.BadRequest("knowledge", "vault: unknown move conflict policy: %q", conflictPolicy)
+			return "", "", apierror.BadRequest("knowledge", "vault: unknown move conflict policy: %q", conflictPolicy)
 		}
 	} else if !os.IsNotExist(statErr) {
-		return "", apierror.Internal("knowledge", "vault: stat move target %s", dst).WithCause(statErr)
+		return "", "", apierror.Internal("knowledge", "vault: stat move target %s", dst).WithCause(statErr)
 	}
 	if err := os.MkdirAll(filepath.Dir(dstAbs), 0o755); err != nil {
-		return "", apierror.Internal("knowledge", "vault: mkdir move target").WithCause(err)
+		return "", displacedTrash, apierror.Internal("knowledge", "vault: mkdir move target").WithCause(err)
 	}
 	if err := os.Rename(srcAbs, dstAbs); err != nil {
-		return "", apierror.Internal("knowledge", "vault: move %s -> %s", src, dst).WithCause(err)
+		return "", displacedTrash, apierror.Internal("knowledge", "vault: move %s -> %s", src, dst).WithCause(err)
 	}
 	f.markSelfWrite(src, "", true)
 	f.markSelfWrite(dst, HashContent(string(data)), false)
@@ -394,7 +416,7 @@ func (f *VaultFiler) Move(root, srcRel, dstRel, conflictPolicy string) (string, 
 		loggateway.Str("src_rel_path", src),
 		loggateway.Str("dst_rel_path", dst),
 	)
-	return dst, nil
+	return dst, displacedTrash, nil
 }
 
 // uniqueSiblingRel 生成同目录唯一相对路径："name (2).ext"、"name (3).ext"……
@@ -439,6 +461,38 @@ func (f *VaultFiler) MoveToTrash(root, relPath string) (string, error) {
 	f.markSelfWrite(rel, "", true)
 	f.lg.Debug("vault doc moved to trash", loggateway.Str("rel_path", rel))
 	return trashPath, nil
+}
+
+// RestoreTrash compensates a failed DB write without overwriting a newly created file.
+func (f *VaultFiler) RestoreTrash(root, relPath, trashPath string) error {
+	rel, err := SanitizeRelPath(relPath)
+	if err != nil {
+		return err
+	}
+	target, err := resolve(root, rel)
+	if err != nil {
+		return err
+	}
+	rootAbs, err := filepath.Abs(root)
+	if err != nil {
+		return apierror.Internal("KNOWLEDGE", "resolve trash root").WithCause(err)
+	}
+	trashRoot := filepath.Join(rootAbs, ".aranea", "trash")
+	if !strings.HasPrefix(filepath.Clean(trashPath), trashRoot+string(os.PathSeparator)) {
+		return apierror.BadRequest("KNOWLEDGE", "invalid trash restore path")
+	}
+	if _, err := os.Stat(target); err == nil {
+		return apierror.Conflict("KNOWLEDGE", "restore target already exists: %s", rel)
+	} else if !os.IsNotExist(err) {
+		return apierror.Internal("KNOWLEDGE", "stat restore target").WithCause(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+		return apierror.Internal("KNOWLEDGE", "create restore directory").WithCause(err)
+	}
+	if err := os.Rename(trashPath, target); err != nil {
+		return apierror.Internal("KNOWLEDGE", "restore file from trash").WithCause(err)
+	}
+	return nil
 }
 
 // WriteTrashFromMirror 把 DB 镜像内容抢救写入 .aranea/trash（R-2：外部删除不丢数据）。

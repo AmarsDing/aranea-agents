@@ -44,6 +44,50 @@ func TestCriticalJournal_AppendAndReplay(t *testing.T) {
 	}
 }
 
+// TestCriticalJournal_TeamRunCancelledKind pins 87-D4-3: the dedicated
+// team_run.cancelled kind is recorded verbatim (NoticeType empty) and is
+// replay-distinguishable from team_run.failed — the pre-split failure mode
+// where cancel and failure shared one kind.
+func TestCriticalJournal_TeamRunCancelledKind(t *testing.T) {
+	t.Parallel()
+	j := NewCriticalJournal(t.TempDir())
+
+	cancelled := biz.NewTeamRunCancelledEvent(biz.TeamRun{
+		ID: "tr-1", TaskID: "task-1", SessionID: "sess-team-1", SpiritSessionID: "sess-1",
+		Status: biz.TeamRunV2StatusCancelled,
+	})
+	failed := biz.NewTeamRunFailedEvent(biz.TeamRun{
+		ID: "tr-2", TaskID: "task-1", SessionID: "sess-team-1", SpiritSessionID: "sess-1",
+		Status: biz.TeamRunV2StatusFailed,
+	})
+	if err := j.Append(cancelled); err != nil {
+		t.Fatalf("Append cancelled: %v", err)
+	}
+	if err := j.Append(failed); err != nil {
+		t.Fatalf("Append failed: %v", err)
+	}
+
+	entries, err := j.ReplayCritical("sess-1", time.Time{})
+	if err != nil {
+		t.Fatalf("Replay: %v", err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("want 2 critical entries, got %d: %+v", len(entries), entries)
+	}
+	if entries[0].Kind != string(biz.EventKindTeamRunCancelled) {
+		t.Fatalf("entries[0].Kind = %q, want %q", entries[0].Kind, biz.EventKindTeamRunCancelled)
+	}
+	if entries[0].NoticeType != "" {
+		t.Fatalf("entries[0].NoticeType = %q, want empty", entries[0].NoticeType)
+	}
+	if entries[0].EntityID != "tr-1" {
+		t.Fatalf("entries[0].EntityID = %q, want tr-1", entries[0].EntityID)
+	}
+	if entries[1].Kind != string(biz.EventKindTeamRunFailed) {
+		t.Fatalf("entries[1].Kind = %q, want %q (cancelled/failed must stay distinguishable)", entries[1].Kind, biz.EventKindTeamRunFailed)
+	}
+}
+
 func TestCriticalJournal_ReplayAfterTime(t *testing.T) {
 	t.Parallel()
 	j := NewCriticalJournal(t.TempDir())

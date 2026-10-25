@@ -1040,8 +1040,9 @@ func TestCheckAllTeamsCompleted_StaleTaskList_DoesNotBlockNewRound(t *testing.T)
 	}
 }
 
-// DB 查询失败：无法判定，fail-open 维持既有行为（内存 CAS 为唯一守卫），
-// 不得因读抖动丢失本轮总结。
+// D3-FIX-3 ⑥（87-orchestration-chain-hardening）：DB 查询失败由旧 fail-open
+// 收敛为 uncertain —— 无法判定时不得触发（重启后真错挂时用户会看到重复
+// 总结回放），改为释放 CAS 让 30s 轮询路径重试（可恢复，不重试风暴）。
 func TestCheckAllTeamsCompleted_TaskReadError_FailsOpen(t *testing.T) {
 	controller := &stubSpiritTeamController{
 		completedResult: biz.AllTeamsCompletedResult{
@@ -1054,8 +1055,16 @@ func TestCheckAllTeamsCompleted_TaskReadError_FailsOpen(t *testing.T) {
 	s.taskV2Reader = &stubSynthesisTaskReader{err: errors.New("db down")}
 
 	s.checkAllTeamsCompleted(context.Background(), "sp1")
+	if got := len(gw.snapshot()); got != 0 {
+		t.Fatalf("task read error is uncertain (read-shake): ExecuteTurn called %d times, want 0 (defer to poller)", got)
+	}
+	// CAS 已释放 → 读抖动恢复后轮询可重试，本轮总结不丢失。
+	s.taskV2Reader = &stubSynthesisTaskReader{tasks: []biz.Task{
+		{ID: "task-1", SessionID: "sp1", Status: biz.TaskStatusRunning},
+	}}
+	s.checkAllTeamsCompleted(context.Background(), "sp1")
 	if got := len(gw.snapshot()); got != 1 {
-		t.Fatalf("task read error must fail open: ExecuteTurn called %d times, want 1", got)
+		t.Fatalf("after DB recover, released CAS must allow retry: ExecuteTurn called %d times, want 1", got)
 	}
 }
 
@@ -1364,6 +1373,51 @@ func TestPublishV2TeamRunCompletion_F10_Cancelled_StaysSkipped(t *testing.T) {
 	}
 	if msA.Status != biz.MemberSessionStatusSkipped {
 		t.Errorf("agent-a status = %s, want skipped (cancelled not overridable)", msA.Status)
+	}
+}
+
+// TestPublishV2TeamRunCompletion_Cancelled_PublishesCancelledKind pins 87-D4-2:
+// cancelled 终态在同一发布点改用专用 kind team_run.cancelled（不再复用
+// team_run.failed + Status=cancelled），实体平面与事件平面一一对应。
+func TestPublishV2TeamRunCompletion_Cancelled_PublishesCancelledKind(t *testing.T) {
+	team := biz.Team{
+		ID: "team-cancel-kind", DisplayName: "取消团队", SpiritSessionID: "spirit-1",
+		AutoCreated: true, Status: biz.TeamStatusCancelled, DagNodeID: "st_1",
+	}
+	sessions := []biz.Session{
+		{ID: "sess-a", TeamID: team.ID, SessionType: "agent", MemberAgentKey: "agent-a"},
+	}
+	ctrl := &stubSpiritTeamController{}
+	seq := &capturingSeq{}
+	s := newF10Starter(team, ctrl, sessions, seq)
+
+	s.publishV2TeamRunCompletion(context.Background(), team.SpiritSessionID, team.ID,
+		biz.TeamStageStatusCancelled, biz.TeamStatusCancelled)
+
+	var terminal []biz.Event
+	for _, ev := range seq.snapshot() {
+		switch ev.(type) {
+		case *biz.TeamRunCompletedEvent, *biz.TeamRunFailedEvent, *biz.TeamRunCancelledEvent:
+			terminal = append(terminal, ev)
+		}
+	}
+	if len(terminal) != 1 {
+		t.Fatalf("TeamRun 终态事件数 = %d, want 恰好 1 条（events: %v）", len(terminal), seq.snapshot())
+	}
+	cancelled, ok := terminal[0].(*biz.TeamRunCancelledEvent)
+	if !ok {
+		t.Fatalf("终态事件类型 = %T, want *biz.TeamRunCancelledEvent", terminal[0])
+	}
+	if cancelled.EventKind() != biz.EventKindTeamRunCancelled {
+		t.Errorf("EventKind = %q, want %q", cancelled.EventKind(), biz.EventKindTeamRunCancelled)
+	}
+	if cancelled.TeamRun.Status != biz.TeamRunV2StatusCancelled {
+		t.Errorf("内嵌 TeamRun.Status = %q, want cancelled", cancelled.TeamRun.Status)
+	}
+	for _, ev := range seq.snapshot() {
+		if _, isFailed := ev.(*biz.TeamRunFailedEvent); isFailed {
+			t.Fatal("cancelled 终态不得再发布 *biz.TeamRunFailedEvent")
+		}
 	}
 }
 
@@ -1892,3 +1946,161 @@ func TestPublishV2TeamRunCompletion_DefinitionFallback_SkipsGhostByAgentID(t *te
 // 成员 skipped + 哨兵带。
 
 // running 成员 session 必须转 interrupted（S-2，对齐 AutoCreated 路径）。
+
+// ── D1-F2：终态守卫补 partial_failure + 同态重放幂等门 ──────────────────────
+// 87-orchestration-chain-hardening：teams 表 CAS 转移是记账型副作用
+// （recordTeamCompletion/scheduleDependentTeams）的天然幂等键。
+//  1) 终态守卫集合补 partial_failure：异态回调（如 runner 迟到 completed）
+//     必须整条丢弃；
+//  2) completed/partial_failure 同态重放：TransitionStatus 被 FSM/CAS 拒绝时
+//     不得重复 record/schedule；
+//  3) failed 同态重放：scheduleDependentTeams 同门；
+//  4) cancelled：现态非 cancelled 时补 CAS 转移（破除「调用方已转换」假设），
+//     成员 session 收敛照常。
+
+// newD1F2Starter 构造带 writer/session 句柄的终态 pass TeamStarter（断言
+// teams 转移序列与成员 session interrupted 收敛）。
+func newD1F2Starter(team biz.Team, controller *stubSpiritTeamController, writer *stubTeamWriter, repo *f10SessionRepo) *TeamStarter {
+	tsID := "ts-" + team.ID
+	teamUC := biz.NewTeamUsecase(biz.TeamUsecaseOpts{
+		Reader:    &stubTeamReader{teams: map[string]biz.Team{team.ID: team}},
+		Writer:    writer,
+		RunReader: &stubTeamRunReader{},
+		Lg:        loggateway.NewNoop(),
+	})
+	var sessUC *biz.SessionUsecase
+	if repo != nil {
+		sessUC = biz.NewSessionUsecase(repo, nil, nil, nil, nil, nil, nil, nil, nil, loggateway.NewNoop(), nil)
+	}
+	return &TeamStarter{
+		sessions: sessUC,
+		team:     TeamOrchestrationDeps{TeamUC: teamUC, SpiritUC: controller},
+		eventBus: &capturingEventBus{},
+		lg:       loggateway.NewNoop(),
+		teamStageR: &stubTeamStageV2Reader{stages: map[string]biz.TeamStage{
+			tsID: {ID: tsID, TeamID: team.ID, SessionID: team.SpiritSessionID,
+				Status: biz.TeamStageStatusRunning, Stage: biz.TeamStageStageExecuting, Version: 1},
+		}},
+		tsSM: biz.NewTeamStageStateMachine(),
+	}
+}
+
+// 同态 completed 重放：CAS（FSM completed→completed 非法）拒绝 → 记账型副作用
+// 不得重复（幂等重放吸收——如 runner 取消后继续执行至完成的迟到回调、
+// 或超时处理器与 runner 回调竞争同队同态）。
+func TestHandleTeamTurnResult_CompletedReplay_SkipsRecordAndSchedule(t *testing.T) {
+	team := biz.Team{
+		ID: "team-replay-done", DisplayName: "重放团队", SpiritSessionID: "spirit-replay-1",
+		AutoCreated: true, Status: biz.TeamStatusCompleted,
+	}
+	controller := &stubSpiritTeamController{}
+	writer := &stubTeamWriter{}
+	s := newD1F2Starter(team, controller, writer, nil)
+
+	s.HandleTeamTurnResult(context.Background(), team.SpiritSessionID, team.ID, biz.TeamStatusCompleted, "", "")
+
+	if controller.recordCompletionCalls != 0 {
+		t.Errorf("RecordTeamCompletion called %d times, want 0 (same-state replay must be absorbed by CAS)", controller.recordCompletionCalls)
+	}
+	if controller.scheduleDependentsCalls != 0 {
+		t.Errorf("ScheduleDependentTeams called %d times, want 0 (same-state replay must be absorbed by CAS)", controller.scheduleDependentsCalls)
+	}
+}
+
+// 同态 failed 重放：scheduleDependentTeams 不得重复下发级联。
+func TestHandleTeamTurnResult_FailedReplay_SkipsSchedule(t *testing.T) {
+	team := biz.Team{
+		ID: "team-replay-fail", DisplayName: "重放失败团队", SpiritSessionID: "spirit-replay-2",
+		AutoCreated: true, Status: biz.TeamStatusFailed,
+	}
+	controller := &stubSpiritTeamController{}
+	writer := &stubTeamWriter{}
+	s := newD1F2Starter(team, controller, writer, nil)
+
+	s.HandleTeamTurnResult(context.Background(), team.SpiritSessionID, team.ID, biz.TeamStatusFailed, "boom", "")
+
+	if controller.scheduleDependentsCalls != 0 {
+		t.Errorf("ScheduleDependentTeams called %d times, want 0 (failed replay must not re-cascade)", controller.scheduleDependentsCalls)
+	}
+	if trs := writer.snapshotTransitions(); len(trs) != 0 {
+		t.Errorf("teams transitions = %+v, want none (FSM rejects same-state)", trs)
+	}
+}
+
+// partial_failure 入终态守卫：异态（completed）迟到回调整条丢弃——不转移、
+// 不 record、不 schedule（部分失败终态不得被成功回调覆盖）。
+func TestHandleTeamTurnResult_PartialFailureGuard_DropsLateCompleted(t *testing.T) {
+	team := biz.Team{
+		ID: "team-guard-pf", DisplayName: "部分失败团队", SpiritSessionID: "spirit-guard-1",
+		AutoCreated: true, Status: biz.TeamStatusPartialFailure,
+	}
+	controller := &stubSpiritTeamController{hasRealDeliverable: true}
+	writer := &stubTeamWriter{}
+	s := newD1F2Starter(team, controller, writer, nil)
+
+	s.HandleTeamTurnResult(context.Background(), team.SpiritSessionID, team.ID, biz.TeamStatusCompleted, "", "")
+
+	if trs := writer.snapshotTransitions(); len(trs) != 0 {
+		t.Errorf("teams transitions = %+v, want none (stale callback dropped by terminal guard)", trs)
+	}
+	if controller.recordCompletionCalls != 0 {
+		t.Errorf("RecordTeamCompletion called %d times, want 0 (stale callback)", controller.recordCompletionCalls)
+	}
+	if controller.scheduleDependentsCalls != 0 {
+		t.Errorf("ScheduleDependentTeams called %d times, want 0 (stale callback)", controller.scheduleDependentsCalls)
+	}
+}
+
+// cancelled 回调（runner 取消入口，调用方未转换）：现态 running → service 补
+// CAS 转移 cancelled；running 成员 session 收敛 interrupted("user_cancelled")。
+func TestHandleTeamTurnResult_Cancelled_TransitionsFromRunning(t *testing.T) {
+	team := biz.Team{
+		ID: "team-cancel-auto", DisplayName: "取消团队", SpiritSessionID: "spirit-cancel-1",
+		AutoCreated: true, Status: biz.TeamStatusRunning,
+	}
+	repo := &f10SessionRepo{sessions: []biz.Session{
+		{ID: "sess-ca-team", TeamID: team.ID, SessionType: "team", Status: string(sessstatus.SessionStatusRunning)},
+		{ID: "sess-ca-a", TeamID: team.ID, SessionType: "agent", MemberAgentKey: "agent-a", Status: string(sessstatus.SessionStatusRunning)},
+	}}
+	controller := &stubSpiritTeamController{}
+	writer := &stubTeamWriter{}
+	s := newD1F2Starter(team, controller, writer, repo)
+
+	s.HandleTeamTurnResult(context.Background(), team.SpiritSessionID, team.ID, biz.TeamStatusCancelled, "context canceled", "sess-ca-team")
+
+	var cancelled bool
+	for _, tr := range writer.snapshotTransitions() {
+		if tr.id == team.ID && tr.newStatus == biz.TeamStatusCancelled && tr.expectCurrent == biz.TeamStatusRunning {
+			cancelled = true
+		}
+	}
+	if !cancelled {
+		t.Errorf("teams transition (running → cancelled) missing, got %#v", writer.snapshotTransitions())
+	}
+	if len(repo.interruptCalls) == 0 {
+		t.Errorf("no member session interrupted(user_cancelled) transition on cancel")
+	}
+}
+
+// cancelled 同态重放：现态已 cancelled → 不再转移、无重复收敛副作用。
+func TestHandleTeamTurnResult_Cancelled_AlreadyCancelled_Idempotent(t *testing.T) {
+	team := biz.Team{
+		ID: "team-cancel-done", DisplayName: "已取消团队", SpiritSessionID: "spirit-cancel-2",
+		AutoCreated: true, Status: biz.TeamStatusCancelled,
+	}
+	repo := &f10SessionRepo{sessions: []biz.Session{
+		{ID: "sess-cd-a", TeamID: team.ID, SessionType: "agent", MemberAgentKey: "agent-a", Status: string(sessstatus.SessionStatusCompleted)},
+	}}
+	controller := &stubSpiritTeamController{}
+	writer := &stubTeamWriter{}
+	s := newD1F2Starter(team, controller, writer, repo)
+
+	s.HandleTeamTurnResult(context.Background(), team.SpiritSessionID, team.ID, biz.TeamStatusCancelled, "context canceled", "")
+
+	if trs := writer.snapshotTransitions(); len(trs) != 0 {
+		t.Errorf("teams transitions = %+v, want none (already cancelled is idempotent)", trs)
+	}
+	if len(repo.interruptCalls) != 0 {
+		t.Errorf("interrupt calls = %v, want none (member sessions already terminal)", repo.interruptCalls)
+	}
+}

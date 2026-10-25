@@ -1,0 +1,88 @@
+{"Time":"2026-10-22T22:28:21.8174022+08:00","Action":"start","Package":"aranea-agents/cmd/memoryeval"}
+{"Time":"2026-10-22T22:28:22.4170783+08:00","Action":"run","Package":"aranea-agents/cmd/memoryeval","Test":"TestSearchOptionsReachStoreWithoutReplacingQuery"}
+{"Time":"2026-10-22T22:28:22.4170783+08:00","Action":"output","Package":"aranea-agents/cmd/memoryeval","Test":"TestSearchOptionsReachStoreWithoutReplacingQuery","Output":"=== RUN   TestSearchOptionsReachStoreWithoutReplacingQuery\n"}
+{"Time":"2026-10-22T22:28:22.4180799+08:00","Action":"output","Package":"aranea-agents/cmd/memoryeval","Test":"TestSearchOptionsReachStoreWithoutReplacingQuery","Output":"--- PASS: TestSearchOptionsReachStoreWithoutReplacingQuery (0.00s)\n"}
+{"Time":"2026-10-22T22:28:22.4180904+08:00","Action":"pass","Package":"aranea-agents/cmd/memoryeval","Test":"TestSearchOptionsReachStoreWithoutReplacingQuery","Elapsed":0}
+{"Time":"2026-10-22T22:28:22.4180904+08:00","Action":"run","Package":"aranea-agents/cmd/memoryeval","Test":"TestAddDerivesStableMessageIdentityFromRequest"}
+{"Time":"2026-10-22T22:28:22.4180904+08:00","Action":"output","Package":"aranea-agents/cmd/memoryeval","Test":"TestAddDerivesStableMessageIdentityFromRequest","Output":"=== RUN   TestAddDerivesStableMessageIdentityFromRequest\n"}
+{"Time":"2026-10-22T22:28:22.4180904+08:00","Action":"output","Package":"aranea-agents/cmd/memoryeval","Test":"TestAddDerivesStableMessageIdentityFromRequest","Output":"--- PASS: TestAddDerivesStableMessageIdentityFromRequest (0.00s)\n"}
+{"Time":"2026-10-22T22:28:22.4180904+08:00","Action":"pass","Package":"aranea-agents/cmd/memoryeval","Test":"TestAddDerivesStableMessageIdentityFromRequest","Elapsed":0}
+{"Time":"2026-10-22T22:28:22.4180904+08:00","Action":"run","Package":"aranea-agents/cmd/memoryeval","Test":"TestHandleAdd_Success"}
+{"Time":"2026-10-22T22:28:22.4180904+08:00","Action":"output","Package":"aranea-agents/cmd/memoryeval","Test":"TestHandleAdd_Success","Output":"=== RUN   TestHandleAdd_Success\n"}
+{"Time":"2026-10-22T22:28:22.4180904+08:00","Action":"output","Package":"aranea-agents/cmd/memoryeval","Test":"TestHandleAdd_Success","Output":"--- PASS: TestHandleAdd_Success (0.00s)\n"}
+{"Time":"2026-10-22T22:28:22.4180904+08:00","Action":"pass","Package":"aranea-agents/cmd/memoryeval","Test":"TestHandleAdd_Success","Elapsed":0}
+{"Time":"2026-10-22T22:28:22.4257945+08:00","Action":"run","Package":"aranea-agents/cmd/memoryeval","Test":"TestHandleAdd_GeneratesRequestID"}
+{"Time":"2026-10-22T22:28:22.4257945+08:00","Action":"output","Package":"aranea-agents/cmd/memoryeval","Test":"TestHandleAdd_GeneratesRequestID","Output":"=== RUN   TestHandleAdd_GeneratesRequestID\n"}
+{"Time":"2026-10-22T22:28:22.4257945+08:00","Action":"output","Package":"aranea-agents/cmd/memoryeval","Test":"TestHandleAdd_GeneratesRequestID","Output":"--- PASS: TestHandleAdd_GeneratesRequestID (0.00s)\n"}
+{"Time":"2026-10-22T22:28:22.4257945+08:00","Action":"pass","Package":"aranea-agents/cmd/memoryeval","Test":"TestHandleAdd_GeneratesRequestID","Elapsed":0}
+{"Time":"2026-10-22T22:28:22.4257945+08:00","Action":"run","Package":"aranea-agents/cmd/memoryeval","Test":"TestHandleAdd_NumericTimestamp"}
+{"Time":"2026-10-22T22:28:22.4257945+08:00","Action":"output","Package":"aranea-agents/cmd/memoryeval","Test":"TestHandleAdd_NumericTimestamp","Output":"=== RUN   TestHandleAdd_NumericTimestamp\n"}
+{"Time":"2026-10-22T22:28:22.4257945+08:00","Action":"output","Package":"aranea-agents/cmd/memoryeval","Test":"TestHandleAdd_NumericTimestamp","Output":"--- PASS: TestHandleAdd_NumericTimestamp (0.00s)\n"}
+{"Time":"2026-10-22T22:28:22.4257945+08:00","Action":"pass","Package":"aranea-agents/cmd/memoryeval","Test":"TestHandleAdd_NumericTimestamp","Elapsed":0}
+{"Time":"2026-10-22T22:28:22.4257945+08:00","Action":"run","Package":"aranea-agents/cmd/memoryeval","Test":"TestHandleAdd_EchoesUserAndSession"}
+{"Time":"2026-10-22T22:28:22.4257945+08:00","Action":"output","Package":"aranea-agents/cmd/memoryeval","Test":"TestHandleAdd_EchoesUserAndSession","Output":"=== RUN   TestHandleAdd_EchoesUserAndSession\n"}
+{"Time":"2026-10-22T22:28:22.426794+08:00","Action":"output","Package":"aranea-agents/cmd/memoryeval","Test":"TestHandleAdd_EchoesUserAndSession","Output":"--- PASS: TestHandleAdd_EchoesUserAndSession (0.00s)\n"}
+{"Time":"2026-10-22T22:28:22.426794+08:00","Action":"pass","Package":"aranea-agents/cmd/memoryeval","Test":"TestHandleAdd_EchoesUserAndSession","Elapsed":0}
+{"Time":"2026-10-22T22:28:22.426794+08:00","Action":"run","Package":"aranea-agents/cmd/memoryeval","Test":"TestHandleAdd_MissingUserID"}
+{"Time":"2026-10-22T22:28:22.426794+08:00","Action":"output","Package":"aranea-agents/cmd/memoryeval","Test":"TestHandleAdd_MissingUserID","Output":"=== RUN   TestHandleAdd_MissingUserID\n"}
+{"Time":"2026-10-22T22:28:22.426794+08:00","Action":"output","Package":"aranea-agents/cmd/memoryeval","Test":"TestHandleAdd_MissingUserID","Output":"--- PASS: TestHandleAdd_MissingUserID (0.00s)\n"}
+{"Time":"2026-10-22T22:28:22.426794+08:00","Action":"pass","Package":"aranea-agents/cmd/memoryeval","Test":"TestHandleAdd_MissingUserID","Elapsed":0}
+{"Time":"2026-10-22T22:28:22.426794+08:00","Action":"run","Package":"aranea-agents/cmd/memoryeval","Test":"TestHandleAdd_NoMessages"}
+{"Time":"2026-10-22T22:28:22.426794+08:00","Action":"output","Package":"aranea-agents/cmd/memoryeval","Test":"TestHandleAdd_NoMessages","Output":"=== RUN   TestHandleAdd_NoMessages\n"}
+{"Time":"2026-10-22T22:28:22.426794+08:00","Action":"output","Package":"aranea-agents/cmd/memoryeval","Test":"TestHandleAdd_NoMessages","Output":"--- PASS: TestHandleAdd_NoMessages (0.00s)\n"}
+{"Time":"2026-10-22T22:28:22.426794+08:00","Action":"pass","Package":"aranea-agents/cmd/memoryeval","Test":"TestHandleAdd_NoMessages","Elapsed":0}
+{"Time":"2026-10-22T22:28:22.426794+08:00","Action":"run","Package":"aranea-agents/cmd/memoryeval","Test":"TestHandleAdd_AllBlankMessages"}
+{"Time":"2026-10-22T22:28:22.426794+08:00","Action":"output","Package":"aranea-agents/cmd/memoryeval","Test":"TestHandleAdd_AllBlankMessages","Output":"=== RUN   TestHandleAdd_AllBlankMessages\n"}
+{"Time":"2026-10-22T22:28:22.426794+08:00","Action":"output","Package":"aranea-agents/cmd/memoryeval","Test":"TestHandleAdd_AllBlankMessages","Output":"--- PASS: TestHandleAdd_AllBlankMessages (0.00s)\n"}
+{"Time":"2026-10-22T22:28:22.426794+08:00","Action":"pass","Package":"aranea-agents/cmd/memoryeval","Test":"TestHandleAdd_AllBlankMessages","Elapsed":0}
+{"Time":"2026-10-22T22:28:22.426794+08:00","Action":"run","Package":"aranea-agents/cmd/memoryeval","Test":"TestHandleAdd_InvalidJSON"}
+{"Time":"2026-10-22T22:28:22.426794+08:00","Action":"output","Package":"aranea-agents/cmd/memoryeval","Test":"TestHandleAdd_InvalidJSON","Output":"=== RUN   TestHandleAdd_InvalidJSON\n"}
+{"Time":"2026-10-22T22:28:22.426794+08:00","Action":"output","Package":"aranea-agents/cmd/memoryeval","Test":"TestHandleAdd_InvalidJSON","Output":"--- PASS: TestHandleAdd_InvalidJSON (0.00s)\n"}
+{"Time":"2026-10-22T22:28:22.426794+08:00","Action":"pass","Package":"aranea-agents/cmd/memoryeval","Test":"TestHandleAdd_InvalidJSON","Elapsed":0}
+{"Time":"2026-10-22T22:28:22.426794+08:00","Action":"run","Package":"aranea-agents/cmd/memoryeval","Test":"TestHandleAdd_StoreError"}
+{"Time":"2026-10-22T22:28:22.426794+08:00","Action":"output","Package":"aranea-agents/cmd/memoryeval","Test":"TestHandleAdd_StoreError","Output":"=== RUN   TestHandleAdd_StoreError\n"}
+{"Time":"2026-10-22T22:28:22.426794+08:00","Action":"output","Package":"aranea-agents/cmd/memoryeval","Test":"TestHandleAdd_StoreError","Output":"--- PASS: TestHandleAdd_StoreError (0.00s)\n"}
+{"Time":"2026-10-22T22:28:22.4268967+08:00","Action":"pass","Package":"aranea-agents/cmd/memoryeval","Test":"TestHandleAdd_StoreError","Elapsed":0}
+{"Time":"2026-10-22T22:28:22.4268967+08:00","Action":"run","Package":"aranea-agents/cmd/memoryeval","Test":"TestHandleSearch_Success"}
+{"Time":"2026-10-22T22:28:22.4268967+08:00","Action":"output","Package":"aranea-agents/cmd/memoryeval","Test":"TestHandleSearch_Success","Output":"=== RUN   TestHandleSearch_Success\n"}
+{"Time":"2026-10-22T22:28:22.4268967+08:00","Action":"output","Package":"aranea-agents/cmd/memoryeval","Test":"TestHandleSearch_Success","Output":"--- PASS: TestHandleSearch_Success (0.00s)\n"}
+{"Time":"2026-10-22T22:28:22.4309787+08:00","Action":"pass","Package":"aranea-agents/cmd/memoryeval","Test":"TestHandleSearch_Success","Elapsed":0}
+{"Time":"2026-10-22T22:28:22.4309787+08:00","Action":"run","Package":"aranea-agents/cmd/memoryeval","Test":"TestHandleSearch_CustomTopK"}
+{"Time":"2026-10-22T22:28:22.4309787+08:00","Action":"output","Package":"aranea-agents/cmd/memoryeval","Test":"TestHandleSearch_CustomTopK","Output":"=== RUN   TestHandleSearch_CustomTopK\n"}
+{"Time":"2026-10-22T22:28:22.4309787+08:00","Action":"output","Package":"aranea-agents/cmd/memoryeval","Test":"TestHandleSearch_CustomTopK","Output":"--- PASS: TestHandleSearch_CustomTopK (0.00s)\n"}
+{"Time":"2026-10-22T22:28:22.4309787+08:00","Action":"pass","Package":"aranea-agents/cmd/memoryeval","Test":"TestHandleSearch_CustomTopK","Elapsed":0}
+{"Time":"2026-10-22T22:28:22.4309787+08:00","Action":"run","Package":"aranea-agents/cmd/memoryeval","Test":"TestHandleSearch_MissingUserID"}
+{"Time":"2026-10-22T22:28:22.4309787+08:00","Action":"output","Package":"aranea-agents/cmd/memoryeval","Test":"TestHandleSearch_MissingUserID","Output":"=== RUN   TestHandleSearch_MissingUserID\n"}
+{"Time":"2026-10-22T22:28:22.4309787+08:00","Action":"output","Package":"aranea-agents/cmd/memoryeval","Test":"TestHandleSearch_MissingUserID","Output":"--- PASS: TestHandleSearch_MissingUserID (0.00s)\n"}
+{"Time":"2026-10-22T22:28:22.4309787+08:00","Action":"pass","Package":"aranea-agents/cmd/memoryeval","Test":"TestHandleSearch_MissingUserID","Elapsed":0}
+{"Time":"2026-10-22T22:28:22.4309787+08:00","Action":"run","Package":"aranea-agents/cmd/memoryeval","Test":"TestHandleSearch_MissingQuery"}
+{"Time":"2026-10-22T22:28:22.4309787+08:00","Action":"output","Package":"aranea-agents/cmd/memoryeval","Test":"TestHandleSearch_MissingQuery","Output":"=== RUN   TestHandleSearch_MissingQuery\n"}
+{"Time":"2026-10-22T22:28:22.4309787+08:00","Action":"output","Package":"aranea-agents/cmd/memoryeval","Test":"TestHandleSearch_MissingQuery","Output":"--- PASS: TestHandleSearch_MissingQuery (0.00s)\n"}
+{"Time":"2026-10-22T22:28:22.4309787+08:00","Action":"pass","Package":"aranea-agents/cmd/memoryeval","Test":"TestHandleSearch_MissingQuery","Elapsed":0}
+{"Time":"2026-10-22T22:28:22.4309787+08:00","Action":"run","Package":"aranea-agents/cmd/memoryeval","Test":"TestHandleSearch_StoreError"}
+{"Time":"2026-10-22T22:28:22.4309787+08:00","Action":"output","Package":"aranea-agents/cmd/memoryeval","Test":"TestHandleSearch_StoreError","Output":"=== RUN   TestHandleSearch_StoreError\n"}
+{"Time":"2026-10-22T22:28:22.4309787+08:00","Action":"output","Package":"aranea-agents/cmd/memoryeval","Test":"TestHandleSearch_StoreError","Output":"--- PASS: TestHandleSearch_StoreError (0.00s)\n"}
+{"Time":"2026-10-22T22:28:22.4309787+08:00","Action":"pass","Package":"aranea-agents/cmd/memoryeval","Test":"TestHandleSearch_StoreError","Elapsed":0}
+{"Time":"2026-10-22T22:28:22.4314859+08:00","Action":"run","Package":"aranea-agents/cmd/memoryeval","Test":"TestHandleSearch_EmptyResultIsArray"}
+{"Time":"2026-10-22T22:28:22.4327041+08:00","Action":"output","Package":"aranea-agents/cmd/memoryeval","Test":"TestHandleSearch_EmptyResultIsArray","Output":"=== RUN   TestHandleSearch_EmptyResultIsArray\n"}
+{"Time":"2026-10-22T22:28:22.4327041+08:00","Action":"output","Package":"aranea-agents/cmd/memoryeval","Test":"TestHandleSearch_EmptyResultIsArray","Output":"--- PASS: TestHandleSearch_EmptyResultIsArray (0.00s)\n"}
+{"Time":"2026-10-22T22:28:22.4336802+08:00","Action":"pass","Package":"aranea-agents/cmd/memoryeval","Test":"TestHandleSearch_EmptyResultIsArray","Elapsed":0}
+{"Time":"2026-10-22T22:28:22.4336802+08:00","Action":"run","Package":"aranea-agents/cmd/memoryeval","Test":"TestAuth_RejectsWrongToken"}
+{"Time":"2026-10-22T22:28:22.4336802+08:00","Action":"output","Package":"aranea-agents/cmd/memoryeval","Test":"TestAuth_RejectsWrongToken","Output":"=== RUN   TestAuth_RejectsWrongToken\n"}
+{"Time":"2026-10-22T22:28:22.4336802+08:00","Action":"output","Package":"aranea-agents/cmd/memoryeval","Test":"TestAuth_RejectsWrongToken","Output":"--- PASS: TestAuth_RejectsWrongToken (0.00s)\n"}
+{"Time":"2026-10-22T22:28:22.4336802+08:00","Action":"pass","Package":"aranea-agents/cmd/memoryeval","Test":"TestAuth_RejectsWrongToken","Elapsed":0}
+{"Time":"2026-10-22T22:28:22.4336802+08:00","Action":"run","Package":"aranea-agents/cmd/memoryeval","Test":"TestAuth_AcceptsBearer"}
+{"Time":"2026-10-22T22:28:22.4336802+08:00","Action":"output","Package":"aranea-agents/cmd/memoryeval","Test":"TestAuth_AcceptsBearer","Output":"=== RUN   TestAuth_AcceptsBearer\n"}
+{"Time":"2026-10-22T22:28:22.4336802+08:00","Action":"output","Package":"aranea-agents/cmd/memoryeval","Test":"TestAuth_AcceptsBearer","Output":"--- PASS: TestAuth_AcceptsBearer (0.00s)\n"}
+{"Time":"2026-10-22T22:28:22.4336802+08:00","Action":"pass","Package":"aranea-agents/cmd/memoryeval","Test":"TestAuth_AcceptsBearer","Elapsed":0}
+{"Time":"2026-10-22T22:28:22.4336802+08:00","Action":"run","Package":"aranea-agents/cmd/memoryeval","Test":"TestAuth_AcceptsXApiKey"}
+{"Time":"2026-10-22T22:28:22.4336802+08:00","Action":"output","Package":"aranea-agents/cmd/memoryeval","Test":"TestAuth_AcceptsXApiKey","Output":"=== RUN   TestAuth_AcceptsXApiKey\n"}
+{"Time":"2026-10-22T22:28:22.4336802+08:00","Action":"output","Package":"aranea-agents/cmd/memoryeval","Test":"TestAuth_AcceptsXApiKey","Output":"--- PASS: TestAuth_AcceptsXApiKey (0.00s)\n"}
+{"Time":"2026-10-22T22:28:22.4336802+08:00","Action":"pass","Package":"aranea-agents/cmd/memoryeval","Test":"TestAuth_AcceptsXApiKey","Elapsed":0}
+{"Time":"2026-10-22T22:28:22.4336802+08:00","Action":"run","Package":"aranea-agents/cmd/memoryeval","Test":"TestHealthz"}
+{"Time":"2026-10-22T22:28:22.4336802+08:00","Action":"output","Package":"aranea-agents/cmd/memoryeval","Test":"TestHealthz","Output":"=== RUN   TestHealthz\n"}
+{"Time":"2026-10-22T22:28:22.4336802+08:00","Action":"output","Package":"aranea-agents/cmd/memoryeval","Test":"TestHealthz","Output":"--- PASS: TestHealthz (0.00s)\n"}
+{"Time":"2026-10-22T22:28:22.4336802+08:00","Action":"pass","Package":"aranea-agents/cmd/memoryeval","Test":"TestHealthz","Elapsed":0}
+{"Time":"2026-10-22T22:28:22.4336802+08:00","Action":"output","Package":"aranea-agents/cmd/memoryeval","Output":"PASS\n"}
+{"Time":"2026-10-22T22:28:22.434679+08:00","Action":"output","Package":"aranea-agents/cmd/memoryeval","Output":"ok  \taranea-agents/cmd/memoryeval\t0.592s\n"}
+{"Time":"2026-10-22T22:28:22.434679+08:00","Action":"pass","Package":"aranea-agents/cmd/memoryeval","Elapsed":0.622}

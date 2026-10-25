@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"strings"
+	"sync"
 	"testing"
 
 	"aranea-agents/internal/biz"
@@ -63,9 +64,12 @@ func TestSearchTool_EmptyCollection_NoScope_RoutesAllCollections(t *testing.T) {
 // US-14 规则 2：knowledge_search 留空 collection_id 且 scoped 多库 → scoped 内路由（不再报错）。
 func TestSearchTool_EmptyCollection_MultiScope_RoutesWithinScoped(t *testing.T) {
 	var searched []string
+	var searchedMu sync.Mutex
 	repo := &mockKnowledgeRepo{
 		searchChunksFn: func(_ context.Context, q biz.KnowledgeSearchQuery, _ []float32) ([]biz.KnowledgeChunk, error) {
+			searchedMu.Lock()
 			searched = append(searched, q.CollectionID)
+			searchedMu.Unlock()
 			return []biz.KnowledgeChunk{{ID: "ch-" + q.CollectionID, Content: "hit", Score: 0.9, DocID: "doc-1"}}, nil
 		},
 	}

@@ -292,6 +292,7 @@ func wireGoldenCases() []wireGoldenCase {
 		{"team_run.started", func() biz.Event { return biz.NewTeamRunStartedEvent(wireTestTeamRun()) }, []string{"TeamRun"}},
 		{"team_run.completed", func() biz.Event { return biz.NewTeamRunCompletedEvent(wireTestTeamRun()) }, []string{"TeamRun"}},
 		{"team_run.failed", func() biz.Event { return biz.NewTeamRunFailedEvent(wireTestTeamRun()) }, []string{"TeamRun"}},
+		{"team_run.cancelled", func() biz.Event { return biz.NewTeamRunCancelledEvent(wireTestTeamRun()) }, []string{"TeamRun"}},
 		{"member_session.created", func() biz.Event {
 			return biz.NewMemberSessionCreatedEvent(wireTestMemberSession())
 		}, []string{"MemberSession"}},

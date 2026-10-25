@@ -235,6 +235,18 @@ func NewTeamRunFailedEvent(tr TeamRun) *TeamRunFailedEvent {
 	}
 }
 
+// NewTeamRunCancelledEvent constructs a TeamRunCancelledEvent.
+// TeamRun.Status 调用方须已置为 TeamRunV2StatusCancelled——事件平面与实体
+// 平面（team_runs_v2.Status）一一对应（87-D4-1）。
+func NewTeamRunCancelledEvent(tr TeamRun) *TeamRunCancelledEvent {
+	return &TeamRunCancelledEvent{
+		taskID:          tr.TaskID,
+		spiritSessionID: tr.SpiritSessionID,
+		TeamRun:         tr,
+		occurredAt:      time.Now(),
+	}
+}
+
 // === MemberSession event factories ===
 
 // NewMemberSessionCreatedEvent constructs a MemberSessionCreatedEvent.
@@ -362,6 +374,7 @@ func (e *TeamStageFailedEvent) EntityID() string    { return e.TeamStage.ID }
 func (e *TeamRunStartedEvent) EntityID() string   { return e.TeamRun.ID }
 func (e *TeamRunCompletedEvent) EntityID() string { return e.TeamRun.ID }
 func (e *TeamRunFailedEvent) EntityID() string    { return e.TeamRun.ID }
+func (e *TeamRunCancelledEvent) EntityID() string { return e.TeamRun.ID }
 
 func (e *MemberSessionCreatedEvent) EntityID() string { return e.MemberSession.ID }
 func (e *MemberSessionUpdatedEvent) EntityID() string { return e.MemberSession.ID }

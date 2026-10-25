@@ -2615,70 +2615,7 @@ body.body--dark
   .monitor-json
     border-color: var(--glass-border)
 
-// ═══════════════════════════════════════════════════════════════
-//  概览页（Usage Overview）— Linear/Vercel 风格干净排版
-// ═══════════════════════════════════════════════════════════════
-
-.overview-page
-  color: var(--color-text-primary)
-
-.overview-page__shell
-  max-width: 1440px
-  margin: 0 auto
-  padding: 8px 16px 40px
-  @media (min-width: 1024px)
-    padding: 12px 28px 48px
-
-// ── 筛选栏 ──
-.overview-filter-bar
-  margin-bottom: 24px
-
-.overview-filter-bar__inner
-  display: flex
-  flex-wrap: wrap
-  gap: 10px
-  align-items: flex-end
-  padding: 12px 16px
-  border-radius: 12px
-  background: var(--overview-neutral-bg-alt)
-  border: 1px solid var(--overview-neutral-border-alt)
-
-body.body--dark .overview-filter-bar__inner
-  background: var(--overview-neutral-bg-alt)
-  border-color: var(--overview-neutral-border-alt)
-
-.overview-filter-field
-  min-width: 128px
-  flex: 1 1 140px
-  max-width: 192px
-
-// ── 内容区 ──
-.overview-content
-  position: relative
-  min-height: 160px
-  display: flex
-  flex-direction: column
-  gap: 28px
-
-.overview-content--loading
-  opacity: 0.45
-  pointer-events: none
-
-.overview-error
-  margin-bottom: 8px
-
-.overview-section
-  margin-top: 4px
-
-.overview-section-group
-  margin-top: 24px
-
-.overview-section-group--alert
-  margin-top: 20px
-
-.overview-metrics-row
-  margin-bottom: 4px
-
+// ── 共享兼容层：仍被 monitor/self-improvement/skills 组件引用的 overview-* 旧类 ──
 .overview-section-title
   color: var(--color-text-primary)
   font-weight: 600
@@ -2993,92 +2930,6 @@ body.body--dark .overview-stat-card__bar
 
 .overview-stat-card__forecast--danger
   color: var(--color-danger)
-
-// ═══════════════════════════════════════════════════════════════
-//  布局分栏
-// ═══════════════════════════════════════════════════════════════
-
-// 趋势图 + 区间摘要
-.overview-chart-row
-  display: grid
-  gap: 20px
-  grid-template-columns: 1fr
-
-  @media (min-width: 900px)
-    grid-template-columns: 2fr 1fr
-
-.overview-chart-row__main
-  min-width: 0
-
-.overview-chart-row__side
-  min-width: 0
-
-// 饼图 + Provider 健康
-.overview-mid-row
-  display: grid
-  gap: 20px
-  grid-template-columns: 1fr
-  align-items: stretch
-
-  @media (min-width: 900px)
-    grid-template-columns: 1fr 1fr 1fr
-
-  > *
-    min-width: 0
-
-// Top 模型 + Top Agent
-.overview-ranks
-  display: grid
-  gap: 20px
-  grid-template-columns: 1fr
-
-  @media (min-width: 900px)
-    grid-template-columns: 1fr 1fr
-
-// ═══════════════════════════════════════════════════════════════
-//  区间摘要
-// ═══════════════════════════════════════════════════════════════
-
-.overview-summary-panel
-  height: 100%
-
-.overview-summary-grid
-  display: grid
-  grid-template-columns: 1fr 1fr
-  gap: 14px 18px
-
-.overview-summary-item
-  padding: 6px 0
-
-.overview-summary-item__label
-  font-size: 0.72rem
-  font-weight: 500
-  color: var(--color-text-secondary)
-  margin-bottom: 3px
-
-.overview-summary-item__value
-  font-size: 1.05rem
-  font-weight: 700
-  color: var(--color-text-primary)
-  font-variant-numeric: tabular-nums
-
-.overview-summary-item__value--accent
-  color: var(--color-accent)
-
-.overview-summary-list .q-item
-  min-height: 40px
-
-.overview-summary-label
-  color: var(--color-text-secondary)
-
-.overview-summary-value
-  font-weight: 700
-  color: var(--color-text-primary)
-
-// ═══════════════════════════════════════════════════════════════
-//  通用工具类
-// ═══════════════════════════════════════════════════════════════
-
 .overview-separator
   background: var(--overview-neutral-border) !important
 
@@ -3119,228 +2970,781 @@ body.body--dark .overview-primary-btn
 
 .overview-empty-inline
   color: var(--color-text-secondary)
+// ── 兼容层结束 ──
 
 // ═══════════════════════════════════════════════════════════════
-//  排行列表
+//  概览页 V2（异常驱动运维台）— 7 分区：裁决横幅/注意力队列/RED/成本/趋势/编制/新鲜度
+//  只依赖语义 token（--color-success|--color-warning|--color-danger|info|accent），
+//  昼夜主题由 body.body--dark 上的 token 覆盖自动切换。
 // ═══════════════════════════════════════════════════════════════
 
-.overview-rank-value
-  font-weight: 700
+.ov-page
   color: var(--color-text-primary)
 
-.overview-rank-index
-  min-width: 28px !important
-  padding-right: 0 !important
-
-.overview-rank-badge
-  display: inline-flex
-  align-items: center
-  justify-content: center
-  width: 24px
-  height: 24px
-  border-radius: 7px
-  font-size: 0.7rem
-  font-weight: 700
-  color: var(--color-text-secondary)
-  background: var(--overview-neutral-bg-icon)
-
-body.body--dark .overview-rank-badge
-  background: var(--overview-neutral-bg-icon)
-
-.overview-rank-badge--top
-  color: var(--color-on-accent)
-  background: var(--color-accent)
-
-body.body--dark .overview-rank-badge--top
-  color: var(--canvas-base)
-  background: var(--color-accent)
-
-// ── Agent 头像 ──
-.overview-agent-avatar
-  background: var(--color-info-soft) !important
-  color: var(--color-accent) !important
-
-body.body--dark .overview-agent-avatar
-  border: 1px solid var(--overview-neutral-border-chip)
-
-// ═══════════════════════════════════════════════════════════════
-//  异常表格
-// ═══════════════════════════════════════════════════════════════
-
-.overview-anomaly-table
-  background: transparent !important
-
-.overview-anomaly-table thead th
-  color: var(--color-text-secondary)
-  font-weight: 600
-  font-size: 0.73rem
-  border-bottom: 1px solid var(--overview-neutral-border)
-
-body.body--dark .overview-anomaly-table thead th
-  border-bottom-color: var(--overview-neutral-border)
-
-.overview-anomaly-table tbody td
-  color: var(--color-text-primary)
-  font-size: 0.82rem
-  border-bottom: 1px solid var(--overview-neutral-border-table)
-
-body.body--dark .overview-anomaly-table tbody td
-  border-bottom-color: var(--overview-neutral-border-table)
-
-.overview-anomaly-error
-  max-width: 280px
-  color: var(--color-text-secondary)
-
-.overview-status-badge--error
-  color: var(--color-danger) !important
-  border-color: var(--overview-danger-border) !important
-  background: var(--color-danger-soft) !important
-
-.overview-flag-chip
-  color: var(--color-warning) !important
-  border-color: var(--overview-warning-border) !important
-  background: var(--color-warning-soft) !important
-
-// ═══════════════════════════════════════════════════════════════
-//  筛选栏输入框样式
-// ═══════════════════════════════════════════════════════════════
-
-body:not(.body--dark) .overview-page .q-field--outlined .q-field__control
-  background: var(--overview-field-bg)
-
-body.body--dark .overview-page .q-field--outlined .q-field__control
-  background: var(--overview-field-bg)
-  border-color: var(--overview-neutral-border-alt) !important
-
-body.body--dark .overview-page .q-field--focused .q-field__control
-  border-color: var(--color-accent) !important
-  box-shadow: var(--overview-accent-focus-ring)
-
-// ═══════════════════════════════════════════════════════════════
-//  警示区堆叠
-// ═══════════════════════════════════════════════════════════════
-
-.overview-alert-stack
+.ov-page__shell
+  max-width: 1440px
+  margin: 0 auto
+  padding: 20px 24px 32px
   display: flex
   flex-direction: column
   gap: 20px
 
-.overview-alert-stack__row
-  display: grid
-  gap: 20px
-  grid-template-columns: 1fr
+.ov-page__sticky
+  position: sticky
+  top: 0
+  z-index: 30
 
-  @media (min-width: 900px)
-    grid-template-columns: 1fr 1fr
+.ov-error
+  border-radius: 8px
+  border: 1px solid var(--color-danger)
+  background: var(--color-danger-soft)
+  color: var(--color-danger)
 
-  > *
-    min-width: 0
+.ov-filter
+  min-width: 128px
 
-// ═══════════════════════════════════════════════════════════════
-//  Token 构成图
-// ═══════════════════════════════════════════════════════════════
+.ov-filter--wide
+  min-width: 180px
 
-.overview-token-comp
-  min-height: 120px
+// ── 共享骨架 ────────────────────────────────────────────────
 
-.overview-token-comp__chart
-  width: 100%
-  height: 140px
-
-// ═══════════════════════════════════════════════════════════════
-//  Provider 健康卡
-// ═══════════════════════════════════════════════════════════════
-
-.overview-provider-health__icon
-  font-size: 20px
-
-.overview-provider-health__icon--ok
-  color: var(--color-success)
-
-.overview-provider-health__icon--warn
-  color: var(--color-warning)
-
-.overview-provider-health__stats
-  display: flex
-  gap: 24px
-  align-items: center
-
-.overview-provider-health__stat
+.ov-section-head
   display: flex
   align-items: center
-  gap: 6px
+  gap: 8px
+  margin-bottom: 10px
+  flex-wrap: wrap
 
-.overview-provider-health__label
-  font-size: 0.78rem
+.ov-section-head__icon
   color: var(--color-text-secondary)
 
-.overview-provider-health__value
-  font-size: 1.05rem
+.ov-section-head__title
+  font-size: 0.95rem
   font-weight: 700
-  color: var(--color-text-primary)
+  color: var(--color-text-heading)
+  margin: 0
+  line-height: 1.3
 
-.overview-provider-health__value--danger
-  color: var(--color-danger) !important
-
-.overview-provider-health__degraded-list
-  margin-top: 8px
-  display: flex
-  flex-direction: column
-  gap: 4px
-
-.overview-provider-health__degraded-item
-  display: flex
-  align-items: center
-  gap: 6px
-  font-size: 0.76rem
+.ov-section-head__cap
+  font-size: 0.72rem
   color: var(--color-text-secondary)
 
-// ── 健康状态圆点（完整定义见 theme/_page-patterns.sass） ──
+// ── ① 裁决横幅 ──────────────────────────────────────────────
 
-// ═══════════════════════════════════════════════════════════════
-//  趋势条形图（旧版保留 — 当 ECharts 不可用时回退）
-// ═══════════════════════════════════════════════════════════════
-
-.overview-trend-grid
-  align-items: end
-  display: grid
-  grid-template-columns: repeat(auto-fill, minmax(36px, 1fr))
-  gap: 10px
-  min-height: 200px
-  padding-top: 8px
-
-.overview-trend-bar
+.ov-verdict
   display: flex
-  flex-direction: column
   align-items: center
-  gap: 6px
+  justify-content: space-between
+  gap: 14px
+  flex-wrap: wrap
+  padding: 12px 16px
+  border-radius: 14px
+  border: 1px solid var(--glass-border)
+  background: var(--glass-surface)
+  backdrop-filter: blur(var(--glass-blur-default, 8px))
+
+.ov-verdict--ok
+  border-left: 4px solid var(--color-success)
+
+.ov-verdict--warning
+  border-left: 4px solid var(--color-warning)
+
+.ov-verdict--critical
+  border-left: 4px solid var(--color-danger)
+
+.ov-verdict__main
+  display: flex
+  align-items: center
+  gap: 14px
+  flex-wrap: wrap
   min-width: 0
 
-.overview-trend-bar__track
-  width: 100%
-  max-width: 48px
-  height: 160px
+.ov-verdict__beacon
+  width: 14px
+  height: 14px
+  border-radius: 50%
+  flex-shrink: 0
+
+.ov-verdict--ok .ov-verdict__beacon
+  background: var(--color-success)
+  box-shadow: 0 0 0 4px var(--color-success-soft)
+
+.ov-verdict--warning .ov-verdict__beacon
+  background: var(--color-warning)
+  box-shadow: 0 0 0 4px var(--color-warning-soft)
+
+.ov-verdict--critical .ov-verdict__beacon
+  background: var(--color-danger)
+  box-shadow: 0 0 0 4px var(--color-danger-soft)
+  animation: ov-beacon-pulse 1.6s ease-in-out infinite
+
+@keyframes ov-beacon-pulse
+  0%, 100%
+    box-shadow: 0 0 0 3px var(--color-danger-soft)
+  50%
+    box-shadow: 0 0 0 7px var(--color-danger-soft)
+
+.ov-verdict__headline
+  font-size: 1.05rem
+  font-weight: 700
+  color: var(--color-text-heading)
+  line-height: 1.25
+
+.ov-verdict__sub
+  font-size: 0.75rem
+  color: var(--color-text-secondary)
+  margin-top: 2px
+
+.ov-verdict__chips
   display: flex
-  align-items: flex-end
+  gap: 6px
+  flex-wrap: wrap
+
+.ov-verdict__chip
+  display: inline-flex
+  align-items: center
+  gap: 4px
+  padding: 3px 10px
   border-radius: 999px
-  background: var(--color-info-soft)
+  font-size: 0.72rem
+  font-weight: 600
+  border: 1px solid var(--glass-border)
+  color: var(--color-text-secondary)
+
+.ov-verdict__chip--critical
+  color: var(--color-danger)
+  border-color: var(--color-danger)
+  background: var(--color-danger-soft)
+
+.ov-verdict__chip--warning
+  color: var(--color-warning)
+  border-color: var(--color-warning)
+  background: var(--color-warning-soft)
+
+.ov-verdict__chip--ok
+  color: var(--color-success)
+
+.ov-verdict__side
+  display: flex
+  align-items: center
+  gap: 12px
+  flex-wrap: wrap
+
+.ov-verdict__live
+  display: inline-flex
+  align-items: center
+  gap: 5px
+  font-size: 0.7rem
+  font-weight: 700
+  letter-spacing: 0.06em
+  color: var(--color-success)
+
+.ov-verdict__live--stale
+  color: var(--color-text-secondary)
+
+.ov-verdict__live-dot
+  width: 7px
+  height: 7px
+  border-radius: 50%
+  background: currentColor
+
+.ov-verdict__updated
+  font-size: 0.72rem
+  color: var(--color-text-secondary)
+
+// ── ② 注意力队列 ────────────────────────────────────────────
+
+.ov-attention__grid
+  display: grid
+  grid-template-columns: repeat(4, 1fr)
+  gap: 14px
+
+@media (max-width: 1200px)
+  .ov-attention__grid
+    grid-template-columns: repeat(2, 1fr)
+
+@media (max-width: 700px)
+  .ov-attention__grid
+    grid-template-columns: 1fr
+
+.ov-lane
+  border-radius: 12px
+  border: 1px solid var(--glass-border)
+  background: var(--glass-surface)
+  padding: 10px 12px
+  min-height: 96px
+
+.ov-lane--critical
+  border-top: 3px solid var(--color-danger)
+
+.ov-lane--warning
+  border-top: 3px solid var(--color-warning)
+
+.ov-lane--ok
+  border-top: 3px solid var(--glass-border)
+
+.ov-lane__head
+  display: flex
+  align-items: center
+  gap: 6px
+  color: var(--color-text-heading)
+  font-size: 0.8rem
+  font-weight: 700
+
+.ov-lane--critical .ov-lane__head
+  color: var(--color-danger)
+
+.ov-lane--warning .ov-lane__head
+  color: var(--color-warning)
+
+.ov-lane__count
+  margin-left: auto
+  font-weight: 700
+  font-size: 0.8rem
+  padding: 0 8px
+  border-radius: 999px
+  background: var(--color-warning-soft)
+
+.ov-lane--ok .ov-lane__count
+  background: transparent
+  color: var(--color-text-secondary)
+
+.ov-lane__empty
+  display: flex
+  align-items: center
+  gap: 6px
+  margin-top: 14px
+  color: var(--color-text-secondary)
+  font-size: 0.75rem
+
+.ov-lane__items
+  list-style: none
+  margin: 8px 0 0
+  padding: 0
+  display: flex
+  flex-direction: column
+  gap: 6px
+
+.ov-item
+  position: relative
+  padding: 6px 8px
+  border-radius: 8px
+  background: var(--color-warning-soft)
+
+.ov-item--critical
+  background: var(--color-danger-soft)
+
+.ov-item--link
+  cursor: pointer
+
+.ov-item--link:hover
+  background: var(--glass-surface-hover)
+
+.ov-item__row
+  display: flex
+  align-items: center
+  gap: 6px
+
+.ov-item__sev
+  width: 6px
+  height: 6px
+  border-radius: 50%
+  flex-shrink: 0
+  background: var(--color-warning)
+
+.ov-item--critical .ov-item__sev
+  background: var(--color-danger)
+
+.ov-item--info .ov-item__sev
+  background: var(--color-info)
+
+.ov-item__title
+  font-size: 0.78rem
+  font-weight: 600
+  color: var(--color-text-heading)
+  white-space: nowrap
+  overflow: hidden
+  text-overflow: ellipsis
+
+.ov-item__time
+  margin-left: auto
+  font-size: 0.68rem
+  color: var(--color-text-secondary)
+  flex-shrink: 0
+
+.ov-item__detail
+  font-size: 0.72rem
+  color: var(--color-text-secondary)
+  margin-top: 2px
+  display: -webkit-box
+  -webkit-line-clamp: 2
+  -webkit-box-orient: vertical
   overflow: hidden
 
-.overview-trend-bar__fill
-  width: 100%
-  border-radius: 999px 999px 4px 4px
-  min-height: 4px
-
-body:not(.body--dark) .overview-trend-bar__fill
-  background: var(--color-accent)
-
-body.body--dark .overview-trend-bar__fill
-  background: var(--color-accent)
-
-.overview-trend-bar__label
+.ov-item__go
+  position: absolute
+  right: 4px
+  bottom: 4px
   color: var(--color-text-secondary)
-  font-size: 0.7rem
 
+.ov-lane__more
+  margin-top: 6px
+  font-size: 0.7rem
+  color: var(--color-text-secondary)
+  text-align: right
+
+// ── ③ RED 指标带 ────────────────────────────────────────────
+
+.ov-red
+  display: grid
+  grid-template-columns: 1fr 1.35fr
+  gap: 16px
+
+@media (max-width: 1000px)
+  .ov-red
+    grid-template-columns: 1fr
+
+.ov-red__group
+  border-radius: 14px
+  border: 1px solid var(--glass-border)
+  background: var(--glass-surface)
+  padding: 14px 16px
+
+.ov-red__window
+  margin-left: auto
+
+.ov-red__tiles
+  display: grid
+  grid-template-columns: repeat(3, 1fr)
+  gap: 12px
+
+.ov-red__tiles--four
+  grid-template-columns: repeat(4, 1fr)
+
+@media (max-width: 700px)
+  .ov-red__tiles,
+  .ov-red__tiles--four
+    grid-template-columns: repeat(2, 1fr)
+
+// ── 统计瓷贴（RED/成本共享） ────────────────────────────────
+
+.ov-tile
+  position: relative
+  border-radius: 12px
+  border: 1px solid var(--glass-border)
+  background: var(--glass-surface)
+  padding: 12px 14px
+  overflow: hidden
+
+.ov-tile--clickable
+  cursor: pointer
+
+.ov-tile--clickable:hover
+  background: var(--glass-surface-hover)
+
+.ov-tile__top
+  display: flex
+  align-items: center
+  gap: 6px
+
+.ov-tile__label
+  font-size: 0.72rem
+  font-weight: 600
+  color: var(--color-text-secondary)
+
+.ov-tile__dot
+  width: 7px
+  height: 7px
+  border-radius: 50%
+  background: var(--color-text-secondary)
+
+.ov-tile--ok .ov-tile__dot,
+.ov-tile__dot--ok
+  background: var(--color-success)
+
+.ov-tile--warn .ov-tile__dot,
+.ov-tile__dot--warn
+  background: var(--color-warning)
+
+.ov-tile--danger .ov-tile__dot,
+.ov-tile__dot--danger
+  background: var(--color-danger)
+
+.ov-tile--info .ov-tile__dot,
+.ov-tile__dot--info
+  background: var(--color-info)
+
+.ov-tile__value-row
+  display: flex
+  align-items: baseline
+  gap: 8px
+  margin-top: 4px
+
+.ov-tile__value
+  font-size: 1.35rem
+  font-weight: 700
+  color: var(--color-text-heading)
+  line-height: 1.2
+  font-variant-numeric: tabular-nums
+
+.ov-tile__delta
+  font-size: 0.7rem
+  font-weight: 600
+
+.ov-tile__delta--good
+  color: var(--color-success)
+
+.ov-tile__delta--bad
+  color: var(--color-danger)
+
+.ov-tile__delta--flat
+  color: var(--color-text-secondary)
+
+.ov-tile__caption
+  font-size: 0.68rem
+  color: var(--color-text-secondary)
+  margin-top: 3px
+
+.ov-tile__spark
+  margin-top: 8px
+  height: 28px
+  width: 100%
+  color: var(--color-accent-blue)
+
+.ov-spark
+  display: block
+  width: 100%
+  height: 100%
+
+// ── ④ 成本与预算 ────────────────────────────────────────────
+
+.ov-cost__grid
+  display: grid
+  grid-template-columns: repeat(4, 1fr)
+  gap: 12px
+  border-radius: 0
+
+@media (max-width: 1000px)
+  .ov-cost__grid
+    grid-template-columns: repeat(2, 1fr)
+
+@media (max-width: 600px)
+  .ov-cost__grid
+    grid-template-columns: 1fr
+
+.ov-cost
+  border-radius: 14px
+  border: 1px solid var(--glass-border)
+  background: var(--glass-surface)
+  padding: 14px 16px
+
+.ov-cost__grid .ov-cost__cell
+  min-height: 96px
+
+.ov-cost__chipcell
+  border-radius: 12px
+  border: 1px solid var(--glass-border)
+  padding: 12px 14px
+  display: flex
+  flex-direction: column
+  gap: 6px
+
+.ov-cost__chipcell--warn
+  border-color: var(--color-warning)
+  background: var(--color-warning-soft)
+
+.ov-cost__chipcell--clickable
+  cursor: pointer
+  &:hover
+    border-color: var(--color-accent)
+
+.ov-cost__chipcell--ok
+  background: var(--color-success-soft)
+
+.ov-cost__chiprow
+  display: flex
+  align-items: center
+  gap: 6px
+
+.ov-cost__chipvalue
+  font-size: 0.85rem
+  font-weight: 700
+  color: var(--color-text-heading)
+
+.ov-budget
+  border-radius: 12px
+  border: 1px solid var(--glass-border)
+  background: var(--glass-surface)
+  padding: 12px 14px
+
+.ov-budget__pct
+  font-size: 1.35rem
+  font-weight: 700
+  color: var(--color-text-heading)
+  font-variant-numeric: tabular-nums
+  margin-top: 4px
+
+.ov-budget__bar
+  margin-top: 8px
+  height: 8px
+  border-radius: 4px
+  background: var(--color-warning-soft)
+  overflow: hidden
+
+.ov-budget__fill
+  height: 100%
+  border-radius: 4px
+  background: var(--color-success)
+
+.ov-budget__fill--warn
+  background: var(--color-warning)
+
+.ov-budget__fill--danger
+  background: var(--color-danger)
+
+.ov-budget__meta
+  font-size: 0.7rem
+  color: var(--color-text-secondary)
+  margin-top: 5px
+
+.ov-budget__lowconf
+  margin-left: 6px
+  padding: 1px 6px
+  border-radius: 999px
+  background: var(--color-warning-soft)
+  color: var(--color-warning)
+  font-size: 0.64rem
+
+.ov-budget__empty
+  color: var(--color-text-secondary)
+  font-size: 0.8rem
+  margin-top: 12px
+
+.ov-topbars
+  margin-top: 14px
+
+.ov-topbars__head
+  display: flex
+  align-items: baseline
+  gap: 10px
+  margin-bottom: 8px
+
+.ov-topbars__row
+  display: grid
+  grid-template-columns: minmax(120px, 220px) 1fr 90px
+  align-items: center
+  gap: 10px
+  padding: 4px 0
+
+.ov-topbars__label
+  font-size: 0.75rem
+  color: var(--color-text-primary)
+  white-space: nowrap
+  overflow: hidden
+  text-overflow: ellipsis
+
+.ov-topbars__track
+  height: 10px
+  border-radius: 5px
+  background: var(--color-warning-soft)
+  overflow: hidden
+
+.ov-topbars__fill
+  height: 100%
+  border-radius: 5px
+  background: var(--color-accent-blue)
+
+.ov-topbars__fill--unpriced
+  background: repeating-linear-gradient(45deg, var(--color-warning), var(--color-warning) 4px, transparent 4px, transparent 8px)
+
+.ov-topbars__value
+  font-size: 0.75rem
+  font-weight: 600
+  color: var(--color-text-heading)
+  text-align: right
+  font-variant-numeric: tabular-nums
+
+// ── ⑤ 趋势 ──────────────────────────────────────────────────
+
+.ov-trend
+  display: grid
+  grid-template-columns: 1.35fr 1fr
+  gap: 16px
+
+@media (max-width: 900px)
+  .ov-trend
+    grid-template-columns: 1fr
+
+.ov-trend__panel
+  border-radius: 14px
+  border: 1px solid var(--glass-border)
+  background: var(--glass-surface)
+  padding: 14px 16px
+
+.ov-trend__legend
+  margin-left: auto
+  display: inline-flex
+  align-items: center
+  gap: 6px
+  font-size: 0.7rem
+  color: var(--color-text-secondary)
+
+.ov-trend__swatch
+  width: 8px
+  height: 8px
+  border-radius: 2px
+  display: inline-block
+  margin-left: 8px
+
+.ov-trend__swatch--calls
+  background: var(--color-accent-blue)
+
+.ov-trend__swatch--fails
+  background: var(--color-danger)
+
+.ov-trend__bars
+  display: flex
+  align-items: flex-end
+  gap: 2px
+  height: 120px
+  margin-top: 6px
+
+.ov-trend__col
+  flex: 1
+  min-width: 3px
+  display: flex
+  flex-direction: column
+  justify-content: flex-end
+  gap: 1px
+
+.ov-trend__bar
+  border-radius: 2px 2px 0 0
+  min-height: 0
+
+.ov-trend__bar--calls
+  background: var(--color-accent-blue)
+
+.ov-trend__bar--fails
+  background: var(--color-danger)
+
+.ov-trend__bar--cost
+  background: var(--color-accent)
+
+.ov-trend__axis
+  display: flex
+  justify-content: space-between
+  margin-top: 6px
+  font-size: 0.68rem
+  color: var(--color-text-secondary)
+
+.ov-trend__empty
+  padding: 28px 0
+  text-align: center
+  color: var(--color-text-secondary)
+  font-size: 0.78rem
+
+// ── ⑥ 组织与编制 ────────────────────────────────────────────
+
+.ov-org
+  border-radius: 14px
+  border: 1px solid var(--glass-border)
+  background: var(--glass-surface)
+
+.ov-org__body
+  padding: 4px 16px 14px
+
+.ov-org__disclaimer
+  display: inline-flex
+  align-items: center
+  gap: 5px
+  font-size: 0.7rem
+  color: var(--color-text-secondary)
+  padding: 3px 8px
+  border-radius: 6px
+  background: var(--color-info-soft)
+  margin-bottom: 8px
+
+.ov-org__headrow
+  display: flex
+  align-items: center
+  justify-content: space-between
+  margin-bottom: 6px
+
+.ov-org__table
+  width: 100%
+  border-collapse: collapse
+  font-size: 0.78rem
+
+.ov-org__table th
+  text-align: left
+  font-size: 0.7rem
+  color: var(--color-text-secondary)
+  font-weight: 600
+  padding: 4px 6px
+  border-bottom: 1px solid var(--glass-border)
+
+.ov-org__table td
+  padding: 5px 6px
+  border-bottom: 1px solid var(--glass-border)
+
+.ov-org__name
+  max-width: 260px
+  white-space: nowrap
+  overflow: hidden
+  text-overflow: ellipsis
+
+.ov-org__rate
+  font-weight: 700
+  font-variant-numeric: tabular-nums
+
+.ov-org__rate--ok
+  color: var(--color-success)
+
+.ov-org__rate--warn
+  color: var(--color-warning)
+
+.ov-org__rate--danger
+  color: var(--color-danger)
+
+// ── ⑦ 新鲜度页脚 ────────────────────────────────────────────
+
+.ov-footer
+  border-top: 1px dashed var(--glass-border)
+  padding-top: 10px
+  display: flex
+  flex-wrap: wrap
+  gap: 6px 18px
+  font-size: 0.7rem
+  color: var(--color-text-secondary)
+
+.ov-footer__sources
+  display: flex
+  align-items: center
+  gap: 14px
+  flex-wrap: wrap
+
+.ov-footer__title
+  display: inline-flex
+  align-items: center
+  gap: 4px
+  font-weight: 700
+
+.ov-footer__src strong
+  font-weight: 600
+  color: var(--color-text-primary)
+
+.ov-footer__notes
+  list-style: none
+  margin: 0
+  padding: 0
+  display: flex
+  gap: 14px
+  flex-wrap: wrap
+
+.ov-footer__notes li::before
+  content: '·'
+  margin-right: 6px
+  color: var(--color-text-secondary)
 // ═══════════════════════════════════════════════════════════════
 //  Knowledge Vault 科幻图标色板（库/目录/文件类型着色 + error 脉冲）
 //  token 见 theme/_css-vars-{light,dark}.sass；使用方：vaultTreeUi.ts

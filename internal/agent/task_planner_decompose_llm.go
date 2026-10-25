@@ -363,7 +363,9 @@ func parseStreamSubTask(objJSON string, idRemap map[string]string, planID string
 		EstimatedComplexity:  raw.EstimatedComplexity,
 		Deliverables:         raw.Deliverables,
 		InputContract:        raw.InputContract,
-		DomainPath:           raw.DomainPath,
+		// D7-F3：持久化处归一领域路径（裁剪「创作 / 文学」空白、折叠到词表
+		// 主域、泛词落「其他」），读侧（L0/L1/花名册）不再逐点防御。
+		DomainPath: NormalizeDomainPath(raw.DomainPath),
 	}, nil
 }
 

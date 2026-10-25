@@ -290,6 +290,101 @@ func TestHybridRetriever_RRFCardLegFailureFallsBackTwoLegs(t *testing.T) {
 	}
 }
 
+type legErrorRepo struct {
+	stubSparseRepo
+	denseErr, sparseErr error
+}
+
+func (s *legErrorRepo) SearchChunks(ctx context.Context, q biz.KnowledgeSearchQuery, v []float32) ([]biz.KnowledgeChunk, error) {
+	if s.denseErr != nil {
+		return nil, s.denseErr
+	}
+	return s.stubSparseRepo.SearchChunks(ctx, q, v)
+}
+
+func (s *legErrorRepo) SearchChunksBM25(ctx context.Context, q biz.KnowledgeSearchQuery) ([]biz.KnowledgeChunk, error) {
+	if s.sparseErr != nil {
+		return nil, s.sparseErr
+	}
+	return s.stubSparseRepo.SearchChunksBM25(ctx, q)
+}
+
+type fixedCardSearcher struct{ chunks []biz.KnowledgeChunk }
+
+func (s *fixedCardSearcher) SearchGraphCardChunks(_ context.Context, _ biz.KnowledgeSearchQuery, _ []float32) ([]biz.KnowledgeChunk, error) {
+	return s.chunks, nil
+}
+
+func cardProbeChunk() biz.KnowledgeChunk {
+	return biz.KnowledgeChunk{
+		ID: "g33e/7/d3", DocID: "d3", CollectionID: "col", Content: "卡片文",
+		Score: 0.77, EntityScore: 0.77, MetadataJSON: `{"g33":"entity","g33_ref":7}`,
+	}
+}
+
+func TestHybridRetriever_RRFCardLegSurvivesClassicLegFailure(t *testing.T) {
+	// 对抗审查钉（fusion-retrieval/high）：dense 失败时健康卡腿候选必须进融合，
+	// 不得被两腿时代的 tag 单路早退静默丢弃。
+	repo := &legErrorRepo{
+		stubSparseRepo: stubSparseRepo{
+			stubKnowledgeRepo: stubKnowledgeRepo{chunks: []biz.KnowledgeChunk{{ID: "dense", DocID: "d1", Score: 0.9}}},
+			bm25Chunks:        []biz.KnowledgeChunk{{ID: "sparse", DocID: "d2", Score: 11}},
+		},
+		denseErr: errors.New("pgvector 抖动"),
+	}
+	ret := NewRetriever(stubEmbedder{}, repo, nil, loggateway.NewNoop())
+	h := NewHybridRetriever(ret, repo, loggateway.NewNoop())
+	h.SetGraphCardSearcher(&fixedCardSearcher{chunks: []biz.KnowledgeChunk{cardProbeChunk()}})
+
+	got, err := h.Search(context.Background(), biz.KnowledgeSearchQuery{
+		CollectionID: "col", Query: "query", TopK: 5,
+	}, HybridRRF)
+	if err != nil {
+		t.Fatal(err)
+	}
+	foundCard, foundSparse := false, false
+	for _, ch := range got {
+		if ch.ID == "g33e/7/d3" && ch.EntityScore == 0.77 {
+			foundCard = true
+		}
+		if ch.ID == "sparse" {
+			foundSparse = true
+		}
+		if ch.ID == "dense" {
+			t.Fatalf("failed dense leg must leave no residue: %+v", ch)
+		}
+	}
+	if !foundCard || !foundSparse {
+		t.Fatalf("want sparse+card 剩余腿融合, got %+v", got)
+	}
+}
+
+func TestHybridRetriever_RRFCardOnlyWhenBothClassicFail(t *testing.T) {
+	// 对抗审查钉（fusion-retrieval/high）：dense+sparse 双挂而卡腿健康时回退
+	// 卡腿单路 RRF，不得坍缩为 Internal。
+	repo := &legErrorRepo{
+		stubSparseRepo: stubSparseRepo{
+			stubKnowledgeRepo: stubKnowledgeRepo{chunks: []biz.KnowledgeChunk{{ID: "dense", DocID: "d1", Score: 0.9}}},
+			bm25Chunks:        []biz.KnowledgeChunk{{ID: "sparse", DocID: "d2", Score: 11}},
+		},
+		denseErr:  errors.New("pgvector 抖动"),
+		sparseErr: errors.New("trgm 索引损坏"),
+	}
+	ret := NewRetriever(stubEmbedder{}, repo, nil, loggateway.NewNoop())
+	h := NewHybridRetriever(ret, repo, loggateway.NewNoop())
+	h.SetGraphCardSearcher(&fixedCardSearcher{chunks: []biz.KnowledgeChunk{cardProbeChunk()}})
+
+	got, err := h.Search(context.Background(), biz.KnowledgeSearchQuery{
+		CollectionID: "col", Query: "query", TopK: 5,
+	}, HybridRRF)
+	if err != nil {
+		t.Fatalf("card 腿健康时双挂不得硬错: %v", err)
+	}
+	if len(got) != 1 || got[0].ID != "g33e/7/d3" || got[0].EntityScore != 0.77 {
+		t.Fatalf("want 卡腿单路, got %+v", got)
+	}
+}
+
 func TestRerankChunks_PreservesCardMarkerAndEntityScore(t *testing.T) {
 	// G-33 尾段保真：rerank 后卡候选的 metadata g33 标记与 EntityScore 不丢
 	// （配合 mergeScoreBreakdown 并回纪律）。

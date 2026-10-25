@@ -22,6 +22,8 @@ const (
 	ProposalKindDistill = "distill"
 	// ProposalKindMOCEmerge hub 簇蒸馏 MOC 词条（M4，高风险人工二审）。
 	ProposalKindMOCEmerge = "moc_emerge"
+	// ProposalKindEntityMerge 实体消解合并裁决（G-37 ADR-D，高风险人工二审）。
+	ProposalKindEntityMerge = "entity_merge"
 	// ProposalRiskHigh 高风险：仅留提案待人工二审，不自动应用。
 	ProposalRiskHigh = "high"
 	// ProposalRiskLow 低风险：M4 治理周期可自动应用。

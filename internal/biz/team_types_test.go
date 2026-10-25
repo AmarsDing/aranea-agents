@@ -172,6 +172,34 @@ func TestIsTeamStatusActive(t *testing.T) {
 	}
 }
 
+// TestIsTeamSlotOccupied pins the parallel-quota seat accounting contract
+// (D2-P2): only pending+running occupy a seat. interrupted is recoverable but
+// executes nothing, so it must NOT block plan_and_execute; terminal states
+// (completed/failed/cancelled/partial_failure/archived) and empty never hold
+// a seat either.
+func TestIsTeamSlotOccupied(t *testing.T) {
+	occupied := []string{TeamStatusPending, TeamStatusRunning}
+	for _, s := range occupied {
+		if !IsTeamSlotOccupied(s) {
+			t.Errorf("expected %q to occupy a parallel-quota seat", s)
+		}
+	}
+	free := []string{
+		TeamStatusInterrupted,
+		TeamStatusCompleted,
+		TeamStatusFailed,
+		TeamStatusCancelled,
+		TeamStatusPartialFailure,
+		TeamStatusArchived,
+		"",
+	}
+	for _, s := range free {
+		if IsTeamSlotOccupied(s) {
+			t.Errorf("expected %q to NOT occupy a parallel-quota seat", s)
+		}
+	}
+}
+
 func TestTeamStatusConstants_NoOldStates(t *testing.T) {
 	// Verify that old status values are not present as constants.
 	// The state machine should only have: pending, running, completed, failed, cancelled, interrupted.

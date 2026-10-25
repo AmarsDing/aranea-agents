@@ -11,6 +11,7 @@ import { createGatewayServiceClient } from './kratos/gateway/v1/index';
 import { createAvatarServiceClient } from './kratos/avatar/v1/index';
 import { createChannelServiceClient } from './kratos/channel/v1/index';
 import { createCronServiceClient } from './kratos/cron/v1/index';
+import { createDecisionRecordServiceClient } from './kratos/decision/v1/index';
 import { createEvaluationServiceClient } from './kratos/evaluation/v1/index';
 import { createHookServiceClient } from './kratos/hook/v1/index';
 import { createKnowledgeServiceClient } from './kratos/knowledge/v1/index';
@@ -72,6 +73,10 @@ export function createLlmProviderModelService() {
 
 export function createCronService() {
   return createCronServiceClient(requestHandler);
+}
+
+export function createDecisionService() {
+  return createDecisionRecordServiceClient(requestHandler);
 }
 
 export function createHookService() {

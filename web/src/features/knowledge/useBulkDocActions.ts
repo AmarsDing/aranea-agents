@@ -29,7 +29,7 @@ export function moveTargetsFor(
     .map((c) => ({
       label: c.name || c.id,
       value: c.id,
-      disable: !!current && c.dim !== current.dim,
+      disable: !!current && (c.dim !== current.dim || current.vault_backend === 'local' || c.vault_backend === 'local'),
       dim: c.dim,
     }));
 }

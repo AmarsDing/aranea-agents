@@ -7,6 +7,7 @@ import (
 
 	chatagent "aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
+	sessstatus "aranea-agents/internal/biz/session"
 	rt "aranea-agents/internal/runtime"
 	"aranea-agents/pkg/loggateway"
 )
@@ -217,4 +218,44 @@ func TestExecuteTeamTurnViaHooks_TerminalizesRootTask(t *testing.T) {
 			t.Errorf("terminalized task Status = %q, want failed", taskWriter.terminalized[0].Status)
 		}
 	})
+}
+
+// ── D2-②：chat/dispatch 跨入口注册表可见性（87-orchestration-chain-hardening）
+// chat 入口经 ExecuteTurn 在共享 RunRegistry 占位后，dispatch/调度入口
+// （StartTeamTurn + TeamRunGuard）必须 busy skip；chat 侧 Finish 后 dispatch
+// 恢复可跑。spec 87 测试契约：TestChatAndDispatchCrossEntryVisibility。
+func TestChatAndDispatchCrossEntryVisibility(t *testing.T) {
+	writer := &stubTeamWriter{}
+	team := biz.Team{ID: "team-x1", DisplayName: "团队", AutoCreated: true, Status: biz.TeamStatusPending}
+	sess := biz.Session{
+		ID: "team-sess-x1", TeamID: team.ID, ParentSessionID: "spirit-x1",
+		Status: string(sessstatus.SessionStatusIdle),
+	}
+	controller := &stubSpiritTeamController{}
+	runner := &capturingTeamRunner{}
+
+	// orch 仅取其共享 RunRegistry（chat 入口同一字段），dispatcher 通过
+	// TeamRunGuard 回填同一 registry + 互斥锁。
+	orch := newTeamTurnTestOrch(&stubTaskV2Repo{writer: &stubTaskV2Writer{}}, runner, &capturingTeamStarter{})
+	lock := newCountedKeyedLock()
+	starter := newStartTurnTestStarter(sess, team, runner, controller, writer)
+	starter.SetRunGuard(&TeamRunGuard{Runs: orch.runs, Lock: lock.lockFn})
+
+	// chat 已注册运行实体 → dispatch busy skip（nil-skip，INV-M4）。
+	orch.runs.StoreCancelable(sess.ID, "chat-run-1", func() {})
+	if err := starter.StartTeamTurn(context.Background(), sess.ID, "执行任务"); err != nil {
+		t.Fatalf("busy skip must return nil, got %v", err)
+	}
+	if runner.calls != 0 {
+		t.Fatalf("runner calls = %d, want 0 while chat run active", runner.calls)
+	}
+
+	// chat 结束（Finish）→ dispatch 恢复可跑。
+	orch.runs.Finish(sess.ID, "chat-run-1")
+	if err := starter.StartTeamTurn(context.Background(), sess.ID, "执行任务"); err != nil {
+		t.Fatalf("after chat Finish dispatch must run, got %v", err)
+	}
+	if runner.calls != 1 {
+		t.Fatalf("runner calls = %d, want 1 after chat run finished", runner.calls)
+	}
 }

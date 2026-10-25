@@ -8,6 +8,20 @@
       <q-separator />
       <div class="app-glass-dialog__scroll">
         <q-card-section class="app-dialog-body app-glass-dialog__body q-gutter-md">
+          <q-select
+            :model-value="vaultBackend || 'team'"
+            emit-value
+            map-options
+            outlined
+            dense
+            :label="t('knowledgeWorkflow.storageMode')"
+            :options="[
+              { label: t('knowledgeWorkflow.managedVault'), value: 'team' },
+              { label: t('knowledgeWorkflow.localVault'), value: 'local' },
+            ]"
+            @update:model-value="$emit('update:vaultBackend', $event)"
+          />
+          <p v-if="vaultBackend !== 'local'" class="text-caption">{{ t('knowledgeWorkflow.managedHint') }}</p>
           <q-input
             :model-value="name"
             class="app-field-md"
@@ -18,6 +32,7 @@
             @update:model-value="$emit('update:name', String($event ?? ''))"
           />
           <q-input
+            v-if="vaultBackend === 'local'"
             :model-value="rootPath"
             class="app-field-long"
             dense
@@ -76,6 +91,7 @@ defineProps<{
   open: boolean;
   name: string;
   rootPath: string;
+  vaultBackend?: 'team' | 'local';
   description: string;
   embeddingModel: string;
   loading: boolean;
@@ -84,6 +100,7 @@ defineEmits<{
   'update:open': [value: boolean];
   'update:name': [value: string];
   'update:rootPath': [value: string];
+  'update:vaultBackend': [value: 'team' | 'local'];
   'update:description': [value: string];
   'update:embeddingModel': [value: string];
   submit: [];

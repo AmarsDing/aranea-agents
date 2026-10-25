@@ -16,6 +16,7 @@ import (
 	"aranea-agents/pkg/loggateway"
 
 	"aranea-agents/pkg/apierror"
+	"aranea-agents/pkg/auth"
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 	"trpc.group/trpc-go/trpc-agent-go/tool/function"
@@ -145,10 +146,21 @@ type searchOutput struct {
 }
 
 type chunkSummary struct {
-	ID      string  `json:"id"`
-	Content string  `json:"content"`
-	Score   float32 `json:"score"`
-	DocID   string  `json:"doc_id"`
+	ID           string  `json:"id"`
+	Content      string  `json:"content"`
+	Score        float32 `json:"score"`
+	DocID        string  `json:"doc_id"`
+	EvidenceKind string  `json:"evidence_kind,omitempty"`
+}
+
+func chunkEvidenceKind(id string) string {
+	if strings.HasPrefix(id, "g33e/") {
+		return bizknowledge.GraphCardKindEntity
+	}
+	if strings.HasPrefix(id, "g33r/") {
+		return bizknowledge.GraphCardKindEdge
+	}
+	return ""
 }
 
 // NewSearchTool returns the knowledge_search tool.
@@ -230,9 +242,10 @@ func NewSearchTool(lg loggateway.Logger) trpctool.CallableTool {
 				ID: ch.ID,
 				// G-06：父子分块命中的子块渲染父块语境（ParentContent 非空时），
 				// 模型侧直接拿到上下文；引用锚定仍走子块（emitKnowledgeRecalledNotice 不变）。
-				Content: ch.DisplayContent(),
-				Score:   ch.Score,
-				DocID:   ch.DocID,
+				Content:      ch.DisplayContent(),
+				Score:        ch.Score,
+				DocID:        ch.DocID,
+				EvidenceKind: chunkEvidenceKind(ch.ID),
 			})
 		}
 		if len(out.Chunks) == 0 {
@@ -243,7 +256,7 @@ func NewSearchTool(lg loggateway.Logger) trpctool.CallableTool {
 	return function.NewFunctionTool(
 		execute,
 		function.WithName("knowledge_search"),
-		function.WithDescription("Search knowledge bases for relevant text chunks using semantic similarity. Omit collection_id to smart-route across all accessible collections. Supports hybrid search (dense + sparse) and adaptive routing when available. Use this when you need factual information from knowledge bases that is NOT already in the injected ## L2+L3 memory block. If memory already lists the fact, answer from memory instead of searching. An empty chunks array means the knowledge base has no matching passages — do not retry with rephrased queries, and do not invent facts. For multi-collection search or quality verification, use knowledge_reflect instead."),
+		function.WithDescription("Search knowledge bases for relevant text chunks using semantic similarity. Omit collection_id to smart-route across all accessible collections. Supports hybrid search (dense + sparse) and adaptive routing when available. Use this when you need factual information from knowledge bases that is NOT already in the injected ## L2+L3 memory block. If memory already lists the fact, answer from memory instead of searching. An empty chunks array means the knowledge base has no matching passages — do not retry with rephrased queries, and do not invent facts. Results with evidence_kind entity/edge are derived graph summaries, not verbatim source passages; verify them against the host document. For multi-collection search or quality verification, use knowledge_reflect instead."),
 	)
 }
 
@@ -297,14 +310,21 @@ type knowledgeRecalledChunk struct {
 	Line    string  `json:"line,omitempty"`
 	// N is the [n] citation index shown in ## Retrieved Knowledge.
 	// Omitted on tool-path notices so later retrievals do not steal [1].
-	N int `json:"n,omitempty"`
+	N               int    `json:"n,omitempty"`
+	CollectionID    string `json:"collection_id,omitempty"`
+	EvidenceKind    string `json:"evidence_kind,omitempty"`
+	EvidenceHash    string `json:"evidence_hash,omitempty"`
+	EvidenceContent string `json:"evidence_content,omitempty"`
 }
 
 // knowledgeRecalledNoticePayload is the JSON content of a knowledge_recalled
 // notice. Mirrored by the data-layer citation trace reader
 // (internal/data/knowledge_citation.go).
 type knowledgeRecalledNoticePayload struct {
-	Chunks []knowledgeRecalledChunk `json:"chunks"`
+	Chunks       []knowledgeRecalledChunk `json:"chunks"`
+	WorkspaceID  string                   `json:"workspace_id,omitempty"`
+	ViewerUserID int64                    `json:"viewer_user_id,omitempty"`
+	OrgScope     []string                 `json:"org_scope,omitempty"`
 }
 
 // EmitKnowledgeRecalledNotice 供非工具路径复用同一 notice 载荷：首轮预检索
@@ -336,6 +356,11 @@ func emitKnowledgeRecalledNotice(ctx context.Context, chunks []biz.KnowledgeChun
 		return
 	}
 	payload := knowledgeRecalledNoticePayload{Chunks: make([]knowledgeRecalledChunk, 0, len(chunks))}
+	payload.WorkspaceID = workspace.IDFromContext(ctx)
+	payload.OrgScope = bizknowledge.OrgScopeFromContext(ctx)
+	if viewer, ok := auth.FromContext(ctx); ok && viewer != nil {
+		payload.ViewerUserID = viewer.UserID
+	}
 	n := 0
 	for i, ch := range chunks {
 		if i >= knowledgeRecalledMaxChunks {
@@ -354,6 +379,14 @@ func emitKnowledgeRecalledNotice(ctx context.Context, chunks []biz.KnowledgeChun
 			DocID:   strings.TrimSpace(ch.DocID),
 			Score:   ch.Score,
 			Line:    line,
+		}
+		// 卡片是派生证据，保留检索时版本快照；其 ID 不指向真实 chunks 行。
+		kind := chunkEvidenceKind(id)
+		if kind != "" {
+			item.CollectionID = ch.CollectionID
+			item.EvidenceKind = kind
+			item.EvidenceContent = ch.Content
+			item.EvidenceHash = bizknowledge.GraphCardSourceHash(ch.Content)
 		}
 		if numbered {
 			n++
@@ -380,6 +413,7 @@ type reflectInput struct {
 }
 
 type reflectOutput struct {
+	Evaluated       bool           `json:"evaluated"`
 	Sufficient      bool           `json:"sufficient"`
 	Confidence      float32        `json:"confidence"`
 	SupplementQuery string         `json:"supplement_query,omitempty"`
@@ -457,18 +491,17 @@ func NewReflectTool(lg loggateway.Logger) trpctool.CallableTool {
 		emitKnowledgeRecalledNotice(ctx, chunks, false)
 
 		out := reflectOutput{
-			Sufficient: true,
-			Confidence: 1.0,
-			Chunks:     make([]chunkSummary, 0, len(chunks)),
+			Chunks: make([]chunkSummary, 0, len(chunks)),
 		}
 
 		if ev := RetrievalEvaluatorFromContext(ctx); ev != nil && len(chunks) > 0 {
 			assessment, evalErr := ev.Evaluate(ctx, in.Query, chunks)
-			if evalErr == nil {
+			if evalErr == nil && assessment != nil {
+				out.Evaluated = assessment.Evaluated
 				out.Sufficient = assessment.Sufficient
 				out.Confidence = assessment.Confidence
 				out.SupplementQuery = assessment.SupplementQuery
-			} else {
+			} else if evalErr != nil {
 				lg.Warn("evaluation failed",
 					loggateway.StepID("tool.knowledge_reflect.eval_fail"),
 					loggateway.Err(evalErr))
@@ -479,10 +512,11 @@ func NewReflectTool(lg loggateway.Logger) trpctool.CallableTool {
 			// G-06：父子分块命中用父块语境作正文（G-06 回填 ParentContent 时）；
 			// 否则保留子块原文——citation 回采链（emitKnowledgeRecalledNotice）同样基于子块。
 			out.Chunks = append(out.Chunks, chunkSummary{
-				ID:      ch.ID,
-				Content: ch.DisplayContent(),
-				Score:   ch.Score,
-				DocID:   ch.DocID,
+				ID:           ch.ID,
+				Content:      ch.DisplayContent(),
+				Score:        ch.Score,
+				DocID:        ch.DocID,
+				EvidenceKind: chunkEvidenceKind(ch.ID),
 			})
 		}
 		return out, nil
@@ -490,6 +524,6 @@ func NewReflectTool(lg loggateway.Logger) trpctool.CallableTool {
 	return function.NewFunctionTool(
 		execute,
 		function.WithName("knowledge_reflect"),
-		function.WithDescription("Reflect on knowledge search results across collections. Omit collection_ids to smart-route across all accessible collections. Evaluates retrieval quality, determines if results are sufficient, and suggests supplementary queries if needed. Use this after knowledge_search when you need to verify result quality or search across multiple knowledge bases."),
+		function.WithDescription("Reflect on knowledge search results across collections. Omit collection_ids to smart-route across all accessible collections. Evaluates retrieval quality, determines if results are sufficient, and suggests supplementary queries if needed. evaluated=false means sufficiency is unknown; empty results are insufficient. Results with evidence_kind entity/edge are derived graph summaries rather than verbatim source passages. Use this after knowledge_search when you need to verify result quality or search across multiple knowledge bases."),
 	)
 }

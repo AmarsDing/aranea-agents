@@ -151,9 +151,9 @@ var evalDatePatterns = []evalDatePattern{
 		return d.AddDate(1, 0, 0), true
 	}},
 	// N 天前 / N 天后 (日 accepted as a 天 alias).
-	{regexp.MustCompile(`([0-9]+|[一二两三四五六七八九]{1,3})(?:天|日)(前|后)`), func(sub []string, a time.Time) (time.Time, bool) {
+	{regexp.MustCompile(`([0-9]+|[一二两三四五六七八九十]{1,3})(?:天|日)(前|后)`), func(sub []string, a time.Time) (time.Time, bool) {
 		n, ok := parseEvalN(sub[1])
-		if !ok {
+		if !ok || n > 36600 {
 			return time.Time{}, false
 		}
 		if sub[2] == "前" {
@@ -162,9 +162,9 @@ var evalDatePatterns = []evalDatePattern{
 		return evalDayFloor(a).AddDate(0, 0, n), true
 	}},
 	// N 周前 / N 周后.
-	{regexp.MustCompile(`([0-9]+|[一二两三四五六七八九]{1,3})(?:周|星期)(前|后)`), func(sub []string, a time.Time) (time.Time, bool) {
+	{regexp.MustCompile(`([0-9]+|[一二两三四五六七八九十]{1,3})(?:周|星期)(前|后)`), func(sub []string, a time.Time) (time.Time, bool) {
 		n, ok := parseEvalN(sub[1])
-		if !ok {
+		if !ok || n > 5200 {
 			return time.Time{}, false
 		}
 		if sub[2] == "前" {
@@ -173,15 +173,46 @@ var evalDatePatterns = []evalDatePattern{
 		return evalDayFloor(a).AddDate(0, 0, 7*n), true
 	}},
 	// N 个月前 / N 个月后.
-	{regexp.MustCompile(`([0-9]+|[一二两三四五六七八九]{1,3})个月(前|后)`), func(sub []string, a time.Time) (time.Time, bool) {
+	{regexp.MustCompile(`([0-9]+|[一二两三四五六七八九十]{1,3})个月(前|后)`), func(sub []string, a time.Time) (time.Time, bool) {
 		n, ok := parseEvalN(sub[1])
-		if !ok {
+		if !ok || n > 1200 {
 			return time.Time{}, false
 		}
 		if sub[2] == "前" {
 			n = -n
 		}
-		return evalDayFloor(a).AddDate(0, n, 0), true
+		return evalShiftMonths(a, n), true
+	}},
+	{regexp.MustCompile(`(?i)\b(in\s+)?([0-9]+)\s+(weeks?|months?|years?)(\s+ago)?\b`), func(sub []string, a time.Time) (time.Time, bool) {
+		if sub[1] == "" && sub[4] == "" {
+			return time.Time{}, false
+		}
+		n, err := strconv.Atoi(sub[2])
+		if err != nil || n > 1200 {
+			return time.Time{}, false
+		}
+		if sub[4] != "" {
+			n = -n
+		}
+		switch strings.ToLower(sub[3])[:4] {
+		case "week":
+			return evalDayFloor(a).AddDate(0, 0, 7*n), true
+		case "mont":
+			return evalShiftMonths(a, n), true
+		default:
+			return evalShiftMonths(a, 12*n), true
+		}
+	}},
+	{regexp.MustCompile(`(?i)\bnext\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b`), func(sub []string, a time.Time) (time.Time, bool) {
+		target, ok := evalWeekdayEN[strings.ToLower(sub[1])]
+		if !ok {
+			return time.Time{}, false
+		}
+		delta := (int(target) - int(a.Weekday()) + 7) % 7
+		if delta == 0 {
+			delta = 7
+		}
+		return evalDayFloor(a).AddDate(0, 0, delta), true
 	}},
 	// --- English relative days ---
 	{regexp.MustCompile(`(?i)\b(today|yesterday|tomorrow)\b`), func(sub []string, a time.Time) (time.Time, bool) {
@@ -237,6 +268,16 @@ var evalDatePatterns = []evalDatePattern{
 		}
 		return evalDayFloor(a).AddDate(0, 0, -n), true
 	}},
+}
+
+func evalShiftMonths(anchor time.Time, months int) time.Time {
+	y, m, d := anchor.Date()
+	first := time.Date(y, m+time.Month(months), 1, 0, 0, 0, 0, anchor.Location())
+	last := first.AddDate(0, 1, -1).Day()
+	if d > last {
+		d = last
+	}
+	return first.AddDate(0, 0, d-1)
 }
 
 // resolveEvalDateExprs finds every date expression in text and resolves it

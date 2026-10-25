@@ -20,6 +20,24 @@ type phaseAResult struct {
 	matchErr error
 }
 
+// recipeWantFpKey 透传「当前任务受约束的剧约束指纹」（D7-F2）。
+// matchSubTask/matchWholePlan 签名被非本批次所有者的调用方钉死
+// （agent_capacity_soft_gate / agent_performance_test），故 Allocate 在入口
+// 计算一次后经 ctx 透传，避免扩散成接口变更。
+type recipeWantFpKey struct{}
+
+func withRecipeWantFingerprint(ctx context.Context, fp string) context.Context {
+	if strings.TrimSpace(fp) == "" {
+		return ctx
+	}
+	return context.WithValue(ctx, recipeWantFpKey{}, fp)
+}
+
+func recipeWantFingerprintFromCtx(ctx context.Context) string {
+	v, _ := ctx.Value(recipeWantFpKey{}).(string)
+	return v
+}
+
 // runPhaseAMatch executes Phase A of the two-phase allocation (P-ORCH.5):
 // parallel matchSubTask (Layer 0-3, no factory) across all subtasks.
 // Each goroutine writes its result to a pre-allocated slice slot so the
@@ -65,7 +83,7 @@ func (impl *agentAllocatorImpl) matchSubTask(ctx context.Context, subTask biz.Su
 	}
 
 	if subTask.DomainPath != "" {
-		if cap, members, dq, ok := impl.tryDomainRecipe(subTask.DomainPath, capabilities, traceID); ok {
+		if cap, members, dq, ok := impl.tryDomainRecipe(ctx, subTask.DomainPath, recipeWantFingerprintFromCtx(ctx), capabilities, traceID); ok {
 			alloc := biz.TaskAllocation{
 				SubTaskID:    subTask.ID,
 				SubTaskName:  subTask.Name,
@@ -251,7 +269,7 @@ func (impl *agentAllocatorImpl) matchWholePlan(ctx context.Context, taskPlan *bi
 	}
 
 	if taskPlan.DomainPath != "" {
-		if cap, members, dq, ok := impl.tryDomainRecipe(taskPlan.DomainPath, capabilities, traceID); ok {
+		if cap, members, dq, ok := impl.tryDomainRecipe(ctx, taskPlan.DomainPath, recipeWantFingerprintFromCtx(ctx), capabilities, traceID); ok {
 			alloc := biz.TaskAllocation{
 				SubTaskID:    "whole",
 				SubTaskName:  taskPlan.UserMessage,

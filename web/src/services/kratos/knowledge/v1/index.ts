@@ -43,6 +43,9 @@ export type KnowledgeDocument = {
   summary: string | undefined;
   tags: string[] | undefined;
   docType: string | undefined;
+  visibility: string | undefined;
+  ownerUserId: string | undefined;
+  sharedWith: string[] | undefined;
 };
 
 // DocumentContent is the full extracted/organized text of one document (preview).
@@ -153,6 +156,13 @@ export type IngestDocumentRequest = {
 };
 
 export type GetDocumentContentRequest = {
+  //
+  // Behaviors: REQUIRED
+  id: string | undefined;
+};
+
+// Resolves a visible document without relying on a partially loaded document list.
+export type GetDocumentRequest = {
   //
   // Behaviors: REQUIRED
   id: string | undefined;
@@ -630,6 +640,8 @@ export type UpdateDocumentContentResponse = {
   // conflict=true: the file changed on disk since base_hash; the edit was still
   // written and the disk version backed up to .aranea/trash (both copies kept).
   conflict: boolean | undefined;
+  // Hash of the version committed by this request, not a later remote version.
+  baseHash: string | undefined;
 };
 
 export type SearchRequest = {
@@ -728,6 +740,7 @@ export interface KnowledgeService {
   IngestDocument(request: IngestDocumentRequest): Promise<KnowledgeDocument>;
   ListDocuments(request: ListDocumentsRequest): Promise<ListDocumentsResponse>;
   GetDocumentContent(request: GetDocumentContentRequest): Promise<DocumentContent>;
+  GetDocument(request: GetDocumentRequest): Promise<KnowledgeDocument>;
   DeleteDocument(request: DeleteDocumentRequest): Promise<wellKnownEmpty>;
   MoveDocument(request: MoveDocumentRequest): Promise<KnowledgeDocument>;
   // MoveDocumentToDir moves a vault document to another directory within the same
@@ -981,6 +994,26 @@ export function createKnowledgeServiceClient(
         service: "KnowledgeService",
         method: "GetDocumentContent",
       }) as Promise<DocumentContent>;
+    },
+    GetDocument(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      if (!request.id) {
+        throw new Error("missing required field request.id");
+      }
+      const path = `v1/knowledge/documents/${request.id}`; // eslint-disable-line quotes
+      const body = null;
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "KnowledgeService",
+        method: "GetDocument",
+      }) as Promise<KnowledgeDocument>;
     },
     DeleteDocument(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {

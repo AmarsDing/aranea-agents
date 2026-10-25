@@ -235,12 +235,18 @@ export type PulseConfig = {
  * Pulse CSS color and duration by team status transition.
  * Key is the NEW status value (SpiritTeamStatus).
  * Colors are CSS variable references for theme consistency.
+ * 覆盖全部 SpiritTeamStatus 转移（archived 除外——纯展示折叠，人为动作不脉冲）。
+ * 未命中键仍由 useStatusPulse 静默跳过（防御层保留）。
  */
 export const PULSE_COLOR_MAP: Record<string, string> = {
   running: 'var(--color-accent)',
   completed: 'var(--color-success)',
   failed: 'var(--color-danger)',
   interrupted: 'var(--color-warning)',
+  partial_failure: 'var(--color-warning)',
+  cancelled: 'var(--color-text-tertiary)',
+  paused: 'var(--color-warning)',
+  pending: 'var(--color-text-tertiary)',
 };
 
 export const PULSE_DURATION_MAP: Record<string, number> = {
@@ -248,6 +254,13 @@ export const PULSE_DURATION_MAP: Record<string, number> = {
   completed: 1500,
   failed: 2000,
   interrupted: 1500,
+  // 部分失败终态警示，时长与 failed 对齐
+  partial_failure: 2000,
+  cancelled: 1500,
+  // 瞬时挂起，与 running 同短档
+  paused: 1000,
+  // 团队首次出现的弱提示
+  pending: 800,
 };
 
 // --- OBS-01: Auto-Collapse Summary Templates ---

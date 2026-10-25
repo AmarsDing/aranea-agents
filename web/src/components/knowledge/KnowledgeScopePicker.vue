@@ -32,7 +32,7 @@
           :selected="scopeSelectedKey"
           :expanded="scopeExpanded"
           @update:selected="onScopeSelect"
-          @update:expanded="(keys: string[]) => (scopeExpanded = keys)"
+          @update:expanded="(keys: readonly string[]) => (scopeExpanded = [...keys])"
           @lazy-load="(p: VaultLazyLoadPayload) => $emit('scope-lazy-load', p)"
         />
       </div>

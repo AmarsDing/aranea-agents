@@ -89,7 +89,7 @@ func (o *SpiritOrchestration) onTeamTimeout(bgCtx context.Context, cfg ParallelC
 			loggateway.Str("team_id", teamID),
 			loggateway.Str("ceiling_base", ceilingBase.Format(time.RFC3339)),
 		)
-		o.failTeamOnTimeout(timeoutCtx, team)
+		o.failTeamOnTimeout(bgCtx, timeoutCtx, cfg, team)
 		return
 	}
 	if probeErr != nil {
@@ -99,7 +99,7 @@ func (o *SpiritOrchestration) onTeamTimeout(bgCtx context.Context, cfg ParallelC
 				loggateway.StepID("spirit.team.timeout_no_run"),
 				loggateway.Str("team_id", teamID),
 			)
-			o.failTeamOnTimeout(timeoutCtx, team)
+			o.failTeamOnTimeout(bgCtx, timeoutCtx, cfg, team)
 			return
 		}
 
@@ -111,7 +111,7 @@ func (o *SpiritOrchestration) onTeamTimeout(bgCtx context.Context, cfg ParallelC
 				loggateway.Int("strikes", strikes),
 				loggateway.Err(probeErr),
 			)
-			o.failTeamOnTimeout(timeoutCtx, team)
+			o.failTeamOnTimeout(bgCtx, timeoutCtx, cfg, team)
 			return
 		}
 		o.lg.Warn("团队活动探测失败，超时顺延一个窗口",
@@ -142,25 +142,37 @@ func (o *SpiritOrchestration) onTeamTimeout(bgCtx context.Context, cfg ParallelC
 		loggateway.Str("team_id", teamID),
 		loggateway.Str("last_activity", lastActivity.Format(time.RFC3339)),
 	)
-	o.failTeamOnTimeout(timeoutCtx, team)
+	o.failTeamOnTimeout(bgCtx, timeoutCtx, cfg, team)
 }
 
 // failTeamOnTimeout transitions the team to failed and notifies the service
 // layer — the original timeout path, now reached only for genuinely idle or
 // over-ceiling teams.
-func (o *SpiritOrchestration) failTeamOnTimeout(ctx context.Context, team Team) {
+//
+// D2-P6（87-orchestration-chain-hardening）：TransitionStatus 落地失败时
+// re-arm 一个 idle 窗口（与 Get 失败顺延 :63 / probe 失败顺延 :123 同款
+// 「顺延一个窗口」降级失败观）——杜绝「timer 已被 claim LoadAndDelete +
+// TransitionStatus 失败」组合导致的团队永久弃犬（INV-W1）。CAS 一致性：
+// claim 已删旧条目，re-arm 写入新条目；cancel-on-terminal 若早一拍只对
+// 旧记录空操作，新条目安全（INV-W4）。re-arm 的 timer 下一次触发时若团队
+// 已到终态 / pending，走终态短路（:66-76）直接 return 且不再续 arm，
+// 无空转累积，最坏代价一次额外唤醒（INV-W2）。判死三类场景
+// （max-lifetime / 无-run-宽限 / probe-strikes + idle）的语义不变，仅当
+// 判死落地动作本身失败才顺延重试（INV-W3）。
+func (o *SpiritOrchestration) failTeamOnTimeout(bgCtx, timeoutCtx context.Context, cfg ParallelConfig, team Team) {
 	o.resetProbeFailures(team.ID)
-	if _, err := o.teamUC.TransitionStatus(ctx, team.ID, TeamStatusFailed); err != nil {
-		o.lg.Warn("超时后转换团队状态失败",
+	if _, err := o.teamUC.TransitionStatus(timeoutCtx, team.ID, TeamStatusFailed); err != nil {
+		o.lg.Warn("超时后转换团队状态失败，顺延一个窗口重试",
 			loggateway.StepID("spirit.team.timeout_transition_err"),
 			loggateway.Str("team_id", team.ID),
 			loggateway.Err(err),
 		)
+		o.armTeamTimeout(bgCtx, cfg, team.ID, cfg.TeamTimeout())
 		return
 	}
 
 	if o.timeoutHandler != nil && team.SpiritSessionID != "" {
-		o.timeoutHandler.HandleTeamTimeout(ctx, team.SpiritSessionID, team.ID)
+		o.timeoutHandler.HandleTeamTimeout(timeoutCtx, team.SpiritSessionID, team.ID)
 	}
 }
 

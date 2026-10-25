@@ -9,6 +9,9 @@
         <q-btn flat color="white" label="重试" @click="loadCollections" />
       </template>
     </q-banner>
+    <q-banner v-if="workbench.draftError.value" dense class="app-banner-warning q-ma-sm">{{
+      t('knowledgeWorkflow.draftFailed')
+    }}</q-banner>
     <!-- B5：文档列表超上限截断提示（树导航不受影响，图谱/搜索可能不完整） -->
     <q-banner v-if="documentsTruncated" rounded class="app-banner-warning q-ma-sm flex-none">
       {{ t('knowledgePage.documentsTruncated', { n: DOCUMENTS_PAGE_LIMIT }) }}
@@ -31,6 +34,8 @@
       :workbench="workbench"
       :collections="collections"
       :documents="documents"
+      :viewer-id="String(auth.user?.id || '')"
+      :is-admin="auth.isPlatformAdmin"
       :current-vault-id="selectedId"
       :nodes="explorerRootNodes"
       :selected-key="explorerSelectedKey"
@@ -53,6 +58,7 @@
       @refresh-tree="refreshExplorerTree"
       @open-graph="onOpenGraph"
       @open-settings="settingsOpen = true"
+      @upload="openFileUpload"
       @open-hit-test="hitTestOpen = true"
       @promote-active="openPromoteDialog"
       @ingest-text="ingestOpen = true"
@@ -156,10 +162,22 @@
       v-model:open="createOpen"
       v-model:name="createForm.name"
       v-model:root-path="createForm.root_path"
+      v-model:vault-backend="createForm.vault_backend"
       v-model:description="createForm.description"
       v-model:embedding-model="createForm.embedding_model"
       :loading="createLoading"
       @submit="submitCreateCollection"
+    />
+    <KnowledgeSharingDialog
+      v-model:open="sharing.open.value"
+      v-model:visibility="sharing.visibility.value"
+      v-model:shared-with="sharing.sharedWith.value"
+      :title="sharing.title.value"
+      :options="sharing.options.value"
+      :loading="sharing.loading.value"
+      :saving="sharing.saving.value"
+      :error="sharing.error.value"
+      @save="sharing.save"
     />
     <knowledge-ingest-dialog
       v-model:open="ingestOpen"
@@ -224,6 +242,11 @@ import KnowledgeMoveConflictDialog from '../components/knowledge/KnowledgeMoveCo
 import KnowledgePromoteDialog from '../components/knowledge/KnowledgePromoteDialog.vue';
 import UploadDropOverlay from '../components/knowledge/UploadDropOverlay.vue';
 import { useKnowledgePage } from '../features/knowledge/useKnowledgePage';
+import { useKnowledgeDraftGuard } from '../features/knowledge/useKnowledgeDraftGuard';
+import { useAuthStore } from '../stores/auth';
+import { getBackendOrigin } from '../config/runtime';
+import { useKnowledgeSharing } from '../features/knowledge/useKnowledgeSharing';
+import KnowledgeSharingDialog from '../components/knowledge/KnowledgeSharingDialog.vue';
 import { collectDropFiles, isOsFileDrag } from '../features/knowledge/dragFiles';
 import { filterGraphByGroups } from '../features/knowledge/graph3d/model';
 import { useKnowledgeGraph } from '../features/knowledge/useKnowledgeGraph';
@@ -252,6 +275,7 @@ const {
   embedderSaving,
   saveEmbedderConfig,
   loadCollections,
+  loadDocument,
   loadMoreDocuments,
   loadEmbedderConfig,
   openCreateCollection,
@@ -309,30 +333,45 @@ const { t } = useI18n();
 
 // ---------- SP2-8：工作台状态机（tabs/脏标记/CAS 保存） ----------
 
-const workbench = createKnowledgeWorkbench();
+const auth = useAuthStore();
+const sharing = useKnowledgeSharing();
+const draftStorage = (() => {
+  try {
+    return window.localStorage;
+  } catch {
+    return undefined;
+  }
+})();
+// 每账户、每服务端独立草稿；恢复时再次从服务端验证资料权限。
+const workbench = createKnowledgeWorkbench(
+  undefined,
+  auth.user && draftStorage
+    ? {
+        storage: draftStorage,
+        key: `knowledge-drafts:${getBackendOrigin() || window.location.origin}:${auth.user.id}`,
+      }
+    : undefined,
+);
 const route = useRoute();
 const workbenchRef = ref<InstanceType<typeof KnowledgeWorkbench> | null>(null);
+useKnowledgeDraftGuard(workbench, () => workbenchRef.value?.flushPendingContent());
 
 watch(
   () => route.query.doc,
-  (id) => {
+  async (id) => {
     if (typeof id !== 'string' || !id.trim()) return;
-    const found = documents.value.find((d) => d.id === id);
-    const doc =
-      found ??
-      ({
-        id,
-        source: id,
-        rel_path: '',
-        collection_id: selectedId.value,
-        mime_type: 'text/markdown',
-      } as KnowledgeDocument);
-    const line = typeof route.query.line === 'string' ? route.query.line : '';
-    if (line) {
-      // G-17 引用锚定：带 line 锚参数时走精确块级定位 + 闪烁（workbenchRef 暴露）。
-      void workbenchRef.value?.openDocAtCitation(doc, line);
-    } else {
-      void workbench.openDoc(doc);
+    try {
+      const doc = await loadDocument(id);
+      selectedId.value = doc.collection_id;
+      const line = !route.query.evidence_kind && typeof route.query.line === 'string' ? route.query.line : '';
+      if (line) {
+        // G-17 引用锚定：带 line 锚参数时走精确块级定位 + 闪烁（workbenchRef 暴露）。
+        await workbenchRef.value?.openDocAtCitation(doc, line);
+      } else {
+        await workbench.openDoc(doc);
+      }
+    } catch (err) {
+      $q.notify({ type: 'negative', message: friendlyError(err) || t('knowledgeWorkflow.openFailed') });
     }
   },
   // flush:'post' 关键：页面无 keep-alive，chat→knowledge 深链每次重建页面；
@@ -370,6 +409,7 @@ function onFileAction(action: string, node: VaultTreeNode) {
   else if (action === 'reembed') confirmReembed([node.doc_id]);
   else if (action === 'delete') confirmDeleteDocument(doc);
   else if (action === 'private' || action === 'collection') void setDocumentVisibility(doc, action);
+  else if (action === 'sharing') void sharing.show(doc.id);
 }
 
 // ---------- G5 深空知识图谱（全屏覆盖模式） ----------
@@ -644,6 +684,14 @@ function onUploadInputChange(e: Event) {
   if (files.length) void onUploadFilesPicked(files);
 }
 
+function openFileUpload() {
+  pendingUploadTarget.value = selectedId.value
+    ? { collectionId: selectedId.value, prefix: explorerPrefix.value }
+    : null;
+  // 已有目标通过 watcher 触发；无库也允许选文件，后端自动创建默认收件箱。
+  if (!selectedId.value) uploadFileInput.value?.click();
+}
+
 // ---------- U0-3：OS 文件拖拽上传（window 级监听，与按钮上传同一入队入口 onUploadFilesPicked） ----------
 
 function onOsDragOver(e: DragEvent) {
@@ -676,6 +724,9 @@ onUnmounted(() => {
 onMounted(() => {
   void loadCollections();
   void loadEmbedderConfig();
+  void workbench.restoreDrafts().then((count) => {
+    if (count) $q.notify({ type: 'info', message: t('knowledgeWorkflow.draftsRestored', { n: count }) });
+  });
 });
 </script>
 

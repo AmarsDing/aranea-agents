@@ -11,11 +11,7 @@
       <span v-if="streaming" class="pulse-dot"></span>
     </div>
     <div class="reply-block__content">
-      <div
-        v-segmented-markdown="parts"
-        class="reply-block__markdown chat-message-prose"
-        @click="onCiteClick"
-      ></div>
+      <div v-segmented-markdown="parts" class="reply-block__markdown chat-message-prose" @click="onCiteClick"></div>
       <span v-if="streaming" class="cursor-blink"></span>
     </div>
   </div>
@@ -76,7 +72,13 @@ function onCiteClick(ev: MouseEvent) {
   // 随跳链传给知识页精确锚定 + 闪烁（无 chunk 时退化为原 doc 跳链）。
   const ck = btn.getAttribute('data-chunk-id') ?? '';
   const hit = ck ? kbChunks.value.find((c) => c.chunk_id === ck) : undefined;
-  void router.push(knowledgeDocRoute(docId, { line: hit?.line ?? '' }));
+  void router.push(
+    knowledgeDocRoute(docId, {
+      line: hit?.line ?? '',
+      evidence_kind: hit?.evidence_kind,
+      collection_id: hit?.collection_id,
+    }),
+  );
 }
 
 // --- Bridge computeds: derive legacy fields from Step prop ---
@@ -95,9 +97,7 @@ const label = computed(() =>
   isFinal.value ? t('chat.agentBlock.finalReply') : t('chat.agentBlock.intermediateReply'),
 );
 
-const parts = computed(() =>
-  citeParts(renderChatMarkdownParts(messageId.value, content.value, streaming.value)),
-);
+const parts = computed(() => citeParts(renderChatMarkdownParts(messageId.value, content.value, streaming.value)));
 </script>
 
 <style lang="sass" scoped>

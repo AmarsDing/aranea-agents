@@ -201,9 +201,22 @@ func (s *KnowledgeService) ServeWriteBackPendingApply(w http.ResponseWriter, r *
 	}
 	var body writeBackPendingApplyBody
 	if r.Body != nil {
-		raw, _ := io.ReadAll(io.LimitReader(r.Body, 1<<20))
+		raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 1<<20))
+		if err != nil {
+			writeKnowledgeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+			return
+		}
 		if len(strings.TrimSpace(string(raw))) > 0 {
-			_ = json.Unmarshal(raw, &body)
+			decoder := json.NewDecoder(strings.NewReader(string(raw)))
+			decoder.DisallowUnknownFields()
+			if err := decoder.Decode(&body); err != nil {
+				writeKnowledgeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid fact selection"})
+				return
+			}
+			if err := decoder.Decode(&struct{}{}); err != io.EOF {
+				writeKnowledgeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+				return
+			}
 		}
 	}
 	res, err := s.uc.ApplyPendingWriteBack(r.Context(), collectionID, body.FactIDs)
@@ -290,6 +303,10 @@ func (s *KnowledgeService) ServeDocumentVisibility(w http.ResponseWriter, r *htt
 		return
 	}
 	if r.Method == http.MethodGet {
+		if err := s.assertDocumentReadable(ctx, doc); err != nil {
+			writeKnowledgeJSONError(w, err)
+			return
+		}
 		writeKnowledgeJSON(w, http.StatusOK, map[string]any{
 			"id":            doc.ID,
 			"visibility":    doc.Visibility,

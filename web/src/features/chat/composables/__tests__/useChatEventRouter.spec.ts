@@ -1,10 +1,10 @@
 // web/src/features/chat/composables/__tests__/useChatEventRouter.spec.ts
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { setActivePinia, createPinia } from 'pinia';
 import { useChatActivityStore } from '../../../../stores/chat/activityV2Store';
 import { useChatEventRouter } from '../useChatEventRouter';
 import { clearAllStepLiveText } from '../../stepLiveTextCache';
-import type { Task, Step } from '../../v2Types';
+import type { Task, Step, TeamRun } from '../../v2Types';
 
 function mkTask(over: Partial<Task> = {}): Task {
   return {
@@ -44,6 +44,25 @@ function mkStep(over: Partial<Step> = {}): Step {
     IsFinal: false,
     StartedAt: '',
     CompletedAt: null,
+    ...over,
+  };
+}
+
+function mkTeamRun(over: Partial<TeamRun> = {}): TeamRun {
+  return {
+    ID: 'run-1',
+    TeamStageID: 'ts1',
+    TaskID: 't1',
+    SessionID: 's1',
+    SpiritSessionID: 's1',
+    DagNodeID: '',
+    DependsOn: [],
+    Status: 'running',
+    StartedAt: '',
+    CompletedAt: null,
+    Seq: 1,
+    Version: 1,
+    Error: '',
     ...over,
   };
 }
@@ -136,5 +155,80 @@ describe('useChatEventRouter', () => {
       payload: { Task: mkTask({ ID: 't-live' }) },
     });
     expect(store.hydratedTaskIds.has('t-live')).toBe(true);
+  });
+
+  // D4-5：team_run.cancelled 与三者共用 store.upsertTeamRun（状态平面以实体 Status 为准）。
+  it('handles team_run.cancelled via the shared team_run terminal upsert', () => {
+    store.upsertTeamRun(mkTeamRun({ ID: 'run-1', Version: 1, Status: 'running' }));
+    router.dispatch({
+      type: 'v2_event',
+      kind: 'team_run.cancelled',
+      payload: { TeamRun: mkTeamRun({ ID: 'run-1', Version: 2, Status: 'cancelled' }) },
+    });
+    expect(store.teamRuns.get('run-1')?.Status).toBe('cancelled');
+  });
+
+  // D4-5：同 ID 重复投递幂等（Version 守卫拒写，实体引用不变）。
+  it('team_run.cancelled re-dispatch with the same id is idempotent', () => {
+    router.dispatch({
+      type: 'v2_event',
+      kind: 'team_run.cancelled',
+      payload: { TeamRun: mkTeamRun({ ID: 'run-1', Version: 2, Status: 'cancelled' }) },
+    });
+    const first = store.teamRuns.get('run-1');
+    router.dispatch({
+      type: 'v2_event',
+      kind: 'team_run.cancelled',
+      payload: { TeamRun: mkTeamRun({ ID: 'run-1', Version: 2, Status: 'cancelled' }) },
+    });
+    expect(store.teamRuns.get('run-1')).toBe(first);
+  });
+
+  describe('unknown / non-v2 frame throttled warn (D9-22)', () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('warns once for an unknown v2 event kind and throttles repeats within 60s', () => {
+      const spy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      router.dispatch({ type: 'v2_event', kind: 'mystery.alpha' as never, payload: {} as never });
+      router.dispatch({ type: 'v2_event', kind: 'mystery.alpha' as never, payload: {} as never });
+      expect(spy).toHaveBeenCalledTimes(1);
+      expect(spy.mock.calls[0]?.[0]).toBe('[chat] unknown v2 event kind');
+      expect(spy.mock.calls[0]?.[1]).toBe('mystery.alpha');
+      spy.mockRestore();
+    });
+
+    it('warns again after the 60s throttle window', () => {
+      const spy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      router.dispatch({ type: 'v2_event', kind: 'mystery.beta' as never, payload: {} as never });
+      expect(spy).toHaveBeenCalledTimes(1);
+      vi.advanceTimersByTime(60_001);
+      router.dispatch({ type: 'v2_event', kind: 'mystery.beta' as never, payload: {} as never });
+      expect(spy).toHaveBeenCalledTimes(2);
+      spy.mockRestore();
+    });
+
+    it('known kinds never trigger warn', () => {
+      const spy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      router.dispatch({ type: 'v2_event', kind: 'task.created', payload: { Task: mkTask() } });
+      router.dispatch({ type: 'v2_event', kind: 'team_run.cancelled', payload: { TeamRun: mkTeamRun() } });
+      expect(spy).not.toHaveBeenCalled();
+      spy.mockRestore();
+    });
+
+    it('warns once for non-v2_event frames and does not touch the store', () => {
+      const spy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      router.dispatch({ type: 'legacy_event', kind: 'team_run.cancelled', payload: { TeamRun: mkTeamRun() } } as never);
+      router.dispatch({ type: 'legacy_event', kind: 'team_run.cancelled', payload: { TeamRun: mkTeamRun() } } as never);
+      expect(spy).toHaveBeenCalledTimes(1);
+      expect(spy.mock.calls[0]?.[0]).toBe('[chat] ws frame dropped: non-v2_event');
+      expect(store.teamRuns.size).toBe(0);
+      spy.mockRestore();
+    });
   });
 });

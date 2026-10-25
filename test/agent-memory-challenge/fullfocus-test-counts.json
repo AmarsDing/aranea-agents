@@ -1,0 +1,26 @@
+[
+  {
+    "file": "fullfocus-contract-results.jsonl",
+    "passed": 21,
+    "failed": 0,
+    "skipped": 0
+  },
+  {
+    "file": "fullfocus-domain-results.jsonl",
+    "passed": 26,
+    "failed": 0,
+    "skipped": 0
+  },
+  {
+    "file": "fullfocus-store-results.jsonl",
+    "passed": 73,
+    "failed": 0,
+    "skipped": 0
+  },
+  {
+    "file": "fullfocus-race-results.jsonl",
+    "passed": 9,
+    "failed": 0,
+    "skipped": 0
+  }
+]

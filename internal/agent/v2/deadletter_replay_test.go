@@ -307,6 +307,51 @@ func TestDescribePersist_StreamingNotPersisted(t *testing.T) {
 	}
 }
 
+// TestDescribePersist_TeamRunCancelled pins 87-D4-3: team_run.cancelled routes
+// to EntityKindTeamRun/upsert — without the case the cancelled event would be
+// judged nil by describePersist and silently skipped by the persist path.
+// decodePersistEntity round-trip equivalence follows the
+// TestDecodePersistEntity_RoundTrip pattern.
+func TestDescribePersist_TeamRunCancelled(t *testing.T) {
+	t.Parallel()
+	tr := biz.TeamRun{
+		ID:              "x-tr",
+		TeamStageID:     "x-ts",
+		TaskID:          "x-task",
+		SessionID:       "x-sessteam",
+		SpiritSessionID: "s",
+		Status:          biz.TeamRunV2StatusCancelled,
+		Version:         2,
+	}
+	d := describePersist(biz.NewTeamRunCancelledEvent(tr))
+	if d == nil {
+		t.Fatal("describePersist(team_run.cancelled) = nil, want a persist descriptor")
+	}
+	if d.entityKind != EntityKindTeamRun {
+		t.Fatalf("entityKind = %q, want %q", d.entityKind, EntityKindTeamRun)
+	}
+	if d.op != PersistOpUpsert {
+		t.Fatalf("op = %q, want %q", d.op, PersistOpUpsert)
+	}
+	payload, err := json.Marshal(d.entity)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	entity, err := decodePersistEntity(d.entityKind, payload)
+	if err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	rs := &fakeRepoSet{}
+	if err := applyPersist(context.Background(), rs, d.entityKind, d.op, entity); err != nil {
+		t.Fatalf("applyPersist: %v", err)
+	}
+	rs.mu.Lock()
+	defer rs.mu.Unlock()
+	if len(rs.runs) != 1 || rs.runs[0].ID != "x-tr" || rs.runs[0].Status != biz.TeamRunV2StatusCancelled {
+		t.Fatalf("repo runs = %+v, want one cancelled x-tr row", rs.runs)
+	}
+}
+
 // TestDecodePersistEntity_RoundTrip covers every entity kind: describe →
 // marshal → decode → apply lands in the right repo bucket.
 func TestDecodePersistEntity_RoundTrip(t *testing.T) {

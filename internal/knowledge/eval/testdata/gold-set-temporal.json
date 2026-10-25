@@ -1,0 +1,54 @@
+{
+  "name": "gold-temporal-1hop",
+  "cases": [
+    {
+      "id": "current-zero-span",
+      "query": "从时态中枢顺出",
+      "expected_chunk_ids": ["hub-c0", "persist-c0", "future-c0"],
+      "expected_doc_ids": ["hub", "persist", "future"],
+      "notes": "零 span = 当前快照：B(closed) 已闭合剔除，C(future) 已生效"
+    },
+    {
+      "id": "asof-t1-includes-closed",
+      "query": "从时态中枢顺出",
+      "expected_chunk_ids": ["hub-c0", "persist-c0", "closed-c0"],
+      "expected_doc_ids": ["hub", "persist", "closed"],
+      "valid_at": "2026-01-15T00:00:00Z",
+      "notes": "T 轴仅设：T1 处 B 仍有效、C 未生效——后闭边必召回"
+    },
+    {
+      "id": "asof-t2-excludes-closed",
+      "query": "从时态中枢顺出",
+      "expected_chunk_ids": ["hub-c0", "persist-c0", "future-c0"],
+      "expected_doc_ids": ["hub", "persist", "future"],
+      "valid_at": "2026-02-01T00:00:00Z",
+      "notes": "T 轴仅设：T2 恰为 B 的 valid_to（排他剔除）且 C 的 valid_from（含端点生效）"
+    },
+    {
+      "id": "asof-r0-before-C-recorded",
+      "query": "从时态中枢顺出",
+      "expected_chunk_ids": ["hub-c0", "persist-c0", "closed-c0"],
+      "expected_doc_ids": ["hub", "persist", "closed"],
+      "recorded_at": "2026-01-10T00:00:00Z",
+      "notes": "R 轴仅设：R0 处 C 尚未被记录；B 的闭合记录也未到达（valid_to=T2>R0）视作存续"
+    },
+    {
+      "id": "dual-t1-r0",
+      "query": "从时态中枢顺出",
+      "expected_chunk_ids": ["hub-c0", "persist-c0", "closed-c0"],
+      "expected_doc_ids": ["hub", "persist", "closed"],
+      "valid_at": "2026-01-15T00:00:00Z",
+      "recorded_at": "2026-01-10T00:00:00Z",
+      "notes": "双轴：B 经 @>T1 分支存续；C 记录时刻未达剔除"
+    },
+    {
+      "id": "dual-t2-rmid",
+      "query": "从时态中枢顺出",
+      "expected_chunk_ids": ["hub-c0", "persist-c0", "future-c0"],
+      "expected_doc_ids": ["hub", "persist", "future"],
+      "valid_at": "2026-02-01T00:00:00Z",
+      "recorded_at": "2026-03-01T00:00:00Z",
+      "notes": "双轴：C 经 @>T2 分支生效；B 双分支（@>T2 ∨ vf<=T2∧vt>Rmid）均不成立剔除"
+    }
+  ]
+}

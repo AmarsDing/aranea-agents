@@ -37,9 +37,16 @@ export const USAGE_EVENT_TABLE_COLUMNS = [
   registryCol<ModelTokenUsageEvent>('session_id', 'Session', 'session_id', 'left', REGISTRY_COL_W.session),
   registryCol<ModelTokenUsageEvent>('total_tokens', 'Tokens', 'total_tokens', 'right', REGISTRY_COL_W.status),
   // 缓存命中（读）与推理 tokens：undefined=旧行未记录，显示 —（P0-2 归一化后新行恒有值）
-  registryCol<ModelTokenUsageEvent>('cached_input_tokens', '缓存命中', 'cached_input_tokens', 'right', REGISTRY_COL_W.status, {
-    format: (val: unknown) => (val == null ? '—' : String(val)),
-  }),
+  registryCol<ModelTokenUsageEvent>(
+    'cached_input_tokens',
+    '缓存命中',
+    'cached_input_tokens',
+    'right',
+    REGISTRY_COL_W.status,
+    {
+      format: (val: unknown) => (val == null ? '—' : String(val)),
+    },
+  ),
   registryCol<ModelTokenUsageEvent>('reasoning_tokens', '推理', 'reasoning_tokens', 'right', REGISTRY_COL_W.status, {
     format: (val: unknown) => (val == null ? '—' : String(val)),
   }),

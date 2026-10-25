@@ -46,13 +46,21 @@ func (r *dagRun) dispatchStep(ctx context.Context, step *biz.PlanStep) {
 		}
 	}
 	now := time.Now()
-	// 1. Transition step to Running.
+	// 1. 预标记断言（发现#15，87-orchestration-chain-hardening Wave-2）：
+	// Pending→Running 的唯一转移点是 admitReadySteps 的 r.mu 临界区，
+	// Failed→Running 的唯一转移点是 maybeRetryStep 的 r.mu 临界区；本函数
+	// 只消费预标记（断言方，不是转移方）。凡不是被调度临界区预标记为
+	// Running 的条目一律打 Error 日志后 return——严禁调 failStep：旧实现
+	// 在此 Transition，并发完成两个最后依赖时第二次 dispatch 的
+	// Transition 失败会被升级成 PlanStepFailed 误杀链。
 	r.mu.Lock()
-	if err := step.Transition(biz.PlanStepStatusRunning); err != nil {
+	if step.Status != biz.PlanStepStatusRunning {
+		status := step.Status
 		r.mu.Unlock()
-		r.pe.lg.Error("transition to running failed",
-			loggateway.Str("step_id", step.ID), loggateway.Err(err))
-		r.failStep(ctx, step, "transition: "+err.Error())
+		r.pe.lg.Error("dispatchStep 拒绝未预标记的步骤（非 Running，跳过本次 dispatch）",
+			loggateway.Str("plan_board_id", r.board.ID),
+			loggateway.Str("step_id", step.ID),
+			loggateway.Str("status", string(status)))
 		return
 	}
 	step.StartedAt = now
@@ -199,7 +207,10 @@ func (r *dagRun) handleCompletion(ctx context.Context, step *biz.PlanStep, ev bi
 		})
 		// 2026-07-04 补齐：GraphNode → Completed
 		r.updateGraphNode(ctx, step.ID, biz.GraphNodeStatusCompleted, "")
-		r.checkDownstream(ctx, step.ID)
+		// 发现#15/#7：终态转移后全局重扫准入（替代 checkDownstream 局部
+		// 扫描）——锁内预标记吞掉并发完成的重复就绪判定，配额槽位释放后
+		// 延滞步骤在此被准入。
+		r.admitReadySteps(ctx)
 		return
 	}
 	r.mu.Unlock()
@@ -246,18 +257,31 @@ func (r *dagRun) failStepWith(ctx context.Context, step *biz.PlanStep, code, msg
 	// P2-3（2026-09-03 L4 失败分类器规则版）：retryable 的 team 失败先分类，
 	// 非瞬时故障（能力缺失/语义错误）跳过重试直接 cascade——重试不会改变
 	// 结果，只会推迟对账信号并浪费一轮退避+整体团队重跑。
+	// D1-F3（87-orchestration-chain-hardening）：cancel 类单列——用户取消的
+	// 团队自动重跑违背用户意图，不消耗 attempts 预算、不触发退避重跑，
+	// 直接走末尾 cascadeSkip（下游标 skipped 可被 ResumePlanBoard 复活）。
 	if retryable {
-		if class := biz.ClassifyStepFailure(msg); class != biz.StepFailureTransient {
+		switch class := biz.ClassifyStepFailure(msg); {
+		case class == biz.StepFailureCancel:
+			r.pe.lg.Info("step 失败分类为用户取消，不重试不重跑",
+				loggateway.Str("plan_board_id", r.board.ID),
+				loggateway.Str("step_id", step.ID),
+				loggateway.Str("failure_class", string(class)),
+				loggateway.Str("error", msg))
+		case class != biz.StepFailureTransient:
 			r.pe.lg.Info("step 失败分类为非瞬时故障，跳过自动重试",
 				loggateway.Str("plan_board_id", r.board.ID),
 				loggateway.Str("step_id", step.ID),
 				loggateway.Str("failure_class", string(class)),
 				loggateway.Str("error", msg))
-		} else if r.maybeRetryStep(ctx, step) {
+		case r.maybeRetryStep(ctx, step):
 			return
 		}
 	}
 	r.cascadeSkip(ctx, step.ID)
+	// 发现#7：失败终态释放的配额槽位可准入其他就绪 pending；cascade 子树
+	// 内部已被全量 skipped，不会产生子树内准入。
+	r.admitReadySteps(ctx)
 }
 
 // planStepMaxRetries 是 step 级自动重试次数上限（F2）：首次失败后重试 1 次
@@ -273,6 +297,13 @@ const planStepRetryBackoff = 5 * time.Second
 // maybeRetryStep 在重试预算内自动重新 dispatch 失败 step（Failed→Running，
 // 状态机允许）。返回 true 表示已重排队——此时不 cascadeSkip，board 保持
 // executing，下游等待重试结果；返回 false 表示预算耗尽或已取消。
+//
+// 发现#15（87-orchestration-chain-hardening Wave-2）：重试路径的 Running
+// 预标记同样发生在本函数的 r.mu 临界区内（Failed→Running 是
+// planStepTransitions 既有合法边，与 admitReadySteps 的 Pending→Running
+// 互补）。预标记后 backoff 期间 step 处于内存 Running：cancel 由
+// sweepNonTerminalSteps 的 Running→Skipped 合法边兜底；崩溃后 DB 仍为
+// Failed，resume/retry 恢复语义不变（预标记纯内存）。
 func (r *dagRun) maybeRetryStep(ctx context.Context, step *biz.PlanStep) bool {
 	r.mu.Lock()
 	if r.canceled {
@@ -283,6 +314,16 @@ func (r *dagRun) maybeRetryStep(ctx context.Context, step *biz.PlanStep) bool {
 	attempt := r.attempts[step.ID]
 	if attempt > planStepMaxRetries {
 		r.mu.Unlock()
+		return false
+	}
+	// 锁内预标记 Failed→Running（发现#15）。转移失败仅打日志、不 wg.Add
+	// （防御：不再触发 fail 链）——返回 false 让下游照常 cascade 收敛。
+	if err := step.Transition(biz.PlanStepStatusRunning); err != nil {
+		r.mu.Unlock()
+		r.pe.lg.Error("maybeRetryStep: Failed→Running 预标记失败，放弃自动重试",
+			loggateway.Str("plan_board_id", r.board.ID),
+			loggateway.Str("step_id", step.ID),
+			loggateway.Err(err))
 		return false
 	}
 	// wg.Add 必须在旧 dispatch goroutine 的 Done 之前（本函数运行在旧

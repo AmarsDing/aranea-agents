@@ -28,6 +28,12 @@ func NewKnowledgeEmbedder(c *conf.Data, sys biz.SystemSettingRepo, usageRef *biz
 			cfg = mergeKnowledgeEmbedConfig(cfg, stored)
 		}
 	}
+	if cfg.dim <= 0 && c != nil && c.GetPostgres() != nil {
+		cfg.dim = int(c.GetPostgres().GetVectorDim())
+	}
+	if cfg.dim <= 0 {
+		cfg.dim = 1536
+	}
 	e := knowledge.NewMultiProviderEmbedder(cfg.provider, cfg.baseURL, cfg.apiKey, cfg.model, cfg.dim, lg)
 	e.SetUsageRecorder(NewEmbedUsageRecorder(usageRef, lg))
 	return e
@@ -48,12 +54,7 @@ func loadKnowledgeEmbedFromEnv(c *conf.Data) knowledgeEmbedConfig {
 	model := strings.TrimSpace(os.Getenv("KRATOS_KNOWLEDGE_EMBED_MODEL"))
 	dim := envInt("KRATOS_KNOWLEDGE_EMBED_DIM", 0)
 
-	if c != nil && c.GetPostgres() != nil && dim <= 0 {
-		dim = int(c.GetPostgres().GetVectorDim())
-	}
-	if dim <= 0 {
-		dim = 1536
-	}
+	// 保留未设置状态，待 DB 设置合并后才应用 conf/default。
 	return knowledgeEmbedConfig{provider: provider, baseURL: baseURL, apiKey: apiKey, model: model, dim: dim}
 }
 

@@ -439,6 +439,36 @@ func TestRRFMergeN_ThreeListScoreBreakdown(t *testing.T) {
 	}
 }
 
+func TestRRFMergeN_TieBreakDeterministic(t *testing.T) {
+	// 对抗审查钉（fusion-retrieval/high）：三腿并列同 rank 的同分组（各 1/61）
+	// 成员次序必须确定性——map 迭代随机序 + 稳定插入排序会让 trimChunks 截断
+	// 口随机挤出成员；同分按 ID 升序破平，重复调用次序恒定。
+	mk := func(id string) []biz.KnowledgeChunk {
+		return []biz.KnowledgeChunk{{ID: id, Score: 0.5}}
+	}
+	var prev []string
+	for round := 0; round < 20; round++ {
+		merged := rrfMergeN(60, mk("bbb"), mk("aaa"), mk("ccc"))
+		if len(merged) != 3 {
+			t.Fatalf("want 3 chunks, got %d", len(merged))
+		}
+		ids := []string{merged[0].ID, merged[1].ID, merged[2].ID}
+		for i, want := range []string{"aaa", "bbb", "ccc"} {
+			if ids[i] != want {
+				t.Fatalf("round %d: tie group order = %v, want ID 升序 [aaa bbb ccc]", round, ids)
+			}
+		}
+		if prev != nil {
+			for i := range ids {
+				if ids[i] != prev[i] {
+					t.Fatalf("round %d: same input yields different order %v vs %v（截断口抖动）", round, ids, prev)
+				}
+			}
+		}
+		prev = ids
+	}
+}
+
 // assertChunksSame 逐字段比较（Chunk 含 []float32 Embedding 不能直接 !=；
 // 钉全投影面，字面量重建纪律的保真担保）。
 func assertChunksSame(t *testing.T, i int, a, b biz.KnowledgeChunk) {

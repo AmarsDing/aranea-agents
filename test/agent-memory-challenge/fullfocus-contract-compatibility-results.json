@@ -1,0 +1,86 @@
+[
+  {
+    "check": "health",
+    "passed": true
+  },
+  {
+    "check": "authentication required",
+    "passed": true
+  },
+  {
+    "check": "synchronous Add echoes contract",
+    "passed": true
+  },
+  {
+    "check": "top_k respected",
+    "passed": true
+  },
+  {
+    "check": "current state and immediate recall",
+    "passed": true
+  },
+  {
+    "check": "contact minimization",
+    "passed": true
+  },
+  {
+    "check": "top_k respected",
+    "passed": true
+  },
+  {
+    "check": "historical validity",
+    "passed": true
+  },
+  {
+    "check": "top_k respected",
+    "passed": true
+  },
+  {
+    "check": "short examples preserved",
+    "passed": true
+  },
+  {
+    "check": "top_k respected",
+    "passed": true
+  },
+  {
+    "check": "choice hints return stored evidence only",
+    "passed": true
+  },
+  {
+    "check": "top_k respected",
+    "passed": true
+  },
+  {
+    "check": "UTF-8 Chinese evidence",
+    "passed": true
+  },
+  {
+    "check": "top_k respected",
+    "passed": true
+  },
+  {
+    "check": "generic profile retains relevant user evidence",
+    "passed": true
+  },
+  {
+    "check": "top_k respected",
+    "passed": true
+  },
+  {
+    "check": "date-only view retains event evidence",
+    "passed": true
+  },
+  {
+    "check": "user isolation",
+    "passed": true
+  },
+  {
+    "check": "top_k respected",
+    "passed": true
+  },
+  {
+    "check": "HTTP replay preserves newest state",
+    "passed": true
+  }
+]

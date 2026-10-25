@@ -129,7 +129,7 @@
               <span class="text-caption ellipsis">{{ member.displayName }}</span>
               <AgentStatusLabel :label="spiritMemberStatusToLabel(member.status)" />
               <div
-                v-if="member.status === 'idle' && team.status === 'running'"
+                v-if="(member.status === 'pending' || member.status === 'idle') && team.status === 'running'"
                 class="team-progress-card__detail-waiting"
               >
                 {{ t('spirit.waitingForPredecessor') }}

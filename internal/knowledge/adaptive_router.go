@@ -135,10 +135,13 @@ func (a *AdaptiveRouter) Search(ctx context.Context, q biz.KnowledgeSearchQuery,
 	if a.expander != nil {
 		chunks = a.expander.Expand(ctx, q, chunks)
 	}
-	if a.accessLog != nil && len(chunks) > 0 {
+	// G-05-asof（ADR-KN-20261020-J）：时态窗口非零 = 审计/回放语义——不写得
+	// 热度日志、不吃 base-level 运营加成、不触发 Hebbian 共激活；本次「回到
+	// T/R」的检索不得成为当下兴趣证据（历史快照强化当下边=让时光机污染现在时）。
+	if a.accessLog != nil && len(chunks) > 0 && !q.Temporal.Any() {
 		chunks = a.applyBaseLevelBoost(ctx, q, chunks, time.Since(start))
 	}
-	if a.coact != nil && len(chunks) > 1 {
+	if a.coact != nil && len(chunks) > 1 && !q.Temporal.Any() {
 		a.triggerHebbian(ctx, q, chunks)
 	}
 	// G-06：父块语境回填为 Search 尾步——不参与排序/重排/共激活（父块正文

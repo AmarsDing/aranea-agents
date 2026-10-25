@@ -1,0 +1,384 @@
+{"Time":"2026-10-22T22:48:23.6724098+08:00","Action":"start","Package":"aranea-agents/internal/data"}
+{"Time":"2026-10-22T22:48:24.2430773+08:00","Action":"run","Package":"aranea-agents/internal/data","Test":"TestEvalStore_ForgetRemovesCurrentHistoryAndTranscript"}
+{"Time":"2026-10-22T22:48:24.2430773+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_ForgetRemovesCurrentHistoryAndTranscript","Output":"=== RUN   TestEvalStore_ForgetRemovesCurrentHistoryAndTranscript\n"}
+{"Time":"2026-10-22T22:48:26.0062916+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_ForgetRemovesCurrentHistoryAndTranscript","Output":"--- PASS: TestEvalStore_ForgetRemovesCurrentHistoryAndTranscript (1.76s)\n"}
+{"Time":"2026-10-22T22:48:26.0062916+08:00","Action":"pass","Package":"aranea-agents/internal/data","Test":"TestEvalStore_ForgetRemovesCurrentHistoryAndTranscript","Elapsed":1.76}
+{"Time":"2026-10-22T22:48:26.0062916+08:00","Action":"run","Package":"aranea-agents/internal/data","Test":"TestEvalStore_ForgetAllIsUserScoped"}
+{"Time":"2026-10-22T22:48:26.0062916+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_ForgetAllIsUserScoped","Output":"=== RUN   TestEvalStore_ForgetAllIsUserScoped\n"}
+{"Time":"2026-10-22T22:48:27.7498388+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_ForgetAllIsUserScoped","Output":"--- PASS: TestEvalStore_ForgetAllIsUserScoped (1.74s)\n"}
+{"Time":"2026-10-22T22:48:27.7498388+08:00","Action":"pass","Package":"aranea-agents/internal/data","Test":"TestEvalStore_ForgetAllIsUserScoped","Elapsed":1.74}
+{"Time":"2026-10-22T22:48:27.7498388+08:00","Action":"run","Package":"aranea-agents/internal/data","Test":"TestEvalStore_PersistentSuppressionAndExplicitResume"}
+{"Time":"2026-10-22T22:48:27.7498388+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_PersistentSuppressionAndExplicitResume","Output":"=== RUN   TestEvalStore_PersistentSuppressionAndExplicitResume\n"}
+{"Time":"2026-10-22T22:48:29.2483833+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_PersistentSuppressionAndExplicitResume","Output":"--- PASS: TestEvalStore_PersistentSuppressionAndExplicitResume (1.46s)\n"}
+{"Time":"2026-10-22T22:48:29.2483833+08:00","Action":"pass","Package":"aranea-agents/internal/data","Test":"TestEvalStore_PersistentSuppressionAndExplicitResume","Elapsed":1.46}
+{"Time":"2026-10-22T22:48:29.2483833+08:00","Action":"run","Package":"aranea-agents/internal/data","Test":"TestEvalStore_QuotedAndNonUserForgetAreData"}
+{"Time":"2026-10-22T22:48:29.2483833+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_QuotedAndNonUserForgetAreData","Output":"=== RUN   TestEvalStore_QuotedAndNonUserForgetAreData\n"}
+{"Time":"2026-10-22T22:48:42.4313808+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_QuotedAndNonUserForgetAreData","Output":"--- PASS: TestEvalStore_QuotedAndNonUserForgetAreData (13.22s)\n"}
+{"Time":"2026-10-22T22:48:42.4313808+08:00","Action":"pass","Package":"aranea-agents/internal/data","Test":"TestEvalStore_QuotedAndNonUserForgetAreData","Elapsed":13.22}
+{"Time":"2026-10-22T22:48:42.4313808+08:00","Action":"run","Package":"aranea-agents/internal/data","Test":"TestEvalStore_ForgetCannotBeUndoneByReplay"}
+{"Time":"2026-10-22T22:48:42.4313808+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_ForgetCannotBeUndoneByReplay","Output":"=== RUN   TestEvalStore_ForgetCannotBeUndoneByReplay\n"}
+{"Time":"2026-10-22T22:48:44.1338667+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_ForgetCannotBeUndoneByReplay","Output":"--- PASS: TestEvalStore_ForgetCannotBeUndoneByReplay (1.70s)\n"}
+{"Time":"2026-10-22T22:48:44.1338667+08:00","Action":"pass","Package":"aranea-agents/internal/data","Test":"TestEvalStore_ForgetCannotBeUndoneByReplay","Elapsed":1.7}
+{"Time":"2026-10-22T22:48:44.1338667+08:00","Action":"run","Package":"aranea-agents/internal/data","Test":"TestEvalStore_LateForgetDoesNotEraseLaterFacts"}
+{"Time":"2026-10-22T22:48:44.1338667+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_LateForgetDoesNotEraseLaterFacts","Output":"=== RUN   TestEvalStore_LateForgetDoesNotEraseLaterFacts\n"}
+{"Time":"2026-10-22T22:48:45.8090846+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_LateForgetDoesNotEraseLaterFacts","Output":"--- PASS: TestEvalStore_LateForgetDoesNotEraseLaterFacts (1.68s)\n"}
+{"Time":"2026-10-22T22:48:45.8090846+08:00","Action":"pass","Package":"aranea-agents/internal/data","Test":"TestEvalStore_LateForgetDoesNotEraseLaterFacts","Elapsed":1.68}
+{"Time":"2026-10-22T22:48:45.8090846+08:00","Action":"run","Package":"aranea-agents/internal/data","Test":"TestEvalStore_DeletionRollsBackWithBatchFailure"}
+{"Time":"2026-10-22T22:48:45.8090846+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_DeletionRollsBackWithBatchFailure","Output":"=== RUN   TestEvalStore_DeletionRollsBackWithBatchFailure\n"}
+{"Time":"2026-10-22T22:48:47.7587652+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_DeletionRollsBackWithBatchFailure","Output":"--- PASS: TestEvalStore_DeletionRollsBackWithBatchFailure (1.95s)\n"}
+{"Time":"2026-10-22T22:48:47.7587652+08:00","Action":"pass","Package":"aranea-agents/internal/data","Test":"TestEvalStore_DeletionRollsBackWithBatchFailure","Elapsed":1.95}
+{"Time":"2026-10-22T22:48:47.7587652+08:00","Action":"run","Package":"aranea-agents/internal/data","Test":"TestEvalStore_StructuredJSONRemainsOneEvidenceUnit"}
+{"Time":"2026-10-22T22:48:47.7587652+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_StructuredJSONRemainsOneEvidenceUnit","Output":"=== RUN   TestEvalStore_StructuredJSONRemainsOneEvidenceUnit\n"}
+{"Time":"2026-10-22T22:48:49.5538106+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_StructuredJSONRemainsOneEvidenceUnit","Output":"--- PASS: TestEvalStore_StructuredJSONRemainsOneEvidenceUnit (1.80s)\n"}
+{"Time":"2026-10-22T22:48:49.5538106+08:00","Action":"pass","Package":"aranea-agents/internal/data","Test":"TestEvalStore_StructuredJSONRemainsOneEvidenceUnit","Elapsed":1.8}
+{"Time":"2026-10-22T22:48:49.5538106+08:00","Action":"run","Package":"aranea-agents/internal/data","Test":"TestEvalStore_TwoHopEvidenceCanCrossSessions"}
+{"Time":"2026-10-22T22:48:49.5538106+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_TwoHopEvidenceCanCrossSessions","Output":"=== RUN   TestEvalStore_TwoHopEvidenceCanCrossSessions\n"}
+{"Time":"2026-10-22T22:48:51.0991125+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_TwoHopEvidenceCanCrossSessions","Output":"--- PASS: TestEvalStore_TwoHopEvidenceCanCrossSessions (1.55s)\n"}
+{"Time":"2026-10-22T22:48:51.0991125+08:00","Action":"pass","Package":"aranea-agents/internal/data","Test":"TestEvalStore_TwoHopEvidenceCanCrossSessions","Elapsed":1.55}
+{"Time":"2026-10-22T22:48:51.0991125+08:00","Action":"run","Package":"aranea-agents/internal/data","Test":"TestEvalEvidence_RelationalCapKeepsParentsAndRejectsOrphans"}
+{"Time":"2026-10-22T22:48:51.0991125+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalEvidence_RelationalCapKeepsParentsAndRejectsOrphans","Output":"=== RUN   TestEvalEvidence_RelationalCapKeepsParentsAndRejectsOrphans\n"}
+{"Time":"2026-10-22T22:48:51.1001126+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalEvidence_RelationalCapKeepsParentsAndRejectsOrphans","Output":"--- PASS: TestEvalEvidence_RelationalCapKeepsParentsAndRejectsOrphans (0.00s)\n"}
+{"Time":"2026-10-22T22:48:51.1001126+08:00","Action":"pass","Package":"aranea-agents/internal/data","Test":"TestEvalEvidence_RelationalCapKeepsParentsAndRejectsOrphans","Elapsed":0}
+{"Time":"2026-10-22T22:48:51.1001126+08:00","Action":"run","Package":"aranea-agents/internal/data","Test":"TestEvalStore_PersonalFoodContextDoesNotBorrowFriendHealth"}
+{"Time":"2026-10-22T22:48:51.1001126+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_PersonalFoodContextDoesNotBorrowFriendHealth","Output":"=== RUN   TestEvalStore_PersonalFoodContextDoesNotBorrowFriendHealth\n"}
+{"Time":"2026-10-22T22:48:52.6668426+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_PersonalFoodContextDoesNotBorrowFriendHealth","Output":"--- PASS: TestEvalStore_PersonalFoodContextDoesNotBorrowFriendHealth (1.57s)\n"}
+{"Time":"2026-10-22T22:48:52.6668426+08:00","Action":"pass","Package":"aranea-agents/internal/data","Test":"TestEvalStore_PersonalFoodContextDoesNotBorrowFriendHealth","Elapsed":1.57}
+{"Time":"2026-10-22T22:48:52.6668426+08:00","Action":"run","Package":"aranea-agents/internal/data","Test":"TestEvalStore_ProjectFormatUpdatesStayInScope"}
+{"Time":"2026-10-22T22:48:52.6668426+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_ProjectFormatUpdatesStayInScope","Output":"=== RUN   TestEvalStore_ProjectFormatUpdatesStayInScope\n"}
+{"Time":"2026-10-22T22:48:54.2596066+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_ProjectFormatUpdatesStayInScope","Output":"--- PASS: TestEvalStore_ProjectFormatUpdatesStayInScope (1.59s)\n"}
+{"Time":"2026-10-22T22:48:54.2596066+08:00","Action":"pass","Package":"aranea-agents/internal/data","Test":"TestEvalStore_ProjectFormatUpdatesStayInScope","Elapsed":1.59}
+{"Time":"2026-10-22T22:48:54.2596066+08:00","Action":"run","Package":"aranea-agents/internal/data","Test":"TestEvalStore_StateIntervalsUseLocalQueryDay"}
+{"Time":"2026-10-22T22:48:54.2596066+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_StateIntervalsUseLocalQueryDay","Output":"=== RUN   TestEvalStore_StateIntervalsUseLocalQueryDay\n"}
+{"Time":"2026-10-22T22:48:54.2596066+08:00","Action":"run","Package":"aranea-agents/internal/data","Test":"TestEvalStore_StateIntervalsUseLocalQueryDay/00:00:00"}
+{"Time":"2026-10-22T22:48:54.2596066+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_StateIntervalsUseLocalQueryDay/00:00:00","Output":"=== RUN   TestEvalStore_StateIntervalsUseLocalQueryDay/00:00:00\n"}
+{"Time":"2026-10-22T22:48:55.9571766+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_StateIntervalsUseLocalQueryDay/00:00:00","Output":"--- PASS: TestEvalStore_StateIntervalsUseLocalQueryDay/00:00:00 (1.70s)\n"}
+{"Time":"2026-10-22T22:48:55.9571766+08:00","Action":"pass","Package":"aranea-agents/internal/data","Test":"TestEvalStore_StateIntervalsUseLocalQueryDay/00:00:00","Elapsed":1.7}
+{"Time":"2026-10-22T22:48:55.9571766+08:00","Action":"run","Package":"aranea-agents/internal/data","Test":"TestEvalStore_StateIntervalsUseLocalQueryDay/00:30:00"}
+{"Time":"2026-10-22T22:48:55.9571766+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_StateIntervalsUseLocalQueryDay/00:30:00","Output":"=== RUN   TestEvalStore_StateIntervalsUseLocalQueryDay/00:30:00\n"}
+{"Time":"2026-10-22T22:48:57.3856869+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_StateIntervalsUseLocalQueryDay/00:30:00","Output":"--- PASS: TestEvalStore_StateIntervalsUseLocalQueryDay/00:30:00 (1.43s)\n"}
+{"Time":"2026-10-22T22:48:57.3856869+08:00","Action":"pass","Package":"aranea-agents/internal/data","Test":"TestEvalStore_StateIntervalsUseLocalQueryDay/00:30:00","Elapsed":1.43}
+{"Time":"2026-10-22T22:48:57.3856869+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_StateIntervalsUseLocalQueryDay","Output":"--- PASS: TestEvalStore_StateIntervalsUseLocalQueryDay (3.13s)\n"}
+{"Time":"2026-10-22T22:48:57.3856869+08:00","Action":"pass","Package":"aranea-agents/internal/data","Test":"TestEvalStore_StateIntervalsUseLocalQueryDay","Elapsed":3.13}
+{"Time":"2026-10-22T22:48:57.3856869+08:00","Action":"run","Package":"aranea-agents/internal/data","Test":"TestEvalStore_SameDayTrajectoryKeepsOriginalOrder"}
+{"Time":"2026-10-22T22:48:57.3856869+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_SameDayTrajectoryKeepsOriginalOrder","Output":"=== RUN   TestEvalStore_SameDayTrajectoryKeepsOriginalOrder\n"}
+{"Time":"2026-10-22T22:48:58.842757+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_SameDayTrajectoryKeepsOriginalOrder","Output":"--- PASS: TestEvalStore_SameDayTrajectoryKeepsOriginalOrder (1.46s)\n"}
+{"Time":"2026-10-22T22:48:58.842757+08:00","Action":"pass","Package":"aranea-agents/internal/data","Test":"TestEvalStore_SameDayTrajectoryKeepsOriginalOrder","Elapsed":1.46}
+{"Time":"2026-10-22T22:48:58.842757+08:00","Action":"run","Package":"aranea-agents/internal/data","Test":"TestEvalStore_RelationsDoNotReviveDeletedBridgesOrInventSeeds"}
+{"Time":"2026-10-22T22:48:58.842757+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_RelationsDoNotReviveDeletedBridgesOrInventSeeds","Output":"=== RUN   TestEvalStore_RelationsDoNotReviveDeletedBridgesOrInventSeeds\n"}
+{"Time":"2026-10-22T22:49:00.3200206+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_RelationsDoNotReviveDeletedBridgesOrInventSeeds","Output":"--- PASS: TestEvalStore_RelationsDoNotReviveDeletedBridgesOrInventSeeds (1.48s)\n"}
+{"Time":"2026-10-22T22:49:00.32102+08:00","Action":"pass","Package":"aranea-agents/internal/data","Test":"TestEvalStore_RelationsDoNotReviveDeletedBridgesOrInventSeeds","Elapsed":1.48}
+{"Time":"2026-10-22T22:49:00.32102+08:00","Action":"run","Package":"aranea-agents/internal/data","Test":"TestEvalEvidence_SummaryCoversDifferentTypesInDenseSource"}
+{"Time":"2026-10-22T22:49:00.32102+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalEvidence_SummaryCoversDifferentTypesInDenseSource","Output":"=== RUN   TestEvalEvidence_SummaryCoversDifferentTypesInDenseSource\n"}
+{"Time":"2026-10-22T22:49:00.32102+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalEvidence_SummaryCoversDifferentTypesInDenseSource","Output":"--- PASS: TestEvalEvidence_SummaryCoversDifferentTypesInDenseSource (0.00s)\n"}
+{"Time":"2026-10-22T22:49:00.32102+08:00","Action":"pass","Package":"aranea-agents/internal/data","Test":"TestEvalEvidence_SummaryCoversDifferentTypesInDenseSource","Elapsed":0}
+{"Time":"2026-10-22T22:49:00.32102+08:00","Action":"run","Package":"aranea-agents/internal/data","Test":"TestFilterEvalStateRangeUsesExclusiveUpperBoundary"}
+{"Time":"2026-10-22T22:49:00.32102+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestFilterEvalStateRangeUsesExclusiveUpperBoundary","Output":"=== RUN   TestFilterEvalStateRangeUsesExclusiveUpperBoundary\n"}
+{"Time":"2026-10-22T22:49:00.32102+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestFilterEvalStateRangeUsesExclusiveUpperBoundary","Output":"--- PASS: TestFilterEvalStateRangeUsesExclusiveUpperBoundary (0.00s)\n"}
+{"Time":"2026-10-22T22:49:00.32102+08:00","Action":"pass","Package":"aranea-agents/internal/data","Test":"TestFilterEvalStateRangeUsesExclusiveUpperBoundary","Elapsed":0}
+{"Time":"2026-10-22T22:49:00.32102+08:00","Action":"run","Package":"aranea-agents/internal/data","Test":"TestEvalStore_ConcurrentLifecycleAtConfiguredLimits"}
+{"Time":"2026-10-22T22:49:00.32102+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_ConcurrentLifecycleAtConfiguredLimits","Output":"=== RUN   TestEvalStore_ConcurrentLifecycleAtConfiguredLimits\n"}
+{"Time":"2026-10-22T22:49:01.9242066+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_ConcurrentLifecycleAtConfiguredLimits","Output":"--- PASS: TestEvalStore_ConcurrentLifecycleAtConfiguredLimits (1.60s)\n"}
+{"Time":"2026-10-22T22:49:01.9247259+08:00","Action":"pass","Package":"aranea-agents/internal/data","Test":"TestEvalStore_ConcurrentLifecycleAtConfiguredLimits","Elapsed":1.6}
+{"Time":"2026-10-22T22:49:01.9247377+08:00","Action":"run","Package":"aranea-agents/internal/data","Test":"TestEvalStore_LateIntermediateStateRepairsHistory"}
+{"Time":"2026-10-22T22:49:01.9247377+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_LateIntermediateStateRepairsHistory","Output":"=== RUN   TestEvalStore_LateIntermediateStateRepairsHistory\n"}
+{"Time":"2026-10-22T22:49:03.3387194+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_LateIntermediateStateRepairsHistory","Output":"--- PASS: TestEvalStore_LateIntermediateStateRepairsHistory (1.41s)\n"}
+{"Time":"2026-10-22T22:49:03.3387194+08:00","Action":"pass","Package":"aranea-agents/internal/data","Test":"TestEvalStore_LateIntermediateStateRepairsHistory","Elapsed":1.41}
+{"Time":"2026-10-22T22:49:03.3387194+08:00","Action":"run","Package":"aranea-agents/internal/data","Test":"TestEvalStore_GovernanceFindsEarlyAttribute"}
+{"Time":"2026-10-22T22:49:03.3387194+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_GovernanceFindsEarlyAttribute","Output":"=== RUN   TestEvalStore_GovernanceFindsEarlyAttribute\n"}
+{"Time":"2026-10-22T22:49:04.6436957+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_GovernanceFindsEarlyAttribute","Output":"--- PASS: TestEvalStore_GovernanceFindsEarlyAttribute (1.31s)\n"}
+{"Time":"2026-10-22T22:49:04.6436957+08:00","Action":"pass","Package":"aranea-agents/internal/data","Test":"TestEvalStore_GovernanceFindsEarlyAttribute","Elapsed":1.31}
+{"Time":"2026-10-22T22:49:04.6436957+08:00","Action":"run","Package":"aranea-agents/internal/data","Test":"TestEvalStore_PastResidenceCannotReplacePresent"}
+{"Time":"2026-10-22T22:49:04.6436957+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_PastResidenceCannotReplacePresent","Output":"=== RUN   TestEvalStore_PastResidenceCannotReplacePresent\n"}
+{"Time":"2026-10-22T22:49:05.8985941+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_PastResidenceCannotReplacePresent","Output":"--- PASS: TestEvalStore_PastResidenceCannotReplacePresent (1.26s)\n"}
+{"Time":"2026-10-22T22:49:05.8985941+08:00","Action":"pass","Package":"aranea-agents/internal/data","Test":"TestEvalStore_PastResidenceCannotReplacePresent","Elapsed":1.26}
+{"Time":"2026-10-22T22:49:05.8985941+08:00","Action":"run","Package":"aranea-agents/internal/data","Test":"TestEvalStore_DateHeadingDatesFollowingAtoms"}
+{"Time":"2026-10-22T22:49:05.8985941+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_DateHeadingDatesFollowingAtoms","Output":"=== RUN   TestEvalStore_DateHeadingDatesFollowingAtoms\n"}
+{"Time":"2026-10-22T22:49:07.284334+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_DateHeadingDatesFollowingAtoms","Output":"--- PASS: TestEvalStore_DateHeadingDatesFollowingAtoms (1.38s)\n"}
+{"Time":"2026-10-22T22:49:07.2848628+08:00","Action":"pass","Package":"aranea-agents/internal/data","Test":"TestEvalStore_DateHeadingDatesFollowingAtoms","Elapsed":1.38}
+{"Time":"2026-10-22T22:49:07.2848628+08:00","Action":"run","Package":"aranea-agents/internal/data","Test":"TestEvalStore_DateFilteringPrecedesCandidateCap"}
+{"Time":"2026-10-22T22:49:07.2848628+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_DateFilteringPrecedesCandidateCap","Output":"=== RUN   TestEvalStore_DateFilteringPrecedesCandidateCap\n"}
+{"Time":"2026-10-22T22:49:10.0789145+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_DateFilteringPrecedesCandidateCap","Output":"--- PASS: TestEvalStore_DateFilteringPrecedesCandidateCap (2.79s)\n"}
+{"Time":"2026-10-22T22:49:10.0789145+08:00","Action":"pass","Package":"aranea-agents/internal/data","Test":"TestEvalStore_DateFilteringPrecedesCandidateCap","Elapsed":2.79}
+{"Time":"2026-10-22T22:49:10.0789145+08:00","Action":"run","Package":"aranea-agents/internal/data","Test":"TestEvalStore_RuleMessageSurvivesSmallTopK"}
+{"Time":"2026-10-22T22:49:10.0789145+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_RuleMessageSurvivesSmallTopK","Output":"=== RUN   TestEvalStore_RuleMessageSurvivesSmallTopK\n"}
+{"Time":"2026-10-22T22:49:11.6007831+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_RuleMessageSurvivesSmallTopK","Output":"--- PASS: TestEvalStore_RuleMessageSurvivesSmallTopK (1.52s)\n"}
+{"Time":"2026-10-22T22:49:11.6007831+08:00","Action":"pass","Package":"aranea-agents/internal/data","Test":"TestEvalStore_RuleMessageSurvivesSmallTopK","Elapsed":1.52}
+{"Time":"2026-10-22T22:49:11.6007831+08:00","Action":"run","Package":"aranea-agents/internal/data","Test":"TestEvalStore_GlobalSummaryCoversSessions"}
+{"Time":"2026-10-22T22:49:11.6007831+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_GlobalSummaryCoversSessions","Output":"=== RUN   TestEvalStore_GlobalSummaryCoversSessions\n"}
+{"Time":"2026-10-22T22:49:13.0278488+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_GlobalSummaryCoversSessions","Output":"--- PASS: TestEvalStore_GlobalSummaryCoversSessions (1.43s)\n"}
+{"Time":"2026-10-22T22:49:13.0278488+08:00","Action":"pass","Package":"aranea-agents/internal/data","Test":"TestEvalStore_GlobalSummaryCoversSessions","Elapsed":1.43}
+{"Time":"2026-10-22T22:49:13.0278488+08:00","Action":"run","Package":"aranea-agents/internal/data","Test":"TestEvalEvidenceExcerpt_PrefersSpecificTail"}
+{"Time":"2026-10-22T22:49:13.0278488+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalEvidenceExcerpt_PrefersSpecificTail","Output":"=== RUN   TestEvalEvidenceExcerpt_PrefersSpecificTail\n"}
+{"Time":"2026-10-22T22:49:13.0283936+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalEvidenceExcerpt_PrefersSpecificTail","Output":"--- PASS: TestEvalEvidenceExcerpt_PrefersSpecificTail (0.00s)\n"}
+{"Time":"2026-10-22T22:49:13.0283936+08:00","Action":"pass","Package":"aranea-agents/internal/data","Test":"TestEvalEvidenceExcerpt_PrefersSpecificTail","Elapsed":0}
+{"Time":"2026-10-22T22:49:13.0283936+08:00","Action":"run","Package":"aranea-agents/internal/data","Test":"TestEvalStore_FunctionTransferRetrievesStoredDemonstrations"}
+{"Time":"2026-10-22T22:49:13.0283936+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_FunctionTransferRetrievesStoredDemonstrations","Output":"=== RUN   TestEvalStore_FunctionTransferRetrievesStoredDemonstrations\n"}
+{"Time":"2026-10-22T22:49:14.3423957+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_FunctionTransferRetrievesStoredDemonstrations","Output":"--- PASS: TestEvalStore_FunctionTransferRetrievesStoredDemonstrations (1.31s)\n"}
+{"Time":"2026-10-22T22:49:14.3423957+08:00","Action":"pass","Package":"aranea-agents/internal/data","Test":"TestEvalStore_FunctionTransferRetrievesStoredDemonstrations","Elapsed":1.31}
+{"Time":"2026-10-22T22:49:14.3423957+08:00","Action":"run","Package":"aranea-agents/internal/data","Test":"TestEvalStore_LocalCalendarAnchorAcrossMidnight"}
+{"Time":"2026-10-22T22:49:14.3423957+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_LocalCalendarAnchorAcrossMidnight","Output":"=== RUN   TestEvalStore_LocalCalendarAnchorAcrossMidnight\n"}
+{"Time":"2026-10-22T22:49:15.8291406+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_LocalCalendarAnchorAcrossMidnight","Output":"--- PASS: TestEvalStore_LocalCalendarAnchorAcrossMidnight (1.49s)\n"}
+{"Time":"2026-10-22T22:49:15.8291406+08:00","Action":"pass","Package":"aranea-agents/internal/data","Test":"TestEvalStore_LocalCalendarAnchorAcrossMidnight","Elapsed":1.49}
+{"Time":"2026-10-22T22:49:15.8291406+08:00","Action":"run","Package":"aranea-agents/internal/data","Test":"TestEvalStore_CalendarOnlyPeriodQueries"}
+{"Time":"2026-10-22T22:49:15.8291406+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_CalendarOnlyPeriodQueries","Output":"=== RUN   TestEvalStore_CalendarOnlyPeriodQueries\n"}
+{"Time":"2026-10-22T22:49:17.2221092+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_CalendarOnlyPeriodQueries","Output":"--- PASS: TestEvalStore_CalendarOnlyPeriodQueries (1.39s)\n"}
+{"Time":"2026-10-22T22:49:17.2226396+08:00","Action":"pass","Package":"aranea-agents/internal/data","Test":"TestEvalStore_CalendarOnlyPeriodQueries","Elapsed":1.39}
+{"Time":"2026-10-22T22:49:17.2226396+08:00","Action":"run","Package":"aranea-agents/internal/data","Test":"TestEvalStore_SingleValueAttributesUpdateIndependently"}
+{"Time":"2026-10-22T22:49:17.2226396+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_SingleValueAttributesUpdateIndependently","Output":"=== RUN   TestEvalStore_SingleValueAttributesUpdateIndependently\n"}
+{"Time":"2026-10-22T22:49:18.6473826+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_SingleValueAttributesUpdateIndependently","Output":"--- PASS: TestEvalStore_SingleValueAttributesUpdateIndependently (1.42s)\n"}
+{"Time":"2026-10-22T22:49:18.6473826+08:00","Action":"pass","Package":"aranea-agents/internal/data","Test":"TestEvalStore_SingleValueAttributesUpdateIndependently","Elapsed":1.42}
+{"Time":"2026-10-22T22:49:18.6473826+08:00","Action":"run","Package":"aranea-agents/internal/data","Test":"TestEvalStore_ExtendedDiaryRetainsReplayedHeading"}
+{"Time":"2026-10-22T22:49:18.6473826+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_ExtendedDiaryRetainsReplayedHeading","Output":"=== RUN   TestEvalStore_ExtendedDiaryRetainsReplayedHeading\n"}
+{"Time":"2026-10-22T22:49:19.9757818+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_ExtendedDiaryRetainsReplayedHeading","Output":"--- PASS: TestEvalStore_ExtendedDiaryRetainsReplayedHeading (1.33s)\n"}
+{"Time":"2026-10-22T22:49:19.9757818+08:00","Action":"pass","Package":"aranea-agents/internal/data","Test":"TestEvalStore_ExtendedDiaryRetainsReplayedHeading","Elapsed":1.33}
+{"Time":"2026-10-22T22:49:19.9757818+08:00","Action":"run","Package":"aranea-agents/internal/data","Test":"TestEvalStore_SameMessageIDKeepsDifferentSourceTimes"}
+{"Time":"2026-10-22T22:49:19.9757818+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_SameMessageIDKeepsDifferentSourceTimes","Output":"=== RUN   TestEvalStore_SameMessageIDKeepsDifferentSourceTimes\n"}
+{"Time":"2026-10-22T22:49:21.2808251+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_SameMessageIDKeepsDifferentSourceTimes","Output":"--- PASS: TestEvalStore_SameMessageIDKeepsDifferentSourceTimes (1.30s)\n"}
+{"Time":"2026-10-22T22:49:21.2808251+08:00","Action":"pass","Package":"aranea-agents/internal/data","Test":"TestEvalStore_SameMessageIDKeepsDifferentSourceTimes","Elapsed":1.3}
+{"Time":"2026-10-22T22:49:21.2808251+08:00","Action":"run","Package":"aranea-agents/internal/data","Test":"TestMaskEvalEvidence_CityAndCredentialAssignments"}
+{"Time":"2026-10-22T22:49:21.2808251+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestMaskEvalEvidence_CityAndCredentialAssignments","Output":"=== RUN   TestMaskEvalEvidence_CityAndCredentialAssignments\n"}
+{"Time":"2026-10-22T22:49:21.2813531+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestMaskEvalEvidence_CityAndCredentialAssignments","Output":"--- PASS: TestMaskEvalEvidence_CityAndCredentialAssignments (0.00s)\n"}
+{"Time":"2026-10-22T22:49:21.2813531+08:00","Action":"pass","Package":"aranea-agents/internal/data","Test":"TestMaskEvalEvidence_CityAndCredentialAssignments","Elapsed":0}
+{"Time":"2026-10-22T22:49:21.2813531+08:00","Action":"run","Package":"aranea-agents/internal/data","Test":"TestEvalEvidenceDate_UnknownSourceDoesNotBecomeIngestionDay"}
+{"Time":"2026-10-22T22:49:21.2813531+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalEvidenceDate_UnknownSourceDoesNotBecomeIngestionDay","Output":"=== RUN   TestEvalEvidenceDate_UnknownSourceDoesNotBecomeIngestionDay\n"}
+{"Time":"2026-10-22T22:49:21.2813531+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalEvidenceDate_UnknownSourceDoesNotBecomeIngestionDay","Output":"--- PASS: TestEvalEvidenceDate_UnknownSourceDoesNotBecomeIngestionDay (0.00s)\n"}
+{"Time":"2026-10-22T22:49:21.2813531+08:00","Action":"pass","Package":"aranea-agents/internal/data","Test":"TestEvalEvidenceDate_UnknownSourceDoesNotBecomeIngestionDay","Elapsed":0}
+{"Time":"2026-10-22T22:49:21.2813531+08:00","Action":"run","Package":"aranea-agents/internal/data","Test":"TestEvalStore_OptionsRetrieveEvidenceWithoutInventingChoices"}
+{"Time":"2026-10-22T22:49:21.2813531+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_OptionsRetrieveEvidenceWithoutInventingChoices","Output":"=== RUN   TestEvalStore_OptionsRetrieveEvidenceWithoutInventingChoices\n"}
+{"Time":"2026-10-22T22:49:22.6384895+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_OptionsRetrieveEvidenceWithoutInventingChoices","Output":"--- PASS: TestEvalStore_OptionsRetrieveEvidenceWithoutInventingChoices (1.36s)\n"}
+{"Time":"2026-10-22T22:49:22.6384895+08:00","Action":"pass","Package":"aranea-agents/internal/data","Test":"TestEvalStore_OptionsRetrieveEvidenceWithoutInventingChoices","Elapsed":1.36}
+{"Time":"2026-10-22T22:49:22.6384895+08:00","Action":"run","Package":"aranea-agents/internal/data","Test":"TestEvalStore_NoImportanceOnlyEvidence"}
+{"Time":"2026-10-22T22:49:22.6384895+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_NoImportanceOnlyEvidence","Output":"=== RUN   TestEvalStore_NoImportanceOnlyEvidence\n"}
+{"Time":"2026-10-22T22:49:23.9665752+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_NoImportanceOnlyEvidence","Output":"--- PASS: TestEvalStore_NoImportanceOnlyEvidence (1.33s)\n"}
+{"Time":"2026-10-22T22:49:23.9665752+08:00","Action":"pass","Package":"aranea-agents/internal/data","Test":"TestEvalStore_NoImportanceOnlyEvidence","Elapsed":1.33}
+{"Time":"2026-10-22T22:49:23.9665752+08:00","Action":"run","Package":"aranea-agents/internal/data","Test":"TestEvalStore_SourceAnchoredCalendarAndMultiDateEvidence"}
+{"Time":"2026-10-22T22:49:23.9665752+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_SourceAnchoredCalendarAndMultiDateEvidence","Output":"=== RUN   TestEvalStore_SourceAnchoredCalendarAndMultiDateEvidence\n"}
+{"Time":"2026-10-22T22:49:25.2516448+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_SourceAnchoredCalendarAndMultiDateEvidence","Output":"--- PASS: TestEvalStore_SourceAnchoredCalendarAndMultiDateEvidence (1.28s)\n"}
+{"Time":"2026-10-22T22:49:25.2516448+08:00","Action":"pass","Package":"aranea-agents/internal/data","Test":"TestEvalStore_SourceAnchoredCalendarAndMultiDateEvidence","Elapsed":1.28}
+{"Time":"2026-10-22T22:49:25.2516448+08:00","Action":"run","Package":"aranea-agents/internal/data","Test":"TestEvalStore_HistoricalValuesAndReplayWithoutTimestamp"}
+{"Time":"2026-10-22T22:49:25.2516448+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_HistoricalValuesAndReplayWithoutTimestamp","Output":"=== RUN   TestEvalStore_HistoricalValuesAndReplayWithoutTimestamp\n"}
+{"Time":"2026-10-22T22:49:26.6493458+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_HistoricalValuesAndReplayWithoutTimestamp","Output":"--- PASS: TestEvalStore_HistoricalValuesAndReplayWithoutTimestamp (1.40s)\n"}
+{"Time":"2026-10-22T22:49:26.6493458+08:00","Action":"pass","Package":"aranea-agents/internal/data","Test":"TestEvalStore_HistoricalValuesAndReplayWithoutTimestamp","Elapsed":1.4}
+{"Time":"2026-10-22T22:49:26.6493458+08:00","Action":"run","Package":"aranea-agents/internal/data","Test":"TestEvalStore_SameSessionIDStillIsolatesL2"}
+{"Time":"2026-10-22T22:49:26.6493458+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_SameSessionIDStillIsolatesL2","Output":"=== RUN   TestEvalStore_SameSessionIDStillIsolatesL2\n"}
+{"Time":"2026-10-22T22:49:27.9946537+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_SameSessionIDStillIsolatesL2","Output":"--- PASS: TestEvalStore_SameSessionIDStillIsolatesL2 (1.35s)\n"}
+{"Time":"2026-10-22T22:49:27.9946537+08:00","Action":"pass","Package":"aranea-agents/internal/data","Test":"TestEvalStore_SameSessionIDStillIsolatesL2","Elapsed":1.35}
+{"Time":"2026-10-22T22:49:27.9946537+08:00","Action":"run","Package":"aranea-agents/internal/data","Test":"TestEvalStore_VectorSimilarityDoesNotInvalidateOtherAttribute"}
+{"Time":"2026-10-22T22:49:27.9946537+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_VectorSimilarityDoesNotInvalidateOtherAttribute","Output":"=== RUN   TestEvalStore_VectorSimilarityDoesNotInvalidateOtherAttribute\n"}
+{"Time":"2026-10-22T22:49:29.3975555+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_VectorSimilarityDoesNotInvalidateOtherAttribute","Output":"--- PASS: TestEvalStore_VectorSimilarityDoesNotInvalidateOtherAttribute (1.40s)\n"}
+{"Time":"2026-10-22T22:49:29.3975555+08:00","Action":"pass","Package":"aranea-agents/internal/data","Test":"TestEvalStore_VectorSimilarityDoesNotInvalidateOtherAttribute","Elapsed":1.4}
+{"Time":"2026-10-22T22:49:29.3975555+08:00","Action":"run","Package":"aranea-agents/internal/data","Test":"TestEvalStore_AddRollbackPreservesPreviousState"}
+{"Time":"2026-10-22T22:49:29.3975555+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_AddRollbackPreservesPreviousState","Output":"=== RUN   TestEvalStore_AddRollbackPreservesPreviousState\n"}
+{"Time":"2026-10-22T22:49:30.6901197+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_AddRollbackPreservesPreviousState","Output":"--- PASS: TestEvalStore_AddRollbackPreservesPreviousState (1.29s)\n"}
+{"Time":"2026-10-22T22:49:30.6901197+08:00","Action":"pass","Package":"aranea-agents/internal/data","Test":"TestEvalStore_AddRollbackPreservesPreviousState","Elapsed":1.29}
+{"Time":"2026-10-22T22:49:30.6901197+08:00","Action":"run","Package":"aranea-agents/internal/data","Test":"TestEvalStore_RuleEvidenceKeepsShortExamples"}
+{"Time":"2026-10-22T22:49:30.6901197+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_RuleEvidenceKeepsShortExamples","Output":"=== RUN   TestEvalStore_RuleEvidenceKeepsShortExamples\n"}
+{"Time":"2026-10-22T22:49:31.9732301+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_RuleEvidenceKeepsShortExamples","Output":"--- PASS: TestEvalStore_RuleEvidenceKeepsShortExamples (1.28s)\n"}
+{"Time":"2026-10-22T22:49:31.9732301+08:00","Action":"pass","Package":"aranea-agents/internal/data","Test":"TestEvalStore_RuleEvidenceKeepsShortExamples","Elapsed":1.28}
+{"Time":"2026-10-22T22:49:31.9732301+08:00","Action":"run","Package":"aranea-agents/internal/data","Test":"TestEvalStore_AggregateCanReachEarlySession"}
+{"Time":"2026-10-22T22:49:31.9732301+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_AggregateCanReachEarlySession","Output":"=== RUN   TestEvalStore_AggregateCanReachEarlySession\n"}
+{"Time":"2026-10-22T22:49:33.3782522+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_AggregateCanReachEarlySession","Output":"--- PASS: TestEvalStore_AggregateCanReachEarlySession (1.40s)\n"}
+{"Time":"2026-10-22T22:49:33.3782522+08:00","Action":"pass","Package":"aranea-agents/internal/data","Test":"TestEvalStore_AggregateCanReachEarlySession","Elapsed":1.4}
+{"Time":"2026-10-22T22:49:33.3782522+08:00","Action":"run","Package":"aranea-agents/internal/data","Test":"TestEvalEvidenceExcerpt_RetainsRelevantTail"}
+{"Time":"2026-10-22T22:49:33.3782522+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalEvidenceExcerpt_RetainsRelevantTail","Output":"=== RUN   TestEvalEvidenceExcerpt_RetainsRelevantTail\n"}
+{"Time":"2026-10-22T22:49:33.3782522+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalEvidenceExcerpt_RetainsRelevantTail","Output":"--- PASS: TestEvalEvidenceExcerpt_RetainsRelevantTail (0.00s)\n"}
+{"Time":"2026-10-22T22:49:33.3787575+08:00","Action":"pass","Package":"aranea-agents/internal/data","Test":"TestEvalEvidenceExcerpt_RetainsRelevantTail","Elapsed":0}
+{"Time":"2026-10-22T22:49:33.3787712+08:00","Action":"run","Package":"aranea-agents/internal/data","Test":"TestMaskEvalEvidence_MinimalDisclosure"}
+{"Time":"2026-10-22T22:49:33.3787712+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestMaskEvalEvidence_MinimalDisclosure","Output":"=== RUN   TestMaskEvalEvidence_MinimalDisclosure\n"}
+{"Time":"2026-10-22T22:49:33.3792978+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestMaskEvalEvidence_MinimalDisclosure","Output":"--- PASS: TestMaskEvalEvidence_MinimalDisclosure (0.00s)\n"}
+{"Time":"2026-10-22T22:49:33.3793294+08:00","Action":"pass","Package":"aranea-agents/internal/data","Test":"TestMaskEvalEvidence_MinimalDisclosure","Elapsed":0}
+{"Time":"2026-10-22T22:49:33.3793294+08:00","Action":"run","Package":"aranea-agents/internal/data","Test":"TestEvalStore_OutOfOrderUpdatesKeepNewestState"}
+{"Time":"2026-10-22T22:49:33.3793294+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_OutOfOrderUpdatesKeepNewestState","Output":"=== RUN   TestEvalStore_OutOfOrderUpdatesKeepNewestState\n"}
+{"Time":"2026-10-22T22:49:34.6501613+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_OutOfOrderUpdatesKeepNewestState","Output":"--- PASS: TestEvalStore_OutOfOrderUpdatesKeepNewestState (1.27s)\n"}
+{"Time":"2026-10-22T22:49:34.6501613+08:00","Action":"pass","Package":"aranea-agents/internal/data","Test":"TestEvalStore_OutOfOrderUpdatesKeepNewestState","Elapsed":1.27}
+{"Time":"2026-10-22T22:49:34.6501613+08:00","Action":"run","Package":"aranea-agents/internal/data","Test":"TestEvalStore_ConcurrentUpdatesSerializePerUser"}
+{"Time":"2026-10-22T22:49:34.6501613+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_ConcurrentUpdatesSerializePerUser","Output":"=== RUN   TestEvalStore_ConcurrentUpdatesSerializePerUser\n"}
+{"Time":"2026-10-22T22:49:35.9690732+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_ConcurrentUpdatesSerializePerUser","Output":"--- PASS: TestEvalStore_ConcurrentUpdatesSerializePerUser (1.32s)\n"}
+{"Time":"2026-10-22T22:49:35.9690732+08:00","Action":"pass","Package":"aranea-agents/internal/data","Test":"TestEvalStore_ConcurrentUpdatesSerializePerUser","Elapsed":1.32}
+{"Time":"2026-10-22T22:49:35.9690732+08:00","Action":"run","Package":"aranea-agents/internal/data","Test":"TestEvalStore_AtomizesMultiSentenceChinese_PG"}
+{"Time":"2026-10-22T22:49:35.9690732+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_AtomizesMultiSentenceChinese_PG","Output":"=== RUN   TestEvalStore_AtomizesMultiSentenceChinese_PG\n"}
+{"Time":"2026-10-22T22:49:37.3219078+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_AtomizesMultiSentenceChinese_PG","Output":"--- PASS: TestEvalStore_AtomizesMultiSentenceChinese_PG (1.35s)\n"}
+{"Time":"2026-10-22T22:49:37.3224608+08:00","Action":"pass","Package":"aranea-agents/internal/data","Test":"TestEvalStore_AtomizesMultiSentenceChinese_PG","Elapsed":1.35}
+{"Time":"2026-10-22T22:49:37.3224608+08:00","Action":"run","Package":"aranea-agents/internal/data","Test":"TestEvalStore_RelativeDateSupersede_PG"}
+{"Time":"2026-10-22T22:49:37.3224608+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_RelativeDateSupersede_PG","Output":"=== RUN   TestEvalStore_RelativeDateSupersede_PG\n"}
+{"Time":"2026-10-22T22:49:38.6934268+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_RelativeDateSupersede_PG","Output":"--- PASS: TestEvalStore_RelativeDateSupersede_PG (1.37s)\n"}
+{"Time":"2026-10-22T22:49:38.6939401+08:00","Action":"pass","Package":"aranea-agents/internal/data","Test":"TestEvalStore_RelativeDateSupersede_PG","Elapsed":1.37}
+{"Time":"2026-10-22T22:49:38.6939401+08:00","Action":"run","Package":"aranea-agents/internal/data","Test":"TestEvalStore_ChronologicalOrder_PG"}
+{"Time":"2026-10-22T22:49:38.6939401+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_ChronologicalOrder_PG","Output":"=== RUN   TestEvalStore_ChronologicalOrder_PG\n"}
+{"Time":"2026-10-22T22:49:39.9768417+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_ChronologicalOrder_PG","Output":"--- PASS: TestEvalStore_ChronologicalOrder_PG (1.28s)\n"}
+{"Time":"2026-10-22T22:49:39.9768417+08:00","Action":"pass","Package":"aranea-agents/internal/data","Test":"TestEvalStore_ChronologicalOrder_PG","Elapsed":1.28}
+{"Time":"2026-10-22T22:49:39.9768417+08:00","Action":"run","Package":"aranea-agents/internal/data","Test":"TestEvalStore_DateRangeFilter_PG"}
+{"Time":"2026-10-22T22:49:39.9768417+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_DateRangeFilter_PG","Output":"=== RUN   TestEvalStore_DateRangeFilter_PG\n"}
+{"Time":"2026-10-22T22:49:41.3355935+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_DateRangeFilter_PG","Output":"--- PASS: TestEvalStore_DateRangeFilter_PG (1.36s)\n"}
+{"Time":"2026-10-22T22:49:41.3355935+08:00","Action":"pass","Package":"aranea-agents/internal/data","Test":"TestEvalStore_DateRangeFilter_PG","Elapsed":1.36}
+{"Time":"2026-10-22T22:49:41.3355935+08:00","Action":"run","Package":"aranea-agents/internal/data","Test":"TestEvalStore_AggregateAppendsEpisodes_PG"}
+{"Time":"2026-10-22T22:49:41.3355935+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_AggregateAppendsEpisodes_PG","Output":"=== RUN   TestEvalStore_AggregateAppendsEpisodes_PG\n"}
+{"Time":"2026-10-22T22:49:42.7137556+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_AggregateAppendsEpisodes_PG","Output":"--- PASS: TestEvalStore_AggregateAppendsEpisodes_PG (1.38s)\n"}
+{"Time":"2026-10-22T22:49:42.7137556+08:00","Action":"pass","Package":"aranea-agents/internal/data","Test":"TestEvalStore_AggregateAppendsEpisodes_PG","Elapsed":1.38}
+{"Time":"2026-10-22T22:49:42.7137556+08:00","Action":"run","Package":"aranea-agents/internal/data","Test":"TestEvalStore_AggregateEpisodeDedup"}
+{"Time":"2026-10-22T22:49:42.7137556+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_AggregateEpisodeDedup","Output":"=== RUN   TestEvalStore_AggregateEpisodeDedup\n"}
+{"Time":"2026-10-22T22:49:44.0267963+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_AggregateEpisodeDedup","Output":"--- PASS: TestEvalStore_AggregateEpisodeDedup (1.31s)\n"}
+{"Time":"2026-10-22T22:49:44.0267963+08:00","Action":"pass","Package":"aranea-agents/internal/data","Test":"TestEvalStore_AggregateEpisodeDedup","Elapsed":1.31}
+{"Time":"2026-10-22T22:49:44.0267963+08:00","Action":"run","Package":"aranea-agents/internal/data","Test":"TestEvalStore_ReplayDoesNotResurrectSuperseded_PG"}
+{"Time":"2026-10-22T22:49:44.0267963+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_ReplayDoesNotResurrectSuperseded_PG","Output":"=== RUN   TestEvalStore_ReplayDoesNotResurrectSuperseded_PG\n"}
+{"Time":"2026-10-22T22:49:45.3464643+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_ReplayDoesNotResurrectSuperseded_PG","Output":"--- PASS: TestEvalStore_ReplayDoesNotResurrectSuperseded_PG (1.32s)\n"}
+{"Time":"2026-10-22T22:49:45.3464643+08:00","Action":"pass","Package":"aranea-agents/internal/data","Test":"TestEvalStore_ReplayDoesNotResurrectSuperseded_PG","Elapsed":1.32}
+{"Time":"2026-10-22T22:49:45.3464643+08:00","Action":"run","Package":"aranea-agents/internal/data","Test":"TestEvalStore_SameRequestSupersedesEarlierMessage_PG"}
+{"Time":"2026-10-22T22:49:45.3464643+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_SameRequestSupersedesEarlierMessage_PG","Output":"=== RUN   TestEvalStore_SameRequestSupersedesEarlierMessage_PG\n"}
+{"Time":"2026-10-22T22:49:46.6607955+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_SameRequestSupersedesEarlierMessage_PG","Output":"--- PASS: TestEvalStore_SameRequestSupersedesEarlierMessage_PG (1.31s)\n"}
+{"Time":"2026-10-22T22:49:46.6607955+08:00","Action":"pass","Package":"aranea-agents/internal/data","Test":"TestEvalStore_SameRequestSupersedesEarlierMessage_PG","Elapsed":1.31}
+{"Time":"2026-10-22T22:49:46.6607955+08:00","Action":"run","Package":"aranea-agents/internal/data","Test":"TestEvalStore_PerAtomEventDates_PG"}
+{"Time":"2026-10-22T22:49:46.6607955+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_PerAtomEventDates_PG","Output":"=== RUN   TestEvalStore_PerAtomEventDates_PG\n"}
+{"Time":"2026-10-22T22:49:47.9706638+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_PerAtomEventDates_PG","Output":"--- PASS: TestEvalStore_PerAtomEventDates_PG (1.31s)\n"}
+{"Time":"2026-10-22T22:49:47.9706638+08:00","Action":"pass","Package":"aranea-agents/internal/data","Test":"TestEvalStore_PerAtomEventDates_PG","Elapsed":1.31}
+{"Time":"2026-10-22T22:49:47.9706638+08:00","Action":"run","Package":"aranea-agents/internal/data","Test":"TestHasEvalCorrectionCue_Tightened"}
+{"Time":"2026-10-22T22:49:47.9706638+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestHasEvalCorrectionCue_Tightened","Output":"=== RUN   TestHasEvalCorrectionCue_Tightened\n"}
+{"Time":"2026-10-22T22:49:47.9706638+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestHasEvalCorrectionCue_Tightened","Output":"=== PAUSE TestHasEvalCorrectionCue_Tightened\n"}
+{"Time":"2026-10-22T22:49:47.9706638+08:00","Action":"pause","Package":"aranea-agents/internal/data","Test":"TestHasEvalCorrectionCue_Tightened"}
+{"Time":"2026-10-22T22:49:47.9706638+08:00","Action":"run","Package":"aranea-agents/internal/data","Test":"TestEvalStore_MaskEvidence_PG"}
+{"Time":"2026-10-22T22:49:47.9706638+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_MaskEvidence_PG","Output":"=== RUN   TestEvalStore_MaskEvidence_PG\n"}
+{"Time":"2026-10-22T22:49:49.305175+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_MaskEvidence_PG","Output":"--- PASS: TestEvalStore_MaskEvidence_PG (1.33s)\n"}
+{"Time":"2026-10-22T22:49:49.305175+08:00","Action":"pass","Package":"aranea-agents/internal/data","Test":"TestEvalStore_MaskEvidence_PG","Elapsed":1.33}
+{"Time":"2026-10-22T22:49:49.305175+08:00","Action":"run","Package":"aranea-agents/internal/data","Test":"TestEvalStore_VectorCorrectionSupersedes_PG"}
+{"Time":"2026-10-22T22:49:49.305175+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_VectorCorrectionSupersedes_PG","Output":"=== RUN   TestEvalStore_VectorCorrectionSupersedes_PG\n"}
+{"Time":"2026-10-22T22:49:50.6977914+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_VectorCorrectionSupersedes_PG","Output":"--- PASS: TestEvalStore_VectorCorrectionSupersedes_PG (1.39s)\n"}
+{"Time":"2026-10-22T22:49:50.6977914+08:00","Action":"pass","Package":"aranea-agents/internal/data","Test":"TestEvalStore_VectorCorrectionSupersedes_PG","Elapsed":1.39}
+{"Time":"2026-10-22T22:49:50.6977914+08:00","Action":"run","Package":"aranea-agents/internal/data","Test":"TestMaskEvalEvidence_TableDriven"}
+{"Time":"2026-10-22T22:49:50.6977914+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestMaskEvalEvidence_TableDriven","Output":"=== RUN   TestMaskEvalEvidence_TableDriven\n"}
+{"Time":"2026-10-22T22:49:50.6977914+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestMaskEvalEvidence_TableDriven","Output":"=== PAUSE TestMaskEvalEvidence_TableDriven\n"}
+{"Time":"2026-10-22T22:49:50.6977914+08:00","Action":"pause","Package":"aranea-agents/internal/data","Test":"TestMaskEvalEvidence_TableDriven"}
+{"Time":"2026-10-22T22:49:50.6977914+08:00","Action":"run","Package":"aranea-agents/internal/data","Test":"TestEvalMetadataJSON_Shape"}
+{"Time":"2026-10-22T22:49:50.6977914+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalMetadataJSON_Shape","Output":"=== RUN   TestEvalMetadataJSON_Shape\n"}
+{"Time":"2026-10-22T22:49:50.6977914+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalMetadataJSON_Shape","Output":"=== PAUSE TestEvalMetadataJSON_Shape\n"}
+{"Time":"2026-10-22T22:49:50.6977914+08:00","Action":"pause","Package":"aranea-agents/internal/data","Test":"TestEvalMetadataJSON_Shape"}
+{"Time":"2026-10-22T22:49:50.6977914+08:00","Action":"run","Package":"aranea-agents/internal/data","Test":"TestEvalEvidenceDate_Priority"}
+{"Time":"2026-10-22T22:49:50.6977914+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalEvidenceDate_Priority","Output":"=== RUN   TestEvalEvidenceDate_Priority\n"}
+{"Time":"2026-10-22T22:49:50.698295+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalEvidenceDate_Priority","Output":"=== PAUSE TestEvalEvidenceDate_Priority\n"}
+{"Time":"2026-10-22T22:49:50.698295+08:00","Action":"pause","Package":"aranea-agents/internal/data","Test":"TestEvalEvidenceDate_Priority"}
+{"Time":"2026-10-22T22:49:50.6984016+08:00","Action":"run","Package":"aranea-agents/internal/data","Test":"TestEvalItemPrefix_Shapes"}
+{"Time":"2026-10-22T22:49:50.6984016+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalItemPrefix_Shapes","Output":"=== RUN   TestEvalItemPrefix_Shapes\n"}
+{"Time":"2026-10-22T22:49:50.6984016+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalItemPrefix_Shapes","Output":"=== PAUSE TestEvalItemPrefix_Shapes\n"}
+{"Time":"2026-10-22T22:49:50.6984016+08:00","Action":"pause","Package":"aranea-agents/internal/data","Test":"TestEvalItemPrefix_Shapes"}
+{"Time":"2026-10-22T22:49:50.6984016+08:00","Action":"run","Package":"aranea-agents/internal/data","Test":"TestHasEvalCorrectionCue_TableDriven"}
+{"Time":"2026-10-22T22:49:50.6984016+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestHasEvalCorrectionCue_TableDriven","Output":"=== RUN   TestHasEvalCorrectionCue_TableDriven\n"}
+{"Time":"2026-10-22T22:49:50.6984016+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestHasEvalCorrectionCue_TableDriven","Output":"=== PAUSE TestHasEvalCorrectionCue_TableDriven\n"}
+{"Time":"2026-10-22T22:49:50.6984016+08:00","Action":"pause","Package":"aranea-agents/internal/data","Test":"TestHasEvalCorrectionCue_TableDriven"}
+{"Time":"2026-10-22T22:49:50.6984016+08:00","Action":"run","Package":"aranea-agents/internal/data","Test":"TestEvalStore_PreservesAddressAndClassifiesPreference"}
+{"Time":"2026-10-22T22:49:50.6984016+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_PreservesAddressAndClassifiesPreference","Output":"=== RUN   TestEvalStore_PreservesAddressAndClassifiesPreference\n"}
+{"Time":"2026-10-22T22:49:52.0556984+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_PreservesAddressAndClassifiesPreference","Output":"--- PASS: TestEvalStore_PreservesAddressAndClassifiesPreference (1.36s)\n"}
+{"Time":"2026-10-22T22:49:52.0562243+08:00","Action":"pass","Package":"aranea-agents/internal/data","Test":"TestEvalStore_PreservesAddressAndClassifiesPreference","Elapsed":1.36}
+{"Time":"2026-10-22T22:49:52.0562243+08:00","Action":"run","Package":"aranea-agents/internal/data","Test":"TestEvalStore_SupersedesFavoriteColor"}
+{"Time":"2026-10-22T22:49:52.0562243+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_SupersedesFavoriteColor","Output":"=== RUN   TestEvalStore_SupersedesFavoriteColor\n"}
+{"Time":"2026-10-22T22:49:53.4059355+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_SupersedesFavoriteColor","Output":"--- PASS: TestEvalStore_SupersedesFavoriteColor (1.35s)\n"}
+{"Time":"2026-10-22T22:49:53.4059355+08:00","Action":"pass","Package":"aranea-agents/internal/data","Test":"TestEvalStore_SupersedesFavoriteColor","Elapsed":1.35}
+{"Time":"2026-10-22T22:49:53.4059355+08:00","Action":"run","Package":"aranea-agents/internal/data","Test":"TestEvalStore_SupersedesFavoriteColorChinese"}
+{"Time":"2026-10-22T22:49:53.4059355+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_SupersedesFavoriteColorChinese","Output":"=== RUN   TestEvalStore_SupersedesFavoriteColorChinese\n"}
+{"Time":"2026-10-22T22:49:54.7567931+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_SupersedesFavoriteColorChinese","Output":"--- PASS: TestEvalStore_SupersedesFavoriteColorChinese (1.35s)\n"}
+{"Time":"2026-10-22T22:49:54.7567931+08:00","Action":"pass","Package":"aranea-agents/internal/data","Test":"TestEvalStore_SupersedesFavoriteColorChinese","Elapsed":1.35}
+{"Time":"2026-10-22T22:49:54.7567931+08:00","Action":"run","Package":"aranea-agents/internal/data","Test":"TestEvalStore_SameSessionEpisodeMergesTurns"}
+{"Time":"2026-10-22T22:49:54.7567931+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_SameSessionEpisodeMergesTurns","Output":"=== RUN   TestEvalStore_SameSessionEpisodeMergesTurns\n"}
+{"Time":"2026-10-22T22:49:56.0505046+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_SameSessionEpisodeMergesTurns","Output":"--- PASS: TestEvalStore_SameSessionEpisodeMergesTurns (1.29s)\n"}
+{"Time":"2026-10-22T22:49:56.0505046+08:00","Action":"pass","Package":"aranea-agents/internal/data","Test":"TestEvalStore_SameSessionEpisodeMergesTurns","Elapsed":1.29}
+{"Time":"2026-10-22T22:49:56.0505046+08:00","Action":"run","Package":"aranea-agents/internal/data","Test":"TestEvalStore_SearchMergesL2Episode"}
+{"Time":"2026-10-22T22:49:56.0505046+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_SearchMergesL2Episode","Output":"=== RUN   TestEvalStore_SearchMergesL2Episode\n"}
+{"Time":"2026-10-22T22:49:57.3483973+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_SearchMergesL2Episode","Output":"--- PASS: TestEvalStore_SearchMergesL2Episode (1.30s)\n"}
+{"Time":"2026-10-22T22:49:57.3483973+08:00","Action":"pass","Package":"aranea-agents/internal/data","Test":"TestEvalStore_SearchMergesL2Episode","Elapsed":1.3}
+{"Time":"2026-10-22T22:49:57.3483973+08:00","Action":"run","Package":"aranea-agents/internal/data","Test":"TestEvalStore_UserIsolation"}
+{"Time":"2026-10-22T22:49:57.3483973+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_UserIsolation","Output":"=== RUN   TestEvalStore_UserIsolation\n"}
+{"Time":"2026-10-22T22:49:58.6931873+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_UserIsolation","Output":"--- PASS: TestEvalStore_UserIsolation (1.34s)\n"}
+{"Time":"2026-10-22T22:49:58.6931873+08:00","Action":"pass","Package":"aranea-agents/internal/data","Test":"TestEvalStore_UserIsolation","Elapsed":1.34}
+{"Time":"2026-10-22T22:49:58.6931873+08:00","Action":"run","Package":"aranea-agents/internal/data","Test":"TestEvalStore_EmbedIsAsync"}
+{"Time":"2026-10-22T22:49:58.6931873+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_EmbedIsAsync","Output":"=== RUN   TestEvalStore_EmbedIsAsync\n"}
+{"Time":"2026-10-22T22:49:59.9827071+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_EmbedIsAsync","Output":"--- PASS: TestEvalStore_EmbedIsAsync (1.29s)\n"}
+{"Time":"2026-10-22T22:49:59.9827071+08:00","Action":"pass","Package":"aranea-agents/internal/data","Test":"TestEvalStore_EmbedIsAsync","Elapsed":1.29}
+{"Time":"2026-10-22T22:49:59.9827071+08:00","Action":"run","Package":"aranea-agents/internal/data","Test":"TestEvalItemFromFactJSON_UsesEventTime"}
+{"Time":"2026-10-22T22:49:59.9827071+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalItemFromFactJSON_UsesEventTime","Output":"=== RUN   TestEvalItemFromFactJSON_UsesEventTime\n"}
+{"Time":"2026-10-22T22:49:59.9827071+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalItemFromFactJSON_UsesEventTime","Output":"--- PASS: TestEvalItemFromFactJSON_UsesEventTime (0.00s)\n"}
+{"Time":"2026-10-22T22:49:59.9832129+08:00","Action":"pass","Package":"aranea-agents/internal/data","Test":"TestEvalItemFromFactJSON_UsesEventTime","Elapsed":0}
+{"Time":"2026-10-22T22:49:59.9832299+08:00","Action":"run","Package":"aranea-agents/internal/data","Test":"TestEvalItemFromFactJSON_CreatedAtFallsBackToEventTime"}
+{"Time":"2026-10-22T22:49:59.9832408+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalItemFromFactJSON_CreatedAtFallsBackToEventTime","Output":"=== RUN   TestEvalItemFromFactJSON_CreatedAtFallsBackToEventTime\n"}
+{"Time":"2026-10-22T22:49:59.9832457+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalItemFromFactJSON_CreatedAtFallsBackToEventTime","Output":"--- PASS: TestEvalItemFromFactJSON_CreatedAtFallsBackToEventTime (0.00s)\n"}
+{"Time":"2026-10-22T22:49:59.9832457+08:00","Action":"pass","Package":"aranea-agents/internal/data","Test":"TestEvalItemFromFactJSON_CreatedAtFallsBackToEventTime","Elapsed":0}
+{"Time":"2026-10-22T22:49:59.990122+08:00","Action":"cont","Package":"aranea-agents/internal/data","Test":"TestHasEvalCorrectionCue_Tightened"}
+{"Time":"2026-10-22T22:49:59.990122+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestHasEvalCorrectionCue_Tightened","Output":"=== CONT  TestHasEvalCorrectionCue_Tightened\n"}
+{"Time":"2026-10-22T22:49:59.990122+08:00","Action":"cont","Package":"aranea-agents/internal/data","Test":"TestEvalEvidenceDate_Priority"}
+{"Time":"2026-10-22T22:49:59.990122+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalEvidenceDate_Priority","Output":"=== CONT  TestEvalEvidenceDate_Priority\n"}
+{"Time":"2026-10-22T22:49:59.990122+08:00","Action":"cont","Package":"aranea-agents/internal/data","Test":"TestHasEvalCorrectionCue_TableDriven"}
+{"Time":"2026-10-22T22:49:59.990122+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestHasEvalCorrectionCue_TableDriven","Output":"=== CONT  TestHasEvalCorrectionCue_TableDriven\n"}
+{"Time":"2026-10-22T22:49:59.990122+08:00","Action":"cont","Package":"aranea-agents/internal/data","Test":"TestEvalItemPrefix_Shapes"}
+{"Time":"2026-10-22T22:49:59.990122+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalItemPrefix_Shapes","Output":"=== CONT  TestEvalItemPrefix_Shapes\n"}
+{"Time":"2026-10-22T22:49:59.990122+08:00","Action":"cont","Package":"aranea-agents/internal/data","Test":"TestMaskEvalEvidence_TableDriven"}
+{"Time":"2026-10-22T22:49:59.990122+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestMaskEvalEvidence_TableDriven","Output":"=== CONT  TestMaskEvalEvidence_TableDriven\n"}
+{"Time":"2026-10-22T22:49:59.990122+08:00","Action":"cont","Package":"aranea-agents/internal/data","Test":"TestEvalMetadataJSON_Shape"}
+{"Time":"2026-10-22T22:49:59.990122+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalMetadataJSON_Shape","Output":"=== CONT  TestEvalMetadataJSON_Shape\n"}
+{"Time":"2026-10-22T22:49:59.9906366+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestHasEvalCorrectionCue_Tightened","Output":"--- PASS: TestHasEvalCorrectionCue_Tightened (0.00s)\n"}
+{"Time":"2026-10-22T22:49:59.9906366+08:00","Action":"pass","Package":"aranea-agents/internal/data","Test":"TestHasEvalCorrectionCue_Tightened","Elapsed":0}
+{"Time":"2026-10-22T22:49:59.9906366+08:00","Action":"run","Package":"aranea-agents/internal/data","Test":"TestMaskEvalEvidence_TableDriven/neutral_query_masks_all_categories"}
+{"Time":"2026-10-22T22:49:59.9906366+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestMaskEvalEvidence_TableDriven/neutral_query_masks_all_categories","Output":"=== RUN   TestMaskEvalEvidence_TableDriven/neutral_query_masks_all_categories\n"}
+{"Time":"2026-10-22T22:49:59.9906366+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestHasEvalCorrectionCue_TableDriven","Output":"--- PASS: TestHasEvalCorrectionCue_TableDriven (0.00s)\n"}
+{"Time":"2026-10-22T22:49:59.9906366+08:00","Action":"pass","Package":"aranea-agents/internal/data","Test":"TestHasEvalCorrectionCue_TableDriven","Elapsed":0}
+{"Time":"2026-10-22T22:49:59.9906366+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalItemPrefix_Shapes","Output":"--- PASS: TestEvalItemPrefix_Shapes (0.00s)\n"}
+{"Time":"2026-10-22T22:49:59.9906366+08:00","Action":"pass","Package":"aranea-agents/internal/data","Test":"TestEvalItemPrefix_Shapes","Elapsed":0}
+{"Time":"2026-10-22T22:49:59.9906366+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestMaskEvalEvidence_TableDriven/neutral_query_masks_all_categories","Output":"=== PAUSE TestMaskEvalEvidence_TableDriven/neutral_query_masks_all_categories\n"}
+{"Time":"2026-10-22T22:49:59.9906366+08:00","Action":"pause","Package":"aranea-agents/internal/data","Test":"TestMaskEvalEvidence_TableDriven/neutral_query_masks_all_categories"}
+{"Time":"2026-10-22T22:49:59.9906366+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalMetadataJSON_Shape","Output":"--- PASS: TestEvalMetadataJSON_Shape (0.00s)\n"}
+{"Time":"2026-10-22T22:49:59.9906366+08:00","Action":"pass","Package":"aranea-agents/internal/data","Test":"TestEvalMetadataJSON_Shape","Elapsed":0}
+{"Time":"2026-10-22T22:49:59.9906366+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalEvidenceDate_Priority","Output":"--- PASS: TestEvalEvidenceDate_Priority (0.00s)\n"}
+{"Time":"2026-10-22T22:49:59.9906366+08:00","Action":"pass","Package":"aranea-agents/internal/data","Test":"TestEvalEvidenceDate_Priority","Elapsed":0}
+{"Time":"2026-10-22T22:49:59.9906366+08:00","Action":"run","Package":"aranea-agents/internal/data","Test":"TestMaskEvalEvidence_TableDriven/asking_phone_unmasks_phone_only"}
+{"Time":"2026-10-22T22:49:59.9906366+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestMaskEvalEvidence_TableDriven/asking_phone_unmasks_phone_only","Output":"=== RUN   TestMaskEvalEvidence_TableDriven/asking_phone_unmasks_phone_only\n"}
+{"Time":"2026-10-22T22:49:59.9906366+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestMaskEvalEvidence_TableDriven/asking_phone_unmasks_phone_only","Output":"=== PAUSE TestMaskEvalEvidence_TableDriven/asking_phone_unmasks_phone_only\n"}
+{"Time":"2026-10-22T22:49:59.9906366+08:00","Action":"pause","Package":"aranea-agents/internal/data","Test":"TestMaskEvalEvidence_TableDriven/asking_phone_unmasks_phone_only"}
+{"Time":"2026-10-22T22:49:59.9906366+08:00","Action":"run","Package":"aranea-agents/internal/data","Test":"TestMaskEvalEvidence_TableDriven/asking_id_card_unmasks_id_only"}
+{"Time":"2026-10-22T22:49:59.9906366+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestMaskEvalEvidence_TableDriven/asking_id_card_unmasks_id_only","Output":"=== RUN   TestMaskEvalEvidence_TableDriven/asking_id_card_unmasks_id_only\n"}
+{"Time":"2026-10-22T22:49:59.9906366+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestMaskEvalEvidence_TableDriven/asking_id_card_unmasks_id_only","Output":"=== PAUSE TestMaskEvalEvidence_TableDriven/asking_id_card_unmasks_id_only\n"}
+{"Time":"2026-10-22T22:49:59.9906366+08:00","Action":"pause","Package":"aranea-agents/internal/data","Test":"TestMaskEvalEvidence_TableDriven/asking_id_card_unmasks_id_only"}
+{"Time":"2026-10-22T22:49:59.9906366+08:00","Action":"run","Package":"aranea-agents/internal/data","Test":"TestMaskEvalEvidence_TableDriven/asking_card_unmasks_card_only"}
+{"Time":"2026-10-22T22:49:59.9906366+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestMaskEvalEvidence_TableDriven/asking_card_unmasks_card_only","Output":"=== RUN   TestMaskEvalEvidence_TableDriven/asking_card_unmasks_card_only\n"}
+{"Time":"2026-10-22T22:49:59.9906366+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestMaskEvalEvidence_TableDriven/asking_card_unmasks_card_only","Output":"=== PAUSE TestMaskEvalEvidence_TableDriven/asking_card_unmasks_card_only\n"}
+{"Time":"2026-10-22T22:49:59.9906366+08:00","Action":"pause","Package":"aranea-agents/internal/data","Test":"TestMaskEvalEvidence_TableDriven/asking_card_unmasks_card_only"}
+{"Time":"2026-10-22T22:49:59.9906366+08:00","Action":"run","Package":"aranea-agents/internal/data","Test":"TestMaskEvalEvidence_TableDriven/13_digit_card_keeps_4+6stars+3"}
+{"Time":"2026-10-22T22:49:59.9906366+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestMaskEvalEvidence_TableDriven/13_digit_card_keeps_4+6stars+3","Output":"=== RUN   TestMaskEvalEvidence_TableDriven/13_digit_card_keeps_4+6stars+3\n"}
+{"Time":"2026-10-22T22:49:59.9906366+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestMaskEvalEvidence_TableDriven/13_digit_card_keeps_4+6stars+3","Output":"=== PAUSE TestMaskEvalEvidence_TableDriven/13_digit_card_keeps_4+6stars+3\n"}
+{"Time":"2026-10-22T22:49:59.9906366+08:00","Action":"pause","Package":"aranea-agents/internal/data","Test":"TestMaskEvalEvidence_TableDriven/13_digit_card_keeps_4+6stars+3"}
+{"Time":"2026-10-22T22:49:59.9906366+08:00","Action":"run","Package":"aranea-agents/internal/data","Test":"TestMaskEvalEvidence_TableDriven/unrequested_contact_fields_masked_and_preference_preserved"}
+{"Time":"2026-10-22T22:49:59.9906366+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestMaskEvalEvidence_TableDriven/unrequested_contact_fields_masked_and_preference_preserved","Output":"=== RUN   TestMaskEvalEvidence_TableDriven/unrequested_contact_fields_masked_and_preference_preserved\n"}
+{"Time":"2026-10-22T22:49:59.9906366+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestMaskEvalEvidence_TableDriven/unrequested_contact_fields_masked_and_preference_preserved","Output":"=== PAUSE TestMaskEvalEvidence_TableDriven/unrequested_contact_fields_masked_and_preference_preserved\n"}
+{"Time":"2026-10-22T22:49:59.9906366+08:00","Action":"pause","Package":"aranea-agents/internal/data","Test":"TestMaskEvalEvidence_TableDriven/unrequested_contact_fields_masked_and_preference_preserved"}
+{"Time":"2026-10-22T22:49:59.9906366+08:00","Action":"run","Package":"aranea-agents/internal/data","Test":"TestMaskEvalEvidence_TableDriven/english_ask_words"}
+{"Time":"2026-10-22T22:49:59.9906366+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestMaskEvalEvidence_TableDriven/english_ask_words","Output":"=== RUN   TestMaskEvalEvidence_TableDriven/english_ask_words\n"}
+{"Time":"2026-10-22T22:49:59.9906366+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestMaskEvalEvidence_TableDriven/english_ask_words","Output":"=== PAUSE TestMaskEvalEvidence_TableDriven/english_ask_words\n"}
+{"Time":"2026-10-22T22:49:59.9906366+08:00","Action":"pause","Package":"aranea-agents/internal/data","Test":"TestMaskEvalEvidence_TableDriven/english_ask_words"}
+{"Time":"2026-10-22T22:49:59.9906366+08:00","Action":"cont","Package":"aranea-agents/internal/data","Test":"TestMaskEvalEvidence_TableDriven/neutral_query_masks_all_categories"}
+{"Time":"2026-10-22T22:49:59.9906366+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestMaskEvalEvidence_TableDriven/neutral_query_masks_all_categories","Output":"=== CONT  TestMaskEvalEvidence_TableDriven/neutral_query_masks_all_categories\n"}
+{"Time":"2026-10-22T22:49:59.9906366+08:00","Action":"cont","Package":"aranea-agents/internal/data","Test":"TestMaskEvalEvidence_TableDriven/13_digit_card_keeps_4+6stars+3"}
+{"Time":"2026-10-22T22:49:59.9906366+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestMaskEvalEvidence_TableDriven/13_digit_card_keeps_4+6stars+3","Output":"=== CONT  TestMaskEvalEvidence_TableDriven/13_digit_card_keeps_4+6stars+3\n"}
+{"Time":"2026-10-22T22:49:59.9906366+08:00","Action":"cont","Package":"aranea-agents/internal/data","Test":"TestMaskEvalEvidence_TableDriven/asking_id_card_unmasks_id_only"}
+{"Time":"2026-10-22T22:49:59.9906366+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestMaskEvalEvidence_TableDriven/asking_id_card_unmasks_id_only","Output":"=== CONT  TestMaskEvalEvidence_TableDriven/asking_id_card_unmasks_id_only\n"}
+{"Time":"2026-10-22T22:49:59.9906366+08:00","Action":"cont","Package":"aranea-agents/internal/data","Test":"TestMaskEvalEvidence_TableDriven/asking_card_unmasks_card_only"}
+{"Time":"2026-10-22T22:49:59.9906366+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestMaskEvalEvidence_TableDriven/asking_card_unmasks_card_only","Output":"=== CONT  TestMaskEvalEvidence_TableDriven/asking_card_unmasks_card_only\n"}
+{"Time":"2026-10-22T22:49:59.9906366+08:00","Action":"cont","Package":"aranea-agents/internal/data","Test":"TestMaskEvalEvidence_TableDriven/asking_phone_unmasks_phone_only"}
+{"Time":"2026-10-22T22:49:59.9906366+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestMaskEvalEvidence_TableDriven/asking_phone_unmasks_phone_only","Output":"=== CONT  TestMaskEvalEvidence_TableDriven/asking_phone_unmasks_phone_only\n"}
+{"Time":"2026-10-22T22:49:59.9906366+08:00","Action":"cont","Package":"aranea-agents/internal/data","Test":"TestMaskEvalEvidence_TableDriven/english_ask_words"}
+{"Time":"2026-10-22T22:49:59.9906366+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestMaskEvalEvidence_TableDriven/english_ask_words","Output":"=== CONT  TestMaskEvalEvidence_TableDriven/english_ask_words\n"}
+{"Time":"2026-10-22T22:49:59.9906366+08:00","Action":"cont","Package":"aranea-agents/internal/data","Test":"TestMaskEvalEvidence_TableDriven/unrequested_contact_fields_masked_and_preference_preserved"}
+{"Time":"2026-10-22T22:49:59.9906366+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestMaskEvalEvidence_TableDriven/unrequested_contact_fields_masked_and_preference_preserved","Output":"=== CONT  TestMaskEvalEvidence_TableDriven/unrequested_contact_fields_masked_and_preference_preserved\n"}
+{"Time":"2026-10-22T22:49:59.9906366+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestMaskEvalEvidence_TableDriven/13_digit_card_keeps_4+6stars+3","Output":"--- PASS: TestMaskEvalEvidence_TableDriven/13_digit_card_keeps_4+6stars+3 (0.00s)\n"}
+{"Time":"2026-10-22T22:49:59.9906366+08:00","Action":"pass","Package":"aranea-agents/internal/data","Test":"TestMaskEvalEvidence_TableDriven/13_digit_card_keeps_4+6stars+3","Elapsed":0}
+{"Time":"2026-10-22T22:49:59.9906366+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestMaskEvalEvidence_TableDriven/unrequested_contact_fields_masked_and_preference_preserved","Output":"--- PASS: TestMaskEvalEvidence_TableDriven/unrequested_contact_fields_masked_and_preference_preserved (0.00s)\n"}
+{"Time":"2026-10-22T22:49:59.9906366+08:00","Action":"pass","Package":"aranea-agents/internal/data","Test":"TestMaskEvalEvidence_TableDriven/unrequested_contact_fields_masked_and_preference_preserved","Elapsed":0}
+{"Time":"2026-10-22T22:49:59.9906366+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestMaskEvalEvidence_TableDriven/asking_card_unmasks_card_only","Output":"--- PASS: TestMaskEvalEvidence_TableDriven/asking_card_unmasks_card_only (0.00s)\n"}
+{"Time":"2026-10-22T22:49:59.9911392+08:00","Action":"pass","Package":"aranea-agents/internal/data","Test":"TestMaskEvalEvidence_TableDriven/asking_card_unmasks_card_only","Elapsed":0}
+{"Time":"2026-10-22T22:49:59.9911449+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestMaskEvalEvidence_TableDriven/asking_phone_unmasks_phone_only","Output":"--- PASS: TestMaskEvalEvidence_TableDriven/asking_phone_unmasks_phone_only (0.00s)\n"}
+{"Time":"2026-10-22T22:49:59.9911497+08:00","Action":"pass","Package":"aranea-agents/internal/data","Test":"TestMaskEvalEvidence_TableDriven/asking_phone_unmasks_phone_only","Elapsed":0}
+{"Time":"2026-10-22T22:49:59.9911497+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestMaskEvalEvidence_TableDriven/english_ask_words","Output":"--- PASS: TestMaskEvalEvidence_TableDriven/english_ask_words (0.00s)\n"}
+{"Time":"2026-10-22T22:49:59.9911497+08:00","Action":"pass","Package":"aranea-agents/internal/data","Test":"TestMaskEvalEvidence_TableDriven/english_ask_words","Elapsed":0}
+{"Time":"2026-10-22T22:49:59.9911497+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestMaskEvalEvidence_TableDriven/asking_id_card_unmasks_id_only","Output":"--- PASS: TestMaskEvalEvidence_TableDriven/asking_id_card_unmasks_id_only (0.00s)\n"}
+{"Time":"2026-10-22T22:49:59.9911497+08:00","Action":"pass","Package":"aranea-agents/internal/data","Test":"TestMaskEvalEvidence_TableDriven/asking_id_card_unmasks_id_only","Elapsed":0}
+{"Time":"2026-10-22T22:49:59.9911497+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestMaskEvalEvidence_TableDriven/neutral_query_masks_all_categories","Output":"--- PASS: TestMaskEvalEvidence_TableDriven/neutral_query_masks_all_categories (0.00s)\n"}
+{"Time":"2026-10-22T22:49:59.9911497+08:00","Action":"pass","Package":"aranea-agents/internal/data","Test":"TestMaskEvalEvidence_TableDriven/neutral_query_masks_all_categories","Elapsed":0}
+{"Time":"2026-10-22T22:49:59.9911497+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestMaskEvalEvidence_TableDriven","Output":"--- PASS: TestMaskEvalEvidence_TableDriven (0.00s)\n"}
+{"Time":"2026-10-22T22:49:59.9911497+08:00","Action":"pass","Package":"aranea-agents/internal/data","Test":"TestMaskEvalEvidence_TableDriven","Elapsed":0}
+{"Time":"2026-10-22T22:49:59.9911497+08:00","Action":"output","Package":"aranea-agents/internal/data","Output":"PASS\n"}
+{"Time":"2026-10-22T22:50:00.2370136+08:00","Action":"output","Package":"aranea-agents/internal/data","Output":"ok  \taranea-agents/internal/data\t96.565s\n"}
+{"Time":"2026-10-22T22:50:00.2370136+08:00","Action":"pass","Package":"aranea-agents/internal/data","Elapsed":96.565}

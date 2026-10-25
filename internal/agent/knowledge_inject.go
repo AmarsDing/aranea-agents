@@ -332,6 +332,12 @@ func formatKnowledgeCue(filtered []biz.KnowledgeCollection, chunks []biz.Knowled
 	if len(rendered) > 0 {
 		header := "## Retrieved Knowledge\n" +
 			"The following passages were retrieved for the current user question. Cite them by [n] when using this knowledge."
+		for _, ch := range rendered {
+			if strings.HasPrefix(ch.ID, "g33e/") || strings.HasPrefix(ch.ID, "g33r/") {
+				header += " Entries labeled derived graph evidence are synthesized entity or relation summaries, not verbatim source passages. Verify them against the referenced host document before making source-specific claims."
+				break
+			}
+		}
 		if groundedOnly {
 			header += " Use ONLY these passages. If they do not answer the question, say the knowledge base has no evidence. Do not use world knowledge."
 			if kbTools {
@@ -357,7 +363,11 @@ func formatKnowledgeCue(filtered []biz.KnowledgeCollection, chunks []biz.Knowled
 			if utf8.RuneCountInString(content) > budget {
 				content = string([]rune(content)[:budget]) + "..."
 			}
-			if !writeBlock(fmt.Sprintf("[%d] (doc=%s score=%.2f)\n%s\n\n", i+1, ch.DocID, ch.Score, content)) {
+			evidenceLabel := ""
+			if strings.HasPrefix(ch.ID, "g33e/") || strings.HasPrefix(ch.ID, "g33r/") {
+				evidenceLabel = " evidence=derived graph evidence"
+			}
+			if !writeBlock(fmt.Sprintf("[%d] (doc=%s score=%.2f%s)\n%s\n\n", i+1, ch.DocID, ch.Score, evidenceLabel, content)) {
 				break
 			}
 			cited = append(cited, ch)

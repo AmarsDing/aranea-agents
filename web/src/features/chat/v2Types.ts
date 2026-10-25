@@ -16,7 +16,7 @@ export type StepStatus =
   | 'failed'
   | 'cancelled'
   | 'awaiting_input';
-export type TeamRunStatus = 'running' | 'paused' | 'completed' | 'failed' | 'cancelled';
+export type TeamRunStatus = 'running' | 'paused' | 'completed' | 'failed' | 'partial_failure' | 'cancelled';
 export type MemberSessionStatus = 'pending' | 'running' | 'paused' | 'completed' | 'failed' | 'skipped';
 export type TeamStageStatus = 'pending' | 'running' | 'paused' | 'completed' | 'failed' | 'cancelled' | 'waiting_human';
 export type TeamStageStage = 'assembled' | 'planning' | 'executing' | 'completed' | 'failed';
@@ -307,6 +307,7 @@ export type EventKind =
   | 'team_run.started'
   | 'team_run.completed'
   | 'team_run.failed'
+  | 'team_run.cancelled'
   | 'member_session.created'
   | 'member_session.updated'
   | 'plan_board.created'

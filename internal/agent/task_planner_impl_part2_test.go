@@ -2,6 +2,7 @@ package agent
 
 import (
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/workspace"
 	"aranea-agents/pkg/loggateway"
 	"context"
 	"strings"
@@ -185,6 +186,99 @@ func TestPlan_MemoryHitReplaysSpecialtySlots(t *testing.T) {
 	}
 	if plan.SubTasks[0].DomainPath != "创作/文案" || plan.SubTasks[1].ID != "st_recipe_2" {
 		t.Fatalf("%+v", plan.SubTasks)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// D7-F2 planner 侧一次性降级：受剧本约束任务 + 无 provenance 旧缓存 → keys 弃用，
+// 拓扑建议不受影响（fail-closed 只作用于 AgentKeys 复用，不删数据）。
+// 夹具：授权剧本显式留空 stages——named 路径命中但 steps 为空而跳过（保持
+// planFromNamedPlaybook 短路不触发），指纹仍非空，流程走到 memory 门。
+// ---------------------------------------------------------------------------
+
+func TestPlan_FingerprintGateDropsKeysButKeepsTopology(t *testing.T) {
+	msg := "请按内容提升流程再写一篇种草文案"
+	pat := biz.ExtractTaskPattern(msg)
+	cache := biz.NewOrchestrationCache(loggateway.NewNoop(), nil)
+	cache.RecordCompletionWithAgents(context.Background(), pat,
+		biz.TopologyParallel, 0.92, 2, 0, []string{"spec-copy", "spec-des"})
+	org := &stubOrgReader{nodes: map[string]biz.OrganizationNode{
+		"co-1": {
+			ID: "co-1", Key: "acme", Level: "company",
+			MetadataJSON: `{"playbooks": [{"id": "content_lift", "name": "内容提升", "authorized_by": "__company_lead_acme__"}]}`,
+		},
+	}}
+	impl := &taskPlannerImpl{
+		repo:      &stubTaskPlanRepo{},
+		orchCache: cache,
+		lg:        loggateway.NewNoop(),
+	}
+	AttachPlannerOrganizationReader(impl, org)
+
+	plan, err := impl.Plan(context.Background(), biz.PlanInput{UserMessage: msg, SpiritSessionID: "sp-fp-1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.MemoryHit == nil {
+		t.Fatal("受约束任务命中旧缓存仍应成立（只降级 keys，不作废拓扑记忆）")
+	}
+	if len(plan.MemoryHit.AgentKeysUsed) != 0 {
+		t.Fatalf("无 provenance 旧缓存面对受约束任务必须弃用 keys，got %v", plan.MemoryHit.AgentKeysUsed)
+	}
+	if plan.Strategy != biz.StrategyParallel {
+		t.Fatalf("拓扑建议必须保留（parallel → StrategyParallel），got %s", plan.Strategy)
+	}
+	if len(plan.SubTasks) != 0 {
+		t.Fatalf("keys 被降级后不得合成配方回放子任务，got %+v", plan.SubTasks)
+	}
+}
+
+func TestPlan_NoPlaybookConstraintKeepsLegacyKeys(t *testing.T) {
+	// 对照组：无组织/无剧本约束（wantFp==""）→ 旧缓存 keys 继续复用（兼容语义）。
+	msg := "请再写一篇种草文案"
+	pat := biz.ExtractTaskPattern(msg)
+	cache := biz.NewOrchestrationCache(loggateway.NewNoop(), nil)
+	cache.RecordCompletionWithAgents(context.Background(), pat,
+		biz.TopologyParallel, 0.92, 2, 0, []string{"spec-copy", "spec-des"})
+	impl := &taskPlannerImpl{
+		repo:      &stubTaskPlanRepo{},
+		orchCache: cache,
+		lg:        loggateway.NewNoop(),
+	}
+	plan, err := impl.Plan(context.Background(), biz.PlanInput{UserMessage: msg, SpiritSessionID: "sp-fp-2"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.MemoryHit == nil || len(plan.MemoryHit.AgentKeysUsed) != 2 {
+		t.Fatalf("无约束任务必须继续复用旧缓存 keys，hit=%+v", plan.MemoryHit)
+	}
+	if len(plan.SubTasks) == 0 {
+		t.Fatal("keys 保留时必须合成配方回放子任务")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// D7-F6 planner 记忆读按 workspace 隔离：ws-a 写入的配方对 ws-b 调用方 miss。
+// ---------------------------------------------------------------------------
+
+func TestQueryMemory_CrossTenantMisses(t *testing.T) {
+	msg := "再写一篇小红书种草文案"
+	cache := biz.NewOrchestrationCache(loggateway.NewNoop(), nil)
+	ctxA := workspace.WithContext(context.Background(), "ws-a")
+	cache.RecordCompletionWithAgents(ctxA, biz.ExtractTaskPattern(msg),
+		biz.TopologyParallel, 0.92, 1, 0, []string{"copywriter"})
+	impl := &taskPlannerImpl{
+		repo:      &stubTaskPlanRepo{},
+		orchCache: cache,
+		lg:        loggateway.NewNoop(),
+	}
+
+	ctxB := workspace.WithContext(context.Background(), "ws-b")
+	if hit := impl.queryMemory(ctxB, biz.PlanInput{UserMessage: msg, SpiritSessionID: "sp-ws-b"}, "trace-ws-1"); hit != nil {
+		t.Fatalf("ws-a 配方对 ws-b 必须 miss，got %+v", hit)
+	}
+	if hit := impl.queryMemory(ctxA, biz.PlanInput{UserMessage: msg, SpiritSessionID: "sp-ws-a"}, "trace-ws-2"); hit == nil {
+		t.Fatal("ws-a 配方对 ws-a 必须 hit")
 	}
 }
 

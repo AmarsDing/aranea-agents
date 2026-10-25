@@ -37,6 +37,19 @@ func IsTeamStatusActive(status string) bool {
 	return status == TeamStatusPending || status == TeamStatusRunning || status == TeamStatusInterrupted
 }
 
+// IsTeamSlotOccupied reports whether the team status occupies a parallel-quota
+// seat (pending || running — 确在执行或即将执行). This is the accounting
+// granularity for the plan_and_execute parallel quota ONLY: an interrupted
+// team (zero executing members, produced by crash recovery; recoverable via
+// ResumeTeamIfInterrupted back to running, where it re-occupies a seat) does
+// NOT hold a seat — a crashed cohort must not silently wedge plan_and_execute
+// (D2-P2, 87-orchestration-chain-hardening). Cohort-reuse / synthesis /
+// progress semantics keep treating interrupted as active — see
+// IsTeamStatusActive, which is intentionally unchanged.
+func IsTeamSlotOccupied(status string) bool {
+	return status == TeamStatusPending || status == TeamStatusRunning
+}
+
 // TeamRun status constants and terminal-status helpers are defined in
 // team_run_state_machine.go alongside the transition table (AS-FSM-01).
 const OrchestrationControlToolName = "orchestration_control"

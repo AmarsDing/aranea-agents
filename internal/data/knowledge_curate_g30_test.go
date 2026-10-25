@@ -15,6 +15,8 @@ func TestKnowledgeRepo_ListGovernanceProposals_Pagination(t *testing.T) {
 	db := testhelper.SetupTestPGRaw(t)
 	ctx := context.Background()
 	if _, err := db.ExecContext(ctx, `
+		CREATE TABLE knowledge_collections (id TEXT PRIMARY KEY, workspace TEXT NOT NULL);
+		INSERT INTO knowledge_collections VALUES ('c1','default'), ('c2','default');
 		CREATE TABLE IF NOT EXISTS knowledge_governance_proposal (
 			id BIGSERIAL PRIMARY KEY,
 			collection_id TEXT NOT NULL,

@@ -1,0 +1,40 @@
+{"Time":"2026-10-22T22:48:44.5064514+08:00","Action":"start","Package":"aranea-agents/internal/data"}
+{"Time":"2026-10-22T22:48:45.2665134+08:00","Action":"run","Package":"aranea-agents/internal/data","Test":"TestEvalStore_PersistentSuppressionAndExplicitResume"}
+{"Time":"2026-10-22T22:48:45.2665134+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_PersistentSuppressionAndExplicitResume","Output":"=== RUN   TestEvalStore_PersistentSuppressionAndExplicitResume\n"}
+{"Time":"2026-10-22T22:48:47.2652306+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_PersistentSuppressionAndExplicitResume","Output":"--- PASS: TestEvalStore_PersistentSuppressionAndExplicitResume (2.00s)\n"}
+{"Time":"2026-10-22T22:48:47.2657579+08:00","Action":"pass","Package":"aranea-agents/internal/data","Test":"TestEvalStore_PersistentSuppressionAndExplicitResume","Elapsed":2}
+{"Time":"2026-10-22T22:48:47.2657579+08:00","Action":"run","Package":"aranea-agents/internal/data","Test":"TestEvalStore_ForgetCannotBeUndoneByReplay"}
+{"Time":"2026-10-22T22:48:47.2657579+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_ForgetCannotBeUndoneByReplay","Output":"=== RUN   TestEvalStore_ForgetCannotBeUndoneByReplay\n"}
+{"Time":"2026-10-22T22:48:49.0795615+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_ForgetCannotBeUndoneByReplay","Output":"--- PASS: TestEvalStore_ForgetCannotBeUndoneByReplay (1.81s)\n"}
+{"Time":"2026-10-22T22:48:49.0795615+08:00","Action":"pass","Package":"aranea-agents/internal/data","Test":"TestEvalStore_ForgetCannotBeUndoneByReplay","Elapsed":1.81}
+{"Time":"2026-10-22T22:48:49.0795615+08:00","Action":"run","Package":"aranea-agents/internal/data","Test":"TestEvalStore_LateForgetDoesNotEraseLaterFacts"}
+{"Time":"2026-10-22T22:48:49.0795615+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_LateForgetDoesNotEraseLaterFacts","Output":"=== RUN   TestEvalStore_LateForgetDoesNotEraseLaterFacts\n"}
+{"Time":"2026-10-22T22:48:50.7987539+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_LateForgetDoesNotEraseLaterFacts","Output":"--- PASS: TestEvalStore_LateForgetDoesNotEraseLaterFacts (1.72s)\n"}
+{"Time":"2026-10-22T22:48:50.7987539+08:00","Action":"pass","Package":"aranea-agents/internal/data","Test":"TestEvalStore_LateForgetDoesNotEraseLaterFacts","Elapsed":1.72}
+{"Time":"2026-10-22T22:48:50.7987539+08:00","Action":"run","Package":"aranea-agents/internal/data","Test":"TestEvalStore_DeletionRollsBackWithBatchFailure"}
+{"Time":"2026-10-22T22:48:50.7987539+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_DeletionRollsBackWithBatchFailure","Output":"=== RUN   TestEvalStore_DeletionRollsBackWithBatchFailure\n"}
+{"Time":"2026-10-22T22:48:52.4924487+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_DeletionRollsBackWithBatchFailure","Output":"--- PASS: TestEvalStore_DeletionRollsBackWithBatchFailure (1.69s)\n"}
+{"Time":"2026-10-22T22:48:52.4924487+08:00","Action":"pass","Package":"aranea-agents/internal/data","Test":"TestEvalStore_DeletionRollsBackWithBatchFailure","Elapsed":1.69}
+{"Time":"2026-10-22T22:48:52.4924487+08:00","Action":"run","Package":"aranea-agents/internal/data","Test":"TestEvalStore_ConcurrentLifecycleAtConfiguredLimits"}
+{"Time":"2026-10-22T22:48:52.4924487+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_ConcurrentLifecycleAtConfiguredLimits","Output":"=== RUN   TestEvalStore_ConcurrentLifecycleAtConfiguredLimits\n"}
+{"Time":"2026-10-22T22:48:54.6751598+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_ConcurrentLifecycleAtConfiguredLimits","Output":"--- PASS: TestEvalStore_ConcurrentLifecycleAtConfiguredLimits (2.18s)\n"}
+{"Time":"2026-10-22T22:48:54.6751598+08:00","Action":"pass","Package":"aranea-agents/internal/data","Test":"TestEvalStore_ConcurrentLifecycleAtConfiguredLimits","Elapsed":2.18}
+{"Time":"2026-10-22T22:48:54.6751598+08:00","Action":"run","Package":"aranea-agents/internal/data","Test":"TestEvalStore_LateIntermediateStateRepairsHistory"}
+{"Time":"2026-10-22T22:48:54.6751598+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_LateIntermediateStateRepairsHistory","Output":"=== RUN   TestEvalStore_LateIntermediateStateRepairsHistory\n"}
+{"Time":"2026-10-22T22:48:56.2786486+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_LateIntermediateStateRepairsHistory","Output":"--- PASS: TestEvalStore_LateIntermediateStateRepairsHistory (1.60s)\n"}
+{"Time":"2026-10-22T22:48:56.2786486+08:00","Action":"pass","Package":"aranea-agents/internal/data","Test":"TestEvalStore_LateIntermediateStateRepairsHistory","Elapsed":1.6}
+{"Time":"2026-10-22T22:48:56.2786486+08:00","Action":"run","Package":"aranea-agents/internal/data","Test":"TestEvalStore_AddRollbackPreservesPreviousState"}
+{"Time":"2026-10-22T22:48:56.2786486+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_AddRollbackPreservesPreviousState","Output":"=== RUN   TestEvalStore_AddRollbackPreservesPreviousState\n"}
+{"Time":"2026-10-22T22:48:57.7865287+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_AddRollbackPreservesPreviousState","Output":"--- PASS: TestEvalStore_AddRollbackPreservesPreviousState (1.51s)\n"}
+{"Time":"2026-10-22T22:48:57.7865287+08:00","Action":"pass","Package":"aranea-agents/internal/data","Test":"TestEvalStore_AddRollbackPreservesPreviousState","Elapsed":1.51}
+{"Time":"2026-10-22T22:48:57.7865287+08:00","Action":"run","Package":"aranea-agents/internal/data","Test":"TestEvalStore_OutOfOrderUpdatesKeepNewestState"}
+{"Time":"2026-10-22T22:48:57.7865287+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_OutOfOrderUpdatesKeepNewestState","Output":"=== RUN   TestEvalStore_OutOfOrderUpdatesKeepNewestState\n"}
+{"Time":"2026-10-22T22:48:59.3537681+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_OutOfOrderUpdatesKeepNewestState","Output":"--- PASS: TestEvalStore_OutOfOrderUpdatesKeepNewestState (1.57s)\n"}
+{"Time":"2026-10-22T22:48:59.3542808+08:00","Action":"pass","Package":"aranea-agents/internal/data","Test":"TestEvalStore_OutOfOrderUpdatesKeepNewestState","Elapsed":1.57}
+{"Time":"2026-10-22T22:48:59.3542953+08:00","Action":"run","Package":"aranea-agents/internal/data","Test":"TestEvalStore_ConcurrentUpdatesSerializePerUser"}
+{"Time":"2026-10-22T22:48:59.3542953+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_ConcurrentUpdatesSerializePerUser","Output":"=== RUN   TestEvalStore_ConcurrentUpdatesSerializePerUser\n"}
+{"Time":"2026-10-22T22:49:00.992382+08:00","Action":"output","Package":"aranea-agents/internal/data","Test":"TestEvalStore_ConcurrentUpdatesSerializePerUser","Output":"--- PASS: TestEvalStore_ConcurrentUpdatesSerializePerUser (1.64s)\n"}
+{"Time":"2026-10-22T22:49:00.992382+08:00","Action":"pass","Package":"aranea-agents/internal/data","Test":"TestEvalStore_ConcurrentUpdatesSerializePerUser","Elapsed":1.64}
+{"Time":"2026-10-22T22:49:00.9963824+08:00","Action":"output","Package":"aranea-agents/internal/data","Output":"PASS\n"}
+{"Time":"2026-10-22T22:49:02.0139558+08:00","Action":"output","Package":"aranea-agents/internal/data","Output":"ok  \taranea-agents/internal/data\t17.508s\n"}
+{"Time":"2026-10-22T22:49:02.0139558+08:00","Action":"pass","Package":"aranea-agents/internal/data","Elapsed":17.508}

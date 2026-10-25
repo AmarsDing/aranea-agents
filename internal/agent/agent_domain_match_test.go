@@ -56,7 +56,7 @@ func TestTryDomainRecipe_Hit(t *testing.T) {
 		{AgentKey: "agent-lead", DisplayName: "文学写手"},
 		{AgentKey: "agent-m1", DisplayName: "校对"},
 	}
-	lead, members, dq, ok := impl.tryDomainRecipe("创作/文学", caps, "trace-l0-1")
+	lead, members, dq, ok := impl.tryDomainRecipe(context.Background(), "创作/文学", "", caps, "trace-l0-1")
 	if !ok {
 		t.Fatal("expected L0 hit")
 	}
@@ -66,6 +66,7 @@ func TestTryDomainRecipe_Hit(t *testing.T) {
 	if len(members) != 1 || members[0] != "agent-m1" {
 		t.Errorf("members = %v, want [agent-m1]（配方成员直接复用）", members)
 	}
+	// 键全存活：有效 DQ = 0.85 × 2/2 = 0.85。
 	if dq != 0.85 {
 		t.Errorf("dq = %v, want 0.85", dq)
 	}
@@ -76,7 +77,7 @@ func TestTryDomainRecipe_PrefixQueryHitsBroaderRecipe(t *testing.T) {
 	cache := newRecipeCache(t, "创作", 0.8, []string{"agent-lead"})
 	impl := &agentAllocatorImpl{orchCache: cache, lg: loggateway.NewNoop()}
 	caps := []biz.AgentCapability{{AgentKey: "agent-lead"}}
-	if _, _, _, ok := impl.tryDomainRecipe("创作/文学", caps, "trace-l0-2"); !ok {
+	if _, _, _, ok := impl.tryDomainRecipe(context.Background(), "创作/文学", "", caps, "trace-l0-2"); !ok {
 		t.Fatal("expected prefix-match hit for broader recipe domain")
 	}
 }
@@ -85,33 +86,125 @@ func TestTryDomainRecipe_LeadAgentDeleted_Skips(t *testing.T) {
 	cache := newRecipeCache(t, "创作/文学", 0.85, []string{"agent-gone"})
 	impl := &agentAllocatorImpl{orchCache: cache, lg: loggateway.NewNoop()}
 	caps := []biz.AgentCapability{{AgentKey: "agent-other"}}
-	if _, _, _, ok := impl.tryDomainRecipe("创作/文学", caps, "trace-l0-3"); ok {
+	if _, _, _, ok := impl.tryDomainRecipe(context.Background(), "创作/文学", "", caps, "trace-l0-3"); ok {
 		t.Fatal("lead agent 已删除时必须跳过复用（落 L1/L2）")
 	}
 }
 
 func TestTryDomainRecipe_DeadMemberFiltered(t *testing.T) {
-	cache := newRecipeCache(t, "创作/文学", 0.85, []string{"agent-lead", "agent-ghost"})
+	// D7-F4：DQ 1.0 × 4 键折损 1 名成员 → 有效 DQ 0.75 ≥ 0.7 仍可复用，
+	// 成员列表剔除已删除者（缓存可能滞后）。
+	cache := newRecipeCache(t, "创作/文学", 1.0, []string{"agent-lead", "agent-m1", "agent-m2", "agent-ghost"})
 	impl := &agentAllocatorImpl{orchCache: cache, lg: loggateway.NewNoop()}
-	caps := []biz.AgentCapability{{AgentKey: "agent-lead"}}
-	_, members, _, ok := impl.tryDomainRecipe("创作/文学", caps, "trace-l0-4")
+	caps := []biz.AgentCapability{
+		{AgentKey: "agent-lead"},
+		{AgentKey: "agent-m1"},
+		{AgentKey: "agent-m2"},
+	}
+	_, members, dq, ok := impl.tryDomainRecipe(context.Background(), "创作/文学", "", caps, "trace-l0-4")
 	if !ok {
 		t.Fatal("expected hit")
 	}
-	if len(members) != 0 {
-		t.Errorf("members = %v, want 空（已删除成员被剔除）", members)
+	if len(members) != 2 || members[0] != "agent-m1" || members[1] != "agent-m2" {
+		t.Errorf("members = %v, want [agent-m1 agent-m2]（已删除成员被剔除）", members)
+	}
+	if dq != 0.75 {
+		t.Errorf("dq = %v, want 0.75（1.0 × 3/4 成员存活折算）", dq)
+	}
+}
+
+func TestTryDomainRecipe_MemberShrinkBelowThreshold_Misses(t *testing.T) {
+	// D7-F4：lead-only 存活（0.9 × 1/3 = 0.3 < 0.7）→ miss，防止 half-dead 配方
+	// 虚高复用后团队在现场塌编。
+	cache := newRecipeCache(t, "创作/文学", 0.9, []string{"agent-lead", "agent-m1", "agent-m2"})
+	impl := &agentAllocatorImpl{orchCache: cache, lg: loggateway.NewNoop()}
+	caps := []biz.AgentCapability{{AgentKey: "agent-lead"}}
+	if _, _, _, ok := impl.tryDomainRecipe(context.Background(), "创作/文学", "", caps, "trace-l0-4b"); ok {
+		t.Fatal("成员缩水至有效 DQ<0.7 必须 miss")
 	}
 }
 
 func TestTryDomainRecipe_NilCacheOrMiss(t *testing.T) {
 	impl := &agentAllocatorImpl{lg: loggateway.NewNoop()}
-	if _, _, _, ok := impl.tryDomainRecipe("创作/文学", nil, "trace-l0-5"); ok {
+	if _, _, _, ok := impl.tryDomainRecipe(context.Background(), "创作/文学", "", nil, "trace-l0-5"); ok {
 		t.Fatal("nil orchCache must miss")
 	}
 	empty := biz.NewOrchestrationCache(loggateway.NewNoop(), nil)
 	impl.orchCache = empty
-	if _, _, _, ok := impl.tryDomainRecipe("创作/文学", nil, "trace-l0-6"); ok {
+	if _, _, _, ok := impl.tryDomainRecipe(context.Background(), "创作/文学", "", nil, "trace-l0-6"); ok {
 		t.Fatal("empty cache must miss")
+	}
+}
+
+// --- D7-F2 provenance 指纹门（fail-closed） ---
+
+func newRecipeCacheWithProvenance(t *testing.T, domainPath string, dq float64, agentKeys []string, prov biz.RecipeProvenance) *biz.OrchestrationCache {
+	t.Helper()
+	c := biz.NewOrchestrationCache(loggateway.NewNoop(), nil)
+	c.RecordDomainRecipeWithProvenance(context.Background(), domainPath, biz.TopologyDirect, dq, len(agentKeys), agentKeys, prov)
+	return c
+}
+
+func TestTryDomainRecipe_FingerprintGate(t *testing.T) {
+	caps := []biz.AgentCapability{{AgentKey: "agent-lead"}}
+	cases := []struct {
+		name   string
+		prov   biz.RecipeProvenance
+		wantFp string
+		hit    bool
+	}{
+		{"受约束任务 + 无 provenance 旧配方 → 一次性降级", biz.RecipeProvenance{}, "fp-pb-x", false},
+		{"受约束任务 + 指纹一致 → 复用", biz.RecipeProvenance{PlaybookID: "pb-x", ConstraintFingerprint: "fp-pb-x"}, "fp-pb-x", true},
+		{"受约束任务 + 指纹相左 → 降级", biz.RecipeProvenance{PlaybookID: "pb-x", ConstraintFingerprint: "fp-pb-x"}, "fp-pb-y", false},
+		{"无约束任务 + 无 provenance 旧配方 → 复用（兼容）", biz.RecipeProvenance{}, "", true},
+		{"无约束任务 + 有 provenance 配方 → 复用", biz.RecipeProvenance{PlaybookID: "pb-x", ConstraintFingerprint: "fp-pb-x"}, "", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cache := newRecipeCacheWithProvenance(t, "创作/文学", 0.85, []string{"agent-lead"}, tc.prov)
+			impl := &agentAllocatorImpl{orchCache: cache, lg: loggateway.NewNoop()}
+			_, _, _, ok := impl.tryDomainRecipe(context.Background(), "创作/文学", tc.wantFp, caps, "trace-fp")
+			if ok != tc.hit {
+				t.Fatalf("hit = %v, want %v", ok, tc.hit)
+			}
+		})
+	}
+}
+
+// --- D7-F3 读路径归一 + 「其他」双重禁 ---
+
+func TestTryDomainRecipe_QueryNormalizedAtRead(t *testing.T) {
+	// 读侧归一：带空白的多级路径归一后命中「创作/文学」狭义配方。
+	cache := newRecipeCache(t, "创作/文学", 0.85, []string{"agent-lead"})
+	impl := &agentAllocatorImpl{orchCache: cache, lg: loggateway.NewNoop()}
+	caps := []biz.AgentCapability{{AgentKey: "agent-lead"}}
+	if _, _, _, ok := impl.tryDomainRecipe(context.Background(), "创作 / 文学", "", caps, "trace-norm-1"); !ok {
+		t.Fatal("未归一的查询路径必须经 NormalizeDomainPath 后命中")
+	}
+}
+
+func TestTryDomainRecipe_LexiconFoldBeforeQuery(t *testing.T) {
+	// 词表折叠先于查询：「创作/诗歌」词表折叠到主域「创作」→ 命中主域配方。
+	cache := newRecipeCache(t, "创作", 0.85, []string{"agent-lead"})
+	impl := &agentAllocatorImpl{orchCache: cache, lg: loggateway.NewNoop()}
+	caps := []biz.AgentCapability{{AgentKey: "agent-lead"}}
+	if _, _, _, ok := impl.tryDomainRecipe(context.Background(), "创作/诗歌", "", caps, "trace-norm-2"); !ok {
+		t.Fatal("词表折叠路径必须命中主域配方")
+	}
+}
+
+func TestTryDomainRecipe_OtherDomainDoubleBan(t *testing.T) {
+	// 「其他」读侧永不命中 L0（即使有人误写过 domain：其他 键也无意义——
+	// 归一查询在进缓存前被拦）。
+	cache := biz.NewOrchestrationCache(loggateway.NewNoop(), nil)
+	cache.RecordDomainRecipe(context.Background(), "创作", biz.TopologyDirect, 0.9, 1, []string{"agent-lead"})
+	impl := &agentAllocatorImpl{orchCache: cache, lg: loggateway.NewNoop()}
+	caps := []biz.AgentCapability{{AgentKey: "agent-lead"}}
+	if _, _, _, ok := impl.tryDomainRecipe(context.Background(), "其他", "", caps, "trace-ban-1"); ok {
+		t.Fatal("「其他」必须 miss（双重禁读侧）")
+	}
+	if _, _, _, ok := impl.tryDomainRecipe(context.Background(), "", "", caps, "trace-ban-2"); ok {
+		t.Fatal("空路径必须 miss")
 	}
 }
 
@@ -285,5 +378,26 @@ func TestMatchSubTask_EmptyDomainTaskWords_RosterMiss(t *testing.T) {
 	}, caps, "trace-empty-task")
 	if err == nil {
 		t.Fatal("empty domain + task words must roster-miss, not L3 cold-start")
+	}
+}
+
+func TestMatchSubTask_FingerprintGateBlocksL0(t *testing.T) {
+	// D7-F2 端到端：ctx 携带受约束指纹 + 旧配方无 provenance → L0 fail-closed，
+	// 钥不复用，匹配落到后续层（roster/…），不产出 domain_recipe 分配。
+	cache := newRecipeCache(t, "创作/文学", 0.9, []string{"agent-recipe"})
+	impl := &agentAllocatorImpl{orchCache: cache, lg: loggateway.NewNoop()}
+	caps := []biz.AgentCapability{
+		{AgentKey: "agent-recipe"},
+		{AgentKey: "agent-z", DomainPath: "创作/文学"},
+	}
+	ctx := withRecipeWantFingerprint(context.Background(), "fp-pb-x")
+	alloc, err := impl.matchSubTask(ctx, biz.SubTask{
+		ID: "st_1", Name: "写诗", Description: "写一首春天的诗", DomainPath: "创作/文学",
+	}, caps, "trace-gate-1")
+	if err != nil {
+		t.Fatalf("matchSubTask: %v", err)
+	}
+	if alloc.MatchLayer == "domain_recipe" {
+		t.Fatalf("受约束任务 + 无 provenance 配方必须跳过 L0, got MatchLayer=%q", alloc.MatchLayer)
 	}
 }

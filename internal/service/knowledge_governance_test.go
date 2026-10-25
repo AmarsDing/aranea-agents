@@ -12,6 +12,7 @@ import (
 	internalknowledge "aranea-agents/internal/knowledge"
 	"aranea-agents/internal/workspace"
 	"aranea-agents/pkg/apierror"
+	"aranea-agents/pkg/auth"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -74,11 +75,11 @@ func TestKnowledgeService_MergeKnowledgeEntities(t *testing.T) {
 		RewrittenMentions: 3, RewrittenLinks: 1, MergedEntities: 2,
 	}}
 	svc, repo := newGovernanceService(t, entities, nil)
-	if _, err := repo.CreateCollection(context.Background(), biz.KnowledgeCollection{ID: "c1", Name: "vault"}); err != nil {
+	if _, err := repo.CreateCollection(governanceTestContext(), biz.KnowledgeCollection{ID: "c1", Name: "vault", Workspace: workspace.DefaultWorkspaceID}); err != nil {
 		t.Fatal(err)
 	}
 
-	resp, err := svc.MergeKnowledgeEntities(context.Background(), &v1.MergeKnowledgeEntitiesRequest{
+	resp, err := svc.MergeKnowledgeEntities(governanceTestContext(), &v1.MergeKnowledgeEntitiesRequest{
 		CollectionId: "c1", KeeperId: 7, MergeeIds: []int64{8, 9},
 	})
 	if err != nil {
@@ -94,15 +95,15 @@ func TestKnowledgeService_MergeKnowledgeEntities(t *testing.T) {
 
 func TestKnowledgeService_MergeKnowledgeEntities_Validation(t *testing.T) {
 	svc, repo := newGovernanceService(t, &stubGovEntityRepo{}, nil)
-	if _, err := repo.CreateCollection(context.Background(), biz.KnowledgeCollection{ID: "c1", Name: "vault"}); err != nil {
+	if _, err := repo.CreateCollection(governanceTestContext(), biz.KnowledgeCollection{ID: "c1", Name: "vault", Workspace: workspace.DefaultWorkspaceID}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc.MergeKnowledgeEntities(context.Background(), &v1.MergeKnowledgeEntitiesRequest{
+	if _, err := svc.MergeKnowledgeEntities(governanceTestContext(), &v1.MergeKnowledgeEntitiesRequest{
 		CollectionId: "c1", MergeeIds: []int64{8},
 	}); err == nil || !strings.Contains(err.Error(), "keeper_id") {
 		t.Errorf("missing keeper_id must be BadRequest, got %v", err)
 	}
-	if _, err := svc.MergeKnowledgeEntities(context.Background(), &v1.MergeKnowledgeEntitiesRequest{
+	if _, err := svc.MergeKnowledgeEntities(governanceTestContext(), &v1.MergeKnowledgeEntitiesRequest{
 		CollectionId: "c1", KeeperId: 7,
 	}); err == nil || !strings.Contains(err.Error(), "mergee_ids") {
 		t.Errorf("empty mergee_ids must be BadRequest, got %v", err)
@@ -111,10 +112,10 @@ func TestKnowledgeService_MergeKnowledgeEntities_Validation(t *testing.T) {
 
 func TestKnowledgeService_MergeKnowledgeEntities_CrossTenantDenied(t *testing.T) {
 	svc, repo := newGovernanceService(t, &stubGovEntityRepo{}, nil)
-	if _, err := repo.CreateCollection(context.Background(), biz.KnowledgeCollection{ID: "c1", Name: "vault", Workspace: "ws-other"}); err != nil {
+	if _, err := repo.CreateCollection(governanceTestContext(), biz.KnowledgeCollection{ID: "c1", Name: "vault", Workspace: "ws-other"}); err != nil {
 		t.Fatal(err)
 	}
-	ctx := workspace.WithContext(context.Background(), "ws-mine")
+	ctx := workspace.WithContext(governanceTestContext(), "ws-mine")
 	_, err := svc.MergeKnowledgeEntities(ctx, &v1.MergeKnowledgeEntitiesRequest{
 		CollectionId: "c1", KeeperId: 7, MergeeIds: []int64{8},
 	})
@@ -133,11 +134,11 @@ func TestKnowledgeService_ListEntityMergeSuggestions(t *testing.T) {
 	}}
 	embedder := &stubGovEmbedder{}
 	svc, repo := newGovernanceService(t, entities, embedder)
-	if _, err := repo.CreateCollection(context.Background(), biz.KnowledgeCollection{ID: "c1", Name: "vault"}); err != nil {
+	if _, err := repo.CreateCollection(governanceTestContext(), biz.KnowledgeCollection{ID: "c1", Name: "vault", Workspace: workspace.DefaultWorkspaceID}); err != nil {
 		t.Fatal(err)
 	}
 
-	resp, err := svc.ListEntityMergeSuggestions(context.Background(), &v1.ListEntityMergeSuggestionsRequest{CollectionId: "c1"})
+	resp, err := svc.ListEntityMergeSuggestions(governanceTestContext(), &v1.ListEntityMergeSuggestionsRequest{CollectionId: "c1"})
 	if err != nil {
 		t.Fatalf("ListEntityMergeSuggestions: %v", err)
 	}
@@ -168,10 +169,10 @@ func TestKnowledgeService_ListEntityMergeSuggestions_NilEmbedder(t *testing.T) {
 		{ID: 2, Name: "rag", NameNorm: "rag"},
 	}}
 	svc, repo := newGovernanceService(t, entities, nil)
-	if _, err := repo.CreateCollection(context.Background(), biz.KnowledgeCollection{ID: "c1", Name: "vault"}); err != nil {
+	if _, err := repo.CreateCollection(governanceTestContext(), biz.KnowledgeCollection{ID: "c1", Name: "vault", Workspace: workspace.DefaultWorkspaceID}); err != nil {
 		t.Fatal(err)
 	}
-	resp, err := svc.ListEntityMergeSuggestions(context.Background(), &v1.ListEntityMergeSuggestionsRequest{CollectionId: "c1"})
+	resp, err := svc.ListEntityMergeSuggestions(governanceTestContext(), &v1.ListEntityMergeSuggestionsRequest{CollectionId: "c1"})
 	if err != nil {
 		t.Fatalf("nil embedder must degrade, got %v", err)
 	}
@@ -182,10 +183,10 @@ func TestKnowledgeService_ListEntityMergeSuggestions_NilEmbedder(t *testing.T) {
 
 func TestKnowledgeService_ListEntityMergeSuggestions_CrossTenantDenied(t *testing.T) {
 	svc, repo := newGovernanceService(t, &stubGovEntityRepo{}, nil)
-	if _, err := repo.CreateCollection(context.Background(), biz.KnowledgeCollection{ID: "c1", Name: "vault", Workspace: "ws-other"}); err != nil {
+	if _, err := repo.CreateCollection(governanceTestContext(), biz.KnowledgeCollection{ID: "c1", Name: "vault", Workspace: "ws-other"}); err != nil {
 		t.Fatal(err)
 	}
-	ctx := workspace.WithContext(context.Background(), "ws-mine")
+	ctx := workspace.WithContext(governanceTestContext(), "ws-mine")
 	_, err := svc.ListEntityMergeSuggestions(ctx, &v1.ListEntityMergeSuggestionsRequest{CollectionId: "c1"})
 	if err == nil || !strings.Contains(err.Error(), "not found") {
 		t.Errorf("cross-tenant suggestions must be NotFound, got %v", err)
@@ -239,13 +240,13 @@ func TestKnowledgeService_ListGovernanceProposals(t *testing.T) {
 	}}
 	svc, repo := newGovernanceService(t, &stubGovEntityRepo{}, nil)
 	svc.uc.SetCurateRepo(curate)
-	if _, err := repo.CreateCollection(context.Background(), biz.KnowledgeCollection{ID: "c1", Name: "vault"}); err != nil {
+	if _, err := repo.CreateCollection(governanceTestContext(), biz.KnowledgeCollection{ID: "c1", Name: "vault", Workspace: workspace.DefaultWorkspaceID}); err != nil {
 		t.Fatal(err)
 	}
 
 	// 指定 collection_id（走访问校验）+ 全量（空 collection_id）两路径。
 	for _, colID := range []string{"c1", ""} {
-		resp, err := svc.ListGovernanceProposals(context.Background(), &v1.ListGovernanceProposalsRequest{CollectionId: colID})
+		resp, err := svc.ListGovernanceProposals(governanceTestContext(), &v1.ListGovernanceProposalsRequest{CollectionId: colID})
 		if err != nil {
 			t.Fatalf("ListGovernanceProposals(%q): %v", colID, err)
 		}
@@ -268,7 +269,7 @@ func TestKnowledgeService_ListGovernanceProposals(t *testing.T) {
 	}
 	// G-30：limit/offset 分页透传至 repo。
 	curate.gotLimit, curate.gotOffset = 0, 0
-	if _, err := svc.ListGovernanceProposals(context.Background(),
+	if _, err := svc.ListGovernanceProposals(governanceTestContext(),
 		&v1.ListGovernanceProposalsRequest{CollectionId: "c1", Limit: 5, Offset: 10}); err != nil {
 		t.Fatal(err)
 	}
@@ -281,7 +282,7 @@ func TestKnowledgeService_ListGovernanceProposals(t *testing.T) {
 func TestKnowledgeService_ListGovernanceProposals_InvalidStatus(t *testing.T) {
 	svc, _ := newGovernanceService(t, &stubGovEntityRepo{}, nil)
 	svc.uc.SetCurateRepo(&stubGovCurateRepo{})
-	_, err := svc.ListGovernanceProposals(context.Background(), &v1.ListGovernanceProposalsRequest{Status: "bogus"})
+	_, err := svc.ListGovernanceProposals(governanceTestContext(), &v1.ListGovernanceProposalsRequest{Status: "bogus"})
 	if err == nil {
 		t.Fatal("invalid status must error (biz 层收口)")
 	}
@@ -290,10 +291,10 @@ func TestKnowledgeService_ListGovernanceProposals_InvalidStatus(t *testing.T) {
 func TestKnowledgeService_ListGovernanceProposals_CrossTenantDenied(t *testing.T) {
 	svc, repo := newGovernanceService(t, &stubGovEntityRepo{}, nil)
 	svc.uc.SetCurateRepo(&stubGovCurateRepo{})
-	if _, err := repo.CreateCollection(context.Background(), biz.KnowledgeCollection{ID: "c1", Name: "vault", Workspace: "ws-other"}); err != nil {
+	if _, err := repo.CreateCollection(governanceTestContext(), biz.KnowledgeCollection{ID: "c1", Name: "vault", Workspace: "ws-other"}); err != nil {
 		t.Fatal(err)
 	}
-	ctx := workspace.WithContext(context.Background(), "ws-mine")
+	ctx := workspace.WithContext(governanceTestContext(), "ws-mine")
 	_, err := svc.ListGovernanceProposals(ctx, &v1.ListGovernanceProposalsRequest{CollectionId: "c1"})
 	if err == nil || !strings.Contains(err.Error(), "not found") {
 		t.Errorf("cross-tenant list must be NotFound, got %v", err)
@@ -305,10 +306,13 @@ func TestKnowledgeService_ResolveGovernanceProposal(t *testing.T) {
 		ID: 42, CollectionID: "c1", Kind: knowledge.ProposalKindMOCEmerge,
 		Status: knowledge.ProposalStatusPending, Payload: map[string]any{"dedup_key": "moc:hub-x"},
 	}}}
-	svc, _ := newGovernanceService(t, &stubGovEntityRepo{}, nil)
+	svc, repo := newGovernanceService(t, &stubGovEntityRepo{}, nil)
 	svc.uc.SetCurateRepo(curate)
+	if _, err := repo.CreateCollection(governanceTestContext(), biz.KnowledgeCollection{ID: "c1", Name: "vault", Workspace: workspace.DefaultWorkspaceID}); err != nil {
+		t.Fatal(err)
+	}
 
-	resp, err := svc.ResolveGovernanceProposal(context.Background(), &v1.ResolveGovernanceProposalRequest{Id: 42, Decision: "applied"})
+	resp, err := svc.ResolveGovernanceProposal(governanceTestContext(), &v1.ResolveGovernanceProposalRequest{Id: 42, Decision: "applied"})
 	if err != nil {
 		t.Fatalf("ResolveGovernanceProposal: %v", err)
 	}
@@ -329,13 +333,17 @@ func TestKnowledgeService_ResolveGovernanceProposal_Validation(t *testing.T) {
 		{Id: 1, Decision: "bogus"},
 		{Id: 1, Decision: ""},
 	} {
-		if _, err := svc.ResolveGovernanceProposal(context.Background(), req); err == nil {
+		if _, err := svc.ResolveGovernanceProposal(governanceTestContext(), req); err == nil {
 			t.Errorf("%+v must be BadRequest", req)
 		}
 	}
-	if _, err := svc.ResolveGovernanceProposal(context.Background(), &v1.ResolveGovernanceProposalRequest{
+	if _, err := svc.ResolveGovernanceProposal(governanceTestContext(), &v1.ResolveGovernanceProposalRequest{
 		Id: 1, Decision: "keep_old",
 	}); err == nil {
 		t.Fatal("keep_old on a non-conflict stub proposal must fail in biz, not be ignored")
 	}
+}
+
+func governanceTestContext() context.Context {
+	return auth.NewContext(context.Background(), &auth.Auth{UserID: 1, Access: "admin", WorkspaceID: workspace.DefaultWorkspaceID})
 }

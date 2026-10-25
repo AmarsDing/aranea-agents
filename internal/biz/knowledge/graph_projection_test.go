@@ -162,6 +162,7 @@ type fakeGraphCardStore struct {
 	upserted     []GraphCardUpsert
 	deleted      []GraphCardKey
 	listCardsErr map[string]error
+	deleteErr    error
 }
 
 func (f *fakeGraphCardStore) ListGraphCardCollections(_ context.Context) ([]GraphProjectionCollection, error) {
@@ -184,6 +185,9 @@ func (f *fakeGraphCardStore) UpsertGraphCards(_ context.Context, cards []GraphCa
 	return nil
 }
 func (f *fakeGraphCardStore) DeleteGraphCards(_ context.Context, keys []GraphCardKey) error {
+	if f.deleteErr != nil {
+		return f.deleteErr
+	}
 	f.deleted = append(f.deleted, keys...)
 	return nil
 }
@@ -374,6 +378,37 @@ func TestGraphProjectionWorker_RunOnce(t *testing.T) {
 		w := NewGraphProjectionWorker(&fakeGraphCardStore{collections: nil}, nil, testNoopLogger())
 		if _, err := w.RunOnce(context.Background()); err == nil {
 			t.Fatal("nil embedder must error loudly（装配缺陷与装配关腿不同语义）")
+		}
+	})
+
+	t.Run("failed rows do not consume budget: later collection not starved", func(t *testing.T) {
+		// 对抗审查钉（wiring-worker/medium）：预算按成功行数后扣——c1 占满整轮
+		// 预算的墓碑批持续失败时，c2 的缺卡仍须在本轮被承接（预扣语义下 c2
+		// 拿不到预算会被静默饿死）。
+		tombstones := make([]GraphCardRow, 0, GraphProjectionRoundBudget)
+		for i := 0; i < GraphProjectionRoundBudget; i++ {
+			tombstones = append(tombstones, GraphCardRow{
+				Kind: "entity", RefID: int64(i + 1), CollectionID: "c1",
+				Text: "孤儿", SourceHash: GraphCardSourceHash("孤儿"),
+			})
+		}
+		store := &fakeGraphCardStore{
+			collections: []GraphProjectionCollection{{ID: "c1"}, {ID: "c2"}},
+			entitiesBy:  map[string][]GraphCardEntitySource{"c2": {mkEntity(9, "壬")}},
+			edgesBy:     map[string][]GraphCardEdgeSource{},
+			existingBy:  map[string][]GraphCardRow{"c1": tombstones},
+			deleteErr:   errors.New("pg deadlock"),
+		}
+		w := NewGraphProjectionWorker(store, &fakeGraphCardEmbedder{}, testNoopLogger())
+		stats, err := w.RunOnce(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if stats.Failed != GraphProjectionRoundBudget {
+			t.Fatalf("Failed = %d, want c1 墓碑批全败 %d", stats.Failed, GraphProjectionRoundBudget)
+		}
+		if stats.Upserted != 1 || stats.Collections != 2 {
+			t.Fatalf("stats = %+v, want c2 缺卡已在本轮承接（Upserted=1 Collections=2）", stats)
 		}
 	})
 }

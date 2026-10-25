@@ -660,7 +660,23 @@ func (uc *GraphExecutionUsecase) consumeRuntimeEvents(eventCh <-chan GraphRuntim
 		}
 		uc.updateExecutionFromRuntimeEvent(exec, gen, e)
 	}
+	uc.convergeStreamEnd(exec, gen, execID, graphID, sawDone, onComplete)
+}
 
+// convergeStreamEnd 处理消费循环退出后的收敛段（D6-F1/F3）：
+//
+//  1. gen 失配直接返回（Y2，旧流不收敛新流）。
+//  2. 终态收敛 done-driven（N1）：仅框架显式完成事件可完成执行；流在仍
+//     running 时无 done 结束则 fail-closed；evicted（GC 取消）不覆写。
+//  3. F3（AS-EVT-01 Critical）：先落库后外发——终态 sink（OnRunOutput/
+//     OnRunCompleted/OnRunFailed）仅在 UpdateRun 成功（有界重试）后发送；
+//     重试耗尽记死信日志（可观察失败 > 不可信完成信号），onComplete 仍触发
+//     （内存终态已收敛，observer 解绑属进程内事实）。FSM 迁移与 FinishedAt
+//     在持久化重试之前完成（内存权威先行、DB 必须追上）。
+//  4. F1：onComplete 由 FSM 终态判定——Completed/Failed/Cancelled 恰好触发
+//     一次；WaitingHuman（interrupt 暂停流）/Running(evicted) 不触发，resume
+//     期间 observer 生命周期跨越整个 running…terminal 周期。
+func (uc *GraphExecutionUsecase) convergeStreamEnd(exec *GraphExecution, gen int64, execID, graphID string, sawDone bool, onComplete func()) {
 	var persistSnap *GraphExecution
 	var wasEvicted bool
 	var persistCtx context.Context
@@ -697,22 +713,13 @@ func (uc *GraphExecutionUsecase) consumeRuntimeEvents(eventCh <-chan GraphRuntim
 		}
 		exec.FinishedAt = &now
 	}
+	// D6-F1: observer 收口改由 FSM 终态判定（不再以"流关闭"为 done 信号）。
+	terminal := IsGraphExecutionTerminal(ParseGraphExecutionState(exec.Status))
 	persistSnap = exec.SnapshotForPersist()
 	wasEvicted = exec.evicted
 	persistCtx = exec.ctx
 	startedAt := exec.StartedAt
 	exec.execMu.Unlock()
-
-	if completed && uc.runEventSink != nil {
-		if outSink, ok := uc.runEventSink.(GraphRunEventSinkOutput); ok {
-			output, nodeOutputs := extractRunOutputs(persistSnap.CurrentState)
-			outSink.OnRunOutput(persistCtx, execID, graphID, output, nodeOutputs)
-		}
-		uc.runEventSink.OnRunCompleted(persistCtx, execID, graphID, time.Since(startedAt).Milliseconds())
-	}
-	if failMsg != "" && uc.runEventSink != nil {
-		uc.runEventSink.OnRunFailed(persistCtx, execID, graphID, failMsg)
-	}
 
 	if !wasEvicted {
 		uc.mu.Lock()
@@ -723,13 +730,57 @@ func (uc *GraphExecutionUsecase) consumeRuntimeEvents(eventCh <-chan GraphRuntim
 	if persistCtx == nil {
 		persistCtx = context.Background()
 	}
-	if err := uc.runRepo.UpdateRun(persistCtx, persistSnap); err != nil {
-		uc.lg.Warn("consumeRuntimeEvents: UpdateRun failed", loggateway.StepID("graph.record_fail"), loggateway.Str("exec_id", execID), loggateway.Err(err))
+	// D6-F3：先落库（有界重试）后外发终态信号。
+	if err := uc.persistRunWithRetry(persistCtx, persistSnap, "graph.converge"); err != nil {
+		uc.lg.Error("graph: terminal snapshot persist dead-lettered after retries",
+			loggateway.StepID("graph.record_dead_letter"),
+			loggateway.Str("exec_id", execID),
+			loggateway.Str("graph_id", graphID),
+			loggateway.Err(err))
+	} else {
+		if completed && uc.runEventSink != nil {
+			if outSink, ok := uc.runEventSink.(GraphRunEventSinkOutput); ok {
+				output, nodeOutputs := extractRunOutputs(persistSnap.CurrentState)
+				outSink.OnRunOutput(persistCtx, execID, graphID, output, nodeOutputs)
+			}
+			uc.runEventSink.OnRunCompleted(persistCtx, execID, graphID, time.Since(startedAt).Milliseconds())
+		}
+		if failMsg != "" && uc.runEventSink != nil {
+			uc.runEventSink.OnRunFailed(persistCtx, execID, graphID, failMsg)
+		}
 	}
 
-	if onComplete != nil {
+	if terminal && onComplete != nil {
 		onComplete()
 	}
+}
+
+// persistRunWithRetry 持久化终态/等待态快照，失败时在消费 goroutine 内同步
+// 做有界重试（D6-F3，AS-EVT-01 Critical：1 次首发 + 2 次重试，25ms/100ms
+// backoff，上限 ~150ms/event）。ctx 预期已 detach（exec.ctx）。仅返回末次
+// 错误，由调用方决定死信日志与跳过外发——本函数不重复记日志，避免与调用方
+// 的 dead-letter 告警重复。
+func (uc *GraphExecutionUsecase) persistRunWithRetry(ctx context.Context, snap *GraphExecution, stepID string) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	const maxAttempts = 3
+	backoffs := []time.Duration{25 * time.Millisecond, 100 * time.Millisecond}
+	var err error
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		if attempt > 0 {
+			time.Sleep(backoffs[attempt-1])
+		}
+		if err = uc.runRepo.UpdateRun(ctx, snap); err == nil {
+			return nil
+		}
+		uc.lg.Warn("graph: persist snapshot attempt failed",
+			loggateway.StepID(stepID),
+			loggateway.Str("exec_id", snap.ID),
+			loggateway.Int("attempt", attempt+1),
+			loggateway.Err(err))
+	}
+	return err
 }
 
 // extractRunOutputs 从终态 state 提取运行输出与各节点输出。
@@ -762,11 +813,22 @@ func (uc *GraphExecutionUsecase) updateExecutionFromRuntimeEvent(exec *GraphExec
 		// 终态 state 落库（current_state_json）：供节点输出提取与排查。
 		if len(e.FinalState) > 0 {
 			exec.execMu.Lock()
+			if exec.streamGen != gen {
+				// Y2/D6-F2: 旧流的 FinalState 不得覆写新流 CurrentState。
+				exec.execMu.Unlock()
+				return
+			}
 			exec.CurrentState = deepCopyMap(e.FinalState)
 			exec.execMu.Unlock()
 		}
 	case DomainEventGraphNodeStart:
 		exec.execMu.Lock()
+		if exec.streamGen != gen {
+			// Y2/D6-F2: 旧流的 NodeStart 不得改写新流 CurrentNode，也不得
+			// 触发 taskCoord 看板任务 / runEventSink 通知（副作用整件丢弃）。
+			exec.execMu.Unlock()
+			return
+		}
 		if ParseGraphExecutionState(exec.Status) != GraphExecFailed {
 			exec.CurrentNode = e.NodeID
 		}
@@ -794,6 +856,12 @@ func (uc *GraphExecutionUsecase) updateExecutionFromRuntimeEvent(exec *GraphExec
 	case DomainEventGraphNodeEnd:
 		var persistSnap *GraphExecution
 		exec.execMu.Lock()
+		if exec.streamGen != gen {
+			// Y2/D6-F2: 旧流的 NodeEnd 不得向新流 Steps 追加幽灵步骤，
+			// 也不得触发 UpdateRun / runEventSink 副作用。
+			exec.execMu.Unlock()
+			return
+		}
 		exec.Steps = upsertGraphStep(exec.Steps, GraphStepSnapshot{
 			NodeID:    e.NodeID,
 			StepIndex: e.StepNumber,
@@ -832,14 +900,29 @@ func (uc *GraphExecutionUsecase) updateExecutionFromRuntimeEvent(exec *GraphExec
 		})
 		persistSnap = exec.SnapshotForPersist()
 		exec.execMu.Unlock()
+		if e.Retrying {
+			// Important 级进度件（AS-EVT-01）：不改顺序、不重试、落库失败仅 Warn。
+			if uc.runEventSink != nil {
+				uc.runEventSink.OnNodeCompleted(exec.ctx, exec.ID, exec.GraphID, e.NodeID, e.StepNumber, "failed", e.Error)
+			}
+			if err := uc.runRepo.UpdateRun(exec.ctx, persistSnap); err != nil {
+				uc.lg.Warn("updateExecutionFromRuntimeEvent: UpdateRun failed for node_error", loggateway.StepID("graph.record_fail"), loggateway.Str("execution_id", exec.ID), loggateway.Err(err))
+			}
+			return
+		}
+		// D6-F3（Critical）：终态失败先落库（有界重试）后外发——OnRunFailed
+		// 仅在持久化成功后发送；重试耗尽记死信日志并跳过外发。
+		if err := uc.persistRunWithRetry(exec.ctx, persistSnap, "graph.node_error_final"); err != nil {
+			uc.lg.Error("graph: final node error persist dead-lettered after retries",
+				loggateway.StepID("graph.record_dead_letter"),
+				loggateway.Str("execution_id", exec.ID),
+				loggateway.Str("node_id", e.NodeID),
+				loggateway.Err(err))
+			return
+		}
 		if uc.runEventSink != nil {
 			uc.runEventSink.OnNodeCompleted(exec.ctx, exec.ID, exec.GraphID, e.NodeID, e.StepNumber, "failed", e.Error)
-			if !e.Retrying {
-				uc.runEventSink.OnRunFailed(exec.ctx, exec.ID, exec.GraphID, e.Error)
-			}
-		}
-		if err := uc.runRepo.UpdateRun(exec.ctx, persistSnap); err != nil {
-			uc.lg.Warn("updateExecutionFromRuntimeEvent: UpdateRun failed for node_error", loggateway.StepID("graph.record_fail"), loggateway.Str("execution_id", exec.ID), loggateway.Err(err))
+			uc.runEventSink.OnRunFailed(exec.ctx, exec.ID, exec.GraphID, e.Error)
 		}
 	case DomainEventGraphExecutionError:
 		// N1: graph-level fatal (Pregel error: panic / max steps / executeGraph
@@ -859,11 +942,16 @@ func (uc *GraphExecutionUsecase) updateExecutionFromRuntimeEvent(exec *GraphExec
 		}
 		persistSnap = exec.SnapshotForPersist()
 		exec.execMu.Unlock()
+		// D6-F3（Critical）：先落库（有界重试）后外发 OnRunFailed。
+		if err := uc.persistRunWithRetry(exec.ctx, persistSnap, "graph.execution_error"); err != nil {
+			uc.lg.Error("graph: execution error persist dead-lettered after retries",
+				loggateway.StepID("graph.record_dead_letter"),
+				loggateway.Str("execution_id", exec.ID),
+				loggateway.Err(err))
+			return
+		}
 		if uc.runEventSink != nil {
 			uc.runEventSink.OnRunFailed(exec.ctx, exec.ID, exec.GraphID, e.Error)
-		}
-		if err := uc.runRepo.UpdateRun(exec.ctx, persistSnap); err != nil {
-			uc.lg.Warn("updateExecutionFromRuntimeEvent: UpdateRun failed for execution_error", loggateway.StepID("graph.record_fail"), loggateway.Str("execution_id", exec.ID), loggateway.Err(err))
 		}
 	case DomainEventGraphInterrupt:
 		var persistSnap *GraphExecution
@@ -880,11 +968,17 @@ func (uc *GraphExecutionUsecase) updateExecutionFromRuntimeEvent(exec *GraphExec
 		uc.applyExecTransition(exec, GraphExecEventInterrupt)
 		persistSnap = exec.SnapshotForPersist()
 		exec.execMu.Unlock()
+		// D6-F3（Critical）：先落库（有界重试）后外发 OnRunWaitingApproval。
+		if err := uc.persistRunWithRetry(exec.ctx, persistSnap, "graph.interrupt"); err != nil {
+			uc.lg.Error("graph: interrupt persist dead-lettered after retries",
+				loggateway.StepID("graph.record_dead_letter"),
+				loggateway.Str("execution_id", exec.ID),
+				loggateway.Str("node_id", e.NodeID),
+				loggateway.Err(err))
+			return
+		}
 		if uc.runEventSink != nil {
 			uc.runEventSink.OnRunWaitingApproval(exec.ctx, exec.ID, exec.GraphID, e.NodeID)
-		}
-		if err := uc.runRepo.UpdateRun(exec.ctx, persistSnap); err != nil {
-			uc.lg.Warn("updateExecutionFromRuntimeEvent: UpdateRun failed for interrupt", loggateway.StepID("graph.record_fail"), loggateway.Str("execution_id", exec.ID), loggateway.Err(err))
 		}
 	}
 }

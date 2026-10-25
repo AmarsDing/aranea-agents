@@ -232,7 +232,7 @@ func (o *SpiritOrchestration) RecordTeamCompletion(ctx context.Context, team Tea
 	)
 
 	if dqScore < DQEvolutionThreshold && o.evolutionSugg != nil && team.SpiritSessionID != "" {
-		altTopology, altFound := o.orchCache.SuggestBestAlternativeTopology(team.TaskDescription, topology)
+		altTopology, altFound := o.orchCache.SuggestBestAlternativeTopology(ctx, team.TaskDescription, topology)
 		content := fmt.Sprintf("团队 %q 的 DQ Score 为 %.2f（低于阈值 %.1f），当前拓扑 %s 执行效果不佳。", team.DisplayName, dqScore, DQEvolutionThreshold, topology)
 		if altFound {
 			content += fmt.Sprintf("建议尝试 %s 拓扑。", altTopology)

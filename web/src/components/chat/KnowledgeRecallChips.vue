@@ -23,6 +23,9 @@
         @click="onOpen(hit)"
       >
         <span class="knowledge-recall-chips__idx">[{{ hit.n ?? i + 1 }}]</span>
+        <span v-if="hit.evidence_kind" class="knowledge-recall-chips__score">{{
+          t('knowledgeWorkflow.derivedEvidence')
+        }}</span>
         <span class="knowledge-recall-chips__line">{{ hit.line || hit.chunk_id }}</span>
         <span v-if="hit.score > 0" class="knowledge-recall-chips__score">{{ scoreLabel(hit.score) }}</span>
         <q-tooltip :delay="300" max-width="360px">
@@ -93,7 +96,13 @@ function scoreLabel(score: number): string {
 function onOpen(hit: KnowledgeRecallChunk) {
   if (!hit.doc_id || !router) return;
   // G-17 引用锚定：把 chunk 开头片段 line 一并传给知识页，跳转后精确锚定 + 闪烁。
-  void router.push(knowledgeDocRoute(hit.doc_id, { line: hit.line }));
+  void router.push(
+    knowledgeDocRoute(hit.doc_id, {
+      line: hit.line,
+      evidence_kind: hit.evidence_kind,
+      collection_id: hit.collection_id,
+    }),
+  );
 }
 </script>
 

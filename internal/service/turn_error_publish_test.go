@@ -3,7 +3,9 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
+	"time"
 
 	"aranea-agents/internal/biz"
 	rt "aranea-agents/internal/runtime"
@@ -265,4 +267,103 @@ func TestMarkAndPublish_setsStateAndPublishes(t *testing.T) {
 	if ev.Task.SessionID != "sess-1" {
 		t.Errorf("expected session id sess-1, got %s", ev.Task.SessionID)
 	}
+}
+
+// ── D1-F1：统一取消判别（isUserCancelledErr）────────────────────────────────
+// 87-orchestration-chain-hardening：三处团队回调（executeTeamTurnViaHooks /
+// pending-queue / StartTeamTurn）必须以同一判别分流「用户取消」——err 链
+// context.Canceled / ctx.Err() / context.Cause(ctx) 三源任一命中即为取消。
+// context.DeadlineExceeded 显式不是用户取消（ TeamMaxLifetime 墙钟超时是
+// infra 失败语义，必须走 failed 路径）。
+
+func TestIsUserCancelledErr(t *testing.T) {
+	cancelledCtx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	causeCtx, causeCancel := context.WithCancelCause(context.Background())
+	causeCancel(context.Canceled)
+
+	// 已超时的 deadline ctx：Err() == DeadlineExceeded，不是取消。
+	deadlineCtx, deadlineCancel := context.WithTimeout(context.Background(), -time.Second)
+	defer deadlineCancel()
+
+	tests := []struct {
+		name string
+		ctx  context.Context
+		err  error
+		want bool
+	}{
+		{name: "err wraps context.Canceled", ctx: context.Background(), err: fmt.Errorf("runner: %w", context.Canceled), want: true},
+		{name: "bare context.Canceled err", ctx: context.Background(), err: context.Canceled, want: true},
+		{name: "ctx cancelled, nil err", ctx: cancelledCtx, err: nil, want: true},
+		{name: "ctx cancelled + generic err", ctx: cancelledCtx, err: errors.New("boom"), want: true},
+		{name: "WithCancelCause(context.Canceled)", ctx: causeCtx, err: nil, want: true},
+		{name: "DeadlineExceeded err is NOT user cancel", ctx: context.Background(), err: context.DeadlineExceeded, want: false},
+		{name: "exceeded deadline ctx is NOT user cancel", ctx: deadlineCtx, err: nil, want: false},
+		{name: "generic error, live ctx", ctx: context.Background(), err: errors.New("boom"), want: false},
+		{name: "nil ctx", ctx: nil, err: context.Canceled, want: true},
+		{name: "nil everything", ctx: nil, err: nil, want: false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := isUserCancelledErr(tc.ctx, tc.err); got != tc.want {
+				t.Fatalf("isUserCancelledErr = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestRunWasCancelled_DelegatesCancelSignals pins the delegation contract:
+// registry(SessionRunPhaseCancelled) stays the priority check, then the
+// discriminator defers to isUserCancelledErr (shared with TeamStarter).
+func TestRunWasCancelled_DelegatesCancelSignals(t *testing.T) {
+	newOrch := func() (*ChatOrchestrator, *rt.RunRegistry) {
+		reg := rt.NewRunRegistry()
+		orch := &ChatOrchestrator{
+			runs:      reg,
+			turnLC:    newNoopChatTurnLifecycle(),
+			runMgr:    newNoopChatRunManager(),
+			infraDeps: ChatInfraDeps{LG: loggateway.NewNoop()},
+		}
+		return orch, reg
+	}
+
+	t.Run("registry cancelled status wins priority", func(t *testing.T) {
+		orch, reg := newOrch()
+		reg.SetStatus("sess-1", "run-1", biz.SessionRunPhaseCancelled, "")
+		// Even with a non-cancellation error signal, registry status short-circuits.
+		if !orch.runWasCancelled(context.Background(), "sess-1", errors.New("boom")) {
+			t.Fatal("registry cancelled status must short-circuit to true")
+		}
+	})
+
+	t.Run("wrapped context.Canceled delegates to isUserCancelledErr", func(t *testing.T) {
+		orch, _ := newOrch()
+		if !orch.runWasCancelled(context.Background(), "sess-1", fmt.Errorf("llm stream: %w", context.Canceled)) {
+			t.Fatal("wrapped context.Canceled must be treated as user cancel")
+		}
+	})
+
+	t.Run("ctx cancelled with nil err delegates", func(t *testing.T) {
+		orch, _ := newOrch()
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		if !orch.runWasCancelled(ctx, "sess-1", nil) {
+			t.Fatal("cancelled ctx must be treated as user cancel")
+		}
+	})
+
+	t.Run("DeadlineExceeded stays not-user-cancel", func(t *testing.T) {
+		orch, _ := newOrch()
+		if orch.runWasCancelled(context.Background(), "sess-1", context.DeadlineExceeded) {
+			t.Fatal("DeadlineExceeded must NOT be treated as user cancel (wall-clock timeout = failure)")
+		}
+	})
+
+	t.Run("generic error is not user cancel", func(t *testing.T) {
+		orch, _ := newOrch()
+		if orch.runWasCancelled(context.Background(), "sess-1", errors.New("boom")) {
+			t.Fatal("generic error must not be treated as user cancel")
+		}
+	})
 }

@@ -8,16 +8,32 @@ import (
 	"strings"
 	"time"
 
+	chatagent "aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/loggateway"
 )
 
 func (r *dagRun) releaseLeaseAndNotifyCompletion() {
 	r.pe.running.Delete(r.board.ID)
+	// 先释放端口租约再通知终态（对齐 dag_run.go『先释放再通知』不变量）：
+	// 防止 final synthesis 触发方在租约仍活时被 HasActive 判定撞车（对抗评审 #2）。
+	// lease-aware run 的 leasePort 与本地 running 行成对存在；idempotent。
+	if r.pe.leasePort != nil {
+		r.pe.leasePort.Release(r.board.ID)
+	}
 	if r.pe.completionNotifier == nil || r.board.SessionID == "" {
 		return
 	}
-	r.pe.completionNotifier.NotifyAllTeamsCompleted(context.Background(), r.board.SessionID)
+	// 2026-07-04 问题 5 ctx fallback 死路径修复（D3-FIX-2，87-orchestration-
+	// chain-hardening）：释放 lease 的通知路径此前裸用 context.Background()，
+	// resolveLatestUserTaskID 的「ctx 权威」分支恒走不到（RootTaskActivityID
+	// 空），挂靠只能依赖 DB 的『最新 user task』推断——重启/重排场景会错挂
+	// 到别的轮回。此处注入 board.TaskID 作为 ctx 权威根。
+	notifyCtx := context.Background()
+	if tid := strings.TrimSpace(r.board.TaskID); tid != "" {
+		notifyCtx = chatagent.ContextWithRootTaskActivityID(notifyCtx, chatagent.RootTaskActivityID(tid))
+	}
+	r.pe.completionNotifier.NotifyAllTeamsCompleted(notifyCtx, r.board.SessionID)
 }
 
 // snapshotStepOutcomes returns aggregated PlanStep failure flags under r.mu.

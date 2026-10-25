@@ -100,6 +100,12 @@
             :title="dotTitle(f)"
           />
           <span class="kb-sidebar__file-name ellipsis" :title="f.name">{{ f.name }}</span>
+          <q-icon
+            v-if="visibilityOf(f) !== 'collection'"
+            :name="visibilityOf(f) === 'private' ? 'lock' : 'smart_toy'"
+            size="14px"
+            :title="t(`knowledgeWorkflow.${visibilityOf(f)}`)"
+          />
           <!-- U0-5：chunk_count 角标（缺字段/0 时隐藏） -->
           <span
             v-if="chunkLabel(f)"
@@ -143,13 +149,28 @@
                   <q-item-section>{{ t('knowledgePage.reembedDocument') }}</q-item-section>
                   <q-tooltip v-if="!currentHasSemantic">{{ t('knowledgePage.reembedNoSemantic') }}</q-tooltip>
                 </q-item>
-                <q-item clickable data-test="file-private" @click="$emit('file-action', 'private', f)">
+                <q-item
+                  clickable
+                  :disable="!canShare(f)"
+                  :title="!canShare(f) ? t('knowledgeWorkflow.noSharePermission') : ''"
+                  data-test="file-private"
+                  @click="$emit('file-action', 'private', f)"
+                >
                   <q-item-section avatar><q-icon name="lock" size="18px" /></q-item-section>
                   <q-item-section>{{ t('knowledgePage.workbench.filePrivate') }}</q-item-section>
                 </q-item>
-                <q-item clickable data-test="file-collection" @click="$emit('file-action', 'collection', f)">
+                <q-item
+                  clickable
+                  :disable="!canShare(f)"
+                  data-test="file-collection"
+                  @click="$emit('file-action', 'collection', f)"
+                >
                   <q-item-section avatar><q-icon name="folder_shared" size="18px" /></q-item-section>
                   <q-item-section>{{ t('knowledgePage.workbench.fileCollectionVisible') }}</q-item-section>
+                </q-item>
+                <q-item clickable :disable="!canShare(f)" @click="$emit('file-action', 'sharing', f)">
+                  <q-item-section avatar><q-icon name="manage_accounts" size="18px" /></q-item-section>
+                  <q-item-section>{{ t('knowledgeWorkflow.sharing') }}</q-item-section>
                 </q-item>
                 <q-separator />
                 <q-item clickable class="kb-sidebar__menu-danger" @click="$emit('file-action', 'delete', f)">
@@ -193,6 +214,7 @@ import DocumentSummaryCard from '../DocumentSummaryCard.vue';
 import BulkActionsBar from './BulkActionsBar.vue';
 import { isValidDropTarget, type DragFileRef } from '../../../features/knowledge/vaultTreeUi';
 import { useBulkDocActions } from '../../../features/knowledge/useBulkDocActions';
+import { canManageKnowledgeVisibility } from '../../../features/knowledge/knowledgeUi';
 import {
   docStatusTone,
   formatChunkCount,
@@ -201,7 +223,7 @@ import {
   type DocStatusTone,
 } from '../../../features/knowledge/useSidebarSelection';
 import type { VaultLazyLoadPayload, VaultQTreeNode } from '../../../features/knowledge/useVaultExplorer';
-import type { KnowledgeCollection, VaultTreeNode } from '../../../features/knowledge/types';
+import type { KnowledgeCollection, KnowledgeDocument, VaultTreeNode } from '../../../features/knowledge/types';
 
 const props = withDefaults(
   defineProps<{
@@ -220,8 +242,11 @@ const props = withDefaults(
     currentPrefix: string;
     /** B1：集合列表（按 currentVaultId 查语义层标记，驱动重嵌入菜单置灰） */
     collections?: KnowledgeCollection[];
+    documentInfo?: KnowledgeDocument[];
+    viewerId?: string;
+    isAdmin?: boolean;
   }>(),
-  { collections: () => [] },
+  { collections: () => [], documentInfo: () => [], viewerId: '', isAdmin: false },
 );
 
 const emit = defineEmits<{
@@ -246,6 +271,16 @@ const emit = defineEmits<{
 }>();
 
 const { t, te } = useI18n();
+function canShare(file: VaultTreeNode): boolean {
+  return canManageKnowledgeVisibility(
+    props.documentInfo?.find((doc) => doc.id === file.doc_id),
+    props.viewerId || '',
+    props.isAdmin,
+  );
+}
+function visibilityOf(file: VaultTreeNode): string {
+  return props.documentInfo?.find((doc) => doc.id === file.doc_id)?.visibility || 'collection';
+}
 
 /** B1：当前集合有语义层（embedding_model 非空）才可重新向量化；词法库置灰。 */
 const currentHasSemantic = computed(() => {

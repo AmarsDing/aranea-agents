@@ -4,12 +4,14 @@
       <WorkbenchTopBar
         :collections="collections"
         :current-vault-id="currentVaultId"
+        :can-configure="isAdmin"
         @switch-vault="$emit('switch-vault', $event)"
         @open-quick-switcher="openQuickSwitcher"
         @open-command-palette="openCommandPalette"
         @open-search="openSearch"
         @open-graph="$emit('open-graph')"
         @open-settings="$emit('open-settings')"
+        @upload="$emit('upload')"
         @open-hit-test="$emit('open-hit-test')"
         @open-review-governance="runCommand('review-governance')"
         @open-review-writeback="runCommand('review-writeback')"
@@ -29,6 +31,9 @@
           :current-vault-id="currentVaultId"
           :current-prefix="currentPrefix"
           :collections="collections"
+          :document-info="documents"
+          :viewer-id="viewerId"
+          :is-admin="isAdmin"
           @select-node="$emit('select-node', $event)"
           @update:expanded-keys="$emit('update:expanded-keys', $event)"
           @lazy-load="$emit('lazy-load', $event)"
@@ -63,6 +68,7 @@
           @close="workbench.closeTab"
           @reorder="workbench.reorderTabs"
           @save="saveDoc"
+          @reload="confirmReload"
           @toggle-mode="workbench.toggleMode"
           @update-content="workbench.updateContent"
           @open-doc="openDocByName"
@@ -70,13 +76,14 @@
           @open-doc-id="openDocById"
           @pick-link="onPickLink"
           @create-note="createNote"
+          @upload="$emit('upload')"
         />
 
         <!-- 右栏：五面板联动（SP2-5） -->
         <WorkbenchSidePanels
           class="kb-workbench__right"
           :active-tab="workbench.activeTab.value"
-          :collection-id="currentVaultId"
+          :collection-id="contextVaultId"
           :refresh-nonce="panelsRefreshNonce"
           :summary="activeDocument?.summary"
           :tags="activeDocument?.tags"
@@ -117,6 +124,7 @@
       :query="searchQuery"
       :items="searchItems"
       :loading="searchLoading"
+      :error="searchError"
       :semantic-lexical-only="currentVaultLexicalOnly"
       @update:open="searchOpen = $event"
       @update:query="searchQuery = $event"
@@ -190,6 +198,7 @@
 // 本组件只做布局、wikilink/大纲导航与脏关闭确认，状态经 props 注入的 workbench 状态机与 explorer。
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, toRef } from 'vue';
 import { useI18n } from 'vue-i18n';
+import { useQuasar } from 'quasar';
 import WorkbenchTopBar from './WorkbenchTopBar.vue';
 import WorkbenchSidebar from './WorkbenchSidebar.vue';
 import WorkbenchTabs from './WorkbenchTabs.vue';
@@ -214,6 +223,8 @@ const props = defineProps<{
   collections: KnowledgeCollection[];
   /** 完整文档列表（openFile 时解析 mime_type 判定可编辑性） */
   documents: KnowledgeDocument[];
+  viewerId?: string;
+  isAdmin?: boolean;
   currentVaultId: string;
   nodes: VaultQTreeNode[];
   selectedKey: string | null;
@@ -243,6 +254,7 @@ const emit = defineEmits<{
   'refresh-tree': [];
   'open-graph': [focusDocId?: string];
   'open-settings': [];
+  upload: [];
   /** G-19：顶栏 hit-test 入口（页面打开检索排查面板） */
   'open-hit-test': [];
   /** 命令面板「晋升到团队库」（SP2-8 由页面接入既有 PromoteDialog） */
@@ -260,11 +272,33 @@ const { t } = useI18n();
 
 /** 右栏大纲跳转（SP2-5）：透传到活动 NoteEditor 滚动定位。 */
 const tabsRef = ref<InstanceType<typeof WorkbenchTabs> | null>(null);
+const $q = useQuasar();
 
 /** C6：外部保存入口——先 flush 编辑器防抖写回再 CAS 保存（冲突提示由 commands 层统一发）。 */
 async function flushAndSave(docId: string): Promise<boolean> {
   tabsRef.value?.flushPendingContent();
   return props.workbench.saveTab(docId);
+}
+
+function confirmReload(docId: string) {
+  $q.dialog({
+    title: t('knowledgeWorkflow.reloadStored'),
+    message: t('knowledgeWorkflow.reloadStoredConfirm'),
+    cancel: true,
+    persistent: true,
+  }).onOk(async () => {
+    tabsRef.value?.flushPendingContent();
+    try {
+      if (!(await props.workbench.reloadTab(docId))) {
+        $q.notify({ type: 'warning', message: t('knowledgeWorkflow.savePending') });
+      }
+    } catch (error) {
+      $q.notify({
+        type: 'negative',
+        message: error instanceof Error ? error.message : t('knowledgeWorkflow.saveFailed'),
+      });
+    }
+  });
 }
 
 const {
@@ -278,8 +312,12 @@ const {
   searchQuery,
   searchItems,
   searchLoading,
+  searchError,
+  contextVaultId,
+  contextDocuments,
   openSearch,
   onSearchPick,
+  openDocumentById,
   commandMru,
   commandItems,
   runCommand,
@@ -315,6 +353,8 @@ const {
   collections: toRef(props, 'collections'),
   events: {
     refreshTree: () => emit('refresh-tree'),
+    createVault: () => emit('create-vault'),
+    flushEditor: () => tabsRef.value?.flushPendingContent(),
     switchVault: (id) => emit('switch-vault', id),
     openGraph: (focusDocId) => emit('open-graph', focusDocId),
     promoteActive: (docId) => emit('promote-active', docId),
@@ -324,9 +364,7 @@ const {
 });
 
 /** wikilink 候选：当前库全部文档 relPath（补全 + 存在性判定同口径）。 */
-const candidates = computed(() =>
-  props.documents.filter((d) => d.collection_id === props.currentVaultId).map((d) => d.rel_path || d.source),
-);
+const candidates = computed(() => contextDocuments.value.map((d) => d.rel_path || d.source));
 
 /** 当前库文档（快速切换数据源）。 */
 const vaultDocs = computed(() => props.documents.filter((d) => d.collection_id === props.currentVaultId));
@@ -346,36 +384,24 @@ const currentVaultLexicalOnly = computed(() => {
   return !!c && !c.dim;
 });
 
-const activeDocument = computed(() => props.documents.find((d) => d.id === props.workbench.activeTabId.value) ?? null);
+const activeDocument = computed(
+  () => contextDocuments.value.find((d) => d.id === props.workbench.activeTabId.value) ?? null,
+);
 
 // ---------- 全局快捷键注册（处理器在 commands 层） ----------
 
 onMounted(() => window.addEventListener('keydown', onGlobalKeydown, { capture: true }));
 onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKeydown, { capture: true }));
 
-/** 文件节点 → 完整文档（mime_type 供 isEditable 判定）；列表未覆盖时按节点合成。 */
-function resolveDocument(node: VaultTreeNode): KnowledgeDocument {
-  const found = props.documents.find((d) => d.id === node.doc_id);
-  if (found) return found;
-  return {
-    id: node.doc_id,
-    source: node.name,
-    rel_path: node.path,
-    collection_id: props.currentVaultId,
-    mime_type: '',
-  } as KnowledgeDocument;
-}
-
 function openFile(node: VaultTreeNode) {
-  if (!node.doc_id) return;
-  void props.workbench.openDoc(resolveDocument(node));
+  if (node.doc_id) void openDocumentById(node.doc_id);
 }
 
 /** wikilink 跳链：按名归一化匹配当前库文档后 openDoc；带 #heading 时打开后滚动定位（P2-5）。 */
 async function openDocByName(target: string, heading?: string) {
   const want = normalizeTargetName(target);
-  const doc = props.documents.find(
-    (d) => d.collection_id === props.currentVaultId && normalizeTargetName(d.rel_path || d.source) === want,
+  const doc = contextDocuments.value.find(
+    (d) => d.collection_id === contextVaultId.value && normalizeTargetName(d.rel_path || d.source) === want,
   );
   if (!doc) return;
   await props.workbench.openDoc(doc);
@@ -390,21 +416,21 @@ async function openDocByName(target: string, heading?: string) {
 /** `[[target#` 标题补全数据源（P2-5）：已打开 tab 的大纲标题（未打开文档不拉取，保持补全零网络）。 */
 function getHeadingsFor(target: string): string[] {
   const want = normalizeTargetName(target);
-  const tab = props.workbench.tabs.value.find((tb) => normalizeTargetName(tb.relPath) === want);
+  const tab = props.workbench.tabs.value.find(
+    (tb) => tb.collectionId === contextVaultId.value && normalizeTargetName(tb.relPath) === want,
+  );
   return tab ? parseOutline(tab.content).map((h) => h.text) : [];
 }
 
 /** 右栏面板跳链（SP2-5）：按 docId 直接打开；不在当前文档列表时提示（跨库反链目标）。 */
 function openDocById(docId: string) {
-  const doc = props.documents.find((d) => d.id === docId);
-  if (doc) void props.workbench.openDoc(doc);
+  void openDocumentById(docId);
 }
 
 /** G-18 反链「点回引用现场」：打开来源文档后按 context/rawTarget 计算锚点并滚动定位。 */
 async function openDocAtAnchor(docId: string, context: string, rawTarget: string) {
-  const doc = props.documents.find((d) => d.id === docId);
-  if (!doc) return; // 跨库/已删除：维持原 open-doc-id 行为（本库文档才有锚点可滚）
-  await props.workbench.openDoc(doc);
+  const doc = await openDocumentById(docId);
+  if (!doc) return;
   await nextTick(); // 等 NoteEditor 按新 activeTab 挂载
   const content = props.workbench.activeTab.value?.content ?? '';
   const offset = findBacklinkOffset(content, context, rawTarget);
@@ -431,7 +457,7 @@ function jumpOutline(offset: number) {
   tabsRef.value?.scrollToOffset(offset);
 }
 
-defineExpose({ openDocAtCitation });
+defineExpose({ openDocAtCitation, flushPendingContent: () => tabsRef.value?.flushPendingContent() });
 
 // ---------- 脏关闭确认 ----------
 const confirmSaving = ref(false);

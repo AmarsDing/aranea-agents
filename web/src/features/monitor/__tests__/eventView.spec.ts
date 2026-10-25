@@ -8,6 +8,7 @@ import {
   wsEventToView,
   persistedEventToView,
 } from '../eventView';
+import { isRunLifecycleEventType } from '../tracesQuery';
 
 /** 测试用 t()：回显 key 与插值参数，断言与语言解耦。 */
 const t = (key: string, ...args: unknown[]) => (args.length ? `${key}${JSON.stringify(args)}` : key);
@@ -91,6 +92,12 @@ describe('severityForWsEvent', () => {
     expect(severityForWsEvent('team_run_started')).toBe('info');
     expect(severityForWsEvent('intent_pass')).toBe('info');
   });
+
+  // D4-5：cancelled 不含 failed/error 子串，severity 恒为 info（不得染红/橙）。
+  it('team_run_cancelled 非 warn（==info）', () => {
+    expect(severityForWsEvent('team_run_cancelled')).toBe('info');
+    expect(severityForWsEvent('team_run_cancelled')).not.toBe('warn');
+  });
 });
 
 describe('wsEventToView', () => {
@@ -165,6 +172,29 @@ describe('wsEventToView', () => {
     const view = wsEventToView(t, makeWsEvent({ type: 'custom.event' }), 0);
     expect(view.title).toBe('custom.event');
     expect(view.subtitle).toBe('');
+  });
+
+  // D4-5：取消终态渲染为 cancelled 标题（不再渲染为失败），Error 为空摘要不取错误；
+  // severity 保持 info（取消行不落入失败语义的 warn 分级——后续调色定级交 D9/D10）。
+  it('team_run_cancelled 产出 cancelled 标题且不取 error 摘要', () => {
+    const view = wsEventToView(
+      t,
+      makeWsEvent({
+        type: 'team_run_cancelled',
+        run: { id: 'run-c', status: 'cancelled', error_message: '', created_at: '', updated_at: '' } as never,
+      }),
+      4,
+    );
+    expect(view.title).toBe('monitorPage.events.title.teamRunCancelled');
+    expect(view.title).not.toBe('monitorPage.events.title.teamRunFailed');
+    expect(view.subtitle).toBe('');
+    expect(view.severity).toBe('info');
+    expect(view.category).toBe('task');
+  });
+
+  // D4-5：取消事件到达时 Runs 列表防抖刷新必须落定终态（契约性 wiring）。
+  it('isRunLifecycleEventType 命中 team_run_cancelled', () => {
+    expect(isRunLifecycleEventType('team_run_cancelled')).toBe(true);
   });
 });
 

@@ -127,7 +127,7 @@ func (r *knowledgeRepo) ListDocumentsPendingReembed(ctx context.Context, collect
 		         chunk_strategy, chunk_size, chunk_overlap
 		  FROM knowledge_documents d
 		  WHERE collection_id = $1
-		    AND content_text <> ''
+		    AND (content_text <> '' OR status = 'pending')
 		    AND status <> 'indexing'
 		    AND (
 		      NOT EXISTS (SELECT 1 FROM knowledge_chunks c WHERE c.doc_id = d.id AND c.chunk_role = 'child')

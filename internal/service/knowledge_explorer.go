@@ -38,7 +38,7 @@ func (s *KnowledgeService) CreateVaultDir(ctx context.Context, req *v1.CreateVau
 	if err != nil {
 		return nil, err
 	}
-	if err := s.assertCollectionAccess(ctx, col); err != nil {
+	if err := s.assertCollectionMutateAccess(ctx, col); err != nil {
 		return nil, err
 	}
 	if err := s.uc.CreateVaultDir(ctx, req.GetCollectionId(), req.GetDirPath()); err != nil {
@@ -54,10 +54,15 @@ func (s *KnowledgeService) CreateVaultDocument(ctx context.Context, req *v1.Crea
 	if err != nil {
 		return nil, err
 	}
-	if err := s.assertCollectionAccess(ctx, col); err != nil {
+	if err := s.assertCollectionMutateAccess(ctx, col); err != nil {
 		return nil, err
 	}
-	doc, err := s.uc.CreateVaultDocument(ctx, req.GetCollectionId(), req.GetRelPath())
+	var doc biz.KnowledgeDocument
+	if col.RootPath == "" {
+		doc, err = s.uc.CreateTeamDocument(ctx, col.ID, req.GetRelPath())
+	} else {
+		doc, err = s.uc.CreateVaultDocument(ctx, col.ID, req.GetRelPath())
+	}
 	if err != nil {
 		return nil, err
 	}

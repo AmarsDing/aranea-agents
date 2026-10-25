@@ -46,7 +46,7 @@ export class ChatApiError extends Error {
 export function isChatQueueFullError(err: unknown): boolean {
   const msg = err instanceof Error ? err.message : String(err ?? '');
   // 后端队列已满的报错按稳定标记/英文/中文文案匹配（非 UI 文案，勿随意改）。
-  if (/CHAT_QUEUE_FULL|pending queue is full|排队消息已满/.test(msg)) return true;
+  if (/CHAT_QUEUE_FULL|pending queue is full|排队消息已满/.test(msg)) return true; // i18n-exempt: matches backend-localized error text, not UI copy
   const nested = err instanceof ChatApiError ? err.cause : err;
   if (typeof nested === 'object' && nested !== null && 'response' in nested) {
     const resp = (nested as { response?: { status?: number; data?: { reason?: unknown } } }).response;

@@ -66,7 +66,10 @@ export function useAgentUsageQuota(agentId: Ref<string>) {
   // 输入规则（q-input :rules，true=通过）；保存前仍会整体复核，双保险。
   const monthlyUsdRules = [
     (v: number | null | string) =>
-      v === null || v === '' || (typeof v === 'number' && !Number.isNaN(v) && v >= 0) || t('usageQuota.monthlyUsdInvalid'),
+      v === null ||
+      v === '' ||
+      (typeof v === 'number' && !Number.isNaN(v) && v >= 0) ||
+      t('usageQuota.monthlyUsdInvalid'),
   ];
   // 交叉规则挂到开始/结束两个字段：Quasar 只在本字段变化/失焦时重验，单边挂载会导致常见填写顺序下无字段级提示。
   const periodCrossRule = () =>

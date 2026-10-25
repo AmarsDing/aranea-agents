@@ -76,17 +76,19 @@ type CurateProposal struct {
 
 // CurateReport 一轮治理的结果。
 type CurateReport struct {
-	CollectionID      string
-	DryRun            bool
-	DecayedEdges      int      // co_activated 边参与衰减数
-	ClosedEdges       int      // 衰减后跌破阈值被关闭数
-	PromotedRelations []string // 本轮提升 promoted 的谓词（dry_run 为预估清单）
-	StaleMarked       int      // 本轮标记的陈旧词条数
-	DistilledFacts    int      // 本轮蒸馏进 memory_fact 的词条数
-	HubsScanned       int      // 本轮参与密度检测的 hub 数
-	ProposalsPending  int      // 本轮新产高风险 pending 提案数
-	Proposals         []CurateProposal
-	Actions           []string // 实际执行的治理任务名
+	CollectionID         string
+	DryRun               bool
+	DecayedEdges         int      // co_activated 边参与衰减数
+	ClosedEdges          int      // 衰减后跌破阈值被关闭数
+	PromotedRelations    []string // 本轮提升 promoted 的谓词（dry_run 为预估清单）
+	StaleMarked          int      // 本轮标记的陈旧词条数
+	DistilledFacts       int      // 本轮蒸馏进 memory_fact 的词条数
+	HubsScanned          int      // 本轮参与密度检测的 hub 数
+	MOCSummarized        int      // 本轮 LLM 补齐摘要的 MOC 页数（G-34 ADR-C）
+	EntityMergeProposals int      // 本轮实体消解新产提案数（G-37 ADR-D）
+	ProposalsPending     int      // 本轮新产高风险 pending 提案数
+	Proposals            []CurateProposal
+	Actions              []string // 实际执行的治理任务名
 }
 
 // StaleEntryStat 陈旧词条候选（语义边关闭比例高 + 长期未检索）。
@@ -174,6 +176,9 @@ type KnowledgeCurateRepo interface {
 	// MarkStaleEntries 置位 documents.stale_at（P1-c：stale 标记落地文档字段，
 	// 检索侧降权消费；幂等——已置位行不动，保留首判时间）。
 	MarkStaleEntries(ctx context.Context, docIDs []string) error
+	// ListPendingMOCSummaries MOC 摘要待补页（ADR-C）：collection 下 rel_path 以
+	// moc/ 开头且「## 摘要」段仍为占位文的页，按 doc id 升序，limit 截断。
+	ListPendingMOCSummaries(ctx context.Context, collectionID string, limit int) ([]MOCPendingSummaryDoc, error)
 }
 
 // SetCurateRepo 接线 M4 治理数据端口（可选；nil 时 CurateKnowledge 显式报不可用）。
@@ -395,6 +400,12 @@ func (u *Usecase) CurateKnowledge(ctx context.Context, opts CurateOptions) (Cura
 	// ── moc_emerge：hub 簇蒸馏 MOC 词条 → 高风险 pending 提案（人工二审） ──
 	rep.HubsScanned = u.runMOCEmergeTask(ctx, colID, opts, &rep)
 
+	// ── moc_summary：MOC 页「## 摘要」占位 → LLM 对账补齐（G-34 ADR-C） ──
+	rep.MOCSummarized = u.runMOCSummaryTask(ctx, homeCol, colID, opts, &rep)
+
+	// ── entity_merge：ANN/norm 候选 → 分层裁定 → 高风险 pending 提案（G-37） ──
+	rep.EntityMergeProposals = u.runEntityMergeTask(ctx, homeCol, colID, opts, &rep)
+
 	u.lg.Info("知识库词条治理完成",
 		loggateway.StepID("knowledge.curate"),
 		loggateway.Str("collection_id", colID),
@@ -404,6 +415,8 @@ func (u *Usecase) CurateKnowledge(ctx context.Context, opts CurateOptions) (Cura
 		loggateway.Int("stale", rep.StaleMarked),
 		loggateway.Int("distilled", rep.DistilledFacts),
 		loggateway.Int("hubs_scanned", rep.HubsScanned),
+		loggateway.Int("mocs_summarized", rep.MOCSummarized),
+		loggateway.Int("entity_merge_proposals", rep.EntityMergeProposals),
 		loggateway.Int("proposals_pending", rep.ProposalsPending),
 	)
 	return rep, nil
@@ -495,23 +508,45 @@ func (u *Usecase) ResolveGovernanceProposal(ctx context.Context, id int64, statu
 	if decision == "" {
 		return apierror.BadRequest(apierror.DomainKnowledge, fmt.Sprintf("invalid proposal status %q", status))
 	}
-	if decision != ProposalStatusRejected {
-		view, err := u.curate.GetGovernanceProposal(ctx, id)
-		if err != nil {
-			return err
-		}
+	var disposed GovernanceProposalView
+	derived := &governanceDerivedQueue{docIDs: make(map[string]PromoteTouchedDoc)}
+	apply := func(txCtx context.Context, view GovernanceProposalView) (string, error) {
+		txCtx = context.WithValue(txCtx, governanceDerivedKey{}, derived)
 		if view.Status != ProposalStatusPending {
-			return apierror.BadRequest(apierror.DomainKnowledge, fmt.Sprintf("proposal %d not pending (status %s)", id, view.Status))
+			return "", apierror.BadRequest(apierror.DomainKnowledge, fmt.Sprintf("proposal %d not pending (status %s)", id, view.Status))
 		}
-		if err := u.applyGovernanceDisposal(ctx, view, decision); err != nil {
-			return err
+		if decision != ProposalStatusRejected {
+			if err := u.applyGovernanceDisposal(txCtx, view, decision); err != nil {
+				return "", err
+			}
+			disposed = view
 		}
+		persist := decision
+		if decision == ProposalDecisionKeepOld || decision == ProposalDecisionKeepNew {
+			persist = ProposalStatusApplied
+		}
+		return persist, nil
 	}
-	persist := decision
-	if decision == ProposalDecisionKeepOld || decision == ProposalDecisionKeepNew {
-		persist = ProposalStatusApplied
+	var err error
+	if runner, ok := u.curate.(GovernanceResolutionRunner); ok {
+		err = runner.ResolveGovernanceAtomically(ctx, id, apply)
+	} else {
+		// In-memory adapters implement the same guard; production uses a row lock.
+		view, readErr := u.curate.GetGovernanceProposal(ctx, id)
+		if readErr != nil {
+			return readErr
+		}
+		persist, applyErr := apply(ctx, view)
+		if applyErr != nil {
+			return applyErr
+		}
+		err = u.curate.ResolveGovernanceProposal(ctx, id, persist)
 	}
-	return u.curate.ResolveGovernanceProposal(ctx, id, persist)
+	if err == nil {
+		u.replayGovernedDocument(ctx, disposed)
+		u.replayGovernanceQueue(ctx, derived)
+	}
+	return err
 }
 
 func normalizeProposalDecision(decision string) string {
@@ -525,7 +560,7 @@ func normalizeProposalDecision(decision string) string {
 
 // applyGovernanceDisposal 按提案 kind 执行 applied 实际处置。历史提案缺关键字段
 // 降级 no-op；可识别的事实段冲突必须显式选择保留版本，禁止伪 applied。
-// moc_emerge 无自动处置（人工建 MOC，设计如此）。
+// moc_emerge 自动落 MOC 骨架页（ADR-KN-20261021-A，applyMOCGovernanceDisposal）。
 func (u *Usecase) applyGovernanceDisposal(ctx context.Context, view GovernanceProposalView, decision string) error {
 	if decision == ProposalDecisionKeepOld || decision == ProposalDecisionKeepNew {
 		if view.Kind != ProposalKindConflict {
@@ -539,8 +574,15 @@ func (u *Usecase) applyGovernanceDisposal(ctx context.Context, view GovernancePr
 		if strings.TrimSpace(docID) == "" {
 			return nil
 		}
+		doc, err := u.documents.GetDocument(ctx, docID)
+		if err != nil && !apierror.IsCode(err, apierror.CodeNotFound) {
+			return err
+		}
+		if err == nil && doc.CollectionID != "" && doc.CollectionID != view.CollectionID {
+			return apierror.NotFound(apierror.DomainKnowledge, "proposal document not found")
+		}
 		// 文档已不存在（并发已删）视为幂等成功；其余错误上抛（提案停留 pending）。
-		if err := u.DeleteDocument(ctx, docID); err != nil && !apierror.IsCode(err, apierror.CodeNotFound) {
+		if err := u.documents.DeleteDocument(ctx, docID); err != nil && !apierror.IsCode(err, apierror.CodeNotFound) {
 			return apierror.Internal(apierror.DomainKnowledge, "orphan disposal: delete document %s", docID).WithCause(err)
 		}
 		u.lg.Info("治理：orphan 提案 applied，孤儿词条已删除",
@@ -575,6 +617,18 @@ func (u *Usecase) applyGovernanceDisposal(ctx context.Context, view GovernancePr
 			loggateway.Str("target_doc_id", targetID),
 			loggateway.Int64("proposal_id", view.ID),
 		)
+	case ProposalKindMOCEmerge:
+		// ADR-KN-20261021-A：applied 同步落 moc/<slug>.md 骨架页（零 LLM，
+		// get-or-create 幂等）。处置失败上抛，提案停留 pending 可重审。
+		if err := u.applyMOCGovernanceDisposal(ctx, view); err != nil {
+			return err
+		}
+	case ProposalKindEntityMerge:
+		// ADR-KN-20261021-D：applied = MergeEntities 四层事务并入 keeper
+		// （keeper NotFound 幂等成功；缺字段 no-op；其余错误上抛留 pending）。
+		if err := u.applyEntityMergeDisposal(ctx, view); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -597,6 +651,9 @@ func (u *Usecase) applyFactConflictResolution(ctx context.Context, view Governan
 	doc, err := u.documents.GetDocument(ctx, docID)
 	if err != nil {
 		return err
+	}
+	if doc.CollectionID != "" && doc.CollectionID != view.CollectionID {
+		return apierror.NotFound(apierror.DomainKnowledge, "proposal document not found")
 	}
 	body := doc.ContentText
 	oldMarker := "fact_id: `" + targetFactID + "`"
@@ -624,7 +681,15 @@ func (u *Usecase) applyFactConflictResolution(ctx context.Context, view Governan
 			}
 		}
 	}
-	if err := u.documents.UpdateDocumentContent(ctx, doc.ID, body, true); err != nil {
+	if store, ok := u.documents.(TeamContentStore); ok {
+		applied, err := store.ReplaceTeamDocumentContent(ctx, doc.ID, HashContent(doc.ContentText), body)
+		if err != nil {
+			return err
+		}
+		if !applied {
+			return apierror.Conflict(apierror.DomainKnowledge, "document changed during governance review")
+		}
+	} else if err := u.documents.UpdateDocumentContent(ctx, doc.ID, body, true); err != nil {
 		return err
 	}
 	kept, _ := extractH2BlockContaining(body, oldMarker)
@@ -634,13 +699,6 @@ func (u *Usecase) applyFactConflictResolution(ctx context.Context, view Governan
 		}
 	}
 	u.recordFactVersion(ctx, view.CollectionID, doc.ID, targetFactID, discarded, kept)
-	if err := u.RebuildBlockIndex(ctx, view.CollectionID, doc.ID, body); err != nil {
-		u.lg.Warn("事实冲突处置后块索引重建失败（正文已更新，重建可自愈）",
-			loggateway.StepID("knowledge.curate.conflict"),
-			loggateway.Str("doc_id", doc.ID),
-			loggateway.Err(err),
-		)
-	}
 	u.lg.Info("治理：事实段冲突已按人工选择处置",
 		loggateway.StepID("knowledge.curate.conflict"),
 		loggateway.Str("doc_id", doc.ID),
@@ -756,8 +814,8 @@ func (u *Usecase) runDistillTask(ctx context.Context, homeCol Collection, colID 
 }
 
 // runMOCEmergeTask hub 簇涌现 MOC：entries/* 中度数达阈值的 hub 词条，其 1 跳
-// 邻居构成概念簇；规模与边密度双达阈值 → 高风险 pending 提案（人工二审后手动
-// 建 MOC 词条——「MOC 是否参与默认检索」仍是设计开放问题，不自动落地）。
+// 邻居构成概念簇；规模与边密度双达阈值 → 高风险 pending 提案（人工二审 applied
+// 后自动落 MOC 骨架页——ADR-KN-20261021-A，「MOC 参与默认检索」已收案）。
 // 返回本轮参与密度检测的 hub 数。
 func (u *Usecase) runMOCEmergeTask(ctx context.Context, colID string, opts CurateOptions, rep *CurateReport) int {
 	hubs, err := u.curate.ListHubClusters(ctx, colID, opts.MOCMinDegree, mocHubScanLimit)
@@ -788,8 +846,9 @@ func (u *Usecase) runMOCEmergeTask(ctx context.Context, colID string, opts Curat
 		if density < opts.MinMOCDensity {
 			continue
 		}
-		dedup := "moc:" + h.HubDocID
-		// 去重三态全含：人工已建 MOC（applied）或否决（rejected）的同 hub 不再提案。
+		dedup := "moc:" + h.HubDocID + ":" + mocMemberSignature(members)
+		// 去重三态全含 + 成员签名（ADR-KN-20261021-B）：同簇（含人工已建/否决）
+		// 不再提案；簇结构演变后签名变迁 → 解锁重提，解除三态死信。
 		if u.skipProposal(ctx, colID, ProposalKindMOCEmerge, dedup,
 			[]string{ProposalStatusPending, ProposalStatusApplied, ProposalStatusRejected}) {
 			continue

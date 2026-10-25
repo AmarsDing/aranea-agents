@@ -47,6 +47,7 @@ func (u *Usecase) EnsureDefaultCollection(ctx context.Context, embeddingModel st
 }
 
 // MoveDocument 文档跨库移动（US-14 整理归档：默认库收件箱 → 分类库）。
+// 仅托管库之间支持移动；本地文件库需迁移文件与同步状态，暂明确拒绝。
 // 校验目标库存在且与源库 dim 兼容后，委托 Repo 在单事务内完成 documents/chunks 随迁与计数校正。
 func (u *Usecase) MoveDocument(ctx context.Context, id, targetCollectionID string) (Document, error) {
 	if err := u.requireRepo(); err != nil {
@@ -74,6 +75,11 @@ func (u *Usecase) MoveDocument(ctx context.Context, id, targetCollectionID strin
 	dst, err := u.collections.GetCollection(ctx, targetCollectionID)
 	if err != nil {
 		return Document{}, err
+	}
+	// Local files cannot be moved by merely changing their database collection.
+	// Until a filesystem migration exists, use copy-based promotion to a team vault.
+	if src.RootPath != "" || dst.RootPath != "" || src.VaultBackend == VaultBackendLocal || dst.VaultBackend == VaultBackendLocal {
+		return Document{}, apierror.BadRequest("KNOWLEDGE", "cross-collection moves involving a local vault are not supported; promote a copy to a team vault instead")
 	}
 	if src.Dim != dst.Dim {
 		return Document{}, ErrMoveDimensionMismatch

@@ -17,6 +17,11 @@ func (s *TeamStarter) recordTeamCompletion(ctx context.Context, team biz.Team, d
 	s.team.SpiritUC.RecordTeamCompletion(ctx, team, durationMs)
 }
 
+// reviveMaxAttempts 是 D3-FIX-3 ④ 的 synthesis 同步失败复活预算：廉价重试
+// 上限 3 次（首次失败 + 2 次轮询补试），预算耗尽 CAS 保持锁定防止永久
+// 重试风暴。
+const reviveMaxAttempts = 3
+
 func (s *TeamStarter) scheduleDependentTeams(ctx context.Context, spiritSessionID string, completedTeam biz.Team) {
 	// PlanExecutor is the forward DAG owner (lazy AssembleTeam per step).
 	// Reverse-sync ScheduleDependentTeams must not activate/fail teams while
@@ -198,15 +203,24 @@ func (s *TeamStarter) checkAllTeamsCompleted(ctx context.Context, spiritSessionI
 	if _, alreadyTriggered := s.synthesisTriggered.LoadOrStore(spiritSessionID, true); alreadyTriggered {
 		return
 	}
-	// 2026-08-07 重启幂等守卫：内存 CAS 进程重启即丢失，而 spirit session
-	// 常驻 Running，30s 轮询会持续命中 AllDone —— 重启后首 tick 会对「早已
-	// 完结」的编排重复触发 synthesis（用户看到总结报告重复回放）。此处以
-	// 持久化状态兜底：父 Task 已 Completed ⟺ synthesis 已产出 → 跳过。
-	// 置于 CAS 之后：跳过是永久事实，CAS 保持占用，后续 tick 由 CAS 吸收，
-	// 不会每 30s 重复查库。
-	if s.synthesisAlreadyProduced(ctx, spiritSessionID) {
+	// 2026-08-07 重启幂等守卫 + 2026-10-21 D3-FIX-3 ③ 三态判定：内存 CAS
+	// 进程重启即丢失，30s 轮询会持续命中 AllDone —— 以持久化状态兜底。
+	//   produced：父 Task 已 Completed ⟺ synthesis 已产出 → 跳过（是永久事实，
+	//     CAS 保持占用，后续 tick 由 CAS 吸收，不每 30s 重复查库）。
+	//   uncertain：读抖动/时序间隙无法判定 → 释放 CAS 推迟到下一轮轮询重试
+	//     （不烧复活预算、不触发——与旧 fail-open 语义切割，避免重启后错挂/重放）。
+	//   clear：确认未产出 → 继续。
+	switch s.synthesisGuardState(ctx, spiritSessionID) {
+	case synthesisGuardProduced:
 		s.lg.Info("父 Task 已完结（synthesis 已产出），跳过重启后的重复综合触发",
 			loggateway.StepID("spirit.synthesis_skip_already_done"),
+			loggateway.Str("spirit_session_id", spiritSessionID),
+		)
+		return
+	case synthesisGuardUncertain:
+		s.synthesisTriggered.Delete(spiritSessionID)
+		s.lg.Info("父 Task 读取不确定（查询失败或时序间隙），释放 CAS 推迟重试",
+			loggateway.StepID("spirit.synthesis_uncertain_defer"),
 			loggateway.Str("spirit_session_id", spiritSessionID),
 		)
 		return
@@ -219,6 +233,17 @@ func (s *TeamStarter) checkAllTeamsCompleted(ctx context.Context, spiritSessionI
 	// corresponds to one user input; system-push Turns are continuation Turns
 	// on the same Task).
 	parentTaskID := s.resolveLatestUserTaskID(ctx, spiritSessionID)
+	// D3-FIX-3 ③ 挂靠完整性：读路径已接线（非 v1-only）却解析不到任何可挂靠
+	// 任务（DB 与 ctx 均为空）→ 释放 CAS 并推迟；硬触发只会产生孤儿通知/
+	// 错挂轮次。v1-only（reader==nil）维持 legacy：synthesis turn 自建 Task。
+	if parentTaskID == "" && s.taskV2Reader != nil {
+		s.synthesisTriggered.Delete(spiritSessionID)
+		s.lg.Warn("无法解析 synthesis 挂靠 Task（DB 与 ctx 均为空），释放 CAS 推迟重试",
+			loggateway.StepID("spirit.synthesis_attach_integrity_defer"),
+			loggateway.Str("spirit_session_id", spiritSessionID),
+		)
+		return
+	}
 	// 2026-07-25 Fix 3 诚实化：触发文本由真实完成/失败计数与失败简报动态
 	// 构建 —— 存在失败团队时不得声称「所有团队已完成」，否则 LLM 会幻觉出
 	// 成功报告（19:29 根因链末环）。
@@ -252,15 +277,30 @@ func (s *TeamStarter) checkAllTeamsCompleted(ctx context.Context, spiritSessionI
 			)
 			return
 		}
-		// 真实失败（消息未受理）：释放 CAS 守卫，让 30s 轮询路径重试总结
-		// turn —— 烧掉守卫 = 本轮总结永久丢失。兜底通知保留本轮 UX 终态信号。
-		s.synthesisTriggered.Delete(spiritSessionID)
+		// 真实失败（消息未受理）：复活重试预算（D3-FIX-3 ④）——attempts <
+		// reviveMaxAttempts 释放 CAS 守卫让 30s 轮询路径重试总结 turn；预算
+		// 耗尽 CAS 保持锁定（烧掉守卫=本轮总结永久丢失的反例：无限重试 = 对
+		// 已死依赖无限放大；锁定后由兜底通知给出 UX 终态信号）。兜底通知仅
+		// 首次失败发布一次（重复失败不再骚扰）。新一轮 StartTeamTurn 同时清空
+		// CAS 与预算计数。
+		attempts := 1
+		if v, loaded := s.synthesisAttempts.LoadOrStore(spiritSessionID, 1); loaded {
+			attempts = v.(int) + 1
+			s.synthesisAttempts.Store(spiritSessionID, attempts)
+		}
+		if attempts < reviveMaxAttempts {
+			s.synthesisTriggered.Delete(spiritSessionID)
+		}
 		s.lg.Warn("all teams completed: failed to trigger Spirit synthesis turn",
 			loggateway.StepID("spirit.synthesis_turn_err"),
 			loggateway.Str("spirit_session_id", spiritSessionID),
+			loggateway.Int("synthesis_attempt", attempts),
+			loggateway.Int("revive_max_attempts", reviveMaxAttempts),
 			loggateway.Err(err),
 		)
-		s.publishAllTeamsCompletedFallbackNotice(ctx, spiritSessionID, parentTaskID, result.CompletedTeams, result.FailedTeams)
+		if attempts == 1 {
+			s.publishAllTeamsCompletedFallbackNotice(ctx, spiritSessionID, parentTaskID, result.CompletedTeams, result.FailedTeams)
+		}
 		return
 	}
 	s.lg.Info("all teams completed: triggered Spirit synthesis turn",

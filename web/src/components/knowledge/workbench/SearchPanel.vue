@@ -10,7 +10,8 @@
     @update:query="$emit('update:query', $event)"
     @keydown="onKeydown"
   >
-    <template v-if="items.length">
+    <div v-if="error" class="kb-search__empty text-negative" role="alert">{{ error }}</div>
+    <template v-else-if="items.length">
       <!-- U1-6 相关度提示：good 不打扰；weak amber 提示条（纯信息，不阻断结果操作） -->
       <div v-if="classification.level === 'weak'" class="kb-search__relhint">
         <div class="kb-search__relhint-head">
@@ -108,6 +109,7 @@ const props = defineProps<{
   query: string;
   items: SearchItem[];
   loading: boolean;
+  error?: string;
   /** U1-6：当前检索范围全部为纯词法库（未启用语义层）时置 true，空态引导显示特别提示；undefined=未知不提示。 */
   semanticLexicalOnly?: boolean;
 }>();

@@ -48,17 +48,27 @@ func NewGraphCardSearcher(dense bizknowledge.GraphCardVectorSearcher, lexical bi
 }
 
 func (s *knowledgeGraphCardSearcher) SearchGraphCardChunks(ctx context.Context, q biz.KnowledgeSearchQuery, vec []float32) ([]biz.KnowledgeChunk, error) {
+	// metadata 过滤属于真实 chunk，不属于整篇宿主。卡片尚无精确来源块，
+	// 不能以「宿主任一 chunk 符合」冒充卡文来源符合；保持其他召回腿可用。
+	if strings.TrimSpace(q.FilterJSON) != "" {
+		return nil, nil
+	}
 	var hits []bizknowledge.GraphCardHit
 	if len(vec) > 0 {
 		entityHits, err := s.dense.SearchGraphCards(ctx, q.CollectionID, bizknowledge.GraphCardKindEntity, vec, bizknowledge.GraphCardSearchKindLimit)
 		if err != nil {
 			return nil, err
 		}
-		edgeHits, err := s.dense.SearchGraphCards(ctx, q.CollectionID, bizknowledge.GraphCardKindEdge, vec, bizknowledge.GraphCardSearchKindLimit)
-		if err != nil {
-			return nil, err
+		hits = append(hits, entityHits...)
+		// 关系卡只有当前投影；时态查询在卡片具备时态端口前关闭此腿。
+		// 实体卡仍遵守「当前节点集」的时态契约。
+		if !q.Temporal.Any() {
+			edgeHits, err := s.dense.SearchGraphCards(ctx, q.CollectionID, bizknowledge.GraphCardKindEdge, vec, bizknowledge.GraphCardSearchKindLimit)
+			if err != nil {
+				return nil, err
+			}
+			hits = append(hits, edgeHits...)
 		}
-		hits = append(entityHits, edgeHits...)
 	} else {
 		// 词法降级：仅实体卡（edge 陈述无结构词法匹配是噪声源，静默关闭）。
 		entityHits, err := s.lexical.SearchEntityCardsLexical(ctx, q.CollectionID, q.Query, bizknowledge.GraphCardSearchKindLimit)
@@ -84,6 +94,12 @@ func (s *knowledgeGraphCardSearcher) SearchGraphCardChunks(ctx context.Context, 
 				loggateway.Err(err))
 			continue
 		}
+		if hasSearchScope(q) {
+			docs, err = s.scopedHosts(ctx, q, hit.Kind, docs)
+			if err != nil {
+				return nil, err
+			}
+		}
 		for _, docID := range docs {
 			out = append(out, biz.KnowledgeChunk{
 				ID:           graphCardChunkID(hit.Kind, hit.RefID, docID),
@@ -97,6 +113,33 @@ func (s *knowledgeGraphCardSearcher) SearchGraphCardChunks(ctx context.Context, 
 		}
 	}
 	return out, nil
+}
+
+func (s *knowledgeGraphCardSearcher) scopedHosts(ctx context.Context, q biz.KnowledgeSearchQuery, kind string, docs []string) ([]string, error) {
+	scoped, ok := s.hosts.(ScopedNeighborChunkLister)
+	if !ok {
+		// 未具备范围过滤能力时关闭卡片补召回，不能放宽用户的筛选范围。
+		return nil, nil
+	}
+	chunks, err := scoped.ListChunksByDocumentsForSearch(ctx, q, docs, 1)
+	if err != nil {
+		return nil, err
+	}
+	allowed := make(map[string]bool, len(chunks))
+	for _, chunk := range chunks {
+		allowed[chunk.DocID] = true
+	}
+	filtered := make([]string, 0, len(docs))
+	for _, doc := range docs {
+		if allowed[doc] {
+			filtered = append(filtered, doc)
+		}
+	}
+	// 边卡陈述涉及双端，任一端不在范围内即整卡排除。
+	if kind == bizknowledge.GraphCardKindEdge && len(filtered) != len(docs) {
+		return nil, nil
+	}
+	return filtered, nil
 }
 
 func graphCardChunkID(kind string, refID int64, docID string) string {

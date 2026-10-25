@@ -196,6 +196,75 @@ func TestGraphRunRepo_ListRunsByGraph_CombinedFilters(t *testing.T) {
 	}
 }
 
+// TestGraphRunRepo_ListOrphanedStandaloneRuns_ExcludesTeamSessionRows 钉 D6-F4
+// 的 raw-SQL 排除契约：有 team_graph_sessions 行的 running 执行归 team
+// coordinator/RecoverSessions 终态化（ADR-86 F-B 边界），启动孤儿扫描只见
+// standalone 行；非 running 行不参与扫描；limit 生效。
+func TestGraphRunRepo_ListOrphanedStandaloneRuns_ExcludesTeamSessionRows(t *testing.T) {
+	client, rawDB := testhelper.SetupTestPG(t)
+	d := &data.Data{}
+	d.SetEntClientForTest(client, rawDB, loggateway.NewNoop())
+	repo := data.NewGraphRunRepo(d)
+	sessRepo := data.NewTeamGraphSessionRepo(d)
+	ctx := context.Background()
+	if err := data.EnsureTeamGraphSessionSchema(ctx, rawDB); err != nil {
+		t.Fatalf("ensure team_graph_sessions schema: %v", err)
+	}
+
+	base := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
+	seed := []struct {
+		id      string
+		status  string
+		started time.Time
+	}{
+		{"run-solo-1", string(biz.GraphExecRunning), base},
+		{"run-solo-2", string(biz.GraphExecRunning), base.Add(time.Hour)},
+		{"run-team", string(biz.GraphExecRunning), base.Add(2 * time.Hour)},
+		{"run-wait", string(biz.GraphExecWaitingHuman), base.Add(3 * time.Hour)},
+		{"run-done", string(biz.GraphExecCompleted), base.Add(4 * time.Hour)},
+	}
+	for _, s := range seed {
+		if err := repo.SaveRun(ctx, &biz.GraphExecution{
+			ID: s.id, GraphID: "g-orphan", Status: s.status, StartedAt: s.started,
+		}); err != nil {
+			t.Fatalf("SaveRun %s: %v", s.id, err)
+		}
+	}
+	if err := sessRepo.SaveSession(ctx, biz.TeamGraphSession{ExecID: "run-team", TeamID: "team-1"}); err != nil {
+		t.Fatalf("SaveSession: %v", err)
+	}
+
+	scanner, ok := repo.(biz.GraphOrphanRunScanner)
+	if !ok {
+		t.Fatal("graphRunRepo 必须实现 biz.GraphOrphanRunScanner 窄端口")
+	}
+
+	rows, err := scanner.ListOrphanedStandaloneRuns(ctx, string(biz.GraphExecRunning), 10)
+	if err != nil {
+		t.Fatalf("ListOrphanedStandaloneRuns: %v", err)
+	}
+	if len(rows) != 2 {
+		ids := make([]string, len(rows))
+		for i, r := range rows {
+			ids[i] = r.ID
+		}
+		t.Fatalf("running standalone 行 = %v, want [run-solo-1 run-solo-2]", ids)
+	}
+	// ORDER BY started_at ASC：最早启动的孤儿行排第一。
+	if rows[0].ID != "run-solo-1" || rows[1].ID != "run-solo-2" {
+		t.Fatalf("started_at 升序 = [%s %s], want [run-solo-1 run-solo-2]", rows[0].ID, rows[1].ID)
+	}
+
+	// limit 生效。
+	limited, err := scanner.ListOrphanedStandaloneRuns(ctx, string(biz.GraphExecRunning), 1)
+	if err != nil {
+		t.Fatalf("ListOrphanedStandaloneRuns(limit=1): %v", err)
+	}
+	if len(limited) != 1 || limited[0].ID != "run-solo-1" {
+		t.Fatalf("limit=1 行 = %v, want [run-solo-1]", limited)
+	}
+}
+
 func TestTaskRepo_ListTasksByExecution_PaginationContinuity(t *testing.T) {
 	d := newTestData(t)
 	repo := data.NewTaskRepo(d)

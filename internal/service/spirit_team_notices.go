@@ -144,22 +144,22 @@ func (s *TeamStarter) publishAllTeamsCompletedFallbackNotice(ctx context.Context
 
 // resolveLatestUserTaskID returns the most recent Task ID for the given spirit
 // session, so the system-push synthesis Turn can attach to it as a continuation
-// Turn (ParentTaskID). Returns empty string if no Task exists or the reader is
-// not wired (v1-only deployments) — in that case the synthesis Turn creates a
-// new Task as before (legacy behaviour).
+// Turn (ParentTaskID). Returns empty string if no Task exists and the ctx does
+// not carry a root task ID.
 //
-// 2026-07-04 问题 5 修复：v2 Sequencer 异步持久化 Task，当所有团队快速完成时
-// （例如单团队秒级返回），ListTasksBySession 可能查不到记录，导致 parentTaskID
-// 为空，synthesis Turn 在 projector.OnTurnStart 中走"创建新 Task"分支，把
-// synthesis 触发文本"所有团队已完成…"渲染成新的用户输入气泡（重复执行）。
-// 解决方案：DB 查不到时，从 ctx 中取 RootTaskActivityID（由 chat_orchestrator
-// 在 chat_orchestrator_turn.go:401 通过 ContextWithRootTaskActivityID 注入）
-// 作为 fallback。RootTaskActivityID 是根 Task 的 ID，与 team 阶段的 ctx 链
-// 一脉相承，是可靠的内存态真相源。
+// 2026-10-21 D3-FIX-3（87-orchestration-chain-hardening）：ctx 权威优先 ——
+// chat/dispatch/dagRun 注入的 RootTaskActivityID 是本轮回合的权威挂靠点。
+// 旧顺序「DB 最新行优先」在重启/重排后会错挂（最新行属于上一轮），且 v2
+// sequencer 异步落库的时序间隙会让 DB 返回陈旧结果。
 //
-// 2026-07-22 B.10.17：提取为包级函数；2026-07-24 报告 UI 移除后仅供
-// TeamStarter（总结 turn ParentTaskID）使用。
+// 2026-07-04 问题 5 修复（原始动机，保留）：DB 查不到时不能轻易新建 Task，
+// synthesis 触发文本会被渲染成新的用户输入气泡（重复执行）；ctx 根 Task ID
+// 是可靠的内存态真相源。
 func resolveLatestUserTaskID(ctx context.Context, reader biz.TaskV2Reader, lg loggateway.Logger, spiritSessionID string) string {
+	// ctx authoritative-first：有根 Task ID 即返回，不再让 DB 滞后行误导挂靠。
+	if rtID := string(agent.RootTaskActivityIDFromCtx(ctx)); rtID != "" {
+		return rtID
+	}
 	if reader != nil {
 		tasks, err := reader.ListTasksBySession(ctx, spiritSessionID)
 		if err != nil {
@@ -168,25 +168,13 @@ func resolveLatestUserTaskID(ctx context.Context, reader biz.TaskV2Reader, lg lo
 				loggateway.Str("spirit_session_id", spiritSessionID),
 				loggateway.Err(err),
 			)
-			// fall through to ctx fallback
-		} else if len(tasks) > 0 {
+			return ""
+		}
+		if len(tasks) > 0 {
 			// tasks are returned in chronological (created_at) order; the last
 			// one is the most recent user-input Task.
 			return tasks[len(tasks)-1].ID
 		}
-	}
-	// Fallback: use RootTaskActivityID from ctx (set by chat_orchestrator).
-	// This covers the timing gap where the v2 Task hasn't been persisted yet
-	// when checkAllTeamsCompleted runs, as well as v1-only deployments where
-	// taskV2Reader is nil. RootTaskActivityID is the canonical root task ID
-	// for the current spirit session turn chain.
-	if rtID := string(agent.RootTaskActivityIDFromCtx(ctx)); rtID != "" {
-		lg.Info("resolveLatestUserTaskID: fell back to ctx RootTaskActivityID",
-			loggateway.StepID("spirit.synthesis.parent_task_ctx_fallback"),
-			loggateway.Str("spirit_session_id", spiritSessionID),
-			loggateway.Str("root_task_id", rtID),
-		)
-		return rtID
 	}
 	return ""
 }
@@ -195,31 +183,51 @@ func (s *TeamStarter) resolveLatestUserTaskID(ctx context.Context, spiritSession
 	return resolveLatestUserTaskID(ctx, s.taskV2Reader, s.lg, spiritSessionID)
 }
 
-// synthesisAlreadyProduced 是 checkAllTeamsCompleted 的重启幂等守卫
-// （2026-08-07）：内存 CAS（synthesisTriggered）进程重启即丢失，而 spirit
-// session 常驻 Running，30s 轮询会持续命中 AllDone。持久化真相：
-// synthesis continuation turn 结束时 projector 关闭父 Task（task.completed，
-// projector.go OnTurnEnd ParentTaskID 分支），故「最新 Task 已 Completed」
-// ⟺「synthesis 已产出」。
-//
-// fail-open 边界：reader 未接线 / 查询失败 / 无任务行 时返回 false，维持
-// 既有行为（内存 CAS 为唯一守卫）—— 读抖动不得丢失本轮总结。
-// 时序间隙：新一轮编排的 Task 可能尚未异步落库（v2 sequencer），若 ctx
-// 携带的根 Task ID 比 DB 最新行更新，说明列表滞后，不得据旧行拦截本轮
-// synthesis。
-func (s *TeamStarter) synthesisAlreadyProduced(ctx context.Context, spiritSessionID string) bool {
+// synthesisGuardState 是 D3-FIX-3（87-orchestration-chain-hardening）的三态
+// 持久化守卫：聚合「synthesis 是否已产出」的结论。
+//   - produced：父 Task 已 Completed。synthesis 已产出 → CAS 保持占用吸收
+//     后续 tick（重启后永久事实，不重复触发）。
+//   - clear：确认本轮尚未产出（读路径未接线 / 列表滞后于 ctx 根 / 列表空
+//     但 ctx 有权威根）→ 照常触发。
+//   - uncertain：无法判定（查询失败 / 列表空且 ctx 无根）→ 释放 CAS 推迟
+//     到 30s 轮询重试，不烧复活预算也不触发 —— 读抖动不得错挂也不得吞掉
+//     总结（修复旧 fail-open 语义：重启后真错挂时用户看到重复总结）。
+type synthesisGuardState int
+
+const (
+	synthesisGuardClear synthesisGuardState = iota
+	synthesisGuardProduced
+	synthesisGuardUncertain
+)
+
+// synthesisGuardState 判定本轮 synthesis 的持久化真相。ctx 携带的
+// RootTaskActivityID 是「当前轮次」的权威锚点：
+//   - rtID != "" 且 != 最新行 ID → 列表滞后，clear；
+//   - rtID == "" 且列表空 → 时序间隙无法判定，uncertain；
+//   - 列表空但 rtID 有 → 根 Task 未落库，clear。
+func (s *TeamStarter) synthesisGuardState(ctx context.Context, spiritSessionID string) synthesisGuardState {
 	if s.taskV2Reader == nil {
-		return false
+		return synthesisGuardClear
 	}
+	rtID := string(agent.RootTaskActivityIDFromCtx(ctx))
 	tasks, err := s.taskV2Reader.ListTasksBySession(ctx, spiritSessionID)
-	if err != nil || len(tasks) == 0 {
-		return false
+	if err != nil {
+		return synthesisGuardUncertain
+	}
+	if len(tasks) == 0 {
+		if rtID == "" {
+			return synthesisGuardUncertain
+		}
+		return synthesisGuardClear
 	}
 	latest := tasks[len(tasks)-1]
-	if rtID := string(agent.RootTaskActivityIDFromCtx(ctx)); rtID != "" && rtID != latest.ID {
-		return false
+	if rtID != "" && rtID != latest.ID {
+		return synthesisGuardClear
 	}
-	return latest.Status == biz.TaskStatusCompleted
+	if latest.Status == biz.TaskStatusCompleted {
+		return synthesisGuardProduced
+	}
+	return synthesisGuardClear
 }
 
 // HandleTeamTimeout implements biz.TimeoutHandler. Called when a team times out

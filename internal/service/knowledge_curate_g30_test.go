@@ -83,7 +83,7 @@ func newCurateNowService(t *testing.T, curate bizknowledge.KnowledgeCurateRepo, 
 		bus = &rebuildEventBus{} // 防 typed-nil：publishKnowledgeCurate 只判接口 nil
 	}
 	repo := newUS14MemRepo()
-	if _, err := repo.CreateCollection(context.Background(), biz.KnowledgeCollection{
+	if _, err := repo.CreateCollection(governanceTestContext(), biz.KnowledgeCollection{
 		ID: "c1", Name: "vault", Workspace: workspace.DefaultWorkspaceID,
 	}); err != nil {
 		t.Fatal(err)
@@ -103,7 +103,7 @@ func TestCurateKnowledgeNow_AsyncCompletesAndPublishes(t *testing.T) {
 	svc := newCurateNowService(t, stub, bus)
 	svc.SetJobLocker(NewMemKnowledgeJobLocker())
 
-	resp, err := svc.CurateKnowledgeNow(context.Background(), &v1.CurateKnowledgeNowRequest{
+	resp, err := svc.CurateKnowledgeNow(governanceTestContext(), &v1.CurateKnowledgeNowRequest{
 		CollectionId: "c1", DryRun: true,
 	})
 	if err != nil {
@@ -141,7 +141,7 @@ func TestCurateKnowledgeNow_ConflictWhileRunning(t *testing.T) {
 	svc := newCurateNowService(t, stub, nil)
 	svc.SetJobLocker(NewMemKnowledgeJobLocker())
 
-	if _, err := svc.CurateKnowledgeNow(context.Background(), &v1.CurateKnowledgeNowRequest{CollectionId: "c1"}); err != nil {
+	if _, err := svc.CurateKnowledgeNow(governanceTestContext(), &v1.CurateKnowledgeNowRequest{CollectionId: "c1"}); err != nil {
 		t.Fatalf("首次治理应受理: %v", err)
 	}
 	select {
@@ -150,7 +150,7 @@ func TestCurateKnowledgeNow_ConflictWhileRunning(t *testing.T) {
 		t.Fatal("后台治理未启动")
 	}
 
-	_, err := svc.CurateKnowledgeNow(context.Background(), &v1.CurateKnowledgeNowRequest{CollectionId: "c1"})
+	_, err := svc.CurateKnowledgeNow(governanceTestContext(), &v1.CurateKnowledgeNowRequest{CollectionId: "c1"})
 	if !apierror.IsCode(err, apierror.CodeConflict) {
 		t.Errorf("在途治理冲突 = %v, want CodeConflict", err)
 	}
@@ -161,7 +161,7 @@ func TestCurateKnowledgeNow_ConflictWhileRunning(t *testing.T) {
 		if time.Now().After(deadline) {
 			t.Fatal("重跑未受理")
 		}
-		_, _ = svc.CurateKnowledgeNow(context.Background(), &v1.CurateKnowledgeNowRequest{CollectionId: "c1"})
+		_, _ = svc.CurateKnowledgeNow(governanceTestContext(), &v1.CurateKnowledgeNowRequest{CollectionId: "c1"})
 		time.Sleep(10 * time.Millisecond)
 	}
 }
@@ -172,11 +172,11 @@ func TestCurateKnowledgeNow_RejectedInputs(t *testing.T) {
 	svc := newCurateNowService(t, stub, nil)
 	svc.SetJobLocker(NewMemKnowledgeJobLocker())
 
-	if _, err := svc.CurateKnowledgeNow(context.Background(), &v1.CurateKnowledgeNowRequest{CollectionId: "ghost"}); !apierror.IsCode(err, apierror.CodeNotFound) {
+	if _, err := svc.CurateKnowledgeNow(governanceTestContext(), &v1.CurateKnowledgeNowRequest{CollectionId: "ghost"}); !apierror.IsCode(err, apierror.CodeNotFound) {
 		t.Errorf("集合不存在 err = %v, want CodeNotFound", err)
 	}
 	repo := newUS14MemRepo()
-	if _, err := repo.CreateCollection(context.Background(), biz.KnowledgeCollection{
+	if _, err := repo.CreateCollection(governanceTestContext(), biz.KnowledgeCollection{
 		ID: "c2", Name: "vault", Workspace: "ws-other",
 	}); err != nil {
 		t.Fatal(err)
@@ -185,7 +185,7 @@ func TestCurateKnowledgeNow_RejectedInputs(t *testing.T) {
 	uc.SetCurateRepo(&curateNowStubRepo{})
 	svc2 := NewKnowledgeService(uc, nil, KnowledgeSearchDeps{}, nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
 	svc2.SetJobLocker(NewMemKnowledgeJobLocker())
-	ctx := workspace.WithContext(context.Background(), "ws-mine")
+	ctx := workspace.WithContext(governanceTestContext(), "ws-mine")
 	if _, err := svc2.CurateKnowledgeNow(ctx, &v1.CurateKnowledgeNowRequest{CollectionId: "c2"}); !apierror.IsCode(err, apierror.CodeNotFound) {
 		t.Errorf("跨租户治理 err = %v, want CodeNotFound", err)
 	}
@@ -198,7 +198,7 @@ func TestCurateKnowledgeNow_UnwiredCuratePublishesError(t *testing.T) {
 	svc := newCurateNowService(t, nil, bus)
 	svc.SetJobLocker(NewMemKnowledgeJobLocker())
 
-	if _, err := svc.CurateKnowledgeNow(context.Background(), &v1.CurateKnowledgeNowRequest{CollectionId: "c1"}); err != nil {
+	if _, err := svc.CurateKnowledgeNow(governanceTestContext(), &v1.CurateKnowledgeNowRequest{CollectionId: "c1"}); err != nil {
 		t.Fatalf("CurateKnowledgeNow: %v", err)
 	}
 	deadline := time.Now().Add(2 * time.Second)

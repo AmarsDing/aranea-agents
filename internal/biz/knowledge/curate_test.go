@@ -30,6 +30,8 @@ type stubCurateRepo struct {
 	proposalViews   []GovernanceProposalView
 	// dedupStatuses 记录每次 HasProposal 调用的 kind→statuses（拒绝即沉默语义断言）。
 	dedupStatuses map[string][]string
+	// hasProposalKeys 精确键控去重命中（kind|dedup → 命中；G-37 entity_merge）。
+	hasProposalKeys map[string]bool
 	// P1-b：conflict 处置调用记录。
 	closedConflictCollection string
 	closedConflictDoc        string
@@ -39,6 +41,9 @@ type stubCurateRepo struct {
 	markStaleIDs  []string
 	markStaleErr  error
 	markStaleHits int
+	// G-34 ADR-C：MOC 摘要待补页扫描钉桩（mocScanCalls 记调用次数）。
+	mocPending   []MOCPendingSummaryDoc
+	mocScanCalls int
 }
 
 func (s *stubCurateRepo) DecayCoActivatedEdges(_ context.Context, _ string, _, _ float64, dryRun bool) (int, int, error) {
@@ -75,11 +80,14 @@ func (s *stubCurateRepo) CountActiveEdgesWithin(context.Context, string, []strin
 	return s.edgesWithin, nil
 }
 
-func (s *stubCurateRepo) HasProposal(_ context.Context, _, kind, _ string, statuses []string) (bool, error) {
+func (s *stubCurateRepo) HasProposal(_ context.Context, _, kind, dedup string, statuses []string) (bool, error) {
 	if s.dedupStatuses == nil {
 		s.dedupStatuses = map[string][]string{}
 	}
 	s.dedupStatuses[kind] = statuses
+	if len(s.hasProposalKeys) > 0 {
+		return s.hasProposalKeys[kind+"|"+dedup], nil
+	}
 	return s.hasProposal, nil
 }
 
@@ -111,6 +119,12 @@ func (s *stubCurateRepo) MarkStaleEntries(_ context.Context, docIDs []string) er
 	s.markStaleHits++
 	s.markStaleIDs = append([]string(nil), docIDs...)
 	return s.markStaleErr
+}
+
+// G-34 ADR-C：MOC 摘要待补页扫描（记录调用次数供跳过矩阵断言）。
+func (s *stubCurateRepo) ListPendingMOCSummaries(context.Context, string, int) ([]MOCPendingSummaryDoc, error) {
+	s.mocScanCalls++
+	return s.mocPending, nil
 }
 
 func (s *stubCurateRepo) ListGovernanceProposals(context.Context, string, string, int, int) ([]GovernanceProposalView, int, error) {
@@ -375,12 +389,15 @@ func TestResolveGovernanceProposal(t *testing.T) {
 	if curate.resolvedID != 42 || curate.resolvedStatus != ProposalStatusApplied {
 		t.Fatalf("resolved = %d/%s", curate.resolvedID, curate.resolvedStatus)
 	}
-	// rejected 不取提案、不做处置，直接落库。
-	if err := u.ResolveGovernanceProposal(context.Background(), 99, ProposalStatusRejected); err != nil {
+	// rejected 同样读取并验证 pending 提案，但不做正文处置。
+	if err := u.ResolveGovernanceProposal(context.Background(), 42, ProposalStatusRejected); err != nil {
 		t.Fatal(err)
 	}
-	if curate.resolvedID != 99 || curate.resolvedStatus != ProposalStatusRejected {
+	if curate.resolvedID != 42 || curate.resolvedStatus != ProposalStatusRejected {
 		t.Fatalf("resolved = %d/%s", curate.resolvedID, curate.resolvedStatus)
+	}
+	if err := u.ResolveGovernanceProposal(context.Background(), 99, ProposalStatusRejected); err == nil {
+		t.Fatal("rejected on missing proposal must fail before mutation")
 	}
 	// applied 目标不存在 → 报错（不透传）。
 	if err := u.ResolveGovernanceProposal(context.Background(), 100, ProposalStatusApplied); err == nil {
@@ -893,7 +910,10 @@ func TestCurateKnowledge_MOCEmerge(t *testing.T) {
 	if p.Kind != ProposalKindMOCEmerge || p.Risk != ProposalRiskHigh || p.Status != ProposalStatusPending {
 		t.Fatalf("moc proposal = %+v", p)
 	}
-	if p.Payload["dedup_key"] != "moc:d-hub" || p.Payload["suggested_title"] != "发布体系" {
+	dedupKey, _ := p.Payload["dedup_key"].(string)
+	// ADR-KN-20261021-B：dedup_key = moc:<hub>:<成员签名>（簇演进可重提）。
+	if !strings.HasPrefix(dedupKey, "moc:d-hub:") || len(dedupKey) != len("moc:d-hub:")+mocMemberSigLen ||
+		p.Payload["suggested_title"] != "发布体系" {
 		t.Fatalf("payload = %+v", p.Payload)
 	}
 	if p.Payload["suggested_path"] != "moc/发布体系.md" {

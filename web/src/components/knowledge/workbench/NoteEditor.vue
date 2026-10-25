@@ -33,6 +33,7 @@ import { debounceTrailing } from '../../../features/knowledge/timing';
 const props = withDefaults(
   defineProps<{
     content: string;
+    documentId?: string;
     /** 只读预览（全文装饰，无光标行回退） */
     readOnly?: boolean;
     /** wikilink 候选（当前库文档 relPath/文件名） */
@@ -42,11 +43,11 @@ const props = withDefaults(
     /** B4 #8：空查询 [[ 补全的最近引用名次（归一化名 → 名次，0=最近） */
     linkRecencyRank?: ReadonlyMap<string, number>;
   }>(),
-  { readOnly: false, candidates: () => [], getHeadings: undefined, linkRecencyRank: undefined },
+  { documentId: undefined, readOnly: false, candidates: () => [], getHeadings: undefined, linkRecencyRank: undefined },
 );
 
 const emit = defineEmits<{
-  'update-content': [content: string];
+  'update-content': [content: string, documentId?: string];
   save: [];
   /** 跳链：目标已存在（target 为链接原文，上层按名归一化解析 docId；heading 供滚动定位） */
   'open-doc': [target: string, heading?: string];
@@ -68,7 +69,8 @@ let pendingContent: string | null = null;
 /** 尾触发写回：连续输入只在停顿后同步一次父级，避免每 keystroke 触发下游响应式链路。 */
 const contentWriteback = debounceTrailing(() => {
   if (pendingContent !== null) {
-    emit('update-content', pendingContent);
+    if (props.documentId) emit('update-content', pendingContent, props.documentId);
+    else emit('update-content', pendingContent);
     pendingContent = null;
   }
 }, 150);

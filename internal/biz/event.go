@@ -132,6 +132,7 @@ const (
 	EventKindTeamRunStarted   EventKind = "team_run.started"
 	EventKindTeamRunCompleted EventKind = "team_run.completed"
 	EventKindTeamRunFailed    EventKind = "team_run.failed"
+	EventKindTeamRunCancelled EventKind = "team_run.cancelled"
 
 	// MemberSession 事件
 	EventKindMemberSessionCreated EventKind = "member_session.created"
@@ -453,6 +454,27 @@ func (e *TeamRunFailedEvent) SpiritSessionID() string   { return e.spiritSession
 func (e *TeamRunFailedEvent) TaskID() string            { return e.taskID }
 func (e *TeamRunFailedEvent) OccurredAt() time.Time     { return e.occurredAt }
 func (e *TeamRunFailedEvent) SetOccurredAt(t time.Time) { e.occurredAt = t }
+
+// TeamRunCancelledEvent 是 TeamRun 的专用取消终态事件（kind "team_run.cancelled"）。
+// 此前取消终态复用 TeamRunFailedEvent kind + Status=cancelled 表达，导致
+// CriticalJournal 按 kind 回放时无法区分取消与失败（2026-10-21 87-D4-1 拆分）。
+// Critical 分类零代码改动：IsTerminalEventKind 按 ".cancelled" 后缀判真 →
+// IsCriticalDeliveryEvent 自动覆盖，WBPF + outbox 行 + CriticalJournal Append
+// 全部自动生效。deliverySeqCarrier 是 outbox 投递序必备（缺它
+// insertCriticalOutbox 会跳过 outbox 落库）。
+type TeamRunCancelledEvent struct {
+	taskID          string
+	spiritSessionID string
+	TeamRun         TeamRun
+	occurredAt      time.Time
+	deliverySeqCarrier
+}
+
+func (e *TeamRunCancelledEvent) EventKind() EventKind      { return EventKindTeamRunCancelled }
+func (e *TeamRunCancelledEvent) SpiritSessionID() string   { return e.spiritSessionID }
+func (e *TeamRunCancelledEvent) TaskID() string            { return e.taskID }
+func (e *TeamRunCancelledEvent) OccurredAt() time.Time     { return e.occurredAt }
+func (e *TeamRunCancelledEvent) SetOccurredAt(t time.Time) { e.occurredAt = t }
 
 // === MemberSession 事件 ===
 

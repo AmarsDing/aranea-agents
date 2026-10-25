@@ -61,6 +61,7 @@ var ProviderSet = wire.NewSet(
 	wire.Bind(new(biz.ToolGrantStore), new(*toolGrantRepo)),
 	NewToolParamRuleRepo,
 	wire.Bind(new(biz.ToolParamRuleStore), new(*toolParamRuleRepo)),
+	NewApprovalPolicyRepo,
 	NewChannelRepo,
 	wire.Bind(new(biz.ChannelReader), new(*channelRepo)),
 	wire.Bind(new(biz.ChannelWriter), new(*channelRepo)),
@@ -754,10 +755,10 @@ func entLogAdapter(lg loggateway.Logger) func(...any) {
 
 // preEntSessionTurnIdempotencyBackfill runs BEFORE Ent Schema.Create to
 // backfill empty idempotency_key values on session_turns. This is required
-// on Postgres because Ent adds the column (DEFAULT ”) and creates the
+// on Postgres because Ent adds the column (DEFAULT 空串) and creates the
 // unique index in one step (L1), before the DDL migration (L2) can backfill.
 // Without this, multiple legacy rows in the same session collide on
-// idempotency_key=” and the unique index creation fails with 23505.
+// idempotency_key=空串 and the unique index creation fails with 23505.
 //
 // On SQLite this is a no-op: Ent does not ADD COLUMN on existing tables,
 // so the column/index are created by DDL migration 20261008 which backfills
@@ -844,7 +845,7 @@ func initPostgresEnt(c *conf.Data, lg loggateway.Logger) (*ent.Client, *sql.DB, 
 	ctxEnt := context.Background()
 	// Pre-Ent backfill: ensure session_turns.idempotency_key has no empty
 	// values before Ent Schema.Create adds the unique index. Without this,
-	// legacy rows collide on '' and index creation fails with 23505.
+	// legacy rows collide on 空串 and index creation fails with 23505.
 	preEntSessionTurnIdempotencyBackfill(ctxEnt, writeDB, DialectPostgres, lg)
 	if strings.TrimSpace(os.Getenv("DEPLOY_ENV")) == "dev" {
 		entClient, err = migrateDev(ctxEnt, entClient, "postgres(ent)")
