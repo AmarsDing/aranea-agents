@@ -485,6 +485,19 @@ mode = "ask"
 	if len(entry) > len("p-fail: ")+200 {
 		t.Fatalf("store error must be truncated to 200, got %d bytes", len(entry))
 	}
+	// D5-f3（自复审 wf_d5613cd2-059 收口）：脱敏钉必须断言 secret 本体
+	// 缺席——纯截断实现（前 200 字节完整携带 DSN 口令）在仅钉前缀+长度
+	// 时假绿。dsnPasswordRE 吞掉 scheme://user:password@ 整段，故口令与
+	// 用户名双双不得出现，脱敏占位符必须在场。
+	if strings.Contains(entry, "secret-password") {
+		t.Fatalf("store error must redact the DSN password, got %q", entry)
+	}
+	if strings.Contains(entry, "postgres://admin") {
+		t.Fatalf("store error must redact the DSN userinfo, got %q", entry)
+	}
+	if !strings.Contains(entry, "[secret redacted]") {
+		t.Fatalf("store error must carry the redaction marker, got %q", entry)
+	}
 }
 
 // TestToolService_ExportApprovalPoliciesTOML_EmptyRoundtrip D5-f F17：空

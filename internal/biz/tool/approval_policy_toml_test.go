@@ -158,6 +158,23 @@ func TestParseApprovalPoliciesTOML_ByteLimit(t *testing.T) {
 	if err != nil || len(rowErrs) != 0 || len(policies) != 1 {
 		t.Fatalf("small valid doc must parse: err=%v rowErrs=%v policies=%v", err, rowErrs, policies)
 	}
+	// D5-f3（自复审 wf_d5613cd2-059 收口，同 d71c6fc15 int32 恰界纪律）：
+	// 恰 1MiB 恰界必须放行——闸门语义是「超界拒收」而非「边界误杀」，
+	// `>` 误改 `>=` 的 off-by-one 回归须钉红（F16 行数恰界已钉，字节闸门
+	// 补同款）。
+	exact := []byte(doc)
+	if pad := approvalPolicyTOMLMaxBytes - len(doc) - 2; pad > 0 {
+		exact = append(exact, '#')
+		exact = append(exact, []byte(strings.Repeat("p", pad))...)
+		exact = append(exact, '\n')
+	}
+	if len(exact) != approvalPolicyTOMLMaxBytes {
+		t.Fatalf("constructed doc len = %d, want exactly %d", len(exact), approvalPolicyTOMLMaxBytes)
+	}
+	policies, rowErrs, err = ParseApprovalPoliciesTOML(exact)
+	if err != nil || len(rowErrs) != 0 || len(policies) != 1 {
+		t.Fatalf("at-boundary 1MiB doc must parse clean: err=%v rowErrs=%v policies=%d", err, rowErrs, len(policies))
+	}
 }
 
 // TestMarshalApprovalPoliciesTOML_EmptyRoundtrip D5-f F17：空集合导出→导入

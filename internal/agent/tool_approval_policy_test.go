@@ -724,6 +724,44 @@ func TestToolConfirm_ParamRuleAskDriven_NoAutoProjection(t *testing.T) {
 	}
 }
 
+// TestToolConfirm_ParamRuleAskDriven_AskedHalfNoAutoProjection 钉死 D5-f3
+// （自复审 wf_d5613cd2-059 收口）：param rule ask 驱动 + 回复通道的正常
+// 确认卡路径，asked/decided 双半部同样绝不投影 source_mode=auto——F2 钉
+// 只走 no_reply_channel 半流程（无确认卡、无 asked 半部），本钉补齐带卡
+// 路径的双半部级签一致性（单点半部误标 auto 时同流程两半部级签互相矛盾）。
+func TestToolConfirm_ParamRuleAskDriven_AskedHalfNoAutoProjection(t *testing.T) {
+	t.Parallel()
+	cc := &captureDecisionCollector{}
+	deps := TRPCBuilderDeps{}
+	deps.DecisionCollector = cc
+	gate := &toolConfirmGate{sessionGrants: newToolGrantStore(time.Now)}
+	h := newToolConfirmationBeforeHook(gate, biz.Agent{ID: "agent-1", AgentKey: "spirit"}, deps)
+	em := &fakeConfirmEmitter{confirmID: "act-f2-card"}
+	ctx := approvalPolicyCtxWithEmitter(decisionTestCtx("sess-1", "u-1", func(context.Context) (string, error) {
+		return serviceawaitreply.ReplyApprove, nil
+	}), em)
+	ctx = context.WithValue(ctx, paramRuleVerdictCtxKey{}, &paramRuleVerdict{effect: policyrule.EffectAsk, ruleID: "builtin-ask"})
+	// ctx 同时携带 auto verdict：param 分支先于 policy 分支，auto 未驱动。
+	ctx = context.WithValue(ctx, approvalPolicyVerdictCtxKey{}, &approvalPolicyVerdict{mode: biztool.ApprovalModeAuto, ruleID: "r-auto"})
+
+	if _, err := h.HandleBeforeTool(ctx, &trpctool.BeforeToolArgs{
+		ToolName: "gns3_exec", Arguments: []byte(`{"command":"reload"}`), ToolCallID: "tc-f2-card",
+	}); err != nil {
+		t.Fatalf("HandleBeforeTool: %v", err)
+	}
+	if len(cc.recs) != 2 {
+		t.Fatalf("expected asked+decided pair via reply channel, got %d records", len(cc.recs))
+	}
+	for i := range cc.recs {
+		if got := cc.recs[i].Metadata["decision_reason"]; got != confirmReasonParamRuleAsk {
+			t.Fatalf("rec[%d] decision_reason = %v, want %q", i, got, confirmReasonParamRuleAsk)
+		}
+		if got := cc.recs[i].Metadata["source_mode"]; got != nil {
+			t.Fatalf("rec[%d] param-rule-ask driven must not project source_mode (outcome=%s), got %v", i, cc.recs[i].Outcome, got)
+		}
+	}
+}
+
 // TestToolConfirm_GrantSkipSourceModeProjection 钉死 D5-f F13/F14 裁决：
 // grant 秒过记录的 source_mode 投影取决于驱动分支——审批策略 ask/auto 分支
 // 内 grant 满足（policyAskDriven=true）照常投影 source_mode=auto（auto 审计
