@@ -165,6 +165,9 @@ func (f fakeSkillLookup) RecordInvocation(context.Context, biz.SkillInvocationWr
 	return nil
 }
 
+// TrustGateBlocked：D4-c 判定声明（fixture 桩恒放行——门禁未安装语义）。
+func (f fakeSkillLookup) TrustGateBlocked(biz.SkillRuntimeCandidate) bool { return false }
+
 // fakeProfileCardReader is reused from composite_prompt_test.go.
 
 // fakeKnowledgeRepos satisfies the collection/document/chunk repo triple via

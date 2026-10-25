@@ -276,8 +276,10 @@ const (
 )
 
 // NormalizeTrustGateMode 归一化配置输入（沿用 config.go fail-closed 归一先例）：
-// ""→off；"shadow"→shadow；"on"→shadow + degraded=true（本轮永不真拒）；
-// 未知值→off + degraded=true（观测与执行都从严靠安全侧：不新增过滤，仅提示）。
+// ""→off；"shadow"→shadow；"on"→on（D4-c 就绪不翻——真档位真生效，off→
+// shadow→on 单向翻转纪律不变，上线仍以 shadow 期零误拒证据为前置，见
+// docs/development/feature-flags-registry.md §8 反作用#1）；未知值→off +
+// degraded=true（观测与执行都从严靠安全侧：不新增过滤，仅提示）。
 func NormalizeTrustGateMode(raw string) (mode TrustGateMode, degraded bool) {
 	switch TrustGateMode(strings.ToLower(strings.TrimSpace(raw))) {
 	case TrustGateModeOff, "":
@@ -285,7 +287,7 @@ func NormalizeTrustGateMode(raw string) (mode TrustGateMode, degraded bool) {
 	case TrustGateModeShadow:
 		return TrustGateModeShadow, false
 	case TrustGateModeOn:
-		return TrustGateModeShadow, true
+		return TrustGateModeOn, false
 	default:
 		return TrustGateModeOff, true
 	}
@@ -334,5 +336,37 @@ func NewTrustGateHook(lg loggateway.Logger, mode TrustGateMode, required SkillTr
 			loggateway.Str("required_level", string(required)),
 			loggateway.Str("source", c.Source),
 			loggateway.Bool("would_block", true))
+	}
+}
+
+// NewTrustGateEnforcer 构造 on 档真拒判定闭包（D4-c，就绪不翻）。归一后非
+// on（off/shadow/未知值回落）一律返回 nil——nil=未安装=TrustGateBlocked 恒
+// false=零行为变化。on 档语义：**候选集不剔、L1 概览保留 T4**；只在消费
+// 坐席（mention/Get）死拒并落 skill.trust_filtered Warn（enforced=true +
+// layer 字段，Informational 仅日志不上 bus——AS-EVT-01）。
+func NewTrustGateEnforcer(lg loggateway.Logger, mode TrustGateMode, layer SkillLoadLayer, required SkillTrustLevel) skillpkg.TrustGateEnforcer {
+	norm, _ := NormalizeTrustGateMode(string(mode))
+	if norm != TrustGateModeOn {
+		return nil
+	}
+	if lg == nil {
+		lg = loggateway.NewNoop()
+	}
+	lg = lg.With(loggateway.Domain("skill_trust_gate"))
+	return func(c skillpkg.RuntimeCandidate) (blocked bool) {
+		resolved, wouldBlock := EvaluateTrustGate(c.Source, c.TrustLevel, required)
+		if !wouldBlock {
+			return false
+		}
+		lg.Warn("skill blocked by trust gate (enforced)",
+			loggateway.StepID(SkillEventTrustFiltered),
+			loggateway.Str("skill_id", c.SkillID),
+			loggateway.Str("slug", c.Slug),
+			loggateway.Str("trust_level", string(resolved)),
+			loggateway.Str("required_level", string(required)),
+			loggateway.Str("source", c.Source),
+			loggateway.Str("layer", string(layer)),
+			loggateway.Bool("enforced", true))
+		return true
 	}
 }

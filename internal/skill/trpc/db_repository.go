@@ -15,9 +15,15 @@ import (
 )
 
 // dbSkillEntry is a cached skill loaded from the DB.
+// D4-c（信任门禁 ready flip）：skillID/source/trustLevel 三列随候选快照带
+// 入，供 Get 坐席在门禁 on 档构造判定输入（候选集不剔——本条目不用于过
+// 滤，仅作信任事实载体）。
 type dbSkillEntry struct {
-	summary trpcskill.Summary
-	slug    string
+	summary    trpcskill.Summary
+	slug       string
+	skillID    string
+	source     string
+	trustLevel string
 }
 
 // skillRepoCaches groups the adapter's lazily-populated per-slug caches so
@@ -130,24 +136,39 @@ func (r *DBRepositoryAdapter) Get(name string) (*trpcskill.Skill, error) {
 	r.refreshIfStale(ctx)
 	key := canonicalSlug(name)
 
+	r.mu.RLock()
+	idx, ok := r.index[key]
+	if ok && (idx < 0 || idx >= len(r.entries)) {
+		ok = false
+	}
+	entry := dbSkillEntry{}
+	if ok {
+		entry = r.entries[idx]
+	}
+	r.mu.RUnlock()
+	if !ok {
+		return nil, &skillNotFoundError{name: name}
+	}
+
+	// D4-c Get 坐席（P0-7 信任门禁 on 档真拒点）：候选与 L1 概览保留（
+	// 候选集不剔），正文加载处死拒——以 skillNotFoundError 语义返回，
+	// 保持框架上游既有 notfound 处理路径（对弹窗/降级提示原样）。enforcer
+	// 未安装（off/shadow 缺省）时恒放行。置于 body 快取命中之前：防翻牌
+	// 后存量 body 缓存旁路新增真拒（缓存随快照 TTL/Invalidate 才换桶）。
+	if r.uc != nil && r.uc.TrustGateBlocked(biz.SkillRuntimeCandidate{
+		SkillID:    entry.skillID,
+		Slug:       entry.slug,
+		Source:     entry.source,
+		TrustLevel: entry.trustLevel,
+	}) {
+		return nil, &skillNotFoundError{name: name}
+	}
+
 	// Fast path: check bodies cache (no lock needed, sync.Map is concurrent-safe).
 	cache := r.loadCaches()
 	if cached, ok := cache.bodies.Load(key); ok {
 		return cached.(*trpcskill.Skill), nil
 	}
-
-	r.mu.RLock()
-	idx, ok := r.index[key]
-	if !ok {
-		r.mu.RUnlock()
-		return nil, &skillNotFoundError{name: name}
-	}
-	if idx < 0 || idx >= len(r.entries) {
-		r.mu.RUnlock()
-		return nil, &skillNotFoundError{name: name}
-	}
-	entry := r.entries[idx]
-	r.mu.RUnlock()
 
 	// Load body from DB (slow path).
 	bodyCtx, bodyCancel := r.queryCtx()
@@ -319,7 +340,10 @@ func (r *DBRepositoryAdapter) reload(ctx context.Context) {
 			}
 		}
 		e := dbSkillEntry{
-			slug: slug,
+			slug:       slug,
+			skillID:    c.SkillID,
+			source:     c.Source,
+			trustLevel: c.TrustLevel,
 			summary: trpcskill.Summary{
 				Name:        slug,
 				Description: desc,

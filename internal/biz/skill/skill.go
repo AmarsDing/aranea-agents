@@ -465,6 +465,12 @@ type Usecase struct {
 	// 候选集**——过滤执行随 Batch B 的 off→shadow→on 三档 rollout 落地。
 	// nil = 门禁 OFF = 零行为变更。
 	trustGateHook TrustGateHook
+
+	// trustGateEnforcer 为 D4-c on 档真拒判定闭包（deferred 战役 2026-10-25，
+	// 就绪不翻）。语义：**候选集不剔、L1 概览保留 T4**，只在消费坐席
+	// （mention/Get）经 TrustGateBlocked 死拒。nil（off/shadow）=
+	// TrustGateBlocked 恒 false = 零行为变化。
+	trustGateEnforcer TrustGateEnforcer
 }
 
 // TrustGateHook 在路由候选构造点消费单条候选的信任判定输入。
@@ -472,10 +478,30 @@ type Usecase struct {
 // 避免 skill 包向上依赖 biz。
 type TrustGateHook func(c RuntimeCandidate)
 
+// TrustGateEnforcer 是 D4-c on 档真拒判定闭包：返回 true 表示该候选低于
+// 加载层信任门槛，消费坐席须死拒。类型声明于本包（biz 包构造并回注，
+// 避免 biz↔skill 循环依赖）。
+type TrustGateEnforcer func(c RuntimeCandidate) (blocked bool)
+
 // SetTrustGateHook wires the shadow trust gate recorder.
 // Called once during DI setup; not safe for concurrent use with reads.
 func (u *Usecase) SetTrustGateHook(h TrustGateHook) {
 	u.trustGateHook = h
+}
+
+// SetTrustGateEnforcer wires the on-mode trust gate enforcement closure.
+// Called once during DI setup; not safe for concurrent use with reads.
+func (u *Usecase) SetTrustGateEnforcer(fn TrustGateEnforcer) {
+	u.trustGateEnforcer = fn
+}
+
+// TrustGateBlocked reports whether the candidate is refused at the current
+// load layer under gate=on. enforcer 未安装（off/shadow）时恒 false。
+func (u *Usecase) TrustGateBlocked(c RuntimeCandidate) bool {
+	if u == nil || u.trustGateEnforcer == nil {
+		return false
+	}
+	return u.trustGateEnforcer(c)
 }
 
 // reportTrustGateShadow 在路由候选集构造之后、返回之前逐条上报。

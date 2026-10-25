@@ -96,7 +96,7 @@ func newContextCompressionBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbac
 		}
 		lg := deps.Logger()
 		// 1. Estimate token usage ratio over the FULLY-INJECTED request.
-		estTokens := promptEstTokens(args.Request.Messages)
+		estTokens := promptEstTokensGated(args.Request.Messages, lg)
 		win := resolveCompressionContextWindow(ctx, deps, ag)
 		ratio := llmcontext.ContextRatio(estTokens, win)
 		// 2. Hard threshold gate.
@@ -131,12 +131,12 @@ func newContextCompressionBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbac
 		// the estimate still exceeds target. Tail cues occupy the final
 		// len(tail) positions of `out` (head + marker? + keptConv + tail).
 		droppedCues := 0
-		for remaining := len(tail); remaining > 0 && promptEstTokens(out) > target; remaining-- {
+		for remaining := len(tail); remaining > 0 && promptEstTokensGated(out, lg) > target; remaining-- {
 			tailStart := len(out) - remaining
 			largest := tailStart
 			largestTok := -1
 			for i := tailStart; i < len(out); i++ {
-				if tok := messageEstTokens(out[i]); tok > largestTok {
+				if tok := messageEstTokensGated(out[i]); tok > largestTok {
 					largestTok = tok
 					largest = i
 				}
@@ -157,7 +157,7 @@ func newContextCompressionBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbac
 		}
 		args.Request.Messages = out
 		// 5. Re-verify (post-gate accounting for the log + snapshot overlay).
-		finalEst := promptEstTokens(out)
+		finalEst := promptEstTokensGated(out, lg)
 		if finalEst > target {
 			lg.Warn("context still over target after truncation+degradation",
 				loggateway.StepID("agent.context.compress"),
@@ -296,7 +296,7 @@ func partitionMessagesByTokenBudget(messages []trpcmodel.Message, budgetTokens i
 	var convIdx []int
 	for i, m := range messages {
 		if isPromptFixedMessage(m) {
-			fixed += messageEstTokens(m)
+			fixed += messageEstTokensGated(m)
 		} else {
 			convIdx = append(convIdx, i)
 		}
@@ -309,7 +309,7 @@ func partitionMessagesByTokenBudget(messages []trpcmodel.Message, budgetTokens i
 	keepFrom := len(convIdx)
 	acc := 0
 	for k := len(convIdx) - 1; k >= 0; k-- {
-		tok := messageEstTokens(messages[convIdx[k]])
+		tok := messageEstTokensGated(messages[convIdx[k]])
 		if acc+tok > convBudget {
 			break
 		}

@@ -14,6 +14,9 @@ type SkillResolver interface {
 	ListEnabledPublishedSkillCandidates(ctx context.Context) ([]biz.SkillRuntimeCandidate, error)
 	ListEnabledPublishedSkillKeys(ctx context.Context) ([]string, error)
 	ScoreByEmbedding(ctx context.Context, query string, candidates []biz.SkillRuntimeCandidate) (map[string]float64, error)
+	// TrustGateBlocked 是 D4-c 信任门禁 on 档真拒判定（就绪不翻）：门禁
+	// 未安装/on 档未开启时恒 false。mention 坐席自 D4-c 起消费。
+	TrustGateBlocked(c biz.SkillRuntimeCandidate) bool
 }
 
 type RuntimeSettings interface {

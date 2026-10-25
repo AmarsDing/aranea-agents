@@ -90,6 +90,9 @@ type TeamSkillLookup interface {
 	BatchGetSkillGuidance(ctx context.Context, slugs []string) ([]SkillGuidanceEntry, error)
 	GetBySlug(ctx context.Context, slug string) (Skill, error)
 	RecordInvocation(ctx context.Context, in SkillInvocationWrite) error
+	// TrustGateBlocked 是 D4-c 信任门禁真拒判定声明（门禁未安装/on 档未启
+	// 用时恒 false）。mention 坐席经 SkillResolver 口消费。
+	TrustGateBlocked(c SkillRuntimeCandidate) bool
 }
 
 // CLIAdminSkillLister captures the subset of SkillUsecase needed by the

@@ -8,9 +8,10 @@ import (
 )
 
 type mockSkillResolver struct {
-	candidates []biz.SkillRuntimeCandidate
-	embScores  map[string]float64
-	embErr     error
+	candidates   []biz.SkillRuntimeCandidate
+	embScores    map[string]float64
+	embErr       error
+	trustBlocked map[string]bool // D4-c：精确 slug → blocked（门禁 nil 语义=空表）
 }
 
 func (m *mockSkillResolver) ListEnabledPublishedSkillCandidates(_ context.Context) ([]biz.SkillRuntimeCandidate, error) {
@@ -30,6 +31,10 @@ func (m *mockSkillResolver) ScoreByEmbedding(_ context.Context, _ string, candid
 		return nil, m.embErr
 	}
 	return m.embScores, nil
+}
+
+func (m *mockSkillResolver) TrustGateBlocked(c biz.SkillRuntimeCandidate) bool {
+	return m.trustBlocked[c.Slug]
 }
 
 type mockRuntime struct{ json string }

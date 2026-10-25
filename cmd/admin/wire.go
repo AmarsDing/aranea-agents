@@ -694,23 +694,13 @@ func agentToolResultPruneConfig(runtimeConf *conf.Runtime) chatagent.ToolResultP
 	return out
 }
 
-// skillTrustGateMode 读取 P0-7 skill 信任门禁档位（批 B 2026-10-22）。
-// conf.runtime.skill_trust_gate_mode 已归一（空/未知=shadow）；本翻译顺带在
-// conf 层"on"时降级为 shadow 并 Warn（与被构造者 biz.NormalizeTrustGateMode
-// 的 on→shadow 归一双重一致，Wire 层早暴露忽略配置）。
-func skillTrustGateMode(runtimeConf *conf.Runtime, lg loggateway.Logger) biz.TrustGateMode {
-	mode := runtimeConf.ParsedSkillTrustGateMode()
-	switch mode {
-	case conf.SkillTrustGateModeOn:
-		lg.Warn("skill trust gate 不允许在本批推向 on（零误拒证据未齐），降级为 shadow",
-			loggateway.StepID("skill.trust_gate.mode_degraded"),
-			loggateway.Str("component", "wire"),
-			loggateway.Str("conf_value", mode),
-			loggateway.Str("effective", string(biz.TrustGateModeShadow)))
-		return biz.TrustGateModeShadow
-	default:
-		return biz.TrustGateMode(mode)
-	}
+// skillTrustGateMode 读取 P0-7 skill 信任门禁档位（批 B 2026-10-22 落地；
+// D4-c 就绪不翻——on 档真返 on：conf.Runtime.ParsedSkillTrustGateMode 归
+// 一空/未知=shadow 不变，biz.NormalizeTrustGateMode 的 on→shadow 降级与
+// 本函数历史降级分支同批移除。真翻转前置=shadow 期零误拒证据，单向翻转
+// 纪律 off→shadow→on 不变）。
+func skillTrustGateMode(runtimeConf *conf.Runtime) biz.TrustGateMode {
+	return biz.TrustGateMode(runtimeConf.ParsedSkillTrustGateMode())
 }
 
 // teamNoProgressAuditorConfig 翻译 runtime 配置为 team 包消费侧配置
@@ -1382,6 +1372,31 @@ func provideGraphBuildDeps(
 	// Q5 批 D3：finish_reason/EOF 观测钩子（与 TurnDeps 漏斗共享同一实例）。
 	// D3-f：唯一穿透走 newObservedFinishRoundTrip（接线缺失钉板即红）。
 	rtTrip := newObservedFinishRoundTrip(provider.LLMLeakGuardTimeout, finishHooks)
+	// D4-a/D4-b 就绪 flip（deferred 战役 2026-10-25，就绪不翻）：估算档位与
+	// durable 压缩预检档位经 conf 访问器实时翻译为 agent 包级 provider（agent
+	// 不依赖 internal/conf 红线）。缺省 shadow/observe=行为零变化+对照证据落
+	// 日志；坏值回落缺省并在起机 Warn 一次。语句内嵌被引用 provider 体（wire
+	// regen 语义——独立未引用 provider 会被静默丢弃，D2-f C4 教训）。
+	if _, ok := conf.PromptEstMode(); !ok {
+		lg.Warn("ARANEA_PROMPT_EST_MODE 档位非法，回落 shadow",
+			loggateway.StepID("agent.est_mode"),
+			loggateway.Str("flag", "ARANEA_PROMPT_EST_MODE"),
+			loggateway.Str("effective", "shadow"))
+	}
+	chatagent.SetPromptEstModeProvider(func() string {
+		m, _ := conf.PromptEstMode()
+		return m
+	})
+	if _, ok := conf.DurablePrecheckMode(); !ok {
+		lg.Warn("ARANEA_DURABLE_PRECHECK 档位非法，回落 observe",
+			loggateway.StepID("agent.est_mode"),
+			loggateway.Str("flag", "ARANEA_DURABLE_PRECHECK"),
+			loggateway.Str("effective", "observe"))
+	}
+	chatagent.SetDurablePrecheckModeProvider(func() string {
+		m, _ := conf.DurablePrecheckMode()
+		return m
+	})
 	builderDeps := chatagent.TRPCBuilderDeps{
 		TRPCModelCatalogDeps: chatagent.TRPCModelCatalogDeps{
 			ModelCatalog: catalog,
@@ -1677,15 +1692,17 @@ func provideSkillRegistrationPort(skillUC *biz.SkillUsecase) biz.SkillRegistrati
 // invalidation hook (A3 fix: skill mutations must invalidate the 10-min dedup
 // result cache, otherwise merged/deleted skills keep showing in dedup groups).
 // tagRepo 装配标签字典端口（治理重写后全量失效路由 embed 缓存）。
-// P0-7 批 B（2026-10-22）：skill 信任门禁 Set 回注钩子（与 SetDedupCacheInvalidator
-// 同型先例）。conf.runtime.skill_trust_gate_mode 三档 off|shadow|on，conf 层归一
-// 默认 shadow、本批 wire 层把 on 归一为 shadow（零误拒证据未齐——批 B 守住"不真拒"
-// 底线，上线 on 需批间证据；biz.NormalizeTrustGateMode 内部另有同名降级，双保险）。
+// P0-7 批 B（2026-10-22）：skill 信任门禁 shadow 上报钩子（与 SetDedupCacheInvalidator
+// 同型先例）+ D4-c（就绪不翻）：on 档真拒闭包 SetTrustGateEnforcer（非 on 返
+// nil——off/shadow 缺省零行为变化；消费坐席=skillruntime mention + db_repository
+// Get，候选集/L1 概览不剔）。conf.runtime.skill_trust_gate_mode 三档 off|shadow|on，
+// conf 层归一默认 shadow；真翻转前置=shadow 期零误拒证据（registry §8.5 反作用#1）。
 func provideSkillUsecase(repo biz.SkillRepo, embedder *knowledge.MultiProviderEmbedder, dedup *biz.SkillDedupUsecase, tagRepo biz.SkillTagRepo, runtimeConf *conf.Runtime, lg loggateway.Logger) *biz.SkillUsecase {
 	u := biz.NewSkillUsecase(repo, embedder, lg)
 	u.SetDedupCacheInvalidator(dedup)
 	u.SetTagRepo(tagRepo)
-	u.SetTrustGateHook(biz.NewTrustGateHook(lg, skillTrustGateMode(runtimeConf, lg), biz.RequiredTrustForLayer(biz.SkillLoadLayerL2Instruction)))
+	u.SetTrustGateHook(biz.NewTrustGateHook(lg, skillTrustGateMode(runtimeConf), biz.RequiredTrustForLayer(biz.SkillLoadLayerL2Instruction)))
+	u.SetTrustGateEnforcer(biz.NewTrustGateEnforcer(lg, skillTrustGateMode(runtimeConf), biz.SkillLoadLayerL2Instruction, biz.RequiredTrustForLayer(biz.SkillLoadLayerL2Instruction)))
 	return u
 }
 

@@ -11,6 +11,7 @@ import (
 	"aranea-agents/internal/agent/callbacks"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
+	"aranea-agents/internal/llmcontext"
 	"aranea-agents/pkg/loggateway"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
@@ -179,7 +180,14 @@ func newAssemblyBudgetBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.C
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 		}
 		msgs := args.Request.Messages
-		est := promptEstTokens(msgs) + toolsSchemaEstTokens(args.Request)
+		est := promptEstTokensGated(msgs, lg) + toolsSchemaEstTokens(args.Request)
+		// D4-b seat②：装配估算与 durable 压缩软/硬带的 ratio 镜像对照
+		// （observe-only，永不触发动作；authoritative=seat① admitTurn 与会
+		// 话侧绝对 token 阈值，本步刻意只用 ratio 臂近似——记档 87 design）。
+		// join 键=本 turn ctx 绑定的 TraceEmitter runID；mode=off 全静默。
+		if pm := currentPrecheckMode(); pm != precheckModeOff {
+			emitAssemblyCompressPrecheck(ctx, agentKey, ag, deps, est, string(pm))
+		}
 		if est <= soft {
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 		}
@@ -190,7 +198,7 @@ func newAssemblyBudgetBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.C
 			warn := buildAssemblyBudgetWarning(est, soft, hard)
 			msgs = replaceDynamicCue(msgs, assemblyBudgetWarnMarker, assemblyBudgetWarnMarker+warn)
 			args.Request.Messages = msgs
-			est = promptEstTokens(msgs) + toolsSchemaEstTokens(args.Request)
+			est = promptEstTokensGated(msgs, lg) + toolsSchemaEstTokens(args.Request)
 			lg.Info("assembly soft budget crossed, capacity warning injected",
 				loggateway.StepID("agent.assembly_budget"),
 				loggateway.AgentKey(agentKey),
@@ -202,7 +210,7 @@ func newAssemblyBudgetBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.C
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 		}
 		schemaEst := toolsSchemaEstTokens(args.Request)
-		trimmed, stats := trimAssemblyToBudget(msgs, target, schemaEst)
+		trimmed, stats := trimAssemblyToBudget(msgs, target, schemaEst, lg)
 		args.Request.Messages = trimmed
 		didTrim := len(stats.DroppedCues) > 0 || stats.EvictedMessages > 0
 		if err := biz.CheckBudgetTrim(stats.EstBefore, hard, didTrim || stats.HeadOverBudget); err != nil {
@@ -255,11 +263,11 @@ This request is using approximately %d tokens, above the soft assembly budget (%
 // 触发口径是 messages+tools_schema；裁剪必须把 schema 从 messages 预算里扣掉，
 // 否则 13K 静态工具块会让 hard 越线而 messages 仍低于 target（闸空转）。
 // 两段降级：先按保护序丢尾部 cue，再驱逐最旧历史。静态头骨架永保。
-func trimAssemblyToBudget(msgs []trpcmodel.Message, target int, schemaEst int) ([]trpcmodel.Message, assemblyTrimStats) {
+func trimAssemblyToBudget(msgs []trpcmodel.Message, target int, schemaEst int, lg loggateway.Logger) ([]trpcmodel.Message, assemblyTrimStats) {
 	if schemaEst < 0 {
 		schemaEst = 0
 	}
-	msgEst := promptEstTokens(msgs)
+	msgEst := promptEstTokensGated(msgs, lg)
 	stats := assemblyTrimStats{EstBefore: msgEst + schemaEst}
 	msgTarget := target - schemaEst
 	if msgTarget < 0 {
@@ -282,7 +290,7 @@ func trimAssemblyToBudget(msgs []trpcmodel.Message, target int, schemaEst int) (
 		if !ok {
 			continue
 		}
-		cands = append(cands, cand{idx: i, rank: rank, kind: kind, tok: messageEstTokens(m)})
+		cands = append(cands, cand{idx: i, rank: rank, kind: kind, tok: messageEstTokensGated(m)})
 	}
 	sort.SliceStable(cands, func(a, b int) bool { return cands[a].rank > cands[b].rank })
 	dropped := make(map[int]bool, len(cands))
@@ -307,7 +315,7 @@ func trimAssemblyToBudget(msgs []trpcmodel.Message, target int, schemaEst int) (
 		merged = append(merged, conv...)
 		merged = append(merged, newTail...)
 		msgs = merged
-		est = promptEstTokens(msgs)
+		est = promptEstTokensGated(msgs, lg)
 	}
 
 	// 段 2：仍超 messages 预算才驱逐最旧历史（与压缩闸同构：token 口径 + 标记
@@ -324,7 +332,7 @@ func trimAssemblyToBudget(msgs []trpcmodel.Message, target int, schemaEst int) (
 			marker := trpcmodel.NewSystemMessage(buildTruncationMarker(len(evicted)))
 			msgs = insertMarkerAfterHead(keep, len(head2), marker)
 		}
-		est = promptEstTokens(msgs)
+		est = promptEstTokensGated(msgs, lg)
 	}
 
 	stats.EstAfter = est + schemaEst
@@ -357,6 +365,51 @@ func emitAssemblyTrimmedFlowLog(ctx context.Context, agentKey string, stats asse
 		event.P("evicted_chars", stats.EvictedChars),
 		event.P("head_over_budget", stats.HeadOverBudget),
 	)
+}
+
+// emitAssemblyCompressPrecheck 是 D4-b seat②：p8 装配估算（messages+schema）
+// 与 durable 压缩软/硬带的对照落步（flowlog assembly.compress.precheck）。
+// 只观测不触发；无 emitter 的 ctx（后台/测试路径）静默跳过。
+func emitAssemblyCompressPrecheck(ctx context.Context, agentKey string, ag biz.Agent, deps TRPCBuilderDeps, estTokens int, mode string) {
+	em := event.TraceEmitterFromContext(ctx)
+	if em == nil {
+		return
+	}
+	win := resolveCompressionContextWindow(ctx, deps, ag)
+	ratio := llmcontext.ContextRatio(estTokens, win)
+	softRatio := assemblyPrecheckSoftRatio(ag)
+	hardRatio := hardTriggerRatioForAgent(ag)
+	verdict := "below_soft"
+	switch {
+	case ratio >= hardRatio:
+		verdict = "hard_band"
+	case ratio >= softRatio:
+		verdict = "soft_band"
+	}
+	em.Log("assembly.compress.precheck", event.FlowPhaseDone,
+		fmt.Sprintf("本轮装配估算 %d tokens（窗口 %d，ratio %.3f）vs 软带 %.2f / 硬带 %.2f → %s（%s，观测不触发）",
+			estTokens, win, ratio, softRatio, hardRatio, verdict, mode),
+		event.P("agent_key", agentKey),
+		event.P("est_tokens", estTokens),
+		event.P("context_window", win),
+		event.P("used_ratio", ratio),
+		event.P("soft_ratio", softRatio),
+		event.P("hard_ratio", hardRatio),
+		event.P("verdict", verdict),
+		event.P("mode", mode),
+	)
+}
+
+// assemblyPrecheckSoftRatio 镜像 session 软阈 ratio 臂（compress_policy.go
+// softTriggerTokens 的 Settings 覆盖 + biz.DefaultSoftTriggerRatio 缺省）。
+// seat② 观测刻意略过 reserved_system/buffer/adaptive 项（记档 87 design：
+// authoritative 判级=seat① 与 runCompress 的绝对阈值）。
+func assemblyPrecheckSoftRatio(ag biz.Agent) float64 {
+	ratio := biz.DefaultSoftTriggerRatio
+	if ag.Settings != nil && ag.Settings.SoftTriggerRatio > 0 {
+		ratio = ag.Settings.SoftTriggerRatio
+	}
+	return ratio
 }
 
 // toolsSchemaEstTokens estimates Request.Tools declaration tokens on the

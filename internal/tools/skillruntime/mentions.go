@@ -40,16 +40,27 @@ func ParseSkillMentions(query string) []string {
 // mergeMentionedSlugs prepends Layer-A-allowed `$skill` mentions so they
 // load without a second search. Mentions consume the cap first; excess
 // routed slugs are dropped.
-func mergeMentionedSlugs(routed []string, query string, afterA []biz.SkillRuntimeCandidate, reasons map[string]string, max int) []string {
+//
+// D4-c mention 坐席（就绪不翻）：blockedByTrustGate 非 nil 时，命中候选却
+// 低于 L2 信任门槛的提及被死拒（reasons[slug]=blocked_by_trust_gate）——
+// 候选集与 L1 概览不受影响（门禁语义：候选集不剔）。
+func mergeMentionedSlugs(routed []string, query string, afterA []biz.SkillRuntimeCandidate, reasons map[string]string, max int, blockedByTrustGate func(biz.SkillRuntimeCandidate) bool) []string {
 	mentions := ParseSkillMentions(query)
 	if len(mentions) == 0 {
 		return routed
 	}
 	allowed := map[string]bool{}
+	var candBySlug map[string]biz.SkillRuntimeCandidate
+	if blockedByTrustGate != nil {
+		candBySlug = make(map[string]biz.SkillRuntimeCandidate, len(afterA))
+	}
 	for _, c := range afterA {
 		slug := strings.ToLower(strings.TrimSpace(c.Slug))
 		if slug != "" {
 			allowed[slug] = true
+			if candBySlug != nil {
+				candBySlug[slug] = c
+			}
 		}
 	}
 	seen := map[string]bool{}
@@ -60,6 +71,15 @@ func mergeMentionedSlugs(routed []string, query string, afterA []biz.SkillRuntim
 				reasons[slug] = "mention not in enabled catalog"
 			}
 			continue
+		}
+		// D4-c mention 坐席：候选在目录但低于信任门槛 → 死拒提及式加载。
+		if blockedByTrustGate != nil {
+			if cand, ok := candBySlug[slug]; ok && blockedByTrustGate(cand) {
+				if reasons != nil && reasons[slug] == "" {
+					reasons[slug] = "blocked_by_trust_gate"
+				}
+				continue
+			}
 		}
 		seen[slug] = true
 		if reasons != nil {

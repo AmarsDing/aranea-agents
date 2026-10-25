@@ -114,6 +114,9 @@ func (m *countingSkillLookup) RecordInvocation(_ context.Context, _ biz.SkillInv
 	return nil
 }
 
+// TrustGateBlocked：D4-c 信任门禁判定声明（计数器桩恒放行——门禁未安装语义）。
+func (m *countingSkillLookup) TrustGateBlocked(_ biz.SkillRuntimeCandidate) bool { return false }
+
 func TestResolveAndWriteSkillState_MemoizedPerInvocation(t *testing.T) {
 	uc := &countingSkillLookup{}
 	deps := TRPCBuilderDeps{TRPCSkillDeps: TRPCSkillDeps{SkillUC: uc}}

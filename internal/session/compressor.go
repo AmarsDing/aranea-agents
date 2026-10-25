@@ -550,6 +550,8 @@ func (c *Compressor) runCompress(ctx context.Context, sessionID, trpcUserID stri
 	}
 
 	// 流程日志：仅在实际执行压缩时发射（软触发以下/防抖/抑制等早退路径不打）。
+	// D4-b 同批：duration_ms 埋点——范围=级联+写入+重读（startedAt 起算）。
+	startedAt := time.Now()
 	flow := c.newFlowEmitter(ctx, sessionID)
 	tokensBefore := usedTokens
 	messagesBefore := len(body) + len(tail)
@@ -568,10 +570,11 @@ func (c *Compressor) runCompress(ctx context.Context, sessionID, trpcUserID stri
 				flow.LogError("system.session.compress", "会话上下文压缩失败",
 					event.P("error", "compression cascade failed"),
 					event.P("tokens_before", tokensBefore),
-					event.P("messages_before", messagesBefore))
+					event.P("messages_before", messagesBefore),
+					event.P("duration_ms", time.Since(startedAt).Milliseconds()))
 			}
 			c.emitCompressDecision(sessionID, "tripped", hardTok, tokensBefore, messagesBefore, 0, outcome, forced,
-				fmt.Sprintf("压缩级联失败（fail_kind=%d）", outcome.fail), "compress_failed")
+				time.Since(startedAt).Milliseconds(), fmt.Sprintf("压缩级联失败（fail_kind=%d）", outcome.fail), "compress_failed")
 			return apierror.Internal(apierror.DomainSession, "compression cascade failed")
 		}
 		return nil
@@ -584,10 +587,11 @@ func (c *Compressor) runCompress(ctx context.Context, sessionID, trpcUserID stri
 			flow.LogError("system.session.compress", "会话上下文压缩失败",
 				event.P("error", err.Error()),
 				event.P("tokens_before", tokensBefore),
-				event.P("messages_before", messagesBefore))
+				event.P("messages_before", messagesBefore),
+				event.P("duration_ms", time.Since(startedAt).Milliseconds()))
 		}
 		c.emitCompressDecision(sessionID, "tripped", hardTok, tokensBefore, messagesBefore, 0, outcome, forced,
-			"压缩写入失败: "+err.Error(), "compress_failed")
+			time.Since(startedAt).Milliseconds(), "压缩写入失败: "+err.Error(), "compress_failed")
 		return err
 	}
 	if !wrote {
@@ -603,6 +607,7 @@ func (c *Compressor) runCompress(ctx context.Context, sessionID, trpcUserID stri
 			event.P("messages_after", len(tail)),
 			event.P("compress_level", string(outcome.level)),
 			event.P("cache_hit", outcome.cacheHit),
+			event.P("duration_ms", time.Since(startedAt).Milliseconds()),
 		}
 		// 压缩后的 context_used_tokens 已在事务内更新，尽力而为重读一次供对比展示。
 		if sessAfter, e := c.deps.sessionReader.GetSessionByID(ctx, sessionID); e == nil {
@@ -616,7 +621,7 @@ func (c *Compressor) runCompress(ctx context.Context, sessionID, trpcUserID stri
 	// （R4-Q4「压缩事件无 decisions 留痕」）。flowlog 不在此重复发：
 	// 压缩走自带 newFlowEmitter（turn 外异步 ctx 无 TraceEmitter）。
 	c.emitCompressDecision(sessionID, "truncated", hardTok, tokensBefore, messagesBefore, tokensAfter, outcome, forced,
-		fmt.Sprintf("会话上下文水位 %d tokens 触线（硬阈 %d），%s 压缩产出 %d rune 摘要", tokensBefore, hardTok, outcome.level, utf8.RuneCountInString(outcome.markdown)), "compress")
+		time.Since(startedAt).Milliseconds(), fmt.Sprintf("会话上下文水位 %d tokens 触线（硬阈 %d），%s 压缩产出 %d rune 摘要", tokensBefore, hardTok, outcome.level, utf8.RuneCountInString(outcome.markdown)), "compress")
 	return nil
 }
 
@@ -624,7 +629,7 @@ func (c *Compressor) runCompress(ctx context.Context, sessionID, trpcUserID stri
 // 决策记录（trigger=context_compacted，GuardName=session_compressor 与
 // turn 内终审闸 context_compression 区分）。collector 为 nil 时静默降级。
 // tokensAfter 为 0 表示未观测到（失败路径）。
-func (c *Compressor) emitCompressDecision(sessionID, outcome string, hardTok, tokensBefore, messagesBefore, tokensAfter int, oc compressOutcome, forced bool, reasoning, action string) {
+func (c *Compressor) emitCompressDecision(sessionID, outcome string, hardTok, tokensBefore, messagesBefore, tokensAfter int, oc compressOutcome, forced bool, durationMs int64, reasoning, action string) {
 	if c.collector == nil {
 		return
 	}
@@ -633,6 +638,7 @@ func (c *Compressor) emitCompressDecision(sessionID, outcome string, hardTok, to
 		"messages_before": messagesBefore,
 		"cache_hit":       oc.cacheHit,
 		"forced":          forced,
+		"duration_ms":     durationMs,
 	}
 	if tokensAfter > 0 {
 		extra["tokens_after"] = tokensAfter

@@ -11,6 +11,7 @@ import (
 	"aranea-agents/internal/agent/v2"
 	"aranea-agents/internal/biz"
 	artifactbiz "aranea-agents/internal/biz/artifact"
+	"aranea-agents/internal/conf"
 	"aranea-agents/internal/event"
 	"aranea-agents/internal/telemetry/turntrace"
 	"aranea-agents/pkg/apierror"
@@ -123,6 +124,31 @@ func (p *turnPhases) admitTurn(
 		if comp, ok := p.td().Compress.(biz.DurableTurnCompressor); ok {
 			if err := comp.BeforeDurableTurn(ctx, sessionID, ag); err != nil {
 				p.lg().Warn("BeforeDurableTurn failed", loggateway.StepID("chat.turn.before_durable"), loggateway.Err(err))
+			}
+		}
+	}
+	// D4-b seat① durable 压缩预检（deferred 战役 2026-10-25，就绪不翻；F1
+	// 登记 feature-flags-registry §1）。判读=上一轮权威读数
+	// （sess.ContextUsedTokens，零查询），join 键 run_id；off 全静默，
+	// observe（缺省）只落观测步骤，on 且判级越软带时按正常触发语义调
+	// AfterNativeTurn（flight-guarded、非 forced、不绕 suppress）。空/坏
+	// 值已由 conf 访问器回落 observe（坏值另在 wire 起机 Warn 一次）。
+	if mode, _ := conf.DurablePrecheckMode(); mode != "off" {
+		if pre, ok := p.td().Compress.(biz.DurableTurnPrecheck); ok {
+			rep := pre.PrecheckVerdict(sess, ag)
+			p.lg().Info("durable compress precheck verdict",
+				loggateway.StepID("session.compress.precheck"),
+				loggateway.SessionID(sessionID),
+				loggateway.Str("run_id", runID),
+				loggateway.Int("used_tokens", rep.UsedTokens),
+				loggateway.Int("soft_tokens", rep.SoftTokens),
+				loggateway.Int("hard_tokens", rep.HardTokens),
+				loggateway.Int("context_window", rep.ContextWindow),
+				loggateway.Str("verdict", string(rep.Verdict)),
+				loggateway.Str("mode", mode),
+				loggateway.Bool("durable_turn", durableCtx.active))
+			if mode == "on" && rep.AtOrAboveSoft() {
+				pre.AfterNativeTurn(ctx, sessionID, ag)
 			}
 		}
 	}

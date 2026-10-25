@@ -161,8 +161,9 @@ func TestEvolutionLandingPolicy(t *testing.T) {
 	}
 }
 
-// TestNormalizeTrustGateMode 钉死三档归一：on 本轮降级为 shadow（永不真拒），
-// 未知值降级 off，两者均 degraded=true。
+// TestNormalizeTrustGateMode 钉死三档归一（D4-c 就绪不翻 2026-10-25）：
+// on 真生效（执行坐席已就绪，不再降级 shadow；真翻转仍以 shadow 期零误拒
+// 证据为前置），未知值降级 off（degraded=true 上报）。
 func TestNormalizeTrustGateMode(t *testing.T) {
 	cases := []struct {
 		raw      string
@@ -172,8 +173,9 @@ func TestNormalizeTrustGateMode(t *testing.T) {
 		{"", TrustGateModeOff, false},
 		{"off", TrustGateModeOff, false},
 		{"shadow", TrustGateModeShadow, false},
-		{"on", TrustGateModeShadow, true},
+		{"on", TrustGateModeOn, false},
 		{"Shadow", TrustGateModeShadow, false},
+		{"ON", TrustGateModeOn, false},
 		{"garbage", TrustGateModeOff, true},
 	}
 	for _, c := range cases {
@@ -238,13 +240,15 @@ func (c *captureLogger) With(f ...loggateway.Field) loggateway.Logger {
 	return c
 }
 
-// TestNewTrustGateHook_ShadowNeverFilters 钉死 shadow 门禁核心语义：
-// would_block 计数结构化日志输出、永不真拒（on 输入降级 shadow 也不拒）。
+// TestNewTrustGateHook_ShadowNeverFilters 钉死 shadow 上报口核心语义：
+// would_block 计数结构化日志输出、永不真拒。D4-c 起 on 输入不再降级——
+// 但 hook 面仍是纯上报（真拒只走 NewTrustGateEnforcer 坐席闭包），on 与
+// shadow 在本口同形状。
 func TestNewTrustGateHook_ShadowNeverFilters(t *testing.T) {
 	lg := newCaptureLogger()
 	hook := NewTrustGateHook(lg, TrustGateModeOn, RequiredTrustForLayer(SkillLoadLayerL2Instruction))
 	if hook == nil {
-		t.Fatal("on mode must degrade to shadow hook, got nil")
+		t.Fatal("on mode must still return the shadow report hook, got nil")
 	}
 
 	candidates := []skillpkg.RuntimeCandidate{
@@ -257,9 +261,10 @@ func TestNewTrustGateHook_ShadowNeverFilters(t *testing.T) {
 		hook(c)
 	}
 
-	// 模式降级告警 + 恰好 1 条 would_block Warn（skill_2）。
-	if lg.byLvl["warn"] != 2 {
-		t.Fatalf("expected 2 warn logs (mode degraded + 1 would_block), got=%d; msgs=%v", lg.byLvl["warn"], lg.msg)
+	// D4-c：on 真生效不再降级——恰好 1 条 would_block Warn（skill_2），
+	// 无降级告警；降级告警只由未知值触发（见 Normalize 矩阵）。
+	if lg.byLvl["warn"] != 1 {
+		t.Fatalf("expected 1 warn log (would_block only; on no longer degrades), got=%d; msgs=%v", lg.byLvl["warn"], lg.msg)
 	}
 	// hook 无返回值——构造上就不可能真拒（过滤逻辑不存在于求值面）。
 	var sawBlocked bool

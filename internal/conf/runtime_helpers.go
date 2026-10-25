@@ -438,9 +438,11 @@ func (r *Runtime) ToolResultSpillConfig() RuntimeToolResultSpillConfig {
 	return cfg
 }
 
-// SkillTrustGateMode 三档（P0-7 批 B 2026-10-22）：off（关闭，零行为）/
-// shadow（仅 would_block 计数不真拒，批 A 现状）/ on（真拒，需 shadow 期
-// 零误拒证据；单向翻转纪律 off → shadow → on）。
+// SkillTrustGateMode 三档（P0-7 批 B 2026-10-22 落地；D4-c 就绪不翻
+// 2026-10-25——on 档执行坐席已就绪，真翻转仍以 shadow 期零误拒证据为前置，
+// 见 feature-flags-registry.md §8.5 反作用#1）：off（关闭，零行为）/
+// shadow（仅 would_block 计数不真拒）/ on（真拒；单向翻转纪律 off →
+// shadow → on）。
 const (
 	SkillTrustGateModeOff    = "off"
 	SkillTrustGateModeShadow = "shadow"
