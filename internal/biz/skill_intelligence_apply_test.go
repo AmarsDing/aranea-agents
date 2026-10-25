@@ -198,6 +198,8 @@ type agentApplyStoreStub struct {
 	row    *UnifiedEvolutionSuggestion
 	casTo  string
 	casHit bool
+	lcTo   string
+	lcHit  bool
 }
 
 func (s *agentApplyStoreStub) GetByID(_ context.Context, id string) (*UnifiedEvolutionSuggestion, error) {
@@ -220,6 +222,16 @@ func (s *agentApplyStoreStub) UpdateStatusCAS(_ context.Context, id string, from
 		}
 	}
 	return false, nil
+}
+
+func (s *agentApplyStoreStub) UpdateLifecycleStatus(_ context.Context, id string, status string) error {
+	if s.row == nil || s.row.ID != id {
+		return nil
+	}
+	s.row.LifecycleStatus = status
+	s.lcTo = status
+	s.lcHit = true
+	return nil
 }
 
 // fakeRegistrar records RegisterSkill calls and stubs SkillExists.
@@ -255,7 +267,8 @@ func newAgentApprovedRow() *UnifiedEvolutionSuggestion {
 		Status:          string(UnifiedEvolutionStateApproved),
 		DraftName:       "deploy-helper",
 		DraftBody:       "# Deploy Helper\n\n## Guidance\nAutomate deploys.",
-		LifecycleStatus: "draft",
+		LifecycleStatus: string(EvoLifecycleReady),
+		SandboxPassed:   true,
 		CreatedAt:       time.Now().UTC(),
 	}
 }
@@ -284,6 +297,11 @@ func TestApplyApprovedSuggestion_AgentCreateSkill_Success(t *testing.T) {
 	}
 	if !store.casHit || store.casTo != string(UnifiedEvolutionStateApplied) {
 		t.Errorf("CAS = (hit=%v, to=%q), want (true, applied)", store.casHit, store.casTo)
+	}
+	// E2E-E1：apply 成功后 lifecycle 也必须迁移到 applied——不许再产出
+	// status=applied + lifecycle=draft 的矛盾终态。
+	if !store.lcHit || store.lcTo != string(EvoLifecycleApplied) {
+		t.Errorf("lifecycle write = (hit=%v, to=%q), want (true, applied)", store.lcHit, store.lcTo)
 	}
 }
 
@@ -350,5 +368,50 @@ func TestApplyApprovedSuggestion_AgentCreateSkill_NilRegistrarNoop(t *testing.T)
 	}
 	if store.casHit {
 		t.Error("CAS must not run with nil registrar — suggestion stays approved")
+	}
+}
+
+// ── E2E-E1：agent 分支 apply 门禁对齐（此前仅 skill 分支受门禁保护）────────
+
+// sandbox_passed=false 的 agent 建议即便 approved+ready 也不得 apply：
+// 注册器不得调用、status/lifecycle 不得迁移（guarded no-op）。
+func TestApplyApprovedSuggestion_AgentCreateSkill_SandboxGateBlocks(t *testing.T) {
+	row := newAgentApprovedRow()
+	row.SandboxPassed = false
+	store := &agentApplyStoreStub{row: row}
+	reg := &fakeRegistrar{}
+	uc := newAgentApplyUsecase(store, reg)
+
+	if err := uc.ApplyApprovedSuggestion(context.Background(), row.ID); err != nil {
+		t.Fatalf("expected nil error (guarded no-op), got %v", err)
+	}
+	if reg.regCalls != 0 {
+		t.Error("registrar must not be called when sandbox has not passed")
+	}
+	if store.casHit || store.lcHit {
+		t.Errorf("no persistence may run: casHit=%v lcHit=%v", store.casHit, store.lcHit)
+	}
+	if row.Status != string(UnifiedEvolutionStateApproved) {
+		t.Errorf("status = %q, want approved (unchanged)", row.Status)
+	}
+}
+
+// lifecycle 未到 ready（如仍在 draft）的 agent 建议不得 apply——FSM 拒绝
+// Apply 迁移即整体 no-op。
+func TestApplyApprovedSuggestion_AgentCreateSkill_LifecycleGateBlocks(t *testing.T) {
+	row := newAgentApprovedRow()
+	row.LifecycleStatus = "draft"
+	store := &agentApplyStoreStub{row: row}
+	reg := &fakeRegistrar{}
+	uc := newAgentApplyUsecase(store, reg)
+
+	if err := uc.ApplyApprovedSuggestion(context.Background(), row.ID); err != nil {
+		t.Fatalf("expected nil error (guarded no-op), got %v", err)
+	}
+	if reg.regCalls != 0 {
+		t.Error("registrar must not be called when lifecycle is not ready")
+	}
+	if store.casHit || store.lcHit {
+		t.Errorf("no persistence may run: casHit=%v lcHit=%v", store.casHit, store.lcHit)
 	}
 }

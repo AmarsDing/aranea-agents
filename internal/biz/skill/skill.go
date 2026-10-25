@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"aranea-agents/internal/workspace"
 	"aranea-agents/pkg/apierror"
 	authpkg "aranea-agents/pkg/auth"
 	"aranea-agents/pkg/loggateway"
@@ -843,6 +844,13 @@ func (u *Usecase) Publish(ctx context.Context, id string) (Skill, error) {
 	}
 	if strings.TrimSpace(cur.Status) != "draft" {
 		return Skill{}, apierror.BadRequest("SKILL", "only draft skills can be published")
+	}
+	// E2E-E2：publish fail-closed。发布是可见性跃迁（published+enabled ⇒ 经
+	// ListEnabledPublishedSkillCandidates 进入运行时路由面），必须受与改动
+	// 同类资源一致的 mutate 门禁：非属主租户拒绝；共享草稿（workspace_id
+	// 空串，含历史 fail-open 注册遗留行）禁止租户发布、仅 system 旁可流转。
+	if err := workspace.AssertWorkspaceMutate(workspace.IDFromContext(ctx), cur.WorkspaceID); err != nil {
+		return Skill{}, err
 	}
 	body, bodyErr := u.repo.GetLatestSkillMarkdown(ctx, id)
 	if bodyErr != nil {

@@ -245,6 +245,17 @@ func (uc *SkillIntelligenceUsecase) applyAgentCreateSkill(ctx context.Context, s
 	if err != nil {
 		return nil
 	}
+	// E2E-E1：agent 分支门禁与 skill 分支对齐——apply 必须经 lifecycle=ready
+	// FSM 校验且 sandbox_passed；此前守卫只落在 skill 分支，agent 建议人工
+	// approve 后即便 sandbox 未过/lifecycle=draft 也被 CAS 到 applied 并注册，
+	// 产出 status=applied + lifecycle=draft + sandbox_passed=0 矛盾终态。
+	nextLifecycle, err := uc.lifecycleSM.Transition(suggestion.LifecycleStatus, EvoLifecycleEventApply)
+	if err != nil {
+		return nil
+	}
+	if !suggestion.SandboxPassed {
+		return nil
+	}
 	if uc.registrar == nil {
 		return nil
 	}
@@ -271,6 +282,15 @@ func (uc *SkillIntelligenceUsecase) applyAgentCreateSkill(ctx context.Context, s
 				loggateway.Err(regErr))
 			return regErr
 		}
+	}
+	// E2E-E1: lifecycle 先于 status 落值（与 skill 分支同序），避免 CAS 成功但
+	// lifecycle 仍停在 draft 的矛盾态；lifecycle 写入失败仅告警（可重试补写），
+	// status CAS 是权威门禁（并发漂移仍由 CAS 吸收）。
+	if err := uc.unifiedStore.UpdateLifecycleStatus(ctx, suggestion.ID, string(nextLifecycle)); err != nil {
+		uc.lg.Warn("applyAgentCreateSkill: UpdateLifecycleStatus(applied) failed",
+			loggateway.StepID("skill_intelligence.apply_agent"),
+			loggateway.Str("suggestion_id", suggestion.ID),
+			loggateway.Err(err))
 	}
 	ok, err := uc.unifiedStore.UpdateStatusCAS(ctx, suggestion.ID,
 		[]string{string(UnifiedEvolutionStateApproved)}, string(nextStatus), "system", "auto-registered to agent")

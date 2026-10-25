@@ -8,6 +8,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/skill/manifest"
 	"aranea-agents/internal/tools/skills_butler"
+	"aranea-agents/internal/workspace"
 	"aranea-agents/pkg/apierror"
 )
 
@@ -170,15 +171,35 @@ func NewSkillsButlerRegistrationAdapter(uc *biz.SkillUsecase) biz.SkillRegistrat
 	return skillsButlerRegistrationAdapter{uc: uc}
 }
 
+// butlerSkillWorkspace 解析 butler 注册技能的归属租户（E2E-E2 workspace 归属
+// fail-closed）。建议行由 data 层按宿主 agent 派生 workspace，但注册路径此
+// 前丢弃归属、落 workspace_id 空串（=平台共享，经 ListEnabledPublishedSkillCandidates
+// 全平台可路由）——源自租户经验的 SKILL.md 即成跨租户泄漏向量。agent 蒸馏
+// 产物必须挂调用方租户：system 旁路上下文下注册一律拒绝（不同于人工 admin
+// RPC 显式建仓共享内置的合法形态）；无 workspace 时回落 default（单租户部署
+// 兼容）。
+func butlerSkillWorkspace(ctx context.Context) (string, error) {
+	if workspace.IsSystem(ctx) {
+		return "", apierror.Forbidden(apierror.DomainSkill,
+			"butler skill registration must not run under the system workspace")
+	}
+	return workspace.IDFromContext(ctx), nil
+}
+
 func (a skillsButlerRegistrationAdapter) RegisterSkill(ctx context.Context, agentID string, name string, skillMD string) error {
 	if a.uc == nil {
 		return nil
 	}
-	_, err := a.uc.Create(ctx, biz.SkillCreateInput{
-		Name:     name,
-		Slug:     biz.NormalizeSkillSlug(name),
-		Body:     skillMD,
-		Triggers: manifest.Parse(skillMD).Triggers,
+	wsID, err := butlerSkillWorkspace(ctx)
+	if err != nil {
+		return err
+	}
+	_, err = a.uc.Create(ctx, biz.SkillCreateInput{
+		Name:        name,
+		Slug:        biz.NormalizeSkillSlug(name),
+		Body:        skillMD,
+		Triggers:    manifest.Parse(skillMD).Triggers,
+		WorkspaceID: wsID,
 	})
 	return err
 }

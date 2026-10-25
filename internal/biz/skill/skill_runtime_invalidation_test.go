@@ -91,7 +91,7 @@ func TestPatch_InvalidatesRuntimeCache(t *testing.T) {
 // 消除「发布→再点启用」的两步反直觉操作。
 func TestPublish_AutoEnablesAndInvalidatesRuntimeCache(t *testing.T) {
 	repo := newMockRepo()
-	repo.skills["s1"] = Skill{ID: "s1", Slug: "a", Name: "A", Status: "draft", Enabled: false, Description: "当需要处理报销流程时使用"}
+	repo.skills["s1"] = Skill{ID: "s1", Slug: "a", Name: "A", Status: "draft", Enabled: false, Description: "当需要处理报销流程时使用", WorkspaceID: "default"}
 	repo.markdown["s1"] = "# a\n\nbody"
 	inv := &mockRuntimeInvalidator{}
 	u := NewUsecase(repo, nil, loggateway.NewNoop())
@@ -114,7 +114,7 @@ func TestPublish_AutoEnablesAndInvalidatesRuntimeCache(t *testing.T) {
 // P2-7a：已启用的 Skill 重复发布（先回退 draft 再发）不应产生多余写。
 func TestPublish_AlreadyEnabled_NoExtraEnableWrite(t *testing.T) {
 	repo := newMockRepo()
-	repo.skills["s1"] = Skill{ID: "s1", Slug: "a", Name: "A", Status: "draft", Enabled: true, Description: "当需要处理报销流程时使用"}
+	repo.skills["s1"] = Skill{ID: "s1", Slug: "a", Name: "A", Status: "draft", Enabled: true, Description: "当需要处理报销流程时使用", WorkspaceID: "default"}
 	repo.markdown["s1"] = "# a\n\nbody"
 	u := NewUsecase(repo, nil, loggateway.NewNoop())
 	if _, err := u.Publish(adminCtx(), "s1"); err != nil {
@@ -159,7 +159,7 @@ func TestPublishValidation_NoWarnWhenDescriptionHasCue(t *testing.T) {
 // 防回归：warn 消息必须真正进入 Publish 后的 ValidationStatus。
 func TestPublish_PersistsWarnValidationStatus(t *testing.T) {
 	repo := newMockRepo()
-	repo.skills["s1"] = Skill{ID: "s1", Slug: "a", Name: "A", Status: "draft", Description: "报销单处理助手，覆盖发票审核与打款流程"}
+	repo.skills["s1"] = Skill{ID: "s1", Slug: "a", Name: "A", Status: "draft", Description: "报销单处理助手，覆盖发票审核与打款流程", WorkspaceID: "default"}
 	repo.markdown["s1"] = publishTestBody
 	u := NewUsecase(repo, nil, loggateway.NewNoop())
 	s, err := u.Publish(adminCtx(), "s1")

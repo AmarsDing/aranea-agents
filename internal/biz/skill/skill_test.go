@@ -605,6 +605,7 @@ func TestPublish_EmbedCacheInvalidation(t *testing.T) {
 	r := newMockRepo()
 	sk := sampleSkill("s1", "Test Skill", "test")
 	sk.Status = "draft"
+	sk.WorkspaceID = "default" // E2E-E2: Publish mutate 门禁要求属主租户（adminCtx 隐式 default）
 	sk.Description = "A detailed skill description for publish"
 	r.skills["s1"] = sk
 	r.markdown["s1"] = "# Test Skill\n\nThis body is long enough to pass publish validation checks."
@@ -1318,6 +1319,7 @@ func TestPublish_Success(t *testing.T) {
 	r := newMockRepo()
 	sk := sampleSkill("s1", "Test Skill", "test")
 	sk.Status = "draft"
+	sk.WorkspaceID = "default" // E2E-E2: Publish mutate 门禁要求属主租户（adminCtx 隐式 default）
 	sk.Description = "A detailed skill description for publish"
 	r.skills["s1"] = sk
 	r.markdown["s1"] = "# Test Skill\n\nThis body is long enough to pass publish validation checks."
@@ -1335,6 +1337,7 @@ func TestPublish_BlockEmptyBody(t *testing.T) {
 	r := newMockRepo()
 	sk := sampleSkill("s1", "Test Skill", "test")
 	sk.Status = "draft"
+	sk.WorkspaceID = "default" // E2E-E2: Publish mutate 门禁要求属主租户（adminCtx 隐式 default）
 	sk.Description = "A detailed skill description for publish"
 	r.skills["s1"] = sk
 	u := NewUsecase(r, nil, loggateway.NewNoop())
