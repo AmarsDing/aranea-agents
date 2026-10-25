@@ -95,7 +95,9 @@ func TestHoldPlaybookConfirmPollConsumesCrossReplicaDecision(t *testing.T) {
 	if pe.HasPlaybookStageConfirm("sp-1", "st-confirm") {
 		t.Fatal("settle must clear waiter registrations")
 	}
-	if v, ok := pe.lookupPlaybookConfirmDecision("sp-1", "st-confirm"); !ok || !v {
+	// D6-f：直查进程内缓存（不经 lookupPlaybookConfirmDecision——该函数端口
+	// 读径无论收敛 Store 是否存在都返回同一决议，经它复查=同义反复假绿）。
+	if v, ok := pe.playbookConfirmDecided.Load(playbookConfirmKey("sp-1", "st-confirm")); !ok || v != true {
 		t.Fatalf("decision must converge into local cache: ok=%v v=%v", ok, v)
 	}
 	closed := false
@@ -173,7 +175,7 @@ func TestDispatchStepCtxDeathWithApprovedDecisionDoesNotAbort(t *testing.T) {
 }
 
 // D6 验收钉（deny 侧）：ctx 死亡瞬间已有拒绝决议 → 走 skipPlaybookConfirmDenied
-//（ConfirmDenied 标记阻断 resume 复活），而非 abort 的无标记取消。
+// （ConfirmDenied 标记阻断 resume 复活），而非 abort 的无标记取消。
 func TestDispatchStepCtxDeathWithDeniedDecisionSkipsNotAbort(t *testing.T) {
 	t.Parallel()
 	repos := newFakeReposForExecutor()
@@ -267,6 +269,11 @@ func TestDispatchStepTeamCompletionPollerCancelledNoRetry(t *testing.T) {
 	repos := newFakeReposForExecutor()
 	orch := newFakeOrchestrator()
 	pe := NewPlanExecutor(repos, orch, &fakeSeq{}, loggateway.NewNoop())
+	// D6-f：关退避（同全部重试语义钉板先例 plan_executor_dag_cancel_test.go
+	// 等）——默认 5s 退避下 300ms 观测窗永远等不到第 2 次调用，断言空转；
+	// backoff=0 时若锚缺失（Cancelled 落入 transient 重试）300ms 内必见
+	// 第 2 次 Orchestrate，本断言才真钉得住「不耗重试预算」。
+	pe.stepRetryBackoff = 0
 	reader := &fakeTeamRunReader{runs: map[string][]biz.TeamRun{}}
 	pe.SetTeamRunReader(reader)
 	board := biz.PlanBoard{ID: "pb-poll-cancel", SessionID: "sp-1", TaskID: "task-1", Status: biz.PlanStatusExecuting}
@@ -334,10 +341,10 @@ func TestWaitBoardStartupDecisionTableSlowPath(t *testing.T) {
 
 	if _, err := port.TryRecordDecision(ctx, biz.ExecutorWaiterDecision{
 		ExecutorWaiterDecisionKey: biz.ExecutorWaiterDecisionKey{Kind: biz.WaiterDecisionKindBoardStartup, ScopeID: "pb-x"},
-		Approved:  false,
-		Reason:    "assembly failed",
-		Actor:     "replica-b",
-		DecidedAt: time.Now().UTC(),
+		Approved:                  false,
+		Reason:                    "assembly failed",
+		Actor:                     "replica-b",
+		DecidedAt:                 time.Now().UTC(),
 	}); err != nil {
 		t.Fatalf("record startup decision: %v", err)
 	}
@@ -348,9 +355,9 @@ func TestWaitBoardStartupDecisionTableSlowPath(t *testing.T) {
 
 	if _, err := port.TryRecordDecision(ctx, biz.ExecutorWaiterDecision{
 		ExecutorWaiterDecisionKey: biz.ExecutorWaiterDecisionKey{Kind: biz.WaiterDecisionKindBoardStartup, ScopeID: "pb-ok"},
-		Approved:  true,
-		Actor:     "replica-b",
-		DecidedAt: time.Now().UTC(),
+		Approved:                  true,
+		Actor:                     "replica-b",
+		DecidedAt:                 time.Now().UTC(),
 	}); err != nil {
 		t.Fatalf("record startup decision: %v", err)
 	}
@@ -376,5 +383,150 @@ func TestSignalStartupRecordsDecision(t *testing.T) {
 	}
 	if !dec.Approved || dec.Actor != "plan_executor.startup" {
 		t.Fatalf("decision=%+v", dec)
+	}
+}
+
+// ============================================================================
+// D6-f 评审确认项钉（wf_7b336566-b11）
+// ============================================================================
+
+// failingWaiterDecisions 是恒失败的决议端口桩（写失败降级钉用——InMem 不
+// 会失败，无法覆盖 err 分支）。
+type failingWaiterDecisions struct{}
+
+func (failingWaiterDecisions) TryRecordDecision(context.Context, biz.ExecutorWaiterDecision) (bool, error) {
+	return false, errors.New("table unavailable")
+}
+
+func (failingWaiterDecisions) LoadDecision(context.Context, biz.ExecutorWaiterDecisionKey) (biz.ExecutorWaiterDecision, bool, error) {
+	return biz.ExecutorWaiterDecision{}, false, errors.New("table unavailable")
+}
+
+// ctxBoundWaiterDecisions 是尊重 ctx 的决议端口桩（钉死「快照写不得携已死
+// dag ctx」——InMem 实现忽略 ctx，无法区分；PG 实现在 ctx 死亡时 INSERT
+// 必败，此桩模拟该语义）。
+type ctxBoundWaiterDecisions struct{ inner *InMemExecutorWaiterDecisions }
+
+func (c ctxBoundWaiterDecisions) TryRecordDecision(ctx context.Context, d biz.ExecutorWaiterDecision) (bool, error) {
+	if err := ctx.Err(); err != nil {
+		return false, err
+	}
+	return c.inner.TryRecordDecision(ctx, d)
+}
+
+func (c ctxBoundWaiterDecisions) LoadDecision(ctx context.Context, k biz.ExecutorWaiterDecisionKey) (biz.ExecutorWaiterDecision, bool, error) {
+	if err := ctx.Err(); err != nil {
+		return biz.ExecutorWaiterDecision{}, false, err
+	}
+	return c.inner.LoadDecision(ctx, k)
+}
+
+// D6-f F3 钉：NotePlaybookConfirmDecision 决议表双写——recorded=true 路径
+// 双键落表 + 进程内图同写 + 返回权威值。整段删除决议表块的历史缺口（30 钉
+// 全绿的假绿区）由此封闭。
+func TestNotePlaybookConfirmDecisionDoubleWritesTable(t *testing.T) {
+	t.Parallel()
+	pe := NewPlanExecutor(newFakeReposForExecutor(), newFakeOrchestrator(), &fakeSeq{}, loggateway.NewNoop())
+	port := NewInMemExecutorWaiterDecisions()
+	pe.SetWaiterDecisionPort(port)
+
+	if got := pe.NotePlaybookConfirmDecision("sp-1", "st-confirm", true); !got {
+		t.Fatal("recorded decision must return the approved value")
+	}
+	ids := playbookConfirmLookupIDs("sp-1", "st-confirm")
+	if len(ids) != 2 {
+		t.Fatalf("double-key addressing expected, got %v", ids)
+	}
+	for _, id := range ids {
+		dec, found, err := port.LoadDecision(context.Background(), biz.ExecutorWaiterDecisionKey{
+			Kind: biz.WaiterDecisionKindPlaybookConfirm, SessionID: "sp-1", ScopeID: id,
+		})
+		if err != nil || !found || !dec.Approved {
+			t.Fatalf("table double-write missing for %q: found=%v err=%v dec=%+v", id, found, err, dec)
+		}
+		if v, ok := pe.playbookConfirmDecided.Load(playbookConfirmKey("sp-1", id)); !ok || v != true {
+			t.Fatalf("local map double-write missing for %q: ok=%v v=%v", id, ok, v)
+		}
+	}
+}
+
+// D6-f F1+F3 钉：CAS 输家收敛——别副本先到 approved=true，本进程迟到 deny
+// 必须收敛到先到值：返回值=true（调用方据此 Resolve，HITL 先到批准不被静默
+// 丢弃）、进程内图收敛=true、表内先到值不变（严禁 UPDATE 翻案）。
+func TestNotePlaybookConfirmDecisionCASLoserConvergesToFirstWriter(t *testing.T) {
+	t.Parallel()
+	pe := NewPlanExecutor(newFakeReposForExecutor(), newFakeOrchestrator(), &fakeSeq{}, loggateway.NewNoop())
+	port := NewInMemExecutorWaiterDecisions()
+	pe.SetWaiterDecisionPort(port)
+	ctx := context.Background()
+
+	// 别副本先赢：双键均已落 approved=true。
+	for _, id := range playbookConfirmLookupIDs("sp-1", "st-confirm") {
+		if _, err := port.TryRecordDecision(ctx, biz.ExecutorWaiterDecision{
+			ExecutorWaiterDecisionKey: biz.ExecutorWaiterDecisionKey{
+				Kind: biz.WaiterDecisionKindPlaybookConfirm, SessionID: "sp-1", ScopeID: id,
+			},
+			Approved: true, Actor: "replica-b", DecidedAt: time.Now().UTC(),
+		}); err != nil {
+			t.Fatalf("record first-writer decision: %v", err)
+		}
+	}
+	// 本副本迟到 deny：CAS 输家。
+	if got := pe.NotePlaybookConfirmDecision("sp-1", "st-confirm", false); !got {
+		t.Fatal("CAS loser must return the first-writer value (true), not the losing deny")
+	}
+	if v, ok := pe.lookupPlaybookConfirmDecision("sp-1", "st-confirm"); !ok || !v {
+		t.Fatalf("local cache must converge to first-writer: ok=%v v=%v", ok, v)
+	}
+	dec, found, err := port.LoadDecision(ctx, biz.ExecutorWaiterDecisionKey{
+		Kind: biz.WaiterDecisionKindPlaybookConfirm, SessionID: "sp-1", ScopeID: "st-confirm",
+	})
+	if err != nil || !found || !dec.Approved || dec.Actor != "replica-b" {
+		t.Fatalf("first-writer decision must survive (no UPDATE): found=%v err=%v dec=%+v", found, err, dec)
+	}
+}
+
+// D6-f F3 钉：决议表写失败降级——进程内语义兜底（图存原始值、返回原始值），
+// 不堵同进程 waiter 流。
+func TestNotePlaybookConfirmDecisionTableFailureDegradesToProcessLocal(t *testing.T) {
+	t.Parallel()
+	pe := NewPlanExecutor(newFakeReposForExecutor(), newFakeOrchestrator(), &fakeSeq{}, loggateway.NewNoop())
+	pe.SetWaiterDecisionPort(failingWaiterDecisions{})
+
+	if got := pe.NotePlaybookConfirmDecision("sp-1", "st-confirm", true); !got {
+		t.Fatal("table failure must degrade to process-local semantics with the original value")
+	}
+	if v, ok := pe.lookupPlaybookConfirmDecision("sp-1", "st-confirm"); !ok || !v {
+		t.Fatalf("local map must hold the original decision on table failure: ok=%v v=%v", ok, v)
+	}
+}
+
+// D6-f F2+F3 钉：team_agent_loads 快照写刻意携 context.Background()——
+// dag ctx 已死（Orchestrate 成功后/快照写之前的验收堵口可达窗口）快照也
+// 必须落表（孤儿 team 恰是该快照的标称消费场景）。ctxBound 桩模拟 PG 的
+// ctx 语义：旧实现携死 ctx 写必败（红），现实现绿。同步调用零 goroutine，
+// 完全确定。
+func TestDispatchStepTeamAgentLoadsSnapshotSurvivesCtxDeath(t *testing.T) {
+	t.Parallel()
+	pe := NewPlanExecutor(newFakeReposForExecutor(), newFakeOrchestrator(), &fakeSeq{}, loggateway.NewNoop())
+	inner := NewInMemExecutorWaiterDecisions()
+	pe.SetWaiterDecisionPort(ctxBoundWaiterDecisions{inner: inner})
+	board := biz.PlanBoard{ID: "pb-snap", SessionID: "sp-1", TaskID: "task-1", Status: biz.PlanStatusExecuting}
+	r := newDagRun(pe, board)
+	step := &biz.PlanStep{ID: "st-snap", PlanID: board.ID, TaskID: "task-1", Label: "执行",
+		AgentKeys: []string{"agent-a", "agent-b"}, Status: biz.PlanStepStatusRunning, Version: 1}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // dag ctx 先死——快照写窗口的极端形态
+	r.dispatchStep(ctx, step)
+
+	dec, found, err := inner.LoadDecision(context.Background(), biz.ExecutorWaiterDecisionKey{
+		Kind: biz.WaiterDecisionKindTeamAgentLoads, SessionID: "sp-1", ScopeID: "fake-team-st-snap",
+	})
+	if err != nil || !found {
+		t.Fatalf("team_agent_loads snapshot must survive dag ctx death: found=%v err=%v", found, err)
+	}
+	if !dec.Approved || dec.Reason != "agent-a,agent-b" || dec.Actor != "plan_executor.dispatch" {
+		t.Fatalf("snapshot=%+v", dec)
 	}
 }

@@ -368,8 +368,11 @@ func (s *ChatService) signalPlaybookConfirm(sessionID, activityID string, approv
 	if s == nil || s.planExec == nil {
 		return
 	}
-	s.planExec.NotePlaybookConfirmDecision(sessionID, activityID, approved)
-	_ = s.planExec.ResolvePlaybookStageConfirm(sessionID, activityID, approved)
+	// D6-f：Note 返回 CAS 收敛后的权威值，waiter chan 必须消费权威值——
+	// CAS 输家若用原始落选值 Resolve，HITL 先到批准会被静默丢弃（审计
+	// approve 与结局 deny-skip 矛盾）。
+	decided := s.planExec.NotePlaybookConfirmDecision(sessionID, activityID, approved)
+	_ = s.planExec.ResolvePlaybookStageConfirm(sessionID, activityID, decided)
 }
 
 func playbookConfirmDecisionMatches(status biz.StepStatus, approved bool) bool {

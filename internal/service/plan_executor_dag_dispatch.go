@@ -110,9 +110,12 @@ func (r *dagRun) dispatchStep(ctx context.Context, step *biz.PlanStep) {
 	r.pe.signalStartup(r.board.ID, true, "")
 	r.pe.trackTeamAgentLoads(result.Team.ID, runningStep.AgentKeys)
 	// D6：team 槽位快照落决议表（waiterDecisions 在籍才写；跨副本孤儿收养
-	// 对账的消费面随收养链批次定稿，本批仅保证快照不丢）。
+	// 对账的消费面随收养链批次定稿，本批仅保证快照不丢）。D6-f：刻意用
+	// context.Background()（同 signalStartup）——Orchestrate 已成功后 dag
+	// ctx 死亡（本批验收堵口放行的可达窗口）不得带走快照：孤儿 team 恰好
+	// 是该快照的标称消费场景。
 	if r.pe.waiterDecisions != nil {
-		if _, err := r.pe.waiterDecisions.TryRecordDecision(ctx, biz.ExecutorWaiterDecision{
+		if _, err := r.pe.waiterDecisions.TryRecordDecision(context.Background(), biz.ExecutorWaiterDecision{
 			ExecutorWaiterDecisionKey: biz.ExecutorWaiterDecisionKey{
 				Kind:      biz.WaiterDecisionKindTeamAgentLoads,
 				SessionID: r.board.SessionID,

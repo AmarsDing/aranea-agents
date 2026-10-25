@@ -122,11 +122,18 @@ func (e *PlanExecutor) finalizePlaybookConfirmCard(ctx context.Context, step biz
 // NotePlaybookConfirmDecision 决议入口（signalPlaybookConfirm 单点调用）：
 // 进程内 map 双键同写；D6 waiterDecisions 在籍时决议表双写——CAS 先到者
 // 赢，0 行命中＝别副本已决议（严禁 UPDATE 翻案），读现值并收敛本进程缓存
-//（双副本并行 approve/deny 冲突仅留 Warn 审计，先到决议不变）。
-func (e *PlanExecutor) NotePlaybookConfirmDecision(sessionID, id string, approved bool) {
+// （双副本并行 approve/deny 冲突仅留 Warn 审计，先到决议不变）。
+//
+// 返回值=权威决议值（CAS 收敛后）：调用方必须以返回值驱动
+// ResolvePlaybookStageConfirm——D6-f 评审确认项：收敛只写图而 chan 仍发
+// 原始落选值，会把 HITL 先到批准静默丢弃（审计=approve 与结局=deny-skip
+// 互相矛盾）。
+func (e *PlanExecutor) NotePlaybookConfirmDecision(sessionID, id string, approved bool) bool {
 	if e == nil {
-		return
+		return approved
 	}
+	authoritative := approved
+	converged := false
 	for _, keyID := range playbookConfirmLookupIDs(sessionID, id) {
 		value := approved
 		if e.waiterDecisions != nil {
@@ -157,11 +164,16 @@ func (e *PlanExecutor) NotePlaybookConfirmDecision(sessionID, id string, approve
 							loggateway.Str("recorded_actor", dec.Actor))
 					}
 					value = dec.Approved
+					if !converged {
+						authoritative = dec.Approved
+						converged = true
+					}
 				}
 			}
 		}
 		e.playbookConfirmDecided.Store(playbookConfirmKey(sessionID, keyID), value)
 	}
+	return authoritative
 }
 
 func (e *PlanExecutor) lookupPlaybookConfirmDecision(sessionID, stepID string) (approved bool, ok bool) {
