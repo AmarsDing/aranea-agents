@@ -149,6 +149,13 @@ func cascadeDeleteBySession(ctx context.Context, d *Data, sessionID string) erro
 		if _, err := execer.ExecContext(txCtx, d.Dialect().RenumberPlaceholders(`DELETE FROM event_delivery_outbox WHERE session_id = ?`), sessionID); err != nil {
 			return err
 		}
+		// Hard-delete session_seq_counters（迁移 20261303，raw 表非 Ent schema，
+		// 每会话至多一行——会话死则计数器行死，防孤儿行随部署时间无界增长；
+		// 计数器值本身单调不回退，session_id 复用时残行只表现为种子水位偏高，
+		// 不影响正确性，但级联清除保持「随会话生命周期同量级」的迁移注释承诺）。
+		if _, err := execer.ExecContext(txCtx, d.Dialect().RenumberPlaceholders(`DELETE FROM session_seq_counters WHERE session_id = ?`), sessionID); err != nil {
+			return err
+		}
 
 		// Hard-delete pending_queue_entries（89 FR-7：追问队列持久行级联清
 		// 除——重启 LoadAll 不再复活已删会话的恢复行；内存侧由

@@ -39,12 +39,17 @@ func TestResolveSeqAllocatorMode(t *testing.T) {
 }
 
 // d7AllocatingOutbox 在 fakeOutbox 上叠加分配端口（biz.EventOutboxSeqAllocatingInserter）：
-// 逐次发号 → build(seq) 建行 → 计入 inserted；allocErr 注入事务级故障。
+// 逐次发号 → build(seq) 建行 → 计入 inserted；allocErr 注入 build 之前的事务级
+// 故障；failAfterBuild 注入 build 之后的故障（镜像真实 tx 的 INSERT/Commit 失败——
+// 此时事件已在 build 回调内打戳，sequencer 剥戳路径必须生效，D7-f 评审确认项
+// D7-TQ-1：pre-build 短路形态对该不变量是假绿）。
 type d7AllocatingOutbox struct {
 	fakeOutbox
-	allocCalls int
-	allocErr   error
-	nextSeq    int64
+	allocCalls     int
+	allocErr       error
+	failAfterBuild error
+	nextSeq        int64
+	lastBuiltSeq   int64
 }
 
 func (f *d7AllocatingOutbox) InsertAllocatingSeq(ctx context.Context, sessionID string, build func(seq int64) (biz.EventDeliveryOutboxRow, error)) error {
@@ -53,6 +58,7 @@ func (f *d7AllocatingOutbox) InsertAllocatingSeq(ctx context.Context, sessionID 
 	f.nextSeq++
 	seq := f.nextSeq
 	allocErr := f.allocErr
+	failAfterBuild := f.failAfterBuild
 	f.mu.Unlock()
 	if allocErr != nil {
 		return allocErr
@@ -60,6 +66,12 @@ func (f *d7AllocatingOutbox) InsertAllocatingSeq(ctx context.Context, sessionID 
 	row, err := build(seq)
 	if err != nil {
 		return err
+	}
+	f.mu.Lock()
+	f.lastBuiltSeq = seq
+	f.mu.Unlock()
+	if failAfterBuild != nil {
+		return failAfterBuild
 	}
 	return f.Insert(ctx, row)
 }
@@ -137,28 +149,62 @@ func TestInsertCriticalOutbox_PGAllocatesViaPort(t *testing.T) {
 }
 
 // TestInsertCriticalOutbox_PGErrorStripsSeq：分配事务失败 ⇒ E2E-C1 同律剥
-// seq（live 帧不带幻影游标）、无落库行、无 panic。
+// seq（live 帧不带幻影游标）、无落库行、无 panic。两子形态：
+//   - pre-build 故障（allocErr）：事件从未打戳，剥戳 trivially 成立；
+//   - post-build 故障（failAfterBuild，镜像真实 tx 的 INSERT/Commit 失败）：
+//     事件已在 build 回调内打戳（lastBuiltSeq>0 作证），剥戳路径必须把它
+//     打回 0——删掉 sequencer 错误分支的 SetDeliverySeqValue(0) 本子形态即红。
 func TestInsertCriticalOutbox_PGErrorStripsSeq(t *testing.T) {
 	t.Parallel()
 
-	outbox := &d7AllocatingOutbox{allocErr: errors.New("pg tx failed")}
-	s := d7AllocSequencer(t, outbox)
+	t.Run("pre-build alloc failure", func(t *testing.T) {
+		t.Parallel()
+		outbox := &d7AllocatingOutbox{allocErr: errors.New("pg tx failed")}
+		s := d7AllocSequencer(t, outbox)
 
-	ev := d7CriticalEvent("sess-1", "task-x")
-	if id := s.insertCriticalOutbox(context.Background(), ev); id != "" {
-		t.Fatalf("失败路径应返回空 ID，got %q", id)
-	}
-	if got := ev.(biz.DeliverySeqEvent).DeliverySeqValue(); got != 0 {
-		t.Fatalf("E2E-C1: 失败后 delivery seq = %d, want 0（剥戳）", got)
-	}
-	outbox.mu.Lock()
-	defer outbox.mu.Unlock()
-	if outbox.allocCalls != 1 {
-		t.Fatalf("allocator calls = %d, want 1", outbox.allocCalls)
-	}
-	if len(outbox.inserted) != 0 {
-		t.Fatalf("durable rows = %d, want 0", len(outbox.inserted))
-	}
+		ev := d7CriticalEvent("sess-1", "task-x")
+		if id := s.insertCriticalOutbox(context.Background(), ev); id != "" {
+			t.Fatalf("失败路径应返回空 ID，got %q", id)
+		}
+		if got := ev.(biz.DeliverySeqEvent).DeliverySeqValue(); got != 0 {
+			t.Fatalf("E2E-C1: 失败后 delivery seq = %d, want 0（剥戳）", got)
+		}
+		outbox.mu.Lock()
+		defer outbox.mu.Unlock()
+		if outbox.allocCalls != 1 {
+			t.Fatalf("allocator calls = %d, want 1", outbox.allocCalls)
+		}
+		if outbox.lastBuiltSeq != 0 {
+			t.Fatalf("pre-build 故障不得触及 build，lastBuiltSeq = %d", outbox.lastBuiltSeq)
+		}
+		if len(outbox.inserted) != 0 {
+			t.Fatalf("durable rows = %d, want 0", len(outbox.inserted))
+		}
+	})
+
+	t.Run("post-build insert failure strips the stamp", func(t *testing.T) {
+		t.Parallel()
+		outbox := &d7AllocatingOutbox{failAfterBuild: errors.New("pg insert failed")}
+		s := d7AllocSequencer(t, outbox)
+
+		ev := d7CriticalEvent("sess-1", "task-y")
+		if id := s.insertCriticalOutbox(context.Background(), ev); id != "" {
+			t.Fatalf("失败路径应返回空 ID，got %q", id)
+		}
+		outbox.mu.Lock()
+		builtSeq := outbox.lastBuiltSeq
+		inserted := len(outbox.inserted)
+		outbox.mu.Unlock()
+		if builtSeq <= 0 {
+			t.Fatalf("build 回调应已在事务内打戳（lastBuiltSeq = %d）——本形态专为剥戳而立", builtSeq)
+		}
+		if got := ev.(biz.DeliverySeqEvent).DeliverySeqValue(); got != 0 {
+			t.Fatalf("E2E-C1: post-build 失败后 delivery seq = %d, want 0（剥戳；曾被打戳 %d）", got, builtSeq)
+		}
+		if inserted != 0 {
+			t.Fatalf("durable rows = %d, want 0", inserted)
+		}
+	})
 }
 
 // TestInsertCriticalOutbox_PGPreStampedSeqBypassesAllocator：已打戳事件

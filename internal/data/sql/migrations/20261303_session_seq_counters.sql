@@ -15,7 +15,9 @@
 -- repair-bump 重试吸收（有界 3 次）。
 -- next_seq 语义 = 下一个待分配的 seq（分配返回 next_seq-1 后行内存
 -- next_seq+1 前的值）；BIGINT 对齐 Go int64。
--- 行生命周期：每会话至多一行，随会话生命周期同量级，无 sweeper。
+-- 行生命周期：每会话至多一行，随会话生命周期同量级，无 sweeper——
+-- 会话硬删除走 cascadeDeleteBySession 级联清（D7-f 评审确认项 D7-SQL-01 补登，
+-- 防孤儿计数器行随部署时间无界增长）。
 -- 消费面藏在 ARANEA_SEQ_ALLOCATOR=off|pg（缺省 off 字节级旧行为，Go 进程
 -- 内计数器）之后：off 档本表零写零读。仅建表：不加 ent schema、不播种。
 -- 幂等，重跑安全。
