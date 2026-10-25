@@ -103,7 +103,7 @@ func TestChunkEmbeddingSideTable_InsertWritesSideOnly(t *testing.T) {
 
 // ② 多代 dim 共存：dim-3 时代摄取的 docA 与 dim-4 时代摄取的 docB 同栈并存；
 // dense 查询按查询向量 dim 桶定——桶外文档不进比较（无 22P02、无串桶）。
-// 另：同 doc 重摄取换 dim 时旧 chunk 删除，侧表行经 FK 级联回收。
+// T4 代际命名（决策 5⑧）：摄取块一律改名 <docID>-v<ver>-ch-<idx>，断言按新 ID。
 func TestChunkEmbeddingSideTable_MultiDimCoexistence(t *testing.T) {
 	repo := setupKnowledgeSearchRepo(t)
 	ctx := context.Background()
@@ -113,7 +113,7 @@ func TestChunkEmbeddingSideTable_MultiDimCoexistence(t *testing.T) {
 
 	commit := func(docID, chunkID string, vec []float32) {
 		t.Helper()
-		if err := repo.CommitIndexedDocument(ctx, "g39-multi", docID, []biz.KnowledgeChunk{{
+		if _, err := repo.CommitIndexedDocument(ctx, "g39-multi", docID, []biz.KnowledgeChunk{{
 			ID: chunkID, DocID: docID, CollectionID: "g39-multi",
 			Content: "apple " + chunkID, ChunkIndex: 0, Embedding: vec,
 		}}, 1, nil); err != nil {
@@ -131,11 +131,12 @@ func TestChunkEmbeddingSideTable_MultiDimCoexistence(t *testing.T) {
 		}
 		assertChunkIDs(t, hits, want...)
 	}
-	assert([]float32{1, 0, 0}, "kA")    // dim-3 查询只中 dim-3 桶
-	assert([]float32{1, 0, 0, 0}, "kB") // dim-4 查询只中 dim-4 桶（共存无 22P02）
-	assert([]float32{1, 0, 0, 0, 0})    // dim-5 查询空结果（无桶、无错误）
+	assert([]float32{1, 0, 0}, "docA-v1-ch-0")    // dim-3 查询只中 dim-3 桶
+	assert([]float32{1, 0, 0, 0}, "docB-v1-ch-0") // dim-4 查询只中 dim-4 桶（共存无 22P02）
+	assert([]float32{1, 0, 0, 0, 0})              // dim-5 查询空结果（无桶、无错误）
 
-	// 重摄取换 dim：旧 (chunk,dim=3) 侧行随 chunk 删除级联回收，新 dim=4 落账。
+	// 同内容重摄取换维（G-39 模型升级走 ⑪ 缺 dim 条件补齐）：kept 身份不动，
+	// dim-4 侧行落账，dim-3 旧维保留多代共存；delete→cascade 仅作用于孤儿。
 	// 生产重嵌流先把文档状态拨回 indexing 再提交（CommitIndexedDocument CAS
 	// 守卫 status='indexing'）——测试镜像该时序。
 	if _, err := repo.data.Postgres().ExecContext(ctx,
@@ -145,7 +146,7 @@ func TestChunkEmbeddingSideTable_MultiDimCoexistence(t *testing.T) {
 	commit("docA", "kA", []float32{0, 1, 0, 0})
 	var dims []int
 	rows, err := repo.data.Postgres().QueryContext(ctx,
-		`SELECT dim FROM chunk_embeddings WHERE chunk_id='kA' ORDER BY dim`)
+		`SELECT dim FROM chunk_embeddings WHERE chunk_id='docA-v1-ch-0' ORDER BY dim`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -157,9 +158,11 @@ func TestChunkEmbeddingSideTable_MultiDimCoexistence(t *testing.T) {
 		}
 		dims = append(dims, d)
 	}
-	if len(dims) != 1 || dims[0] != 4 {
-		t.Fatalf("after re-ingest side dims for kA = %v, want [4] (old dim row must cascade)", dims)
+	if len(dims) != 2 || dims[0] != 3 || dims[1] != 4 {
+		t.Fatalf("after dim-fill side dims for docA-v1-ch-0 = %v, want [3 4] (kept 缺 dim 补齐、旧维保留)", dims)
 	}
+	// 补齐后 dim-4 查询可命中 docA（同一 chunk 两代同栈），dim-3 查询仍在。
+	assert([]float32{0, 1, 0, 0}, "docA-v1-ch-0", "docB-v1-ch-0")
 }
 
 // ③ 批内混维拒绝（同一摄取批不可能产两种维度）；统一批任意 dim 合法
@@ -250,7 +253,7 @@ func TestChunkEmbeddingSideTable_ParentGateAndPerCollectionModel(t *testing.T) {
 }
 
 // ④ pending-reembed 按当前 dim 判定：欠 dim-4 向量的文档在 dim=4 口径 pending、
-// dim=3 口径健康；词法库（embedding_model=”）与 dim<=0 口径永不入缺维腿。
+// dim=3 口径健康；词法库（embedding_model=空串）与 dim<=0 口径永不入缺维腿。
 func TestChunkEmbeddingSideTable_PendingReembedByDim(t *testing.T) {
 	repo := setupKnowledgeSearchRepo(t)
 	ctx := context.Background()

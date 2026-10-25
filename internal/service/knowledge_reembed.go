@@ -6,6 +6,7 @@ import (
 
 	v1 "aranea-agents/api/kratos/knowledge/v1"
 	"aranea-agents/internal/biz"
+	bizknowledge "aranea-agents/internal/biz/knowledge"
 	"aranea-agents/internal/event"
 	"aranea-agents/internal/knowledge"
 	"aranea-agents/pkg/apierror"
@@ -259,11 +260,16 @@ func (s *KnowledgeService) reembedOneDocument(ctx context.Context, uc *biz.Knowl
 		return false
 	}
 	defer release()
+	ctx = bizknowledge.WithDocumentContentVersion(ctx, doc.ID, doc.ContentText)
 
 	// fail 置文档 error 终态 + WS 广播 + 流程/进程双轨错误日志（K2/K3）。
 	// 旧块只在 CommitIndexedDocument 成功时被替换；分块失败可重试且不丢索引。
 	fail := func(stage string, err error) {
-		if statusErr := uc.UpdateDocumentStatus(ctx, doc.ID, "error", err.Error(), 0); statusErr != nil {
+		if apierror.IsCode(err, apierror.CodeConflict) {
+			s.lg.Warn("重嵌入期间正文已更新，保留新版本", loggateway.StepID("knowledge.reembed.doc_fail"), loggateway.Err(err))
+			return
+		}
+		if statusErr := uc.UpdateDocumentStatus(ctx, doc.ID, "error", err.Error(), doc.ChunkCount); statusErr != nil {
 			s.lg.Error("failed to update document status to error",
 				loggateway.StepID("knowledge.reembed.status_fail"),
 				loggateway.Str("doc_id", doc.ID),
@@ -288,6 +294,7 @@ func (s *KnowledgeService) reembedOneDocument(ctx context.Context, uc *biz.Knowl
 			loggateway.StepID("knowledge.reembed.status_fail"),
 			loggateway.Str("doc_id", doc.ID),
 			loggateway.Err(err))
+		return false
 	}
 	s.publishKnowledgeIngest(col.ID, doc.ID, "indexing", "", 0)
 
@@ -316,7 +323,10 @@ func (s *KnowledgeService) reembedOneDocument(ctx context.Context, uc *biz.Knowl
 		Strategy:     strategy,
 	}
 	params.ApplyDefaults()
-	bizChunks, err := knowledge.BuildIndexedChunks(ctx, embedder, params, flow)
+	var bizChunks []biz.KnowledgeChunk
+	if strings.TrimSpace(doc.ContentText) != "" {
+		bizChunks, err = knowledge.BuildIndexedChunks(ctx, embedder, params, flow)
+	}
 	if err != nil {
 		fail("build_chunks", err)
 		return false
@@ -328,14 +338,18 @@ func (s *KnowledgeService) reembedOneDocument(ctx context.Context, uc *biz.Knowl
 		}
 	}
 	docDelta := 0
-	if doc.Status != "indexed" {
+	if doc.Status != "indexed" && doc.ChunkCount == 0 {
 		docDelta = 1
 	}
-	if err := uc.CommitIndexedDocument(ctx, col.ID, doc.ID, bizChunks, docDelta); err != nil {
+	versionCtx := bizknowledge.WithDocumentContentVersion(ctx, doc.ID, doc.ContentText)
+	if _, err := uc.CommitIndexedDocument(versionCtx, col.ID, doc.ID, bizChunks, docDelta); err != nil {
 		fail("commit_indexed", err)
 		return false
 	}
 	s.publishKnowledgeIngest(col.ID, doc.ID, "indexed", "", childCount)
+	if err := uc.RebuildCurrentBlockIndex(ctx, doc.ID); err != nil {
+		s.lg.Warn("重嵌入完成，链接索引等待修复", loggateway.StepID("knowledge.reembed.doc_done"), loggateway.Err(err))
+	}
 	s.lg.Info("knowledge reembed document done", // K7 每文档 done
 		loggateway.StepID("knowledge.reembed.doc_done"),
 		loggateway.Str("doc_id", doc.ID),

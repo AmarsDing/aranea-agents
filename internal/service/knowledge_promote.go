@@ -174,7 +174,8 @@ func (s *KnowledgeService) replayPromotedDocChunks(ctx context.Context, target b
 				loggateway.Err(err))
 			continue
 		}
-		if err := s.uc.UpdateDocumentStatus(ctx, doc.ID, "indexing", "", doc.ChunkCount); err != nil {
+		docCtx := bizknowledge.WithDocumentContentVersion(ctx, doc.ID, doc.ContentText)
+		if err := s.uc.UpdateDocumentStatus(docCtx, doc.ID, "indexing", "", doc.ChunkCount); err != nil {
 			failed++
 			s.lg.Warn("晋升目标文档无法进入 indexing",
 				loggateway.StepID("knowledge.block.promote_replay"),
@@ -189,17 +190,24 @@ func (s *KnowledgeService) replayPromotedDocChunks(ctx context.Context, target b
 			Strategy:     knowledge.ChunkByMarkdown,
 		}
 		params.ApplyDefaults()
-		chunks, err := knowledge.BuildIndexedChunks(ctx, embedder, params, nil)
+		var chunks []biz.KnowledgeChunk
+		if strings.TrimSpace(doc.ContentText) != "" {
+			chunks, err = knowledge.BuildIndexedChunks(docCtx, embedder, params, nil)
+		}
 		if err == nil {
 			docDelta := 0
-			if td.Created || doc.Status != "indexed" {
+			if td.Created || (doc.Status != "indexed" && doc.ChunkCount == 0) {
 				docDelta = 1
 			}
-			err = s.uc.CommitIndexedDocument(ctx, target.ID, doc.ID, chunks, docDelta)
+			_, err = s.uc.CommitIndexedDocument(docCtx, target.ID, doc.ID, chunks, docDelta)
 		}
 		if err != nil {
 			failed++
-			if statusErr := s.uc.UpdateDocumentStatus(ctx, doc.ID, "error", err.Error(), 0); statusErr != nil {
+			if apierror.IsCode(err, apierror.CodeConflict) {
+				s.lg.Warn("重放期间正文已更新，保留新版本并等待下一轮", loggateway.StepID("knowledge.block.promote_replay"), loggateway.Err(err))
+				continue
+			}
+			if statusErr := s.uc.UpdateDocumentStatus(docCtx, doc.ID, "error", err.Error(), doc.ChunkCount); statusErr != nil {
 				s.lg.Warn("晋升重放失败且状态回写失败",
 					loggateway.StepID("knowledge.block.promote_replay"),
 					loggateway.Str("doc_id", doc.ID),

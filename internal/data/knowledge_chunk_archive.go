@@ -355,18 +355,43 @@ func listChunksAsOfCore(ctx context.Context, q sqlQuerier, collectionID string, 
 		docClause = ` AND i.doc_id = $3`
 		args = append(args, docID)
 	}
+	acl, aclArgs := asOfVisibilityClause(ctx, "$1", "i.doc_id", true, len(args)+1)
+	args = append(args, aclArgs...)
 	rows, err := q.QueryContext(ctx, `
 		SELECT `+chunkIncarnationSelect+`, 0.0::float8 AS score
 		FROM knowledge_chunk_incarnations i
 		WHERE i.collection_id = $1
 		  AND i.chunk_role = 'child'
-		  AND i.valid_from <= $2 AND $2 < i.valid_to`+docClause+`
+		  AND i.valid_from <= $2 AND $2 < i.valid_to`+docClause+acl+`
 		ORDER BY i.doc_id, i.chunk_index, i.chunk_id`, args...)
 	if err != nil {
 		return nil, entErrToBizErr(err, "knowledge")
 	}
 	defer rows.Close()
 	return scanChunkAsOfItems(rows)
+}
+
+// asOfVisibilityClause 时态读的当下行级可见性谓词（决策12③「授权用当下、内容
+// 用历史」的复合落实，T4 接线评审修正——内核初稿无可见性谓词会把当下不可见
+// 的 private doc 历史化身借 as-of 外泄）：
+//   - 宿主文档当下存活：文档行级可见性照 current 口径（docChunkVisibilityClause
+//     同一 visibleDocIDsSubquery 子查询占位）；
+//   - 宿主文档已 tombstone（行已删）：无当下行级授权可评，回落 collection 级
+//     当下口径（服务端 C-01 集合断言——决策12③ 文本档案保留的可回放语义无
+//     行级绑定，死文档历史不借本谓词复活可见性）；
+//   - includeArchived=false 的腿（current 腿，并集语义下宿主行必然存活）退化为
+//     单纯 IN 子查询（不带 archived 兜支）。
+// 参位 argIdx 起排；系统调用方 sub=="" → 无过滤（与 buyer 语义同 current）。
+func asOfVisibilityClause(ctx context.Context, collectionPH, docCol string, includeArchived bool, argIdx int) (string, []any) {
+	sub, args := visibleDocIDsSubquery(ctx, collectionPH, argIdx)
+	if sub == "" {
+		return "", nil
+	}
+	base := docCol + " IN (" + sub + ")"
+	if includeArchived {
+		base = "(" + base + " OR (i.archived AND NOT EXISTS (SELECT 1 FROM knowledge_documents vd WHERE vd.id = " + docCol + ")))"
+	}
+	return " AND (" + base + ")", args
 }
 
 // queryChunksAsOfANN 全量时态稠密召回（决策12③字面形态，对抗评审 CON-8/14
@@ -394,6 +419,13 @@ func queryChunksAsOfANN(ctx context.Context, q sqlQuerier, collectionID string, 
 		docClause = ` AND i.doc_id = $5`
 		args = append(args, docID)
 	}
+	aclIdx := len(args) + 1
+	// curr/arch 两腿同 argIdx 调生成器：子查询串与尾随实参组确定性一致（生成器
+	// 输出只依赖 ctx+参位），两腿文本各自落位、占位共享同一组实参（同参号复用
+	// 有 docBothEndpointsVisibleClause 先例）；系统调用方两腿串皆空、零实参。
+	currACL, _ := asOfVisibilityClause(ctx, "$2", "i.doc_id", false, aclIdx)
+	archACL, aclArgs := asOfVisibilityClause(ctx, "$2", "i.doc_id", true, aclIdx)
+	args = append(args, aclArgs...)
 	ds := itoa(dim)
 	raw := `
 WITH curr AS (
@@ -404,7 +436,7 @@ WITH curr AS (
     AND i.chunk_role = 'child'
     AND i.valid_from <= $3 AND $3 < i.valid_to
     AND NOT i.archived
-    AND ce.embedding IS NOT NULL` + docClause + `
+    AND ce.embedding IS NOT NULL` + docClause + currACL + `
   ORDER BY ce.embedding::vector(` + ds + `) <=> $1::vector
   LIMIT $4
 ),
@@ -416,7 +448,7 @@ arch AS (
     AND i.chunk_role = 'child'
     AND i.valid_from <= $3 AND $3 < i.valid_to
     AND i.archived
-    AND cea.embedding IS NOT NULL` + docClause + `
+    AND cea.embedding IS NOT NULL` + docClause + archACL + `
   ORDER BY cea.embedding::vector(` + ds + `) <=> $1::vector
   LIMIT $4
 ),
@@ -456,13 +488,15 @@ func queryChunksAsOfLexical(ctx context.Context, q sqlQuerier, branchPredicate, 
 		docClause = ` AND i.doc_id = $5`
 		args = append(args, docID)
 	}
+	acl, aclArgs := asOfVisibilityClause(ctx, "$2", "i.doc_id", true, len(args)+1)
+	args = append(args, aclArgs...)
 	raw := `
 SELECT ` + chunkIncarnationSelect + `, ` + scoreExpr + ` AS score
 FROM knowledge_chunk_incarnations i
 WHERE i.collection_id = $2
   AND i.chunk_role = 'child'
   AND i.valid_from <= $3 AND $3 < i.valid_to
-  AND ` + branchPredicate + docClause + `
+  AND ` + branchPredicate + docClause + acl + `
 ORDER BY score DESC
 LIMIT $4`
 	rows, err := q.QueryContext(ctx, raw, args...)

@@ -371,8 +371,8 @@ func (s *KnowledgeService) ServeDocumentAsset(w http.ResponseWriter, r *http.Req
 	}
 
 	mimeType := strings.TrimSpace(ref.MimeType)
-	if mimeType == "" {
-		mimeType = mime.TypeByExtension(filepath.Ext(ref.Name))
+	if originalType := mime.TypeByExtension(filepath.Ext(ref.Name)); originalType != "" {
+		mimeType = originalType
 	}
 	if mimeType == "" {
 		mimeType = "application/octet-stream"
@@ -788,7 +788,7 @@ func (s *KnowledgeService) runIngestPipeline(
 			return
 		}
 
-		if err := uc.CommitIndexedDocument(ingestCtx, col.ID, doc.ID, bizChunks, 1); err != nil {
+		if _, err := uc.CommitIndexedDocument(ingestCtx, col.ID, doc.ID, bizChunks, 1); err != nil {
 			// 二轮复核 F5 收口：并发/陈旧认领竞态的败者不得回写 error——无条件
 			// UPDATE 会把胜者已提交的 indexed 终态踩回 error 并清 chunk_count，
 			// 前端以最后一帧为终（error），且下次重试再 commit 使 collection
@@ -879,8 +879,17 @@ func (s *KnowledgeService) DeleteDocument(ctx context.Context, req *v1.DeleteDoc
 }
 
 // GetDocumentContent returns the full extracted/organized text of one document (preview).
-func (s *KnowledgeService) GetDocumentContent(ctx context.Context, req *v1.GetDocumentContentRequest) (*v1.DocumentContent, error) {
+func (s *KnowledgeService) GetDocument(ctx context.Context, req *v1.GetDocumentRequest) (*v1.KnowledgeDocument, error) {
 	doc, _, err := s.requireDocumentRead(ctx, req.GetId())
+	if err != nil {
+		return nil, err
+	}
+	return toProtoDocument(doc), nil
+}
+
+// GetDocumentContent returns the full extracted/organized text of one document (preview).
+func (s *KnowledgeService) GetDocumentContent(ctx context.Context, req *v1.GetDocumentContentRequest) (*v1.DocumentContent, error) {
+	doc, col, err := s.requireDocumentRead(ctx, req.GetId())
 	if err != nil {
 		return nil, err
 	}
@@ -888,6 +897,11 @@ func (s *KnowledgeService) GetDocumentContent(ctx context.Context, req *v1.GetDo
 		Id:          doc.ID,
 		ContentText: doc.ContentText,
 		Organized:   doc.Organized,
+	}
+	if col.RootPath == "" && bizknowledge.VaultDocumentEditable(doc) {
+		resp.RawContent = doc.ContentText
+		resp.BaseHash = bizknowledge.HashContent(doc.ContentText)
+		return resp, nil
 	}
 	// G2-B5：vault 文档附带编辑器数据源（body 原文 + 文件 hash）。文件刚被外部
 	// 删除等读失败场景降级为空（预览仍可用），编辑保存时 CAS 会判冲突。
@@ -905,14 +919,23 @@ func (s *KnowledgeService) GetDocumentContent(ctx context.Context, req *v1.GetDo
 // UpdateDocumentContent 编辑保存（G2-B5）：body 写回 vault 文件（frontmatter 保留），
 // CAS 冲突留双份并置 conflict=true，写后立即重索引。
 func (s *KnowledgeService) UpdateDocumentContent(ctx context.Context, req *v1.UpdateDocumentContentRequest) (*v1.UpdateDocumentContentResponse, error) {
-	_, col, err := s.requireDocumentRead(ctx, req.GetId())
+	current, col, err := s.requireDocumentRead(ctx, req.GetId())
 	if err != nil {
 		return nil, err
 	}
 	if err := s.assertCollectionMutateAccess(ctx, col); err != nil {
 		return nil, err
 	}
-	doc, conflict, err := s.uc.UpdateVaultDocumentContent(ctx, req.GetId(), req.GetContent(), req.GetBaseHash())
+	if !bizknowledge.VaultDocumentEditable(current) {
+		return nil, apierror.BadRequest(apierror.DomainKnowledge, "original document is read-only; create a Markdown note to edit extracted text")
+	}
+	var doc biz.KnowledgeDocument
+	var conflict bool
+	if col.RootPath == "" {
+		doc, conflict, err = s.uc.UpdateTeamDocumentContent(ctx, req.GetId(), req.GetContent(), req.GetBaseHash())
+	} else {
+		doc, conflict, err = s.uc.UpdateVaultDocumentContent(ctx, req.GetId(), req.GetContent(), req.GetBaseHash())
+	}
 	if err != nil {
 		s.lg.Warn("保存知识文档失败",
 			loggateway.StepID("knowledge.document.save_fail"),
@@ -927,7 +950,7 @@ func (s *KnowledgeService) UpdateDocumentContent(ctx context.Context, req *v1.Up
 			loggateway.Str("doc_id", req.GetId()),
 		)
 	}
-	return &v1.UpdateDocumentContentResponse{Document: toProtoDocument(doc), Conflict: conflict}, nil
+	return &v1.UpdateDocumentContentResponse{Document: toProtoDocument(doc), Conflict: conflict, BaseHash: doc.ContentHash}, nil
 }
 
 // MoveDocument moves a document (with its chunks) to another collection (US-14 整理归档).
@@ -937,6 +960,13 @@ func (s *KnowledgeService) MoveDocument(ctx context.Context, req *v1.MoveDocumen
 		return nil, err
 	}
 	if err := s.assertCollectionMutateAccess(ctx, col); err != nil {
+		return nil, err
+	}
+	target, err := s.uc.GetCollection(ctx, req.GetTargetCollectionId())
+	if err != nil {
+		return nil, err
+	}
+	if err := s.assertCollectionMutateAccess(ctx, target); err != nil {
 		return nil, err
 	}
 	doc, err := s.uc.MoveDocument(ctx, req.GetId(), req.GetTargetCollectionId())
@@ -1235,6 +1265,9 @@ func isMarkdownSource(source, mimeType string) bool {
 // isTextVaultDocument 判定文档是否为纯文本类型（编辑器可预览）。
 // 图片/视频/音频/二进制文件返回 false，避免 raw_content 含非法 UTF-8。
 func isTextVaultDocument(doc biz.KnowledgeDocument) bool {
+	if !bizknowledge.VaultDocumentEditable(doc) {
+		return false
+	}
 	if strings.HasPrefix(doc.MimeType, "text/") ||
 		doc.MimeType == "application/json" ||
 		doc.MimeType == "application/xml" {
@@ -1270,6 +1303,9 @@ func toProtoDocument(d biz.KnowledgeDocument) *v1.KnowledgeDocument {
 		UpdatedAt:        d.UpdatedAt,
 		ExtractSupported: isExtractSupported(d.MimeType),
 		Organized:        d.Organized,
+		Visibility:       d.Visibility,
+		OwnerUserId:      d.OwnerUserID,
+		SharedWith:       d.SharedWith,
 		// Vault + 摘要卡字段（P3 列表/hover 卡一级密度）。
 		RelPath: d.RelPath,
 		Summary: d.Summary,

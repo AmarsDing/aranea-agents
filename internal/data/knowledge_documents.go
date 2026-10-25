@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	bizknowledge "aranea-agents/internal/biz/knowledge"
 	"aranea-agents/internal/workspace"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
@@ -23,8 +24,8 @@ func (r *knowledgeRepo) CreateDocument(ctx context.Context, d biz.KnowledgeDocum
 	q := `INSERT INTO knowledge_documents
 		(id, collection_id, source, mime_type, size_bytes, chunk_count, status, error_message, content_text, organized, asset_uri,
 		 rel_path, content_hash, summary, summary_hash, tags, doc_type, created_at, updated_at,
-		 chunk_strategy, chunk_size, chunk_overlap)
-		VALUES ($1,$2,$3,$4,$5,0,$6,'',$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$16,$17,$18,$19)
+		 chunk_strategy, chunk_size, chunk_overlap, owner_user_id)
+		VALUES ($1,$2,$3,$4,$5,0,$6,'',$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$16,$17,$18,$19,$20)
 		RETURNING id, collection_id, source, mime_type, size_bytes, chunk_count, status, error_message,
 	          content_text, organized, asset_uri,
 	          rel_path, content_hash, summary, summary_hash, tags, doc_type,
@@ -34,10 +35,10 @@ func (r *knowledgeRepo) CreateDocument(ctx context.Context, d biz.KnowledgeDocum
 	          COALESCE(NULLIF(visibility,''),'collection'), COALESCE(owner_user_id,''),
 	          COALESCE(shared_with, '{}'::text[]),
 	          chunk_strategy, chunk_size, chunk_overlap`
-	row := r.data.Postgres().QueryRowContext(ctx, q, d.ID, d.CollectionID, d.Source, d.MimeType, d.SizeBytes, d.Status,
+	row := r.knowledgeDB(ctx).QueryRowContext(ctx, q, d.ID, d.CollectionID, d.Source, d.MimeType, d.SizeBytes, d.Status,
 		d.ContentText, d.Organized, d.AssetURI,
 		d.RelPath, d.ContentHash, d.Summary, d.SummaryHash, tagsJSON, d.DocType, now,
-		d.ChunkStrategy, d.ChunkSize, d.ChunkOverlap)
+		d.ChunkStrategy, d.ChunkSize, d.ChunkOverlap, d.OwnerUserID)
 	return scanDocument(row)
 }
 
@@ -61,7 +62,7 @@ func (r *knowledgeRepo) GetDocumentByRelPath(ctx context.Context, collectionID, 
 		q += ` AND (c.workspace = $3 OR c.workspace = '')`
 		args = append(args, ws)
 	}
-	doc, err := scanDocument(r.data.Postgres().QueryRowContext(ctx, q, args...))
+	doc, err := scanDocument(r.knowledgeDB(ctx).QueryRowContext(ctx, q, args...))
 	if err != nil {
 
 		return doc, entErrToBizErr(err, "KNOWLEDGE")
@@ -93,7 +94,7 @@ func (r *knowledgeRepo) GetDocumentByContentHash(ctx context.Context, collection
 		args = append(args, ws)
 	}
 	q += ` ORDER BY d.created_at ASC LIMIT 1`
-	doc, err := scanDocument(r.data.Postgres().QueryRowContext(ctx, q, args...))
+	doc, err := scanDocument(r.knowledgeDB(ctx).QueryRowContext(ctx, q, args...))
 	if err != nil {
 		return doc, entErrToBizErr(err, "KNOWLEDGE")
 	}
@@ -140,6 +141,43 @@ func (r *knowledgeRepo) UpdateDocumentRelPath(ctx context.Context, id, newRelPat
 	return entErrToBizErr(err, "knowledge")
 }
 
+// ReplaceDocumentPath keeps source identity while atomically removing an overwritten target.
+// Its file has already been retained in the vault trash by the usecase.
+func (r *knowledgeRepo) ReplaceDocumentPath(ctx context.Context, collectionID, sourceID, targetID, newRelPath string) error {
+	return r.knowledgeExecInTx(ctx, func(ctx context.Context, tx *sql.Tx) error {
+		var sourceCollection string
+		if err := tx.QueryRowContext(ctx, `SELECT collection_id FROM knowledge_documents WHERE id=$1 FOR UPDATE`, sourceID).Scan(&sourceCollection); err != nil {
+			return entErrToBizErr(err, "knowledge")
+		}
+		if sourceCollection != collectionID || sourceID == targetID {
+			return bizknowledge.ErrDocumentStatusConflict
+		}
+		var targetStatus string
+		if err := tx.QueryRowContext(ctx, `SELECT status FROM knowledge_documents WHERE id=$1 AND collection_id=$2 AND rel_path=$3 FOR UPDATE`, targetID, collectionID, newRelPath).Scan(&targetStatus); err != nil {
+			return entErrToBizErr(err, "knowledge")
+		}
+		var removedChunks int
+		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM knowledge_chunks WHERE doc_id=$1 AND chunk_role='child'`, targetID).Scan(&removedChunks); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `DELETE FROM knowledge_access_log WHERE doc_id=$1`, targetID); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `DELETE FROM knowledge_documents WHERE id=$1`, targetID); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE knowledge_documents SET rel_path=$2, updated_at=NOW() WHERE id=$1`, sourceID, newRelPath); err != nil {
+			return entErrToBizErr(err, "knowledge")
+		}
+		docDelta := 0
+		if targetStatus == "indexed" {
+			docDelta = 1
+		}
+		_, err := tx.ExecContext(ctx, `UPDATE knowledge_collections SET document_count=GREATEST(document_count-$2,0), chunk_count=GREATEST(chunk_count-$3,0), updated_at=NOW() WHERE id=$1`, collectionID, docDelta, removedChunks)
+		return entErrToBizErr(err, "knowledge")
+	})
+}
+
 // UpdateDocumentSyncMeta 文件内容变更时回写同步元数据（Vault 同步 modified 事件，P1-3）。
 func (r *knowledgeRepo) UpdateDocumentSyncMeta(ctx context.Context, id string, meta biz.KnowledgeDocumentSyncMeta) error {
 	tagsJSON, err := marshalTags(meta.Tags)
@@ -173,7 +211,7 @@ func (r *knowledgeRepo) GetDocument(ctx context.Context, id string) (biz.Knowled
 		q += ` AND (c.workspace = $2 OR c.workspace = '')`
 		args = append(args, ws)
 	}
-	doc, err := scanDocument(r.data.Postgres().QueryRowContext(ctx, q, args...))
+	doc, err := scanDocument(r.knowledgeDB(ctx).QueryRowContext(ctx, q, args...))
 	if err != nil {
 		return doc, entErrToBizErr(err, "KNOWLEDGE")
 	}
@@ -181,11 +219,26 @@ func (r *knowledgeRepo) GetDocument(ctx context.Context, id string) (biz.Knowled
 }
 
 func (r *knowledgeRepo) UpdateDocumentStatus(ctx context.Context, id, status, errMsg string, chunkCount int) error {
-	_, err := r.data.Postgres().ExecContext(ctx,
-		`UPDATE knowledge_documents
+	apply := func(txCtx context.Context, db knowledgeSQL) error {
+		_, err := db.ExecContext(txCtx, `UPDATE knowledge_documents
 		 SET status = $2, error_message = $3, chunk_count = $4, updated_at = NOW()
 		 WHERE id = $1`, id, status, errMsg, chunkCount)
-	return entErrToBizErr(err, "knowledge")
+		return entErrToBizErr(err, "knowledge")
+	}
+	expected, guarded := bizknowledge.DocumentContentVersionFromContext(ctx, id)
+	if !guarded {
+		return apply(ctx, r.knowledgeDB(ctx))
+	}
+	return r.knowledgeExecInTx(ctx, func(txCtx context.Context, tx *sql.Tx) error {
+		var body string
+		if err := tx.QueryRowContext(txCtx, `SELECT content_text FROM knowledge_documents WHERE id = $1 FOR UPDATE`, id).Scan(&body); err != nil {
+			return entErrToBizErr(err, "knowledge")
+		}
+		if bizknowledge.HashContent(body) != expected {
+			return apierror.Conflict(apierror.DomainKnowledge, "document content changed while indexing")
+		}
+		return apply(txCtx, tx)
+	})
 }
 
 // ClaimDocumentRetry 原子认领重跑摄取资格（G-21 二轮复核 F5/F6）：
@@ -213,7 +266,7 @@ func (r *knowledgeRepo) ClaimDocumentRetry(ctx context.Context, id string, stale
 // UpdateDocumentContent 回写文档正文与整理标记（Phase 9 图片异步提取完成后调用）。
 // stale_at 清 NULL（P1-c）：内容变更即新鲜，陈旧降权复活。
 func (r *knowledgeRepo) UpdateDocumentContent(ctx context.Context, id, contentText string, organized bool) error {
-	_, err := r.data.Postgres().ExecContext(ctx,
+	_, err := r.knowledgeDB(ctx).ExecContext(ctx,
 		`UPDATE knowledge_documents
 		 SET content_text = $2, organized = $3, stale_at = NULL, updated_at = NOW()
 		 WHERE id = $1`, id, contentText, organized)
@@ -225,7 +278,7 @@ func (r *knowledgeRepo) ListDocuments(ctx context.Context, collectionID string, 
 	countSQL := `SELECT COUNT(*) FROM knowledge_documents WHERE (collection_id = $1 OR $1 = '') ` + countACL
 	countArgs := append([]any{collectionID}, countACLArgs...)
 	var total int
-	if err := r.data.Postgres().QueryRowContext(ctx, countSQL, countArgs...).Scan(&total); err != nil {
+	if err := r.knowledgeDB(ctx).QueryRowContext(ctx, countSQL, countArgs...).Scan(&total); err != nil {
 		return nil, 0, entErrToBizErr(err, "knowledge")
 	}
 	listACL, listACLArgs := docRowVisibilityClause(ctx, 4)
@@ -269,18 +322,26 @@ func (r *knowledgeRepo) ListDocuments(ctx context.Context, collectionID string, 
 //
 // All statements run in one transaction to avoid any partial-update window.
 func (r *knowledgeRepo) DeleteDocument(ctx context.Context, id string) error {
-	return r.data.PostgresExecInTx(ctx, func(ctx context.Context, tx *sql.Tx) error {
+	return r.knowledgeExecInTx(ctx, func(ctx context.Context, tx *sql.Tx) error {
 		var collectionID string
 		var chunkCount int
 		var status string
 		err := tx.QueryRowContext(ctx,
-			`SELECT collection_id, chunk_count, status FROM knowledge_documents WHERE id = $1`, id).
+			`SELECT collection_id, chunk_count, status FROM knowledge_documents WHERE id = $1 FOR UPDATE`, id).
 			Scan(&collectionID, &chunkCount, &status)
 		if apierror.IsCode(err, apierror.CodeNotFound) {
 			return nil
 		}
 		if err != nil {
 			return entErrToBizErr(err, "knowledge")
+		}
+
+		// G-32 T4（决策8/10/12）：FOR UPDATE 锚锁后整档墓碑化——documents 行
+		// 删除（FK CASCADE 带 chunks/侧表）前先归档全部化身并落 tombstone 版本行
+		// （含零账本 mint 护栏 DIS-5），保「current 查无、as-of 可回放」。
+		// producer 值空间登记 user-delete（见 knowledge_diff_commit.go 头注）。
+		if _, err := tombstoneDocumentTx(ctx, tx, id, "user-delete"); err != nil {
+			return err
 		}
 
 		if _, err := tx.ExecContext(ctx, `DELETE FROM knowledge_access_log WHERE doc_id = $1`, id); err != nil {

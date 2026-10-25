@@ -80,7 +80,7 @@ func TestKnowledgeRepo_ParentChildCommitAndFetch(t *testing.T) {
 		{ID: docID + "-ch-0", DocID: docID, CollectionID: colID, Content: "物料A 仓储区一层", ChunkIndex: 0, ParentChunkID: docID + "-p-0", Embedding: emb},
 		{ID: docID + "-ch-1", DocID: docID, CollectionID: colID, Content: "物料B 恒温库", ChunkIndex: 1, ParentChunkID: docID + "-p-0", Embedding: emb},
 	}
-	if err := repo.CommitIndexedDocument(ctx, colID, docID, chunks, 1, nil); err != nil {
+	if _, err := repo.CommitIndexedDocument(ctx, colID, docID, chunks, 1, nil); err != nil {
 		t.Fatalf("commit parent-child chunks: %v", err)
 	}
 
@@ -101,7 +101,9 @@ func TestKnowledgeRepo_ParentChildCommitAndFetch(t *testing.T) {
 	}
 
 	// ListChunksByIDs：父块回填端口——取回父块正文，未知 ID 静默缺席。
-	parents, err := repo.ListChunksByIDs(ctx, colID, []string{docID + "-p-0", docID + "-p-404"})
+	// T4 ⑩ 代际命名：父块定名 <docID>-v<ver>-p-<idx>（v1 摄取），子块父指针
+	// 已被 resolveParentFinalID 重指到代际 ID，引用完整性由生产侧保持。
+	parents, err := repo.ListChunksByIDs(ctx, colID, []string{docID + "-v1-p-0", docID + "-v1-p-404"})
 	if err != nil {
 		t.Fatalf("ListChunksByIDs: %v", err)
 	}
@@ -121,18 +123,18 @@ func TestKnowledgeRepo_ParentChildCommitAndFetch(t *testing.T) {
 		t.Fatalf("retrieval surface must exclude parent rows, got %d: %+v", len(visible), visible)
 	}
 	for _, ch := range visible {
-		if ch.IsParent || ch.ParentChunkID != docID+"-p-0" {
+		if ch.IsParent || ch.ParentChunkID != docID+"-v1-p-0" {
 			t.Fatalf("child row shape broken: %+v", ch)
 		}
 	}
 
-	// 同 doc 重提交（重嵌口径）：旧行整删重插，collection 计数仍为 2（delta 以子块计）。
-	// 生产重嵌流（ReembedDocuments）先把文档状态拨回 indexing 再提交——测试镜像该
-	// 时序以满足 CommitIndexedDocument 的 status CAS 守卫（doc 已是 indexed）。
+	// 同 doc 重提交：内容多重集恒等 → ② fast-path 零写（T4），collection 计数
+	// 仍为 2。生产重嵌流（ReembedDocuments）先把文档状态拨回 indexing 再提交——
+	// 测试镜像该时序以满足 CommitIndexedDocument 的 status CAS 守卫。
 	if _, err := repo.data.rawDB.ExecContext(ctx, "UPDATE knowledge_documents SET status='indexing' WHERE id=$1", docID); err != nil {
 		t.Fatalf("re-arm status before recommit: %v", err)
 	}
-	if err := repo.CommitIndexedDocument(ctx, colID, docID, chunks[:3], 0, nil); err != nil {
+	if _, err := repo.CommitIndexedDocument(ctx, colID, docID, chunks[:3], 0, nil); err != nil {
 		t.Fatalf("recommit: %v", err)
 	}
 	col2, err := repo.GetCollection(ctx, colID)
@@ -143,8 +145,9 @@ func TestKnowledgeRepo_ParentChildCommitAndFetch(t *testing.T) {
 		t.Fatalf("recommit must keep child-only count, got %d", col2.ChunkCount)
 	}
 
-	// 待嵌口径按子块（G-06 修复：父块恒 embedding NULL 不得拖文档永久 pending）：
-	// 全部子块已嵌入 → 不出现在 pending；存在 NULL 嵌入子块 → 出现。
+	// 待嵌口径按子块+侧表（G-39 判据：侧表缺当前 dim 才算 pending，主表
+	// embedding NULL 不再是口径；G-06 修复：父块恒 NULL 不落侧表不拖累）：
+	// 全部子块侧表已嵌入 → 不出现在 pending。
 	pending, err := repo.ListDocumentsPendingReembed(ctx, colID, 3)
 	if err != nil {
 		t.Fatalf("ListDocumentsPendingReembed: %v", err)
@@ -152,20 +155,30 @@ func TestKnowledgeRepo_ParentChildCommitAndFetch(t *testing.T) {
 	if len(pending) != 0 {
 		t.Fatalf("parent-child doc with all children embedded must not stay pending: %+v", pending)
 	}
+	// 同内容降级（nil 向量）重嵌：② fast-path 零写，kept 子块既有侧表行不被
+	// nil 清洗，文档不因退化摄取无谓重嵌（⑪ 只补缺口不清存量）。生产意义：
+	// embedding 断供期的重复摄取不销毁好向量（可用性优先）；真换 dim 才入队。
 	degraded := append([]biz.KnowledgeChunk{}, chunks...)
 	degraded[1].Embedding = nil
-	// 同上：镜像生产重嵌时序，先拨回 indexing 再过 CAS。
 	if _, err := repo.data.rawDB.ExecContext(ctx, "UPDATE knowledge_documents SET status='indexing' WHERE id=$1", docID); err != nil {
 		t.Fatalf("re-arm status before degraded recommit: %v", err)
 	}
-	if err := repo.CommitIndexedDocument(ctx, colID, docID, degraded, 0, nil); err != nil {
+	if _, err := repo.CommitIndexedDocument(ctx, colID, docID, degraded, 0, nil); err != nil {
 		t.Fatalf("recommit degraded: %v", err)
 	}
 	pending2, err := repo.ListDocumentsPendingReembed(ctx, colID, 3)
 	if err != nil {
 		t.Fatalf("ListDocumentsPendingReembed after degrade: %v", err)
 	}
-	if len(pending2) != 1 || pending2[0].ID != docID {
-		t.Fatalf("doc with NULL-embedding child must be pending: %+v", pending2)
+	if len(pending2) != 0 {
+		t.Fatalf("degraded same-content recommit must keep side vectors and stay out of pending: %+v", pending2)
+	}
+	var sideN int
+	if err := repo.data.rawDB.QueryRowContext(ctx,
+		`SELECT count(*) FROM chunk_embeddings WHERE chunk_id=$1`, docID+"-v1-ch-0").Scan(&sideN); err != nil {
+		t.Fatalf("side rows for kept child: %v", err)
+	}
+	if sideN != 1 {
+		t.Fatalf("kept child side row must survive degraded recommit, got %d", sideN)
 	}
 }

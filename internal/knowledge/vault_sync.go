@@ -31,7 +31,7 @@ type VaultSyncApplier struct {
 
 // BodyCompiler 把需抽取的文件（office/图片）原始字节编译为 Markdown 正文（M0 摄取编译）。
 // 由 ExtractorRegistry 适配实现；文本直读文件不经过本端口（保留 frontmatter 解析）。
-// 返回：编译后 Markdown 正文 + 规范 MIME（统一 text/markdown）。
+// 返回：编译后 Markdown 正文 + 原件 MIME（不能用正文格式覆盖原件类型）。
 type BodyCompiler interface {
 	Compile(ctx context.Context, relPath string, raw []byte) (body string, mimeType string, err error)
 }
@@ -172,7 +172,7 @@ func (a *VaultSyncApplier) upsertDoc(ctx context.Context, vault bizknowledge.Col
 			a.markError(ctx, doc.ID, err)
 			return err
 		}
-		md, mt, cerr := a.compiler.Compile(ctx, ev.RelPath, raw)
+		md, _, cerr := a.compiler.Compile(ctx, ev.RelPath, raw)
 		if cerr != nil {
 			doc, derr := a.upsertCompiledDoc(ctx, vault, ev, "", mimeTypeFor(ev.RelPath), notFound, existing)
 			if derr != nil {
@@ -199,7 +199,7 @@ func (a *VaultSyncApplier) upsertDoc(ctx context.Context, vault bizknowledge.Col
 			}
 			return cerr
 		}
-		body, mimeType = md, mt
+		body, mimeType = md, mimeTypeFor(ev.RelPath)
 		if !notFound && existing.EmbedFailCount > 0 {
 			if uerr := a.uc.UpdateDocumentEmbedCircuit(ctx, existing.ID, 0, time.Time{}); uerr != nil {
 				a.lg.Warn("vault sync: reset extract circuit failed",
@@ -262,7 +262,7 @@ func (a *VaultSyncApplier) upsertDoc(ctx context.Context, vault bizknowledge.Col
 		docDelta = 1
 	}
 	// 索引成功：chunks 替换 + hash/摘要卡 + indexed + 集合计数同一提交。
-	if err := a.uc.CommitIndexedDocumentMeta(ctx, vault.ID, doc.ID, chunks, docDelta, bizknowledge.DocumentSyncMeta{
+	if _, err := a.uc.CommitIndexedDocumentMeta(ctx, vault.ID, doc.ID, chunks, docDelta, bizknowledge.DocumentSyncMeta{
 		ContentHash: ev.Snapshot.Hash,
 		Summary:     fm.Summary,
 		SummaryHash: fm.SummaryHash,
@@ -417,7 +417,7 @@ func (a *VaultSyncApplier) deleteDoc(ctx context.Context, vault bizknowledge.Col
 			return err
 		}
 	}
-	return a.uc.DeleteDocument(ctx, doc.ID)
+	return a.uc.DeleteDocumentMirror(ctx, doc.ID)
 }
 
 // moveDoc 移动/重命名：保留文档身份与索引，仅更新镜像路径。

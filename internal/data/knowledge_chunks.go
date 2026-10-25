@@ -29,59 +29,23 @@ func (r *knowledgeRepo) InsertChunks(ctx context.Context, chunks []biz.Knowledge
 
 // CommitIndexedDocument replaces a document's chunks, CAS-marks it indexed,
 // optionally writes vault sync meta, and adjusts collection counts in one TX.
-func (r *knowledgeRepo) CommitIndexedDocument(ctx context.Context, collectionID, docID string, chunks []biz.KnowledgeChunk, docDelta int, syncMeta *biz.KnowledgeDocumentSyncMeta) error {
+// CommitIndexedDocument G-32 T4：十三步 diff-commit tx（执行体在
+// knowledge_diff_commit.go；配对保留→档案化孤儿→代际命名新增→kept
+// compare-and-skip→缺 dim 条件补齐→双条件版本行→guard/计数/syncMeta 原序）。
+// 返回 ChunkDiffStats 供 T5 WS knowledge_chunks_diff 帧透出（决策 5⑬）。
+func (r *knowledgeRepo) CommitIndexedDocument(ctx context.Context, collectionID, docID string, chunks []biz.KnowledgeChunk, docDelta int, syncMeta *biz.KnowledgeDocumentSyncMeta) (bizknowledge.ChunkDiffStats, error) {
+	var stats bizknowledge.ChunkDiffStats
 	if len(chunks) > 0 {
 		if err := r.assertChunkDimensions(ctx, chunks); err != nil {
-			return err
+			return stats, err
 		}
 	}
-	return r.data.PostgresExecInTx(ctx, func(ctx context.Context, tx *sql.Tx) error {
-		// 计数口径 = 子块（G-06）：父块语境行不进 chunk_count（documents 与
-		// collections 两侧一致）。既有行 chunk_role 默认 'child' 天然兼容。
-		var oldCount int
-		if err := tx.QueryRowContext(ctx,
-			`SELECT COUNT(*) FROM knowledge_chunks WHERE doc_id = $1 AND chunk_role = 'child'`, docID).Scan(&oldCount); err != nil {
-			return entErrToBizErr(err, "knowledge")
-		}
-		if _, err := tx.ExecContext(ctx, `DELETE FROM knowledge_chunks WHERE doc_id = $1`, docID); err != nil {
-			return entErrToBizErr(err, "knowledge")
-		}
-		if err := r.insertChunksTx(ctx, tx, chunks); err != nil {
-			return err
-		}
-		if syncMeta != nil {
-			if err := r.updateDocumentSyncMetaTx(ctx, tx, docID, *syncMeta); err != nil {
-				return err
-			}
-		}
-		newCount := 0
-		for _, ch := range chunks {
-			if !ch.IsParent {
-				newCount++
-			}
-		}
-		res, err := tx.ExecContext(ctx,
-			`UPDATE knowledge_documents
-			 SET status = 'indexed', error_message = '', chunk_count = $2, updated_at = NOW()
-			 WHERE id = $1 AND status = 'indexing'`, docID, newCount)
-		if err != nil {
-			return entErrToBizErr(err, "knowledge")
-		}
-		n, _ := res.RowsAffected()
-		if n != 1 {
-			return bizknowledge.ErrDocumentStatusConflict
-		}
-		chunkDelta := newCount - oldCount
-		if _, err := tx.ExecContext(ctx,
-			`UPDATE knowledge_collections
-			 SET document_count = document_count + $2,
-			     chunk_count    = chunk_count    + $3,
-			     updated_at     = NOW()
-			 WHERE id = $1`, collectionID, docDelta, chunkDelta); err != nil {
-			return entErrToBizErr(err, "knowledge")
-		}
-		return nil
+	err := r.knowledgeExecInTx(ctx, func(ctx context.Context, tx *sql.Tx) error {
+		s, err := r.commitIndexedDocumentTx(ctx, tx, collectionID, docID, chunks, docDelta, syncMeta)
+		stats = s
+		return err
 	})
+	return stats, err
 }
 
 func (r *knowledgeRepo) updateDocumentSyncMetaTx(ctx context.Context, tx *sql.Tx, id string, meta biz.KnowledgeDocumentSyncMeta) error {
@@ -148,21 +112,14 @@ func (r *knowledgeRepo) insertChunksTx(ctx context.Context, tx *sql.Tx, chunks [
 	defer sideStmt.Close()
 	// 侧表 model 列溯源用集合台账的 embedding_model（按集合惰性预查缓存；
 	// 无语义层集合无台账语义 → 落 ''）。批内混集合时各取各自台账——
-	// in-tree 调用方皆单集合，但 repo 端口不禁止混合批。
+	// in-tree 调用方皆单集合，但 repo 端口不禁止混合批。单点口径见
+	// chunkSideModelTx（与 diff-commit ⑪ 缺 dim 补齐同源）。
 	models := make(map[string]string, 1)
 	modelFor := func(colID string) string {
 		if m, ok := models[colID]; ok {
 			return m
 		}
-		var m string
-		if err := tx.QueryRowContext(ctx,
-			`SELECT embedding_model FROM knowledge_collections WHERE id = $1`, colID).Scan(&m); err != nil {
-			r.lg.Warn("chunk side-embedding model lookup fell back to empty",
-				loggateway.StepID("knowledge.chunk_side_model_skip"),
-				loggateway.Str("collection_id", colID),
-				loggateway.Err(err))
-			m = ""
-		}
+		m := r.chunkSideModelTx(ctx, tx, colID)
 		models[colID] = m
 		return m
 	}

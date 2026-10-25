@@ -126,6 +126,17 @@ func ProvideKnowledgeUsecase(repo KnowledgeRepo, filer *knowledge.VaultFiler, bl
 	if graphLinks, gok := repo.(knowledge.CollectionLinkReader); gok {
 		uc.SetGraphRepo(graphLinks)
 	}
+	// G-05-asof：时态图腿（repo 已实现 TemporalCollectionLinkReader 时接线；
+	// 未接线时 as-of 图回退当前快照）。
+	if temporalGraphLinks, tgok := repo.(knowledge.TemporalCollectionLinkReader); tgok {
+		uc.SetTemporalGraphRepo(temporalGraphLinks)
+	}
+	// G-32 T4 item 4：全量时态 chunk 读腿（repo 已实现 ChunkTemporalReader 时
+	// 接线，时针 nil → time.Now；未接线时 Usecase 时态读显式 ErrUnavailable，
+	// 不蜕化为 current 快报）。
+	if temporalReader, trok := repo.(knowledge.ChunkTemporalReader); trok {
+		uc.SetChunkTemporalReader(temporalReader, nil)
+	}
 	// SP2 #9：embedding 熔断端口（repo 已实现时接线；未接线时熔断读写 no-op——
 	// embed 失败仍降级词法索引，仅失去跨进程熔断记忆与后台退避重试）。
 	if ec, ok := repo.(knowledge.EmbedCircuitRepo); ok {

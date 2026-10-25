@@ -90,6 +90,10 @@ func (h *HybridRetriever) Search(ctx context.Context, q biz.KnowledgeSearchQuery
 		topK = 5
 	}
 
+	lexical, err := collectionLacksSemanticLayer(ctx, h.dense, q.CollectionID)
+	if err != nil {
+		return nil, err
+	}
 	// F5：无语义层（embedder 未配置）时降级 BM25 词法检索——V2 设计 embedding 为
 	// 可选增强，词法检索必须可用。
 	if h.embedder == nil {
@@ -99,7 +103,7 @@ func (h *HybridRetriever) Search(ctx context.Context, q biz.KnowledgeSearchQuery
 
 	// §V5 降级矩阵 #3：目标集合为无语义层词法库（embedding_model 空）时直接降级
 	// BM25——chunks 无向量，dense/RRF 密集侧恒空。判定前置避免浪费一次查询 embed。
-	if collectionLacksSemanticLayer(ctx, h.dense, q.CollectionID) {
+	if lexical {
 		h.logSparseFallback(q, "collection has no semantic layer", nil)
 		return h.searchSparse(ctx, q, topK)
 	}
@@ -134,7 +138,7 @@ func (h *HybridRetriever) Search(ctx context.Context, q biz.KnowledgeSearchQuery
 			searchQ.TopK = rerankCandidateLimit(q, topK)
 		}
 		denseStart := time.Now()
-		chunks, err := h.dense.SearchChunks(ctx, searchQ, vec)
+		chunks, err := h.searchDenseLeg(ctx, searchQ, vec)
 		observeSearchStage(searchStageDense, denseStart)
 		if err != nil {
 			return nil, err
@@ -173,7 +177,7 @@ func (h *HybridRetriever) searchSparse(ctx context.Context, q biz.KnowledgeSearc
 	}
 	q.TopK = topK
 	sparseStart := time.Now()
-	chunks, err := h.sparse.SearchChunksBM25(ctx, q)
+	chunks, err := h.searchSparseLeg(ctx, q)
 	observeSearchStage(searchStageSparse, sparseStart)
 	if err != nil {
 		return nil, apierror.Internal(apierror.DomainKnowledge, "hybrid_retriever sparse failed").WithCause(err)
@@ -226,7 +230,7 @@ func (h *HybridRetriever) searchRRF(ctx context.Context, q biz.KnowledgeSearchQu
 	safego.Go(ctx, "knowledge.search.rrf_dense", func() {
 		defer wg.Done()
 		start := time.Now()
-		denseChunks, denseErr = h.dense.SearchChunks(ctx, denseQ, vec)
+		denseChunks, denseErr = h.searchDenseLeg(ctx, denseQ, vec)
 		observeSearchStage(searchStageDense, start)
 	})
 	if h.sparse != nil {
@@ -234,7 +238,7 @@ func (h *HybridRetriever) searchRRF(ctx context.Context, q biz.KnowledgeSearchQu
 		safego.Go(ctx, "knowledge.search.rrf_sparse", func() {
 			defer wg.Done()
 			start := time.Now()
-			sparseChunks, sparseErr = h.sparse.SearchChunksBM25(ctx, sparseQ)
+			sparseChunks, sparseErr = h.searchSparseLeg(ctx, sparseQ)
 			observeSearchStage(searchStageSparse, start)
 		})
 	}
@@ -249,41 +253,63 @@ func (h *HybridRetriever) searchRRF(ctx context.Context, q biz.KnowledgeSearchQu
 	}
 	wg.Wait()
 
-	if denseErr != nil {
-		h.lg.Warn("RRF 密集检索失败，回退稀疏",
-			loggateway.StepID("knowledge.hybrid.dense_fail"),
-			loggateway.Err(denseErr),
-			loggateway.Str("collection_id", q.CollectionID))
-		if h.sparse == nil || sparseErr != nil {
-			return nil, apierror.Internal(apierror.DomainKnowledge, "hybrid_retriever dense and sparse failed").WithCause(denseErr)
-		}
-		return trimChunks(tagSparseScores(sparseChunks), topK), nil
-	}
-
-	if h.sparse == nil {
-		return trimChunks(tagDenseScores(denseChunks), topK), nil
-	}
-	if sparseErr != nil {
-		h.lg.Warn("RRF 稀疏检索失败，回退密集",
-			loggateway.StepID("knowledge.hybrid.sparse_fail"),
-			loggateway.Err(sparseErr),
-			loggateway.Str("collection_id", q.CollectionID))
-		return trimChunks(tagDenseScores(denseChunks), topK), nil
-	}
-
+	// G-33 对抗审查修正（fusion-retrieval/high）：降级语义 = 任一腿失败回退
+	// 【剩余腿融合】。两腿时代的 tag 单路早退会把健康卡腿候选静默丢弃（dense
+	// +sparse 双挂时甚至坍缩为 Internal，尽管卡腿在场）；仅当卡腿无产出
+	// （nil/err/空）时保持 legacy 双腿 tag 路径，既有钉分测试语义零改动。
 	if cardErr != nil {
-		h.lg.Warn("RRF 图谱卡片腿失败，回退密集+稀疏融合",
+		h.lg.Warn("RRF 图谱卡片腿失败，回退剩余腿融合",
 			loggateway.StepID("knowledge.hybrid.card_fail"),
 			loggateway.Err(cardErr),
 			loggateway.Str("collection_id", q.CollectionID))
 		cardChunks = nil
 	}
-
-	merged := rrfMergeN(h.rrfK, denseChunks, sparseChunks, cardChunks)
-	if h.reranker != nil && h.reranker.HasReranker() && len(merged) > 0 {
-		return h.reranker.RerankChunks(ctx, q, merged, topK)
+	if denseErr != nil {
+		h.lg.Warn("RRF 密集检索失败，回退剩余腿融合",
+			loggateway.StepID("knowledge.hybrid.dense_fail"),
+			loggateway.Err(denseErr),
+			loggateway.Str("collection_id", q.CollectionID))
 	}
-	return trimChunks(merged, topK), nil
+	if sparseErr != nil {
+		h.lg.Warn("RRF 稀疏检索失败，回退剩余腿融合",
+			loggateway.StepID("knowledge.hybrid.sparse_fail"),
+			loggateway.Err(sparseErr),
+			loggateway.Str("collection_id", q.CollectionID))
+	}
+	var denseLeg, sparseLeg []biz.KnowledgeChunk
+	if denseErr == nil {
+		denseLeg = denseChunks
+	}
+	if h.sparse != nil && sparseErr == nil {
+		sparseLeg = sparseChunks
+	}
+
+	fuse := func(lists ...[]biz.KnowledgeChunk) ([]biz.KnowledgeChunk, error) {
+		merged := rrfMergeN(h.rrfK, lists...)
+		if h.reranker != nil && h.reranker.HasReranker() && len(merged) > 0 {
+			return h.reranker.RerankChunks(ctx, q, merged, topK)
+		}
+		return trimChunks(merged, topK), nil
+	}
+
+	if len(cardChunks) == 0 {
+		// 卡腿缺席：legacy 双腿语义——任一经典腿失败退 tag 单路，双挂硬错。
+		if denseErr != nil {
+			if sparseLeg == nil {
+				return nil, apierror.Internal(apierror.DomainKnowledge, "hybrid_retriever dense and sparse failed").WithCause(denseErr)
+			}
+			return trimChunks(tagSparseScores(sparseLeg), topK), nil
+		}
+		if sparseLeg == nil {
+			return trimChunks(tagDenseScores(denseLeg), topK), nil
+		}
+		return fuse(denseLeg, sparseLeg)
+	}
+	if denseErr != nil && sparseLeg == nil {
+		// 经典双腿全灭而卡腿健康：卡腿单路 RRF（不再坍缩 Internal）。
+		return fuse(cardChunks)
+	}
+	return fuse(denseLeg, sparseLeg, cardChunks)
 }
 
 // tagDenseScores / tagSparseScores（G-12 命中调试）：单通路检索把该侧原始分
@@ -373,9 +399,14 @@ func rrfMergeN(k int, lists ...[]biz.KnowledgeChunk) []biz.KnowledgeChunk {
 	return result
 }
 
+// sortChunksByRRFScoreDesc 按 RRF 分降序；同分以 ID 升序确定性破平
+// （G-33 对抗审查修正：三腿并列同分组最多 3 项——map 迭代序随机 + 严格 >
+// 插入排序稳定保留随机前序，会让 trimChunks 截断口随机挤出成员；ID 破平后
+// 相同输入次序恒定）。
 func sortChunksByRRFScoreDesc(chunks []biz.KnowledgeChunk) {
 	for i := 1; i < len(chunks); i++ {
-		for j := i; j > 0 && chunks[j].Score > chunks[j-1].Score; j-- {
+		for j := i; j > 0 && (chunks[j].Score > chunks[j-1].Score ||
+			(chunks[j].Score == chunks[j-1].Score && chunks[j].ID < chunks[j-1].ID)); j-- {
 			chunks[j], chunks[j-1] = chunks[j-1], chunks[j]
 		}
 	}

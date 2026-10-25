@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"strings"
 	"time"
 
@@ -165,6 +166,11 @@ type SearchQuery struct {
 	// 调试流量反复试探同一查询会污染 base-level 激活分与个性化信号。
 	// 不影响排序保真：base-level 历史加成照常被应用。
 	SkipAccessLog bool
+	// Temporal（G-05-asof，ADR-KN-20261020-J）：双时态 as-of 查询窗口。
+	// 零值 = current 快报（现状字节级不变）；任一轴启用 → 边扩展腿走
+	// 时态读端口，且检索热度副作用（access_log/base-level 加成/Hebbian
+	// 共激活）全部关闭——审计/回放不得成为当下兴趣证据。值拷贝传播。
+	Temporal TemporalSpan
 	// G-15 审计足迹：请求上下文透传（仅用于 access_log 记账，不影响检索
 	// 语义）。Agent 路径由工具回调 ctx 透传 session/agent；UserID 缺省时由
 	// 检索层从请求 ctx 的认证身份回填。
@@ -236,13 +242,29 @@ type ChunkRepo interface {
 	SearchChunks(ctx context.Context, q SearchQuery, queryEmbedding []float32) ([]Chunk, error)
 }
 
-// IngestCommitter persists a chunk replace + indexed status + collection
+// ChunkDiffStats diff-commit tx 提交摘要（G-32 T4 接线，决策5⑬ 透出；供 T5
+// WS knowledge_chunks_diff 帧与摄取链路观测）。Kept=配对保留行数（含
+// compare-and-skip 未实写行）；FastPath=true 表示正文 hash 未变且 chunk
+// 多重集恒等——chunks/档案/版本行全零写，仅 guard/计数/syncMeta 原序执行；
+// 此时 VersionNo=当前 head 版本号（无账本行的历史形态为 0）。
+type ChunkDiffStats struct {
+	Added     int
+	Deleted   int
+	Kept      int
+	VersionNo int
+	FastPath  bool
+}
+
+// IngestCommitter persists a chunk diff-commit + indexed status + collection
 // counts in one transaction. Optional: Usecase falls back to sequential
 // writes when the document repo does not implement it (unit-test fakes).
 // syncMeta, when non-nil, is written in the same transaction (vault hash/card).
+// G-32 T4（决策5）：data 实现为十三步 diff-commit tx（配对保留→档案化孤儿→
+// 代际命名新增→kept compare-and-skip→缺 dim 条件补齐→双条件版本行），
+// 返回 ChunkDiffStats 供 T5 WS 帧透出。
 // Stability:evolving
 type IngestCommitter interface {
-	CommitIndexedDocument(ctx context.Context, collectionID, docID string, chunks []Chunk, docDelta int, syncMeta *DocumentSyncMeta) error
+	CommitIndexedDocument(ctx context.Context, collectionID, docID string, chunks []Chunk, docDelta int, syncMeta *DocumentSyncMeta) (ChunkDiffStats, error)
 }
 
 // DocumentRetryClaimer 原子认领重跑摄取管线的资格（G-21 二轮复核 F5/F6）。
@@ -320,6 +342,7 @@ type Usecase struct {
 	graphFields
 	writeBackFields
 	curateFields
+	temporalFields
 	// lg 为域日志器（SP1-H 起：回填等 best-effort 副作用的失败 Warn 出口）；
 	// 构造默认 Noop，生产经 SetLogger 接线。
 	lg loggateway.Logger
@@ -470,6 +493,10 @@ func (u *Usecase) CreateDocument(ctx context.Context, d Document) (Document, err
 	if d.Status == "" {
 		d.Status = "pending"
 	}
+	// Ownership comes from the authenticated caller, never from upload metadata.
+	if uid := viewerUserID(ctx); uid != "" {
+		d.OwnerUserID = uid
+	}
 	return u.documents.CreateDocument(ctx, d)
 }
 
@@ -529,6 +556,30 @@ func (u *Usecase) ListDocumentsPendingReembed(ctx context.Context, collectionID 
 // (relying on FK cascade for chunks) but never decremented the collection tally.
 // SP1-D：删除成功后同步内存图（出边清除、入边转 dangling）并发 WS 增量。
 func (u *Usecase) DeleteDocument(ctx context.Context, id string) error {
+	if err := u.requireRepo(); err != nil {
+		return err
+	}
+	if strings.TrimSpace(id) == "" {
+		return ErrIDRequired
+	}
+	rollback, err := u.prepareLocalDocumentDelete(ctx, id)
+	if err != nil {
+		return err
+	}
+	if err := u.DeleteDocumentMirror(ctx, id); err != nil {
+		if rollback != nil {
+			if restoreErr := rollback(); restoreErr != nil {
+				return apierror.Internal("KNOWLEDGE", "delete failed and file restore failed").WithCause(errors.Join(err, restoreErr))
+			}
+		}
+		return err
+	}
+	return nil
+}
+
+// DeleteDocumentMirror removes only derived records after the sync layer has
+// observed an external file deletion and retained the available mirror in trash.
+func (u *Usecase) DeleteDocumentMirror(ctx context.Context, id string) error {
 	if err := u.requireRepo(); err != nil {
 		return err
 	}
@@ -597,6 +648,9 @@ func (u *Usecase) UpdateDocumentStatus(ctx context.Context, id, status, errMsg s
 	if err != nil {
 		return err
 	}
+	if expected, ok := DocumentContentVersionFromContext(ctx, id); ok && HashContent(doc.ContentText) != expected {
+		return apierror.Conflict(apierror.DomainKnowledge, "document content changed while indexing")
+	}
 	from := NormalizeDocumentState(doc.Status)
 	to := DocumentState(strings.TrimSpace(status))
 	if to != DocumentStatePending && to != DocumentStateIndexing && to != DocumentStateIndexed && to != DocumentStateError {
@@ -618,7 +672,7 @@ func (u *Usecase) UpdateDocumentStatus(ctx context.Context, id, status, errMsg s
 // adjusts collection counts. Requires current status indexing. Production
 // repos that implement IngestCommitter do this in one transaction: delete
 // old chunks, insert new ones, CAS status=indexed, apply count deltas.
-func (u *Usecase) CommitIndexedDocument(ctx context.Context, collectionID, docID string, chunks []Chunk, docDelta int) error {
+func (u *Usecase) CommitIndexedDocument(ctx context.Context, collectionID, docID string, chunks []Chunk, docDelta int) (ChunkDiffStats, error) {
 	return u.commitIndexedDocument(ctx, collectionID, docID, chunks, docDelta, nil)
 }
 
@@ -642,40 +696,43 @@ func (u *Usecase) ClaimDocumentForRetry(ctx context.Context, id string, staleBef
 
 // CommitIndexedDocumentMeta is CommitIndexedDocument plus vault sync meta
 // (content hash / summary card) in the same commit.
-func (u *Usecase) CommitIndexedDocumentMeta(ctx context.Context, collectionID, docID string, chunks []Chunk, docDelta int, meta DocumentSyncMeta) error {
+func (u *Usecase) CommitIndexedDocumentMeta(ctx context.Context, collectionID, docID string, chunks []Chunk, docDelta int, meta DocumentSyncMeta) (ChunkDiffStats, error) {
 	return u.commitIndexedDocument(ctx, collectionID, docID, chunks, docDelta, &meta)
 }
 
-func (u *Usecase) commitIndexedDocument(ctx context.Context, collectionID, docID string, chunks []Chunk, docDelta int, syncMeta *DocumentSyncMeta) error {
+func (u *Usecase) commitIndexedDocument(ctx context.Context, collectionID, docID string, chunks []Chunk, docDelta int, syncMeta *DocumentSyncMeta) (ChunkDiffStats, error) {
 	if err := u.requireRepo(); err != nil {
-		return err
+		return ChunkDiffStats{}, err
 	}
 	if strings.TrimSpace(docID) == "" {
-		return ErrIDRequired
+		return ChunkDiffStats{}, ErrIDRequired
 	}
 	if strings.TrimSpace(collectionID) == "" {
-		return ErrCollectionIDRequired
+		return ChunkDiffStats{}, ErrCollectionIDRequired
 	}
 	doc, err := u.documents.GetDocument(ctx, docID)
 	if err != nil {
-		return err
+		return ChunkDiffStats{}, err
+	}
+	if expected, ok := DocumentContentVersionFromContext(ctx, docID); ok && HashContent(doc.ContentText) != expected {
+		return ChunkDiffStats{}, apierror.Conflict(apierror.DomainKnowledge, "document content changed while indexing")
 	}
 	from := NormalizeDocumentState(doc.Status)
 	if _, err := defaultDocumentStateMachine.Transition(from, DocumentEventComplete); err != nil {
-		return apierror.BadRequest(apierror.DomainKnowledge, "illegal document status %s → indexed", from)
+		return ChunkDiffStats{}, apierror.BadRequest(apierror.DomainKnowledge, "illegal document status %s → indexed", from)
 	}
 	if c, ok := u.documents.(IngestCommitter); ok {
 		return c.CommitIndexedDocument(ctx, collectionID, docID, chunks, docDelta, syncMeta)
 	}
 	if err := u.DeleteChunksByDocument(ctx, docID); err != nil {
-		return err
+		return ChunkDiffStats{}, err
 	}
 	if err := u.InsertChunks(ctx, chunks); err != nil {
-		return err
+		return ChunkDiffStats{}, err
 	}
 	if syncMeta != nil {
 		if err := u.documents.UpdateDocumentSyncMeta(ctx, docID, *syncMeta); err != nil {
-			return err
+			return ChunkDiffStats{}, err
 		}
 	}
 	// 计数口径 = 子块（G-06）：父块语境行不进 chunk_count，与 IngestCommitter
@@ -687,9 +744,13 @@ func (u *Usecase) commitIndexedDocument(ctx context.Context, collectionID, docID
 		}
 	}
 	if err := u.documents.UpdateDocumentStatus(ctx, docID, string(DocumentStateIndexed), "", childCount); err != nil {
-		return err
+		return ChunkDiffStats{}, err
 	}
-	return u.collections.UpdateCollectionCounts(ctx, collectionID, docDelta, childCount-doc.ChunkCount)
+	if err := u.collections.UpdateCollectionCounts(ctx, collectionID, docDelta, childCount-doc.ChunkCount); err != nil {
+		return ChunkDiffStats{}, err
+	}
+	// 顺序写退化路径（单元 fakes）：全量重插语义，整体计为 Added。
+	return ChunkDiffStats{Added: childCount}, nil
 }
 
 // UpdateDocumentContent 回写文档正文与整理标记（Phase 9 图片异步提取完成后调用）。

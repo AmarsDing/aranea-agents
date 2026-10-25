@@ -111,7 +111,9 @@ func (r *Retriever) Search(ctx context.Context, q biz.KnowledgeSearchQuery) ([]b
 // G-15：latency 为检索总时延（含量化与重排），随命中条目落库（审计足迹）。
 func (r *Retriever) logAccess(ctx context.Context, q biz.KnowledgeSearchQuery, chunks []biz.KnowledgeChunk, latency time.Duration) {
 	// G-19：命中调试旁路不写热度日志（防调试流量污染 base-level 信号）。
-	if r == nil || r.accessLog == nil || len(chunks) == 0 || q.SkipAccessLog {
+	// G-05-asof：时态查询零热度读写（ADR-KN-20261020-J——Router 缺席/退化路径
+	// 同样不得让回放查询污染当下 base-level/共激活信号）。
+	if r == nil || r.accessLog == nil || len(chunks) == 0 || q.SkipAccessLog || q.Temporal.Any() {
 		return
 	}
 	entries := accessEntriesFromChunks(q, newAccessContext(ctx, q, latency), chunks)
@@ -204,13 +206,17 @@ func (r *Retriever) search(ctx context.Context, q biz.KnowledgeSearchQuery) ([]b
 		topK = 5
 	}
 
+	lexical, err := collectionLacksSemanticLayer(ctx, r.repo, q.CollectionID)
+	if err != nil {
+		return nil, err
+	}
 	// F5：embedder 缺失或不可用（未配置）时降级 BM25 词法检索——V2 设计 embedding
 	if r.embedder == nil {
 		return r.searchSparseFallback(ctx, q, topK, "embedder is nil", nil)
 	}
 	// §V5 降级矩阵 #3：目标集合为无语义层词法库（embedding_model 空）时直接降级
 	// BM25——chunks 无向量，dense 检索恒空。判定前置避免浪费一次查询 embed。
-	if collectionLacksSemanticLayer(ctx, r.repo, q.CollectionID) {
+	if lexical {
 		return r.searchSparseFallback(ctx, q, topK, "collection has no semantic layer", nil)
 	}
 	embedStart := time.Now()
@@ -230,7 +236,7 @@ func (r *Retriever) search(ctx context.Context, q biz.KnowledgeSearchQuery) ([]b
 	}
 
 	denseStart := time.Now()
-	chunks, err := r.repo.SearchChunks(ctx, searchQ, vec)
+	chunks, err := r.searchDenseLeg(ctx, searchQ, vec)
 	observeSearchStage(searchStageDense, denseStart)
 	if err != nil {
 		return nil, err
@@ -261,7 +267,7 @@ func (r *Retriever) searchSparseFallback(ctx context.Context, q biz.KnowledgeSea
 
 	q.TopK = topK
 	sparseStart := time.Now()
-	chunks, err := ss.SearchChunksBM25(ctx, q)
+	chunks, err := r.searchSparseLeg(ctx, ss, q)
 	observeSearchStage(searchStageSparse, sparseStart)
 	if err != nil {
 		return nil, apierror.Internal(apierror.DomainKnowledge, "retriever sparse fallback failed").WithCause(err)

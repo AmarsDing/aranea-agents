@@ -104,7 +104,7 @@ func TestUsecase_UpdateDocumentStatus_RejectsPendingToIndexed(t *testing.T) {
 func TestUsecase_CommitIndexedDocument_RequiresIndexing(t *testing.T) {
 	mr := noOpMockRepo()
 	u := NewUsecaseFromRepo(mr)
-	err := u.CommitIndexedDocument(context.Background(), "col-1", "doc-1", []Chunk{{ID: "c1", CollectionID: "col-1"}}, 1)
+	_, err := u.CommitIndexedDocument(context.Background(), "col-1", "doc-1", []Chunk{{ID: "c1", CollectionID: "col-1"}}, 1)
 	if err == nil {
 		t.Fatal("commit from pending should fail")
 	}
@@ -133,7 +133,7 @@ func TestUsecase_CommitIndexedDocument_SequentialFallback(t *testing.T) {
 		return nil
 	}
 	u := NewUsecaseFromRepo(mr)
-	if err := u.CommitIndexedDocument(context.Background(), "col-1", "doc-1", []Chunk{{ID: "c1", CollectionID: "col-1"}}, 1); err != nil {
+	if _, err := u.CommitIndexedDocument(context.Background(), "col-1", "doc-1", []Chunk{{ID: "c1", CollectionID: "col-1"}}, 1); err != nil {
 		t.Fatalf("commit: %v", err)
 	}
 	if !deleted || !inserted || !status || !counts {
@@ -158,7 +158,7 @@ func TestUsecase_CommitIndexedDocument_SequentialFallback_ReplacesChunks(t *test
 		return nil
 	}
 	u := NewUsecaseFromRepo(mr)
-	if err := u.CommitIndexedDocumentMeta(context.Background(), "col-1", "doc-1", []Chunk{{ID: "c1"}}, 0, DocumentSyncMeta{ContentHash: "h1"}); err != nil {
+	if _, err := u.CommitIndexedDocumentMeta(context.Background(), "col-1", "doc-1", []Chunk{{ID: "c1"}}, 0, DocumentSyncMeta{ContentHash: "h1"}); err != nil {
 		t.Fatalf("commit: %v", err)
 	}
 	if !metaWritten {

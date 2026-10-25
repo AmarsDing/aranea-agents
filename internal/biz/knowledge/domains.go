@@ -16,19 +16,21 @@ type vaultFields struct {
 }
 
 type graphFields struct {
-	links         LinkRepo
-	entities      EntityRepo
-	blockIndex    BlockIndexRepo
-	resolveIndex  ResolveIndex
-	linkIndex     *LinkIndex
-	graphPub      GraphDeltaPublisher
-	blockLinks    BlockLinkReader
-	docNames      DocNameReader
-	graphLinks    CollectionLinkReader
-	mentionSearch DocContentSearcher
-	linkUsage     LinkUsageRepo
-	promoteReader PromoteBlockReader
-	promoteWriter PromoteLineageWriter
+	links        LinkRepo
+	entities     EntityRepo
+	blockIndex   BlockIndexRepo
+	resolveIndex ResolveIndex
+	linkIndex    *LinkIndex
+	graphPub     GraphDeltaPublisher
+	blockLinks   BlockLinkReader
+	docNames     DocNameReader
+	graphLinks   CollectionLinkReader
+	// temporalGraphLinks 时态图腿窄口（G-05-asof）；未接线时 as-of 图回退当前快照。
+	temporalGraphLinks TemporalCollectionLinkReader
+	mentionSearch      DocContentSearcher
+	linkUsage          LinkUsageRepo
+	promoteReader      PromoteBlockReader
+	promoteWriter      PromoteLineageWriter
 }
 
 type writeBackFields struct {
@@ -46,6 +48,23 @@ type curateFields struct {
 	curate       KnowledgeCurateRepo
 	hotDocs      HotDocumentLister
 	distill      DistillFactWriter
+	// mocs MOC 摘要生成端口（G-34 ADR-C；nil = runMOCSummaryTask 跳过）。
+	mocs MOCSummarizer
+	// 实体消解三端口（G-37 ADR-D/E/F；nil = runEntityMergeTask 跳过/降级）。
+	emEmbedder    EntityEmbedder
+	emANN         GraphCardVectorSearcher
+	emAdjudicator EntityMergeAdjudicator
+}
+
+// temporalFields 全量时态读腿（G-32 T4，ADR-KN-20261022-I 决策 12；端口声明在
+// chunk_temporal_port.go）。nil = 时态读显式报不可用（ErrUnavailable）——
+// 不蜕化为 current 快报，谎报时态等价不如结构性拒绝。
+type temporalFields struct {
+	temporalReader ChunkTemporalReader
+	// asOfClock 时针注入（端口声明「T4 接线时由 Usecase 装配持有」）：Usecase
+	// 先把 span.ValidAt 零值解析为具体时点再调用 reader；生产=time.Now，测试
+	// 可冻结。nil → time.Now。
+	asOfClock ChunkAsOfClock
 }
 
 // Vault is the collection / document / filesystem surface.
@@ -145,9 +164,9 @@ func (v *Vault) UpdateDocumentStatus(ctx context.Context, id, status, errMsg str
 	return v.u.UpdateDocumentStatus(ctx, id, status, errMsg, chunkCount)
 }
 
-func (v *Vault) CommitIndexedDocument(ctx context.Context, collectionID, docID string, chunks []Chunk, docDelta int) error {
+func (v *Vault) CommitIndexedDocument(ctx context.Context, collectionID, docID string, chunks []Chunk, docDelta int) (ChunkDiffStats, error) {
 	if v == nil || v.u == nil {
-		return ErrUnavailable
+		return ChunkDiffStats{}, ErrUnavailable
 	}
 	return v.u.CommitIndexedDocument(ctx, collectionID, docID, chunks, docDelta)
 }
