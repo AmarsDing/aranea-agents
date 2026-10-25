@@ -15,8 +15,9 @@ type DurablePrecheckVerdict string
 const (
 	// DurablePrecheckBelowSoft 未越软带（used < soft）：无须压缩动作。
 	DurablePrecheckBelowSoft DurablePrecheckVerdict = "below_soft"
-	// DurablePrecheckSoftBand 软带（soft ≤ used < hard）：软/硬带判级与
-	// runCompress 的触线口径逐点对齐（adaptive buffer 只读内存态）。
+	// DurablePrecheckSoftBand 软带（soft ≤ used < hard）：判级为静态阈值近
+	// 似（无写副作用，不触 adaptive buffer 内存态）；权威判级恒为
+	// runCompress（含 adaptive 臂）每轮触线口径。
 	DurablePrecheckSoftBand DurablePrecheckVerdict = "soft_band"
 	// DurablePrecheckHardBand 硬带（used ≥ hard）。
 	DurablePrecheckHardBand DurablePrecheckVerdict = "hard_band"
@@ -42,8 +43,10 @@ func (r DurablePrecheckReport) AtOrAboveSoft() bool {
 // 实现；admitTurn 与 wire 断言此接口（TurnDeps.Compress 的静态口
 // NativeTurnCompressor 保持不动，本口按可用性断言）。
 type DurableTurnPrecheck interface {
-	// PrecheckVerdict 纯函数式判级：复用 compressTriggerThresholds，不上
-	// 库、无写副作用（adaptive buffer 仅读内存态）。
+	// PrecheckVerdict 纯函数式判级：静态阈值近似（soft/hard + 封顶，故
+	// 意绕开 adaptive buffer 写路径——adaptive 态只允许 runCompress 飞
+	// 行串行区推进），不上库、无写副作用。adaptive 开启时判级以策略
+	// bufferRatio 近似 adaptive CurrentRatio，权威判级恒为 runCompress。
 	PrecheckVerdict(sess Session, agent Agent) DurablePrecheckReport
 	// AfterNativeTurn 正常触发语义（flight-guarded、非 forced、不绕
 	// suppress），与框架原生轮后异步压缩触发完全一致。

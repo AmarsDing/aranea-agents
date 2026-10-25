@@ -84,6 +84,53 @@ func TestPrecheckVerdict_NilReceiverFallsThrough(t *testing.T) {
 	}
 }
 
+// TestPrecheckVerdict_AdaptiveStateUntouched 钉 D4-f 修复（对抗评审
+// wf_0699f3d1 #1/#2/#5/#7/#8 确认根因——adaptive 臂 getAdaptiveBufferRatio
+// 是写函数且对 AdaptiveBufferState 无锁读写，只允许 runCompress 飞行串行
+// 区访问）：PrecheckVerdict 走静态阈值臂，adaptive 开启（缺省）时既不播种
+// 也不推进 AdaptiveBufferState，谓词级纯函数。
+func TestPrecheckVerdict_AdaptiveStateUntouched(t *testing.T) {
+	c := NewCompressor(CompressorConfig{})
+	defer c.Close()
+	ag := biz.Agent{} // Settings==nil → DefaultCompressPolicy AdaptiveBufferEnabled=true（生产缺省）
+
+	// A. 未播种态：多次判级（零增量读数，adaptive 旧实现必落低增量臂）不得
+	// 建任何内存态入口。
+	sess := biz.Session{ID: "s1", ContextUsedTokens: 50000}
+	for i := 0; i < 6; i++ {
+		_ = c.PrecheckVerdict(sess, ag)
+	}
+	if _, ok := c.buf.buffer.Load("s1"); ok {
+		t.Fatal("precheck must not seed adaptive buffer state (adaptive write path belongs to runCompress alone)")
+	}
+
+	// B. 已播种态（由权威路径播种+推进一次）：连续判级不得推进序参。
+	window := llmcontext.ResolveWindow(llmcontext.ResolveInput{})
+	_ = c.buf.getAdaptiveBufferRatio("s1", ag, 50000, window, 0, 0) // 播种
+	_ = c.buf.getAdaptiveBufferRatio("s1", ag, 53000, window, 0, 0) // 推进一次
+	v, ok := c.buf.buffer.Load("s1")
+	if !ok {
+		t.Fatal("seeded adaptive state must exist")
+	}
+	sb := v.(*AdaptiveBufferState)
+	ratioB, lowB, usedB := sb.CurrentRatio, sb.ConsecutiveLowCount, sb.LastUsedTokens
+	for i := 0; i < 6; i++ {
+		_ = c.PrecheckVerdict(sess, ag) // used=50000 < 已播 53000：旧实现必落低增量臂推进
+	}
+	sa := v.(*AdaptiveBufferState)
+	if sa.CurrentRatio != ratioB || sa.ConsecutiveLowCount != lowB || sa.LastUsedTokens != usedB {
+		t.Fatalf("precheck must not advance adaptive state: before (%v,%d,%d) after (%v,%d,%d)",
+			ratioB, lowB, usedB, sa.CurrentRatio, sa.ConsecutiveLowCount, sa.LastUsedTokens)
+	}
+	// 静态臂仍给三带判级（adaptive 开时阈值以策略 bufferRatio 近似）——
+	// 数值与静态公式逐点相等，不依赖 adaptive 态。
+	hard := hardTriggerTokens(ag, window)
+	sessHard := biz.Session{ID: "s1", ContextUsedTokens: hard + 100}
+	if rep := c.PrecheckVerdict(sessHard, ag); rep.Verdict != biz.DurablePrecheckHardBand {
+		t.Fatalf("adaptive-on static approximation: used=%d verdict=%q, want hard_band", hard+100, rep.Verdict)
+	}
+}
+
 // fakeDecisionCollector 是 decision.Collector 的内存实现（Emit 单方法口）。
 type fakeDecisionCollector struct {
 	recs []decision.Record

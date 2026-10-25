@@ -17,9 +17,13 @@ import (
 //     assembly_budget.go），authoritative 判级恒为本函数。
 
 // PrecheckVerdict 对本会话上一轮权威读数（sess.ContextUsedTokens）做零查
-// 询判级：完全复用 compressTriggerThresholds（含 adaptive buffer 内存
-// 态、MaxTriggerTokens 封顶），与 runCompress 的触线口径逐点对齐；不上
-// 库、无写副作用。
+// 询判级：静态阈值臂（softTriggerTokens/hardTriggerTokens + MaxTriggerTokens
+// 封顶），不上库、无写副作用——刻意不取 adaptive buffer 内存态：
+// getAdaptiveBufferRatio 是写函数（播种/推进 ConsecutiveLowCount 且对
+// AdaptiveBufferState 做无锁读写），只允许 runCompress 的飞行串行区访问
+// （D4-f 评审 ws_0699f3d1 #1/#2/#7/#8）。adaptive 开启的 agent 下本判级为
+// 静态近似（以策略 bufferRatio 代 adaptive CurrentRatio，方向保守可查），
+// 权威判级恒为 runCompress 每轮的 compressTriggerThresholds。
 func (c *Compressor) PrecheckVerdict(sess biz.Session, ag biz.Agent) biz.DurablePrecheckReport {
 	window := llmcontext.ResolveWindow(llmcontext.ResolveInput{})
 	rep := biz.DurablePrecheckReport{
@@ -30,7 +34,8 @@ func (c *Compressor) PrecheckVerdict(sess biz.Session, ag biz.Agent) biz.Durable
 	if c == nil {
 		return rep
 	}
-	softTok, hardTok := c.compressTriggerThresholds(sess.ID, sess, ag, rep.UsedTokens, window)
+	p := CompressPolicyFromAgent(ag)
+	softTok, hardTok := capTriggerTokens(p, softTriggerTokens(ag, window), hardTriggerTokens(ag, window))
 	rep.SoftTokens, rep.HardTokens = softTok, hardTok
 	switch {
 	case hardTok > 0 && rep.UsedTokens >= hardTok:

@@ -1389,7 +1389,7 @@ func provideGraphBuildDeps(
 	})
 	if _, ok := conf.DurablePrecheckMode(); !ok {
 		lg.Warn("ARANEA_DURABLE_PRECHECK 档位非法，回落 observe",
-			loggateway.StepID("agent.est_mode"),
+			loggateway.StepID("agent.precheck_mode"),
 			loggateway.Str("flag", "ARANEA_DURABLE_PRECHECK"),
 			loggateway.Str("effective", "observe"))
 	}

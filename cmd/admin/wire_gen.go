@@ -2043,7 +2043,7 @@ func provideGraphBuildDeps(
 	})
 	if _, ok := conf.DurablePrecheckMode(); !ok {
 		lg.Warn("ARANEA_DURABLE_PRECHECK 档位非法，回落 observe",
-			loggateway.StepID("agent.est_mode"),
+			loggateway.StepID("agent.precheck_mode"),
 			loggateway.Str("flag", "ARANEA_DURABLE_PRECHECK"),
 			loggateway.Str("effective", "observe"))
 	}
@@ -2338,14 +2338,15 @@ func provideSkillRegistrationPort(skillUC *biz.SkillUsecase) biz.SkillRegistrati
 // invalidation hook (A3 fix: skill mutations must invalidate the 10-min dedup
 // result cache, otherwise merged/deleted skills keep showing in dedup groups).
 // tagRepo 装配标签字典端口（治理重写后全量失效路由 embed 缓存）。
+// P0-7 批 B（2026-10-22）：skill 信任门禁 shadow 上报钩子（与 SetDedupCacheInvalidator
+// 同型先例）+ D4-c（就绪不翻）：on 档真拒闭包 SetTrustGateEnforcer（非 on 返
+// nil——off/shadow 缺省零行为变化；消费坐席=skillruntime mention + db_repository
+// Get，候选集/L1 概览不剔）。conf.runtime.skill_trust_gate_mode 三档 off|shadow|on，
+// conf 层归一默认 shadow；真翻转前置=shadow 期零误拒证据（registry §8.5 反作用#1）。
 func provideSkillUsecase(repo biz.SkillRepo, embedder *knowledge.MultiProviderEmbedder, dedup *biz.SkillDedupUsecase, tagRepo biz.SkillTagRepo, runtimeConf *conf.Runtime, lg loggateway.Logger) *biz.SkillUsecase {
 	u := biz.NewSkillUsecase(repo, embedder, lg)
 	u.SetDedupCacheInvalidator(dedup)
 	u.SetTagRepo(tagRepo)
-	// P0-7 批 B（2026-10-22）：skill 信任门禁 Set 回注钩子（与 SetDedupCacheInvalidator
-	// 同型先例）。conf.runtime.skill_trust_gate_mode 三档 off|shadow|on，conf 层归一
-	// 默认 shadow、本批 wire 层把 on 归一为 shadow（零误拒证据未齐——批 B 守住"不真拒"
-	// 底线，上线 on 需批间证据；biz.NormalizeTrustGateMode 内部另有同名降级，双保险）。
 	u.SetTrustGateHook(biz.NewTrustGateHook(lg, skillTrustGateMode(runtimeConf), biz.RequiredTrustForLayer(biz.SkillLoadLayerL2Instruction)))
 	u.SetTrustGateEnforcer(biz.NewTrustGateEnforcer(lg, skillTrustGateMode(runtimeConf), biz.SkillLoadLayerL2Instruction, biz.RequiredTrustForLayer(biz.SkillLoadLayerL2Instruction)))
 	return u

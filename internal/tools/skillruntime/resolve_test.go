@@ -519,6 +519,44 @@ func TestResolveSkillSlugsDetailed_UserMention(t *testing.T) {
 	}
 }
 
+// TestResolveSkillSlugsDetailed_MentionTrustGateBlocked 钉 D4-c mention 坐席
+// 的 resolve 级接线（D4-f 评审 wf_0699f3d1 #9：mock trustBlocked 字段零用例
+// 消费，resolve.go 第 6 参回退 nil 可编译全绿——本例钉死接线真实生效）。
+// 设计定点：被门禁死拒的提及不走「user mention 前置+提额保护」通道（按设
+// 计候选集不剔，照常参与评分可见）；被放行提及照常前置并记 user mention。
+// 取字典序靠前的 slug 作被拒方——若接线回退 nil，被拒方会抢占首位。
+func TestResolveSkillSlugsDetailed_MentionTrustGateBlocked(t *testing.T) {
+	resolver := &mockSkillResolver{
+		candidates: []biz.SkillRuntimeCandidate{
+			makeCandidate("aaa-zip", "Zip", "untrusted zip import", nil, nil),
+			makeCandidate("zzz-builtin", "Builtin", "trusted builtin", nil, nil),
+		},
+		trustBlocked: map[string]bool{"aaa-zip": true},
+	}
+	opts := &SkillToolsetOptions{
+		Runtime:   &mockRuntime{json: `{"intent_routing_enabled":false}`},
+		UserQuery: "please run $aaa-zip and $zzz-builtin",
+	}
+	result, err := ResolveSkillSlugsDetailed(context.Background(), resolver, opts, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(result.Slugs) != 2 || result.Slugs[0] != "zzz-builtin" {
+		t.Fatalf("allowed mention must be boosted first: slugs=%v", result.Slugs)
+	}
+	if result.Reasons["zzz-builtin"] != "user mention" {
+		t.Fatalf("reason for zzz-builtin = %q, want user mention", result.Reasons["zzz-builtin"])
+	}
+	// 死拒≠从候选集剔除（候选集/L1 概览不剔，死拒只杀提及式加载）：仍在结
+	// 果内但不得收 user mention 归因（评分通道归因保持 enabled and published）。
+	if result.Reasons["aaa-zip"] == "user mention" {
+		t.Fatalf("trust-gated mention must not get user-mention boost, reasons=%v", result.Reasons)
+	}
+	if result.Reasons["aaa-zip"] == "" {
+		t.Fatal("scored-in blocked slug keeps its scoring reason")
+	}
+}
+
 func TestResolveSkillSlugsDetailed_EmbeddingScoring(t *testing.T) {
 	resolver := &mockSkillResolver{
 		candidates: []biz.SkillRuntimeCandidate{

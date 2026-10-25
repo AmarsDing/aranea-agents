@@ -40,7 +40,9 @@ func PromptEstMode() (mode string, valid bool) {
 //   - off：双落点全静默。
 //   - observe（缺省/空值回落）：双落点只观测不动 compressor——① admitTurn
 //     用上轮 sess.ContextUsedTokens 权威值落 session.compress.precheck
-//     步骤（used/soft/hard/verdict，零额外查询）；② p8 装配对照落步
+//     步骤（used/soft/hard/verdict，零额外查询；判级为静态阈值近似，刻
+//     意绕开 adaptive buffer 写路径——adaptive 态只允许 runCompress 飞
+//     行串行区推进，权威判级恒为 runCompress）；② p8 装配对照落步
 //     assembly.compress.precheck（join 键 runID）。
 //   - on：正常触发语义——verdict 越过 soft 时调
 //     Compressor.AfterNativeTurn（flight-guarded、非 forced、不绕
