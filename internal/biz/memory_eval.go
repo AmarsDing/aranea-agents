@@ -3,13 +3,29 @@ package biz
 import "context"
 
 // EvalMessage is one inbound chat message accepted through the Agent Memory
-// Challenge Add contract. Content carries the plain-text body.
+// Challenge Add contract. Content carries the plain-text body; when the
+// platform sends multimodal content parts, the text parts are folded into
+// Content in order and acknowledged non-text parts ride along in Parts.
 // Stability:internal
 type EvalMessage struct {
 	Role      string
 	Content   string
 	MessageID string
 	Timestamp string
+	Parts     []EvalContentPart
+}
+
+// EvalContentPart records one acknowledged non-text fragment of a multimodal
+// Add message. Ref points at the filesystem evidence copy (EVAL_MEDIA_DIR);
+// it is an internal audit reference and never part of the platform wire
+// contract. The slice stays nil for text-only traffic, so the textual-run
+// behavior is byte-identical.
+type EvalContentPart struct {
+	Type  string
+	Index int
+	Mime  string
+	Bytes int
+	Ref   string
 }
 
 // EvalMemoryItem is one memory-evidence row returned through the Agent Memory
@@ -37,5 +53,5 @@ type EvalMemoryStore interface {
 	AddMessages(ctx context.Context, userID, sessionID string, msgs []EvalMessage) (int, error)
 	// SearchMemories recalls memory evidence for (userID, query), ranked by
 	// the hybrid score, capped at topK rows.
-	SearchMemories(ctx context.Context, userID, query string, topK int32) ([]EvalMemoryItem, error)
+	SearchMemories(ctx context.Context, userID, query string, topK int32, options ...string) ([]EvalMemoryItem, error)
 }

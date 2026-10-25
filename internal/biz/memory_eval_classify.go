@@ -7,6 +7,32 @@ import "strings"
 // the statement is a preference, identity, or constraint; everything else
 // stays event so it does not participate in evergreen scoring.
 func ClassifyEvalFactKind(statement string) string {
+	role, body := evalSpeaker(statement)
+	if role == "system" || role == "developer" {
+		return "agent_instruction"
+	}
+	// Commit-shaped evidence keeps its own durable kinds. The structural
+	// prefix beats text cues below it (planned/historical/slot heuristics)
+	// and is non-governable, so supersession semantics match "event".
+	if k := EvalCaseFactKind(body); k != "" {
+		return k
+	}
+	if IsEvalPlannedStatement(body) || IsEvalHistoricalStatement(body) {
+		return "event"
+	}
+	if EvalInstructionSlot(statement) != "" {
+		return "constraint"
+	}
+	if EvalHealthSlot(statement) != "" {
+		return "user_identity"
+	}
+	if LooksLikeConstraintStatement(body) {
+		return "constraint"
+	}
+	switch EvalFactSlot(statement) {
+	case "live", "job", "phone", "employee_id", "email", "timezone", "language":
+		return "user_identity"
+	}
 	k := CanonicalizeFactKind("general", stripRolePrefix(statement))
 	if k == "general" {
 		return "event"
@@ -14,9 +40,46 @@ func ClassifyEvalFactKind(statement string) string {
 	return k
 }
 
-// EvalFactSlot is the eval-adapter alias for PreferenceSlotKey.
+// EvalFactSlot keeps identity attributes separate and supports multiword favorites.
 func EvalFactSlot(statement string) string {
-	return PreferenceSlotKey(stripRolePrefix(statement))
+	_, s := evalSpeaker(statement)
+	if IsEvalStructuredEvidence(s) {
+		return ""
+	}
+	low := strings.ToLower(s)
+	if slot := EvalInstructionSlot(statement); slot != "" {
+		return slot
+	}
+	if slot := EvalHealthSlot(statement); slot != "" {
+		return slot
+	}
+	if m := evalFavoriteAttribute.FindStringSubmatch(s); len(m) > 1 {
+		return "favorite:" + strings.Join(strings.Fields(strings.ToLower(m[1])), " ")
+	}
+	for _, slot := range []struct {
+		key  string
+		cues []string
+	}{
+		{"employee_id", []string{"工号", "employee id", "employee number"}},
+		{"phone", []string{"手机号", "电话号码", "phone number", "mobile number"}},
+		{"email", []string{"邮箱是", "邮箱改", "email is", "e-mail is"}},
+		{"timezone", []string{"时区是", "时区改", "timezone is", "time zone is"}},
+		{"language", []string{"首选语言是", "首选语言改", "preferred language is"}},
+		{"job", []string{"换工作", "入职", "新工作", "work at", "works at", "work for", "works for", "new job", "joined "}},
+	} {
+		for _, cue := range slot.cues {
+			if strings.Contains(low, cue) {
+				return slot.key
+			}
+		}
+	}
+	if strings.Contains(s, "负责") {
+		return ""
+	}
+	if evalCNLikeObject.MatchString(s) && !chineseFavoriteRe.MatchString(s) {
+		return "like"
+	}
+	return PreferenceSlotKey(s)
 }
 
 // HasEvalUpdateCue is the eval-adapter alias for HasPreferenceUpdateCue.
@@ -24,10 +87,24 @@ func HasEvalUpdateCue(statement string) bool {
 	return HasPreferenceUpdateCue(statement)
 }
 
-// ShouldSupersedeEvalFact is the eval-adapter alias for
-// ShouldSupersedeSameSlotFact.
+// ShouldSupersedeEvalFact requires matching speaker, subject and attribute.
 func ShouldSupersedeEvalFact(oldKind, oldStmt, newKind, newStmt string) bool {
-	return ShouldSupersedeSameSlotFact(oldKind, stripRolePrefix(oldStmt), newKind, stripRolePrefix(newStmt))
+	if !governableMemoryKind(oldKind) || !governableMemoryKind(newKind) ||
+		NormalizeForDedup(oldStmt) == NormalizeForDedup(newStmt) || !evalSameSubject(oldStmt, newStmt) {
+		return false
+	}
+	_, body := evalSpeaker(newStmt)
+	if IsHypotheticalStatement(body) || IsEvalPlannedStatement(body) || IsEvalHistoricalStatement(newStmt) {
+		return false
+	}
+	oldSlot, newSlot := EvalFactSlot(oldStmt), EvalFactSlot(newStmt)
+	if oldSlot == "" || oldSlot != newSlot {
+		return false
+	}
+	if oldSlot == "like" {
+		return evalExplicitPreferenceCorrection(oldStmt, newStmt)
+	}
+	return true
 }
 
 func stripRolePrefix(statement string) string {
@@ -77,7 +154,7 @@ func evalEndsWithAbbrev(prev []rune) bool {
 // statements (AMC C3-A Q4). Delimiters are CJK 。！？；, ASCII !?;, newline,
 // and an English ". " followed by an uppercase letter (skipped after known
 // abbreviation stems, 修复 #5). Trailing delimiters stay attached to their
-// atom. Fragments shorter than 4 runes (after trimming) are dropped; when the
+// atom. Nonempty short fragments are retained as possible labels/examples; when the
 // split would exceed maxAtoms the overflow is merged back into the last atom.
 // A message without any delimiter is returned verbatim as exactly one atom
 // (zero behavior change).
@@ -86,6 +163,9 @@ func SplitEvalStatements(content string, maxAtoms int) []string {
 		maxAtoms = EvalMaxStatementAtoms
 	}
 	if strings.TrimSpace(content) == "" {
+		return []string{content}
+	}
+	if IsEvalStructuredEvidence(content) {
 		return []string{content}
 	}
 	runes := []rune(content)
@@ -102,7 +182,6 @@ func SplitEvalStatements(content string, maxAtoms int) []string {
 			if len(rest) >= 2 && rest[0] == ' ' && rest[1] >= 'A' && rest[1] <= 'Z' {
 				if !evalEndsWithAbbrev(runes[:i]) {
 					isBreak = true
-					end++ // swallow the separating space into this segment
 				}
 			}
 		}
@@ -121,7 +200,7 @@ func SplitEvalStatements(content string, maxAtoms int) []string {
 	atoms := make([]string, 0, len(segs))
 	for _, seg := range segs {
 		seg = strings.TrimSpace(seg)
-		if len([]rune(seg)) < 4 {
+		if seg == "" {
 			continue
 		}
 		atoms = append(atoms, seg)
@@ -130,7 +209,7 @@ func SplitEvalStatements(content string, maxAtoms int) []string {
 		return []string{strings.TrimSpace(content)}
 	}
 	if len(atoms) > maxAtoms {
-		tail := strings.Join(atoms[maxAtoms-1:], "")
+		tail := strings.Join(atoms[maxAtoms-1:], "\n")
 		atoms = append(atoms[:maxAtoms-1:maxAtoms-1], tail)
 	}
 	return atoms
