@@ -50,11 +50,16 @@ type EventBus interface {
 // persistWorker 子管理器（sequencer_persist.go + deadletter_replay.go），
 // 日志限流聚合为 sequencerThrottles；本 struct 仅保留发布路径与生命周期字段。
 type Sequencer struct {
-	repoSet     RepoSet
-	outbox      biz.EventDeliveryOutboxRepo // B-06: durable critical-event outbox (optional)
-	bus         EventBus
-	lg          loggateway.Logger
-	seqAssigner SeqAssigner // shared with Projector (v2-local defaultSeqAssigner; breaks agent→v2 cycle)
+	repoSet RepoSet
+	outbox  biz.EventDeliveryOutboxRepo // B-06: durable critical-event outbox (optional)
+	// outboxSeqAlloc (D7-1, ARANEA_SEQ_ALLOCATOR=pg)：非 nil 时关键事件
+	// outbox 行改走事务内取号（session_seq_counters UPSERT RETURNING +
+	// INSERT 同事务），并发副本在计数器行锁上串行；nil = 进程内 Go
+	// 计数器（off 档字节级旧行为）。
+	outboxSeqAlloc biz.EventOutboxSeqAllocatingInserter
+	bus            EventBus
+	lg             loggateway.Logger
+	seqAssigner    SeqAssigner // shared with Projector (v2-local defaultSeqAssigner; breaks agent→v2 cycle)
 
 	publishQueue       chan publishTask
 	publishWG          sync.WaitGroup
@@ -100,6 +105,7 @@ type config struct {
 	persistEnqueueTimeout time.Duration
 	deadLetterCapacity    int
 	outbox                biz.EventDeliveryOutboxRepo
+	outboxSeqAlloc        biz.EventOutboxSeqAllocatingInserter
 	deadLetterStore       biz.EventDeadLetterRepo
 	// terminalFence is the optional FR-10 replay fence for
 	// complete_task_terminal dead-letters (nil = legacy blind-apply).
@@ -138,6 +144,15 @@ func WithEventOutbox(repo biz.EventDeliveryOutboxRepo) Option {
 	return func(c *config) { c.outbox = repo }
 }
 
+// WithEventOutboxSeqAllocator switches critical-outbox delivery-seq
+// allocation to the in-transaction PG allocator (D7-1,
+// ARANEA_SEQ_ALLOCATOR=pg). Wire passes it only when the flag resolves to pg
+// AND the outbox repo asserts biz.EventOutboxSeqAllocatingInserter — off mode
+// never sets this (byte-level legacy behaviour).
+func WithEventOutboxSeqAllocator(alloc biz.EventOutboxSeqAllocatingInserter) Option {
+	return func(c *config) { c.outboxSeqAlloc = alloc }
+}
+
 // NewSequencer constructs a Sequencer and starts its publish + persist workers.
 func NewSequencer(rs RepoSet, bus EventBus, lg loggateway.Logger, opts ...Option) *Sequencer {
 	cfg := config{
@@ -158,6 +173,7 @@ func NewSequencer(rs RepoSet, bus EventBus, lg loggateway.Logger, opts ...Option
 	s := &Sequencer{
 		repoSet:               rs,
 		outbox:                cfg.outbox,
+		outboxSeqAlloc:        cfg.outboxSeqAlloc,
 		bus:                   bus,
 		lg:                    slg,
 		seqAssigner:           NewDefaultSeqAssigner(),
@@ -663,6 +679,11 @@ func (s *Sequencer) insertCriticalOutbox(ctx context.Context, e biz.Event) strin
 		return ""
 	}
 	seq := de.DeliverySeqValue()
+	if seq <= 0 && s.outboxSeqAlloc != nil {
+		// D7-1 pg 档：取号与插行同事务（计数器行锁串行化并发副本，
+		// 取号序==提交序==可见序），Go 计数器完全不参与关键事件序。
+		return s.insertCriticalOutboxAllocating(ctx, e, de, sessionID)
+	}
 	if seq <= 0 {
 		if s.seqAssigner == nil {
 			return ""
@@ -673,21 +694,7 @@ func (s *Sequencer) insertCriticalOutbox(ctx context.Context, e biz.Event) strin
 	// buildRow 按当前 seq 产出 outbox 行（payload 内嵌 eventID，换 seq 必须
 	// 重新 marshal——否则 durable 行与 live 帧的 event_id 分叉，回放去重失真）。
 	buildRow := func() (biz.EventDeliveryOutboxRow, error) {
-		eventID := biz.DeliveryEventID(e, seq)
-		payload, err := marshalV2EventEnvelope(e, eventID)
-		if err != nil {
-			return biz.EventDeliveryOutboxRow{}, err
-		}
-		return biz.EventDeliveryOutboxRow{
-			ID:        uuid.NewString(),
-			SessionID: sessionID,
-			Seq:       seq,
-			EventID:   eventID,
-			Kind:      string(e.EventKind()),
-			EntityID:  e.EntityID(),
-			Payload:   payload,
-			CreatedAt: time.Now().UTC(),
-		}, nil
+		return buildCriticalOutboxRow(e, sessionID, seq)
 	}
 	row, err := buildRow()
 	if err != nil {
@@ -736,6 +743,69 @@ func (s *Sequencer) insertCriticalOutbox(ctx context.Context, e biz.Event) strin
 		return ""
 	}
 	return row.ID
+}
+
+// buildCriticalOutboxRow marshals one outbox row for the given delivery seq —
+// the payload embeds eventID which embeds seq, so a seq change requires a
+// re-marshal (durable row and live frame must carry the same event_id, or
+// replay dedup drifts). Shared by the legacy Go-counter path and the D7-1
+// in-transaction allocator path.
+func buildCriticalOutboxRow(e biz.Event, sessionID string, seq int64) (biz.EventDeliveryOutboxRow, error) {
+	eventID := biz.DeliveryEventID(e, seq)
+	payload, err := marshalV2EventEnvelope(e, eventID)
+	if err != nil {
+		return biz.EventDeliveryOutboxRow{}, err
+	}
+	return biz.EventDeliveryOutboxRow{
+		ID:        uuid.NewString(),
+		SessionID: sessionID,
+		Seq:       seq,
+		EventID:   eventID,
+		Kind:      string(e.EventKind()),
+		EntityID:  e.EntityID(),
+		Payload:   payload,
+		CreatedAt: time.Now().UTC(),
+	}, nil
+}
+
+// insertCriticalOutboxAllocating is the D7-1 pg-mode path
+// (ARANEA_SEQ_ALLOCATOR=pg): allocation and insert run in ONE transaction via
+// biz.EventOutboxSeqAllocatingInserter. Concurrent replicas serialize on the
+// session_seq_counters row lock, so seq visibility order == seq order — the
+// last_event_id strict cursor can never observe N+1 without N (the dual
+// process-local counter inversion this mode eliminates).
+//
+// The build callback stamps the event inside the tx (the payload embeds the
+// allocated seq); on ANY failure the stamp is stripped (E2E-C1 同律) so the
+// live fan-out carries no phantom cursor. FR-9 Go-counter retry does not
+// apply here — conflicts inside the tx are absorbed by the allocator's
+// repair-bump retry; residual failure stays best-effort (live fan-out +
+// sweeper/REST hydrate floor), same as the legacy path.
+func (s *Sequencer) insertCriticalOutboxAllocating(ctx context.Context, e biz.Event, de biz.DeliverySeqEvent, sessionID string) string {
+	var rowID string
+	err := s.outboxSeqAlloc.InsertAllocatingSeq(ctx, sessionID, func(seq int64) (biz.EventDeliveryOutboxRow, error) {
+		de.SetDeliverySeqValue(seq)
+		row, err := buildCriticalOutboxRow(e, sessionID, seq)
+		if err != nil {
+			return biz.EventDeliveryOutboxRow{}, err
+		}
+		rowID = row.ID
+		return row, nil
+	})
+	if err != nil {
+		// E2E-C1: no durable row exists for this event — strip the seq so the
+		// live frame carries no phantom replay cursor.
+		de.SetDeliverySeqValue(0)
+		if ok, suppressed := s.throttles.outboxInsertWarn.Allow(); ok {
+			s.lg.Warn("outbox allocating insert failed",
+				stallFields(suppressed,
+					loggateway.Str("kind", string(e.EventKind())),
+					loggateway.SessionID(sessionID),
+					loggateway.Err(err))...)
+		}
+		return ""
+	}
+	return rowID
 }
 
 // marshalV2EventEnvelope builds the same WS frame shape as WSV2Subscriber.

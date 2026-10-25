@@ -1,0 +1,29 @@
+-- Version 20261304: event_delivery_outbox 认领列（P0-6 阶段 2，deferred 战役
+-- D7-2，98-multi-replica-outbox-seq-claim）
+-- WS outbox 补偿清扫认领化：claimed_by/claimed_at 两列，'' = 未认领。
+-- 认领语句（单语句 CTE，照 channel_delivery_claim.go 先例）：
+--   WITH picked AS (
+--     SELECT id FROM event_delivery_outbox
+--     WHERE published_at IS NULL AND created_at < ?
+--       AND (claimed_by = '' OR claimed_at < ?)
+--     ORDER BY created_at ASC LIMIT ?
+--     FOR UPDATE SKIP LOCKED
+--   )
+--   UPDATE event_delivery_outbox AS o SET claimed_by=?, claimed_at=?
+--   FROM picked WHERE o.id = picked.id
+--   RETURNING ...
+-- 多副本 sweeper 不再对同一积压行重复广播；认领租约（缺省 60s）过期可被
+-- 回收——认领后崩溃的 worker 不会永久钉住行。
+-- claimed_at 定宽布局（"2006-01-02T15:04:05.000000000Z07:00"，纳秒恒 9 位，
+-- board_run_leases 教训同律：字典序==时序，字符串比较直接充当租约判定）。
+-- TEXT NOT NULL DEFAULT ''（而非 NULL=未认领）：与 executor_waiter_decisions
+-- 等新表同律，扫描免 NULL 三值逻辑，'' 字典序恒小于任何时间戳天然等价
+-- 「租约已过期」。
+-- 混版本滚动窗口记档：列先行（本迁移），旧二进制 sweeper 不感知认领列
+-- 仍 ListPending 全扫，与新二进制认领清扫并存时可能重复广播——at-least-once
+-- 契约容重（客户端 event_id 去重），ARANEA_OUTBOX_SWEEP_CLAIM 须在全副本
+-- 带新二进制后开启。
+-- 消费面藏在 ARANEA_OUTBOX_SWEEP_CLAIM=off|on（缺省 off=ListPending 字节级
+-- 旧行为）之后：off 档两列零写零读。幂等，重跑安全。
+ALTER TABLE event_delivery_outbox ADD COLUMN IF NOT EXISTS claimed_by TEXT NOT NULL DEFAULT '';
+ALTER TABLE event_delivery_outbox ADD COLUMN IF NOT EXISTS claimed_at TEXT NOT NULL DEFAULT '';

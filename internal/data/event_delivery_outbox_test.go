@@ -37,6 +37,14 @@ func newEventOutboxTestRepo(t *testing.T) (biz.EventDeliveryOutboxRepo, *sql.DB)
 		// Mirrors sql/migrations/20261019_event_delivery_outbox_pending_idx.sql.
 		`CREATE INDEX IF NOT EXISTS idx_event_delivery_outbox_pending
 			ON event_delivery_outbox(created_at) WHERE published_at IS NULL`,
+		// Mirrors sql/migrations/20261303_session_seq_counters.sql（D7-1）。
+		`CREATE TABLE IF NOT EXISTS session_seq_counters (
+			session_id TEXT PRIMARY KEY,
+			next_seq BIGINT NOT NULL
+		)`,
+		// Mirrors sql/migrations/20261304_event_delivery_outbox_claim.sql（D7-2）。
+		`ALTER TABLE event_delivery_outbox ADD COLUMN IF NOT EXISTS claimed_by TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE event_delivery_outbox ADD COLUMN IF NOT EXISTS claimed_at TEXT NOT NULL DEFAULT ''`,
 	} {
 		if _, err := db.ExecContext(ctx, s); err != nil {
 			t.Fatalf("outbox schema: %v", err)

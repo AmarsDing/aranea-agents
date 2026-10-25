@@ -55,6 +55,57 @@ type EventDeliveryOutboxRepo interface {
 	ListPending(ctx context.Context, cutoff time.Time, limit int) ([]EventDeliveryOutboxRow, error)
 }
 
+// EventOutboxSeqAllocatingInserter allocates the delivery seq and inserts the
+// outbox row in ONE database transaction (D7-1, P0-6 阶段 2,
+// ARANEA_SEQ_ALLOCATOR=pg). The allocation runs as a session_seq_counters row
+// UPSERT ... RETURNING inside the same tx as the outbox INSERT: concurrent
+// replicas serialize on the counter row lock, so allocation order == commit
+// order == visibility order, and a last_event_id strict-cursor replay can
+// never observe seq N+1 without seq N (the dual-replica window where two
+// process-local counters inverted that order).
+//
+// The row is produced by the build callback INSIDE the tx because the payload
+// embeds event_id which embeds the freshly allocated seq — the caller cannot
+// marshal before knowing it. A build error rolls the tx back (no counter
+// increment consumed, no row).
+//
+// Kept separate from EventDeliveryOutboxRepo so streaming-side fakes needn't
+// grow (same precedent as EventOutboxWatermarkReader): the v2 Sequencer
+// resolves it via type assertion from the repo value, gated by the flag —
+// off mode never touches this port (byte-level legacy behaviour).
+// Stability: Internal
+type EventOutboxSeqAllocatingInserter interface {
+	// InsertAllocatingSeq allocates the next per-session delivery seq,
+	// builds the row via build(seq), and inserts it — all in one tx.
+	// sessionID empty or build nil = no-op nil. On INSERT (session_id, seq)
+	// conflict (mixed rolling-version window with a legacy Go-counter
+	// replica) the implementation repair-bumps the counter past the durable
+	// watermark and retries a bounded number of times; a same-event_id
+	// conflict is idempotent success (mirrors Insert semantics).
+	InsertAllocatingSeq(ctx context.Context, sessionID string, build func(seq int64) (EventDeliveryOutboxRow, error)) error
+}
+
+// EventOutboxClaimer atomically claims pending outbox rows for one sweeper
+// worker (D7-2, ARANEA_OUTBOX_SWEEP_CLAIM=on): SELECT ... FOR UPDATE SKIP
+// LOCKED inside a CTE, then stamps claimed_by/claimed_at in the same
+// statement. Multi-replica sweepers no longer double-broadcast the same
+// backlog rows; lease-expired claims (crashed worker) are reclaimable.
+//
+// Kept separate from EventDeliveryOutboxRepo so streaming-side fakes needn't
+// grow (EventOutboxWatermarkReader precedent); the WS sweeper resolves it via
+// type assertion from the repo value, gated by the flag — off mode keeps the
+// legacy ListPending scan byte-identical.
+// Stability: Internal
+type EventOutboxClaimer interface {
+	// ClaimPendingOutboxDeliveries claims up to limit unpublished rows
+	// created strictly before cutoff whose claim is free (claimed_by='') or
+	// lease-expired (claimed_at < claimLeaseDeadline), oldest first, and
+	// returns them with this worker's claim stamped. Rows claimed by another
+	// live worker are skipped (SKIP LOCKED), never waited on. Empty
+	// workerID = misconfiguration, returns nil (fail-closed no claim).
+	ClaimPendingOutboxDeliveries(ctx context.Context, workerID string, cutoff, claimLeaseDeadline time.Time, limit int) ([]EventDeliveryOutboxRow, error)
+}
+
 // EventOutboxWatermarkReader exposes the per-session persisted delivery-seq
 // high-watermark (FR-9). It is kept separate from EventDeliveryOutboxRepo so
 // streaming-side fakes needn't grow: the seq-restore fold in the chat

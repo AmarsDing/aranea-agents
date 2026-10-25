@@ -549,4 +549,24 @@ var ddlMigrationsLate = []ddlMigration{
 	//（缺省 off 字节级旧行为）之后，off 档零写零读。仅建表：不加 ent schema、
 	// 不播种。幂等，重跑安全。
 	{Version: 20261302, Name: "executor_waiter_decisions", SQL: "sql/migrations/20261302_executor_waiter_decisions.sql"},
+	// 20261303 session_seq_counters（P0-6 阶段 2，deferred 战役 D7-1，
+	// 2026-10-26）：每会话关键事件 outbox delivery seq 持久计数器——
+	// UPSERT ... ON CONFLICT (session_id) DO UPDATE next_seq+1 RETURNING
+	// next_seq-1 与 outbox INSERT 同事务，并发副本在计数器行锁上串行，
+	// 取号序==提交序==可见序（last_event_id 严格游标回放不吃双副本号段
+	// 倒置）。首分配种子 MAX(seq)+2 吸收 off→pg 翻档存量行；混版本窗口
+	// 残余冲突由分配器 repair-bump 有界重试（3 次）吸收。消费面藏
+	// ARANEA_SEQ_ALLOCATOR=off|pg（缺省 off 字节级旧行为）之后。仅建表：
+	// 不加 ent schema、不播种。幂等，重跑安全。
+	{Version: 20261303, Name: "session_seq_counters", SQL: "sql/migrations/20261303_session_seq_counters.sql"},
+	// 20261304 event_delivery_outbox 认领列（D7-2，2026-10-26）：
+	// claimed_by/claimed_at TEXT NOT NULL DEFAULT ''（''=未认领，与
+	// executor_waiter_decisions 同律免 NULL 三值；claimed_at 定宽布局
+	// 字典序==时序）。ClaimPendingOutboxDeliveries=单语句 CTE
+	// FOR UPDATE SKIP LOCKED 认领（channel_delivery_claim 先例），认领
+	// 租约缺省 60s 过期可回收。混版本窗口记档：列先行，旧二进制
+	// sweeper 不感知认领列仍全扫，重复广播由 at-least-once 契约容重；
+	// ARANEA_OUTBOX_SWEEP_CLAIM=off|on（缺省 off=ListPending 字节级旧
+	// 行为）须全副本带新二进制后开启。幂等，重跑安全。
+	{Version: 20261304, Name: "event_delivery_outbox_claim", SQL: "sql/migrations/20261304_event_delivery_outbox_claim.sql"},
 }

@@ -3761,7 +3761,22 @@ func provideV2RepoSet(
 // 本参数与构造体一致，见 wire-gen-hand-merge-convention）。
 func provideV2Sequencer(rs v2.RepoSet, bus *event.V2Bus, outbox biz.EventDeliveryOutboxRepo, dlStore biz.EventDeadLetterRepo, taskRepo biz.TaskV2Repo, runRegistry *rt.RunRegistry, lg loggateway.Logger) *v2.Sequencer {
 	fence := &v2.TaskRunTerminalFence{Tasks: taskRepo, HasActive: runRegistry.HasActive}
-	return v2.NewSequencer(rs, bus, lg, v2.WithEventOutbox(outbox), v2.WithDeadLetterStore(dlStore), v2.WithDeadLetterTerminalFence(fence))
+	opts := []v2.Option{v2.WithEventOutbox(outbox), v2.WithDeadLetterStore(dlStore), v2.WithDeadLetterTerminalFence(fence)}
+	// D7-1（ARANEA_SEQ_ALLOCATOR=pg）：关键事件 outbox seq 改走事务内
+	// 分配（session_seq_counters UPSERT RETURNING 与 INSERT 同事务，
+	// 并发副本计数器行锁串行——取号序==可见序，消除双副本号段倒置）。
+	// repo 未实现分配端口时 Warn 回落进程内 Go 计数器（行为不中断）；
+	// off 档不追加 Option（字节级旧行为）。
+	if v2.ResolveSeqAllocatorMode(os.Getenv) == v2.SeqAllocatorModePG {
+		if alloc, ok := outbox.(biz.EventOutboxSeqAllocatingInserter); ok && alloc != nil {
+			opts = append(opts, v2.WithEventOutboxSeqAllocator(alloc))
+		} else {
+			lg.Warn("seq allocator flag=pg 但 outbox repo 未实现分配端口，回落进程内取号",
+				loggateway.Str("component", "seq_allocator"),
+				loggateway.StepID("seq_allocator.wire"))
+		}
+	}
+	return v2.NewSequencer(rs, bus, lg, opts...)
 }
 
 // provideWSServer constructs the WS server and attaches the durable outbox for

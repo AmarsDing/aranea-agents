@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -223,7 +224,21 @@ func (s *WSServer) Start(ctx context.Context) error {
 		return nil
 	}
 	if s.outboxSweep.repo != nil && s.outboxSweep.started.CompareAndSwap(false, true) {
-		newEventOutboxSweeper(s.outboxSweep.repo, s.BroadcastCriticalToSession, s.lg).Start(ctx)
+		sw := newEventOutboxSweeper(s.outboxSweep.repo, s.BroadcastCriticalToSession, s.lg)
+		// D7-2（ARANEA_OUTBOX_SWEEP_CLAIM=on）：认领化清扫——多副本经
+		// SKIP LOCKED 分片积压行不重复广播。repo 未实现认领端口时 Warn
+		// 回落旧全扫（行为不中断）；flag 开启时机须全副本带新二进制
+		// （迁移 20261304 列先行，混版本窗口重复广播由 at-least-once
+		// 契约容重——记档 98 三件套）。
+		if ResolveOutboxSweepClaimMode(os.Getenv) == OutboxSweepClaimOn {
+			if claimer, ok := s.outboxSweep.repo.(biz.EventOutboxClaimer); ok && claimer != nil {
+				sw.EnableClaiming(claimer, "", 0)
+			} else {
+				s.lg.Warn("outbox sweep claim flag=on 但 repo 未实现认领端口，回落 ListPending 全扫",
+					loggateway.StepID("ws.outbox_sweeper"))
+			}
+		}
+		sw.Start(ctx)
 	}
 	return nil
 }

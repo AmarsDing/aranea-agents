@@ -1,9 +1,42 @@
 package v2
 
 import (
+	"strings"
 	"sync"
 	"sync/atomic"
 )
+
+// EnvSeqAllocator is the feature flag selecting the critical-event outbox
+// delivery-seq allocator (D7-1, P0-6 阶段 2). Registered in
+// docs/development/feature-flags-registry.md (F1 先行登记).
+const EnvSeqAllocator = "ARANEA_SEQ_ALLOCATOR"
+
+// Seq allocator modes for EnvSeqAllocator.
+const (
+	// SeqAllocatorModeOff (default/illegal fallback) = process-local Go
+	// counter (defaultSeqAssigner) — byte-level legacy behaviour.
+	SeqAllocatorModeOff = "off"
+	// SeqAllocatorModePG = allocate inside the outbox INSERT transaction via
+	// the session_seq_counters UPSERT ... RETURNING row (migration
+	// 20261303), so concurrent replicas serialize on the counter row lock
+	// and visibility order == seq order for last_event_id replay.
+	SeqAllocatorModePG = "pg"
+)
+
+// ResolveSeqAllocatorMode parses EnvSeqAllocator. off 缺省/非法值回落
+// （大小写/空白容忍；"true"/"1" 等布尔习惯值回落 off——三档枚举不接受
+// 布尔真值，与 ARANEA_EXECUTOR_WAITER 解析同律）。
+func ResolveSeqAllocatorMode(getenv func(string) string) string {
+	if getenv == nil {
+		return SeqAllocatorModeOff
+	}
+	switch strings.ToLower(strings.TrimSpace(getenv(EnvSeqAllocator))) {
+	case SeqAllocatorModePG:
+		return SeqAllocatorModePG
+	default:
+		return SeqAllocatorModeOff
+	}
+}
 
 // defaultSeqAssigner is a v2-local SeqAssigner implementation that maintains a
 // per-spirit-session atomic counter. It is functionally equivalent to

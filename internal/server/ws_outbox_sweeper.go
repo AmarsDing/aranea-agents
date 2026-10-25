@@ -2,6 +2,9 @@ package server
 
 import (
 	"context"
+	"os"
+	"strconv"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -34,7 +37,49 @@ const (
 	// outboxSweepWarnLogInterval throttles per-tick failure Warns (same
 	// window as the sequencer stall-throttle chain, stallWarnLogInterval).
 	outboxSweepWarnLogInterval = 10 * time.Second
+	// defaultOutboxSweepClaimLease is how long a claimed row stays pinned to
+	// one sweeper worker (D7-2). It must sit far outside the worst tick
+	// envelope (query 5s + broadcast + mark 2s ≈ 7s) so a live worker never
+	// loses its rows mid-tick, yet bounded so a crashed worker's claims
+	// become reclaimable quickly (next reclaim tick ≤ interval+lease).
+	defaultOutboxSweepClaimLease = 60 * time.Second
 )
+
+// EnvOutboxSweepClaim is the feature flag switching the sweeper to
+// claim-based batching (D7-2). Registered in
+// docs/development/feature-flags-registry.md (F1 先行登记).
+const EnvOutboxSweepClaim = "ARANEA_OUTBOX_SWEEP_CLAIM"
+
+// Outbox sweep claim modes for EnvOutboxSweepClaim.
+const (
+	// OutboxSweepClaimOff (default/illegal fallback) = legacy ListPending
+	// scan — byte-level legacy behaviour.
+	OutboxSweepClaimOff = "off"
+	// OutboxSweepClaimOn = ClaimPendingOutboxDeliveries CTE SKIP LOCKED
+	// claim (migration 20261304) so multi-replica sweepers partition the
+	// backlog instead of double-broadcasting it.
+	OutboxSweepClaimOn = "on"
+)
+
+// ResolveOutboxSweepClaimMode parses EnvOutboxSweepClaim. off 缺省/非法值
+// 回落（大小写/空白容忍；布尔习惯值回落 off——枚举不接受布尔真值，与
+// ARANEA_EXECUTOR_WAITER 解析同律）。
+//
+// 开启时机纪律（混版本滚动窗口）：旧二进制 sweeper 不感知认领列仍全扫，
+// 与新二进制认领清扫并存时同一行可能被双广播——at-least-once 契约容重
+// （客户端 event_id 去重），但本 flag 仍须在全副本带新二进制后开启
+// （迁移 20261304 列先行）。
+func ResolveOutboxSweepClaimMode(getenv func(string) string) string {
+	if getenv == nil {
+		return OutboxSweepClaimOff
+	}
+	switch strings.ToLower(strings.TrimSpace(getenv(EnvOutboxSweepClaim))) {
+	case OutboxSweepClaimOn:
+		return OutboxSweepClaimOn
+	default:
+		return OutboxSweepClaimOff
+	}
+}
 
 // outboxSweepRuntime bundles the durable critical-event outbox (B-06
 // last_event_id replay) and the one-time start guard of the P1-3
@@ -71,6 +116,14 @@ type eventOutboxSweeper struct {
 	interval  time.Duration
 	grace     time.Duration
 	limit     int
+	// claimer/workerID/claimLease (D7-2, ARANEA_OUTBOX_SWEEP_CLAIM=on)：
+	// claimer 非 nil 时批次来源改走 SKIP LOCKED 认领（多副本清扫不重复
+	// 抢行）；workerID 是本进程认领身份（主机名+PID）；claimLease 决定
+	// 认领钉住时长，崩溃 worker 的行租约过期后被回收。claimer=nil =
+	// 旧 ListPending 全扫（off 档字节级旧行为）。
+	claimer    biz.EventOutboxClaimer
+	workerID   string
+	claimLease time.Duration
 	// queryTimeout budgets ListPending + broadcasts per tick; markTimeout
 	// gives the batch mark its own budget. Both are fields (not the package
 	// consts directly) so tests can shrink them deterministically.
@@ -93,11 +146,39 @@ func newEventOutboxSweeper(outbox biz.EventDeliveryOutboxRepo, broadcast func(st
 		interval:     defaultOutboxSweepInterval,
 		grace:        defaultOutboxSweepGrace,
 		limit:        defaultOutboxSweepLimit,
+		claimLease:   defaultOutboxSweepClaimLease,
 		queryTimeout: outboxSweepQueryTimeout,
 		markTimeout:  outboxSweepMarkTimeout,
 		markWarn:     loggateway.NewThrottle(outboxSweepWarnLogInterval),
 		skipWarn:     loggateway.NewThrottle(outboxSweepWarnLogInterval),
 	}
+}
+
+// EnableClaiming switches the sweeper to claim-based batching (D7-2,
+// ARANEA_OUTBOX_SWEEP_CLAIM=on): concurrent replicas partition the backlog via
+// SKIP LOCKED instead of double-broadcasting it. caller 为 nil 时 set 到
+// nil（off 档字节级旧行为）；workerID 缺省用「主机名:PID」。
+func (s *eventOutboxSweeper) EnableClaiming(caller biz.EventOutboxClaimer, workerID string, lease time.Duration) {
+	if s == nil {
+		return
+	}
+	s.claimer = caller
+	if workerID = strings.TrimSpace(workerID); workerID != "" {
+		s.workerID = workerID
+	} else {
+		s.workerID = defaultOutboxWorkerID()
+	}
+	if lease > 0 {
+		s.claimLease = lease
+	}
+}
+
+func defaultOutboxWorkerID() string {
+	host, err := os.Hostname()
+	if err != nil {
+		host = "unknown-host"
+	}
+	return host + ":" + strconv.Itoa(os.Getpid())
 }
 
 // Start launches the sweep loop bound to ctx (kratos hands WSServer.Start the
@@ -138,7 +219,7 @@ func (s *eventOutboxSweeper) sweepOnce(ctx context.Context) {
 	cctx, cancel := context.WithTimeout(ctx, s.queryTimeout)
 	defer cancel()
 	cutoff := started.UTC().Add(-s.grace)
-	rows, err := s.outbox.ListPending(cctx, cutoff, s.limit)
+	rows, err := s.pickSweepBatch(cctx, cutoff)
 	if err != nil {
 		s.lg.Warn("WS outbox sweep query failed",
 			loggateway.StepID("ws.outbox_sweeper"),
@@ -200,4 +281,18 @@ func (s *eventOutboxSweeper) sweepOnce(ctx context.Context) {
 		loggateway.Int("marked", len(markIDs)-markFailed),
 		loggateway.Int("mark_failed", markFailed),
 		loggateway.Duration(time.Since(started).Milliseconds()))
+}
+
+// pickSweepBatch is the batch-source seam (D7-2): claimer set → SKIP LOCKED
+// claim (multi-replica backlog partition); nil → legacy ListPending scan
+// (off 档字节级旧行为). The lease deadline is now-claimLease: rows claimed
+// longer ago than that by a (presumed crashed) worker are reclaimable —
+// mark-published failure leaves rows claimed, and the lease is the only
+// re-delivery channel for them (bounded by interval+lease).
+func (s *eventOutboxSweeper) pickSweepBatch(ctx context.Context, cutoff time.Time) ([]biz.EventDeliveryOutboxRow, error) {
+	if s.claimer != nil {
+		leaseDeadline := time.Now().UTC().Add(-s.claimLease)
+		return s.claimer.ClaimPendingOutboxDeliveries(ctx, s.workerID, cutoff, leaseDeadline, s.limit)
+	}
+	return s.outbox.ListPending(ctx, cutoff, s.limit)
 }
