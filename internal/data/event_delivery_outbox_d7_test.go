@@ -376,7 +376,10 @@ func readSeqCounter(t *testing.T, db *sql.DB, sessionID string) int64 {
 // TestEventOutboxAlloc_WatermarkConflictRepairBump 是 D7-f 钉（评审确认项
 // D7-TQ-2：repair-bump 整链曾零覆盖——conflict 检测/有界重试/bump/同
 // event_id 幂等四段任一被删全套件仍绿）。构造真水位冲突：存量行占 seq
-// 1..3（异 event_id，模拟混版本窗口 Go 计数器副本直插）+ 计数器行落后
+// 1..3（异 event_id=legacy-worker:%d，与 d7AllocBuild 格式结构性不相撞，
+// 模拟混版本窗口 Go 计数器副本直插——自复审 D7F-FIX-01/NPQ-1：初版种子
+// 误用 build 同格式，i=2 时与分配行 event_id 逐字节相同，冲突被幂等分支
+// 吞掉，钉对正确实现恒红且 repair-bump 零触达）+ 计数器行落后
 // （next_seq=2）⇒ 首次分配得 2 撞车 ⇒ repair-bump 顶到 MAX+2=5 ⇒ 重试
 // 得 5 落库。断言：got=5、4 行无洞、计数器=6。
 func TestEventOutboxAlloc_WatermarkConflictRepairBump(t *testing.T) {
@@ -387,7 +390,7 @@ func TestEventOutboxAlloc_WatermarkConflictRepairBump(t *testing.T) {
 			ID:        fmt.Sprintf("k-%d", i),
 			SessionID: "sess-k",
 			Seq:       i,
-			EventID:   fmt.Sprintf("v2:sess-k:%d:task.completed:t", i),
+			EventID:   fmt.Sprintf("legacy-worker:%d", i),
 			Kind:      "task.completed",
 			Payload:   []byte(`{}`),
 			CreatedAt: time.Now().UTC(),
@@ -470,7 +473,11 @@ func TestEventOutboxAlloc_SameEventIDConflictIdempotent(t *testing.T) {
 // D7-TQ-3：既有分片钉两 worker 顺序执行，SKIP LOCKED 从未被真实并发
 // 触碰——删掉 FOR UPDATE SKIP LOCKED 全套件仍绿）。两 worker 屏障后并发
 // 认领同一批行：返回集合必须互不相交、并集=全部可认领行（行锁互斥的结构
-// 性验收；channel_delivery_claim_test.go:14 先例同式）。
+// 性验收）。并发形态先例为 channel_delivery_claim_test.go:14 的裸 fan-out；
+// 本钉在其上加 close(chan) 屏障收窄两 worker 的进入时差。注意：屏障只
+// 同步 goroutine 释放，不在数学上保证两条 PG 语句重叠（极端 CI 调度下
+// 墙钟串行时锁子句删除突变体可假绿，自复审 NPQ-2）——锁子句的确定性
+// 杀突变钉是 TestEventOutboxClaim_SkipLockedSkipsHeldRows（D7-f2）。
 func TestEventOutboxClaim_ConcurrentWorkersDisjoint(t *testing.T) {
 	ctx := context.Background()
 	repo1, db := newEventOutboxTestRepo(t)
@@ -537,5 +544,86 @@ func TestEventOutboxClaim_ConcurrentWorkersDisjoint(t *testing.T) {
 	}
 	if len(seen) != n {
 		t.Fatalf("认领并集 = %d 行, want %d（a=%v b=%v）", len(seen), n, aIDs, bIDs)
+	}
+}
+
+// TestEventOutboxClaim_SkipLockedSkipsHeldRows 是 D7-f2 钉（自复审确认项
+// NPQ-2：ConcurrentWorkersDisjoint 的屏障不同步 PG 语句重叠，锁子句删除
+// 突变体在墙钟串行时假绿）。本钉确定性杀突变：tx1 持锁不认领（模拟他
+// 副本拍中锁窗），正确实现下认领必须 SKIP 全部持锁行并立即返回空集——
+//   - 整句删除 FOR UPDATE SKIP LOCKED 的突变体：plain SELECT 无锁读到同
+//     一批未认领行并全部认领 ⇒ n!=0 红；
+//   - 仅删 SKIP LOCKED 留 FOR UPDATE 的突变体：阻塞等锁 ⇒ 看门狗超时红。
+//
+// 正确代码下 SKIP LOCKED 永不阻塞，本钉恒速绿、无时序侥幸。
+func TestEventOutboxClaim_SkipLockedSkipsHeldRows(t *testing.T) {
+	ctx := context.Background()
+	repo, db := newEventOutboxTestRepo(t)
+	claimer := repo.(biz.EventOutboxClaimer)
+
+	const n = 12
+	old := time.Now().UTC().Add(-time.Hour)
+	for i := 1; i <= n; i++ {
+		if err := repo.Insert(ctx, biz.EventDeliveryOutboxRow{
+			ID:        fmt.Sprintf("lk-%02d", i),
+			SessionID: "sess-lk",
+			Seq:       int64(i),
+			EventID:   fmt.Sprintf("v2:sess-lk:%d:task.completed:t", i),
+			Kind:      "task.completed",
+			Payload:   []byte(`{}`),
+			CreatedAt: old.Add(time.Duration(i) * time.Second),
+		}); err != nil {
+			t.Fatalf("seed lk-%02d: %v", i, err)
+		}
+	}
+
+	// tx1 持锁窗：锁住全部可认领行但不 UPDATE（不认领），事务保持开启。
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatalf("begin locker tx: %v", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	lockRows, err := tx.QueryContext(ctx,
+		`SELECT id FROM event_delivery_outbox WHERE session_id = 'sess-lk' FOR UPDATE`)
+	if err != nil {
+		t.Fatalf("lock rows: %v", err)
+	}
+	locked := 0
+	for lockRows.Next() {
+		locked++
+	}
+	if err := lockRows.Err(); err != nil {
+		_ = lockRows.Close()
+		t.Fatalf("iterate locked rows: %v", err)
+	}
+	if err := lockRows.Close(); err != nil {
+		t.Fatalf("close locked rows: %v", err)
+	}
+	if locked != n {
+		t.Fatalf("持锁行数 = %d, want %d", locked, n)
+	}
+
+	cutoff := time.Now().UTC().Add(-time.Minute)
+	freshDeadline := time.Now().UTC().Add(-time.Minute)
+	type claimRes struct {
+		n   int
+		err error
+	}
+	done := make(chan claimRes, 1)
+	go func() {
+		rows, cerr := claimer.ClaimPendingOutboxDeliveries(ctx, "worker-c", cutoff, freshDeadline, n)
+		done <- claimRes{n: len(rows), err: cerr}
+	}()
+
+	select {
+	case r := <-done:
+		if r.err != nil {
+			t.Fatalf("claim under lock window: %v", r.err)
+		}
+		if r.n != 0 {
+			t.Fatalf("SKIP LOCKED 必须跳过全部持锁行：认领 %d 行, want 0", r.n)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatalf("认领在 10s 持锁窗内未返回——FOR UPDATE SKIP LOCKED 缺失（阻塞等锁）")
 	}
 }
