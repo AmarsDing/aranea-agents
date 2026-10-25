@@ -48,6 +48,7 @@ type backgroundWorkersConfig struct {
 	ChannelRuntime              ChannelRuntimeStarter
 	ToolAuditCleanup            BackgroundStarter
 	FlowLogCleanup              BackgroundStarter
+	ToolSpillGC                 BackgroundStarter
 	MonitorEventsCleanup        BackgroundStarter
 	AutoHealTTLCleanup          BackgroundStarter
 	MonitorAlertEvalWorker      BackgroundStarter
@@ -71,6 +72,7 @@ type backgroundWorkersConfig struct {
 	KnowledgeIndexRepair        BackgroundStarter
 	KnowledgeCurate             BackgroundStarter
 	KnowledgeWriteBackSweeper   BackgroundStarter
+	KnowledgeGraphProjection    BackgroundStarter
 	MemorySleepTime             BackgroundStarter
 	MemoryEpisodeBackfill       BackgroundStarter
 	MemoryFactIndexReconciler   BackgroundStarter
@@ -83,7 +85,7 @@ type backgroundWorkersConfig struct {
 // backgroundWorkersConfigFromOutput maps the wire output onto the worker
 // config (field names align 1:1); WatchCtx is owned by main().
 func backgroundWorkersConfigFromOutput(watchCtx context.Context, out *wireOut) *backgroundWorkersConfig {
-	return &backgroundWorkersConfig{
+	cfg := &backgroundWorkersConfig{
 		WatchCtx:                    watchCtx,
 		CronRunner:                  out.CronRunner,
 		SkillWatch:                  out.SkillWatch,
@@ -131,6 +133,7 @@ func backgroundWorkersConfigFromOutput(watchCtx context.Context, out *wireOut) *
 		KnowledgeIndexRepair:        out.KnowledgeIndexRepair,
 		KnowledgeCurate:             out.KnowledgeCurate,
 		KnowledgeWriteBackSweeper:   out.KnowledgeWriteBackSweeper,
+		KnowledgeGraphProjection:    out.KnowledgeGraphProjection,
 		MemorySleepTime:             out.MemorySleepTime,
 		MemoryEpisodeBackfill:       out.MemoryEpisodeBackfill,
 		MemoryFactIndexReconciler:   out.MemoryFactIndexReconciler,
@@ -139,6 +142,17 @@ func backgroundWorkersConfigFromOutput(watchCtx context.Context, out *wireOut) *
 		CronRepo:                    out.CronRepo,
 		ConfigGraphIndexer:          out.ConfigGraphIndexer,
 	}
+	// D2-f-7（对抗评审确认）：ToolSpillGC 在 wireOut 中是具体指针
+	// （*jobs.ToolSpillGC，杀闸 TOOLSPILL_GC_DISABLED 时 provider 返回 nil）。
+	// 直接装进 BackgroundStarter 接口字段会把 typed-nil 装瓶成非 nil 接口：
+	// 启动块 `cfg.ToolSpillGC != nil` 判真、goroutine 照起、且日志印出
+	// "scheduled"——Start 首行 nil 接收者判空成为唯一保险，与「杀闸=零注册」
+	// 契约（93 三件套 FR-2）相悖。装瓶前对具体指针判空：杀闸路径接口保持
+	// nil，启动块整块跳过。
+	if out.ToolSpillGC != nil {
+		cfg.ToolSpillGC = out.ToolSpillGC
+	}
+	return cfg
 }
 
 // SkillWatchStarter is the minimal interface for starting the skill file watcher.
@@ -293,6 +307,11 @@ func startBackgroundWorkers(
 		logger.Log(log.LevelInfo, "msg", "flow log cleanup scheduled", "interval", "1h")
 	}
 
+	if cfg.ToolSpillGC != nil {
+		goAfterReady("toolspill_gc", func() { cfg.ToolSpillGC.Start(ctx) })
+		logger.Log(log.LevelInfo, "msg", "toolspill gc scheduler scheduled")
+	}
+
 	if cfg.MonitorEventsCleanup != nil {
 		goAfterReady("monitor_events_cleanup", func() { cfg.MonitorEventsCleanup.Start(ctx) })
 		logger.Log(log.LevelInfo, "msg", "monitor events cleanup scheduled", "interval", "24h", "retention", jobs.MonitorEventsRetention.String())
@@ -403,6 +422,11 @@ func startBackgroundWorkers(
 	if cfg.KnowledgeWriteBackSweeper != nil {
 		goAfterReady("knowledge_writeback_sweeper", func() { cfg.KnowledgeWriteBackSweeper.Start(ctx) })
 		logger.Log(log.LevelInfo, "msg", "knowledge writeback sweeper worker scheduled", "interval", "2m")
+	}
+
+	if cfg.KnowledgeGraphProjection != nil {
+		goAfterReady("knowledge_graph_projection", func() { cfg.KnowledgeGraphProjection.Start(ctx) })
+		logger.Log(log.LevelInfo, "msg", "knowledge graph projection worker scheduled", "interval", "5m")
 	}
 
 	if cfg.MemorySleepTime != nil {

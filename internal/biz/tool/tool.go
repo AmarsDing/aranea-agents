@@ -454,7 +454,11 @@ type ToolUsecase struct {
 	webResChecker WebResearchReadinessChecker
 	grants        ToolGrantStore
 	paramRules    ToolParamRuleStore
-	lg            loggateway.Logger
+	// approvalPolicies 是 P0-5 审批工程化会话/Agent 姿态仓（批 C 接线，
+	// 2026-10-22）：nil → approval policy gate 不注册、管理面读写报
+	// apierror.Internal——零行为变更兜底（CLI/未装配 PG 部署形态）。
+	approvalPolicies ApprovalPolicyStore
+	lg               loggateway.Logger
 }
 
 type ToolUsecaseOption func(*ToolUsecase)
@@ -465,6 +469,14 @@ func WithToolTester(tester ToolTester) ToolUsecaseOption {
 
 func WithWebResearchChecker(checker WebResearchReadinessChecker) ToolUsecaseOption {
 	return func(u *ToolUsecase) { u.webResChecker = checker }
+}
+
+// WithApprovalPolicyStore 装配审批策略仓（P0-5 批 C option 模式，不动既有
+// 函数签名）。实现后 agent 侧 approval policy gate（p3，paramRuleGate 之后）
+// 才注册——ApprovalPolicyStore 方法的 receiver 形态使 *ToolUsecase 自动满足
+// biztool.ApprovalPolicyReader 供 CompositeApprovalPolicyLookup 复用。
+func WithApprovalPolicyStore(store ApprovalPolicyStore) ToolUsecaseOption {
+	return func(u *ToolUsecase) { u.approvalPolicies = store }
 }
 
 func NewToolUsecase(repo ToolRepo, sys SettingRepo, lg loggateway.Logger, opts ...ToolUsecaseOption) *ToolUsecase {

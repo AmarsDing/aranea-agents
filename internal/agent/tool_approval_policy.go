@@ -39,7 +39,8 @@ import (
 // 行为与现状字节级一致。
 
 // approvalPolicyGatePriority 与 paramRuleGate 同档（3）；稳定排序保序依赖
-// 装配链追加次序，批 B 接线注释见 callback_chain.go 注册点（本批不改装配链）。
+// 装配链追加次序——批 C（2026-10-22）已在 callback_chain.go 注册点落位
+// （paramRuleGate 之后、args 守卫之前）。
 const approvalPolicyGatePriority = 3
 
 // approvalPolicyVerdictCtxKey 是审批策略 gate → 确认门禁的 ctx 传递键。
@@ -61,44 +62,73 @@ func approvalPolicyVerdictFromCtx(ctx context.Context) *approvalPolicyVerdict {
 // triggerApprovalPolicyDenied 是 never 命中的闸触发词。
 // AS-EVT-01 定级：Informational——SystemNoticeEvent + flowlog/审计双写，不上
 // Critical/Important 的 BlockUpTo 行列（§9.3）。
-// 批 B 待办：decision/gate.go 登记 TriggerApprovalPolicyDenied 常量、
-// flow_log_steps.go 登记 system.gate.approval_policy_denied 步骤标签（两文件
-// 均属批 A 允许清单外，本批以本地常量过渡，取值冻结不变）。
-const triggerApprovalPolicyDenied = "approval_policy_denied"
+// 批 C（2026-10-22）归位：常量登记进 internal/biz/decision/gate.go 并同步
+// flow_log_steps.go 标签；本地别名存续仅保批 A 测试零改动，取值同源。
+const triggerApprovalPolicyDenied = decision.TriggerApprovalPolicyDenied
 
 // triggerApprovalPolicyShadow 是 shadow_only 预演命中（tripped，零强制）。
-const triggerApprovalPolicyShadow = "approval_policy_shadow"
+const triggerApprovalPolicyShadow = decision.TriggerApprovalPolicyShadow
 
 // 本批不动 internal/event/contract 常量表（允许清单外）。tool_invocations 的
-// error_code 为自由字符串列，取值冻结；批 B 再吸收进 contract 常量表。
+// error_code 为自由字符串列，取值冻结；contract 常量表吸收单列排期（批 C
+// 评审裁定：error_code 无跨表消费方，吸收收益不抵改动面）。
 const errorCodeApprovalPolicyDenied = "approval_policy_denied"
 
 // ApprovalPolicyLookup 是审批策略闸的运行时读口签名：(scope, scopeKey) 双作用
-// 域合并由调用方在闭包内完成（批 B 接到 ToolUsecase 读口；本批测试经
+// 域合并由调用方在闭包内完成（批 C 接到 ToolUsecase 读口；测试经
 // biztool.InMemApprovalPolicyStore 驱动）。
 type ApprovalPolicyLookup func(ctx context.Context) ([]biztool.ApprovalPolicy, error)
 
-// CompositeApprovalPolicyLookup 合并 session 与 agent 两个作用域的读取（一次
-// 调用两个 ListEnabled，错误以第一失败返回）。批 B 装配 ToolUsecase 读口时
-// 可直接复用本组合函数。
-func CompositeApprovalPolicyLookup(store biztool.ApprovalPolicyStore, sessionID, agentID string, nowUnix int64) ApprovalPolicyLookup {
+// listMergedApprovalPolicies 合并 session 与 agent 两个作用域的启用规则
+// （错误以第一失败返回，fail-closed 职责在 gate 调用方）。批 C 接线与
+// CompositeApprovalPolicyLookup 共用的单源合并实现。
+func listMergedApprovalPolicies(ctx context.Context, reader biztool.ApprovalPolicyReader, sessionID, agentID string, nowUnix int64) ([]biztool.ApprovalPolicy, error) {
+	var all []biztool.ApprovalPolicy
+	if sessionID != "" {
+		rows, err := reader.ListEnabledApprovalPolicies(ctx, string(biztool.ApprovalScopeSession), sessionID, nowUnix)
+		if err != nil {
+			return nil, err
+		}
+		all = append(all, rows...)
+	}
+	if agentID != "" {
+		rows, err := reader.ListEnabledApprovalPolicies(ctx, string(biztool.ApprovalScopeAgent), agentID, nowUnix)
+		if err != nil {
+			return nil, err
+		}
+		all = append(all, rows...)
+	}
+	return all, nil
+}
+
+// CompositeApprovalPolicyLookup 合并 session 与 agent 两个作用域的读取
+// （批 C：签名由具体 Store 泛化为 ApprovalPolicyReader——*biztool.ToolUsecase
+// 装配 WithApprovalPolicyStore 后自动满足）。装配 ToolUsecase 读口时可直接
+// 复用本组合函数；sessionID 需每次调用解析的场景用 approvalPolicyLookupForDeps。
+func CompositeApprovalPolicyLookup(reader biztool.ApprovalPolicyReader, sessionID, agentID string, nowUnix int64) ApprovalPolicyLookup {
 	return func(ctx context.Context) ([]biztool.ApprovalPolicy, error) {
-		var all []biztool.ApprovalPolicy
-		if sessionID != "" {
-			rows, err := store.ListEnabledApprovalPolicies(ctx, string(biztool.ApprovalScopeSession), sessionID, nowUnix)
-			if err != nil {
-				return nil, err
-			}
-			all = append(all, rows...)
-		}
-		if agentID != "" {
-			rows, err := store.ListEnabledApprovalPolicies(ctx, string(biztool.ApprovalScopeAgent), agentID, nowUnix)
-			if err != nil {
-				return nil, err
-			}
-			all = append(all, rows...)
-		}
-		return all, nil
+		return listMergedApprovalPolicies(ctx, reader, sessionID, agentID, nowUnix)
+	}
+}
+
+// approvalPolicyLookupForDeps 从 deps.ToolUC 可选接口断言装配审批策略读口
+// （P0-5 批 C activation）：ToolUsecase 实现 biztool.ApprovalPolicyReader 后
+// 闸才注册；未装配（CLI/旧 usecase/nil store）返回 nil——运行时零开销、
+// 行为与现状字节级一致。sessionID 每次调用经 gateSessionID(ctx) 解析
+// （team 成员路径用 WithGateSessionID 注入值，chat 路径回落 invocation 会话）。
+func approvalPolicyLookupForDeps(ag biz.Agent, deps TRPCBuilderDeps) ApprovalPolicyLookup {
+	if deps.ToolUC == nil {
+		return nil
+	}
+	reader, ok := deps.ToolUC.(biztool.ApprovalPolicyReader)
+	if !ok || reader == nil {
+		return nil
+	}
+	// typed-nil 防护（同 trpc_build.go runtimeIface 先例）：接口值包装 nil
+	// 指针时 ListEnabled 方法内的 u==nil 守卫返回 nil,nil，无需额外处理。
+	agentID := ag.ID
+	return func(ctx context.Context) ([]biztool.ApprovalPolicy, error) {
+		return listMergedApprovalPolicies(ctx, reader, gateSessionID(ctx), agentID, time.Now().Unix())
 	}
 }
 
@@ -119,9 +149,9 @@ func approvalPolicyCommandText(arguments []byte) string {
 
 // newApprovalPolicyGateBeforeHook 装配审批策略闸。lookup 为 nil（策略存储未
 // 装配）时返回 nil 不注册——默认 OFF 状态与现状字节级一致。
-// 批 B 接线：callback_chain.go 在 paramRuleGate 注册之后追加本 hook
-// （deps.ToolUC 可选接口断言取 ListEnabledApprovalPoliciesForGate，装配组合
-// CompositeApprovalPolicyLookup(toolUC store, gateSessionID(ctx), agentID, time.Now().Unix())）。
+// 批 C（2026-10-22 activation）：callback_chain.go 在 paramRuleGate 注册之后、
+// args 守卫之前追加本 hook，lookup 经 approvalPolicyLookupForDeps 从
+// deps.ToolUC 可选断言（ApprovalPolicyReader）+ 双作用域合并构建。
 func newApprovalPolicyGateBeforeHook(ag biz.Agent, deps TRPCBuilderDeps, lookup ApprovalPolicyLookup) callbacks.BeforeToolHook {
 	if lookup == nil {
 		return nil

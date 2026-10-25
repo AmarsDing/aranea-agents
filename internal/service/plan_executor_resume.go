@@ -53,6 +53,27 @@ func (e *PlanExecutor) ResumePlanBoard(ctx context.Context, boardID string, mode
 	if _, ok := e.running.Load(boardID); ok {
 		return apierror.BadRequest(apierror.DomainOrchestrator, "plan board %s is running, refuse to resume", boardID)
 	}
+	// P0-6 阶段 1a（对抗评审 #12）：端口接线时**先认领跨副本租约再做任何
+	// 共享态变更**——否则本副本改完 step/board 后 startBoardDAG 认领被拒
+	//（另一副本持有）→ board 停 Executing 却无人跑（跨副本楔死）。
+	// nil 端口恒 ok，字节级旧行为。认领失败映射为 BadRequest（与上方
+	// running 拦截同一语义域：「当前不可 resume，稍后重试」语义）。
+	runCtx, cancel, lease, ok := e.claimBoardRun(board)
+	if !ok {
+		return apierror.BadRequest(apierror.DomainOrchestrator, "plan board %s 租约已被其他副本持有（或 DB 暂不可用），拒绝 resume", boardID)
+	}
+	// resume 中途失败必须把已认领的租约放回（否则行租约心跳续着、
+	// HasActive 恒 true，后续 resume/恢复扫描被永久拦截直到进程退出）。
+	// startClaimedBoardDAG 接管所有权（goroutine 退出口径释放）。
+	claimActive := true
+	defer func() {
+		if claimActive {
+			if e.leasePort != nil {
+				e.leasePort.Release(board.ID)
+			}
+			cancel()
+		}
+	}()
 	steps, err := e.repos.ListPlanStepsByPlan(ctx, board.ID)
 	if err != nil {
 		return fmt.Errorf("load plan steps: %w", err)
@@ -132,7 +153,9 @@ func (e *PlanExecutor) ResumePlanBoard(ctx context.Context, boardID string, mode
 		loggateway.Int("failed_steps", failedCount))
 	// 3. 重新启动 DAG（终态时 lease 已释放；Subscribe 的 C-20 守卫要求
 	// 非终态，上一步已转 Executing；initGraphStage 幂等跳过已有 GraphStage）。
-	e.startBoardDAG(board)
+	// 租约已在前置认领阶段取得（对抗评审 #12），此处移交所有权。
+	claimActive = false
+	e.startClaimedBoardDAG(board, runCtx, cancel, lease)
 	return nil
 }
 

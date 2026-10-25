@@ -200,6 +200,14 @@ func productCallbackChainWithRegistry(ctx context.Context, ag biz.Agent, deps TR
 		if hook := newParamRuleGateBeforeHook(ag, deps); hook != nil {
 			entries = append(entries, hook)
 		}
+		// P0-5 审批工程化 activation（批 C 2026-10-22）：审批策略闸与
+		// paramRuleGate 同档（3），稳定排序保序追加在其后——never 确定性
+		// 拒绝早于 args 守卫/循环守卫（4）/确认门禁（10）；ToolUC 未装配
+		// ApprovalPolicyReader（无 store）时 hook 为 nil 不注册，与现状
+		// 字节级一致。详见 tool_approval_policy.go。
+		if hook := newApprovalPolicyGateBeforeHook(ag, deps, approvalPolicyLookupForDeps(ag, deps)); hook != nil {
+			entries = append(entries, hook)
+		}
 		entries = append(entries, newToolArgsGuardBeforeHook(lg))
 		// tool-not-found 纠错反馈：错误回执附当前可用工具清单（req.Tools 按
 		// invocation 实际工具面填充），防止模型臆造变体名重试空转。

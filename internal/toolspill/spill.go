@@ -63,6 +63,16 @@ const Scheme = "spill://"
 // StoreFS names the local-filesystem store kind encoded in locators.
 const StoreFS = "fs"
 
+// StorePG names the PG row store kind encoded in locators (C-5 立项，
+// 91-multi-replica-spill-store）：实现位 internal/data/tool_spill_pg_store.go，
+// locator 形态 spill://pg/<id32>（会话所有权走行 session_hash 列过滤，
+// locator 不携带会话前缀）。
+const StorePG = "pg"
+
+// EnvToolSpillStore 选择 Store 实现的 env flag（C-5）：缺省/空/非法值=fs
+// 档字节级旧行为；pg=PG 行存储档。
+const EnvToolSpillStore = "ARANEA_TOOLSPILL_STORE"
+
 const (
 	// DefaultDirName is the workspace-private spill directory name.
 	DefaultDirName = ".aranea_spill"
@@ -174,6 +184,24 @@ func ParseLocator(s string) (Locator, error) {
 	return Locator{Store: store, ID: id}, nil
 }
 
+// ResolveToolSpillStoreKind 纯函数解析 env 档位（无副作用，nil getenv 回落
+// os.Getenv；镜像 board lease ResolveBoardRunLeaseMode 形态）。返回
+// (kind, malformed)：缺省/空=fs 字节级旧行为；非法值亦回落 fs 且
+// malformed=true 供调用方 Warn（fail-safe：不认得的档位=旧行为）。
+func ResolveToolSpillStoreKind(getenv func(string) string) (string, bool) {
+	if getenv == nil {
+		getenv = os.Getenv
+	}
+	switch strings.ToLower(strings.TrimSpace(getenv(EnvToolSpillStore))) {
+	case "", StoreFS:
+		return StoreFS, false
+	case StorePG:
+		return StorePG, false
+	default:
+		return StoreFS, true
+	}
+}
+
 // PointerText renders the message-body stub that replaces an oversized tool
 // result once it has been spilled. It mirrors biz.ToolResultPrunePointer's
 // format so the model already knows how to consume it, and it is a pure
@@ -225,6 +253,19 @@ func (d *Deps) NowTime() time.Time {
 // ReportSpillFailed emits the Important-level failure signal for a failed
 // Put: an Error log (always) plus the optional hook.
 func (d *Deps) ReportSpillFailed(ctx context.Context, lg loggateway.Logger, stepID, sessionID string, err error) {
+	// 对抗评审 #6：ctx 已取消的 Put 失败是取消噪声（PutWithRetry 本就放弃重试），
+	// 不属于 AS-EVT-01「真实存储失败」Important 档——降级 Warn 且不触发 hook
+	// （否则取消风暴会把决策闸门刷满噪声）。
+	if ctx != nil && ctx.Err() != nil {
+		if lg != nil {
+			lg.Warn("tool_result.spill_failed on canceled ctx (downgraded, not Important)",
+				loggateway.StepID(stepID),
+				loggateway.SessionID(sessionID),
+				loggateway.Err(err),
+			)
+		}
+		return
+	}
 	key := SpillFailedDedupeKey(sessionID, d.NowTime())
 	if lg != nil {
 		lg.Error("tool_result.spill_failed (Important)",
@@ -251,9 +292,12 @@ func PutWithRetry(ctx context.Context, st Store, rec Record) (Locator, error) {
 }
 
 // Store is the spill persistence contract. LocalFS is the first
-// implementation; a PG-backed store is reserved for the multi-replica
-// migration (P0-6) and will answer old fs locators with found:false plus a
-// migration hint rather than a silent 404.
+// implementation; the PG store (C-5) serves multi-replica deployments.
+// Cross-scheme locators are hard rejects, not silent 404s: a store answers
+// ErrUnsupportedStore for a locator outside its scheme, and the consumer
+// (read_tool_result) maps that to BadRequest with a migration hint — the
+// deliberate env-flip migration signal (C-f wire-env-01 pins this wording
+// to the shipped behavior).
 type Store interface {
 	// Put persists rec and returns its locator. Concurrent Puts are
 	// idempotent: each succeeds with its own file, never overwriting.
@@ -265,6 +309,9 @@ type Store interface {
 	Stat(ctx context.Context, sessionID, locator string) (FileInfo, error)
 	// GC reclaims expired files (TTL) and enforces any total cap
 	// (oldest-first). It is safe to run periodically and is idempotent.
+	// err != nil 时 stats 语义=实际**已生效**的部分计数：PG 实现事务整包
+	// 回滚故恒零值（D2-f-3），FS 为已生效的部分删除计数。消费方（Q7 GC
+	// 调度器的审计 Extra）不得把 err 路径的计数当真实吞吐。
 	GC(ctx context.Context, now time.Time) (GCStats, error)
 }
 
@@ -878,6 +925,13 @@ func isHex(s string) bool {
 	}
 	return len(s) > 0
 }
+
+// IsSpillID reports whether id satisfies the canonical spill id grammar
+// (idLen lowercase hex chars). Both stores enforce it on read paths so a
+// well-formed-but-malformed-id locator answers ErrInvalidLocator rather
+// than a misleading ErrNotFound (C-f C5-PARITY-1: mirrors the FS splitFSID
+// sentinel classification for the PG store).
+func IsSpillID(id string) bool { return len(id) == idLen && isHex(id) }
 
 func isLowerAlnum(s string) bool {
 	for i := 0; i < len(s); i++ {

@@ -11,6 +11,69 @@ func getenvFrom(m map[string]string) func(string) string {
 	return func(k string) string { return m[k] }
 }
 
+// 批 C Q3（2026-10-22）conf 挂载优先级钉死：override>0 时 conf 胜出（即使
+// env 同时声明），override<=0 纯 env 回落；override 为 int32 类型化输入
+// ParseError 恒 false；ENFORCE 仍仅经 env（与 conf 副本数可自由组合）。
+func TestResolveReplicaSafetyWithOverride_Matrix(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name      string
+		replicas  string // env ARANEA_DECLARED_REPLICAS
+		enforce   string // env ARANEA_REPLICA_ENFORCE
+		override  int32  // conf server.declared_replicas
+		wantMode  string
+		wantN     int
+		wantParse bool
+	}{
+		{"override_zero_env_unset", "", "", 0, CoordinationModeSingle, 0, false},
+		{"override_zero_env_two", "2", "", 0, CoordinationModeMultiWarn, 2, false},
+		{"override_wins_over_env", "3", "", 2, CoordinationModeMultiWarn, 2, false},
+		{"override_one_suppresses_env_multi", "5", "", 1, CoordinationModeSingle, 1, false},
+		{"override_multi_env_unset", "", "", 4, CoordinationModeMultiWarn, 4, false},
+		{"override_multi_with_env_enforce", "", "1", 3, CoordinationModeMultiEnforced, 3, false},
+		{"override_negative_falls_back_env", "2", "", -1, CoordinationModeMultiWarn, 2, false},
+		{"override_negative_env_bad_parse", "abc", "", -3, CoordinationModeSingle, 0, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			env := map[string]string{}
+			if tc.replicas != "" {
+				env[EnvDeclaredReplicas] = tc.replicas
+			}
+			if tc.enforce != "" {
+				env[EnvReplicaEnforce] = tc.enforce
+			}
+			st := ResolveReplicaSafetyWithOverride(getenvFrom(env), tc.override)
+			if st.Mode != tc.wantMode {
+				t.Fatalf("Mode=%q, want %q", st.Mode, tc.wantMode)
+			}
+			if st.DeclaredReplicas != tc.wantN {
+				t.Fatalf("DeclaredReplicas=%d, want %d", st.DeclaredReplicas, tc.wantN)
+			}
+			if st.ParseError != tc.wantParse {
+				t.Fatalf("ParseError=%v, want %v", st.ParseError, tc.wantParse)
+			}
+		})
+	}
+}
+
+// 批 C Q3：WithOverride 启动自检与 env 入口共用执行体——override>1 同样落
+// multi_warn 快照（healthz 一致）且 fail-fast 语义不变。
+func TestRunReplicaSafetyStartupCheckWithOverride_MultiWarnSnapshot(t *testing.T) {
+	st, err := RunReplicaSafetyStartupCheckWithOverride(loggateway.NewNoop(), getenvFrom(map[string]string{}), 2)
+	if err != nil {
+		t.Fatalf("multi_warn must not return error: %v", err)
+	}
+	if st.Mode != CoordinationModeMultiWarn || st.DeclaredReplicas != 2 {
+		t.Fatalf("status = %+v, want multi_warn/2", st)
+	}
+	if cur := CurrentReplicaSafety(); cur.Mode != CoordinationModeMultiWarn || cur.DeclaredReplicas != 2 {
+		t.Fatalf("snapshot = %+v, want multi_warn/2", cur)
+	}
+	defer func() { _, _ = RunReplicaSafetyStartupCheck(loggateway.NewNoop(), getenvFrom(map[string]string{})) }()
+}
+
 // 规则钉死：未声明(空/0) 或 1 → single；>1 → multi_warn；>1+enforce → multi_enforced；
 // 坏输入（非数字/负数）必拒 → ParseError=true 且按未声明（single）处理。
 func TestResolveReplicaSafety_Matrix(t *testing.T) {
@@ -106,6 +169,23 @@ func TestRunReplicaSafetyStartupCheck_EnforceFailsFast(t *testing.T) {
 	if st.Mode != CoordinationModeMultiEnforced {
 		t.Fatalf("Mode=%q, want multi_enforced", st.Mode)
 	}
+}
+
+// 对抗评审 #15：override 路径（conf server.declared_replicas>1）+ env ENFORCE
+// 同样 must fail-fast——Q3 挂载后 override 是生产主配置面，fail-fast 语义不可
+// 只测 env 分支。
+func TestRunReplicaSafetyStartupCheckWithOverride_EnforceFailsFast(t *testing.T) {
+	st, err := RunReplicaSafetyStartupCheckWithOverride(loggateway.NewNoop(), getenvFrom(map[string]string{
+		EnvReplicaEnforce: "1",
+	}), 3)
+	if !errors.Is(err, ErrMultiReplicaEnforced) {
+		t.Fatalf("err=%v, want ErrMultiReplicaEnforced", err)
+	}
+	if st.Mode != CoordinationModeMultiEnforced || st.DeclaredReplicas != 3 {
+		t.Fatalf("st = %+v, want multi_enforced/3", st)
+	}
+	// 快照复位，防污染同包后续用例（本用例不可 t.Parallel——包内自检快照共享）。
+	defer func() { _, _ = RunReplicaSafetyStartupCheck(loggateway.NewNoop(), getenvFrom(map[string]string{})) }()
 }
 
 // healthz 快照：自检运行前后 CurrentReplicaSafety 语义一致切换。

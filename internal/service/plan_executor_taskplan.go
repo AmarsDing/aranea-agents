@@ -97,6 +97,11 @@ func (e *PlanExecutor) HasActiveRunForSession(sessionID string) bool {
 	if e == nil || sessionID == "" {
 		return false
 	}
+	// P0-6 阶段 1a：端口接线时放行端口决议（跨副本行租约，含 DB 错误
+	// fail-closed=true 保守拦截）；nil 端口纯进程内 Range 字节级旧行为。
+	if e.leasePort != nil {
+		return e.leasePort.HasActiveForSession(sessionID)
+	}
 	active := false
 	e.running.Range(func(_, v any) bool {
 		if lease, ok := v.(*boardRunLease); ok && lease.sessionID == sessionID {

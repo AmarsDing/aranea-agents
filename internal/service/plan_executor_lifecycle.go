@@ -145,16 +145,49 @@ func (e *PlanExecutor) RecoverUnfinishedBoards(ctx context.Context) {
 	}
 }
 
+// claimBoardRun 认领 board 执行租约：创建 runCtx/cancel/本地 lease 行，
+// 端口接线时先认领跨副本租约。ok=false 仅当端口接线且端口认领被拒（含
+// 错误 fail-closed）；nil 端口恒 ok（字节级旧行为，端口零调用）。
+// 拆出独立阶段（对抗评审 #12）：resume 须在任何共享态变更前完成认领，
+// 否则本副本改完状态后认领被拒 → board 停 Executing 却无人跑（跨副本楔死）。
+func (e *PlanExecutor) claimBoardRun(board biz.PlanBoard) (context.Context, context.CancelFunc, *boardRunLease, bool) {
+	// C-20 + C-18: execution lease for ready boards.
+	runCtx, cancel := context.WithCancel(context.Background())
+	lease := &boardRunLease{cancel: cancel, sessionID: board.SessionID}
+	// P0-6 阶段 1a（90-multi-replica-board-lease）：端口接线时先认领跨副本
+	// 租约——claimed=false 等价本地 LoadOrStore loaded（先到者赢，含跨进程）；
+	// 任何错误 fail-closed 不派发。nil 端口零调用，字节级旧行为。
+	if e.leasePort != nil && !e.leasePort.TryClaim(runCtx, biz.BoardRunLease{BoardID: board.ID, SessionID: board.SessionID, Cancel: cancel}) {
+		cancel()
+		e.lg.Warn("PlanBoard 执行租约已被持有（含跨副本认领），跳过重复启动",
+			loggateway.Str("plan_board_id", board.ID),
+			loggateway.Str("task_id", board.TaskID))
+		return nil, nil, nil, false
+	}
+	return runCtx, cancel, lease, true
+}
+
 // startBoardDAG takes the execution lease and runs Subscribe in a goroutine.
 // Idempotent: a second call for the same board ID is ignored.
 func (e *PlanExecutor) startBoardDAG(board biz.PlanBoard) {
 	if e == nil {
 		return
 	}
-	// C-20 + C-18: execution lease for ready boards.
-	runCtx, cancel := context.WithCancel(context.Background())
-	lease := &boardRunLease{cancel: cancel, sessionID: board.SessionID}
+	runCtx, cancel, lease, ok := e.claimBoardRun(board)
+	if !ok {
+		return
+	}
+	e.startClaimedBoardDAG(board, runCtx, cancel, lease)
+}
+
+// startClaimedBoardDAG 在调用方已完成端口认领后本地落册并起 goroutine
+// （对抗评审 #12 拆出的后半段）。本地 LoadOrStore 撞车时回滚端口认领，
+// 与 claimBoardRun 的认领分支成对。
+func (e *PlanExecutor) startClaimedBoardDAG(board biz.PlanBoard, runCtx context.Context, cancel context.CancelFunc, lease *boardRunLease) {
 	if _, loaded := e.running.LoadOrStore(board.ID, lease); loaded {
+		if e.leasePort != nil {
+			e.leasePort.Release(board.ID) // 端口已认领但本地落册失败——回滚认领
+		}
 		cancel() // unused; an existing run owns this board
 		e.lg.Warn("PlanBoard 已在执行中，跳过重复启动",
 			loggateway.Str("plan_board_id", board.ID),
@@ -174,7 +207,12 @@ func (e *PlanExecutor) startBoardDAG(board biz.PlanBoard) {
 	// 导致 MemberSession.TaskID 为空，前端 getMemberSessionSteps 返回空数组）。
 	b := board
 	safego.Go(runCtx, "plan_executor.dag."+b.ID, func() {
-		defer e.running.Delete(b.ID) // C-20: release lease on exit
+		defer func() {
+			e.running.Delete(b.ID) // C-20: release lease on exit
+			if e.leasePort != nil {
+				e.leasePort.Release(b.ID) // 阶段 1a：跨副本行租约随本地释放
+			}
+		}()
 		defer e.startup.Delete(b.ID) // P2-②: 无等待方时兜底释放启动信号登记
 		defer cancel()
 		ctx := runCtx

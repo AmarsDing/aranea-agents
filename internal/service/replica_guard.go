@@ -20,8 +20,9 @@ import (
 //   - AS-EVT-01：本轮 P0-6 零新增事件，仅新增启动结构化日志（非事件）。
 const (
 	// EnvDeclaredReplicas 声明副本数（0=未声明，按单副本处理）。
-	// conf.proto 无既有挂载点且本批禁改 proto，阶段 0 经环境变量读取；
-	// 后续 conf.proto 小 PR 落地 server.declared_replicas 后切换 conf 链路优先。
+	// 批 C（2026-10-22）：server.declared_replicas conf 挂载已落地（批 B 加的
+	// proto 字段），conf 值 >0 优先于本环境变量；env 回落保留 CLI/裸跑部署
+	// 与存量 gray 发布姿势。
 	EnvDeclaredReplicas = "ARANEA_DECLARED_REPLICAS"
 	// EnvReplicaEnforce 多副本 fail-fast 灰度开关（1/true 开启，默认 OFF=仅 Warn）。
 	EnvReplicaEnforce = "ARANEA_REPLICA_ENFORCE"
@@ -114,6 +115,33 @@ func ResolveReplicaSafety(getenv func(string) string) ReplicaSafetyStatus {
 	return st
 }
 
+// ResolveReplicaSafetyWithOverride 在 env 链路之上叠加 conf 声明（批 C Q3
+// 2026-10-22）：override >0 时副本数以 conf 为准（声明式配置优先；PB int32
+// 类型化无解析错误，ParseError 恒 false），<=0 等价 ResolveReplicaSafety
+// 纯 env 回落。ENFORCE 无 conf 字段，仍仅经 env 读取（fail-fast 是显式
+// 运维手势，不宜沉到配置文件里误随滚动发布开启）。
+func ResolveReplicaSafetyWithOverride(getenv func(string) string, override int32) ReplicaSafetyStatus {
+	if override <= 0 {
+		return ResolveReplicaSafety(getenv)
+	}
+	if getenv == nil {
+		getenv = os.Getenv
+	}
+	st := ReplicaSafetyStatus{
+		DeclaredReplicas: int(override),
+		Mode:             CoordinationModeSingle,
+		Enforce:          ParseEnforce(getenv(EnvReplicaEnforce)),
+	}
+	if override > 1 {
+		if st.Enforce {
+			st.Mode = CoordinationModeMultiEnforced
+		} else {
+			st.Mode = CoordinationModeMultiWarn
+		}
+	}
+	return st
+}
+
 // ErrMultiReplicaEnforced 在 multi_enforced 模式下由启动自检返回，供装配层
 // 决定是否中止启动（阶段 0 装配层不中断，仅 Error 级日志；硬中止接线属批 B 部署立场拍板项）。
 var ErrMultiReplicaEnforced = errors.New("declared_replicas > 1 with replica enforce enabled")
@@ -125,7 +153,17 @@ var ErrMultiReplicaEnforced = errors.New("declared_replicas > 1 with replica enf
 //
 // 返回值同时写入包内快照供 healthz 查询。
 func RunReplicaSafetyStartupCheck(lg loggateway.Logger, getenv func(string) string) (ReplicaSafetyStatus, error) {
-	st := ResolveReplicaSafety(getenv)
+	return runReplicaSafetyStartupCheck(lg, ResolveReplicaSafety(getenv))
+}
+
+// RunReplicaSafetyStartupCheckWithOverride 批 C Q3 conf 挂载入口：override =
+// c.ParsedDeclaredReplicas()（>0 conf 优先），行为与 env 入口一致（单一
+// 执行体防两套语义漂移）。
+func RunReplicaSafetyStartupCheckWithOverride(lg loggateway.Logger, getenv func(string) string, override int32) (ReplicaSafetyStatus, error) {
+	return runReplicaSafetyStartupCheck(lg, ResolveReplicaSafetyWithOverride(getenv, override))
+}
+
+func runReplicaSafetyStartupCheck(lg loggateway.Logger, st ReplicaSafetyStatus) (ReplicaSafetyStatus, error) {
 	lastReplicaSafety.Store(st)
 	if lg == nil {
 		lg = loggateway.NewNoop()

@@ -467,6 +467,25 @@ var (
 		Name: "aranea_logpipeline_buffer_usage",
 		Help: "Log pipeline dispatch buffer occupancy ratio (0..1).",
 	})
+
+	// ToolSpillGCRunsTotal counts toolspill GC scheduler cycles by store kind and
+	// status（Q7 批 D2，93.design.md §3）：ok / error / cancelled（关停期 ctx
+	// 取消按 neutral 计，不算失败）/ panic（recover 吞帧后补记，D2-f-1）。
+	// error 增量应与 spill_gc_failed 决策记录同现（事件契约见
+	// docs/development/93-toolspill-gc-scheduler.design.md §3）。
+	ToolSpillGCRunsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "aranea_toolspill_gc_runs_total",
+		Help: "toolspill GC scheduler cycles by store kind and status (ok|error|cancelled|panic).",
+	}, []string{"store_kind", "status"})
+
+	// ToolSpillGCDuration tracks per-cycle GC latency by store kind. Buckets
+	// extend to 900s：FS 首次存量 TTL 清洗在退化盘可能达分钟级（首跑存量清洗
+	// 风险记档见 docs/development/93-toolspill-gc-scheduler.design.md §5）。
+	ToolSpillGCDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "aranea_toolspill_gc_duration_seconds",
+		Help:    "toolspill GC cycle duration by store kind.",
+		Buckets: []float64{0.05, 0.25, 1, 5, 15, 60, 300, 900},
+	}, []string{"store_kind"})
 )
 
 // SafegoPanicHook returns a PanicHook function that increments the
