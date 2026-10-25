@@ -248,6 +248,22 @@ func (d *defaultAuthProvider) Authenticate(r *http.Request) (*auth.User, error) 
 		return user, nil
 	}
 	userID := strings.TrimSpace(r.Header.Get(d.userIDHeader))
+	// Security (aranea E2E-P0 G3): the UserID header is unsigned. An
+	// unauthenticated caller must not claim an arbitrary identity — otherwise
+	// an attacker can pick a victim's user ID and read/poison that user's
+	// memory scope (userID+sessionID keyed runtime state). Only identities
+	// minted by this server's own anonymous-cookie namespace are honored from
+	// the header; anything else is dropped in favor of the cookie-scoped
+	// anonymous principal below.
+	if userID != "" && !isAnonymousUserIDForScope(userID, d.cookieScope) {
+		log.DebugfContext(
+			r.Context(),
+			"Ignoring unsigned UserID(Header %s) identity outside the anonymous "+
+				"namespace; using anonymous request principal instead.",
+			d.userIDHeader,
+		)
+		userID = ""
+	}
 	if userID == "" {
 		var err error
 		userID, err = anonymousUserIDFromRequest(r, d.cookieScope)
@@ -262,14 +278,13 @@ func (d *defaultAuthProvider) Authenticate(r *http.Request) (*auth.User, error) 
 				"that transfers user info.",
 			d.userIDHeader,
 		)
-		return &auth.User{
-			ID: userID,
-			Claims: map[string]any{
-				anonymousAuthProvenanceClaim: true,
-			},
-		}, nil
 	}
-	return &auth.User{ID: userID}, nil
+	return &auth.User{
+		ID: userID,
+		Claims: map[string]any{
+			anonymousAuthProvenanceClaim: true,
+		},
+	}, nil
 }
 
 func anonymousUserIDFromRequest(r *http.Request, scopes ...string) (string, error) {

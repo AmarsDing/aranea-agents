@@ -240,6 +240,15 @@ func ProvideChatOrchestrator(svc *ChatService) *ChatOrchestrator {
 }
 
 func (s *ChatService) SendChatMessage(ctx context.Context, req *chatv1.SendChatMessageRequest) (*chatv1.SendChatMessageResponse, error) {
+	sessionID := strings.TrimSpace(req.GetSessionId())
+	if sessionID == "" {
+		return nil, apierror.BadRequest(apierror.DomainChat, "session_id is required")
+	}
+	// E2E-P0-01: the chat main entry (HTTP sync send + WS user_message) must
+	// enforce the same ownership gate as Interrupt/Enqueue (cluster A1).
+	if err := s.assertSessionAccess(ctx, sessionID); err != nil {
+		return nil, err
+	}
 	return s.orch.nativeSendChatMessage(ctx, req)
 }
 
@@ -252,6 +261,13 @@ func (s *ChatService) SendChatMessage(ctx context.Context, req *chatv1.SendChatM
 // synchronous RPC remains available for clients that need the full response
 // inline; WS-connected clients should prefer SubmitChatMessage.
 func (s *ChatService) SubmitChatMessage(ctx context.Context, req *chatv1.SendChatMessageRequest) (*chatv1.SubmitChatMessageResponse, error) {
+	sessionID := strings.TrimSpace(req.GetSessionId())
+	if sessionID == "" {
+		return nil, apierror.BadRequest(apierror.DomainChat, "session_id is required")
+	}
+	if err := s.assertSessionAccess(ctx, sessionID); err != nil {
+		return nil, err
+	}
 	return s.orch.submitChatMessageAsync(ctx, req)
 }
 
@@ -286,6 +302,11 @@ func (s *ChatService) RetrySession(ctx context.Context, req *chatv1.RetrySession
 	sessionID := strings.TrimSpace(req.GetSessionId())
 	if sessionID == "" {
 		return nil, apierror.BadRequest(apierror.DomainChat, "session_id is required")
+	}
+	// E2E-P0-01: retry re-enqueues a user message into the session; enforce the
+	// same ownership gate as Interrupt/Enqueue (cluster A3).
+	if err := s.assertSessionAccess(ctx, sessionID); err != nil {
+		return nil, err
 	}
 	if s.sessions == nil {
 		return nil, apierror.Internal(apierror.DomainChat, "session usecase unavailable for retry")
@@ -399,6 +420,11 @@ func (s *ChatService) GetPendingMessages(ctx context.Context, req *chatv1.GetPen
 	if sessionID == "" {
 		return nil, apierror.BadRequest(apierror.DomainChat, "session_id is required")
 	}
+	// E2E-P0-01: pending-queue read/update/cancel leak message content and
+	// enable cross-user injection; enforce the ownership gate (cluster A2).
+	if err := s.assertSessionAccess(ctx, sessionID); err != nil {
+		return nil, err
+	}
 	entries := s.orch.GetPendingMessages(sessionID)
 	items := make([]*chatv1.PendingMessage, 0, len(entries))
 	for i := range entries {
@@ -417,6 +443,9 @@ func (s *ChatService) CancelPendingMessage(ctx context.Context, req *chatv1.Canc
 	if sessionID == "" {
 		return nil, apierror.BadRequest(apierror.DomainChat, "session_id is required")
 	}
+	if err := s.assertSessionAccess(ctx, sessionID); err != nil {
+		return nil, err
+	}
 	pendingID := strings.TrimSpace(req.GetPendingId())
 	if pendingID == "" {
 		return nil, apierror.BadRequest(apierror.DomainChat, "pending_id is required")
@@ -429,6 +458,9 @@ func (s *ChatService) UpdatePendingMessage(ctx context.Context, req *chatv1.Upda
 	sessionID := strings.TrimSpace(req.GetSessionId())
 	if sessionID == "" {
 		return nil, apierror.BadRequest(apierror.DomainChat, "session_id is required")
+	}
+	if err := s.assertSessionAccess(ctx, sessionID); err != nil {
+		return nil, err
 	}
 	pendingID := strings.TrimSpace(req.GetPendingId())
 	if pendingID == "" {

@@ -50,17 +50,22 @@ func HTTPAuthBypassEnabled() bool {
 	}
 	deployEnv := strings.TrimSpace(strings.ToLower(os.Getenv("DEPLOY_ENV")))
 	ci := strings.TrimSpace(os.Getenv("CI"))
-	if deployEnv == "dev" || deployEnv == "development" || deployEnv == "test" || ci == "true" || ci == "1" {
+	if deployEnv == "dev" || deployEnv == "development" || deployEnv == "test" {
 		return true
 	}
 	lg := getLogger()
-	if deployEnv == "" {
-		lg.Warn("auth bypass refused: KRATOS_HTTP_AUTH_DISABLED set but DEPLOY_ENV unset",
-			loggateway.StepID("auth.bypass_refused"))
+	// F3: CI must never smuggle an auth bypass into a named non-dev
+	// deployment — the doc contract requires production to always refuse.
+	if deployEnv != "" {
+		lg.Warn("auth bypass refused: KRATOS_HTTP_AUTH_DISABLED set but DEPLOY_ENV not dev",
+			loggateway.StepID("auth.bypass_refused"), loggateway.Str("deploy_env", deployEnv))
 		return false
 	}
-	lg.Warn("auth bypass refused: KRATOS_HTTP_AUTH_DISABLED set but DEPLOY_ENV not dev",
-		loggateway.StepID("auth.bypass_refused"), loggateway.Str("deploy_env", deployEnv))
+	if ci == "true" || ci == "1" {
+		return true
+	}
+	lg.Warn("auth bypass refused: KRATOS_HTTP_AUTH_DISABLED set but DEPLOY_ENV unset",
+		loggateway.StepID("auth.bypass_refused"))
 	return false
 }
 

@@ -55,14 +55,19 @@ const (
 
 // factKindWhitelist is gate ①: only durable, governance-worthy kinds enter
 // the semantic store. Ephemeral event/knowledge/fact rows are dropped —
-// "what the user did" is carried by L2 episodes, not L3 facts.
+// "what the user did" is carried by L2 episodes, not L3 facts. user_identity
+// is admitted (D1): CanonicalizeFactKind rewrites identity/health statements
+// to user_identity, and governableMemoryKind/UserScopedFactKind already treat
+// it as a governable user-scoped fact, so dropping it here silently killed
+// the highest-value fact class on both auto_memory and feedback paths.
 var factKindWhitelist = map[string]struct{}{
-	"preference":   {},
-	"profile":      {},
-	"goal":         {},
-	"constraint":   {},
-	"decision":     {},
-	"relationship": {},
+	"preference":    {},
+	"profile":       {},
+	"goal":          {},
+	"constraint":    {},
+	"decision":      {},
+	"relationship":  {},
+	"user_identity": {},
 }
 
 // IsFactKindWhitelisted reports whether a fact kind passes gate ①.

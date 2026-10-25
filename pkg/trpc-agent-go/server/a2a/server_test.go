@@ -2274,7 +2274,13 @@ func TestA2AHTTPIdentityNormalizationRunsBeforeAnonymousCookie(t *testing.T) {
 			}),
 			WithPreAuthA2AMiddleware(requestHeaderMiddlewareFunc(func(r *http.Request) {
 				observedSpanContext = trace.SpanContextFromContext(r.Context())
-				r.Header.Set(serverUserIDHeader, "normalized-user")
+				// G3: trust is established by planting an authenticated user
+				// in the request context (front-proxy/middleware pattern);
+				// rewriting the unsigned raw header alone is no longer
+				// honored by the default auth provider.
+				*r = *r.WithContext(context.WithValue(
+					r.Context(), auth.AuthUserKey, &auth.User{ID: "normalized-user"},
+				))
 			})),
 		)
 		require.NoError(t, err)

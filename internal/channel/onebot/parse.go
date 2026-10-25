@@ -21,9 +21,9 @@ type InboundMessage struct {
 
 type qqMessage struct {
 	MessageType string        `json:"message_type"`
-	MessageID   string        `json:"message_id"`
-	GroupID     string        `json:"group_id"`
-	UserID      string        `json:"user_id"`
+	MessageID   json.Number   `json:"message_id"`
+	GroupID     json.Number   `json:"group_id"`
+	UserID      json.Number   `json:"user_id"`
 	Message     []messageItem `json:"message"`
 	RawMessage  string        `json:"raw_message"`
 	Sender      senderInfo    `json:"sender"`
@@ -37,8 +37,8 @@ type messageItem struct {
 }
 
 type senderInfo struct {
-	UserID   string `json:"user_id"`
-	Nickname string `json:"nickname"`
+	UserID   json.Number `json:"user_id"`
+	Nickname string      `json:"nickname"`
 }
 
 // VerifySignature checks X-Signature HMAC-SHA1 (MuseBot OneBot handler).
@@ -74,16 +74,16 @@ func ParseInbound(raw []byte) (*InboundMessage, error) {
 	if text == "" {
 		return nil, errEmptyMessage
 	}
-	userID := port.FirstNonEmpty(msg.UserID, msg.Sender.UserID)
+	userID := port.FirstNonEmpty(msg.UserID.String(), msg.Sender.UserID.String())
 	peerID := userID
-	if strings.TrimSpace(msg.GroupID) != "" {
-		peerID = msg.GroupID
+	if strings.TrimSpace(msg.GroupID.String()) != "" {
+		peerID = msg.GroupID.String()
 	}
 	return &InboundMessage{
 		PeerID:    peerID,
 		Text:      text,
-		MessageID: strings.TrimSpace(msg.MessageID),
-		GroupID:   strings.TrimSpace(msg.GroupID),
+		MessageID: strings.TrimSpace(msg.MessageID.String()),
+		GroupID:   strings.TrimSpace(msg.GroupID.String()),
 		UserID:    userID,
 	}, nil
 }

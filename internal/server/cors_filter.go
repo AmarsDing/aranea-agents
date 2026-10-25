@@ -18,14 +18,31 @@ var corsAllowedDevPrefixes = []string{
 	"https://[::1]:",
 }
 
+// localhostReflectionAllowed gates the reflexive localhost/loopback allowance
+// (F1): reflecting any localhost Origin WITH credentials means any malicious
+// local webpage can ride the user's API session in the desktop-single-host
+// form factor (SameSite=Lax treats ports as same-site). Keep the reflexive
+// allowance for dev/test/unset deployments only; explicit non-dev deployments
+// must opt in per origin via KRATOS_HTTP_EXTRA_CORS_ORIGINS.
+func localhostReflectionAllowed() bool {
+	env := strings.TrimSpace(strings.ToLower(os.Getenv("DEPLOY_ENV")))
+	switch env {
+	case "", "dev", "development", "test":
+		return true
+	}
+	return false
+}
+
 func OriginAllowed(origin string) bool {
 	o := strings.TrimSpace(origin)
 	if o == "" {
 		return false
 	}
-	for _, p := range corsAllowedDevPrefixes {
-		if strings.HasPrefix(o, p) {
-			return true
+	if localhostReflectionAllowed() {
+		for _, p := range corsAllowedDevPrefixes {
+			if strings.HasPrefix(o, p) {
+				return true
+			}
 		}
 	}
 	for _, raw := range strings.Split(os.Getenv("KRATOS_HTTP_EXTRA_CORS_ORIGINS"), ",") {

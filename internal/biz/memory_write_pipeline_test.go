@@ -5,7 +5,7 @@ import "testing"
 // --- Gate 1: kind whitelist ---
 
 func TestIsFactKindWhitelisted(t *testing.T) {
-	for _, k := range []string{"preference", "profile", "goal", "constraint", "decision", "relationship"} {
+	for _, k := range []string{"preference", "profile", "goal", "constraint", "decision", "relationship", "user_identity"} {
 		if !IsFactKindWhitelisted(k) {
 			t.Errorf("kind %q should be whitelisted", k)
 		}
@@ -48,6 +48,15 @@ func TestGateFactWriteCandidate_KindWhitelist(t *testing.T) {
 	c.FactKind = "event"
 	if d := GateFactWriteCandidate(c); d.DropReason != FactWriteDropKindWhitelist {
 		t.Fatalf("drop reason: got %q want %q", d.DropReason, FactWriteDropKindWhitelist)
+	}
+
+	// D1: identity/health statements canonicalize to user_identity; gate 1
+	// must admit them (aligns with governableMemoryKind/UserScopedFactKind).
+	c = gateTestCandidate()
+	c.FactKind = "user_identity"
+	c.Statement = "我的工号是 DIAG-20260818-A7"
+	if d := GateFactWriteCandidate(c); d.DropReason == FactWriteDropKindWhitelist {
+		t.Fatalf("user_identity must not be dropped by kind whitelist: %+v", d)
 	}
 }
 

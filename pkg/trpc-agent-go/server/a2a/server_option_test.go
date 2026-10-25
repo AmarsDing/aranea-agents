@@ -133,6 +133,8 @@ func TestWithEventToA2APartMapper_Nil(t *testing.T) {
 }
 
 func TestDefaultAuthProvider_Authenticate(t *testing.T) {
+	anonHeaderID, anonErr := newAnonymousUserID()
+	require.NoError(t, anonErr)
 	tests := []struct {
 		name        string
 		request     *http.Request
@@ -145,10 +147,24 @@ func TestDefaultAuthProvider_Authenticate(t *testing.T) {
 			expectError: true,
 		},
 		{
-			name: "request with user ID header",
+			// G3: an unsigned caller-supplied identity must not be honored;
+			// the request falls back to a server-minted anonymous principal.
+			name: "unsigned user ID header is demoted to anonymous",
 			request: func() *http.Request {
 				req, _ := http.NewRequest("GET", "/test", nil)
 				req.Header.Set(serverUserIDHeader, "test-user-789")
+				return req
+			}(),
+			expectError: false,
+			checkUserID: false,
+		},
+		{
+			// G3: identities minted by this server's anonymous-cookie
+			// namespace remain valid via header echo (sticky continuity).
+			name: "server-minted anonymous header identity is honored",
+			request: func() *http.Request {
+				req, _ := http.NewRequest("GET", "/test", nil)
+				req.Header.Set(serverUserIDHeader, anonHeaderID)
 				return req
 			}(),
 			expectError: false,
@@ -701,7 +717,9 @@ func TestDefaultAuthProvider_CustomUserIDHeader(t *testing.T) {
 		expectedID  string
 	}{
 		{
-			name:     "custom header with user ID",
+			// G3: even a configured header name does not make an unsigned
+			// identity trustworthy; non-anonymous values are demoted.
+			name:     "unsigned custom header identity is demoted to anonymous",
 			provider: &defaultAuthProvider{userIDHeader: customHeader},
 			request: func() *http.Request {
 				req, _ := http.NewRequest("GET", "/test", nil)
@@ -709,8 +727,7 @@ func TestDefaultAuthProvider_CustomUserIDHeader(t *testing.T) {
 				return req
 			}(),
 			expectError: false,
-			checkUserID: true,
-			expectedID:  "custom-user-123",
+			checkUserID: false,
 		},
 		{
 			name:     "custom header without user ID",
@@ -723,7 +740,7 @@ func TestDefaultAuthProvider_CustomUserIDHeader(t *testing.T) {
 			checkUserID: false,
 		},
 		{
-			name:     "default header still works",
+			name:     "unsigned default header identity is demoted to anonymous",
 			provider: &defaultAuthProvider{userIDHeader: serverUserIDHeader},
 			request: func() *http.Request {
 				req, _ := http.NewRequest("GET", "/test", nil)
@@ -731,8 +748,7 @@ func TestDefaultAuthProvider_CustomUserIDHeader(t *testing.T) {
 				return req
 			}(),
 			expectError: false,
-			checkUserID: true,
-			expectedID:  "default-user-456",
+			checkUserID: false,
 		},
 	}
 
@@ -797,16 +813,21 @@ func TestDefaultAuthProvider_AnonymousUserCookie(t *testing.T) {
 			},
 		},
 		{
-			name:       "trusted header takes precedence over anonymous cookie",
+			// G3: an unsigned non-anonymous header can no longer override a
+			// valid anonymous cookie identity.
+			name:       "unsigned header ignored; valid anonymous cookie honored",
 			header:     "trusted-user",
 			cookie:     userID,
-			expectedID: "trusted-user",
+			expectedID: userID,
 		},
 		{
-			name:       "trusted header takes precedence over malformed cookie",
-			header:     "trusted-user",
-			cookie:     "A2A_ANONYMOUS_not-hex",
-			expectedID: "trusted-user",
+			name:   "unsigned header and malformed cookie both demote to fresh anonymous",
+			header: "trusted-user",
+			cookie: "A2A_ANONYMOUS_not-hex",
+			validate: func(t *testing.T, got string) {
+				assert.True(t, isAnonymousUserID(got))
+				assert.NotEqual(t, "trusted-user", got)
+			},
 		},
 	}
 

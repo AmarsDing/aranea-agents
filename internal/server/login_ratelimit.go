@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net"
 	nethttp "net/http"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -175,11 +176,70 @@ func writeRateLimited(w nethttp.ResponseWriter, wait time.Duration, locked bool)
 	})
 }
 
-// clientIP extracts the end-user IP. The Go backend sits behind frps/Caddy,
-// so the direct peer is always 127.0.0.1 and the real client must come from
-// the X-Forwarded-For first hop.
+// trustedProxyCIDRs caches the parsed KRATOS_TRUSTED_PROXY_CIDRS allowlist.
+var (
+	trustedProxyOnce  sync.Once
+	trustedProxyCIDRs []*net.IPNet
+)
+
+// parseTrustedProxyCIDRs parses a comma-separated list of CIDRs or IPs.
+func parseTrustedProxyCIDRs(spec string) []*net.IPNet {
+	var out []*net.IPNet
+	for _, raw := range strings.Split(spec, ",") {
+		raw = strings.TrimSpace(raw)
+		if raw == "" {
+			continue
+		}
+		if _, n, err := net.ParseCIDR(raw); err == nil {
+			out = append(out, n)
+			continue
+		}
+		if pip := net.ParseIP(raw); pip != nil {
+			bits := 32
+			if pip.To4() == nil {
+				bits = 128
+			}
+			out = append(out, &net.IPNet{IP: pip, Mask: net.CIDRMask(bits, bits)})
+		}
+	}
+	return out
+}
+
+// trustedProxyPeer reports whether the direct peer may supply X-Forwarded-For
+// (F2): loopback by default (the documented same-host frps/Caddy topology);
+// off-host proxies must be listed in KRATOS_TRUSTED_PROXY_CIDRS (comma
+// separated CIDRs or IPs).
+func trustedProxyPeer(remoteAddr string) bool {
+	host, _, err := net.SplitHostPort(remoteAddr)
+	if err != nil {
+		host = remoteAddr
+	}
+	ip := net.ParseIP(strings.TrimSpace(host))
+	if ip == nil {
+		return false
+	}
+	if ip.IsLoopback() {
+		return true
+	}
+	trustedProxyOnce.Do(func() {
+		trustedProxyCIDRs = parseTrustedProxyCIDRs(os.Getenv("KRATOS_TRUSTED_PROXY_CIDRS"))
+	})
+	for _, n := range trustedProxyCIDRs {
+		if n.Contains(ip) {
+			return true
+		}
+	}
+	return false
+}
+
+// clientIP extracts the end-user IP. The Go backend usually sits behind
+// frps/Caddy on the same host, so a loopback peer may speak for the real
+// client via the X-Forwarded-For first hop. XFF arriving from any other peer
+// is attacker-controlled and must not steer the per-IP limiter/lockout (F2
+// — with the default 0.0.0.0 bind, spoofed XFF bypassed the token bucket and
+// could lock out victim IPs).
 func clientIP(r *nethttp.Request) string {
-	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+	if xff := r.Header.Get("X-Forwarded-For"); xff != "" && trustedProxyPeer(r.RemoteAddr) {
 		if idx := strings.IndexByte(xff, ','); idx >= 0 {
 			return strings.TrimSpace(xff[:idx])
 		}

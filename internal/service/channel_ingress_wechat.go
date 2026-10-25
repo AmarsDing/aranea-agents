@@ -113,6 +113,20 @@ func (h *ChannelIngress) handleOneBotWebhook(w http.ResponseWriter, r *http.Requ
 	}
 	parsed, err := onebot.ParseInbound(raw)
 	if err != nil {
+		// OneBot pushes must be ACKed with 200 (else the platform retries
+		// forever), but silently swallowing parse failures made the whole
+		// personal_qq inbound lane invisible (G1). Log + record delivery so
+		// the dead lane is observable.
+		h.lg.Warn("OneBot 入站消息解析失败，已丢弃",
+			loggateway.StepID("channel.onebot.webhook.parse_fail"),
+			loggateway.Str("channel_id", chRow.ID),
+			loggateway.Err(err),
+		)
+		h.recordDelivery(r.Context(), chRow.ID, "error", map[string]any{
+			"phase":  "parse",
+			"error":  err.Error(),
+			"source": "onebot_webhook",
+		}, err.Error())
 		w.WriteHeader(http.StatusOK)
 		return nil
 	}

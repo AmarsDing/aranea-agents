@@ -231,7 +231,12 @@ func (s *A2AService) Invoke(ctx context.Context, req *v1.A2AInvokeRequest) (*v1.
 }
 
 // UpdateAgentCard sets or updates the A2A capabilities of an agent.
+// EP-A2A-02: flipping Enabled exposes the agent on the anonymous public
+// endpoint, so this mutation requires the same admin gate as Invoke (G2).
 func (s *A2AService) UpdateAgentCard(ctx context.Context, req *v1.UpdateAgentCardRequest) (*v1.A2AAgentCard, error) {
+	if err := requireA2AAdmin(ctx); err != nil {
+		return nil, err
+	}
 	if strings.TrimSpace(req.GetAgentId()) == "" {
 		return nil, apierror.BadRequest(apierror.DomainA2A, "agent_id is required")
 	}
