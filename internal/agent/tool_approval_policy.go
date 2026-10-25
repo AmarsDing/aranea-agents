@@ -26,6 +26,9 @@ import (
 //     inflight 槽位。事件定级 AS-EVT-01=Informational（SystemNoticeEvent +
 //     审计双写，避开 BlockUpTo 行列放大等待副作用）。
 //   - ask     → 裁定写入 ctx，确认门禁 decide() 强制确认（grant 可满足）。
+//   - auto    → 裁定写入 ctx（mode=auto），消费语义等同 ask（同 grants 可满足、
+//     同 reason=policy_ask，零新 trigger/reason）；verdict 投影携带
+//     source_mode=auto 供 auto_review_verdict 审计区分（D5/phase 2）。
 //   - trusted → 裁定写入 ctx，作为新 grant 档在 decide() danger floor 之后
 //     消费——danger floor 恒优先于 trusted（computer-use danger /
 //     injectionSuspected 不受 trusted 影响）。
@@ -46,8 +49,8 @@ const approvalPolicyGatePriority = 3
 // approvalPolicyVerdictCtxKey 是审批策略 gate → 确认门禁的 ctx 传递键。
 type approvalPolicyVerdictCtxKey struct{}
 
-// approvalPolicyVerdict 是审批策略命中裁定（ask/trusted 入 ctx；never 在 gate
-// 内直接拒绝、不下传——与 paramRuleVerdict 同一设计）。
+// approvalPolicyVerdict 是审批策略命中裁定（ask/auto/trusted 入 ctx；never 在
+// gate 内直接拒绝、不下传——与 paramRuleVerdict 同一设计）。
 type approvalPolicyVerdict struct {
 	mode   biztool.ApprovalMode
 	ruleID string
@@ -243,18 +246,18 @@ func newApprovalPolicyGateBeforeHook(ag biz.Agent, deps TRPCBuilderDeps, lookup 
 			// approval_policy_denied 决策双写（Informational，§9.3）；notice 复用
 			// SystemNoticeEvent——显式反 BlockUpTo，防 never 静默拒绝 Ops 无感知（反作用#2）。
 			event.EmitGate(ctx, deps.DecisionCollector, decision.GateDecision{
-				TriggerRule: triggerApprovalPolicyDenied,
-				Outcome:     "blocked",
-				Scenario:    "审批策略拒绝工具调用: " + toolName,
-				Reasoning:   "rule " + enforce.ID + " scope " + enforce.Scope + ":" + enforce.ScopeKey,
-				GuardName:   "approval_policy_gate",
-				RunID:       gateRunID(ctx),
-				SessionID:   gateSessionID(ctx),
-				Entities:    []decision.EntityRef{{Type: "tool", Key: toolName}},
+				TriggerRule:   triggerApprovalPolicyDenied,
+				Outcome:       "blocked",
+				Scenario:      "审批策略拒绝工具调用: " + toolName,
+				Reasoning:     "rule " + enforce.ID + " scope " + enforce.Scope + ":" + enforce.ScopeKey,
+				GuardName:     "approval_policy_gate",
+				RunID:         gateRunID(ctx),
+				SessionID:     gateSessionID(ctx),
+				Entities:      []decision.EntityRef{{Type: "tool", Key: toolName}},
 				ObservedValue: previewFromToolArgs(args.Arguments),
-				Threshold:   string(biztool.ApprovalModeNever),
-				Action:      "deny",
-				Extra:       map[string]any{"rule_id": enforce.ID, "scope": enforce.Scope, "scope_key": enforce.ScopeKey},
+				Threshold:     string(biztool.ApprovalModeNever),
+				Action:        "deny",
+				Extra:         map[string]any{"rule_id": enforce.ID, "scope": enforce.Scope, "scope_key": enforce.ScopeKey},
 			})
 			if emitter := biz.ActivityEmitterFromContext(ctx); emitter != nil {
 				if noticeErr := emitter.EmitNotice(ctx, "工具 "+toolName+" 的本次调用被审批策略规则 "+enforce.ID+" 确定性拒绝（scope "+enforce.Scope+"）", triggerApprovalPolicyDenied); noticeErr != nil {
@@ -266,7 +269,7 @@ func newApprovalPolicyGateBeforeHook(ag biz.Agent, deps TRPCBuilderDeps, lookup 
 			// LLM 可见文案只给规则 ID——pattern/匹配维度不回给模型，防针对性变形
 			// 绕过（镜像 param_rule_deny 信息论保护；审计侧 ErrorMessage/决策记录可溯）。
 			return callbacks.Reject("工具 \"" + toolName + "\" 的本次调用被审批策略拒绝（规则 " + enforce.ID + "）。这是管理员配置的确定性安全姿态，不是临时故障。禁止重试相同或等价的调用；请向用户说明该操作被策略禁止，并询问替代方案。").BeforeToolResult(ctx), nil
-		case biztool.ApprovalModeAsk, biztool.ApprovalModeTrusted:
+		case biztool.ApprovalModeAsk, biztool.ApprovalModeTrusted, biztool.ApprovalModeAuto:
 			v := &approvalPolicyVerdict{mode: biztool.ApprovalMode(enforce.Mode), ruleID: enforce.ID}
 			return &trpctool.BeforeToolResult{Context: context.WithValue(ctx, approvalPolicyVerdictCtxKey{}, v)}, nil
 		default:

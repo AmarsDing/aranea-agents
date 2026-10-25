@@ -42,6 +42,12 @@ const (
 	ToolService_DeleteToolAgentOverride_FullMethodName       = "/kratos.tool.v1.ToolService/DeleteToolAgentOverride"
 	ToolService_UpdateToolConfig_FullMethodName              = "/kratos.tool.v1.ToolService/UpdateToolConfig"
 	ToolService_TestTool_FullMethodName                      = "/kratos.tool.v1.ToolService/TestTool"
+	ToolService_ExportApprovalPoliciesTOML_FullMethodName    = "/kratos.tool.v1.ToolService/ExportApprovalPoliciesTOML"
+	ToolService_ImportApprovalPoliciesTOML_FullMethodName    = "/kratos.tool.v1.ToolService/ImportApprovalPoliciesTOML"
+	ToolService_ListApprovalPolicies_FullMethodName          = "/kratos.tool.v1.ToolService/ListApprovalPolicies"
+	ToolService_GetApprovalPolicy_FullMethodName             = "/kratos.tool.v1.ToolService/GetApprovalPolicy"
+	ToolService_UpsertApprovalPolicy_FullMethodName          = "/kratos.tool.v1.ToolService/UpsertApprovalPolicy"
+	ToolService_DeleteApprovalPolicy_FullMethodName          = "/kratos.tool.v1.ToolService/DeleteApprovalPolicy"
 )
 
 // ToolServiceClient is the client API for ToolService service.
@@ -72,6 +78,15 @@ type ToolServiceClient interface {
 	DeleteToolAgentOverride(ctx context.Context, in *DeleteToolAgentOverrideRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	UpdateToolConfig(ctx context.Context, in *UpdateToolConfigRequest, opts ...grpc.CallOption) (*Tool, error)
 	TestTool(ctx context.Context, in *TestToolRequest, opts ...grpc.CallOption) (*TestToolResponse, error)
+	// Static colon-suffixed paths MUST be registered before
+	// /v1/approval-policies/{id} to avoid gorilla/mux matching "exportToml"
+	// as {id} (same discipline as /v1/tools/runs above).
+	ExportApprovalPoliciesTOML(ctx context.Context, in *ExportApprovalPoliciesTOMLRequest, opts ...grpc.CallOption) (*ExportApprovalPoliciesTOMLResponse, error)
+	ImportApprovalPoliciesTOML(ctx context.Context, in *ImportApprovalPoliciesTOMLRequest, opts ...grpc.CallOption) (*ImportApprovalPoliciesTOMLResponse, error)
+	ListApprovalPolicies(ctx context.Context, in *ListApprovalPoliciesRequest, opts ...grpc.CallOption) (*ListApprovalPoliciesResponse, error)
+	GetApprovalPolicy(ctx context.Context, in *GetApprovalPolicyRequest, opts ...grpc.CallOption) (*ApprovalPolicy, error)
+	UpsertApprovalPolicy(ctx context.Context, in *UpsertApprovalPolicyRequest, opts ...grpc.CallOption) (*ApprovalPolicy, error)
+	DeleteApprovalPolicy(ctx context.Context, in *DeleteApprovalPolicyRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 }
 
 type toolServiceClient struct {
@@ -302,6 +317,66 @@ func (c *toolServiceClient) TestTool(ctx context.Context, in *TestToolRequest, o
 	return out, nil
 }
 
+func (c *toolServiceClient) ExportApprovalPoliciesTOML(ctx context.Context, in *ExportApprovalPoliciesTOMLRequest, opts ...grpc.CallOption) (*ExportApprovalPoliciesTOMLResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ExportApprovalPoliciesTOMLResponse)
+	err := c.cc.Invoke(ctx, ToolService_ExportApprovalPoliciesTOML_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *toolServiceClient) ImportApprovalPoliciesTOML(ctx context.Context, in *ImportApprovalPoliciesTOMLRequest, opts ...grpc.CallOption) (*ImportApprovalPoliciesTOMLResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ImportApprovalPoliciesTOMLResponse)
+	err := c.cc.Invoke(ctx, ToolService_ImportApprovalPoliciesTOML_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *toolServiceClient) ListApprovalPolicies(ctx context.Context, in *ListApprovalPoliciesRequest, opts ...grpc.CallOption) (*ListApprovalPoliciesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListApprovalPoliciesResponse)
+	err := c.cc.Invoke(ctx, ToolService_ListApprovalPolicies_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *toolServiceClient) GetApprovalPolicy(ctx context.Context, in *GetApprovalPolicyRequest, opts ...grpc.CallOption) (*ApprovalPolicy, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ApprovalPolicy)
+	err := c.cc.Invoke(ctx, ToolService_GetApprovalPolicy_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *toolServiceClient) UpsertApprovalPolicy(ctx context.Context, in *UpsertApprovalPolicyRequest, opts ...grpc.CallOption) (*ApprovalPolicy, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ApprovalPolicy)
+	err := c.cc.Invoke(ctx, ToolService_UpsertApprovalPolicy_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *toolServiceClient) DeleteApprovalPolicy(ctx context.Context, in *DeleteApprovalPolicyRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, ToolService_DeleteApprovalPolicy_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ToolServiceServer is the server API for ToolService service.
 // All implementations must embed UnimplementedToolServiceServer
 // for forward compatibility.
@@ -330,6 +405,15 @@ type ToolServiceServer interface {
 	DeleteToolAgentOverride(context.Context, *DeleteToolAgentOverrideRequest) (*emptypb.Empty, error)
 	UpdateToolConfig(context.Context, *UpdateToolConfigRequest) (*Tool, error)
 	TestTool(context.Context, *TestToolRequest) (*TestToolResponse, error)
+	// Static colon-suffixed paths MUST be registered before
+	// /v1/approval-policies/{id} to avoid gorilla/mux matching "exportToml"
+	// as {id} (same discipline as /v1/tools/runs above).
+	ExportApprovalPoliciesTOML(context.Context, *ExportApprovalPoliciesTOMLRequest) (*ExportApprovalPoliciesTOMLResponse, error)
+	ImportApprovalPoliciesTOML(context.Context, *ImportApprovalPoliciesTOMLRequest) (*ImportApprovalPoliciesTOMLResponse, error)
+	ListApprovalPolicies(context.Context, *ListApprovalPoliciesRequest) (*ListApprovalPoliciesResponse, error)
+	GetApprovalPolicy(context.Context, *GetApprovalPolicyRequest) (*ApprovalPolicy, error)
+	UpsertApprovalPolicy(context.Context, *UpsertApprovalPolicyRequest) (*ApprovalPolicy, error)
+	DeleteApprovalPolicy(context.Context, *DeleteApprovalPolicyRequest) (*emptypb.Empty, error)
 	mustEmbedUnimplementedToolServiceServer()
 }
 
@@ -405,6 +489,24 @@ func (UnimplementedToolServiceServer) UpdateToolConfig(context.Context, *UpdateT
 }
 func (UnimplementedToolServiceServer) TestTool(context.Context, *TestToolRequest) (*TestToolResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method TestTool not implemented")
+}
+func (UnimplementedToolServiceServer) ExportApprovalPoliciesTOML(context.Context, *ExportApprovalPoliciesTOMLRequest) (*ExportApprovalPoliciesTOMLResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ExportApprovalPoliciesTOML not implemented")
+}
+func (UnimplementedToolServiceServer) ImportApprovalPoliciesTOML(context.Context, *ImportApprovalPoliciesTOMLRequest) (*ImportApprovalPoliciesTOMLResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ImportApprovalPoliciesTOML not implemented")
+}
+func (UnimplementedToolServiceServer) ListApprovalPolicies(context.Context, *ListApprovalPoliciesRequest) (*ListApprovalPoliciesResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListApprovalPolicies not implemented")
+}
+func (UnimplementedToolServiceServer) GetApprovalPolicy(context.Context, *GetApprovalPolicyRequest) (*ApprovalPolicy, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetApprovalPolicy not implemented")
+}
+func (UnimplementedToolServiceServer) UpsertApprovalPolicy(context.Context, *UpsertApprovalPolicyRequest) (*ApprovalPolicy, error) {
+	return nil, status.Error(codes.Unimplemented, "method UpsertApprovalPolicy not implemented")
+}
+func (UnimplementedToolServiceServer) DeleteApprovalPolicy(context.Context, *DeleteApprovalPolicyRequest) (*emptypb.Empty, error) {
+	return nil, status.Error(codes.Unimplemented, "method DeleteApprovalPolicy not implemented")
 }
 func (UnimplementedToolServiceServer) mustEmbedUnimplementedToolServiceServer() {}
 func (UnimplementedToolServiceServer) testEmbeddedByValue()                     {}
@@ -823,6 +925,114 @@ func _ToolService_TestTool_Handler(srv interface{}, ctx context.Context, dec fun
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ToolService_ExportApprovalPoliciesTOML_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ExportApprovalPoliciesTOMLRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ToolServiceServer).ExportApprovalPoliciesTOML(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ToolService_ExportApprovalPoliciesTOML_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ToolServiceServer).ExportApprovalPoliciesTOML(ctx, req.(*ExportApprovalPoliciesTOMLRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ToolService_ImportApprovalPoliciesTOML_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ImportApprovalPoliciesTOMLRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ToolServiceServer).ImportApprovalPoliciesTOML(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ToolService_ImportApprovalPoliciesTOML_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ToolServiceServer).ImportApprovalPoliciesTOML(ctx, req.(*ImportApprovalPoliciesTOMLRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ToolService_ListApprovalPolicies_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListApprovalPoliciesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ToolServiceServer).ListApprovalPolicies(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ToolService_ListApprovalPolicies_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ToolServiceServer).ListApprovalPolicies(ctx, req.(*ListApprovalPoliciesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ToolService_GetApprovalPolicy_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetApprovalPolicyRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ToolServiceServer).GetApprovalPolicy(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ToolService_GetApprovalPolicy_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ToolServiceServer).GetApprovalPolicy(ctx, req.(*GetApprovalPolicyRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ToolService_UpsertApprovalPolicy_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpsertApprovalPolicyRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ToolServiceServer).UpsertApprovalPolicy(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ToolService_UpsertApprovalPolicy_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ToolServiceServer).UpsertApprovalPolicy(ctx, req.(*UpsertApprovalPolicyRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ToolService_DeleteApprovalPolicy_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteApprovalPolicyRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ToolServiceServer).DeleteApprovalPolicy(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ToolService_DeleteApprovalPolicy_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ToolServiceServer).DeleteApprovalPolicy(ctx, req.(*DeleteApprovalPolicyRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ToolService_ServiceDesc is the grpc.ServiceDesc for ToolService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -917,6 +1127,30 @@ var ToolService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "TestTool",
 			Handler:    _ToolService_TestTool_Handler,
+		},
+		{
+			MethodName: "ExportApprovalPoliciesTOML",
+			Handler:    _ToolService_ExportApprovalPoliciesTOML_Handler,
+		},
+		{
+			MethodName: "ImportApprovalPoliciesTOML",
+			Handler:    _ToolService_ImportApprovalPoliciesTOML_Handler,
+		},
+		{
+			MethodName: "ListApprovalPolicies",
+			Handler:    _ToolService_ListApprovalPolicies_Handler,
+		},
+		{
+			MethodName: "GetApprovalPolicy",
+			Handler:    _ToolService_GetApprovalPolicy_Handler,
+		},
+		{
+			MethodName: "UpsertApprovalPolicy",
+			Handler:    _ToolService_UpsertApprovalPolicy_Handler,
+		},
+		{
+			MethodName: "DeleteApprovalPolicy",
+			Handler:    _ToolService_DeleteApprovalPolicy_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

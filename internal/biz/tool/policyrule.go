@@ -29,15 +29,19 @@ type ApprovalMatchInput struct {
 }
 
 // approvalModeRank 返回规则命中后的生效优先级（小者优先）。未知 mode 的规则
-// 不参与竞选（与 policyrule.effectRank 同一折叠语义）。
+// 不参与竞选（与 policyrule.effectRank 同一折叠语义）。rank 序 as/is 独立成档：
+// never=0 < auto=1 < ask=2 < trusted=3（auto 消费等同 ask，但竞选位更低——
+// 同 scope 同 pattern 下显式 ask 压过 auto）。
 func approvalModeRank(mode ApprovalMode) (int, bool) {
 	switch mode {
 	case ApprovalModeNever:
 		return 0, true
-	case ApprovalModeAsk:
+	case ApprovalModeAuto:
 		return 1, true
-	case ApprovalModeTrusted:
+	case ApprovalModeAsk:
 		return 2, true
+	case ApprovalModeTrusted:
+		return 3, true
 	default:
 		return 0, false
 	}
@@ -60,9 +64,9 @@ func ValidateApprovalPolicy(p ApprovalPolicy) error {
 		return apierror.BadRequest("TOOL", "scope_key is required")
 	}
 	switch ApprovalMode(strings.TrimSpace(p.Mode)) {
-	case ApprovalModeAsk, ApprovalModeNever, ApprovalModeTrusted:
+	case ApprovalModeAsk, ApprovalModeNever, ApprovalModeTrusted, ApprovalModeAuto:
 	default:
-		return apierror.BadRequest("TOOL", "mode must be ask|never|trusted")
+		return apierror.BadRequest("TOOL", "mode must be never|auto|ask|trusted")
 	}
 	if strings.TrimSpace(p.ToolPattern) == "" {
 		return apierror.BadRequest("TOOL", "tool_pattern is required (use \"*\" for explicit wildcard)")
@@ -121,8 +125,8 @@ func approvalPolicyEffective(p *ApprovalPolicy, nowUnix int64) bool {
 }
 
 // pickApprovalWinner 在一组（同 shadow 类别）规则中选胜者：先按 modeRank
-// （never=0 < ask=1 < trusted=2）取最小，同 rank 按 priority 升序，再按 ID
-// 字典序保证确定性（与 policyrule.Evaluate 同一决胜序）。
+// （never=0 < auto=1 < ask=2 < trusted=3）取最小，同 rank 按 priority 升序，
+// 再按 ID 字典序保证确定性（与 policyrule.Evaluate 同一决胜序）。
 func pickApprovalWinner(policies []ApprovalPolicy, in ApprovalMatchInput, nowUnix int64, shadow bool) *ApprovalPolicy {
 	var winner *ApprovalPolicy
 	winnerRank := 0

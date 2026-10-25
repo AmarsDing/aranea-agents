@@ -2728,6 +2728,667 @@ func (x *DeleteToolParamRuleRequest) GetId() string {
 	return ""
 }
 
+// ApprovalPolicy is a session/agent-scoped deterministic approval posture
+// row (P0-5; phase 2 D5 管理面 API). The runtime approval policy gate
+// (BeforeTool p3) evaluates enabled rows with precedence never > auto > ask
+// > trusted (rank-then-priority-then-id).
+type ApprovalPolicy struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Id    string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	// scope: session | agent.
+	Scope string `protobuf:"bytes,2,opt,name=scope,proto3" json:"scope,omitempty"`
+	// scope_key is the session id (scope=session) or agent id (scope=agent).
+	ScopeKey string `protobuf:"bytes,3,opt,name=scope_key,json=scopeKey,proto3" json:"scope_key,omitempty"`
+	// tool_pattern is required ("*" for explicit wildcard); glob or "re:" regex.
+	ToolPattern string `protobuf:"bytes,4,opt,name=tool_pattern,json=toolPattern,proto3" json:"tool_pattern,omitempty"`
+	// command_prefix (optional): glob/"re:" against the extracted command text.
+	CommandPrefix string `protobuf:"bytes,5,opt,name=command_prefix,json=commandPrefix,proto3" json:"command_prefix,omitempty"`
+	// args_pattern (optional): glob/"re:" against flattened arguments text.
+	ArgsPattern string `protobuf:"bytes,6,opt,name=args_pattern,json=argsPattern,proto3" json:"args_pattern,omitempty"`
+	// mode: never | auto | ask | trusted. auto consumes identically to ask
+	// (session/persisted grants still satisfy it) but projects
+	// source_mode=auto on verdict records (auto_review_verdict audit).
+	Mode     string `protobuf:"bytes,7,opt,name=mode,proto3" json:"mode,omitempty"`
+	Priority int32  `protobuf:"varint,8,opt,name=priority,proto3" json:"priority,omitempty"`
+	Enabled  bool   `protobuf:"varint,9,opt,name=enabled,proto3" json:"enabled,omitempty"`
+	// shadow_only: matched rows only audit (no enforcement).
+	ShadowOnly bool `protobuf:"varint,10,opt,name=shadow_only,json=shadowOnly,proto3" json:"shadow_only,omitempty"`
+	// expires_at is unix seconds; 0 = no expiry.
+	ExpiresAt int64 `protobuf:"varint,11,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
+	// created_at / created_by are server-authoritative (ignored on write).
+	CreatedAt     int64  `protobuf:"varint,12,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	CreatedBy     string `protobuf:"bytes,13,opt,name=created_by,json=createdBy,proto3" json:"created_by,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ApprovalPolicy) Reset() {
+	*x = ApprovalPolicy{}
+	mi := &file_kratos_tool_v1_tool_proto_msgTypes[31]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ApprovalPolicy) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ApprovalPolicy) ProtoMessage() {}
+
+func (x *ApprovalPolicy) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_tool_v1_tool_proto_msgTypes[31]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ApprovalPolicy.ProtoReflect.Descriptor instead.
+func (*ApprovalPolicy) Descriptor() ([]byte, []int) {
+	return file_kratos_tool_v1_tool_proto_rawDescGZIP(), []int{31}
+}
+
+func (x *ApprovalPolicy) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *ApprovalPolicy) GetScope() string {
+	if x != nil {
+		return x.Scope
+	}
+	return ""
+}
+
+func (x *ApprovalPolicy) GetScopeKey() string {
+	if x != nil {
+		return x.ScopeKey
+	}
+	return ""
+}
+
+func (x *ApprovalPolicy) GetToolPattern() string {
+	if x != nil {
+		return x.ToolPattern
+	}
+	return ""
+}
+
+func (x *ApprovalPolicy) GetCommandPrefix() string {
+	if x != nil {
+		return x.CommandPrefix
+	}
+	return ""
+}
+
+func (x *ApprovalPolicy) GetArgsPattern() string {
+	if x != nil {
+		return x.ArgsPattern
+	}
+	return ""
+}
+
+func (x *ApprovalPolicy) GetMode() string {
+	if x != nil {
+		return x.Mode
+	}
+	return ""
+}
+
+func (x *ApprovalPolicy) GetPriority() int32 {
+	if x != nil {
+		return x.Priority
+	}
+	return 0
+}
+
+func (x *ApprovalPolicy) GetEnabled() bool {
+	if x != nil {
+		return x.Enabled
+	}
+	return false
+}
+
+func (x *ApprovalPolicy) GetShadowOnly() bool {
+	if x != nil {
+		return x.ShadowOnly
+	}
+	return false
+}
+
+func (x *ApprovalPolicy) GetExpiresAt() int64 {
+	if x != nil {
+		return x.ExpiresAt
+	}
+	return 0
+}
+
+func (x *ApprovalPolicy) GetCreatedAt() int64 {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return 0
+}
+
+func (x *ApprovalPolicy) GetCreatedBy() string {
+	if x != nil {
+		return x.CreatedBy
+	}
+	return ""
+}
+
+type ListApprovalPoliciesRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Scope         string                 `protobuf:"bytes,1,opt,name=scope,proto3" json:"scope,omitempty"`
+	ScopeKey      string                 `protobuf:"bytes,2,opt,name=scope_key,json=scopeKey,proto3" json:"scope_key,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListApprovalPoliciesRequest) Reset() {
+	*x = ListApprovalPoliciesRequest{}
+	mi := &file_kratos_tool_v1_tool_proto_msgTypes[32]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListApprovalPoliciesRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListApprovalPoliciesRequest) ProtoMessage() {}
+
+func (x *ListApprovalPoliciesRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_tool_v1_tool_proto_msgTypes[32]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListApprovalPoliciesRequest.ProtoReflect.Descriptor instead.
+func (*ListApprovalPoliciesRequest) Descriptor() ([]byte, []int) {
+	return file_kratos_tool_v1_tool_proto_rawDescGZIP(), []int{32}
+}
+
+func (x *ListApprovalPoliciesRequest) GetScope() string {
+	if x != nil {
+		return x.Scope
+	}
+	return ""
+}
+
+func (x *ListApprovalPoliciesRequest) GetScopeKey() string {
+	if x != nil {
+		return x.ScopeKey
+	}
+	return ""
+}
+
+type ListApprovalPoliciesResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Items         []*ApprovalPolicy      `protobuf:"bytes,1,rep,name=items,proto3" json:"items,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListApprovalPoliciesResponse) Reset() {
+	*x = ListApprovalPoliciesResponse{}
+	mi := &file_kratos_tool_v1_tool_proto_msgTypes[33]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListApprovalPoliciesResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListApprovalPoliciesResponse) ProtoMessage() {}
+
+func (x *ListApprovalPoliciesResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_tool_v1_tool_proto_msgTypes[33]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListApprovalPoliciesResponse.ProtoReflect.Descriptor instead.
+func (*ListApprovalPoliciesResponse) Descriptor() ([]byte, []int) {
+	return file_kratos_tool_v1_tool_proto_rawDescGZIP(), []int{33}
+}
+
+func (x *ListApprovalPoliciesResponse) GetItems() []*ApprovalPolicy {
+	if x != nil {
+		return x.Items
+	}
+	return nil
+}
+
+type GetApprovalPolicyRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetApprovalPolicyRequest) Reset() {
+	*x = GetApprovalPolicyRequest{}
+	mi := &file_kratos_tool_v1_tool_proto_msgTypes[34]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetApprovalPolicyRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetApprovalPolicyRequest) ProtoMessage() {}
+
+func (x *GetApprovalPolicyRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_tool_v1_tool_proto_msgTypes[34]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetApprovalPolicyRequest.ProtoReflect.Descriptor instead.
+func (*GetApprovalPolicyRequest) Descriptor() ([]byte, []int) {
+	return file_kratos_tool_v1_tool_proto_rawDescGZIP(), []int{34}
+}
+
+func (x *GetApprovalPolicyRequest) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+type UpsertApprovalPolicyRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Scope         string                 `protobuf:"bytes,2,opt,name=scope,proto3" json:"scope,omitempty"`
+	ScopeKey      string                 `protobuf:"bytes,3,opt,name=scope_key,json=scopeKey,proto3" json:"scope_key,omitempty"`
+	ToolPattern   string                 `protobuf:"bytes,4,opt,name=tool_pattern,json=toolPattern,proto3" json:"tool_pattern,omitempty"`
+	CommandPrefix string                 `protobuf:"bytes,5,opt,name=command_prefix,json=commandPrefix,proto3" json:"command_prefix,omitempty"`
+	ArgsPattern   string                 `protobuf:"bytes,6,opt,name=args_pattern,json=argsPattern,proto3" json:"args_pattern,omitempty"`
+	Mode          string                 `protobuf:"bytes,7,opt,name=mode,proto3" json:"mode,omitempty"`
+	Priority      int32                  `protobuf:"varint,8,opt,name=priority,proto3" json:"priority,omitempty"`
+	Enabled       bool                   `protobuf:"varint,9,opt,name=enabled,proto3" json:"enabled,omitempty"`
+	ShadowOnly    bool                   `protobuf:"varint,10,opt,name=shadow_only,json=shadowOnly,proto3" json:"shadow_only,omitempty"`
+	ExpiresAt     int64                  `protobuf:"varint,11,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UpsertApprovalPolicyRequest) Reset() {
+	*x = UpsertApprovalPolicyRequest{}
+	mi := &file_kratos_tool_v1_tool_proto_msgTypes[35]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpsertApprovalPolicyRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpsertApprovalPolicyRequest) ProtoMessage() {}
+
+func (x *UpsertApprovalPolicyRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_tool_v1_tool_proto_msgTypes[35]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpsertApprovalPolicyRequest.ProtoReflect.Descriptor instead.
+func (*UpsertApprovalPolicyRequest) Descriptor() ([]byte, []int) {
+	return file_kratos_tool_v1_tool_proto_rawDescGZIP(), []int{35}
+}
+
+func (x *UpsertApprovalPolicyRequest) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *UpsertApprovalPolicyRequest) GetScope() string {
+	if x != nil {
+		return x.Scope
+	}
+	return ""
+}
+
+func (x *UpsertApprovalPolicyRequest) GetScopeKey() string {
+	if x != nil {
+		return x.ScopeKey
+	}
+	return ""
+}
+
+func (x *UpsertApprovalPolicyRequest) GetToolPattern() string {
+	if x != nil {
+		return x.ToolPattern
+	}
+	return ""
+}
+
+func (x *UpsertApprovalPolicyRequest) GetCommandPrefix() string {
+	if x != nil {
+		return x.CommandPrefix
+	}
+	return ""
+}
+
+func (x *UpsertApprovalPolicyRequest) GetArgsPattern() string {
+	if x != nil {
+		return x.ArgsPattern
+	}
+	return ""
+}
+
+func (x *UpsertApprovalPolicyRequest) GetMode() string {
+	if x != nil {
+		return x.Mode
+	}
+	return ""
+}
+
+func (x *UpsertApprovalPolicyRequest) GetPriority() int32 {
+	if x != nil {
+		return x.Priority
+	}
+	return 0
+}
+
+func (x *UpsertApprovalPolicyRequest) GetEnabled() bool {
+	if x != nil {
+		return x.Enabled
+	}
+	return false
+}
+
+func (x *UpsertApprovalPolicyRequest) GetShadowOnly() bool {
+	if x != nil {
+		return x.ShadowOnly
+	}
+	return false
+}
+
+func (x *UpsertApprovalPolicyRequest) GetExpiresAt() int64 {
+	if x != nil {
+		return x.ExpiresAt
+	}
+	return 0
+}
+
+type DeleteApprovalPolicyRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeleteApprovalPolicyRequest) Reset() {
+	*x = DeleteApprovalPolicyRequest{}
+	mi := &file_kratos_tool_v1_tool_proto_msgTypes[36]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteApprovalPolicyRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteApprovalPolicyRequest) ProtoMessage() {}
+
+func (x *DeleteApprovalPolicyRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_tool_v1_tool_proto_msgTypes[36]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteApprovalPolicyRequest.ProtoReflect.Descriptor instead.
+func (*DeleteApprovalPolicyRequest) Descriptor() ([]byte, []int) {
+	return file_kratos_tool_v1_tool_proto_rawDescGZIP(), []int{36}
+}
+
+func (x *DeleteApprovalPolicyRequest) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+// ImportApprovalPoliciesTOMLRequest carries the whole TOML document.
+// Import is per-row tolerant: valid rows upsert (id-keyed, idempotent),
+// invalid rows are reported in per-row errors without aborting the batch.
+// Rows are capped server-side (oversized documents rejected wholesale).
+type ImportApprovalPoliciesTOMLRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Content       string                 `protobuf:"bytes,1,opt,name=content,proto3" json:"content,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ImportApprovalPoliciesTOMLRequest) Reset() {
+	*x = ImportApprovalPoliciesTOMLRequest{}
+	mi := &file_kratos_tool_v1_tool_proto_msgTypes[37]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ImportApprovalPoliciesTOMLRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ImportApprovalPoliciesTOMLRequest) ProtoMessage() {}
+
+func (x *ImportApprovalPoliciesTOMLRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_tool_v1_tool_proto_msgTypes[37]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ImportApprovalPoliciesTOMLRequest.ProtoReflect.Descriptor instead.
+func (*ImportApprovalPoliciesTOMLRequest) Descriptor() ([]byte, []int) {
+	return file_kratos_tool_v1_tool_proto_rawDescGZIP(), []int{37}
+}
+
+func (x *ImportApprovalPoliciesTOMLRequest) GetContent() string {
+	if x != nil {
+		return x.Content
+	}
+	return ""
+}
+
+type ImportApprovalPoliciesTOMLResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ImportedCount int32                  `protobuf:"varint,1,opt,name=imported_count,json=importedCount,proto3" json:"imported_count,omitempty"`
+	// per-row errors in "policies[i]: <reason>" form (sanitized, no payload echo).
+	Errors        []string `protobuf:"bytes,2,rep,name=errors,proto3" json:"errors,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ImportApprovalPoliciesTOMLResponse) Reset() {
+	*x = ImportApprovalPoliciesTOMLResponse{}
+	mi := &file_kratos_tool_v1_tool_proto_msgTypes[38]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ImportApprovalPoliciesTOMLResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ImportApprovalPoliciesTOMLResponse) ProtoMessage() {}
+
+func (x *ImportApprovalPoliciesTOMLResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_tool_v1_tool_proto_msgTypes[38]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ImportApprovalPoliciesTOMLResponse.ProtoReflect.Descriptor instead.
+func (*ImportApprovalPoliciesTOMLResponse) Descriptor() ([]byte, []int) {
+	return file_kratos_tool_v1_tool_proto_rawDescGZIP(), []int{38}
+}
+
+func (x *ImportApprovalPoliciesTOMLResponse) GetImportedCount() int32 {
+	if x != nil {
+		return x.ImportedCount
+	}
+	return 0
+}
+
+func (x *ImportApprovalPoliciesTOMLResponse) GetErrors() []string {
+	if x != nil {
+		return x.Errors
+	}
+	return nil
+}
+
+type ExportApprovalPoliciesTOMLRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// scope filter mirrors List: export rows under (scope, scope_key).
+	Scope         string `protobuf:"bytes,1,opt,name=scope,proto3" json:"scope,omitempty"`
+	ScopeKey      string `protobuf:"bytes,2,opt,name=scope_key,json=scopeKey,proto3" json:"scope_key,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ExportApprovalPoliciesTOMLRequest) Reset() {
+	*x = ExportApprovalPoliciesTOMLRequest{}
+	mi := &file_kratos_tool_v1_tool_proto_msgTypes[39]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ExportApprovalPoliciesTOMLRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ExportApprovalPoliciesTOMLRequest) ProtoMessage() {}
+
+func (x *ExportApprovalPoliciesTOMLRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_tool_v1_tool_proto_msgTypes[39]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ExportApprovalPoliciesTOMLRequest.ProtoReflect.Descriptor instead.
+func (*ExportApprovalPoliciesTOMLRequest) Descriptor() ([]byte, []int) {
+	return file_kratos_tool_v1_tool_proto_rawDescGZIP(), []int{39}
+}
+
+func (x *ExportApprovalPoliciesTOMLRequest) GetScope() string {
+	if x != nil {
+		return x.Scope
+	}
+	return ""
+}
+
+func (x *ExportApprovalPoliciesTOMLRequest) GetScopeKey() string {
+	if x != nil {
+		return x.ScopeKey
+	}
+	return ""
+}
+
+type ExportApprovalPoliciesTOMLResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Content       string                 `protobuf:"bytes,1,opt,name=content,proto3" json:"content,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ExportApprovalPoliciesTOMLResponse) Reset() {
+	*x = ExportApprovalPoliciesTOMLResponse{}
+	mi := &file_kratos_tool_v1_tool_proto_msgTypes[40]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ExportApprovalPoliciesTOMLResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ExportApprovalPoliciesTOMLResponse) ProtoMessage() {}
+
+func (x *ExportApprovalPoliciesTOMLResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_tool_v1_tool_proto_msgTypes[40]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ExportApprovalPoliciesTOMLResponse.ProtoReflect.Descriptor instead.
+func (*ExportApprovalPoliciesTOMLResponse) Descriptor() ([]byte, []int) {
+	return file_kratos_tool_v1_tool_proto_rawDescGZIP(), []int{40}
+}
+
+func (x *ExportApprovalPoliciesTOMLResponse) GetContent() string {
+	if x != nil {
+		return x.Content
+	}
+	return ""
+}
+
 type UpsertToolAgentOverrideRequest struct {
 	state   protoimpl.MessageState `protogen:"open.v1"`
 	ToolId  string                 `protobuf:"bytes,1,opt,name=tool_id,json=toolId,proto3" json:"tool_id,omitempty"`
@@ -2743,7 +3404,7 @@ type UpsertToolAgentOverrideRequest struct {
 
 func (x *UpsertToolAgentOverrideRequest) Reset() {
 	*x = UpsertToolAgentOverrideRequest{}
-	mi := &file_kratos_tool_v1_tool_proto_msgTypes[31]
+	mi := &file_kratos_tool_v1_tool_proto_msgTypes[41]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2755,7 +3416,7 @@ func (x *UpsertToolAgentOverrideRequest) String() string {
 func (*UpsertToolAgentOverrideRequest) ProtoMessage() {}
 
 func (x *UpsertToolAgentOverrideRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_tool_v1_tool_proto_msgTypes[31]
+	mi := &file_kratos_tool_v1_tool_proto_msgTypes[41]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2768,7 +3429,7 @@ func (x *UpsertToolAgentOverrideRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpsertToolAgentOverrideRequest.ProtoReflect.Descriptor instead.
 func (*UpsertToolAgentOverrideRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_tool_v1_tool_proto_rawDescGZIP(), []int{31}
+	return file_kratos_tool_v1_tool_proto_rawDescGZIP(), []int{41}
 }
 
 func (x *UpsertToolAgentOverrideRequest) GetToolId() string {
@@ -2823,7 +3484,7 @@ type DeleteToolAgentOverrideRequest struct {
 
 func (x *DeleteToolAgentOverrideRequest) Reset() {
 	*x = DeleteToolAgentOverrideRequest{}
-	mi := &file_kratos_tool_v1_tool_proto_msgTypes[32]
+	mi := &file_kratos_tool_v1_tool_proto_msgTypes[42]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2835,7 +3496,7 @@ func (x *DeleteToolAgentOverrideRequest) String() string {
 func (*DeleteToolAgentOverrideRequest) ProtoMessage() {}
 
 func (x *DeleteToolAgentOverrideRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_tool_v1_tool_proto_msgTypes[32]
+	mi := &file_kratos_tool_v1_tool_proto_msgTypes[42]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2848,7 +3509,7 @@ func (x *DeleteToolAgentOverrideRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteToolAgentOverrideRequest.ProtoReflect.Descriptor instead.
 func (*DeleteToolAgentOverrideRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_tool_v1_tool_proto_rawDescGZIP(), []int{32}
+	return file_kratos_tool_v1_tool_proto_rawDescGZIP(), []int{42}
 }
 
 func (x *DeleteToolAgentOverrideRequest) GetToolId() string {
@@ -2879,7 +3540,7 @@ type ToolInvocationParam struct {
 
 func (x *ToolInvocationParam) Reset() {
 	*x = ToolInvocationParam{}
-	mi := &file_kratos_tool_v1_tool_proto_msgTypes[33]
+	mi := &file_kratos_tool_v1_tool_proto_msgTypes[43]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2891,7 +3552,7 @@ func (x *ToolInvocationParam) String() string {
 func (*ToolInvocationParam) ProtoMessage() {}
 
 func (x *ToolInvocationParam) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_tool_v1_tool_proto_msgTypes[33]
+	mi := &file_kratos_tool_v1_tool_proto_msgTypes[43]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2904,7 +3565,7 @@ func (x *ToolInvocationParam) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ToolInvocationParam.ProtoReflect.Descriptor instead.
 func (*ToolInvocationParam) Descriptor() ([]byte, []int) {
-	return file_kratos_tool_v1_tool_proto_rawDescGZIP(), []int{33}
+	return file_kratos_tool_v1_tool_proto_rawDescGZIP(), []int{43}
 }
 
 func (x *ToolInvocationParam) GetId() string {
@@ -2958,7 +3619,7 @@ type GetToolInvocationParamsRequest struct {
 
 func (x *GetToolInvocationParamsRequest) Reset() {
 	*x = GetToolInvocationParamsRequest{}
-	mi := &file_kratos_tool_v1_tool_proto_msgTypes[34]
+	mi := &file_kratos_tool_v1_tool_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2970,7 +3631,7 @@ func (x *GetToolInvocationParamsRequest) String() string {
 func (*GetToolInvocationParamsRequest) ProtoMessage() {}
 
 func (x *GetToolInvocationParamsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_tool_v1_tool_proto_msgTypes[34]
+	mi := &file_kratos_tool_v1_tool_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2983,7 +3644,7 @@ func (x *GetToolInvocationParamsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetToolInvocationParamsRequest.ProtoReflect.Descriptor instead.
 func (*GetToolInvocationParamsRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_tool_v1_tool_proto_rawDescGZIP(), []int{34}
+	return file_kratos_tool_v1_tool_proto_rawDescGZIP(), []int{44}
 }
 
 func (x *GetToolInvocationParamsRequest) GetInvocationId() string {
@@ -3003,7 +3664,7 @@ type UpdateToolConfigRequest struct {
 
 func (x *UpdateToolConfigRequest) Reset() {
 	*x = UpdateToolConfigRequest{}
-	mi := &file_kratos_tool_v1_tool_proto_msgTypes[35]
+	mi := &file_kratos_tool_v1_tool_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3015,7 +3676,7 @@ func (x *UpdateToolConfigRequest) String() string {
 func (*UpdateToolConfigRequest) ProtoMessage() {}
 
 func (x *UpdateToolConfigRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_tool_v1_tool_proto_msgTypes[35]
+	mi := &file_kratos_tool_v1_tool_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3028,7 +3689,7 @@ func (x *UpdateToolConfigRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateToolConfigRequest.ProtoReflect.Descriptor instead.
 func (*UpdateToolConfigRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_tool_v1_tool_proto_rawDescGZIP(), []int{35}
+	return file_kratos_tool_v1_tool_proto_rawDescGZIP(), []int{45}
 }
 
 func (x *UpdateToolConfigRequest) GetId() string {
@@ -3056,7 +3717,7 @@ type TestToolRequest struct {
 
 func (x *TestToolRequest) Reset() {
 	*x = TestToolRequest{}
-	mi := &file_kratos_tool_v1_tool_proto_msgTypes[36]
+	mi := &file_kratos_tool_v1_tool_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3068,7 +3729,7 @@ func (x *TestToolRequest) String() string {
 func (*TestToolRequest) ProtoMessage() {}
 
 func (x *TestToolRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_tool_v1_tool_proto_msgTypes[36]
+	mi := &file_kratos_tool_v1_tool_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3081,7 +3742,7 @@ func (x *TestToolRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TestToolRequest.ProtoReflect.Descriptor instead.
 func (*TestToolRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_tool_v1_tool_proto_rawDescGZIP(), []int{36}
+	return file_kratos_tool_v1_tool_proto_rawDescGZIP(), []int{46}
 }
 
 func (x *TestToolRequest) GetId() string {
@@ -3117,7 +3778,7 @@ type TestToolResponse struct {
 
 func (x *TestToolResponse) Reset() {
 	*x = TestToolResponse{}
-	mi := &file_kratos_tool_v1_tool_proto_msgTypes[37]
+	mi := &file_kratos_tool_v1_tool_proto_msgTypes[47]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3129,7 +3790,7 @@ func (x *TestToolResponse) String() string {
 func (*TestToolResponse) ProtoMessage() {}
 
 func (x *TestToolResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_tool_v1_tool_proto_msgTypes[37]
+	mi := &file_kratos_tool_v1_tool_proto_msgTypes[47]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3142,7 +3803,7 @@ func (x *TestToolResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TestToolResponse.ProtoReflect.Descriptor instead.
 func (*TestToolResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_tool_v1_tool_proto_rawDescGZIP(), []int{37}
+	return file_kratos_tool_v1_tool_proto_rawDescGZIP(), []int{47}
 }
 
 func (x *TestToolResponse) GetStatus() string {
@@ -3192,7 +3853,7 @@ type ToolInvocationAudit struct {
 
 func (x *ToolInvocationAudit) Reset() {
 	*x = ToolInvocationAudit{}
-	mi := &file_kratos_tool_v1_tool_proto_msgTypes[38]
+	mi := &file_kratos_tool_v1_tool_proto_msgTypes[48]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3204,7 +3865,7 @@ func (x *ToolInvocationAudit) String() string {
 func (*ToolInvocationAudit) ProtoMessage() {}
 
 func (x *ToolInvocationAudit) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_tool_v1_tool_proto_msgTypes[38]
+	mi := &file_kratos_tool_v1_tool_proto_msgTypes[48]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3217,7 +3878,7 @@ func (x *ToolInvocationAudit) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ToolInvocationAudit.ProtoReflect.Descriptor instead.
 func (*ToolInvocationAudit) Descriptor() ([]byte, []int) {
-	return file_kratos_tool_v1_tool_proto_rawDescGZIP(), []int{38}
+	return file_kratos_tool_v1_tool_proto_rawDescGZIP(), []int{48}
 }
 
 func (x *ToolInvocationAudit) GetId() string {
@@ -3314,7 +3975,7 @@ type ListToolInvocationAuditsRequest struct {
 
 func (x *ListToolInvocationAuditsRequest) Reset() {
 	*x = ListToolInvocationAuditsRequest{}
-	mi := &file_kratos_tool_v1_tool_proto_msgTypes[39]
+	mi := &file_kratos_tool_v1_tool_proto_msgTypes[49]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3326,7 +3987,7 @@ func (x *ListToolInvocationAuditsRequest) String() string {
 func (*ListToolInvocationAuditsRequest) ProtoMessage() {}
 
 func (x *ListToolInvocationAuditsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_tool_v1_tool_proto_msgTypes[39]
+	mi := &file_kratos_tool_v1_tool_proto_msgTypes[49]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3339,7 +4000,7 @@ func (x *ListToolInvocationAuditsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListToolInvocationAuditsRequest.ProtoReflect.Descriptor instead.
 func (*ListToolInvocationAuditsRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_tool_v1_tool_proto_rawDescGZIP(), []int{39}
+	return file_kratos_tool_v1_tool_proto_rawDescGZIP(), []int{49}
 }
 
 func (x *ListToolInvocationAuditsRequest) GetToolKey() string {
@@ -3417,7 +4078,7 @@ type ListToolInvocationAuditsResponse struct {
 
 func (x *ListToolInvocationAuditsResponse) Reset() {
 	*x = ListToolInvocationAuditsResponse{}
-	mi := &file_kratos_tool_v1_tool_proto_msgTypes[40]
+	mi := &file_kratos_tool_v1_tool_proto_msgTypes[50]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3429,7 +4090,7 @@ func (x *ListToolInvocationAuditsResponse) String() string {
 func (*ListToolInvocationAuditsResponse) ProtoMessage() {}
 
 func (x *ListToolInvocationAuditsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_tool_v1_tool_proto_msgTypes[40]
+	mi := &file_kratos_tool_v1_tool_proto_msgTypes[50]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3442,7 +4103,7 @@ func (x *ListToolInvocationAuditsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListToolInvocationAuditsResponse.ProtoReflect.Descriptor instead.
 func (*ListToolInvocationAuditsResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_tool_v1_tool_proto_rawDescGZIP(), []int{40}
+	return file_kratos_tool_v1_tool_proto_rawDescGZIP(), []int{50}
 }
 
 func (x *ListToolInvocationAuditsResponse) GetItems() []*ToolInvocationAudit {
@@ -3743,7 +4404,60 @@ const file_kratos_tool_v1_tool_proto_rawDesc = "" +
 	"\bpriority\x18\x05 \x01(\x05R\bpriority\x12\x18\n" +
 	"\aenabled\x18\x06 \x01(\bR\aenabled\"2\n" +
 	"\x1aDeleteToolParamRuleRequest\x12\x14\n" +
-	"\x02id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\x02id\"\xf5\x01\n" +
+	"\x02id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\x02id\"\x88\x03\n" +
+	"\x0eApprovalPolicy\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x14\n" +
+	"\x05scope\x18\x02 \x01(\tR\x05scope\x12\x1b\n" +
+	"\tscope_key\x18\x03 \x01(\tR\bscopeKey\x12!\n" +
+	"\ftool_pattern\x18\x04 \x01(\tR\vtoolPattern\x12%\n" +
+	"\x0ecommand_prefix\x18\x05 \x01(\tR\rcommandPrefix\x12!\n" +
+	"\fargs_pattern\x18\x06 \x01(\tR\vargsPattern\x12\x12\n" +
+	"\x04mode\x18\a \x01(\tR\x04mode\x12\x1a\n" +
+	"\bpriority\x18\b \x01(\x05R\bpriority\x12\x18\n" +
+	"\aenabled\x18\t \x01(\bR\aenabled\x12\x1f\n" +
+	"\vshadow_only\x18\n" +
+	" \x01(\bR\n" +
+	"shadowOnly\x12\x1d\n" +
+	"\n" +
+	"expires_at\x18\v \x01(\x03R\texpiresAt\x12\x1d\n" +
+	"\n" +
+	"created_at\x18\f \x01(\x03R\tcreatedAt\x12\x1d\n" +
+	"\n" +
+	"created_by\x18\r \x01(\tR\tcreatedBy\"\\\n" +
+	"\x1bListApprovalPoliciesRequest\x12\x1a\n" +
+	"\x05scope\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\x05scope\x12!\n" +
+	"\tscope_key\x18\x02 \x01(\tB\x04\xe2A\x01\x02R\bscopeKey\"T\n" +
+	"\x1cListApprovalPoliciesResponse\x124\n" +
+	"\x05items\x18\x01 \x03(\v2\x1e.kratos.tool.v1.ApprovalPolicyR\x05items\"0\n" +
+	"\x18GetApprovalPolicyRequest\x12\x14\n" +
+	"\x02id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\x02id\"\xf5\x02\n" +
+	"\x1bUpsertApprovalPolicyRequest\x12\x14\n" +
+	"\x02id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\x02id\x12\x1a\n" +
+	"\x05scope\x18\x02 \x01(\tB\x04\xe2A\x01\x02R\x05scope\x12!\n" +
+	"\tscope_key\x18\x03 \x01(\tB\x04\xe2A\x01\x02R\bscopeKey\x12'\n" +
+	"\ftool_pattern\x18\x04 \x01(\tB\x04\xe2A\x01\x02R\vtoolPattern\x12%\n" +
+	"\x0ecommand_prefix\x18\x05 \x01(\tR\rcommandPrefix\x12!\n" +
+	"\fargs_pattern\x18\x06 \x01(\tR\vargsPattern\x12\x18\n" +
+	"\x04mode\x18\a \x01(\tB\x04\xe2A\x01\x02R\x04mode\x12\x1a\n" +
+	"\bpriority\x18\b \x01(\x05R\bpriority\x12\x18\n" +
+	"\aenabled\x18\t \x01(\bR\aenabled\x12\x1f\n" +
+	"\vshadow_only\x18\n" +
+	" \x01(\bR\n" +
+	"shadowOnly\x12\x1d\n" +
+	"\n" +
+	"expires_at\x18\v \x01(\x03R\texpiresAt\"3\n" +
+	"\x1bDeleteApprovalPolicyRequest\x12\x14\n" +
+	"\x02id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\x02id\"C\n" +
+	"!ImportApprovalPoliciesTOMLRequest\x12\x1e\n" +
+	"\acontent\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\acontent\"c\n" +
+	"\"ImportApprovalPoliciesTOMLResponse\x12%\n" +
+	"\x0eimported_count\x18\x01 \x01(\x05R\rimportedCount\x12\x16\n" +
+	"\x06errors\x18\x02 \x03(\tR\x06errors\"b\n" +
+	"!ExportApprovalPoliciesTOMLRequest\x12\x1a\n" +
+	"\x05scope\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\x05scope\x12!\n" +
+	"\tscope_key\x18\x02 \x01(\tB\x04\xe2A\x01\x02R\bscopeKey\">\n" +
+	"\"ExportApprovalPoliciesTOMLResponse\x12\x18\n" +
+	"\acontent\x18\x01 \x01(\tR\acontent\"\xf5\x01\n" +
 	"\x1eUpsertToolAgentOverrideRequest\x12\x1d\n" +
 	"\atool_id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\x06toolId\x12\x1f\n" +
 	"\bagent_id\x18\x02 \x01(\tB\x04\xe2A\x01\x02R\aagentId\x12\x18\n" +
@@ -3810,7 +4524,7 @@ const file_kratos_tool_v1_tool_proto_rawDesc = "" +
 	"\x05items\x18\x01 \x03(\v2#.kratos.tool.v1.ToolInvocationAuditR\x05items\x12\x14\n" +
 	"\x05total\x18\x02 \x01(\x05R\x05total\x12\x12\n" +
 	"\x04page\x18\x03 \x01(\x05R\x04page\x12\x1b\n" +
-	"\tpage_size\x18\x04 \x01(\x05R\bpageSize2\xed\x16\n" +
+	"\tpage_size\x18\x04 \x01(\x05R\bpageSize2\xf5\x1d\n" +
 	"\vToolService\x12c\n" +
 	"\tListTools\x12 .kratos.tool.v1.ListToolsRequest\x1a!.kratos.tool.v1.ListToolsResponse\"\x11\x82\xd3\xe4\x93\x02\v\x12\t/v1/tools\x12q\n" +
 	"\fListToolRuns\x12#.kratos.tool.v1.ListToolRunsRequest\x1a$.kratos.tool.v1.ListToolRunsResponse\"\x16\x82\xd3\xe4\x93\x02\x10\x12\x0e/v1/tools/runs\x12\x97\x01\n" +
@@ -3836,7 +4550,13 @@ const file_kratos_tool_v1_tool_proto_rawDesc = "" +
 	"\x17UpsertToolAgentOverride\x12..kratos.tool.v1.UpsertToolAgentOverrideRequest\x1a!.kratos.tool.v1.ToolAgentOverride\"9\x82\xd3\xe4\x93\x023:\x01*\x1a./v1/tools/{tool_id}/agent-overrides/{agent_id}\x12\x99\x01\n" +
 	"\x17DeleteToolAgentOverride\x12..kratos.tool.v1.DeleteToolAgentOverrideRequest\x1a\x16.google.protobuf.Empty\"6\x82\xd3\xe4\x93\x020*./v1/tools/{tool_id}/agent-overrides/{agent_id}\x12s\n" +
 	"\x10UpdateToolConfig\x12'.kratos.tool.v1.UpdateToolConfigRequest\x1a\x14.kratos.tool.v1.Tool\" \x82\xd3\xe4\x93\x02\x1a:\x01*\x1a\x15/v1/tools/{id}/config\x12m\n" +
-	"\bTestTool\x12\x1f.kratos.tool.v1.TestToolRequest\x1a .kratos.tool.v1.TestToolResponse\"\x1e\x82\xd3\xe4\x93\x02\x18:\x01*\"\x13/v1/tools/{id}/testB;\n" +
+	"\bTestTool\x12\x1f.kratos.tool.v1.TestToolRequest\x1a .kratos.tool.v1.TestToolResponse\"\x1e\x82\xd3\xe4\x93\x02\x18:\x01*\"\x13/v1/tools/{id}/test\x12\xad\x01\n" +
+	"\x1aExportApprovalPoliciesTOML\x121.kratos.tool.v1.ExportApprovalPoliciesTOMLRequest\x1a2.kratos.tool.v1.ExportApprovalPoliciesTOMLResponse\"(\x82\xd3\xe4\x93\x02\"\x12 /v1/approval-policies:exportToml\x12\xb0\x01\n" +
+	"\x1aImportApprovalPoliciesTOML\x121.kratos.tool.v1.ImportApprovalPoliciesTOMLRequest\x1a2.kratos.tool.v1.ImportApprovalPoliciesTOMLResponse\"+\x82\xd3\xe4\x93\x02%:\x01*\" /v1/approval-policies:importToml\x12\x90\x01\n" +
+	"\x14ListApprovalPolicies\x12+.kratos.tool.v1.ListApprovalPoliciesRequest\x1a,.kratos.tool.v1.ListApprovalPoliciesResponse\"\x1d\x82\xd3\xe4\x93\x02\x17\x12\x15/v1/approval-policies\x12\x81\x01\n" +
+	"\x11GetApprovalPolicy\x12(.kratos.tool.v1.GetApprovalPolicyRequest\x1a\x1e.kratos.tool.v1.ApprovalPolicy\"\"\x82\xd3\xe4\x93\x02\x1c\x12\x1a/v1/approval-policies/{id}\x12\x8a\x01\n" +
+	"\x14UpsertApprovalPolicy\x12+.kratos.tool.v1.UpsertApprovalPolicyRequest\x1a\x1e.kratos.tool.v1.ApprovalPolicy\"%\x82\xd3\xe4\x93\x02\x1f:\x01*\x1a\x1a/v1/approval-policies/{id}\x12\x7f\n" +
+	"\x14DeleteApprovalPolicy\x12+.kratos.tool.v1.DeleteApprovalPolicyRequest\x1a\x16.google.protobuf.Empty\"\"\x82\xd3\xe4\x93\x02\x1c*\x1a/v1/approval-policies/{id}B;\n" +
 	"\x12api.kratos.tool.v1P\x01Z#aranea-agents/api/kratos/tool/v1;v1b\x06proto3"
 
 var (
@@ -3851,7 +4571,7 @@ func file_kratos_tool_v1_tool_proto_rawDescGZIP() []byte {
 	return file_kratos_tool_v1_tool_proto_rawDescData
 }
 
-var file_kratos_tool_v1_tool_proto_msgTypes = make([]protoimpl.MessageInfo, 41)
+var file_kratos_tool_v1_tool_proto_msgTypes = make([]protoimpl.MessageInfo, 51)
 var file_kratos_tool_v1_tool_proto_goTypes = []any{
 	(*ToolPermissions)(nil),                       // 0: kratos.tool.v1.ToolPermissions
 	(*Tool)(nil),                                  // 1: kratos.tool.v1.Tool
@@ -3884,17 +4604,27 @@ var file_kratos_tool_v1_tool_proto_goTypes = []any{
 	(*ListToolParamRulesResponse)(nil),            // 28: kratos.tool.v1.ListToolParamRulesResponse
 	(*UpsertToolParamRuleRequest)(nil),            // 29: kratos.tool.v1.UpsertToolParamRuleRequest
 	(*DeleteToolParamRuleRequest)(nil),            // 30: kratos.tool.v1.DeleteToolParamRuleRequest
-	(*UpsertToolAgentOverrideRequest)(nil),        // 31: kratos.tool.v1.UpsertToolAgentOverrideRequest
-	(*DeleteToolAgentOverrideRequest)(nil),        // 32: kratos.tool.v1.DeleteToolAgentOverrideRequest
-	(*ToolInvocationParam)(nil),                   // 33: kratos.tool.v1.ToolInvocationParam
-	(*GetToolInvocationParamsRequest)(nil),        // 34: kratos.tool.v1.GetToolInvocationParamsRequest
-	(*UpdateToolConfigRequest)(nil),               // 35: kratos.tool.v1.UpdateToolConfigRequest
-	(*TestToolRequest)(nil),                       // 36: kratos.tool.v1.TestToolRequest
-	(*TestToolResponse)(nil),                      // 37: kratos.tool.v1.TestToolResponse
-	(*ToolInvocationAudit)(nil),                   // 38: kratos.tool.v1.ToolInvocationAudit
-	(*ListToolInvocationAuditsRequest)(nil),       // 39: kratos.tool.v1.ListToolInvocationAuditsRequest
-	(*ListToolInvocationAuditsResponse)(nil),      // 40: kratos.tool.v1.ListToolInvocationAuditsResponse
-	(*emptypb.Empty)(nil),                         // 41: google.protobuf.Empty
+	(*ApprovalPolicy)(nil),                        // 31: kratos.tool.v1.ApprovalPolicy
+	(*ListApprovalPoliciesRequest)(nil),           // 32: kratos.tool.v1.ListApprovalPoliciesRequest
+	(*ListApprovalPoliciesResponse)(nil),          // 33: kratos.tool.v1.ListApprovalPoliciesResponse
+	(*GetApprovalPolicyRequest)(nil),              // 34: kratos.tool.v1.GetApprovalPolicyRequest
+	(*UpsertApprovalPolicyRequest)(nil),           // 35: kratos.tool.v1.UpsertApprovalPolicyRequest
+	(*DeleteApprovalPolicyRequest)(nil),           // 36: kratos.tool.v1.DeleteApprovalPolicyRequest
+	(*ImportApprovalPoliciesTOMLRequest)(nil),     // 37: kratos.tool.v1.ImportApprovalPoliciesTOMLRequest
+	(*ImportApprovalPoliciesTOMLResponse)(nil),    // 38: kratos.tool.v1.ImportApprovalPoliciesTOMLResponse
+	(*ExportApprovalPoliciesTOMLRequest)(nil),     // 39: kratos.tool.v1.ExportApprovalPoliciesTOMLRequest
+	(*ExportApprovalPoliciesTOMLResponse)(nil),    // 40: kratos.tool.v1.ExportApprovalPoliciesTOMLResponse
+	(*UpsertToolAgentOverrideRequest)(nil),        // 41: kratos.tool.v1.UpsertToolAgentOverrideRequest
+	(*DeleteToolAgentOverrideRequest)(nil),        // 42: kratos.tool.v1.DeleteToolAgentOverrideRequest
+	(*ToolInvocationParam)(nil),                   // 43: kratos.tool.v1.ToolInvocationParam
+	(*GetToolInvocationParamsRequest)(nil),        // 44: kratos.tool.v1.GetToolInvocationParamsRequest
+	(*UpdateToolConfigRequest)(nil),               // 45: kratos.tool.v1.UpdateToolConfigRequest
+	(*TestToolRequest)(nil),                       // 46: kratos.tool.v1.TestToolRequest
+	(*TestToolResponse)(nil),                      // 47: kratos.tool.v1.TestToolResponse
+	(*ToolInvocationAudit)(nil),                   // 48: kratos.tool.v1.ToolInvocationAudit
+	(*ListToolInvocationAuditsRequest)(nil),       // 49: kratos.tool.v1.ListToolInvocationAuditsRequest
+	(*ListToolInvocationAuditsResponse)(nil),      // 50: kratos.tool.v1.ListToolInvocationAuditsResponse
+	(*emptypb.Empty)(nil),                         // 51: google.protobuf.Empty
 }
 var file_kratos_tool_v1_tool_proto_depIdxs = []int32{
 	0,  // 0: kratos.tool.v1.Tool.permissions:type_name -> kratos.tool.v1.ToolPermissions
@@ -3906,56 +4636,69 @@ var file_kratos_tool_v1_tool_proto_depIdxs = []int32{
 	19, // 6: kratos.tool.v1.ToolAgentBindingsView.items:type_name -> kratos.tool.v1.ToolAgentBinding
 	22, // 7: kratos.tool.v1.ListToolGrantsResponse.items:type_name -> kratos.tool.v1.ToolGrant
 	26, // 8: kratos.tool.v1.ListToolParamRulesResponse.items:type_name -> kratos.tool.v1.ToolParamRule
-	38, // 9: kratos.tool.v1.ListToolInvocationAuditsResponse.items:type_name -> kratos.tool.v1.ToolInvocationAudit
-	3,  // 10: kratos.tool.v1.ToolService.ListTools:input_type -> kratos.tool.v1.ListToolsRequest
-	11, // 11: kratos.tool.v1.ToolService.ListToolRuns:input_type -> kratos.tool.v1.ListToolRunsRequest
-	39, // 12: kratos.tool.v1.ToolService.ListToolInvocationAudits:input_type -> kratos.tool.v1.ListToolInvocationAuditsRequest
-	34, // 13: kratos.tool.v1.ToolService.GetToolInvocationParams:input_type -> kratos.tool.v1.GetToolInvocationParamsRequest
-	5,  // 14: kratos.tool.v1.ToolService.GetTool:input_type -> kratos.tool.v1.GetToolRequest
-	6,  // 15: kratos.tool.v1.ToolService.CreateTool:input_type -> kratos.tool.v1.CreateToolRequest
-	7,  // 16: kratos.tool.v1.ToolService.UpdateTool:input_type -> kratos.tool.v1.UpdateToolRequest
-	8,  // 17: kratos.tool.v1.ToolService.DeleteTool:input_type -> kratos.tool.v1.DeleteToolRequest
-	9,  // 18: kratos.tool.v1.ToolService.ToggleToolEnabled:input_type -> kratos.tool.v1.ToggleToolEnabledRequest
-	13, // 19: kratos.tool.v1.ToolService.ListToolRunsForTool:input_type -> kratos.tool.v1.ListToolRunsForToolRequest
-	15, // 20: kratos.tool.v1.ToolService.ListToolAgentOverrides:input_type -> kratos.tool.v1.ListToolAgentOverridesRequest
-	20, // 21: kratos.tool.v1.ToolService.GetToolAgentBindings:input_type -> kratos.tool.v1.GetToolAgentBindingsRequest
-	17, // 22: kratos.tool.v1.ToolService.ListToolAgentOverridesByAgent:input_type -> kratos.tool.v1.ListToolAgentOverridesByAgentRequest
-	23, // 23: kratos.tool.v1.ToolService.ListToolGrants:input_type -> kratos.tool.v1.ListToolGrantsRequest
-	25, // 24: kratos.tool.v1.ToolService.DeleteToolGrant:input_type -> kratos.tool.v1.DeleteToolGrantRequest
-	27, // 25: kratos.tool.v1.ToolService.ListToolParamRules:input_type -> kratos.tool.v1.ListToolParamRulesRequest
-	29, // 26: kratos.tool.v1.ToolService.UpsertToolParamRule:input_type -> kratos.tool.v1.UpsertToolParamRuleRequest
-	30, // 27: kratos.tool.v1.ToolService.DeleteToolParamRule:input_type -> kratos.tool.v1.DeleteToolParamRuleRequest
-	31, // 28: kratos.tool.v1.ToolService.UpsertToolAgentOverride:input_type -> kratos.tool.v1.UpsertToolAgentOverrideRequest
-	32, // 29: kratos.tool.v1.ToolService.DeleteToolAgentOverride:input_type -> kratos.tool.v1.DeleteToolAgentOverrideRequest
-	35, // 30: kratos.tool.v1.ToolService.UpdateToolConfig:input_type -> kratos.tool.v1.UpdateToolConfigRequest
-	36, // 31: kratos.tool.v1.ToolService.TestTool:input_type -> kratos.tool.v1.TestToolRequest
-	4,  // 32: kratos.tool.v1.ToolService.ListTools:output_type -> kratos.tool.v1.ListToolsResponse
-	12, // 33: kratos.tool.v1.ToolService.ListToolRuns:output_type -> kratos.tool.v1.ListToolRunsResponse
-	40, // 34: kratos.tool.v1.ToolService.ListToolInvocationAudits:output_type -> kratos.tool.v1.ListToolInvocationAuditsResponse
-	33, // 35: kratos.tool.v1.ToolService.GetToolInvocationParams:output_type -> kratos.tool.v1.ToolInvocationParam
-	1,  // 36: kratos.tool.v1.ToolService.GetTool:output_type -> kratos.tool.v1.Tool
-	1,  // 37: kratos.tool.v1.ToolService.CreateTool:output_type -> kratos.tool.v1.Tool
-	1,  // 38: kratos.tool.v1.ToolService.UpdateTool:output_type -> kratos.tool.v1.Tool
-	41, // 39: kratos.tool.v1.ToolService.DeleteTool:output_type -> google.protobuf.Empty
-	1,  // 40: kratos.tool.v1.ToolService.ToggleToolEnabled:output_type -> kratos.tool.v1.Tool
-	12, // 41: kratos.tool.v1.ToolService.ListToolRunsForTool:output_type -> kratos.tool.v1.ListToolRunsResponse
-	16, // 42: kratos.tool.v1.ToolService.ListToolAgentOverrides:output_type -> kratos.tool.v1.ListToolAgentOverridesResponse
-	21, // 43: kratos.tool.v1.ToolService.GetToolAgentBindings:output_type -> kratos.tool.v1.ToolAgentBindingsView
-	18, // 44: kratos.tool.v1.ToolService.ListToolAgentOverridesByAgent:output_type -> kratos.tool.v1.ListToolAgentOverridesByAgentResponse
-	24, // 45: kratos.tool.v1.ToolService.ListToolGrants:output_type -> kratos.tool.v1.ListToolGrantsResponse
-	41, // 46: kratos.tool.v1.ToolService.DeleteToolGrant:output_type -> google.protobuf.Empty
-	28, // 47: kratos.tool.v1.ToolService.ListToolParamRules:output_type -> kratos.tool.v1.ListToolParamRulesResponse
-	26, // 48: kratos.tool.v1.ToolService.UpsertToolParamRule:output_type -> kratos.tool.v1.ToolParamRule
-	41, // 49: kratos.tool.v1.ToolService.DeleteToolParamRule:output_type -> google.protobuf.Empty
-	14, // 50: kratos.tool.v1.ToolService.UpsertToolAgentOverride:output_type -> kratos.tool.v1.ToolAgentOverride
-	41, // 51: kratos.tool.v1.ToolService.DeleteToolAgentOverride:output_type -> google.protobuf.Empty
-	1,  // 52: kratos.tool.v1.ToolService.UpdateToolConfig:output_type -> kratos.tool.v1.Tool
-	37, // 53: kratos.tool.v1.ToolService.TestTool:output_type -> kratos.tool.v1.TestToolResponse
-	32, // [32:54] is the sub-list for method output_type
-	10, // [10:32] is the sub-list for method input_type
-	10, // [10:10] is the sub-list for extension type_name
-	10, // [10:10] is the sub-list for extension extendee
-	0,  // [0:10] is the sub-list for field type_name
+	31, // 9: kratos.tool.v1.ListApprovalPoliciesResponse.items:type_name -> kratos.tool.v1.ApprovalPolicy
+	48, // 10: kratos.tool.v1.ListToolInvocationAuditsResponse.items:type_name -> kratos.tool.v1.ToolInvocationAudit
+	3,  // 11: kratos.tool.v1.ToolService.ListTools:input_type -> kratos.tool.v1.ListToolsRequest
+	11, // 12: kratos.tool.v1.ToolService.ListToolRuns:input_type -> kratos.tool.v1.ListToolRunsRequest
+	49, // 13: kratos.tool.v1.ToolService.ListToolInvocationAudits:input_type -> kratos.tool.v1.ListToolInvocationAuditsRequest
+	44, // 14: kratos.tool.v1.ToolService.GetToolInvocationParams:input_type -> kratos.tool.v1.GetToolInvocationParamsRequest
+	5,  // 15: kratos.tool.v1.ToolService.GetTool:input_type -> kratos.tool.v1.GetToolRequest
+	6,  // 16: kratos.tool.v1.ToolService.CreateTool:input_type -> kratos.tool.v1.CreateToolRequest
+	7,  // 17: kratos.tool.v1.ToolService.UpdateTool:input_type -> kratos.tool.v1.UpdateToolRequest
+	8,  // 18: kratos.tool.v1.ToolService.DeleteTool:input_type -> kratos.tool.v1.DeleteToolRequest
+	9,  // 19: kratos.tool.v1.ToolService.ToggleToolEnabled:input_type -> kratos.tool.v1.ToggleToolEnabledRequest
+	13, // 20: kratos.tool.v1.ToolService.ListToolRunsForTool:input_type -> kratos.tool.v1.ListToolRunsForToolRequest
+	15, // 21: kratos.tool.v1.ToolService.ListToolAgentOverrides:input_type -> kratos.tool.v1.ListToolAgentOverridesRequest
+	20, // 22: kratos.tool.v1.ToolService.GetToolAgentBindings:input_type -> kratos.tool.v1.GetToolAgentBindingsRequest
+	17, // 23: kratos.tool.v1.ToolService.ListToolAgentOverridesByAgent:input_type -> kratos.tool.v1.ListToolAgentOverridesByAgentRequest
+	23, // 24: kratos.tool.v1.ToolService.ListToolGrants:input_type -> kratos.tool.v1.ListToolGrantsRequest
+	25, // 25: kratos.tool.v1.ToolService.DeleteToolGrant:input_type -> kratos.tool.v1.DeleteToolGrantRequest
+	27, // 26: kratos.tool.v1.ToolService.ListToolParamRules:input_type -> kratos.tool.v1.ListToolParamRulesRequest
+	29, // 27: kratos.tool.v1.ToolService.UpsertToolParamRule:input_type -> kratos.tool.v1.UpsertToolParamRuleRequest
+	30, // 28: kratos.tool.v1.ToolService.DeleteToolParamRule:input_type -> kratos.tool.v1.DeleteToolParamRuleRequest
+	41, // 29: kratos.tool.v1.ToolService.UpsertToolAgentOverride:input_type -> kratos.tool.v1.UpsertToolAgentOverrideRequest
+	42, // 30: kratos.tool.v1.ToolService.DeleteToolAgentOverride:input_type -> kratos.tool.v1.DeleteToolAgentOverrideRequest
+	45, // 31: kratos.tool.v1.ToolService.UpdateToolConfig:input_type -> kratos.tool.v1.UpdateToolConfigRequest
+	46, // 32: kratos.tool.v1.ToolService.TestTool:input_type -> kratos.tool.v1.TestToolRequest
+	39, // 33: kratos.tool.v1.ToolService.ExportApprovalPoliciesTOML:input_type -> kratos.tool.v1.ExportApprovalPoliciesTOMLRequest
+	37, // 34: kratos.tool.v1.ToolService.ImportApprovalPoliciesTOML:input_type -> kratos.tool.v1.ImportApprovalPoliciesTOMLRequest
+	32, // 35: kratos.tool.v1.ToolService.ListApprovalPolicies:input_type -> kratos.tool.v1.ListApprovalPoliciesRequest
+	34, // 36: kratos.tool.v1.ToolService.GetApprovalPolicy:input_type -> kratos.tool.v1.GetApprovalPolicyRequest
+	35, // 37: kratos.tool.v1.ToolService.UpsertApprovalPolicy:input_type -> kratos.tool.v1.UpsertApprovalPolicyRequest
+	36, // 38: kratos.tool.v1.ToolService.DeleteApprovalPolicy:input_type -> kratos.tool.v1.DeleteApprovalPolicyRequest
+	4,  // 39: kratos.tool.v1.ToolService.ListTools:output_type -> kratos.tool.v1.ListToolsResponse
+	12, // 40: kratos.tool.v1.ToolService.ListToolRuns:output_type -> kratos.tool.v1.ListToolRunsResponse
+	50, // 41: kratos.tool.v1.ToolService.ListToolInvocationAudits:output_type -> kratos.tool.v1.ListToolInvocationAuditsResponse
+	43, // 42: kratos.tool.v1.ToolService.GetToolInvocationParams:output_type -> kratos.tool.v1.ToolInvocationParam
+	1,  // 43: kratos.tool.v1.ToolService.GetTool:output_type -> kratos.tool.v1.Tool
+	1,  // 44: kratos.tool.v1.ToolService.CreateTool:output_type -> kratos.tool.v1.Tool
+	1,  // 45: kratos.tool.v1.ToolService.UpdateTool:output_type -> kratos.tool.v1.Tool
+	51, // 46: kratos.tool.v1.ToolService.DeleteTool:output_type -> google.protobuf.Empty
+	1,  // 47: kratos.tool.v1.ToolService.ToggleToolEnabled:output_type -> kratos.tool.v1.Tool
+	12, // 48: kratos.tool.v1.ToolService.ListToolRunsForTool:output_type -> kratos.tool.v1.ListToolRunsResponse
+	16, // 49: kratos.tool.v1.ToolService.ListToolAgentOverrides:output_type -> kratos.tool.v1.ListToolAgentOverridesResponse
+	21, // 50: kratos.tool.v1.ToolService.GetToolAgentBindings:output_type -> kratos.tool.v1.ToolAgentBindingsView
+	18, // 51: kratos.tool.v1.ToolService.ListToolAgentOverridesByAgent:output_type -> kratos.tool.v1.ListToolAgentOverridesByAgentResponse
+	24, // 52: kratos.tool.v1.ToolService.ListToolGrants:output_type -> kratos.tool.v1.ListToolGrantsResponse
+	51, // 53: kratos.tool.v1.ToolService.DeleteToolGrant:output_type -> google.protobuf.Empty
+	28, // 54: kratos.tool.v1.ToolService.ListToolParamRules:output_type -> kratos.tool.v1.ListToolParamRulesResponse
+	26, // 55: kratos.tool.v1.ToolService.UpsertToolParamRule:output_type -> kratos.tool.v1.ToolParamRule
+	51, // 56: kratos.tool.v1.ToolService.DeleteToolParamRule:output_type -> google.protobuf.Empty
+	14, // 57: kratos.tool.v1.ToolService.UpsertToolAgentOverride:output_type -> kratos.tool.v1.ToolAgentOverride
+	51, // 58: kratos.tool.v1.ToolService.DeleteToolAgentOverride:output_type -> google.protobuf.Empty
+	1,  // 59: kratos.tool.v1.ToolService.UpdateToolConfig:output_type -> kratos.tool.v1.Tool
+	47, // 60: kratos.tool.v1.ToolService.TestTool:output_type -> kratos.tool.v1.TestToolResponse
+	40, // 61: kratos.tool.v1.ToolService.ExportApprovalPoliciesTOML:output_type -> kratos.tool.v1.ExportApprovalPoliciesTOMLResponse
+	38, // 62: kratos.tool.v1.ToolService.ImportApprovalPoliciesTOML:output_type -> kratos.tool.v1.ImportApprovalPoliciesTOMLResponse
+	33, // 63: kratos.tool.v1.ToolService.ListApprovalPolicies:output_type -> kratos.tool.v1.ListApprovalPoliciesResponse
+	31, // 64: kratos.tool.v1.ToolService.GetApprovalPolicy:output_type -> kratos.tool.v1.ApprovalPolicy
+	31, // 65: kratos.tool.v1.ToolService.UpsertApprovalPolicy:output_type -> kratos.tool.v1.ApprovalPolicy
+	51, // 66: kratos.tool.v1.ToolService.DeleteApprovalPolicy:output_type -> google.protobuf.Empty
+	39, // [39:67] is the sub-list for method output_type
+	11, // [11:39] is the sub-list for method input_type
+	11, // [11:11] is the sub-list for extension type_name
+	11, // [11:11] is the sub-list for extension extendee
+	0,  // [0:11] is the sub-list for field type_name
 }
 
 func init() { file_kratos_tool_v1_tool_proto_init() }
@@ -3971,7 +4714,7 @@ func file_kratos_tool_v1_tool_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kratos_tool_v1_tool_proto_rawDesc), len(file_kratos_tool_v1_tool_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   41,
+			NumMessages:   51,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

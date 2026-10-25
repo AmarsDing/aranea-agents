@@ -21,13 +21,18 @@ var _ = binding.EncodeURL
 const _ = http.SupportPackageIsVersion1
 
 const OperationToolServiceCreateTool = "/kratos.tool.v1.ToolService/CreateTool"
+const OperationToolServiceDeleteApprovalPolicy = "/kratos.tool.v1.ToolService/DeleteApprovalPolicy"
 const OperationToolServiceDeleteTool = "/kratos.tool.v1.ToolService/DeleteTool"
 const OperationToolServiceDeleteToolAgentOverride = "/kratos.tool.v1.ToolService/DeleteToolAgentOverride"
 const OperationToolServiceDeleteToolGrant = "/kratos.tool.v1.ToolService/DeleteToolGrant"
 const OperationToolServiceDeleteToolParamRule = "/kratos.tool.v1.ToolService/DeleteToolParamRule"
+const OperationToolServiceExportApprovalPoliciesTOML = "/kratos.tool.v1.ToolService/ExportApprovalPoliciesTOML"
+const OperationToolServiceGetApprovalPolicy = "/kratos.tool.v1.ToolService/GetApprovalPolicy"
 const OperationToolServiceGetTool = "/kratos.tool.v1.ToolService/GetTool"
 const OperationToolServiceGetToolAgentBindings = "/kratos.tool.v1.ToolService/GetToolAgentBindings"
 const OperationToolServiceGetToolInvocationParams = "/kratos.tool.v1.ToolService/GetToolInvocationParams"
+const OperationToolServiceImportApprovalPoliciesTOML = "/kratos.tool.v1.ToolService/ImportApprovalPoliciesTOML"
+const OperationToolServiceListApprovalPolicies = "/kratos.tool.v1.ToolService/ListApprovalPolicies"
 const OperationToolServiceListToolAgentOverrides = "/kratos.tool.v1.ToolService/ListToolAgentOverrides"
 const OperationToolServiceListToolAgentOverridesByAgent = "/kratos.tool.v1.ToolService/ListToolAgentOverridesByAgent"
 const OperationToolServiceListToolGrants = "/kratos.tool.v1.ToolService/ListToolGrants"
@@ -40,18 +45,27 @@ const OperationToolServiceTestTool = "/kratos.tool.v1.ToolService/TestTool"
 const OperationToolServiceToggleToolEnabled = "/kratos.tool.v1.ToolService/ToggleToolEnabled"
 const OperationToolServiceUpdateTool = "/kratos.tool.v1.ToolService/UpdateTool"
 const OperationToolServiceUpdateToolConfig = "/kratos.tool.v1.ToolService/UpdateToolConfig"
+const OperationToolServiceUpsertApprovalPolicy = "/kratos.tool.v1.ToolService/UpsertApprovalPolicy"
 const OperationToolServiceUpsertToolAgentOverride = "/kratos.tool.v1.ToolService/UpsertToolAgentOverride"
 const OperationToolServiceUpsertToolParamRule = "/kratos.tool.v1.ToolService/UpsertToolParamRule"
 
 type ToolServiceHTTPServer interface {
 	CreateTool(context.Context, *CreateToolRequest) (*Tool, error)
+	DeleteApprovalPolicy(context.Context, *DeleteApprovalPolicyRequest) (*emptypb.Empty, error)
 	DeleteTool(context.Context, *DeleteToolRequest) (*emptypb.Empty, error)
 	DeleteToolAgentOverride(context.Context, *DeleteToolAgentOverrideRequest) (*emptypb.Empty, error)
 	DeleteToolGrant(context.Context, *DeleteToolGrantRequest) (*emptypb.Empty, error)
 	DeleteToolParamRule(context.Context, *DeleteToolParamRuleRequest) (*emptypb.Empty, error)
+	// ExportApprovalPoliciesTOML Static colon-suffixed paths MUST be registered before
+	// /v1/approval-policies/{id} to avoid gorilla/mux matching "exportToml"
+	// as {id} (same discipline as /v1/tools/runs above).
+	ExportApprovalPoliciesTOML(context.Context, *ExportApprovalPoliciesTOMLRequest) (*ExportApprovalPoliciesTOMLResponse, error)
+	GetApprovalPolicy(context.Context, *GetApprovalPolicyRequest) (*ApprovalPolicy, error)
 	GetTool(context.Context, *GetToolRequest) (*Tool, error)
 	GetToolAgentBindings(context.Context, *GetToolAgentBindingsRequest) (*ToolAgentBindingsView, error)
 	GetToolInvocationParams(context.Context, *GetToolInvocationParamsRequest) (*ToolInvocationParam, error)
+	ImportApprovalPoliciesTOML(context.Context, *ImportApprovalPoliciesTOMLRequest) (*ImportApprovalPoliciesTOMLResponse, error)
+	ListApprovalPolicies(context.Context, *ListApprovalPoliciesRequest) (*ListApprovalPoliciesResponse, error)
 	ListToolAgentOverrides(context.Context, *ListToolAgentOverridesRequest) (*ListToolAgentOverridesResponse, error)
 	ListToolAgentOverridesByAgent(context.Context, *ListToolAgentOverridesByAgentRequest) (*ListToolAgentOverridesByAgentResponse, error)
 	ListToolGrants(context.Context, *ListToolGrantsRequest) (*ListToolGrantsResponse, error)
@@ -66,6 +80,7 @@ type ToolServiceHTTPServer interface {
 	ToggleToolEnabled(context.Context, *ToggleToolEnabledRequest) (*Tool, error)
 	UpdateTool(context.Context, *UpdateToolRequest) (*Tool, error)
 	UpdateToolConfig(context.Context, *UpdateToolConfigRequest) (*Tool, error)
+	UpsertApprovalPolicy(context.Context, *UpsertApprovalPolicyRequest) (*ApprovalPolicy, error)
 	UpsertToolAgentOverride(context.Context, *UpsertToolAgentOverrideRequest) (*ToolAgentOverride, error)
 	UpsertToolParamRule(context.Context, *UpsertToolParamRuleRequest) (*ToolParamRule, error)
 }
@@ -94,6 +109,12 @@ func RegisterToolServiceHTTPServer(s *http.Server, srv ToolServiceHTTPServer) {
 	r.DELETE("/v1/tools/{tool_id}/agent-overrides/{agent_id}", _ToolService_DeleteToolAgentOverride0_HTTP_Handler(srv))
 	r.PUT("/v1/tools/{id}/config", _ToolService_UpdateToolConfig0_HTTP_Handler(srv))
 	r.POST("/v1/tools/{id}/test", _ToolService_TestTool0_HTTP_Handler(srv))
+	r.GET("/v1/approval-policies:exportToml", _ToolService_ExportApprovalPoliciesTOML0_HTTP_Handler(srv))
+	r.POST("/v1/approval-policies:importToml", _ToolService_ImportApprovalPoliciesTOML0_HTTP_Handler(srv))
+	r.GET("/v1/approval-policies", _ToolService_ListApprovalPolicies0_HTTP_Handler(srv))
+	r.GET("/v1/approval-policies/{id}", _ToolService_GetApprovalPolicy0_HTTP_Handler(srv))
+	r.PUT("/v1/approval-policies/{id}", _ToolService_UpsertApprovalPolicy0_HTTP_Handler(srv))
+	r.DELETE("/v1/approval-policies/{id}", _ToolService_DeleteApprovalPolicy0_HTTP_Handler(srv))
 }
 
 func _ToolService_ListTools0_HTTP_Handler(srv ToolServiceHTTPServer) func(ctx http.Context) error {
@@ -586,15 +607,152 @@ func _ToolService_TestTool0_HTTP_Handler(srv ToolServiceHTTPServer) func(ctx htt
 	}
 }
 
+func _ToolService_ExportApprovalPoliciesTOML0_HTTP_Handler(srv ToolServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in ExportApprovalPoliciesTOMLRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationToolServiceExportApprovalPoliciesTOML)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.ExportApprovalPoliciesTOML(ctx, req.(*ExportApprovalPoliciesTOMLRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*ExportApprovalPoliciesTOMLResponse)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _ToolService_ImportApprovalPoliciesTOML0_HTTP_Handler(srv ToolServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in ImportApprovalPoliciesTOMLRequest
+		if err := ctx.Bind(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationToolServiceImportApprovalPoliciesTOML)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.ImportApprovalPoliciesTOML(ctx, req.(*ImportApprovalPoliciesTOMLRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*ImportApprovalPoliciesTOMLResponse)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _ToolService_ListApprovalPolicies0_HTTP_Handler(srv ToolServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in ListApprovalPoliciesRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationToolServiceListApprovalPolicies)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.ListApprovalPolicies(ctx, req.(*ListApprovalPoliciesRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*ListApprovalPoliciesResponse)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _ToolService_GetApprovalPolicy0_HTTP_Handler(srv ToolServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in GetApprovalPolicyRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationToolServiceGetApprovalPolicy)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.GetApprovalPolicy(ctx, req.(*GetApprovalPolicyRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*ApprovalPolicy)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _ToolService_UpsertApprovalPolicy0_HTTP_Handler(srv ToolServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in UpsertApprovalPolicyRequest
+		if err := ctx.Bind(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationToolServiceUpsertApprovalPolicy)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.UpsertApprovalPolicy(ctx, req.(*UpsertApprovalPolicyRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*ApprovalPolicy)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _ToolService_DeleteApprovalPolicy0_HTTP_Handler(srv ToolServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in DeleteApprovalPolicyRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationToolServiceDeleteApprovalPolicy)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.DeleteApprovalPolicy(ctx, req.(*DeleteApprovalPolicyRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*emptypb.Empty)
+		return ctx.Result(200, reply)
+	}
+}
+
 type ToolServiceHTTPClient interface {
 	CreateTool(ctx context.Context, req *CreateToolRequest, opts ...http.CallOption) (rsp *Tool, err error)
+	DeleteApprovalPolicy(ctx context.Context, req *DeleteApprovalPolicyRequest, opts ...http.CallOption) (rsp *emptypb.Empty, err error)
 	DeleteTool(ctx context.Context, req *DeleteToolRequest, opts ...http.CallOption) (rsp *emptypb.Empty, err error)
 	DeleteToolAgentOverride(ctx context.Context, req *DeleteToolAgentOverrideRequest, opts ...http.CallOption) (rsp *emptypb.Empty, err error)
 	DeleteToolGrant(ctx context.Context, req *DeleteToolGrantRequest, opts ...http.CallOption) (rsp *emptypb.Empty, err error)
 	DeleteToolParamRule(ctx context.Context, req *DeleteToolParamRuleRequest, opts ...http.CallOption) (rsp *emptypb.Empty, err error)
+	// ExportApprovalPoliciesTOML Static colon-suffixed paths MUST be registered before
+	// /v1/approval-policies/{id} to avoid gorilla/mux matching "exportToml"
+	// as {id} (same discipline as /v1/tools/runs above).
+	ExportApprovalPoliciesTOML(ctx context.Context, req *ExportApprovalPoliciesTOMLRequest, opts ...http.CallOption) (rsp *ExportApprovalPoliciesTOMLResponse, err error)
+	GetApprovalPolicy(ctx context.Context, req *GetApprovalPolicyRequest, opts ...http.CallOption) (rsp *ApprovalPolicy, err error)
 	GetTool(ctx context.Context, req *GetToolRequest, opts ...http.CallOption) (rsp *Tool, err error)
 	GetToolAgentBindings(ctx context.Context, req *GetToolAgentBindingsRequest, opts ...http.CallOption) (rsp *ToolAgentBindingsView, err error)
 	GetToolInvocationParams(ctx context.Context, req *GetToolInvocationParamsRequest, opts ...http.CallOption) (rsp *ToolInvocationParam, err error)
+	ImportApprovalPoliciesTOML(ctx context.Context, req *ImportApprovalPoliciesTOMLRequest, opts ...http.CallOption) (rsp *ImportApprovalPoliciesTOMLResponse, err error)
+	ListApprovalPolicies(ctx context.Context, req *ListApprovalPoliciesRequest, opts ...http.CallOption) (rsp *ListApprovalPoliciesResponse, err error)
 	ListToolAgentOverrides(ctx context.Context, req *ListToolAgentOverridesRequest, opts ...http.CallOption) (rsp *ListToolAgentOverridesResponse, err error)
 	ListToolAgentOverridesByAgent(ctx context.Context, req *ListToolAgentOverridesByAgentRequest, opts ...http.CallOption) (rsp *ListToolAgentOverridesByAgentResponse, err error)
 	ListToolGrants(ctx context.Context, req *ListToolGrantsRequest, opts ...http.CallOption) (rsp *ListToolGrantsResponse, err error)
@@ -609,6 +767,7 @@ type ToolServiceHTTPClient interface {
 	ToggleToolEnabled(ctx context.Context, req *ToggleToolEnabledRequest, opts ...http.CallOption) (rsp *Tool, err error)
 	UpdateTool(ctx context.Context, req *UpdateToolRequest, opts ...http.CallOption) (rsp *Tool, err error)
 	UpdateToolConfig(ctx context.Context, req *UpdateToolConfigRequest, opts ...http.CallOption) (rsp *Tool, err error)
+	UpsertApprovalPolicy(ctx context.Context, req *UpsertApprovalPolicyRequest, opts ...http.CallOption) (rsp *ApprovalPolicy, err error)
 	UpsertToolAgentOverride(ctx context.Context, req *UpsertToolAgentOverrideRequest, opts ...http.CallOption) (rsp *ToolAgentOverride, err error)
 	UpsertToolParamRule(ctx context.Context, req *UpsertToolParamRuleRequest, opts ...http.CallOption) (rsp *ToolParamRule, err error)
 }
@@ -628,6 +787,19 @@ func (c *ToolServiceHTTPClientImpl) CreateTool(ctx context.Context, in *CreateTo
 	opts = append(opts, http.Operation(OperationToolServiceCreateTool))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *ToolServiceHTTPClientImpl) DeleteApprovalPolicy(ctx context.Context, in *DeleteApprovalPolicyRequest, opts ...http.CallOption) (*emptypb.Empty, error) {
+	var out emptypb.Empty
+	pattern := "/v1/approval-policies/{id}"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationToolServiceDeleteApprovalPolicy))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "DELETE", path, nil, &out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -686,6 +858,35 @@ func (c *ToolServiceHTTPClientImpl) DeleteToolParamRule(ctx context.Context, in 
 	return &out, nil
 }
 
+// ExportApprovalPoliciesTOML Static colon-suffixed paths MUST be registered before
+// /v1/approval-policies/{id} to avoid gorilla/mux matching "exportToml"
+// as {id} (same discipline as /v1/tools/runs above).
+func (c *ToolServiceHTTPClientImpl) ExportApprovalPoliciesTOML(ctx context.Context, in *ExportApprovalPoliciesTOMLRequest, opts ...http.CallOption) (*ExportApprovalPoliciesTOMLResponse, error) {
+	var out ExportApprovalPoliciesTOMLResponse
+	pattern := "/v1/approval-policies:exportToml"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationToolServiceExportApprovalPoliciesTOML))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *ToolServiceHTTPClientImpl) GetApprovalPolicy(ctx context.Context, in *GetApprovalPolicyRequest, opts ...http.CallOption) (*ApprovalPolicy, error) {
+	var out ApprovalPolicy
+	pattern := "/v1/approval-policies/{id}"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationToolServiceGetApprovalPolicy))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 func (c *ToolServiceHTTPClientImpl) GetTool(ctx context.Context, in *GetToolRequest, opts ...http.CallOption) (*Tool, error) {
 	var out Tool
 	pattern := "/v1/tools/{id}"
@@ -717,6 +918,32 @@ func (c *ToolServiceHTTPClientImpl) GetToolInvocationParams(ctx context.Context,
 	pattern := "/v1/tools/runs/{invocation_id}/params"
 	path := binding.EncodeURL(pattern, in, true)
 	opts = append(opts, http.Operation(OperationToolServiceGetToolInvocationParams))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *ToolServiceHTTPClientImpl) ImportApprovalPoliciesTOML(ctx context.Context, in *ImportApprovalPoliciesTOMLRequest, opts ...http.CallOption) (*ImportApprovalPoliciesTOMLResponse, error) {
+	var out ImportApprovalPoliciesTOMLResponse
+	pattern := "/v1/approval-policies:importToml"
+	path := binding.EncodeURL(pattern, in, false)
+	opts = append(opts, http.Operation(OperationToolServiceImportApprovalPoliciesTOML))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *ToolServiceHTTPClientImpl) ListApprovalPolicies(ctx context.Context, in *ListApprovalPoliciesRequest, opts ...http.CallOption) (*ListApprovalPoliciesResponse, error) {
+	var out ListApprovalPoliciesResponse
+	pattern := "/v1/approval-policies"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationToolServiceListApprovalPolicies))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
 	if err != nil {
@@ -875,6 +1102,19 @@ func (c *ToolServiceHTTPClientImpl) UpdateToolConfig(ctx context.Context, in *Up
 	pattern := "/v1/tools/{id}/config"
 	path := binding.EncodeURL(pattern, in, false)
 	opts = append(opts, http.Operation(OperationToolServiceUpdateToolConfig))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "PUT", path, in, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *ToolServiceHTTPClientImpl) UpsertApprovalPolicy(ctx context.Context, in *UpsertApprovalPolicyRequest, opts ...http.CallOption) (*ApprovalPolicy, error) {
+	var out ApprovalPolicy
+	pattern := "/v1/approval-policies/{id}"
+	path := binding.EncodeURL(pattern, in, false)
+	opts = append(opts, http.Operation(OperationToolServiceUpsertApprovalPolicy))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "PUT", path, in, &out, opts...)
 	if err != nil {

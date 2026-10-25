@@ -83,8 +83,9 @@ const (
 	// confirmReasonParamRuleAsk: a tool_param_rules ask rule matched (79 R9)
 	// — confirmation forced; session/persisted grants still satisfy it.
 	confirmReasonParamRuleAsk = "param_rule_ask"
-	// confirmReasonPolicyAsk: a session/agent approval policy (mode=ask)
-	// forced confirmation (P0-5); session/persisted grants still satisfy it.
+	// confirmReasonPolicyAsk: a session/agent approval policy (mode=ask or
+	// mode=auto — auto consumes identically to ask, D5/phase 2) forced
+	// confirmation (P0-5); session/persisted grants still satisfy it.
 	confirmReasonPolicyAsk = "policy_ask"
 	// confirmReasonPolicyTrusted: a session/agent approval policy
 	// (mode=trusted) pre-authorized the call — skips catalog/plugin/param-ask
@@ -146,10 +147,12 @@ func (g *toolConfirmGate) decide(ctx context.Context, sessionID, agentID, toolNa
 	}
 	// P0-5 审批策略裁定（批 A12）：p3 审批 hook 已先于本闸求值并写入 ctx。
 	// 消费点恒在 danger floor 与 param rule verdict 之下——trusted 不可越过
-	// 两者；ask 语义与 param rule ask 对齐（grant 可满足）。
+	// 两者；ask 语义与 param rule ask 对齐（grant 可满足）。D5 auto 档与 ask
+	// 同消费路径（reason=policy_ask，零新 reason/trigger）——区分仅在 verdict
+	// 投影的 source_mode（见 tool_confirmation_part2.go）。
 	if pv := approvalPolicyVerdictFromCtx(ctx); pv != nil {
 		switch pv.mode {
-		case biztool.ApprovalModeAsk:
+		case biztool.ApprovalModeAsk, biztool.ApprovalModeAuto:
 			if g.persistedGrant != nil && g.persistedGrant(ctx, agentID, toolName) {
 				return confirmDecision{needsConfirm: false, reason: confirmReasonGrantPersisted}
 			}

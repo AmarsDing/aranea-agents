@@ -327,6 +327,92 @@ message DeleteToolParamRuleRequest {
   string id = 1 [(google.api.field_behavior) = REQUIRED];
 }
 
+// ApprovalPolicy is a session/agent-scoped deterministic approval posture
+// row (P0-5; phase 2 D5 管理面 API). The runtime approval policy gate
+// (BeforeTool p3) evaluates enabled rows with precedence never > auto > ask
+// > trusted (rank-then-priority-then-id).
+message ApprovalPolicy {
+  string id = 1;
+  // scope: session | agent.
+  string scope = 2;
+  // scope_key is the session id (scope=session) or agent id (scope=agent).
+  string scope_key = 3;
+  // tool_pattern is required ("*" for explicit wildcard); glob or "re:" regex.
+  string tool_pattern = 4;
+  // command_prefix (optional): glob/"re:" against the extracted command text.
+  string command_prefix = 5;
+  // args_pattern (optional): glob/"re:" against flattened arguments text.
+  string args_pattern = 6;
+  // mode: never | auto | ask | trusted. auto consumes identically to ask
+  // (session/persisted grants still satisfy it) but projects
+  // source_mode=auto on verdict records (auto_review_verdict audit).
+  string mode = 7;
+  int32 priority = 8;
+  bool enabled = 9;
+  // shadow_only: matched rows only audit (no enforcement).
+  bool shadow_only = 10;
+  // expires_at is unix seconds; 0 = no expiry.
+  int64 expires_at = 11;
+  // created_at / created_by are server-authoritative (ignored on write).
+  int64 created_at = 12;
+  string created_by = 13;
+}
+
+message ListApprovalPoliciesRequest {
+  string scope = 1 [(google.api.field_behavior) = REQUIRED];
+  string scope_key = 2 [(google.api.field_behavior) = REQUIRED];
+}
+
+message ListApprovalPoliciesResponse {
+  repeated ApprovalPolicy items = 1;
+}
+
+message GetApprovalPolicyRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message UpsertApprovalPolicyRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+  string scope = 2 [(google.api.field_behavior) = REQUIRED];
+  string scope_key = 3 [(google.api.field_behavior) = REQUIRED];
+  string tool_pattern = 4 [(google.api.field_behavior) = REQUIRED];
+  string command_prefix = 5;
+  string args_pattern = 6;
+  string mode = 7 [(google.api.field_behavior) = REQUIRED];
+  int32 priority = 8;
+  bool enabled = 9;
+  bool shadow_only = 10;
+  int64 expires_at = 11;
+}
+
+message DeleteApprovalPolicyRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+// ImportApprovalPoliciesTOMLRequest carries the whole TOML document.
+// Import is per-row tolerant: valid rows upsert (id-keyed, idempotent),
+// invalid rows are reported in per-row errors without aborting the batch.
+// Rows are capped server-side (oversized documents rejected wholesale).
+message ImportApprovalPoliciesTOMLRequest {
+  string content = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message ImportApprovalPoliciesTOMLResponse {
+  int32 imported_count = 1;
+  // per-row errors in "policies[i]: <reason>" form (sanitized, no payload echo).
+  repeated string errors = 2;
+}
+
+message ExportApprovalPoliciesTOMLRequest {
+  // scope filter mirrors List: export rows under (scope, scope_key).
+  string scope = 1 [(google.api.field_behavior) = REQUIRED];
+  string scope_key = 2 [(google.api.field_behavior) = REQUIRED];
+}
+
+message ExportApprovalPoliciesTOMLResponse {
+  string content = 1;
+}
+
 message UpsertToolAgentOverrideRequest {
   string tool_id = 1 [(google.api.field_behavior) = REQUIRED];
   string agent_id = 2 [(google.api.field_behavior) = REQUIRED];
@@ -495,5 +581,32 @@ service ToolService {
       post: "/v1/tools/{id}/test"
       body: "*"
     };
+  }
+  // Static colon-suffixed paths MUST be registered before
+  // /v1/approval-policies/{id} to avoid gorilla/mux matching "exportToml"
+  // as {id} (same discipline as /v1/tools/runs above).
+  rpc ExportApprovalPoliciesTOML(ExportApprovalPoliciesTOMLRequest) returns (ExportApprovalPoliciesTOMLResponse) {
+    option (google.api.http) = {get: "/v1/approval-policies:exportToml"};
+  }
+  rpc ImportApprovalPoliciesTOML(ImportApprovalPoliciesTOMLRequest) returns (ImportApprovalPoliciesTOMLResponse) {
+    option (google.api.http) = {
+      post: "/v1/approval-policies:importToml"
+      body: "*"
+    };
+  }
+  rpc ListApprovalPolicies(ListApprovalPoliciesRequest) returns (ListApprovalPoliciesResponse) {
+    option (google.api.http) = {get: "/v1/approval-policies"};
+  }
+  rpc GetApprovalPolicy(GetApprovalPolicyRequest) returns (ApprovalPolicy) {
+    option (google.api.http) = {get: "/v1/approval-policies/{id}"};
+  }
+  rpc UpsertApprovalPolicy(UpsertApprovalPolicyRequest) returns (ApprovalPolicy) {
+    option (google.api.http) = {
+      put: "/v1/approval-policies/{id}"
+      body: "*"
+    };
+  }
+  rpc DeleteApprovalPolicy(DeleteApprovalPolicyRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {delete: "/v1/approval-policies/{id}"};
   }
 }

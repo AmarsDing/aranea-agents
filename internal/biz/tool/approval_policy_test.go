@@ -29,7 +29,7 @@ func TestValidateApprovalPolicy_BadInputRejected(t *testing.T) {
 		"missing_id":        func(p ApprovalPolicy) ApprovalPolicy { p.ID = ""; return p },
 		"bad_scope":         func(p ApprovalPolicy) ApprovalPolicy { p.Scope = "org"; return p },
 		"missing_scope_key": func(p ApprovalPolicy) ApprovalPolicy { p.ScopeKey = "  "; return p },
-		"bad_mode":          func(p ApprovalPolicy) ApprovalPolicy { p.Mode = "auto"; return p },
+		"bad_mode":          func(p ApprovalPolicy) ApprovalPolicy { p.Mode = "assisted"; return p },
 		"empty_tool_pattern": func(p ApprovalPolicy) ApprovalPolicy {
 			p.ToolPattern = ""
 			return p
@@ -59,6 +59,12 @@ func TestValidateApprovalPolicy_BadInputRejected(t *testing.T) {
 	ok.ArgsPattern = "rm -rf*"
 	if err := ValidateApprovalPolicy(ok); err != nil {
 		t.Fatalf("valid policy rejected: %v", err)
+	}
+	// D5/phase 2：auto 为合法第四档，写入期必须放行。
+	auto := validPolicy("p-auto")
+	auto.Mode = string(ApprovalModeAuto)
+	if err := ValidateApprovalPolicy(auto); err != nil {
+		t.Fatalf("auto mode must be accepted (D5), got %v", err)
 	}
 }
 
@@ -142,8 +148,9 @@ func TestInMemApprovalPolicyStore_Roundtrip(t *testing.T) {
 	}
 }
 
-// TestEvalApprovalPolicies_WinnerDeterminism 钉死决胜序：never > ask > trusted
-// （rank），同 rank priority 升序，再按 ID 字典序——与 policyrule.Evaluate 同序。
+// TestEvalApprovalPolicies_WinnerDeterminism 钉死决胜序：never > auto > ask >
+// trusted（rank never=0/auto=1/ask=2/trusted=3，D5 auto as/is 独立档），同 rank
+// priority 升序，再按 ID 字典序——与 policyrule.Evaluate 同序。
 func TestEvalApprovalPolicies_WinnerDeterminism(t *testing.T) {
 	t.Parallel()
 	in := ApprovalMatchInput{ToolName: "exec_command", Command: "rm -rf /tmp/x", ArgsText: "rm -rf /tmp/x"}
@@ -166,10 +173,21 @@ func TestEvalApprovalPolicies_WinnerDeterminism(t *testing.T) {
 	if shadow != nil {
 		t.Fatalf("no shadow rules, want nil, got %+v", shadow)
 	}
-	// never 拿掉后按 priority 定 ask 胜者。
+	// never 拿掉后 auto 压过 ask（rank 1 < 2），与 priority 无关。
+	auto := mk("auto-hi-prio", string(ApprovalModeAuto), 50)
+	enforce, _ = EvalApprovalPolicies([]ApprovalPolicy{rows[1], rows[2], auto}, in, 100)
+	if enforce == nil || enforce.ID != "auto-hi-prio" {
+		t.Fatalf("auto must outrank ask regardless of priority, got %+v", enforce)
+	}
+	// auto 拿掉后按 priority 定 ask 胜者。
 	enforce, _ = EvalApprovalPolicies(rows[0:3], in, 100)
 	if enforce == nil || enforce.ID != "b-ask-lo" {
 		t.Fatalf("priority asc expected, got %+v", enforce)
+	}
+	// never 压过 auto（rank 0 < 1）。
+	enforce, _ = EvalApprovalPolicies([]ApprovalPolicy{rows[3], auto}, in, 100)
+	if enforce == nil || enforce.ID != "c-never" {
+		t.Fatalf("never must outrank auto, got %+v", enforce)
 	}
 	// 同 priority 按 ID。
 	rows2 := []ApprovalPolicy{mk("b", string(ApprovalModeAsk), 1), mk("a", string(ApprovalModeAsk), 1)}
@@ -178,7 +196,7 @@ func TestEvalApprovalPolicies_WinnerDeterminism(t *testing.T) {
 		t.Fatalf("id tiebreak expected, got %+v", enforce)
 	}
 	// 未知 mode 不参与竞选。
-	rows3 := []ApprovalPolicy{mk("x", "auto", 0)}
+	rows3 := []ApprovalPolicy{mk("x", "inherited", 0)}
 	enforce, _ = EvalApprovalPolicies(rows3, in, 100)
 	if enforce != nil {
 		t.Fatalf("unknown mode must be skipped, got %+v", enforce)
@@ -249,7 +267,7 @@ func TestApprovalPolicyConstantsPinned(t *testing.T) {
 	if ApprovalScopeSession != "session" || ApprovalScopeAgent != "agent" {
 		t.Fatal("scope constants changed; migration 20261291 rows depend on these values")
 	}
-	if ApprovalModeAsk != "ask" || ApprovalModeNever != "never" || ApprovalModeTrusted != "trusted" {
+	if ApprovalModeAsk != "ask" || ApprovalModeNever != "never" || ApprovalModeTrusted != "trusted" || ApprovalModeAuto != "auto" {
 		t.Fatal("mode constants changed; migration 20261291 rows depend on these values")
 	}
 }

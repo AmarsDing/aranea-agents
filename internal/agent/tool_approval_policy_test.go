@@ -484,3 +484,121 @@ func TestToolConfirm_GrantSkipNoAskedPair(t *testing.T) {
 		t.Fatalf("grant_skip must not carry correlation_id, got %v", got)
 	}
 }
+
+// ─── D5（P0-5 phase 2）：auto 第四档行为钉板 ─────────────────────────────
+// 语义铁律：auto = 等同 ask 消费（同 reason=policy_ask、同 grants 可满足、
+// 零新 trigger/reason），区分仅在 verdict 投影 source_mode=auto。
+
+// TestApprovalPolicyGate_AutoVerdict 钉死 gate switch 的 auto 分支：命中 auto
+// 规则不短路、不放行，写 ctx verdict（mode=auto）——消费由确认门禁 decide()
+// 完成（与 ask/trusted 同一下传机制）。
+func TestApprovalPolicyGate_AutoVerdict(t *testing.T) {
+	t.Parallel()
+	hook, _ := newApprovalPolicyTestHook(t, nil, []biztool.ApprovalPolicy{
+		approvalPolicyTestRule("r-auto", string(biztool.ApprovalModeAuto), false),
+	}, nil)
+	res, err := hook.HandleBeforeTool(context.Background(), &trpctool.BeforeToolArgs{
+		ToolName: "exec_command", Arguments: []byte(`{"command":"rm -rf /a"}`), ToolCallID: "c-auto",
+	})
+	if err != nil {
+		t.Fatalf("HandleBeforeTool: %v", err)
+	}
+	if res.CustomResult != nil {
+		t.Fatalf("auto must not reject directly, got %v", res.CustomResult)
+	}
+	if v := approvalPolicyVerdictFromCtx(res.Context); v == nil || v.mode != biztool.ApprovalModeAuto || v.ruleID != "r-auto" {
+		t.Fatalf("auto verdict missing, got %+v", v)
+	}
+}
+
+// TestDecide_AutoConsumesLikeAsk 钉死 auto 与 ask 同消费路径：强制确认且
+// reason=policy_ask（零新 reason），session/persisted grant 同语义可满足。
+func TestDecide_AutoConsumesLikeAsk(t *testing.T) {
+	t.Parallel()
+	gate := &toolConfirmGate{sessionGrants: newToolGrantStore(time.Now)}
+	d := gate.decide(approvalVerdictTestCtx(biztool.ApprovalModeAuto), "sess-1", "agent-1", "uncatalogued_tool", []byte(`{"x":"y"}`))
+	if !d.needsConfirm || d.reason != confirmReasonPolicyAsk {
+		t.Fatalf("auto must force confirmation with reason=policy_ask (零新 reason), got %+v", d)
+	}
+	// session grant 可满足。
+	gate.sessionGrants.GrantSession("sess-1", "agent-1", "uncatalogued_tool")
+	d = gate.decide(approvalVerdictTestCtx(biztool.ApprovalModeAuto), "sess-1", "agent-1", "uncatalogued_tool", []byte(`{"x":"y"}`))
+	if d.needsConfirm || d.reason != confirmReasonGrantSession {
+		t.Fatalf("session grant must satisfy auto verdict, got %+v", d)
+	}
+	// persisted grant 可满足。
+	gate2 := &toolConfirmGate{
+		sessionGrants:  newToolGrantStore(time.Now),
+		persistedGrant: func(context.Context, string, string) bool { return true },
+	}
+	d = gate2.decide(approvalVerdictTestCtx(biztool.ApprovalModeAuto), "sess-1", "agent-1", "uncatalogued_tool", []byte(`{"x":"y"}`))
+	if d.needsConfirm || d.reason != confirmReasonGrantPersisted {
+		t.Fatalf("persisted grant must satisfy auto verdict, got %+v", d)
+	}
+}
+
+// TestDecide_AutoDoesNotSatisfyParamRuleAsk 钉死档位隔离：auto ≠ trusted——
+// param rule ask 只能被 trusted 满足，auto 命中时仍强制确认（防 auto 被当
+// 隐性提权档）。
+func TestDecide_AutoDoesNotSatisfyParamRuleAsk(t *testing.T) {
+	t.Parallel()
+	gate := &toolConfirmGate{sessionGrants: newToolGrantStore(time.Now)}
+	ctx := context.WithValue(approvalVerdictTestCtx(biztool.ApprovalModeAuto), paramRuleVerdictCtxKey{}, &paramRuleVerdict{
+		effect: policyrule.EffectAsk, ruleID: "builtin-ask",
+	})
+	d := gate.decide(ctx, "sess-1", "agent-1", "gns3_exec", []byte(`{"command":"reload"}`))
+	if !d.needsConfirm || d.reason != confirmReasonParamRuleAsk {
+		t.Fatalf("auto must NOT satisfy param rule ask (only trusted may), got %+v", d)
+	}
+}
+
+// TestToolConfirm_AutoSourceModeProjection 钉死 source_mode=auto 投影：auto
+// verdict 驱动的确认流程，asked/decided 两半部 metadata 均携带
+// source_mode=auto（auto_review_verdict 审计区分点），decision_reason 仍是
+// policy_ask；ask verdict 对照组零投影（缺省即普通 HITL）。
+func TestToolConfirm_AutoSourceModeProjection(t *testing.T) {
+	t.Parallel()
+	mk := func(mode biztool.ApprovalMode, confirmID string) (*captureDecisionCollector, *toolConfirmationBeforeHook, context.Context) {
+		cc := &captureDecisionCollector{}
+		deps := TRPCBuilderDeps{}
+		deps.DecisionCollector = cc
+		gate := &toolConfirmGate{sessionGrants: newToolGrantStore(time.Now)}
+		h := newToolConfirmationBeforeHook(gate, biz.Agent{ID: "agent-1", AgentKey: "spirit"}, deps)
+		em := &fakeConfirmEmitter{confirmID: confirmID}
+		ctx := approvalPolicyCtxWithEmitter(decisionTestCtx("sess-1", "u-1", func(context.Context) (string, error) {
+			return serviceawaitreply.ReplyApprove, nil
+		}), em)
+		ctx = context.WithValue(ctx, approvalPolicyVerdictCtxKey{}, &approvalPolicyVerdict{mode: mode, ruleID: "r-x"})
+		return cc, h, ctx
+	}
+	// auto verdict → 两半部 source_mode=auto。
+	cc, h, ctx := mk(biztool.ApprovalModeAuto, "act-auto-1")
+	if _, err := h.HandleBeforeTool(ctx, &trpctool.BeforeToolArgs{
+		ToolName: "uncatalogued_tool", Arguments: []byte(`{"x":"y"}`), ToolCallID: "tc-auto",
+	}); err != nil {
+		t.Fatalf("HandleBeforeTool: %v", err)
+	}
+	if len(cc.recs) != 2 {
+		t.Fatalf("expected asked+decided pair, got %d records", len(cc.recs))
+	}
+	for i := range cc.recs {
+		if got := cc.recs[i].Metadata["source_mode"]; got != "auto" {
+			t.Fatalf("rec[%d] source_mode = %v, want auto (outcome=%s)", i, got, cc.recs[i].Outcome)
+		}
+		if got := cc.recs[i].Metadata["decision_reason"]; got != confirmReasonPolicyAsk {
+			t.Fatalf("rec[%d] decision_reason = %v, want %q", i, got, confirmReasonPolicyAsk)
+		}
+	}
+	// ask verdict 对照 → 零投影。
+	cc, h, ctx = mk(biztool.ApprovalModeAsk, "act-ask-1")
+	if _, err := h.HandleBeforeTool(ctx, &trpctool.BeforeToolArgs{
+		ToolName: "uncatalogued_tool", Arguments: []byte(`{"x":"y"}`), ToolCallID: "tc-ask",
+	}); err != nil {
+		t.Fatalf("HandleBeforeTool: %v", err)
+	}
+	for i := range cc.recs {
+		if got := cc.recs[i].Metadata["source_mode"]; got != nil {
+			t.Fatalf("rec[%d] ask path must not project source_mode, got %v", i, got)
+		}
+	}
+}

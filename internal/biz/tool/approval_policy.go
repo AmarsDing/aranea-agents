@@ -19,6 +19,11 @@ import (
 //     拒绝文案只给规则 ID 不给 pattern——镜像 param_rule_deny 信息论保护）。
 //   - trusted：预授权新档位（decide() 中恒排在 computer-use danger floor 与
 //     param rule verdict 之后消费——danger floor 永不被 trusted 越过）。
+//   - auto   ：自动审批档（D5/phase 2 引入）：消费语义等同 ask（同 grants 可满足、
+//     同 reason=policy_ask，零新 trigger/reason），仅竞选 rank 独立成档
+//     （never=0 < auto=1 < ask=2 < trusted=3）并在 verdict 投影中携带
+//     source_mode=auto 供 auto_review_verdict 审计区分。状态机见
+//     docs/development/96-approval-policy-phase2 三件套。
 //
 // 事件定级（AS-EVT-01）：never 命中产 approval_policy_denied=Informational
 // （SystemNoticeEvent+审计双写，避开 BlockUpTo 行列防止等待副作用放大）；
@@ -26,14 +31,16 @@ import (
 // BlockUpTo，不进 Critical lane——Critical 保留给 terminal/reset-required）。
 // 详见 §9.3 映射表。
 
-// ApprovalMode 是审批姿态的三值枚举（一期 3 值；引入第四档 "auto" 需独立
-// 三件套立档 + 显式状态机设计——AS-FSM-01 阈值 3 值）。
+// ApprovalMode 是审批姿态的四值枚举（D5/phase 2 引入第四档 "auto"；
+// >3 值触发 AS-FSM-01 显式状态机立档义务——已结清，见
+// docs/development/96-approval-policy-phase2 三件套）。
 type ApprovalMode string
 
 const (
 	ApprovalModeAsk     ApprovalMode = "ask"
 	ApprovalModeNever   ApprovalMode = "never"
 	ApprovalModeTrusted ApprovalMode = "trusted"
+	ApprovalModeAuto    ApprovalMode = "auto"
 )
 
 // ApprovalScope 是策略行归属的作用域。
@@ -46,19 +53,19 @@ const (
 
 // ApprovalPolicy 是 session_approval_policies 表的一行（13 字段，AS-COG-01 合规）。
 type ApprovalPolicy struct {
-	ID           string
-	Scope        string // session | agent
-	ScopeKey     string // scope=session → sessionID；scope=agent → agentID
-	ToolPattern  string // 必填（"*" 显式通配）；glob / 're:' 正则（policyrule.MatchText 语义）
+	ID            string
+	Scope         string // session | agent
+	ScopeKey      string // scope=session → sessionID；scope=agent → agentID
+	ToolPattern   string // 必填（"*" 显式通配）；glob / 're:' 正则（policyrule.MatchText 语义）
 	CommandPrefix string // 可空；"*" 系 glob 而非纯前缀（沿引擎语义，命名随表列）
-	ArgsPattern  string // 可空；glob / 're:' 正则，对参数压平文本匹配
-	Mode         string // ask | never | trusted
-	Priority     int
-	Enabled      bool
-	ShadowOnly   bool  // 预演：命中必落审计+notice，零强制
-	ExpiresAt    int64 // unix 秒；0 = 不过期（trusted 强制 scope+TTL 的TTL 载体）
-	CreatedAt    int64 // unix 秒
-	CreatedBy    string
+	ArgsPattern   string // 可空；glob / 're:' 正则，对参数压平文本匹配
+	Mode          string // ask | never | trusted | auto
+	Priority      int
+	Enabled       bool
+	ShadowOnly    bool  // 预演：命中必落审计+notice，零强制
+	ExpiresAt     int64 // unix 秒；0 = 不过期（trusted 强制 scope+TTL 的TTL 载体）
+	CreatedAt     int64 // unix 秒
+	CreatedBy     string
 }
 
 // ApprovalPolicyReader 是运行时 gate 的读口。

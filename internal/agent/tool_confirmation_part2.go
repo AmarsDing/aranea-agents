@@ -3,6 +3,7 @@ package agent
 import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/biz/decision"
+	biztool "aranea-agents/internal/biz/tool"
 	"aranea-agents/internal/event"
 	serviceawaitreply "aranea-agents/internal/tools/serviceawaitreply"
 	"aranea-agents/pkg/loggateway"
@@ -44,6 +45,7 @@ func (h *toolConfirmationBeforeHook) emitToolConfirmDecisionRecord(ctx context.C
 	if correlationID != "" {
 		metadata["correlation_id"] = correlationID
 	}
+	projectApprovalSourceMode(ctx, metadata)
 
 	reasoning := ""
 	if outcome == "approved" || outcome == "rejected" {
@@ -106,6 +108,7 @@ func (h *toolConfirmationBeforeHook) emitToolConfirmAskedRecord(ctx context.Cont
 		"decision_reason": gateReason,
 		"correlation_id":  correlationID,
 	}
+	projectApprovalSourceMode(ctx, metadata)
 	entities := []decision.EntityRef{{Type: "tool", Key: toolKey}}
 	if h.ag.AgentKey != "" {
 		entities = append(entities, decision.EntityRef{Type: "agent", Key: h.ag.AgentKey})
@@ -129,6 +132,16 @@ func (h *toolConfirmationBeforeHook) emitToolConfirmAskedRecord(ctx context.Cont
 		SourceRef:       decision.SourceRef{ToolInvocationID: toolCallID, SessionID: sessionID},
 		Metadata:        metadata,
 	}, "system.gate.hitl_approval", scenario, flowPairs...)
+}
+
+// projectApprovalSourceMode 投影审批裁决来源档（D5/phase 2）：auto verdict 产生
+// 的确认记录携带 source_mode=auto——auto 与 ask 同消费路径（reason=policy_ask），
+// auto_review_verdict 审计经此字段区分两种来源；ask/trusted/无 verdict 路径不
+// 投影（缺省即普通 HITL，零存量记录污染）。
+func projectApprovalSourceMode(ctx context.Context, metadata map[string]any) {
+	if pv := approvalPolicyVerdictFromCtx(ctx); pv != nil && pv.mode == biztool.ApprovalModeAuto {
+		metadata["source_mode"] = string(biztool.ApprovalModeAuto)
+	}
 }
 
 func toolConfirmSessionID(ctx context.Context) string {
