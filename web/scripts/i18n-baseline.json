@@ -340,6 +340,7 @@
   "features/usage/useAgentUsageQuota.ts": 7,
   "features/usage/useProviderTrendDialog.ts": 1,
   "features/usage/useUsageEventsPage.ts": 13,
+  "features/workbench/logic.ts": 4,
   "pages/A2APage.vue": 16,
   "pages/AgentSettingsPage.vue": 12,
   "pages/AgentsPage.vue": 4,

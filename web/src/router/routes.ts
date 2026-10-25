@@ -7,6 +7,7 @@ import AgentsPage from '../pages/AgentsPage.vue';
 import AgentSettingsPage from '../pages/AgentSettingsPage.vue';
 import MonitorPage from '../pages/MonitorPage.vue';
 import OverviewPage from '../pages/OverviewPage.vue';
+import WorkbenchCockpitPage from '../pages/WorkbenchCockpitPage.vue';
 import UsageEventsPage from '../pages/UsageEventsPage.vue';
 import ResourceManagerPage from '../pages/ResourceManagerPage.vue';
 import OrganizationPage from '../pages/OrganizationPage.vue';
@@ -102,6 +103,7 @@ export const routes: RouteRecordRaw[] = [
     children: [
       { path: '', redirect: '/overview' },
       { path: 'overview', name: 'overview', component: OverviewPage },
+      { path: 'workbench', name: 'workbench', component: WorkbenchCockpitPage },
       { path: 'content-inbox', name: 'content-inbox', component: ContentInboxPage },
       { path: 'review-queue', name: 'review-queue', component: ReviewQueuePage },
       { path: 'opportunity-board', name: 'opportunity-board', component: OpportunityBoardPage },

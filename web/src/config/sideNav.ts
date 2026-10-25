@@ -16,6 +16,7 @@ export const sideNavGroups: NavGroup[] = [
     labelKey: 'menu.groupWorkspace',
     items: [
       { to: '/overview', icon: 'dashboard', labelKey: 'menu.overview' },
+      { to: '/workbench', icon: 'track_changes', labelKey: 'menu.cockpit' },
       { to: '/usage/events', icon: 'receipt_long', labelKey: 'menu.usageEvents' },
       { to: '/chat', icon: 'chat', labelKey: 'menu.chat' },
       { to: '/companion', icon: 'record_voice_over', labelKey: 'menu.companion' },

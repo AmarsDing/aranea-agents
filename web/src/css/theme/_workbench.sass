@@ -1,0 +1,185 @@
+// Workbench Cockpit（作战总台）wb-* 令牌 + .wb-scope 金色立约（ADR-WB-01）。
+// 唯一新增实体色 = --wb-await #DCA03E（构建期 quasar-variables $primary 同款金，明暗恒定）。
+// 其余全部 token 别名填充；组件内禁止散写金（#dc 起首散写即违规）。
+// 分期：P0 落令牌、壳骨架、金色四形态、走廊载波、戳/心跳/咳嗽/闪底动效预算。
+
+// stylelint-disable color-no-hex -- 令牌定义文件，--wb-await 必须落 hex（先例：_color-palette.sass）
+
+\:root
+  // ——— ADR-WB-01 语义色账本 ———
+  --wb-await: #DCA03E
+  // 「轮到人」四形态的软底/线条变体（同源派生，非新色）
+  --wb-await-soft: rgba(220, 160, 62, 0.14)
+  --wb-await-line: rgba(220, 160, 62, 0.55)
+  // SKIP/机审扣分：琥珀，与金色物理隔离（对抗评审修复点）
+  --wb-skip: var(--color-warning)
+  // 正常/通过/已批准
+  --wb-ok: var(--color-quasar-positive)
+  // 阻塞/拦截/拒绝/断连
+  --wb-block: var(--color-danger)
+  // 激活/流动/FLOW 视图：暗态=青（--color-accent），wb-scope 浅色态重映射为靛青
+  --wb-flow: var(--color-accent)
+  // 1px 发丝线（层级靠明度+发丝线，不靠投影——总论铁律 2）
+  --wb-line-hairline: color-mix(in srgb, var(--color-text-primary) 7%, transparent)
+  // ——— 密度与字号（总论铁律 5：密度靠结构消化）———
+  --wb-micro-label: 10px
+  --wb-caption: 11px
+  --wb-body: 12px
+  --wb-kpi: 30px
+  --wb-radius: 4px
+  --wb-gap-row: 1px
+  // ——— 动效时长令牌（总论铁律 7：微交互 120–180 / 增删 220–300 / 视图 800–900 / 循环 2/8/14s）———
+  --wb-dur-micro: 150ms
+  --wb-dur-seal: 180ms
+  --wb-dur-log: 260ms
+  --wb-dur-flash: 600ms
+  --wb-dur-view: 850ms
+  --wb-dur-breath: 2s
+
+// ——— .wb-scope：本页范围强约束（风险表第 1 行：金色语义跨页稀释不收口本方案）———
+.wb-scope
+  position: relative
+  display: flex
+  flex-direction: column
+  height: 100%
+  min-height: 0
+  color: var(--color-text-primary)
+  background: var(--canvas-base)
+  font-size: var(--wb-body)
+  font-variant-numeric: tabular-nums
+
+// 浅色态主强调重映射：存量 light accent=金（金色噪音源）→ 本域靛青（ADR-WB-01/开放问题 1）
+body:not(.body--dark) .wb-scope
+  --color-accent: #4F46E5
+  --color-accent-hover: #6366F1
+  --q-primary: #4F46E5
+
+// 暗态 accent 既为青，--wb-flow 免重映射（注释即证据，无规则）
+
+// ——— 金色四形态立约（五处同显全部经这四类类名）———
+// 形态 1：点线框（等着人点的常规泳道：规则卡/队列行/RULE 卡 ACTIVITY 卡）
+.wb-await-frame
+  border: 1px dashed var(--wb-await-line)
+
+// 形态 2：计数徽章（R1 待签 n、tab 角标）
+.wb-await-badge
+  display: inline-flex
+  align-items: center
+  justify-content: center
+  min-width: 18px
+  height: 18px
+  padding: 0 5px
+  border-radius: 9px
+  background: var(--wb-await)
+  color: #14100a
+  font-size: 11px
+  font-weight: 600
+  font-variant-numeric: tabular-nums
+
+// 形态 3：4px 竖条（角色行 Agented 归因等待）
+.wb-await-bar
+  position: relative
+  &::before
+    content: ''
+    position: absolute
+    left: 0
+    top: 4px
+    bottom: 4px
+    width: 4px
+    border-radius: 2px
+    background: var(--wb-await)
+
+// 形态 4：实心呼吸按钮（金门签收主按钮；事件态辉光豁免，待签>0 才呼吸）
+.wb-await-btn
+  background: var(--wb-await)
+  color: #14100a
+  font-weight: 600
+  animation: wb-gate-breath var(--wb-dur-breath) ease-in-out infinite
+
+// ——— 稳态辉光唯一特许：KPI 大数同色同色辉光（无动画，静态辉光不耗动效预算）———
+.wb-kpi-glow
+  text-shadow: 0 0 14px color-mix(in srgb, var(--wb-flow) 60%, transparent)
+
+// ——— 抽屉来主区退后一步（长桥抽屉先例：scale .97 + brightness .85，非模态）———
+.wb-main
+  transition: transform var(--wb-dur-view) ease, filter var(--wb-dur-view) ease
+.wb-scope--retreat .wb-main
+  transform: scale(0.975)
+  filter: brightness(0.85)
+
+// ——— R5 信任状态栏 30px———
+.wb-statusbar
+  display: flex
+  align-items: center
+  gap: 14px
+  height: 30px
+  padding: 0 12px
+  border-top: 1px solid var(--wb-line-hairline)
+  font-size: var(--wb-caption)
+  color: var(--color-text-secondary)
+  overflow: hidden
+  white-space: nowrap
+
+// ——— 动效预算（总论铁律 6/7：动态感来自数据，不来自动效；仅 transform/opacity/filter）———
+// 金门呼吸（事件豁免件 1；持续 2s 档）
+@keyframes wb-gate-breath
+  0%, 100%
+    box-shadow: 0 0 0 0 rgba(220, 160, 62, 0)
+  50%
+    box-shadow: 0 0 10px 1px rgba(220, 160, 62, 0.6)
+
+// 走廊载波：发丝灰桥跑 220–300ms 载波点（P0 用 dashoffset 循环示意；随真实事件点亮）
+@keyframes wb-carrier-dash
+  to
+    stroke-dashoffset: -14
+
+// 落款戳：180ms snap 过冲落印（瞬时，事件动画白名单，非持续辉光）
+@keyframes wb-seal-snap
+  0%
+    transform: scale(2.2) rotate(-10deg)
+    opacity: 0
+  55%
+    transform: scale(0.92) rotate(2deg)
+    opacity: 1
+  100%
+    transform: scale(1) rotate(0deg)
+    opacity: 1
+
+// ACTIVITY ticker 错误「咳嗽」：明度骤降 140ms（红零例外守住）
+@keyframes wb-cough
+  0%, 100%
+    filter: brightness(1)
+  35%
+    filter: brightness(0.45)
+
+// 高频更新只闪背景不闪文字（长桥协议：凡是用户要读的，动它等于撒谎）
+@keyframes wb-flash-bg
+  0%
+    background-color: color-mix(in srgb, var(--wb-flow) 18%, transparent)
+  100%
+    background-color: transparent
+
+// 点链行级版：4 点脉冲（opacity 循环，1.2s 错位）
+@keyframes wb-dot-pulse
+  0%, 100%
+    opacity: 0.25
+  50%
+    opacity: 1
+
+// 心跳点阵翻滚（进位迟疑 80ms 用 transition-delay 表达；基础翻转）
+@keyframes wb-cell-flip
+  0%
+    transform: scaleY(1)
+    opacity: 1
+  50%
+    transform: scaleY(0.2)
+    opacity: 0.4
+  100%
+    transform: scaleY(1)
+    opacity: 1
+
+// reduced-motion：全程禁实时语气（回放/降级也对应此关）
+@media (prefers-reduced-motion: reduce)
+  .wb-scope, .wb-scope *
+    animation: none !important
+    transition: none !important
