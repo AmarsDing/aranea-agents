@@ -142,6 +142,8 @@ func TestExecutorWaiterDecisionRepo_Roundtrip(t *testing.T) {
 
 // TestExecutorWaiterDecisionRepo_ValidationAndNilShell 写入期校验
 // （kind/scope 必填）+ nil-data 壳两法一律 Internal（装配面 fail-closed）。
+// D6-f2（C6）：写/读两径的 missing-scope_id 臂均探针（此前读径仅探
+// missing-kind，删 `|| key.ScopeID == ""` 守卫整套仍绿的假绿区）。
 func TestExecutorWaiterDecisionRepo_ValidationAndNilShell(t *testing.T) {
 	t.Parallel()
 	d := openTestData(t)
@@ -154,10 +156,20 @@ func TestExecutorWaiterDecisionRepo_ValidationAndNilShell(t *testing.T) {
 	}); err == nil {
 		t.Fatal("missing kind must be rejected")
 	}
+	if _, err := repo.TryRecordDecision(ctx, biz.ExecutorWaiterDecision{
+		ExecutorWaiterDecisionKey: biz.ExecutorWaiterDecisionKey{Kind: "k", ScopeID: ""},
+	}); err == nil {
+		t.Fatal("write with missing scope must be rejected")
+	}
 	if _, _, err := repo.LoadDecision(ctx, biz.ExecutorWaiterDecisionKey{
 		Kind: "", ScopeID: "x",
 	}); err == nil {
 		t.Fatal("load with missing kind must be rejected")
+	}
+	if _, _, err := repo.LoadDecision(ctx, biz.ExecutorWaiterDecisionKey{
+		Kind: "k", ScopeID: "",
+	}); err == nil {
+		t.Fatal("load with missing scope must be rejected")
 	}
 
 	shell := NewExecutorWaiterDecisionRepo(nil)

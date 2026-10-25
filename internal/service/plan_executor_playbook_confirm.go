@@ -124,18 +124,39 @@ func (e *PlanExecutor) finalizePlaybookConfirmCard(ctx context.Context, step biz
 // 赢，0 行命中＝别副本已决议（严禁 UPDATE 翻案），读现值并收敛本进程缓存
 // （双副本并行 approve/deny 冲突仅留 Warn 审计，先到决议不变）。
 //
-// 返回值=权威决议值（CAS 收敛后）：调用方必须以返回值驱动
-// ResolvePlaybookStageConfirm——D6-f 评审确认项：收敛只写图而 chan 仍发
-// 原始落选值，会把 HITL 先到批准静默丢弃（审计=approve 与结局=deny-skip
-// 互相矛盾）。
+// 返回值=权威决议值，恒等于本函数返回后 lookupPlaybookConfirmDecision
+// （waiter/tick/终查读径，plan-step 形别名键第一命中）所读到的值——
+// D6-f 评审确认项：收敛只写图而 chan 仍发原始落选值，会把 HITL 先到批准
+// 静默丢弃（审计=approve 与结局=deny-skip 互相矛盾）。
+//
+// D6-f2 评审确认项（wf_8ac0017e-cf6）：
+//   - C3：双键是两行独立 CAS（无跨行原子性），分裂赢 interleave（X 赢 step
+//     行/Y 赢 card 行）下取「循环内首个冲突键」会让返回值与 lookup 读径永久
+//     矛盾（F1 类矛盾经 tick 分支复活）。故权威值=按 lookup 别名序（主
+//     plan-step 形键优先）取首个已知结局。已知残留：分裂赢下别名行永久分叉
+//     （严禁 UPDATE 翻案故无修复路径），但生产读径全走 step 形寻址，别名行
+//     永不单独被读。
+//   - C4：CAS 冲突后读回失败（PG 瞬时读抖动）不收敛、不毒化进程内图（落选
+//     值不入图——否则会短路后续 300ms 轮询拍从决议表收敛的唯一通道），
+//     Warn 留痕（与写失败分支日志对称），本键按「结局未知」处理。
 func (e *PlanExecutor) NotePlaybookConfirmDecision(sessionID, id string, approved bool) bool {
 	if e == nil {
 		return approved
 	}
-	authoritative := approved
-	converged := false
-	for _, keyID := range playbookConfirmLookupIDs(sessionID, id) {
-		value := approved
+	ids := playbookConfirmLookupIDs(sessionID, id)
+	// 主别名键=plan-step 形（lookup/tick/终查读径的第一命中键）：无论入参
+	// 是 step-id 还是确认卡 activityID，权威值都按 step 形行的结局优先计算。
+	primaryID := strings.TrimSpace(id)
+	if stepID, ok := biz.ParsePlaybookConfirmActivityID(sessionID, primaryID); ok {
+		primaryID = stepID
+	}
+	type keyOutcome struct {
+		value bool
+		known bool // C4：CAS 输家读回失败=结局未知
+	}
+	outcomes := make(map[string]keyOutcome, len(ids))
+	for _, keyID := range ids {
+		outcome := keyOutcome{value: approved, known: true}
 		if e.waiterDecisions != nil {
 			key := biz.ExecutorWaiterDecisionKey{
 				Kind:      biz.WaiterDecisionKindPlaybookConfirm,
@@ -163,15 +184,34 @@ func (e *PlanExecutor) NotePlaybookConfirmDecision(sessionID, id string, approve
 							loggateway.Str("scope_id", keyID),
 							loggateway.Str("recorded_actor", dec.Actor))
 					}
-					value = dec.Approved
-					if !converged {
-						authoritative = dec.Approved
-						converged = true
-					}
+					outcome.value = dec.Approved
+				} else if lerr != nil {
+					e.lg.Warn("load playbook confirm decision after CAS conflict failed (本进程图不缓存落选值，留后续轮询从决议表收敛)",
+						loggateway.Str("session_id", sessionID),
+						loggateway.Str("scope_id", keyID), loggateway.Err(lerr))
+					outcome.known = false
+				} else {
+					e.lg.Warn("playbook confirm decision row vanished between CAS conflict and read-back (本进程图不缓存落选值)",
+						loggateway.Str("session_id", sessionID),
+						loggateway.Str("scope_id", keyID))
+					outcome.known = false
 				}
 			}
 		}
-		e.playbookConfirmDecided.Store(playbookConfirmKey(sessionID, keyID), value)
+		if outcome.known {
+			e.playbookConfirmDecided.Store(playbookConfirmKey(sessionID, keyID), outcome.value)
+		}
+		outcomes[keyID] = outcome
+	}
+	// 权威值=lookup 别名序（主 step 形键第一命中）的首个已知结局；全未知
+	// （决议表写读双故障）回落原始值。off 档 waiterDecisions=nil 时各键结局
+	// 即原始值，字节级旧行为。
+	authoritative := approved
+	for _, keyID := range playbookConfirmLookupIDs(sessionID, primaryID) {
+		if oc, ok := outcomes[keyID]; ok && oc.known {
+			authoritative = oc.value
+			break
+		}
 	}
 	return authoritative
 }

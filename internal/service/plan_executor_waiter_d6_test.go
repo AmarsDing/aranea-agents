@@ -421,6 +421,20 @@ func (c ctxBoundWaiterDecisions) LoadDecision(ctx context.Context, k biz.Executo
 	return c.inner.LoadDecision(ctx, k)
 }
 
+// casLoserReadFailWaiterDecisions 模拟 PG 瞬时读抖动（D6-f2 C4 钉用）：
+// TryRecord 恒 CAS 冲突（recorded=false 无错——ON CONFLICT 命中既有行），
+// LoadDecision 恒失败（连接重置/只读副本延迟）。InMem 无法产出此组合
+// （其 LoadDecision 无错径），failingWaiterDecisions 又连写都失败。
+type casLoserReadFailWaiterDecisions struct{}
+
+func (casLoserReadFailWaiterDecisions) TryRecordDecision(context.Context, biz.ExecutorWaiterDecision) (bool, error) {
+	return false, nil
+}
+
+func (casLoserReadFailWaiterDecisions) LoadDecision(context.Context, biz.ExecutorWaiterDecisionKey) (biz.ExecutorWaiterDecision, bool, error) {
+	return biz.ExecutorWaiterDecision{}, false, errors.New("pg transient read failure")
+}
+
 // D6-f F3 钉：NotePlaybookConfirmDecision 决议表双写——recorded=true 路径
 // 双键落表 + 进程内图同写 + 返回权威值。整段删除决议表块的历史缺口（30 钉
 // 全绿的假绿区）由此封闭。
@@ -475,7 +489,10 @@ func TestNotePlaybookConfirmDecisionCASLoserConvergesToFirstWriter(t *testing.T)
 	if got := pe.NotePlaybookConfirmDecision("sp-1", "st-confirm", false); !got {
 		t.Fatal("CAS loser must return the first-writer value (true), not the losing deny")
 	}
-	if v, ok := pe.lookupPlaybookConfirmDecision("sp-1", "st-confirm"); !ok || !v {
+	// D6-f2（C5）：图收敛断言直查 playbookConfirmDecided.Load——经
+	// lookupPlaybookConfirmDecision 复查是同义反复（其端口读径无论收敛
+	// Store 是否存在都返回同一先到值，变异实测 M7：删 Store 仍绿）。
+	if v, ok := pe.playbookConfirmDecided.Load(playbookConfirmKey("sp-1", "st-confirm")); !ok || v != true {
 		t.Fatalf("local cache must converge to first-writer: ok=%v v=%v", ok, v)
 	}
 	dec, found, err := port.LoadDecision(ctx, biz.ExecutorWaiterDecisionKey{
@@ -483,6 +500,65 @@ func TestNotePlaybookConfirmDecisionCASLoserConvergesToFirstWriter(t *testing.T)
 	})
 	if err != nil || !found || !dec.Approved || dec.Actor != "replica-b" {
 		t.Fatalf("first-writer decision must survive (no UPDATE): found=%v err=%v dec=%+v", found, err, dec)
+	}
+}
+
+// D6-f2 C3 钉：双键分裂赢 interleave 下权威值=主别名键（plan-step 形）行的
+// 结局——card 行被别副本以 approve 先占、step 行由本副本 deny 赢得时，返回
+// 值必须=deny（与 lookupPlaybookConfirmDecision 读径第一命中一致）。旧实现
+// 取「循环内首个冲突键」（card 形先入循环）会返回 approve，而 lookup 读出
+// deny——返回值/读径分叉，F1 类审计/结局矛盾经 tick 分支复活。
+func TestNotePlaybookConfirmDecisionSplitWinPrimaryKeyAuthoritative(t *testing.T) {
+	t.Parallel()
+	pe := NewPlanExecutor(newFakeReposForExecutor(), newFakeOrchestrator(), &fakeSeq{}, loggateway.NewNoop())
+	port := NewInMemExecutorWaiterDecisions()
+	pe.SetWaiterDecisionPort(port)
+	ctx := context.Background()
+
+	// 分裂赢布景：别副本仅先占 card 形行（approve）；step 形行留给本副本。
+	cardID := biz.PlaybookConfirmActivityID("sp-1", "st-confirm")
+	if _, err := port.TryRecordDecision(ctx, biz.ExecutorWaiterDecision{
+		ExecutorWaiterDecisionKey: biz.ExecutorWaiterDecisionKey{
+			Kind: biz.WaiterDecisionKindPlaybookConfirm, SessionID: "sp-1", ScopeID: cardID,
+		},
+		Approved: true, Actor: "replica-b", DecidedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("seed replica-b card-row decision: %v", err)
+	}
+	// 本副本以 card 形 id 决议 deny：card 行 CAS 输（收敛 approve）、
+	// step 行 CAS 赢（deny 落表）。
+	if got := pe.NotePlaybookConfirmDecision("sp-1", cardID, false); got {
+		t.Fatal("split-win interleave must return the primary step-key outcome (deny), not the first-conflicted alias value (approve)")
+	}
+	// 读径一致性：lookup（step 形第一命中）必须与返回值同值。
+	if v, ok := pe.lookupPlaybookConfirmDecision("sp-1", "st-confirm"); !ok || v {
+		t.Fatalf("lookup read path must agree with the authoritative return: ok=%v v=%v", ok, v)
+	}
+	// 进程内图直查（F4/C5 纪律：不经 lookup 复查）——step 键=本副本赢得的
+	// deny，card 键=收敛的先到 approve（两键各存其行结局，不得互相覆盖）。
+	if v, ok := pe.playbookConfirmDecided.Load(playbookConfirmKey("sp-1", "st-confirm")); !ok || v != false {
+		t.Fatalf("step-key map entry must hold the recorded deny: ok=%v v=%v", ok, v)
+	}
+	if v, ok := pe.playbookConfirmDecided.Load(playbookConfirmKey("sp-1", cardID)); !ok || v != true {
+		t.Fatalf("card-key map entry must converge to first-writer approve: ok=%v v=%v", ok, v)
+	}
+}
+
+// D6-f2 C4 钉：CAS 输家读回失败——不把落选值写入进程内图（毒化会短路后续
+// 300ms 轮询拍从决议表收敛的唯一通道），返回原始值（进程内语义兜底，与
+// 写失败降级同律）。
+func TestNotePlaybookConfirmDecisionCASLoserReadbackFailureDoesNotPoisonCache(t *testing.T) {
+	t.Parallel()
+	pe := NewPlanExecutor(newFakeReposForExecutor(), newFakeOrchestrator(), &fakeSeq{}, loggateway.NewNoop())
+	pe.SetWaiterDecisionPort(casLoserReadFailWaiterDecisions{})
+
+	if got := pe.NotePlaybookConfirmDecision("sp-1", "st-confirm", false); got {
+		t.Fatal("read-back failure must degrade to the local value (false)")
+	}
+	for _, id := range playbookConfirmLookupIDs("sp-1", "st-confirm") {
+		if _, ok := pe.playbookConfirmDecided.Load(playbookConfirmKey("sp-1", id)); ok {
+			t.Fatalf("losing value must not poison the local map for %q (future poll ticks must re-read the table)", id)
+		}
 	}
 }
 

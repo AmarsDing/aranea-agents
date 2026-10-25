@@ -130,10 +130,11 @@ func (s *ChatService) ConfirmToolGateForCard(ctx context.Context, sessionID, ste
 		if err != nil {
 			return false, err.Error()
 		}
-		if err := s.applyPlaybookStageDecision(ctx, sessionID, stepID, approved); err != nil {
+		decided, err := s.applyPlaybookStageDecision(ctx, sessionID, stepID, approved)
+		if err != nil {
 			return false, err.Error()
 		}
-		if approved {
+		if decided {
 			return true, "已确认剧本阶段"
 		}
 		return true, "已拒绝剧本阶段"
@@ -154,10 +155,11 @@ func (s *ChatService) ConfirmToolGateForCard(ctx context.Context, sessionID, ste
 		if err != nil {
 			return false, err.Error()
 		}
-		if err := s.applyPlaybookStageDecision(ctx, sessionID, stepID, approved); err != nil {
+		decided, err := s.applyPlaybookStageDecision(ctx, sessionID, stepID, approved)
+		if err != nil {
 			return false, err.Error()
 		}
-		if approved {
+		if decided {
 			return true, "已确认剧本阶段"
 		}
 		return true, "已拒绝剧本阶段"
@@ -310,47 +312,54 @@ func (s *ChatService) confirmPlaybookStage(ctx context.Context, sessionID, stepI
 	if err != nil {
 		return nil, err
 	}
-	if err := s.applyPlaybookStageDecision(ctx, sessionID, stepID, approved); err != nil {
+	decided, err := s.applyPlaybookStageDecision(ctx, sessionID, stepID, approved)
+	if err != nil {
 		return nil, err
 	}
 	status := "confirmed"
-	if !approved {
+	if !decided {
 		status = "rejected"
 	}
 	return &chatv1.ConfirmActivityResponse{Accepted: true, Status: status}, nil
 }
 
-func (s *ChatService) applyPlaybookStageDecision(ctx context.Context, sessionID, activityID string, approved bool) error {
+// applyPlaybookStageDecision 落卡 + 驱动 waiter，返回 CAS 收敛后的权威决议
+// 值（D6-f2 C1）：确认卡持久化与 API/渠道卡响应一律以权威值为准——用原始
+// 落选值会把「审计 approve vs 结局 deny-skip」矛盾搬到卡面/响应面（事件
+// 驱动卡态按收敛值定案，直写卡行却是落选值，且 VersionLT 守卫让事件侧
+// 无法自愈直写行）。
+func (s *ChatService) applyPlaybookStageDecision(ctx context.Context, sessionID, activityID string, approved bool) (bool, error) {
 	sessionID = strings.TrimSpace(sessionID)
 	activityID = strings.TrimSpace(activityID)
 	if s == nil || s.orch == nil {
-		return apierror.Internal(apierror.DomainChat, "service unavailable")
+		return approved, apierror.Internal(apierror.DomainChat, "service unavailable")
 	}
 	writer := s.orch.stepWriter()
 	if writer == nil {
-		return apierror.Internal(apierror.DomainChat, "step store unavailable")
+		return approved, apierror.Internal(apierror.DomainChat, "step store unavailable")
 	}
 
 	existing, hasExisting := s.loadPlaybookConfirmStep(ctx, sessionID, activityID)
 	if hasExisting {
 		if existing.Kind != biz.StepKindConfirm {
-			return apierror.BadRequest(apierror.DomainChat, "expected confirm kind, got %s", existing.Kind)
+			return approved, apierror.BadRequest(apierror.DomainChat, "expected confirm kind, got %s", existing.Kind)
 		}
 		if playbookConfirmDecisionMatches(existing.Status, approved) {
-			s.signalPlaybookConfirm(sessionID, activityID, approved)
-			return nil
+			decided := s.notePlaybookStageDecision(sessionID, activityID, approved)
+			s.signalPlaybookConfirm(sessionID, activityID, decided)
+			return decided, nil
 		}
 		ev := biz.ActivityTransitionDone
 		if !approved {
 			ev = biz.ActivityTransitionCancel
 		}
 		if _, err := biz.TransitionActivityStatus(biz.ActivityStatus(existing.Status), ev); err != nil {
-			return apierror.BadRequest(apierror.DomainChat,
+			return approved, apierror.BadRequest(apierror.DomainChat,
 				"illegal playbook confirm transition from %s via %s: %v",
 				existing.Status, ev, err)
 		}
 	} else if s.planExec == nil || !s.planExec.HasPlaybookStageConfirm(sessionID, activityID) {
-		return apierror.NotFound(apierror.DomainChat, "playbook confirm not found")
+		return approved, apierror.NotFound(apierror.DomainChat, "playbook confirm not found")
 	}
 
 	if err := s.persistPlaybookConfirmCard(ctx, sessionID, activityID, approved); err != nil {
@@ -358,20 +367,40 @@ func (s *ChatService) applyPlaybookStageDecision(ctx context.Context, sessionID,
 			loggateway.Str("session_id", sessionID),
 			loggateway.Str("activity_id", activityID),
 			loggateway.Err(err))
-		return err
+		return approved, err
 	}
-	s.signalPlaybookConfirm(sessionID, activityID, approved)
-	return nil
+	decided := s.notePlaybookStageDecision(sessionID, activityID, approved)
+	if decided != approved {
+		// CAS 收敛值与操作员原始值分叉（别副本先到相反决议）：卡面已按原始
+		// 值落库，必须以权威值改写；改写失败仅 Warn——决议表与 waiter 已按
+		// 权威值推进，卡面残留由运维面发现（下一轮收敛读径不再经本函数）。
+		if err := s.persistPlaybookConfirmCard(ctx, sessionID, activityID, decided); err != nil {
+			s.lg.Warn("re-persist playbook confirm card with converged decision failed",
+				loggateway.Str("session_id", sessionID),
+				loggateway.Str("activity_id", activityID),
+				loggateway.Err(err))
+		}
+	}
+	s.signalPlaybookConfirm(sessionID, activityID, decided)
+	return decided, nil
 }
 
-func (s *ChatService) signalPlaybookConfirm(sessionID, activityID string, approved bool) {
+// notePlaybookStageDecision 记录决议并返回 CAS 收敛后的权威值（D6-f2 从
+// signalPlaybookConfirm 拆出——落卡改写与响应必须先拿到权威值）。
+func (s *ChatService) notePlaybookStageDecision(sessionID, activityID string, approved bool) bool {
+	if s == nil || s.planExec == nil {
+		return approved
+	}
+	return s.planExec.NotePlaybookConfirmDecision(sessionID, activityID, approved)
+}
+
+// signalPlaybookConfirm 以权威决议值驱动 waiter。D6-f：decided 必须是
+// NotePlaybookConfirmDecision 的收敛返回值——CAS 输家若用原始落选值
+// Resolve，HITL 先到批准会被静默丢弃（审计 approve 与结局 deny-skip 矛盾）。
+func (s *ChatService) signalPlaybookConfirm(sessionID, activityID string, decided bool) {
 	if s == nil || s.planExec == nil {
 		return
 	}
-	// D6-f：Note 返回 CAS 收敛后的权威值，waiter chan 必须消费权威值——
-	// CAS 输家若用原始落选值 Resolve，HITL 先到批准会被静默丢弃（审计
-	// approve 与结局 deny-skip 矛盾）。
-	decided := s.planExec.NotePlaybookConfirmDecision(sessionID, activityID, approved)
 	_ = s.planExec.ResolvePlaybookStageConfirm(sessionID, activityID, decided)
 }
 

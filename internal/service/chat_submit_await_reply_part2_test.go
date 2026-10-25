@@ -13,6 +13,7 @@ import (
 	"errors"
 	"sync"
 	"testing"
+	"time"
 )
 
 // BUG-02: the confirm decision is addressed to THIS step's ToolCallID scope,
@@ -359,6 +360,62 @@ func TestConfirmActivity_PlaybookPersistFailDoesNotAccept(t *testing.T) {
 	}
 	if _, ok := svc.planExec.lookupPlaybookConfirmDecision("sess-1", "st-1"); ok {
 		t.Fatal("persist failure must not Note/Resolve")
+	}
+}
+
+// D6-f2 C1+C2 钉：chat_confirm 接线缝——CAS 输家（别副本已先到 approve）的
+// 本地 deny 必须以收敛值贯通三个面：waiter chan（Resolve 驱动值）、确认卡
+// 持久化、API 响应。回退 signalPlaybookConfirm 接线（Resolve 用原始值）或
+// persist/响应改用原始值，本钉即红——此前四颗 Note 直调钉无一经 ChatService
+// 驱动该缝，接线回退全绿（F1 窗重开）。
+func TestConfirmActivity_PlaybookConfirmDrivesWaiterWithConvergedValue(t *testing.T) {
+	coord := stubAwaitCoord{
+		trySendFn:   func(string, biz.AwaitReplyMsg) bool { return false },
+		canResumeFn: func(context.Context, string) (string, bool) { return "run-9", true },
+	}
+	step := playbookConfirmBlockedStep()
+	svc, _, writer := newConfirmActivityTestSvc(coord, step)
+	pe := NewPlanExecutor(newFakeReposForExecutor(), newFakeOrchestrator(), &fakeSeq{}, loggateway.NewNoop())
+	port := NewInMemExecutorWaiterDecisions()
+	pe.SetWaiterDecisionPort(port)
+	svc.planExec = pe
+
+	// 别副本先到 approve（双键同占，CAS 先到者赢）；本进程注册 waiter。
+	ctx := context.Background()
+	for _, id := range playbookConfirmLookupIDs("sess-1", "st-1") {
+		if _, err := port.TryRecordDecision(ctx, biz.ExecutorWaiterDecision{
+			ExecutorWaiterDecisionKey: biz.ExecutorWaiterDecisionKey{
+				Kind: biz.WaiterDecisionKindPlaybookConfirm, SessionID: "sess-1", ScopeID: id,
+			},
+			Approved: true, Actor: "replica-b", DecidedAt: time.Now().UTC(),
+		}); err != nil {
+			t.Fatalf("seed first-writer decision for %q: %v", id, err)
+		}
+	}
+	wait := pe.registerPlaybookConfirm("sess-1", "st-1")
+
+	// 本副本操作员迟到 deny——CAS 输家，三个面都必须收敛到先到 approve。
+	resp, err := svc.ConfirmActivity(ctxuser.WithUserID(ctx, "user-1"), &chatv1.ConfirmActivityRequest{
+		SessionId:  "sess-1",
+		ActivityId: step.ID,
+		Approved:   boolPtr(false),
+	})
+	if err != nil || resp == nil || !resp.GetAccepted() {
+		t.Fatalf("err=%v resp=%v", err, resp)
+	}
+	if resp.GetStatus() != "confirmed" {
+		t.Fatalf("API response must report the converged decision (confirmed), got %q", resp.GetStatus())
+	}
+	if len(writer.created) == 0 || writer.created[len(writer.created)-1].Status != biz.StepStatusCompleted {
+		t.Fatalf("persisted card must carry the converged decision (completed), got %+v", writer.created)
+	}
+	select {
+	case decided := <-wait.ch:
+		if !decided {
+			t.Fatal("waiter chan must receive the converged approve, not the losing deny")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("waiter not resolved")
 	}
 }
 
