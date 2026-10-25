@@ -241,7 +241,8 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	toolWebResearchReadinessChecker := provideWebResearchReadinessChecker()
 	toolGrantRepo := data.NewToolGrantRepo(dataData)
 	toolParamRuleRepo := data.NewToolParamRuleRepo(dataData, loggatewayLogger)
-	toolUsecase := provideToolUsecaseWithDeps(toolRepo, settingRepo, toolTester, toolWebResearchReadinessChecker, toolGrantRepo, toolParamRuleRepo, loggatewayLogger)
+	approvalPolicyRepo := data.NewApprovalPolicyRepo(dataData)
+	toolUsecase := provideToolUsecaseWithDeps(toolRepo, settingRepo, toolTester, toolWebResearchReadinessChecker, toolGrantRepo, toolParamRuleRepo, approvalPolicyRepo, loggatewayLogger)
 	plugintrpcRuntime := providePluginRuntime(statsRecorder, costGuardUsageRepo, toolUsecase, deliveryRepo, monitorBus, loggatewayLogger)
 	resolver := hook.NewResolver(hookUsecase, loggatewayLogger)
 	manager := providePluginManager(plugintrpcRuntime, resolver, agentRepository, loggatewayLogger)
@@ -296,9 +297,6 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	toolResultBlobRepo := data.NewToolResultBlobRepo(dataData)
 	toolResultReplacementRepo := data.NewToolResultReplacementRepo(dataData)
 	toolResultGate := biz.NewToolResultGate(toolResultBlobRepo, toolResultBlobRepo, toolResultReplacementRepo, toolResultReplacementRepo)
-	// P0-2 批 B（2026-10-22）：toolspill 依赖束（wire-gen-hand-merge-convention：
-	// 与 wire.go 同位镜像；deps=nil 即四消费点灰闸 OFF，零行为变化）。
-	toolSpillDeps := provideToolSpillDeps(runtime, loggatewayLogger)
 	router := provideOutboundRouter(loggatewayLogger)
 	subagentService, err := provideSubAgentService(usecaseRef, loggatewayLogger)
 	if err != nil {
@@ -311,7 +309,13 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	bridge := service.ProvideClientToolBridge(auditRepo, flowLogWriter, loggatewayLogger)
 	decisionRepo := data.NewDecisionRepoFromData(dataData)
 	lifecycle := provideDecisionCollector(decisionRepo, loggatewayLogger)
-	graphNodeResolverSet := provideGraphBuildDeps(llmProviderModelUsecase, toolUsecase, agentUsecase, agentRepository, systemSettingRepo, skillUsecase, persistenceSet, repository, factory, retriever, knowledgeUsecase, manager, organizationUsecase, toolResultGate, router, subagentService, a2aUsecase, nodeCircuitBreakerRegistry, circuitBreakerRegistry, bridge, runtime, lifecycle, loggatewayLogger, toolSpillDeps)
+	finishObserverHooks := provideLLMFinishObserverHooks(lifecycle, loggatewayLogger)
+	// P0-2 批 B（2026-10-22）：toolspill 依赖束（wire-gen-hand-merge-convention：
+	// 与 wire.go 同位镜像；deps=nil 即四消费点灰闸 OFF，零行为变化）。
+	// 批 C（2026-10-22）：spill_failed EmitGate 双写钩子依赖 lifecycle（decision
+	// collector）；两消费点在各自 provider 内各联构造独立 Deps（对抗评审 #13：
+	// 此处 hoist 单例会让两处去重桶混为一桶，与 wireinject 语义分叉）。
+	graphNodeResolverSet := provideGraphBuildDeps(llmProviderModelUsecase, toolUsecase, agentUsecase, agentRepository, systemSettingRepo, skillUsecase, persistenceSet, repository, factory, retriever, knowledgeUsecase, manager, organizationUsecase, toolResultGate, router, subagentService, a2aUsecase, nodeCircuitBreakerRegistry, circuitBreakerRegistry, bridge, runtime, lifecycle, loggatewayLogger, dataData, finishObserverHooks)
 	runtimeReplanner := provideRuntimeReplanner(v2Bus, loggatewayLogger)
 	graphBuilderFactory := adapter.NewGraphBuilderFactory(registry, checkpointSaver, v2Bus, monitorBus, agentExistenceCheckerFunc, graphNodeResolverSet, runtimeReplanner, loggatewayLogger, sessionService)
 	sessionRuntimeReader := data.NewSessionRuntimeReader(dataData)
@@ -393,7 +397,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	siTriggerCooldownStore := data.NewSITriggerCooldownStore(dataData)
 	skillEvolutionOrchestrator := provideSkillEvolutionOrchestrator(unifiedEvolutionRepo, agentRepository, patternReadWriter, skillAutoCreator, skillRegistrationPort, skillIntelligenceRepo, skillScoringUsecase, evolutionMetricsRepo, skillRepo, memoryAgentCaseRepo, agentCaseSkillDistiller, selfImprovement, selfImprovementSignalRepo, testRunReader, orchestrationTraceReader, siTriggerCooldownStore, loggatewayLogger)
 	learningLoopUsecase := provideLearningLoopUsecase(observationReadWriter, patternReadWriter, proposalReadWriter, agentRepository, skillEvolutionOrchestrator, loggatewayLogger)
-	turnDeps := provideTeamTurnDeps(sessionUsecase, agentRepository, agentUsecase, toolRepo, toolUsecase, llmProviderModelUsecase, skillUsecase, systemSettingRepo, providerReader, persistenceSet, sessionCompressor, v2Bus, monitorBus, sequencer, learningLoopUsecase, loggatewayLogger)
+	turnDeps := provideTeamTurnDeps(sessionUsecase, agentRepository, agentUsecase, toolRepo, toolUsecase, llmProviderModelUsecase, skillUsecase, systemSettingRepo, providerReader, persistenceSet, sessionCompressor, v2Bus, monitorBus, sequencer, learningLoopUsecase, loggatewayLogger, finishObserverHooks)
 	projectorFactory := provideV2ProjectorFactory(sequencer, taskV2Repo, loggatewayLogger)
 	runnerConfig := provideRunnerConfig(plugintrpcRuntime, manager, retriever, adaptiveRouter, federatedRetriever, retrievalEvaluator, knowledgeUsecase, graphUsecase, graphBuilderFactory, taskUsecase, runRegistry, toolUsecase, agentRepository, organizationUsecase, toolResultGate, router, subagentService, kanbanToolBridge, computerUseUsecase, sessionLeases, sandboxManager, a2aUsecase, sessionUsecase, skillUsecase, agentUsecase, systemSettingRepo, projectorFactory, teamUsecase, runtimeReplanner, lifecycle, runtime, loggatewayLogger)
 	teamRunHeartbeatWriter := data.NewTeamRunHeartbeatWriter(dataData, loggatewayLogger)
@@ -458,9 +462,12 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	memoryConflictDetector := provideMemoryConflictDetector(dataData, memoryUsecase)
 	l3ConflictStore := provideL3ConflictStore(dataData)
 	delegationRegistry := provideVoiceDelegationRegistry(loggatewayLogger)
-	chatOrchestratorDeps := provideChatServiceDeps(runRegistry, pendingMessageQueue, usageUsecase, sessionUsecase, agentRepository, agentUsecase, toolRepo, toolUsecase, llmProviderModelUsecase, skillUsecase, systemSettingRepo, providerReader, persistenceSet, sessionRuntime, sessionCompressor, v2Bus, monitorBus, runtimeTooling, teamOrchestrationDeps, channelTurnJobDeps, channelNotifierDeps, a2aUsecase, artifactUsecase, mcpServerUsecase, monitorUsecase, spiritTeamAssembler, spiritSynthesisService, orchestrationCache, teamStarter, graphService, taskOrchestratorPort, skillIntelligenceUsecase, evolutionUsecase, skillInvocationStatsReader, router, subagentService, experienceAnalyticsUsecase, turnLifecycleUsecase, stepV2Repo, stepV2Repo, turnV2Repo, taskV2Repo, runHeartbeatEmitter, deadLetterQueue, profileResolver, projectorFactory, memberSessionV2Repo, memoryConsolidationWriter, memoryFactIndexSyncer, multiProviderEmbedder, memoryConflictDetector, l3ConflictStore, learningLoopUsecase, delegationRegistry, lifecycle, dataData, loggatewayLogger, eventDeliveryOutboxRepo)
+	chatOrchestratorDeps := provideChatServiceDeps(runRegistry, pendingMessageQueue, usageUsecase, sessionUsecase, agentRepository, agentUsecase, toolRepo, toolUsecase, llmProviderModelUsecase, skillUsecase, systemSettingRepo, providerReader, persistenceSet, sessionRuntime, sessionCompressor, v2Bus, monitorBus, runtimeTooling, teamOrchestrationDeps, channelTurnJobDeps, channelNotifierDeps, a2aUsecase, artifactUsecase, mcpServerUsecase, monitorUsecase, spiritTeamAssembler, spiritSynthesisService, orchestrationCache, teamStarter, graphService, taskOrchestratorPort, skillIntelligenceUsecase, evolutionUsecase, skillInvocationStatsReader, router, subagentService, experienceAnalyticsUsecase, turnLifecycleUsecase, stepV2Repo, stepV2Repo, turnV2Repo, taskV2Repo, runHeartbeatEmitter, deadLetterQueue, profileResolver, projectorFactory, memberSessionV2Repo, memoryConsolidationWriter, memoryFactIndexSyncer, multiProviderEmbedder, memoryConflictDetector, l3ConflictStore, learningLoopUsecase, delegationRegistry, lifecycle, dataData, loggatewayLogger, eventDeliveryOutboxRepo, finishObserverHooks)
 	realTeamOrchestrator := provideTeamOrchestrator(loggatewayLogger)
-	planExecutor := providePlanExecutor(planStepV2Repo, teamStageV2Repo, planBoardV2Repo, graphStageV2Repo, graphNodeV2Repo, realTeamOrchestrator, sequencer, taskPlanRepository, loggatewayLogger)
+	// P0-6 阶段 1a（2026-10-22）：board 租约 port 旗档（wire-gen-hand-merge-convention：
+	// 与 wire.go 同位镜像；flag 缺省=nil，PlanExecutor 字节级旧行为）。
+	boardRunLeasePort := provideBoardRunLeasePort(dataData, loggatewayLogger)
+	planExecutor := providePlanExecutor(planStepV2Repo, teamStageV2Repo, planBoardV2Repo, graphStageV2Repo, graphNodeV2Repo, realTeamOrchestrator, sequencer, taskPlanRepository, boardRunLeasePort, loggatewayLogger)
 	chatService := service.ProvideChatService(chatOrchestratorDeps, planExecutor, v2Bus, realTeamOrchestrator, agentRepository, organizationRepo, graphOrchestrationProjector, mailboxWaker)
 	applyBackend := provideModelRegistryApplyBackend(llmProviderModelRepo, dataData)
 	modelRegistrySyncAgent, err := provideModelRegistrySyncAgent(systemSettingRepo, applyBackend, loggatewayLogger)
@@ -670,7 +677,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	policyResolver := provideAgentPolicyResolver(agentRepository, loggatewayLogger)
 	lifecycleManager := provideLifecycleManager(buildCache, mcpToolSetPool, shardCache, policyResolver, monitorBus, evolutionService, loggatewayLogger)
 	wsv2Subscriber := provideWSV2Subscriber(v2Bus, wsServer, loggatewayLogger)
-	trpcBuilderDeps := provideTRPCBuilderDeps(llmProviderModelUsecase, toolUsecase, agentUsecase, agentRepository, systemSettingRepo, skillUsecase, persistenceSet, repository, factory, retriever, knowledgeUsecase, manager, organizationUsecase, toolResultGate, router, subagentService, a2aUsecase, circuitBreakerRegistry, bridge, runtime, lifecycle, loggatewayLogger, toolSpillDeps)
+	trpcBuilderDeps := provideTRPCBuilderDeps(llmProviderModelUsecase, toolUsecase, agentUsecase, agentRepository, systemSettingRepo, skillUsecase, persistenceSet, repository, factory, retriever, knowledgeUsecase, manager, organizationUsecase, toolResultGate, router, subagentService, a2aUsecase, circuitBreakerRegistry, bridge, runtime, lifecycle, loggatewayLogger, dataData, finishObserverHooks)
 	vaultSyncSupervisor := provideVaultSyncSupervisor(knowledgeUsecase, vaultFiler, multiProviderEmbedder, entityPipeline, relationExtractor, extractorRegistry, loggatewayLogger)
 	app := newApp(logger, loggatewayLogger, pipeline, arg, grpcServer, httpServer, wsServer, eventBusSideConsumers, infra, memoryDataMigrationWorker, agentUsecase, teamUsecase, organizationUsecase, dataData, sessionStatusGuard, orchestrationCache, sessionUsecase, mcpServerUsecase, chatService, spiritTeamUsecase, teamStarter, lifecycleManager, wsv2Subscriber, trpcBuilderDeps, knowledgeService, vaultSyncSupervisor, multiProviderEmbedder, channelGateCards, agentBridgeService, sandboxManager, lifecycle, lifecycle, teamService, plugintrpcRuntime)
 	watchRunner := provideSkillWatchRunner(skillUsecase, skillUsecase, systemSettingRepo, monitorBus, monitorUsecase, loggatewayLogger)
@@ -705,6 +712,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	backgroundJobWorker := provideBackgroundJobWorker(backgroundjobRepo, backgroundjobRegistry, loggatewayLogger)
 	toolAuditCleanup := provideToolAuditCleanup(toolUsecase, loggatewayLogger)
 	flowLogCleanup := provideFlowLogCleanup(flowlogUsecase, loggatewayLogger)
+	toolSpillGC := provideToolSpillGC(dataData, runtime, lifecycle, loggatewayLogger)
 	monitorEventsCleanup := provideMonitorEventsCleanup(eventRepo, loggatewayLogger)
 	autoHealTTLCleanup := provideAutoHealTTLCleanup(healRecordRepo, loggatewayLogger, flowLogWriter)
 	monitorTraceBackfillWorker := provideMonitorTraceBackfillWorker(traceRepo, runnerCompletionRepo, traceUsageRepo, loggatewayLogger)
@@ -721,7 +729,9 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	knowledgeCitationBackfillWorker := provideKnowledgeCitationBackfillWorker(dataData, loggatewayLogger)
 	knowledgeRelationExtractWorker := provideKnowledgeRelationExtractWorker(dataData, relationExtractor, knowledgeUsecase, loggatewayLogger)
 	knowledgeIndexRepairWorker := provideKnowledgeIndexRepairWorker(knowledgeService, loggatewayLogger)
-	knowledgeCurateWorker := provideKnowledgeCurateWorker(knowledgeUsecase, loggatewayLogger)
+	mainKnowledgeMOCSummarizerWiring := provideKnowledgeMOCSummarizerWiring(knowledgeUsecase, dynamicLLMCaller, systemSettingUsecase, llmProviderModelUsecase, usecaseRef, loggatewayLogger)
+	mainKnowledgeEntityMergeWiring := provideKnowledgeEntityMergeWiring(knowledgeUsecase, knowledgeRepo, dynamicLLMCaller, multiProviderEmbedder, systemSettingUsecase, llmProviderModelUsecase, usecaseRef, loggatewayLogger)
+	knowledgeCurateWorker := provideKnowledgeCurateWorker(knowledgeUsecase, loggatewayLogger, mainKnowledgeMOCSummarizerWiring, mainKnowledgeEntityMergeWiring)
 	knowledgeWriteBackSweeperWorker := provideKnowledgeWriteBackSweeperWorker(knowledgeWriteBackOutboxRepo, knowledgeService, loggatewayLogger)
 	knowledgeGraphProjectionWorker := provideKnowledgeGraphProjectionWorker(dataData, multiProviderEmbedder, loggatewayLogger)
 	memorySleepTimeWorker := provideMemorySleepTimeWorker(memoryService, agentUsecase, llmProviderModelUsecase, sessionRepo, memoryJobDeadLetterRepo, factWritePipeline, dataData, loggatewayLogger)
@@ -775,7 +785,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	memoryEnhancedExtractor := service.NewMemoryEnhancedExtractor(memoryEnhancedExtractorConfig)
 	pathBL4Writer := providePathBL4Writer(dataData)
 	pathBExtractor := providePathBExtractor(memoryEnhancedExtractor, pathBL4Writer, memoryAdminUsecase, dataData, loggatewayLogger)
-	mainWireOut := provideWireOut(app, dataData, cronrunnerRunner, watchRunner, autoMemoryWorker, healthRunner, runner2, learningLoopScanner, providerHealthScanner, channelHealthScanner, jobsChannelDeliveryWorker, sessionRunDurableWorker, recoveryWorker, backgroundJobWorker, channelRuntime, plugintrpcRuntime, toolAuditCleanup, flowLogCleanup, monitorEventsCleanup, autoHealTTLCleanup, alertEvalWorker, monitorTraceBackfillWorker, memoryL2DecayWorker, memoryL1ArchiveWorker, channelTurnJobSweeper, memoryL3DecayWorker, memoryL4DecayWorker, memoryEbbinghausDecayWorker, memoryCanaryWorker, memoryCitationBackfillWorker, knowledgeCitationBackfillWorker, knowledgeRelationExtractWorker, knowledgeIndexRepairWorker, knowledgeCurateWorker, knowledgeWriteBackSweeperWorker, knowledgeGraphProjectionWorker, memorySleepTimeWorker, memoryEpisodeBackfillWorker, memoryDataMigrationWorker, memoryFactIndexReconciler, memoryDeadLetterReplayer, modelRegistrySyncAgent, selfCheckScheduler, selfHealObserver, infra, selfCheckCleanup, selfCheckJob, cronRepo, skillIntelligenceUsecase, skillIntelligenceWorker, curatorWorker, evolutionOrchestratorWorker, selfImproveObserveWorker, selfImproveDriveWorker, selfImproveWatchdogWorker, selfImproveOutcomeWorker, failurePatternSyncJob, predictiveHealUsecase, predictiveHealJob, patternMiningUsecase, patternMiningJob, pathBExtractor, wsv2Subscriber, indexer)
+	mainWireOut := provideWireOut(app, dataData, cronrunnerRunner, watchRunner, autoMemoryWorker, healthRunner, runner2, learningLoopScanner, providerHealthScanner, channelHealthScanner, jobsChannelDeliveryWorker, sessionRunDurableWorker, recoveryWorker, backgroundJobWorker, channelRuntime, plugintrpcRuntime, toolAuditCleanup, flowLogCleanup, toolSpillGC, monitorEventsCleanup, autoHealTTLCleanup, alertEvalWorker, monitorTraceBackfillWorker, memoryL2DecayWorker, memoryL1ArchiveWorker, channelTurnJobSweeper, memoryL3DecayWorker, memoryL4DecayWorker, memoryEbbinghausDecayWorker, memoryCanaryWorker, memoryCitationBackfillWorker, knowledgeCitationBackfillWorker, knowledgeRelationExtractWorker, knowledgeIndexRepairWorker, knowledgeCurateWorker, knowledgeWriteBackSweeperWorker, knowledgeGraphProjectionWorker, memorySleepTimeWorker, memoryEpisodeBackfillWorker, memoryDataMigrationWorker, memoryFactIndexReconciler, memoryDeadLetterReplayer, modelRegistrySyncAgent, selfCheckScheduler, selfHealObserver, infra, selfCheckCleanup, selfCheckJob, cronRepo, skillIntelligenceUsecase, skillIntelligenceWorker, curatorWorker, evolutionOrchestratorWorker, selfImproveObserveWorker, selfImproveDriveWorker, selfImproveWatchdogWorker, selfImproveOutcomeWorker, failurePatternSyncJob, predictiveHealUsecase, predictiveHealJob, patternMiningUsecase, patternMiningJob, pathBExtractor, wsv2Subscriber, indexer)
 	return mainWireOut, func() {
 		cleanup()
 	}, nil
@@ -931,8 +941,12 @@ func provideParallelToolExecutor(lg loggateway.Logger) *tools.ParallelToolExecut
 	return tools.NewParallelToolExecutor(nil, lg, opts...)
 }
 
-func provideToolUsecaseWithDeps(repo tool.ToolRepo, sys tool.SettingRepo, tester tool.ToolTester, checker tool.WebResearchReadinessChecker, grants tool.ToolGrantStore, paramRules tool.ToolParamRuleStore, lg loggateway.Logger) *tool.ToolUsecase {
-	return tool.NewToolUsecase(repo, sys, lg, tool.WithToolTester(tester), tool.WithWebResearchChecker(checker), tool.WithToolGrantStore(grants), tool.WithToolParamRuleStore(paramRules))
+func provideToolUsecaseWithDeps(repo tool.ToolRepo, sys tool.SettingRepo, tester tool.ToolTester, checker tool.WebResearchReadinessChecker, grants tool.ToolGrantStore, paramRules tool.ToolParamRuleStore, approvalPolicies tool.ApprovalPolicyStore, lg loggateway.Logger) *tool.ToolUsecase {
+	// P0-5 批 C（2026-10-22 activation）：审批策略仓经 option 装配——
+	// WithApprovalPolicyStore 实现后 agent 侧 approval policy gate（p3，
+	// paramRuleGate 之后）自动注册；CLI/无 DB 形态 store 为空实现、gate
+	// 仍不注册，与现状字节级一致。
+	return tool.NewToolUsecase(repo, sys, lg, tool.WithToolTester(tester), tool.WithWebResearchChecker(checker), tool.WithToolGrantStore(grants), tool.WithToolParamRuleStore(paramRules), tool.WithApprovalPolicyStore(approvalPolicies))
 }
 
 // provideMCPServerUsecaseWithDeps injects prober and metadata editor via constructor.
@@ -1273,16 +1287,47 @@ func skillTrustGateMode(runtimeConf *conf.Runtime, lg loggateway.Logger) biz.Tru
 		return biz.TrustGateMode(mode)
 	}
 }
+
 // conf.runtime.tool_result_spill 翻译 → 进程级共享 toolspill.Deps（Deps 本身
 // 只读+nil 时钟安全）。workspace 根解析沿用 tools.WorkspaceRootFromEnv 先例
 // （env 未配置 → 返回 nil，四消费点灰闸 OFF 保持字节级旧行为）；构造失败仅
 // Warn + nil（spill 是安全网不是关键链路，失败一律 fail-soft——读写失败另有
 // Important 事件上报，构造失败降级静默即安全）。
+// 批 C（2026-10-22）：注入 spill_failed EmitGate 双写钩子（Hooks 落网即
+// AS-EVT-01 Important 面；观测发射失败一律 Warn 吞掉，不影响 spill 主链）。
+// C-5（2026-10-24，91-multi-replica-spill-store）：新增首参 d *data.Data；
+// ARANEA_TOOLSPILL_STORE=pg 时挂 PG 行存第二实现，缺省/坏值回落 fs 档
+// 字节级旧行为（坏值 Warn），pg 档 d==nil 时 Warn + OFF（fail-soft）。
 // wire-gen-hand-merge-convention：与 wire.go 同一函数体镜像（主本在 wire.go）。
-func provideToolSpillDeps(runtimeConf *conf.Runtime, lg loggateway.Logger) *toolspill.Deps {
+func provideToolSpillDeps(d *data.Data, runtimeConf *conf.Runtime, dc decision.Collector, lg loggateway.Logger) *toolspill.Deps {
 	cfg := runtimeConf.ToolResultSpillConfig() // nil-safe：默认 ON + 1MiB/64MiB/168h
 	if !cfg.Enabled {
 		return nil
+	}
+	kind, malformed := toolspill.ResolveToolSpillStoreKind(nil)
+	if malformed {
+		lg.Warn("toolspill store env 档位非法，按缺省 fs 处理（fail-safe）",
+			loggateway.StepID("toolspill.deps.construct"),
+			loggateway.Str("component", "toolspill"),
+			loggateway.Str("env", toolspill.EnvToolSpillStore),
+			loggateway.Str("value", os.Getenv(toolspill.EnvToolSpillStore)))
+	}
+	if kind == toolspill.StorePG {
+		if d == nil {
+			lg.Warn("toolspill env=pg 但 data 不可用，continue OFF（零行为变化）",
+				loggateway.StepID("toolspill.deps.construct"),
+				loggateway.Str("component", "toolspill"))
+			return nil
+		}
+		return &toolspill.Deps{
+			Store: data.NewToolSpillPGStore(d, data.PGSpillOptions{
+				MaxFileBytes:  cfg.MaxFileBytes,
+				MaxTotalBytes: cfg.MaxTotalBytes,
+				TTL:           time.Duration(cfg.TTLHours) * time.Hour,
+				Logger:        lg,
+			}),
+			Hooks: agent.NewSpillFailedEmitHooks(dc, lg),
+		}
 	}
 	root := strings.TrimSpace(cfg.Dir)
 	if root == "" {
@@ -1307,7 +1352,40 @@ func provideToolSpillDeps(runtimeConf *conf.Runtime, lg loggateway.Logger) *tool
 			loggateway.Err(err))
 		return nil
 	}
-	return &toolspill.Deps{Store: store}
+	return &toolspill.Deps{Store: store, Hooks: agent.NewSpillFailedEmitHooks(dc, lg)}
+}
+
+// provideToolSpillGC 是 Q7 批 D2 新增的 toolspill GC 调度器生产者（93.design.md
+// §2 决策表）：GC worker 与工具面 Store 同源构造（复用 provideToolSpillDeps 同一路
+// 翻译）。TOOLSPILL_GC_DISABLED=1 / spill OFF / 构造失败一律返 nil（workers.go
+// 按 nil 跳过，typed-nil 另由 Start 首行兜底，FlowLogCleanup:32-35 先例）。
+// kind 标签与 provideToolSpillDeps 同一份 env 解析结果对齐（fs/pg）。
+// 多副本互斥：PG 档调度器各副本同跑，由 store 内建单事务 advisory 锁取交集
+// （C-5 实现、C-f GC-1 评审确认为有意设计：败方锁等待=预期互斥，ctx 可取消
+// 且表量有界）——本 provider 不再做副本编排。
+// wire-gen-hand-merge-convention：与 wire.go 同一函数体镜像（主本在 wire.go）。
+func provideToolSpillGC(d *data.Data, runtimeConf *conf.Runtime, dc decision.Collector, lg loggateway.Logger) *jobs.ToolSpillGC {
+	if jobs.ToolSpillGCDisabled() {
+		return nil
+	}
+	deps := provideToolSpillDeps(d, runtimeConf, dc, lg)
+	if deps == nil || deps.Store == nil {
+		return nil
+	}
+	kindLabel := "fs"
+	if kind, _ := toolspill.ResolveToolSpillStoreKind(nil); kind == toolspill.StorePG {
+		kindLabel = "pg"
+	}
+	return jobs.NewToolSpillGC(deps.Store, kindLabel, 0, dc, lg)
+}
+
+// provideLLMFinishObserverHooks 装配 Q5 批 D3 的 finish_reason/EOF 观测钩子
+// （94 三件套 §2 决策表）：wire 单例——chat/team TurnDeps 与 graph 链共享
+// 同一 Hooks 实例，进程内 5min 桶 deduper 随之共享（同 session 跨接线面
+// 不双发）。collector 注入 Lifecycle（内嵌 Collector）。
+// wire-gen-hand-merge-convention：与 wire.go 同一函数体镜像（主本在 wire.go）。
+func provideLLMFinishObserverHooks(decisions decision.Lifecycle, lg loggateway.Logger) provider.FinishObserverHooks {
+	return agent.NewFinishObservedEmitHooks(decisions, lg)
 }
 
 // teamNoProgressAuditorConfig 翻译 runtime 配置为 team 包消费侧配置
@@ -1606,6 +1684,7 @@ func provideTeamTurnDeps(
 	seq *v2.Sequencer,
 	learningLoop *biz.LearningLoopUsecase,
 	lg loggateway.Logger,
+	finishHooks provider.FinishObserverHooks,
 ) runtime.TurnDeps {
 
 	timeoutPolicy := provider.NewTimeoutPolicy()
@@ -1620,6 +1699,9 @@ func provideTeamTurnDeps(
 		LearningLoop: learningLoop,
 		MsgHistory:   sessions,
 		Lg:           lg,
+		// Q5 批 D3：finish_reason/EOF 观测钩子（TurnDeps 漏斗一次性注入，
+		// RoundTrip/RoundTripForSession 透挂）。
+		LLMFinishObserver: finishHooks,
 	}
 }
 
@@ -1702,6 +1784,7 @@ func provideChatServiceDeps(
 	// 89 FR-9：outbox 水位折入共享计数器恢复。wire_gen 手维护约定：wire.go
 	// regen 时须镜像本参数与下方 Infra 字段（见 wire-gen-hand-merge-convention）。
 	eventOutbox biz.EventDeliveryOutboxRepo,
+	finishHooks provider.FinishObserverHooks,
 ) service.ChatOrchestratorDeps {
 
 	teamDeps.TaskOrchestrator = taskOrch
@@ -1723,6 +1806,8 @@ func provideChatServiceDeps(
 				LearningLoop: learningLoop,
 				MsgHistory:   sessions,
 				Lg:           lg,
+				// Q5 批 D3：finish_reason/EOF 观测钩子（TurnDeps 漏斗一次注入）。
+				LLMFinishObserver: finishHooks,
 			},
 			Runs:         runs,
 			PendingQueue: pendingQueue,
@@ -1941,13 +2026,16 @@ func provideGraphBuildDeps(
 	runtimeConf *conf.Runtime,
 	decisions decision.Lifecycle,
 	lg loggateway.Logger,
-	toolSpillDeps *toolspill.Deps,
+	d *data.Data,
+	finishHooks provider.FinishObserverHooks,
 ) graph.GraphNodeResolverSet {
 	if catalog == nil || toolUC == nil {
 		return graph.GraphNodeResolverSet{NodeBreakers: nodeBreakers}
 	}
 	plugintrpc.SetProductConfirmGateActive(true)
-	rtTrip := &provider.RoundTrip{HTTP: &http.Client{Timeout: provider.LLMLeakGuardTimeout}}
+	// Q5 批 D3：finish_reason/EOF 观测钩子（与 TurnDeps 漏斗共享同一实例）。
+	// D3-f：唯一穿透走 newObservedFinishRoundTrip（接线缺失钉板即红）。
+	rtTrip := newObservedFinishRoundTrip(provider.LLMLeakGuardTimeout, finishHooks)
 	builderDeps := agent.TRPCBuilderDeps{
 		TRPCModelCatalogDeps: agent.TRPCModelCatalogDeps{
 			ModelCatalog: catalog,
@@ -1991,7 +2079,7 @@ func provideGraphBuildDeps(
 			Organization:    orgUC,
 			ToolResultGate:  toolResultGate,
 			ToolResultPrune: agentToolResultPruneConfig(runtimeConf),
-			Spill:           toolSpillDeps,
+			Spill:           provideToolSpillDeps(d, runtimeConf, decisions, lg), // wire 镜像时 wire_gen 须与 provideTRPCBuilderDeps 同步（注释见下"两处必须一致"）
 			OutboundRouter:  outboundRouter,
 			SubAgentService: subAgentSvc,
 			A2AEnabled:      a2aUC != nil,
@@ -2036,9 +2124,10 @@ func provideTRPCBuilderDeps(
 	runtimeConf *conf.Runtime,
 	decisions decision.Lifecycle,
 	lg loggateway.Logger,
-	toolSpillDeps *toolspill.Deps,
+	d *data.Data,
+	finishHooks provider.FinishObserverHooks,
 ) *agent.TRPCBuilderDeps {
-	rtTrip := &provider.RoundTrip{HTTP: &http.Client{Timeout: 120 * time.Second}}
+	rtTrip := newObservedFinishRoundTrip(120*time.Second, finishHooks)
 
 	if toolUC != nil {
 		plugintrpc.SetProductConfirmGateActive(true)
@@ -2086,7 +2175,7 @@ func provideTRPCBuilderDeps(
 			Organization:    orgUC,
 			ToolResultGate:  toolResultGate,
 			ToolResultPrune: agentToolResultPruneConfig(runtimeConf),
-			Spill:           toolSpillDeps,
+			Spill:           provideToolSpillDeps(d, runtimeConf, decisions, lg),
 			OutboundRouter:  outboundRouter,
 			SubAgentService: subAgentSvc,
 			A2AEnabled:      a2aUC != nil,
@@ -2666,11 +2755,75 @@ func provideKnowledgeIndexRepairWorker(
 func provideKnowledgeCurateWorker(
 	uc *biz.KnowledgeUsecase,
 	lg loggateway.Logger,
+	// mocSummarizerWiring 仅作依赖锚点（G-34 ADR-C：构造时已完成 Set 回注，本
+	// 函数不直接使用），保证 wire 图到达 provideKnowledgeMOCSummarizerWiring。
+	mocSummarizerWiring *knowledgeMOCSummarizerWiring,
+	// entityMergeWiring 同上锚点（G-37 ADR-D/E/F：保证 wire 图到达
+	// provideKnowledgeEntityMergeWiring）。
+	entityMergeWiring *knowledgeEntityMergeWiring,
 ) *jobs.KnowledgeCurateWorker {
 	if uc == nil || jobs.KnowledgeCurateDisabled() {
 		return nil
 	}
 	return jobs.NewKnowledgeCurateWorker(0, uc, lg)
+}
+
+// knowledgeMOCSummarizerWiring G-34 ADR-C 装配标记（wire 锚点：仅表示 Set 回注已完成）。
+type knowledgeMOCSummarizerWiring struct{}
+
+// provideKnowledgeMOCSummarizerWiring 装配 G-34 ADR-C MOC 摘要生成器：构造 LLM
+// 摘要器（usage 记账窄口晚绑 UsageUsecaseRef，同 provideSessionTitleGenerator
+// 模式）后回注 KnowledgeUsecase（Set 副作用——Usecase 无法构造期持环依赖）。
+// KNOWLEDGE_MOC_SUMMARIZER_DISABLED=1 或任一依赖缺席返回 nil（runMOCSummaryTask
+// 静默跳过，其余治理任务不受影响）。手改 wire_gen.go 注入即等价代码，但任何
+// go generate 重生成都会静默丢弃——必须走本 provider 入图。
+func provideKnowledgeMOCSummarizerWiring(
+	uc *biz.KnowledgeUsecase,
+	caller biz.LLMCaller,
+	sys *biz.SystemSettingUsecase,
+	catalog *biz.LlmProviderModelUsecase,
+	usageRef *biz.UsageUsecaseRef,
+	lg loggateway.Logger,
+) *knowledgeMOCSummarizerWiring {
+	if uc == nil || caller == nil || knowledge.MOCSummarizerDisabled() {
+		return nil
+	}
+	summarizer := knowledge.NewMOCSummarizer(caller, sys, catalog, lg)
+	summarizer.SetUsageRecorder(service.NewMOCUsageRecorder(usageRef, lg))
+	uc.SetMOCSummarizer(summarizer)
+	return &knowledgeMOCSummarizerWiring{}
+}
+
+// knowledgeEntityMergeWiring G-37 ADR-D/E/F 装配标记（wire 锚点：仅表示 Set 回注已完成）。
+type knowledgeEntityMergeWiring struct{}
+
+// provideKnowledgeEntityMergeWiring 装配 G-37 实体消解裁决链：构造 LLM 灰区裁
+// 决器（usage 记账窄口晚绑 UsageUsecaseRef，同 provideKnowledgeMOCSummarizerWiring
+// 模式）+ 候选生成依赖（embedder 复用实体建议窄口；ANN 复用 G-33 卡片检索窄
+// 口，repo 实现缺失即 nil 关腿——任务降级 norm-only）回注 KnowledgeUsecase
+// （Set 副作用——Usecase 无法构造期持环依赖）。
+// KNOWLEDGE_ENTITY_MERGE_ADJUDICATOR_DISABLED=1 或任一要件缺席返回 nil
+// （runEntityMergeTask 静默跳过，其余治理任务不受影响）。wire_gen.go 中必须
+// 同步手工镜像（go generate 重生成会静默丢弃——wire_gen 手工并合约定）。
+func provideKnowledgeEntityMergeWiring(
+	uc *biz.KnowledgeUsecase,
+	repo biz.KnowledgeRepo,
+	caller biz.LLMCaller,
+	embedder *knowledge.MultiProviderEmbedder,
+	sys *biz.SystemSettingUsecase,
+	catalog *biz.LlmProviderModelUsecase,
+	usageRef *biz.UsageUsecaseRef,
+	lg loggateway.Logger,
+) *knowledgeEntityMergeWiring {
+	if uc == nil || caller == nil || embedder == nil || knowledge.EntityMergeAdjudicatorDisabled() {
+		return nil
+	}
+	adjudicator := knowledge.NewEntityMergeAdjudicator(caller, sys, catalog, lg)
+	adjudicator.SetUsageRecorder(service.NewEntityMergeUsageRecorder(usageRef, lg))
+	uc.SetEntityMergeAdjudicator(adjudicator)
+	ann, _ := repo.(knowledge2.GraphCardVectorSearcher)
+	uc.SetEntityMergeCandidateRepos(embedder, ann)
+	return &knowledgeEntityMergeWiring{}
 }
 
 // knowledgeDistillWiring M4 distill 装配标记（wire 锚点：仅表示 Set 回注已完成）。
@@ -3888,6 +4041,7 @@ type wireOut struct {
 	PluginRuntime               *plugintrpc.Runtime
 	ToolAuditCleanup            *jobs.ToolAuditCleanup
 	FlowLogCleanup              *jobs.FlowLogCleanup
+	ToolSpillGC                 *jobs.ToolSpillGC
 	MonitorEventsCleanup        *jobs.MonitorEventsCleanup
 	AutoHealTTLCleanup          *jobs.AutoHealTTLCleanup
 	MonitorAlertEvalWorker      *monitor.AlertEvalWorker
@@ -3952,6 +4106,7 @@ func provideWireOut(
 	pluginRuntime *plugintrpc.Runtime,
 	toolAuditCleanup *jobs.ToolAuditCleanup,
 	flowLogCleanup *jobs.FlowLogCleanup,
+	toolSpillGC *jobs.ToolSpillGC,
 	monitorEventsCleanup *jobs.MonitorEventsCleanup,
 	autoHealTTLCleanup *jobs.AutoHealTTLCleanup,
 	monitorAlertEvalWorker *monitor.AlertEvalWorker,
@@ -4009,7 +4164,9 @@ func provideWireOut(
 		ChannelRuntime:          channelRuntime,
 		PluginRuntime:           pluginRuntime,
 		ToolAuditCleanup:        toolAuditCleanup,
-		FlowLogCleanup:          flowLogCleanup, MonitorEventsCleanup: monitorEventsCleanup, AutoHealTTLCleanup: autoHealTTLCleanup, MonitorAlertEvalWorker: monitorAlertEvalWorker, MonitorTraceBackfillWorker: monitorTraceBackfillWorker, MemoryL2Decay: memoryL2Decay, MemoryL1Archive: memoryL1Archive, ChannelTurnJobSweeper: channelTurnJobSweeper, MemoryL3Decay: memoryL3Decay, MemoryL4Decay: memoryL4Decay,
+		FlowLogCleanup:          flowLogCleanup,
+		ToolSpillGC:             toolSpillGC,
+		MonitorEventsCleanup:    monitorEventsCleanup, AutoHealTTLCleanup: autoHealTTLCleanup, MonitorAlertEvalWorker: monitorAlertEvalWorker, MonitorTraceBackfillWorker: monitorTraceBackfillWorker, MemoryL2Decay: memoryL2Decay, MemoryL1Archive: memoryL1Archive, ChannelTurnJobSweeper: channelTurnJobSweeper, MemoryL3Decay: memoryL3Decay, MemoryL4Decay: memoryL4Decay,
 		MemoryEbbinghausDecay:       memoryEbbinghausDecay,
 		MemoryCanary:                memoryCanary,
 		MemoryCitationBackfill:      memoryCitationBackfill,
@@ -4225,11 +4382,35 @@ func providePlanExecutor(
 	orch service.TeamOrchestrator,
 	seq *v2.Sequencer,
 	taskPlanRepo biz.TaskPlanRepository,
+	leasePort biz.BoardRunLeasePort,
 	lg loggateway.Logger,
 ) *service.PlanExecutor {
 	pe := service.NewPlanExecutorFromV2Repos(planStep, teamStage, planBoard, graphStage, graphNode, orch, seq, lg)
 	pe.SetTaskPlanUpdater(taskPlanRepo)
+	pe.SetBoardRunLeasePort(leasePort) // nil 不入线（字节级旧行为）
 	return pe
+}
+
+// provideBoardRunLeasePort P0-6 阶段 1a（90-multi-replica-board-lease）
+// capability flag：ARANEA_BOARD_RUN_LEASE 缺省/off → nil（PlanExecutor 纯进程内
+// boardRunRegistry 字节级旧行为）；mem → InMem 端口试跑档；pg → board_run_leases
+// 行租约（迁移 20261295）。pg + 无 DB 形态 fail-closed 落 nil。
+// wire-gen-hand-merge-convention：与 wire.go 同一函数体镜像（主本在 wire.go）。
+func provideBoardRunLeasePort(d *data.Data, lg loggateway.Logger) biz.BoardRunLeasePort {
+	switch service.ResolveBoardRunLeaseMode(os.Getenv) {
+	case service.BoardRunLeaseModeMem:
+		return service.NewInMemBoardRunLease()
+	case service.BoardRunLeaseModePG:
+		if d == nil {
+			lg.Warn("board run lease flag=pg 但无 DB 数据源，fail-closed 回落进程内模式",
+				loggateway.Str("component", "board_run_lease"),
+				loggateway.StepID("board_run_lease.wire"))
+			return nil
+		}
+		return service.NewPGBoardRunLease(data.NewBoardRunLeaseRepo(d), service.PGBoardRunLeaseOptions{Logger: lg})
+	default:
+		return nil
+	}
 }
 
 // provideTeamOrchestrator returns the real TeamOrchestrator (Phase 2).

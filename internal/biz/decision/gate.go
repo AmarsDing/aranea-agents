@@ -87,6 +87,33 @@ const (
 	// outcome 恒 blocked。此前仅有 plugin_runs 统计与进程日志，run 结束后
 	// 无三方互证证据链（S14 实测 decision_records 零行）。
 	TriggerOutputPolicyBlocked = "output_policy_blocked"
+	// TriggerApprovalPolicyDenied 是审批策略 never 确定性拒绝事件（P0-5
+	// 审批工程化，批 A12 本地冻结、批 C 登记归位，2026-10-22）：取值与批 A
+	// 本地常量逐字一致（迁移 20261291 行语义依赖），outcome 恒 blocked。
+	// AS-EVT-01=Informational（SystemNoticeEvent+审计双写，不上 BlockUpTo 行列）。
+	TriggerApprovalPolicyDenied = "approval_policy_denied"
+	// TriggerApprovalPolicyShadow 是审批策略 shadow_only 预演命中观测事件
+	// （同上批次登记归位），outcome 恒 tripped，零强制语义。
+	TriggerApprovalPolicyShadow = "approval_policy_shadow"
+	// TriggerSpillFailed 是 toolspill 持久化失败事件（P0-2 批 C EmitGate
+	// 双写）：spill 写盘失败但输出被 partial 豁免保全文本时发，outcome 恒
+	// tripped（观测/审计）；Extra.dedupe_key 按 spill_failed:<session>:
+	// <floor(ts,300)> 五分钟桶去重（§12.2 P0-2⑤），AS-EVT-01=Important。
+	TriggerSpillFailed = "spill_failed"
+	// TriggerSpillGCFailed 是 toolspill GC 周期失败事件（Q7 批 D2，93.design.md
+	// §3）：GC 调度器单周期失败时发，outcome 恒 tripped（观测/审计），worker
+	// 低频天然聚合故不带 deduper；Extra 带 store_kind/scanned/removed。
+	// AS-EVT-01=Important（decision outbox 异步落表+Prom 计数双平面，同
+	// spill_failed 先例）。关停期 ctx 取消按 neutral，不发本事件。
+	TriggerSpillGCFailed = "spill_gc_failed"
+	// TriggerLLMAbnormalFinish 是 LLM 输出异常收官事件（Q5 批 D3 业务 wrap，
+	// 94 三件套）：finish_reason ∈ {length, content_filter} 或流 EOF 异常断流
+	// 时发，outcome 恒 tripped（观测/审计），Action="observe"；会话级 5min 桶
+	// 去重（llm_abnormal_finish:<session>:<floor(ts,300)>，空 session 回落
+	// "unknown" 防全进程坍缩同桶）；Extra 带 finish_reason/kind/provider/model/
+	// origin/dedupe_key。AS-EVT-01=Important（silent 净关/overflow/stall
+	// 耗尽各有专属语义路径，排除在本事件面外——同 agent 分类器判序）。
+	TriggerLLMAbnormalFinish = "llm_abnormal_finish"
 )
 
 // GateDecision 是 S2 统一闸决策事件结构（设计 §3.2 row 3）：各闸点只填

@@ -248,8 +248,12 @@ func provideParallelToolExecutor(lg loggateway.Logger) *tools.ParallelToolExecut
 	return tools.NewParallelToolExecutor(nil, lg, opts...)
 }
 
-func provideToolUsecaseWithDeps(repo biztool.ToolRepo, sys biztool.SettingRepo, tester biztool.ToolTester, checker biztool.WebResearchReadinessChecker, grants biztool.ToolGrantStore, paramRules biztool.ToolParamRuleStore, lg loggateway.Logger) *biztool.ToolUsecase {
-	return biztool.NewToolUsecase(repo, sys, lg, biztool.WithToolTester(tester), biztool.WithWebResearchChecker(checker), biztool.WithToolGrantStore(grants), biztool.WithToolParamRuleStore(paramRules))
+func provideToolUsecaseWithDeps(repo biztool.ToolRepo, sys biztool.SettingRepo, tester biztool.ToolTester, checker biztool.WebResearchReadinessChecker, grants biztool.ToolGrantStore, paramRules biztool.ToolParamRuleStore, approvalPolicies biztool.ApprovalPolicyStore, lg loggateway.Logger) *biztool.ToolUsecase {
+	// P0-5 批 C（2026-10-22 activation）：审批策略仓经 option 装配——
+	// WithApprovalPolicyStore 实现后 agent 侧 approval policy gate（p3，
+	// paramRuleGate 之后）自动注册；CLI/无 DB 形态 store 为空实现、gate
+	// 仍不注册，与现状字节级一致。
+	return biztool.NewToolUsecase(repo, sys, lg, biztool.WithToolTester(tester), biztool.WithWebResearchChecker(checker), biztool.WithToolGrantStore(grants), biztool.WithToolParamRuleStore(paramRules), biztool.WithApprovalPolicyStore(approvalPolicies))
 }
 
 // provideToolSpillDeps 装配 P0-2 工具结果溢出外置（批 B 2026-10-22）：
@@ -258,10 +262,41 @@ func provideToolUsecaseWithDeps(repo biztool.ToolRepo, sys biztool.SettingRepo, 
 // tools.WorkspaceRootFromEnv 先例（env 未配置 → 返回 nil，四消费点灰闸 OFF
 // 保持字节级旧行为）；构造失败仅 Warn + nil（spill 是安全网不是关键链路，
 // 失败一律 fail-soft 不回退为一个——调读写失败另有 Important 事件）。
-func provideToolSpillDeps(runtimeConf *conf.Runtime, lg loggateway.Logger) *toolspill.Deps {
+// 批 C（2026-10-22）：注入 spill_failed EmitGate 双写钩子（Hooks 落网即
+// AS-EVT-01 Important 面：decision_records + flow_log + notice，5min 桶去重；
+// 观测发射自身失败一律 Warn 吞掉，不影响 spill 主链）。
+// C-5（2026-10-24，91-multi-replica-spill-store）：新增首参 d *data.Data；
+// ARANEA_TOOLSPILL_STORE=pg 时挂 PG 行存第二实现，缺省/坏值回落 fs 档
+// 字节级旧行为（坏值 Warn），pg 档 d==nil 时 Warn + OFF（fail-soft）。
+func provideToolSpillDeps(d *data.Data, runtimeConf *conf.Runtime, dc decision.Collector, lg loggateway.Logger) *toolspill.Deps {
 	cfg := runtimeConf.ToolResultSpillConfig() // nil-safe：默认 ON + 1MiB/64MiB/168h
 	if !cfg.Enabled {
 		return nil
+	}
+	kind, malformed := toolspill.ResolveToolSpillStoreKind(nil)
+	if malformed {
+		lg.Warn("toolspill store env 档位非法，按缺省 fs 处理（fail-safe）",
+			loggateway.StepID("toolspill.deps.construct"),
+			loggateway.Str("component", "toolspill"),
+			loggateway.Str("env", toolspill.EnvToolSpillStore),
+			loggateway.Str("value", os.Getenv(toolspill.EnvToolSpillStore)))
+	}
+	if kind == toolspill.StorePG {
+		if d == nil {
+			lg.Warn("toolspill env=pg 但 data 不可用，continue OFF（零行为变化）",
+				loggateway.StepID("toolspill.deps.construct"),
+				loggateway.Str("component", "toolspill"))
+			return nil
+		}
+		return &toolspill.Deps{
+			Store: data.NewToolSpillPGStore(d, data.PGSpillOptions{
+				MaxFileBytes:  cfg.MaxFileBytes,
+				MaxTotalBytes: cfg.MaxTotalBytes,
+				TTL:           time.Duration(cfg.TTLHours) * time.Hour,
+				Logger:        lg,
+			}),
+			Hooks: agent.NewSpillFailedEmitHooks(dc, lg),
+		}
 	}
 	root := strings.TrimSpace(cfg.Dir)
 	if root == "" {
@@ -286,7 +321,39 @@ func provideToolSpillDeps(runtimeConf *conf.Runtime, lg loggateway.Logger) *tool
 			loggateway.Err(err))
 		return nil
 	}
-	return &toolspill.Deps{Store: store}
+	return &toolspill.Deps{Store: store, Hooks: agent.NewSpillFailedEmitHooks(dc, lg)}
+}
+
+// provideToolSpillGC 是 Q7 批 D2 新增的 toolspill GC 调度器生产者（93.design.md
+// §2 决策表）：GC worker 与工具面 Store 同源构造（复用 provideToolSpillDeps 同一路
+// 翻译）。TOOLSPILL_GC_DISABLED=1 / spill OFF / 构造失败一律返 nil（workers.go
+// 按 nil 跳过，typed-nil 另由 Start 首行兜底，FlowLogCleanup:32-35 先例）。
+// kind 标签与 provideToolSpillDeps 同一份 env 解析结果对齐（fs/pg）。
+// 多副本互斥：PG 档调度器各副本同跑，由 store 内建单事务 advisory 锁取交集
+// （C-5 实现、C-f GC-1 评审确认为有意设计：败方锁等待=预期互斥，ctx 可取消
+// 且表量有界）——本 provider 不再做副本编排。
+// wire-gen-hand-merge-convention：wire_gen.go 须手工镜像同一函数体。
+func provideToolSpillGC(d *data.Data, runtimeConf *conf.Runtime, dc decision.Collector, lg loggateway.Logger) *jobs.ToolSpillGC {
+	if jobs.ToolSpillGCDisabled() {
+		return nil
+	}
+	deps := provideToolSpillDeps(d, runtimeConf, dc, lg)
+	if deps == nil || deps.Store == nil {
+		return nil
+	}
+	kindLabel := "fs"
+	if kind, _ := toolspill.ResolveToolSpillStoreKind(nil); kind == toolspill.StorePG {
+		kindLabel = "pg"
+	}
+	return jobs.NewToolSpillGC(deps.Store, kindLabel, 0, dc, lg)
+}
+
+// provideLLMFinishObserverHooks 装配 Q5 批 D3 的 finish_reason/EOF 观测钩子
+// （94 三件套 §2 决策表）：wire 单例——chat/team TurnDeps 与 graph 链共享
+// 同一 Hooks 实例，进程内 5min 桶 deduper 随之共享（同 session 跨接线面
+// 不双发）。collector 注入 Lifecycle（内嵌 Collector）。
+func provideLLMFinishObserverHooks(decisions decision.Lifecycle, lg loggateway.Logger) provider.FinishObserverHooks {
+	return agent.NewFinishObservedEmitHooks(decisions, lg)
 }
 
 // provideMCPServerUsecaseWithDeps injects prober and metadata editor via constructor.
@@ -952,6 +1019,7 @@ func provideTeamTurnDeps(
 	seq *v2.Sequencer,
 	learningLoop *biz.LearningLoopUsecase,
 	lg loggateway.Logger,
+	finishHooks provider.FinishObserverHooks,
 ) rt.TurnDeps {
 	// LLMHTTP timeout is sourced from TimeoutPolicy.
 	// TaskTypeModerate (60min) is the baseline; per-task-type overrides
@@ -968,6 +1036,9 @@ func provideTeamTurnDeps(
 		LearningLoop: learningLoop,
 		MsgHistory:   sessions,
 		Lg:           lg,
+		// Q5 批 D3：finish_reason/EOF 观测钩子（TurnDeps 漏斗一次性注入，
+		// RoundTrip/RoundTripForSession 透挂）。
+		LLMFinishObserver: finishHooks,
 	}
 }
 
@@ -1052,6 +1123,7 @@ func provideChatServiceDeps(
 	// 89 FR-9：outbox 水位折入共享计数器恢复（wire_gen.go 已手工镜像——
 	// regen 时须与本参数一致，见 wire-gen-hand-merge-convention）。
 	eventOutbox biz.EventDeliveryOutboxRepo,
+	finishHooks provider.FinishObserverHooks,
 ) service.ChatOrchestratorDeps {
 	// Backfill TaskOrchestrator into teamDeps to break the Wire cycle:
 	// TaskOrchestrator → SpiritTeamAssembler → TeamStarterPort → ChatService.
@@ -1077,6 +1149,8 @@ func provideChatServiceDeps(
 				LearningLoop: learningLoop,
 				MsgHistory:   sessions,
 				Lg:           lg,
+				// Q5 批 D3：finish_reason/EOF 观测钩子（TurnDeps 漏斗一次注入）。
+				LLMFinishObserver: finishHooks,
 			},
 			Runs:         runs,
 			PendingQueue: pendingQueue,
@@ -1297,14 +1371,17 @@ func provideGraphBuildDeps(
 	runtimeConf *conf.Runtime,
 	decisions decision.Lifecycle,
 	lg loggateway.Logger,
+	d *data.Data,
+	finishHooks provider.FinishObserverHooks,
 ) graphtrpc.GraphNodeResolverSet {
 	if catalog == nil || toolUC == nil {
 		return graphtrpc.GraphNodeResolverSet{NodeBreakers: nodeBreakers}
-	}
-	// T3 根修（同 provideTRPCBuilderDeps，两处必须一致）：ToolUC 非 nil ⇒
+	} // T3 根修（同 provideTRPCBuilderDeps，两处必须一致）：ToolUC 非 nil ⇒
 	// 产品确认门禁机制可用，confirmation_guard runner 插件让位。
 	plugintrpc.SetProductConfirmGateActive(true)
-	rtTrip := &provider.RoundTrip{HTTP: &http.Client{Timeout: provider.LLMLeakGuardTimeout}}
+	// Q5 批 D3：finish_reason/EOF 观测钩子（与 TurnDeps 漏斗共享同一实例）。
+	// D3-f：唯一穿透走 newObservedFinishRoundTrip（接线缺失钉板即红）。
+	rtTrip := newObservedFinishRoundTrip(provider.LLMLeakGuardTimeout, finishHooks)
 	builderDeps := chatagent.TRPCBuilderDeps{
 		TRPCModelCatalogDeps: chatagent.TRPCModelCatalogDeps{
 			ModelCatalog: catalog,
@@ -1349,7 +1426,7 @@ func provideGraphBuildDeps(
 			Organization:    orgUC,
 			ToolResultGate:  toolResultGate,
 			ToolResultPrune: agentToolResultPruneConfig(runtimeConf),
-			Spill:           provideToolSpillDeps(runtimeConf, lg), // wire 镜像时 wire_gen 须与 provideTRPCBuilderDeps 同步（注释见下"两处必须一致"）
+			Spill:           provideToolSpillDeps(d, runtimeConf, decisions, lg), // wire 镜像时 wire_gen 须与 provideTRPCBuilderDeps 同步（注释见下"两处必须一致"）
 			OutboundRouter:  outboundRouter,
 			SubAgentService: subAgentSvc,
 			A2AEnabled:      a2aUC != nil,
@@ -1394,8 +1471,10 @@ func provideTRPCBuilderDeps(
 	runtimeConf *conf.Runtime,
 	decisions decision.Lifecycle,
 	lg loggateway.Logger,
+	d *data.Data,
+	finishHooks provider.FinishObserverHooks,
 ) *chatagent.TRPCBuilderDeps {
-	rtTrip := &provider.RoundTrip{HTTP: &http.Client{Timeout: 120 * time.Second}}
+	rtTrip := newObservedFinishRoundTrip(120*time.Second, finishHooks)
 	// 79-runtime-governance（2026-08-27 三轮审查 T3 根修）：server 形态 ToolUC
 	// 非 nil ⇒ 产品确认门禁机制可用，confirmation_guard runner 插件让位（框架
 	// 执行序插件先于链，硬拦会遮蔽 param gate 的 deny/ask/allow 语义；插件的
@@ -1447,7 +1526,7 @@ func provideTRPCBuilderDeps(
 			Organization:    orgUC,
 			ToolResultGate:  toolResultGate,
 			ToolResultPrune: agentToolResultPruneConfig(runtimeConf),
-			Spill:           provideToolSpillDeps(runtimeConf, lg),
+			Spill:           provideToolSpillDeps(d, runtimeConf, decisions, lg),
 			OutboundRouter:  outboundRouter,
 			SubAgentService: subAgentSvc,
 			A2AEnabled:      a2aUC != nil,
@@ -2061,6 +2140,12 @@ func provideKnowledgeIndexRepairWorker(
 func provideKnowledgeCurateWorker(
 	uc *biz.KnowledgeUsecase,
 	lg loggateway.Logger,
+	// mocSummarizerWiring 仅作依赖锚点（G-34 ADR-C：构造时已完成 Set 回注，本
+	// 函数不直接使用），保证 wire 图到达 provideKnowledgeMOCSummarizerWiring。
+	mocSummarizerWiring *knowledgeMOCSummarizerWiring,
+	// entityMergeWiring 同上锚点（G-37 ADR-D/E/F：保证 wire 图到达
+	// provideKnowledgeEntityMergeWiring）。
+	entityMergeWiring *knowledgeEntityMergeWiring,
 ) *jobs.KnowledgeCurateWorker {
 	if uc == nil || jobs.KnowledgeCurateDisabled() {
 		return nil
@@ -2077,6 +2162,26 @@ func provideKnowledgeWriteBackSweeperWorker(
 	lg loggateway.Logger,
 ) *jobs.KnowledgeWriteBackSweeperWorker {
 	return jobs.NewKnowledgeWriteBackSweeperWorker(0, outbox, writeBack, lg)
+}
+
+// provideKnowledgeGraphProjectionWorker G-33（ADR-KN-20261020-H 写侧）：图谱卡片
+// 对账投影——缺卡/漂移重嵌、孤儿与闭合边墓碑，5m 轮。装配断言收窄三窄口
+// （GraphCardStore 实现缺失/嵌入束缺失 → nil 关腿，workers 跳过）。
+func provideKnowledgeGraphProjectionWorker(
+	d *data.Data,
+	embedder *knowledge.MultiProviderEmbedder,
+	lg loggateway.Logger,
+) *jobs.KnowledgeGraphProjectionJob {
+	repo := data.NewKnowledgeRepoFromData(d)
+	store, ok := repo.(bizknowledge.GraphCardStore)
+	if !ok {
+		return nil
+	}
+	emb := knowledge.NewGraphCardEmbedder(embedder)
+	if emb == nil {
+		return nil
+	}
+	return jobs.NewKnowledgeGraphProjectionJob(0, bizknowledge.NewGraphProjectionWorker(store, emb, lg), lg)
 }
 
 // knowledgeDistillWiring M4 distill 装配标记（wire 锚点：仅表示 Set 回注已完成）。
@@ -2141,6 +2246,64 @@ func provideKnowledgeOrgValidatorWiring(uc *biz.KnowledgeUsecase, orgRepo biz.Or
 		uc.SetOrgNodeValidator(v)
 	}
 	return &knowledgeOrgValidatorWiring{}
+}
+
+// knowledgeMOCSummarizerWiring G-34 ADR-C 装配标记（wire 锚点：仅表示 Set 回注已完成）。
+type knowledgeMOCSummarizerWiring struct{}
+
+// provideKnowledgeMOCSummarizerWiring 装配 G-34 ADR-C MOC 摘要生成器：构造 LLM
+// 摘要器（usage 记账窄口晚绑 UsageUsecaseRef，同 provideSessionTitleGenerator
+// 模式）后回注 KnowledgeUsecase（Set 副作用——Usecase 无法构造期持环依赖）。
+// KNOWLEDGE_MOC_SUMMARIZER_DISABLED=1 或任一依赖缺席返回 nil（runMOCSummaryTask
+// 静默跳过，其余治理任务不受影响）。手改 wire_gen.go 注入即等价代码，但任何
+// go generate 重生成都会静默丢弃——必须走本 provider 入图。
+func provideKnowledgeMOCSummarizerWiring(
+	uc *biz.KnowledgeUsecase,
+	caller biz.LLMCaller,
+	sys *biz.SystemSettingUsecase,
+	catalog *biz.LlmProviderModelUsecase,
+	usageRef *biz.UsageUsecaseRef,
+	lg loggateway.Logger,
+) *knowledgeMOCSummarizerWiring {
+	if uc == nil || caller == nil || knowledge.MOCSummarizerDisabled() {
+		return nil
+	}
+	summarizer := knowledge.NewMOCSummarizer(caller, sys, catalog, lg)
+	summarizer.SetUsageRecorder(service.NewMOCUsageRecorder(usageRef, lg))
+	uc.SetMOCSummarizer(summarizer)
+	return &knowledgeMOCSummarizerWiring{}
+}
+
+// knowledgeEntityMergeWiring G-37 ADR-D/E/F 装配标记（wire 锚点：仅表示 Set 回注已完成）。
+type knowledgeEntityMergeWiring struct{}
+
+// provideKnowledgeEntityMergeWiring 装配 G-37 实体消解裁决链：构造 LLM 灰区裁
+// 决器（usage 记账窄口晚绑 UsageUsecaseRef，同 provideKnowledgeMOCSummarizerWiring
+// 模式）+ 候选生成依赖（embedder 复用实体建议窄口；ANN 复用 G-33 卡片检索窄
+// 口，repo 实现缺失即 nil 关腿——任务降级 norm-only）回注 KnowledgeUsecase
+// （Set 副作用——Usecase 无法构造期持环依赖）。
+// KNOWLEDGE_ENTITY_MERGE_ADJUDICATOR_DISABLED=1 或任一要件缺席返回 nil
+// （runEntityMergeTask 静默跳过，其余治理任务不受影响）。wire_gen.go 中必须
+// 同步手工镜像（go generate 重生成会静默丢弃——wire_gen 手工并合约定）。
+func provideKnowledgeEntityMergeWiring(
+	uc *biz.KnowledgeUsecase,
+	repo biz.KnowledgeRepo,
+	caller biz.LLMCaller,
+	embedder *knowledge.MultiProviderEmbedder,
+	sys *biz.SystemSettingUsecase,
+	catalog *biz.LlmProviderModelUsecase,
+	usageRef *biz.UsageUsecaseRef,
+	lg loggateway.Logger,
+) *knowledgeEntityMergeWiring {
+	if uc == nil || caller == nil || embedder == nil || knowledge.EntityMergeAdjudicatorDisabled() {
+		return nil
+	}
+	adjudicator := knowledge.NewEntityMergeAdjudicator(caller, sys, catalog, lg)
+	adjudicator.SetUsageRecorder(service.NewEntityMergeUsageRecorder(usageRef, lg))
+	uc.SetEntityMergeAdjudicator(adjudicator)
+	ann, _ := repo.(bizknowledge.GraphCardVectorSearcher)
+	uc.SetEntityMergeCandidateRepos(embedder, ann)
+	return &knowledgeEntityMergeWiring{}
 }
 
 // memorySleepTimeQueueSize is the buffer size for the in-memory consolidation
@@ -3371,6 +3534,7 @@ type wireOut struct {
 	PluginRuntime               *plugintrpc.Runtime
 	ToolAuditCleanup            *jobs.ToolAuditCleanup
 	FlowLogCleanup              *jobs.FlowLogCleanup
+	ToolSpillGC                 *jobs.ToolSpillGC
 	MonitorEventsCleanup        *jobs.MonitorEventsCleanup
 	AutoHealTTLCleanup          *jobs.AutoHealTTLCleanup
 	MonitorAlertEvalWorker      *monitor.AlertEvalWorker
@@ -3434,6 +3598,7 @@ func provideWireOut(
 	pluginRuntime *plugintrpc.Runtime,
 	toolAuditCleanup *jobs.ToolAuditCleanup,
 	flowLogCleanup *jobs.FlowLogCleanup,
+	toolSpillGC *jobs.ToolSpillGC,
 	monitorEventsCleanup *jobs.MonitorEventsCleanup,
 	autoHealTTLCleanup *jobs.AutoHealTTLCleanup,
 	monitorAlertEvalWorker *monitor.AlertEvalWorker,
@@ -3490,7 +3655,7 @@ func provideWireOut(
 		ChannelRuntime:          channelRuntime,
 		PluginRuntime:           pluginRuntime,
 		ToolAuditCleanup:        toolAuditCleanup,
-		FlowLogCleanup:          flowLogCleanup, MonitorEventsCleanup: monitorEventsCleanup, AutoHealTTLCleanup: autoHealTTLCleanup, MonitorAlertEvalWorker: monitorAlertEvalWorker, MonitorTraceBackfillWorker: monitorTraceBackfillWorker, MemoryL2Decay: memoryL2Decay, MemoryL1Archive: memoryL1Archive, ChannelTurnJobSweeper: channelTurnJobSweeper, MemoryL3Decay: memoryL3Decay, MemoryL4Decay: memoryL4Decay,
+		FlowLogCleanup:          flowLogCleanup, ToolSpillGC: toolSpillGC, MonitorEventsCleanup: monitorEventsCleanup, AutoHealTTLCleanup: autoHealTTLCleanup, MonitorAlertEvalWorker: monitorAlertEvalWorker, MonitorTraceBackfillWorker: monitorTraceBackfillWorker, MemoryL2Decay: memoryL2Decay, MemoryL1Archive: memoryL1Archive, ChannelTurnJobSweeper: channelTurnJobSweeper, MemoryL3Decay: memoryL3Decay, MemoryL4Decay: memoryL4Decay,
 		MemoryEbbinghausDecay:       memoryEbbinghausDecay,
 		MemoryCanary:                memoryCanary,
 		MemoryCitationBackfill:      memoryCitationBackfill,
@@ -3717,11 +3882,36 @@ func providePlanExecutor(
 	orch service.TeamOrchestrator,
 	seq *v2.Sequencer,
 	taskPlanRepo biz.TaskPlanRepository,
+	leasePort biz.BoardRunLeasePort,
 	lg loggateway.Logger,
 ) *service.PlanExecutor {
 	pe := service.NewPlanExecutorFromV2Repos(planStep, teamStage, planBoard, graphStage, graphNode, orch, seq, lg)
 	pe.SetTaskPlanUpdater(taskPlanRepo)
+	pe.SetBoardRunLeasePort(leasePort) // nil 不入线（字节级旧行为）
 	return pe
+}
+
+// provideBoardRunLeasePort P0-6 阶段 1a（90-multi-replica-board-lease）
+// capability flag：ARANEA_BOARD_RUN_LEASE 缺省/off → nil（PlanExecutor 纯进程内
+// boardRunRegistry 字节级旧行为）；mem → InMem 端口试跑档（端口语义等价性灰度，
+// 无跨进程语义）；pg → board_run_leases 行租约（迁移 20261295）。pg + 无 DB
+// 形态 fail-closed 落 nil（等同旧行为），不在启动面中断装配。
+// wire-gen-hand-merge-convention：wire_gen.go 须手工同体镜像。
+func provideBoardRunLeasePort(d *data.Data, lg loggateway.Logger) biz.BoardRunLeasePort {
+	switch service.ResolveBoardRunLeaseMode(os.Getenv) {
+	case service.BoardRunLeaseModeMem:
+		return service.NewInMemBoardRunLease()
+	case service.BoardRunLeaseModePG:
+		if d == nil {
+			lg.Warn("board run lease flag=pg 但无 DB 数据源，fail-closed 回落进程内模式",
+				loggateway.Str("component", "board_run_lease"),
+				loggateway.StepID("board_run_lease.wire"))
+			return nil
+		}
+		return service.NewPGBoardRunLease(data.NewBoardRunLeaseRepo(d), service.PGBoardRunLeaseOptions{Logger: lg})
+	default:
+		return nil
+	}
 }
 
 // provideTeamOrchestrator returns the real TeamOrchestrator (Phase 2).

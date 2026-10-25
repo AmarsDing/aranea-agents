@@ -102,6 +102,16 @@ func TRPCModelForProviderModel(ctx context.Context, catalog biz.TeamModelCatalog
 	// （WithFirstByteRetryBudget / WithStallBudget）；stall 无注入时落回
 	// 包默认值，零预算首字节维度保持不重试的旧语义。
 	m = WrapModelWithLivenessGuard(m, strings.TrimSpace(cfg.ProviderType), strings.TrimSpace(cfg.ModelAPI), lg)
+	// Q5 批 D3（94 三件套）：finish_reason/EOF 结构化透传——观测层挂
+	// LivenessGuard 之外，单个逻辑 GenerateContent 恰观测一次（liveness
+	// 内部首字节重连不可见，finish/EOF 以 reconnect 后终态为准）。rt 为
+	// nil 或未注钩子时 pass-through（零行为变更）。
+	m = WrapModelWithFinishObserver(m, FinishObserverOptions{
+		Hook:     finishObservedHookFromRT(rt),
+		Provider: strings.TrimSpace(cfg.ProviderType),
+		Model:    strings.TrimSpace(cfg.ModelAPI),
+		Logger:   lg,
+	})
 	return m, nil
 }
 
@@ -657,6 +667,15 @@ func flowBusFromRT(rt *RoundTrip) contract.MonitorBus {
 		return nil
 	}
 	return rt.FlowBus
+}
+
+// finishObservedHookFromRT returns the finish_reason/EOF 观测钩子 carried by
+// the RoundTrip; nil-safe（rt 为 nil 或未注钩子恒返 nil，观测层 pass-through）。
+func finishObservedHookFromRT(rt *RoundTrip) FinishObservedHook {
+	if rt == nil {
+		return nil
+	}
+	return rt.OnAbnormalFinish
 }
 
 // haSwitchCallback logs HA 候选模型切换 as a process Warn, and additionally

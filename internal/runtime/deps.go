@@ -101,6 +101,11 @@ type TurnDeps struct {
 	Compress  biz.NativeTurnCompressor
 	AfterTurn biz.NativeTurnAfterHook
 	RunnerMgr *RunnerManager
+	// LLMFinishObserver 是 Q5 批 D3 的 finish_reason/EOF 观测钩子束（94 三
+	// 件套）：wire 装配期注入同一实例（chat/team/graph 共享进程内去重），
+	// RoundTrip/RoundTripForSession 之间创建 RT 时透挂到 rt.OnAbnormalFinish；
+	// 零值=观测层 pass-through（零行为变更）。
+	LLMFinishObserver provider.FinishObserverHooks
 	// LearningLoop records tool_call observations into the learning loop
 	// (Observation → Pattern → Proposal pipeline). Optional: when nil,
 	// observation recording is skipped.
@@ -113,7 +118,10 @@ type TurnDeps struct {
 
 // RoundTrip returns a provider.RoundTrip backed by the LLMHTTP client.
 func (d TurnDeps) RoundTrip() *provider.RoundTrip {
-	return &provider.RoundTrip{HTTP: d.LLMHTTP}
+	return &provider.RoundTrip{
+		HTTP:             d.LLMHTTP,
+		OnAbnormalFinish: d.LLMFinishObserver.OnAbnormalFinish,
+	}
 }
 
 // RoundTripForSession returns a provider.RoundTrip with an OnRetry callback
@@ -123,6 +131,16 @@ func (d TurnDeps) RoundTrip() *provider.RoundTrip {
 // is published).
 func (d TurnDeps) RoundTripForSession(sessionID string) *provider.RoundTrip {
 	rt := d.RoundTrip()
+	// Q5 批 D3（94 三件套）：会话绑定在漏斗一次性完成——wrapper 侧只采
+	// 纯事实，session 归RT创建处注入；空钩子零开销。与 OnRetry 的
+	// EventBus 门控无关（SessionID 的决策记录归属不依赖事件总线）。
+	if h := rt.OnAbnormalFinish; h != nil {
+		base := h
+		rt.OnAbnormalFinish = func(ctx context.Context, obs provider.FinishObservation) {
+			obs.SessionID = sessionID
+			base(ctx, obs)
+		}
+	}
 	if d.Pipeline.EventBus == nil {
 		return rt
 	}
