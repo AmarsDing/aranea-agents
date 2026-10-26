@@ -10,8 +10,10 @@ type (
 	ArtifactSaver   = artifact.Saver
 	ArtifactWriter  = artifact.Writer
 	ArtifactUsecase = artifact.Usecase
-	PreviewKind     = artifact.PreviewKind
-	PreviewResult   = artifact.PreviewResult
+	// ArtifactSessionPurger 是 T-3 会话级附件清理窄接口的再导出。
+	ArtifactSessionPurger = artifact.SessionPurger
+	PreviewKind           = artifact.PreviewKind
+	PreviewResult         = artifact.PreviewResult
 )
 
 // Re-export artifact constructors, helpers and constants for backward compatibility.

@@ -161,6 +161,8 @@ func TestBuildUserMessageFromAttachments_LargeTextGated(t *testing.T) {
 	}
 }
 
+// T-2（2026-10-26 评审二轮）语义翻转钉：小文本附件不再直进 File part，
+// 走文本抽取短路内联为 text part（DeepSeek 静默丢弃 / OpenAI 400 病灶）。
 func TestBuildUserMessageFromAttachments_SmallTextNotGated(t *testing.T) {
 	repo := &memArtifactRepo{items: map[string]artifactbiz.Artifact{}, data: map[string][]byte{}}
 	uc := artifactbiz.NewUsecase(repo, loggateway.NewNoop())
@@ -177,8 +179,11 @@ func TestBuildUserMessageFromAttachments_SmallTextNotGated(t *testing.T) {
 	if len(gate.calls) != 0 {
 		t.Fatalf("gate should not be called for small attachment, calls = %d", len(gate.calls))
 	}
-	if msg.ContentParts[0].Type != trpcmodel.ContentTypeFile {
-		t.Fatalf("part0 type=%v, want File", msg.ContentParts[0].Type)
+	if msg.ContentParts[0].Type != trpcmodel.ContentTypeText {
+		t.Fatalf("part0 type=%v, want Text (T-2 extraction short-circuit)", msg.ContentParts[0].Type)
+	}
+	if p := msg.ContentParts[0]; p.Text == nil || !strings.Contains(*p.Text, "hello") || !strings.Contains(*p.Text, "small.txt") {
+		t.Fatalf("extracted text part must carry name header + content, got %+v", p.Text)
 	}
 }
 

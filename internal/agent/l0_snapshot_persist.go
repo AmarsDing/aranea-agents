@@ -464,7 +464,8 @@ func buildL0SegmentsSummaryJSON(messages []trpcmodel.Message) string {
 		}
 		role := string(m.Role)
 		section := l0SegmentSection(content, role)
-		tokens := estTokensFromChars(messageCharLen(m))
+		// T-1c：分段计量同样补上图片保守下限（原 estTokensFromChars 对图计 0）。
+		tokens := estTokensFromChars(messageCharLen(m)) + messageImagePartCount(m)*imagePartEstTokensFloor
 		agg, ok := aggs[section]
 		if !ok {
 			agg = &sectionAgg{}

@@ -106,6 +106,9 @@ func NewFSArtifactRepoAt(root string, lg loggateway.Logger) *FSArtifactRepo {
 
 var _ biz.ArtifactRepo = (*FSArtifactRepo)(nil)
 
+// T-3：FS repo 实现会话级附件清理窄接口（PurgeBySession）。
+var _ biz.ArtifactSessionPurger = (*FSArtifactRepo)(nil)
+
 // Root returns the configured artifact storage root. Used by the reveal
 // endpoint (M27 Phase 5) for defense-in-depth containment checks.
 func (r *FSArtifactRepo) Root() string {
@@ -543,6 +546,36 @@ func (r *FSArtifactRepo) DeleteVersion(_ context.Context, sessionID, name string
 			delete(r.idIndex, target.ID)
 		} else {
 			r.idIndex[target.ID] = filtered
+		}
+	}
+	return nil
+}
+
+// PurgeBySession removes the whole session directory (every version's .bin
+// and .json sidecar) and purges the in-memory index entries for that session.
+// T-3 附件生命周期（2026-10-26 评审二轮）：会话删除的级联清理口。
+// OUT-05/ART-01：sessionID 先过 validateSessionID 防目录穿越；会话目录
+// 不存在为幂等成功（RemoveAll 语义）。
+func (r *FSArtifactRepo) PurgeBySession(_ context.Context, sessionID string) error {
+	if err := validateSessionID(sessionID); err != nil {
+		return err
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if err := os.RemoveAll(r.sessionDir(sessionID)); err != nil {
+		return fmt.Errorf("artifact purge session %s: %w", sessionID, err)
+	}
+	for id, metas := range r.idIndex {
+		kept := make([]artifactMeta, 0, len(metas))
+		for _, m := range metas {
+			if m.SessionID != sessionID {
+				kept = append(kept, m)
+			}
+		}
+		if len(kept) == 0 {
+			delete(r.idIndex, id)
+		} else {
+			r.idIndex[id] = kept
 		}
 	}
 	return nil

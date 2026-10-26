@@ -266,6 +266,9 @@ func TestPrefixContract_HookExecutionOrderGolden(t *testing.T) {
 		{"agent.newOrchestrationBriefBeforeHook.func1", callbacks.LayerDynamic, 5},
 		// Wave 2：连续失败工具结果去重（priority 7，始终注册）。
 		{"agent.newFailedToolResultDedupBeforeHook.func1", callbacks.LayerDynamic, 7},
+		// T-1b（2026-10-26 评审二轮）：历史图片 part 裁剪（priority 7，无条件
+		// 注册；request 副本改写，先于装配预算/压缩）。
+		{"agent.newImageHistoryTrimBeforeHook.func1", callbacks.LayerDynamic, 7},
 		// Wave 2：named agent 默认装配闸 64K/96K（priority 8）。
 		{"agent.newAssemblyBudgetBeforeHook.func1", callbacks.LayerDynamic, 8},
 		// A.1 #21：快照 hook 无条件注册，持久化由 env/L0 状态内部判空。

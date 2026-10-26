@@ -87,13 +87,16 @@ type promptComposeReport struct {
 	UserMsgs       int
 	AssistantMsgs  int
 	ToolMsgs       int
-	EstTokens      int
-	Sections       map[string]int
+	// ImageParts 是请求中的图片 part 数（T-1c）——EstTokens 已含其保守下限。
+	ImageParts int
+	EstTokens  int
+	Sections   map[string]int
 }
 
 func analyzePromptRequest(messages []trpcmodel.Message) promptComposeReport {
 	report := promptComposeReport{Sections: make(map[string]int)}
 	for _, m := range messages {
+		report.ImageParts += messageImagePartCount(m)
 		ch := messageCharLen(m)
 		switch m.Role {
 		case trpcmodel.RoleSystem:
@@ -119,7 +122,8 @@ func analyzePromptRequest(messages []trpcmodel.Message) promptComposeReport {
 		}
 	}
 	total := report.SystemChars + report.UserChars + report.AssistantChars + report.ToolChars
-	report.EstTokens = estTokensFromChars(total)
+	// T-1c：图片 part 按保守下限计入（文本计数器对其计 0 的失明修复）。
+	report.EstTokens = estTokensFromChars(total) + report.ImageParts*imagePartEstTokensFloor
 	return report
 }
 

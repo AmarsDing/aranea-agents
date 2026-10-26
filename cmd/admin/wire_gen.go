@@ -269,6 +269,10 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	// 复活已删会话行/恢复标记）。wire_gen 手维护约定：wire.go regen 时须镜
 	// 像本行（见 wire-gen-hand-merge-convention）。
 	sessionUsecase.SetPendingQueueFlusher(pendingMessageQueue.FlushSession)
+	// T-3（2026-10-26 评审二轮）：会话删除级联清理附件 blob（FS 目录 +
+	// sidecar），防孤儿附件无界增长；仅 Delete 触发，Archive 保留。
+	// wire_gen 手维护约定同上（regen 时须镜像本行）。
+	sessionUsecase.SetAttachmentPurger(artifactUsecase.DeleteBySession)
 	agentIDExistenceChecker := biz.ProvideAgentIDExistenceChecker(agentRepository)
 	organizationRepo := data.NewOrganizationRepo(dataData)
 	borrowRequestRepo := data.NewBorrowRequestRepo(dataData)

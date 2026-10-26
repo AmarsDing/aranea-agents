@@ -75,6 +75,15 @@ type Repo interface {
 	Writer
 }
 
+// SessionPurger 是会话级附件清理能力（窄接口；Stability:evolving）。
+// T-3 附件生命周期（2026-10-26 评审二轮）：会话删除时级联清理其全部
+// 附件版本（二进制 + sidecar），防孤儿 blob 随部署时间无界增长。从
+// Repo 独立出来——不支持会话级清理的实现（如部分测试桩）不被迫实现。
+type SessionPurger interface {
+	// PurgeBySession 删除会话全部附件版本。会话不存在为幂等成功。
+	PurgeBySession(ctx context.Context, sessionID string) error
+}
+
 // Usecase wraps artifact Repo.
 type Usecase struct {
 	repo Repo
@@ -204,6 +213,23 @@ func (uc *Usecase) Delete(ctx context.Context, id string) error {
 		}
 	}
 	return firstErr
+}
+
+// DeleteBySession 级联删除会话全部附件（T-3 附件生命周期）。repo 不支持
+// 会话级清理（未实现 SessionPurger 窄接口，如部分测试桩）时告警并 no-op
+// ——调用方（会话删除主流程）不回滚。
+func (uc *Usecase) DeleteBySession(ctx context.Context, sessionID string) error {
+	if strings.TrimSpace(sessionID) == "" {
+		return apierror.BadRequest("ARTIFACT", "session_id is required")
+	}
+	p, ok := uc.repo.(SessionPurger)
+	if !ok {
+		uc.lg.Warn("artifact repo does not support session purge; skipping",
+			loggateway.StepID("artifact.purge_session"),
+			loggateway.Str("session_id", sessionID))
+		return nil
+	}
+	return p.PurgeBySession(ctx, sessionID)
 }
 
 // DeleteVersion removes exactly one version of a logical artifact.

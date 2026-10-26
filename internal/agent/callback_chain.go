@@ -101,6 +101,10 @@ func productCallbackChainWithRegistry(ctx context.Context, ag biz.Agent, deps TR
 	if hook := newToolResultPruneBeforeHook(deps.ToolResultGate, deps.ToolResultPrune, lg, deps.DecisionCollector); hook != nil {
 		entries = append(entries, hook)
 	}
+	// T-1b（2026-10-26 评审二轮）：历史图片 part 裁剪——最后一条带图消息
+	// 之前的图片全量内联 replay 是逐轮 base64 烧 token 主源。纯 request
+	// 副本改写、零副作用，无条件注册（priority 7 同剪枝带，先于预算/压缩）。
+	entries = append(entries, newImageHistoryTrimBeforeHook(lg))
 	// Team completion guard: prevent Spirit LLM from polling get_team_deliverable
 	// when teams are still running. Enforces system-push pattern over LLM-polling.
 	if hook := newTeamCompletionGuardBeforeHook(deps.TeamCompletionChecker, lg); hook != nil {

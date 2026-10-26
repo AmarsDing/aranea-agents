@@ -31,9 +31,28 @@ func messageEstTokens(m trpcmodel.Message) int {
 	runes := messageCharLen(m)
 	blended := estTokensFromChars(runes)
 	if cjk := cjkRuneCountMessage(m); cjk > blended {
-		return cjk
+		blended = cjk
 	}
-	return blended
+	return blended + messageImagePartCount(m)*imagePartEstTokensFloor
+}
+
+// imagePartEstTokensFloor 是图片 part 的保守 token 下限（T-1c，
+// 2026-10-26 评审二轮）：tiktoken 类文本计数器对图片 part 计 0，压缩/
+// est/admission 曾因此全失明。1105 ≈ OpenAI high-detail 1024×1024 基准
+// 价（85 base + 4×170 tile），对 detail:auto 的常见截图/照片偏保守——
+// 宁高勿低：低估会让压缩门漏触发，高估最多提前压缩。
+const imagePartEstTokensFloor = 1105
+
+// messageImagePartCount 统计消息内的图片 part 数（Data 为空的占位 part
+// 也计入——计量口径宁保守；T-1b 裁剪后的文本占位不再是图片 part）。
+func messageImagePartCount(m trpcmodel.Message) int {
+	n := 0
+	for _, p := range m.ContentParts {
+		if p.Type == trpcmodel.ContentTypeImage && p.Image != nil {
+			n++
+		}
+	}
+	return n
 }
 
 func cjkRuneCountMessage(m trpcmodel.Message) int {
@@ -196,16 +215,20 @@ func estimateTokensSegmentedCounts(c runeClassCounts, cfg SegmentedEstConfig) in
 // promptEstTokensSegmented is the per-run segmented estimate over full
 // messages (content + text parts) — the shadow candidate for promptEstTokens.
 // Pure function: no I/O, no logging, no clock (estimator free path).
+// T-1c：图片 part 按保守下限计入（与 messageEstTokens 同口径，防分段臂
+// 翻盘时图片重新失明）。
 func promptEstTokensSegmented(msgs []trpcmodel.Message, cfg SegmentedEstConfig) int {
 	total := runeClassCounts{}
+	images := 0
 	for _, m := range msgs {
 		c := runeClassCountsMessage(m)
 		total.ASCII += c.ASCII
 		total.CJK += c.CJK
 		total.Emoji += c.Emoji
 		total.Other += c.Other
+		images += messageImagePartCount(m)
 	}
-	return estimateTokensSegmentedCounts(total, cfg)
+	return estimateTokensSegmentedCounts(total, cfg) + images*imagePartEstTokensFloor
 }
 
 // Calibration guardrails for RecordAuthoritative: provider-usage anchors are

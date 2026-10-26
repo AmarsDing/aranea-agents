@@ -599,12 +599,17 @@ type SessionUsecase struct {
 	statusPublisher     SessionStatusPublisher
 	flowLog             FlowLogWriter
 
-	// pendingFlusher 可选（Stability:internal，89 FR-7）：删除/归档会话的
-	// 内存 pending 队列级联清理回调。DB 侧级联由 cascadeDeleteBySession
-	// （pending_queue_entries）负责；内存侧不清理会被批量 ReplaceAll 复活
-	// （FK 违例/幽灵行）。由 service 层注入
-	// runtime.PendingMessageQueue.FlushSession；未注入为 no-op。
-	pendingFlusher func(sessionID string)
+	// cleanup 会话删除/归档的跨模块级联清理回调集合（Stability:internal）。
+	// 子字段语义：
+	//  - pendingFlusher（89 FR-7）：内存 pending 队列级联清理。DB 侧级联由
+	//    cascadeDeleteBySession（pending_queue_entries）负责；内存侧不清理
+	//    会被批量 ReplaceAll 复活（FK 违例/幽灵行）。由 service 层注入
+	//    runtime.PendingMessageQueue.FlushSession；未注入为 no-op。
+	//  - attachmentPurger（T-3，2026-10-26 评审二轮）：会话附件（FS blob +
+	//    sidecar）级联清理，仅 Delete 触发——Archive 为可恢复冻结，附件
+	//    必须随会话存活。由 wire 注入 artifactUsecase.DeleteBySession。
+	// 聚合为子 struct 以守住 AS-COG-01 字段数上限（见上 TECH-DEBT(COG)）。
+	cleanup sessionCleanupHooks
 
 	// Sub-usecases (Facade pattern — old callers delegate through these).
 	metricsUsecase     *SessionMetricsUsecase
@@ -704,6 +709,12 @@ func (uc *SessionUsecase) flowError(ctx context.Context, sessionID, stepID, mess
 	uc.flowLog.LogFlowError(ctx, sessionID, stepID, message, pairs...)
 }
 
+// sessionCleanupHooks 见 SessionUsecase.cleanup 字段注释。
+type sessionCleanupHooks struct {
+	pendingFlusher   func(sessionID string)
+	attachmentPurger func(ctx context.Context, sessionID string) error
+}
+
 // SetPendingQueueFlusher 注册可选的内存 pending 队列清理回调（89 FR-7
 // 级联清理）。在 Archive/Delete 成功后同步调用；未注入时静默跳过（测试
 // 与 CLI 形态的默认）。
@@ -711,17 +722,42 @@ func (uc *SessionUsecase) SetPendingQueueFlusher(fn func(sessionID string)) {
 	if uc == nil {
 		return
 	}
-	uc.pendingFlusher = fn
+	uc.cleanup.pendingFlusher = fn
+}
+
+// SetAttachmentPurger 注册可选的会话附件级联清理回调（T-3，2026-10-26
+// 评审二轮）。仅在 Delete 成功后调用（Archive 为可恢复冻结，附件保留）；
+// 未注入时静默跳过（测试与 CLI 形态的默认）。
+func (uc *SessionUsecase) SetAttachmentPurger(fn func(ctx context.Context, sessionID string) error) {
+	if uc == nil {
+		return
+	}
+	uc.cleanup.attachmentPurger = fn
 }
 
 // flushSessionPending 级联清理内存 pending 队列（含恢复标记）。放在会话锁
 // 范围外调用——回调内部（runtime.PendingMessageQueue.FlushSession）只取
 // 队列自身互斥，不会与 biz 锁形成环。
 func (uc *SessionUsecase) flushSessionPending(sessionID string) {
-	if uc == nil || uc.pendingFlusher == nil || sessionID == "" {
+	if uc == nil || uc.cleanup.pendingFlusher == nil || sessionID == "" {
 		return
 	}
-	uc.pendingFlusher(sessionID)
+	uc.cleanup.pendingFlusher(sessionID)
+}
+
+// purgeSessionAttachments 级联清理会话附件（FS blob + sidecar）。DB 级联
+// 成功后调用；清理失败只告警不回滚——会话行已软删，附件孤儿由后续清理
+// 兜底，阻塞/回滚主流程反而放大故障面。
+func (uc *SessionUsecase) purgeSessionAttachments(ctx context.Context, sessionID string) {
+	if uc == nil || uc.cleanup.attachmentPurger == nil || sessionID == "" {
+		return
+	}
+	if err := uc.cleanup.attachmentPurger(ctx, sessionID); err != nil {
+		uc.lg.Warn("session attachment purge failed",
+			loggateway.StepID("session.delete"),
+			loggateway.Str("session_id", sessionID),
+			loggateway.Err(err))
+	}
 }
 
 func (uc *SessionUsecase) TransitionStatus(ctx context.Context, sessionID string, target SessionStatus, reason SessionStatusReason) error {
@@ -949,6 +985,10 @@ func (uc *SessionUsecase) Delete(ctx context.Context, id string) error {
 	// 89 FR-7：DB 侧 cascadeDeleteBySession 已清 pending_queue_entries；内存
 	// 队列同步清空，防批量 ReplaceAll 把已删会话条目插回（FK 违例/幽灵行）。
 	uc.flushSessionPending(id)
+	// T-3（2026-10-26 评审二轮）：级联清理会话附件 blob——此前会话删除后
+	// 附件 FS 目录无属主残留，随部署时间无界增长。仅 Delete 触发；Archive
+	// 为可恢复冻结，附件保留。
+	uc.purgeSessionAttachments(ctx, id)
 	uc.flowDone(ctx, id, "session.delete", "会话已删除",
 		LogPair{Key: "session_id", Value: id}, LogPair{Key: "agent_id", Value: sess.AgentID})
 	return nil
