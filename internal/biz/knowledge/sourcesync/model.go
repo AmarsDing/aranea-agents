@@ -11,7 +11,9 @@ package sourcesync
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -366,6 +368,55 @@ func ValidateConfig(c Connector) error {
 		return fmt.Errorf("sourcesync: error_code %q not byte-stable", c.ErrorCode)
 	}
 	return nil
+}
+
+// ──────────────────────────────── 分 kind 配置（W3；config_json 仅非密） ────────────────────────────────
+
+// SharedDirConfig shared_dir 连接器配置投影（config_json 唯一合法形状；
+// 凭据/密钥键的出现即拒——凭据一律走 credential 行表③-3）。
+type SharedDirConfig struct {
+	Root string `json:"root"` // 监视根目录（绝对路径；walker 侧 resolve+stat 校验存在性）
+}
+
+// 敏感键黑名单（拒写入 config_json 的明文秘密形态；enc: 信封走行表不经此）。
+var sharedDirForbiddenKeys = []string{"token", "secret", "password", "credential", "api_key"}
+
+// ParseSharedDirConfig 解析+校验 config_json（② 签名级契约：walker/W5 共用唯一口径）。
+// 空 root/非法 JSON/未知字段/敏感键一律报错——配置缺陷归 walk_failed（非 auth 家族）。
+// 顺序裁决（W3 评审修 #2/#4）：probe 先解 → 敏感键黑名单扫（保证可触达——typed decode
+// 的 DisallowUnknownFields 会先一步吞掉 secret-ish 键，后置即死代码）→ 严格 decode
+// （未知字段拒）→ root Trim+非空+绝对路径硬闸（评审修 #1/#W3-F4：相对 root 随进程
+// CWD 漂移是配置事故，声明形态即绝对路径，相对值宁拒不歧义）。
+func ParseSharedDirConfig(raw string) (SharedDirConfig, error) {
+	var cfg SharedDirConfig
+	if strings.TrimSpace(raw) == "" {
+		return cfg, fmt.Errorf("sourcesync: shared_dir config_json required")
+	}
+	var probe map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(raw), &probe); err != nil {
+		return cfg, fmt.Errorf("sourcesync: shared_dir config_json invalid: %w", err)
+	}
+	for k := range probe {
+		lk := strings.ToLower(k)
+		for _, bad := range sharedDirForbiddenKeys {
+			if strings.Contains(lk, bad) {
+				return cfg, fmt.Errorf("sourcesync: config_json forbids secret-ish key %q (use credential rows)", k)
+			}
+		}
+	}
+	dec := json.NewDecoder(strings.NewReader(raw))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&cfg); err != nil {
+		return cfg, fmt.Errorf("sourcesync: shared_dir config_json invalid: %w", err)
+	}
+	cfg.Root = strings.TrimSpace(cfg.Root)
+	if cfg.Root == "" {
+		return cfg, fmt.Errorf("sourcesync: shared_dir root required")
+	}
+	if !filepath.IsAbs(cfg.Root) {
+		return cfg, fmt.Errorf("sourcesync: shared_dir root must be absolute, got %q", cfg.Root)
+	}
+	return cfg, nil
 }
 
 // ──────────────────────────────── 仓口（P6 拍板 a：hand-repo 裸 SQL） ────────────────────────────────

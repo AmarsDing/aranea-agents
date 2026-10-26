@@ -61,6 +61,11 @@ func NewSyncEngine(lg loggateway.Logger) *SyncEngine {
 	return e
 }
 
+// MaxBytes 单文件白名单上限（可摄取谓词唯一真源——connector 侧
+// ConfirmDeleted 谓词回放与任何「Scan 是否会出席此文件」的外部判定统一走此，
+// 禁再造第二份字面量）。
+func (e *SyncEngine) MaxBytes() int64 { return e.maxBytes }
+
 func defaultHashFile(path string) (string, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -96,6 +101,15 @@ func (e *SyncEngine) Scan(root string, prev []FileSnapshot) ([]FileSnapshot, err
 		info, err := d.Info()
 		if err != nil {
 			return nil // 扫描期间文件消失，跳过
+		}
+		// symlink/特殊文件闸（W3 评审修 #WALKER-1，域级单点）：WalkDir 不解析符号
+		// 链接（d.Info() 为 lstat 语义），而 hashFile=os.ReadFile 会解析——不闸则
+		// 根内投放 link.md → hash/Fetch 读到根外文件。域级拦截同时封 vault 与
+		// shared_dir 两产线（出席谓词自此含 regular-file 一条）。
+		if !info.Mode().IsRegular() {
+			e.lg.Warn("vault file skipped: non-regular",
+				loggateway.Str("path", path))
+			return nil
 		}
 		if info.Size() > e.maxBytes {
 			e.lg.Warn("vault file skipped: oversize",

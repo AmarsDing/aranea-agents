@@ -1,6 +1,7 @@
 package sourcesync
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -250,5 +251,72 @@ func TestRetentionConstants(t *testing.T) {
 	}
 	if MinIntervalSeconds != 900 {
 		t.Fatalf("MinIntervalSeconds drift: %d", MinIntervalSeconds)
+	}
+}
+
+// ──────────────────────────────── W3 分 kind 配置解析 ────────────────────────────────
+
+// TestParseSharedDirConfig 闸群钉（W3）：合法 root 提取 + TrimSpace（绝对路径
+// 用 t.TempDir——POSIX 字面量 /data 在 Windows 非绝对，跨平台钉必须取真 abs）；
+// 空串/非法 JSON/未知字段/root 空白/敏感键一律拒（③-1 凭据行表纪律：
+// config_json 永不藏秘密——凭据一律走 credential 行表）。
+func TestParseSharedDirConfig(t *testing.T) {
+	t.Parallel()
+	abs := filepath.ToSlash(t.TempDir())
+	cfg, err := ParseSharedDirConfig(`{"root":" ` + abs + ` "}`)
+	if err != nil || cfg.Root != abs {
+		t.Fatalf("valid parse = %+v, %v", cfg, err)
+	}
+	for name, raw := range map[string]string{
+		"empty":        "",
+		"blank":        "   ",
+		"bad_json":     `{"root":`,
+		"unknown":      `{"root":"/a","extra":1}`,
+		"bare_object":  `{}`,
+		"empty_root":   `{"root":""}`,
+		"blank_root":   `{"root":"  "}`,
+		"secret_token": `{"root":"/a","access_token":"x"}`,
+		"secret_pass":  `{"root":"/a","password":"x"}`,
+		"secret_case":  `{"root":"/a","API_KEY":"x"}`,
+	} {
+		if _, err := ParseSharedDirConfig(raw); err == nil {
+			t.Fatalf("%s 必拒: %q", name, raw)
+		}
+	}
+}
+
+// TestParseSharedDirConfigAbsAndBlacklist 评审修轮 config 钉（wf_6f89c52c-5be
+// #W3-F4/#W3-CONFIG-1/2/3/4）：绝对路径硬闸（相对 root 随 CWD 漂移是配置事故）
+// + 黑名单消息可触达（probe-first 排列钉——typed decode 前置会把 secret-ish
+// 键当未知字段吃掉，本消息存在即非死代码）+ 尾随垃圾拒 + 重复键 last-wins。
+func TestParseSharedDirConfigAbsAndBlacklist(t *testing.T) {
+	t.Parallel()
+	abs := filepath.ToSlash(t.TempDir())
+
+	// 相对 root 必拒且消息可辨
+	if _, err := ParseSharedDirConfig(`{"root":"data/vault"}`); err == nil {
+		t.Fatal("相对 root 必拒（CWD 漂移事故形态）")
+	} else if !strings.Contains(err.Error(), "must be absolute") {
+		t.Fatalf("相对 root 拒绝消息可辨: %v", err)
+	}
+	// Windows 语义 abs（C:\…）收
+	cfg, err := ParseSharedDirConfig(`{"root":"` + abs + `"}`)
+	if err != nil || cfg.Root != abs {
+		t.Fatalf("平台绝对 root 收: %+v, %v", cfg, err)
+	}
+	// 黑名单消息可触达（非 unknown-field 泛错——证明 probe-first 排列）
+	if _, err := ParseSharedDirConfig(`{"root":"/a","access_token":"x"}`); err == nil {
+		t.Fatal("敏感键必拒")
+	} else if !strings.Contains(err.Error(), "forbids secret-ish key") {
+		t.Fatalf("黑名单消息可触达钉（非死代码）: %v", err)
+	}
+	// 尾随垃圾拒（probe json.Unmarshal 兜住 Decoder 多值盲区）
+	if _, err := ParseSharedDirConfig(`{"root":"/a"} {"root":"/b"}`); err == nil {
+		t.Fatal("尾随垃圾必拒")
+	}
+	// 重复键 last-wins（encoding/json 语义钉住——配置生成器重复输出不炸）
+	cfg, err = ParseSharedDirConfig(`{"root":"` + abs + `/a","root":"` + abs + `/b"}`)
+	if err != nil || cfg.Root != abs+"/b" {
+		t.Fatalf("重复键 last-wins: %+v, %v", cfg, err)
 	}
 }
