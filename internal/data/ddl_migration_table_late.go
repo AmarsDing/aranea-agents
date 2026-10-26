@@ -537,6 +537,27 @@ var ddlMigrationsLate = []ddlMigration{
 	// 落值（声明只能更严）。列同时由 ent schema 声明，双写幂等。
 	// 编号顺延当时最大值（20261296）+1，无撞号。幂等，重跑安全。
 	{Version: 20261297, Name: "skill_trust_columns", SQL: "sql/migrations/20261297_skill_trust_columns.sql", Func: ddlSkillTrustBackfill},
+	// 20261298 knowledge_source_connectors（G-38 SourceSync W1，37-knowledge
+	// §G-38 拍板 P7 重锚——20261297 已被 skill D1 占用，开工 glob 重查
+	// 确认 max=20261297 后顺占 20261298–20261301）：连接器主表（kind CHECK
+	// 两值）。仅建表+索引：due 拾取部分索引＋workspace＋collection 活性部分
+	// 唯一（''::text 谓词规范）＋sync_state 四值 CHECK＋预算三列默认值；双轨
+	// EnsureSourceSyncSchema 与四迁移同 commit 镜像。
+	{Version: 20261298, Name: "knowledge_source_connectors", SQL: "sql/migrations/20261298_knowledge_source_connectors.sql"},
+	// 20261299 knowledge_source_connector_items：指纹表（P3 拍板 a 身份寻址
+	// 唯一真相）——(connector_id,external_id) PK＋own_lifecycle adopt 档＋
+	// missing 部分索引＋document 倒查。Upsert 语义钉（出席清零 miss）由
+	// hand-repo 承担。
+	{Version: 20261299, Name: "knowledge_source_connector_items", SQL: "sql/migrations/20261299_knowledge_source_connector_items.sql"},
+	// 20261300 knowledge_source_connector_credential：凭据行表（P1 拍板 A，
+	// channel_credential 同构；secret_ref 仅存 enc: 信封）＋MCP 20261209
+	// ''::text 谓词 partial-unique 活性唯一（软删重建放行）。
+	{Version: 20261300, Name: "knowledge_source_connector_credential", SQL: "sql/migrations/20261300_knowledge_source_connector_credential.sql"},
+	// 20261301 knowledge_source_connector_runs：轮次史表（finalize单独收口）。
+	// P10 硬前置索引 idx_src_runs_conn (connector_id, started_at DESC) 同批；
+	// 同事务保 100 轮+90 天 items 姊妹 DELETE 由 hand-repo
+	// InsertRunWithRetention 承担（常量 biz/sourcesync.RunKeep/ItemRetention）。
+	{Version: 20261301, Name: "knowledge_source_connector_runs", SQL: "sql/migrations/20261301_knowledge_source_connector_runs.sql"},
 	// 20261302 executor_waiter_decisions（P0-6 阶段 1b，deferred 战役 D6，
 	// 2026-10-26）：跨副本执行等待器决议表——(kind,session_id,scope_id) 三列
 	// 主键，TryRecordDecision=INSERT ON CONFLICT DO NOTHING CAS（先到者赢，
