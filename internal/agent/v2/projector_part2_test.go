@@ -14,7 +14,7 @@ func TestEmitStreaming_CheckpointStripsFactMarks(t *testing.T) {
 	p, capture := testProjector()
 	capture.events = nil
 
-	p.handleTextDelta(context.Background(), `你好。<fact type="identity" confidence="high">name=张三</fact>`)
+	p.handleTextDelta(context.Background(), `你好。<fact type="identity" confidence="high">name=张三</fact>`, "")
 	var ckpt *biz.StepUpdatedEvent
 	for _, ev := range capture.events {
 		if u, ok := ev.(*biz.StepUpdatedEvent); ok {
@@ -77,7 +77,7 @@ func TestHandleTextDone_NormalReply(t *testing.T) {
 	p, capture := testProjector()
 	capture.events = nil
 
-	p.handleTextDelta(context.Background(), "Hello")
+	p.handleTextDelta(context.Background(), "Hello", "")
 	capture.events = nil
 
 	p.handleTextDone(context.Background(), "Hello world")
@@ -109,7 +109,7 @@ func TestHandleTextDone_StripsFactMarks(t *testing.T) {
 	p, capture := testProjector()
 	capture.events = nil
 
-	p.handleTextDelta(context.Background(), "你好，张三！")
+	p.handleTextDelta(context.Background(), "你好，张三！", "")
 	capture.events = nil
 
 	raw := "你好，张三！很高兴认识你。\n\n" +

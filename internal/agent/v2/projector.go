@@ -130,6 +130,12 @@ type ActivityProjector struct {
 	// memberToolCalls tracks per-member tool call counts observed during the
 	// turn. Used by stream_consumer for team run step persistence.
 	memberToolCalls map[string]int
+	// stepGeneration 记录每个流式 step 最近应用的 LLM 代际标记（W-1，
+	// 2026-10-26 评审二轮）：活性重连的新 attempt 携带新 GenerationID 从头
+	// 重发内容，代际变化时截断该 step 已累积的半截文本并强制发布一次
+	// step.updated 快照（否则同一 step 上两个 attempt 的片段纯 append 成
+	// 整段重复，checkpoint 落库/前端展示双重污染）。
+	stepGeneration map[string]string
 }
 
 // NewActivityProjector constructs an ActivityProjector.
@@ -151,6 +157,7 @@ func NewActivityProjector(seq SequencerPublisher, seqAsg SeqAssigner, lg loggate
 		toolCallSteps:   make(map[string]string),
 		memberToolCalls: make(map[string]int),
 		stepCkpt:        make(map[string]*stepCheckpointState),
+		stepGeneration:  make(map[string]string),
 	}
 }
 
@@ -941,15 +948,17 @@ func (p *ActivityProjector) BeginStep(ctx context.Context, meta ProjectMeta, kin
 }
 
 // OnReasoningDelta emits a step.streaming event with DeltaField="reasoning".
-// The fourth parameter is reserved for future metadata and currently unused.
-func (p *ActivityProjector) OnReasoningDelta(ctx context.Context, stepID, delta, _ string) {
-	p.emitStreaming(ctx, stepID, "reasoning", delta)
+// generation 携带 LLM 响应代际标记（W-1，2026-10-26 评审二轮）：活性重连的
+// 新 attempt 从头重发内容，代际变化触发该 step 已累积文本的截断；
+// 空 = 首发 attempt / 旧生产端（行为与历史一致）。
+func (p *ActivityProjector) OnReasoningDelta(ctx context.Context, stepID, delta, generation string) {
+	p.emitStreaming(ctx, stepID, "reasoning", delta, generation)
 }
 
 // OnTextDelta emits a step.streaming event with DeltaField="content".
-// The fourth parameter is reserved for future metadata and currently unused.
-func (p *ActivityProjector) OnTextDelta(ctx context.Context, stepID, delta, _ string) {
-	p.emitStreaming(ctx, stepID, "content", delta)
+// generation 语义同 OnReasoningDelta。
+func (p *ActivityProjector) OnTextDelta(ctx context.Context, stepID, delta, generation string) {
+	p.emitStreaming(ctx, stepID, "content", delta, generation)
 }
 
 // emitStreaming looks up the active step, accumulates the delta into the step
@@ -960,12 +969,18 @@ func (p *ActivityProjector) OnTextDelta(ctx context.Context, stepID, delta, _ st
 // refresh re-hydrates the latest snapshot instead of an empty step body
 // (P3-resume, 2026-08-20).
 //
+// W-1（2026-10-26 评审二轮）：generation 非旧值时代际已切换（活性重连重发
+// 同一 Request）——先截断该 field 已累积的半截文本并强制立即发布一次
+// step.updated 快照，再应用新 delta；否则同一 step 上两个 attempt 的片段
+// 纯 append 成整段重复。首发 attempt generation 恒空，零行为差异。
+//
 // Ordering: the streaming event is published before the checkpoint snapshot;
 // the sequencer's single-goroutine publishLoop keeps FIFO order, so frontend
 // and persist pipeline observe deltas 1..N before the snapshot covering 1..N.
-// Seq is allocated upfront in BeginStep (no lazy allocation here).
+// 前端对代际变化自行重置累积（appendStepDelta），快照到达顺序不影响终态
+// 收敛。Seq is allocated upfront in BeginStep (no lazy allocation here).
 // No-op if the step is unknown.
-func (p *ActivityProjector) emitStreaming(ctx context.Context, stepID, field, delta string) {
+func (p *ActivityProjector) emitStreaming(ctx context.Context, stepID, field, delta, generation string) {
 	if p.seq == nil {
 		return
 	}
@@ -980,6 +995,25 @@ func (p *ActivityProjector) emitStreaming(ctx context.Context, stepID, field, de
 	var snapshot biz.Step
 	ckptDue := false
 	if field == "content" || field == "reasoning" {
+		truncated := false
+		if generation != p.stepGeneration[stepID] {
+			p.stepGeneration[stepID] = generation
+			if field == "content" && step.Content != "" {
+				step.Content = ""
+				truncated = true
+			} else if field == "reasoning" && step.Reasoning != "" {
+				step.Reasoning = ""
+				truncated = true
+			}
+			if truncated {
+				p.lg.Warn("LLM 重连新 attempt 重发内容，截断 step 已累积文本",
+					loggateway.StepID("projector.generation_reset"),
+					loggateway.SessionID(step.SpiritSessionID),
+					loggateway.Str("step_id", stepID),
+					loggateway.Str("field", field),
+					loggateway.Str("generation", generation))
+			}
+		}
 		if field == "content" {
 			step.Content += delta
 		} else {
@@ -992,7 +1026,9 @@ func (p *ActivityProjector) emitStreaming(ctx context.Context, stepID, field, de
 		}
 		ck.pending += len(delta)
 		now := time.Now()
-		if ck.lastAt.IsZero() || now.Sub(ck.lastAt) >= stepCheckpointInterval {
+		// 截断必须立即快照（绕过节流窗口）：让落库/其他 tab 尽快看到纠正
+		// 后的内容，不等下一个 checkpoint 周期。
+		if truncated || ck.lastAt.IsZero() || now.Sub(ck.lastAt) >= stepCheckpointInterval {
 			ck.lastAt = now
 			ck.pending = 0
 			// Version++：data 层 UpsertStep 有 VersionLT 乐观守卫，同版本
@@ -1009,7 +1045,9 @@ func (p *ActivityProjector) emitStreaming(ctx context.Context, stepID, field, de
 	}
 	spiritSessionID, taskID := step.SpiritSessionID, step.TaskID
 	p.mu.Unlock()
-	p.seq.Publish(ctx, biz.NewStepStreamingEvent(spiritSessionID, taskID, stepID, field, delta))
+	sev := biz.NewStepStreamingEvent(spiritSessionID, taskID, stepID, field, delta)
+	sev.GenerationID = generation
+	p.seq.Publish(ctx, sev)
 	if ckptDue {
 		p.seq.Publish(ctx, biz.NewStepUpdatedEvent(snapshot))
 	}
@@ -1313,6 +1351,7 @@ func (p *ActivityProjector) completeStep(ctx context.Context, stepID, content st
 	step.Version++
 	delete(p.activeStep, stepID)
 	delete(p.stepCkpt, stepID)
+	delete(p.stepGeneration, stepID)
 	p.mu.Unlock()
 	p.seq.Publish(ctx, biz.NewStepCompletedEvent(*step))
 }
@@ -1338,6 +1377,7 @@ func (p *ActivityProjector) failStep(ctx context.Context, stepID string, err err
 	}
 	delete(p.activeStep, stepID)
 	delete(p.stepCkpt, stepID)
+	delete(p.stepGeneration, stepID)
 	p.mu.Unlock()
 	p.seq.Publish(ctx, biz.NewStepFailedEvent(*step))
 }
@@ -1463,11 +1503,12 @@ func (p *ActivityProjector) processChatChunk(ctx context.Context, ev *trpcevent.
 		// Text and reasoning content
 		text, reasoning := choiceStreamContent(choice, ev.Response.IsPartial)
 		if ev.Response.IsPartial {
+			// GenerationID 透传（W-1）：活性重连 attempt 的重发段据此截断。
 			if reasoning != "" {
-				p.handleReasoningDelta(ctx, reasoning)
+				p.handleReasoningDelta(ctx, reasoning, ev.Response.GenerationID)
 			}
 			if text != "" {
-				p.handleTextDelta(ctx, text)
+				p.handleTextDelta(ctx, text, ev.Response.GenerationID)
 			}
 		} else {
 			// Final chunk: finalize the step even if content is empty.

@@ -330,7 +330,7 @@ func v2EventPayloadToWire(e biz.Event) (any, error) {
 	case *biz.StepCreatedEvent:
 		return stepEventWire{Step: stepToWire(ev.Step)}, nil
 	case *biz.StepStreamingEvent:
-		return stepStreamingEventWire{StepID: ev.StepID, DeltaField: ev.DeltaField, DeltaChunk: ev.DeltaChunk, DeltaSeq: ev.DeltaSeq}, nil
+		return stepStreamingEventWire{StepID: ev.StepID, DeltaField: ev.DeltaField, DeltaChunk: ev.DeltaChunk, DeltaSeq: ev.DeltaSeq, GenerationID: ev.GenerationID}, nil
 	case *biz.StepUpdatedEvent:
 		return stepEventWire{Step: stepToWire(ev.Step)}, nil
 	case *biz.StepCompletedEvent:

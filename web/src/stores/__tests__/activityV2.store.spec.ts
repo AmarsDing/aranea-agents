@@ -29,7 +29,7 @@ import {
   listOrphanMemberSessionsV2,
 } from '../../features/session/v2Api';
 import { useChatActivityStore } from '../chat/activityV2Store';
-import { clearAllStepLiveText } from '../../features/chat/stepLiveTextCache';
+import { clearAllStepLiveText, readStepLiveText } from '../../features/chat/stepLiveTextCache';
 import type { Task, Step } from '../../features/chat/v2Types';
 
 function makeTask(over: Partial<Task> = {}): Task {
@@ -258,6 +258,123 @@ describe('useChatActivityStore', () => {
     // 无 seq 的边界包不受 lastSeen 影响，总是应用。
     s.appendStepDelta('s1', 'content', 'D');
     expect(s.steps.get('s1')?.Content).toBe('ACD');
+  });
+
+  // W-1 验证（2026-10-26 评审二轮）：LLM 活性重连后新 attempt 从头重发内容，
+  // GenerationID 变化必须重置已累积文本并清 live-text 缓存——否则旧半截与新
+  // 重发纯 append 成整段重复，且 mergeStepLiveText「前缀一致取长者」会在
+  // step.updated 快照到达时把缓存里的旧半截合回（刷新也不自愈）。
+  it('appendStepDelta resets content and live-text cache on generation change (W-1)', () => {
+    const s = useChatActivityStore();
+    const step: Step = {
+      ID: 's1',
+      TurnID: 't1',
+      TaskID: 'tk1',
+      SessionID: 's1',
+      SpiritSessionID: 's1',
+      Kind: 'reply',
+      AuthorAgentKey: 'a1',
+      Seq: 1,
+      Version: 1,
+      Content: '',
+      Reasoning: '',
+      ToolName: '',
+      ToolCallID: '',
+      ToolArgs: null,
+      ToolResult: null,
+      ToolDurationMs: 0,
+      ToolErrorCode: '',
+      Status: 'running',
+      IsFinal: false,
+      StartedAt: '',
+      CompletedAt: null,
+    };
+    s.upsertStep(step);
+    // 首发 attempt：GenerationID 缺省（旧生产端同语义），纯 append。
+    s.appendStepDelta('s1', 'content', 'Hello', 1);
+    s.appendStepDelta('s1', 'content', ' world', 2);
+    expect(s.steps.get('s1')?.Content).toBe('Hello world');
+    expect(readStepLiveText('s1')?.content).toBe('Hello world');
+    // 重连 attempt-2：代际变化 → 重置后在新基底上 append 本 chunk。
+    s.appendStepDelta('s1', 'content', '重新', 3, 'reconnect-1');
+    expect(s.steps.get('s1')?.Content).toBe('重新');
+    // live-text 缓存同步只剩新代际内容（旧半截不得残留待合回）。
+    expect(readStepLiveText('s1')?.content).toBe('重新');
+    // 同代际后续 delta：正常 append，不再重置。
+    s.appendStepDelta('s1', 'content', '生成', 4, 'reconnect-1');
+    expect(s.steps.get('s1')?.Content).toBe('重新生成');
+  });
+
+  // W-1 顺序钉：dedup 先于代际检查——被丢弃的重发/乱序包不得触发重置
+  // （否则迟到的旧代际包会把新代际已累积的内容清掉又丢弃自身 = 文本丢失）。
+  it('appendStepDelta checks DeltaSeq dedup before generation reset (W-1 ordering)', () => {
+    const s = useChatActivityStore();
+    const step: Step = {
+      ID: 's1',
+      TurnID: 't1',
+      TaskID: 'tk1',
+      SessionID: 's1',
+      SpiritSessionID: 's1',
+      Kind: 'reply',
+      AuthorAgentKey: 'a1',
+      Seq: 1,
+      Version: 1,
+      Content: '',
+      Reasoning: '',
+      ToolName: '',
+      ToolCallID: '',
+      ToolArgs: null,
+      ToolResult: null,
+      ToolDurationMs: 0,
+      ToolErrorCode: '',
+      Status: 'running',
+      IsFinal: false,
+      StartedAt: '',
+      CompletedAt: null,
+    };
+    s.upsertStep(step);
+    s.appendStepDelta('s1', 'content', 'A', 10, 'reconnect-1');
+    expect(s.steps.get('s1')?.Content).toBe('A');
+    // 同代际重发（同 seq）→ dedup 丢弃，不重置。
+    s.appendStepDelta('s1', 'content', 'A', 10, 'reconnect-1');
+    expect(s.steps.get('s1')?.Content).toBe('A');
+    // 乱序旧包携带不同代际（防御场景：生产端严格 FIFO，理论上不可达）
+    // → dedup 先丢弃，代际检查不得执行，内容保持。
+    s.appendStepDelta('s1', 'content', 'X', 9, '');
+    expect(s.steps.get('s1')?.Content).toBe('A');
+  });
+
+  // W-1 兼容钉：缺省 GenerationID 的 legacy 生产端永不触发重置（纯 append
+  // 旧行为完全保留）。
+  it('appendStepDelta legacy path without GenerationID never resets', () => {
+    const s = useChatActivityStore();
+    const step: Step = {
+      ID: 's1',
+      TurnID: 't1',
+      TaskID: 'tk1',
+      SessionID: 's1',
+      SpiritSessionID: 's1',
+      Kind: 'reply',
+      AuthorAgentKey: 'a1',
+      Seq: 1,
+      Version: 1,
+      Content: '',
+      Reasoning: '',
+      ToolName: '',
+      ToolCallID: '',
+      ToolArgs: null,
+      ToolResult: null,
+      ToolDurationMs: 0,
+      ToolErrorCode: '',
+      Status: 'running',
+      IsFinal: false,
+      StartedAt: '',
+      CompletedAt: null,
+    };
+    s.upsertStep(step);
+    s.appendStepDelta('s1', 'content', 'AB', 1);
+    s.appendStepDelta('s1', 'content', 'CD', 2);
+    expect(s.steps.get('s1')?.Content).toBe('ABCD');
   });
 
   it('getSessionTasks returns tasks sorted by seq', () => {

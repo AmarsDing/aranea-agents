@@ -973,7 +973,7 @@ func TestHandleTextDelta_WhitespaceNoCreate(t *testing.T) {
 	capture.events = nil // ignore turn.started/task.created setup
 
 	// 1. Pure-whitespace delta: should NOT create a step
-	p.handleTextDelta(context.Background(), "\n   ")
+	p.handleTextDelta(context.Background(), "\n   ", "")
 	if stepID, ok := p.replyStepIDs[p.meta.AgentKey]; ok && stepID != "" {
 		t.Errorf("expected replyStepIDs empty after whitespace delta, got %q", stepID)
 	}
@@ -983,7 +983,7 @@ func TestHandleTextDelta_WhitespaceNoCreate(t *testing.T) {
 
 	// 2. Real-content delta: should create a step + emit streaming
 	//    (+ first-delta checkpoint step.updated, P3-resume 2026-08-20)
-	p.handleTextDelta(context.Background(), "Hello")
+	p.handleTextDelta(context.Background(), "Hello", "")
 	if stepID, ok := p.replyStepIDs[p.meta.AgentKey]; !ok || stepID == "" {
 		t.Fatal("expected replyStepIDs set after real-content delta")
 	}
@@ -1010,7 +1010,7 @@ func TestHandleTextDelta_WhitespaceNoCreate(t *testing.T) {
 	//    (whitespace is meaningful content once the step exists); within the
 	//    1s checkpoint throttle window → no extra step.updated.
 	capture.events = nil
-	p.handleTextDelta(context.Background(), " \n")
+	p.handleTextDelta(context.Background(), " \n", "")
 	if len(capture.events) != 1 {
 		t.Fatalf("expected 1 streaming event for trailing whitespace, got %d", len(capture.events))
 	}
@@ -1028,7 +1028,7 @@ func TestEmitStreaming_Checkpoint(t *testing.T) {
 	p, capture := testProjector()
 	capture.events = nil
 
-	p.handleTextDelta(context.Background(), "Hello")
+	p.handleTextDelta(context.Background(), "Hello", "")
 	stepID := p.replyStepIDs[p.meta.AgentKey]
 	if stepID == "" {
 		t.Fatal("expected reply step created")
@@ -1051,7 +1051,7 @@ func TestEmitStreaming_Checkpoint(t *testing.T) {
 
 	// Within throttle window → streaming only, no checkpoint.
 	capture.events = nil
-	p.handleTextDelta(context.Background(), " world")
+	p.handleTextDelta(context.Background(), " world", "")
 	if len(capture.events) != 1 {
 		t.Fatalf("expected 1 event within throttle window, got %d", len(capture.events))
 	}
@@ -1065,7 +1065,7 @@ func TestEmitStreaming_Checkpoint(t *testing.T) {
 	p.stepCkpt[stepID].lastAt = time.Now().Add(-2 * stepCheckpointInterval)
 	p.mu.Unlock()
 	capture.events = nil
-	p.handleTextDelta(context.Background(), "!")
+	p.handleTextDelta(context.Background(), "!", "")
 	if len(capture.events) != 2 {
 		t.Fatalf("expected 2 events after throttle window, got %d", len(capture.events))
 	}
@@ -1087,6 +1087,92 @@ func TestEmitStreaming_Checkpoint(t *testing.T) {
 	p.mu.Unlock()
 	if ckptExists {
 		t.Error("expected stepCkpt entry cleared after completeStep")
+	}
+}
+
+// TestEmitStreaming_GenerationResetTruncates pins W-1（2026-10-26 评审二轮）：
+// 代际变化（活性重连新 attempt 从头重发内容）时，projector 截断该 step 已
+// 累积的半截文本、强制立即发布 step.updated 快照（绕过节流），且流式事件
+// 携带 GenerationID 供前端同步重置——否则同一 step 上两个 attempt 的片段
+// 纯 append 成整段重复（checkpoint 落库 + 前端展示双重污染）。
+func TestEmitStreaming_GenerationResetTruncates(t *testing.T) {
+	p, capture := testProjector()
+	capture.events = nil
+
+	p.handleTextDelta(context.Background(), "Hello", "")
+	stepID := p.replyStepIDs[p.meta.AgentKey]
+	if stepID == "" {
+		t.Fatal("expected reply step created")
+	}
+
+	// 同代际续写：纯 append，无截断。
+	capture.events = nil
+	p.handleTextDelta(context.Background(), " world", "")
+	p.mu.Lock()
+	if got := p.activeStep[stepID].Content; got != "Hello world" {
+		p.mu.Unlock()
+		t.Fatalf("same-generation accumulation = %q, want %q", got, "Hello world")
+	}
+	p.mu.Unlock()
+
+	// 代际切换：截断 + streaming（携带代际）+ 强制 step.updated 快照。
+	capture.events = nil
+	p.handleTextDelta(context.Background(), "重新生成", "reconnect-1")
+	if len(capture.events) != 2 {
+		t.Fatalf("generation change: expected streaming+updated, got %d (%v)", len(capture.events), capture.events)
+	}
+	sev, ok := capture.events[0].(*biz.StepStreamingEvent)
+	if !ok {
+		t.Fatalf("events[0] = %T, want StepStreamingEvent", capture.events[0])
+	}
+	if sev.GenerationID != "reconnect-1" {
+		t.Errorf("streaming GenerationID = %q, want reconnect-1", sev.GenerationID)
+	}
+	upd, ok := capture.events[1].(*biz.StepUpdatedEvent)
+	if !ok {
+		t.Fatalf("events[1] = %T, want forced StepUpdatedEvent（截断必须立即快照，不等节流窗口）", capture.events[1])
+	}
+	if upd.Step.Content != "重新生成" {
+		t.Errorf("truncated snapshot content = %q, want %q（旧半截内容必须被丢弃）", upd.Step.Content, "重新生成")
+	}
+	p.mu.Lock()
+	if got := p.activeStep[stepID].Content; got != "重新生成" {
+		p.mu.Unlock()
+		t.Fatalf("entity accumulation after reset = %q, want %q", got, "重新生成")
+	}
+	p.mu.Unlock()
+
+	// 复位后同代际 delta：在新基底上正常累加。
+	p.handleTextDelta(context.Background(), "。", "reconnect-1")
+	p.mu.Lock()
+	got := p.activeStep[stepID].Content
+	p.mu.Unlock()
+	if got != "重新生成。" {
+		t.Errorf("post-reset accumulation = %q, want %q", got, "重新生成。")
+	}
+}
+
+// TestEmitStreaming_FirstDeltaWithGenerationNoTruncate pins 边界：step 首个
+// delta 即携带非空代际（attempt-1 未产出文本、step 由 attempt-2 创建）时
+// 不触发截断——无可截内容，也不得多发快照。
+func TestEmitStreaming_FirstDeltaWithGenerationNoTruncate(t *testing.T) {
+	p, capture := testProjector()
+	capture.events = nil
+
+	p.handleTextDelta(context.Background(), "Hello", "reconnect-2")
+	stepID := p.replyStepIDs[p.meta.AgentKey]
+	if stepID == "" {
+		t.Fatal("expected reply step created")
+	}
+	// created + streaming + 常规首 delta checkpoint = 3；不得有第二次快照。
+	if len(capture.events) != 3 {
+		t.Fatalf("first-delta-with-generation: expected 3 events (created/streaming/ckpt), got %d", len(capture.events))
+	}
+	p.mu.Lock()
+	got := p.activeStep[stepID].Content
+	p.mu.Unlock()
+	if got != "Hello" {
+		t.Errorf("content = %q, want %q（空 step 不得被截断语义误伤）", got, "Hello")
 	}
 }
 

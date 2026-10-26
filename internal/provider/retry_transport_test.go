@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strings"
 	"sync/atomic"
 	"syscall"
 	"testing"
@@ -192,6 +193,64 @@ func TestRetryTransport_MaxRetriesExhausted(t *testing.T) {
 	// 1 initial + 2 retries = 3 total
 	if got := atomic.LoadInt32(&stub.callCount); got != 3 {
 		t.Errorf("callCount = %d, want 3", got)
+	}
+}
+
+// TestRetryTransport_ExhaustedErrorCarriesBodySnippet pins W-4（2026-10-26
+// 评审二轮）：重试耗尽的终态错误必须携带最后一次响应体的单行摘要——此前
+// body 直接 Close 丢弃，"server returned 500" 之外无任何供应商诊断信息
+// （限流细节/配额文案/服务端 request id 全丢）。
+func TestRetryTransport_ExhaustedErrorCarriesBodySnippet(t *testing.T) {
+	stub := &stubTransport{
+		responses: []*http.Response{
+			newErrorResponse(500),
+			newErrorResponse(500),
+			{
+				StatusCode: 500,
+				Body: io.NopCloser(bytes.NewReader([]byte(
+					"{\"error\": {\n  \"message\": \"engine overloaded\",\n  \"id\": \"req-123\"\n}}"))),
+				Header: make(http.Header),
+			},
+		},
+	}
+	rt := newRetryTransportForTest(stub, 2, nil)
+
+	req, _ := http.NewRequestWithContext(context.Background(), "GET", "http://test", nil)
+	_, err := rt.RoundTrip(req)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "server returned 500") {
+		t.Errorf("error = %q, want status prefix preserved", msg)
+	}
+	if !strings.Contains(msg, "engine overloaded") || !strings.Contains(msg, "req-123") {
+		t.Errorf("error = %q, want provider body snippet (message + request id)", msg)
+	}
+	if strings.Contains(msg, "\n") {
+		t.Errorf("error must be single-line（空白折叠）, got %q", msg)
+	}
+}
+
+// TestRetryTransport_ExhaustedErrorEmptyBodyKeepsLegacyFormat pins W-4 边界：
+// 空错误体回退到无摘要的旧格式，不留悬空尾缀。
+func TestRetryTransport_ExhaustedErrorEmptyBodyKeepsLegacyFormat(t *testing.T) {
+	stub := &stubTransport{
+		responses: []*http.Response{{
+			StatusCode: 503,
+			Body:       io.NopCloser(bytes.NewReader(nil)),
+			Header:     make(http.Header),
+		}},
+	}
+	rt := newRetryTransportForTest(stub, 1, nil)
+
+	req, _ := http.NewRequestWithContext(context.Background(), "GET", "http://test", nil)
+	_, err := rt.RoundTrip(req)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if got, want := err.Error(), "server returned 503"; got != want {
+		t.Errorf("error = %q, want exact legacy format %q", got, want)
 	}
 }
 

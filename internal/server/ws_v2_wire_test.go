@@ -280,8 +280,11 @@ func wireGoldenCases() []wireGoldenCase {
 		{"turn.failed", func() biz.Event { return biz.NewTurnFailedEvent(wireTestTurn()) }, []string{"TurnID", "Turn"}},
 		{"step.created", func() biz.Event { return biz.NewStepCreatedEvent(wireTestStep()) }, []string{"Step"}},
 		{"step.streaming", func() biz.Event {
-			return biz.NewStepStreamingEvent("sess-1", "task-1", "step-1", "content", "chunk")
-		}, []string{"StepID", "DeltaField", "DeltaChunk", "DeltaSeq"}},
+			ev := biz.NewStepStreamingEvent("sess-1", "task-1", "step-1", "content", "chunk")
+			// W-1：代际标记必须穿透到 wire（前端截断重发段的唯一信号）。
+			ev.GenerationID = "reconnect-1"
+			return ev
+		}, []string{"StepID", "DeltaField", "DeltaChunk", "DeltaSeq", "GenerationID"}},
 		{"step.updated", func() biz.Event { return biz.NewStepUpdatedEvent(wireTestStep()) }, []string{"Step"}},
 		{"step.completed", func() biz.Event { return biz.NewStepCompletedEvent(wireTestStep()) }, []string{"Step"}},
 		{"step.failed", func() biz.Event { return biz.NewStepFailedEvent(wireTestStep()) }, []string{"Step"}},

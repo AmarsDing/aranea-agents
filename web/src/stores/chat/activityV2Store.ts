@@ -103,6 +103,9 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
   const hydratedTaskIds = ref(new Set<string>());
   // taskHydration: transient per-task fetch state ('loading' | 'error').
   const taskHydration = ref(new Map<string, 'loading' | 'error'>());
+  const hydrationRequests = new Map<string, Promise<void>>();
+  let generation = 0;
+  const sessionGenerations = new Map<string, number>();
 
   function catchHydrationError<T>(scope: string, parentId: string): (e: unknown) => T[] {
     return (e: unknown) => {
@@ -438,6 +441,14 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
   // as three separate "哈" deltas).
   const lastDeltaSeqs = new Map<string, number>();
 
+  // W-1（2026-10-26 评审二轮）：LLM 活性重连后新 attempt 从头重发内容，
+  // 后端在 step.streaming 上携带 GenerationID（首发 attempt 为空/缺省）。
+  // 代际变化必须重置已累积文本并清 live-text 缓存——否则旧 attempt 的半截
+  // 内容与新 attempt 的完整重发纯 append 成整段重复；且 upsertStep 的
+  // mergeStepLiveText「前缀一致取长者」会把缓存里的旧半截合回服务端截断
+  // 快照，重复在刷新后也无法自愈。
+  const lastGenerations = new Map<string, string>();
+
   function shouldApplyDelta(stepId: string, field: string, deltaSeq?: number): boolean {
     if (deltaSeq === undefined || deltaSeq === null || deltaSeq <= 0) return true;
     const key = `${stepId}:${field}`;
@@ -453,11 +464,27 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
   // via the subsequent step.completed event which carries the complete Step
   // entity. The previous if/else caught ALL non-content fields and appended
   // them to Reasoning, causing silent data corruption.
-  function appendStepDelta(stepId: string, field: string, chunk: string, deltaSeq?: number) {
+  function appendStepDelta(stepId: string, field: string, chunk: string, deltaSeq?: number, generation?: string) {
     const s = steps.value.get(stepId);
     if (!s) return;
     if (!chunk) return;
     if (!shouldApplyDelta(stepId, field, deltaSeq)) return;
+    // W-1: 代际变化 = 后端活性重连重发——先重置累积值再 append 本 chunk
+    // （本 chunk 即新 attempt 的首段内容）。放在 dedup 之后：被丢弃的重发/
+    // 乱序 delta 不得触发重置。undefined（旧生产端）走 legacy 纯 append。
+    if (generation !== undefined) {
+      const gkey = `${stepId}:${field}`;
+      if (generation !== (lastGenerations.get(gkey) ?? '')) {
+        lastGenerations.set(gkey, generation);
+        if (field === 'content' && s.Content) {
+          s.Content = '';
+          clearStepLiveText(stepId);
+        } else if (field === 'reasoning' && s.Reasoning) {
+          s.Reasoning = '';
+          clearStepLiveText(stepId);
+        }
+      }
+    }
     switch (field) {
       case 'content':
         s.Content += chunk;
@@ -737,9 +764,11 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
   }
 
   function clearSession(spiritSessionId: string) {
+    sessionGenerations.set(spiritSessionId, (sessionGenerations.get(spiritSessionId) ?? 0) + 1);
     for (const [id, t] of tasks.value) {
       if (t.SessionID === spiritSessionId) {
         tasks.value.delete(id);
+        hydrationRequests.delete(id);
         hydratedTaskIds.value.delete(id);
         taskHydration.value.delete(id);
       }
@@ -757,6 +786,8 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
         steps.value.delete(id);
         lastDeltaSeqs.delete(`${id}:content`);
         lastDeltaSeqs.delete(`${id}:reasoning`);
+        lastGenerations.delete(`${id}:content`);
+        lastGenerations.delete(`${id}:reasoning`);
         clearStepLiveText(id);
       }
     }
@@ -787,11 +818,14 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
   }
 
   function clearAll() {
+    generation++;
+    hydrationRequests.clear();
     tasks.value.clear();
     turns.value.clear();
     steps.value.clear();
     pendingTaskIdsBySession.clear();
     lastDeltaSeqs.clear();
+    lastGenerations.clear();
     clearAllStepLiveText();
     teamStages.value.clear();
     teamRuns.value.clear();
@@ -821,7 +855,11 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
    * Historical terminal tasks render as collapsed meta-bar cards and hydrate
    * on demand via hydrateTask (viewport dwell / click).
    */
-  async function fetchSessionHistory(sessionId: string): Promise<void> {
+  async function fetchSessionHistory(sessionId: string, options: { reconcile?: boolean } = {}): Promise<void> {
+    const capturedGeneration = generation;
+    const sessionGeneration = sessionGenerations.get(sessionId) ?? 0;
+    const current = () =>
+      capturedGeneration === generation && sessionGeneration === (sessionGenerations.get(sessionId) ?? 0);
     // P2-07: clear previous hydration errors at the start of each fetch.
     hydrationErrors.value = [];
 
@@ -829,6 +867,7 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
       listTasksV2(sessionId),
       listStepsV2(sessionId, { limit: HISTORY_STEP_WINDOW }),
     ]);
+    if (!current()) return;
     for (const t of tasksList) upsertTask(t);
     for (const s of stepsList) upsertStep(s);
 
@@ -841,15 +880,21 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
       if (hydratedTaskIds.value.has(t.ID)) autoHydrate.add(t.ID);
     }
     // Fire-and-forget: 首屏不等待执行过程水合，折叠卡即时渲染。
-    for (const id of autoHydrate) {
-      void hydrateTask(id);
-    }
+    const refreshing = [...autoHydrate].map((id) => hydrateTask(id, { refresh: options.reconcile }));
+    if (options.reconcile) await Promise.all(refreshing);
 
     // Mode B: orphan member sessions (empty TeamRunID) for this spirit session.
-    const orphans = await listOrphanMemberSessionsV2(sessionId).catch(
-      catchHydrationError<MemberSession>('orphan_member_sessions', sessionId),
-    );
+    let orphanFailed = false;
+    const orphans = await listOrphanMemberSessionsV2(sessionId).catch((error) => {
+      if (!current()) return [];
+      orphanFailed = true;
+      return catchHydrationError<MemberSession>('orphan_member_sessions', sessionId)(error);
+    });
+    if (!current()) return;
     for (const ms of orphans) upsertMemberSession(ms);
+    if (options.reconcile && (orphanFailed || [...autoHydrate].some((id) => taskHydration.value.get(id) === 'error'))) {
+      throw new Error('Chat history reconciliation incomplete');
+    }
   }
 
   /**
@@ -859,22 +904,49 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
    * sub-resource failure the task enters 'error' state (meta-bar retry) and
    * is NOT marked hydrated, so a later expand retries the full fetch.
    */
-  async function hydrateTask(taskId: string): Promise<void> {
+  async function hydrateTask(taskId: string, options: { refresh?: boolean } = {}): Promise<void> {
+    const pending = hydrationRequests.get(taskId);
+    if (pending) {
+      await pending;
+      if (options.refresh) return hydrateTask(taskId, options);
+      return;
+    }
+    const request = loadTask(taskId, Boolean(options.refresh));
+    hydrationRequests.set(taskId, request);
+    try {
+      await request;
+    } finally {
+      if (hydrationRequests.get(taskId) === request) hydrationRequests.delete(taskId);
+    }
+  }
+
+  async function loadTask(taskId: string, refresh: boolean): Promise<void> {
     const task = tasks.value.get(taskId);
     if (!task) return;
-    if (hydratedTaskIds.value.has(taskId)) return;
+    if (hydratedTaskIds.value.has(taskId) && !refresh && taskHydration.value.get(taskId) !== 'error') return;
     if (taskHydration.value.get(taskId) === 'loading') return;
     taskHydration.value.set(taskId, 'loading');
 
-    const errorsBefore = hydrationErrors.value.length;
+    const capturedGeneration = generation;
+    const sessionGeneration = sessionGenerations.get(task.SessionID) ?? 0;
+    const current = () =>
+      capturedGeneration === generation && sessionGeneration === (sessionGenerations.get(task.SessionID) ?? 0);
+    let failed = false;
+    function catchOwnError<T>(scope: string, parentId: string) {
+      return (error: unknown): T[] => {
+        failed = true;
+        return current() ? catchHydrationError<T>(scope, parentId)(error) : [];
+      };
+    }
     const [turnsL, stepsL, teamStagesL, planBoardsL, planStepsL, graphStagesL] = await Promise.all([
-      listTurnsV2(taskId).catch(catchHydrationError<Turn>('turns', taskId)),
-      listStepsV2(task.SessionID, { taskId }).catch(catchHydrationError<Step>('steps', taskId)),
-      listTeamStagesV2(taskId).catch(catchHydrationError<TeamStage>('team_stages', taskId)),
-      listPlanBoardsV2(taskId).catch(catchHydrationError<PlanBoard>('plan_boards', taskId)),
-      listPlanStepsV2(taskId).catch(catchHydrationError<PlanStep>('plan_steps', taskId)),
-      listGraphStagesV2(taskId).catch(catchHydrationError<GraphStage>('graph_stages', taskId)),
+      listTurnsV2(taskId).catch(catchOwnError<Turn>('turns', taskId)),
+      listStepsV2(task.SessionID, { taskId }).catch(catchOwnError<Step>('steps', taskId)),
+      listTeamStagesV2(taskId).catch(catchOwnError<TeamStage>('team_stages', taskId)),
+      listPlanBoardsV2(taskId).catch(catchOwnError<PlanBoard>('plan_boards', taskId)),
+      listPlanStepsV2(taskId).catch(catchOwnError<PlanStep>('plan_steps', taskId)),
+      listGraphStagesV2(taskId).catch(catchOwnError<GraphStage>('graph_stages', taskId)),
     ]);
+    if (!current()) return;
     for (const turn of turnsL) upsertTurn(turn);
     for (const st of stepsL) upsertStep(st);
     for (const ts of teamStagesL) upsertTeamStage(ts);
@@ -886,8 +958,9 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
     // Drill-down: team_runs → member_sessions (metadata only; member step
     // content stays lazy per A.4.7), graph_nodes per graph_stage.
     const teamRunLists = await Promise.all(
-      teamStagesL.map((ts) => listTeamRunsV2(ts.ID).catch(catchHydrationError<TeamRun>('team_runs', ts.ID))),
+      teamStagesL.map((ts) => listTeamRunsV2(ts.ID).catch(catchOwnError<TeamRun>('team_runs', ts.ID))),
     );
+    if (!current()) return;
     const allTeamRuns: TeamRun[] = [];
     for (const runs of teamRunLists) {
       for (const tr of runs) upsertTeamRun(tr);
@@ -895,20 +968,22 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
     }
     const memberSessionLists = await Promise.all(
       allTeamRuns.map((tr) =>
-        listMemberSessionsV2(tr.ID).catch(catchHydrationError<MemberSession>('member_sessions', tr.ID)),
+        listMemberSessionsV2(tr.ID).catch(catchOwnError<MemberSession>('member_sessions', tr.ID)),
       ),
     );
+    if (!current()) return;
     for (const sessions of memberSessionLists) {
       for (const ms of sessions) upsertMemberSession(ms);
     }
     const graphNodeLists = await Promise.all(
-      graphStagesL.map((gs) => listGraphNodesV2(gs.ID).catch(catchHydrationError<GraphNode>('graph_nodes', gs.ID))),
+      graphStagesL.map((gs) => listGraphNodesV2(gs.ID).catch(catchOwnError<GraphNode>('graph_nodes', gs.ID))),
     );
+    if (!current()) return;
     for (const nodes of graphNodeLists) {
       for (const gn of nodes) upsertGraphNode(gn, 'snapshot');
     }
 
-    if (hydrationErrors.value.length > errorsBefore) {
+    if (failed) {
       taskHydration.value.set(taskId, 'error');
     } else {
       hydratedTaskIds.value.add(taskId);

@@ -337,6 +337,48 @@ drained:
 	}
 }
 
+// TestLivenessGuard_ReconnectStampsGeneration pins W-1/W-2（2026-10-26 评审
+// 二轮）：首发 attempt 的响应 GenerationID 保持为空（下游零感知、向后兼容），
+// 重连 attempt 的每一帧都携带 "reconnect-N"——llmflow 响应 ID 归一化据此
+// 切断旧 ID，v2 projector/前端据此截断而非续 append 已重发的半截内容。
+func TestLivenessGuard_ReconnectStampsGeneration(t *testing.T) {
+	inner := &streamErrorMidModel{}
+	wrapped := WrapModelWithLivenessGuard(inner, "openai", "gpt-4o", loggateway.NewNoop())
+
+	ctx := WithStallBudget(context.Background(), time.Second, 3)
+	out, err := wrapped.GenerateContent(ctx, &trpcmodel.Request{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	var got []*trpcmodel.Response
+	timeout := time.After(5 * time.Second)
+	for {
+		select {
+		case resp, ok := <-out:
+			if !ok {
+				goto drained
+			}
+			got = append(got, resp)
+		case <-timeout:
+			t.Fatal("stream hung — stream_error reconnect did not fire")
+		}
+	}
+drained:
+	// streamErrorMidModel：attempt1 的 stream_error 被吞，转发可见 3 帧——
+	// a1-chunk（无标记）、a2-chunk 与 a2-Done（reconnect-1）。
+	if len(got) != 3 {
+		t.Fatalf("forwarded %d events, want 3 (a1 chunk + a2 chunk + a2 done)", len(got))
+	}
+	if g := got[0].GenerationID; g != "" {
+		t.Fatalf("attempt-1 chunk GenerationID = %q, want empty（首发 attempt 零标记，旧下游同语义）", g)
+	}
+	for i, resp := range got[1:] {
+		if resp.GenerationID != "reconnect-1" {
+			t.Fatalf("attempt-2 event[%d] GenerationID = %q, want reconnect-1", i+1, resp.GenerationID)
+		}
+	}
+}
+
 // semanticErrorModel always emits a semantic (non-stream) error mid-stream:
 // must be forwarded without reconnect.
 type semanticErrorModel struct {

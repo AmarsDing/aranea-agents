@@ -309,8 +309,14 @@ type StepStreamingEvent struct {
 	// SeqAssigner 计数空间）。前端按 (StepID, DeltaField) 记录最后应用的
 	// DeltaSeq，丢弃 <= lastSeen 的重发/乱序增量 —— 取代内容指纹去重
 	// （指纹会误杀合法的连续相同 chunk，如"哈哈哈"分三个"哈"到达）。
-	DeltaSeq   int64
-	occurredAt time.Time
+	DeltaSeq int64
+	// GenerationID 透传 LLM 响应的代际标记（W-1，2026-10-26 评审二轮）：
+	// 活性重连后新 attempt 从头重发内容，前端按 (StepID,DeltaField) 跟踪
+	// 代际，变化即重置已累积文本而非继续 append。空 = 首发 attempt（与
+	// 旧生产端同语义）；omitempty 保持空值不上 wire，与 wire 结构体对齐
+	// （golden parity 约束）。
+	GenerationID string `json:"GenerationID,omitempty"`
+	occurredAt   time.Time
 }
 
 func (e *StepStreamingEvent) EventKind() EventKind      { return EventKindStepStreaming }

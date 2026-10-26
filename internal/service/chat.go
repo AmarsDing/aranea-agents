@@ -271,6 +271,13 @@ func (s *ChatService) SubmitChatMessage(ctx context.Context, req *chatv1.SendCha
 	return s.orch.submitChatMessageAsync(ctx, req)
 }
 
+// GetChatOptions 返回全局聊天选项（对话模式 / provider / model 列表）。
+//
+// 豁免 assertSessionAccess 权属闸（2026-10-26 评审二轮 W-6 复核确认）：
+// 响应不含任何会话/用户私有数据——provider/model 来自全局 LLM 配置表的
+// enabled 行，dialog_mode 是静态枚举；请求亦无 session_id 参数可闸。
+// 若未来为本 RPC 增加会话相关字段（如「本会话当前模型」），必须重估本豁免
+// 并补权属校验。
 func (s *ChatService) GetChatOptions(ctx context.Context, req *chatv1.GetChatOptionsRequest) (*chatv1.GetChatOptionsResponse, error) {
 	return s.orch.nativeGetChatOptions(ctx, req)
 }

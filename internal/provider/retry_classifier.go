@@ -80,6 +80,13 @@ var contextOverflowMarkers = []string{
 	// summarizer.go 已知）。缺失时 400→RetryFatal 且 SDK 不重试——
 	// shrink-retry 0.7/0.5/0.35 阶梯在 Anthropic 通道整体失效。
 	"prompt is too long",
+	// W-3（2026-10-26 评审二轮）：Gemini/Vertex 与 DashScope 的超长文案。
+	// Gemini 400: "The input token count (N) exceeds the maximum number of
+	// tokens allowed (M)"；DashScope 400 InvalidParameter: "Range of input
+	// length should be [1, 30720]"。缺失时这两条通道的 400 落通用
+	// RetryFatal，shrink-retry 阶梯不触发（与 E2E-H3 同型缺口）。
+	"maximum number of tokens allowed",
+	"range of input length should be",
 }
 
 // contentFilterMarkers match provider safety-system rejections; these should

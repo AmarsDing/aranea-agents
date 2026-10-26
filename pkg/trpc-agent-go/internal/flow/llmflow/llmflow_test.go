@@ -3235,6 +3235,63 @@ func TestNormalizeResponseID_PreservesResponseWhenCurrentIDIsNil(t *testing.T) {
 	require.Nil(t, normalizeResponseID(nil, new(string)))
 }
 
+// TestNormalizeResponseIDs_GenerationChangeResetsID pins W-2 (2026-10-26
+// review round 2): a mid-stream generation restart (liveness-guard reconnect
+// re-issuing the same request) carries a new GenerationID; normalization must
+// NOT clamp the second attempt onto the first attempt's response ID —
+// otherwise the replayed stream masquerades as the same turn (turn undercount,
+// two half contents concatenated under one ID).
+func TestNormalizeResponseIDs_GenerationChangeResetsID(t *testing.T) {
+	seq := normalizeResponseIDs(func(yield func(*model.Response) bool) {
+		// Attempt 1: half stream (never reaches Done), provider ID resp-a.
+		if !yield(&model.Response{ID: "resp-a", Object: model.ObjectTypeChatCompletionChunk, IsPartial: true}) {
+			return
+		}
+		if !yield(&model.Response{ID: "resp-a", Object: model.ObjectTypeChatCompletionChunk, IsPartial: true}) {
+			return
+		}
+		// Attempt 2 (reconnect replay): generation changed, provider ID resp-b.
+		if !yield(&model.Response{ID: "resp-b", GenerationID: "reconnect-1", Object: model.ObjectTypeChatCompletionChunk, IsPartial: true}) {
+			return
+		}
+		yield(&model.Response{ID: "resp-b", GenerationID: "reconnect-1", Object: model.ObjectTypeChatCompletion, Done: true})
+	})
+	require.NotNil(t, seq)
+	var responses []*model.Response
+	seq(func(resp *model.Response) bool {
+		responses = append(responses, resp)
+		return true
+	})
+	require.Len(t, responses, 4)
+	require.Equal(t, "resp-a", responses[0].ID)
+	require.Equal(t, "resp-a", responses[1].ID)
+	// Generation change: the second attempt keeps/establishes its own ID
+	// instead of being clamped to resp-a.
+	require.Equal(t, "resp-b", responses[2].ID)
+	require.Equal(t, "resp-b", responses[3].ID)
+}
+
+// TestNormalizeResponseIDs_SameGenerationStillClamps pins the unchanged
+// contract within one generation: provider-side per-chunk ID drift is still
+// normalized to the first ID of the segment.
+func TestNormalizeResponseIDs_SameGenerationStillClamps(t *testing.T) {
+	seq := normalizeResponseIDs(func(yield func(*model.Response) bool) {
+		if !yield(&model.Response{ID: "resp-b", GenerationID: "reconnect-1", Object: model.ObjectTypeChatCompletionChunk, IsPartial: true}) {
+			return
+		}
+		yield(&model.Response{ID: "resp-c", GenerationID: "reconnect-1", Object: model.ObjectTypeChatCompletionChunk, IsPartial: true})
+	})
+	require.NotNil(t, seq)
+	var responses []*model.Response
+	seq(func(resp *model.Response) bool {
+		responses = append(responses, resp)
+		return true
+	})
+	require.Len(t, responses, 2)
+	require.Equal(t, "resp-b", responses[0].ID)
+	require.Equal(t, "resp-b", responses[1].ID, "same generation must still clamp drifting chunk IDs")
+}
+
 func TestFlow_GenerateContentSeq_IterModelError(t *testing.T) {
 	f := New(nil, nil, Options{})
 	iterModel := &mockIterModel{

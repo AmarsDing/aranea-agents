@@ -2868,7 +2868,16 @@ func normalizeResponseIDs(seq model.Seq[*model.Response]) model.Seq[*model.Respo
 	}
 	return func(yield func(*model.Response) bool) {
 		currentID := ""
+		currentGeneration := ""
 		seq(func(resp *model.Response) bool {
+			// GenerationID 变化 = 包装层（如活性守卫）中途重连重发了同一
+			// Request：旧 attempt 的响应 ID 不得延续到第二段流，否则新
+			// attempt 被伪装成同一响应（轮次少计、两段半截内容在同一 ID
+			// 下拼接、无 Generation 信息的消费端无法分辨）。
+			if resp != nil && resp.GenerationID != currentGeneration {
+				currentGeneration = resp.GenerationID
+				currentID = ""
+			}
 			normalized := normalizeResponseID(resp, &currentID)
 			keepGoing := yield(normalized)
 			if normalized != nil && normalized.Done && !normalized.IsPartial {

@@ -262,6 +262,10 @@ type stepStreamingEventWire struct {
 	DeltaChunk string `json:"DeltaChunk"`
 	// DeltaSeq 会话级单调序号（Sequencer flush 时分配），前端用于增量去重。
 	DeltaSeq int64 `json:"DeltaSeq"`
+	// GenerationID LLM 代际标记（W-1，2026-10-26 评审二轮）：活性重连的新
+	// attempt 重发内容时变化，前端据此重置已累积文本。空 = 首发 attempt；
+	// omitempty 使旧前端/旧生产端零感知。
+	GenerationID string `json:"GenerationID,omitempty"`
 }
 
 type teamStageEventWire struct {

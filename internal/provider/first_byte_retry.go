@@ -147,7 +147,9 @@ func FirstByteGuardWithRetry(budget time.Duration, maxReconnects int) time.Durat
 // 为什么安全：工具调用在完整响应组装后才执行，stall 发生时该次响应的
 // 工具尚未进入执行阶段，半成品零副作用；重连 = 重新生成，最终消息采用
 // 替换语义（openai accumulator 每调用独立），落库 = 成功 attempt 的完整
-// 聚合。代价：事件流可见重连前的半截内容（可观测性噪音，不改结果）。
+// 聚合。重连 attempt 的响应经 stampGeneration 携带 GenerationID 标记
+// （reconnect-N），下游 llmflow ID 归一化与 v2 projector 据此切断旧轮次 /
+// 截断半截累积内容——事件流上的重发段可辨、可截断，不再以裸 delta 重复。
 // 消费端首字节守卫总时限已按 FirstByteGuardWithRetry 重算，不会误杀重连。
 func WrapModelWithLivenessGuard(inner trpcmodel.Model, providerType, modelName string, lg loggateway.Logger) trpcmodel.Model {
 	if inner == nil {
@@ -312,7 +314,7 @@ func (m *livenessGuardModel) forwardLoop(
 				// ctx 已取消或重连发起失败：reconnect 内已处理终局。
 				return
 			}
-			if !forwardResponse(ctx, out, normalizeErrorObject(resp)) {
+			if !forwardResponse(ctx, out, stampGeneration(normalizeErrorObject(resp), reconnects)) {
 				safego.Go(context.Background(), "liveness-guard-drain", func() { drainResponseChannel(ch) })
 				return
 			}
@@ -454,6 +456,20 @@ func normalizeErrorObject(resp *trpcmodel.Response) *trpcmodel.Response {
 	if resp != nil && resp.Error != nil && resp.Object == "" {
 		resp.Object = trpcmodel.ObjectTypeError
 	}
+	return resp
+}
+
+// stampGeneration 给重连 attempt 的响应打代际标记（W-1/W-2，2026-10-26
+// 评审二轮）：首发 attempt（reconnects=0）保持空 GenerationID——空值即
+// 「原生单 attempt」语义，下游零感知；第 N 次重连后的流打 "reconnect-N"。
+// llmflow 的响应 ID 归一化据此切断旧 ID（新 attempt 不再伪装成同一轮），
+// v2 projector/前端据此重置已累积的半截内容而不是继续 append（重连 = 重新
+// 生成，前半截会被完整重发，纯追加必然整段重复）。
+func stampGeneration(resp *trpcmodel.Response, reconnects int) *trpcmodel.Response {
+	if resp == nil || reconnects <= 0 {
+		return resp
+	}
+	resp.GenerationID = fmt.Sprintf("reconnect-%d", reconnects)
 	return resp
 }
 

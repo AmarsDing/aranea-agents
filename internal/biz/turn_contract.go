@@ -148,7 +148,6 @@ type TurnEventType string
 
 const (
 	TurnEventUserMessagePersisted TurnEventType = "user_message_persisted"
-	TurnEventAssistantDelta       TurnEventType = "assistant_delta"
 	TurnEventToolCall             TurnEventType = "tool_call"
 	TurnEventMemberDelta          TurnEventType = "member_delta"
 	TurnEventAwaitUser            TurnEventType = "await_user"

@@ -355,6 +355,12 @@ export interface StepStreamingPayload {
   DeltaField: string;
   DeltaChunk: string;
   DeltaSeq?: number;
+  /**
+   * LLM 代际标记（W-1，2026-10-26 评审二轮）：后端活性守卫重连后新
+   * attempt 从头重发内容，代际变化时本字段变化；store 据此重置该 step
+   * 已累积的文本而非继续 append。首发 attempt 为空/缺省（旧生产端同义）。
+   */
+  GenerationID?: string;
 }
 export interface StepUpdatedPayload {
   Step: Step;

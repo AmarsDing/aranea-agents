@@ -2,6 +2,7 @@ package provider
 
 import (
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -105,8 +106,17 @@ func (t *retryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 			if d := parseRetryAfter(resp.Header.Get("Retry-After")); d > 0 {
 				retryAfterDelay = d
 			}
+			// W-4（2026-10-26 评审二轮）：耗尽错误必须保留供应商错误体摘要。
+			// 此前 body 直接 Close 丢弃、lastErr 只剩 "server returned 429"，
+			// 限流细节/配额文案/服务端 request_id 全部丢失，耗尽后无从排查。
+			// 每个可重试响应都读（反正要丢弃），只把最后一份带上终态错误。
+			bodySnippet := readErrorBodySnippet(resp)
 			resp.Body.Close()
-			lastErr = fmt.Errorf("server returned %d", resp.StatusCode)
+			if bodySnippet == "" {
+				lastErr = fmt.Errorf("server returned %d", resp.StatusCode)
+			} else {
+				lastErr = fmt.Errorf("server returned %d: %s", resp.StatusCode, bodySnippet)
+			}
 			if t.lg != nil {
 				t.lg.Warn("provider 响应错误，准备重试",
 					loggateway.StepID("provider.retry"),
@@ -161,8 +171,28 @@ func resetRequestBody(req *http.Request) error {
 	return nil
 }
 
-// parseRetryAfter 解析 HTTP Retry-After header。
-// 支持两种格式：
+// errorBodySnippetMax 限制重试耗尽错误携带的响应体摘要长度（W-4）。
+// 供应商错误体通常是小型 JSON（限流/配额说明），2KB 足够覆盖；超限截断
+// 防异常大体撑爆日志行。
+const errorBodySnippetMax = 2048
+
+// readErrorBodySnippet 有界读取错误响应体并折叠为单行摘要，供重试耗尽的
+// 终态错误携带供应商诊断文案（W-4）。读取失败/空体返回空串——调用方据此
+// 回退到无摘要的旧格式。注意：本函数会耗尽 resp.Body，调用后仍需 Close。
+func readErrorBodySnippet(resp *http.Response) string {
+	if resp == nil || resp.Body == nil {
+		return ""
+	}
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, errorBodySnippetMax))
+	if err != nil || len(raw) == 0 {
+		return ""
+	}
+	// 折叠全部空白（含换行）为单空格：错误体常是带缩进的 JSON，原样进入
+	// error 字符串会把单行日志撕成多行。
+	return strings.Join(strings.Fields(string(raw)), " ")
+}
+
+// parseRetryAfter 解析 HTTP Retry-After header。// 支持两种格式：
 //   - 秒数（如 "120"）
 //   - HTTP 日期（如 "Wed, 21 Oct 2026 07:28:00 GMT"）
 //

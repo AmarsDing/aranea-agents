@@ -266,6 +266,67 @@ func TestSequencer_StreamingBatchMerge(t *testing.T) {
 	}
 }
 
+// TestSequencer_StreamingGenerationMergeBarrier pins W-1（2026-10-26 评审
+// 二轮）：同 StepID+DeltaField 但 GenerationID 不同的 streaming 事件必须
+// 分批发布、不得合并——跨代际合并会把「代际复位信号」与旧 attempt 的尾巴
+// 粘成一帧，前端将丢失截断重发段的时机（整段重复无法自愈）。
+func TestSequencer_StreamingGenerationMergeBarrier(t *testing.T) {
+	t.Parallel()
+	s, _, bus := newTestSequencer(t)
+	ctx := context.Background()
+
+	ev1 := biz.NewStepStreamingEvent("", "", "step-1", "content", "半截")
+	ev2 := biz.NewStepStreamingEvent("", "", "step-1", "content", "重发")
+	ev2.GenerationID = "reconnect-1"
+	s.Publish(ctx, ev1)
+	s.Publish(ctx, ev2)
+
+	if err := s.Flush(ctx); err != nil {
+		t.Fatalf("Flush: %v", err)
+	}
+
+	bus.mu.Lock()
+	if len(bus.pub) != 2 {
+		bus.mu.Unlock()
+		t.Fatalf("generation change must break the merge batch: expected 2 events, got %d (%+v)", len(bus.pub), bus.pub)
+	}
+	first, ok1 := bus.pub[0].(*biz.StepStreamingEvent)
+	second, ok2 := bus.pub[1].(*biz.StepStreamingEvent)
+	if !ok1 || !ok2 {
+		bus.mu.Unlock()
+		t.Fatalf("expected *StepStreamingEvent pair, got %T / %T", bus.pub[0], bus.pub[1])
+	}
+	if first.DeltaChunk != "半截" || first.GenerationID != "" {
+		t.Errorf("event[0] = (%q, gen %q), want (%q, gen empty)", first.DeltaChunk, first.GenerationID, "半截")
+	}
+	if second.DeltaChunk != "重发" || second.GenerationID != "reconnect-1" {
+		t.Errorf("event[1] = (%q, gen %q), want (%q, gen reconnect-1)", second.DeltaChunk, second.GenerationID, "重发")
+	}
+	bus.mu.Unlock()
+	// 注意：bus.mu 不得跨 Publish/Flush 持有——publishLoop 的 flushStreaming
+	// 会回调 bus.Publish 抢同一把锁，测试持锁发布即自死锁（Flush 超时）。
+
+	// 同代际连续事件仍合并（屏障只拦跨代际，不误伤正常批合并）。
+	ev3 := biz.NewStepStreamingEvent("", "", "step-1", "content", "继续")
+	ev3.GenerationID = "reconnect-1"
+	ev4 := biz.NewStepStreamingEvent("", "", "step-1", "content", "生成")
+	ev4.GenerationID = "reconnect-1"
+	s.Publish(ctx, ev3)
+	s.Publish(ctx, ev4)
+	if err := s.Flush(ctx); err != nil {
+		t.Fatalf("Flush: %v", err)
+	}
+	bus.mu.Lock()
+	defer bus.mu.Unlock()
+	if len(bus.pub) != 3 {
+		t.Fatalf("same-generation pair must merge into 1 (total 3), got %d", len(bus.pub))
+	}
+	merged := bus.pub[2].(*biz.StepStreamingEvent)
+	if merged.DeltaChunk != "继续生成" || merged.GenerationID != "reconnect-1" {
+		t.Errorf("merged event = (%q, gen %q), want (%q, gen reconnect-1)", merged.DeltaChunk, merged.GenerationID, "继续生成")
+	}
+}
+
 // TestSequencer_StreamingDoesNotPersist verifies that step.streaming events
 // are NOT persisted to RepoSet (only step.created/updated/completed are).
 func TestSequencer_StreamingDoesNotPersist(t *testing.T) {

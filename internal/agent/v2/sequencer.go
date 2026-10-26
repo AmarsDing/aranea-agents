@@ -412,9 +412,12 @@ func (s *Sequencer) publishLoop() {
 	}
 }
 
-// canMergeStreaming returns true iff two streaming events share StepID and DeltaField.
+// canMergeStreaming returns true iff two streaming events share StepID,
+// DeltaField, and GenerationID. 代际一致才可合并（W-1，2026-10-26 评审二轮）：
+// 活性重连的新 attempt 从头重发内容，跨代际合并会把复位信号与旧 attempt
+// 的尾巴粘成一帧，前端将丢失截断时机（整段重复无法自愈）。
 func canMergeStreaming(a, b *biz.StepStreamingEvent) bool {
-	return a.StepID == b.StepID && a.DeltaField == b.DeltaField
+	return a.StepID == b.StepID && a.DeltaField == b.DeltaField && a.GenerationID == b.GenerationID
 }
 
 // flushStreaming publishes the merged streaming event to bus only (no persist).

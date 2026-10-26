@@ -65,19 +65,19 @@ func (p *ActivityProjector) handleToolCall(ctx context.Context, toolCallID, tool
 }
 
 // handleReasoningDelta lazily creates a thinking step on the first delta,
-// then emits the streaming delta.
+// then emits the streaming delta. generation 透传 LLM 代际标记（W-1）。
 //
 // 2026-07-04 问题 1 根因 2 修复：使用 per-agentKey map 隔离不同 member
 // agent 的 thinking step，避免 graph 模式下后续 member 复用首个 member
 // 的 thinking step。
-func (p *ActivityProjector) handleReasoningDelta(ctx context.Context, delta string) {
+func (p *ActivityProjector) handleReasoningDelta(ctx context.Context, delta, generation string) {
 	agentKey := p.currentAgentKey()
 	stepID, ok := p.thinkingStepIDs[agentKey]
 	if !ok || stepID == "" {
 		stepID = p.BeginStep(ctx, p.eventMeta(), biz.StepKindThinking)
 		p.thinkingStepIDs[agentKey] = stepID
 	}
-	p.OnReasoningDelta(ctx, stepID, delta, "")
+	p.OnReasoningDelta(ctx, stepID, delta, generation)
 }
 
 // handleTextDelta lazily creates a reply step on the first non-blank delta,
@@ -93,8 +93,8 @@ func (p *ActivityProjector) handleReasoningDelta(ctx context.Context, delta stri
 // Spec: docs/superpowers/specs/2026-07-04-empty-reply-step-cleanup-design.md §4.1.1
 //
 // 2026-07-04 问题 1 根因 2 修复：使用 per-agentKey map 隔离不同 member
-// agent 的 reply step。
-func (p *ActivityProjector) handleTextDelta(ctx context.Context, delta string) {
+// agent 的 reply step。generation 透传 LLM 代际标记（W-1）。
+func (p *ActivityProjector) handleTextDelta(ctx context.Context, delta, generation string) {
 	agentKey := p.currentAgentKey()
 	stepID, ok := p.replyStepIDs[agentKey]
 	if !ok || stepID == "" {
@@ -106,7 +106,7 @@ func (p *ActivityProjector) handleTextDelta(ctx context.Context, delta string) {
 		stepID = p.BeginStep(ctx, p.eventMeta(), biz.StepKindReply)
 		p.replyStepIDs[agentKey] = stepID
 	}
-	p.OnTextDelta(ctx, stepID, delta, "")
+	p.OnTextDelta(ctx, stepID, delta, generation)
 }
 
 // handleReasoningDone finalizes the thinking step. If no thinking step was

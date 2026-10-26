@@ -206,6 +206,17 @@ type Response struct {
 
 	// IsPartial indicates if this is a partial response.
 	IsPartial bool `json:"is_partial"`
+
+	// GenerationID identifies the generation attempt that produced this
+	// response within a single GenerateContent call. Empty means the first
+	// (and usually only) attempt. A model wrapper that silently restarts
+	// generation mid-stream — e.g. a liveness guard reconnecting after a
+	// stall — stamps a fresh non-empty value on every response of each new
+	// attempt, so downstream consumers (response-ID normalization, step
+	// projectors) can detect the content restart and reset accumulated
+	// state instead of appending the regenerated prefix onto the dead
+	// attempt's half content.
+	GenerationID string `json:"generation_id,omitempty"`
 }
 
 // Clone creates a deep copy of the response.

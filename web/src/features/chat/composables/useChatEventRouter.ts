@@ -78,11 +78,14 @@ export function useChatEventRouter(store: Store) {
           // (content, reasoning) and silently ignores unknown ones.
           // P3: pass DeltaSeq — the store dedups redelivered deltas by
           // sequence; undefined seq (legacy producer) always applies.
+          // W-1: pass GenerationID — the store resets accumulated text on
+          // generation change (liveness reconnect replays from scratch).
           store.appendStepDelta(
             p.StepID as string,
             p.DeltaField as string,
             p.DeltaChunk as string,
             p.DeltaSeq as number | undefined,
+            p.GenerationID as string | undefined,
           );
         }
         break;

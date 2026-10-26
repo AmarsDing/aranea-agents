@@ -41,6 +41,27 @@ func TestClassifyRetry_ContextOverflow(t *testing.T) {
 	}
 }
 
+// TestClassifyRetry_ContextOverflowProviderPhrasings pins W-3（2026-10-26
+// 评审二轮）：Gemini/Vertex 与 DashScope 的超长文案必须命中 overflow 标记
+// （RetryFatal + IsContextOverflow），shrink-retry 0.7/0.5/0.35 阶梯才能
+// 接管——缺失时这两条通道的 400 落通用 RetryFatal，永不触发收缩重试
+// （与 E2E-H3 Anthropic 缺口同型）。
+func TestClassifyRetry_ContextOverflowProviderPhrasings(t *testing.T) {
+	cases := map[string]string{
+		"gemini/vertex": "The input token count (1500000) exceeds the maximum number of tokens allowed (1048576).",
+		"dashscope":     "Range of input length should be [1, 30720]",
+	}
+	for provider, msg := range cases {
+		decision := ClassifyRetry(nil, errors.New(msg))
+		if decision.Type != RetryFatal {
+			t.Errorf("%s: ClassifyRetry = %v, want RetryFatal (context overflow)", provider, decision.Type)
+		}
+		if !IsContextOverflow(msg) {
+			t.Errorf("%s: IsContextOverflow(%q) = false, want true", provider, msg)
+		}
+	}
+}
+
 func TestClassifyRetry_ContextCancelled(t *testing.T) {
 	decision := ClassifyRetry(nil, context.Canceled)
 	if decision.Type != RetryFatal {
