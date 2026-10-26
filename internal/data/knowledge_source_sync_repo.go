@@ -10,7 +10,7 @@
 //   - finalize 保留（P10）：InsertRunWithRetention 同事务 INSERT+双 DELETE
 //     （runs 保 RunKeep 最近、items 超 ItemRetention 的 missing/deleted 硬清），
 //     索引 idx_src_runs_conn (connector_id, started_at DESC) 为共用硬前置。
-//   - 凭据 partial-unique 活性唯一（MCP 20261209 ”::text 谓词先例）冲突由
+//   - 凭据 partial-unique 活性唯一（MCP 20261209 空串::text 谓词先例）冲突由
 //     entErrToBizErr 扭 409；软删重建由墓碑行豁免天然放行。
 package data
 
@@ -289,6 +289,116 @@ func scanConnectors(rows *sql.Rows) ([]sourcesync.Connector, error) {
 		out = append(out, c)
 	}
 	return out, rows.Err()
+}
+
+// ── W2 认领/收轮（claim CAS + finalize CAS guard + 崩溃回收） ──
+//
+// 认领时间戳纪律：表内无 run_claimed_at 列（迁移 20261298 定列冻结），
+// updated_at 双重承载「最后写时刻」与「租约心跳」——TryClaimRun 落 now、
+// Runner 长轮周期心跳续期、Finalize 收轮再落；僵死谓词一律
+// sync_state='running' ∧ updated_at < now-leaseTTL（TEXT 定宽字典序==时序）。
+// PATCH/PUT 管理面写入顺带续期属可接受副作用（延迟回收一个 TTL，无害）。
+
+func (r *sourceSyncRepo) TryClaimRun(ctx context.Context, id, runToken string, leaseTTL time.Duration, now time.Time) (bool, error) {
+	d, ok := r.db()
+	if !ok {
+		return false, r.unavailable()
+	}
+	if id == "" || runToken == "" {
+		return false, apierror.BadRequest(sourceSyncModule, "id and runToken required")
+	}
+	if leaseTTL <= 0 {
+		leaseTTL = sourcesync.DefaultRunLeaseTTL
+	}
+	nowS := formatBoardRunLeaseTime(now)
+	staleBefore := ssFormatTime(now.Add(-leaseTTL))
+	// 原子 CAS 一条 UPDATE 完成：新轮守旧轮（idle/error 直取）∨
+	// 窘迫尸窃取（running 但心跳过期）；auth_paused 一律拒（凭据唤醒唯一出路）。
+	res, err := d.RWDB().WriteDB(ctx).ExecContext(ctx, d.Dialect().RenumberPlaceholders(`
+UPDATE knowledge_source_connectors
+SET run_token = ?, sync_state = 'running', updated_at = ?
+WHERE id = ? AND deleted_at = '' AND enabled
+  AND (
+    sync_state IN ('idle', 'error')
+    OR (sync_state = 'running' AND updated_at <> '' AND updated_at < ?)
+  )`), runToken, nowS, id, staleBefore)
+	if err != nil {
+		return false, entErrToBizErr(err, sourceSyncModule)
+	}
+	n, _ := res.RowsAffected()
+	return n > 0, nil
+}
+
+func (r *sourceSyncRepo) HeartbeatClaim(ctx context.Context, id, runToken string, now time.Time) (bool, error) {
+	d, ok := r.db()
+	if !ok {
+		return false, r.unavailable()
+	}
+	if id == "" || runToken == "" {
+		return false, apierror.BadRequest(sourceSyncModule, "id and runToken required")
+	}
+	res, err := d.RWDB().WriteDB(ctx).ExecContext(ctx, d.Dialect().RenumberPlaceholders(`
+UPDATE knowledge_source_connectors SET updated_at = ?
+WHERE id = ? AND run_token = ? AND sync_state = 'running' AND deleted_at = ''`),
+		formatBoardRunLeaseTime(now), id, runToken)
+	if err != nil {
+		return false, entErrToBizErr(err, sourceSyncModule)
+	}
+	n, _ := res.RowsAffected()
+	return n > 0, nil
+}
+
+func (r *sourceSyncRepo) FinalizeRunWithClaim(ctx context.Context, c sourcesync.Connector, expectedRunToken string) (bool, error) {
+	d, ok := r.db()
+	if !ok {
+		return false, r.unavailable()
+	}
+	if c.ID == "" || expectedRunToken == "" {
+		return false, apierror.BadRequest(sourceSyncModule, "id and expectedRunToken required")
+	}
+	// 收轮只写运行生命周期列（管理面列归 UpdateConnector 全量替换，两写面
+	// 不互踩）；CAS 守卫 run_token——失配即本轮已被软删/他人接管，found=false。
+	res, err := d.RWDB().WriteDB(ctx).ExecContext(ctx, d.Dialect().RenumberPlaceholders(`
+UPDATE knowledge_source_connectors SET
+  sync_state = ?, cursor = ?, next_run_at = ?, last_run_at = ?, last_success_at = ?,
+  consecutive_failures = ?, error_code = ?, error_message = ?,
+  run_token = '', updated_at = ?
+WHERE id = ? AND run_token = ? AND deleted_at = ''`),
+		string(c.SyncState), c.Cursor,
+		ssFormatTime(c.NextRunAt), ssFormatTime(c.LastRunAt), ssFormatTime(c.LastSuccessAt),
+		c.ConsecutiveFailures, string(c.ErrorCode), sourcesync.TruncateErrorMessage(c.ErrorMessage),
+		formatBoardRunLeaseTime(time.Now()), c.ID, expectedRunToken,
+	)
+	if err != nil {
+		return false, entErrToBizErr(err, sourceSyncModule)
+	}
+	n, _ := res.RowsAffected()
+	return n > 0, nil
+}
+
+func (r *sourceSyncRepo) ReclaimZombieRuns(ctx context.Context, now time.Time, leaseTTL time.Duration) (int, error) {
+	d, ok := r.db()
+	if !ok {
+		return 0, r.unavailable()
+	}
+	if leaseTTL <= 0 {
+		leaseTTL = sourcesync.DefaultRunLeaseTTL
+	}
+	staleBefore := ssFormatTime(now.Add(-leaseTTL))
+	// 崩溃回收：过期 running 重置 idle 让下轮 due 拾取可再认领；轻罚
+	// consecutive_failures+1（僵死非瞬态）；不动 error/last_run_*（现场留痕）。
+	// 与活跃 Runner 的 finalize 竞态由 run_token CAS 兜住——回收先清 token，
+	// 后到的 FinalizeRunWithClaim 返回 found=false（Runner 记 claim_lost）。
+	res, err := d.RWDB().WriteDB(ctx).ExecContext(ctx, d.Dialect().RenumberPlaceholders(`
+UPDATE knowledge_source_connectors
+SET sync_state = 'idle', run_token = '', consecutive_failures = consecutive_failures + 1, updated_at = ?
+WHERE deleted_at = '' AND sync_state = 'running'
+  AND updated_at <> '' AND updated_at < ?`), formatBoardRunLeaseTime(now), staleBefore)
+	if err != nil {
+		return 0, entErrToBizErr(err, sourceSyncModule)
+	}
+	n, _ := res.RowsAffected()
+	return int(n), nil
 }
 
 // ──────────────────────────────── ItemRepo ────────────────────────────────

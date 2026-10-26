@@ -224,6 +224,11 @@ const (
 	// 第二 DELETE，超窗才硬清）。
 	ItemRetention = 90 * 24 * time.Hour
 
+	// DefaultRunLeaseTTL 轮次租约默认 TTL（设计未给初值，W2 登记可调参：
+	// 30min——远超单轮预算内典型耗时；认领时间戳复用 updated_at 承载，
+	// 长轮由 Runner 心跳续期，崩溃回收误伤窗口≈心跳间隔+TTL）。
+	DefaultRunLeaseTTL = 30 * time.Minute
+
 	// maxErrorMessageRunes error_message 截断上限（③-1 ≤512 截断，按 rune 防
 	// 多字节截半）。
 	maxErrorMessageRunes = 512
@@ -386,6 +391,48 @@ type ConnectorRepo interface {
 	// ∧ next_run_at<=now ∧ sync_state NOT IN (running, auth_paused)——
 	// running 防双跑、auth_paused 防烧配额；ORDER BY next_run_at ASC LIMIT n）。
 	ListDueConnectors(ctx context.Context, now time.Time, limit int) ([]Connector, error)
+
+	// ── W2 认领/收轮（claim CAS + finalize CAS guard） ──
+
+	// TryClaimRun 轮次认领 CAS（⑤ 唯一入口）：原子门＝enabled ∧ 未软删 ∧
+	// （sync_state ∈ {idle, error}）∨ （running ∧ updated_at < now-leaseTTL——
+	// 窘迫尸窃取，claim 时间戳复用 updated_at 承载，免新迁移列）。前半守新轮
+	// 认旧轮，后半允许稳定回收。Returns：
+	//   - (true, nil) 本调用赢得本轮 token（连接行接管）；
+	//   - (false, nil) 已有活跃持有者（含同一 run_token 的并发重复调用也 false——
+	//     成功路径只返回一次 true）。
+	// 副作用：run_token=新 token、sync_state='running'、updated_at=now
+	// （updated_at 自此承担租约心跳语义：长轮由 Runner 周期续期，防误回收）。
+	TryClaimRun(ctx context.Context, id, runToken string, leaseTTL time.Duration, now time.Time) (bool, error)
+
+	// HeartbeatClaim 租约续期（长轮保活，防 ReclaimZombieRuns/TryClaimRun 窃取）：
+	// WHERE id AND run_token AND sync_state='running' 三重守卫 → updated_at=now。
+	// 失地（found=false）即本轮已被回收/软删，Runner 据此早退（收轮 CAS 仍兜底）。
+	HeartbeatClaim(ctx context.Context, id, runToken string, now time.Time) (bool, error)
+
+	// FinalizeRunWithClaim 收轮 CAS 守卫：只有自己签发的 run_token 可 finalize；
+	// WHERE id AND run_token = expectedToken 双条件——失配即 found=false
+	//（本轮已被他人接管 / connector 已 soft-delete）。副作用：run_token=''，
+	// 其余字段由调用方组装（sync_state/next_run_at/last_run_at/
+	// last_success_at/error_code/error_message/consecutive_failures/cursor/updated_at）。
+	// 状态机定值规则：
+	//   success       sync_state='idle',   error_code='',   consecutive=0, next_run_at=now+interval, last_success_at=now
+	//   partial       同 success 但 fetch_failed>0（终端 enable 保留）
+	//   failed        sync_state='error', consecutive++, next_run_at=now+2^f min cap 60
+	//   auth_paused   sync_state='auth_paused', 不动 next_run_at（等唤醒），consecutive 不变
+	//   skipped       内部 no-op finalize（供空轮/aborted 尾调用）
+	FinalizeRunWithClaim(ctx context.Context, c Connector, expectedRunToken string) (bool, error)
+
+	// ReclaimZombieRuns 崩溃回收扫描（⑤ 崩溃回收=lease_ttl 过期置 idle；对
+	// 调度 startup 与周期 tick 皆可调用）：重置过期 running 行为 idle，让下轮
+	// due 拾取可再认领。谓词：sync_state='running' ∧ updated_at < now-leaseTTL
+	//（updated_at=认领时间戳，Runner 心跳续期后的长轮不被误收）。
+	// 副作用：sync_state='idle'、run_token=''、updated_at=now、
+	// consecutive_failures+=1（僵死非瞬态轻罚）；不动 error_code/last_run_at
+	//（保留下次错误上下文可见）。Returns 回收数。
+	// 方案选择：TryClaimRun 内嵌僵死窃取是本方法的主路径；本扫描是观测面 + 抢救
+	//（MetricsSource 挂监控），claim 已窃取则本方法返回 0 行。
+	ReclaimZombieRuns(ctx context.Context, now time.Time, leaseTTL time.Duration) (int, error)
 }
 
 // ItemRepo 指纹行 CRUD（Upsert 语义钉③-2：出席即 status=active、

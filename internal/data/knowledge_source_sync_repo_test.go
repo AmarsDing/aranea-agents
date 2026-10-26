@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -611,5 +613,202 @@ func TestSourceSyncConnector_ErrorMessageTruncation(t *testing.T) {
 	again, _, _ := repo.GetConnector(ctx, "tr-1")
 	if n := len([]rune(again.ErrorMessage)); n != 512 {
 		t.Fatalf("error_message must truncate to 512 runes, got %d", n)
+	}
+}
+
+// ── W2 认领/收轮/僵尸回收 CAS 钉（PG 真值阵营；语义镜在
+// internal/knowledge/sourcesync/fakes_test.go 内存阵营） ──
+//
+// 时钟纪律：seed 经 CreateConnector 落 updated_at=墙钟 now；探测「过期窗」
+// 一律用未来 now 参数（+2h）越过窗界，不依赖墙钟漂移，测试确定。
+
+// TestSourceSyncClaimRun_CASLifecycle 单轮全生命周期：claim→他人拒→finalize
+// →再claim 通；finalize 后 token 清位 + 生命周期字段回写。
+func TestSourceSyncClaimRun_CASLifecycle(t *testing.T) {
+	repo := openSourceSyncRepo(t)
+	ctx := context.Background()
+	now := time.Now()
+	seedSourceSyncConnector(t, repo, "cas-1", "ws-1", "col-cas1", true, sourcesync.SyncStateIdle, now)
+
+	if ok, err := repo.TryClaimRun(ctx, "cas-1", "ss:tok:a", 30*time.Minute, now); err != nil || !ok {
+		t.Fatalf("first claim: ok=%v err=%v", ok, err)
+	}
+	// 活跃 running（心跳未过期）→ 拒认
+	if ok, err := repo.TryClaimRun(ctx, "cas-1", "ss:tok:b", 30*time.Minute, now.Add(time.Minute)); err != nil || ok {
+		t.Fatalf("live claim must reject: ok=%v err=%v", ok, err)
+	}
+	// 错误 token finalize → 失地（行不变）
+	row, _, _ := repo.GetConnector(ctx, "cas-1")
+	row.SyncState = sourcesync.SyncStateIdle
+	if ok, err := repo.FinalizeRunWithClaim(ctx, row, "ss:tok:wrong"); err != nil || ok {
+		t.Fatalf("foreign finalize must miss: ok=%v err=%v", ok, err)
+	}
+	kept, _, _ := repo.GetConnector(ctx, "cas-1")
+	if kept.RunToken != "ss:tok:a" || kept.SyncState != sourcesync.SyncStateRunning {
+		t.Fatalf("row untouched after foreign finalize: %+v", kept)
+	}
+	// 正确 token finalize → 回写成功
+	row.Cursor = "cur:x"
+	row.NextRunAt = now.Add(15 * time.Minute)
+	row.LastRunAt = now
+	row.LastSuccessAt = now
+	row.ConsecutiveFailures = 0
+	if ok, err := repo.FinalizeRunWithClaim(ctx, row, "ss:tok:a"); err != nil || !ok {
+		t.Fatalf("owner finalize: ok=%v err=%v", ok, err)
+	}
+	fin, _, _ := repo.GetConnector(ctx, "cas-1")
+	if fin.RunToken != "" || fin.SyncState != sourcesync.SyncStateIdle || fin.Cursor != "cur:x" {
+		t.Fatalf("finalized row: %+v", fin)
+	}
+	// 收轮后再可认领
+	if ok, err := repo.TryClaimRun(ctx, "cas-1", "ss:tok:c", 30*time.Minute, now.Add(2*time.Minute)); err != nil || !ok {
+		t.Fatalf("reclaim after finalize: ok=%v err=%v", ok, err)
+	}
+}
+
+// TestSourceSyncClaimRun_ZombieStealAndSweep 崩溃回收双路径：内嵌窃取（主）
+// + Reclaim 扫描（观测/抢救）。
+func TestSourceSyncClaimRun_ZombieStealAndSweep(t *testing.T) {
+	repo := openSourceSyncRepo(t)
+	ctx := context.Background()
+	now := time.Now()
+	seedSourceSyncConnector(t, repo, "zb-1", "ws-1", "col-zb1", true, sourcesync.SyncStateIdle, now)
+	if ok, _ := repo.TryClaimRun(ctx, "zb-1", "ss:tok:dead", 30*time.Minute, now); !ok {
+		t.Fatalf("seed claim failed")
+	}
+	// 过期窗（updated_at≈now 墙钟，探测 now+2h）→ 窃取成功
+	if ok, err := repo.TryClaimRun(ctx, "zb-1", "ss:tok:rescuer", 30*time.Minute, now.Add(2*time.Hour)); err != nil || !ok {
+		t.Fatalf("zombie steal: ok=%v err=%v", ok, err)
+	}
+	row, _, _ := repo.GetConnector(ctx, "zb-1")
+	if row.RunToken != "ss:tok:rescuer" {
+		t.Fatalf("steal must rewrite token: %+v", row)
+	}
+	// 窃取后 updated_at=now+2h（更晚），再扫（同 now+2h/ttl 30m）不收
+	if n, err := repo.ReclaimZombieRuns(ctx, now.Add(2*time.Hour), 30*time.Minute); err != nil || n != 0 {
+		t.Fatalf("fresh steal must not be reclaimed: n=%d err=%v", n, err)
+	}
+	// 再无心跳推进到 +4h → Reclaim 回收：idle + token 清 + 轻罚+1
+	before, _, _ := repo.GetConnector(ctx, "zb-1")
+	if n, err := repo.ReclaimZombieRuns(ctx, now.Add(4*time.Hour), 30*time.Minute); err != nil || n != 1 {
+		t.Fatalf("reclaim sweep: n=%d err=%v", n, err)
+	}
+	after, _, _ := repo.GetConnector(ctx, "zb-1")
+	if after.SyncState != sourcesync.SyncStateIdle || after.RunToken != "" {
+		t.Fatalf("reclaimed row: %+v", after)
+	}
+	if after.ConsecutiveFailures != before.ConsecutiveFailures+1 {
+		t.Fatalf("gentle penalty +1: %d → %d", before.ConsecutiveFailures, after.ConsecutiveFailures)
+	}
+}
+
+// TestSourceSyncClaimRun_AuthPausedRejected auth_paused 一律拒认（凭据唤醒
+// 唯一出路——连僵尸窗都不覆盖 paused）。
+func TestSourceSyncClaimRun_AuthPausedRejected(t *testing.T) {
+	repo := openSourceSyncRepo(t)
+	ctx := context.Background()
+	now := time.Now()
+	seedSourceSyncConnector(t, repo, "ap-1", "ws-1", "col-ap1", true, sourcesync.SyncStateAuthPaused, now)
+	if ok, err := repo.TryClaimRun(ctx, "ap-1", "ss:tok:x", 30*time.Minute, now.Add(24*time.Hour)); err != nil || ok {
+		t.Fatalf("auth_paused must never be claimable: ok=%v err=%v", ok, err)
+	}
+	// reclaim 也不动 auth_paused（它不是 running）
+	if n, err := repo.ReclaimZombieRuns(ctx, now.Add(24*time.Hour), 30*time.Minute); err != nil || n != 0 {
+		t.Fatalf("auth_paused untouched by sweep: n=%d err=%v", n, err)
+	}
+}
+
+// TestSourceSyncClaimRun_DisabledSoftDeletedGates enabled/软删闸。
+func TestSourceSyncClaimRun_DisabledSoftDeletedGates(t *testing.T) {
+	repo := openSourceSyncRepo(t)
+	ctx := context.Background()
+	now := time.Now()
+	seedSourceSyncConnector(t, repo, "gd-1", "ws-1", "col-gd1", false, sourcesync.SyncStateIdle, now)
+	if ok, err := repo.TryClaimRun(ctx, "gd-1", "ss:tok:x", 30*time.Minute, now); err != nil || ok {
+		t.Fatalf("disabled must reject: ok=%v err=%v", ok, err)
+	}
+	seedSourceSyncConnector(t, repo, "gd-2", "ws-1", "col-gd2", true, sourcesync.SyncStateIdle, now)
+	if ok, _ := repo.SoftDeleteConnector(ctx, "gd-2"); !ok {
+		t.Fatalf("soft delete failed")
+	}
+	if ok, err := repo.TryClaimRun(ctx, "gd-2", "ss:tok:x", 30*time.Minute, now); err != nil || ok {
+		t.Fatalf("soft-deleted must reject: ok=%v err=%v", ok, err)
+	}
+}
+
+// TestSourceSyncClaimRun_ConcurrentSingleWinner 并发认领唯一胜者（PG 行锁
+// 串行化真值）：8 并抢 1 idle，恰 1 true。
+func TestSourceSyncClaimRun_ConcurrentSingleWinner(t *testing.T) {
+	repo := openSourceSyncRepo(t)
+	ctx := context.Background()
+	now := time.Now()
+	seedSourceSyncConnector(t, repo, "cc-1", "ws-1", "col-cc1", true, sourcesync.SyncStateIdle, now)
+
+	const racers = 8
+	var wg sync.WaitGroup
+	var won int32
+	for i := 0; i < racers; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			ok, err := repo.TryClaimRun(ctx, "cc-1", fmt.Sprintf("ss:tok:r%d", i), 30*time.Minute, now)
+			if err != nil {
+				t.Errorf("racer %d: %v", i, err)
+				return
+			}
+			if ok {
+				atomic.AddInt32(&won, 1)
+			}
+		}(i)
+	}
+	wg.Wait()
+	if won != 1 {
+		t.Fatalf("exactly one winner expected, got %d", won)
+	}
+}
+
+// TestSourceSyncHeartbeatClaim 心跳三重守卫钉：id+token+running。
+func TestSourceSyncHeartbeatClaim(t *testing.T) {
+	repo := openSourceSyncRepo(t)
+	ctx := context.Background()
+	now := time.Now()
+	seedSourceSyncConnector(t, repo, "hb-1", "ws-1", "col-hb1", true, sourcesync.SyncStateIdle, now)
+	if ok, _ := repo.TryClaimRun(ctx, "hb-1", "ss:tok:h", 30*time.Minute, now); !ok {
+		t.Fatalf("claim failed")
+	}
+	if ok, err := repo.HeartbeatClaim(ctx, "hb-1", "ss:tok:h", now.Add(10*time.Minute)); err != nil || !ok {
+		t.Fatalf("owner heartbeat: ok=%v err=%v", ok, err)
+	}
+	if ok, err := repo.HeartbeatClaim(ctx, "hb-1", "ss:tok:stranger", now.Add(11*time.Minute)); err != nil || ok {
+		t.Fatalf("foreign heartbeat must miss: ok=%v err=%v", ok, err)
+	}
+	// 收轮后（非 running）心跳必失
+	row, _, _ := repo.GetConnector(ctx, "hb-1")
+	row.SyncState = sourcesync.SyncStateIdle
+	row.NextRunAt = now
+	row.LastRunAt = now
+	if ok, _ := repo.FinalizeRunWithClaim(ctx, row, "ss:tok:h"); !ok {
+		t.Fatalf("finalize failed")
+	}
+	if ok, err := repo.HeartbeatClaim(ctx, "hb-1", "ss:tok:h", now.Add(12*time.Minute)); err != nil || ok {
+		t.Fatalf("finalized row heartbeat must miss: ok=%v err=%v", ok, err)
+	}
+}
+
+// TestSourceSyncClaimRun_NilShell 扩展方法 nil 壳钉（W1 壳纪律补齐）。
+func TestSourceSyncClaimRun_NilShell(t *testing.T) {
+	repo := NewSourceSyncRepo(nil)
+	ctx := context.Background()
+	if _, err := repo.TryClaimRun(ctx, "x", "ss:tok:x", time.Minute, time.Now()); !apierror.IsCode(err, apierror.CodeInternal) {
+		t.Fatalf("nil claim: %v", err)
+	}
+	if _, err := repo.HeartbeatClaim(ctx, "x", "ss:tok:x", time.Now()); !apierror.IsCode(err, apierror.CodeInternal) {
+		t.Fatalf("nil heartbeat: %v", err)
+	}
+	if _, err := repo.FinalizeRunWithClaim(ctx, sourcesync.Connector{ID: "x"}, "ss:tok:x"); !apierror.IsCode(err, apierror.CodeInternal) {
+		t.Fatalf("nil finalize: %v", err)
+	}
+	if _, err := repo.ReclaimZombieRuns(ctx, time.Now(), time.Minute); !apierror.IsCode(err, apierror.CodeInternal) {
+		t.Fatalf("nil reclaim: %v", err)
 	}
 }
