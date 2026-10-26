@@ -114,6 +114,10 @@ func NewHTTPServer(c *conf.Server, s *ServiceRegistry, wsSrv *WSServer, voiceSrv
 			loggateway.Err(rerr))
 	}
 
+	// V 桶 minor：XFF 可信代理门启动姿态 Warn（P0 默认配置兑现——未配置
+	// KRATOS_TRUSTED_PROXY_CIDRS 时离机前置拓扑会把登录限流坍缩成单桶）。
+	warnXFFTrustedProxyStartup(lg)
+
 	// Custom routes MUST be registered before proto services so that exact
 	// paths (e.g. /v1/artifacts/download) take priority over wildcard
 	// patterns (e.g. /v1/artifacts/{id}).

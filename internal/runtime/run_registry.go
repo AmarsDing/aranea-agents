@@ -90,6 +90,11 @@ func (s *statusMap) delete(key string)                     { s.m.Delete(key) }
 // 过期后由 GetStatus 惰性清除。
 const TerminalStatusTTL = 10 * time.Minute
 
+// PausedStatusTTL 是 paused 生命周期持有的保留窗口（V 桶 minor：B1 修复后
+// paused 条目永不过期，长跑进程内存随暂停会话数单调增长）。过期由 GetStatus
+// 惰性清除；过期后 ResumeSession 走 S-3 的会话状态水合回退，语义不破。
+const PausedStatusTTL = 24 * time.Hour
+
 // RunRegistry owns per-session runtime state shared by chat, websocket, team,
 // cron, channel, and gateway ingress.
 //
@@ -495,6 +500,11 @@ func (r *RunRegistry) GetStatus(sessionID string) (RunStatusEntry, bool) {
 	}
 	// R4-Q2: lazy-expire retained terminal statuses after TerminalStatusTTL.
 	if IsRunStatusTerminal(entry.Status) && time.Since(entry.UpdatedAt) > TerminalStatusTTL {
+		r.runStatuses.delete(sessionID)
+		return RunStatusEntry{}, false
+	}
+	// V 桶：paused 持有同样有界（ResumeSession 有 S-3 水合回退兜底）。
+	if entry.Status == RunStatusPaused && time.Since(entry.UpdatedAt) > PausedStatusTTL {
 		r.runStatuses.delete(sessionID)
 		return RunStatusEntry{}, false
 	}

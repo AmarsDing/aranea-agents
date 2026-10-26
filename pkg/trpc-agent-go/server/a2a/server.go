@@ -231,6 +231,7 @@ func buildA2AServer(options *options) (*a2a.A2AServer, error) {
 		a2a.WithAuthProvider(&defaultAuthProvider{
 			userIDHeader: userIDHeader,
 			cookieScope:  cookieScope,
+			hmacSecret:   options.userIDHeaderHMACSecret,
 		}),
 		a2a.WithMiddleWare(anonymousAuthUserMiddleware{}),
 	)

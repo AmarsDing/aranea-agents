@@ -280,11 +280,25 @@ func (r *Runner) TriggerTask(ctx context.Context, taskID string) (biz.CronTaskRu
 	// 取消，秒级~分钟级 turn 必以 context canceled 夭折、finalize 回写同死
 	// ctx 失败、cron_task_run 行永久 pending。参照样板
 	// channel_ingress_async.go:205 以 WithoutCancel 剥离取消传播（保留值）。
-	bgCtx := context.WithoutCancel(ctx)
+	// H5 修复（V 桶）：WithoutCancel 连父 deadline 一起剥掉，PG stall 时
+	// goroutine 无界悬挂——detach 后叠 manualTriggerMaxDuration 上限兜底。
+	bgCtx, bgCancel := detachManualTriggerCtx(ctx)
 	safego.Go(bgCtx, "cron.manual_trigger", func() {
+		defer bgCancel()
 		r.runManualTask(bgCtx, taskID, runID, started, cfgSnapshot)
 	})
 	return r.deps.Cron.GetCronTaskRun(ctx, runID)
+}
+
+// manualTriggerMaxDuration 是手动触发异步 turn 的兜底上限（V 桶 H5）：
+// WithoutCancel 剥离取消传播的同时连父 deadline 一起剥掉，PG stall 等
+// 下游悬挂会使 goroutine 无界驻留。正常手动 turn 时长远低于 30min。
+const manualTriggerMaxDuration = 30 * time.Minute
+
+// detachManualTriggerCtx 返回脱离请求取消传播、但带 manualTriggerMaxDuration
+// 上限的后台 ctx（值保留）。调用方负责在 goroutine 退出时 cancel。
+func detachManualTriggerCtx(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.WithoutCancel(ctx), manualTriggerMaxDuration)
 }
 
 // cronDispatchState carries session-creation state across retry attempts so

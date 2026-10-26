@@ -479,6 +479,19 @@ func (uc *GraphExecutionUsecase) ResumeExecution(ctx context.Context, executionI
 	exec.execMu.Unlock()
 
 	if oldRuntime != nil {
+		// V-1: capture the resume-point checkpoint floor BEFORE cancelling the
+		// old runtime. Until the resumed run writes its first superstep the
+		// lineage still ends at the OLD interrupt checkpoint, so the recovery
+		// probe must treat that checkpoint as stale evidence.
+		if lineageID != "" {
+			probeCtx, probeCancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+			if list, lerr := oldRuntime.ListCheckpoints(probeCtx, lineageID, "", 1); lerr == nil && len(list) > 0 {
+				exec.execMu.Lock()
+				exec.resumeProbeFloorCkptID = list[0].Ref.CheckpointID
+				exec.execMu.Unlock()
+			}
+			probeCancel()
+		}
 		if err := oldRuntime.Cancel(); err != nil {
 			uc.lg.Warn("cancel graph runtime on resume", loggateway.Err(err))
 		}
@@ -796,6 +809,15 @@ func (uc *GraphExecutionUsecase) recoverDroppedInterruptLocked(exec *GraphExecut
 	// 新 checkpoint，故最新一条为 interrupt 源即可判定。
 	list, err := exec.runtime.ListCheckpoints(probeCtx, lineageID, "", 1)
 	if err != nil || len(list) == 0 || list[0].Source != graphCheckpointSourceInterrupt {
+		return false
+	}
+	// V-1 corroboration: the probe checkpoint must be NEWER than the resume
+	// point. After a resume the lineage still ends at the old interrupt
+	// checkpoint until the resumed run writes its first superstep; treating
+	// that stale checkpoint as a dropped-interrupt would migrate a genuinely
+	// failed stream to waiting_human (resume answer lost, OnRunFailed never
+	// fires). 调用方已持 execMu，裸读 floor 安全。
+	if floor := exec.resumeProbeFloorCkptID; floor != "" && list[0].Ref.CheckpointID == floor {
 		return false
 	}
 	if transErr := uc.applyExecTransition(exec, GraphExecEventInterrupt); transErr != nil {

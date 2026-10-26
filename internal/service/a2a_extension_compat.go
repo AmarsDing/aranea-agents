@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"sync"
 
+	a2apkg "aranea-agents/internal/a2a"
 	"aranea-agents/internal/conf"
 	"aranea-agents/pkg/loggateway"
 
@@ -115,6 +116,8 @@ func (s *A2AExtensionCompatService) ensureServer(ctx context.Context) error {
 		trpca2a.WithSessionService(s.sessionSvc),
 		trpca2a.WithHost(host),
 		trpca2a.WithUserIDHeader("X-User-ID"),
+		// V-2：验签舰队内签名身份头，恢复 aranea→aranea 身份传递。
+		trpca2a.WithUserIDHeaderHMACSecret(a2apkg.IdentityHMACSecretFromEnv()),
 	}
 
 	srv, err := trpca2a.New(opts...)

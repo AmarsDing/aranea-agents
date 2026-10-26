@@ -338,6 +338,16 @@ func WithUserIDHeader(header string) Option {
 	}
 }
 
+// WithUserIDHeaderHMACSecret enables the signed identity channel (aranea V-2):
+// every outbound UserID header is accompanied by a "<header>-Signature" header
+// carrying hex(HMAC-SHA256(secret, userID)), which servers configured with the
+// same fleet secret verify before honoring the claimed identity.
+func WithUserIDHeaderHMACSecret(secret string) Option {
+	return func(a *A2AAgent) {
+		a.userIDHeaderHMACSecret = secret
+	}
+}
+
 // WithEnableStreaming explicitly controls whether to use streaming protocol.
 // If not set (nil), the agent will use the streaming capability from the agent card.
 // This option overrides the agent card's capability setting.

@@ -76,6 +76,7 @@ type A2AAgent struct {
 	transferStateKey     []string               // Keys in session state to transfer to the A2A agent message by metadata
 	buildMessageHook     BuildMessageHook       // Hook called after A2A message is built but before it is sent
 	userIDHeader         string                 // HTTP header name to send UserID to A2A server
+	userIDHeaderHMACSecret string               // fleet shared secret for the signed identity channel (aranea V-2); empty disables signing
 	enableStreaming      *bool                  // Explicitly set streaming mode; nil means use agent card capability
 
 	a2aClient    *client.A2AClient
@@ -1701,6 +1702,15 @@ func (r *A2AAgent) buildRequestOptions(ctx context.Context, invocation *agent.In
 			userIDHeader = defaultUserIDHeader
 		}
 		requestOpts = append(requestOpts, client.WithRequestHeader(userIDHeader, invocation.Session.UserID))
+		// Signed identity channel (aranea V-2): servers configured with the
+		// same fleet secret honor the claimed identity; without the signature
+		// the header is dropped for a random anonymous principal.
+		if r.userIDHeaderHMACSecret != "" {
+			requestOpts = append(requestOpts, client.WithRequestHeader(
+				userIDHeader+"-Signature",
+				SignUserIDForHeader(r.userIDHeaderHMACSecret, invocation.Session.UserID),
+			))
+		}
 	}
 	// Propagate trace context via HTTP headers (W3C Trace Context).
 	traceHeaders := extractTraceHeaders(ctx)

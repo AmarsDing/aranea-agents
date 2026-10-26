@@ -54,6 +54,7 @@ curl -i https://aranea.example.com/healthz
 - **frps token 必填**：不设 token 的 frps 等于把后端裸奔到公网
 - **Caddy 仅暴露 443**：frps 的 8080 绑 loopback（模板默认），7000 仅 frpc 使用
 - **登录限流**：Go 后端已对 `POST /v1/admins/login` 做 IP 限流 + 失败锁定；限流按 `X-Forwarded-For` 首跳取真实客户端 IP（Caddy 与 frp 均会透传/追加 XFF，无需额外配置）
+- **XFF 可信代理门**：默认仅**回环对端**可供给 XFF（本文档拓扑中 frpc 同机回环，开箱即对）。若改为离机前置（frps/反代与后端不同机），必须把前置出口地址登记进 `KRATOS_TRUSTED_PROXY_CIDRS`（逗号分隔 CIDR/IP），否则 XFF 被忽略、登录限流按前置出口 IP 坍缩为全站共享单桶——暴破即全员锁死。未配置时后端启动日志有 Warn 提示
 - **务必修改默认密码**：`admin / changeme` 仅用于首次登录，暴露公网前必须改密
 - WebSocket（`/v1/ws`）经同一隧道透传，frp 与 Caddy 默认支持 Upgrade，无需额外配置
 

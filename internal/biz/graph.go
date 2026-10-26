@@ -226,6 +226,13 @@ type GraphExecution struct {
 	// ExecutionError / Interrupt)，否则旧流结束会误杀或幽灵写入仍在运行的
 	// 新流状态。
 	streamGen int64
+	// resumeProbeFloorCkptID 记录 resume 起点的最新 checkpoint ID（execMu 保护，
+	// 不落库）。V-1：resume 后 lineage 仍以旧的 interrupt checkpoint 收尾，
+	// 直到被恢复的流写出首个 superstep——recoverDroppedInterruptLocked 仅凭
+	// 最新 checkpoint.Source==interrupt 会把这条陈旧证据误判为新丢弃的
+	// interrupt。等值即陈旧，忽略之。进程重启后为空（loadExecution 不恢复），
+	// 回退为原语义。
+	resumeProbeFloorCkptID string
 }
 
 // NewGraphExecution creates a GraphExecution with mandatory ctx initialization.

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"aranea-agents/internal/a2a"
 	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/apierror"
 
@@ -31,6 +32,9 @@ func BuildTRPCA2AAgent(_ context.Context, ag biz.Agent, cfg biz.A2AProxyConfig) 
 		a2aagent.WithName(ag.AgentKey),
 		a2aagent.WithDescription(strings.TrimSpace(ag.AgentDescription)),
 		a2aagent.WithAgentCardURL(remoteURL),
+		// V-2：对端为舰队内 aranea 时以共享密钥给 X-User-ID 加签，
+		// 恢复 P0 未签名头拒信后的身份传递（密钥未配置则不加签）。
+		a2aagent.WithUserIDHeaderHMACSecret(a2a.IdentityHMACSecretFromEnv()),
 	}
 	if cfg.EnableStreaming {
 		opts = append(opts, a2aagent.WithEnableStreaming(true))

@@ -178,9 +178,34 @@ func (s *SkillEvolutionSuggestionService) GetSkillEvolutionSuggestion(ctx contex
 }
 
 func (s *SkillEvolutionSuggestionService) ApproveSkillEvolutionSuggestion(ctx context.Context, req *v1.ApproveSkillEvolutionSuggestionRequest) (*v1.ApproveSkillEvolutionSuggestionResponse, error) {
-	if _, err := s.assertSuggestionAccess(ctx, req.GetId()); err != nil {
+	suggestion, err := s.assertSuggestionAccess(ctx, req.GetId())
+	if err != nil {
 		return nil, err
 	}
+
+	// E1（V 桶）：存量 approved 但未落 applied 的建议（approve 早于 E2E-E1
+	// 门禁，或 post-approve 异步沙箱未过）此前永久卡死——再点 approve 只撞
+	// FSM pending-only 的 BadRequest，无任何重试入口。此处把该形态解释为
+	// re-validate 管理入口：不重走 status 审批（人已审过），直接重跑
+	// post-approve 管线——F6 冻结既有草稿、sandbox 重验并把 lifecycle 推回
+	// ready/draft、ApplyApprovedSuggestion 重新评估落库门禁。
+	if suggestion.Status == biz.EvoSuggestionApproved &&
+		suggestion.LifecycleStatus != biz.EvoLifecycleApplied {
+		s.lg.Info("ApproveSkillEvolutionSuggestion: re-validate stuck approved suggestion",
+			loggateway.StepID("skill_evo_suggestion.revalidate"),
+			loggateway.Str("suggestion_id", suggestion.ID),
+			loggateway.Str("lifecycle_status", string(suggestion.LifecycleStatus)),
+			loggateway.Bool("sandbox_passed", suggestion.SandboxPassed))
+		suggestionID := req.GetId()
+		if s.curator != nil || s.sandbox != nil {
+			bgCtx := context.WithoutCancel(ctx)
+			safego.Go(bgCtx, "skill_evo_suggestion.revalidate.async", func() {
+				s.runPostApproveAsync(bgCtx, suggestionID)
+			})
+		}
+		return &v1.ApproveSkillEvolutionSuggestionResponse{}, nil
+	}
+
 	if err := s.uc.ApproveSuggestion(ctx, req.GetId(), req.GetApprovedBy()); err != nil {
 		return nil, err
 	}

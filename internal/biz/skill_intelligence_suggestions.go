@@ -190,6 +190,7 @@ func (uc *SkillIntelligenceUsecase) ApplyApprovedSuggestion(ctx context.Context,
 	}
 
 	if !suggestion.SandboxPassed || strings.TrimSpace(suggestion.DraftSkillBody) == "" {
+		uc.logApplyGateBlocked(suggestion, "sandbox_not_passed_or_empty_draft")
 		return nil
 	}
 	nextStatus, err := uc.unifiedSM.Transition(UnifiedEvolutionState(suggestion.Status), UnifiedEvolutionEventApply)
@@ -198,6 +199,7 @@ func (uc *SkillIntelligenceUsecase) ApplyApprovedSuggestion(ctx context.Context,
 	}
 	nextLifecycle, err := uc.lifecycleSM.Transition(suggestion.LifecycleStatus, EvoLifecycleEventApply)
 	if err != nil {
+		uc.logApplyGateBlocked(suggestion, "lifecycle_not_ready")
 		return nil
 	}
 
@@ -234,6 +236,28 @@ func (uc *SkillIntelligenceUsecase) ApplyApprovedSuggestion(ctx context.Context,
 	return nil
 }
 
+// logApplyGateBlocked 是 E1 门禁的可观测回执（V 桶）：apply 门禁此前静默
+// return nil，存量 approved+draft 行（approve 早于 E2E-E1 门禁，或
+// post-approve 异步沙箱未过）被永久卡死且无任何信号。仅当建议仍处于
+// approved（确实应落而未落）时 Warn；其余状态的幂等重入保持静默。
+// 处置入口：对该建议再次调用 Approve（service 层会把 approved 未落
+// applied 的形态解释为 re-validate，重跑沙箱后重新评估本门禁）。
+func (uc *SkillIntelligenceUsecase) logApplyGateBlocked(suggestion *SkillEvolutionSuggestion, reason string) {
+	if uc.lg == nil || suggestion == nil {
+		return
+	}
+	if suggestion.Status != EvoSuggestionApproved {
+		return
+	}
+	uc.lg.Warn("apply gate blocked: suggestion stays approved; approve again to re-validate",
+		loggateway.StepID("skill_intelligence.apply_gate"),
+		loggateway.Str("suggestion_id", suggestion.ID),
+		loggateway.Str("skill_id", suggestion.SkillID),
+		loggateway.Str("lifecycle_status", string(suggestion.LifecycleStatus)),
+		loggateway.Bool("sandbox_passed", suggestion.SandboxPassed),
+		loggateway.Str("gate_reason", reason))
+}
+
 // applyAgentCreateSkill applies an approved agent create_skill suggestion
 // (ADR-3): it mounts the draft as a skill on the target agent via the
 // registrar, then CAS-advances the suggestion to applied. The flow is
@@ -251,9 +275,11 @@ func (uc *SkillIntelligenceUsecase) applyAgentCreateSkill(ctx context.Context, s
 	// 产出 status=applied + lifecycle=draft + sandbox_passed=0 矛盾终态。
 	nextLifecycle, err := uc.lifecycleSM.Transition(suggestion.LifecycleStatus, EvoLifecycleEventApply)
 	if err != nil {
+		uc.logApplyGateBlocked(suggestion, "lifecycle_not_ready")
 		return nil
 	}
 	if !suggestion.SandboxPassed {
+		uc.logApplyGateBlocked(suggestion, "sandbox_not_passed")
 		return nil
 	}
 	if uc.registrar == nil {

@@ -66,3 +66,34 @@ func TestTriggerTask_SurvivesRequestCtxCancel(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 }
+
+// H5（V 桶）pin：WithoutCancel 连父 deadline 一起剥掉，裸 detach 会让 PG
+// stall 的 goroutine 无界悬挂。detachManualTriggerCtx 必须在剥离取消传播的
+// 同时叠 manualTriggerMaxDuration 上限，并保留父 ctx 的值。
+func TestDetachManualTriggerCtxCapsDeadline(t *testing.T) {
+	type ctxKey struct{}
+	parent := context.WithValue(context.Background(), ctxKey{}, "v")
+
+	bg, cancel := detachManualTriggerCtx(parent)
+	defer cancel()
+
+	dl, ok := bg.Deadline()
+	if !ok {
+		t.Fatal("detached ctx must carry a cap deadline (H5: bare WithoutCancel hangs forever on a stalled dependency)")
+	}
+	if d := time.Until(dl); d <= 0 || d > manualTriggerMaxDuration {
+		t.Fatalf("deadline delta = %v, want within (0, %v]", d, manualTriggerMaxDuration)
+	}
+	if got := bg.Value(ctxKey{}); got != "v" {
+		t.Fatalf("WithoutCancel value propagation broken: got %v", got)
+	}
+
+	// 父取消不得传播（E2E-H5 语义不回退）。
+	parent2, pcancel := context.WithCancel(context.Background())
+	bg2, cancel2 := detachManualTriggerCtx(parent2)
+	defer cancel2()
+	pcancel()
+	if err := bg2.Err(); err != nil {
+		t.Fatalf("parent cancel leaked into detached ctx: %v", err)
+	}
+}

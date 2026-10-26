@@ -168,10 +168,19 @@ type runAttribution struct {
 // runRecord at Spawn. Never mutated in place — per-turn injection replaces
 // the old service-wide last-writer-wins singleton (data race + wrong-agent
 // identity + billing attribution divergence).
+//
+// boundAt 服务 V 桶 minor 修复：turnCtx 此前无剔除路径，长跑进程内存随会话
+// 数单调增长。条目只在 Spawn 瞬间被快照消费，之后即可释放——超过
+// turnCtxTTL 的条目视为未绑定并在读写路径惰性剔除。
 type turnRunnerContext struct {
 	runner      trpcrunner.Runner
 	attribution runAttribution
+	boundAt     time.Time
 }
+
+// turnCtxTTL 是 turn 绑定的保守上限：awaiting_user 的长暂停 turn 恢复后仍可能
+// spawn，故取 24h 覆盖一切现实 turn 时长，同时封堵无界增长。
+const turnCtxTTL = 24 * time.Hour
 
 // runesManager manages per-session rune limits for subagent results.
 // Extracted from Service to reduce cognitive complexity (AS-COG-02).

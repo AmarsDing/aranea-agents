@@ -125,6 +125,7 @@ type EventToA2APartMapper func(ctx context.Context, event *event.Event) ([]proto
 type defaultAuthProvider struct {
 	userIDHeader string
 	cookieScope  string
+	hmacSecret   string
 }
 
 // preAuthIdentityKey stores the provisional identity used internally to detect
@@ -255,7 +256,17 @@ func (d *defaultAuthProvider) Authenticate(r *http.Request) (*auth.User, error) 
 	// minted by this server's own anonymous-cookie namespace are honored from
 	// the header; anything else is dropped in favor of the cookie-scoped
 	// anonymous principal below.
+	//
+	// Signed mesh channel (aranea V-2): a caller holding the fleet shared
+	// secret proves the claimed identity with hex(HMAC-SHA256(secret, userID))
+	// in the "<userIDHeader>-Signature" header; verified identities are
+	// honored as-is so aranea→aranea proxy calls keep lineage instead of
+	// silently degrading to a random anonymous principal per request.
 	if userID != "" && !isAnonymousUserIDForScope(userID, d.cookieScope) {
+		if verifyUserIDSignature(d.hmacSecret, userID,
+			strings.TrimSpace(r.Header.Get(userIDSignatureHeader(d.userIDHeader)))) {
+			return &auth.User{ID: userID}, nil
+		}
 		log.DebugfContext(
 			r.Context(),
 			"Ignoring unsigned UserID(Header %s) identity outside the anonymous "+
@@ -419,6 +430,7 @@ type options struct {
 	errorHandler              ErrorHandler
 	debugLogging              bool
 	userIDHeader              string
+	userIDHeaderHMACSecret    string
 	preAuthMiddlewares        []a2a.Middleware
 	adkCompatibility          bool
 	structuredTaskErrors      bool
@@ -546,6 +558,17 @@ func WithUserIDHeader(header string) Option {
 		if header != "" {
 			opts.userIDHeader = header
 		}
+	}
+}
+
+// WithUserIDHeaderHMACSecret enables the signed server-to-server identity
+// channel (aranea V-2). When set, a request may prove a non-anonymous
+// UserID header identity by presenting hex(HMAC-SHA256(secret, userID)) in
+// the "<userIDHeader>-Signature" header. Unsigned identities outside the
+// anonymous-cookie namespace keep being dropped.
+func WithUserIDHeaderHMACSecret(secret string) Option {
+	return func(opts *options) {
+		opts.userIDHeaderHMACSecret = strings.TrimSpace(secret)
 	}
 }
 

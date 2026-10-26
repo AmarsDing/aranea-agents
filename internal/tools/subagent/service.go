@@ -125,6 +125,7 @@ func (s *Service) SetTurnContext(sessionID string, r trpcrunner.Runner, provider
 		return
 	}
 	s.mu.Lock()
+	s.sweepTurnCtxLocked(svcNow(s))
 	s.turnCtx[sessionID] = turnRunnerContext{
 		runner: r,
 		attribution: runAttribution{
@@ -133,16 +134,34 @@ func (s *Service) SetTurnContext(sessionID string, r trpcrunner.Runner, provider
 			AgentID:  strings.TrimSpace(agentID),
 			AgentKey: strings.TrimSpace(agentKey),
 		},
+		boundAt: svcNow(s),
 	}
 	s.mu.Unlock()
+}
+
+// sweepTurnCtxLocked drops turn bindings older than turnCtxTTL (V 桶 minor:
+// 无剔除路径导致内存随会话数单调增长）。条目只在 Spawn 瞬间被快照消费，
+// 过期等价于「未绑定」。调用方必须持 s.mu。
+func (s *Service) sweepTurnCtxLocked(now time.Time) {
+	for k, tc := range s.turnCtx {
+		if tc.boundAt.IsZero() || now.Sub(tc.boundAt) > turnCtxTTL {
+			delete(s.turnCtx, k)
+		}
+	}
 }
 
 // turnContextFor resolves the runner/attribution bound to the parent
 // session's current turn, falling back to the construction-time default
 // runner (wire-time nil in prod; test harnesses inject a stub there).
 // Caller must hold s.mu.
+// V 桶 minor：超过 turnCtxTTL 的绑定视为未绑定，惰性剔除后回退默认。
 func (s *Service) turnContextFor(parentSessionID string) turnRunnerContext {
-	tc := s.turnCtx[strings.TrimSpace(parentSessionID)]
+	key := strings.TrimSpace(parentSessionID)
+	tc := s.turnCtx[key]
+	if tc.runner != nil && (tc.boundAt.IsZero() || svcNow(s).Sub(tc.boundAt) > turnCtxTTL) {
+		delete(s.turnCtx, key)
+		tc = turnRunnerContext{}
+	}
 	if tc.runner == nil {
 		tc.runner = s.defaultRunner
 	}

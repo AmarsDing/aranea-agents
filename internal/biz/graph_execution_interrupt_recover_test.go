@@ -100,6 +100,48 @@ func TestConvergeStreamEnd_NoInterruptCheckpointKeepsFailClosed(t *testing.T) {
 	}
 }
 
+// pin④（V-1）：最新 checkpoint 虽为 interrupt 源但与 resume 起点 floor
+// 等值 ⇒ 陈旧证据，保持 fail-closed（failed）；floor 之后新写的 interrupt
+// checkpoint（ID 不同）仍须恢复 waiting_human。
+func TestConvergeStreamEnd_ResumeFloorCheckpointIsStale(t *testing.T) {
+	t.Run("floor-equal checkpoint keeps fail-closed", func(t *testing.T) {
+		exec := convergeInterruptExec("exec-v1-stale", &interruptProbeRuntime{
+			list: GraphCheckpointList{{
+				Ref:    GraphCheckpointRef{LineageID: "lin-1", CheckpointID: "cp-old"},
+				Source: graphCheckpointSourceInterrupt,
+				Step:   3,
+			}},
+		})
+		exec.resumeProbeFloorCkptID = "cp-old"
+		repo := &memGraphRunRepo{runs: map[string]*GraphExecution{exec.ID: exec}}
+		uc := newRecoverTestUsecase(repo, nil, nil, exec.ID)
+
+		uc.convergeStreamEnd(exec, exec.streamGen, exec.ID, exec.GraphID, false, nil)
+
+		if exec.Status != string(GraphExecFailed) {
+			t.Fatalf("status=%q, want failed (stale resume-point interrupt is not new evidence)", exec.Status)
+		}
+	})
+	t.Run("interrupt checkpoint newer than floor still recovers", func(t *testing.T) {
+		exec := convergeInterruptExec("exec-v1-new", &interruptProbeRuntime{
+			list: GraphCheckpointList{{
+				Ref:    GraphCheckpointRef{LineageID: "lin-1", CheckpointID: "cp-new"},
+				Source: graphCheckpointSourceInterrupt,
+				Step:   5,
+			}},
+		})
+		exec.resumeProbeFloorCkptID = "cp-old"
+		repo := &memGraphRunRepo{runs: map[string]*GraphExecution{exec.ID: exec}}
+		uc := newRecoverTestUsecase(repo, nil, nil, exec.ID)
+
+		uc.convergeStreamEnd(exec, exec.streamGen, exec.ID, exec.GraphID, false, nil)
+
+		if exec.Status != string(GraphExecWaitingHuman) {
+			t.Fatalf("status=%q, want waiting_human (interrupt written after resume must recover)", exec.Status)
+		}
+	})
+}
+
 // pin③：字面量锚——biz 侧探针常量必须与 trpc graph 框架写入 checkpoint
 // metadata 的 Source 值一致（executor handleInterrupt PutFull）。
 func TestGraphCheckpointSourceInterruptMatchesFramework(t *testing.T) {

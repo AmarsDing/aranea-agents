@@ -81,6 +81,11 @@ services:
       # WebSocket Origin 放行：Docker 部署下前端可能通过宿主机 IP 或 dev server 访问，
       # 这些 Origin 不在默认 localhost/127.0.0.1 白名单内，必须显式配置。
       KRATOS_HTTP_EXTRA_CORS_ORIGINS: "http://0.0.0.0:9301,http://192.168.0.108:9301,http://192.168.0.108:8810,http://localhost:9301,http://127.0.0.1:9301"
+      # 登录限流 XFF 可信代理白名单（逗号分隔 CIDR/IP）。默认仅回环对端可供给
+      # X-Forwarded-For（同机 frps/Caddy 拓扑开箱即对）。若登录流量经【离机】
+      # frps/反代进入，必须在此登记其出口地址，否则 XFF 被忽略、全站登录限流
+      # 坍缩为代理单桶（暴破即全员锁死）；未配置时启动日志有 Warn 提示。
+      # KRATOS_TRUSTED_PROXY_CIDRS: "10.0.0.0/8,192.168.0.0/16"
       # 产物公开路径映射基址（远程部署）：artifact meta 的 StorageUri 映射为该
       # 基址 + 相对路径，供前端展示「打开所在文件夹」。本地开发留空（不泄露
       # 服务端路径）；108 部署由 install.sh --public-base 注入 UNC 基址，

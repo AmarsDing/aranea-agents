@@ -182,6 +182,25 @@ var (
 	trustedProxyCIDRs []*net.IPNet
 )
 
+// xffTrustedProxyConfigured reports whether the off-host XFF trust allowlist
+// is explicitly configured via KRATOS_TRUSTED_PROXY_CIDRS.
+func xffTrustedProxyConfigured() bool {
+	return strings.TrimSpace(os.Getenv("KRATOS_TRUSTED_PROXY_CIDRS")) != ""
+}
+
+// warnXFFTrustedProxyStartup 在启动期亮出 XFF 信任姿态（V 桶 minor：P0 XFF
+// 可信代理门的默认配置兑现）。KRATOS_TRUSTED_PROXY_CIDRS 未配置时仅回环对端
+// 可供给 X-Forwarded-For——离机 frps/反代拓扑下直连对端非回环，XFF 被忽略，
+// 登录限流按代理出口 IP 坍缩为全站共享单桶（暴破即全员锁死）。文档化拓扑
+// （Caddy/frps 同机回环）不受影响；离机前置须在白名单登记其出口地址。
+func warnXFFTrustedProxyStartup(lg loggateway.Logger) {
+	if lg == nil || xffTrustedProxyConfigured() {
+		return
+	}
+	lg.Warn("KRATOS_TRUSTED_PROXY_CIDRS unset: only loopback peers may supply X-Forwarded-For; off-host frps/reverse-proxy topologies collapse login rate limiting into the proxy single bucket",
+		loggateway.StepID("http.login_ratelimit"))
+}
+
 // parseTrustedProxyCIDRs parses a comma-separated list of CIDRs or IPs.
 func parseTrustedProxyCIDRs(spec string) []*net.IPNet {
 	var out []*net.IPNet
