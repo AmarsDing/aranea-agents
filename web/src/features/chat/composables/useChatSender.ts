@@ -41,7 +41,7 @@ type MessageStore = ReturnType<typeof useChatMessageStore>;
 
 type SendStrategy = {
   resolveSessionId: () => string | undefined;
-  ensureSession: (title: string) => Promise<void>;
+  ensureSession: (title: string) => Promise<void | string>;
   resolveProviderModel: () => { provider: string; model: string };
   buildWsPayload: (
     sessionId: string,
@@ -49,10 +49,29 @@ type SendStrategy = {
     content: string,
     provider: string,
     model: string,
+    options: { dialogMode: string; attachments: ChatAttachment[] },
   ) => WsUpstream;
   ensureStream: (sessionId: string) => WsSessionStream;
   httpFallbackKeys: { agentKey: string | undefined; teamId: string | undefined };
   errorLabel: string;
+};
+
+type SendSnapshot = {
+  entityKind: ChatEntityKind;
+  entityId: string | undefined;
+  sessionId: string | undefined;
+  strategy: SendStrategy;
+  options: {
+    dialogMode: string;
+    provider: string;
+    model: string;
+    capabilities: NonNullable<SenderDeps['selectedProviderModel']['value']>['capabilities'];
+    attachments: ChatAttachment[];
+  };
+  attachmentRows: ChatAttachment[];
+  attachmentRefs: ChatAttachment[];
+  consumeDraft: () => void;
+  onSessionReady?: (sessionId: string | undefined) => void;
 };
 
 export type SenderDeps = {
@@ -78,7 +97,7 @@ export type SenderDeps = {
   ensureChatStream: (sessionId: string) => WsSessionStream;
   ensureTeamStream: (sessionId: string) => WsSessionStream;
   sendChatViaWs: (stream: WsSessionStream, upstream: WsUpstream) => void;
-  onNewSession: (title?: string) => Promise<void>;
+  onNewSession: (title?: string) => Promise<void | string>;
   makeSessionTitle: (content: string) => string;
   refreshRunStatus: () => Promise<void>;
   // 主动对账（watchdog 用）：绕过 WS 权威守卫直接 REST 核对 run 状态。
@@ -89,6 +108,7 @@ export type SenderDeps = {
   submitAwaitingReply: () => Promise<void>;
   submitToolConfirm: (approved: boolean) => Promise<void>;
   refreshPendingMessages?: () => Promise<void>;
+  captureDraft?: () => () => void;
 };
 
 export function useChatSender(deps: SenderDeps) {
@@ -99,6 +119,23 @@ export function useChatSender(deps: SenderDeps) {
   const activityStore = useChatActivityStore();
 
   const sending = ref(false);
+  const submissions = reactive<
+    Array<{
+      entityKind: ChatEntityKind;
+      entityId: string | undefined;
+      sessionId: string | undefined;
+      creating: boolean;
+    }>
+  >([]);
+  const submitting = computed(() =>
+    submissions.some(
+      (command) =>
+        command.entityKind === deps.sessionStore.entityKind &&
+        command.entityId === currentEntityId(command.entityKind) &&
+        (command.creating || command.sessionId === currentSessionId(command.entityKind)),
+    ),
+  );
+  let active = true;
 
   // T1.5: No-Timeout principle — removed sendingTimeout, turnAckTimeout.
   // Tasks run until completion or user cancel. The stall check and first-byte
@@ -305,10 +342,7 @@ export function useChatSender(deps: SenderDeps) {
     }
     if (!backendUp) {
       const msg = import.meta.env.DEV
-        ? t(
-            'chat.backendUnavailableDev',
-            '后端服务不可用，请确认后端已启动',
-          )
+        ? t('chat.backendUnavailableDev', '后端服务不可用，请确认后端已启动')
         : t('chat.backendUnavailable', '后端服务不可用，请重新登录');
       $q.notify({ type: 'negative', message: msg, timeout: import.meta.env.DEV ? 8000 : 0 });
       if (!import.meta.env.DEV) {
@@ -329,10 +363,11 @@ export function useChatSender(deps: SenderDeps) {
 
   const inputDisabled = computed(() => {
     if (isActiveRun()) return false;
-    return sending.value;
+    return sending.value && sendingSessionId === currentSessionId(deps.sessionStore.entityKind);
   });
 
   async function onSend() {
+    if (submitting.value) return;
     const content = deps.inputText.value.trim();
     if (!content) {
       return;
@@ -346,30 +381,48 @@ export function useChatSender(deps: SenderDeps) {
       });
       return;
     }
-    if (!isActiveRun() && sending.value) {
+    if (!isActiveRun() && sending.value && sendingSessionId === currentSessionId(deps.sessionStore.entityKind)) {
       return;
     }
 
-    if (deps.isAwaitingUser.value) {
-      if (deps.awaitKind.value === AWAIT_KIND_TOOL_CONFIRM) {
-        $q.notify({ type: 'info', message: t('chat.toolConfirmUseButtons', '请使用批准或拒绝按钮来确认工具调用') });
+    const command = reactive({
+      entityKind: deps.sessionStore.entityKind,
+      entityId: currentEntityId(deps.sessionStore.entityKind),
+      sessionId: currentSessionId(deps.sessionStore.entityKind),
+      creating: !currentSessionId(deps.sessionStore.entityKind),
+    });
+    submissions.push(command);
+    try {
+      if (deps.isAwaitingUser.value) {
+        if (deps.awaitKind.value === AWAIT_KIND_TOOL_CONFIRM) {
+          $q.notify({ type: 'info', message: t('chat.toolConfirmUseButtons', '请使用批准或拒绝按钮来确认工具调用') });
+          return;
+        }
+        await submitAwaitingReply();
         return;
       }
-      await submitAwaitingReply();
-      return;
-    }
 
-    if (deps.sessionStore.entityKind === 'agent') {
-      await sendAgentMessage(content);
-    } else if (deps.sessionStore.entityKind === 'team' && deps.sessionStore.selectedTeamId) {
-      await sendTeamMessage(content);
-    } else {
-      const reason = !deps.sessionStore.entityKind
-        ? t('chat.noEntitySelected', '请先选择一个 Agent 或团队')
-        : deps.sessionStore.entityKind === 'team'
-          ? t('chat.noTeamSelected', '请先选择一个团队')
-          : t('chat.unsupportedEntity', '不支持的实体类型');
-      $q.notify({ type: 'warning', message: reason });
+      if (
+        deps.sessionStore.entityKind === 'agent' ||
+        (deps.sessionStore.entityKind === 'team' && deps.sessionStore.selectedTeamId)
+      ) {
+        const snapshot = captureSendSnapshot(deps.sessionStore.entityKind, content);
+        snapshot.onSessionReady = (sessionId) => {
+          command.sessionId = sessionId;
+          command.creating = false;
+        };
+        await sendUserContent(deps.sessionStore.entityKind, content, undefined, snapshot);
+      } else {
+        const reason = !deps.sessionStore.entityKind
+          ? t('chat.noEntitySelected', '请先选择一个 Agent 或团队')
+          : deps.sessionStore.entityKind === 'team'
+            ? t('chat.noTeamSelected', '请先选择一个团队')
+            : t('chat.unsupportedEntity', '不支持的实体类型');
+        $q.notify({ type: 'warning', message: reason });
+      }
+    } finally {
+      const index = submissions.indexOf(command);
+      if (index >= 0) submissions.splice(index, 1);
     }
   }
 
@@ -446,35 +499,37 @@ export function useChatSender(deps: SenderDeps) {
     }
   }
 
-  async function enqueueDuringRun(sessionId: string, content: string, pendingUserId: string) {
+  async function enqueueDuringRun(
+    sessionId: string,
+    content: string,
+    pendingUserId: string,
+    snapshot: SendSnapshot,
+  ): Promise<boolean> {
     const runtime = useChatRuntimeStore();
     try {
       const res = await runtime.enqueue(sessionId, content, pendingUserId);
       if (res.accepted) {
         dropPendingUserRow(sessionId, pendingUserId);
-        // T5.3: Clear input only after successful enqueue (matches Path B
-        // onEnqueueWhileRunning behavior). For follow-up sends, input was
-        // intentionally not cleared in sendUserContent so the user can retry
-        // if enqueue fails.
-        deps.inputText.value = '';
+        // The caller consumes the originating draft revision after this ACK.
         $q.notify({
           type: 'positive',
           message: res.queued
             ? t('chat.enqueueQueued', 'Message queued for after the current run')
             : t('chat.enqueueAccepted', 'Message will be injected at the next tool boundary'),
         });
-        await deps.refreshPendingMessages?.();
-        return;
+        if (matchesSnapshot(snapshot)) await deps.refreshPendingMessages?.();
+        return true;
       }
       dropPendingUserRow(sessionId, pendingUserId);
+      if (!matchesSnapshot(snapshot)) return false;
       deps.setRunStatus('idle');
-      await sendUserContent(deps.sessionStore.entityKind, content);
+      await sendUserContent(snapshot.entityKind, content, undefined, snapshot);
     } catch (err: unknown) {
       dropPendingUserRow(sessionId, pendingUserId);
       const errMessage = err instanceof Error ? err.message : '';
-      if (errMessage.includes('CHAT_RUN_ENDED')) {
+      if (errMessage.includes('CHAT_RUN_ENDED') && matchesSnapshot(snapshot)) {
         deps.setRunStatus('idle');
-        await sendUserContent(deps.sessionStore.entityKind, content);
+        await sendUserContent(snapshot.entityKind, content, undefined, snapshot);
       } else if (isChatQueueFullError(err)) {
         $q.notify({ type: 'warning', message: t('chat.enqueueQueueFull', '排队消息已满，请稍后再试') });
       } else {
@@ -484,6 +539,7 @@ export function useChatSender(deps: SenderDeps) {
         });
       }
     }
+    return false;
   }
 
   async function sendViaHttpFallback(
@@ -536,10 +592,11 @@ export function useChatSender(deps: SenderDeps) {
   }
 
   function getAgentStrategy(): SendStrategy {
+    const agentKey = deps.appStore.selectedAgent?.agent_key;
     return {
       resolveSessionId: () => deps.sessionStore.selectedSession?.id,
       ensureSession: async (title) => {
-        if (!deps.sessionStore.selectedSession) await deps.onNewSession(title);
+        if (!deps.sessionStore.selectedSession) return deps.onNewSession(title);
       },
       resolveProviderModel: () => {
         const selectedModel = deps.selectedProviderModel.value;
@@ -552,20 +609,20 @@ export function useChatSender(deps: SenderDeps) {
           selectedModel?.model || deps.sessionStore.selectedSession?.model || deps.appStore.selectedAgent?.model || '';
         return { provider, model };
       },
-      buildWsPayload: (sessionId, pendingUserId, content, provider, model) => ({
+      buildWsPayload: (sessionId, pendingUserId, content, provider, model, options) => ({
         direction: 'client_to_server',
         channel: 'chat',
         type: 'user_message',
         request_id: pendingUserId,
         payload: {
           session_id: sessionId,
-          agent_key: deps.appStore.selectedAgent?.agent_key,
+          agent_key: agentKey,
           content,
           options: {
-            dialog_mode: deps.dialogMode.value,
+            dialog_mode: options.dialogMode,
             provider,
             model,
-            attachments: deps.attachments.value.map((item) => ({ id: item.id })),
+            attachments: options.attachments.map((item) => ({ id: item.id })),
           },
         },
       }),
@@ -576,10 +633,11 @@ export function useChatSender(deps: SenderDeps) {
   }
 
   function getTeamStrategy(): SendStrategy {
+    const teamId = deps.sessionStore.selectedTeamId;
     return {
       resolveSessionId: () => deps.sessionStore.teamSelectedSessionId ?? undefined,
       ensureSession: async (title) => {
-        if (!deps.sessionStore.teamSelectedSessionId) await deps.onNewSession(title);
+        if (!deps.sessionStore.teamSelectedSessionId) return deps.onNewSession(title);
       },
       resolveProviderModel: () => {
         const selectedModel = deps.selectedProviderModel.value;
@@ -591,20 +649,20 @@ export function useChatSender(deps: SenderDeps) {
         const model = selectedModel?.model || session?.model || '';
         return { provider, model };
       },
-      buildWsPayload: (sessionId, pendingUserId, content, provider, model) => ({
+      buildWsPayload: (sessionId, pendingUserId, content, provider, model, options) => ({
         direction: 'client_to_server',
         channel: 'chat',
         type: 'user_message',
         request_id: pendingUserId,
         payload: {
           session_id: sessionId,
-          team_id: deps.sessionStore.selectedTeamId,
+          team_id: teamId,
           content,
           options: {
-            dialog_mode: deps.dialogMode.value,
+            dialog_mode: options.dialogMode,
             provider,
             model,
-            attachments: deps.attachments.value.map((item) => ({ id: item.id })),
+            attachments: options.attachments.map((item) => ({ id: item.id })),
           },
         },
       }),
@@ -614,21 +672,82 @@ export function useChatSender(deps: SenderDeps) {
     };
   }
 
-  async function sendUserContent(entityKind: ChatEntityKind, content: string, reusePendingId?: string) {
+  function currentEntityId(kind: ChatEntityKind): string | undefined {
+    return kind === 'team' ? (deps.sessionStore.selectedTeamId ?? undefined) : deps.appStore.selectedAgent?.id;
+  }
+
+  function currentSessionId(kind: ChatEntityKind): string | undefined {
+    return kind === 'team'
+      ? (deps.sessionStore.teamSelectedSessionId ?? undefined)
+      : deps.sessionStore.selectedSession?.id;
+  }
+
+  function matchesSnapshot(snapshot: SendSnapshot): boolean {
+    return (
+      active &&
+      deps.sessionStore.entityKind === snapshot.entityKind &&
+      currentEntityId(snapshot.entityKind) === snapshot.entityId &&
+      (!snapshot.sessionId || snapshot.strategy.resolveSessionId() === snapshot.sessionId)
+    );
+  }
+
+  function captureSendSnapshot(entityKind: ChatEntityKind, text: string): SendSnapshot {
     const strategy = entityKind === 'team' ? getTeamStrategy() : getAgentStrategy();
+    const draftText = deps.inputText.value;
+    const usesDraft = draftText.trim() === text;
+    const consume = usesDraft ? deps.captureDraft?.() : undefined;
+    const selectedModel = deps.selectedProviderModel.value;
+    const rows = deps.attachments.value;
+    const snapshot: SendSnapshot = {
+      entityKind,
+      entityId: currentEntityId(entityKind),
+      sessionId: strategy.resolveSessionId(),
+      strategy,
+      options: {
+        dialogMode: deps.dialogMode.value,
+        ...strategy.resolveProviderModel(),
+        capabilities: selectedModel?.capabilities ? { ...selectedModel.capabilities } : undefined,
+        attachments: rows.map((item) => ({ ...item })),
+      },
+      attachmentRows: rows,
+      attachmentRefs: [...rows],
+      consumeDraft:
+        consume ??
+        (() => {
+          if (usesDraft && matchesSnapshot(snapshot) && deps.inputText.value === draftText) deps.inputText.value = '';
+        }),
+    };
+    return snapshot;
+  }
+
+  async function sendUserContent(
+    entityKind: ChatEntityKind,
+    content: string,
+    reusePendingId?: string,
+    inheritedSnapshot?: SendSnapshot,
+  ) {
     const text = content.trim();
     if (!text) return;
+    const snapshot = inheritedSnapshot ?? captureSendSnapshot(entityKind, text);
+    const strategy = snapshot.strategy;
+    if (!matchesSnapshot(snapshot)) return;
+    const finishSending = () => {
+      if (active && sendingSessionId === snapshot.sessionId) markSendingDone();
+    };
     const followUp = isActiveRun();
     // S-03: Do not call markSending() before session is resolved — it starts
     // the stall check and dispatch timeout prematurely. The second call below
     // (after ensureSession) is the correct one.
     let clearAttachments = false;
     try {
-      await strategy.ensureSession(deps.makeSessionTitle(text));
-      const sessionId = strategy.resolveSessionId();
+      const createdId = await strategy.ensureSession(deps.makeSessionTitle(text));
+      snapshot.sessionId ??= createdId || strategy.resolveSessionId();
+      snapshot.onSessionReady?.(snapshot.sessionId);
+      if (!matchesSnapshot(snapshot)) return;
+      const sessionId = snapshot.sessionId;
       if (!sessionId) {
         $q.notify({ type: 'negative', message: t('chat.sessionCreateFailed', '未创建会话或会话无效，请重试') });
-        if (!followUp) markSendingDone();
+        if (!followUp) finishSending();
         return;
       }
       // If the session was pre-created (e.g. user clicked "新会话") with the
@@ -654,12 +773,8 @@ export function useChatSender(deps: SenderDeps) {
       const pendingUserId = reusePendingId ?? `pending-user-${randomUUID()}`;
       // T6: placeholder mechanism removed — user messages are now rendered
       // from task activity events via ActivityStream. pendingUserId is kept
-      // only as the WS request_id for idempotency. Input is cleared here for
-      // the primary send path; the follow-up (enqueue) path clears input
-      // after a successful enqueue inside enqueueDuringRun.
-      if (!reusePendingId && !followUp) {
-        deps.inputText.value = '';
-      }
+      // only as the WS request_id for idempotency. Drafts are consumed only
+      // after successful dispatch or the HTTP/queue ACK, never before preflight.
 
       // 真实 task.created 事件到达时，store.upsertTask 会自动清理同 sessionId
       // 下所有 'pending-user-' 开头的乐观 Task。
@@ -676,11 +791,10 @@ export function useChatSender(deps: SenderDeps) {
       };
       activityStore.upsertTask(optimisticTask);
 
-      const { provider, model } = strategy.resolveProviderModel();
-      const selectedModel = deps.selectedProviderModel.value;
+      const { provider, model, capabilities } = snapshot.options;
       const blockReason = shouldBlockAttachmentsForModel(
-        { provider, model, capabilities: selectedModel?.capabilities },
-        deps.attachments.value,
+        { provider, model, capabilities },
+        snapshot.options.attachments,
       );
       if (blockReason) {
         if (blockReason === 'ATTACHMENT_UNSUPPORTED') {
@@ -691,25 +805,37 @@ export function useChatSender(deps: SenderDeps) {
         } else {
           notifyUnsupportedImageModel();
         }
-        if (!reusePendingId) dropPendingUserRow(sessionId, pendingUserId);
-        if (!followUp) markSendingDone();
+        if (!reusePendingId) {
+          dropPendingUserRow(sessionId, pendingUserId);
+          activityStore.removeTask(pendingUserId);
+        }
+        if (!followUp) finishSending();
         return;
       }
 
       if (!(await checkBackendAvailability())) {
         markPendingUserFailed(sessionId, pendingUserId, t('chat.sendFailedBackend', '后端不可用'));
-        if (!followUp) markSendingDone();
+        if (!followUp) finishSending();
+        return;
+      }
+
+      if (!matchesSnapshot(snapshot)) {
+        if (!reusePendingId) activityStore.removeTask(pendingUserId);
+        finishSending();
         return;
       }
 
       if (followUp) {
-        await enqueueDuringRun(sessionId, text, pendingUserId);
+        clearAttachments = await enqueueDuringRun(sessionId, text, pendingUserId, snapshot);
         return;
       }
 
       try {
         const stream = strategy.ensureStream(sessionId);
-        deps.sendChatViaWs(stream, strategy.buildWsPayload(sessionId, pendingUserId, text, provider, model));
+        deps.sendChatViaWs(
+          stream,
+          strategy.buildWsPayload(sessionId, pendingUserId, text, provider, model, snapshot.options),
+        );
         // T1.5: No turn-ack timeout — the backend processes the message and
         // sends run.status=running as an early ack. If it fails, an error
         // event arrives. No client-side timeout marks the message as failed.
@@ -726,10 +852,10 @@ export function useChatSender(deps: SenderDeps) {
             strategy.httpFallbackKeys.agentKey,
             strategy.httpFallbackKeys.teamId,
             {
-              dialogMode: deps.dialogMode.value,
+              dialogMode: snapshot.options.dialogMode,
               provider,
               model,
-              attachments: deps.attachments.value,
+              attachments: snapshot.options.attachments,
             },
             pendingUserId,
           );
@@ -737,7 +863,7 @@ export function useChatSender(deps: SenderDeps) {
           // The WS data channel pushes the persisted message and subsequent
           // streaming/state events. markSendingDone so the sending state
           // doesn't stay true; the WS data channel will deliver the message.
-          if (!followUp) markSendingDone();
+          if (!followUp) finishSending();
           clearAttachments = true;
           // E2E-P1-07: Keep the optimistic task. HTTP ACK is not a delivery
           // guarantee for task.created, and WS replay was removed. Reconcile
@@ -746,7 +872,7 @@ export function useChatSender(deps: SenderDeps) {
           void activityStore.fetchSessionHistory(sessionId).catch(() => undefined);
         } catch {
           markPendingUserFailed(sessionId, pendingUserId, t('chat.sendFailedRetry', '发送失败，请点击重试'));
-          if (!followUp) markSendingDone();
+          if (!followUp) finishSending();
         }
       }
     } catch (error) {
@@ -757,21 +883,21 @@ export function useChatSender(deps: SenderDeps) {
           type: 'negative',
           message: error instanceof Error ? error.message : strategy.errorLabel,
         });
-        if (!followUp) markSendingDone();
+        if (!followUp) finishSending();
       }
     } finally {
       if (clearAttachments) {
-        deps.attachments.value = [];
+        snapshot.consumeDraft();
+        const consumed = new Set(snapshot.attachmentRefs);
+        for (let index = snapshot.attachmentRows.length - 1; index >= 0; index--) {
+          if (consumed.has(snapshot.attachmentRows[index]!)) snapshot.attachmentRows.splice(index, 1);
+        }
       }
     }
   }
 
   async function sendAgentUserContent(content: string, reusePendingId?: string) {
     await sendUserContent('agent', content, reusePendingId);
-  }
-
-  async function sendAgentMessage(content: string) {
-    await sendAgentUserContent(content);
   }
 
   async function sendTeamMessage(content: string, reusePendingId?: string) {
@@ -781,11 +907,15 @@ export function useChatSender(deps: SenderDeps) {
   // 组件销毁路径：挂起的孤儿对账定时器随作用域回收清理（单测在组件外调用，
   // onScopeDispose 需作用域守卫）。
   if (getCurrentScope()) {
-    onScopeDispose(clearOrphanReconcileTimer);
+    onScopeDispose(() => {
+      active = false;
+      clearOrphanReconcileTimer();
+    });
   }
 
   return {
     sending,
+    submitting,
     inputDisabled,
     markSending,
     markSendingDone,
@@ -799,6 +929,8 @@ export function useChatSender(deps: SenderDeps) {
     sendTeamMessage,
     retryFailedMessage,
     touchRunActivity,
+    // U-1 双流隔离：终态帧/send_failed 复位 sending 前按它比对帧来源会话。
+    sendingSessionId: () => sendingSessionId,
     clearFailedPendingForSession,
     failedPendingIds,
   };

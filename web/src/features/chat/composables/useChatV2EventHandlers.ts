@@ -35,6 +35,8 @@ export function useChatV2EventHandlers(deps: {
     onRunAccepted: () => void;
     onFirstByteArrived: () => void;
     touchRunActivity: (eventSessionId?: string) => void;
+    /** 当前发送会话 id（U-1 双流隔离）：终态帧/send_failed 只复位本会话发送态 */
+    sendingSessionId: () => string | undefined;
   };
   followUp: { onRunStatusV2: (payload: RunStatusEventPayload) => void };
   applyFromV2RunStatus: (payload: RunStatusEventPayload) => void;
@@ -86,7 +88,7 @@ export function useChatV2EventHandlers(deps: {
       return;
     }
     if (envelope.kind === 'system.run_status') {
-      handleV2RunStatus(envelope.payload as RunStatusEventPayload);
+      handleV2RunStatus(envelope.payload as RunStatusEventPayload, envelope.session_id);
       return;
     }
     if (envelope.kind === 'system.heartbeat') {
@@ -138,10 +140,23 @@ export function useChatV2EventHandlers(deps: {
     // sending so the composer does not stay stuck on "停止生成".
     if (
       (envelope.kind === 'task.completed' || envelope.kind === 'task.failed' || envelope.kind === 'task.cancelled') &&
-      deps.sender.sending.value
+      deps.sender.sending.value &&
+      isSendingSessionFrame(envelope.session_id)
     ) {
       deps.sender.markSendingDone();
     }
+  }
+
+  /**
+   * U-1 双流隔离：chat 流 + team 流双连接是 spirit 面板常驻拓扑，异会话的
+   * 终态/send_failed 帧不得掐灭本会话发送态（90s 对账 watchdog 同死）。
+   * 帧无 session_id（旧服务端）或无在途发送会话时保持宽松复位（兼容路径）。
+   */
+  function isSendingSessionFrame(frameSessionId?: string): boolean {
+    const frameSid = String(frameSessionId ?? '').trim();
+    const sendingSid = String(deps.sender.sendingSessionId() ?? '').trim();
+    if (!frameSid || !sendingSid) return true;
+    return frameSid === sendingSid;
   }
 
   /**
@@ -242,8 +257,17 @@ export function useChatV2EventHandlers(deps: {
     // 吞掉此 notice——ACK 后失败无声消失。复位 sending 门 + 固定文案负向
     // toast（meta.message 为后端原始错误串，不渲染进 UI 防内部细节外泄）。
     if (noticeType === 'send_failed') {
-      if (deps.sender.sending.value) {
+      // U-1：send_failed 同属终态复位帧，按发送会话关联（异会话流不得掐灭
+      // 本会话发送态）。
+      if (deps.sender.sending.value && isSendingSessionFrame(sessionId)) {
         deps.sender.markSendingDone();
+      }
+      // U-3：HTTP 异步路径没有 WS 路径的合成 failed task 清扫——按
+      // meta.request_id（客户端幂等键，pending-user-<uuid> 约定）移除乐观
+      // Task 卡，否则幽灵卡永悬、重发产生第二张卡。
+      const failedRequestId = String(meta.request_id ?? '').trim();
+      if (failedRequestId) {
+        activityStore.removeTask(failedRequestId);
       }
       deps.contextualLoading.clearMessage();
       Notify.create({ type: 'negative', message: t('chat.sendFailed', '发送失败，请重试'), position: 'top' });
@@ -254,8 +278,12 @@ export function useChatV2EventHandlers(deps: {
 
   /**
    * Route v2 system.run_status events to side-effects without AF conversion.
+   * U-2：双流拓扑（chat 流 + team 流常驻）下异会话 run_status 帧不得改写
+   * 本会话 composer/run 状态——异会话 running 帧曾把空闲会话 composer 顶成
+   * 运行态、Enter 降级为 enqueue。envelope.session_id 与选中会话不符时仅做
+   * MemberSession 补丁（按 chat_session_id 精确寻址），跳过其余侧效应。
    */
-  function handleV2RunStatus(payload: RunStatusEventPayload) {
+  function handleV2RunStatus(payload: RunStatusEventPayload, envelopeSessionId?: string) {
     // Patch MemberSession card when pause/resume publishes chat_session_id
     // (MemberSessionUpdatedEvent is the primary path; this covers race/late WS).
     // D9-20：走专用状态补丁（终态汇点、免伪造 Version）——旧 upsertMemberSession
@@ -267,6 +295,8 @@ export function useChatV2EventHandlers(deps: {
     }
     const sid = deps.selectedSessionId();
     if (!sid) return;
+    const envSid = String(envelopeSessionId ?? '').trim();
+    if (envSid && envSid !== sid) return;
     // E2E-B4：member pause/resume 帧搭载 spirit root envelope、携带 member
     // 自己的 runID。补完 member 卡后必须就此打住——若继续进 root 追踪器，
     // 异 runID 会让 R2 跨 runId 保守裁决拒掉 root 之后全部新运行帧，

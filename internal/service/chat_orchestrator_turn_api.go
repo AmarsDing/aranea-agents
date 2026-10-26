@@ -158,6 +158,11 @@ func (o *ChatOrchestrator) submitChatMessageAsync(ctx context.Context, req *chat
 			if bus := o.td().Pipeline.EventBus; bus != nil {
 				bus.Publish(context.Background(), biz.NewSystemNoticeEvent(sessionID, "send_failed", err.Error(), map[string]any{
 					"error_type": "send_failed",
+					// U-3：携带客户端幂等键（pending-user-<uuid> 约定），前端
+					// 据此移除乐观 Task 卡——HTTP 异步路径没有 WS 路径的合成
+					// failed task 清扫，缺它幽灵卡永悬。旧客户端为空串，前端
+					// trim 后跳过。
+					"request_id": strings.TrimSpace(input.RequestID),
 				}))
 			}
 		}
