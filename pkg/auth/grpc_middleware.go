@@ -15,11 +15,10 @@ import (
 // EP-SEC-04: gRPC was previously unauthenticated.  This middleware:
 //  1. In dev/bypass mode → injects DevBypassPrincipal (same as HTTP bypass).
 //  2. Bearer token present in gRPC metadata (key "authorization") → validates JWT.
-//  3. No token → allows the request through with a warning (gRPC is internal-only;
-//     enforce via network policy until M2 adds mTLS or service-account tokens).
-//
-// At M2 this function should be tightened to reject unauthenticated requests in
-// production by checking DEPLOY_ENV.
+//  3. No token → allowed only in dev/test/CI (network-internal posture);
+//     any other deployment (DEPLOY_ENV set to a non-dev value) rejects with
+//     ErrUnauthorized, closing the S-2 hole where default_user context made
+//     the HTTP-side assertSessionAccess gates inert on the gRPC surface.
 func GRPCMiddleware(lg loggateway.Logger) middleware.Middleware {
 	if lg == nil {
 		lg = loggateway.NewNoop()
@@ -35,6 +34,12 @@ func GRPCMiddleware(lg loggateway.Logger) middleware.Middleware {
 
 			token := grpcBearerToken(ctx)
 			if token == "" {
+				if !isDevOrTestEnv() {
+					lg.Warn("gRPC request without credentials rejected",
+						loggateway.StepID("grpc.unauthenticated_rejected"))
+					emitGRPCUnauthenticated(ctx)
+					return nil, ErrUnauthorized
+				}
 				lg.Info("gRPC request without credentials (internal-only)",
 					loggateway.StepID("grpc.unauthenticated"))
 				emitGRPCUnauthenticated(ctx)

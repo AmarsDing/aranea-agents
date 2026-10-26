@@ -303,3 +303,23 @@ func (cs *connStore) forEachConnForSession(sessionID string, fn func(wc *wsConn)
 		}
 	}
 }
+
+// forEachConnForSessionSplit is like forEachConnForSession but hands session
+// connections to fnSession and global monitor (session_id=*) connections to
+// fnGlobal separately, so callers can degrade the payload for the global
+// audience (S-7).
+func (cs *connStore) forEachConnForSessionSplit(sessionID string, fnSession, fnGlobal func(wc *wsConn)) {
+	cs.mu.RLock()
+	defer cs.mu.RUnlock()
+	for _, wc := range cs.conns[sessionID] {
+		fnSession(wc)
+	}
+	if sessionID == "*" {
+		return
+	}
+	for _, wc := range cs.conns["*"] {
+		if wc != nil && !wc.probeMode {
+			fnGlobal(wc)
+		}
+	}
+}

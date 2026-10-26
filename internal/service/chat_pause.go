@@ -28,6 +28,11 @@ func (s *ChatService) PauseSession(ctx context.Context, req *chatv1.PauseSession
 	if sessionID == "" {
 		return nil, apierror.BadRequest(apierror.DomainChat, "session_id is required")
 	}
+	// S-3: ownership gate — Pause rewrites control-plane state (run cancel +
+	// status publish) and must not be reachable cross-user.
+	if err := s.assertSessionAccess(ctx, sessionID); err != nil {
+		return nil, err
+	}
 	if s.orch == nil {
 		return nil, apierror.Internal(apierror.DomainChat, "orchestrator not configured")
 	}
@@ -72,11 +77,24 @@ func (s *ChatService) ResumeSession(ctx context.Context, req *chatv1.ResumeSessi
 	if sessionID == "" {
 		return nil, apierror.BadRequest(apierror.DomainChat, "session_id is required")
 	}
+	// S-3: ownership gate — Resume flips control-plane state back to running.
+	if err := s.assertSessionAccess(ctx, sessionID); err != nil {
+		return nil, err
+	}
 	if s.orch == nil {
 		return nil, apierror.Internal(apierror.DomainChat, "orchestrator not configured")
 	}
 
 	runID, status, _, _, ok := s.orch.GetRunStatus(ctx, sessionID)
+	if !ok {
+		// S-3 restart fallback: the in-memory registry is empty after a
+		// process restart while "paused" was persisted to session state.
+		// Hydrate it so Resume does not 409-deadlock a paused session;
+		// publishPauseResumeStatus below reseeds the registry.
+		if st, found := s.orch.hydrateRunStatusFromSession(ctx, sessionID); found {
+			runID, status, ok = st.RunID, st.Status, true
+		}
+	}
 	if !ok {
 		return nil, apierror.Conflict(apierror.DomainChat, "session %s has no run to resume", sessionID)
 	}

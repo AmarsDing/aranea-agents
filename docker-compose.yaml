@@ -106,7 +106,7 @@ services:
         condition: service_healthy
     ports:
       - "8810:8810"   # HTTP（TwinMonitor voice / 前端 dev 代理 / 监控探测入口）
-      - "9910:9910"   # gRPC
+      - "127.0.0.1:9910:9910"   # gRPC（仅回环发布，S-2；gRPC 面长期需 mTLS/服务账号）
       - "8812:8812"   # WebSocket
     extra_hosts:
       # 容器→宿主机回环（host 侧 Ollama embedding、TwinMonitor webhook 回调等）

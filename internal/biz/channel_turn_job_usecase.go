@@ -45,6 +45,19 @@ func (u *ChannelTurnJobUsecase) ListFiltered(ctx context.Context, q ChannelTurnJ
 	return u.jobs.ListFiltered(ctx, q)
 }
 
+// GetByID resolves a single job (S-4: CancelChatBackgroundJob gates ownership
+// on the job's session before invoking Cancel).
+func (u *ChannelTurnJobUsecase) GetByID(ctx context.Context, id string) (ChannelTurnJob, error) {
+	if u == nil || u.jobs == nil {
+		return ChannelTurnJob{}, errChannelTurnJobNotInit
+	}
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return ChannelTurnJob{}, apierror.BadRequest("CHANNEL_TURN_JOB", "id is required")
+	}
+	return u.jobs.GetByID(ctx, id)
+}
+
 func (u *ChannelTurnJobUsecase) CreateAccepted(ctx context.Context, job ChannelTurnJob) (string, error) {
 	if u == nil || u.jobs == nil {
 		return "", errChannelTurnJobNotInit

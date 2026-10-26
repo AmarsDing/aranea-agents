@@ -10,9 +10,6 @@ import (
 )
 
 func (s *ChatService) SubmitMessageFeedback(ctx context.Context, req *chatv1.SubmitMessageFeedbackRequest) (*chatv1.SubmitMessageFeedbackResponse, error) {
-	if s == nil || s.orch == nil || s.orch.td().Sessions == nil {
-		return nil, apierror.Internal(apierror.DomainChat, "session store unavailable")
-	}
 	sessionID := strings.TrimSpace(req.GetSessionId())
 	messageID := strings.TrimSpace(req.GetMessageId())
 	rating := strings.TrimSpace(strings.ToLower(req.GetRating()))
@@ -22,6 +19,14 @@ func (s *ChatService) SubmitMessageFeedback(ctx context.Context, req *chatv1.Sub
 	}
 	if rating != "positive" && rating != "negative" {
 		return nil, apierror.BadRequest(apierror.DomainChat, "rating must be positive or negative")
+	}
+	// S-6: ownership gate — feedback writes cross-user and publishes a
+	// user_feedback notice into the session's WS stream.
+	if err := s.assertSessionAccess(ctx, sessionID); err != nil {
+		return nil, err
+	}
+	if s == nil || s.orch == nil || s.orch.td().Sessions == nil {
+		return nil, apierror.Internal(apierror.DomainChat, "session store unavailable")
 	}
 	if err := s.orch.td().Sessions.UpdateMessageFeedback(ctx, sessionID, messageID, rating, comment); err != nil {
 		return nil, err

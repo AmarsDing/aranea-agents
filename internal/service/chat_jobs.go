@@ -27,6 +27,15 @@ func (s *ChatService) ListChatBackgroundJobs(ctx context.Context, req *chatv1.Li
 	if q.SessionID == "" && q.AgentID == "" {
 		return nil, apierror.BadRequest(apierror.DomainChatJobs, "session_id or agent_id is required")
 	}
+	// S-5: ownership gate. Session-scoped queries are rejected upfront for
+	// foreign sessions; agent-scoped queries are post-filtered row by row
+	// (ChatService has no agent→workspace mapping, so each row's session is
+	// the authority) so ContentPreview/ErrorMessage cannot cross tenants.
+	if q.SessionID != "" {
+		if err := s.assertSessionAccess(ctx, q.SessionID); err != nil {
+			return nil, err
+		}
+	}
 
 	out := make([]*chatv1.ChatBackgroundJob, 0)
 	if s != nil && s.orch.chJobs().SessionRuns != nil {
@@ -53,7 +62,30 @@ func (s *ChatService) ListChatBackgroundJobs(ctx context.Context, req *chatv1.Li
 			out = append(out, bizTurnJobToChatBackgroundJob(j))
 		}
 	}
+	if q.SessionID == "" {
+		out = s.filterChatBackgroundJobsBySessionAccess(ctx, out)
+	}
 	return &chatv1.ListChatBackgroundJobsResponse{Items: out}, nil
+}
+
+// filterChatBackgroundJobsBySessionAccess drops rows whose session the caller
+// may not access (S-5 agent-scoped path). assertSessionAccess already returns
+// nil for default_user/system contexts, so internal callers are unaffected.
+func (s *ChatService) filterChatBackgroundJobsBySessionAccess(ctx context.Context, items []*chatv1.ChatBackgroundJob) []*chatv1.ChatBackgroundJob {
+	if s == nil || len(items) == 0 {
+		return items
+	}
+	kept := items[:0]
+	for _, it := range items {
+		if it == nil {
+			continue
+		}
+		if err := s.assertSessionAccess(ctx, strings.TrimSpace(it.GetSessionId())); err != nil {
+			continue
+		}
+		kept = append(kept, it)
+	}
+	return kept
 }
 
 func sessionRunToChatBackgroundJob(r biz.SessionRun) *chatv1.ChatBackgroundJob {
@@ -127,6 +159,10 @@ func (s *ChatService) CancelChatBackgroundJob(ctx context.Context, req *chatv1.C
 		if err != nil {
 			return nil, apierror.NotFound(apierror.DomainChatJobs, "session run %s not found", id)
 		}
+		// S-4: ownership gate — cancel by ID must not cross users.
+		if err := s.assertSessionAccess(ctx, run.SessionID); err != nil {
+			return nil, err
+		}
 		// Only allow cancelling active runs
 		if run.FinishedAt != "" {
 			return &chatv1.CancelChatBackgroundJobResponse{Cancelled: false}, nil
@@ -140,6 +176,14 @@ func (s *ChatService) CancelChatBackgroundJob(ctx context.Context, req *chatv1.C
 	case "channel":
 		if s == nil || s.orch.chJobs().TurnJobs == nil {
 			return nil, apierror.NotFound(apierror.DomainChatJobs, "turn job service not available")
+		}
+		// S-4: resolve the job's session and gate ownership before cancelling.
+		job, err := s.orch.chJobs().TurnJobs.GetByID(ctx, id)
+		if err != nil {
+			return nil, apierror.NotFound(apierror.DomainChatJobs, "channel turn job %s not found", id)
+		}
+		if err := s.assertSessionAccess(ctx, job.SessionID); err != nil {
+			return nil, err
 		}
 		if err := s.orch.chJobs().TurnJobs.Cancel(ctx, id); err != nil {
 			s.lg.Warn("cancel turn job failed", loggateway.Err(err))

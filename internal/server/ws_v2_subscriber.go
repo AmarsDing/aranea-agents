@@ -165,31 +165,129 @@ type wsEnvelope struct {
 // the given session. Implements WSMessageBroadcaster for *WSServer.
 //
 // Non-terminal / system messages use the normal lane (DropNewest under load).
+// Global monitor connections (session_id=*) receive a content-degraded frame
+// (S-7): payload content fields are stripped, only ids/status/seq remain.
 func (s *WSServer) BroadcastToSession(sessionID string, msg []byte) {
 	if s == nil || s.store == nil {
 		return
 	}
-	s.store.forEachConnForSession(sessionID, func(wc *wsConn) {
-		wc.queues.enqueueSystem(msg)
-		wc.wakeWriter()
-	})
+	var globalMsg []byte
+	if sessionID != "*" && s.store.countGlobalMonitorConns() > 0 {
+		globalMsg = redactGlobalMonitorFrame(msg)
+	}
+	s.store.forEachConnForSessionSplit(sessionID,
+		func(wc *wsConn) {
+			wc.queues.enqueueSystem(msg)
+			wc.wakeWriter()
+		},
+		func(wc *wsConn) {
+			if globalMsg == nil {
+				return
+			}
+			wc.queues.enqueueSystem(globalMsg)
+			wc.wakeWriter()
+		},
+	)
 }
 
 // BroadcastCriticalToSession delivers terminal lifecycle events on the high
 // priority lane (BlockUpTo). If the high queue still times out, the connection
 // is closed so the client reconnects and hydrates authoritative state (B-06).
+// Global monitor connections receive the degraded frame (S-7).
 func (s *WSServer) BroadcastCriticalToSession(sessionID string, msg []byte) {
 	if s == nil || s.store == nil {
 		return
 	}
 	cfg := s.wsConfig()
-	s.store.forEachConnForSession(sessionID, func(wc *wsConn) {
-		if ok := wc.queues.enqueue(cfg, wsPriorityHigh, msg); !ok {
-			s.lg.With(loggateway.SessionID(sessionID)).Warn("WebSocket 高优先级队列超时，关闭连接",
-				loggateway.StepID("ws.critical_queue_timeout"))
-			wc.closeSend()
-			return
+	var globalMsg []byte
+	if sessionID != "*" && s.store.countGlobalMonitorConns() > 0 {
+		globalMsg = redactGlobalMonitorFrame(msg)
+	}
+	s.store.forEachConnForSessionSplit(sessionID,
+		func(wc *wsConn) {
+			if ok := wc.queues.enqueue(cfg, wsPriorityHigh, msg); !ok {
+				s.lg.With(loggateway.SessionID(sessionID)).Warn("WebSocket 高优先级队列超时，关闭连接",
+					loggateway.StepID("ws.critical_queue_timeout"))
+				wc.closeSend()
+				return
+			}
+			wc.wakeWriter()
+		},
+		func(wc *wsConn) {
+			if globalMsg == nil {
+				return
+			}
+			if ok := wc.queues.enqueue(cfg, wsPriorityHigh, globalMsg); !ok {
+				s.lg.With(loggateway.SessionID(sessionID)).Warn("WebSocket 高优先级队列超时，关闭连接",
+					loggateway.StepID("ws.critical_queue_timeout"))
+				wc.closeSend()
+				return
+			}
+			wc.wakeWriter()
+		},
+	)
+}
+
+// globalMonitorDenylist lists payload field names that carry user-authored or
+// model-generated free text. Frames fanned out to global monitor connections
+// (session_id=*, admin JWT) must not expose these fields (S-7): the global
+// audience is workspace-wide, so content stays on the per-session lane.
+var globalMonitorDenylist = map[string]struct{}{
+	"UserMessage": {}, // task user text
+	"Content":     {}, // step / streaming chunk content
+	"Reasoning":   {}, // step reasoning
+	"ToolArgs":    {}, // tool call arguments
+	"ToolResult":  {}, // tool result payload
+	"Output":      {}, // member report / plan step output
+	"Error":       {}, // error strings can echo user content
+	"Message":     {}, // heartbeat / notice / error message text
+	"Description": {}, // plan step description
+	"Label":       {}, // plan/graph node label
+}
+
+// redactGlobalMonitorFrame parses a marshaled wsEnvelope, strips denylisted
+// content keys from the payload (recursively), and re-marshals. Returns nil
+// when the frame cannot be safely processed — callers must then skip the
+// global fanout (fail closed for unknown shapes).
+func redactGlobalMonitorFrame(msg []byte) []byte {
+	var env map[string]json.RawMessage
+	if err := json.Unmarshal(msg, &env); err != nil {
+		return nil
+	}
+	rawPayload, ok := env["payload"]
+	if !ok || len(rawPayload) == 0 {
+		return msg
+	}
+	var payload any
+	if err := json.Unmarshal(rawPayload, &payload); err != nil {
+		return nil
+	}
+	redactJSONValue(payload)
+	out, err := json.Marshal(payload)
+	if err != nil {
+		return nil
+	}
+	env["payload"] = json.RawMessage(out)
+	full, err := json.Marshal(env)
+	if err != nil {
+		return nil
+	}
+	return full
+}
+
+func redactJSONValue(v any) {
+	switch t := v.(type) {
+	case map[string]any:
+		for k, child := range t {
+			if _, deny := globalMonitorDenylist[k]; deny {
+				delete(t, k)
+				continue
+			}
+			redactJSONValue(child)
 		}
-		wc.wakeWriter()
-	})
+	case []any:
+		for _, child := range t {
+			redactJSONValue(child)
+		}
+	}
 }

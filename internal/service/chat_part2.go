@@ -91,6 +91,11 @@ func (s *ChatService) AwaitUserReply(ctx context.Context, req *chatv1.AwaitUserR
 	if reply == "" {
 		return nil, apierror.BadRequest(apierror.DomainChat, "reply is required")
 	}
+	// S-1: ownership gate — without this any caller could inject a forged
+	// reply into another user's awaiting run (pending-message injection class).
+	if err := s.assertSessionAccess(ctx, sessionID); err != nil {
+		return nil, err
+	}
 	runID := ""
 	if req.RunId != nil {
 		runID = strings.TrimSpace(*req.RunId)
