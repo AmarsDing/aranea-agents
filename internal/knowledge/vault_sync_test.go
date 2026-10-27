@@ -1488,3 +1488,126 @@ func TestVaultSyncApplier_UpsertSkipsEmbedWhileCircuitOpen(t *testing.T) {
 // 无漂移：记录现有块切片头地址，收敛后必须未被替换。
 
 // 空内容文档合法 0 块，不得被误报为漂移（二次收敛仍无副作用即通过）。
+
+// ── G-38 W9：收口 W3 挂账——content_hash 空白度口径 + markError 保账 ────────────
+
+// 挂账 #D1：旧 status 口径在「indexed→error(re-ingest 败)→重试」序列双倍计数。
+// 修复后 docDelta 唯看 content_hash 空白度（与 sourcesync applier #D1 同宗同策）：
+// 重试时 content_hash 已非空（此前已成功提交）⇒ docDelta=0。
+func TestVaultSyncApplier_ErrorResidualReingest_NoDoubleCount(t *testing.T) {
+	root := t.TempDir()
+	body := testVaultMD
+	writeVaultFile(t, root, "a.md", body)
+
+	repo := newVaultSyncMemRepo()
+	vault := bizknowledge.Collection{ID: "col1", RootPath: root, SyncState: "active"}
+	repo.collections[vault.ID] = vault
+
+	applier := newTestApplier(repo, nil)
+
+	// R1：正常 indexed 提交。
+	if err := applier.ApplyEvents(context.Background(), vault, []bizknowledge.ChangeEvent{createdEvent("a.md", body)}); err != nil {
+		t.Fatalf("R1 apply: %v", err)
+	}
+	col := repo.collections[vault.ID]
+	if col.DocumentCount != 1 {
+		t.Fatalf("R1 collection DocumentCount = %d, want 1", col.DocumentCount)
+	}
+	// 取出 doc ID 与 chunk 账目基线。
+	var docID string
+	for id := range repo.documents {
+		docID = id
+	}
+	baseChunks := repo.collections[vault.ID].ChunkCount
+
+	// R2：改文件触发 modified，buildChunks 注入 InsertChunks 失败 → markError(error)。
+	// content_hash 已落库（R1 成功），本轮 status 走 error 残态。
+	body2 := body + "\n\n追加一行触发 modified。\n"
+	writeVaultFile(t, root, "a.md", body2)
+	repo.failInsertChunks = 1
+	if err := applier.ApplyEvents(context.Background(), vault, []bizknowledge.ChangeEvent{
+		{Type: bizknowledge.ChangeModified, RelPath: "a.md", Snapshot: bizknowledge.FileSnapshot{
+			RelPath: "a.md", Size: int64(len(body2)), Hash: bizknowledge.HashContent(body2),
+		}},
+	}); err == nil {
+		t.Fatal("R2 注入 InsertChunks 失败必须回传 error")
+	}
+	docAfterR2 := repo.documents[docID]
+	if docAfterR2.Status != "error" {
+		t.Errorf("R2 后 Status = %q, want error", docAfterR2.Status)
+	}
+	if docAfterR2.ContentHash == "" {
+		t.Error("R2 后 content_hash 必须保持 R1 落库值（残态不清 hash）")
+	}
+
+	// R3：恢复（InsertChunks 恢复成功），按旧 status 口径会再计 1（双倍）；
+	// 修复后 content_hash 非空 ⇒ docDelta=0，集合计数只补 chunk 差值不涨 doc。
+	if err := applier.ApplyEvents(context.Background(), vault, []bizknowledge.ChangeEvent{
+		{Type: bizknowledge.ChangeModified, RelPath: "a.md", Snapshot: bizknowledge.FileSnapshot{
+			RelPath: "a.md", Size: int64(len(body2)), Hash: bizknowledge.HashContent(body2),
+		}},
+	}); err != nil {
+		t.Fatalf("R3 apply: %v", err)
+	}
+	finalCol := repo.collections[vault.ID]
+	if finalCol.DocumentCount != 1 {
+		t.Errorf("R3 后 DocumentCount = %d, want 1（error 残态重试不得重复计 doc）", finalCol.DocumentCount)
+	}
+	finalDoc := repo.documents[docID]
+	if finalDoc.Status != "indexed" {
+		t.Errorf("R3 后 Status = %q, want indexed", finalDoc.Status)
+	}
+	// chunk 账目 = 新 chunk 数（R3 提交成功后 chunk_count 列被覆盖写为 childCount；
+	// 集合 chunk 差值 = childCount - prevChunkCount，prev 是 R2 error 残态保留的旧值）。
+	if finalDoc.ChunkCount == 0 {
+		t.Error("R3 后 ChunkCount 必须非零（chunks 重建成功）")
+	}
+	_ = baseChunks // baseChunks 用于人读对照——集合 chunk 账目随 R3 自然对齐。
+}
+
+// 挂账 #D2：旧 markError 调用传 chunkCount=0，PG UpdateDocumentStatus 无条件写
+// chunk_count 列会把既有 chunk 账目清零漂移。修复后传 doc.ChunkCount（残态前值）。
+func TestVaultSyncApplier_MarkErrorPreservesChunkCount(t *testing.T) {
+	root := t.TempDir()
+	writeVaultFile(t, root, "a.md", testVaultMD)
+
+	repo := newVaultSyncMemRepo()
+	vault := bizknowledge.Collection{ID: "col1", RootPath: root, SyncState: "active"}
+	repo.collections[vault.ID] = vault
+
+	applier := newTestApplier(repo, nil)
+
+	// R1：成功 indexed，doc.ChunkCount = N > 0。
+	if err := applier.ApplyEvents(context.Background(), vault, []bizknowledge.ChangeEvent{createdEvent("a.md", testVaultMD)}); err != nil {
+		t.Fatalf("R1 apply: %v", err)
+	}
+	var docID string
+	for id := range repo.documents {
+		docID = id
+	}
+	prevChunkCount := repo.documents[docID].ChunkCount
+	if prevChunkCount == 0 {
+		t.Fatalf("R1 后 ChunkCount 必须 > 0, got %d", prevChunkCount)
+	}
+
+	// R2：modified + 注入 InsertChunks 失败 → markError。
+	// 钉：UpdateDocumentStatus 收到的 cc 必须是 R1 的 prevChunkCount（非 0）。
+	body2 := testVaultMD + "\n追加内容触发 modified。\n"
+	writeVaultFile(t, root, "a.md", body2)
+	repo.failInsertChunks = 1
+	if err := applier.ApplyEvents(context.Background(), vault, []bizknowledge.ChangeEvent{
+		{Type: bizknowledge.ChangeModified, RelPath: "a.md", Snapshot: bizknowledge.FileSnapshot{
+			RelPath: "a.md", Size: int64(len(body2)), Hash: bizknowledge.HashContent(body2),
+		}},
+	}); err == nil {
+		t.Fatal("R2 注入失败必须回传 error")
+	}
+	docAfterR2 := repo.documents[docID]
+	if docAfterR2.Status != "error" {
+		t.Errorf("R2 后 Status = %q, want error", docAfterR2.Status)
+	}
+	if docAfterR2.ChunkCount != prevChunkCount {
+		t.Errorf("R2 后 ChunkCount = %d, want %d（markError 保账——残态不清零 chunk 账目）",
+			docAfterR2.ChunkCount, prevChunkCount)
+	}
+}

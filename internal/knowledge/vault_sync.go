@@ -178,7 +178,7 @@ func (a *VaultSyncApplier) upsertDoc(ctx context.Context, vault bizknowledge.Col
 				return cerr
 			}
 			err := apierror.Internal("knowledge", "no body compiler configured for %q", ev.RelPath)
-			a.markError(ctx, doc.ID, err)
+			a.markError(ctx, doc.ID, doc.ChunkCount, err)
 			return err
 		}
 		md, _, cerr := a.compiler.Compile(ctx, ev.RelPath, raw)
@@ -187,7 +187,7 @@ func (a *VaultSyncApplier) upsertDoc(ctx context.Context, vault bizknowledge.Col
 			if derr != nil {
 				return derr
 			}
-			a.markError(ctx, doc.ID, cerr)
+			a.markError(ctx, doc.ID, doc.ChunkCount, cerr)
 			failCount := existing.EmbedFailCount + 1
 			if notFound {
 				failCount = 1
@@ -261,13 +261,18 @@ func (a *VaultSyncApplier) upsertDoc(ctx context.Context, vault bizknowledge.Col
 	allowEmbed := bizknowledge.EmbedCircuitAllow(existing.EmbedFailCount, existing.EmbedLastTried, time.Now())
 	chunks, embedOutcome, err := a.buildChunks(ctx, vault, doc.ID, body, allowEmbed)
 	if err != nil {
-		a.markError(ctx, doc.ID, err)
+		a.markError(ctx, doc.ID, doc.ChunkCount, err)
 		return err
 	}
 
-	// 计数：仅「未计入 → indexed」的文档 +1（error/pending 重试不重复计数）。
+	// 计数：唯看 content_hash 空白度（G-38 W9 收口 W3 挂账——与 sourcesync
+	// applier #D1 同宗同策）：content_hash 只随成功提交落库（
+	// CommitIndexedDocumentMeta 事务内回写），非空⇒此前已计数（含 error 残态
+	// 重试——旧 status 口径在「indexed→error(re-ingest 败)→重试」序列双倍
+	// 计数）；空⇒首次成功提交=计 1。compiler==nil 路径 hash 恒空故恒计 1
+	// 恰好对齐「首次计入发生在编译成功后」语义。
 	docDelta := 0
-	if notFound || existing.Status != "indexed" {
+	if notFound || existing.ContentHash == "" {
 		docDelta = 1
 	}
 	// 索引成功：chunks 替换 + hash/摘要卡 + indexed + 集合计数同一提交。
@@ -279,7 +284,7 @@ func (a *VaultSyncApplier) upsertDoc(ctx context.Context, vault bizknowledge.Col
 		DocType:     fm.Type,
 	})
 	if err != nil {
-		a.markError(ctx, doc.ID, err)
+		a.markError(ctx, doc.ID, doc.ChunkCount, err)
 		return err
 	}
 	// G-32 T5 决策9：vault 通道自此有帧（原静默），producer=vault（装配侧打标）。
@@ -452,8 +457,12 @@ func (a *VaultSyncApplier) moveDoc(ctx context.Context, vault bizknowledge.Colle
 }
 
 // markError best-effort 回写 error 状态（hash 未落库，下轮自动重试）。
-func (a *VaultSyncApplier) markError(ctx context.Context, docID string, cause error) {
-	if err := a.uc.UpdateDocumentStatus(ctx, docID, "error", cause.Error(), 0); err != nil {
+// prevChunkCount 保账（G-38 W9 收口 W3 挂账 #D2 姊妹闸）：PG
+// UpdateDocumentStatus 无条件写 chunk_count 列——传 0 会把既有 chunk 账目
+// 清零漂移（窗内删除按 0 减账永久失真）；调用方一律传 doc.ChunkCount
+// （行不存在时编译失败路径由 error-status 分支推导为 0）。
+func (a *VaultSyncApplier) markError(ctx context.Context, docID string, prevChunkCount int, cause error) {
+	if err := a.uc.UpdateDocumentStatus(ctx, docID, "error", cause.Error(), prevChunkCount); err != nil {
 		a.lg.Warn("vault sync: mark error status failed",
 			loggateway.Str("doc_id", docID),
 			loggateway.Err(err),
