@@ -471,10 +471,14 @@ func (s *AdminService) buildConnector(in ConnectorInput, currentID string) (bizs
 	if config == "" {
 		config = "{}"
 	}
-	// kind 分派配置校验（②：walker 与 W5 共用唯一口径；notion W6 前只做 JSON 形状）。
+	// kind 分派配置校验（②：walker 与 W5 共用唯一口径）。
 	switch kind {
 	case bizsync.KindSharedDir:
 		if _, err := bizsync.ParseSharedDirConfig(config); err != nil {
+			return bizsync.Connector{}, apierror.BadRequest(adminDomain, err.Error())
+		}
+	case bizsync.KindNotion:
+		if _, err := bizsync.ParseNotionConfig(config); err != nil {
 			return bizsync.Connector{}, apierror.BadRequest(adminDomain, err.Error())
 		}
 	default:

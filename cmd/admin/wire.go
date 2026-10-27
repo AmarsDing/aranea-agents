@@ -2182,12 +2182,17 @@ func provideKnowledgeCurateWorker(
 // PG advisory 跨副本排他[fail-closed] + shared_dir walker + 文档 applier）。
 // 图谱四 hook 本批不接线——未注入即跳（设计 R-4 可选增强纪律），归 W6/W8
 // 统一接线；PG 缺席/降级形态返回 nil（worker 随之不装配）。
+// W6：notion walker 经 GA 显式开闸装配（SOURCE_SYNC_NOTION_ENABLED=1，
+// jobs.SourceSyncKindGAOptIn——P2 上调三层 GA 门：T4 接线 ✓+W9 评审 gate+
+// shared_dir 浸泡周期；未开闸即不挂 walker，notion connector 拾取即
+// not_found walker 跳过）。DocApplier 双 kind 共用同一实例（kind 无关）。
 func provideSourceSyncRunner(
 	repos data.SourceSyncRepos,
 	d *data.Data,
 	uc *biz.KnowledgeUsecase,
 	embedder *knowledge.MultiProviderEmbedder,
 	registry *knowledge.ExtractorRegistry,
+	crypto *biz.CredentialCrypto,
 	lg loggateway.Logger,
 ) *knowledgesync.Runner {
 	if repos == nil || d == nil || d.Postgres() == nil || uc == nil {
@@ -2201,15 +2206,30 @@ func provideSourceSyncRunner(
 			loggateway.Str("component", "sourcesync"), loggateway.Err(err))
 		return nil
 	}
-	walker := knowledgesync.NewSharedDirWalker(nil, lg)
+	walkers := map[bizsync.Kind]knowledgesync.Walker{bizsync.KindSharedDir: knowledgesync.NewSharedDirWalker(nil, lg)}
+	appliers := map[bizsync.Kind]knowledgesync.Applier{
+		bizsync.KindSharedDir: appl,
+	}
+	if jobs.SourceSyncKindGAOptIn(bizsync.KindNotion) {
+		nw, werr := knowledgesync.NewNotionWalker(knowledgesync.NotionWalkerDeps{
+			Log: lg, Credentials: repos, Crypto: crypto,
+		})
+		if werr != nil {
+			lg.Warn("sourcesync notion walker assemble failed (kind skipped)",
+				loggateway.Str("component", "sourcesync"), loggateway.Err(werr))
+		} else {
+			walkers[bizsync.KindNotion] = nw
+			appliers[bizsync.KindNotion] = appl
+		}
+	}
 	return knowledgesync.NewRunner(knowledgesync.Deps{
 		Log:        lg,
 		Connectors: repos,
 		Items:      repos,
 		Runs:       repos,
 		Locker:     service.NewPGKnowledgeJobLocker(d.Postgres(), lg),
-		Walkers:    map[bizsync.Kind]knowledgesync.Walker{bizsync.KindSharedDir: walker},
-		Appliers:   map[bizsync.Kind]knowledgesync.Applier{bizsync.KindSharedDir: appl},
+		Walkers:    walkers,
+		Appliers:   appliers,
 	})
 }
 

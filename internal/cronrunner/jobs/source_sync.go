@@ -279,3 +279,16 @@ func envTruth(raw string) bool {
 	}
 	return false
 }
+
+// SourceSyncKindGAOptIn 按 kind GA 显式开闸（SOURCE_SYNC_<KIND>_ENABLED，
+// 默认关）——W6 notion GA 门（P2 拍板上调三层：T4 十三步接线 ✓ + W9 对抗评审
+// gate + 至少一个 shared_dir 生产浸泡周期）未达前，装配面据此**不挂** notion
+// walker（进程内编译期装配，开闸须重启——与 DISABLED 每 sweep 热读正交：
+// 一个管装配准入，一个管运行时事故停机）。W9 收口岸翻转此默认。
+func SourceSyncKindGAOptIn(kind bizsync.Kind) bool {
+	k := strings.ToUpper(strings.TrimSpace(string(kind)))
+	if k == "" {
+		return false
+	}
+	return envTruth(os.Getenv("SOURCE_SYNC_" + k + "_ENABLED"))
+}

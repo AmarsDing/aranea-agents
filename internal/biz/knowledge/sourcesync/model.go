@@ -431,6 +431,12 @@ func ValidateEnvSecretRef(ref string) error {
 // 本函数是出库双闸+notion W6 的默认防泄漏兜底）。
 var secretishKeyShape = regexp.MustCompile(`(?i)(token|secret|password|credential|api_key)`)
 
+// configCredentialKeyName 出库 sanitize 白名单：字面值 credential_key 是
+// 凭据行表的**指针名**（永远非密，契约见 ParseNotionConfig），剥离会破坏
+// 前端 read-modify-write PATCH 回环（读到的 config 缺键 → 写回即丢绑定）。
+// 豁免仅限键名精确相等（大小写不敏感）——credential_key_v2 等变体仍剥。
+const configCredentialKeyName = "credential_key"
+
 // SanitizeConfigForExport config_json 出库前 sanitize（⑦ 权限钉：密文键剥离）。
 // 非法 JSON 原样返回（库内值已是入库闸校验过的非密形状，防御性剥离只对
 // 可解析树生效——不可解析即无键可剥）。返回仍是 JSON 文本形态（W5 API
@@ -442,6 +448,9 @@ func SanitizeConfigForExport(raw string) string {
 	}
 	changed := false
 	for k := range tree {
+		if strings.EqualFold(k, configCredentialKeyName) {
+			continue // 指针名豁免（非密——值是行表键名，不是密钥本体）
+		}
 		if secretishKeyShape.MatchString(k) {
 			delete(tree, k)
 			changed = true
@@ -500,6 +509,64 @@ func ParseSharedDirConfig(raw string) (SharedDirConfig, error) {
 	}
 	if !filepath.IsAbs(cfg.Root) {
 		return cfg, fmt.Errorf("sourcesync: shared_dir root must be absolute, got %q", cfg.Root)
+	}
+	return cfg, nil
+}
+
+// ──────────────────────────────── notion 配置（W6） ────────────────────────────────
+
+// DefaultNotionCredentialKey 凭据键缺省（未配置即此键——单 token 集成形态）。
+const DefaultNotionCredentialKey = "default"
+
+// NotionConfig notion 连接器配置投影（config_json 唯一合法形状；**scope＝集成
+// 共享面**：walk 域＝integration token 可见的全部页面，Notion 共享模型是天然
+// 边界——root 子树过滤需逐页拉 parent 链，违反 ② 成本模型钉，不实现）。
+// credential_key 是凭据行表指针名（非密——密钥本体永不在 config_json）。
+type NotionConfig struct {
+	CredentialKey string `json:"credential_key"` // 凭据行表键（缺省 default）
+	Query         string `json:"query"`          // search 查询词收窄（可选，空=全量）
+}
+
+// notionForbiddenKeyShapes 入库敏感键黑名单（credential_key 白名单豁免——
+// 指针名非密，其余 credential* 变体仍拒）。
+func notionConfigKeyForbidden(k string) bool {
+	lk := strings.ToLower(k)
+	if lk == configCredentialKeyName {
+		return false
+	}
+	return secretishKeyShape.MatchString(lk)
+}
+
+// ParseNotionConfig 解析+校验 config_json（② 签名级契约：walker/W5 共用唯一
+// 口径；顺序与 ParseSharedDirConfig 同宗：probe 先解 → 敏感键黑名单扫 → 严格
+// decode → credential_key 缺省填充+键形校验）。配置缺陷归 walk_failed（非 auth
+// 家族——auth 家族由 walker 运行时 token 决议承担）。
+func ParseNotionConfig(raw string) (NotionConfig, error) {
+	var cfg NotionConfig
+	if strings.TrimSpace(raw) == "" {
+		return cfg, fmt.Errorf("sourcesync: notion config_json required")
+	}
+	var probe map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(raw), &probe); err != nil {
+		return cfg, fmt.Errorf("sourcesync: notion config_json invalid: %w", err)
+	}
+	for k := range probe {
+		if notionConfigKeyForbidden(k) {
+			return cfg, fmt.Errorf("sourcesync: config_json forbids secret-ish key %q (use credential rows)", k)
+		}
+	}
+	dec := json.NewDecoder(strings.NewReader(raw))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&cfg); err != nil {
+		return cfg, fmt.Errorf("sourcesync: notion config_json invalid: %w", err)
+	}
+	// credential_key 先校验**原值**再 Trim（config 输入是不可信面——与 W5 admin
+	// 「key 校验不 Trim」同口径；先 Trim 会让带空白键静默归一到规范形）。
+	if strings.TrimSpace(cfg.CredentialKey) == "" {
+		cfg.CredentialKey = DefaultNotionCredentialKey
+	}
+	if err := ValidateCredentialKey(cfg.CredentialKey); err != nil {
+		return cfg, err
 	}
 	return cfg, nil
 }
