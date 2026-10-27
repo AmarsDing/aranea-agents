@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -101,5 +102,39 @@ func TestCredentialCrypto_IsAvailable(t *testing.T) {
 	c2 := NewCredentialCrypto(resolver, loggateway.NewNoop())
 	if !c2.IsAvailable() {
 		t.Fatal("expected IsAvailable=true with resolver")
+	}
+}
+
+// TestCredentialCrypto_RequireKeyForSecret G-38 ⑤ 铁律链钉（W5）：无 key
+// 拒写硬错（不静默明文降级）、非法长度拒、32B 通过、resolver 故障透传。
+func TestCredentialCrypto_RequireKeyForSecret(t *testing.T) {
+	_ = os.Unsetenv(envCredentialKey)
+	// 无 resolver 无 env → 硬错
+	c := NewCredentialCrypto(nil, loggateway.NewNoop())
+	if err := c.RequireKeyForSecret(context.Background()); err == nil {
+		t.Fatal("no key must hard-fail")
+	}
+	// env 非法长度 → 硬错
+	_ = os.Setenv(envCredentialKey, "deadbeef")
+	if err := c.RequireKeyForSecret(context.Background()); err == nil {
+		t.Fatal("non-32-byte key must hard-fail")
+	}
+	// resolver 返回错误 → 透传硬错
+	badResolver := CredentialKeyResolver(func(ctx context.Context) ([]byte, error) {
+		return nil, apierror.Internal("CREDENTIAL_KEY", "resolver down")
+	})
+	c2 := NewCredentialCrypto(badResolver, loggateway.NewNoop())
+	if err := c2.RequireKeyForSecret(context.Background()); err == nil {
+		t.Fatal("resolver error must hard-fail")
+	}
+	// 32B 合法 key → 通过
+	key := make([]byte, 32)
+	for i := range key {
+		key[i] = byte(i)
+	}
+	_ = os.Setenv(envCredentialKey, hex.EncodeToString(key))
+	defer os.Unsetenv(envCredentialKey)
+	if err := c.RequireKeyForSecret(context.Background()); err != nil {
+		t.Fatalf("valid 32-byte key must pass: %v", err)
 	}
 }

@@ -18,6 +18,7 @@ import (
 	"aranea-agents/internal/event"
 	"aranea-agents/internal/event/contract"
 	"aranea-agents/internal/knowledge"
+	knowledgesync "aranea-agents/internal/knowledge/sourcesync"
 	"aranea-agents/internal/workspace"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/appctx"
@@ -115,6 +116,22 @@ type KnowledgeService struct {
 	// 管线（不经写回）在 chunk 重放后显式触发（P1-a：晋升文档图谱孤立节点根治）。
 	// nil（未接线/环境关闭）时两路均降级跳过。
 	writeBackGraph bizknowledge.WriteBackGraphFunc
+	// sourceSyncAdmin G-38 W5 SourceSync 管理面编排（装配在 wire 层经
+	// SetSourceSyncAdmin 注入；nil = custom HTTP 端点统一 Unavailable）。
+	sourceSyncAdmin *knowledgesync.AdminService
+	// mon 管理审计（G-38 W5 connector/凭据面 recordAudit；nil 时审计静默跳过
+	// ——RecordAdminAudit 有 nil 接收者守卫）。
+	mon *biz.MonitorUsecase
+}
+
+// SetSourceSyncAdmin 注入 G-38 管理面编排（装配层调用；同 SetVaultSyncController 模式）。
+func (s *KnowledgeService) SetSourceSyncAdmin(a *knowledgesync.AdminService) {
+	s.sourceSyncAdmin = a
+}
+
+// SetMonitorUsecase 注入审计面（G-38 W5 connector/凭据面 recordAudit）。
+func (s *KnowledgeService) SetMonitorUsecase(mon *biz.MonitorUsecase) {
+	s.mon = mon
 }
 
 // VaultSyncController vault 同步循环生命周期窄接口（P1-3 生产装配）。

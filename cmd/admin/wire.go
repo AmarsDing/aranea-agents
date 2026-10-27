@@ -2226,6 +2226,29 @@ func provideSourceSyncWorker(
 	return jobs.NewSourceSyncWorker(0, runner, repos, lg)
 }
 
+// provideSourceSyncAdmin G-38 W5：SourceSync 管理面编排装配（四仓口聚合 +
+// CredentialCrypto 凭据闸）。repos nil（data 未装配）/crypto nil（凭据子系统
+// 不可用）时仍返回服务——端点据此分级 Unavailable 而非静默 404，前端可探测。
+func provideSourceSyncAdmin(
+	repos data.SourceSyncRepos,
+	crypto *biz.CredentialCrypto,
+	lg loggateway.Logger,
+) *knowledgesync.AdminService {
+	if repos == nil {
+		lg.Warn("sourcesync admin not wired (repos absent)",
+			loggateway.Str("component", "sourcesync"))
+		return nil
+	}
+	return knowledgesync.NewAdminService(knowledgesync.AdminDeps{
+		Log:         lg,
+		Connectors:  repos,
+		Credentials: repos,
+		Runs:        repos,
+		Items:       repos,
+		Crypto:      crypto,
+	})
+}
+
 // provideKnowledgeWriteBackSweeperWorker G-10：写回重试队列重放（AS-EVT-01
 // Important 分级——AutoMemory 写回失败已落 knowledge_writeback_outbox，本
 // worker 周期重投 WriteBackSessionFacts）。

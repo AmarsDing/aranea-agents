@@ -199,6 +199,9 @@ func registerProtoServices(srv *kratoshttp.Server, s *ServiceRegistry) {
 //   - /v1/knowledge/search/asof + /v1/knowledge/vaults/{id}/graph/asof:
 //     G-05 as-of 双时态读面（custom JSON 避免 make api，ADR-KN-20261020-K；
 //     鉴权同默认 JWT Filter + assertCollectionAccess 404 反 IDOR）
+//   - /v1/knowledge/connectors + /{id} + /{id}/{sync,runs,items,credential}:
+//     G-38-W5 SourceSync 管理面（custom JSON，ADR-KN-20261023-G38-API 同批；
+//     凭据面 audit 只记 credential_key 严禁 secret）
 //   - /api/v1/config-graph/rebuild|status|nodes|nodes/{type}/{ref}/impact|dependencies|edges|health:
 //     M81 config-asset graph (handwritten JSON, generation-scoped reads;
 //     async rebuild trigger must outlive the request ctx)
@@ -305,6 +308,56 @@ func registerCustomRoutes(
 		})
 		srv.Route("/").GET("/v1/knowledge/vaults/{id}/graph/asof", func(ctx kratoshttp.Context) error {
 			knowledgeSvc.ServeCollectionGraphAsOf(ctx.Response(), ctx.Request(), ctx.Vars().Get("id"))
+			return nil
+		})
+		// G-38-W5（ADR-KN-20261023-G38-API）：SourceSync 连接器管理面七组
+		// 契约（custom JSON——迭代期字段不稳+knowledge.proto 并行脏区，晋升
+		// 条件=第二 connector kind GA 或 G-40 启动；鉴权=默认 JWT Filter +
+		// workspace 404 反枚举 + 集合访问闸双重兜底；凭据面 recordAudit
+		// Summary 只记 key 严禁 secret）。handler 薄化：业务裁决在
+		// knowledgesync.AdminService，本层只做路由/状态码。
+		srv.Route("/").GET("/v1/knowledge/connectors", func(ctx kratoshttp.Context) error {
+			knowledgeSvc.ServeSourceConnectors(ctx.Response(), ctx.Request())
+			return nil
+		})
+		srv.Route("/").POST("/v1/knowledge/connectors", func(ctx kratoshttp.Context) error {
+			knowledgeSvc.ServeSourceConnectors(ctx.Response(), ctx.Request())
+			return nil
+		})
+		srv.Route("/").GET("/v1/knowledge/connectors/{id}", func(ctx kratoshttp.Context) error {
+			knowledgeSvc.ServeSourceConnector(ctx.Response(), ctx.Request(), ctx.Vars().Get("id"))
+			return nil
+		})
+		srv.Route("/").PATCH("/v1/knowledge/connectors/{id}", func(ctx kratoshttp.Context) error {
+			knowledgeSvc.ServeSourceConnector(ctx.Response(), ctx.Request(), ctx.Vars().Get("id"))
+			return nil
+		})
+		srv.Route("/").DELETE("/v1/knowledge/connectors/{id}", func(ctx kratoshttp.Context) error {
+			knowledgeSvc.ServeSourceConnector(ctx.Response(), ctx.Request(), ctx.Vars().Get("id"))
+			return nil
+		})
+		srv.Route("/").POST("/v1/knowledge/connectors/{id}/sync", func(ctx kratoshttp.Context) error {
+			knowledgeSvc.ServeSourceConnectorSync(ctx.Response(), ctx.Request(), ctx.Vars().Get("id"))
+			return nil
+		})
+		srv.Route("/").GET("/v1/knowledge/connectors/{id}/runs", func(ctx kratoshttp.Context) error {
+			knowledgeSvc.ServeSourceConnectorRuns(ctx.Response(), ctx.Request(), ctx.Vars().Get("id"))
+			return nil
+		})
+		srv.Route("/").GET("/v1/knowledge/connectors/{id}/items", func(ctx kratoshttp.Context) error {
+			knowledgeSvc.ServeSourceConnectorItems(ctx.Response(), ctx.Request(), ctx.Vars().Get("id"))
+			return nil
+		})
+		srv.Route("/").PUT("/v1/knowledge/connectors/{id}/credential", func(ctx kratoshttp.Context) error {
+			knowledgeSvc.ServeSourceConnectorCredential(ctx.Response(), ctx.Request(), ctx.Vars().Get("id"))
+			return nil
+		})
+		srv.Route("/").GET("/v1/knowledge/connectors/{id}/credential", func(ctx kratoshttp.Context) error {
+			knowledgeSvc.ServeSourceConnectorCredential(ctx.Response(), ctx.Request(), ctx.Vars().Get("id"))
+			return nil
+		})
+		srv.Route("/").DELETE("/v1/knowledge/connectors/{id}/credential", func(ctx kratoshttp.Context) error {
+			knowledgeSvc.ServeSourceConnectorCredential(ctx.Response(), ctx.Request(), ctx.Vars().Get("id"))
 			return nil
 		})
 	}

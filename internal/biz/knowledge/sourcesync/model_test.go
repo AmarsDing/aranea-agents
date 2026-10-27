@@ -320,3 +320,91 @@ func TestParseSharedDirConfigAbsAndBlacklist(t *testing.T) {
 		t.Fatalf("重复键 last-wins: %+v, %v", cfg, err)
 	}
 }
+
+// TestNextRunFirstDue due 初值 id-hash 撒点钉（W5 登记）：区间 [now, now+interval)
+// +同 id 同值幂等 + 多 id 摊开不成单刻 + interval 变化即重散 + 非正 interval
+// 兜底下限。
+func TestNextRunFirstDue(t *testing.T) {
+	now := time.Date(2026, 10, 27, 12, 0, 0, 0, time.UTC)
+	// 区间+幂等钉
+	a1 := NextRunFirstDue("conn-a", 900, now)
+	a2 := NextRunFirstDue("conn-a", 900, now)
+	if !a1.Equal(a2) {
+		t.Fatalf("同 id 同刻必同值: %v vs %v", a1, a2)
+	}
+	if a1.Before(now) || !a1.Before(now.Add(900*time.Second)) {
+		t.Fatalf("必落 [now, now+interval): %v", a1)
+	}
+	// interval 变化即重散（不同 interval 多数 id 不同位——取一组对撞概率≈0 的样本）
+	if NextRunFirstDue("conn-x", 900, now) == NextRunFirstDue("conn-x", 1800, now) {
+		t.Fatal("interval 变化必重散")
+	}
+	// 非正 interval 兜底下限
+	if d := NextRunFirstDue("conn-a", 0, now); d.Before(now) || !d.Before(now.Add(MinIntervalSeconds*time.Second)) {
+		t.Fatalf("非正 interval 兜底下限: %v", d)
+	}
+	// 撒点摊质：32 个 id 至少命中两个不同桶（同刻风暴=同位即翻车）
+	seen := map[int]int{}
+	for i := 0; i < 32; i++ {
+		d := NextRunFirstDue(strings.Repeat("z", i+1), 900, now)
+		seen[int(d.Sub(now).Seconds()/450)]++
+	}
+	if len(seen) < 2 {
+		t.Fatalf("撒点必摊平（32 id 两桶即过）: %v", seen)
+	}
+}
+
+// TestValidateCredentialKey W5 凭据键形状钉：空白/超长/控制字符拒，
+// 合法家族（bot_token/refresh_token/app-id.v2）放行。
+func TestValidateCredentialKey(t *testing.T) {
+	for _, good := range []string{"bot_token", "refresh_token", "app-id.v2", "A", strings.Repeat("k", 128)} {
+		if err := ValidateCredentialKey(good); err != nil {
+			t.Fatalf("合法键 %q 必过: %v", good, err)
+		}
+	}
+	for _, bad := range []string{"", "  ", " pad", "pad ", "has space", "tab\tkey", "new\nline", "中文key", strings.Repeat("k", 129)} {
+		if err := ValidateCredentialKey(bad); err == nil {
+			t.Fatalf("非法键 %q 必拒", bad)
+		}
+	}
+}
+
+// TestValidateEnvSecretRef env: 备选 scheme 硬闸钉（P1：不经加密闸的前提
+// 是变量名 POSIX 形状——空名/首数字/含空白/路径斜杠全拒）。
+func TestValidateEnvSecretRef(t *testing.T) {
+	if !IsEnvSecretRef("env:NOTION_TOKEN") || IsEnvSecretRef("enc:abc") || IsEnvSecretRef("plain") {
+		t.Fatal("IsEnvSecretRef 前缀判定")
+	}
+	for _, good := range []string{"env:NOTION_TOKEN", "env:_X", "env:A1_"} {
+		if err := ValidateEnvSecretRef(good); err != nil {
+			t.Fatalf("合法 env 引用 %q 必过: %v", good, err)
+		}
+	}
+	for _, bad := range []string{"env:", "env: ", "env:1ABC", "env:HAS SPACE", "env:A-B", "env:A/B"} {
+		if err := ValidateEnvSecretRef(bad); err == nil {
+			t.Fatalf("非法 env 引用 %q 必拒", bad)
+		}
+	}
+}
+
+// TestSanitizeConfigForExport 出库双闸钉（⑦ 权限：密文键剥离，kind 无关）。
+// 大小写不敏感、未命中字节级原样、非法 JSON 原样放行（不可解析即无键可剥）。
+func TestSanitizeConfigForExport(t *testing.T) {
+	in := `{"root":"/x","bot_token":"aka","Secret":"b","api_key":"c","note":"token 在值里不算键"}`
+	out := SanitizeConfigForExport(in)
+	for _, forbidden := range []string{"bot_token", "Secret", "api_key"} {
+		if strings.Contains(out, forbidden) {
+			t.Fatalf("密键 %q 必剥离: %s", forbidden, out)
+		}
+	}
+	if !strings.Contains(out, "token 在值里不算键") {
+		t.Fatalf("值内容不剥: %s", out)
+	}
+	plain := `{"root":"/x"}`
+	if got := SanitizeConfigForExport(plain); got != plain {
+		t.Fatalf("未命中字节级原样: %q vs %q", got, plain)
+	}
+	if got := SanitizeConfigForExport("not json"); got != "not json" {
+		t.Fatalf("非法 JSON 原样: %q", got)
+	}
+}

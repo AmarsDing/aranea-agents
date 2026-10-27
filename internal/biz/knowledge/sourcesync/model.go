@@ -13,6 +13,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"hash/fnv"
+	"io"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -257,6 +259,19 @@ func BackoffDuration(consecutiveFailures int) time.Duration {
 	return time.Duration(BackoffMinutes(consecutiveFailures)) * time.Minute
 }
 
+// NextRunFirstDue due 初值 id-hash 撒点（设计 ③-1「due 初值=id-hash 撒点」，
+// W5 调度落登记：interval-validated 创建时落撒点）——全量 connector 同刻
+// 建批时 due 波峰拍平到 [now, now+interval) 均匀位。确定性：同一 id 同刻
+// 同值（重入幂等）。
+func NextRunFirstDue(connectorID string, intervalSeconds int, now time.Time) time.Time {
+	if intervalSeconds <= 0 {
+		intervalSeconds = MinIntervalSeconds
+	}
+	h := fnv.New32a()
+	_, _ = io.WriteString(h, connectorID)
+	return now.Add(time.Duration(int64(h.Sum32())%int64(intervalSeconds)) * time.Second)
+}
+
 // TruncateErrorMessage error_message ≤512 rune 截断（③-1；UTF-8 安全）。
 func TruncateErrorMessage(s string) string {
 	r := []rune(s)
@@ -372,6 +387,76 @@ func ValidateConfig(c Connector) error {
 
 // ──────────────────────────────── 分 kind 配置（W3；config_json 仅非密） ────────────────────────────────
 
+// ValidateCredentialKey 凭据键校验（W5：④ 行表唯一寻址键；OAuth 三件同表
+// 承载——键形预留 token/refresh_token/bot_id 家族空间）。规则：Trim 后
+// 非空、≤128 字节、ASCII 可见字符+`._-`（禁空白/控制符——防日志/URL 注入）。
+func ValidateCredentialKey(key string) error {
+	if strings.TrimSpace(key) != key || key == "" {
+		return fmt.Errorf("sourcesync: credential_key must be non-empty without surrounding spaces")
+	}
+	if len(key) > 128 {
+		return fmt.Errorf("sourcesync: credential_key exceeds 128 bytes")
+	}
+	for _, r := range key {
+		if r > 127 || r < 33 || r == 127 {
+			return fmt.Errorf("sourcesync: credential_key contains non-ASCII/whitespace character %q", r)
+		}
+	}
+	return nil
+}
+
+// envSecretRefPrefix env: 备选 scheme（P1 拍板：降级 scheme 不经加密闸——
+// 值以 env: 前缀原样存 secret_ref，walker 运行时解析环境变量注密）。
+const envSecretRefPrefix = "env:"
+
+// IsEnvSecretRef 判定 secret/secret_ref 是否走 env: 备选 scheme。
+func IsEnvSecretRef(s string) bool {
+	return strings.HasPrefix(strings.TrimSpace(s), envSecretRefPrefix)
+}
+
+// envVarNameShape env: 后缀变量名硬闸（POSIX 形状；防 `env:`、空名、空格注入）。
+var envVarNameShape = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+
+// ValidateEnvSecretRef env: 信封校验（变量名合法才放行）。
+func ValidateEnvSecretRef(ref string) error {
+	name := strings.TrimPrefix(strings.TrimSpace(ref), envSecretRefPrefix)
+	if !envVarNameShape.MatchString(name) {
+		return fmt.Errorf("sourcesync: env secret_ref %q must be env:NAME with POSIX-shaped NAME", ref)
+	}
+	return nil
+}
+
+// secretishKeyShape config_json 出库 sanitize 黑名单谓词（kind 无关通用形：
+// 命中即整键剥离——P1 行表纪律的出库防御面；shared_dir 入库已拒同族键，
+// 本函数是出库双闸+notion W6 的默认防泄漏兜底）。
+var secretishKeyShape = regexp.MustCompile(`(?i)(token|secret|password|credential|api_key)`)
+
+// SanitizeConfigForExport config_json 出库前 sanitize（⑦ 权限钉：密文键剥离）。
+// 非法 JSON 原样返回（库内值已是入库闸校验过的非密形状，防御性剥离只对
+// 可解析树生效——不可解析即无键可剥）。返回仍是 JSON 文本形态（W5 API
+// 契约 config_json 出入皆可字节稳定的字符串形状）。
+func SanitizeConfigForExport(raw string) string {
+	var tree map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(raw), &tree); err != nil {
+		return raw
+	}
+	changed := false
+	for k := range tree {
+		if secretishKeyShape.MatchString(k) {
+			delete(tree, k)
+			changed = true
+		}
+	}
+	if !changed {
+		return raw
+	}
+	out, err := json.Marshal(tree)
+	if err != nil {
+		return raw
+	}
+	return string(out)
+}
+
 // SharedDirConfig shared_dir 连接器配置投影（config_json 唯一合法形状；
 // 凭据/密钥键的出现即拒——凭据一律走 credential 行表③-3）。
 type SharedDirConfig struct {
@@ -432,6 +517,9 @@ type ConnectorRepo interface {
 	// GetConnector 活性行取址（deleted_at=''）。
 	GetConnector(ctx context.Context, id string) (Connector, bool, error)
 	// UpdateConnector 整体 replace（updated_at 翻钟）；未命中/已软删 found=false。
+	// 管理面窄 CAS 守卫（W5）：谓词含 run_token=''——在途轮原子拒管理写
+	// （防全行 replace 吞 active claim 致下轮双跑；管理编排侧将 found=false
+	// 在「存在已证」前提后分级 409 而非 404）。
 	UpdateConnector(ctx context.Context, c Connector) (bool, error)
 	// SoftDeleteConnector 软删 connector + 级联软删本 connector 全部凭据
 	//（⑦ DELETE 默认级联同笔事务；recordAudit 由 service 层 W5 承担）。
@@ -484,6 +572,22 @@ type ConnectorRepo interface {
 	// 方案选择：TryClaimRun 内嵌僵死窃取是本方法的主路径；本扫描是观测面 + 抢救
 	//（MetricsSource 挂监控），claim 已窃取则本方法返回 0 行。
 	ReclaimZombieRuns(ctx context.Context, now time.Time, leaseTTL time.Duration) (int, error)
+
+	// ── W5 手动触发/凭据唤醒（两枚窄 CAS——不得用全行 replace 代偿） ──
+
+	// TriggerConnectorSync 手动触发入队（⑤ trigger 语义钉：next_run_at=now()
+	// 入队语义＋在途 409——run_token 由 scheduler 认领时签发，本方法不碰 token）。
+	// CAS 谓词：id ∧ enabled ∧ 未软删 ∧ run_token='' ∧ sync_state<>auth_paused
+	// （在途/停轮即 false——禁用态同样 false，API 侧携 reason 分级 409）。
+	// 副作用仅 next_run_at=now、updated_at=now。Returns accepted。
+	TriggerConnectorSync(ctx context.Context, id string, now time.Time) (bool, error)
+
+	// WakeConnectorFromAuthPaused PUT 凭据唤醒（④ 铁律链：写成功即自动清
+	// auth_paused/consecutive_failures 唤醒；⑤ auth 收轮不动 next_run_at——
+	// 唤醒后 due 已过即下 sweep 自然拾取，不硬顶波峰）。CAS 谓词：id ∧
+	// sync_state='auth_paused' ∧ 未软删；命中才置 idle+error_code=''+
+	// consecutive_failures=0（非停轮态 false=no-op，不报错误读）。
+	WakeConnectorFromAuthPaused(ctx context.Context, id string, now time.Time) (bool, error)
 }
 
 // ItemRepo 指纹行 CRUD（Upsert 语义钉③-2：出席即 status=active、

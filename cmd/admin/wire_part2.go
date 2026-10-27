@@ -299,6 +299,8 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.SelfImprovement, *co
 		data.NewSourceSyncRepo,
 		provideSourceSyncRunner,
 		provideSourceSyncWorker,
+		// G-38 W5：管理面编排（HTTP 七端点后端）——同批注册，漏注册即 regen 丢接线。
+		provideSourceSyncAdmin,
 		provideKnowledgeEntityPipeline,
 		provideKnowledgeRelationExtractor,
 		provideKnowledgeWriteBackGraphHook,

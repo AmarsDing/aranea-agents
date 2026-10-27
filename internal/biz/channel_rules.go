@@ -201,6 +201,12 @@ func sanitizeCredentials(items []ChannelCredential) []ChannelCredential {
 	return out
 }
 
+// MaskSecretRef 密文引用掩码唯一源（channel/MCP/sourcesync 三出口共用——
+// maskReference 模板，设计 ④：读侧 API 只返 configured+masked_preview）。
+func MaskSecretRef(ref string) string {
+	return maskReference(ref)
+}
+
 func maskReference(ref string) string {
 	ref = strings.TrimSpace(ref)
 	if ref == "" {

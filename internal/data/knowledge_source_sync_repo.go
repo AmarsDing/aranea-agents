@@ -17,6 +17,7 @@ package data
 import (
 	"context"
 	"database/sql"
+	"strings"
 	"time"
 
 	"aranea-agents/internal/biz/knowledge/sourcesync"
@@ -180,6 +181,9 @@ func (r *sourceSyncRepo) UpdateConnector(ctx context.Context, c sourcesync.Conne
 	if c.ID == "" {
 		return false, apierror.BadRequest(sourceSyncModule, "id required")
 	}
+	// run_token='' 管理面 CAS 守卫（W5 评审防全行 replace 吞在途轮：谓词原子
+	// 拒管理写撞 active claim——读改竞态窗口由本谓词兜底，在途即 found=false，
+	// 管理编排侧据此分级 409 而非 404）。
 	res, err := d.RWDB().WriteDB(ctx).ExecContext(ctx, d.Dialect().RenumberPlaceholders(`
 UPDATE knowledge_source_connectors SET
   kind = ?, name = ?, workspace_id = ?, collection_id = ?, config_json = ?,
@@ -188,7 +192,7 @@ UPDATE knowledge_source_connectors SET
   consecutive_failures = ?, error_code = ?, error_message = ?,
   max_items_per_run = ?, max_deletes_per_run = ?, max_fetch_bytes_per_run = ?,
   run_token = ?, updated_at = ?
-WHERE id = ? AND deleted_at = ''`),
+WHERE id = ? AND run_token = '' AND deleted_at = ''`),
 		string(c.Kind), c.Name, c.WorkspaceID, c.CollectionID, c.ConfigJSON,
 		c.IntervalSeconds, c.Enabled, string(c.SyncState), c.Cursor,
 		ssFormatTime(c.NextRunAt), ssFormatTime(c.LastRunAt), ssFormatTime(c.LastSuccessAt),
@@ -399,6 +403,51 @@ WHERE deleted_at = '' AND sync_state = 'running'
 	}
 	n, _ := res.RowsAffected()
 	return int(n), nil
+}
+
+func (r *sourceSyncRepo) TriggerConnectorSync(ctx context.Context, id string, now time.Time) (bool, error) {
+	d, ok := r.db()
+	if !ok {
+		return false, r.unavailable()
+	}
+	if strings.TrimSpace(id) == "" {
+		return false, apierror.BadRequest(sourceSyncModule, "id is required")
+	}
+	// 手动触发入队=next_run_at 置即时；在途/停轮/禁用的失败全收敛为
+	// accepted=false（API 侧携状态分级 409；token 一律由 scheduler 认领时
+	// 签发，本方法不碰）。sync_state<>auth_paused 与停轮语义钉对齐。
+	res, err := d.RWDB().WriteDB(ctx).ExecContext(ctx, d.Dialect().RenumberPlaceholders(`
+UPDATE knowledge_source_connectors
+SET next_run_at = ?, updated_at = ?
+WHERE id = ? AND deleted_at = '' AND enabled = true
+  AND run_token = '' AND sync_state <> 'auth_paused'`), formatBoardRunLeaseTime(now), formatBoardRunLeaseTime(now), id)
+	if err != nil {
+		return false, entErrToBizErr(err, sourceSyncModule)
+	}
+	n, _ := res.RowsAffected()
+	return n > 0, nil
+}
+
+func (r *sourceSyncRepo) WakeConnectorFromAuthPaused(ctx context.Context, id string, now time.Time) (bool, error) {
+	d, ok := r.db()
+	if !ok {
+		return false, r.unavailable()
+	}
+	if strings.TrimSpace(id) == "" {
+		return false, apierror.BadRequest(sourceSyncModule, "id is required")
+	}
+	// PUT 凭据唤醒（④ 铁律链）：仅自 auth_paused 收；非停轮态 false=no-op
+	// （重复 PUT/分类漂移不报错误读）。不动 next_run_at——auth 收轮未推进
+	// 即已过期，下 sweep 自然拾取不硬顶波峰。
+	res, err := d.RWDB().WriteDB(ctx).ExecContext(ctx, d.Dialect().RenumberPlaceholders(`
+UPDATE knowledge_source_connectors
+SET sync_state = 'idle', error_code = '', consecutive_failures = 0, updated_at = ?
+WHERE id = ? AND deleted_at = '' AND sync_state = 'auth_paused'`), formatBoardRunLeaseTime(now), id)
+	if err != nil {
+		return false, entErrToBizErr(err, sourceSyncModule)
+	}
+	n, _ := res.RowsAffected()
+	return n > 0, nil
 }
 
 // ──────────────────────────────── ItemRepo ────────────────────────────────

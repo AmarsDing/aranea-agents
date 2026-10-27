@@ -35,6 +35,9 @@ type memConnectorRepo struct {
 	getErr      error
 	claimErr    error
 	finalizeErr error
+	// onSoftDelete 级联钩子（W5：镜像 repo 同事务级联软删凭据——fixture 侧
+	// 挂 memCredentialRepo.cascadeDelete，钉级联语义不进编排层错位）
+	onSoftDelete func(id string)
 	// fencing 钉同步点：HeartbeatClaim 首次返回失地即关闭
 	lostSeen chan struct{}
 	lostOnce sync.Once
@@ -74,11 +77,13 @@ func (m *memConnectorRepo) GetConnector(_ context.Context, id string) (bizsync.C
 	return r.c, true, nil
 }
 
+// UpdateConnector SQL 谓词逐字镜像：W5 管理面 CAS——id ∧ 未软删 ∧
+// run_token 恒空串守卫（在途轮原子拒管理写，防全行 replace 吞 active claim）。
 func (m *memConnectorRepo) UpdateConnector(_ context.Context, c bizsync.Connector) (bool, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	r, ok := m.rows[c.ID]
-	if !ok || r.deleted {
+	if !ok || r.deleted || r.c.RunToken != "" {
 		return false, nil
 	}
 	m.rows[c.ID].c = c
@@ -94,6 +99,10 @@ func (m *memConnectorRepo) SoftDeleteConnector(_ context.Context, id string) (bo
 	}
 	r.deleted = true
 	r.c.RunToken = ""
+	if m.onSoftDelete != nil {
+		// 镜像 repo 同事务级联（⑦ DELETE 默认级联软删本 connector 全部凭据）
+		m.onSoftDelete(id)
+	}
 	return true, nil
 }
 
@@ -219,6 +228,36 @@ func (m *memConnectorRepo) ReclaimZombieRuns(_ context.Context, now time.Time, l
 		n++
 	}
 	return n, nil
+}
+
+// TriggerConnectorSync SQL 谓词逐字镜像：id ∧ 未软删 ∧ enabled ∧ run_token 恒空串
+// ∧ sync_state<>'auth_paused' → next_run_at=now、updated_at=now。
+func (m *memConnectorRepo) TriggerConnectorSync(_ context.Context, id string, now time.Time) (bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	r, ok := m.rows[id]
+	if !ok || r.deleted || !r.c.Enabled || r.c.RunToken != "" || r.c.SyncState == bizsync.SyncStateAuthPaused {
+		return false, nil
+	}
+	r.c.NextRunAt = now
+	r.c.UpdatedAt = now
+	return true, nil
+}
+
+// WakeConnectorFromAuthPaused SQL 谓词逐字镜像：id ∧ 未软删 ∧
+// sync_state='auth_paused' → idle+error_code 清零+consecutive_failures=0。
+func (m *memConnectorRepo) WakeConnectorFromAuthPaused(_ context.Context, id string, now time.Time) (bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	r, ok := m.rows[id]
+	if !ok || r.deleted || r.c.SyncState != bizsync.SyncStateAuthPaused {
+		return false, nil
+	}
+	r.c.SyncState = bizsync.SyncStateIdle
+	r.c.ErrorCode = bizsync.ErrCodeNone
+	r.c.ConsecutiveFailures = 0
+	r.c.UpdatedAt = now
+	return true, nil
 }
 
 // steal fencing 钉助手：模拟另一属主 CAS 夺权（token 改写 + 租约面刷新）。
@@ -452,6 +491,102 @@ func (m *memRunRepo) last() bizsync.Run {
 		return bizsync.Run{}
 	}
 	return m.runs[len(m.runs)-1]
+}
+
+// ──────────────────────────────── CredentialRepo 内存镜（W5） ────────────────────────────────
+
+type memCredentialRow struct {
+	c       bizsync.Credential
+	deleted bool
+}
+
+func memCredentialKey(connectorID, credentialKey string) string {
+	return connectorID + "|" + credentialKey
+}
+
+type memCredentialRepo struct {
+	mu   sync.Mutex
+	rows map[string]*memCredentialRow
+	// 故障注入：仓口基础设施失败分支钉
+	upsertErr error
+	getErr    error
+}
+
+func newMemCredentialRepo() *memCredentialRepo {
+	return &memCredentialRepo{rows: map[string]*memCredentialRow{}}
+}
+
+// UpsertCredential partial-arbiter 谓词逐字镜像（idx_src_credential_active：
+// (connector_id, credential_key) WHERE deleted_at 恒空串）：活跃冲突原位更新，
+// 软删墓碑行不仲裁——先行软删再创=新行；SecretRef 空串硬拒（拒写闸对齐）。
+func (m *memCredentialRepo) UpsertCredential(_ context.Context, c bizsync.Credential) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.upsertErr != nil {
+		return m.upsertErr
+	}
+	if c.ID == "" || c.ConnectorID == "" || c.CredentialKey == "" || c.SecretRef == "" {
+		return errors.New("mem: credential id/connector/key/secret_ref required")
+	}
+	k := memCredentialKey(c.ConnectorID, c.CredentialKey)
+	if r, ok := m.rows[k]; ok && !r.deleted {
+		r.c.Status = c.Status
+		r.c.SecretRef = c.SecretRef
+		r.c.MetadataJSON = c.MetadataJSON
+		r.c.UpdatedAt = time.Now()
+		return nil
+	}
+	m.rows[k] = &memCredentialRow{c: c}
+	return nil
+}
+
+func (m *memCredentialRepo) GetCredential(_ context.Context, connectorID, credentialKey string) (bizsync.Credential, bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.getErr != nil {
+		return bizsync.Credential{}, false, m.getErr
+	}
+	r, ok := m.rows[memCredentialKey(connectorID, credentialKey)]
+	if !ok || r.deleted {
+		return bizsync.Credential{}, false, nil
+	}
+	return r.c, true, nil
+}
+
+func (m *memCredentialRepo) SoftDeleteCredential(_ context.Context, connectorID, credentialKey string) (bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	r, ok := m.rows[memCredentialKey(connectorID, credentialKey)]
+	if !ok || r.deleted {
+		return false, nil
+	}
+	r.deleted = true
+	return true, nil
+}
+
+// cascadeDelete connector 级联软删（镜像 repo 同事务级联：整 connector
+// 凭据全软删；fixture 经 memConnectorRepo.onSoftDelete 缝合调用）。
+func (m *memCredentialRepo) cascadeDelete(connectorID string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for k, r := range m.rows {
+		if !r.deleted && strings.HasPrefix(k, connectorID+"|") {
+			r.deleted = true
+		}
+	}
+}
+
+func (m *memCredentialRepo) ListCredentialsByConnector(_ context.Context, connectorID string) ([]bizsync.Credential, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var out []bizsync.Credential
+	for k, r := range m.rows {
+		if !r.deleted && strings.HasPrefix(k, connectorID+"|") {
+			out = append(out, r.c)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].CredentialKey < out[j].CredentialKey })
+	return out, nil
 }
 
 // ──────────────────────────────── Walker / Applier / Locker / Frames ────────────────────────────────
