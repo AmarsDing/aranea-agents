@@ -1,0 +1,15 @@
+-- Version 20261305: memory_facts.embedder_epoch（JEV Phase 0 / T4，P20 双
+-- epoch 组合坐标系，2026-10-28）
+-- 缺口：memory_facts 已有 embedding_model/embedding_dim/embedding_status，
+-- 但无 epoch 列。同名模型在供应商静默升级、预处理变更或微调换代后产出
+-- 的向量与存量行不再可比，recall 静默漂移无从归因。
+-- 语义：嵌入流水线世代标识（语义版本串，如 v2026.10 / tev4-1024-r1），
+-- 由嵌入写入路径在产出行时盖章；组合键 (provider, model, dim, epoch)
+-- 唯一定位一族向量。空串 = 存量未分级行（迁移前写入），与
+-- executor_waiter_decisions 等新表同律免 NULL 三值；后续重嵌入清扫器
+-- 以 当前 epoch <> 行 epoch 判定 stale 并置 embedding_status 回 pending。
+-- 混版本滚动窗口记档：列先行（本迁移），消费面（写入盖章 + stale 判定 +
+-- P20 的 (嵌入 epoch × 决策 epoch) 指标分桶）随 T8 shadow 链与后续批次
+-- 落地；旧二进制不感知本列，零读零写，字节级旧行为。仅加列：不动 ent
+-- schema（memory_facts 为 raw-SQL 管理表）、不播种。幂等，重跑安全。
+ALTER TABLE memory_facts ADD COLUMN IF NOT EXISTS embedder_epoch TEXT NOT NULL DEFAULT '';

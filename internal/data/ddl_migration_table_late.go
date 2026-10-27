@@ -590,4 +590,12 @@ var ddlMigrationsLate = []ddlMigration{
 	// ARANEA_OUTBOX_SWEEP_CLAIM=off|on（缺省 off=ListPending 字节级旧
 	// 行为）须全副本带新二进制后开启。幂等，重跑安全。
 	{Version: 20261304, Name: "event_delivery_outbox_claim", SQL: "sql/migrations/20261304_event_delivery_outbox_claim.sql"},
+	// 20261305 memory_facts.embedder_epoch（JEV Phase 0 / T4，P20 双 epoch
+	// 组合坐标系，2026-10-28）：嵌入流水线世代戳（语义版本串），组合键
+	// (provider, model, dim, epoch) 定位一族向量；空串=迁移前存量未分级行。
+	// 解决同名模型静默升级/预处理变更后向量不可比的漂移归因缺口。列先行，
+	// 消费面（写入盖章+stale 回 pending 清扫+组合键指标分桶）随 T8 shadow
+	// 链与后续批次落地，旧二进制零读零写字节级旧行为。raw-SQL 管理表不动
+	// ent schema、不播种。编号顺延当时最大值（20261304）+1。幂等，重跑安全。
+	{Version: 20261305, Name: "memory_facts_embedder_epoch", SQL: "sql/migrations/20261305_memory_facts_embedder_epoch.sql"},
 }

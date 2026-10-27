@@ -318,6 +318,11 @@ CREATE TABLE IF NOT EXISTS memory_facts (
   embedding_status TEXT NOT NULL DEFAULT 'pending',
   embedding_model TEXT NOT NULL DEFAULT '',
   embedding_dim INTEGER NOT NULL DEFAULT 0,
+  -- 20261305: embedder pipeline generation stamp (semantic version string);
+  -- empty = legacy row predating epoch tracking. Combination key
+  -- (provider, model, dim, epoch) identifies one vector family; the stale
+  -- sweeper compares current epoch against this stamp and re-pends rows.
+  embedder_epoch TEXT NOT NULL DEFAULT '',
   embedding_blob BLOB,
   embedding_norm REAL NOT NULL DEFAULT 0,
   pii_flag INTEGER NOT NULL DEFAULT 0,
