@@ -7,9 +7,10 @@ import (
 )
 
 // 自治理知识图谱 M3 演化时序层端口。
-// supersedes 版本链：同 fact_id 再写入/仲裁 supersede 时旧段快照留痕（可审计可回滚），
-// 不污染 links 表；写入时冲突检测：LLM 仲裁新事实 vs 同词条既有段，
-// contradicts 落治理提案（高风险人工二审），supersedes 走版本链。
+// 版本链：同 fact_id 再写入/仲裁 update 时旧段快照留痕（可审计可回滚），
+// 不污染 links 表；写入时冲突检测：LLM 仲裁新事实 vs 同词条既有段（G-40
+// 四操作 add/update/delete/noop，Mem0 词表对齐）——delete 高置信落治理提案
+// 人工二审、低置信带自动失效走版本链墓碑，update 走版本链顶替。
 
 // 治理提案 kind（M3.2 起用 conflict；其余 M4 dream_cycle 产出）。
 const (
@@ -82,13 +83,29 @@ type WriteBackFactBlock struct {
 	FactID  string // 段内 fact_id 标记；空 = 无 ID 段（不可作 supersede 目标）
 }
 
-// WriteBackArbitration 一条新事实的仲裁结论。
+// WriteBackOp 写回仲裁四操作（G-40 ARB4；与 Mem0 业界词表对齐，字节稳定枚举）。
+// 解析层兼容旧三值映射：supersedes→update、contradicts→delete、unrelated→noop。
+type WriteBackOp string
+
+const (
+	// WriteBackOpAdd 无冲突直接追加；仲裁未判（不在输出列表）默认即 add。
+	WriteBackOpAdd WriteBackOp = "add"
+	// WriteBackOpUpdate 新事实是既有段同一事实的更新/修正——高置信（≥0.8）走版本链顶替。
+	WriteBackOpUpdate WriteBackOp = "update"
+	// WriteBackOpDelete 新事实与既有段矛盾——置信分带：≥0.7 人工二审（高风险提案），
+	// [0.5,0.7) 自动失效（旧段移除+版本链墓碑+低风险 applied 提案审计痕）。
+	WriteBackOpDelete WriteBackOp = "delete"
+	// WriteBackOpNoop 语义重复/已被覆盖——零旁效应跳过（必须显式判定，未判不 noop 化）。
+	WriteBackOpNoop WriteBackOp = "noop"
+)
+
+// WriteBackArbitration 一条新事实的仲裁结论（G-40：四操作词表，旧 Verdict 字段同批删除）。
 type WriteBackArbitration struct {
-	FactIndex    int     // 对应输入新事实切片下标
-	Verdict      string  // unrelated / supersedes / contradicts
-	TargetFactID string  // supersedes/contradicts 目标段的 fact_id
-	Confidence   float64 // 0-1；低于门槛的结论调用方忽略
-	Reason       string  // 仲裁理由（提案载荷用）
+	FactIndex    int         // 对应输入新事实切片下标
+	Operation    WriteBackOp // add / update / delete / noop
+	TargetFactID string      // update/delete 目标段的 fact_id
+	Confidence   float64     // 0-1；低于门槛的结论调用方忽略
+	Reason       string      // 仲裁理由（提案载荷用）
 }
 
 // WriteBackArbiter 写回冲突检测窄接口（M3.2；生产实现 internal/knowledge.WriteBackArbiter）。
@@ -109,9 +126,11 @@ func (u *Usecase) SetWriteBackArbiter(a WriteBackArbiter) {
 	u.arbiter = a
 }
 
-// recordFactVersion 留痕一条 supersedes 版本（best-effort：失败 Warn 不阻断写回）。
+// recordFactVersion 留痕一条事实段版本（best-effort：失败 Warn 不阻断写回）。
+// G-40 墓碑豁免（D4）：NewBody 空串=事实已被 DELETE 自动失效移除（回放方读空即
+// 墓碑），旧段非空即可入档；空旧段与新旧一致的幂等重写仍跳过。
 func (u *Usecase) recordFactVersion(ctx context.Context, collectionID, docID, factID, oldBody, newBody string) {
-	if u == nil || u.factVersions == nil || oldBody == "" || oldBody == newBody {
+	if u == nil || u.factVersions == nil || oldBody == "" || (oldBody == newBody && newBody != "") {
 		return
 	}
 	if err := u.factVersions.InsertFactVersion(ctx, FactVersion{
@@ -121,7 +140,7 @@ func (u *Usecase) recordFactVersion(ctx context.Context, collectionID, docID, fa
 		OldBody:      oldBody,
 		NewBody:      newBody,
 	}); err != nil {
-		u.lg.Warn("supersedes 版本留痕失败（正文已更新，留痕缺失可容忍）",
+		u.lg.Warn("事实段版本留痕失败（正文已更新，留痕缺失可容忍）",
 			loggateway.StepID("knowledge.evolution.version"),
 			loggateway.Str("doc_id", docID),
 			loggateway.Str("fact_id", factID),
@@ -130,20 +149,22 @@ func (u *Usecase) recordFactVersion(ctx context.Context, collectionID, docID, fa
 	}
 }
 
-// recordConflictProposal 留痕一条矛盾仲裁提案（best-effort 同上）。
-func (u *Usecase) recordConflictProposal(ctx context.Context, collectionID, docID string, payload map[string]any) {
+// recordGovernanceProposal 留痕一条治理提案（best-effort 同上；dedup_key 幂等闸
+// 全状态探测 pending/applied/rejected——高风险人工二审与 G-40 自动失效共用闸）。
+func (u *Usecase) recordGovernanceProposal(ctx context.Context, collectionID, docID, kind, risk, status string, payload map[string]any) {
 	if u == nil || u.proposals == nil {
 		return
 	}
 	if dedupKey, _ := payload["dedup_key"].(string); dedupKey != "" {
 		if deduper, ok := u.proposals.(governanceProposalDeduper); ok {
-			exists, err := deduper.HasProposal(ctx, collectionID, ProposalKindConflict, dedupKey, []string{
+			exists, err := deduper.HasProposal(ctx, collectionID, kind, dedupKey, []string{
 				ProposalStatusPending, ProposalStatusApplied, ProposalStatusRejected,
 			})
 			if err != nil {
-				u.lg.Warn("矛盾治理提案去重探测失败（放行）",
+				u.lg.Warn("治理提案去重探测失败（放行）",
 					loggateway.StepID("knowledge.evolution.proposal"),
 					loggateway.Str("doc_id", docID),
+					loggateway.Str("kind", kind),
 					loggateway.Str("dedup_key", dedupKey),
 					loggateway.Err(err),
 				)
@@ -154,14 +175,28 @@ func (u *Usecase) recordConflictProposal(ctx context.Context, collectionID, docI
 	}
 	if err := u.proposals.InsertProposal(ctx, GovernanceProposal{
 		CollectionID: collectionID,
-		Kind:         ProposalKindConflict,
-		Risk:         ProposalRiskHigh,
+		Kind:         kind,
+		Risk:         risk,
+		Status:       status,
 		Payload:      payload,
 	}); err != nil {
-		u.lg.Warn("矛盾治理提案留痕失败",
+		u.lg.Warn("治理提案留痕失败",
 			loggateway.StepID("knowledge.evolution.proposal"),
 			loggateway.Str("doc_id", docID),
+			loggateway.Str("kind", kind),
 			loggateway.Err(err),
 		)
 	}
+}
+
+// recordConflictProposal 留痕一条矛盾仲裁提案（高风险 pending，人工二审）。
+func (u *Usecase) recordConflictProposal(ctx context.Context, collectionID, docID string, payload map[string]any) {
+	u.recordGovernanceProposal(ctx, collectionID, docID, ProposalKindConflict, ProposalRiskHigh, "", payload)
+}
+
+// recordAutoInvalidateProposal 留痕一条 DELETE 自动失效提案（G-40 D4：低风险
+// applied 直落——处置已生效，提案即审计痕；payload 带 auto_invalidated/confidence/
+// reason/双 fact_id 证据，与 recordConflictProposal 同 dedup 键形幂等闸）。
+func (u *Usecase) recordAutoInvalidateProposal(ctx context.Context, collectionID, docID string, payload map[string]any) {
+	u.recordGovernanceProposal(ctx, collectionID, docID, ProposalKindConflict, ProposalRiskLow, ProposalStatusApplied, payload)
 }

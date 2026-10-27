@@ -43,6 +43,9 @@ type writeBackFields struct {
 	factVersions    FactVersionRepo
 	proposals       GovernanceProposalRepo
 	arbiter         WriteBackArbiter
+	// writeBackDeleteAutoInvalidateOff G-40 D6 事故闸（构造期读 env 一次；
+	// true=DELETE 自动失效带整带关闭，回落提案路径）。
+	writeBackDeleteAutoInvalidateOff bool
 }
 
 type curateFields struct {

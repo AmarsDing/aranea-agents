@@ -9,8 +9,12 @@ import (
 	bizknowledge "aranea-agents/internal/biz/knowledge"
 )
 
-// 自治理图谱 M3.2 写回冲突仲裁器契约：
-//   - LLM 返回 supersedes/contradicts 结论 → 解析为 Arbitration（unrelated/非法裁决丢弃）；
+// 自治理图谱 G-40 写回冲突仲裁器契约（四操作词表，Mem0 对齐）：
+//   - LLM 返回 update/delete/noop 结论 → 解析为 Arbitration（add 直出同样透传；
+//     未知操作丢弃，钉⑩⑫⑬）；
+//   - 旧三值键/词兼容映射：supersedes→update、contradicts→delete、unrelated→noop
+//     （G-40 D2，钉⑪）；
+//   - noop 透出由消费面零旁效应跳过（不在解析层吃掉，钉⑬）；
 //   - 空新事实或空既有段 → 不调用 LLM 直接返回 nil；
 //   - LLM/解析失败 → 上抛 error（调用方降级直接追加）；
 //   - 未接线（nil llm）→ 报错；未配置 LLM → 报错；
@@ -28,15 +32,17 @@ func arbiterTestNews() []bizknowledge.WriteBackFact {
 	}
 }
 
-func TestWriteBackArbiter_ParsesVerdicts(t *testing.T) {
+// 钉⑩⑫⑬：四操作直出消费——update/noop 透出、未知操作丢弃；noop 不在解析层吃掉
+// （透传给消费面零旁效应跳过）。
+func TestWriteBackArbiter_ParsesFourOps(t *testing.T) {
 	llm := &stubRelationLLM{responses: []string{
-		`[{"fact_index":0,"verdict":"supersedes","target_fact_id":"fid-old","confidence":0.92,"reason":"同一事实的更新"},
-		  {"fact_index":1,"verdict":"unrelated","target_fact_id":"","confidence":0.9,"reason":"无关"},
-		  {"fact_index":2,"verdict":"bogus","target_fact_id":"fid-old","confidence":0.9,"reason":"非法裁决"}]`,
+		`[{"fact_index":0,"operation":"update","target_fact_id":"fid-old","confidence":0.92,"reason":"同一事实的更新"},
+		  {"fact_index":1,"operation":"noop","target_fact_id":"","confidence":0.9,"reason":"已被覆盖"},
+		  {"fact_index":2,"operation":"bogus","target_fact_id":"fid-old","confidence":0.9,"reason":"非法操作"}]`,
 	}}
 	a := NewWriteBackArbiter(llm, stubRelationSys{}, nil, nil)
 	news := append(arbiterTestNews(),
-		bizknowledge.WriteBackFact{FactID: "fid-x", Statement: "无关事实", FactKind: "decision"},
+		bizknowledge.WriteBackFact{FactID: "fid-x", Statement: "重复事实", FactKind: "decision"},
 		bizknowledge.WriteBackFact{FactID: "fid-y", Statement: "另一条", FactKind: "decision"},
 	)
 	got, err := a.ArbitrateWriteBack(context.Background(), "灰度发布", arbiterTestBlocks(), news)
@@ -46,30 +52,61 @@ func TestWriteBackArbiter_ParsesVerdicts(t *testing.T) {
 	if llm.calls != 1 {
 		t.Fatalf("llm calls = %d, want 1 (batch)", llm.calls)
 	}
-	// 仅 supersedes/contradicts 透出；unrelated/非法裁决丢弃。
-	if len(got) != 1 {
-		t.Fatalf("arbitrations = %+v, want 1", got)
+	// update + noop 透出；未知操作丢弃。
+	if len(got) != 2 {
+		t.Fatalf("arbitrations = %+v, want 2 (update+noop)", got)
 	}
 	v := got[0]
-	if v.FactIndex != 0 || v.Verdict != "supersedes" || v.TargetFactID != "fid-old" || v.Confidence != 0.92 {
-		t.Fatalf("verdict = %+v", v)
+	if v.FactIndex != 0 || v.Operation != bizknowledge.WriteBackOpUpdate || v.TargetFactID != "fid-old" || v.Confidence != 0.92 {
+		t.Fatalf("update arbitration = %+v", v)
 	}
-	// prompt 必须含既有段 fact_id 与新事实陈述（仲裁依据）。
+	if got[1].FactIndex != 1 || got[1].Operation != bizknowledge.WriteBackOpNoop {
+		t.Fatalf("noop must pass through: %+v", got[1])
+	}
+	// prompt 必须含既有段 fact_id 与新事实陈述（仲裁依据）+ 四操作词表。
 	if !strings.Contains(llm.lastUser, "fid-old") || !strings.Contains(llm.lastUser, "20% 起步") {
 		t.Fatalf("prompt missing evidence: %q", llm.lastUser)
 	}
 }
 
+// 钉⑪：旧三值键/词映射（D2）——supersedes→update、contradicts→delete、
+// unrelated→noop；旧键名 verdict 同样兼容。
+func TestWriteBackArbiter_LegacyVerdictMapping(t *testing.T) {
+	llm := &stubRelationLLM{responses: []string{
+		`[{"fact_index":0,"verdict":"supersedes","target_fact_id":"fid-old","confidence":0.9,"reason":"旧词-顶替"},
+		  {"fact_index":1,"verdict":"contradicts","target_fact_id":"fid-old","confidence":0.85,"reason":"旧词-矛盾"},
+		  {"fact_index":2,"verdict":"unrelated","target_fact_id":"","confidence":0.9,"reason":"旧词-无关"}]`,
+	}}
+	a := NewWriteBackArbiter(llm, stubRelationSys{}, nil, nil)
+	news := append(arbiterTestNews(),
+		bizknowledge.WriteBackFact{FactID: "fid-x", Statement: "另一条", FactKind: "decision"},
+		bizknowledge.WriteBackFact{FactID: "fid-y", Statement: "无关事实", FactKind: "decision"},
+	)
+	got, err := a.ArbitrateWriteBack(context.Background(), "灰度发布", arbiterTestBlocks(), news)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 3 {
+		t.Fatalf("legacy vocabulary must all map: %+v", got)
+	}
+	want := []bizknowledge.WriteBackOp{bizknowledge.WriteBackOpUpdate, bizknowledge.WriteBackOpDelete, bizknowledge.WriteBackOpNoop}
+	for i, w := range want {
+		if got[i].Operation != w {
+			t.Fatalf("legacy[%d] = %q, want %q (all %+v)", i, got[i].Operation, w, got)
+		}
+	}
+}
+
 func TestWriteBackArbiter_CodeFenceJSONTolerated(t *testing.T) {
 	llm := &stubRelationLLM{responses: []string{
-		"```json\n[{\"fact_index\":0,\"verdict\":\"contradicts\",\"target_fact_id\":\"fid-old\",\"confidence\":0.85,\"reason\":\"直接矛盾\"}]\n```",
+		"```json\n[{\"fact_index\":0,\"operation\":\"delete\",\"target_fact_id\":\"fid-old\",\"confidence\":0.85,\"reason\":\"直接矛盾\"}]\n```",
 	}}
 	a := NewWriteBackArbiter(llm, stubRelationSys{}, nil, nil)
 	got, err := a.ArbitrateWriteBack(context.Background(), "灰度发布", arbiterTestBlocks(), arbiterTestNews())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 1 || got[0].Verdict != "contradicts" {
+	if len(got) != 1 || got[0].Operation != bizknowledge.WriteBackOpDelete {
 		t.Fatalf("code-fenced JSON must parse: %+v", got)
 	}
 }

@@ -1,9 +1,12 @@
-// Package knowledge — 自治理知识图谱 M3.2：写回冲突仲裁器（LLM）。
+// Package knowledge — 自治理知识图谱 G-40：写回冲突仲裁器（LLM，四操作词表）。
 //
 // 新事实追加进词条页前，与同页既有事实段（同页即同主题，零检索成本）批量仲裁：
-// supersedes（新事实是旧段的更新替代）→ 走 M3.1 版本链顶替旧段；
-// contradicts（新事实与旧段矛盾）→ 落高风险治理提案，旧段不覆盖，人工二审；
-// unrelated → 原追加行为。仲裁失败由调用方降级为直接追加，不阻断写回。
+// update（新事实是旧段的更新替代）→ 走版本链顶替旧段；
+// delete（新事实与旧段矛盾）→ 置信分带（高带人工二审、低带自动失效+墓碑）；
+// noop（语义重复/已被覆盖）→ 零旁效应跳过；
+// add（与所有段无上述关系）→ 原追加行为（未输出即默认 add）。
+// 解析层兼容旧三值（supersedes/contradicts/unrelated 映射 update/delete/noop，
+// G-40 D2）；未知值丢弃。仲裁失败由调用方降级为直接追加，不阻断写回。
 package knowledge
 
 import (
@@ -55,14 +58,32 @@ func WriteBackArbiterDisabled() bool {
 
 type arbitrateVerdict struct {
 	FactIndex    int     `json:"fact_index"`
-	Verdict      string  `json:"verdict"`
+	Operation    string  `json:"operation"` // 四操作键（G-40 新契约）
+	Verdict      string  `json:"verdict"`   // 旧键名兼容（D2 灰度窗口——固定缓存提示词变体）
 	TargetFactID string  `json:"target_fact_id"`
 	Confidence   float64 `json:"confidence"`
 	Reason       string  `json:"reason"`
 }
 
-// ArbitrateWriteBack 批量仲裁新事实 vs 同页既有段。只返回非 unrelated 结论；
-// LLM/解析失败上抛 error（调用方降级直接追加）。
+// parseWriteBackOp 解析仲裁操作：四操作直出 + 旧三值映射（G-40 D2：supersedes→update、
+// contradicts→delete、unrelated→noop）；未知值返回 ok=false 丢弃（与现行过滤同纪律）。
+func parseWriteBackOp(raw string) (bizknowledge.WriteBackOp, bool) {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "add":
+		return bizknowledge.WriteBackOpAdd, true
+	case "update", "supersedes":
+		return bizknowledge.WriteBackOpUpdate, true
+	case "delete", "contradicts":
+		return bizknowledge.WriteBackOpDelete, true
+	case "noop", "unrelated":
+		return bizknowledge.WriteBackOpNoop, true
+	}
+	return "", false
+}
+
+// ArbitrateWriteBack 批量仲裁新事实 vs 同页既有段。add 不必显式输出（未判即默认
+// 追加）；update/delete/noop 结论透出由消费面按档处置。LLM/解析失败上抛 error
+// （调用方降级直接追加）。
 func (a *WriteBackArbiter) ArbitrateWriteBack(ctx context.Context, title string, existing []bizknowledge.WriteBackFactBlock, news []bizknowledge.WriteBackFact) ([]bizknowledge.WriteBackArbitration, error) {
 	if a == nil || a.llm == nil {
 		return nil, fmt.Errorf("writeback arbiter not wired")
@@ -115,14 +136,15 @@ func (a *WriteBackArbiter) ArbitrateWriteBack(ctx context.Context, title string,
 	resp, _, err := a.llm.Call(callCtx, biz.LLMCallRequest{
 		Provider: provider,
 		Model:    model,
-		System: `你是知识库写回冲突仲裁助手。给定词条页标题、页内既有事实段清单（含 fact_id）与待写入的新事实清单，逐条判断新事实与既有段的关系：
-- supersedes：新事实是某既有段同一事实的更新/修正（语义指向同一断言，内容更新）；
-- contradicts：新事实与某既有段直接矛盾（不能同时成立）；
-- unrelated：与所有既有段无上述关系。
-只输出 supersedes/contradicts 的结论，unrelated 不输出。以 JSON 数组输出，每个元素：
-{"fact_index": 新事实index, "verdict": "supersedes/contradicts", "target_fact_id": "目标既有段fact_id", "confidence": 0.0-1.0, "reason": "一句话理由"}
+		System: `你是知识库写回冲突仲裁助手。给定词条页标题、页内既有事实段清单（含 fact_id）与待写入的新事实清单，逐条判断新事实应当执行的操作：
+- update：新事实是某既有段同一事实的更新/修正（语义指向同一断言，内容更新）；
+- delete：新事实与某既有段直接矛盾（不能同时成立）；
+- noop：新事实与某既有段语义重复/已被覆盖，无需写入；
+- add：与所有既有段无上述关系且确需新增（add 不必输出，未输出即默认 add）。
+以 JSON 数组输出 update/delete/noop 结论，每个元素：
+{"fact_index": 新事实index, "operation": "update/delete/noop", "target_fact_id": "目标既有段fact_id", "confidence": 0.0-1.0, "reason": "一句话理由"}
 要求：
-1. target_fact_id 必须原样取自既有段清单；
+1. target_fact_id 必须原样取自既有段清单（noop 无目标可留空）；
 2. confidence 反映判断明确程度（明示 0.8-1.0，推断 0.5-0.8）；
 3. 只输出 JSON 数组（可为空数组），不要任何解释或代码块包裹。`,
 		User: "词条标题：" + title + "\n\n既有事实段：\n" + string(oldsJSON) + "\n\n新事实：\n" + string(newsJSON),
@@ -136,12 +158,17 @@ func (a *WriteBackArbiter) ArbitrateWriteBack(ctx context.Context, title string,
 	}
 	out := make([]bizknowledge.WriteBackArbitration, 0, len(verdicts))
 	for _, v := range verdicts {
-		if v.Verdict != "supersedes" && v.Verdict != "contradicts" {
+		raw := v.Operation
+		if raw == "" {
+			raw = v.Verdict // 旧键名兼容（D2）
+		}
+		op, ok := parseWriteBackOp(raw)
+		if !ok {
 			continue
 		}
 		out = append(out, bizknowledge.WriteBackArbitration{
 			FactIndex:    v.FactIndex,
-			Verdict:      v.Verdict,
+			Operation:    op,
 			TargetFactID: strings.TrimSpace(v.TargetFactID),
 			Confidence:   v.Confidence,
 			Reason:       truncateRunes(strings.TrimSpace(v.Reason), 200),

@@ -365,16 +365,18 @@ type Usecase struct {
 // NewUsecase constructs a KnowledgeUsecase from individual sub-interfaces.
 func NewUsecase(collections CollectionRepo, documents DocumentRepo, chunks ChunkRepo) *Usecase {
 	return &Usecase{
-		vaultFields: vaultFields{collections: collections, documents: documents, chunks: chunks},
-		lg:          loggateway.NewNoop(),
+		vaultFields:     vaultFields{collections: collections, documents: documents, chunks: chunks},
+		writeBackFields: writeBackFields{writeBackDeleteAutoInvalidateOff: writeBackDeleteAutoInvalidateDisabled()},
+		lg:              loggateway.NewNoop(),
 	}
 }
 
 // NewUsecaseFromRepo constructs a KnowledgeUsecase from the combined Repo interface.
 func NewUsecaseFromRepo(repo Repo) *Usecase {
 	return &Usecase{
-		vaultFields: vaultFields{collections: repo, documents: repo, chunks: repo},
-		lg:          loggateway.NewNoop(),
+		vaultFields:     vaultFields{collections: repo, documents: repo, chunks: repo},
+		writeBackFields: writeBackFields{writeBackDeleteAutoInvalidateOff: writeBackDeleteAutoInvalidateDisabled()},
+		lg:              loggateway.NewNoop(),
 	}
 }
 

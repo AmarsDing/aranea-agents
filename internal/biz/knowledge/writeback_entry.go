@@ -2,6 +2,7 @@ package knowledge
 
 import (
 	"context"
+	"os"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -224,9 +225,11 @@ func yamlQuote(s string) string {
 // 与是否实际改动（全量去重命中时 changed=false，不触发 chunk 重放）。
 // tags 仅用于新建页 header；title 作为自动成链的 self 提示（防 H1 自链）。
 // M3 演化时序（增量叠加，不改主流程）：
-//   - M3.1：fact_id 整段替换生效时，旧段快照入 knowledge_fact_version（supersedes 版本链）；
-//   - M3.2：追加前经 arbiter 对同页既有段仲裁——supersedes 改走版本链替换目标段，
-//     contradicts 落高风险治理提案（旧段不覆盖，新事实仍追加留痕待人工二审）；
+//   - M3.1：fact_id 整段替换生效时，旧段快照入 knowledge_fact_version（版本链）；
+//   - G-40（M3.2 升级）：追加前经 arbiter 对同页既有段四操作仲裁——
+//     update 高置信（≥0.8）走版本链顶替目标段；delete 置信分带（≥0.7 旧段不动+
+//     高风险提案人工二审；[0.5,0.7) 自动失效：旧段移除+版本链墓碑+低风险 applied
+//     提案审计痕）；noop 零旁效应跳过；add/未判默认追加。失配降级（D7）；
 //   - 版本/提案均在正文持久化成功后 best-effort 留痕（失败 Warn 不回滚）。
 func (u *Usecase) upsertEntryDoc(ctx context.Context, col Collection, rel, title string, tags []string, in WriteBackInput, facts []WriteBackFact) (PromoteTouchedDoc, bool, error) {
 	doc, err := u.documents.GetDocumentByRelPath(ctx, col.ID, rel)
@@ -249,7 +252,7 @@ func (u *Usecase) upsertEntryDoc(ctx context.Context, col Collection, rel, title
 	changed := false
 	appended := 0
 	var versions []FactVersion
-	var proposals []map[string]any
+	var proposals []queuedConflictProposal
 	type appendCand struct {
 		idx   int
 		block string
@@ -285,7 +288,7 @@ func (u *Usecase) upsertEntryDoc(ctx context.Context, col Collection, rel, title
 		}
 		appends = append(appends, appendCand{idx: i, block: block})
 	}
-	// M3.2：写入时冲突检测（仅对存量页 + 有待追加事实 + 页内有带 ID 事实段时仲裁；
+	// G-40 四操作冲突仲裁（仅对存量页 + 有待追加事实 + 页内有带 ID 事实段时仲裁；
 	// 仲裁器未接线/调用失败一律降级原追加行为，不阻断写回）。
 	if u.arbiter != nil && !created && len(appends) > 0 {
 		existing := extractFactBlocks(body)
@@ -294,7 +297,7 @@ func (u *Usecase) upsertEntryDoc(ctx context.Context, col Collection, rel, title
 			for _, a := range appends {
 				news = append(news, facts[a.idx])
 			}
-			verdicts, aerr := u.arbiter.ArbitrateWriteBack(ctx, title, existing, news)
+			arbitrations, aerr := u.arbiter.ArbitrateWriteBack(ctx, title, existing, news)
 			if aerr != nil {
 				u.lg.Warn("写回冲突仲裁失败（降级为直接追加）",
 					loggateway.StepID("knowledge.writeback.arbitrate"),
@@ -302,8 +305,8 @@ func (u *Usecase) upsertEntryDoc(ctx context.Context, col Collection, rel, title
 					loggateway.Err(aerr),
 				)
 			} else {
-				byIdx := make(map[int]WriteBackArbitration, len(verdicts))
-				for _, v := range verdicts {
+				byIdx := make(map[int]WriteBackArbitration, len(arbitrations))
+				for _, v := range arbitrations {
 					if v.FactIndex >= 0 && v.FactIndex < len(appends) {
 						byIdx[v.FactIndex] = v
 					}
@@ -311,25 +314,65 @@ func (u *Usecase) upsertEntryDoc(ctx context.Context, col Collection, rel, title
 				kept := appends[:0]
 				for j, a := range appends {
 					v, ok := byIdx[j]
-					if ok && v.Verdict == "supersedes" && v.Confidence >= arbitrateSupersedeMinConfidence && v.TargetFactID != "" {
-						marker := "fact_id: `" + v.TargetFactID + "`"
-						lineageBlock := preserveSupersededFactID(a.block, facts[a.idx].FactID, v.TargetFactID)
-						if nb, ok2 := replaceH2BlockContaining(body, marker, lineageBlock); ok2 && nb != body {
-							oldBlock, _ := extractH2BlockContaining(body, marker)
-							body = nb
-							changed = true
-							versions = append(versions, FactVersion{
-								CollectionID: col.ID, DocID: doc.ID,
-								FactID: v.TargetFactID, OldBody: oldBlock, NewBody: lineageBlock,
-							})
-							continue // supersede 生效：顶替旧段，不再追加
+					if !ok {
+						// 仲裁未判（不在输出列表）默认 ADD——NOOP 必须显式判定（D5）。
+						kept = append(kept, a)
+						continue
+					}
+					switch v.Operation {
+					case WriteBackOpNoop:
+						// D5 零旁效应：不写入、不留版本、不产提案。
+						continue
+					case WriteBackOpUpdate:
+						if v.Confidence >= arbitrateSupersedeMinConfidence && v.TargetFactID != "" {
+							marker := "fact_id: `" + v.TargetFactID + "`"
+							lineageBlock := preserveSupersededFactID(a.block, facts[a.idx].FactID, v.TargetFactID)
+							if nb, ok2 := replaceH2BlockContaining(body, marker, lineageBlock); ok2 && nb != body {
+								oldBlock, _ := extractH2BlockContaining(body, marker)
+								body = nb
+								changed = true
+								versions = append(versions, FactVersion{
+									CollectionID: col.ID, DocID: doc.ID,
+									FactID: v.TargetFactID, OldBody: oldBlock, NewBody: lineageBlock,
+								})
+								continue // update 生效：顶替旧段，不再追加
+							}
 						}
+						// 低置信 / 目标失配降级（D7）= 平追加，新事实不丢。
+						kept = append(kept, a)
+					case WriteBackOpDelete:
+						autoBand := !u.writeBackDeleteAutoInvalidateOff &&
+							v.Confidence >= deleteAutoInvalidateMin && v.Confidence < arbitrateContradictMinConfidence
+						if autoBand && v.TargetFactID != "" {
+							marker := "fact_id: `" + v.TargetFactID + "`"
+							if nb, ok2 := removeH2BlockContaining(body, marker); ok2 {
+								oldBlock, _ := extractH2BlockContaining(body, marker)
+								body = nb
+								changed = true
+								// D4 账本：版本链墓碑（NewBody 空串=事实已失效移除，
+								// 回放读空即墓碑）+ 低风险 applied 提案审计痕。
+								versions = append(versions, FactVersion{
+									CollectionID: col.ID, DocID: doc.ID,
+									FactID: v.TargetFactID, OldBody: oldBlock, NewBody: "",
+								})
+								u.recordAutoInvalidateProposalLater(&proposals, doc.ID, rel, facts[a.idx], v)
+								kept = append(kept, a) // 新事实仍追加
+								continue
+							}
+							// D7 失配降级：目标段找不到→同高带（追加+高风险提案，不误删不丢新）。
+							u.recordConflictProposalLater(&proposals, doc.ID, rel, facts[a.idx], v)
+							kept = append(kept, a)
+							continue
+						}
+						if v.Confidence >= arbitrateContradictMinConfidence {
+							// 高带维持现行：旧段不覆盖、新事实仍追加，矛盾交人工二审。
+							u.recordConflictProposalLater(&proposals, doc.ID, rel, facts[a.idx], v)
+						}
+						kept = append(kept, a)
+					default:
+						// add（或解析层漏网值）= 追加。
+						kept = append(kept, a)
 					}
-					if ok && v.Verdict == "contradicts" && v.Confidence >= arbitrateContradictMinConfidence {
-						// 旧段不覆盖：新事实仍追加留痕，矛盾交人工二审（高风险提案）。
-						u.recordConflictProposalLater(&proposals, doc.ID, rel, facts[a.idx], v)
-					}
-					kept = append(kept, a)
 				}
 				appends = kept
 			}
@@ -367,7 +410,7 @@ func (u *Usecase) upsertEntryDoc(ctx context.Context, col Collection, rel, title
 		u.recordFactVersion(ctx, v.CollectionID, doc.ID, v.FactID, v.OldBody, v.NewBody)
 	}
 	for _, p := range proposals {
-		u.recordConflictProposal(ctx, col.ID, doc.ID, p)
+		u.recordGovernanceProposal(ctx, col.ID, doc.ID, ProposalKindConflict, p.risk, p.status, p.payload)
 	}
 	if err := u.RebuildBlockIndex(ctx, col.ID, doc.ID, body); err != nil {
 		u.lg.Warn("词条页块索引重建失败（正文已落，重建可自愈）",
@@ -386,12 +429,24 @@ func (u *Usecase) upsertEntryDoc(ctx context.Context, col Collection, rel, title
 	return PromoteTouchedDoc{DocID: doc.ID, Created: created}, true, nil
 }
 
-// 仲裁置信度门槛：supersedes 会顶替旧段（写操作），门槛从严；
-// contradicts 仅留提案（不改正文语义），门槛放宽。
+// 仲裁置信度门槛（G-40 四操作分带）：
+//   - update 顶替旧段（写操作），门槛从严（≥0.8）；
+//   - delete ≥0.7 高风险人工二审（仅落 pending 提案，不改正文语义），门槛放宽；
+//   - delete [deleteAutoInvalidateMin, 0.7) 低置信带自动失效（Graphiti 已证明安全：
+//     旧段移除+版本链墓碑+低风险 applied 提案审计痕，误处置可回放）；
+//   - delete <deleteAutoInvalidateMin 纯追加（不 noop 化——未达自动带也不人造保守）。
 const (
 	arbitrateSupersedeMinConfidence  = 0.8
 	arbitrateContradictMinConfidence = 0.7
+	deleteAutoInvalidateMin          = 0.5
 )
+
+// writeBackDeleteAutoInvalidateDisabled 事故闸（G-40 D6）：置 1 时 DELETE 自动失效
+// 带整带关闭，回落 G-40 前行为（高带人工二审、c<0.7 纯追加）。构造期读一次入
+// usecase 字段（先例：biz 内 env 读取同 memory_platform_config 等）。
+func writeBackDeleteAutoInvalidateDisabled() bool {
+	return strings.TrimSpace(os.Getenv("KNOWLEDGE_WRITEBACK_DELETE_AUTO_INVALIDATE_DISABLED")) == "1"
+}
 
 // preserveSupersededFactID keeps the original fact_id as the stable lineage
 // identity. The incoming extraction id remains provenance only; changing it
@@ -407,14 +462,23 @@ func preserveSupersededFactID(block, incomingFactID, targetFactID string) string
 	return strings.Replace(block, incomingMarker, targetMarker, 1)
 }
 
-// recordConflictProposalLater 队列一条矛盾提案载荷（正文持久化成功后统一落库）。
-func (u *Usecase) recordConflictProposalLater(proposals *[]map[string]any, docID, relPath string, f WriteBackFact, v WriteBackArbitration) {
+// queuedConflictProposal 待落库冲突提案（正文持久化成功后统一 best-effort 落库）：
+// 高风险 pending 人工二审与 G-40 低风险 applied 自动失效审计痕共用幂等闸键形。
+type queuedConflictProposal struct {
+	payload map[string]any
+	risk    string
+	status  string // 空 = pending（与 recordConflictProposal 现行语义一致）
+}
+
+// buildConflictPayload 构造冲突提案证据载荷（dedup_key 含双 fact_id——幂等闸键形
+// 两路径共用：同矛盾高带再审/自动失效重放均不落第二单）。
+func buildConflictPayload(docID, relPath string, f WriteBackFact, v WriteBackArbitration) map[string]any {
 	newFactKey := strings.TrimSpace(f.FactID)
 	if newFactKey == "" {
 		newFactKey = HashContent(strings.TrimSpace(f.Statement))
 	}
 	dedupKey := "conflict:fact:" + docID + ":" + strings.TrimSpace(v.TargetFactID) + ":" + newFactKey
-	*proposals = append(*proposals, map[string]any{
+	return map[string]any{
 		"dedup_key":      dedupKey,
 		"doc_id":         docID,
 		"rel_path":       relPath,
@@ -424,6 +488,26 @@ func (u *Usecase) recordConflictProposalLater(proposals *[]map[string]any, docID
 		"confidence":     v.Confidence,
 		"reason":         v.Reason,
 		"arbiter":        "llm",
+	}
+}
+
+// recordConflictProposalLater 队列一条高风险矛盾提案（pending 人工二审）。
+func (u *Usecase) recordConflictProposalLater(proposals *[]queuedConflictProposal, docID, relPath string, f WriteBackFact, v WriteBackArbitration) {
+	*proposals = append(*proposals, queuedConflictProposal{
+		payload: buildConflictPayload(docID, relPath, f, v),
+		risk:    ProposalRiskHigh,
+	})
+}
+
+// recordAutoInvalidateProposalLater 队列一条 DELETE 自动失效提案（G-40 D4：低风险
+// applied 直落；payload 附 auto_invalidated 证据——处置已生效，提案即审计痕）。
+func (u *Usecase) recordAutoInvalidateProposalLater(proposals *[]queuedConflictProposal, docID, relPath string, f WriteBackFact, v WriteBackArbitration) {
+	payload := buildConflictPayload(docID, relPath, f, v)
+	payload["auto_invalidated"] = true
+	*proposals = append(*proposals, queuedConflictProposal{
+		payload: payload,
+		risk:    ProposalRiskLow,
+		status:  ProposalStatusApplied,
 	})
 }
 
