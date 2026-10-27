@@ -254,6 +254,7 @@ func TestSourceSyncConnector_CollectionActiveUnique(t *testing.T) {
 		ID: "u-2", Kind: sourcesync.KindNotion, Name: "dup",
 		WorkspaceID: "ws-1", CollectionID: "col-u",
 		ConfigJSON: `{}`, IntervalSeconds: sourcesync.MinIntervalSeconds,
+		SyncState:      sourcesync.SyncStateIdle,
 		MaxItemsPerRun: 1, MaxDeletesPerRun: 1, MaxFetchBytesPerRun: 1,
 	})
 	if !apierror.IsCode(err, apierror.CodeConflict) {
