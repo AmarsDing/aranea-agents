@@ -28,6 +28,9 @@ import {
   curateKnowledge,
   listBlockBacklinks,
   listGovernanceProposals,
+  listSourceConnectors,
+  listSourceSyncItems,
+  listSourceSyncRuns,
   listUnlinkedMentions,
   resolveGovernanceProposal,
   updateDocumentVisibility,
@@ -189,4 +192,66 @@ it('sends scoped Agent sharing targets without changing them to human membership
     shared_with: ['department-1', 'position-2'],
   });
   expect(result.shared_with).toEqual(['department-1', 'position-2']);
+});
+
+// ───────────────────────── Source Sync（G-38 W8） ─────────────────────────
+
+describe('sourceSync api', () => {
+  beforeEach(() => {
+    mockGet.mockReset();
+  });
+
+  it('listSourceConnectors maps snake_case view rows', async () => {
+    mockGet.mockResolvedValueOnce({
+      data: {
+        items: [
+          {
+            id: 'c1',
+            kind: 'notion',
+            name: 'n1',
+            collection_id: 'col1',
+            config_json: '{"credential_key":"default"}',
+            interval_seconds: 900,
+            enabled: true,
+            sync_state: 'auth_paused',
+            next_run_at: '2026-10-28T01:00:00Z',
+            last_run_at: '',
+            last_success_at: '2026-10-27T10:00:00Z',
+            consecutive_failures: 0,
+            error_code: 'credential_missing',
+            error_message: '',
+            max_items_per_run: 500,
+            max_deletes_per_run: 200,
+            max_fetch_bytes_per_run: 536870912,
+            created_at: '2026-10-27T09:00:00Z',
+            updated_at: '2026-10-27T09:00:00Z',
+          },
+        ],
+      },
+    });
+    const rows = await listSourceConnectors();
+    expect(mockGet).toHaveBeenCalledWith('/v1/knowledge/connectors');
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      id: 'c1',
+      kind: 'notion',
+      sync_state: 'auth_paused',
+      error_code: 'credential_missing',
+      max_fetch_bytes_per_run: 536870912,
+    });
+  });
+
+  it('listSourceSyncItems passes status filter', async () => {
+    mockGet.mockResolvedValueOnce({ data: { items: [] } });
+    await listSourceSyncItems('c/特殊', 'missing', 50);
+    expect(mockGet).toHaveBeenCalledWith('/v1/knowledge/connectors/c%2F%E7%89%B9%E6%AE%8A/items', {
+      params: { limit: 50, status: 'missing' },
+    });
+  });
+
+  it('listSourceSyncRuns omits status param', async () => {
+    mockGet.mockResolvedValueOnce({ data: { items: [] } });
+    await listSourceSyncRuns('c1', 10);
+    expect(mockGet).toHaveBeenCalledWith('/v1/knowledge/connectors/c1/runs', { params: { limit: 10 } });
+  });
 });

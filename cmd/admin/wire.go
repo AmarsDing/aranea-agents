@@ -2186,6 +2186,8 @@ func provideKnowledgeCurateWorker(
 // jobs.SourceSyncKindGAOptIn——P2 上调三层 GA 门：T4 接线 ✓+W9 评审 gate+
 // shared_dir 浸泡周期；未开闸即不挂 walker，notion connector 拾取即
 // not_found walker 跳过）。DocApplier 双 kind 共用同一实例（kind 无关）。
+// W8：Frames 缝接 WS 聚合帧（v2Bus → knowledge_source_sync SystemNoticeEvent；
+// nil bus 静默——service.NewSourceSyncFrameSink 内闸）。
 func provideSourceSyncRunner(
 	repos data.SourceSyncRepos,
 	d *data.Data,
@@ -2193,6 +2195,7 @@ func provideSourceSyncRunner(
 	embedder *knowledge.MultiProviderEmbedder,
 	registry *knowledge.ExtractorRegistry,
 	crypto *biz.CredentialCrypto,
+	v2Bus biz.EventBus,
 	lg loggateway.Logger,
 ) *knowledgesync.Runner {
 	if repos == nil || d == nil || d.Postgres() == nil || uc == nil {
@@ -2230,6 +2233,7 @@ func provideSourceSyncRunner(
 		Locker:     service.NewPGKnowledgeJobLocker(d.Postgres(), lg),
 		Walkers:    walkers,
 		Appliers:   appliers,
+		Frames:     service.NewSourceSyncFrameSink(v2Bus),
 	})
 }
 

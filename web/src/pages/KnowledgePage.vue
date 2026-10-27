@@ -139,6 +139,8 @@
         <div class="app-glass-dialog__scroll">
           <q-card-section class="app-dialog-body app-glass-dialog__body">
             <knowledge-embedder-panel :config="embedderConfig" :saving="embedderSaving" @save="saveEmbedderConfig" />
+            <!-- G-38 W8：外部源同步连接器（明线设置区先例——禁命令面板暗线） -->
+            <knowledge-connectors-panel class="q-mt-lg" />
           </q-card-section>
         </div>
       </q-card>
@@ -231,6 +233,7 @@ import { useRoute } from 'vue-router';
 import { useQuasar } from 'quasar';
 import { useI18n } from 'vue-i18n';
 import KnowledgeEmbedderPanel from '../components/knowledge/KnowledgeEmbedderPanel.vue';
+import KnowledgeConnectorsPanel from '../components/knowledge/KnowledgeConnectorsPanel.vue';
 import KnowledgeHitTestPanel from '../components/knowledge/KnowledgeHitTestPanel.vue';
 import KnowledgeWorkbench from '../components/knowledge/workbench/KnowledgeWorkbench.vue';
 import KnowledgeGraph3D from '../components/knowledge/KnowledgeGraph3D.vue';

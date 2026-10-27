@@ -38,6 +38,11 @@ import type {
   KnowledgeExpert,
   PendingWriteBackItem,
   WriteBackHome,
+  SourceConnector,
+  SourceConnectorInput,
+  SourceSyncRun,
+  SourceSyncItem,
+  SourceCredentialView,
   KnowledgeHitTestResult,
   ListGovernanceProposalsResult,
 } from './types';
@@ -828,4 +833,149 @@ export async function updateEmbedderConfig(input: UpdateEmbedderConfigInput): Pr
     configured: pickBool(cfg, 'configured', 'configured'),
     has_api_key: pickBool(cfg, 'has_api_key', 'hasApiKey'),
   };
+}
+
+// ───────────────────────── Source Sync 连接器 API（G-38 W8，custom JSON 路由族） ─────────────────────────
+//
+// ⑦ 契约：/v1/knowledge/connectors 族为 custom JSON（非 proto——ADR-KN-20261023-G38-API），
+// 响应体即 JSON 直出（无信封），键名 snake_case 直通。kratosApi 裸调先例：
+// 返回 AxiosResponse，载荷在 .data。
+
+function mapSourceConnector(raw: unknown): SourceConnector {
+  const r = asRecord(raw);
+  return {
+    id: pickStr(r, 'id', 'id'),
+    kind: pickStr(r, 'kind', 'kind'),
+    name: pickStr(r, 'name', 'name'),
+    collection_id: pickStr(r, 'collection_id', 'collectionId'),
+    config_json: pickStr(r, 'config_json', 'configJson'),
+    interval_seconds: pickI32(r, 'interval_seconds', 'intervalSeconds'),
+    enabled: pickBool(r, 'enabled', 'enabled'),
+    sync_state: pickStr(r, 'sync_state', 'syncState'),
+    next_run_at: pickStr(r, 'next_run_at', 'nextRunAt'),
+    last_run_at: pickStr(r, 'last_run_at', 'lastRunAt'),
+    last_success_at: pickStr(r, 'last_success_at', 'lastSuccessAt'),
+    consecutive_failures: pickI32(r, 'consecutive_failures', 'consecutiveFailures'),
+    error_code: pickStr(r, 'error_code', 'errorCode'),
+    error_message: pickStr(r, 'error_message', 'errorMessage'),
+    max_items_per_run: pickI32(r, 'max_items_per_run', 'maxItemsPerRun'),
+    max_deletes_per_run: pickI32(r, 'max_deletes_per_run', 'maxDeletesPerRun'),
+    max_fetch_bytes_per_run: pickI64(r, 'max_fetch_bytes_per_run', 'maxFetchBytesPerRun'),
+    created_at: pickStr(r, 'created_at', 'createdAt'),
+    updated_at: pickStr(r, 'updated_at', 'updatedAt'),
+  };
+}
+
+function mapSourceRun(raw: unknown): SourceSyncRun {
+  const r = asRecord(raw);
+  return {
+    id: pickStr(r, 'id', 'id'),
+    connector_id: pickStr(r, 'connector_id', 'connectorId'),
+    started_at: pickStr(r, 'started_at', 'startedAt'),
+    finished_at: pickStr(r, 'finished_at', 'finishedAt'),
+    status: pickStr(r, 'status', 'status'),
+    created: pickI32(r, 'created', 'created'),
+    updated: pickI32(r, 'updated', 'updated'),
+    unchanged: pickI32(r, 'unchanged', 'unchanged'),
+    fetch_failed: pickI32(r, 'fetch_failed', 'fetchFailed'),
+    deleted: pickI32(r, 'deleted', 'deleted'),
+    miss_unknown: pickI32(r, 'miss_unknown', 'missUnknown'),
+    bytes_pulled: pickI64(r, 'bytes_pulled', 'bytesPulled'),
+    error_code: pickStr(r, 'error_code', 'errorCode'),
+    error_message: pickStr(r, 'error_message', 'errorMessage'),
+  };
+}
+
+function mapSourceItem(raw: unknown): SourceSyncItem {
+  const r = asRecord(raw);
+  return {
+    connector_id: pickStr(r, 'connector_id', 'connectorId'),
+    external_id: pickStr(r, 'external_id', 'externalId'),
+    document_id: pickStr(r, 'document_id', 'documentId'),
+    fingerprint: pickStr(r, 'fingerprint', 'fingerprint'),
+    content_hash: pickStr(r, 'content_hash', 'contentHash'),
+    own_lifecycle: pickBool(r, 'own_lifecycle', 'ownLifecycle'),
+    status: pickStr(r, 'status', 'status'),
+    miss_count: pickI32(r, 'miss_count', 'missCount'),
+    last_seen_run_id: pickStr(r, 'last_seen_run_id', 'lastSeenRunId'),
+    error_message: pickStr(r, 'error_message', 'errorMessage'),
+    first_seen_at: pickStr(r, 'first_seen_at', 'firstSeenAt'),
+    last_seen_at: pickStr(r, 'last_seen_at', 'lastSeenAt'),
+  };
+}
+
+function mapSourceCredential(raw: unknown): SourceCredentialView {
+  const r = asRecord(raw);
+  return {
+    id: pickStr(r, 'id', 'id'),
+    connector_id: pickStr(r, 'connector_id', 'connectorId'),
+    credential_key: pickStr(r, 'credential_key', 'credentialKey'),
+    status: pickStr(r, 'status', 'status'),
+    configured: pickBool(r, 'configured', 'configured'),
+    masked_preview: pickStr(r, 'masked_preview', 'maskedPreview'),
+    updated_at: pickStr(r, 'updated_at', 'updatedAt'),
+  };
+}
+
+const connectorsBase = '/v1/knowledge/connectors';
+
+export async function listSourceConnectors(): Promise<SourceConnector[]> {
+  const data = asRecord((await kratosApi.get(connectorsBase)).data);
+  const items = Array.isArray(data.items) ? data.items : [];
+  return items.map(mapSourceConnector);
+}
+
+export async function createSourceConnector(input: SourceConnectorInput): Promise<SourceConnector> {
+  const res = (await kratosApi.post(connectorsBase, input)).data;
+  return mapSourceConnector(res);
+}
+
+export async function getSourceConnector(id: string): Promise<SourceConnector> {
+  const res = (await kratosApi.get(`${connectorsBase}/${encodeURIComponent(id)}`)).data;
+  return mapSourceConnector(res);
+}
+
+export async function updateSourceConnector(id: string, input: SourceConnectorInput): Promise<SourceConnector> {
+  const res = (await kratosApi.patch(`${connectorsBase}/${encodeURIComponent(id)}`, input)).data;
+  return mapSourceConnector(res);
+}
+
+export async function deleteSourceConnector(id: string): Promise<void> {
+  await kratosApi.delete(`${connectorsBase}/${encodeURIComponent(id)}`);
+}
+
+/** 手动触发一轮（在途轮 409 由后端闸，前端禁用态先行）。 */
+export async function triggerSourceSync(id: string): Promise<void> {
+  await kratosApi.post(`${connectorsBase}/${encodeURIComponent(id)}/sync`);
+}
+
+export async function listSourceSyncRuns(id: string, limit = 50): Promise<SourceSyncRun[]> {
+  const data = asRecord((await kratosApi.get(`${connectorsBase}/${encodeURIComponent(id)}/runs`, { params: { limit } })).data);
+  const items = Array.isArray(data.items) ? data.items : [];
+  return items.map(mapSourceRun);
+}
+
+/** status=missing 即「删除待决」运营视图（ConfirmDeleted Unknown 大队在此曝光）。 */
+export async function listSourceSyncItems(id: string, status?: string, limit = 200): Promise<SourceSyncItem[]> {
+  const params: Record<string, unknown> = { limit };
+  if (status) params.status = status;
+  const data = asRecord((await kratosApi.get(`${connectorsBase}/${encodeURIComponent(id)}/items`, { params })).data);
+  const items = Array.isArray(data.items) ? data.items : [];
+  return items.map(mapSourceItem);
+}
+
+export async function listSourceCredentials(id: string): Promise<SourceCredentialView[]> {
+  const data = asRecord((await kratosApi.get(`${connectorsBase}/${encodeURIComponent(id)}/credential`)).data);
+  const items = Array.isArray(data.items) ? data.items : [];
+  return items.map(mapSourceCredential);
+}
+
+/** 凭据覆盖写（④：密钥本体只进不出；secret 空串=非法，后端硬拒）。 */
+export async function upsertSourceCredential(id: string, input: { credential_key: string; secret: string; status?: string }): Promise<SourceCredentialView> {
+  const res = (await kratosApi.put(`${connectorsBase}/${encodeURIComponent(id)}/credential`, input)).data;
+  return mapSourceCredential(res);
+}
+
+export async function deleteSourceCredential(id: string, credentialKey: string): Promise<void> {
+  await kratosApi.delete(`${connectorsBase}/${encodeURIComponent(id)}/credential`, { params: { credential_key: credentialKey } });
 }

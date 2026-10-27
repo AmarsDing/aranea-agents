@@ -394,3 +394,106 @@ export type WriteBackHome = {
   name: string;
   vault_backend: string;
 };
+
+// ───────────────────────── Source Sync 连接器（G-38 W8，custom JSON 路由族） ─────────────────────────
+
+/** 连接器视图（后端 connectorToView 镜像——custom JSON 键名 snake_case 直通）。 */
+export type SourceConnector = {
+  id: string;
+  kind: string; // shared_dir | notion
+  name: string;
+  collection_id: string;
+  config_json: string; // sanitize 后出库（密钥本体永不出现；credential_key 指针名保活）
+  interval_seconds: number;
+  enabled: boolean;
+  sync_state: string; // idle | running | error | auth_paused
+  next_run_at: string;
+  last_run_at: string;
+  last_success_at: string;
+  consecutive_failures: number;
+  error_code: string;
+  error_message: string;
+  max_items_per_run: number;
+  max_deletes_per_run: number;
+  max_fetch_bytes_per_run: number;
+  created_at: string;
+  updated_at: string;
+};
+
+/** 连接器创建/更新输入（PATCH 语义：nil 字段继承现值）。 */
+export type SourceConnectorInput = {
+  kind?: string;
+  name?: string;
+  collection_id?: string;
+  config_json?: string;
+  interval_seconds?: number;
+  enabled?: boolean;
+  max_items_per_run?: number;
+  max_deletes_per_run?: number;
+  max_fetch_bytes_per_run?: number;
+};
+
+/** 轮次审计行（runToView 镜像）。 */
+export type SourceSyncRun = {
+  id: string;
+  connector_id: string;
+  started_at: string;
+  finished_at: string;
+  status: string; // success | partial | failed
+  created: number;
+  updated: number;
+  unchanged: number;
+  fetch_failed: number;
+  deleted: number;
+  miss_unknown: number;
+  bytes_pulled: number;
+  error_code: string;
+  error_message: string;
+};
+
+/** 条目行（itemToView 镜像；status=missing 即「删除待决」运营视图）。 */
+export type SourceSyncItem = {
+  connector_id: string;
+  external_id: string;
+  document_id: string;
+  fingerprint: string;
+  content_hash: string;
+  own_lifecycle: boolean;
+  status: string; // active | missing | deleted
+  miss_count: number;
+  last_seen_run_id: string;
+  error_message: string;
+  first_seen_at: string;
+  last_seen_at: string;
+};
+
+/** 凭据读面（CredentialView 镜像——configured+masked_preview，密钥本体永不出库；
+    一连接器多 key，GET 返回 items 数组）。 */
+export type SourceCredentialView = {
+  id: string;
+  connector_id: string;
+  credential_key: string;
+  status: string;
+  configured: boolean;
+  masked_preview: string;
+  updated_at: string;
+};
+
+/** WS 帧 meta（knowledge_source_sync，SourceSyncFrameMeta 镜像）。 */
+export type SourceSyncFrameMeta = {
+  event_type: string;
+  event_phase: string; // started | finished
+  connector_id: string;
+  kind: string;
+  run_id: string;
+  status?: string;
+  error_code?: string;
+  seen?: number;
+  created?: number;
+  updated?: number;
+  unchanged?: number;
+  fetch_failed?: number;
+  deleted?: number;
+  miss_unknown?: number;
+  bytes_pulled?: number;
+};
