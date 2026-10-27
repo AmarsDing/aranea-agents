@@ -34,6 +34,7 @@ import (
 	"aranea-agents/internal/biz/diagnostics"
 	"aranea-agents/internal/biz/evaluation"
 	bizknowledge "aranea-agents/internal/biz/knowledge"
+	bizsync "aranea-agents/internal/biz/knowledge/sourcesync"
 	bizmedia "aranea-agents/internal/biz/media"
 	"aranea-agents/internal/biz/monitor"
 	"aranea-agents/internal/biz/monitor/heal"
@@ -54,6 +55,7 @@ import (
 	graphadapter "aranea-agents/internal/graph/adapter"
 	graphtrpc "aranea-agents/internal/graph/trpc"
 	"aranea-agents/internal/knowledge"
+	knowledgesync "aranea-agents/internal/knowledge/sourcesync"
 	"aranea-agents/internal/mcp/alert"
 	"aranea-agents/internal/mcp/health"
 	"aranea-agents/internal/memory"
@@ -2176,6 +2178,54 @@ func provideKnowledgeCurateWorker(
 	return jobs.NewKnowledgeCurateWorker(0, uc, lg)
 }
 
+// provideSourceSyncRunner G-38 W4：SourceSync 调度核心装配（仓口聚合 +
+// PG advisory 跨副本排他[fail-closed] + shared_dir walker + 文档 applier）。
+// 图谱四 hook 本批不接线——未注入即跳（设计 R-4 可选增强纪律），归 W6/W8
+// 统一接线；PG 缺席/降级形态返回 nil（worker 随之不装配）。
+func provideSourceSyncRunner(
+	repos data.SourceSyncRepos,
+	d *data.Data,
+	uc *biz.KnowledgeUsecase,
+	embedder *knowledge.MultiProviderEmbedder,
+	registry *knowledge.ExtractorRegistry,
+	lg loggateway.Logger,
+) *knowledgesync.Runner {
+	if repos == nil || d == nil || d.Postgres() == nil || uc == nil {
+		return nil
+	}
+	appl, err := knowledgesync.NewDocApplier(knowledgesync.DocApplierDeps{
+		Log: lg, UC: uc, Items: repos, Embedder: embedder, Extractor: registry,
+	})
+	if err != nil {
+		lg.Error("sourcesync applier assemble failed (worker not wired)",
+			loggateway.Str("component", "sourcesync"), loggateway.Err(err))
+		return nil
+	}
+	walker := knowledgesync.NewSharedDirWalker(nil, lg)
+	return knowledgesync.NewRunner(knowledgesync.Deps{
+		Log:        lg,
+		Connectors: repos,
+		Items:      repos,
+		Runs:       repos,
+		Locker:     service.NewPGKnowledgeJobLocker(d.Postgres(), lg),
+		Walkers:    map[bizsync.Kind]knowledgesync.Walker{bizsync.KindSharedDir: walker},
+		Appliers:   map[bizsync.Kind]knowledgesync.Applier{bizsync.KindSharedDir: appl},
+	})
+}
+
+// provideSourceSyncWorker G-38 W4：单例 fan-out 调度 worker（kill-switch 全局闸
+// 构造期断电；runner nil=PG 缺席/降级形态不装配）。
+func provideSourceSyncWorker(
+	runner *knowledgesync.Runner,
+	repos data.SourceSyncRepos,
+	lg loggateway.Logger,
+) *jobs.SourceSyncWorker {
+	if runner == nil || repos == nil || jobs.SourceSyncDisabled() {
+		return nil
+	}
+	return jobs.NewSourceSyncWorker(0, runner, repos, lg)
+}
+
 // provideKnowledgeWriteBackSweeperWorker G-10：写回重试队列重放（AS-EVT-01
 // Important 分级——AutoMemory 写回失败已落 knowledge_writeback_outbox，本
 // worker 周期重投 WriteBackSessionFacts）。
@@ -3574,6 +3624,7 @@ type wireOut struct {
 	KnowledgeRelationExtract    *jobs.KnowledgeRelationExtractWorker
 	KnowledgeIndexRepair        *jobs.KnowledgeIndexRepairWorker
 	KnowledgeCurate             *jobs.KnowledgeCurateWorker
+	SourceSyncWorker            *jobs.SourceSyncWorker
 	KnowledgeWriteBackSweeper   *jobs.KnowledgeWriteBackSweeperWorker
 	MemorySleepTime             *jobs.MemorySleepTimeWorker
 	MemoryEpisodeBackfill       *jobs.MemoryEpisodeBackfillWorker
@@ -3638,6 +3689,7 @@ func provideWireOut(
 	knowledgeRelationExtract *jobs.KnowledgeRelationExtractWorker,
 	knowledgeIndexRepair *jobs.KnowledgeIndexRepairWorker,
 	knowledgeCurate *jobs.KnowledgeCurateWorker,
+	sourceSyncWorker *jobs.SourceSyncWorker,
 	knowledgeWriteBackSweeper *jobs.KnowledgeWriteBackSweeperWorker,
 	memorySleepTime *jobs.MemorySleepTimeWorker,
 	memoryEpisodeBackfill *jobs.MemoryEpisodeBackfillWorker,
@@ -3686,6 +3738,7 @@ func provideWireOut(
 		KnowledgeRelationExtract:    knowledgeRelationExtract,
 		KnowledgeIndexRepair:        knowledgeIndexRepair,
 		KnowledgeCurate:             knowledgeCurate,
+		SourceSyncWorker:            sourceSyncWorker,
 		KnowledgeWriteBackSweeper:   knowledgeWriteBackSweeper,
 		MemorySleepTime:             memorySleepTime,
 		MemoryEpisodeBackfill:       memoryEpisodeBackfill,

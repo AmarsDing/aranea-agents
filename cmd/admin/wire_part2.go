@@ -293,6 +293,12 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.SelfImprovement, *co
 		provideKnowledgeCurateWorker,
 		provideKnowledgeWriteBackSweeperWorker,
 		provideKnowledgeGraphProjectionWorker,
+		// G-38 W4（37-knowledge Sourcesync）：runner/worker provider 注册
+		// （同款 P0-6 对抗评审 #4 教训：漏注册会让 wire regen 丢接线——
+		// W4 评审 wf_c3053dc3-aa2 复核本项）。
+		data.NewSourceSyncRepo,
+		provideSourceSyncRunner,
+		provideSourceSyncWorker,
 		provideKnowledgeEntityPipeline,
 		provideKnowledgeRelationExtractor,
 		provideKnowledgeWriteBackGraphHook,

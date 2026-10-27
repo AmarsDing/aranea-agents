@@ -71,6 +71,7 @@ type backgroundWorkersConfig struct {
 	KnowledgeRelationExtract    BackgroundStarter
 	KnowledgeIndexRepair        BackgroundStarter
 	KnowledgeCurate             BackgroundStarter
+	SourceSyncWorker            BackgroundStarter
 	KnowledgeWriteBackSweeper   BackgroundStarter
 	KnowledgeGraphProjection    BackgroundStarter
 	MemorySleepTime             BackgroundStarter
@@ -151,6 +152,14 @@ func backgroundWorkersConfigFromOutput(watchCtx context.Context, out *wireOut) *
 	// nil，启动块整块跳过。
 	if out.ToolSpillGC != nil {
 		cfg.ToolSpillGC = out.ToolSpillGC
+	}
+	// G-38 W4（同款 D2-f-7 评审修 wf_c3053dc3-aa2）：SourceSyncWorker 同为
+	// 杀闸可空具体指针（SOURCE_SYNC_DISABLED 构造断电/PG 缺席/applier 装配
+	// 失败三态 provider 返回 nil）——直接装瓶会把 typed-nil 判真成非 nil 接口，
+	// 假印 scheduled 日志+白起 goroutine。装瓶前判空：杀闸路径接口保持 nil，
+	// 启动块整块跳过（杀闸=零注册）。
+	if out.SourceSyncWorker != nil {
+		cfg.SourceSyncWorker = out.SourceSyncWorker
 	}
 	return cfg
 }
@@ -417,6 +426,13 @@ func startBackgroundWorkers(
 	if cfg.KnowledgeCurate != nil {
 		goAfterReady("knowledge_curate", func() { cfg.KnowledgeCurate.Start(ctx) })
 		logger.Log(log.LevelInfo, "msg", "knowledge curate worker scheduled", "interval", "6h")
+	}
+
+	// G-38 W4：SourceSync 单例 fan-out 调度（due 拾取走 next_run_at 部分索引；
+	// kill-switch SOURCE_SYNC_DISABLED 构造期断电，PG 缺席即不装配）
+	if cfg.SourceSyncWorker != nil {
+		goAfterReady("source_sync", func() { cfg.SourceSyncWorker.Start(ctx) })
+		logger.Log(log.LevelInfo, "msg", "source sync worker scheduled", "interval", "30s")
 	}
 
 	if cfg.KnowledgeWriteBackSweeper != nil {

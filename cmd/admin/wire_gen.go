@@ -31,6 +31,7 @@ import (
 	"aranea-agents/internal/biz/flowlog"
 	"aranea-agents/internal/biz/hook"
 	knowledge2 "aranea-agents/internal/biz/knowledge"
+	bizsync "aranea-agents/internal/biz/knowledge/sourcesync"
 	"aranea-agents/internal/biz/media"
 	"aranea-agents/internal/biz/monitor"
 	"aranea-agents/internal/biz/monitor/alert"
@@ -55,6 +56,7 @@ import (
 	"aranea-agents/internal/graph/adapter"
 	"aranea-agents/internal/graph/trpc"
 	"aranea-agents/internal/knowledge"
+	knowledgesync "aranea-agents/internal/knowledge/sourcesync"
 	alert2 "aranea-agents/internal/mcp/alert"
 	"aranea-agents/internal/mcp/health"
 	"aranea-agents/internal/memory"
@@ -739,6 +741,9 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	mainKnowledgeMOCSummarizerWiring := provideKnowledgeMOCSummarizerWiring(knowledgeUsecase, dynamicLLMCaller, systemSettingUsecase, llmProviderModelUsecase, usecaseRef, loggatewayLogger)
 	mainKnowledgeEntityMergeWiring := provideKnowledgeEntityMergeWiring(knowledgeUsecase, knowledgeRepo, dynamicLLMCaller, multiProviderEmbedder, systemSettingUsecase, llmProviderModelUsecase, usecaseRef, loggatewayLogger)
 	knowledgeCurateWorker := provideKnowledgeCurateWorker(knowledgeUsecase, loggatewayLogger, mainKnowledgeMOCSummarizerWiring, mainKnowledgeEntityMergeWiring)
+	sourceSyncRepos := data.NewSourceSyncRepo(dataData)
+	sourceSyncRunner := provideSourceSyncRunner(sourceSyncRepos, dataData, knowledgeUsecase, multiProviderEmbedder, extractorRegistry, loggatewayLogger)
+	sourceSyncWorker := provideSourceSyncWorker(sourceSyncRunner, sourceSyncRepos, loggatewayLogger)
 	knowledgeWriteBackSweeperWorker := provideKnowledgeWriteBackSweeperWorker(knowledgeWriteBackOutboxRepo, knowledgeService, loggatewayLogger)
 	knowledgeGraphProjectionWorker := provideKnowledgeGraphProjectionWorker(dataData, multiProviderEmbedder, loggatewayLogger)
 	memorySleepTimeWorker := provideMemorySleepTimeWorker(memoryService, agentUsecase, llmProviderModelUsecase, sessionRepo, memoryJobDeadLetterRepo, factWritePipeline, dataData, loggatewayLogger)
@@ -792,7 +797,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	memoryEnhancedExtractor := service.NewMemoryEnhancedExtractor(memoryEnhancedExtractorConfig)
 	pathBL4Writer := providePathBL4Writer(dataData)
 	pathBExtractor := providePathBExtractor(memoryEnhancedExtractor, pathBL4Writer, memoryAdminUsecase, dataData, loggatewayLogger)
-	mainWireOut := provideWireOut(app, dataData, cronrunnerRunner, watchRunner, autoMemoryWorker, healthRunner, runner2, learningLoopScanner, providerHealthScanner, channelHealthScanner, jobsChannelDeliveryWorker, sessionRunDurableWorker, recoveryWorker, backgroundJobWorker, channelRuntime, plugintrpcRuntime, toolAuditCleanup, flowLogCleanup, toolSpillGC, monitorEventsCleanup, autoHealTTLCleanup, alertEvalWorker, monitorTraceBackfillWorker, memoryL2DecayWorker, memoryL1ArchiveWorker, channelTurnJobSweeper, memoryL3DecayWorker, memoryL4DecayWorker, memoryEbbinghausDecayWorker, memoryCanaryWorker, memoryCitationBackfillWorker, knowledgeCitationBackfillWorker, knowledgeRelationExtractWorker, knowledgeIndexRepairWorker, knowledgeCurateWorker, knowledgeWriteBackSweeperWorker, knowledgeGraphProjectionWorker, memorySleepTimeWorker, memoryEpisodeBackfillWorker, memoryDataMigrationWorker, memoryFactIndexReconciler, memoryDeadLetterReplayer, modelRegistrySyncAgent, selfCheckScheduler, selfHealObserver, infra, selfCheckCleanup, selfCheckJob, cronRepo, skillIntelligenceUsecase, skillIntelligenceWorker, curatorWorker, evolutionOrchestratorWorker, selfImproveObserveWorker, selfImproveDriveWorker, selfImproveWatchdogWorker, selfImproveOutcomeWorker, failurePatternSyncJob, predictiveHealUsecase, predictiveHealJob, patternMiningUsecase, patternMiningJob, pathBExtractor, wsv2Subscriber, indexer)
+	mainWireOut := provideWireOut(app, dataData, cronrunnerRunner, watchRunner, autoMemoryWorker, healthRunner, runner2, learningLoopScanner, providerHealthScanner, channelHealthScanner, jobsChannelDeliveryWorker, sessionRunDurableWorker, recoveryWorker, backgroundJobWorker, channelRuntime, plugintrpcRuntime, toolAuditCleanup, flowLogCleanup, toolSpillGC, monitorEventsCleanup, autoHealTTLCleanup, alertEvalWorker, monitorTraceBackfillWorker, memoryL2DecayWorker, memoryL1ArchiveWorker, channelTurnJobSweeper, memoryL3DecayWorker, memoryL4DecayWorker, memoryEbbinghausDecayWorker, memoryCanaryWorker, memoryCitationBackfillWorker, knowledgeCitationBackfillWorker, knowledgeRelationExtractWorker, knowledgeIndexRepairWorker, knowledgeCurateWorker, knowledgeWriteBackSweeperWorker, knowledgeGraphProjectionWorker, memorySleepTimeWorker, memoryEpisodeBackfillWorker, memoryDataMigrationWorker, memoryFactIndexReconciler, memoryDeadLetterReplayer, modelRegistrySyncAgent, selfCheckScheduler, selfHealObserver, infra, selfCheckCleanup, selfCheckJob, cronRepo, skillIntelligenceUsecase, skillIntelligenceWorker, curatorWorker, evolutionOrchestratorWorker, selfImproveObserveWorker, selfImproveDriveWorker, selfImproveWatchdogWorker, selfImproveOutcomeWorker, failurePatternSyncJob, predictiveHealUsecase, predictiveHealJob, patternMiningUsecase, patternMiningJob, pathBExtractor, wsv2Subscriber, indexer, sourceSyncWorker)
 	return mainWireOut, func() {
 		cleanup()
 	}, nil
@@ -2798,6 +2803,54 @@ func provideKnowledgeCurateWorker(
 	return jobs.NewKnowledgeCurateWorker(0, uc, lg)
 }
 
+// provideSourceSyncRunner G-38 W4：SourceSync 调度核心装配（仓口聚合 +
+// PG advisory 跨副本排他[fail-closed] + shared_dir walker + 文档 applier）。
+// 图谱四 hook 本批不接线——未注入即跳（设计 R-4 可选增强纪律），归 W6/W8
+// 统一接线；PG 缺席/降级形态返回 nil（worker 随之不装配）。
+func provideSourceSyncRunner(
+	repos data.SourceSyncRepos,
+	d *data.Data,
+	uc *biz.KnowledgeUsecase,
+	embedder *knowledge.MultiProviderEmbedder,
+	registry *knowledge.ExtractorRegistry,
+	lg loggateway.Logger,
+) *knowledgesync.Runner {
+	if repos == nil || d == nil || d.Postgres() == nil || uc == nil {
+		return nil
+	}
+	appl, err := knowledgesync.NewDocApplier(knowledgesync.DocApplierDeps{
+		Log: lg, UC: uc, Items: repos, Embedder: embedder, Extractor: registry,
+	})
+	if err != nil {
+		lg.Error("sourcesync applier assemble failed (worker not wired)",
+			loggateway.Str("component", "sourcesync"), loggateway.Err(err))
+		return nil
+	}
+	walker := knowledgesync.NewSharedDirWalker(nil, lg)
+	return knowledgesync.NewRunner(knowledgesync.Deps{
+		Log:        lg,
+		Connectors: repos,
+		Items:      repos,
+		Runs:       repos,
+		Locker:     service.NewPGKnowledgeJobLocker(d.Postgres(), lg),
+		Walkers:    map[bizsync.Kind]knowledgesync.Walker{bizsync.KindSharedDir: walker},
+		Appliers:   map[bizsync.Kind]knowledgesync.Applier{bizsync.KindSharedDir: appl},
+	})
+}
+
+// provideSourceSyncWorker G-38 W4：单例 fan-out 调度 worker（kill-switch 全局闸
+// 构造期断电；runner nil=PG 缺席/降级形态不装配）。
+func provideSourceSyncWorker(
+	runner *knowledgesync.Runner,
+	repos data.SourceSyncRepos,
+	lg loggateway.Logger,
+) *jobs.SourceSyncWorker {
+	if runner == nil || repos == nil || jobs.SourceSyncDisabled() {
+		return nil
+	}
+	return jobs.NewSourceSyncWorker(0, runner, repos, lg)
+}
+
 // knowledgeMOCSummarizerWiring G-34 ADR-C 装配标记（wire 锚点：仅表示 Set 回注已完成）。
 type knowledgeMOCSummarizerWiring struct{}
 
@@ -4088,6 +4141,7 @@ type wireOut struct {
 	KnowledgeRelationExtract    *jobs.KnowledgeRelationExtractWorker
 	KnowledgeIndexRepair        *jobs.KnowledgeIndexRepairWorker
 	KnowledgeCurate             *jobs.KnowledgeCurateWorker
+	SourceSyncWorker            *jobs.SourceSyncWorker
 	KnowledgeWriteBackSweeper   *jobs.KnowledgeWriteBackSweeperWorker
 	KnowledgeGraphProjection    *jobs.KnowledgeGraphProjectionJob
 	MemorySleepTime             *jobs.MemorySleepTimeWorker
@@ -4183,6 +4237,7 @@ func provideWireOut(
 	pathBExtractor *biz.PathBExtractor,
 	wsV2Sub *server.WSV2Subscriber,
 	configGraphIndexer *configgraph2.Indexer,
+	sourceSyncWorker *jobs.SourceSyncWorker,
 ) wireOut {
 	return wireOut{
 		App: app, Data: dataData, CronRunner: runner, SkillWatch: skillWatch, AutoMemory: autoMem,
@@ -4204,6 +4259,7 @@ func provideWireOut(
 		KnowledgeRelationExtract:    knowledgeRelationExtract,
 		KnowledgeIndexRepair:        knowledgeIndexRepair,
 		KnowledgeCurate:             knowledgeCurate,
+		SourceSyncWorker:            sourceSyncWorker,
 		KnowledgeWriteBackSweeper:   knowledgeWriteBackSweeper,
 		KnowledgeGraphProjection:    knowledgeGraphProjection,
 		MemorySleepTime:             memorySleepTime,
