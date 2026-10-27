@@ -582,7 +582,12 @@ func (u *Usecase) applyGovernanceDisposal(ctx context.Context, view GovernancePr
 			return apierror.NotFound(apierror.DomainKnowledge, "proposal document not found")
 		}
 		// 文档已不存在（并发已删）视为幂等成功；其余错误上抛（提案停留 pending）。
-		if err := u.documents.DeleteDocument(ctx, docID); err != nil && !apierror.IsCode(err, apierror.CodeNotFound) {
+		// C 批修（评审 #18/#112）：治理处置同经删档钩点 DeleteDocumentMirror——
+		// 此前 repo 层直连绕过 A1 反扫，own=false adopt 绑定悬空成常态（W3
+		// dangling 判据 OwnLifecycle=true 也够不到）。Mirror 不做
+		// prepareLocalDocumentDelete/vault 文件回收，治理语义（DB 行+派生记录）
+		// 不变；NotFound 幂等吞没口径保持。
+		if err := u.DeleteDocumentMirror(ctx, docID); err != nil && !apierror.IsCode(err, apierror.CodeNotFound) {
 			return apierror.Internal(apierror.DomainKnowledge, "orphan disposal: delete document %s", docID).WithCause(err)
 		}
 		u.lg.Info("治理：orphan 提案 applied，孤儿词条已删除",

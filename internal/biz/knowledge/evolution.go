@@ -150,7 +150,8 @@ func (u *Usecase) recordFactVersion(ctx context.Context, collectionID, docID, fa
 }
 
 // recordGovernanceProposal 留痕一条治理提案（best-effort 同上；dedup_key 幂等闸
-// 全状态探测 pending/applied/rejected——高风险人工二审与 G-40 自动失效共用闸）。
+// 全状态探测 pending/applied/rejected；G-40 自动失效审计单的键带 :auto 命名空间
+// 后缀，与高风险人工二审单跨带不互吞——见 writeback_entry.go C 批修）。
 func (u *Usecase) recordGovernanceProposal(ctx context.Context, collectionID, docID, kind, risk, status string, payload map[string]any) {
 	if u == nil || u.proposals == nil {
 		return
@@ -192,11 +193,4 @@ func (u *Usecase) recordGovernanceProposal(ctx context.Context, collectionID, do
 // recordConflictProposal 留痕一条矛盾仲裁提案（高风险 pending，人工二审）。
 func (u *Usecase) recordConflictProposal(ctx context.Context, collectionID, docID string, payload map[string]any) {
 	u.recordGovernanceProposal(ctx, collectionID, docID, ProposalKindConflict, ProposalRiskHigh, "", payload)
-}
-
-// recordAutoInvalidateProposal 留痕一条 DELETE 自动失效提案（G-40 D4：低风险
-// applied 直落——处置已生效，提案即审计痕；payload 带 auto_invalidated/confidence/
-// reason/双 fact_id 证据，与 recordConflictProposal 同 dedup 键形幂等闸）。
-func (u *Usecase) recordAutoInvalidateProposal(ctx context.Context, collectionID, docID string, payload map[string]any) {
-	u.recordGovernanceProposal(ctx, collectionID, docID, ProposalKindConflict, ProposalRiskLow, ProposalStatusApplied, payload)
 }

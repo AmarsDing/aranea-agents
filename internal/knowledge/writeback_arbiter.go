@@ -92,7 +92,17 @@ func (a *WriteBackArbiter) ArbitrateWriteBack(ctx context.Context, title string,
 		return nil, nil
 	}
 	if len(existing) > arbitrateMaxExisting {
-		existing = existing[:arbitrateMaxExisting]
+		// C 批修（评审 #16）：截断取尾部——词条页新块一律尾追加（正文序≈创建序），
+		// 取头部=保留最旧 20 段、与时间局部性最强的最新段（冲突概率最高）失之交臂。
+		// 截断事件 Warn 可观测：成熟词条页仲裁覆盖缺口不再静默。
+		dropped := len(existing) - arbitrateMaxExisting
+		existing = existing[len(existing)-arbitrateMaxExisting:]
+		a.lg.Warn("写回仲裁候选超上限，截断保留最新段（旧段本轮不参与仲裁）",
+			loggateway.StepID("knowledge.writeback.arbitrate"),
+			loggateway.Str("title", title),
+			loggateway.Int("kept", len(existing)),
+			loggateway.Int("dropped_existing", dropped),
+		)
 	}
 	if len(news) > arbitrateMaxNews {
 		news = news[:arbitrateMaxNews]
@@ -158,11 +168,13 @@ func (a *WriteBackArbiter) ArbitrateWriteBack(ctx context.Context, title string,
 	}
 	out := make([]bizknowledge.WriteBackArbitration, 0, len(verdicts))
 	for _, v := range verdicts {
-		raw := v.Operation
-		if raw == "" {
-			raw = v.Verdict // 旧键名兼容（D2）
+		op, ok := parseWriteBackOp(v.Operation)
+		if !ok && strings.TrimSpace(v.Verdict) != "" {
+			// 旧键兜底（D2）：operation 为空或非四操作/旧三值词表内的未知值时
+			// 均回退 verdict——C 批修（评审 #17）：灰度窗口双键并存（operation 未知
+			// + verdict 有效）不再整条丢弃。
+			op, ok = parseWriteBackOp(v.Verdict)
 		}
-		op, ok := parseWriteBackOp(raw)
 		if !ok {
 			continue
 		}

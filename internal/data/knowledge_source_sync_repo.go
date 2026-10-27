@@ -678,10 +678,12 @@ func (r *sourceSyncRepo) UnbindItemsByDocumentID(ctx context.Context, documentID
 	if documentID == "" {
 		return 0, apierror.BadRequest(sourceSyncModule, "document_id required")
 	}
-	// W2 挂账收口：清绑定不清墓碑（status<>'deleted'）——deleted 行保留历史
-	// 工程锚（source 删除链的审计事实）。content_hash 保留：重摄取提交后
-	// SetItemContentHash 覆写，悬空期不构成错位（needsWork 由 document_id=''
-	// 触发，不读 content_hash）。
+	// W2 挂账收口：清绑定不清已存在的墓碑（status<>'deleted'——谓词豁免仅
+	// 保护删档前已墓碑化的行的历史工程锚；级联在途行（status='missing'）同被
+	// 清锚，级联新生 deleted 墓碑恒无 document_id=已知边界，G-40 C 批登记，
+	// PG 钉 TestSourceSyncItem_UnbindCascadeTombstoneTerminalState）。
+	// content_hash 保留：重摄取提交后 SetItemContentHash 覆写，悬空期不构成
+	// 错位（needsWork 由 document_id='' 触发，不读 content_hash）。
 	res, err := d.RWDB().WriteDB(ctx).ExecContext(ctx, d.Dialect().RenumberPlaceholders(`
 UPDATE knowledge_source_connector_items
 SET document_id = '', own_lifecycle = false

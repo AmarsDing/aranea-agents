@@ -27,8 +27,10 @@
 //     病态再记当轮——出席清空语义③-2 不可倒序）。
 //   - 增量出席语义取代 vault 全有/全无：walk error 时跳过圈定与删除，已出席
 //     标记保留（出席是事实），游标防骗由 walker 契约（emit 出错游标不动）保证。
-//   - partial 判定唯一由 FetchFailed>0 触发；miss_unknown>0 是删除面常态
-//     （Notion 三态保守性），不降级轮次整体评级。
+//   - partial 收尾判定（完满 walk 前提）唯一由 FetchFailed>0 触发；预算哨兵为
+//     独立 partial 收轮分支（⑥-6，fetch_failed 可为 0、error_code 为空——C 批
+//     修措辞对齐 #113）。miss_unknown>0 是删除面常态（Notion 三态保守性），
+//     不降级轮次整体评级。
 //   - 仓口基础设施失败统一归 error_code=walk_failed（walk/圈定前段）或
 //     confirm_failed（确认/级联段），真实文本进 error_message（≤512 截断）。
 //   - fencing 取代心跳宽容（评审 W2 修，推翻宽容读法）：心跳失地置 lost

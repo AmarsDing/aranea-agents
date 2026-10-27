@@ -686,7 +686,9 @@ type ItemRepo interface {
 	// 绑定到 documentID 的非 deleted 行的 document_id/own_lifecycle（←''/false），
 	// content_hash 保留（源侧 checkpoint 事实）。清后 runner needsWork
 	//（DocumentID==""）下轮自然重摄取+adopt/create 重绑，零新增调度路径。
-	// deleted 墓碑行保留历史锚不清。返回受影响行数。
+	// 谓词豁免仅保护删档前已存在的 deleted 墓碑行的历史锚；级联在途行
+	//（status='missing'）同被清锚，级联新生墓碑恒无 document_id（已知边界，
+	// 见 biz sourcesync_unbind.go 头注）。返回受影响行数。
 	UnbindItemsByDocumentID(ctx context.Context, documentID string) (int, error)
 }
 

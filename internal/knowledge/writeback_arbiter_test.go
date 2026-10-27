@@ -153,9 +153,13 @@ func TestWriteBackArbiter_NotWired(t *testing.T) {
 func TestWriteBackArbiter_TruncatesOversizedCandidates(t *testing.T) {
 	llm := &stubRelationLLM{responses: []string{`[]`}}
 	a := NewWriteBackArbiter(llm, stubRelationSys{}, nil, nil)
+	// C 批修（评审 #16）：existing>20 截断取尾部（最新段）——正文序≈创建序，
+	// 取头部会让冲突概率最高的最新段永不进入仲裁候选。
 	existing := make([]bizknowledge.WriteBackFactBlock, 0, 25)
 	for i := 0; i < 25; i++ {
-		existing = append(existing, bizknowledge.WriteBackFactBlock{Heading: "constraint", Body: "段", FactID: "fid"})
+		existing = append(existing, bizknowledge.WriteBackFactBlock{
+			Heading: "constraint", Body: "段", FactID: "fid-" + string(rune('a'+i)),
+		})
 	}
 	news := make([]bizknowledge.WriteBackFact, 0, 15)
 	for i := 0; i < 15; i++ {
@@ -164,11 +168,41 @@ func TestWriteBackArbiter_TruncatesOversizedCandidates(t *testing.T) {
 	if _, err := a.ArbitrateWriteBack(context.Background(), "t", existing, news); err != nil {
 		t.Fatal(err)
 	}
-	// existing 截 20、news 截 10：news 最大 index 为 9。
+	// news 截 10：news 最大 index 为 9。
 	if strings.Contains(llm.lastUser, `"index":10`) {
 		t.Fatal("news must truncate to 10")
 	}
+	// existing 截尾 20（fid-f..fid-y 留存，fid-a..fid-e 被丢——cover 缺口 Warn 化）。
+	if !strings.Contains(llm.lastUser, "fid-y") || !strings.Contains(llm.lastUser, "fid-f") {
+		t.Fatalf("tail truncation must keep newest blocks (fid-f..fid-y): %q", llm.lastUser)
+	}
+	if strings.Contains(llm.lastUser, "fid-a") || strings.Contains(llm.lastUser, "fid-e") {
+		t.Fatalf("oldest blocks must be dropped: %q", llm.lastUser)
+	}
 	if llm.calls != 1 {
 		t.Fatalf("llm calls = %d", llm.calls)
+	}
+}
+
+// 钉⑯（C 批，评审 #17）：operation 未知值 + verdict 有效旧值 → 回退 verdict
+// 而非整条丢弃（D2 灰度窗口双键并存场景）；operation 未知且 verdict 空 → 丢弃。
+func TestWriteBackArbiter_UnknownOperationFallsBackToVerdict(t *testing.T) {
+	llm := &stubRelationLLM{responses: []string{
+		`[{"fact_index":0,"operation":"remove","verdict":"contradicts","target_fact_id":"fid-old","confidence":0.9,"reason":"旧键兜底"},
+		  {"fact_index":1,"operation":"bogus","verdict":"","target_fact_id":"","confidence":0.9,"reason":"双键皆废"}]`,
+	}}
+	a := NewWriteBackArbiter(llm, stubRelationSys{}, nil, nil)
+	news := append(arbiterTestNews(),
+		bizknowledge.WriteBackFact{FactID: "fid-x", Statement: "另一条", FactKind: "decision"},
+	)
+	got, err := a.ArbitrateWriteBack(context.Background(), "灰度发布", arbiterTestBlocks(), news)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("only the verdict-fallback arbitration must survive: %+v", got)
+	}
+	if got[0].Operation != bizknowledge.WriteBackOpDelete || got[0].TargetFactID != "fid-old" || got[0].FactIndex != 0 {
+		t.Fatalf("verdict fallback = %+v, want delete→fid-old", got[0])
 	}
 }

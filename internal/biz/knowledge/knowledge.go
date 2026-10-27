@@ -476,6 +476,10 @@ func (u *Usecase) ListCollections(ctx context.Context, workspace string, limit, 
 
 // DeleteCollection removes a collection and all its documents/chunks.
 // SP1-G：删除成功后同步内存图（源边消失、外部入边转 dangling）并发 WS 增量。
+// C 批修（评审 #19）：集合级联不逐文档经 DeleteDocumentMirror——删除前预扫
+// 全量文档 ID，删除成功后逐文档 best-effort 反扫 sourcesync 绑定（镜像 A1 钩点
+// 语义：document_id 置空串、own_lifecycle=false、保 content_hash；sourceItems 未
+// 接线或预扫失败仅 Warn，不回滚删除）。
 func (u *Usecase) DeleteCollection(ctx context.Context, id string) error {
 	if err := u.requireRepo(); err != nil {
 		return err
@@ -483,8 +487,34 @@ func (u *Usecase) DeleteCollection(ctx context.Context, id string) error {
 	if strings.TrimSpace(id) == "" {
 		return ErrIDRequired
 	}
+	var docIDs []string
+	if u.sourceItems != nil {
+		const page = 500
+	scan:
+		for offset := 0; ; offset += page {
+			docs, _, lerr := u.documents.ListDocuments(ctx, id, page, offset)
+			if lerr != nil {
+				u.lg.Warn("集合删除前 sourcesync 反扫预取失败（悬空绑定留待源漂移兜底，静态源需人工重扫）",
+					loggateway.StepID("knowledge.collection.delete"),
+					loggateway.Str("collection_id", id),
+					loggateway.Err(lerr),
+				)
+				docIDs = nil
+				break scan
+			}
+			for _, d := range docs {
+				docIDs = append(docIDs, d.ID)
+			}
+			if len(docs) < page {
+				break
+			}
+		}
+	}
 	if err := u.collections.DeleteCollection(ctx, id); err != nil {
 		return err
+	}
+	for _, docID := range docIDs {
+		u.unbindSourceItemsBestEffort(ctx, docID)
 	}
 	u.removeLinkIndexCollection(ctx, id)
 	return nil

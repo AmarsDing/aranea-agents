@@ -490,7 +490,7 @@ func TestSourceSyncItem_UnbindItemsByDocumentID(t *testing.T) {
 		t.Fatalf("content_hash must survive unbind（源侧 checkpoint 事实）: %+v", a)
 	}
 	if c.DocumentID != "doc-1" {
-		t.Fatalf("deleted 墓碑行保留历史锚不清: %+v", c)
+		t.Fatalf("删档前已存在的 deleted 墓碑行保留历史锚（谓词豁免作用域）: %+v", c)
 	}
 	if d.DocumentID != "doc-2" || !d.OwnLifecycle {
 		t.Fatalf("他 doc 绑定行不得被触及: %+v", d)
@@ -503,6 +503,62 @@ func TestSourceSyncItem_UnbindItemsByDocumentID(t *testing.T) {
 	// 空址拒绝。
 	if _, err := repo.UnbindItemsByDocumentID(ctx, "  "); err == nil {
 		t.Fatal("blank document_id must be rejected")
+	}
+}
+
+// （g-ter）G-40 C 批评审 #10/#111 双镜确认：级联删档时序终态钉。
+// runner ⑥-7 真实次序=先 applier.Delete（删档→A1 反扫清掉在途行绑定）后
+// MarkItemDeleted（墓碑化）——级联新生 deleted 墓碑行 document_id 恒为空
+// （谓词豁免只保护删档前已存在的墓碑）。本钉镜像该次序钉死终态，防止
+// 「墓碑恒留锚」的旧口径复活（登记裁决=改登记不改机制，见 design §G-40 ⑧）。
+func TestSourceSyncItem_UnbindCascadeTombstoneTerminalState(t *testing.T) {
+	repo := openSourceSyncRepo(t)
+	ctx := context.Background()
+	now := time.Now().UTC().Truncate(time.Second)
+
+	// 级联在途行建模：own=true ∧ 绑定 doc-9（⑥-3/⑥-5 后 status='missing'；谓词
+	// status<>'deleted' 对 active/missing 同效，dangling 次序不受影响）。
+	if err := repo.UpsertItemSeen(ctx, "ic-9", "ext-a", "doc-9", "fp-a", true, "run-1", now); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.MarkAbsentItemsMissing(ctx, "ic-9", "run-2"); err != nil {
+		t.Fatal(err)
+	}
+	// ① applier.Delete → DeleteDocumentMirror 钩点反扫（删档事实先行）。
+	if n, err := repo.UnbindItemsByDocumentID(ctx, "doc-9"); err != nil || n != 1 {
+		t.Fatalf("cascade in-flight unbind: n=%d err=%v", n, err)
+	}
+	// ② 级联成功后 MarkItemDeleted 墓碑化。
+	if ok, err := repo.MarkItemDeleted(ctx, "ic-9", "ext-a", now); err != nil || !ok {
+		t.Fatalf("mark deleted: ok=%v err=%v", ok, err)
+	}
+	it, _, err := repo.GetItem(ctx, "ic-9", "ext-a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 终态断言：级联新生墓碑 status='deleted' ∧ document_id='' ∧ own_lifecycle=false。
+	if it.Status != sourcesync.ItemStatusDeleted {
+		t.Fatalf("tombstone status = %q, want deleted: %+v", it.Status, it)
+	}
+	if it.DocumentID != "" || it.OwnLifecycle {
+		t.Fatalf("cascade-born tombstone must carry no document anchor (in-flight unbind already cleared): %+v", it)
+	}
+	// 对照：先墓碑化后反扫（删档前已存在墓碑）→ 锚豁免保留（谓词作用域）。
+	if err := repo.UpsertItemSeen(ctx, "ic-9", "ext-b", "doc-9", "fp-b", true, "run-1", now); err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := repo.MarkItemDeleted(ctx, "ic-9", "ext-b", now); err != nil || !ok {
+		t.Fatal("pre-tombstone ext-b")
+	}
+	if n, err := repo.UnbindItemsByDocumentID(ctx, "doc-9"); err != nil || n != 0 {
+		t.Fatalf("tombstone rows must be exempt from unbind: n=%d err=%v", n, err)
+	}
+	it2, _, err := repo.GetItem(ctx, "ic-9", "ext-b")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if it2.DocumentID != "doc-9" || !it2.OwnLifecycle {
+		t.Fatalf("pre-existing tombstone anchor must survive unbind: %+v", it2)
 	}
 }
 

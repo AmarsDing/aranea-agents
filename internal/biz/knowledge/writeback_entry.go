@@ -227,9 +227,11 @@ func yamlQuote(s string) string {
 // M3 演化时序（增量叠加，不改主流程）：
 //   - M3.1：fact_id 整段替换生效时，旧段快照入 knowledge_fact_version（版本链）；
 //   - G-40（M3.2 升级）：追加前经 arbiter 对同页既有段四操作仲裁——
-//     update 高置信（≥0.8）走版本链顶替目标段；delete 置信分带（≥0.7 旧段不动+
-//     高风险提案人工二审；[0.5,0.7) 自动失效：旧段移除+版本链墓碑+低风险 applied
-//     提案审计痕）；noop 零旁效应跳过；add/未判默认追加。失配降级（D7）；
+//     update 高置信（≥0.8∧新事实自带 FactID）走版本链顶替目标段；delete 置信
+//     分带（≥0.7 旧段不动+高风险提案人工二审；[0.5,0.7) 自动失效：旧段移除+
+//     版本链墓碑+低风险 applied 提案审计痕）；noop 零旁效应跳过；add/未判默认
+//     追加。失配降级（D7）；同批同 TargetFactID 的第二个修改型操作同样降级
+//     （评审 C 批 #13 消费登记）。
 //   - 版本/提案均在正文持久化成功后 best-effort 留痕（失败 Warn 不回滚）。
 func (u *Usecase) upsertEntryDoc(ctx context.Context, col Collection, rel, title string, tags []string, in WriteBackInput, facts []WriteBackFact) (PromoteTouchedDoc, bool, error) {
 	doc, err := u.documents.GetDocumentByRelPath(ctx, col.ID, rel)
@@ -312,6 +314,12 @@ func (u *Usecase) upsertEntryDoc(ctx context.Context, col Collection, rel, title
 					}
 				}
 				kept := appends[:0]
+				// C 批修（评审 #13，双镜确认）：同批指向同一 TargetFactID 的多个
+				// 修改型操作不做二次就地改写——先到的 update/delete 消费掉该目标
+				// （登记 consumed），后到的同批操作一律按 D7 失配降级（update 平追加、
+				// delete 追加+高风险提案），杜绝 update 的新段被同批 delete 当旧段
+				// 静默移除（0.9 更新被 0.6 矛盾吃掉且仅落低风险已生效单）。
+				consumedTargets := make(map[string]bool)
 				for j, a := range appends {
 					v, ok := byIdx[j]
 					if !ok {
@@ -324,13 +332,19 @@ func (u *Usecase) upsertEntryDoc(ctx context.Context, col Collection, rel, title
 						// D5 零旁效应：不写入、不留版本、不产提案。
 						continue
 					case WriteBackOpUpdate:
-						if v.Confidence >= arbitrateSupersedeMinConfidence && v.TargetFactID != "" {
+						// C 批修（评审 #12）：新事实自身 FactID 为空时禁止顶替——
+						// preserveSupersededFactID 对空 incoming 原样返回，会产出一个
+						// 无 fact_id 标记的新段替换带 marker 的旧段，目标 lineage 从
+						// 正文永久抹掉；空 incoming 与目标失配/同批已消费同走 D7 追加。
+						if v.Confidence >= arbitrateSupersedeMinConfidence && v.TargetFactID != "" &&
+							strings.TrimSpace(facts[a.idx].FactID) != "" && !consumedTargets[v.TargetFactID] {
 							marker := "fact_id: `" + v.TargetFactID + "`"
 							lineageBlock := preserveSupersededFactID(a.block, facts[a.idx].FactID, v.TargetFactID)
 							if nb, ok2 := replaceH2BlockContaining(body, marker, lineageBlock); ok2 && nb != body {
 								oldBlock, _ := extractH2BlockContaining(body, marker)
 								body = nb
 								changed = true
+								consumedTargets[v.TargetFactID] = true
 								versions = append(versions, FactVersion{
 									CollectionID: col.ID, DocID: doc.ID,
 									FactID: v.TargetFactID, OldBody: oldBlock, NewBody: lineageBlock,
@@ -338,17 +352,19 @@ func (u *Usecase) upsertEntryDoc(ctx context.Context, col Collection, rel, title
 								continue // update 生效：顶替旧段，不再追加
 							}
 						}
-						// 低置信 / 目标失配降级（D7）= 平追加，新事实不丢。
+						// 低置信 / 空 incoming ID / 目标失配 / 同批已消费降级（D7）
+						// = 平追加，新事实不丢。
 						kept = append(kept, a)
 					case WriteBackOpDelete:
 						autoBand := !u.writeBackDeleteAutoInvalidateOff &&
 							v.Confidence >= deleteAutoInvalidateMin && v.Confidence < arbitrateContradictMinConfidence
-						if autoBand && v.TargetFactID != "" {
+						if autoBand && v.TargetFactID != "" && !consumedTargets[v.TargetFactID] {
 							marker := "fact_id: `" + v.TargetFactID + "`"
 							if nb, ok2 := removeH2BlockContaining(body, marker); ok2 {
 								oldBlock, _ := extractH2BlockContaining(body, marker)
 								body = nb
 								changed = true
+								consumedTargets[v.TargetFactID] = true
 								// D4 账本：版本链墓碑（NewBody 空串=事实已失效移除，
 								// 回放读空即墓碑）+ 低风险 applied 提案审计痕。
 								versions = append(versions, FactVersion{
@@ -359,7 +375,11 @@ func (u *Usecase) upsertEntryDoc(ctx context.Context, col Collection, rel, title
 								kept = append(kept, a) // 新事实仍追加
 								continue
 							}
-							// D7 失配降级：目标段找不到→同高带（追加+高风险提案，不误删不丢新）。
+						}
+						if autoBand {
+							// D7 失配降级：空 TargetFactID（C 批修评审 #11——arbiter 未给
+							// 目标同属目标缺失，不再静默平追加）/ 正文失配 / 同批已消费
+							// → 同高带（追加+高风险提案，不误删不丢新）。
 							u.recordConflictProposalLater(&proposals, doc.ID, rel, facts[a.idx], v)
 							kept = append(kept, a)
 							continue
@@ -463,18 +483,23 @@ func preserveSupersededFactID(block, incomingFactID, targetFactID string) string
 }
 
 // queuedConflictProposal 待落库冲突提案（正文持久化成功后统一 best-effort 落库）：
-// 高风险 pending 人工二审与 G-40 低风险 applied 自动失效审计痕共用幂等闸键形。
+// 高风险 pending 人工二审与 G-40 低风险 applied 自动失效审计痕的幂等闸命名空间
+// 已分离（C 批修评审 #14——自动失效键加 :auto 后缀，跨带复发不互吞：applied
+// 审计痕不得吞掉同 (doc,target,new) 对后续高置信复裁的人工二审诉求）。
 type queuedConflictProposal struct {
 	payload map[string]any
 	risk    string
 	status  string // 空 = pending（与 recordConflictProposal 现行语义一致）
 }
 
-// buildConflictPayload 构造冲突提案证据载荷（dedup_key 含双 fact_id——幂等闸键形
-// 两路径共用：同矛盾高带再审/自动失效重放均不落第二单）。
+// buildConflictPayload 构造冲突提案证据载荷。dedup_key 含双 fact_id：
+//   - C 批修（评审 #15）：占位 FactID=="stmt" 与空 ID 同纪律归一为陈述哈希——
+//     占位键作常量进 dedup 键会吞掉同目标的并列提案（与 upsert 主循环
+//     / extractFactBlocks 的 stmt 纪律对齐）；
+//   - 自动失效路径的键由 recordAutoInvalidateProposalLater 追加 :auto 命名空间。
 func buildConflictPayload(docID, relPath string, f WriteBackFact, v WriteBackArbitration) map[string]any {
 	newFactKey := strings.TrimSpace(f.FactID)
-	if newFactKey == "" {
+	if newFactKey == "" || newFactKey == "stmt" {
 		newFactKey = HashContent(strings.TrimSpace(f.Statement))
 	}
 	dedupKey := "conflict:fact:" + docID + ":" + strings.TrimSpace(v.TargetFactID) + ":" + newFactKey
@@ -501,8 +526,14 @@ func (u *Usecase) recordConflictProposalLater(proposals *[]queuedConflictProposa
 
 // recordAutoInvalidateProposalLater 队列一条 DELETE 自动失效提案（G-40 D4：低风险
 // applied 直落；payload 附 auto_invalidated 证据——处置已生效，提案即审计痕）。
+// C 批修（评审 #14）：dedup_key 追加 :auto 命名空间——自动失效审计单与高风险
+// 人工二审单的幂等闸分离，applied 审计痕不吞同矛盾后续高置信复裁的人工诉求；
+// 同带 verbatim 复发仍被 :auto 键正常去重。
 func (u *Usecase) recordAutoInvalidateProposalLater(proposals *[]queuedConflictProposal, docID, relPath string, f WriteBackFact, v WriteBackArbitration) {
 	payload := buildConflictPayload(docID, relPath, f, v)
+	if k, ok := payload["dedup_key"].(string); ok && k != "" {
+		payload["dedup_key"] = k + ":auto"
+	}
 	payload["auto_invalidated"] = true
 	*proposals = append(*proposals, queuedConflictProposal{
 		payload: payload,

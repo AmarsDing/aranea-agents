@@ -2812,8 +2812,10 @@ func provideKnowledgeCurateWorker(
 // 统一接线；PG 缺席/降级形态返回 nil（worker 随之不装配）。
 // W6：notion walker 经 GA 显式开闸装配（SOURCE_SYNC_NOTION_ENABLED=1，
 // jobs.SourceSyncKindGAOptIn——P2 上调三层 GA 门：T4 接线 ✓+W9 评审 gate+
-// shared_dir 浸泡周期；未开闸即不挂 walker，notion connector 拾取即
-// not_found walker 跳过）。DocApplier 双 kind 共用同一实例（kind 无关）。
+// shared_dir 浸泡周期；未开闸即不挂 walker——notion connector 行若误建/
+// 遗留，认领后以 walker 未注册判 walk_failed 失败收轮并 ConsecutiveFailures
+// 指数退避重排（非静默跳过，C 批修注释对齐行为 #114）；汰留靠不建行或
+// SOURCE_SYNC_NOTION_DISABLED=1）。DocApplier 双 kind 共用同一实例（kind 无关）。
 // W8：Frames 缝接 WS 聚合帧（v2Bus → knowledge_source_sync SystemNoticeEvent；
 // nil bus 静默——service.NewSourceSyncFrameSink 内闸）。
 func provideSourceSyncRunner(

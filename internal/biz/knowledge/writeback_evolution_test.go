@@ -33,7 +33,9 @@ func (s *stubFactVersionRepo) InsertFactVersion(_ context.Context, v FactVersion
 type stubProposalRepo struct {
 	items         []GovernanceProposal
 	hasProposal   bool
+	hasKeys       map[string]bool // 非 nil 时按 dedup_key 精确应答（跨带命名空间钉用）
 	dedupKey      string
+	dedupKeysSeen []string
 	dedupStatuses []string
 }
 
@@ -44,7 +46,11 @@ func (s *stubProposalRepo) InsertProposal(_ context.Context, p GovernanceProposa
 
 func (s *stubProposalRepo) HasProposal(_ context.Context, _, _, dedupKey string, statuses []string) (bool, error) {
 	s.dedupKey = dedupKey
+	s.dedupKeysSeen = append(s.dedupKeysSeen, dedupKey)
 	s.dedupStatuses = append([]string(nil), statuses...)
+	if s.hasKeys != nil {
+		return s.hasKeys[dedupKey], nil
+	}
 	return s.hasProposal, nil
 }
 
@@ -152,7 +158,8 @@ func TestWriteBack_FactVersionRepoNotWired(t *testing.T) {
 	}
 }
 
-// ── G-40 写回四操作仲裁（钉阵 ①~⑨，ADR-KN-20261028-G40-ARB4 §⑥） ───────────
+// ── G-40 写回四操作仲裁（钉阵 ①~⑨，ADR-KN-20261028-G40-ARB4 §⑥；C 批 fix-up
+// 消费面钉 ⑩~⑮ 见文件尾） ───────────
 
 // 钉②：update 高置信（≥0.8）→ 顶替目标旧段（版本链留痕），新事实不再追加（回归现行）。
 func TestWriteBack_ArbiterUpdateReplacesTarget(t *testing.T) {
@@ -360,7 +367,8 @@ func TestWriteBack_ArbiterDeleteAutoInvalidates(t *testing.T) {
 	if tv.FactID != "fid-old" || !strings.Contains(tv.OldBody, "禁止自动发布") || tv.NewBody != "" {
 		t.Fatalf("tombstone version = %+v, want OldBody snapshot + empty NewBody", tv)
 	}
-	// applied 提案审计痕：低风险直落、auto_invalidated 证据、同 dedup 键形。
+	// applied 提案审计痕：低风险直落、auto_invalidated 证据、dedup 键带 :auto
+	// 命名空间（C 批修 #14——自动失效审计单与高风险人工二审单跨带不互吞）。
 	if len(proposals.items) != 1 {
 		t.Fatalf("auto-invalidate must record one audit proposal: %+v", proposals.items)
 	}
@@ -377,7 +385,7 @@ func TestWriteBack_ArbiterDeleteAutoInvalidates(t *testing.T) {
 	if p.Payload["confidence"] != 0.6 || p.Payload["reason"] != "推断与旧禁令矛盾" {
 		t.Fatalf("payload confidence/reason = %+v", p.Payload)
 	}
-	if p.Payload["dedup_key"] != "conflict:fact:doc-entry:fid-old:fid-new" {
+	if p.Payload["dedup_key"] != "conflict:fact:doc-entry:fid-old:fid-new:auto" {
 		t.Fatalf("payload dedup_key = %v", p.Payload["dedup_key"])
 	}
 }
@@ -595,5 +603,254 @@ func TestWriteBack_ArbiterNotWired(t *testing.T) {
 	entry := f.docs["doc-entry"]
 	if !strings.Contains(entry.ContentText, "5% 起步") || !strings.Contains(entry.ContentText, "20% 起步") {
 		t.Fatalf("no arbiter must keep legacy append behaviour: %q", entry.ContentText)
+	}
+}
+
+// ── G-40 C 批评审 fix-up 消费面钉（wf_6fda0b29-07e，评审 #11–#15）────────────
+
+// 钉⑩（C 批，评审 #12）：update 高置信但新事实自身 FactID 为空 → 禁止顶替（空
+// incoming 走 D7 失配降级平追加）——无 FactID 的新段若顶替成功，目标段 fact_id
+// lineage marker 会从正文永久抹掉（preserveSupersededFactID 契约）。
+func TestWriteBack_ArbiterUpdateEmptyIncomingIDAppends(t *testing.T) {
+	f := newWriteBackEntryFixture()
+	seedExistingEntry(f, "entries/灰度发布.md", "灰度发布", "灰度比例 5% 起步。", "fid-old")
+	versions := &stubFactVersionRepo{}
+	proposals := &stubProposalRepo{}
+	f.u.SetEvolutionRepos(versions, proposals)
+	f.u.SetWriteBackArbiter(&stubWriteBackArbiter{verdicts: []WriteBackArbitration{
+		{FactIndex: 0, Operation: WriteBackOpUpdate, TargetFactID: "fid-old", Confidence: 0.92, Reason: "同一事实的更新"},
+	}})
+
+	_, err := f.u.WriteBackSessionFacts(context.Background(), WriteBackInput{
+		SessionID: "sess-c1",
+		Facts:     []WriteBackFact{taggedFact("", "灰度比例提升至 20% 起步", "constraint", 0.95, "灰度发布")},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry := f.docs["doc-entry"]
+	if !strings.Contains(entry.ContentText, "5% 起步") || !strings.Contains(entry.ContentText, "20% 起步") {
+		t.Fatalf("empty-incoming update must degrade to append: %q", entry.ContentText)
+	}
+	if !strings.Contains(entry.ContentText, "fact_id: `fid-old`") {
+		t.Fatalf("target lineage marker must survive: %q", entry.ContentText)
+	}
+	if len(versions.items) != 0 || len(proposals.items) != 0 {
+		t.Fatalf("D7 degrade must be side-effect free: versions=%+v proposals=%+v", versions.items, proposals.items)
+	}
+}
+
+// 钉⑪（C 批，评审 #11）：delete 自动带内空 TargetFactID → 不再静默平追加，
+// 纳入 D7 升级面：追加 + 高风险 pending 提案（与正文失配同分支）。
+func TestWriteBack_ArbiterDeleteEmptyTargetEscalates(t *testing.T) {
+	f := newWriteBackEntryFixture()
+	seedExistingEntry(f, "entries/灰度发布.md", "灰度发布", "生产环境禁止自动发布。", "fid-old")
+	versions := &stubFactVersionRepo{}
+	proposals := &stubProposalRepo{}
+	f.u.SetEvolutionRepos(versions, proposals)
+	f.u.SetWriteBackArbiter(&stubWriteBackArbiter{verdicts: []WriteBackArbitration{
+		{FactIndex: 0, Operation: WriteBackOpDelete, TargetFactID: "", Confidence: 0.6, Reason: "arbiter 未命名目标"},
+	}})
+
+	_, err := f.u.WriteBackSessionFacts(context.Background(), WriteBackInput{
+		SessionID: "sess-c2",
+		Facts:     []WriteBackFact{taggedFact("fid-new", "生产环境允许自动发布", "decision", 0.9, "灰度发布")},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry := f.docs["doc-entry"]
+	if !strings.Contains(entry.ContentText, "禁止自动发布") || !strings.Contains(entry.ContentText, "允许自动发布") {
+		t.Fatalf("empty-target delete must keep old and append new: %q", entry.ContentText)
+	}
+	if len(versions.items) != 0 {
+		t.Fatalf("empty-target delete must not touch version chain: %+v", versions.items)
+	}
+	if len(proposals.items) != 1 {
+		t.Fatalf("empty-target delete must escalate to high-risk pending proposal: %+v", proposals.items)
+	}
+	p := proposals.items[0]
+	if p.Kind != ProposalKindConflict || p.Risk != ProposalRiskHigh || p.Status != "" {
+		t.Fatalf("escalated proposal identity = %+v, want conflict/high/pending", p)
+	}
+	if p.Payload["auto_invalidated"] != nil {
+		t.Fatalf("escalated proposal must not carry auto_invalidated: %+v", p.Payload)
+	}
+}
+
+// 钉⑫（C 批，评审 #13）：同批 update→delete 命中同一 TargetFactID —— update 先
+// 消费该目标，后到的 delete 一律 D7 降级（追加+高风险 pending），禁止把刚顶替
+// 的新段当旧段静默移除（0.9 更新被 0.6 矛盾吃掉且仅落低风险单）。
+func TestWriteBack_ArbiterSameBatchUpdateThenDeleteSameTarget(t *testing.T) {
+	f := newWriteBackEntryFixture()
+	seedExistingEntry(f, "entries/灰度发布.md", "灰度发布", "灰度比例 5% 起步。", "fid-old")
+	versions := &stubFactVersionRepo{}
+	proposals := &stubProposalRepo{}
+	f.u.SetEvolutionRepos(versions, proposals)
+	f.u.SetWriteBackArbiter(&stubWriteBackArbiter{verdicts: []WriteBackArbitration{
+		{FactIndex: 0, Operation: WriteBackOpUpdate, TargetFactID: "fid-old", Confidence: 0.9, Reason: "同一事实的更新"},
+		{FactIndex: 1, Operation: WriteBackOpDelete, TargetFactID: "fid-old", Confidence: 0.6, Reason: "推断与旧口径矛盾"},
+	}})
+
+	_, err := f.u.WriteBackSessionFacts(context.Background(), WriteBackInput{
+		SessionID: "sess-c3",
+		Facts: []WriteBackFact{
+			taggedFact("fid-upd", "灰度比例提升至 20% 起步", "constraint", 0.95, "灰度发布"),
+			taggedFact("fid-del", "灰度起步比例可直接拉满 100%", "decision", 0.9, "灰度发布"),
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry := f.docs["doc-entry"]
+	if !strings.Contains(entry.ContentText, "20% 起步") || strings.Contains(entry.ContentText, "5% 起步") {
+		t.Fatalf("update must supersede target (consumed first): %q", entry.ContentText)
+	}
+	if !strings.Contains(entry.ContentText, "fact_id: `fid-old`") {
+		t.Fatalf("updated block must keep lineage marker: %q", entry.ContentText)
+	}
+	if !strings.Contains(entry.ContentText, "拉满 100%") {
+		t.Fatalf("degraded delete fact must still append: %q", entry.ContentText)
+	}
+	if len(versions.items) != 1 || versions.items[0].NewBody == "" {
+		t.Fatalf("update must record exactly one supersede version: %+v", versions.items)
+	}
+	if len(proposals.items) != 1 {
+		t.Fatalf("intra-batch delete must escalate to manual review (not silent auto): %+v", proposals.items)
+	}
+	p := proposals.items[0]
+	if p.Risk != ProposalRiskHigh || p.Status != "" {
+		t.Fatalf("second op on consumed target must be high-risk pending: %+v", p)
+	}
+	if p.Payload["new_fact_id"] != "fid-del" || p.Payload["auto_invalidated"] != nil {
+		t.Fatalf("degraded proposal payload = %+v", p.Payload)
+	}
+}
+
+// 钉⑬（C 批，评审 #13 逆序）：同批 delete→update 同目标——delete 自动失效先消费
+// 目标（旧段移除+墓碑+applied 审计痕），后到的 update 禁止再就地改写（同批已
+// 消费 → D7 降级平追加，不留版本）。
+func TestWriteBack_ArbiterSameBatchDeleteThenUpdateSameTarget(t *testing.T) {
+	f := newWriteBackEntryFixture()
+	seedExistingEntry(f, "entries/灰度发布.md", "灰度发布", "生产环境禁止自动发布。", "fid-old")
+	versions := &stubFactVersionRepo{}
+	proposals := &stubProposalRepo{}
+	f.u.SetEvolutionRepos(versions, proposals)
+	f.u.SetWriteBackArbiter(&stubWriteBackArbiter{verdicts: []WriteBackArbitration{
+		{FactIndex: 0, Operation: WriteBackOpDelete, TargetFactID: "fid-old", Confidence: 0.6, Reason: "推断与旧禁令矛盾"},
+		{FactIndex: 1, Operation: WriteBackOpUpdate, TargetFactID: "fid-old", Confidence: 0.9, Reason: "同一事实的更新"},
+	}})
+
+	_, err := f.u.WriteBackSessionFacts(context.Background(), WriteBackInput{
+		SessionID: "sess-c4",
+		Facts: []WriteBackFact{
+			taggedFact("fid-del", "生产环境允许自动发布", "decision", 0.9, "灰度发布"),
+			taggedFact("fid-upd", "生产环境灰度窗口缩短至 10 分钟", "constraint", 0.95, "灰度发布"),
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry := f.docs["doc-entry"]
+	if strings.Contains(entry.ContentText, "禁止自动发布") {
+		t.Fatalf("delete auto-invalidate must remove old section: %q", entry.ContentText)
+	}
+	if !strings.Contains(entry.ContentText, "允许自动发布") || !strings.Contains(entry.ContentText, "缩短至 10 分钟") {
+		t.Fatalf("both news facts must append (update degraded): %q", entry.ContentText)
+	}
+	if len(versions.items) != 1 || versions.items[0].NewBody != "" {
+		t.Fatalf("only the delete tombstone version is recorded: %+v", versions.items)
+	}
+	if len(proposals.items) != 1 {
+		t.Fatalf("only the auto-invalidate audit proposal is queued: %+v", proposals.items)
+	}
+	p := proposals.items[0]
+	if p.Risk != ProposalRiskLow || p.Status != ProposalStatusApplied || p.Payload["auto_invalidated"] != true {
+		t.Fatalf("auto audit proposal identity = %+v", p)
+	}
+}
+
+// 钉⑭（C 批，评审 #14）：跨带 dedup 命名空间——自动失效审计单（:auto 后缀键）与
+// 高风险人工二审单（无名空间键）互不抑制：applied 审计痕不得吞掉同矛盾后续
+// 高置信复裁；同带 verbatim 复发仍被 :auto 键正常去重。
+func TestWriteBack_ArbiterDeleteCrossBandDedupNamespaces(t *testing.T) {
+	newIn := func() WriteBackInput {
+		return WriteBackInput{
+			SessionID: "sess-c5",
+			Facts:     []WriteBackFact{taggedFact("fid-new", "生产环境允许自动发布", "decision", 0.9, "灰度发布")},
+		}
+	}
+	run := func(t *testing.T, proposals *stubProposalRepo, v WriteBackArbitration) *writeBackEntryFixture {
+		f := newWriteBackEntryFixture()
+		seedExistingEntry(f, "entries/灰度发布.md", "灰度发布", "生产环境禁止自动发布。", "fid-old")
+		f.u.SetEvolutionRepos(&stubFactVersionRepo{}, proposals)
+		f.u.SetWriteBackArbiter(&stubWriteBackArbiter{verdicts: []WriteBackArbitration{v}})
+		if _, err := f.u.WriteBackSessionFacts(context.Background(), newIn()); err != nil {
+			t.Fatal(err)
+		}
+		return f
+	}
+
+	// 既有 applied 自动失效单（:auto 键）在场 → 同矛盾高置信复裁必须照常落
+	// 高风险 pending 单（探测的是无名空间键，不会被 :auto 行吞掉）。
+	proposals := &stubProposalRepo{hasKeys: map[string]bool{
+		"conflict:fact:doc-entry:fid-old:fid-new:auto": true,
+	}}
+	run(t, proposals, WriteBackArbitration{FactIndex: 0, Operation: WriteBackOpDelete, TargetFactID: "fid-old", Confidence: 0.85, Reason: "高置信复裁"})
+	if len(proposals.items) != 1 || proposals.items[0].Risk != ProposalRiskHigh || proposals.items[0].Status != "" {
+		t.Fatalf("high-band re-arbitration must not be swallowed by applied auto audit: %+v", proposals.items)
+	}
+	if len(proposals.dedupKeysSeen) != 1 || proposals.dedupKeysSeen[0] != "conflict:fact:doc-entry:fid-old:fid-new" {
+		t.Fatalf("high-band probe key must keep legacy namespace: %v", proposals.dedupKeysSeen)
+	}
+
+	// 同带 verbatim 复发（applied :auto 行已在场）→ 自动失效审计单仍被去重，
+	// 不重复留痕（墓碑版本照常——正文层动作与审计幂等正交）。
+	proposals2 := &stubProposalRepo{hasKeys: map[string]bool{
+		"conflict:fact:doc-entry:fid-old:fid-new:auto": true,
+	}}
+	run(t, proposals2, WriteBackArbitration{FactIndex: 0, Operation: WriteBackOpDelete, TargetFactID: "fid-old", Confidence: 0.6, Reason: "同带重放"})
+	if len(proposals2.items) != 0 {
+		t.Fatalf("same-band verbatim replay must stay deduped: %+v", proposals2.items)
+	}
+	if len(proposals2.dedupKeysSeen) != 1 || proposals2.dedupKeysSeen[0] != "conflict:fact:doc-entry:fid-old:fid-new:auto" {
+		t.Fatalf("auto audit probe key must carry :auto namespace: %v", proposals2.dedupKeysSeen)
+	}
+}
+
+// 钉⑮（C 批，评审 #15）：占位 FactID=="stmt" 与空 ID 同纪律归一为陈述哈希——
+// 两条同占位不同陈述的新事实同目标 delete 不再共用常量 dedup 键互相吞并。
+func TestWriteBack_ArbiterDeleteStmtPlaceholderDistinctDedupKeys(t *testing.T) {
+	f := newWriteBackEntryFixture()
+	seedExistingEntry(f, "entries/灰度发布.md", "灰度发布", "生产环境禁止自动发布。", "fid-old")
+	proposals := &stubProposalRepo{}
+	f.u.SetEvolutionRepos(&stubFactVersionRepo{}, proposals)
+	f.u.SetWriteBackArbiter(&stubWriteBackArbiter{verdicts: []WriteBackArbitration{
+		{FactIndex: 0, Operation: WriteBackOpDelete, TargetFactID: "fid-old", Confidence: 0.85, Reason: "矛盾其一"},
+		{FactIndex: 1, Operation: WriteBackOpDelete, TargetFactID: "fid-old", Confidence: 0.85, Reason: "矛盾其二"},
+	}})
+
+	_, err := f.u.WriteBackSessionFacts(context.Background(), WriteBackInput{
+		SessionID: "sess-c6",
+		Facts: []WriteBackFact{
+			taggedFact("stmt", "生产环境允许自动发布", "decision", 0.9, "灰度发布"),
+			taggedFact("stmt", "生产环境灰度窗口压缩一半", "constraint", 0.9, "灰度发布"),
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(proposals.items) != 2 {
+		t.Fatalf("two distinct stmt-placeholder facts must yield two proposals: %+v", proposals.items)
+	}
+	k0 := proposals.items[0].Payload["dedup_key"].(string)
+	k1 := proposals.items[1].Payload["dedup_key"].(string)
+	if k0 == k1 {
+		t.Fatalf("placeholder dedup keys degenerated to a constant: %q", k0)
+	}
+	for _, k := range []string{k0, k1} {
+		if !strings.HasPrefix(k, "conflict:fact:doc-entry:fid-old:") || strings.HasSuffix(k, ":stmt") {
+			t.Fatalf("dedup key must normalize stmt placeholder to statement hash: %q", k)
+		}
 	}
 }
