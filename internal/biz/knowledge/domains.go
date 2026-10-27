@@ -13,6 +13,8 @@ type vaultFields struct {
 	resolvedLinks ResolvedLinkReader
 	filer         *VaultFiler
 	applier       VaultDocApplier
+	// sourceItems 带外删档反扫窄口（G-38 结转 A1；nil=未接线零旁效应）。
+	sourceItems SourceItemUnbinder
 }
 
 type graphFields struct {

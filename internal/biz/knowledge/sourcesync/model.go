@@ -682,6 +682,12 @@ type ItemRepo interface {
 	MarkAbsentItemsMissing(ctx context.Context, connectorID, runToken string) (int, error)
 	// MarkItemDeleted ⑥-8 收尾：status=deleted + deleted_at 落钟。
 	MarkItemDeleted(ctx context.Context, connectorID, externalID string, when time.Time) (bool, error)
+	// UnbindItemsByDocumentID 带外删档反扫（G-38 结转 W2 挂账收口）：清所有
+	// 绑定到 documentID 的非 deleted 行的 document_id/own_lifecycle（←''/false），
+	// content_hash 保留（源侧 checkpoint 事实）。清后 runner needsWork
+	//（DocumentID==""）下轮自然重摄取+adopt/create 重绑，零新增调度路径。
+	// deleted 墓碑行保留历史锚不清。返回受影响行数。
+	UnbindItemsByDocumentID(ctx context.Context, documentID string) (int, error)
 }
 
 // CredentialRepo 凭据行表 CRUD（P1：secret_ref 仅存 enc: 信封；软删重建

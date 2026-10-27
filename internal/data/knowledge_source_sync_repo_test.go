@@ -440,6 +440,71 @@ func TestSourceSyncItem_Lifecycle(t *testing.T) {
 	}
 }
 
+// ── (g-bis) W2 挂账收口：带外删档反扫 UnbindItemsByDocumentID ──
+
+func TestSourceSyncItem_UnbindItemsByDocumentID(t *testing.T) {
+	repo := openSourceSyncRepo(t)
+	ctx := context.Background()
+	now := time.Now().UTC().Truncate(time.Second)
+
+	// 三行：两行绑定同 doc（own/adopt 各一），一行 deleted 墓碑同行绑定（应豁免），
+	// 一行绑定他 doc（不应触及）。
+	if err := repo.UpsertItemSeen(ctx, "ic-1", "ext-a", "doc-1", "fp-a", true, "run-1", now); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.UpsertItemSeen(ctx, "ic-1", "ext-b", "doc-1", "fp-b", false, "run-1", now); err != nil {
+		t.Fatal(err)
+	}
+	if ok, _ := repo.SetItemContentHash(ctx, "ic-1", "ext-a", "hash-a"); !ok {
+		t.Fatal("set content hash a")
+	}
+	if err := repo.UpsertItemSeen(ctx, "ic-1", "ext-c", "doc-1", "fp-c", true, "run-1", now); err != nil {
+		t.Fatal(err)
+	}
+	if ok, _ := repo.MarkItemDeleted(ctx, "ic-1", "ext-c", now); !ok {
+		t.Fatal("mark ext-c deleted")
+	}
+	if err := repo.UpsertItemSeen(ctx, "ic-1", "ext-d", "doc-2", "fp-d", true, "run-1", now); err != nil {
+		t.Fatal(err)
+	}
+
+	n, err := repo.UnbindItemsByDocumentID(ctx, "doc-1")
+	if err != nil {
+		t.Fatalf("unbind: %v", err)
+	}
+	if n != 2 {
+		t.Fatalf("unbind rows = %d, want 2（deleted 墓碑+他 doc 豁免）", n)
+	}
+
+	a, _, _ := repo.GetItem(ctx, "ic-1", "ext-a")
+	b, _, _ := repo.GetItem(ctx, "ic-1", "ext-b")
+	c, _, _ := repo.GetItem(ctx, "ic-1", "ext-c")
+	d, _, _ := repo.GetItem(ctx, "ic-1", "ext-d")
+	for _, it := range []sourcesync.Item{a, b} {
+		if it.DocumentID != "" || it.OwnLifecycle {
+			t.Fatalf("bound row must be cleared: %+v", it)
+		}
+	}
+	if a.ContentHash != "hash-a" {
+		t.Fatalf("content_hash must survive unbind（源侧 checkpoint 事实）: %+v", a)
+	}
+	if c.DocumentID != "doc-1" {
+		t.Fatalf("deleted 墓碑行保留历史锚不清: %+v", c)
+	}
+	if d.DocumentID != "doc-2" || !d.OwnLifecycle {
+		t.Fatalf("他 doc 绑定行不得被触及: %+v", d)
+	}
+
+	// 幂等：再次调用零行。
+	if n2, err := repo.UnbindItemsByDocumentID(ctx, "doc-1"); err != nil || n2 != 0 {
+		t.Fatalf("idempotent re-unbind: n=%d err=%v", n2, err)
+	}
+	// 空址拒绝。
+	if _, err := repo.UnbindItemsByDocumentID(ctx, "  "); err == nil {
+		t.Fatal("blank document_id must be rejected")
+	}
+}
+
 // ── (h) P10 保留双 DELETE：runs 保 100 最新 + items 90 天硬清 ──
 
 func TestSourceSyncRun_RetentionKeepsNewest100(t *testing.T) {

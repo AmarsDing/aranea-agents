@@ -593,6 +593,8 @@ func (u *Usecase) DeleteDocument(ctx context.Context, id string) error {
 
 // DeleteDocumentMirror removes only derived records after the sync layer has
 // observed an external file deletion and retained the available mirror in trash.
+// G-38 结转 A1：删档成功后 best-effort 反扫 sourcesync items 悬空绑定
+// （sourceItems 未接线时零旁效应）。
 func (u *Usecase) DeleteDocumentMirror(ctx context.Context, id string) error {
 	if err := u.requireRepo(); err != nil {
 		return err
@@ -603,6 +605,7 @@ func (u *Usecase) DeleteDocumentMirror(ctx context.Context, id string) error {
 	if err := u.documents.DeleteDocument(ctx, id); err != nil {
 		return err
 	}
+	u.unbindSourceItemsBestEffort(ctx, id)
 	u.removeLinkIndexDoc(ctx, id)
 	return nil
 }

@@ -442,6 +442,22 @@ func (m *memItemRepo) MarkItemDeleted(_ context.Context, connectorID, externalID
 	return true, nil
 }
 
+func (m *memItemRepo) UnbindItemsByDocumentID(_ context.Context, documentID string) (int, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	n := 0
+	for k, it := range m.rows {
+		if it.DocumentID != documentID || it.Status == bizsync.ItemStatusDeleted {
+			continue
+		}
+		it.DocumentID = ""
+		it.OwnLifecycle = false
+		m.rows[k] = it
+		n++
+	}
+	return n, nil
+}
+
 // ──────────────────────────────── RunRepo 内存镜 ────────────────────────────────
 
 type memRunRepo struct {

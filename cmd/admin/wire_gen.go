@@ -2829,6 +2829,10 @@ func provideSourceSyncRunner(
 	if repos == nil || d == nil || d.Postgres() == nil || uc == nil {
 		return nil
 	}
+	// G-38 结转 A1（W2 挂账收口）：带外删档反扫接线——Usecase.DeleteDocumentMirror
+	// 删档成功 best-effort 清 items 悬空绑定。本处唯一装配点（repos+PG 双在场
+	// 哨兵保证 PG 缺席形态不挂空壳反扫——nil-data repo 每次回调必走 Warn 噪声）。
+	uc.SetSourceItemUnbinder(repos)
 	appl, err := knowledgesync.NewDocApplier(knowledgesync.DocApplierDeps{
 		Log: lg, UC: uc, Items: repos, Embedder: embedder, Extractor: registry,
 	})

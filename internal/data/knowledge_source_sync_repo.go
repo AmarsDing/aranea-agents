@@ -669,6 +669,30 @@ WHERE connector_id = ? AND external_id = ? AND status <> 'deleted'`),
 	return n > 0, nil
 }
 
+func (r *sourceSyncRepo) UnbindItemsByDocumentID(ctx context.Context, documentID string) (int, error) {
+	d, ok := r.db()
+	if !ok {
+		return 0, r.unavailable()
+	}
+	documentID = strings.TrimSpace(documentID)
+	if documentID == "" {
+		return 0, apierror.BadRequest(sourceSyncModule, "document_id required")
+	}
+	// W2 挂账收口：清绑定不清墓碑（status<>'deleted'）——deleted 行保留历史
+	// 工程锚（source 删除链的审计事实）。content_hash 保留：重摄取提交后
+	// SetItemContentHash 覆写，悬空期不构成错位（needsWork 由 document_id=''
+	// 触发，不读 content_hash）。
+	res, err := d.RWDB().WriteDB(ctx).ExecContext(ctx, d.Dialect().RenumberPlaceholders(`
+UPDATE knowledge_source_connector_items
+SET document_id = '', own_lifecycle = false
+WHERE document_id = ? AND status <> 'deleted'`), documentID)
+	if err != nil {
+		return 0, entErrToBizErr(err, sourceSyncModule)
+	}
+	n, _ := res.RowsAffected()
+	return int(n), nil
+}
+
 // ──────────────────────────────── CredentialRepo ────────────────────────────────
 
 const ssCredentialCols = `id, connector_id, credential_key, status, secret_ref, metadata_json, created_at, updated_at`
