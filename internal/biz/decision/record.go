@@ -12,7 +12,7 @@ import (
 	"strings"
 )
 
-// Category enumerates the five decision sources (whitelist-validated on Emit).
+// Category enumerates the decision sources (whitelist-validated on Emit).
 type Category string
 
 const (
@@ -21,6 +21,13 @@ const (
 	CategorySystemGuard          Category = "system_guard"
 	CategoryKnowledgeArbitration Category = "knowledge_arbitration"
 	CategoryEvolutionApplied     Category = "evolution_applied"
+	// CategoryMemoryShadow 是 JEV Phase 0 / T8 shadow 审计链类别（2026-10-28）：
+	// 记忆平面决策点（VIR 路由 / 写侧门）在**零行为影响**前提下双记现状裁决
+	// 与完整 state，供金标采集与 JEV A/B（kill_criteria 杆 1-3 的数据源）。
+	// 消费面藏在 ARANEA_MEM_SHADOW=off|on（缺省 off）之后；记录只进
+	// decision_records 审计面，任何模块不得读它做业务判断（M80 单向数据流
+	// 铁律不变）。
+	CategoryMemoryShadow Category = "memory_shadow"
 )
 
 // validCategories is the Emit-time whitelist (application-layer constraint per
@@ -31,6 +38,7 @@ var validCategories = map[Category]bool{
 	CategorySystemGuard:          true,
 	CategoryKnowledgeArbitration: true,
 	CategoryEvolutionApplied:     true,
+	CategoryMemoryShadow:         true,
 }
 
 // ActorType identifies who made the decision.

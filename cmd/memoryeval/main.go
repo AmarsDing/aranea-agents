@@ -11,8 +11,10 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/biz/decision"
 	"aranea-agents/internal/conf"
 	"aranea-agents/internal/data"
+	"aranea-agents/internal/decide"
 	"aranea-agents/internal/knowledge"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/logpipeline"
@@ -34,6 +36,9 @@ import (
 //	EMBEDDING_API_KEY     embedding API key
 //	EMBEDDING_MODEL       embedding model (default text-embedding-3-small)
 //	EMBEDDING_DIM         embedding dimension (default 1536)
+//	ARANEA_MEM_SHADOW     on = T8 shadow audit chain (JEV Phase 0): double-record
+//	                      VIR route/correction decisions + full state into the
+//	                      M80 decision layer (default off, byte-identical behavior)
 func main() {
 	addr := envOr("EVAL_HTTP_ADDR", ":8910")
 	token := os.Getenv("EVAL_MEMORY_TOKEN")
@@ -79,9 +84,33 @@ func main() {
 			loggateway.StepID("memoryeval.startup"))
 	}
 
+	evalStore := data.NewEvalMemoryStore(d, emb, lg)
+	// T8 shadow 审计链（JEV Phase 0）：ARANEA_MEM_SHADOW=on 时装配 M80
+	// outbox collector 并把 decide.Recorder 注入 eval store，双记 VIR
+	// 路由/改口门决策与完整 state（kill_criteria 金标数据源）。缺省 off：
+	// 不建 collector、不注入，零行为差异。shadow 记录依赖 VIR 向量路由，
+	// emb 缺席时开关打开也只落零记录（store 内 router-nil 早退）。
+	if os.Getenv("ARANEA_MEM_SHADOW") == "on" {
+		repo := data.NewDecisionRepoFromData(d)
+		lc := decision.NewOutboxCollector(repo, lg)
+		lc.Start(context.Background())
+		defer lc.Stop()
+		if emb == nil {
+			lg.Warn("ARANEA_MEM_SHADOW=on but no embedder; shadow records will be empty",
+				loggateway.StepID("memoryeval.shadow"))
+		}
+		if sw, ok := evalStore.(decide.ShadowRecorderWired); ok {
+			sw.SetShadowRecorder(decide.NewRecorder(lc, lg))
+			lg.Info("mem shadow chain armed", loggateway.StepID("memoryeval.shadow"))
+		} else {
+			lg.Warn("eval store does not implement ShadowRecorderWired; shadow disabled",
+				loggateway.StepID("memoryeval.shadow"))
+		}
+	}
+
 	srv := &http.Server{
 		Addr:              addr,
-		Handler:           newEvalServer(data.NewEvalMemoryStore(d, emb, lg), token, lg).routes(),
+		Handler:           newEvalServer(evalStore, token, lg).routes(),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 

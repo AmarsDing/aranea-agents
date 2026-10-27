@@ -11,7 +11,10 @@ import (
 // enumerative / relational 查询侧模式，correction / forget 写入侧治理门）。
 // 设计要点：
 //   - 锚点与业务语句共用同一个 biz.EmbeddingService——向量空间天然自洽，
-//     换嵌入模型（如 Jina/JEV 多语系模型）只需换 provider，本文件零改动；
+//     换嵌入模型（如 Jina 多语系模型）只需换 provider，本文件零改动；
+//     JEV 是 System-One 决策模型（消费本路由器输出的 margin 做路由决策），
+//     不经手嵌入面——旧注记把 JEV 写成嵌入模型系笔误，2026-10-28 按
+//     DOC-SYNC 纠正；
 //   - 每个意图挂中英双语正向锚点 + 少量反向锚点，多语言泛化由嵌入模型继承，
 //     不维护任何语言词表；
 //   - Match = maxCos(pos) >= threshold && maxCos(pos) > maxCos(neg)。反向锚点
@@ -246,20 +249,21 @@ func NewEvalIntentRouter(ctx context.Context, embedder EmbeddingService) (*EvalI
 	return r, nil
 }
 
-// Match reports whether emb routes to intent: best positive-anchor cosine must
-// clear the intent threshold AND beat every negative-anchor cosine (negatives
-// encode the reinforcement/opposite semantics that literal cues could not
-// separate). Unknown intents or empty inputs never match.
-func (r *EvalIntentRouter) Match(emb []float32, intent EvalIntent) bool {
+// Score returns the routing margins of emb against one intent: the best
+// positive-anchor cosine, the best negative-anchor cosine, and whether the
+// intent is registered at all. It is Match's internals exposed additively
+// (identical math, zero behavior change) so the T8 shadow audit chain can
+// persist the actual soft margins — kill_criteria rod 2 needs distributions,
+// not just boolean verdicts.
+func (r *EvalIntentRouter) Score(emb []float32, intent EvalIntent) (pos, neg float32, ok bool) {
 	if r == nil || len(emb) == 0 {
-		return false
+		return 0, 0, false
 	}
 	iv, ok := r.intents[intent]
 	if !ok || len(iv.pos) == 0 {
-		return false
+		return 0, 0, false
 	}
 	n := normalizeVec32(emb)
-	pos, neg := float32(0), float32(0)
 	for _, a := range iv.pos {
 		if c := dotVec32(n, a); c > pos {
 			pos = c
@@ -270,7 +274,19 @@ func (r *EvalIntentRouter) Match(emb []float32, intent EvalIntent) bool {
 			neg = c
 		}
 	}
-	return pos >= iv.threshold && pos > neg
+	return pos, neg, true
+}
+
+// Match reports whether emb routes to intent: best positive-anchor cosine must
+// clear the intent threshold AND beat every negative-anchor cosine (negatives
+// encode the reinforcement/opposite semantics that literal cues could not
+// separate). Unknown intents or empty inputs never match.
+func (r *EvalIntentRouter) Match(emb []float32, intent EvalIntent) bool {
+	pos, neg, ok := r.Score(emb, intent)
+	if !ok {
+		return false
+	}
+	return pos >= r.intents[intent].threshold && pos > neg
 }
 
 func normalizeVec32(v []float32) []float32 {

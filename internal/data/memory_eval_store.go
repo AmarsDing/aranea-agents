@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/decide"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
@@ -57,6 +58,9 @@ type evalMemoryStore struct {
 	routerMu    sync.Mutex
 	router      *biz.EvalIntentRouter
 	routerErrAt time.Time
+	// shadow 是 T8 shadow 审计链记录器（decide.Recorder）；nil=关闭
+	// （缺省）。只在既有判定之后补 Emit，不参与任何判定。
+	shadow *decide.Recorder
 }
 
 var _ biz.EvalMemoryStore = (*evalMemoryStore)(nil)
@@ -299,7 +303,10 @@ func (s *evalMemoryStore) SearchMemories(ctx context.Context, userID, query stri
 		}
 	}
 	poolLimit := evalCandidateLimit(topK)
+	// T8 shadow：词法判定快照（VIR 合并前），供分歧分析（P29 入料）。
+	lexicalQA := qa
 	s.applyEvalQueryModes(ctx, &qa, embedding)
+	s.shadowRouteMode(ctx, userID, query, embedding, lexicalQA)
 	// A future horizon in a trend question asks for a forecast, not evidence
 	// recorded in that future window. Keep the observed series available.
 	if qa.Trend && qa.RangeStart != nil && qa.RangeStart.After(anchor) {
@@ -679,10 +686,13 @@ func (s *evalMemoryStore) supersedeContradictions(ctx context.Context, userID, n
 	if !evalGovernableKindForStore(newKind) || biz.IsHypotheticalStatement(stripEvalRolePrefix(newStmt)) {
 		return nil, "", nil
 	}
-	correction := HasEvalCorrectionCue(newStmt)
+	lexicalCue := HasEvalCorrectionCue(newStmt)
+	correction := lexicalCue
 	if len(embeddings) > 1 && len(embeddings[1]) > 0 {
 		if router := s.intentRouter(ctx); router != nil {
 			correction = correction || router.Match(embeddings[1], biz.EvalIntentCorrection)
+			// T8 shadow：词法||VIR 合成判定后、早退前双记（自然流量全分布）。
+			s.shadowCorrectionGate(ctx, userID, newStmt, embeddings[1], lexicalCue)
 		}
 	}
 	if biz.EvalFactSlot(newStmt) == "" && (s.vec == nil || !correction) {
