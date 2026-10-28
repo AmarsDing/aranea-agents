@@ -136,7 +136,7 @@ onUnmounted(() => {
   padding: 14px 16px 12px
   border-radius: 10px
   color: var(--color-text-primary)
-  background: linear-gradient(160deg, rgba(10, 18, 28, 0.82), rgba(8, 12, 20, 0.88))
+  background: var(--gradient-card)
   border: 1px solid rgba(var(--hud-cyan-rgb), 0.35)
   box-shadow: 0 0 24px rgba(var(--hud-cyan-rgb), 0.18), inset 0 0 32px rgba(var(--hud-cyan-rgb), 0.05)
   backdrop-filter: blur(var(--glass-blur-default))
@@ -189,7 +189,7 @@ onUnmounted(() => {
 
   &__icon
     color: var(--color-warning)
-    filter: drop-shadow(0 0 4px rgba(251, 191, 36, 0.6))
+    filter: drop-shadow(0 0 4px color-mix(in srgb, var(--color-warning) 60%, transparent))
 
   &__title
     font-size: 13px
@@ -217,7 +217,7 @@ onUnmounted(() => {
     font-size: 18px
     font-weight: 600
     letter-spacing: 0.04em
-    color: #fff
+    color: var(--color-text-primary)
     text-shadow: 0 0 12px rgba(var(--hud-cyan-rgb), 0.75)
     margin-bottom: 6px
     word-break: break-all
@@ -236,7 +236,7 @@ onUnmounted(() => {
     padding: 2px 8px
     border-radius: 4px
     border: 1px solid var(--glass-border)
-    background: rgba(255, 255, 255, 0.04)
+    background: color-mix(in srgb, var(--color-text-primary) 4%, transparent)
     margin-bottom: 10px
 
   &__actions
@@ -262,8 +262,8 @@ onUnmounted(() => {
       cursor: not-allowed
 
     &--approve
-      color: #04121a
-      background: linear-gradient(135deg, #22d3ee, #34d399)
+      color: var(--button-primary-text)
+      background: var(--button-primary-bg)
       box-shadow: 0 0 14px rgba(var(--hud-cyan-rgb), 0.45)
 
       &:hover:not(:disabled)

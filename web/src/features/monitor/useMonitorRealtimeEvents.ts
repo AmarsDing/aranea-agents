@@ -44,6 +44,7 @@ export function useMonitorRealtimeEvents() {
 
   // ── 历史（monitor_events 持久化行：服务端分页 + 类型/级别过滤）──
   const historyLoading = ref(false);
+  const historyError = ref('');
   const page = ref(1);
   const pageSize = ref(HISTORY_PAGE_SIZE);
   const typeFilter = ref<string>('all');
@@ -59,6 +60,7 @@ export function useMonitorRealtimeEvents() {
 
   async function refreshHistory() {
     historyLoading.value = true;
+    historyError.value = '';
     try {
       await monitorStore.loadEvents(
         buildMonitorEventsQuery({
@@ -69,6 +71,8 @@ export function useMonitorRealtimeEvents() {
           includeSystem: showSystemEvents.value,
         }),
       );
+    } catch (reason) {
+      historyError.value = reason instanceof Error ? reason.message : t('uiSystem.operations.loadFailed');
     } finally {
       historyLoading.value = false;
     }
@@ -183,6 +187,7 @@ export function useMonitorRealtimeEvents() {
     historyEvents,
     historyTotal: eventsTotal,
     historyLoading,
+    historyError,
     page,
     pageSize,
     typeFilter,

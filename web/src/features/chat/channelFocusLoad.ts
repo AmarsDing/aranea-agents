@@ -15,9 +15,10 @@ export async function hydrateSessionForChannelFocus(
   deps: ChannelFocusLoadDeps,
   sessionId: string,
   skipMessageReload?: boolean,
+  isCurrent?: () => boolean,
 ): Promise<void> {
   const sid = sessionId.trim();
-  if (!sid) return;
+  if (!sid || isCurrent?.() === false) return;
 
   const hasUserContent = deps.getMessages(sid).some((m) => m.role === 'user' && (m.content_markdown ?? '').trim());
 
@@ -25,5 +26,5 @@ export async function hydrateSessionForChannelFocus(
     await deps.loadMessages({ sessionId: sid, replace: true });
   }
 
-  deps.ensureChatStream(sid);
+  if (isCurrent?.() !== false) deps.ensureChatStream(sid);
 }

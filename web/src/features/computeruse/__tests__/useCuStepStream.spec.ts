@@ -121,6 +121,8 @@ describe('cuStepFromAudit', () => {
       path: 'a11y',
       action: 'invoke',
       paramsJson: '{}',
+      screenshotRef: '',
+      degraded: false,
       result: 'ok',
       error: '',
       durationMs: 12,
@@ -346,9 +348,7 @@ describe('useCuStepStream composable', () => {
     expect(result.steps.value.map((s) => s.stepIndex)).toEqual([1, 2]);
     expect(result.steps.value[1]).toMatchObject({ target: 'rest-2', danger: true, confirmedBy: 'u1' });
 
-    captured.onMonitorEvent?.(
-      mkEv({ metadata: { step_index: 2, target: 'ws-2', result: 'ok', danger: false } }),
-    );
+    captured.onMonitorEvent?.(mkEv({ metadata: { step_index: 2, target: 'ws-2', result: 'ok', danger: false } }));
     expect(result.steps.value).toHaveLength(2);
     expect(result.steps.value[1].target).toBe('ws-2');
   });

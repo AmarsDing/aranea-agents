@@ -17,6 +17,7 @@ export const sideNavGroups: NavGroup[] = [
     items: [
       { to: '/overview', icon: 'dashboard', labelKey: 'menu.overview' },
       { to: '/workbench', icon: 'track_changes', labelKey: 'menu.cockpit' },
+      { to: '/task-workspace', icon: 'view_quilt', labelKey: 'menu.taskWorkspace' },
       { to: '/usage/events', icon: 'receipt_long', labelKey: 'menu.usageEvents' },
       { to: '/chat', icon: 'chat', labelKey: 'menu.chat' },
       { to: '/companion', icon: 'record_voice_over', labelKey: 'menu.companion' },
@@ -58,6 +59,7 @@ export const sideNavGroups: NavGroup[] = [
   {
     labelKey: 'menu.groupMediaCommerce',
     items: [
+      { to: '/ecommerce-loop', icon: 'shopping_bag', labelKey: 'menu.ecommerceLoop' },
       { to: '/content-inbox', icon: 'inbox', labelKey: 'menu.contentInbox' },
       { to: '/review-queue', icon: 'rate_review', labelKey: 'menu.reviewQueue' },
       { to: '/opportunity-board', icon: 'storefront', labelKey: 'menu.opportunityBoard' },

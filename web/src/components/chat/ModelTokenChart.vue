@@ -218,7 +218,7 @@ watch(
   background: color-mix(in srgb, var(--canvas-base) 92%, transparent)
   backdrop-filter: blur(var(--glass-blur-default))
   border: 1px solid var(--glass-border)
-  box-shadow: 0 4px 16px rgba(20, 24, 32, 0.14)
+  box-shadow: 0 4px 16px color-mix(in srgb, var(--color-shadow) 14%, transparent)
 
   // pointer-events:none 使浮层内无法滚动，放开行区高度让构成完整可见；
   // 超高时由 placeTooltip 的 menu/viewport clamp 兜底

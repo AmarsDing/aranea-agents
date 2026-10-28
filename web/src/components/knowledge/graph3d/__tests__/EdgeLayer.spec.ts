@@ -95,9 +95,9 @@ describe('EdgeLayer（M2 曲线）', () => {
   it('setCurvature 更新 uniform', () => {
     const layer = new EdgeLayer(edges, colors);
     layer.setCurvature(0.25);
-    expect((layer.object.material as { uniforms: { uCurvature: { value: number } } }).uniforms.uCurvature.value).toBe(
-      0.25,
-    );
+    const material = layer.object.material;
+    if (!(material instanceof THREE.ShaderMaterial)) throw new Error('EdgeLayer must use one ShaderMaterial');
+    expect(material.uniforms.uCurvature.value).toBe(0.25);
     layer.dispose();
   });
 });

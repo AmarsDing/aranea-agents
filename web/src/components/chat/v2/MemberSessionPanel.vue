@@ -444,7 +444,7 @@ const formattedTime = computed(() => {
   color: var(--color-danger)
   margin-bottom: 6px
   padding: 4px 6px
-  background: rgba(229, 92, 92, 0.08)
+  background: var(--color-danger-soft)
   border-radius: 3px
 
 // 任务指令区块（成员收到的输入内容，2026-07-27）

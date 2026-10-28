@@ -27,7 +27,7 @@ export interface UseAgentSettingsPersistenceDeps {
     upsertAgent: (agent: Agent) => void;
   };
   channelsStore: {
-    loadChannels: () => Promise<void>;
+    loadChannels: () => Promise<unknown>;
   };
 
   // Model picker

@@ -2,10 +2,14 @@ package agent
 
 import (
 	"context"
+	"crypto/sha1"
+	"encoding/hex"
+	"os"
 	"strconv"
 	"unicode/utf8"
 
 	"aranea-agents/internal/agent/callbacks"
+	"aranea-agents/internal/decide"
 	"aranea-agents/internal/metrics"
 	"aranea-agents/internal/tools/deferred"
 
@@ -57,6 +61,7 @@ func newToolCatalogCueBeforeHook(deps TRPCBuilderDeps) callbacks.Callback {
 		if recommended := deferred.RankCatalogEntries(catalog, query, deferred.CatalogRecommendLimit); len(recommended) > 0 {
 			cue = deferred.RenderCatalogCueWithRecommendations(catalog, recommended)
 			matched = true
+			emitToolRelevanceShadow(ctx, deps, query, recommended)
 		}
 		// P1-4 漏斗度量：预激活覆盖率（推荐区非空的轮次占比）。
 		metrics.DeferredCatalogRecommendTotal.WithLabelValues(strconv.FormatBool(matched)).Inc()
@@ -66,4 +71,46 @@ func newToolCatalogCueBeforeHook(deps TRPCBuilderDeps) callbacks.Callback {
 		args.Request.Messages = replaceDynamicCue(args.Request.Messages, toolCatalogCueMarker, toolCatalogCueMarker+cue)
 		return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 	})
+}
+
+// emitToolRelevanceShadow double-records BM25 catalog recommendations for
+// JEV Phase-1 tool_relevance gold harvest. Gated by ARANEA_JEV_SHADOW=on;
+// each recommended tool is recorded as incumbent key=needed (they entered
+// the recommend band). Zero effect on cue rendering.
+func emitToolRelevanceShadow(ctx context.Context, deps TRPCBuilderDeps, task string, recommended []deferred.DeferredToolEntry) {
+	if os.Getenv("ARANEA_JEV_SHADOW") != "on" || deps.DecisionCollector == nil || len(recommended) == 0 {
+		return
+	}
+	names := make([]string, 0, len(recommended))
+	scores := make(map[string]float64, len(recommended))
+	for i, e := range recommended {
+		names = append(names, e.Name)
+		// Rank order as a soft score stand-in (BM25 raw scores stay inside RankCatalogEntries).
+		scores[e.Name] = float64(len(recommended) - i)
+	}
+	rec := decide.NewRecorder(deps.DecisionCollector, deps.Logger())
+	rec.Emit(ctx, decide.ShadowEvent{
+		CorrelationID: toolShadowCorrID(task, names[0]),
+		QuestionID:    "tool_relevance",
+		State: map[string]any{
+			"task":            task,
+			"tool_candidates": names,
+		},
+		Incumbent: decide.Incumbent{
+			Key:     "needed",
+			Scores:  scores,
+			Method:  "bm25",
+			Matched: true,
+		},
+	})
+}
+
+func toolShadowCorrID(task, top string) string {
+	h := sha1.New()
+	h.Write([]byte("tool_relevance"))
+	h.Write([]byte{0})
+	h.Write([]byte(task))
+	h.Write([]byte{0})
+	h.Write([]byte(top))
+	return hex.EncodeToString(h.Sum(nil))[:16]
 }

@@ -111,7 +111,7 @@ function shortTime(iso: string): string {
   padding: 10px 12px
   border-radius: var(--wb-radius)
   background: color-mix(in srgb, var(--canvas-base) 88%, var(--color-text-primary))
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35)
+  box-shadow: 0 12px 30px color-mix(in srgb, var(--color-shadow) 35%, transparent)
   transition: right var(--wb-dur-view) ease
   // 投影只给真正浮起物（总论铁律 2 例外条款）
 .wb-afloat--docked

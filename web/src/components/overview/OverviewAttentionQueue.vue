@@ -9,21 +9,25 @@
         <div class="ov-lane__head">
           <q-icon :name="LANE_META[lane.lane].icon" size="15px" />
           <span class="ov-lane__name">{{ t(LANE_META[lane.lane].labelKey) }}</span>
-          <span class="ov-lane__count">{{ lane.count }}</span>
+          <span class="ov-lane__count">{{ lane.status === 'ready' ? lane.count : lane.count ? `${lane.count}+` : '—' }}</span>
         </div>
-        <div v-if="!lane.items.length" class="ov-lane__empty">
+        <div v-if="lane.status !== 'ready'" class="ov-lane__availability" role="status">
+          <q-icon :name="lane.status === 'loading' ? 'hourglass_empty' : 'cloud_off'" size="16px" aria-hidden="true" />
+          <span>{{ t(`uiSystem.overview.lane${lane.status === 'loading' ? 'Loading' : lane.status === 'partial' ? 'Partial' : 'Unavailable'}`) }}</span>
+          <q-btn v-if="lane.status !== 'loading'" flat dense :label="t('overviewPage.v2.refresh')" :loading="loading" @click="$emit('refresh')" />
+        </div>
+        <div v-if="!lane.items.length && lane.status === 'ready'" class="ov-lane__empty">
           <q-icon name="check_circle_outline" size="14px" />
           {{ t('overviewPage.v2.laneEmpty') }}
         </div>
-        <ul v-else class="ov-lane__items">
+        <ul v-if="lane.items.length" class="ov-lane__items">
           <li v-for="item in lane.items" :key="item.id">
-            <div
+            <component
+              :is="item.to ? 'button' : 'div'"
+              :type="item.to ? 'button' : undefined"
               class="ov-item"
               :class="[`ov-item--${item.severity}`, { 'ov-item--link': !!item.to }]"
-              :role="item.to ? 'button' : undefined"
-              :tabindex="item.to ? 0 : undefined"
               @click="item.to && $emit('drill', item)"
-              @keydown.enter="item.to && $emit('drill', item)"
             >
               <div class="ov-item__row">
                 <span class="ov-item__sev" aria-hidden="true" />
@@ -32,7 +36,7 @@
               </div>
               <div class="ov-item__detail">{{ item.detail }}</div>
               <q-icon v-if="item.to" name="chevron_right" size="14px" class="ov-item__go" />
-            </div>
+            </component>
           </li>
         </ul>
         <div v-if="lane.count > lane.items.length" class="ov-lane__more">
@@ -55,14 +59,15 @@ const LANE_META: Record<AttentionLane, { icon: string; labelKey: string }> = {
   backlog: { icon: 'inventory_2', labelKey: 'overviewPage.v2.laneBacklog' },
 };
 
-defineProps<{ lanes: AttentionLaneState[] }>();
-defineEmits<{ drill: [item: AttentionItem] }>();
+withDefaults(defineProps<{ lanes: AttentionLaneState[]; loading?: boolean }>(), { loading: false });
+defineEmits<{ drill: [item: AttentionItem]; refresh: [] }>();
 
 const { t } = useI18n();
 
 function laneTone(lane: AttentionLaneState): string {
   if (lane.items.some((i) => i.severity === 'critical')) return 'ov-lane--critical';
   if (lane.count > 0) return 'ov-lane--warning';
+  if (lane.status !== 'ready') return 'ov-lane--unknown';
   return 'ov-lane--ok';
 }
 </script>

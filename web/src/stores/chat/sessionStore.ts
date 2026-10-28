@@ -354,13 +354,21 @@ export const useChatSessionStore = defineStore('chatSession', () => {
     options?: { dialog_mode?: string; default_provider?: string; default_model?: string },
   ) {
     if (!agentId) return null;
+    const generation = _loadGeneration;
+    const selectionBefore = selectedSession.value?.id;
     error.value = null;
     try {
       const created = await createSession({ agent_id: agentId, title, ...options });
-      sessions.value.unshift(created);
-      sessionsTotal.value += 1;
-      listOffset.value += 1;
-      selectedSession.value = created;
+      if (
+        generation === _loadGeneration &&
+        entityKind.value === 'agent' &&
+        (!_currentAgentId || _currentAgentId === agentId)
+      ) {
+        sessions.value.unshift(created);
+        sessionsTotal.value += 1;
+        listOffset.value += 1;
+        if (selectedSession.value?.id === selectionBefore) selectedSession.value = created;
+      }
       emitSessionMutation({ type: 'update', id: created.id, session: created });
       return created;
     } catch (e: unknown) {
@@ -374,6 +382,7 @@ export const useChatSessionStore = defineStore('chatSession', () => {
     title: string,
     options?: { dialog_mode?: string; default_provider?: string; default_model?: string },
   ) {
+    const selectionBefore = teamSelectedSessionId.value;
     error.value = null;
     try {
       const created = await createSession({
@@ -383,7 +392,13 @@ export const useChatSessionStore = defineStore('chatSession', () => {
         ...options,
       });
       teamSessions.value[teamId] = [withTeamAt(created), ...(teamSessions.value[teamId] ?? [])];
-      teamSelectedSessionId.value = created.id;
+      if (
+        entityKind.value === 'team' &&
+        selectedTeamId.value === teamId &&
+        teamSelectedSessionId.value === selectionBefore
+      ) {
+        teamSelectedSessionId.value = created.id;
+      }
       emitSessionMutation({ type: 'update', id: created.id, session: created });
       return created;
     } catch (e: unknown) {

@@ -17,6 +17,7 @@ import (
 )
 
 var _ bizknowledge.KnowledgeCurateRepo = (*knowledgeRepo)(nil)
+var _ bizknowledge.FactEdgeCloser = (*knowledgeRepo)(nil)
 
 // DecayCoActivatedEdges 周期衰减：活跃 co_activated 边 weight_f *= factor，
 // 跌破 minWeight 的置 valid_to 关闭（失效不删除，留痕可审计）。dryRun 只 COUNT 预估。
@@ -357,6 +358,28 @@ func (r *knowledgeRepo) CloseContradictsEdges(ctx context.Context, collectionID,
 		closed = int(n)
 	}
 	return closed, nil
+}
+
+// CloseSemanticEdgesEvidencedBy D8：关闭该文档上、证据片段落在被失效事实段内的
+// active semantic 边。context 空串不匹配（strpos 对空针恒命中）。显式/实体/共激活边不动。
+func (r *knowledgeRepo) CloseSemanticEdgesEvidencedBy(ctx context.Context, collectionID, docID, evidence string) (int, error) {
+	collectionID = strings.TrimSpace(collectionID)
+	docID = strings.TrimSpace(docID)
+	evidence = strings.TrimSpace(evidence)
+	if collectionID == "" || docID == "" || evidence == "" {
+		return 0, nil
+	}
+	res, err := r.knowledgeDB(ctx).ExecContext(ctx,
+		`UPDATE knowledge_links SET valid_to = NOW()
+		 WHERE collection_id = $1 AND doc_id = $2
+		   AND link_type = 'semantic' AND valid_to IS NULL
+		   AND context <> '' AND strpos($3, context) > 0`,
+		collectionID, docID, evidence)
+	if err != nil {
+		return 0, entErrToBizErr(err, "knowledge")
+	}
+	n, _ := res.RowsAffected()
+	return int(n), nil
 }
 
 // MarkStaleEntries 置位 documents.stale_at（P1-c）。幂等：已置位行不动

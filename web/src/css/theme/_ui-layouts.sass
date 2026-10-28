@@ -1,0 +1,424 @@
+// M95 page vocabulary. Existing semantic classes migrate together through this layer.
+body.body--dark,
+body:not(.body--dark)
+  .app-layout-root,
+  .app-page-container
+    color: var(--color-text-primary)
+    background: var(--gradient-page)
+
+  .app-page-container
+    padding-right: 0
+    padding-left: 0
+    padding-bottom: 0
+
+  .cream-header,
+  .dark-header
+    color: var(--color-text-primary) !important
+    background: var(--glass-surface) !important
+    border-bottom: 1px solid var(--glass-border)
+    box-shadow: none !important
+    backdrop-filter: blur(var(--nav-blur))
+    -webkit-backdrop-filter: blur(var(--nav-blur))
+    .q-toolbar
+      min-height: 64px
+      padding: var(--space-2) var(--space-5)
+      color: var(--color-text-primary)
+    .q-btn
+      color: var(--color-text-secondary)
+    .q-select .q-field__control
+      color: var(--color-text-primary)
+
+  .app-header-avatar
+    background: var(--button-primary-bg) !important
+    color: var(--button-primary-text) !important
+
+  .app-sidebar-card
+    border-radius: var(--radius-card)
+    background: var(--glass-surface)
+    border-color: var(--glass-border)
+    box-shadow: var(--glass-inner-highlight)
+  .app-sidebar-section-label
+    font-size: var(--text-xs)
+    font-weight: 600
+    letter-spacing: 0.04em
+  .app-sidebar-nav-item
+    font-size: var(--text-base)
+    min-height: var(--control-height-touch)
+  .app-sidebar-item--active
+    background: var(--color-accent-soft)
+    color: var(--color-accent)
+
+  .app-standard-page,
+  .app-page-cream,
+  .app-entity-page:not(.app-standard-page),
+  .app-registry-page:not(.app-standard-page)
+    padding: var(--page-gutter)
+    color: var(--color-text-primary)
+    background: transparent
+    width: 100%
+    min-width: 0
+    max-width: var(--layout-max-width)
+    margin-inline: auto
+
+  .app-page-hero,
+  .app-entity-workspace-hero
+    gap: var(--space-5)
+    margin-bottom: var(--space-6)
+    align-items: flex-start
+    > div:first-child
+      min-width: 0
+      flex: 1 1 320px
+
+  .app-page-title,
+  .app-page-hero--feature .app-page-title,
+  .app-entity-workspace-hero__title
+    margin: var(--space-2) 0
+    font-size: clamp(26px, 2.4vw, 32px)
+    font-weight: 750
+    line-height: 1.3
+    letter-spacing: -0.035em
+    text-wrap: balance
+    color: var(--color-text-heading)
+    text-shadow: none
+  .app-page-subtitle,
+  .app-entity-workspace-hero__subtitle
+    max-width: 68ch
+    margin: 0
+    color: var(--color-text-secondary)
+    font-size: var(--text-base)
+    line-height: 1.7
+
+  .app-page-kicker,
+  .app-entity-workspace-hero__kicker
+    color: var(--color-accent)
+    font-size: var(--text-xs)
+    font-weight: 650
+    letter-spacing: 0.06em
+
+  .app-glass-panel,
+  .app-registry-panel,
+  .app-entity-glass-panel,
+  .app-entity-empty,
+  .app-pane-card,
+  .app-tab-shell,
+  .dashboard-glass-shell,
+  .dashboard-glass-card
+    color: var(--color-text-primary)
+    border: 1px solid var(--glass-border)
+    border-radius: var(--radius-card) !important
+    background: var(--glass-surface) !important
+    box-shadow: var(--glass-inner-highlight), var(--shadow-panel) !important
+    backdrop-filter: none
+    -webkit-backdrop-filter: none
+
+  .app-metrics-card,
+  .app-entity-stat,
+  .apm-stat-card
+    background: var(--gradient-card)
+    border: 1px solid var(--glass-border)
+    border-radius: var(--radius-card)
+    box-shadow: var(--glass-inner-highlight)
+    font-variant-numeric: tabular-nums
+
+  .app-entity-grid
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr))
+    gap: var(--space-4)
+
+  .app-registry-toolbar,
+  .app-page-toolbar
+    min-width: 0
+    .q-field
+      max-width: 100%
+  .app-form-field-grid
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 280px))
+
+  .app-tab-shell
+    padding: var(--space-1)
+    .q-tabs
+      padding: 0
+  .app-tab-shell--inset
+    border-radius: 0 !important
+    border-inline: 0
+    box-shadow: none !important
+
+  .login-page
+    background: var(--gradient-page)
+    padding: var(--space-4)
+  .login-card
+    width: min(440px, 100%)
+    border-radius: var(--radius-hero)
+    padding: var(--space-3)
+    background: var(--gradient-card)
+    box-shadow: var(--shadow-floating)
+
+  .ov-verdict,
+  .ov-attention,
+  .ov-cost,
+  .ov-trend__panel,
+  .ov-org
+    border-radius: var(--radius-card)
+    border-color: var(--glass-border)
+    background: var(--glass-surface)
+    box-shadow: var(--glass-inner-highlight)
+  .ov-verdict
+    background: var(--gradient-card)
+  .ov-page__shell
+    gap: var(--space-5)
+  .ov-verdict__side
+    width: 100%
+    min-width: 0
+  .ov-filter
+    flex: 0 1 144px
+    width: 144px
+    min-width: min(144px, 100%)
+  .ov-filter--wide
+    flex-basis: 200px
+    width: 200px
+    min-width: min(180px, 100%)
+
+  .chat-page,
+  .knowledge-page-wb,
+  .graph-workbench,
+  .team-run-observatory
+    color: var(--color-text-primary)
+    background: transparent
+    min-width: 0
+  .chat-workspace-shell__main,
+  .chat-workspace-main
+    min-width: 0
+    min-height: 0
+  .chat-workspace-title
+    color: var(--color-text-heading)
+    text-shadow: none
+  .chat-message-panel,
+  .chat-sidebar-panel,
+  .chat-session-sidebar
+    border-color: var(--glass-border)
+    border-radius: var(--radius-card)
+  .chat-composer-inner
+    border-color: var(--glass-border)
+    border-radius: var(--radius-card)
+    background: var(--surface-base)
+
+  .wb-scope
+    --wb-radius: var(--radius-control)
+    --wb-micro-label: var(--text-xs)
+    --wb-caption: var(--text-xs)
+    --wb-body: var(--text-sm)
+
+// Entry/dashboard vocabulary: asymmetric grid, controlled local glow, no synthetic metrics.
+.app-skip-link
+  position: fixed
+  top: var(--space-3)
+  left: var(--space-4)
+  z-index: 9999
+  padding: var(--space-3) var(--space-4)
+  color: var(--color-accent)
+  background: var(--surface-raised)
+  border: 1px solid var(--color-accent)
+  border-radius: var(--radius-control)
+  transform: translateY(-180%)
+  &:focus
+    transform: translateY(0)
+
+.ui-bento-grid
+  display: grid
+  grid-template-columns: 1.35fr 1fr 1fr
+  gap: var(--space-4)
+  min-width: 0
+.ui-bento-card
+  --card-accent: var(--color-accent)
+  position: relative
+  display: flex
+  flex-direction: column
+  align-items: flex-start
+  gap: var(--space-4)
+  min-width: 0
+  padding: var(--space-6)
+  border: 1px solid var(--glass-border)
+  border-radius: var(--radius-card)
+  color: var(--color-text-primary)
+  background: radial-gradient(ellipse at 0% 0%, color-mix(in srgb, var(--card-accent) 9%, transparent), transparent 72%), var(--gradient-card)
+  box-shadow: var(--glass-inner-highlight)
+  text-decoration: none
+  text-align: start
+  &--hero
+    grid-row: span 2
+    min-height: 290px
+    border-color: var(--color-accent-border)
+    border-radius: var(--radius-hero)
+    box-shadow: var(--glass-inner-highlight), var(--shadow-glow)
+  &--violet
+    --card-accent: var(--color-violet)
+  &--green
+    --card-accent: var(--color-success)
+  &--amber
+    --card-accent: var(--color-warning)
+  &--pink
+    --card-accent: var(--color-pink)
+  &:is(a, button):hover
+    border-color: var(--card-accent)
+    background-color: var(--glass-surface-hover)
+.ui-card-icon
+  display: grid
+  place-items: center
+  width: 44px
+  height: 44px
+  border: 1px solid color-mix(in srgb, var(--card-accent, var(--color-accent)) 35%, transparent)
+  border-radius: var(--radius-control)
+  color: var(--card-accent, var(--color-accent))
+  background: color-mix(in srgb, var(--card-accent, var(--color-accent)) 10%, transparent)
+  font-size: 24px
+.ui-card-title
+  margin: 0
+  font-size: var(--text-lg)
+  font-weight: 700
+  line-height: 1.4
+.ui-card-description
+  margin: 0
+  color: var(--color-text-secondary)
+  font-size: var(--text-sm)
+  line-height: 1.7
+.ui-card-content
+  margin-top: auto
+  display: grid
+  gap: var(--space-2)
+.ui-card-cta
+  display: inline-flex
+  align-items: center
+  gap: var(--space-2)
+  padding: var(--space-2) var(--space-4)
+  color: var(--button-primary-text)
+  background: var(--button-primary-bg)
+  border-radius: var(--radius-control)
+  font-size: var(--text-sm)
+  font-weight: 600
+.ui-card-arrow
+  position: absolute
+  top: var(--space-6)
+  right: var(--space-6)
+  color: var(--color-text-tertiary)
+  font-size: 18px
+
+.ui-preview-page
+  padding-bottom: var(--space-12) !important
+.ui-preview-section
+  margin-top: var(--space-8)
+.ui-preview-section__head
+  display: flex
+  flex-wrap: wrap
+  justify-content: space-between
+  align-items: baseline
+  gap: var(--space-2)
+  margin-bottom: var(--space-4)
+  h2
+    margin: 0
+    color: var(--color-text-heading)
+    font-size: var(--text-lg)
+    font-weight: 650
+  span
+    color: var(--color-text-tertiary)
+    font-size: var(--text-xs)
+.ui-preview-columns
+  display: grid
+  grid-template-columns: repeat(2, minmax(0, 1fr))
+  gap: var(--space-4)
+.ui-preview-label
+  margin: 0 0 var(--space-4)
+  color: var(--color-text-secondary)
+  font-size: var(--text-sm)
+  font-weight: 600
+.ui-preview-actions
+  display: flex
+  flex-wrap: wrap
+  align-items: center
+  gap: var(--space-2)
+.ui-preview-fields
+  display: grid
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr))
+  gap: var(--space-5)
+
+.ui-operations-grid
+  display: grid
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr))
+  gap: var(--space-6)
+
+// A failed or incomplete read must not inherit the green empty-state treatment.
+.ov-verdict--unknown,
+.ov-lane--unknown
+  border-color: var(--glass-border)
+.ov-verdict--unknown .ov-verdict__beacon,
+.ov-verdict__chip--unknown
+  color: var(--color-text-secondary)
+  background: var(--surface-muted)
+.ov-lane__availability
+  display: flex
+  flex-wrap: wrap
+  align-items: center
+  gap: var(--space-2)
+  padding: var(--space-3)
+  color: var(--color-text-secondary)
+  font-size: var(--text-xs)
+  line-height: 1.6
+.ov-item
+  width: 100%
+  border: 0
+  font: inherit
+  text-align: left
+  color: inherit
+.ui-operations-form,
+.ui-review-meta
+  display: flex
+  flex-wrap: wrap
+  align-items: center
+  gap: var(--space-3)
+.ui-review-meta
+  color: var(--color-text-secondary)
+  font-size: var(--text-xs)
+.ui-review-body
+  white-space: pre-wrap
+  overflow-wrap: anywhere
+  line-height: 1.8
+.ui-operations-row
+  padding: var(--space-4)
+  flex-wrap: wrap
+  gap: var(--space-3)
+
+@media (max-width: 1023px)
+  .ui-bento-grid
+    grid-template-columns: repeat(2, minmax(0, 1fr))
+  .ui-bento-card--hero
+    grid-row: auto
+    grid-column: 1 / -1
+    min-height: 240px
+
+@media (max-width: 599px)
+  .ui-preview-columns
+    grid-template-columns: minmax(0, 1fr)
+  .ui-bento-grid
+    grid-template-columns: minmax(0, 1fr)
+  .ui-bento-card
+    padding: var(--space-5)
+  body.body--dark,
+  body:not(.body--dark)
+    .cream-header .q-toolbar,
+    .dark-header .q-toolbar
+      min-height: 56px
+      padding-inline: var(--space-3)
+    .mobile-layout-root .app-page-container
+      background: var(--canvas-base)
+    .app-page-hero,
+    .app-entity-workspace-hero
+      gap: var(--space-3)
+      > div:first-child
+        flex-basis: 100%
+    .app-actions-bar
+      flex-wrap: wrap
+      max-width: 100%
+    .app-form-shell,
+    .app-form-wide,
+    .settings-grid,
+    .settings-grid--wide
+      width: 100%
+      max-width: 100%
+      min-width: 0

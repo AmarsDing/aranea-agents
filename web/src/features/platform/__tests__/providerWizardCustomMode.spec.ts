@@ -168,6 +168,17 @@ describe('useProviderWizard · 编辑模式身份变更', () => {
       model_size_label: '',
       raw_metadata_json: '',
       enable_token_tailoring: false,
+      provider_code: 'deepseek2',
+      provider_type: wizard.providerForm.provider_type,
+      model_api_id: wizard.providerForm.model_api_id,
+      context_window_k: 0,
+      max_output_tokens: 0,
+      input_price_micro_usd_per_1k: 0,
+      output_price_micro_usd_per_1k: 0,
+      cached_input_price_micro_usd_per_1k: 0,
+      reasoning_price_micro_usd_per_1k: 0,
+      embedding_price_micro_usd_per_1k: 0,
+      source: 'test',
     });
 
     await wizard.inspectCurrentProviderModel();

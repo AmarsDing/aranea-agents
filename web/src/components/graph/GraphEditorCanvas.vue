@@ -111,6 +111,8 @@ import {
   type NodeChange,
   type EdgeChange,
   type EdgeUpdateEvent,
+  type NodeMouseEvent,
+  type EdgeMouseEvent,
   SelectionMode,
 } from '@vue-flow/core';
 import { Background } from '@vue-flow/background';
@@ -601,12 +603,15 @@ const searchMatches = computed(() => {
 
 const searchMatchCount = computed(() => searchMatches.value.length);
 
-function onNodeContextMenu({ event, node }: { event: MouseEvent; node: Node }) {
+function onNodeContextMenu({ event, node }: NodeMouseEvent) {
+  if (readOnly.value) return;
   event.preventDefault();
+  const point = 'clientX' in event ? event : event.touches[0] ?? event.changedTouches[0];
+  if (!point) return;
   paneMenuVisible.value = false;
   ctxMenuNodeId.value = node.id;
-  ctxMenuX.value = event.clientX;
-  ctxMenuY.value = event.clientY;
+  ctxMenuX.value = point.clientX;
+  ctxMenuY.value = point.clientY;
   ctxMenuVisible.value = true;
   emit('selectNode', node.id);
 }
@@ -666,14 +671,16 @@ const edgeMenuItems = computed<ContextMenuItem[]>(() => {
   return items;
 });
 
-function onEdgeContextMenu({ edge, event }: { edge: Edge; event: MouseEvent }) {
+function onEdgeContextMenu({ edge, event }: EdgeMouseEvent) {
   if (readOnly.value) return;
   event.preventDefault();
+  const point = 'clientX' in event ? event : event.touches[0] ?? event.changedTouches[0];
+  if (!point) return;
   ctxMenuVisible.value = false;
   paneMenuVisible.value = false;
   edgeMenuEdgeId.value = edge.id;
-  edgeMenuX.value = event.clientX;
-  edgeMenuY.value = event.clientY;
+  edgeMenuX.value = point.clientX;
+  edgeMenuY.value = point.clientY;
   edgeMenuVisible.value = true;
 }
 
@@ -1185,7 +1192,7 @@ onUnmounted(() => {
     background: var(--glass-surface)
     backdrop-filter: blur(var(--glass-blur-soft))
     border: 1px solid var(--glass-border)
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2)
+    box-shadow: 0 4px 12px color-mix(in srgb, var(--color-shadow) 20%, transparent)
     z-index: 10
 
   &__zoom-text

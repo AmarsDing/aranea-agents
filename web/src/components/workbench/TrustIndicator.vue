@@ -46,7 +46,7 @@ const tipText = computed(() => t('workbench.trust.tip'));
 .wb-trust--backlog .wb-trust__dot
   background: var(--wb-await)
 .wb-trust--replay .wb-trust__dot
-  background: var(--color-neon-violet, #A855F7)
+  background: var(--color-violet)
 .wb-trust__dot--pulse
   animation: wb-offline-pulse 1.2s ease-in-out infinite
 .wb-trust__num

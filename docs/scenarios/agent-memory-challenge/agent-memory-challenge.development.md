@@ -157,7 +157,11 @@
 |---|---|
 | 意图路由、纯领域摘要/数值解析及隐私类别扩展 | ✅ 已接入源码，保留离线模式 |
 | 事务写链、派生来源、遗忘后重建与关系隔离 | ✅ 已整合；专项用例见 `internal/data/memory_eval_merge_test.go` |
-| 合并态构建、领域/隔离 PG/race/实际 HTTP 验证 | ⏳ 收尾报告记录最终结果 |
-| 正式比赛版本部署、真实嵌入与 Full 容量评测 | 📋 独立后续任务 |
+| 合并态构建、领域/隔离 PG/race/实际 HTTP 验证 | ✅ C10=`c53042230`（R7–R12）+ C10+=`93e4f90b3`（补并 R13/R14）；FactKind 定向绿 + OOT build 绿 |
+| 正式比赛版本部署、真实嵌入与 Full 容量评测 | 📋 待用户点头：推送 `amc/c10-merge`→dev → tag `amc-2026.10` → 新机 `8.160.178.131` 双赛道部署 |
+
+### C10+ 补并（2026-10-28）
+
+Claude Code 会话在 `amc/c10-merge` worktree 已 `merge --no-commit 1e0fbe4fb`（无冲突）后因上游 502 中断；续跑完成提交 **`93e4f90b3`**（父：`c53042230` + `1e0fbe4fb`；差集仅 `fact_kind.go` / `fact_kind_eval_ext_test.go`）。P3 fact-kind 对抗链 R13/R14 已入部署根候选；**未推远端、未打 tag**。
 
 关联源码：`internal/biz/memory_eval_{intent,numdigest,rollup}.go`、`internal/data/memory_eval_derived.go`、既有 `memory_eval_{store,ingest,control,search,relations}.go`；ADR 见设计文档 §10.3。保留合并前的离线日期/模式测试，并新增路由兼容测试；原 P3 遗忘失效审计断言按既有持久化删除契约验证当前、历史与摘要不回流。

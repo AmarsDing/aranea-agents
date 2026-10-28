@@ -10,6 +10,14 @@
         <div class="col text-subtitle2 ellipsis">
           {{ workspace.session.selectedSessionForUi?.title || t('chat.untitledSession') }}
         </div>
+        <q-btn
+          flat
+          round
+          dense
+          icon="view_quilt"
+          :aria-label="t('taskWorkspace.openWorkspace')"
+          @click="openTaskWorkspace('chat')"
+        />
       </div>
 
       <q-banner v-if="workspace.session.inboundHydrateError" dense rounded class="app-banner-warning q-mx-sm q-mt-sm">
@@ -45,6 +53,9 @@
         :context-breakdown="workspace.session.contextBreakdown"
         :is-dark="workspace.layout.isDark"
         :sending="workspace.composer.sending"
+        :submit-pending="workspace.composer.submitting"
+        :draft-save-failed="workspace.composer.draftSaveFailed"
+        :reconnect-error="workspace.session.reconnectError"
         :input-disabled="workspace.composer.inputDisabled"
         :is-runner-active="workspace.composer.isRunnerActive"
         :ws-replaying="workspace.session.wsReplaying"
@@ -86,12 +97,13 @@
         @paste-file="workspace.composer.uploadFile"
         @voice="workspace.composer.onVoiceClick"
         @send="workspace.composer.onSend"
+        @retry-sync="workspace.session.retryReconnect"
         @stop="workspace.composer.stopStreaming"
         @cancel-pending="workspace.composer.onCancelPending"
         @interrupt-pending="workspace.composer.onInterruptPending"
         @update-pending="workspace.composer.onUpdatePending"
         @open-events="workspace.session.openSessionEvents"
-        @open-artifacts-page="onDesktopOnly"
+        @open-artifacts-page="openTaskWorkspace('artifacts')"
         @attachment-deleted="workspace.session.onArtifactDeleted"
         @focus-turn="workspace.session.focusSessionTurn"
         @navigate="handlers.onNavigate"
@@ -170,7 +182,6 @@
 import { computed } from 'vue';
 import { useRouter } from 'vue-router';
 import { useI18n } from 'vue-i18n';
-import { useQuasar } from 'quasar';
 import ChatMessagePanel from '../../components/chat/ChatMessagePanel.vue';
 import LlmRetryBanner from '../../components/chat/LlmRetryBanner.vue';
 import SessionTimelineDialog from '../../components/chat/SessionTimelineDialog.vue';
@@ -180,7 +191,6 @@ import { useSpiritTeamStore } from '../../stores/spirit';
 import { useLlmRetryStore } from '../../stores/chat/llmRetryStore';
 
 const { t } = useI18n();
-const $q = useQuasar();
 const router = useRouter();
 const workspace = injectChatWorkspace();
 const bindings = useChatMessagePanelBindings(workspace);
@@ -208,16 +218,19 @@ function goBack() {
   void router.push({ name: 'mobile-sessions' });
 }
 
-/** Artifacts management page is desktop-only; guard bounces desktop routes. */
-function onDesktopOnly() {
-  $q.notify({ type: 'info', message: t('mobile.desktopOnlyFeature') });
+function openTaskWorkspace(panel: 'chat' | 'artifacts') {
+  const sid = workspace.session.selectedSessionForUi?.id;
+  void router.push({
+    name: 'mobile-task-workspace',
+    query: { ...(sid ? { session: sid } : {}), panel: sid ? panel : undefined },
+  });
 }
 </script>
 
 <style scoped>
 .mobile-chat-page__topbar {
   min-height: 44px;
-  border-bottom: 1px solid rgb(0 0 0 / 8%);
+  border-bottom: 1px solid color-mix(in srgb, var(--color-shadow) 8%, transparent);
 }
 
 .mobile-chat-page :deep(.chat-mid-card) {

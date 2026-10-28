@@ -371,6 +371,7 @@ func (u *Usecase) upsertEntryDoc(ctx context.Context, col Collection, rel, title
 									CollectionID: col.ID, DocID: doc.ID,
 									FactID: v.TargetFactID, OldBody: oldBlock, NewBody: "",
 								})
+								u.closeEvidencedEdges(ctx, col.ID, doc.ID, oldBlock)
 								u.recordAutoInvalidateProposalLater(&proposals, doc.ID, rel, facts[a.idx], v)
 								kept = append(kept, a) // 新事实仍追加
 								continue

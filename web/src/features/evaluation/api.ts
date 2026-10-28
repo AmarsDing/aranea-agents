@@ -215,6 +215,8 @@ export async function runEvaluation(input: RunEvaluationInput): Promise<EvalRun>
     prompt: input.prompt ?? '',
     tools: input.tools ?? '',
     datasetVersionId: input.dataset_version_id ?? '',
+    experimentId: undefined,
+    variantLabel: undefined,
   });
   return mapRun(raw);
 }

@@ -23,7 +23,7 @@
           <span class="ov-tile__label">{{ t('overviewPage.v2.budgetBurnTitle') }}</span>
           <span class="ov-tile__dot" :class="`ov-tile__dot--${budget.tone}`" aria-hidden="true" />
         </div>
-        <template v-if="budget.configured">
+        <template v-if="available && budget.configured">
           <div class="ov-budget__pct">{{ (budget.pct * 100).toFixed(1) }}%</div>
           <div
             class="ov-budget__bar"
@@ -48,13 +48,15 @@
             }}</span>
           </div>
         </template>
-        <div v-else class="ov-budget__empty">{{ t('overviewPage.v2.budgetNoConfig') }}</div>
+        <div v-else class="ov-budget__empty">
+          {{ t(available ? 'overviewPage.v2.budgetNoConfig' : 'uiSystem.overview.dataUnavailable') }}
+        </div>
       </div>
 
       <div
         class="ov-cost__chipcell ov-cost__cell"
         :class="[
-          unpricedCount > 0 ? 'ov-cost__chipcell--warn' : 'ov-cost__chipcell--ok',
+          !available ? '' : unpricedCount > 0 ? 'ov-cost__chipcell--warn' : 'ov-cost__chipcell--ok',
           { 'ov-cost__chipcell--clickable': unpricedCount > 0 },
         ]"
         :role="unpricedCount > 0 ? 'button' : undefined"
@@ -65,9 +67,11 @@
         <div class="ov-cost__chiprow">
           <q-icon :name="unpricedCount > 0 ? 'price_change' : 'sell'" size="15px" />
           <span class="ov-cost__chipvalue">{{
-            unpricedCount > 0
-              ? t('overviewPage.v2.unpricedChip', { count: unpricedCount })
-              : t('overviewPage.v2.unpricedNone')
+            !available
+              ? t('uiSystem.overview.pricingUnknown')
+              : unpricedCount > 0
+                ? t('overviewPage.v2.unpricedChip', { count: unpricedCount })
+                : t('overviewPage.v2.unpricedNone')
           }}</span>
         </div>
         <div class="ov-tile__caption">{{ t('overviewPage.v2.unpricedCap') }}</div>
@@ -122,14 +126,18 @@ import OverviewStatTile from './OverviewStatTile.vue';
 import { formatUsdCompact } from '../../features/usage/moneyFormat';
 import type { OvBudget, OvCacheHit, OvTopBar } from './ovTypes';
 
-defineProps<{
-  costValueUsd: string;
-  costDelta: number | null;
-  budget: OvBudget;
-  unpricedCount: number;
-  topBars: OvTopBar[];
-  cache: OvCacheHit;
-}>();
+withDefaults(
+  defineProps<{
+    available?: boolean;
+    costValueUsd: string;
+    costDelta: number | null;
+    budget: OvBudget;
+    unpricedCount: number;
+    topBars: OvTopBar[];
+    cache: OvCacheHit;
+  }>(),
+  { available: true },
+);
 
 defineEmits<{ drill: [key: string] }>();
 

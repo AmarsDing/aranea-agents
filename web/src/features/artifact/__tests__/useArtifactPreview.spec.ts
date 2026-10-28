@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { setActivePinia, createPinia } from 'pinia';
-import { defineComponent } from 'vue';
+import { defineComponent, ref } from 'vue';
+import { flushPromises } from '@vue/test-utils';
 import { mount } from '@vue/test-utils';
 import { createI18n } from 'vue-i18n';
 import type { ArtifactPreview } from '../types';
@@ -103,5 +104,71 @@ describe('useArtifactPreview audio/video', () => {
 
     expect(inlineMediaSrc.value).toBe('');
     expect(error.value).toBe('');
+  });
+
+  it('ignores a stale preview failure after changing the selected file', async () => {
+    let rejectOld!: (error: Error) => void;
+    vi.mocked(previewArtifact).mockReturnValueOnce(
+      new Promise((_resolve, reject) => {
+        rejectOld = reject;
+      }),
+    );
+    vi.mocked(previewArtifact).mockResolvedValueOnce(previewOf('text'));
+    const id = ref('old');
+    const result = withSetup(() => useArtifactPreview(() => id.value));
+    id.value = 'a1';
+    await flushPromises();
+    rejectOld(new Error('old request'));
+    await flushPromises();
+    expect(result.preview.value?.meta.id).toBe('a1');
+    expect(result.error.value).toBe('');
+    expect(result.loading.value).toBe(false);
+  });
+
+  it('does not apply an old media signature to a new text selection', async () => {
+    let resolveSign!: (value: { url: string; expires_at: string }) => void;
+    vi.mocked(previewArtifact).mockResolvedValueOnce(previewOf('audio')).mockResolvedValueOnce(previewOf('text'));
+    vi.mocked(signDownloadUrl).mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveSign = resolve;
+      }),
+    );
+    const id = ref('audio');
+    const result = withSetup(() => useArtifactPreview(() => id.value));
+    await flushPromises();
+    id.value = 'text';
+    await flushPromises();
+    resolveSign({ url: '/old-audio', expires_at: '' });
+    await flushPromises();
+    expect(result.inlineMediaSrc.value).toBe('');
+    expect(result.preview.value?.preview_kind).toBe('text');
+  });
+
+  it('rejects preview data from another session before exposing its contents', async () => {
+    vi.mocked(previewArtifact).mockResolvedValue(previewOf('text'));
+    const result = withSetup(() =>
+      useArtifactPreview(
+        () => 'a1',
+        undefined,
+        () => 'other-session',
+      ),
+    );
+    await flushPromises();
+    expect(result.preview.value).toBeNull();
+    expect(result.error.value).toBeTruthy();
+  });
+
+  it('does not silently show latest when a selected first version cannot be resolved', async () => {
+    vi.mocked(previewArtifact).mockResolvedValue(previewOf('text'));
+    const result = withSetup(() =>
+      useArtifactPreview(
+        () => 'a1',
+        () => 0,
+        () => 's1',
+      ),
+    );
+    await flushPromises();
+    expect(result.preview.value).toBeNull();
+    expect(result.error.value).toBeTruthy();
   });
 });

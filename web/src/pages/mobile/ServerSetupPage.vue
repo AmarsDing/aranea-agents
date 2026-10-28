@@ -1,52 +1,61 @@
 <template>
-  <q-page class="flex flex-center q-pa-md">
-    <q-card flat bordered class="server-setup-card">
-      <q-card-section>
-        <div class="text-h6">{{ $t('mobileServer.setupTitle') }}</div>
-        <div class="text-body2 text-grey-7 q-mt-xs">{{ $t('mobileServer.setupSubtitle') }}</div>
-      </q-card-section>
+  <q-layout class="app-layout-root">
+    <q-page-container>
+      <q-page class="flex flex-center q-pa-md">
+        <q-card flat bordered class="server-setup-card">
+          <q-card-section>
+            <div class="text-h6">{{ $t('mobileServer.setupTitle') }}</div>
+            <div class="text-body2 text-grey-7 q-mt-xs">{{ $t('mobileServer.setupSubtitle') }}</div>
+          </q-card-section>
 
-      <q-card-section class="q-gutter-md">
-        <q-input
-          v-model="url"
-          outlined
-          :label="$t('mobileServer.urlLabel')"
-          :placeholder="$t('mobileServer.urlPlaceholder')"
-          :error="showError"
-          :error-message="$t('mobileServer.urlInvalid')"
-          autocomplete="url"
-          inputmode="url"
-          @update:model-value="showError = false"
-        />
-        <q-btn
-          v-if="scannerAvailable"
-          outline
-          icon="qr_code_scanner"
-          class="full-width"
-          :label="$t('mobile.pairingScan')"
-          :loading="scanning"
-          @click="onScan"
-        />
-        <div v-if="statusMessage" class="text-body2" :class="statusOk ? 'text-positive' : 'text-negative'">
-          {{ statusMessage }}
-        </div>
-      </q-card-section>
+          <q-card-section class="q-gutter-md">
+            <q-input
+              v-model="url"
+              outlined
+              :label="$t('mobileServer.urlLabel')"
+              :placeholder="$t('mobileServer.urlPlaceholder')"
+              :error="showError"
+              :error-message="$t('mobileServer.urlInvalid')"
+              autocomplete="url"
+              inputmode="url"
+              @update:model-value="showError = false"
+            />
+            <q-btn
+              v-if="scannerAvailable"
+              outline
+              icon="qr_code_scanner"
+              class="full-width"
+              :label="$t('mobile.pairingScan')"
+              :loading="scanning"
+              @click="onScan"
+            />
+            <div v-if="statusMessage" class="text-body2" :class="statusOk ? 'text-positive' : 'text-negative'">
+              {{ statusMessage }}
+            </div>
+          </q-card-section>
 
-      <q-card-actions align="right" class="q-pa-md">
-        <q-btn flat :label="$t('mobileServer.test')" :loading="testing" @click="onTest" />
-        <q-btn color="primary" unelevated :label="$t('mobileServer.save')" :loading="saving" @click="onSave" />
-      </q-card-actions>
-    </q-card>
-  </q-page>
+          <q-card-actions align="right" class="q-pa-md">
+            <q-btn flat :label="$t('mobileServer.test')" :loading="testing" @click="onTest" />
+            <q-btn color="primary" unelevated :label="$t('mobileServer.save')" :loading="saving" @click="onSave" />
+          </q-card-actions>
+        </q-card>
+      </q-page>
+    </q-page-container>
+  </q-layout>
 </template>
 
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { useI18n } from 'vue-i18n';
-import { fetchBackendConfig, isPlausibleServerUrl, probeBackend, saveBackendConfig } from 'src/services/backendConfig';
-import { isQrScannerAvailable, scanQrOnce } from 'src/services/qrScanner';
-import { parsePairingQr } from 'src/features/mobile/pairingQr';
+import {
+  fetchBackendConfig,
+  isPlausibleServerUrl,
+  probeBackend,
+  saveBackendConfig,
+} from '../../services/backendConfig';
+import { isQrScannerAvailable, scanQrOnce } from '../../services/qrScanner';
+import { parsePairingQr } from '../../features/mobile/pairingQr';
 
 const router = useRouter();
 const { t } = useI18n();

@@ -88,6 +88,7 @@ function setup(docs: KnowledgeDocument[]) {
       root_path: '/vault',
       sync_state: 'active',
       last_sync_at: '',
+      vault_backend: 'local',
     },
   ]);
   const documents = ref(docs);
@@ -186,6 +187,7 @@ describe('G3-F2 搜索范围选择器', () => {
         root_path: '/vault2',
         sync_state: 'active',
         last_sync_at: '',
+        vault_backend: 'local',
       },
     ];
     selectedId.value = 'c2';

@@ -3,6 +3,7 @@ import { Screen } from 'quasar';
 import { useAuthStore } from '../stores/auth';
 import { fetchBackendConfig, MOBILE_SETUP_PATH } from '../services/backendConfig';
 import { routes } from './routes';
+import { chatBreakpointTarget } from '../features/chat/taskWorkspaceNavigation';
 
 // The desktop app (Tauri) loads the SPA from an embedded loopback origin;
 // hash mode keeps deep links stable across both web and desktop deployments.
@@ -31,13 +32,8 @@ router.beforeEach(async (to) => {
   // Breakpoint guard (<600px): narrow screens use the mobile layout, wide
   // screens use the desktop one. Evaluated per navigation (no live switching
   // on resize, per design §3.1). The public setup page is exempt.
-  const onMobileRoute = to.path.startsWith('/mobile');
-  if (Screen.lt.sm && !onMobileRoute) {
-    return { path: '/mobile' };
-  }
-  if (!Screen.lt.sm && onMobileRoute) {
-    return { path: '/overview' };
-  }
+  const breakpointTarget = chatBreakpointTarget(to.path, to.query, Screen.lt.sm);
+  if (breakpointTarget) return breakpointTarget;
 
   const auth = useAuthStore();
   await auth.ensureSession();

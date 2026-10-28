@@ -480,10 +480,10 @@ function preview(content: string): string {
     overflow-y: auto
   &__hit
     padding: 6px 4px
-    border-bottom: 1px solid var(--glass-border, rgba(255, 255, 255, 0.06))
+    border-bottom: 1px solid var(--glass-border)
   &__rank
     font-weight: 600
-    color: var(--kb-accent-cyan, #22d3ee)
+    color: var(--color-accent)
     min-width: 24px
   &__prerank
     color: var(--kb-text-dim)
@@ -506,7 +506,7 @@ function preview(content: string): string {
   &__cases
     margin-top: -4px
   &__history
-    border-top: 1px dashed var(--glass-border, rgba(255, 255, 255, 0.12))
+    border-top: 1px dashed var(--glass-border)
     padding-top: 8px
   &__compare
     border-collapse: collapse
@@ -519,9 +519,9 @@ function preview(content: string): string {
     thead th
       color: var(--kb-text-dim)
   &__delta--up
-    color: var(--q-positive, #21ba45)
+    color: var(--color-success)
     font-weight: 600
   &__delta--down
-    color: var(--q-negative, #c10015)
+    color: var(--color-danger)
     font-weight: 600
 </style>

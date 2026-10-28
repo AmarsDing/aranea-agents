@@ -72,24 +72,27 @@ export function useChatScrollTitle(opts: {
     }
 
     const anchor = root.getBoundingClientRect().top + HEADER_VIEWPORT_OFFSET;
-    let bestTop = Number.POSITIVE_INFINITY;
-    let bestText = '';
-    let lastText = '';
+    let currentTop = Number.NEGATIVE_INFINITY;
+    let currentText = '';
+    let nextTop = Number.POSITIVE_INFINITY;
+    let nextText = '';
 
     markers.forEach((el) => {
       const rect = el.getBoundingClientRect();
       const text = (el.dataset.chatUserPrompt ?? '').trim();
       if (!text) return;
-      lastText = text;
-      if (rect.bottom < anchor - 8) return; // above viewport anchor
-      if (rect.top < bestTop) {
-        bestTop = rect.top;
-        bestText = text;
+      if (rect.top <= anchor && rect.top >= currentTop) {
+        currentTop = rect.top;
+        currentText = text;
+      } else if (rect.top > anchor && rect.top < nextTop) {
+        nextTop = rect.top;
+        nextText = text;
       }
     });
 
-    // If no marker is below the anchor (all scrolled past), use the last one.
-    activeUserPrompt.value = bestText || lastText;
+    // A reply belongs to the preceding prompt, until the next prompt actually
+    // reaches the reading anchor. Looking ahead would mislabel task navigation.
+    activeUserPrompt.value = currentText || nextText;
   }
 
   function resetToLatestOrSession() {

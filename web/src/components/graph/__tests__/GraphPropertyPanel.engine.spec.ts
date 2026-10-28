@@ -2,6 +2,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 import GraphPropertyPanel from '../GraphPropertyPanel.vue';
+import { graphDefinitionFixture } from '../../../features/graph/__tests__/graphFixtures';
 
 // Mock child components
 vi.mock('../GraphValidationPanel.vue', () => ({
@@ -66,7 +67,7 @@ const globalStubs = {
 };
 
 describe('GraphPropertyPanel - R2-4 Execution Engine UX', () => {
-  const mockGraphDef = {
+  const mockGraphDef = graphDefinitionFixture({
     id: 'test-graph',
     name: 'Test Graph',
     version: 1,
@@ -79,7 +80,7 @@ describe('GraphPropertyPanel - R2-4 Execution Engine UX', () => {
     description: '',
     executionEngine: 'bsp',
     enableCheckpoint: true,
-  };
+  });
 
   const mockProps = {
     graphDef: mockGraphDef,

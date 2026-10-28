@@ -25,7 +25,7 @@
 
     <div class="chat-composer-inner">
       <ChatEnqueueMessage
-        v-if="showEnqueue"
+        v-if="showEnqueue && !workspaceMode"
         :is-dark="isDark"
         :disabled="inputDisabled ?? sending"
         @enqueue="(text) => $emit('enqueue-message', text)"
@@ -47,46 +47,49 @@
           <q-tooltip>{{ compactToggleLabel }}</q-tooltip>
         </q-btn>
 
-        <!-- 已选 skill 标签（输入框上方，仅 ✕ 可删，防误删） -->
-        <div v-if="selectedSkillEntries.length && !compactMode" class="chat-skill-chips row q-gutter-xs">
-          <q-chip
-            v-for="skill in selectedSkillEntries"
-            :key="skill.slug"
-            removable
-            dense
-            square
-            class="chat-skill-chip"
-            icon="auto_awesome"
-            @remove="$emit('toggle-skill', skill.slug)"
-          >
-            {{ skill.name || skill.slug }}
-            <q-tooltip>{{ skill.description || skill.slug }}</q-tooltip>
-          </q-chip>
-        </div>
-
-        <!-- 附件缩略图（输入框上方，精简模式隐藏） -->
-        <div v-if="attachments.length && !compactMode" class="chat-attachments row q-gutter-xs">
-          <div v-for="file in attachments" :key="file.id" class="chat-file-tile row items-center">
-            <q-circular-progress
-              v-if="file.progress < 1"
-              :value="file.progress * 100"
-              size="28px"
-              :thickness="0.2"
-              color="accent"
-              class="q-mr-xs"
-            />
-            <q-icon v-else name="insert_drive_file" size="20px" class="q-mr-xs" color="accent" />
-            <span class="ellipsis text-caption">{{ file.name }}</span>
-            <q-tooltip>{{ file.name }}</q-tooltip>
-            <q-btn
-              icon="close"
-              class="chat-file-tile__close"
-              size="sm"
-              round
+        <div class="composer-context-row" :class="{ 'row items-center q-gutter-xs': compactMode }">
+          <!-- 已选 skill 标签（输入框上方，仅 ✕ 可删，防误删） -->
+          <div v-if="selectedSkillEntries.length" class="chat-skill-chips row q-gutter-xs">
+            <q-chip
+              v-for="skill in selectedSkillEntries"
+              :key="skill.slug"
+              removable
               dense
-              flat
-              @click="$emit('remove-attachment', file.id)"
-            />
+              square
+              class="chat-skill-chip"
+              icon="auto_awesome"
+              @remove="$emit('toggle-skill', skill.slug)"
+            >
+              {{ skill.name || skill.slug }}
+              <q-tooltip>{{ skill.description || skill.slug }}</q-tooltip>
+            </q-chip>
+          </div>
+
+          <!-- 已选附件始终可见，精简模式只收起配置。 -->
+          <div v-if="attachments.length" class="chat-attachments row q-gutter-xs">
+            <div v-for="file in attachments" :key="file.id" class="chat-file-tile row items-center">
+              <q-circular-progress
+                v-if="file.progress < 1"
+                :value="file.progress * 100"
+                size="28px"
+                :thickness="0.2"
+                color="accent"
+                class="q-mr-xs"
+              />
+              <q-icon v-else name="insert_drive_file" size="20px" class="q-mr-xs" color="accent" />
+              <span class="ellipsis text-caption">{{ file.name }}</span>
+              <q-tooltip>{{ file.name }}</q-tooltip>
+              <q-btn
+                icon="close"
+                class="chat-file-tile__close"
+                size="sm"
+                round
+                dense
+                flat
+                :aria-label="t('taskWorkspace.removeAttachment', { name: file.name })"
+                @click="$emit('remove-attachment', file.id)"
+              />
+            </div>
           </div>
         </div>
 
@@ -132,9 +135,7 @@
         <!-- 听写状态条：录音中显示实时识别文本（M74 dictation） -->
         <div v-if="dictating" class="dictation-bar row items-center no-wrap">
           <span class="dictation-bar__dot" />
-          <span class="dictation-bar__text ellipsis">{{
-            dictationPartial || t('chat.voiceDictationListening')
-          }}</span>
+          <span class="dictation-bar__text ellipsis">{{ dictationPartial || t('chat.voiceDictationListening') }}</span>
         </div>
 
         <!-- 输入框 -->
@@ -143,14 +144,16 @@
           filled
           class="composer-input"
           :label="compactMode ? '' : t('chat.inputLabel')"
+          :aria-label="t('taskWorkspace.inputName')"
+          :placeholder="t(isRunnerActive ? 'taskWorkspace.followUpPlaceholder' : 'taskWorkspace.inputPlaceholder')"
           :dense="compactMode"
           :hide-bottom-space="compactMode"
           type="textarea"
-          :autogrow="!compactMode"
+          :autogrow="workspaceMode || !compactMode"
           :input-style="
-            compactMode
+            compactMode && !workspaceMode
               ? { minHeight: '32px', maxHeight: '32px', overflow: 'hidden', resize: 'none', padding: '0' }
-              : { minHeight: '56px', maxHeight: '200px' }
+              : { minHeight: workspaceMode ? '36px' : '56px', maxHeight: '200px' }
           "
           :dark="isDark"
           :disable="isRunnerActive ? false : (inputDisabled ?? sending)"
@@ -160,7 +163,22 @@
         />
 
         <!-- 底部工具条：右侧操作按钮（精简模式隐藏，通过回车发送） -->
-        <div v-show="!compactMode" class="composer-bottom-bar row items-center justify-end no-wrap">
+        <div v-if="queueFileBlocked || uploading" class="text-caption text-warning q-px-sm" role="status">
+          {{ t(uploading ? 'taskWorkspace.uploadPending' : 'taskWorkspace.attachmentsWhileRunning') }}
+        </div>
+        <div v-if="draftSaveFailed" class="text-caption text-warning" role="status">
+          {{ t('taskWorkspace.draftSaveFailed') }}
+        </div>
+        <div class="composer-bottom-bar row items-center justify-between no-wrap">
+          <div v-if="compactMode" class="composer-model-summary text-caption text-cream-muted ellipsis">
+            <div class="ellipsis">
+              {{ providerOptions.find((option) => option.value === modelProvider)?.label || modelProvider }} ·
+              {{ modeOptions.find((option) => option.value === dialogMode)?.label || dialogMode }}
+            </div>
+            <div class="composer-key-hint">
+              {{ t(isRunnerActive ? 'taskWorkspace.followUpKeyboardHint' : 'taskWorkspace.keyboardHint') }}
+            </div>
+          </div>
           <!-- 右侧操作按钮 -->
           <div class="composer-actions row items-center no-wrap q-gutter-x-sm">
             <ChatSkillPicker
@@ -213,15 +231,21 @@
               <q-icon name="stop" size="22px" />
             </q-btn>
             <q-btn
-              v-else
               unelevated
               color="accent"
-              :disable="!modelValue.trim() && !(selectedSkillSlugs?.length)"
-              :aria-label="t('chat.send')"
+              :disable="submitDisabled"
+              :loading="submitPending"
+              :aria-label="t(isRunnerActive ? 'taskWorkspace.followUp' : 'chat.send')"
+              :label="workspaceMode ? t(isRunnerActive ? 'taskWorkspace.followUp' : 'chat.send') : undefined"
               class="composer-btn composer-btn--filled"
               @click="$emit('send')"
             >
-              <q-icon name="send" size="22px" />
+              <q-icon
+                :name="isRunnerActive ? 'playlist_add' : 'send'"
+                size="22px"
+                :class="{ 'q-ml-xs': workspaceMode }"
+              />
+              <q-tooltip>{{ t(isRunnerActive ? 'taskWorkspace.followUp' : 'chat.send') }}</q-tooltip>
             </q-btn>
           </div>
         </div>
@@ -252,6 +276,7 @@ const props = defineProps<{
   contextStatus?: string;
   isDark: boolean;
   sending?: boolean;
+  submitPending?: boolean;
   inputDisabled?: boolean;
   isRunnerActive?: boolean;
   showEnqueue?: boolean;
@@ -266,6 +291,8 @@ const props = defineProps<{
   skillCatalog?: SkillCatalogEntry[];
   /** skill 选择器已选中的 slug 列表（chips 区展示）。 */
   selectedSkillSlugs?: string[];
+  workspaceMode?: boolean;
+  draftSaveFailed?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -294,8 +321,18 @@ const selectedSkillEntries = computed<SkillCatalogEntry[]>(() => {
   return slugs.map((slug) => catalog.find((s) => s.slug === slug) ?? { slug, name: '', description: '', tags: [] });
 });
 
-/** 精简模式：只保留输入框 + 切换按钮，隐藏选择器/附件/底部工具条，通过回车发送 */
-const compactMode = ref(false);
+/** Compact settings only; selected context and primary actions remain visible. */
+const compactMode = ref(Boolean(props.workspaceMode));
+const uploading = computed(() => props.attachments.some((file) => file.progress < 1));
+const queueFileBlocked = computed(() => Boolean(props.isRunnerActive && props.attachments.length));
+const submitDisabled = computed(
+  () =>
+    props.submitPending ||
+    (!props.modelValue.trim() && !props.selectedSkillSlugs?.length) ||
+    uploading.value ||
+    queueFileBlocked.value ||
+    (!props.isRunnerActive && Boolean(props.inputDisabled ?? props.sending)),
+);
 
 /** 切换按钮的可访问性标签与提示文案（统一来源，避免模板中重复） */
 const compactToggleLabel = computed(() =>
@@ -335,14 +372,7 @@ function handlePaste(event: ClipboardEvent) {
 function onInputKeydown(event: KeyboardEvent) {
   if (event.key !== 'Enter' || event.shiftKey || event.isComposing || event.keyCode === 229) return;
   event.preventDefault();
-  if (props.isRunnerActive) {
-    const text = props.modelValue.trim();
-    if (text) {
-      emit('enqueue-message', text);
-    }
-  } else {
-    emit('send');
-  }
+  if (!submitDisabled.value) emit('send');
 }
 </script>
 
@@ -395,49 +425,25 @@ function onInputKeydown(event: KeyboardEvent) {
     background: var(--glass-surface)
 
   /* 展开模式：切换按钮浮动到右上角（仅非 compact 模式生效，避免 HMR 残留导致 compact 模式下覆盖输入框） */
-  &:not(.composer-card--compact) .composer-compact-toggle
+  .composer-compact-toggle
     position: absolute
     top: 6px
     right: 6px
     z-index: 1
 
   &--compact
-    padding: 4px 10px 4px
+    padding: 8px 10px
     gap: 6px
-    flex-direction: row
-    align-items: center
-
-    /* 切换按钮回归文档流，推到右侧 */
-    .composer-compact-toggle
-      position: static
-      flex-shrink: 0
-      order: 2
-      z-index: auto
-
-    /* 输入框占满剩余宽度 */
-    .composer-input
-      flex: 1 1 auto
-      min-width: 0
-      order: 1
-
-    /* 覆盖 Quasar q-field__control 默认 min-height: 56px */
-    :deep(.composer-input .q-field__control)
-      min-height: 32px !important
-      height: 32px !important
-      padding: 0 8px !important
-      align-items: center !important
-
-    :deep(.composer-input .q-field__control-container)
-      padding: 0 !important
-      align-items: center !important
-
-    :deep(.composer-input .q-field__native)
-      min-height: 32px !important
-      padding: 0 !important
-      margin: 0 !important
-      line-height: 32px
-      display: flex
-      align-items: center
+    flex-direction: column
+    align-items: stretch
+    .composer-context-row
+      padding-right: 32px
+      max-height: 72px
+      overflow-y: auto
+    .chat-skill-chips, .chat-attachments
+      margin: 0
+    .chat-file-tile
+      max-width: 180px
 
 /* 精简模式切换按钮基础样式（默认静态，定位由 .composer-card 嵌套控制） */
 .composer-compact-toggle
@@ -532,6 +538,15 @@ body.body--dark .composer-card :deep(.composer-input .q-field__native)::-webkit-
 /* 底部工具条 */
 .composer-bottom-bar
   gap: 8px
+.composer-model-summary
+  min-width: 0
+  flex: 1
+.composer-key-hint
+  font-size: 11px
+.composer-context-row:empty
+  display: none
+.composer-btn--filled.bg-accent
+  color: var(--button-primary-text) !important
 
 /* 右侧按钮 */
 .composer-btn-wrapper

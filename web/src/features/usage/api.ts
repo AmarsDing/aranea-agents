@@ -260,6 +260,7 @@ function queryToKratos(q: ModelUsageQuery): KUsageQuery {
     providerCode: q.provider_code,
     modelApiId: q.model_api_id,
     agentId: q.agent_id,
+    sessionId: undefined,
     status: q.status,
     limit: q.limit,
     offset: q.offset,

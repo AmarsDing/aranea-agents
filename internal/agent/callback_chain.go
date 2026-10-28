@@ -62,6 +62,12 @@ func productCallbackChainWithRegistry(ctx context.Context, ag biz.Agent, deps TR
 	if hook := newToolCatalogCueBeforeHook(deps); hook != nil {
 		entries = append(entries, hook)
 	}
+	// JEV Phase-1 mcp_server_choice shadow. Nil unless MCP tooling and the
+	// decision collector are both wired; the hook itself no-ops unless
+	// ARANEA_JEV_SHADOW=on.
+	if hook := newMCPChoiceShadowBeforeHook(ag, deps); hook != nil {
+		entries = append(entries, hook)
+	}
 	if hook := newContextCompressionBeforeHook(ag, deps); hook != nil {
 		entries = append(entries, hook)
 	}

@@ -437,7 +437,7 @@ function parseNodeMetaStatement(node: UnifiedGraphNode): string {
 }
 
 .memory-drawer {
-  background: var(--color-on-accent);
+  background: var(--surface-base);
 }
 
 body.body--dark .memory-card,

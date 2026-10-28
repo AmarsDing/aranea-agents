@@ -74,7 +74,7 @@ export function useWorkbenchPage() {
           agent_key: a.agent_key,
           display_name: a.display_name,
           icon: a.icon,
-          org_node_id: a.org_node_id,
+          org_node_id: a.taxonomy_position_id,
           deleted_at: a.deleted_at,
         })),
       );

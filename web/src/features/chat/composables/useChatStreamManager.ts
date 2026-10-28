@@ -1,4 +1,5 @@
-import { ref } from 'vue';
+import { computed, reactive, ref } from 'vue';
+import { clearChatDrafts } from '../chatDraftPersistence';
 import { useI18n } from 'vue-i18n';
 import { useQuasar } from 'quasar';
 import { useRouter } from 'vue-router';
@@ -20,6 +21,7 @@ export type StreamManagerDeps = {
    * Server no longer replays events; clients must re-fetch REST history.
    */
   onReconnectHydrate?: (sessionId: string) => Promise<void>;
+  visibleSessionId?: () => string | undefined;
   /** businessQueue drop of user_message — clear matching optimistic pending card. */
   onUpstreamUserMessageDropped?: (sessionId: string, requestId: string) => void;
 };
@@ -33,21 +35,47 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
   let chatStreamSessionId: string | null = null;
   let teamStream: WsSessionStream | null = null;
   let teamStreamSessionId: string | null = null;
+  let chatEpoch = 0;
+  let teamEpoch = 0;
+  const activeSessionId = ref('');
 
   /** True while reconnect snapshot hydrate is in flight (B-06). */
-  const wsReplaying = ref(false);
+  const recovery = reactive(new Map<string, 'syncing' | 'error'>());
+  const recoveryEpochs = new Map<string, number>();
+  const recoveryRequests = new Map<string, { epoch: number; promise: Promise<void> }>();
+  const visibleSessionId = () => (deps.visibleSessionId ? (deps.visibleSessionId() ?? '') : activeSessionId.value);
+  const wsReplaying = computed(() => recovery.get(visibleSessionId()) === 'syncing');
+  const reconnectError = computed(() => recovery.get(visibleSessionId()) === 'error');
   /** Per-session: true after a disconnect so next onConnected triggers hydrate. */
   const needsHydrateAfterReconnect = new Map<string, boolean>();
 
-  async function hydrateAfterReconnect(sessionId: string) {
-    if (!deps.onReconnectHydrate) return;
-    wsReplaying.value = true;
+  function invalidateRecovery(sessionId: string) {
+    recoveryEpochs.set(sessionId, (recoveryEpochs.get(sessionId) ?? 0) + 1);
+    recovery.delete(sessionId);
+  }
+  async function hydrateAfterReconnect(sessionId: string): Promise<void> {
+    const epoch = recoveryEpochs.get(sessionId) ?? 0;
+    const pending = recoveryRequests.get(sessionId);
+    if (pending?.epoch === epoch) return pending.promise;
+    recovery.set(sessionId, 'syncing');
+    const promise = (async () => {
+      try {
+        await Promise.all([deps.refreshRunStatus(sessionId), deps.onReconnectHydrate?.(sessionId)]);
+        if (epoch !== (recoveryEpochs.get(sessionId) ?? 0)) return;
+        needsHydrateAfterReconnect.set(sessionId, false);
+        recovery.delete(sessionId);
+      } catch (e) {
+        if (epoch !== (recoveryEpochs.get(sessionId) ?? 0)) return;
+        needsHydrateAfterReconnect.set(sessionId, true);
+        recovery.set(sessionId, 'error');
+        console.warn('[chat] reconnect v2 hydrate failed', e);
+      }
+    })();
+    recoveryRequests.set(sessionId, { epoch, promise });
     try {
-      await deps.onReconnectHydrate(sessionId);
-    } catch (e) {
-      console.warn('[chat] reconnect v2 hydrate failed', e);
+      await promise;
     } finally {
-      wsReplaying.value = false;
+      if (recoveryRequests.get(sessionId)?.promise === promise) recoveryRequests.delete(sessionId);
     }
   }
 
@@ -76,6 +104,7 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
   }
 
   function ensureChatStream(sessionId: string) {
+    activeSessionId.value = sessionId;
     if (chatStream && chatStreamSessionId === sessionId) {
       // Only sync wsConnected→true when the stream reports connected;
       // never downgrade to false here — onDisconnected is the authoritative
@@ -89,30 +118,41 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
       return chatStream;
     }
     // B-02: Disconnect previous stream before creating a new one.
+    chatEpoch++;
+    if (chatStreamSessionId) invalidateRecovery(chatStreamSessionId);
     chatStream?.disconnect();
     deps.runtimeStore.setWsConnected(sessionId, false);
     needsHydrateAfterReconnect.delete(sessionId);
 
+    chatStreamSessionId = sessionId;
+    const epoch = chatEpoch;
+    const current = () => epoch === chatEpoch && chatStreamSessionId === sessionId;
     chatStream = createChatStream(sessionId, {
       lastEventId: getChannelWsCursor(sessionId),
       // E2E-C2: transport 自动重连时实时回传最新游标（live 推进只进 cursor 表）。
       getLastEventId: () => getChannelWsCursor(sessionId),
       onConnected: () => {
+        if (!current()) return;
         deps.runtimeStore.setWsConnected(sessionId, true);
-        void deps.refreshRunStatus(sessionId);
         // B-06: after a disconnect, re-hydrate authoritative v2 snapshot.
         // Server also replays missed critical outbox frames via last_event_id;
         // REST hydrate remains the safety net for non-critical state.
         if (needsHydrateAfterReconnect.get(sessionId)) {
-          needsHydrateAfterReconnect.set(sessionId, false);
           void hydrateAfterReconnect(sessionId);
-        }
+        } else
+          void deps.refreshRunStatus(sessionId).catch(() => {
+            if (current()) recovery.set(sessionId, 'error');
+          });
       },
       onDisconnected: () => {
+        if (!current()) return;
+        invalidateRecovery(sessionId);
         deps.runtimeStore.setWsConnected(sessionId, false);
         needsHydrateAfterReconnect.set(sessionId, true);
       },
       onServerShutdown: () => {
+        if (!current()) return;
+        clearChatDrafts();
         // F4 (2026-10-19): timeout:0 的持久 toast 必须提供可用的 dismiss
         // 路径——旧 action handler 为空函数，toast 永远无法关闭。
         const dismiss = $q.notify({
@@ -136,6 +176,7 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
   }
 
   function ensureTeamStream(sessionId: string) {
+    activeSessionId.value = sessionId;
     if (teamStream && teamStreamSessionId === sessionId) {
       // Only sync wsConnected→true; never downgrade — onDisconnected is authoritative.
       if (teamStream.connected.value) {
@@ -148,15 +189,22 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
       return teamStream;
     }
     // B-02: Disconnect previous stream before creating a new one.
+    teamEpoch++;
+    if (teamStreamSessionId) invalidateRecovery(teamStreamSessionId);
     teamStream?.disconnect();
     deps.runtimeStore.setWsConnected(sessionId, false);
     needsHydrateAfterReconnect.delete(sessionId);
 
+    teamStreamSessionId = sessionId;
+    const epoch = teamEpoch;
+    const current = () => epoch === teamEpoch && teamStreamSessionId === sessionId;
     teamStream = createTeamStream(sessionId, {
       lastEventId: getChannelWsCursor(sessionId),
       // E2E-C2: transport 自动重连时实时回传最新游标（live 推进只进 cursor 表）。
       getLastEventId: () => getChannelWsCursor(sessionId),
       onServerShutdown: () => {
+        if (!current()) return;
+        clearChatDrafts();
         // F4: 持久 toast 的 action 必须真正可关闭（详见上方 chatStream 同注释）。
         const dismiss = $q.notify({
           type: 'warning',
@@ -170,14 +218,18 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
         router.push({ name: 'login' });
       },
       onConnected: () => {
+        if (!current()) return;
         deps.runtimeStore.setWsConnected(sessionId, true);
-        void deps.refreshRunStatus(sessionId);
         if (needsHydrateAfterReconnect.get(sessionId)) {
-          needsHydrateAfterReconnect.set(sessionId, false);
           void hydrateAfterReconnect(sessionId);
-        }
+        } else
+          void deps.refreshRunStatus(sessionId).catch(() => {
+            if (current()) recovery.set(sessionId, 'error');
+          });
       },
       onDisconnected: () => {
+        if (!current()) return;
+        invalidateRecovery(sessionId);
         deps.runtimeStore.setWsConnected(sessionId, false);
         needsHydrateAfterReconnect.set(sessionId, true);
       },
@@ -209,7 +261,9 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
   }
 
   function disconnectChatStream() {
+    chatEpoch++;
     if (chatStreamSessionId) {
+      invalidateRecovery(chatStreamSessionId);
       deps.runtimeStore.setWsConnected(chatStreamSessionId, false);
     }
     chatStream?.disconnect();
@@ -218,7 +272,9 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
   }
 
   function disconnectTeamStream() {
+    teamEpoch++;
     if (teamStreamSessionId) {
+      invalidateRecovery(teamStreamSessionId);
       deps.runtimeStore.setWsConnected(teamStreamSessionId, false);
     }
     teamStream?.disconnect();
@@ -238,6 +294,15 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
 
   return {
     wsReplaying,
+    reconnectError,
+    retryReconnect: async () => {
+      const sid = visibleSessionId();
+      const stream = sid === chatStreamSessionId ? chatStream : sid === teamStreamSessionId ? teamStream : null;
+      if (!stream) return;
+      needsHydrateAfterReconnect.set(sid, true);
+      if (stream.connected.value) await hydrateAfterReconnect(sid);
+      else stream.connect();
+    },
     ensureChatStream,
     ensureTeamStream,
     sendChatViaWs,

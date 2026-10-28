@@ -24,8 +24,8 @@ vi.mock('../../../stores/ecosystem', () => ({
 }));
 
 vi.mock('../api', () => ({
-  listSkills: vi.fn(async () => ({ items: [], total: 0 })),
-  listSkillRuns: vi.fn(async () => ({ items: [], total: 0 })),
+  listSkills: vi.fn(async () => ({ items: [], total: 0, page: 1, page_size: 20 })),
+  listSkillRuns: vi.fn(async () => ({ items: [], total: 0, page: 1, page_size: 20 })),
   toggleSkillEnabled: vi.fn(),
   publishSkill: vi.fn(),
   duplicateSkill: vi.fn(),
@@ -55,8 +55,26 @@ vi.mock('../api', () => ({
   deleteSkillTag: vi.fn(),
 }));
 
-const skillA = { id: 's1', name: 'Alpha', enabled: true } as unknown as Skill;
-const skillB = { id: 's2', name: 'Beta', enabled: true } as unknown as Skill;
+const skillA: Skill = {
+  id: 's1',
+  name: 'Alpha',
+  slug: 'alpha',
+  description: '',
+  tags: [],
+  status: 'published',
+  enabled: true,
+  current_version: null,
+  invoke_count: 0,
+  success_count: 0,
+  failure_count: 0,
+  usage_count_7d: 0,
+  avg_duration_ms: null,
+  last_duration_ms: null,
+  created_at: '',
+  updated_at: '',
+  permissions: { can_edit: true, can_delete: true, can_toggle_enabled: true, can_duplicate: true },
+};
+const skillB: Skill = { ...skillA, id: 's2', name: 'Beta', slug: 'beta' };
 
 function setupPage() {
   let page!: ReturnType<typeof useSkillsPage>;
@@ -81,6 +99,8 @@ describe('useSkillsPage', () => {
     vi.mocked(listSkills).mockImplementation(async (query?: SkillListQuery) => ({
       items: query?.page === 2 ? [skillB] : [skillA],
       total: 21,
+      page: query?.page ?? 1,
+      page_size: query?.page_size ?? 20,
     }));
     const page = setupPage();
     await flushPromises();
@@ -104,8 +124,9 @@ describe('useSkillsPage', () => {
       deleted = true;
     });
     vi.mocked(listSkills).mockImplementation(async (query?: SkillListQuery) => {
-      if (query?.page === 2) return { items: deleted ? [] : [skillB], total: deleted ? 20 : 21 };
-      return { items: [skillA], total: deleted ? 20 : 21 };
+      if (query?.page === 2)
+        return { items: deleted ? [] : [skillB], total: deleted ? 20 : 21, page: 2, page_size: query.page_size ?? 20 };
+      return { items: [skillA], total: deleted ? 20 : 21, page: query?.page ?? 1, page_size: query?.page_size ?? 20 };
     });
     const page = setupPage();
     await flushPromises();
@@ -127,7 +148,7 @@ describe('useSkillsPage', () => {
   });
 
   it('S-2：rows/total 直接来自 store，行操作无需手动同步', async () => {
-    vi.mocked(listSkills).mockResolvedValue({ items: [skillA], total: 1 });
+    vi.mocked(listSkills).mockResolvedValue({ items: [skillA], total: 1, page: 1, page_size: 20 });
     const store = useSkillsStore();
     const page = setupPage();
     await flushPromises();
@@ -136,7 +157,7 @@ describe('useSkillsPage', () => {
     expect(page.rows.value).toBe(store.skills);
     expect(page.total.value).toBe(1);
 
-    vi.mocked(toggleSkillEnabled).mockResolvedValue({ ...skillA, enabled: false } as Skill);
+    vi.mocked(toggleSkillEnabled).mockResolvedValue({ ...skillA, enabled: false });
     await page.onToggleEnabled(skillA, false);
     expect(page.rows.value[0]?.enabled).toBe(false);
     expect(store.skills[0]?.enabled).toBe(false);

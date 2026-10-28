@@ -37,13 +37,14 @@ type SparseSearcher interface {
 }
 
 type HybridRetriever struct {
-	embedder QueryEmbedder
-	dense    biz.KnowledgeRepo
-	sparse   SparseSearcher
-	cards    GraphCardSearcher
-	reranker rerankerForHybrid
-	rrfK     int
-	lg       loggateway.Logger
+	embedder       QueryEmbedder
+	extraEmbedders []QueryEmbedder
+	dense          biz.KnowledgeRepo
+	sparse         SparseSearcher
+	cards          GraphCardSearcher
+	reranker       rerankerForHybrid
+	rrfK           int
+	lg             loggateway.Logger
 }
 
 type rerankerForHybrid interface {
@@ -76,6 +77,15 @@ func NewHybridRetriever(retriever *Retriever, sparse SparseSearcher, lg loggatew
 // 与词法库降级路径不跑本腿，词法降级分支由同一检索器端口内部换实现备役）。
 func (h *HybridRetriever) SetGraphCardSearcher(s GraphCardSearcher) {
 	h.cards = s
+}
+
+// SetExtraDimEmbedders 接线 TK-G39-03 跨维并行检索。nil/空 = 只查主 embedder
+// 当前维。与主向量同长度的额外 embedder 跳过，避免同一向量空间双计。
+func (h *HybridRetriever) SetExtraDimEmbedders(extras []QueryEmbedder) {
+	if h == nil {
+		return
+	}
+	h.extraEmbedders = append([]QueryEmbedder(nil), extras...)
 }
 
 func (h *HybridRetriever) Search(ctx context.Context, q biz.KnowledgeSearchQuery, mode HybridSearchMode) ([]biz.KnowledgeChunk, error) {
@@ -138,7 +148,7 @@ func (h *HybridRetriever) Search(ctx context.Context, q biz.KnowledgeSearchQuery
 			searchQ.TopK = rerankCandidateLimit(q, topK)
 		}
 		denseStart := time.Now()
-		chunks, err := h.searchDenseLeg(ctx, searchQ, vec)
+		chunks, err := h.searchDenseDims(ctx, searchQ, vec)
 		observeSearchStage(searchStageDense, denseStart)
 		if err != nil {
 			return nil, err
@@ -230,7 +240,7 @@ func (h *HybridRetriever) searchRRF(ctx context.Context, q biz.KnowledgeSearchQu
 	safego.Go(ctx, "knowledge.search.rrf_dense", func() {
 		defer wg.Done()
 		start := time.Now()
-		denseChunks, denseErr = h.searchDenseLeg(ctx, denseQ, vec)
+		denseChunks, denseErr = h.searchDenseDims(ctx, denseQ, vec)
 		observeSearchStage(searchStageDense, start)
 	})
 	if h.sparse != nil {

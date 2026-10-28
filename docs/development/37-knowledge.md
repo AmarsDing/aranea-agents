@@ -1369,3 +1369,58 @@
 - 契约零 proto 变更：候选在 Search/注入/引用 chips 的载荷 shape 不变；卡片来源以 metadata_json 内 `g33` 标记承载（hit-test 面板与调试链可读）。
 - 闭合语义：边 `valid_to` 非空（低置信闭合/消失）或实体被合并删除后，对应卡片在下轮对账中消失，且不再产生命中。
 - 本轮不做：唤醒 graphrag.DualLevelSearch 生产骨架（六端口全缺且与 GraphExpander 扩展职责重叠，留 G-34 一并评估）；谓词文对共激活（co_activated）边的索引（context 语义未核实）；实体腿独立 proto 分路分解字段（走 metadata_json side-channel）、本地 vault 实体词条页（保持刻意不落）；access_log 增加「命中来源腿」列（G-15 轮）。
+
+### US-60：摄取增量提交与时态回放（G-32，2026-10-24/25）
+
+**作为** 知识库的运营者与引用知识作答的 Agent，
+**我希望** 文档再摄取只重建发生变化的块（未变块保留身份与向量）、删除可追溯、并能按历史时点检索「那时的知识」，
+**从而** 大库重摄取成本可控、引用长期稳定、审计与排障可回放。
+
+**验收标准**：
+
+- chunk 级增量提交：再摄取时未变块保留原 chunk_id 且向量不重嵌；每次提交的 added/deleted/kept 可计量并落版本台账（producer/change_kind 可稽查）；正文与块多重集均未变的重摄取零写（不留新版本行）。
+- 换模型缺维收敛：集合更换 embedder（维度变化）后，同正文再摄取自动补齐新维向量（新旧双代共存），「待重嵌」列表随补齐出列收敛——不丢向量、不死循环。
+- 删除可回放：删除文档后，其历史化身仍可经 as-of 时点检索回放（dense 与 sparse 双腿同口径），而当前（零时点）检索零泄漏；删除动作在版本台账登记（producer=user-delete、change_kind=tombstone）。
+- 时态边界语义：化身区间左闭右开，valid_at 等值某版本 created_at 时归入该版本起的新区间；当前+档案两腿 top-k 合并排序确定。
+- WS 差分帧：摄取/重嵌入/晋升/vault 四通道在完成权威差分提交时发布 `knowledge_chunks_diff` 帧（meta 八键：event_type/collection_id/document_id/added/deleted/kept/chunk_count/producer，chunk_count=added+kept 子块口径）；终态 `knowledge_ingest` 帧行为逐字节不变；无法产出权威差分统计的环境（退化摄取路径）一律零发布。
+- 引用稳定：引用链对已删除/已替换块的内容回落到档案中该块的最新死亡化身——有档回落、无档仍弃。
+- 权限纪律：as-of 检索的授权按当下可见性判定（活文档行级当下口径；宿主已删除回落到集合级当下口径），内容取历史。
+- 本轮不做：legacy `embedding` 列 DROP（TK-G39-01 浸泡期延续）；recorded-at（R 轴）读面开放（结构性拒绝）；块/refs 写路径差分化（整文档重插纪律不变，本轮差分仅限 chunk 摄取层）。
+
+**功能需求清单**：
+
+| # | 需求 | 说明 |
+|---|------|------|
+| FR-G32-1 | 增量摄取提交 | chunk 级 diff-commit：未变块保身份/保向量，added/deleted/kept 全账落台账 |
+| FR-G32-2 | 缺维补齐收敛 | 换 embedder 后同体再摄取补齐新维；待重嵌列表按 dim 口径出列 |
+| FR-G32-3 | 时态检索 | as-of valid_at 双腿召回（dense+sparse）；tombstone 后可回放而 current 查无 |
+| FR-G32-4 | 差分 WS 帧 | `knowledge_chunks_diff` 八键帧，Exact 哨兵零发布纪律，四通道 producer |
+| FR-G32-5 | 删除台账 | DeleteDocument tombstone 版本行 + 整档物化归档（正文+向量镜档） |
+| FR-G32-6 | 引用档案回落 | 引用链内容按块回落最新死亡化身，无档静默缺席 |
+### US-61：写回仲裁四操作标准化——暂定矛盾自动失效可回放（G-40，2026-10-28）
+
+**作为** 知识库的运营者与依赖写回飞轮沉淀的团队，
+**我希望** 会话事实写回按统一的 ADD/UPDATE/DELETE/NOOP 四操作仲裁（Mem0 词表），暂定性（低置信）矛盾的旧陈述自动失效且全程可回放、实质性（高置信）矛盾仍交人工二审，
+**从而** 知识新鲜度不被暂定性冲突锁死、误处置可逆可审计、仲裁语义与业界标准词表对齐。
+
+**验收标准**：
+
+- 四操作词表：仲裁输出按 ADD（无冲突追加）/UPDATE（同一断言更新顶替+版本链留痕）/DELETE（矛盾失效）/NOOP（重复或无关跳过）分类；LLM 仲裁提示词即以四操作表达。
+- UPDATE 顶替：与既有 M3.1 行为逐字节一致——同一断言整段替换、旧段快照入版本链、lineage fact_id 稳定。
+- DELETE 低置信自动失效：矛盾判定置信落在暂定带（0.5≤c<0.7）时，旧段自动移除、新事实照常追加、旧段快照留版本链墓碑（NewBody 空），治理面留自动处置痕（低风险提案直接 applied、payload 含 auto_invalidated 证据）——可回放可恢复。
+- DELETE 高置信人工二审：置信 ≥0.7 维持既有 M3.2 行为——旧段不覆盖、新事实追加留痕、高风险 conflict 提案 pending 等人裁。
+- NOOP：重复或无关事实零写入零版本留痕零提案。
+- 契约兼容迁移：仲裁解析层接受旧词表（supersedes/contradicts）并映射到新四操作，存量行为不回归。
+- 事故闸：`KNOWLEDGE_WRITEBACK_DELETE_AUTO_INVALIDATE_DISABLED=1` 时 DELETE 全带回落提案路径（G-40 前行为）；失配目标（DELETE 目标段已被并发移除）降级为追加+高风险提案，不丢新事实不误删。
+- 本轮不做：Edge/Fact 双轨仲裁统一到图谱边层（G-39 拍板「DELETE 只到 edge/fact 关闭层」——事实段层本轮、边关闭层独立批次）；事实级低置信 UPDATE 顶替（保持仅高置信顶替）；仲裁结果再学习反馈环。
+
+**功能需求清单**：
+
+| # | 需求 | 说明 |
+|---|------|------|
+| FR-G40-1 | 四操作仲裁词表 | `WriteBackArbitration.Operation ∈ {add,update,delete,noop}`；LLM 提示词+解析兼容映射 |
+| FR-G40-2 | UPDATE 顶替留痕 | 既有 supersedes 路径轴移词表，行为不变（置信 ≥0.8） |
+| FR-G40-3 | DELETE 暂定带自动失效 | 0.5≤c<0.7：旧段移除+版本链墓碑+低风险提案 applied；Graphiti 可回放判据 |
+| FR-G40-4 | DELETE 高置信人工二审 | c≥0.7 维持 M3.2 高风险 pending 提案，旧段不动 |
+| FR-G40-5 | NOOP 零旁效应 | 重复/无关不写版本不产生提案 |
+| FR-G40-6 | 事故闸与降级 | auto-invalidate kill-switch 默认开；目标失配降级追加+提案 |

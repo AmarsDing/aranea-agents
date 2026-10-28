@@ -107,6 +107,9 @@ func ProvideKnowledgeUsecase(repo KnowledgeRepo, filer *knowledge.VaultFiler, bl
 			uc.SetEvolutionRepos(versions, proposals)
 		}
 	}
+	if closer, ok := repo.(knowledge.FactEdgeCloser); ok {
+		uc.SetFactEdgeCloser(closer)
+	}
 	// M4 自治理：词条治理数据端口（断言失败时 CurateKnowledge 显式报不可用）。
 	if curate, cok := repo.(knowledge.KnowledgeCurateRepo); cok {
 		uc.SetCurateRepo(curate)

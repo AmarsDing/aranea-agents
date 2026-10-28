@@ -80,6 +80,7 @@ export function useChatRunStatus(deps: UseChatRunStatusDeps) {
   let wsAuthoritative = false;
   let hydrateTimer: ReturnType<typeof setTimeout> | null = null;
   let hydrateSessionId = '';
+  let sessionGeneration = 0;
 
   // D9-19 新鲜度追踪器（见模块级 TERMINAL_RUN_STATUSES / shouldAcceptRunStatus）。
   // lastRunId='' / lastStatus='' 表示未接受过任何帧（上个 run 未知）。
@@ -106,6 +107,7 @@ export function useChatRunStatus(deps: UseChatRunStatusDeps) {
   }
 
   function resetRunStatus() {
+    sessionGeneration++;
     clearHydrateTimer();
     wsAuthoritative = false;
     hydrateSessionId = '';
@@ -164,10 +166,11 @@ export function useChatRunStatus(deps: UseChatRunStatusDeps) {
 
   async function hydrateFromHttpIfNeeded(sessionId: string) {
     if (!sessionId || sessionId !== hydrateSessionId || wsAuthoritative) return;
+    const generation = sessionGeneration;
     try {
       const runtime = useChatRuntimeStore();
       const rs = await runtime.fetchRunStatus(sessionId);
-      if (sessionId !== hydrateSessionId || wsAuthoritative) return;
+      if (generation !== sessionGeneration || sessionId !== hydrateSessionId || wsAuthoritative) return;
       // REST 入口统一过新鲜度谓词（带服务端 updatedAt，供 R3 单调裁决）。
       const serverMs = Date.parse(rs.updatedAt || '');
       if (!shouldAcceptRunStatus(lastTracker(), { status: rs.status, runId: rs.runId, serverMs })) return;
@@ -207,11 +210,12 @@ export function useChatRunStatus(deps: UseChatRunStatusDeps) {
       return null;
     }
     const runtime = useChatRuntimeStore();
+    const generation = sessionGeneration;
     const rs = await runtime.fetchRunStatus(sessionId);
     // 会话过期守卫（同 hydrateFromHttpIfNeeded 手法）：对账请求在途时用户可能已
     // 切换会话——旧会话的迟到响应必须整个丢弃，不得写 runStatus/runMeta 或 apply；
     // 否则旧状态会覆盖当前会话面板，watchdog 读到过期终态还会误判并复位 sending。
-    if (sessionId !== hydrateSessionId) return null;
+    if (generation !== sessionGeneration || sessionId !== hydrateSessionId) return null;
     // 新鲜度守卫（D9-19）：同 run 内终端 WS 帧恒赢迟到 REST running；REST 同 runId
     // 旧快照不得回退。被丢弃时维持 REG-2 null 语义（未获后端新确认）。
     const serverMs = Date.parse(rs.updatedAt || '');
@@ -227,6 +231,13 @@ export function useChatRunStatus(deps: UseChatRunStatusDeps) {
     if (!sessionId) {
       resetRunStatus();
       return;
+    }
+    if (sessionId !== hydrateSessionId) {
+      sessionGeneration++;
+      // Run IDs and terminal stickiness are scoped to this selected session.
+      lastRunId = '';
+      lastStatus = '';
+      lastServerMs = Number.NaN;
     }
     // Don't reset to "idle" immediately — keep previous value until HTTP hydrate
     // completes to avoid a brief incorrect "idle" flash during session switch.

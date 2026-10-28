@@ -6,6 +6,7 @@ import type { useChatRuntimeStore } from '../../../stores/chat/runtimeStore';
 import type { useChatStreamManager } from './useChatStreamManager';
 import type { useChatSender } from './useChatSender';
 import type { Task } from '../v2Types';
+import type { ChatAttachment } from '../../../components/chat/types';
 
 export interface ComposerActionDeps {
   sessionStore: ReturnType<typeof useChatSessionStore>;
@@ -17,9 +18,10 @@ export interface ComposerActionDeps {
   selectedSessionId: Ref<string | undefined>;
   notify: (opts: { type: string; message: string }) => void;
   t: (key: string, fallbackOrNamed?: string | Record<string, unknown>) => string;
-  sessionDrafts: Map<string, string>;
+  sessionDrafts?: Map<string, string>;
   inputText: Ref<string>;
   selectedSkillSlugs: Ref<string[]>;
+  attachments?: Ref<ChatAttachment[]>;
 }
 
 export function useChatComposerActions(deps: ComposerActionDeps) {
@@ -40,7 +42,19 @@ export function useChatComposerActions(deps: ComposerActionDeps) {
   } = deps;
 
   async function onSend() {
+    if (deps.sender.submitting?.value) return;
     const sid = selectedSessionId.value;
+    if (deps.attachments?.value.some((file) => file.progress < 1)) {
+      notify({ type: 'warning', message: t('taskWorkspace.uploadPending') });
+      return;
+    }
+    if (
+      (runStatus.value === 'running' || runStatus.value === 'pending' || deps.sender.sending?.value) &&
+      deps.attachments?.value.length
+    ) {
+      notify({ type: 'warning', message: t('taskWorkspace.attachmentsWhileRunning') });
+      return;
+    }
     // Skill picker：发送前把选中技能的加载提示拼到输入框尾部（透明注入，
     // 气泡可见）。发送被接受（sender 清空输入框）后清空选中；失败保留。
     const slugs = selectedSkillSlugs.value;
@@ -52,8 +66,8 @@ export function useChatComposerActions(deps: ComposerActionDeps) {
       }
     }
     await sender.onSend();
-    if (sid) sessionDrafts.delete(sid);
-    if (slugs.length > 0 && !inputText.value.trim()) {
+    if (sid && sid === selectedSessionId.value && !inputText.value.trim()) sessionDrafts?.delete(sid);
+    if ((!sid || sid === selectedSessionId.value) && slugs.length > 0 && !inputText.value.trim()) {
       selectedSkillSlugs.value = [];
     }
   }

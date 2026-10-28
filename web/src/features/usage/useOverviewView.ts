@@ -44,17 +44,21 @@ export function useOverviewView(page: OverviewPageBindings, board: ComputedRef<A
   const totalAttention = computed(() => Object.values(board.value.counts).reduce((a, b) => a + b, 0));
   const headline = computed(() =>
     t(
-      verdict.value === 'ok'
-        ? 'overviewPage.v2.verdictOk'
-        : verdict.value === 'critical'
-          ? 'overviewPage.v2.verdictCritical'
-          : 'overviewPage.v2.verdictWarn',
+      verdict.value === 'unknown'
+        ? 'uiSystem.overview.verdictUnknown'
+        : verdict.value === 'ok'
+          ? 'overviewPage.v2.verdictOk'
+          : verdict.value === 'critical'
+            ? 'overviewPage.v2.verdictCritical'
+            : 'overviewPage.v2.verdictWarn',
     ),
   );
   const subline = computed(() =>
-    verdict.value === 'ok'
-      ? t('overviewPage.v2.verdictOkSub')
-      : t('overviewPage.v2.verdictSub', { count: totalAttention.value }),
+    board.value.incomplete
+      ? t('uiSystem.overview.verdictIncomplete', { count: totalAttention.value })
+      : verdict.value === 'ok'
+        ? t('overviewPage.v2.verdictOkSub')
+        : t('overviewPage.v2.verdictSub', { count: totalAttention.value }),
   );
   const chips = computed<OvVerdictChip[]>(() =>
     board.value.lanes.map((lane) => {
@@ -63,8 +67,11 @@ export function useOverviewView(page: OverviewPageBindings, board: ComputedRef<A
         ? 'critical'
         : lane.count > 0
           ? 'warning'
-          : 'ok';
-      return { key: lane.lane, icon: m.icon, label: `${t(`overviewPage.v2.${m.key}`)} ${lane.count}`, severity };
+          : lane.status !== 'ready'
+            ? 'unknown'
+            : 'ok';
+      const count = lane.status === 'ready' ? lane.count : lane.count ? `${lane.count}+` : '—';
+      return { key: lane.lane, icon: m.icon, label: `${t(`overviewPage.v2.${m.key}`)} ${count}`, severity };
     }),
   );
   const updatedAtClock = computed(() => fmtClock(board.value.updatedAt || page.usageUpdatedAt.value));
@@ -80,9 +87,11 @@ export function useOverviewView(page: OverviewPageBindings, board: ComputedRef<A
     const u = Date.parse(page.usageUpdatedAt.value || '');
     const bm = Number.isFinite(b) ? b : 0;
     const um = Number.isFinite(u) ? u : 0;
-    return Math.max(bm, um);
+    return Math.min(bm, um);
   });
-  const stale = computed(() => latestUpdateMs.value > 0 && nowTick.value - latestUpdateMs.value > STALE_THRESHOLD_MS);
+  const stale = computed(
+    () => board.value.incomplete || !latestUpdateMs.value || nowTick.value - latestUpdateMs.value > STALE_THRESHOLD_MS,
+  );
 
   // —— ③ RED 组 ——
   const modelTiles = computed<OvRedTile[]>(() => {
@@ -92,7 +101,7 @@ export function useOverviewView(page: OverviewPageBindings, board: ComputedRef<A
       {
         id: 'calls',
         label: t('overviewPage.v2.metricCalls'),
-        value: formatCount(calls),
+        value: s ? formatCount(calls) : '—',
         caption: t(
           page.trendGranularity.value === 'hour'
             ? 'overviewPage.v2.capCallsSparkHour'
@@ -109,7 +118,7 @@ export function useOverviewView(page: OverviewPageBindings, board: ComputedRef<A
         caption:
           calls > 0
             ? t('overviewPage.v2.yesterdayRate', { value: pct1(page.yesterdaySummary.value?.success_rate ?? 0) })
-            : t('overviewPage.v2.noCalls'),
+            : t(s ? 'overviewPage.v2.noCalls' : 'uiSystem.overview.dataUnavailable'),
         tone: calls > 0 ? rateTone(s!.success_rate) : 'neutral',
         clickable: true,
       },
@@ -130,7 +139,7 @@ export function useOverviewView(page: OverviewPageBindings, board: ComputedRef<A
       {
         id: 'runCount',
         label: t('overviewPage.v2.metricRunCount'),
-        value: formatCount(total),
+        value: rm ? formatCount(total) : '—',
         caption: t('overviewPage.v2.metricRunCountCap'),
       },
       {
@@ -138,7 +147,9 @@ export function useOverviewView(page: OverviewPageBindings, board: ComputedRef<A
         label: t('overviewPage.v2.metricRunPassRate'),
         value: total > 0 ? pct1(rm!.success_rate) : '—',
         caption:
-          total > 0 ? t('overviewPage.v2.metricRunErrors', { count: rm!.error_runs }) : t('overviewPage.v2.noRuns'),
+          total > 0
+            ? t('overviewPage.v2.metricRunErrors', { count: rm!.error_runs })
+            : t(rm ? 'overviewPage.v2.noRuns' : 'uiSystem.overview.dataUnavailable'),
         tone: total > 0 ? rateTone(rm!.success_rate) : 'neutral',
       },
       {
@@ -158,7 +169,7 @@ export function useOverviewView(page: OverviewPageBindings, board: ComputedRef<A
 
   // —— ④ 成本与预算 ——
   const costValueUsd = computed(() =>
-    formatUsdCompact((page.rangeSummary.value?.total_cost_micro_usd ?? 0) / 1_000_000),
+    page.rangeSummary.value ? formatUsdCompact(page.rangeSummary.value.total_cost_micro_usd / 1_000_000) : '—',
   );
   const budget = computed<OvBudget>(() => {
     const q = page.quota.value;

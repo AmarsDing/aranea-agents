@@ -309,7 +309,7 @@ const fileInputRef = workspace.fileRef;
   height: 100vh
   overflow: hidden
   // HUD 画布为固有深空底色（产品形态，非主题变量）；浮层元素仍走主题 token
-  background: radial-gradient(ellipse at 50% 40%, #101826 0%, #090d14 70%)
+  background: var(--gradient-page)
 
   &__confirm-layer
     position: absolute
@@ -338,7 +338,7 @@ const fileInputRef = workspace.fileRef;
   &__p
     position: absolute
     border-radius: 50%
-    background: radial-gradient(circle, #a5f3fc 0%, #22d3ee 55%, transparent 75%)
-    box-shadow: 0 0 8px rgba(var(--hud-cyan-rgb), 0.8), 0 0 2px #fff
+    background: radial-gradient(circle, var(--color-accent-hover), var(--color-accent) 55%, transparent 75%)
+    box-shadow: 0 0 8px rgba(var(--hud-cyan-rgb), 0.8), 0 0 2px var(--color-text-primary)
     will-change: transform, opacity
 </style>

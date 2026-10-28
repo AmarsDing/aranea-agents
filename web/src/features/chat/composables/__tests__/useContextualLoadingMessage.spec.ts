@@ -15,7 +15,7 @@ import type {
 // (read from localStorage in production) is undefined in the test environment
 // and assertions on Chinese strings would fail.
 beforeAll(() => {
-  i18n.global.locale = 'zh-CN';
+  i18n.global.locale.value = 'zh-CN';
 });
 
 /**
@@ -851,7 +851,9 @@ describe('useContextualLoadingMessage', () => {
         }),
       );
 
-      expect(loadingMessage.value!.text).toBe('团队数量与请求不符：请求 2 个，实际分解 3 个，已截取前 2 个执行（丢弃：评审团）');
+      expect(loadingMessage.value!.text).toBe(
+        '团队数量与请求不符：请求 2 个，实际分解 3 个，已截取前 2 个执行（丢弃：评审团）',
+      );
       expect(loadingMessage.value!.icon).toBe('warning');
       expect(loadingMessage.value!.color).toBe('orange');
     });

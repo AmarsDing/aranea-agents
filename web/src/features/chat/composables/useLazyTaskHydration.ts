@@ -71,7 +71,7 @@ export function useLazyTaskHydration(opts: LazyTaskHydrationOpts) {
       observer = new IntersectionObserver(handleEntries, { root, threshold: IO_THRESHOLD });
     }
     const seen = new Set<string>();
-    for (const el of root.querySelectorAll<HTMLElement>('.task-card[data-task-id]')) {
+    for (const el of Array.from(root.querySelectorAll<HTMLElement>('.task-card[data-task-id]'))) {
       const taskId = el.dataset.taskId;
       if (!taskId) continue;
       seen.add(taskId);
@@ -101,19 +101,19 @@ export function useLazyTaskHydration(opts: LazyTaskHydrationOpts) {
   async function hydrateWithAnchor(taskId: string) {
     const el = opts.scrollEl.value;
     const card = el?.querySelector<HTMLElement>(`.task-card[data-task-id="${CSS.escape(taskId)}"]`);
-    const wasAbove =
-      !!el && !!card && card.getBoundingClientRect().top < el.getBoundingClientRect().top;
+    const wasAbove = !!el && !!card && card.getBoundingClientRect().top < el.getBoundingClientRect().top;
     const prevHeight = el?.scrollHeight ?? 0;
     await opts.hydrate(taskId);
     await nextTick();
-    if (el && wasAbove) {
+    if (el && wasAbove && opts.scrollEl.value === el && card?.isConnected && el.contains(card)) {
       el.scrollTop += el.scrollHeight - prevHeight;
     }
   }
 
   /** 点击卡片立即水合（无 dwell）。 */
-  function expandTask(taskId: string) {
-    void hydrateWithAnchor(taskId);
+  async function expandTask(taskId: string) {
+    collapsedIds.value.delete(taskId);
+    await hydrateWithAnchor(taskId);
   }
 
   function isCollapsed(taskId: string): boolean {

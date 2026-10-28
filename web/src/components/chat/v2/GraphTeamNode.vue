@@ -338,14 +338,14 @@ function onMemberClick(ms: MemberSession) {
   border-radius: 10px
   background: var(--glass-elevated)
   backdrop-filter: blur(var(--glass-blur-default))
-  box-shadow: 0 2px 10px rgb(0 0 0 / 8%)
+  box-shadow: 0 2px 10px color-mix(in srgb, var(--color-shadow) 8%, transparent)
   box-sizing: border-box
   overflow: hidden
   transition: opacity 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease
 
   &:hover
     transform: translateY(-2px)
-    box-shadow: 0 6px 20px color-mix(in srgb, var(--node-accent) 35%, rgb(0 0 0 / 10%))
+    box-shadow: 0 6px 20px color-mix(in srgb, var(--node-accent) 35%, color-mix(in srgb, var(--color-shadow) 10%, transparent))
 
 // 状态色（设计文档 §3.7.5）
 .graph-team-node--pending
@@ -505,7 +505,7 @@ function onMemberClick(ms: MemberSession) {
     content: ''
     position: absolute
     inset: 0
-    background: linear-gradient(90deg, transparent, rgb(255 255 255 / 45%), transparent)
+    background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--color-text-primary) 45%, transparent), transparent)
     animation: gtn-progress-shimmer 1.8s linear infinite
 
   &__text
@@ -717,7 +717,7 @@ function onMemberClick(ms: MemberSession) {
   0%
     box-shadow: 0 0 24px color-mix(in srgb, var(--color-success) 65%, transparent)
   100%
-    box-shadow: 0 2px 10px rgb(0 0 0 / 8%)
+    box-shadow: 0 2px 10px color-mix(in srgb, var(--color-shadow) 8%, transparent)
 
 @media (prefers-reduced-motion: reduce)
   .graph-team-node--running,

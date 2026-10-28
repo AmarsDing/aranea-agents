@@ -96,7 +96,7 @@ function runFirst(): void {
   border: 1px solid var(--wb-line-hairline)
   border-radius: 8px
   background: var(--color-surface-solid, var(--canvas-base))
-  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.4)
+  box-shadow: 0 18px 44px color-mix(in srgb, var(--color-shadow) 40%, transparent)
 .wb-palette__input
   width: 100%
   padding: 10px 14px

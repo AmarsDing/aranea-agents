@@ -1,6 +1,6 @@
 // web/src/features/graph/__tests__/useGraphValidationDock.spec.ts
 import { describe, it, expect, vi } from 'vitest';
-import { ref, nextTick, defineComponent } from 'vue';
+import { ref, nextTick, defineComponent, type Ref } from 'vue';
 import { mount } from '@vue/test-utils';
 import { useGraphValidationDock } from '../useGraphValidationDock';
 import type { ValidationIssue } from '../types';
@@ -17,7 +17,7 @@ function makeIssue(partial: Partial<ValidationIssue>): ValidationIssue {
   };
 }
 
-function mountDock(issues: ReturnType<typeof ref<ValidationIssue[]>>, onRevalidate?: () => Promise<void> | void) {
+function mountDock(issues: Ref<ValidationIssue[]>, onRevalidate?: () => Promise<void> | void) {
   const Comp = defineComponent({
     setup() {
       const dock = useGraphValidationDock(issues, { onRevalidate });

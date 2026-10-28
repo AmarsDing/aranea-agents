@@ -1,20 +1,21 @@
 // web/src/features/graph/editor/__tests__/graphLayout.spec.ts
 import { describe, it, expect, beforeEach } from 'vitest';
 import { applyAutoLayout, readGraphLayout, writeGraphNodePosition } from '../graphLayout';
-import type { GraphDefinition, NodeDef } from '../../types';
+import type { GraphDefinition } from '../../types';
+import { graphDefinitionFixture, graphNodeFixture } from '../../__tests__/graphFixtures';
 
 describe('graphLayout - R2-2 Position Rendering Priority', () => {
   let graphDef: GraphDefinition;
 
   beforeEach(() => {
-    graphDef = {
+    graphDef = graphDefinitionFixture({
       id: 'test-graph',
       name: 'Test Graph',
       version: 1,
       nodes: [
-        { id: 'node1', type: 'function', description: 'Node 1' } as NodeDef,
-        { id: 'node2', type: 'function', description: 'Node 2' } as NodeDef,
-        { id: 'node3', type: 'function', description: 'Node 3' } as NodeDef,
+        graphNodeFixture({ id: 'node1', type: 'function', description: 'Node 1' }),
+        graphNodeFixture({ id: 'node2', type: 'function', description: 'Node 2' }),
+        graphNodeFixture({ id: 'node3', type: 'function', description: 'Node 3' }),
       ],
       edges: [
         { from: 'node1', to: 'node2', kind: '' },
@@ -26,7 +27,7 @@ describe('graphLayout - R2-2 Position Rendering Priority', () => {
       stateFields: [],
       description: '',
       metadata: {},
-    };
+    });
   });
 
   it('writes layout positions to graph metadata', () => {

@@ -1,72 +1,73 @@
-// 夜间 CSS 变量（Quasar Dark → body.body--dark）；与 UX.md §2.2 / §5.2a 对齐
-// stylelint-disable color-no-hex -- 主题变量定义文件，必须使用 hex 值
+// M95: dark tokens. Source: docs/development/95-frontend-ui-system.design.md
+// Legacy variable names remain aliases for existing components. No duplicate declarations.
+// stylelint-disable color-no-hex -- theme definitions
 body.body--dark
-  --q-primary: #4DD8E8
-  --q-secondary: #94A3B8
-  --q-accent: var(--color-accent)
-  --color-primary: var(--q-primary)
-  --canvas-base: #0A1018
-  --glass-surface: rgba(18, 26, 40, 0.68)
-  --glass-surface-hover: rgba(22, 32, 48, 0.78)
-  --glass-border: rgba(120, 160, 220, 0.12)
-  --glass-border-hover: rgba(77, 216, 232, 0.22)
-  --glass-blur-default: 18px
-  --glass-blur-hover: 20px
-  // 小值档模糊：局部遮罩/菜单/角标等小面积玻璃，勿用 default 系大面积档
+  --q-primary: var(--color-accent)
+  --q-secondary: var(--color-text-secondary)
+  --q-accent: var(--color-violet)
+  --color-primary: var(--color-accent)
+  --canvas-base: #101522
+  --glass-surface: rgba(30, 38, 58, 0.86)
+  --glass-surface-hover: rgba(37, 47, 70, 0.96)
+  --glass-border: rgba(153, 176, 222, 0.20)
+  --glass-border-hover: color-mix(in srgb, var(--color-accent) 42%, var(--glass-border))
+  --glass-blur-default: 12px
+  --glass-blur-hover: 12px
   --glass-blur-faint: 2px
   --glass-blur-subtle: 8px
-  --glass-blur-soft: 12px
-  --glass-blur-medium: 16px
+  --glass-blur-soft: 8px
+  --glass-blur-medium: 12px
   --glass-blur-heavy: 28px
-  --glass-elevated: rgba(22, 28, 40, 0.78)
-  // 细微微妙抬升底色（统计面板/快捷操作底色，非玻璃卡）
-  --color-background-elevated: rgba(255, 255, 255, 0.05)
+  --glass-elevated: var(--surface-raised)
+  --color-background-elevated: var(--surface-muted)
   --color-shadow: #000
-  --glass-blur-elevated: 24px
-  --glass-inner-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.06)
-  --color-accent: #4DD8E8
-  --color-accent-hover: #7AE5F0
-  // Tech Night 排版阶梯（冷蓝灰，替代大面积纯白）
-  --tech-text-primary: #D0DCE8
-  --tech-text-secondary: #94A5BE
-  --tech-text-tertiary: #6A7D9A
-  --tech-text-heading: #E0ECFF
-  --tech-text-muted: #7A8EAA
-  --tech-text-active: #4DD8E8
-  --tech-text-hover: #B8F0FF
-  --tech-text-bright: #ECF4FF
-  // 侧栏 / 列表「未选中」— Quiet Rail（透明底，悬停才提亮，无逐条边框）
-  --sidebar-idle-section: #687A9E
-  --sidebar-idle-text: #9EB2CC
-  --sidebar-idle-icon: #788CA8
+  --glass-blur-elevated: 20px
+  --glass-inner-highlight: inset 0 1px 0 rgba(219, 233, 255, 0.07)
+  --color-accent: #59DDF2
+  --color-on-accent: #101522
+  --color-accent-text: var(--color-accent)
+  --color-accent-soft: color-mix(in srgb, var(--color-accent) 12%, transparent)
+  --chat-file-tile-bg: var(--surface-muted)
+  --color-accent-hover: #9AEDFA
+  --tech-text-primary: var(--color-text-primary)
+  --tech-text-secondary: var(--color-text-secondary)
+  --tech-text-tertiary: var(--color-text-tertiary)
+  --tech-text-heading: var(--color-text-heading)
+  --tech-text-muted: var(--color-text-tertiary)
+  --tech-text-active: var(--color-accent)
+  --tech-text-hover: var(--color-accent-hover)
+  --tech-text-bright: var(--color-text-primary)
+  --sidebar-idle-section: var(--color-text-tertiary)
+  --sidebar-idle-text: var(--color-text-secondary)
+  --sidebar-idle-icon: var(--color-icon-muted)
   --sidebar-idle-icon-opacity: 0.88
-  --chat-idle-text: #9EB2CC
-  --chat-idle-label: #687A9E
-  --chat-idle-meta: #7288A4
-  --chat-idle-surface: rgba(22, 32, 48, 0.38)
-  --chat-idle-surface-hover: rgba(28, 40, 58, 0.52)
-  --chat-idle-border: rgba(120, 160, 220, 0.1)
-  --chat-idle-border-hover: rgba(77, 216, 232, 0.16)
-  --color-text-primary: var(--tech-text-primary)
-  --color-text-secondary: var(--tech-text-secondary)
-  --color-text-icon-muted: var(--tech-text-muted)
-  --color-icon-muted: var(--tech-text-muted)
-  --focus-ring-light: 2px solid rgba(77, 216, 232, 0.4)
-  --interaction-surface-hover: rgba(77, 216, 232, 0.08)
-  --color-neon-cyan: #4DD8E8
-  --color-neon-violet: #A855F7
-  --color-success: #3FE0A0
-  --color-warning: #FFAF4D
-  --color-danger: #FF5E7A
-  --nav-bg-dark: rgba(9, 13, 20, 0.55)
-  --nav-blur: 22px
-  --nav-divider-dark: rgba(255, 255, 255, 0.06)
+  --chat-idle-text: var(--color-text-secondary)
+  --chat-idle-label: var(--color-text-tertiary)
+  --chat-idle-meta: var(--color-text-tertiary)
+  --chat-idle-surface: var(--surface-muted)
+  --chat-idle-surface-hover: var(--interaction-surface-hover)
+  --chat-idle-border: var(--glass-border)
+  --chat-idle-border-hover: var(--glass-border-hover)
+  --color-text-primary: #EDF2FF
+  --color-text-secondary: #AAB8D3
+  --color-text-icon-muted: var(--color-icon-muted)
+  --color-icon-muted: #91A0BD
+  --focus-ring-light: var(--focus-ring)
+  --interaction-surface-hover: color-mix(in srgb, var(--color-accent) 7%, var(--surface-base))
+  --color-neon-cyan: var(--color-accent)
+  --color-neon-violet: var(--color-violet)
+  --color-success: #55DEB2
+  --color-warning: #FFC079
+  --color-danger: #FF899F
+  --nav-bg-dark: var(--glass-surface)
+  --nav-blur: 16px
+  --nav-divider-dark: var(--glass-border)
   --text-xs: 12px
   --text-sm: 13px
   --text-base: 14px
   --text-md: 16px
   --text-lg: 20px
-  --text-xl: 25px
+  --text-xl: 28px
   --space-1: 4px
   --space-2: 8px
   --space-3: 12px
@@ -76,77 +77,74 @@ body.body--dark
   --space-8: 32px
   --space-12: 48px
   --space-16: 64px
-  --layout-max-width: 1440px
+  --layout-max-width: 1600px
   --sidebar-width: 256px
   --sidebar-mini-width: 80px
   --sidebar-inset-x: 12px
   --sidebar-inset-y: 12px
-  --sidebar-radius: 20px
-  --sidebar-bg: rgba(10, 16, 28, 0.58)
-  --sidebar-blur: 20px
+  --sidebar-radius: var(--radius-card)
+  --sidebar-bg: var(--glass-surface)
+  --sidebar-blur: 12px
   --sidebar-saturate: 1.2
-  --sidebar-border: rgba(77, 216, 232, 0.14)
-  --sidebar-shadow: var(--glass-inner-highlight), 0 16px 48px rgba(0, 0, 0, 0.32)
-  --sidebar-overlay: linear-gradient(180deg, rgba(77, 216, 232, 0.06) 0%, transparent 46%)
+  --sidebar-border: var(--glass-border)
+  --sidebar-shadow: var(--glass-inner-highlight)
+  --sidebar-overlay: var(--gradient-card)
   --sidebar-padding-x: 10px
   --sidebar-padding-y: 8px
   --sidebar-mini-padding-x: 8px
   --sidebar-item-indent: 16px
   --sidebar-section-padding: 18px 10px 10px
-  --sidebar-section-color: var(--sidebar-idle-section)
+  --sidebar-section-color: var(--color-text-tertiary)
   --sidebar-item-padding-x: 12px
   --sidebar-item-padding-y: 10px
   --sidebar-item-gap: 4px
   --sidebar-item-radius: 12px
-  --sidebar-item-min-height: 50px
-  --sidebar-item-font-size: 17px
-  --sidebar-section-font-size: 15px
-  --sidebar-item-color: var(--sidebar-idle-text)
-  --sidebar-item-hover-bg: rgba(77, 216, 232, 0.07)
-  --sidebar-item-hover-color: var(--tech-text-primary)
-  --sidebar-item-active-bg: rgba(77, 216, 232, 0.12)
-  --sidebar-item-active-color: var(--tech-text-active)
-  --sidebar-item-active-shadow: inset 3px 0 0 var(--color-accent), 0 0 20px rgba(77, 216, 232, 0.12)
-  --sidebar-icon-size: 24px
-  --sidebar-icon-gap: 16px
-  --sidebar-icon-color: var(--sidebar-idle-icon)
-  --sidebar-icon-hover-color: var(--tech-text-hover)
+  --sidebar-item-min-height: 44px
+  --sidebar-item-font-size: 14px
+  --sidebar-section-font-size: 12px
+  --sidebar-item-color: var(--color-text-secondary)
+  --sidebar-item-hover-bg: var(--interaction-surface-hover)
+  --sidebar-item-hover-color: var(--color-text-primary)
+  --sidebar-item-active-bg: var(--color-accent-soft)
+  --sidebar-item-active-color: var(--color-accent)
+  --sidebar-item-active-shadow: inset 3px 0 0 var(--color-accent)
+  --sidebar-icon-size: 20px
+  --sidebar-icon-gap: 12px
+  --sidebar-icon-color: var(--color-icon-muted)
+  --sidebar-icon-hover-color: var(--color-accent)
   --sidebar-icon-opacity: var(--sidebar-idle-icon-opacity)
   --sidebar-icon-active-color: var(--color-accent)
-  --color-code-block-bg: rgba(18, 24, 34, 0.45)
-  --color-json-key: #d2a8ff
-  --color-json-string: #7ee787
-  --color-json-number: #79c0ff
+  --color-code-block-bg: var(--surface-muted)
+  --color-json-key: #C4ACFF
+  --color-json-string: #82E3BC
+  --color-json-number: #9BBFFF
   --color-json-boolean: #ff7b72
   --color-json-null: #8b949e
-  --shadow-login: 0 22px 50px rgba(0, 0, 0, 0.35)
-  --color-on-accent: #FFFFFF
-  --color-surface-solid: #0F172A
-  --color-surface-soft: #1E293B
-  --color-surface-elevated: #111827
-  --color-border-soft: rgba(148, 163, 184, 0.16)
-  --color-warm-muted-surface: rgba(148, 163, 184, 0.1)
-  --color-link: #93C5FD
-  --color-info: #60A5FA
-  --color-info-soft: rgba(37, 99, 235, 0.18)
-  --color-success-soft: rgba(34, 197, 94, 0.18)
-  --color-danger-soft: rgba(248, 113, 113, 0.18)
-  --color-danger-surface: rgba(248, 113, 113, 0.15)
-  --color-warning-soft: rgba(245, 158, 11, 0.18)
-  --color-text-dark: #E2E8F0
-  --color-text-tertiary: var(--tech-text-tertiary)
-  --color-text-heading: var(--tech-text-heading)
-  --color-accent-blue: #3B82F6
-  --color-accent-blue-soft: rgba(59, 130, 246, 0.16)
-  --color-accent-green: #86EFAC
-  --color-accent-green-soft: rgba(34, 197, 94, 0.18)
-  --gradient-page: linear-gradient(160deg, #0A1018 0%, #121A28 48%, #141E30 100%)
-  --gradient-page-accent: linear-gradient(180deg, rgba(18, 28, 44, 0.96), rgba(14, 22, 36, 0.9))
-  --chat-page-bg: radial-gradient(ellipse 80% 50% at 12% 0%, rgba(77, 216, 232, 0.06), transparent 55%), linear-gradient(165deg, #0A1018 0%, #101828 42%, #141E30 100%)
-  --chat-text-primary: var(--tech-text-primary)
-  --chat-text-secondary: var(--chat-idle-text)
-
-  // Agent tree palette — brighter variants for dark mode
+  --shadow-login: var(--shadow-floating)
+  --color-surface-solid: var(--surface-base)
+  --color-surface-soft: var(--surface-muted)
+  --color-surface-elevated: var(--surface-raised)
+  --color-border-soft: var(--glass-border)
+  --color-warm-muted-surface: var(--surface-muted)
+  --color-link: var(--color-accent)
+  --color-info: var(--color-blue)
+  --color-info-soft: color-mix(in srgb, var(--color-info) 12%, transparent)
+  --color-success-soft: color-mix(in srgb, var(--color-success) 12%, transparent)
+  --color-danger-soft: color-mix(in srgb, var(--color-danger) 12%, transparent)
+  --color-danger-surface: var(--color-danger-soft)
+  --color-warning-soft: color-mix(in srgb, var(--color-warning) 12%, transparent)
+  --color-text-dark: var(--color-text-primary)
+  --color-text-tertiary: #91A0BD
+  --color-text-heading: var(--color-text-primary)
+  --color-accent-blue: var(--color-blue)
+  --color-accent-blue-soft: color-mix(in srgb, var(--color-blue) 12%, transparent)
+  --color-accent-green: var(--color-success)
+  --color-accent-green-soft: color-mix(in srgb, var(--color-success) 12%, transparent)
+  --gradient-page: radial-gradient(ellipse at 0% 6%, rgba(22, 128, 191, 0.12), transparent 43%), radial-gradient(ellipse at 95% 0%, rgba(131, 71, 198, 0.10), transparent 38%), linear-gradient(150deg, #101522, #151B2D)
+  --gradient-page-accent: var(--gradient-card)
+  --chat-page-bg: var(--gradient-page)
+  --chat-text-primary: var(--color-text-primary)
+  --chat-text-secondary: var(--color-text-secondary)
   --agent-palette-0: #8B7CF7   // purple
   --agent-palette-1: #FFAF4D   // gold
   --agent-palette-2: #3FE0A0   // green
@@ -156,48 +154,48 @@ body.body--dark
   --agent-palette-6: #A78BFA   // violet
   --agent-palette-7: #F472B6   // rose
   --agent-palette-8: #34D399   // emerald
-  --chat-text-heading: var(--tech-text-heading)
-  --chat-text-muted: var(--chat-idle-meta)
-  --chat-text-label: var(--chat-idle-label)
-  --chat-text-active: var(--tech-text-active)
-  --chat-canvas-dark: linear-gradient(180deg, rgba(14, 22, 36, 0.82) 0%, rgba(16, 26, 42, 0.94) 100%)
-  --chat-canvas-fade-to: rgba(15, 23, 42, 0.92)
-  --color-page-tint: #0F172A
-  --color-page-tint-alt: #111827
-  --color-page-tint-blue: #0F172A
-  --color-page-tint-cool: #1E293B
-  --color-page-tint-warm: #1A1F2E
-  --color-status-info-bg: rgba(37, 99, 235, 0.18)
-  --color-status-success-bg: rgba(34, 197, 94, 0.18)
-  --color-status-warning-bg: rgba(245, 158, 11, 0.18)
-  --color-status-danger-bg: rgba(248, 113, 113, 0.18)
-  --color-status-warning-text: #FBBF24
-  --color-status-warning-text-dark: #FCD34D
-  --color-status-info-text: #93C5FD
-  --color-status-info-text-light: #BFDBFE
-  --color-status-warning-bg-alt: rgba(245, 158, 11, 0.15)
-  --color-status-warning-bg-warm: rgba(245, 158, 11, 0.12)
-  --color-status-info-bg-alt: rgba(37, 99, 235, 0.15)
-  --color-status-blue-bg: rgba(37, 99, 235, 0.12)
-  --color-text-slate-700: #CBD5E1
-  --color-text-slate-600: #94A3B8
-  --color-text-slate-500: #64748B
-  --color-text-slate-400: #475569
-  --color-text-slate-300: #334155
-  --color-text-gray-700: #CBD5E1
-  --color-text-gray-600: #9CA3AF
-  --color-text-gray-500: #6B7280
-  --color-text-gray-400: #4B5563
-  --color-text-gray-300: #374151
-  --color-text-gray-800: #F1F5F9
+  --chat-text-heading: var(--color-text-heading)
+  --chat-text-muted: var(--color-text-tertiary)
+  --chat-text-label: var(--color-text-tertiary)
+  --chat-text-active: var(--color-accent)
+  --chat-canvas-dark: transparent
+  --chat-canvas-fade-to: var(--canvas-base)
+  --color-page-tint: var(--canvas-base)
+  --color-page-tint-alt: var(--surface-muted)
+  --color-page-tint-blue: var(--surface-muted)
+  --color-page-tint-cool: var(--surface-muted)
+  --color-page-tint-warm: var(--surface-muted)
+  --color-status-info-bg: var(--color-info-soft)
+  --color-status-success-bg: var(--color-success-soft)
+  --color-status-warning-bg: var(--color-warning-soft)
+  --color-status-danger-bg: var(--color-danger-soft)
+  --color-status-warning-text: var(--color-warning)
+  --color-status-warning-text-dark: var(--color-warning)
+  --color-status-info-text: var(--color-info)
+  --color-status-info-text-light: var(--color-info)
+  --color-status-warning-bg-alt: var(--color-warning-soft)
+  --color-status-warning-bg-warm: var(--color-warning-soft)
+  --color-status-info-bg-alt: var(--color-info-soft)
+  --color-status-blue-bg: var(--color-info-soft)
+  --color-text-slate-700: var(--color-text-primary)
+  --color-text-slate-600: var(--color-text-secondary)
+  --color-text-slate-500: var(--color-text-secondary)
+  --color-text-slate-400: var(--color-text-tertiary)
+  --color-text-slate-300: var(--color-text-tertiary)
+  --color-text-gray-700: var(--color-text-primary)
+  --color-text-gray-600: var(--color-text-secondary)
+  --color-text-gray-500: var(--color-text-secondary)
+  --color-text-gray-400: var(--color-text-tertiary)
+  --color-text-gray-300: var(--color-text-tertiary)
+  --color-text-gray-800: var(--color-text-primary)
   --color-text-gray-600-alt: #94A3B8
-  --color-accent-indigo: #818CF8
-  --color-accent-indigo-light: #A5B4FC
+  --color-accent-indigo: var(--color-violet)
+  --color-accent-indigo-light: var(--color-violet)
   --color-accent-indigo-lighter: #C7D2FE
   --color-accent-indigo-dark: #6366F1
   --color-accent-indigo-darker: #4F46E5
-  --color-accent-cyan: #22D3EE
-  --color-accent-cyan-soft: rgba(34, 211, 238, 0.35)
+  --color-accent-cyan: var(--color-accent)
+  --color-accent-cyan-soft: color-mix(in srgb, var(--color-accent) 12%, transparent)
   --color-accent-amber: #FBBF24
   --color-accent-amber-light: #FDE68A
   --color-accent-amber-dark: #FCD34D
@@ -207,31 +205,30 @@ body.body--dark
   --color-accent-green-bright: rgba(74, 222, 128, 0.2)
   --color-accent-blue-light: #93C5FD
   --color-accent-blue-bright: rgba(147, 197, 253, 0.2)
-  --color-bubble-accent: #818CF8
-  --color-bubble-accent-dark: #6366F1
-  --color-bubble-gradient: linear-gradient(135deg, #4338CA 0%, #6366F1 50%, #818CF8 100%)
-  --color-bubble-gradient-dark: linear-gradient(135deg, #3730A3 0%, #4338CA 55%, #4F46E5 100%)
-  --color-quasar-positive: #3FE0A0
-  --color-quasar-negative: #FF5E7A
-  --color-quasar-warning: #FFAF4D
-  --color-quasar-grey: #9CA3AF
-  --color-cream-text: var(--tech-text-primary)
-  --color-cream-text-muted: var(--tech-text-secondary)
-  --color-cream-text-light: var(--tech-text-muted)
-  --color-cream-accent: var(--tech-text-heading)
-  --color-cream-accent-dark: #CBD5E1
-  --color-danger-text: #FCA5A5
-  --color-gradient-blue-soft: linear-gradient(180deg, rgba(37, 99, 235, 0.15), rgba(37, 99, 235, 0.08))
-  --color-gradient-red-soft: linear-gradient(180deg, rgba(248, 113, 113, 0.15), rgba(248, 113, 113, 0.08))
-  --color-gradient-warm: linear-gradient(135deg, rgba(245, 158, 11, 0.12), rgba(37, 99, 235, 0.08))
-  --color-gradient-warm-alt: linear-gradient(180deg, rgba(245, 158, 11, 0.12), rgba(37, 99, 235, 0.08))
-  --color-interaction-surface-alt: rgba(148, 163, 184, 0.1)
-  --gradient-entity-page-dark: radial-gradient(circle at 86% 0%, rgba(59, 130, 246, 0.16), transparent 30%), linear-gradient(160deg, var(--canvas-base) 0%, var(--color-surface-elevated) 48%, var(--color-surface-solid) 100%)
+  --color-bubble-accent: var(--color-accent)
+  --color-bubble-accent-dark: var(--color-accent-hover)
+  --color-bubble-gradient: var(--button-primary-bg)
+  --color-bubble-gradient-dark: var(--button-primary-bg)
+  --color-quasar-positive: var(--color-success)
+  --color-quasar-negative: var(--color-danger)
+  --color-quasar-warning: var(--color-warning)
+  --color-quasar-grey: var(--color-text-secondary)
+  --color-cream-text: var(--color-text-primary)
+  --color-cream-text-muted: var(--color-text-secondary)
+  --color-cream-text-light: var(--color-text-secondary)
+  --color-cream-accent: var(--color-accent)
+  --color-cream-accent-dark: var(--color-text-primary)
+  --color-danger-text: var(--color-danger)
+  --color-gradient-blue-soft: var(--gradient-card)
+  --color-gradient-red-soft: linear-gradient(160deg, var(--color-danger-soft), var(--surface-base))
+  --color-gradient-warm: var(--gradient-card)
+  --color-gradient-warm-alt: var(--gradient-card)
+  --color-interaction-surface-alt: var(--surface-muted)
+  --gradient-entity-page-dark: var(--gradient-page)
   --gradient-entity-page-dark-warm: radial-gradient(circle at 86% 0%, rgba(59, 130, 246, 0.16), transparent 30%), radial-gradient(circle at 10% 16%, rgba(245, 158, 11, 0.1), transparent 24%), linear-gradient(160deg, var(--canvas-base) 0%, var(--color-surface-elevated) 48%, var(--color-surface-solid) 100%)
-  --chat-text-muted: color-mix(in srgb, var(--tech-text-muted) 88%, transparent)
-  --chat-pending-item-bg: rgba(15, 23, 42, 0.35)
-  --chat-header-bg-top: var(--chat-header-bg-top-dark)
-  --chat-header-bg-bottom: var(--chat-header-bg-bottom-dark)
+  --chat-pending-item-bg: var(--surface-muted)
+  --chat-header-bg-top: var(--glass-surface)
+  --chat-header-bg-bottom: var(--glass-surface)
   --chat-header-bg-bottom-dark-alt: rgba(15, 23, 42, 0.32)
   --chat-side-toggle-width: 32px
   --chat-side-left-width: 280px
@@ -248,80 +245,154 @@ body.body--dark
   --chart-color-knowledge-cue: #2DD4BF
   --chart-color-other-dynamic: #64748B
   --chat-danger-faint-bg: rgba(239, 68, 68, 0.10)
-  --chat-status-danger-bg: rgba(255, 94, 122, 0.08)
-  --chat-status-warning-bg: rgba(255, 175, 77, 0.1)
+  --chat-status-danger-bg: var(--color-danger-soft)
+  --chat-status-warning-bg: var(--color-warning-soft)
   --chat-status-warning-border: rgba(255, 175, 77, 0.3)
-  --chat-status-success-bg: rgba(63, 224, 160, 0.1)
-  --chat-status-accent-bg: rgba(77, 216, 232, 0.1)
-  --chat-accent-bg-strong: rgba(0, 229, 255, 0.12)
-  --chat-accent-border-strong: rgba(0, 229, 255, 0.3)
+  --chat-status-success-bg: var(--color-success-soft)
+  --chat-status-accent-bg: var(--color-accent-soft)
+  --chat-accent-bg-strong: var(--color-accent-soft)
+  --chat-accent-border-strong: var(--color-accent-border)
   --chat-indigo-shadow: rgba(129, 140, 248, 0.25)
   --chat-info-soft-bg: rgba(56, 189, 248, 0.12)
   --chat-surface-muted-92: rgba(30, 41, 59, 0.92)
   --chat-avatar-ring: rgba(30, 41, 59, 0.95)
   --chat-avatar-shadow: rgba(0, 0, 0, 0.5)
-  --chat-table-border: rgba(148, 163, 184, 0.2)
+  --chat-table-border: var(--glass-border)
   --chat-scroll-shadow: rgba(0, 0, 0, 0.32)
-  --chat-text-slate-95: rgba(148, 163, 184, 0.95)
-  --chat-text-slate-92: rgba(148, 163, 184, 0.92)
-  --chat-border-slate-28: rgba(148, 163, 184, 0.28)
-  --chat-text-copy-btn: rgba(226, 232, 240, 0.82)
+  --chat-text-slate-95: var(--color-text-secondary)
+  --chat-text-slate-92: var(--color-text-secondary)
+  --chat-border-slate-28: var(--glass-border)
+  --chat-text-copy-btn: var(--color-text-secondary)
   --color-diff-removed: #f87171
   --color-diff-removed-bg: rgba(248, 113, 113, 0.12)
   --color-diff-added: #4ade80
   --color-diff-added-bg: rgba(74, 222, 128, 0.12)
-  --table-scrollbar-thumb: rgba(148, 163, 184, 0.16)
-  --table-scrollbar-thumb-hover: rgba(148, 163, 184, 0.32)
-  // ── 全局滚动条（夜间）──
-  --app-scrollbar-thumb: rgba(148, 163, 184, 0.22)
-  --app-scrollbar-thumb-hover: rgba(148, 163, 184, 0.42)
-  --toggle-track-off: rgba(148, 163, 184, 0.18)
-  --toggle-track-on: color-mix(in srgb, var(--color-accent) 68%, var(--glass-surface))
+  --table-scrollbar-thumb: var(--app-scrollbar-thumb)
+  --table-scrollbar-thumb-hover: var(--app-scrollbar-thumb-hover)
+  --app-scrollbar-thumb: color-mix(in srgb, var(--color-text-secondary) 28%, transparent)
+  --app-scrollbar-thumb-hover: color-mix(in srgb, var(--color-text-secondary) 50%, transparent)
+  --toggle-track-off: color-mix(in srgb, var(--color-text-secondary) 32%, var(--surface-base))
+  --toggle-track-on: var(--color-accent)
   --toggle-thumb-on: var(--color-accent)
   --toggle-label-color: var(--color-text-primary)
-  // ── Overview / Monitor 中性色 token（暗色） ──
-  --overview-neutral-bg: rgba(255, 255, 255, 0.025)
-  --overview-neutral-bg-alt: rgba(255, 255, 255, 0.03)
-  --overview-neutral-border: rgba(255, 255, 255, 0.05)
-  --overview-neutral-border-alt: rgba(255, 255, 255, 0.06)
-  --overview-neutral-border-hover: rgba(255, 255, 255, 0.10)
-  --overview-neutral-border-hover-alt: rgba(255, 255, 255, 0.12)
-  --overview-neutral-bg-icon: rgba(255, 255, 255, 0.06)
-  --overview-neutral-bg-bar: rgba(255, 255, 255, 0.06)
-  --overview-neutral-border-chip: rgba(255, 255, 255, 0.06)
-  --overview-neutral-border-table: rgba(255, 255, 255, 0.03)
+  --overview-neutral-bg: var(--surface-muted)
+  --overview-neutral-bg-alt: var(--surface-muted)
+  --overview-neutral-border: var(--glass-border)
+  --overview-neutral-border-alt: var(--glass-border)
+  --overview-neutral-border-hover: var(--glass-border-hover)
+  --overview-neutral-border-hover-alt: var(--glass-border-hover)
+  --overview-neutral-bg-icon: var(--surface-muted)
+  --overview-neutral-bg-bar: var(--surface-muted)
+  --overview-neutral-border-chip: var(--glass-border)
+  --overview-neutral-border-table: var(--glass-border)
   --overview-danger-border: rgba(255, 94, 122, 0.45)
   --overview-warning-border: rgba(255, 175, 77, 0.55)
   --overview-warn-icon-bg: rgba(240, 155, 84, 0.12)
   --overview-danger-icon-bg: rgba(229, 92, 92, 0.10)
-  --overview-field-bg: rgba(30, 41, 59, 0.40)
-  --overview-shadow-clickable: 0 4px 12px rgba(0, 0, 0, 0.3)
+  --overview-field-bg: var(--surface-muted)
+  --overview-shadow-clickable: var(--shadow-panel)
   --overview-accent-glow: rgba(77, 216, 232, 0.13)
   --overview-accent-glow-soft: rgba(77, 216, 232, 0.06)
   --overview-accent-focus-ring: 0 0 0 2px rgba(77, 216, 232, 0.15)
   --overview-accent-icon-bg: rgba(77, 216, 232, 0.14)
-  // ── Agent avatar palette (dark-optimized) ──
   --avatar-color-1: #4DD8E8
   --avatar-color-2: #A78BFA
   --avatar-color-3: #FCD34D
   --avatar-color-4: #6EE7B7
   --avatar-color-5: #FB7185
   --avatar-color-6: #C084FC
-  // ── Knowledge Vault 科幻图标色板（霓虹变体）──
   --kv-cyan: #4DD8E8
   --kv-violet: #A855F7
   --kv-teal: #2DD4BF
   --kv-magenta: #E879F9
   --kv-orange: #FFAF4D
   --kv-red: var(--color-danger)
-  // ── 液态玻璃卡片（Liquid Glass Card）光学 token；供 _liquid-card.sass 使用 ──
-  // 黑光玻璃：不用白色光，顶/底缘与扫掠均为深黑蓝调（smoked 纵深）；主题青仅余极淡光斑与 hover 细描边
-  --liquid-saturate: 115%
-  --liquid-rim-hi: rgba(16, 30, 44, 0.50)
-  --liquid-rim-mid: rgba(0, 0, 0, 0.06)
-  --liquid-rim-lo: rgba(2, 7, 12, 0.55)
-  --liquid-sheen-static: rgba(0, 0, 0, 0.05)
-  --liquid-sheen-band: rgba(10, 20, 30, 0.14)
-  --liquid-sheen-peak: rgba(0, 0, 0, 0.22)
-  --liquid-spot: rgba(77, 216, 232, 0.04)
-  --liquid-accent-edge: rgba(77, 216, 232, 0.12)
+  --liquid-saturate: 100%
+  --liquid-rim-hi: var(--glass-border)
+  --liquid-rim-mid: transparent
+  --liquid-rim-lo: var(--glass-border)
+  --liquid-sheen-static: transparent
+  --liquid-sheen-band: transparent
+  --liquid-sheen-peak: transparent
+  --liquid-spot: var(--color-accent-soft)
+  --liquid-accent-edge: var(--color-accent-border)
+  --font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif
+  --font-display: var(--font-body)
+  --radius-control: 12px
+  --radius-card: 20px
+  --radius-hero: 28px
+  --radius-pill: 999px
+  --control-height: 40px
+  --control-height-dense: 36px
+  --control-height-touch: 44px
+  --table-row-height: 52px
+  --table-row-height-dense: 44px
+  --duration-fast: 160ms
+  --duration-normal: 220ms
+  --page-gutter: clamp(16px, 2.2vw, 32px)
+  --space-10: 40px
+  --text-display: clamp(28px, 3.2vw, 40px)
+  --q-positive: var(--color-success)
+  --q-negative: var(--color-danger)
+  --q-warning: var(--color-warning)
+  --q-info: var(--color-info)
+  --q-dark: var(--surface-base)
+  --q-dark-page: var(--canvas-base)
+  --color-accent-border: color-mix(in srgb, var(--color-accent) 38%, var(--glass-border))
+  --color-accent-hover-bg: var(--color-accent-soft)
+  --shadow-accent-focus: 0 0 0 3px var(--color-accent-soft)
+  --focus-ring: 2px solid var(--color-accent)
+  --shadow-warm: var(--shadow-panel)
+  --shadow-entity-panel: var(--shadow-panel)
+  --shadow-entity-panel-dark: var(--shadow-panel)
+  --gradient-entity-page-light: var(--gradient-page)
+  --gradient-entity-page-light-warm: var(--gradient-page)
+  --gradient-entity-panel-header-dark: var(--gradient-card)
+  --gradient-flow-border: linear-gradient(120deg, var(--color-accent), var(--color-violet), var(--color-accent))
+  --nav-bg-light: var(--glass-surface)
+  --chat-canvas-light: transparent
+  --chat-header-bg-bottom-dark: var(--glass-surface)
+  --chat-canvas-tint-top: var(--color-accent-soft)
+  --chat-text-muted-strong: var(--color-text-secondary)
+  --chat-bubble-cream: var(--surface-base)
+  --chat-bubble-cream-sent: var(--color-accent-soft)
+  --chat-bubble-cream-border: var(--glass-border)
+  --chat-bubble-cream-sent-border: var(--color-accent-border)
+  --chat-bubble-cream-hover: var(--glass-surface-hover)
+  --chat-bubble-cream-sent-hover: var(--interaction-surface-hover)
+  --chat-bubble-cream-text: var(--color-text-primary)
+  --chat-bubble-cream-text-muted: var(--color-text-secondary)
+  --chat-bubble-cream-failed-text: var(--color-danger)
+  --chat-bubble-radius: var(--radius-card)
+  --chat-shadow-sm: var(--shadow-panel)
+  --chat-shadow-md: var(--shadow-panel)
+  --chat-shadow-dark: var(--shadow-panel)
+  --chat-shadow-sent: none
+  --chat-accent-soft: var(--color-accent-soft)
+  --chat-accent-border: var(--color-accent-border)
+  --chat-border-muted: var(--glass-border)
+  --chat-border-subtle: var(--glass-border)
+  --chat-scrollbar-thumb: var(--app-scrollbar-thumb)
+  --chat-scrollbar-thumb-dark: var(--app-scrollbar-thumb)
+  --chat-scrollbar-thumb-hover: var(--app-scrollbar-thumb-hover)
+  --chat-scrollbar-thumb-hover-dark: var(--app-scrollbar-thumb-hover)
+  --overlay-backdrop: rgba(5, 9, 20, 0.62)
+  --color-text-slate-800: var(--color-text-primary)
+  --color-status-success-text: var(--color-success)
+  --color-status-danger-text: var(--color-danger)
+  --color-accent-indigo-soft: color-mix(in srgb, var(--color-violet) 12%, transparent)
+  --color-accent-indigo-light-soft: color-mix(in srgb, var(--color-violet) 12%, transparent)
+  --surface-base: #191F31
+  --surface-raised: #242B40
+  --surface-muted: #151B2B
+  --color-violet: #B49AFF
+  --color-blue: #8CB5FF
+  --color-pink: #F99BD3
+  --button-primary-bg: linear-gradient(115deg, #315DD1, #8045D4)
+  --button-primary-hover: linear-gradient(115deg, #3868DE, #8A4EDD)
+  --button-primary-text: #FFFFFF
+  --gradient-card: radial-gradient(ellipse at 0% 0%, rgba(80, 173, 224, 0.09), transparent 62%), linear-gradient(150deg, rgba(34, 44, 65, 0.92), rgba(26, 32, 51, 0.9))
+  --shadow-panel: 0 5px 20px rgba(3, 7, 18, 0.12)
+  --shadow-floating: 0 24px 72px rgba(3, 7, 18, 0.48)
+  --shadow-glow: 0 0 30px rgba(58, 202, 236, 0.12)
+  --hud-render-bg: #050810

@@ -31,7 +31,7 @@ const { mediaSrc } = useMediaUrl();
 
 <style scoped lang="sass">
 .media-lightbox
-  background: rgba(0, 0, 0, 0.9)
+  background: color-mix(in srgb, var(--color-shadow) 90%, transparent)
 
 .media-lightbox__content
   display: flex

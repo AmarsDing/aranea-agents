@@ -2,9 +2,9 @@
 
 export type OvTone = 'ok' | 'warn' | 'danger' | 'info' | 'neutral';
 
-export type OvVerdict = 'ok' | 'warning' | 'critical';
+export type OvVerdict = 'ok' | 'warning' | 'critical' | 'unknown';
 
-export type OvVerdictChip = { key: string; icon: string; label: string; severity: 'critical' | 'warning' | 'ok' };
+export type OvVerdictChip = { key: string; icon: string; label: string; severity: OvVerdict };
 
 export type OvRedTile = {
   id: string;

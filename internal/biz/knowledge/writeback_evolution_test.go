@@ -30,6 +30,24 @@ func (s *stubFactVersionRepo) InsertFactVersion(_ context.Context, v FactVersion
 	return nil
 }
 
+func (s *stubFactVersionRepo) LatestFactVersion(_ context.Context, docID, factID string) (FactVersion, bool, error) {
+	for i := len(s.items) - 1; i >= 0; i-- {
+		if s.items[i].DocID == docID && s.items[i].FactID == factID {
+			return s.items[i], true, nil
+		}
+	}
+	return FactVersion{}, false, nil
+}
+
+type stubFactEdgeCloser struct {
+	calls []struct{ collectionID, docID, evidence string }
+}
+
+func (s *stubFactEdgeCloser) CloseSemanticEdgesEvidencedBy(_ context.Context, collectionID, docID, evidence string) (int, error) {
+	s.calls = append(s.calls, struct{ collectionID, docID, evidence string }{collectionID, docID, evidence})
+	return 1, nil
+}
+
 type stubProposalRepo struct {
 	items         []GovernanceProposal
 	hasProposal   bool
@@ -852,5 +870,78 @@ func TestWriteBack_ArbiterDeleteStmtPlaceholderDistinctDedupKeys(t *testing.T) {
 		if !strings.HasPrefix(k, "conflict:fact:doc-entry:fid-old:") || strings.HasSuffix(k, ":stmt") {
 			t.Fatalf("dedup key must normalize stmt placeholder to statement hash: %q", k)
 		}
+	}
+}
+
+// D8：DELETE 自动失效成功后，关闭以被删事实段为证据的 semantic 边。
+func TestWriteBack_AutoInvalidateClosesEvidencedEdges(t *testing.T) {
+	f := newWriteBackEntryFixture()
+	seedExistingEntry(f, "entries/灰度发布.md", "灰度发布", "生产环境禁止自动发布。", "fid-old")
+	closer := &stubFactEdgeCloser{}
+	f.u.SetFactEdgeCloser(closer)
+	f.u.SetEvolutionRepos(&stubFactVersionRepo{}, &stubProposalRepo{})
+	f.u.SetWriteBackArbiter(&stubWriteBackArbiter{verdicts: []WriteBackArbitration{
+		{FactIndex: 0, Operation: WriteBackOpDelete, TargetFactID: "fid-old", Confidence: 0.6, Reason: "推断矛盾"},
+	}})
+	if _, err := f.u.WriteBackSessionFacts(context.Background(), WriteBackInput{
+		SessionID: "sess-d8",
+		Facts:     []WriteBackFact{taggedFact("fid-new", "生产环境允许自动发布", "decision", 0.9, "灰度发布")},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if len(closer.calls) != 1 {
+		t.Fatalf("edge close calls = %d, want 1", len(closer.calls))
+	}
+	got := closer.calls[0]
+	if got.collectionID != "team-1" || got.docID != "doc-entry" || !strings.Contains(got.evidence, "禁止自动发布") {
+		t.Fatalf("close args = %+v", got)
+	}
+}
+
+// D8：目标失配不关边。
+func TestWriteBack_DeleteMissDoesNotCloseEdges(t *testing.T) {
+	f := newWriteBackEntryFixture()
+	seedExistingEntry(f, "entries/灰度发布.md", "灰度发布", "生产环境禁止自动发布。", "fid-old")
+	closer := &stubFactEdgeCloser{}
+	f.u.SetFactEdgeCloser(closer)
+	f.u.SetEvolutionRepos(&stubFactVersionRepo{}, &stubProposalRepo{})
+	f.u.SetWriteBackArbiter(&stubWriteBackArbiter{verdicts: []WriteBackArbitration{
+		{FactIndex: 0, Operation: WriteBackOpDelete, TargetFactID: "fid-ghost", Confidence: 0.6, Reason: "失配"},
+	}})
+	if _, err := f.u.WriteBackSessionFacts(context.Background(), WriteBackInput{
+		SessionID: "sess-d8b",
+		Facts:     []WriteBackFact{taggedFact("fid-new", "生产环境允许自动发布", "decision", 0.9, "灰度发布")},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if len(closer.calls) != 0 {
+		t.Fatalf("miss must not close edges: %+v", closer.calls)
+	}
+}
+
+// c1：墓碑版本可把被自动失效的事实段写回正文。
+func TestRestoreTombstonedFact(t *testing.T) {
+	f := newWriteBackEntryFixture()
+	seedExistingEntry(f, "entries/灰度发布.md", "灰度发布", "生产环境禁止自动发布。", "fid-old")
+	versions := &stubFactVersionRepo{}
+	f.u.SetEvolutionRepos(versions, &stubProposalRepo{})
+	f.u.SetWriteBackArbiter(&stubWriteBackArbiter{verdicts: []WriteBackArbitration{
+		{FactIndex: 0, Operation: WriteBackOpDelete, TargetFactID: "fid-old", Confidence: 0.6, Reason: "推断矛盾"},
+	}})
+	if _, err := f.u.WriteBackSessionFacts(context.Background(), WriteBackInput{
+		SessionID: "sess-restore",
+		Facts:     []WriteBackFact{taggedFact("fid-new", "生产环境允许自动发布", "decision", 0.9, "灰度发布")},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.u.RestoreTombstonedFact(context.Background(), "doc-entry", "fid-old"); err != nil {
+		t.Fatal(err)
+	}
+	entry := f.docs["doc-entry"]
+	if !strings.Contains(entry.ContentText, "禁止自动发布") || !strings.Contains(entry.ContentText, "fact_id: `fid-old`") {
+		t.Fatalf("restore must put the tombstoned section back: %q", entry.ContentText)
+	}
+	if len(versions.items) != 2 || versions.items[1].NewBody == "" || !strings.Contains(versions.items[1].NewBody, "禁止自动发布") {
+		t.Fatalf("restore must append a reversal version: %+v", versions.items)
 	}
 }

@@ -80,6 +80,7 @@ function setup(docs: KnowledgeDocument[]) {
       root_path: '/vault',
       sync_state: 'active',
       last_sync_at: '',
+      vault_backend: 'local',
     },
   ]);
   const documents = ref(docs);

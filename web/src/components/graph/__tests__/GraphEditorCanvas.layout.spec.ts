@@ -2,6 +2,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import GraphEditorCanvas from '../GraphEditorCanvas.vue';
+import { graphDefinitionFixture, graphNodeFixture } from '../../../features/graph/__tests__/graphFixtures';
 import { writeGraphNodePosition } from '../../../features/graph/editor/graphLayout';
 
 // Mock VueFlow components
@@ -43,22 +44,23 @@ vi.mock('quasar', () => ({
 }));
 
 describe('GraphEditorCanvas - R2-2 Layout Priority', () => {
-  const createMockGraphDef = () => ({
-    id: 'test-graph',
-    name: 'Test Graph',
-    version: 1,
-    nodes: [
-      { id: 'node1', type: 'function', description: 'Node 1' },
-      { id: 'node2', type: 'function', description: 'Node 2' },
-    ],
-    edges: [{ from: 'node1', to: 'node2', kind: '' }],
-    conditionalEdges: [],
-    entryPoint: 'node1',
-    finishPoint: 'node2',
-    stateFields: [],
-    description: '',
-    metadata: {},
-  });
+  const createMockGraphDef = () =>
+    graphDefinitionFixture({
+      id: 'test-graph',
+      name: 'Test Graph',
+      version: 1,
+      nodes: [
+        graphNodeFixture({ id: 'node1', type: 'function', description: 'Node 1' }),
+        graphNodeFixture({ id: 'node2', type: 'function', description: 'Node 2' }),
+      ],
+      edges: [{ from: 'node1', to: 'node2', kind: '' }],
+      conditionalEdges: [],
+      entryPoint: 'node1',
+      finishPoint: 'node2',
+      stateFields: [],
+      description: '',
+      metadata: {},
+    });
 
   beforeEach(() => {
     vi.clearAllMocks();

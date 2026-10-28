@@ -270,7 +270,7 @@ export function useChatV2EventHandlers(deps: {
         activityStore.removeTask(failedRequestId);
       }
       deps.contextualLoading.clearMessage();
-      Notify.create({ type: 'negative', message: t('chat.sendFailed', '发送失败，请重试'), position: 'top' });
+      Notify.create({ type: 'negative', message: t('chat.sendFailed'), position: 'top' });
     }
     spiritStore.handleSystemNotice(noticeType, meta);
     deps.contextualLoading.onSpiritNoticeType(noticeType);

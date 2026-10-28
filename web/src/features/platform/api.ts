@@ -571,17 +571,17 @@ export async function listPlatformResources(resource: PlatformResourceName): Pro
       return (res.items ?? []).map((row: unknown) => organizationWireToPlatform(row));
     }
     case 'llm-provider-models': {
-      const res = await llmModels.ListProviderModels({});
+      const res = await llmModels.ListProviderModels({ page: undefined, pageSize: undefined, search: undefined });
       return (res.items ?? []).map((row: unknown) => llmProviderWireToPlatform(row));
     }
     case 'hooks': {
       const svc = createHookService();
-      const res = await svc.ListHooks({});
+      const res = await svc.ListHooks({ page: undefined, pageSize: undefined, search: undefined, callbackPoint: undefined });
       return (res.items ?? []).map((row: unknown) => hookWireToPlatform(row));
     }
     case 'channels': {
       const svc = createChannelService();
-      const res = await svc.ListChannels({});
+      const res = await svc.ListChannels({ page: undefined, pageSize: undefined, search: undefined, type: undefined, status: undefined });
       return (res.items ?? []).map((row: unknown) => channelWireToPlatform(row));
     }
     case 'mcp-servers': {
@@ -606,6 +606,7 @@ export async function listPlatformResources(resource: PlatformResourceName): Pro
         status: undefined,
         eventTypes: undefined,
         excludeEventTypes: undefined,
+        hideLinkedCompletions: undefined,
       });
       return (res.items ?? []).map((row: unknown) => monitorEventWireToPlatform(row));
     }

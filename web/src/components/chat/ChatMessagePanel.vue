@@ -35,7 +35,19 @@
       </template>
     </div>
 
-    <q-banner v-if="wsReplaying" dense rounded class="q-mx-md q-mt-sm app-info-banner">
+    <q-banner
+      v-if="reconnectError || wsConnected === false"
+      dense
+      rounded
+      class="q-mx-md q-mt-sm app-banner-warning"
+      role="status"
+    >
+      {{ t(reconnectError ? 'taskWorkspace.reconnectFailed' : 'taskWorkspace.disconnected') }}
+      <template #action
+        ><q-btn flat dense no-caps :label="t('taskWorkspace.retrySync')" @click="emit('retry-sync')"
+      /></template>
+    </q-banner>
+    <q-banner v-else-if="wsReplaying" dense rounded class="q-mx-md q-mt-sm app-info-banner" role="status">
       <template #avatar>
         <q-spinner-dots color="accent" size="20px" />
       </template>
@@ -192,6 +204,16 @@
             @expand="(ids: string[]) => emit('expand', ids)"
           />
 
+          <q-btn
+            v-if="!following"
+            flat
+            dense
+            no-caps
+            class="self-center q-mb-sm"
+            icon="arrow_downward"
+            :label="t(hasNewContent ? 'taskWorkspace.newContent' : 'taskWorkspace.backToLatest')"
+            @click="jumpToLatest"
+          />
           <ContextIndicator
             v-if="compressStatus && compressStatus !== 'normal' && (!panelMode || panelMode === 'spirit')"
             :status="compressStatus"
@@ -221,6 +243,7 @@
           :context-status="contextStatus"
           :is-dark="isDark"
           :sending="sending"
+          :submit-pending="submitPending"
           :input-disabled="inputDisabled"
           :is-runner-active="isRunnerActive"
           :show-enqueue="showEnqueue"
@@ -231,6 +254,8 @@
           :dictation-partial="dictationPartial"
           :skill-catalog="skillCatalog"
           :selected-skill-slugs="selectedSkillSlugs"
+          :workspace-mode="workspaceMode"
+          :draft-save-failed="draftSaveFailed"
           @update:model-value="emit('update:modelValue', $event)"
           @update:dialog-mode="emit('update:dialogMode', $event)"
           @update:model-provider="emit('update:modelProvider', $event)"
@@ -287,6 +312,7 @@ import ChatTeamMemberStrip from './ChatTeamMemberStrip.vue';
 import type { TeamMemberLane } from './ChatTeamMemberStrip.vue';
 import ChatMessageList from './ChatMessageList.vue';
 import ChatComposer from './ChatComposer.vue';
+import { useScrollToActivity } from '../../features/chat/composables/useScrollToActivity';
 import ChatHeaderPromptBar from './ChatHeaderPromptBar.vue';
 import ChatReasoningDrawer from './ChatReasoningDrawer.vue';
 import TodoKanbanBoard from './TodoKanbanBoard.vue';
@@ -315,70 +341,110 @@ import type { SkillCatalogEntry } from '../../features/skills/types';
 
 type Option = { label: string; value: string; caption?: string };
 
-const props = defineProps<{
-  panelMode?: 'spirit' | 'team' | 'member';
-  spiritTeam?: SpiritTeam | null;
-  activeMember?: SpiritMember | null;
-  modelValue: string;
-  messages: Message[];
-  attachments: ChatAttachment[];
-  dialogMode: string;
-  modelProvider: string;
-  modeOptions: Option[];
-  providerOptions: Option[];
-  sessionTitle: string;
-  sessionId?: string;
-  contextRatio: number;
-  contextStatus?: string;
-  contextBreakdown?: PromptBreakdown | null;
-  isDark: boolean;
-  sending?: boolean;
-  inputDisabled?: boolean;
-  isRunnerActive?: boolean;
-  wsReplaying?: boolean;
-  sessionLoading?: boolean;
-  isTeamSession?: boolean;
-  plannerKind?: string;
-  pendingMessages?: { id: string; content: string; status: string; created_at: string }[];
-  /** P1#1/2: agent key → display name lookup for TeamCard/AgentCard. */
-  agentMap?: Map<string, { displayName: string; agentKey: string }>;
-  runStatus?: RunStatusValue;
-  runAgentName?: string;
-  runStartedAt?: string;
-  runEventCount?: number;
-  showEnqueue?: boolean;
-  sessionRevision?: number | null;
-  wsConnected?: boolean;
-  focusTurnId?: string;
-  sessionArtifacts?: ArtifactMeta[];
-  sessionArtifactsLoading?: boolean;
-  fileSupported?: boolean;
-  fileAccept?: string;
-  showBackgroundJobs?: boolean;
-  agentId?: string;
-  jobsRefreshNonce?: number;
-  reasoningSidebarOpen?: boolean;
-  reasoningSidebarActive?: { messageId: string; reasoning: string; streaming: boolean } | null;
-  spiritLoadingMessage?: ContextualMessage | null;
-  /** Spirit status bar data. */
-  spiritStatusBar?: SpiritStatusBarData | null;
-  compressStatus?: CompressStatus;
-  showToolCalls?: boolean;
-  /** View mode: 'chat' (default) shows message list; 'observe' shows observation canvas. */
-  viewMode?: 'chat' | 'observe';
-  /** Whether the composer is visible (used in observe mode to toggle input bar). */
-  composerVisible?: boolean;
-  /** M74 听写中（麦克风录音态 UI）。 */
-  dictating?: boolean;
-  /** 听写识别中的部分文本（输入框上方实时字幕）。 */
-  dictationPartial?: string;
-  /** Design 69 Phase 3: agent-visible skill catalog, picked inside the composer. */
-  skillCatalog?: SkillCatalogEntry[];
-  /** Skill 选择器已选中的 slug 列表（透传给 composer chips 区）。 */
-  selectedSkillSlugs?: string[];
-}>();
+const props = withDefaults(
+  defineProps<{
+    panelMode?: 'spirit' | 'team' | 'member';
+    spiritTeam?: SpiritTeam | null;
+    activeMember?: SpiritMember | null;
+    modelValue: string;
+    messages: Message[];
+    attachments: ChatAttachment[];
+    dialogMode: string;
+    modelProvider: string;
+    modeOptions: Option[];
+    providerOptions: Option[];
+    sessionTitle: string;
+    sessionId?: string;
+    contextRatio: number;
+    contextStatus?: string;
+    contextBreakdown?: PromptBreakdown | null;
+    isDark: boolean;
+    sending?: boolean;
+    submitPending?: boolean;
+    inputDisabled?: boolean;
+    isRunnerActive?: boolean;
+    wsReplaying?: boolean;
+    reconnectError?: boolean;
+    sessionLoading?: boolean;
+    isTeamSession?: boolean;
+    plannerKind?: string;
+    pendingMessages?: { id: string; content: string; status: string; created_at: string }[];
+    /** P1#1/2: agent key → display name lookup for TeamCard/AgentCard. */
+    agentMap?: Map<string, { displayName: string; agentKey: string }>;
+    runStatus?: RunStatusValue;
+    runAgentName?: string;
+    runStartedAt?: string;
+    runEventCount?: number;
+    showEnqueue?: boolean;
+    sessionRevision?: number | null;
+    wsConnected?: boolean;
+    focusTurnId?: string;
+    sessionArtifacts?: ArtifactMeta[];
+    sessionArtifactsLoading?: boolean;
+    fileSupported?: boolean;
+    fileAccept?: string;
+    showBackgroundJobs?: boolean;
+    agentId?: string;
+    jobsRefreshNonce?: number;
+    reasoningSidebarOpen?: boolean;
+    reasoningSidebarActive?: { messageId: string; reasoning: string; streaming: boolean } | null;
+    spiritLoadingMessage?: ContextualMessage | null;
+    /** Spirit status bar data. */
+    spiritStatusBar?: SpiritStatusBarData | null;
+    compressStatus?: CompressStatus;
+    showToolCalls?: boolean;
+    /** View mode: 'chat' (default) shows message list; 'observe' shows observation canvas. */
+    viewMode?: 'chat' | 'observe';
+    /** Whether the composer is visible (used in observe mode to toggle input bar). */
+    composerVisible?: boolean;
+    /** M74 听写中（麦克风录音态 UI）。 */
+    dictating?: boolean;
+    /** 听写识别中的部分文本（输入框上方实时字幕）。 */
+    dictationPartial?: string;
+    /** Design 69 Phase 3: agent-visible skill catalog, picked inside the composer. */
+    skillCatalog?: SkillCatalogEntry[];
+    /** Skill 选择器已选中的 slug 列表（透传给 composer chips 区）。 */
+    selectedSkillSlugs?: string[];
+    workspaceMode?: boolean;
+    draftSaveFailed?: boolean;
+    initialScrollTop?: number | null;
+  }>(),
+  {
+    composerVisible: true,
+    panelMode: undefined,
+    spiritTeam: undefined,
+    activeMember: undefined,
+    sessionId: undefined,
+    contextStatus: undefined,
+    contextBreakdown: undefined,
+    plannerKind: undefined,
+    pendingMessages: undefined,
+    agentMap: undefined,
+    runStatus: undefined,
+    runAgentName: undefined,
+    runStartedAt: undefined,
+    runEventCount: undefined,
+    sessionRevision: undefined,
+    focusTurnId: undefined,
+    sessionArtifacts: undefined,
+    fileAccept: undefined,
+    agentId: undefined,
+    jobsRefreshNonce: undefined,
+    reasoningSidebarActive: undefined,
+    spiritLoadingMessage: undefined,
+    spiritStatusBar: undefined,
+    compressStatus: undefined,
+    viewMode: undefined,
+    dictationPartial: undefined,
+    skillCatalog: undefined,
+    selectedSkillSlugs: undefined,
+    initialScrollTop: undefined,
+  },
+);
 
 const emit = defineEmits<{
+  'scroll-position': [top: number | null];
+  'retry-sync': [];
   'update:modelValue': [value: string];
   'update:dialogMode': [value: string];
   'update:modelProvider': [value: string];
@@ -569,12 +635,18 @@ const chatContentSignature = computed(() => {
   ].join(':');
 });
 
-const { onMessagesScroll, scrollToTurnId } = useChatMessageScroll({
-  sessionKey,
-  messages: messagesRef,
-  messagesScrollEl,
-  contentSignature: chatContentSignature,
-  lastTaskId,
+const { onMessagesScroll, scrollToTurnId, following, hasNewContent, jumpToLatest, pauseFollowing } =
+  useChatMessageScroll({
+    sessionKey,
+    messages: messagesRef,
+    messagesScrollEl,
+    contentSignature: chatContentSignature,
+    lastTaskId,
+    initialScrollTop: computed(() => props.initialScrollTop ?? null),
+  });
+const { taskLocateCommand } = useScrollToActivity();
+watch(taskLocateCommand, (command) => {
+  if (command?.sessionId === props.sessionId) pauseFollowing();
 });
 
 const { headerUserPrompt, promptKey, refreshActivePrompt, resetToLatestOrSession } = useChatScrollTitle({
@@ -588,6 +660,8 @@ const { headerUserPrompt, promptKey, refreshActivePrompt, resetToLatestOrSession
 
 function onMessagesScrollWrapped(event?: Event) {
   onMessagesScroll(event);
+  const el = (event?.target as HTMLElement | undefined) ?? messagesScrollEl.value;
+  if (el) emit('scroll-position', following.value ? null : el.scrollTop);
   refreshActivePrompt();
 }
 

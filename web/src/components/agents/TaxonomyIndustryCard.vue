@@ -1,5 +1,5 @@
 <template>
-  <article v-liquid-glow :class="['taxonomy-industry-card', { 'is-dark': isDark, 'is-disabled': !industry.enabled }]">
+  <article :class="['taxonomy-industry-card', { 'is-dark': isDark, 'is-disabled': !industry.enabled }]">
     <!-- Header: monogram + title + status -->
     <header class="taxonomy-industry-card__head">
       <div class="taxonomy-industry-card__mono" :style="{ background: monoBg }" :aria-label="`行业 ${industry.name}`">
@@ -261,7 +261,7 @@ function positionNodes(dept: PlatformResourceTreeNode) {
   &:hover
     transform: translateY(-2px)
     border-color: color-mix(in srgb, var(--color-accent) 30%, var(--glass-border))
-    box-shadow: 0 8px 24px rgba(93, 64, 55, 0.08), var(--glass-inner-highlight)
+    box-shadow: 0 8px 24px color-mix(in srgb, var(--color-shadow) 8%, transparent), var(--glass-inner-highlight)
 
   &.is-disabled
     background: color-mix(in srgb, var(--glass-surface) 60%, var(--color-page-tint))
@@ -296,7 +296,7 @@ function positionNodes(dept: PlatformResourceTreeNode) {
   font-size: 14px
   letter-spacing: 0.02em
   color: var(--color-on-accent)
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), 0 2px 6px rgba(0, 0, 0, 0.06)
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--color-text-primary) 30%, transparent), 0 2px 6px color-mix(in srgb, var(--color-shadow) 6%, transparent)
   user-select: none
 
 .taxonomy-industry-card__title
@@ -336,7 +336,7 @@ function positionNodes(dept: PlatformResourceTreeNode) {
     color: var(--color-accent-green)
 
   &.is-off
-    background: rgba(229, 92, 92, 0.1)
+    background: var(--color-danger-soft)
     color: var(--color-danger)
 
 .taxonomy-industry-card__status-dot
@@ -477,11 +477,11 @@ body.body--dark .taxonomy-industry-card
     background: color-mix(in srgb, var(--color-page-tint) 20%, var(--glass-elevated))
 
   .taxonomy-industry-card__status.is-on
-    background: rgba(63, 224, 160, 0.12)
+    background: var(--color-success-soft)
     color: var(--color-success)
 
   .taxonomy-industry-card__status.is-off
-    background: rgba(255, 94, 122, 0.12)
+    background: var(--color-danger-soft)
     color: var(--color-danger)
 
 .app-mono

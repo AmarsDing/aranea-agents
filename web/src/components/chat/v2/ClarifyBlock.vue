@@ -5,7 +5,7 @@
   留空 = 按 LLM 推荐执行；推荐项带「推荐」chip 高亮。
 -->
 <template>
-  <div v-if="envelope && questions.length > 0">
+  <div v-if="envelope && questions.length > 0" :data-step-id="step.ID" tabindex="-1">
     <!-- 交互态：等待用户作答（标题栏可点击人工折叠） -->
     <div v-if="step.Status === 'awaiting_input'" class="clarify-block clarify-block--awaiting">
       <button type="button" class="clarify-block__header" :aria-expanded="!collapsed" @click="collapsed = !collapsed">

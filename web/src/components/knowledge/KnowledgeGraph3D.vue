@@ -627,7 +627,7 @@ const nodeLegend = computed(() => {
   z-index: 3000;
   padding: 16px;
   // 覆盖层底色：工作台深空（组件在 .kb-workbench 内时取令牌，独立使用时退化为同值常量）。
-  background: var(--kb-bg-deep, #0a0e1a);
+  background: var(--canvas-base);
   grid-template-rows: minmax(0, 1fr);
 
   .knowledge-graph__stage {
@@ -703,19 +703,19 @@ const nodeLegend = computed(() => {
     border-radius: 50%;
 
     &--online {
-      background: #35e0d0;
-      box-shadow: 0 0 8px #35e0d0;
+      background: var(--color-success);
+      box-shadow: 0 0 8px var(--color-success);
     }
 
     &--syncing {
-      background: #f5c542;
-      box-shadow: 0 0 8px #f5c542;
+      background: var(--color-warning);
+      box-shadow: 0 0 8px var(--color-warning);
       animation: kg-sys-blink 0.9s ease-in-out infinite;
     }
 
     &--offline {
-      background: #ff6b81;
-      box-shadow: 0 0 8px #ff6b81;
+      background: var(--color-danger);
+      box-shadow: 0 0 8px var(--color-danger);
     }
   }
 
@@ -723,15 +723,15 @@ const nodeLegend = computed(() => {
     font-weight: 600;
 
     &--online {
-      color: #35e0d0;
+      color: var(--color-success);
     }
 
     &--syncing {
-      color: #f5c542;
+      color: var(--color-warning);
     }
 
     &--offline {
-      color: #ff6b81;
+      color: var(--color-danger);
     }
   }
 
@@ -974,11 +974,11 @@ const nodeLegend = computed(() => {
 // ---------------------------------------------------------------- G5-E HUD 皮肤
 // 作用域限定 .kg-hud（NFR-G5-4 不改全局 token；亮/暗主题下图谱 Tab 均为深空风）。
 .kg-hud {
-  --kg-cyan: #00d4ff;
-  --kg-edge: #1a3a4a;
+  --kg-cyan: var(--color-accent);
+  --kg-edge: var(--glass-border);
   --kg-panel: rgba(var(--hud-abyss-rgb), 0.88);
-  --kg-text: #cfe8f5;
-  --kg-text-dim: #7fa3b8;
+  --kg-text: var(--color-text-primary);
+  --kg-text-dim: var(--color-text-secondary);
 
   font-family: 'JetBrains Mono', Consolas, monospace;
   letter-spacing: 0.08em;
@@ -987,14 +987,14 @@ const nodeLegend = computed(() => {
   :deep(.app-pane-card) {
     background: var(--kg-panel);
     border: 1px solid var(--kg-edge);
-    box-shadow: 0 0 15px #00d4ff22;
+    box-shadow: 0 0 15px color-mix(in srgb, var(--color-accent) 13%, transparent);
     color: var(--kg-text);
   }
 
   // 覆盖 G4 依赖全局 token 的颜色（深空底上保证可读）
   .knowledge-graph__section-title {
     color: var(--kg-cyan);
-    text-shadow: 0 0 6px #00d4ff55;
+    text-shadow: 0 0 6px color-mix(in srgb, var(--color-accent) 33%, transparent);
   }
 
   .knowledge-graph__stats {
@@ -1006,12 +1006,12 @@ const nodeLegend = computed(() => {
   // D5：SYS 状态灯 / 括号标题 / 按键提示 深空皮肤
   .knowledge-graph__sys-label {
     color: var(--kg-text-dim);
-    text-shadow: 0 0 6px #00d4ff33;
+    text-shadow: 0 0 6px color-mix(in srgb, var(--color-accent) 20%, transparent);
   }
 
   .knowledge-graph__title-main {
     color: var(--kg-cyan);
-    text-shadow: 0 0 12px #00d4ff66;
+    text-shadow: 0 0 12px color-mix(in srgb, var(--color-accent) 40%, transparent);
   }
 
   .knowledge-graph__title-sub {
@@ -1025,7 +1025,7 @@ const nodeLegend = computed(() => {
   .knowledge-graph__title-menu {
     background: var(--kg-panel);
     border: 1px solid var(--kg-edge);
-    box-shadow: 0 0 15px #00d4ff22;
+    box-shadow: 0 0 15px color-mix(in srgb, var(--color-accent) 13%, transparent);
     color: var(--kg-text);
   }
 
@@ -1044,7 +1044,7 @@ const nodeLegend = computed(() => {
     color: var(--kg-text-dim);
 
     &--error {
-      color: #ff6b81;
+      color: var(--color-danger);
     }
   }
 
@@ -1088,14 +1088,14 @@ const nodeLegend = computed(() => {
     }
 
     &--embedding {
-      color: #c792ea;
-      border-color: #c792ea66;
+      color: var(--color-violet);
+      border-color: color-mix(in srgb, var(--color-violet) 40%, transparent);
     }
   }
 
   .knowledge-graph__merge-feedback {
-    color: #5ce8a0;
-    text-shadow: 0 0 6px #5ce8a044;
+    color: var(--color-success);
+    text-shadow: 0 0 6px color-mix(in srgb, var(--color-success) 27%, transparent);
   }
 
   // Quasar 表单件深空适配（select/input/toggle/chip）
@@ -1147,7 +1147,7 @@ const nodeLegend = computed(() => {
 
     &--on {
       color: var(--kg-cyan);
-      text-shadow: 0 0 6px #00d4ff55;
+      text-shadow: 0 0 6px color-mix(in srgb, var(--color-accent) 33%, transparent);
     }
 
     &--accent {
@@ -1189,10 +1189,10 @@ const nodeLegend = computed(() => {
     }
 
     &--active {
-      color: #050810;
+      color: var(--hud-render-bg);
       background: var(--kg-cyan);
       border-color: var(--kg-cyan);
-      box-shadow: 0 0 8px #00d4ff66;
+      box-shadow: 0 0 8px color-mix(in srgb, var(--color-accent) 40%, transparent);
     }
   }
 }

@@ -107,6 +107,18 @@ describe('useFollowScroll', () => {
     vi.restoreAllMocks();
   });
 
+  it('a no-op programmatic alignment does not swallow the next user scroll', async () => {
+    const { el, onScroll, scrollToBottom, following, contentSignature } = setup({ scrollTop: 600 });
+    scrollToBottom(); // Already at the bottom: the browser may emit no scroll event.
+    el.scrollTop = 100;
+    onScroll();
+    expect(following.value).toBe(false);
+    contentSignature.value = 'new content';
+    await nextTick();
+    await vi.advanceTimersByTimeAsync(60);
+    expect(el.scrollTop).toBe(100);
+  });
+
   it('容器外选区不影响跟随', async () => {
     const { el, contentSignature, following } = setup({ contains: () => false });
     vi.spyOn(window, 'getSelection').mockReturnValue({ isCollapsed: false, anchorNode: {} as Node } as Selection);

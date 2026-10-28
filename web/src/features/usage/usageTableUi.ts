@@ -20,43 +20,115 @@ function formatLocalTime(iso: string): string {
 }
 
 /** UsageEventsPage 列定义 */
-export const USAGE_EVENT_TABLE_COLUMNS = [
-  registryCol<ModelTokenUsageEvent>('occurred_at', '时间', 'occurred_at', 'left', REGISTRY_COL_W.time, {
-    format: (val: unknown) => formatLocalTime(String(val ?? '')),
-  }),
-  registryCol<ModelTokenUsageEvent>('usage_kind', '来源', 'usage_kind', 'left', REGISTRY_COL_W.category, {
-    format: (val: unknown) => usageKindLabel(String(val ?? '')),
-  }),
-  // LBG-6：思考强度档位（off/low/medium/high/max），未记录的旧数据回退 '—'
-  registryCol<ModelTokenUsageEvent>('effort', 'Effort', 'effort', 'left', REGISTRY_COL_W.status, {
-    format: (val: unknown) => String(val ?? '').trim() || '—',
-  }),
-  registryCol<ModelTokenUsageEvent>('provider_code', 'Provider', 'provider_code', 'left', REGISTRY_COL_W.category),
-  registryCol<ModelTokenUsageEvent>('model_api_id', '模型', 'model_api_id', 'left', REGISTRY_COL_W.name),
-  registryCol<ModelTokenUsageEvent>('agent_id', 'Agent', 'agent_id', 'left', REGISTRY_COL_W.agent),
-  registryCol<ModelTokenUsageEvent>('session_id', 'Session', 'session_id', 'left', REGISTRY_COL_W.session),
-  registryCol<ModelTokenUsageEvent>('total_tokens', 'Tokens', 'total_tokens', 'right', REGISTRY_COL_W.status),
-  // 缓存命中（读）与推理 tokens：undefined=旧行未记录，显示 —（P0-2 归一化后新行恒有值）
-  registryCol<ModelTokenUsageEvent>(
-    'cached_input_tokens',
-    '缓存命中',
-    'cached_input_tokens',
-    'right',
-    REGISTRY_COL_W.status,
-    {
-      format: (val: unknown) => (val == null ? '—' : String(val)),
-    },
-  ),
-  registryCol<ModelTokenUsageEvent>('reasoning_tokens', '推理', 'reasoning_tokens', 'right', REGISTRY_COL_W.status, {
-    format: (val: unknown) => (val == null ? '—' : String(val)),
-  }),
-  registryCol<ModelTokenUsageEvent>(
-    'total_cost_micro_usd',
-    '费用',
-    'total_cost_micro_usd',
-    'right',
-    REGISTRY_COL_W.metric,
-  ),
-  registryCol<ModelTokenUsageEvent>('latency_ms', '延迟', 'latency_ms', 'right', REGISTRY_COL_W.metric),
-  registryCol<ModelTokenUsageEvent>('status', '状态', 'status', 'left', REGISTRY_COL_W.status),
-];
+export function buildUsageEventTableColumns(t: (key: string) => string) {
+  return [
+    registryCol<ModelTokenUsageEvent>(
+      'occurred_at',
+      t('usageEventsPage.columns.occurred_at'),
+      'occurred_at',
+      'left',
+      REGISTRY_COL_W.time,
+      {
+        format: (val: unknown) => formatLocalTime(String(val ?? '')),
+      },
+    ),
+    registryCol<ModelTokenUsageEvent>(
+      'usage_kind',
+      t('usageEventsPage.columns.usage_kind'),
+      'usage_kind',
+      'left',
+      REGISTRY_COL_W.category,
+      {
+        format: (val: unknown) => usageKindLabel(String(val ?? '')),
+      },
+    ),
+    // LBG-6：思考强度档位（off/low/medium/high/max），未记录的旧数据回退 '—'
+    registryCol<ModelTokenUsageEvent>(
+      'effort',
+      t('usageEventsPage.columns.effort'),
+      'effort',
+      'left',
+      REGISTRY_COL_W.status,
+      {
+        format: (val: unknown) => String(val ?? '').trim() || '—',
+      },
+    ),
+    registryCol<ModelTokenUsageEvent>(
+      'provider_code',
+      t('usageEventsPage.columns.provider_code'),
+      'provider_code',
+      'left',
+      REGISTRY_COL_W.category,
+    ),
+    registryCol<ModelTokenUsageEvent>(
+      'model_api_id',
+      t('usageEventsPage.columns.model_api_id'),
+      'model_api_id',
+      'left',
+      REGISTRY_COL_W.name,
+    ),
+    registryCol<ModelTokenUsageEvent>(
+      'agent_id',
+      t('usageEventsPage.columns.agent_id'),
+      'agent_id',
+      'left',
+      REGISTRY_COL_W.agent,
+    ),
+    registryCol<ModelTokenUsageEvent>(
+      'session_id',
+      t('usageEventsPage.columns.session_id'),
+      'session_id',
+      'left',
+      REGISTRY_COL_W.session,
+    ),
+    registryCol<ModelTokenUsageEvent>(
+      'total_tokens',
+      t('usageEventsPage.columns.total_tokens'),
+      'total_tokens',
+      'right',
+      REGISTRY_COL_W.status,
+    ),
+    // 缓存命中（读）与推理 tokens：undefined=旧行未记录，显示 —（P0-2 归一化后新行恒有值）
+    registryCol<ModelTokenUsageEvent>(
+      'cached_input_tokens',
+      t('usageEventsPage.columns.cached_input_tokens'),
+      'cached_input_tokens',
+      'right',
+      REGISTRY_COL_W.status,
+      {
+        format: (val: unknown) => (val == null ? '—' : String(val)),
+      },
+    ),
+    registryCol<ModelTokenUsageEvent>(
+      'reasoning_tokens',
+      t('usageEventsPage.columns.reasoning_tokens'),
+      'reasoning_tokens',
+      'right',
+      REGISTRY_COL_W.status,
+      {
+        format: (val: unknown) => (val == null ? '—' : String(val)),
+      },
+    ),
+    registryCol<ModelTokenUsageEvent>(
+      'total_cost_micro_usd',
+      t('usageEventsPage.columns.total_cost_micro_usd'),
+      'total_cost_micro_usd',
+      'right',
+      REGISTRY_COL_W.metric,
+    ),
+    registryCol<ModelTokenUsageEvent>(
+      'latency_ms',
+      t('usageEventsPage.columns.latency_ms'),
+      'latency_ms',
+      'right',
+      REGISTRY_COL_W.metric,
+    ),
+    registryCol<ModelTokenUsageEvent>(
+      'status',
+      t('usageEventsPage.columns.status'),
+      'status',
+      'left',
+      REGISTRY_COL_W.status,
+    ),
+  ];
+}

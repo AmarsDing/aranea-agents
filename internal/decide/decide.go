@@ -50,14 +50,16 @@ type Decider interface {
 	Decide(ctx context.Context, state map[string]any, questions []Question) (map[string]Answer, error)
 }
 
-// virShadowQuestions transcribes the three VIR-shadowable question defs from
-// questionsets.json 1:1 (transcribed 2026-10-28; re-transcribe if the JSON
-// side changes). These are the Phase-0 shadow hookup points: route_mode on
-// the read path (applyEvalQueryModes), correction_gate / forget_gate on the
-// write path (supersedeContradictions). Gold sources per questionsets:
-// fixtures/routing_v1.jsonl + fixtures/write_governance_v1.jsonl (silver);
-// shadow harvest promotes to gold.
-func virShadowQuestions() map[string]Question {
+// shadowQuestions transcribes the Phase-0 VIR trio plus Phase-1 tool/skill/MCP
+// question defs from questionsets.json 1:1 (transcribed 2026-10-28; re-transcribe
+// if the JSON side changes).
+//
+// Phase 0 (memory): route_mode on the read path, correction_gate / forget_gate
+// on the write path. Phase 1 (select planes): tool_relevance, skill_intent,
+// mcp_server_choice — incumbent-only until a Decider backend is wired.
+// Dynamic-criteria questions (skill/mcp) keep Criteria empty in the static
+// registry; live option keys ride in ShadowEvent.State / Incumbent.Scores.
+func shadowQuestions() map[string]Question {
 	return map[string]Question{
 		"route_mode": {
 			ID:    "route_mode",
@@ -100,12 +102,40 @@ func virShadowQuestions() map[string]Question {
 			},
 			Slots: []string{"user_message"},
 		},
+		"tool_relevance": {
+			ID:           "tool_relevance",
+			Plane:        "tool",
+			Type:         "choice",
+			Instructions: "Is `tool_candidates[i]` needed to make progress on `task`?",
+			Criteria: map[string]string{
+				"needed":     "The tool's described capability directly serves a step required by the task.",
+				"not_needed": "Capability mismatch, redundant with an already-chosen tool, or only vaguely related.",
+			},
+			Slots: []string{"task", "tool_candidates"},
+		},
+		"skill_intent": {
+			ID:           "skill_intent",
+			Plane:        "skill",
+			Type:         "choice",
+			Instructions: "Which skill leaf in `skill_leaves` best matches the intent of `user_message`? Choose none if nothing fits.",
+			// Dynamic keys = skill leaf paths (≤20) + "none"; live set is in State.
+			Criteria: map[string]string{},
+			Slots:    []string{"user_message", "skill_leaves"},
+		},
+		"mcp_server_choice": {
+			ID:           "mcp_server_choice",
+			Plane:        "mcp",
+			Type:         "choice",
+			Instructions: "Which server in `mcp_servers` can serve `task`? Choose none if no server fits.",
+			Criteria:     map[string]string{},
+			Slots:        []string{"task", "mcp_servers"},
+		},
 	}
 }
 
 // QuestionDef returns the shadow question definition for one question id,
 // or false when the id is not a registered shadow question.
 func QuestionDef(id string) (Question, bool) {
-	q, ok := virShadowQuestions()[id]
+	q, ok := shadowQuestions()[id]
 	return q, ok
 }

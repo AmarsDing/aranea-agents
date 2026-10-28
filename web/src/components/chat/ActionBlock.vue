@@ -46,7 +46,7 @@ import WebSearchToolDetail from './tools/WebSearchToolDetail.vue';
 import McpToolDetail from './tools/McpToolDetail.vue';
 import CodeToolDetail from './tools/CodeToolDetail.vue';
 import MediaToolDetail from './tools/MediaToolDetail.vue';
-import ArtifactRefCard from '../artifact/ArtifactRefCard.vue';
+import ArtifactRefCard from '../../features/artifact/ArtifactRef.vue';
 import { classifyTool, TOOL_CATEGORY_ICON, type ToolCategory } from './tools/classifyTool';
 import { asRecord, extractArtifactRef } from './tools/toolDetailShared';
 
@@ -219,6 +219,7 @@ function mapStepStatusToToolUseStatus(status: Step['Status']): ToolUseEvent['sta
     case 'pending':
       return 'running';
     case 'tool_blocked':
+    case 'awaiting_input':
       return 'blocked';
     case 'completed':
       return 'success';

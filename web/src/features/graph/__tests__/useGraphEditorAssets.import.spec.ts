@@ -2,6 +2,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { useGraphEditorAssets } from '../useGraphEditorAssets';
 import type { GraphDefinition } from '../types';
+import { graphDefinitionFixture } from './graphFixtures';
 
 // Mock Quasar
 const mockDialog = vi.fn();
@@ -42,7 +43,7 @@ describe('useGraphEditorAssets - R2-3 Import Dialog', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    graphDef = {
+    graphDef = graphDefinitionFixture({
       id: 'current-graph',
       name: 'Current Graph',
       version: 1,
@@ -53,7 +54,7 @@ describe('useGraphEditorAssets - R2-3 Import Dialog', () => {
       finishPoint: '',
       stateFields: [],
       description: 'Current description',
-    };
+    });
     isNew = () => false;
   });
 
@@ -100,7 +101,7 @@ describe('useGraphEditorAssets - R2-3 Import Dialog', () => {
         }),
         cancel: true,
         persistent: true,
-      })
+      }),
     );
   });
 
@@ -141,7 +142,7 @@ describe('useGraphEditorAssets - R2-3 Import Dialog', () => {
 
     // Should show success message
     expect(mockNotify).toHaveBeenCalledWith(
-      expect.objectContaining({ type: 'positive', message: 'graphs.assetImportedToCurrent' })
+      expect.objectContaining({ type: 'positive', message: 'graphs.assetImportedToCurrent' }),
     );
   });
 
@@ -181,7 +182,7 @@ describe('useGraphEditorAssets - R2-3 Import Dialog', () => {
 
     // Should show success message
     expect(mockNotify).toHaveBeenCalledWith(
-      expect.objectContaining({ type: 'positive', message: 'graphs.assetImportSuccess' })
+      expect.objectContaining({ type: 'positive', message: 'graphs.assetImportSuccess' }),
     );
   });
 

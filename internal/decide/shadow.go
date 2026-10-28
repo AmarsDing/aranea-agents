@@ -142,15 +142,16 @@ func (r *Recorder) build(ev ShadowEvent) (decision.Record, error) {
 	if m, ok := ev.Incumbent.Scores[key]; ok {
 		conf = m
 	}
+	cat, actor := shadowCategoryActor(qdef.Plane)
 	return decision.Record{
 		DecisionKey: uuid.NewString(),
-		Category:    decision.CategoryMemoryShadow,
-		Scenario:    "mem shadow " + qdef.Plane + "/" + qid + ": " + scenarioHint(ev.State),
+		Category:    cat,
+		Scenario:    "jev shadow " + qdef.Plane + "/" + qid + ": " + scenarioHint(ev.State),
 		Reasoning:   reasoning,
 		Outcome:     "q=" + qid + ";k=" + key,
 		Confidence:  &conf,
 		ActorType:   decision.ActorSystem,
-		ActorKey:    "system:mem_shadow",
+		ActorKey:    actor,
 		SourceRef: decision.SourceRef{
 			SessionID: strings.TrimSpace(ev.SessionID),
 		},
@@ -159,11 +160,23 @@ func (r *Recorder) build(ev ShadowEvent) (decision.Record, error) {
 	}, nil
 }
 
+// shadowCategoryActor maps plane → M80 category + actor_key.
+// Memory planes keep CategoryMemoryShadow (Phase 0 harvest compatibility);
+// tool/skill/mcp land in CategoryJEVShadow (Phase 1).
+func shadowCategoryActor(plane string) (decision.Category, string) {
+	switch strings.TrimSpace(plane) {
+	case "tool", "skill", "mcp":
+		return decision.CategoryJEVShadow, "system:jev_shadow"
+	default:
+		return decision.CategoryMemoryShadow, "system:mem_shadow"
+	}
+}
+
 // scenarioHint renders one short state hint for the audit index. It prefers
 // the first registered slot present in state; empty state yields a bare tag.
 func scenarioHint(state map[string]any) string {
 	const maxHint = 120
-	for _, slot := range []string{"user_message", "query", "statement"} {
+	for _, slot := range []string{"user_message", "query", "statement", "task"} {
 		if v, ok := state[slot]; ok {
 			if s, ok := v.(string); ok && strings.TrimSpace(s) != "" {
 				rs := []rune(strings.TrimSpace(s))

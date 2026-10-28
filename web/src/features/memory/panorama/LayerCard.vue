@@ -112,7 +112,7 @@ const headlineChips = computed(() => {
 }
 
 .layer-card:hover {
-  box-shadow: 0 6px 18px rgb(0 0 0 / 12%);
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--color-shadow) 12%, transparent);
   transform: translateY(-2px);
 }
 

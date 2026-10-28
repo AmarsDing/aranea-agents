@@ -8,6 +8,7 @@ import { reactive, nextTick } from 'vue';
 import TeamEditorDialog from '../TeamEditorDialog.vue';
 import zhCN from '../../../i18n/locales/zh-CN';
 import type { TeamDefinition } from '../../../features/teams/types';
+import type { QSelect, QToggle } from 'quasar';
 
 // compile preview 走网络：mock 掉，避免测试环境真实请求。
 vi.mock('../../../features/orchestration/compileApi', () => ({
@@ -138,8 +139,8 @@ describe('TeamEditorDialog F2 (M53 Phase 11)', () => {
 
   it('linked graph pick sets source=linked_external; clearing restores preset', async () => {
     const { wrapper, definition } = mountDialog();
-    const select = wrapper.findComponent('[data-test="linked-graph-select"]');
-    expect(select.exists()).toBe(true);
+    const select = wrapper.getComponent<typeof QSelect>('[data-test="linked-graph-select"]');
+    expect(select.props('modelValue')).toBe('');
 
     select.vm.$emit('update:modelValue', 'g-9');
     await nextTick();
@@ -154,13 +155,13 @@ describe('TeamEditorDialog F2 (M53 Phase 11)', () => {
 
   it('linked graph selector shows current value only for linked_external source', async () => {
     const { wrapper } = mountDialog({ source: 'linked_external', linked_graph_id: 'g-7' });
-    const select = wrapper.findComponent('[data-test="linked-graph-select"]');
+    const select = wrapper.getComponent<typeof QSelect>('[data-test="linked-graph-select"]');
     expect(select.props('modelValue')).toBe('g-7');
   });
 
   it('checkpoint toggle mirrors definition.enable_checkpoint with default true', async () => {
     const { wrapper, definition } = mountDialog();
-    const toggle = wrapper.findComponent('[data-test="checkpoint-toggle"]');
+    const toggle = wrapper.getComponent<typeof QToggle>('[data-test="checkpoint-toggle"]');
     expect(toggle.props('modelValue')).toBe(true);
 
     toggle.vm.$emit('update:modelValue', false);
@@ -170,10 +171,7 @@ describe('TeamEditorDialog F2 (M53 Phase 11)', () => {
 
   it('custom source + dirty overwrite key → save click asks confirmation before emitting save', async () => {
     // 基线指纹与当前 definition 不一致（模拟打开后又改了拓扑字段）
-    const { wrapper } = mountDialog(
-      { source: 'custom', mode: 'parallel' },
-      { overwriteBaselineKey: 'stale-baseline' },
-    );
+    const { wrapper } = mountDialog({ source: 'custom', mode: 'parallel' }, { overwriteBaselineKey: 'stale-baseline' });
     await wrapper.find('[data-test="team-save"]').trigger('click');
     expect(wrapper.emitted('save')).toBeUndefined();
     expect(dialogOnOk.current).not.toBeNull();
@@ -185,7 +183,10 @@ describe('TeamEditorDialog F2 (M53 Phase 11)', () => {
     const definition = mkDefinition({ source: 'custom' });
     const baseline = `${definition.mode}|cp=x`; // 任意值——先用真实指纹函数算
     const { definitionTopologyOverwriteKey } = await import('../teamUtils');
-    const { wrapper } = mountDialog({ source: 'custom' }, { overwriteBaselineKey: definitionTopologyOverwriteKey(definition) });
+    const { wrapper } = mountDialog(
+      { source: 'custom' },
+      { overwriteBaselineKey: definitionTopologyOverwriteKey(definition) },
+    );
     void baseline;
     await wrapper.find('[data-test="team-save"]').trigger('click');
     expect(wrapper.emitted('save')).toHaveLength(1);

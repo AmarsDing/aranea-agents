@@ -4,6 +4,9 @@
       v-if="!hasV2Activities"
       ref="emptyScrollEl"
       class="col relative-position chat-messages__viewport"
+      tabindex="0"
+      role="region"
+      :aria-label="t('taskWorkspace.messageHistory')"
       @click="$emit('messages-click', $event)"
     >
       <div class="chat-empty-state column items-center justify-center">
@@ -30,6 +33,9 @@
       v-else
       ref="scrollViewportEl"
       class="col chat-messages__viewport chat-messages__viewport--virtual"
+      tabindex="0"
+      role="region"
+      :aria-label="t('taskWorkspace.messageHistory')"
       @scroll.passive="$emit('scroll', $event)"
       @click="$emit('messages-click', $event)"
     >
@@ -226,9 +232,9 @@ defineExpose({
    scoped 样式无法穿透。按 B.9.3 设计使用黄色闪烁 3 次后由 JS 移除。 */
 @keyframes activity-locate-flash
   0%, 100%
-    box-shadow: 0 0 0 0 rgba(233, 162, 59, 0)
+    box-shadow: 0 0 0 0 transparent
   50%
-    box-shadow: 0 0 0 3px rgba(233, 162, 59, 0.5)
+    box-shadow: 0 0 0 3px var(--color-accent-border)
 
 .activity-locate-highlight
   animation: activity-locate-flash 1s ease-in-out 3

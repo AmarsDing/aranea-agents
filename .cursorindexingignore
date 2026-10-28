@@ -1,0 +1,38 @@
+# Cursor 索引排除清单（仅影响语义索引，不影响 AI 读取文件）
+# 目的：避免巨型构建产物 / 测试副本 / 二进制被索引，防止索引膨胀导致 Cursor 与
+# Claude Code 插件长时间运行后卡死。源码目录不在排除范围。
+
+# 构建与运行产物
+bin/
+build/
+blender/
+web/src-tauri/target/
+web/node_modules/
+web/dist/
+web/dist2/
+web/build/
+web/.quasar/
+
+# 临时/测试副本（test/ 下常驻历史 worktree 全量拷贝）
+test/
+competition/
+
+# 大体量文档素材
+docs/testing/
+docs/promo-videos/
+
+# 工具缓存
+.codegraph/
+.claude/
+.trae/
+gocache/
+.gocache*/
+
+# 巨型二进制
+**/*.exe
+**/*.dll
+**/*.so
+**/*.glb
+**/*.bundle
+**/*.tar
+**/*.zip

@@ -647,6 +647,12 @@ const intentAnchorOptions = computed(() =>
     })),
 );
 
+const synthesizerLabel = computed(() => {
+  const id = definition.value.synthesizer_agent_id;
+  const member = definition.value.members.find((row) => row.agent_id === id && row.enabled !== false);
+  return member?.name || props.agentOptions.find((option) => option.value === id)?.label || id || '—';
+});
+
 function onTemplatePick(key: TeamTemplateKey | null) {
   emit('update:selectedTemplateKey', key);
   if (!key) return;

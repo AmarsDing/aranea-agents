@@ -3,6 +3,7 @@ import { getCurrentAdmin, loginAdminByEmail, loginAdminByUsername, logoutAdmin }
 import type { AdminSession } from '../features/admin/types';
 import { clearServerDownNotify } from '../features/heartbeat/useServerHeartbeat';
 import { clearAuthToken, setAuthToken } from '../services/authToken';
+import { clearChatDrafts } from '../features/chat/chatDraftPersistence';
 
 export type AuthIdentityMode = 'username' | 'email';
 
@@ -74,6 +75,7 @@ export const useAuthStore = defineStore('auth', {
       } catch {
         // still clear client state even if revoke fails (e.g. expired cookie)
       }
+      clearChatDrafts();
       clearAuthToken();
       this.user = null;
       this.sessionChecked = true;

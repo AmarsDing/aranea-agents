@@ -467,7 +467,7 @@ const { refreshingIcons, refreshPlatformIcons } = useChannelIconRefresh();
   max-width: 200px;
   border-radius: 8px;
   /* 二维码底色须为白（扫码识别率），不随主题切换 */
-  background: #fff;
+  background: var(--color-text-primary);
   padding: 8px;
 }
 </style>

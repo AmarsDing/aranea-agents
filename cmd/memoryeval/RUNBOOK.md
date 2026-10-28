@@ -10,32 +10,37 @@
 
 本服务的 embedding 走 OpenAI 兼容网关（`internal/knowledge/embedder.go`
 的 openai provider）。设计上**不传 `dimensions` 参数**（G-39 /
-ADR-KN-20261021-G），实际输出恒为模型原生维度。`text-embedding-v4`
-原生维度 = **2048**，因此部署侧必须让维度链全部对齐 2048，并使用
-**全新**的评测命名空间（禁止复用任何含 1024 维向量的库存量）。
+ADR-KN-20261021-G）。`text-embedding-v4` 在**不传 dimensions 时的实际
+返回维度 = 1024**（2026-10-27 双端点实证：native
+`/api/v1/services/embeddings/...` 与部署实际使用的 compatible-mode
+`/compatible-mode/v1/embeddings` 均返回 1024；探针存档
+`test/amc-newbox-recon/probe-embdim*.sh`、`D:\temp\embdim2.json`。
+此前"原生 2048"的 RUNBOOK 断言已证伪——2048 须显式传参才生效，而
+G-39 恰恰不传）。因此部署侧按 1024 对齐维度链，并使用**全新**的评测
+命名空间（即便 bge-m3 同为 1024 维，向量空间也不可复用存量数据）。
 
 ```powershell
 $env:EVAL_PG_SOURCE      = "postgres://postgres:123456@127.0.0.1:55432/aranea_eval_c3?sslmode=disable"
-$env:EVAL_VECTOR_DIM     = "2048"          # 新库按 2048 建向量列
+$env:EVAL_VECTOR_DIM     = "1024"          # 新库按 1024 建向量列（实测默认）
 $env:EVAL_MEMORY_TOKEN   = "<Memory System Key>"
 
 $env:EMBEDDING_PROVIDER  = "openai"
 $env:EMBEDDING_BASE_URL  = "https://dashscope.aliyuncs.com/compatible-mode"
 $env:EMBEDDING_API_KEY   = "<DashScope API Key>"
 $env:EMBEDDING_MODEL     = "text-embedding-v4"
-$env:EMBEDDING_DIM       = "2048"          # 与模型原生维度一致（无截断参数）
+$env:EMBEDDING_DIM       = "1024"          # 不传 dimensions 时的默认输出
 
 go build -o bin/memoryeval.exe ./cmd/memoryeval
 ./bin/memoryeval.exe
 ```
 
-自检（启动后必须看到真实 2048 维写入，而不是配置的口头值）：
+自检（启动后必须看到真实 1024 维写入，而不是配置的口头值）：
 
 ```powershell
 curl -X POST http://127.0.0.1:8910/healthz
 # 写入一条后查库：
 #   SELECT length(embedding::real[])  -- 或 vector_dims(embedding)
-# 维度链：EMBEDDING_DIM = EVAL_VECTOR_DIM = len(实际返回向量) = 2048
+# 维度链：EMBEDDING_DIM = EVAL_VECTOR_DIM = len(实际返回向量) = 1024
 ```
 
 注意：`EMBEDDING_BASE_URL` 不带 `/v1` 后缀（client 内部拼 `/v1/embeddings`）。
@@ -79,7 +84,7 @@ curl -X POST http://127.0.0.1:8910/healthz
 - **caption-only 声明**：本链路按 Q23 合规地把图像分片确认为载荷、
   以文本 caption 入存；原图仅在 `EVAL_MEDIA_DIR` 设置时留文件存证，
   检索证据为纯文本（官方确认无图像引用评分规则）。
-- embedding 申报：`text-embedding-v4`（DashScope 兼容网关，2048 维）。
+- embedding 申报：`text-embedding-v4`（DashScope 兼容网关，默认 1024 维——实测）。
 - C2 已完成轮的 bge-m3 合规风险维持既有结论，本轮不得复用 C2 库。
 
 ## 5. 赛程红线（E2，官网核实）

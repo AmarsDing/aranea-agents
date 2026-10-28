@@ -139,7 +139,7 @@ async function onNewSession() {
 
 <style scoped>
 .mobile-sessions-page__header {
-  border-bottom: 1px solid rgb(0 0 0 / 8%);
+  border-bottom: 1px solid color-mix(in srgb, var(--color-shadow) 8%, transparent);
 }
 
 .mobile-session-item {

@@ -31,7 +31,7 @@ export type WebhookListResult = {
 /** Full catalog (no page params). */
 export async function listWebhooks(): Promise<WebhookRow[]> {
   const svc = createWebhookService();
-  const res = await svc.ListWebhooks({});
+  const res = await svc.ListWebhooks({ page: undefined, pageSize: undefined, search: undefined });
   return (res.items ?? []).map((row) => wireToWebhook(row as Record<string, unknown>));
 }
 

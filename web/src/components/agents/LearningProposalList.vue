@@ -78,18 +78,18 @@
 </template>
 
 <script setup lang="ts">
-import type { LearningProposal } from '../../features/agents/learning.types';
+import type { LearningProposal, ProposalFilter } from '../../features/agents/learning.types';
 import { formatDate, formatApprovedBy } from '../../features/agents/learning.utils';
 import AppStatusChip from '../common/AppStatusChip.vue';
 
 defineProps<{
   proposals: LearningProposal[];
   loading: boolean;
-  statusFilter: string;
+  statusFilter: ProposalFilter;
 }>();
 
 const emit = defineEmits<{
-  'update:status-filter': [value: string];
+  'update:status-filter': [value: ProposalFilter];
   approve: [id: string];
   reject: [id: string];
   apply: [id: string];

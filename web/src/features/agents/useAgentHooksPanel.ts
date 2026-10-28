@@ -192,7 +192,7 @@ export function useAgentHooksPanel(agentId: () => string, agentKey: () => string
     }
   }
 
-  function confirmRemove(row: HookRow): Promise<void> {
+  function confirmRemove(row: HookRow) {
     return $q
       .dialog({
         title: t('hooksPage.confirmDeleteTitle'),

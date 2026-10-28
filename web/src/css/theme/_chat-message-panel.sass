@@ -305,6 +305,7 @@ body.body--dark .chat-empty-state__chip:hover
   max-width: 120px
   padding: 2px 4px
   background: var(--chat-file-tile-bg)
+  color: var(--color-text-primary)
   border: 1px solid var(--color-border-soft)
   border-radius: 6px
   transition: transform 0.18s ease, box-shadow 0.18s ease
@@ -317,10 +318,12 @@ body.body--dark .chat-empty-state__chip:hover
     position: absolute
     top: -4px
     right: -4px
-    opacity: 0
+    opacity: 0.7
     transition: opacity 0.15s ease
 
   &:hover .chat-file-tile__close
+    opacity: 1
+  &:focus-within .chat-file-tile__close
     opacity: 1
 
 // ===== Quasar QChatMessage layout =====

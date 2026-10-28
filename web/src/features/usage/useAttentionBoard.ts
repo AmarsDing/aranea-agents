@@ -1,21 +1,8 @@
-/**
- * 概览页注意力队列（attention board）跨域聚合 composable。
- *
- * 数据源（均为现有 API 直读快照，30s 轮询）：
- *   激活告警   → monitor alert-rules × alert-metrics（current_value ≥ threshold 即触发）
- *   失败 runs  → monitor runner-metrics（24h 窗口聚合 error_runs）+ cron-task-runs failure
- *   调用异常   → usage overview anomalies（排除用户主动取消）
- *   积压待办   → team task-dead-letters(pending) + decision hitl_approval(outcome=pending)
- *
- * TECH-DEBT: 跨域直读各 features/<domain>/api（未过 Store）；
- * 后续后端上线 GET /v1/monitor/attention-summary 聚合端点后切换（见 62-overview-command-center.design.md）。
- */
-import { computed, onMounted, onUnmounted, ref, type Ref } from 'vue';
-import { listMonitorAlertRules, listAlertMetrics, getRunnerMetrics } from '../monitor/api';
-import { listTaskDeadLetters } from '../teams/api';
-import { listDecisionRecords } from '../decision/api';
-import { listCronTaskRuns } from '../cron/api';
-import type { ModelTokenUsageEvent } from './types';
+/** Read-only projection of the attention snapshot; polling belongs to the page lifecycle. */
+import { computed, onMounted, onUnmounted } from 'vue';
+import { useI18n } from 'vue-i18n';
+import { useAttentionStore, type AttentionSource } from '../../stores/usage/attention';
+import { useUsageStore } from '../../stores/usage';
 import {
   ATTENTION_ERROR_STATUSES,
   type AttentionBoard,
@@ -26,172 +13,160 @@ import {
 } from './types';
 
 const POLL_INTERVAL_MS = 30_000;
-const MAX_ROWS_PER_LANE = 3;
+const MAX_ROWS = 3;
 
 function severityOf(rule: { severity?: string }): AttentionSeverity {
-  const s = (rule.severity ?? '').toLowerCase();
-  if (s === 'critical' || s === 'high' || s === 'p0' || s === 'p1') return 'critical';
-  if (s === 'warning' || s === 'warn' || s === 'medium' || s === 'p2') return 'warning';
-  return 'info';
+  const severity = (rule.severity ?? '').toLowerCase();
+  if (['critical', 'high', 'p0', 'p1'].includes(severity)) return 'critical';
+  return ['warning', 'warn', 'medium', 'p2'].includes(severity) ? 'warning' : 'info';
 }
 
 function truncate(text: string, max = 80): string {
-  const t = (text ?? '').trim();
-  return t.length > max ? `${t.slice(0, max)}…` : t;
+  const value = (text ?? '').trim();
+  return value.length > max ? `${value.slice(0, max)}…` : value;
 }
 
-function formatMetricValue(value: number, unit: string): string {
-  if (unit === 'ratio') return `${(value * 100).toFixed(1)}%`;
-  return value.toFixed(2).replace(/\.?0+$/, '') || '0';
+function formatMetric(value: number, unit: string): string {
+  return unit === 'ratio' ? `${(value * 100).toFixed(1)}%` : value.toFixed(2).replace(/\.?0+$/, '') || '0';
 }
 
-/** outcome 为 pending/空 的 hitl 决策视为待审批（DecisionRecord 无 status 字段）。 */
-function isPendingDecision(outcome: string): boolean {
-  const o = (outcome ?? '').toLowerCase();
-  return o === '' || o === 'pending' || o === 'awaiting';
-}
+export function useAttentionBoard() {
+  const { t } = useI18n();
+  const store = useAttentionStore();
+  const usage = useUsageStore();
+  let timer: ReturnType<typeof setInterval> | undefined;
 
-export function useAttentionBoard(anomalies: Ref<ModelTokenUsageEvent[]>) {
-  const lanes = ref<AttentionLaneState[]>([]);
-  const loading = ref(false);
-  const updatedAt = ref('');
-  let timer: ReturnType<typeof setInterval> | null = null;
-
-  async function refresh(): Promise<void> {
-    loading.value = true;
-    const [alertsRes, metricsRes, runnerRes, deadRes, decisionRes, cronRes] = await Promise.allSettled([
-      listMonitorAlertRules(),
-      listAlertMetrics(),
-      getRunnerMetrics(24 * 60),
-      listTaskDeadLetters({ status: 'pending', limit: 20 }),
-      listDecisionRecords({ category: 'hitl_approval', pageSize: 50 }),
-      listCronTaskRuns({ status: 'failure', limit: 20 }),
-    ]);
-    try {
-      const next: AttentionLaneState[] = [];
-
-      // —— 分栏 1：激活告警（enabled 规则 × 当前值超阈值） ——
-      if (alertsRes.status === 'fulfilled' && metricsRes.status === 'fulfilled') {
-        const metricByKey = new Map(metricsRes.value.map((m) => [m.key, m]));
-        const triggered: AttentionItem[] = [];
-        for (const rule of alertsRes.value) {
-          if (!rule.enabled) continue;
-          const metric = metricByKey.get(rule.metric_key);
-          if (!metric) continue;
-          if (metric.current_value < rule.threshold) continue;
-          triggered.push({
-            id: `alert:${rule.id}`,
-            lane: 'alerts',
-            severity: severityOf(rule),
-            title: rule.name || rule.metric_key,
-            detail: `${metric.name || rule.metric_key} 当前 ${formatMetricValue(metric.current_value, metric.unit)} ≥ 阈值 ${formatMetricValue(rule.threshold, metric.unit)}`,
-            occurred_at: metric.evaluated_at ?? '',
-            to: { path: '/monitor/logs', query: { tab: 'alerts' } },
-          });
-        }
-        next.push({ lane: 'alerts', items: triggered.slice(0, MAX_ROWS_PER_LANE), count: triggered.length });
-      }
-
-      // —— 分栏 2：失败 runs（24h runner 聚合 + cron 失败明细） ——
-      {
-        const errorRuns = runnerRes.status === 'fulfilled' ? (runnerRes.value.error_runs ?? 0) : 0;
-        const cronFailures = cronRes.status === 'fulfilled' ? cronRes.value.items : [];
-        const items: AttentionItem[] = cronFailures.slice(0, MAX_ROWS_PER_LANE).map((run) => ({
-          id: `cron:${run.id}`,
-          lane: 'failed_runs',
-          severity: 'warning',
-          title: run.task_name || '定时任务',
-          detail: truncate(run.error_message || '执行失败'),
-          occurred_at: run.started_at ?? run.created_at ?? '',
-          to: { path: '/cron' },
-        }));
-        next.push({ lane: 'failed_runs', items, count: errorRuns + cronFailures.length });
-      }
-
-      // —— 分栏 3：模型调用异常（usage anomalies，排除用户主动取消） ——
-      {
-        const rows = anomalies.value.filter((e) => ATTENTION_ERROR_STATUSES.has(e.status));
-        const items: AttentionItem[] = rows.slice(0, MAX_ROWS_PER_LANE).map((e) => ({
-          id: `call:${e.id}`,
-          lane: 'call_errors',
-          severity: 'warning',
-          title: e.agent_name || e.model_display_name || e.model_api_id,
-          detail: truncate(e.error_message || `${e.status} · ${e.provider_code}/${e.model_api_id}`),
-          occurred_at: e.occurred_at ?? '',
-          to: { path: '/usage/events', query: { status: 'error' } },
-        }));
-        next.push({ lane: 'call_errors', items, count: rows.length });
-      }
-
-      // —— 分栏 4：积压与待办（死信 + HITL 待审批） ——
-      {
-        const dead = deadRes.status === 'fulfilled' ? deadRes.value : [];
-        const pendingDecisions =
-          decisionRes.status === 'fulfilled' ? decisionRes.value.items.filter((d) => isPendingDecision(d.outcome)) : [];
-        const items: AttentionItem[] = [
-          ...dead.slice(0, MAX_ROWS_PER_LANE).map((d) => ({
-            id: `dead:${d.id}`,
-            lane: 'backlog' as AttentionLane,
-            severity: 'critical' as AttentionSeverity,
-            title: `死信 · ${d.source_type || 'task'}`,
-            detail: truncate(d.error_message || '待重放'),
-            occurred_at: d.created_at ?? '',
-            to: { path: '/team' },
-          })),
-          ...pendingDecisions.slice(0, MAX_ROWS_PER_LANE).map((d) => ({
-            id: `hitl:${d.decision_key}`,
-            lane: 'backlog' as AttentionLane,
-            severity: 'warning' as AttentionSeverity,
-            title: `待审批 · ${d.scenario || d.category}`,
-            detail: truncate(d.reasoning || d.actor_key || '等待人工处理'),
-            occurred_at: d.created_at ?? '',
-          })),
-        ]
-          .sort((a, b) => (a.severity === 'critical' ? -1 : 1) - (b.severity === 'critical' ? -1 : 1))
-          .slice(0, MAX_ROWS_PER_LANE);
-        next.push({ lane: 'backlog', items, count: dead.length + pendingDecisions.length });
-      }
-
-      lanes.value = next;
-      updatedAt.value = new Date().toISOString();
-    } finally {
-      loading.value = false;
-    }
+  function statusOf(sources: AttentionSource[]): AttentionLaneState['status'] {
+    const missing = sources.filter((key) => store.snapshot[key] === undefined).length;
+    if (missing === sources.length) return store.initialized ? 'unavailable' : 'loading';
+    return missing || sources.some((key) => store.failedSources.includes(key)) ? 'partial' : 'ready';
   }
 
   const board = computed<AttentionBoard>(() => {
-    const counts = lanes.value.reduce((acc, l) => ({ ...acc, [l.lane]: l.count }), {
-      alerts: 0,
-      failed_runs: 0,
-      call_errors: 0,
-      backlog: 0,
-    } as Record<AttentionLane, number>);
-    const hasCritical = lanes.value.some((l) => l.items.some((i) => i.severity === 'critical'));
-    const anyCount = Object.values(counts).some((c) => c > 0);
+    const data = store.snapshot;
+    const metrics = new Map((data.metrics ?? []).map((metric) => [metric.key, metric]));
+    const alerts: AttentionItem[] = (data.alerts ?? []).flatMap((rule) => {
+      const metric = metrics.get(rule.metric_key);
+      if (!rule.enabled || !metric || metric.current_value < rule.threshold) return [];
+      return [
+        {
+          id: `alert:${rule.id}`,
+          lane: 'alerts',
+          severity: severityOf(rule),
+          title: rule.name || rule.metric_key,
+          detail: t('uiSystem.overview.metricThreshold', {
+            name: metric.name || rule.metric_key,
+            current: formatMetric(metric.current_value, metric.unit),
+            threshold: formatMetric(rule.threshold, metric.unit),
+          }),
+          occurred_at: metric.evaluated_at ?? '',
+          to: { path: '/monitor/logs', query: { tab: 'alerts' } },
+        },
+      ];
+    });
+    const cron = data.cron?.items ?? [];
+    const runs: AttentionItem[] = cron.map((run) => ({
+      id: `cron:${run.id}`,
+      lane: 'failed_runs',
+      severity: 'warning',
+      title: run.task_name || t('uiSystem.overview.scheduledTask'),
+      detail: truncate(run.error_message || t('uiSystem.overview.runFailed')),
+      occurred_at: run.started_at ?? run.created_at ?? '',
+      to: { path: '/cron' },
+    }));
+    const anomalies = (usage.overview?.anomalies ?? []).filter((event) => ATTENTION_ERROR_STATUSES.has(event.status));
+    const calls: AttentionItem[] = anomalies.map((event) => ({
+      id: `call:${event.id}`,
+      lane: 'call_errors',
+      severity: 'warning',
+      title: event.agent_name || event.model_display_name || event.model_api_id,
+      detail: truncate(event.error_message || `${event.status} · ${event.provider_code}/${event.model_api_id}`),
+      occurred_at: event.occurred_at ?? '',
+      to: { path: '/usage/events', query: { status: 'error' } },
+    }));
+    const dead = data.dead ?? [];
+    const pending = (data.decisions?.items ?? []).filter((decision) =>
+      ['', 'pending', 'awaiting'].includes((decision.outcome ?? '').toLowerCase()),
+    );
+    const backlog: AttentionItem[] = [
+      ...dead.map(
+        (item): AttentionItem => ({
+          id: `dead:${item.id}`,
+          lane: 'backlog',
+          severity: 'critical',
+          title: t('uiSystem.overview.deadLetter', { source: item.source_type || 'task' }),
+          detail: truncate(item.error_message || t('uiSystem.overview.awaitingReplay')),
+          occurred_at: item.created_at ?? '',
+          to: { path: '/team' },
+        }),
+      ),
+      ...pending.map(
+        (item): AttentionItem => ({
+          id: `hitl:${item.decision_key}`,
+          lane: 'backlog',
+          severity: 'warning',
+          title: t('uiSystem.overview.awaitingApproval', { scenario: item.scenario || item.category }),
+          detail: truncate(item.reasoning || item.actor_key || t('uiSystem.overview.awaitingHuman')),
+          occurred_at: item.created_at ?? '',
+        }),
+      ),
+    ].sort((a, b) => Number(b.severity === 'critical') - Number(a.severity === 'critical'));
+    const usageStatus = !usage.overview ? (usage.error ? 'unavailable' : 'loading') : usage.error ? 'partial' : 'ready';
+    const alertStatus = statusOf(['alerts', 'metrics']);
+    const missingMetric = data.alerts?.some((rule) => rule.enabled && !metrics.has(rule.metric_key));
+    const lanes: AttentionLaneState[] = [
+      {
+        lane: 'alerts',
+        status: alertStatus === 'ready' && missingMetric ? 'partial' : alertStatus,
+        items: alerts.slice(0, MAX_ROWS),
+        count: alerts.length,
+      },
+      {
+        lane: 'failed_runs',
+        status: statusOf(['runner', 'cron']),
+        items: runs.slice(0, MAX_ROWS),
+        count: (data.runner?.error_runs ?? 0) + cron.length,
+      },
+      { lane: 'call_errors', status: usageStatus, items: calls.slice(0, MAX_ROWS), count: calls.length },
+      {
+        lane: 'backlog',
+        status: statusOf(['dead', 'decisions']),
+        items: backlog.slice(0, MAX_ROWS),
+        count: backlog.length,
+      },
+    ];
+    const counts = Object.fromEntries(lanes.map((lane) => [lane.lane, lane.count])) as Record<AttentionLane, number>;
+    const incomplete = lanes.some((lane) => lane.status !== 'ready');
     return {
-      lanes: lanes.value,
+      lanes,
       counts,
-      worstSeverity: hasCritical ? 'critical' : anyCount ? 'warning' : 'ok',
-      updatedAt: updatedAt.value,
+      incomplete,
+      updatedAt: store.updatedAt,
+      worstSeverity:
+        backlog.some((item) => item.severity === 'critical') || alerts.some((item) => item.severity === 'critical')
+          ? 'critical'
+          : Object.values(counts).some(Boolean)
+            ? 'warning'
+            : incomplete
+              ? 'unknown'
+              : 'ok',
     };
   });
 
+  function refresh() {
+    return store.refresh();
+  }
   function onVisibility() {
     if (!document.hidden) void refresh();
   }
-
   onMounted(() => {
     void refresh();
-    timer = setInterval(() => {
-      if (!document.hidden) void refresh();
-    }, POLL_INTERVAL_MS);
+    timer = setInterval(onVisibility, POLL_INTERVAL_MS);
     document.addEventListener('visibilitychange', onVisibility);
   });
-
   onUnmounted(() => {
-    if (timer) clearInterval(timer);
+    clearInterval(timer);
     document.removeEventListener('visibilitychange', onVisibility);
   });
-
-  return { board, loading, refresh };
+  return { board, loading: computed(() => store.loading), refresh };
 }

@@ -129,12 +129,24 @@ export function useChatSpiritPanel(workspace: Workspace) {
   const activityStore = useChatActivityStore();
   const sidebarMemberDialogOpen = ref(false);
   const sidebarActiveMemberId = ref<string | null>(null);
+  const taskMemberScope = ref<string | null>(null);
   // 实时查询（同 GraphStageBlock）：store 以新对象替换方式 upsert memberSession，
   // 点击时存快照会导致弹框中 Status/canInject 过期。
   const sidebarActiveMember = computed<MemberSession | null>(() => {
+    if (taskMemberScope.value && taskMemberScope.value !== session.selectedSessionForUi?.id) return null;
     const id = sidebarActiveMemberId.value;
     return id ? (activityStore.memberSessions.get(id) ?? null) : null;
   });
+  watch(
+    () => session.selectedSessionForUi?.id,
+    (sid) => {
+      if (taskMemberScope.value && taskMemberScope.value !== sid) {
+        sidebarMemberDialogOpen.value = false;
+        sidebarActiveMemberId.value = null;
+        taskMemberScope.value = null;
+      }
+    },
+  );
 
   /** 解析左侧成员卡片对应的 MemberSession。
    * 优先 member.chatSessionId == MemberSession.SessionID（精确 1:1）；
@@ -170,7 +182,19 @@ export function useChatSpiritPanel(workspace: Workspace) {
   function onSidebarSelectMember(payload: { agentKey: string; teamSessionId: string; teamId: string }) {
     const ms = resolveSidebarMemberSession(payload);
     if (!ms) return;
+    taskMemberScope.value = null;
     sidebarActiveMemberId.value = ms.ID;
+    sidebarMemberDialogOpen.value = true;
+  }
+
+  /** Open an exact member record from the selected task, without changing the sender. */
+  function openTaskMember(taskId: string, memberId: string) {
+    const sid = session.selectedSessionForUi?.id;
+    const task = activityStore.getSessionTasks(sid ?? '').find((row) => row.ID === taskId);
+    const member = activityStore.memberSessions.get(memberId);
+    if (!sid || !task || !member || member.TaskID !== task.ID || member.SpiritSessionID !== sid) return;
+    taskMemberScope.value = sid;
+    sidebarActiveMemberId.value = member.ID;
     sidebarMemberDialogOpen.value = true;
   }
 
@@ -332,6 +356,7 @@ export function useChatSpiritPanel(workspace: Workspace) {
     onSelectSpirit,
     onSidebarLocateAgent,
     onSidebarSelectMember,
+    openTaskMember,
     sidebarMemberDialogOpen,
     sidebarActiveMember,
     onSidebarPauseAgent,

@@ -112,6 +112,7 @@ test/.gocache*
 /cmd/admin/logs/
 /AraneaAgents-deploy
 /.auto-fix
+/.claude/
 /.codegraph
 /.dbg
 /.husky

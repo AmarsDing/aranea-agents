@@ -1,34 +1,136 @@
 <template>
-  <q-page padding class="q-gutter-md">
-    <div class="text-h5">内容候选库</div>
-    <div class="text-caption text-grey-7">RSS / 搜索 / 手工入库（MVP）。过滤走现有 list API 的 source_type / status。</div>
-    <q-card flat bordered>
-      <q-card-section class="row q-gutter-sm items-end">
-        <q-input v-model="title" label="标题" dense outlined class="col" />
-        <q-input v-model="body" label="正文" dense outlined class="col" />
-        <q-input v-model="url" label="URL" dense outlined class="col" />
-        <q-btn color="primary" label="入库" @click="create" />
-      </q-card-section>
-      <q-card-section class="row q-gutter-sm items-end">
-        <q-input v-model="feedURL" label="RSS Feed URL" dense outlined class="col" />
-        <q-btn color="secondary" label="拉取 RSS" @click="pullRSS" />
-        <q-input v-model="searchQuery" label="搜索词（手工 hits）" dense outlined class="col" />
-        <q-input v-model="searchHitURL" label="Hit URL" dense outlined class="col" />
-        <q-btn color="secondary" outline label="搜索入库" @click="pullSearch" />
-      </q-card-section>
-      <q-card-section class="row q-gutter-sm items-center">
-        <q-select v-model="sourceType" dense outlined emit-value map-options label="来源" :options="sourceOpts" style="min-width:140px" @update:model-value="refresh" />
-        <q-select v-model="status" dense outlined emit-value map-options label="状态" :options="statusOpts" style="min-width:140px" @update:model-value="refresh" />
-        <q-btn flat icon="refresh" @click="refresh" />
-        <div class="text-caption text-grey-7" v-if="ingestMsg">{{ ingestMsg }}</div>
-      </q-card-section>
-    </q-card>
-    <q-table flat bordered :rows="rows" :columns="cols" row-key="ID" hide-pagination :pagination="{ rowsPerPage: 0 }" />
+  <q-page class="app-standard-page app-registry-page">
+    <AppPageHero :title="t('uiSystem.operations.contentTitle')" :subtitle="t('uiSystem.operations.contentSubtitle')" />
+    <q-banner v-if="error" class="bg-negative q-mb-md" role="alert"
+      >{{ error
+      }}<template #action
+        ><q-btn flat :label="t('uiSystem.operations.retry')" :disable="loading" @click="refresh" /></template
+    ></q-banner>
+    <q-banner v-if="feedback" class="app-info-banner" role="status">{{ feedback }}</q-banner>
+    <q-card flat class="app-registry-panel"
+      ><q-card-section>
+        <q-form @submit.prevent="create">
+          <h2 class="ui-preview-label">{{ t('uiSystem.operations.manual') }}</h2>
+          <div class="app-form-field-grid">
+            <q-input
+              v-model="title"
+              :label="t('uiSystem.operations.titleRequired')"
+              dense
+              outlined
+              :rules="[required]"
+            /><q-input v-model="url" :label="t('uiSystem.operations.sourceLink')" dense outlined />
+          </div>
+          <q-input
+            v-model="body"
+            type="textarea"
+            autogrow
+            :label="t('uiSystem.operations.body')"
+            dense
+            outlined
+            class="q-mt-sm"
+          />
+          <div class="app-actions-bar q-mt-md">
+            <q-btn
+              type="submit"
+              color="primary"
+              unelevated
+              :label="t('uiSystem.operations.createContent')"
+              :loading="saving"
+              :disable="!title.trim() || saving || loading"
+            />
+          </div>
+        </q-form> </q-card-section
+    ></q-card>
+    <q-card flat class="app-registry-panel"
+      ><q-card-section class="ui-operations-grid">
+        <q-form @submit.prevent="pullRSS"
+          ><h2 class="ui-preview-label">{{ t('uiSystem.operations.rssSource') }}</h2>
+          <q-input v-model="feedURL" label="RSS Feed URL" dense outlined />
+          <div class="app-actions-bar q-mt-sm">
+            <q-btn
+              type="submit"
+              outline
+              color="primary"
+              :label="t('uiSystem.operations.pullRSS')"
+              :loading="saving"
+              :disable="!feedURL.trim() || saving || loading"
+            /></div
+        ></q-form>
+        <q-form @submit.prevent="pullSearch"
+          ><h2 class="ui-preview-label">{{ t('uiSystem.operations.searchImport') }}</h2>
+          <q-input v-model="searchQuery" :label="t('uiSystem.operations.query')" dense outlined /><q-input
+            v-model="searchHitURL"
+            :label="t('uiSystem.operations.resultLink')"
+            dense
+            outlined
+            class="q-mt-sm" />
+          <div class="app-actions-bar q-mt-sm">
+            <q-btn
+              type="submit"
+              outline
+              color="primary"
+              :label="t('uiSystem.operations.importSearch')"
+              :loading="saving"
+              :disable="!searchQuery.trim() || !searchHitURL.trim() || saving || loading"
+            /></div
+        ></q-form> </q-card-section
+    ></q-card>
+    <q-card flat class="app-registry-panel"
+      ><q-card-section class="ui-preview-actions">
+        <q-select
+          v-model="sourceType"
+          dense
+          outlined
+          emit-value
+          map-options
+          :label="t('uiSystem.operations.source')"
+          :options="ui.sourceOptions"
+          class="app-field-sm"
+          @update:model-value="refresh"
+        />
+        <q-select
+          v-model="status"
+          dense
+          outlined
+          emit-value
+          map-options
+          :label="t('uiSystem.operations.state')"
+          :options="ui.contentStatusOptions"
+          class="app-field-sm"
+          @update:model-value="refresh"
+        />
+        <q-btn
+          flat
+          round
+          icon="refresh"
+          :aria-label="t('uiSystem.operations.refreshContent')"
+          :loading="loading"
+          @click="refresh"
+        /> </q-card-section
+    ></q-card>
+    <AppRegistryTable
+      :rows="rows"
+      :columns="ui.contentColumns"
+      :loading="loading"
+      row-key="ID"
+      :external-pagination="false"
+      :pagination="{ rowsPerPage: 20 }"
+      :no-data-label="t('uiSystem.operations.noContent')"
+    />
   </q-page>
 </template>
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
-import { mvpApi } from '../features/mvp/api';
+import { computed, onMounted, ref } from 'vue';
+import { storeToRefs } from 'pinia';
+import { useI18n } from 'vue-i18n';
+import { useContentInboxStore } from '../stores/mvp';
+import AppPageHero from '../components/layout/AppPageHero.vue';
+import AppRegistryTable from '../components/layout/AppRegistryTable.vue';
+import { createMvpUi } from '../features/mvp/mvpUi';
+const { t } = useI18n();
+const ui = computed(() => createMvpUi(t));
+const store = useContentInboxStore();
+const { rows, loading, saving, error, feedback } = storeToRefs(store);
 const title = ref('');
 const body = ref('');
 const url = ref('');
@@ -37,55 +139,31 @@ const searchQuery = ref('');
 const searchHitURL = ref('');
 const sourceType = ref('');
 const status = ref('');
-const ingestMsg = ref('');
-const rows = ref<any[]>([]);
-const sourceOpts = [
-  { label: '全部来源', value: '' },
-  { label: 'RSS', value: 'rss' },
-  { label: '搜索', value: 'search' },
-  { label: '手工', value: 'manual' },
-];
-const statusOpts = [
-  { label: '全部状态', value: '' },
-  { label: '候选', value: 'candidate' },
-  { label: '已选题', value: 'selected' },
-  { label: '审核中', value: 'in_review' },
-  { label: '已通过', value: 'approved' },
-  { label: '已驳回', value: 'rejected' },
-];
-const cols = [
-  { name: 'Title', label: '标题', field: 'Title', align: 'left' as const },
-  { name: 'SourceType', label: '来源', field: 'SourceType' },
-  { name: 'Status', label: '状态', field: 'Status' },
-];
-async function refresh() {
-  const qs = new URLSearchParams();
-  if (sourceType.value) qs.set('source_type', sourceType.value);
-  if (status.value) qs.set('status', status.value);
-  const q = qs.toString() ? `?${qs.toString()}` : '';
-  const res = await mvpApi.listContent(q);
-  rows.value = res.items || [];
-}
+const required = (value: string) => !!value.trim() || t('uiSystem.operations.titleMissing');
+const refresh = () => store.load(sourceType.value, status.value);
 async function create() {
-  await mvpApi.createContent({ Title: title.value, Body: body.value, SourceURL: url.value, SourceType: 'manual' });
-  title.value = ''; body.value = ''; url.value = '';
-  await refresh();
+  if (!title.value.trim() || saving.value || loading.value) return;
+  if (
+    await store.create({
+      Title: title.value.trim(),
+      Body: body.value,
+      SourceURL: url.value.trim(),
+      SourceType: 'manual',
+    })
+  ) {
+    title.value = '';
+    body.value = '';
+    url.value = '';
+    await refresh();
+  }
 }
 async function pullRSS() {
-  if (!feedURL.value.trim()) { alert('请填写 Feed URL'); return; }
-  const res = await mvpApi.ingestRSS(feedURL.value.trim());
-  ingestMsg.value = `RSS: fetched=${res.fetched} created=${res.created} deduped=${res.deduped}`;
-  await refresh();
+  if (!feedURL.value.trim() || saving.value || loading.value) return;
+  if (await store.ingestRSS(feedURL.value.trim())) await refresh();
 }
 async function pullSearch() {
-  if (!searchQuery.value.trim() || !searchHitURL.value.trim()) { alert('请填写搜索词与至少一条 Hit URL'); return; }
-  const res = await mvpApi.ingestSearch(searchQuery.value.trim(), [{
-    URL: searchHitURL.value.trim(),
-    Title: searchQuery.value.trim(),
-    Snippet: body.value || searchQuery.value.trim(),
-  }]);
-  ingestMsg.value = `Search: fetched=${res.fetched} created=${res.created} deduped=${res.deduped}`;
-  await refresh();
+  if (!searchQuery.value.trim() || !searchHitURL.value.trim() || saving.value || loading.value) return;
+  if (await store.ingestSearch(searchQuery.value.trim(), searchHitURL.value.trim(), body.value)) await refresh();
 }
 onMounted(refresh);
 </script>

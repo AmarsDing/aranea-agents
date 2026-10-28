@@ -65,18 +65,18 @@
 </template>
 
 <script setup lang="ts">
-import type { LearningPattern } from '../../features/agents/learning.types';
+import type { LearningPattern, PatternFilter } from '../../features/agents/learning.types';
 import { formatDate } from '../../features/agents/learning.utils';
 import AppStatusChip from '../common/AppStatusChip.vue';
 
 defineProps<{
   patterns: LearningPattern[];
   loading: boolean;
-  statusFilter: string;
+  statusFilter: PatternFilter;
 }>();
 
 const emit = defineEmits<{
-  'update:status-filter': [value: string];
+  'update:status-filter': [value: PatternFilter];
   confirm: [patternId: string];
   dismiss: [patternId: string];
 }>();

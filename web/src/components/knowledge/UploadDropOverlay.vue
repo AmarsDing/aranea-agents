@@ -67,7 +67,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--glass-backdrop, rgba(10, 14, 28, 0.45));
+  background: var(--overlay-backdrop);
 }
 
 .upload-drop-overlay__panel {

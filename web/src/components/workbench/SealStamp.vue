@@ -67,7 +67,7 @@ onUnmounted(() => {
   height: 44px
   border-radius: 8px
   background: var(--wb-await)
-  color: #14100a
+  color: var(--color-on-accent)
   font-size: 22px
   font-weight: 800
   display: flex

@@ -81,8 +81,8 @@ export async function getMicStreamWithFallback(
   } catch (err) {
     const overconstrained = err instanceof DOMException && err.name === 'OverconstrainedError';
     if (!overconstrained || !('voiceIsolation' in constraints)) throw err;
-    const degraded: CompanionAudioConstraints = { ...constraints };
-    delete degraded.voiceIsolation;
+    const degraded: MediaTrackConstraints = { ...constraints };
+    Reflect.deleteProperty(degraded, 'voiceIsolation');
     console.warn('[voice] voiceIsolation unsatisfiable (OverconstrainedError), retrying without it');
     return getUserMedia(degraded);
   }

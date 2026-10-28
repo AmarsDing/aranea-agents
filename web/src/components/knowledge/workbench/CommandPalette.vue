@@ -210,7 +210,7 @@ function onKeydown(e: KeyboardEvent) {
   border-radius: 6px
   color: var(--kb-text-dim)
   border: 1px solid var(--kb-glass-border)
-  background: rgba(122, 138, 165, 0.08)
+  background: var(--surface-muted)
 
 .kb-cmd__empty
   padding: 24px

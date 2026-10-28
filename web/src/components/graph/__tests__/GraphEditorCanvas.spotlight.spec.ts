@@ -2,6 +2,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import GraphEditorCanvas from '../GraphEditorCanvas.vue';
+import { graphDefinitionFixture, graphNodeFixture } from '../../../features/graph/__tests__/graphFixtures';
 
 const { fitViewSpy } = vi.hoisted(() => ({ fitViewSpy: vi.fn() }));
 
@@ -53,21 +54,18 @@ vi.mock('quasar', () => ({
 }));
 
 describe('GraphEditorCanvas - R2-7 validation spotlight', () => {
-  const mockGraphDef = {
+  const mockGraphDef = graphDefinitionFixture({
     id: 'g1',
     name: 'G',
     version: 1,
-    nodes: [
-      { id: 'n1', type: 'agent', agentName: 'A' },
-      { id: 'n2', type: 'llm' },
-    ],
+    nodes: [graphNodeFixture({ id: 'n1', type: 'agent', agentName: 'A' }), graphNodeFixture({ id: 'n2', type: 'llm' })],
     edges: [],
     conditionalEdges: [],
     entryPoint: 'n1',
     finishPoint: '',
     stateFields: [],
     description: '',
-  };
+  });
 
   beforeEach(() => {
     fitViewSpy.mockClear();

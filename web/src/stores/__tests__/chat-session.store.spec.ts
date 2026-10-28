@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { setActivePinia, createPinia } from 'pinia';
 import { useChatSessionStore } from '../chat/sessionStore';
+import type { Session } from '../../features/session/types';
 
 vi.mock('../../features/session/api', () => ({
   searchSessions: vi.fn().mockResolvedValue({ items: [], total: 0, limit: 50, offset: 0 }),
@@ -68,6 +69,60 @@ const mockSession = (overrides: Record<string, unknown> = {}): any => ({
 });
 
 describe('useChatSessionStore', () => {
+  it('does not replace a newer selection with a late created session', async () => {
+    const { createSession } = await import('../../features/session/api');
+    let finish!: (session: Session) => void;
+    vi.mocked(createSession).mockReturnValueOnce(
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    );
+    const store = useChatSessionStore();
+    const request = store.addAgentSession('agent-1', 'New');
+    store.selectedSession = mockSession({ id: 'user-selected' });
+    finish(mockSession({ id: 'late-created' }));
+    await request;
+    expect(store.selectedSession?.id).toBe('user-selected');
+    expect(store.sessions[0]?.id).toBe('late-created');
+  });
+
+  it('does not insert a late agent creation into another entity list', async () => {
+    const { createSession } = await import('../../features/session/api');
+    let finish!: (session: Session) => void;
+    vi.mocked(createSession).mockReturnValueOnce(
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    );
+    const store = useChatSessionStore();
+    const request = store.addAgentSession('agent-1', 'New');
+    store.resetForTeamSwitch('team-2');
+    finish(mockSession({ id: 'late-created' }));
+    await request;
+    expect(store.sessions).toEqual([]);
+    expect(store.selectedSession).toBeNull();
+    expect(store.selectedTeamId).toBe('team-2');
+  });
+
+  it('does not switch the selected team after a late creation for another team', async () => {
+    const { createSession } = await import('../../features/session/api');
+    let finish!: (session: Session) => void;
+    vi.mocked(createSession).mockReturnValueOnce(
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    );
+    const store = useChatSessionStore();
+    store.resetForTeamSwitch('team-1');
+    const request = store.addTeamSession('team-1', 'New');
+    store.resetForTeamSwitch('team-2');
+    store.teamSelectedSessionId = 'team-2-session';
+    finish(mockSession({ id: 'late-team-1', owner_type: 'team', team_id: 'team-1' }));
+    await request;
+    expect(store.selectedTeamId).toBe('team-2');
+    expect(store.teamSelectedSessionId).toBe('team-2-session');
+  });
+
   beforeEach(() => {
     setActivePinia(createPinia());
     vi.clearAllMocks();

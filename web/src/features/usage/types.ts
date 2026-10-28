@@ -236,6 +236,7 @@ export type AttentionItem = {
 
 export type AttentionLaneState = {
   lane: AttentionLane;
+  status: 'loading' | 'ready' | 'partial' | 'unavailable';
   items: AttentionItem[];
   /** 分栏计数徽标（可能与 items.length 不同，如聚合计数或未截断总数）。 */
   count: number;
@@ -244,7 +245,8 @@ export type AttentionLaneState = {
 export type AttentionBoard = {
   lanes: AttentionLaneState[];
   /** 全页裁决：critical→红、warning→琥珀、ok→绿。 */
-  worstSeverity: 'critical' | 'warning' | 'ok';
+  worstSeverity: 'critical' | 'warning' | 'ok' | 'unknown';
+  incomplete: boolean;
   /** 裁决横幅上的分项计数（按 lane）。 */
   counts: Record<AttentionLane, number>;
   /** 各数据源最新一次成功拉取时间（ISO）。 */

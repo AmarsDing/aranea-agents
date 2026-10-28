@@ -1,4 +1,4 @@
-import { onUnmounted, ref, type Ref } from 'vue';
+import { onScopeDispose, ref, watch, type Ref } from 'vue';
 import { useChatRuntimeStore } from '../../../stores/chat/runtimeStore';
 import type { PendingMessage } from '../types';
 import { messageQueuedFromActivityEvent, messageQueuedFromV2Payload } from '../activityRunStatus';
@@ -13,23 +13,46 @@ export function useFollowUpQueue(
   const pendingMessages = ref<PendingMessage[]>([]);
   /** One-shot poll timer: fires once after run starts, then WS events take over. */
   let pendingPollTimer: ReturnType<typeof setTimeout> | null = null;
+  let terminalPollTimer: ReturnType<typeof setTimeout> | null = null;
+  let generation = 0;
+  let fetchSequence = 0;
+  let active = true;
+  const current = (sid: string, captured: number) => active && sid === sessionId.value && captured === generation;
+  watch(
+    sessionId,
+    () => {
+      generation++;
+      fetchSequence++;
+      pendingMessages.value = [];
+      stopPendingPoll();
+    },
+    { flush: 'sync' },
+  );
 
-  async function refreshPendingMessages() {
+  async function refreshPendingMessages(options: { throwOnError?: boolean } = {}) {
     const sid = sessionId.value;
+    const captured = generation;
+    const sequence = ++fetchSequence;
     if (!sid) {
       pendingMessages.value = [];
       return;
     }
     const runtime = useChatRuntimeStore();
     try {
-      pendingMessages.value = await runtime.fetchPendingMessages(sid);
+      const rows = await runtime.fetchPendingMessages(sid);
+      if (current(sid, captured) && sequence === fetchSequence) pendingMessages.value = rows;
     } catch (err) {
+      if (!current(sid, captured) || sequence !== fetchSequence) return;
       notifyError?.(err instanceof Error ? err.message : '加载排队消息失败');
-      pendingMessages.value = [];
+      if (options.throwOnError) throw err;
     }
   }
 
   function stopPendingPoll() {
+    if (terminalPollTimer) {
+      clearTimeout(terminalPollTimer);
+      terminalPollTimer = null;
+    }
     if (pendingPollTimer != null) {
       clearTimeout(pendingPollTimer);
       pendingPollTimer = null;
@@ -65,26 +88,31 @@ export function useFollowUpQueue(
 
   async function onCancelPending(pendingId: string) {
     const sid = sessionId.value;
+    const captured = generation;
     if (!sid || !pendingId) return;
     const runtime = useChatRuntimeStore();
     try {
       const ok = await runtime.cancelPending(sid, pendingId);
+      if (!current(sid, captured)) return;
       if (ok) {
         pendingMessages.value = pendingMessages.value.filter((pm) => pm.id !== pendingId);
       } else {
         notifyError?.('取消排队消息失败');
       }
     } catch (err) {
+      if (!current(sid, captured)) return;
       notifyError?.(err instanceof Error ? err.message : '取消排队消息失败');
     }
   }
 
   async function onUpdatePending(pendingId: string, content: string) {
     const sid = sessionId.value;
+    const captured = generation;
     if (!sid || !pendingId || !content.trim()) return;
     const runtime = useChatRuntimeStore();
     try {
       const ok = await runtime.updatePending(sid, pendingId, content.trim());
+      if (!current(sid, captured)) return;
       if (ok) {
         pendingMessages.value = pendingMessages.value.map((pm) =>
           pm.id === pendingId ? { ...pm, content: content.trim() } : pm,
@@ -93,22 +121,26 @@ export function useFollowUpQueue(
         notifyError?.('更新排队消息失败');
       }
     } catch (err) {
+      if (!current(sid, captured)) return;
       notifyError?.(err instanceof Error ? err.message : '更新排队消息失败');
     }
   }
 
   async function onInterruptPending(pendingId: string) {
     const sid = sessionId.value;
+    const captured = generation;
     if (!sid || !pendingId) return;
     const runtime = useChatRuntimeStore();
     try {
       const ok = await runtime.interruptAndSend(sid, pendingId);
+      if (!current(sid, captured)) return;
       if (ok) {
         pendingMessages.value = pendingMessages.value.filter((pm) => pm.id !== pendingId);
       } else {
         notifyError?.('立即发送失败');
       }
     } catch (err) {
+      if (!current(sid, captured)) return;
       notifyError?.(err instanceof Error ? err.message : '立即发送失败');
     }
   }
@@ -119,13 +151,19 @@ export function useFollowUpQueue(
       scheduleInitialFetch();
     } else {
       // Final refresh after run completes, then stop
-      setTimeout(() => {
+      stopPendingPoll();
+      terminalPollTimer = setTimeout(() => {
+        terminalPollTimer = null;
         void refreshPendingMessages();
       }, 1000);
     }
   }
 
-  onUnmounted(stopPendingPoll);
+  onScopeDispose(() => {
+    active = false;
+    generation++;
+    stopPendingPoll();
+  });
 
   return {
     pendingMessages,

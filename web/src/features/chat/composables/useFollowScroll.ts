@@ -32,8 +32,8 @@ export type FollowScrollOpts = {
 
 export function useFollowScroll(opts: FollowScrollOpts) {
   const following = ref(true);
-  /** 区分程序滚动与用户滚动：程序滚动前置 true，scroll 事件消费后复位。 */
-  let programmaticScroll = false;
+  /** Only consume an event at the expected programmatic position; a no-op scroll must not swallow user input. */
+  let programmaticScrollTop: number | null = null;
 
   // 50ms leading + trailing 节流状态
   let rafId = 0;
@@ -79,10 +79,10 @@ export function useFollowScroll(opts: FollowScrollOpts) {
     const el = opts.scrollEl.value;
     if (!el) return;
     clampScrollTop(el);
-    programmaticScroll = true;
     withInstantScroll(el, () => {
       el.scrollTop = maxScrollTop(el);
     });
+    programmaticScrollTop = el.scrollTop;
   }
 
   /** 容器内是否存在非空选区（用户正在选择文字）。 */
@@ -156,10 +156,11 @@ export function useFollowScroll(opts: FollowScrollOpts) {
   function onScroll(event?: Event) {
     const el = (event?.target as HTMLElement | undefined) ?? opts.scrollEl.value;
     if (!el) return;
-    if (programmaticScroll) {
-      programmaticScroll = false;
+    if (programmaticScrollTop !== null) {
+      const expectedTop = programmaticScrollTop;
+      programmaticScrollTop = null;
       clampScrollTop(el);
-      return;
+      if (Math.abs(el.scrollTop - expectedTop) <= 2) return;
     }
     clampScrollTop(el);
     following.value = distanceFromBottom(el) <= NEAR_BOTTOM_THRESHOLD;
@@ -174,9 +175,9 @@ export function useFollowScroll(opts: FollowScrollOpts) {
     if (!el) return;
     following.value = true;
     if (anchorEl) {
-      programmaticScroll = true;
       if (typeof anchorEl.scrollIntoView === 'function') {
         withInstantScroll(el, () => anchorEl.scrollIntoView({ block: 'start' }));
+        programmaticScrollTop = el.scrollTop;
       }
       return;
     }
@@ -191,6 +192,10 @@ export function useFollowScroll(opts: FollowScrollOpts) {
   return {
     /** 只读跟随状态。 */
     following: readonly(following),
+    pause: () => {
+      programmaticScrollTop = null;
+      following.value = false;
+    },
     onScroll,
     jumpToLatest,
     /** 程序滚底（不改 following 状态）；供会话切换对齐等多帧重试场景复用。 */

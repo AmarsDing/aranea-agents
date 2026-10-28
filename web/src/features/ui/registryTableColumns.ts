@@ -3,7 +3,7 @@ import type { QTableColumn, QTableProps } from 'quasar';
 type RegistryColumn = NonNullable<QTableProps['columns']>[number];
 
 /** AppRegistryTable / AppRegistryMarkupTable 统一列定义类型 */
-export type RegistryTableColumn<T extends Record<string, unknown> = Record<string, unknown>> = QTableColumn<T>;
+export type RegistryTableColumn<T extends object = Record<string, unknown>> = QTableColumn<T>;
 
 /** 常用列宽 token（Registry 列表统一引用，避免散落 width 字符串） */
 export const REGISTRY_COL_W = {
@@ -57,22 +57,22 @@ export function registryColWidth(width: string) {
 /**
  * 统一列定义写法：name → label → field → align → width → 其它属性。
  */
-export function registryCol<T extends Record<string, unknown>>(
+export function registryCol<T extends object = Record<string, unknown>>(
   name: string,
   label: string,
-  field: RegistryTableColumn<T>['field'],
+  field: RegistryTableColumn<NoInfer<T>>['field'],
   align: NonNullable<RegistryTableColumn<T>['align']>,
   width: string,
-  extra?: Omit<RegistryTableColumn<T>, 'name' | 'label' | 'field' | 'align' | 'style' | 'headerStyle'>,
+  extra?: Omit<RegistryTableColumn<NoInfer<T>>, 'name' | 'label' | 'field' | 'align' | 'style' | 'headerStyle'>,
 ): RegistryTableColumn<T> {
   return { name, label, field, align, ...registryColWidth(width), ...extra };
 }
 
 /** 操作列 preset：右对齐 + sticky 类名（sessions 等特殊表可复用） */
-export function registryColActions<T extends Record<string, unknown>>(
+export function registryColActions<T extends object>(
   width: string = REGISTRY_COL_W.actions,
   label = '操作',
-  field: RegistryTableColumn<T>['field'] = 'id',
+  field: RegistryTableColumn<T>['field'] = (row) => 'id' in row ? row.id : undefined,
 ) {
   return registryCol<T>('actions', label, field, 'right', width, {
     sortable: false,
@@ -82,9 +82,9 @@ export function registryColActions<T extends Record<string, unknown>>(
 }
 
 /** Toggle 列 preset：居中 + 固定宽度 */
-export function registryColEnabled<T extends Record<string, unknown>>(
+export function registryColEnabled<T extends object>(
   label = '启用',
-  field: RegistryTableColumn<T>['field'] = 'enabled',
+  field: RegistryTableColumn<T>['field'] = (row) => 'enabled' in row ? row.enabled : undefined,
 ) {
   return registryCol<T>('enabled', label, field, 'center', REGISTRY_COL_W.enabled, { sortable: false });
 }

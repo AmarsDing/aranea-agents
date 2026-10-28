@@ -82,7 +82,7 @@ const lastToolText = computed(() => {
   flex-direction: column
   background: var(--color-surface-solid, var(--canvas-base))
   border-left: 1px solid var(--wb-line-hairline)
-  box-shadow: -8px 0 32px rgba(0, 0, 0, 0.3)
+  box-shadow: -8px 0 32px color-mix(in srgb, var(--color-shadow) 30%, transparent)
   transition: transform var(--wb-dur-view) ease
 .wb-drawer__head
   flex: none

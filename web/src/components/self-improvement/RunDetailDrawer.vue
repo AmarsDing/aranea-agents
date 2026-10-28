@@ -479,11 +479,11 @@ const diffLines = computed<DiffLine[]>(() => {
   color: var(--color-text-primary)
 
 .si-run-diff__line--add
-  background: rgba(76, 175, 124, 0.12)
+  background: var(--color-success-soft)
   color: var(--color-success)
 
 .si-run-diff__line--del
-  background: rgba(229, 92, 92, 0.12)
+  background: var(--color-danger-soft)
   color: var(--color-danger)
 
 .si-run-diff__line--hunk

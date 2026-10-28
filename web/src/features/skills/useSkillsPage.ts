@@ -22,7 +22,7 @@ export function useSkillsPage() {
   const filesystemMissing = ref<boolean | null>(null);
   const filesystemHealth = ref<SkillFilesystemHealth | null>(null);
   /** 排序：默认按标签升序（用户需求：默认标签排序）。 */
-  const sortBy = ref<'tag' | 'name' | ''>('tag');
+  const sortBy = ref<'tag' | 'name'>('tag');
   const sortOrder = ref<'asc' | 'desc'>('asc');
   /** 列表数据唯一真相源在 store：rows/total 直接别名 store 状态，行操作由 store action 自行更新。 */
   const { skills: rows, total } = storeToRefs(skillsStore);

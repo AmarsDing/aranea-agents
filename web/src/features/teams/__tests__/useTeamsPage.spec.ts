@@ -55,7 +55,21 @@ function setupPage() {
   return page;
 }
 
-const team = { id: 't1', team_key: 'demo', display_name: 'Demo' } as unknown as Team;
+const team: Team = {
+  id: 't1',
+  team_key: 'demo',
+  display_name: 'Demo',
+  status: 'active',
+  is_default: false,
+  definition_json: '{}',
+  app_name: '',
+  linked_graph_id: '',
+  has_active_run: false,
+  taxonomy_industry_id: '',
+  created_at: '',
+  updated_at: '',
+  deleted_at: '',
+};
 
 describe('useTeamsPage UI-2 实时连接状态', () => {
   beforeEach(() => {
@@ -67,7 +81,7 @@ describe('useTeamsPage UI-2 实时连接状态', () => {
     const connected = ref(false);
     subscribeTeamRunEventsWs.mockReturnValue({ close: vi.fn(), connected });
     const page = setupPage();
-    vi.spyOn(useTeamsStore(), 'loadRuns').mockResolvedValue();
+    vi.spyOn(useTeamsStore(), 'loadRuns').mockResolvedValue([]);
 
     await page.openRuns(team);
     expect(subscribeTeamRunEventsWs).toHaveBeenCalledTimes(1);
@@ -87,7 +101,7 @@ describe('useTeamsPage UI-2 实时连接状态', () => {
     const close = vi.fn();
     subscribeTeamRunEventsWs.mockReturnValue({ close, connected });
     const page = setupPage();
-    vi.spyOn(useTeamsStore(), 'loadRuns').mockResolvedValue();
+    vi.spyOn(useTeamsStore(), 'loadRuns').mockResolvedValue([]);
 
     await page.openRuns(team);
     expect(page.runEventsConnected.value).toBe(true);

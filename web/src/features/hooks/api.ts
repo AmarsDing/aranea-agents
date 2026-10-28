@@ -35,7 +35,7 @@ export type HookListResult = {
 /** Full catalog (no page params) — resolvers / platform resource manager. */
 export async function listHooks(): Promise<HookRow[]> {
   const svc = createHookService();
-  const res = await svc.ListHooks({});
+  const res = await svc.ListHooks({ page: undefined, pageSize: undefined, search: undefined, callbackPoint: undefined });
   return (res.items ?? []).map((row) => wireToHook(row as Record<string, unknown>));
 }
 

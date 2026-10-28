@@ -44,7 +44,7 @@ export function useGlobalInboundNotifications() {
 
   function isViewingSession(sessionId: string, agentId: string): boolean {
     const route = router.currentRoute.value;
-    if (route.name !== 'chat') return false;
+    if (route.name !== 'chat' && route.name !== 'task-workspace') return false;
     const sid = sessionStore.currentSessionId();
     if (sid !== sessionId) return false;
     const selectedAgent = appStore.selectedAgent?.id?.trim() ?? '';

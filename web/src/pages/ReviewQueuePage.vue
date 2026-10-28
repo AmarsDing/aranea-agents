@@ -1,67 +1,178 @@
 <template>
-  <q-page padding class="q-gutter-md">
-    <div class="text-h5">审核台</div>
-    <div class="text-caption text-grey-7">单人终审；A=通过并打包，R=驳回（必填原因）。未过审零外发。Publish=Package A，非平台自动发。</div>
-    <q-banner v-if="current" class="bg-grey-2">
-      <div class="text-subtitle1">{{ current.DraftTitle }}</div>
-      <div class="q-mt-sm" style="white-space: pre-wrap">{{ current.DraftBody }}</div>
-      <div class="q-mt-sm text-negative" v-if="current.MachineFlags?.length">机审提示：{{ current.MachineFlags.join(', ') }}</div>
-      <div class="q-mt-md row q-gutter-sm">
-        <q-btn color="positive" label="通过并打包 (A)" @click="approve" />
-        <q-input v-model="rejectNote" dense outlined label="驳回原因" class="col" />
-        <q-btn color="negative" label="驳回 (R)" @click="reject" />
-      </div>
-    </q-banner>
-    <div v-else class="text-grey">暂无待审</div>
-    <q-list bordered v-if="lastJob">
-      <q-item>
-        <q-item-section>
-          <q-item-label>最近发布包：{{ lastJob.Status }} / {{ lastJob.ID }}</q-item-label>
-          <q-item-label caption>packaged ≠ 已发布到平台；请下载后人工粘贴到平台后台</q-item-label>
-        </q-item-section>
-        <q-item-section side class="row q-gutter-xs">
-          <q-btn flat dense color="primary" label="manifest.json" :href="manifestURL" target="_blank" />
-          <q-btn flat dense color="primary" label="body.md" :href="bodyURL" target="_blank" />
-        </q-item-section>
-      </q-item>
-    </q-list>
+  <q-page class="app-standard-page app-registry-page">
+    <AppPageHero :title="t('uiSystem.operations.reviewTitle')" :subtitle="t('uiSystem.operations.reviewSubtitle')">
+      <template #actions
+        ><q-btn
+          outline
+          color="primary"
+          icon="refresh"
+          :label="t('uiSystem.operations.refresh')"
+          :loading="loading"
+          :disable="saving"
+          @click="store.load"
+      /></template>
+    </AppPageHero>
+    <q-banner v-if="error" class="bg-negative q-mb-md" role="alert"
+      >{{ error
+      }}<template #action
+        ><q-btn
+          flat
+          :label="t('uiSystem.operations.retry')"
+          :disable="loading || saving"
+          @click="store.load" /></template
+    ></q-banner>
+    <q-card v-if="current" flat class="app-registry-panel">
+      <q-card-section
+        ><div class="ui-review-meta">
+          <q-chip color="warning" icon="schedule">{{
+            t('uiSystem.operations.reviewCount', { count: rows.length })
+          }}</q-chip
+          ><span>{{ t('uiSystem.operations.shortcutHint') }}</span>
+        </div>
+        <h2 class="ui-card-title q-mt-md">{{ current.DraftTitle }}</h2>
+        <div class="ui-review-body q-mt-md">{{ current.DraftBody }}</div></q-card-section
+      >
+      <q-card-section v-if="current.MachineFlags?.length"
+        ><q-banner class="bg-warning"
+          ><template #avatar><q-icon name="gpp_maybe" /></template
+          >{{ t('uiSystem.operations.flags', { flags: current.MachineFlags.join(', ') }) }}</q-banner
+        ></q-card-section
+      >
+      <q-separator />
+      <q-card-section
+        ><q-input
+          ref="rejectInput"
+          v-model="rejectNote"
+          type="textarea"
+          autogrow
+          dense
+          outlined
+          :label="t('uiSystem.operations.rejectReason')"
+          :disable="saving" />
+        <div class="app-actions-bar q-mt-md">
+          <q-btn
+            flat
+            :label="t('uiSystem.operations.nextItem')"
+            :disable="saving || loading || rows.length < 2"
+            @click="next"
+          /><q-btn
+            outline
+            color="negative"
+            :label="t('uiSystem.operations.reject')"
+            :disable="saving || loading || !rejectNote.trim()"
+            @click="requestReject"
+          /><q-btn
+            color="primary"
+            unelevated
+            :label="t('uiSystem.operations.approve')"
+            :loading="saving"
+            :disable="saving || loading"
+            @click="requestApprove"
+          /></div
+      ></q-card-section>
+    </q-card>
+    <q-card v-else flat class="app-entity-empty q-pa-lg"
+      ><q-spinner v-if="loading" color="primary" />
+      <div v-else class="ui-card-description">
+        {{ t('uiSystem.operations.noReview')
+        }}{{ error ? t('uiSystem.operations.reviewRetry') : t('uiSystem.operations.reviewEmpty') }}
+      </div></q-card
+    >
+    <q-card v-if="lastJob" flat class="q-mt-lg"
+      ><q-card-section
+        ><h2 class="ui-card-title">{{ t('uiSystem.operations.packageTitle') }}</h2>
+        <p class="ui-card-description q-mt-sm">
+          {{ lastJob.Status }} / {{ lastJob.ID }} · {{ t('uiSystem.operations.packageNote') }}
+        </p>
+        <div class="ui-preview-actions q-mt-md">
+          <q-btn
+            outline
+            color="primary"
+            :label="t('uiSystem.operations.manifest')"
+            :href="manifestURL"
+            target="_blank"
+            rel="noopener noreferrer"
+          /><q-btn
+            outline
+            color="primary"
+            :label="t('uiSystem.operations.bodyFile')"
+            :href="bodyURL"
+            target="_blank"
+            rel="noopener noreferrer"
+          /></div></q-card-section
+    ></q-card>
   </q-page>
 </template>
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue';
-import { mvpApi, packageFileURL, type ReviewTask, type PublishJob } from '../features/mvp/api';
-const queue = ref<ReviewTask[]>([]);
-const current = ref<ReviewTask | null>(null);
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
+import { storeToRefs } from 'pinia';
+import { useI18n } from 'vue-i18n';
+import { useQuasar, type QInput } from 'quasar';
+import { useReviewQueueStore } from '../stores/mvp';
+import { packageFileURL } from '../features/mvp/links';
+import { reviewShortcut } from '../features/mvp/reviewShortcuts';
+import AppPageHero from '../components/layout/AppPageHero.vue';
+const { t } = useI18n();
+const store = useReviewQueueStore();
+const { rows, lastJob, loading, saving, error } = storeToRefs(store);
+const $q = useQuasar();
+const currentId = ref('');
 const rejectNote = ref('');
-const lastJob = ref<PublishJob | null>(null);
-const manifestURL = computed(() => lastJob.value ? packageFileURL(lastJob.value.ID, 'manifest.json') : '#');
-const bodyURL = computed(() => lastJob.value ? packageFileURL(lastJob.value.ID, 'body.md') : '#');
-async function refresh() {
-  const res = await mvpApi.listReview();
-  queue.value = res.items || [];
-  current.value = queue.value[0] || null;
-}
-async function approve() {
-  if (!current.value) return;
-  const res = await mvpApi.approve(current.value.ID);
-  lastJob.value = res.publish_job;
-  await refresh();
-}
-async function reject() {
-  if (!current.value) return;
-  if (!rejectNote.value.trim()) { alert('驳回必填原因'); return; }
-  await mvpApi.reject(current.value.ID, rejectNote.value);
+const rejectInput = ref<QInput>();
+const current = computed(() => rows.value.find((item) => item.ID === currentId.value) ?? rows.value[0] ?? null);
+watch(
+  () => current.value?.ID,
+  () => {
+    rejectNote.value = '';
+  },
+);
+const manifestURL = computed(() => (lastJob.value ? packageFileURL(lastJob.value.ID, 'manifest.json') : '#'));
+const bodyURL = computed(() => (lastJob.value ? packageFileURL(lastJob.value.ID, 'body.md') : '#'));
+function next() {
+  if (saving.value || loading.value || !rows.value.length) return;
+  const index = rows.value.findIndex((item) => item.ID === current.value?.ID);
+  currentId.value = rows.value[(index + 1) % rows.value.length].ID;
   rejectNote.value = '';
-  await refresh();
 }
-function onKey(e: KeyboardEvent) {
-  if (e.key === 'a' || e.key === 'A') void approve();
-  if (e.key === 'r' || e.key === 'R') void reject();
-  if (e.key === 'n' || e.key === 'N') {
-    const i = queue.value.findIndex((x) => x.ID === current.value?.ID);
-    current.value = queue.value[i + 1] || queue.value[0] || null;
+function requestApprove() {
+  if (!current.value || saving.value || loading.value) return;
+  const item = current.value;
+  $q.dialog({
+    title: t('uiSystem.operations.approveTitle'),
+    message: t('uiSystem.operations.approveMessage', { title: item.DraftTitle }),
+    cancel: true,
+    persistent: true,
+  }).onOk(() => {
+    if (current.value?.ID === item.ID && !saving.value && !loading.value) void store.approve(item.ID);
+  });
+}
+function requestReject() {
+  if (!current.value || saving.value || loading.value) return;
+  if (!rejectNote.value.trim()) {
+    rejectInput.value?.focus();
+    return;
   }
+  const id = current.value.ID;
+  const note = rejectNote.value.trim();
+  $q.dialog({ title: t('uiSystem.operations.rejectTitle'), message: note, cancel: true, persistent: true }).onOk(
+    async () => {
+      if (current.value?.ID === id && !saving.value && !loading.value && (await store.reject(id, note)))
+        rejectNote.value = '';
+    },
+  );
 }
-onMounted(() => { void refresh(); window.addEventListener('keydown', onKey); });
+function onKey(event: KeyboardEvent) {
+  if (loading.value || saving.value || !current.value) return;
+  const action = reviewShortcut(event);
+  if (!action) return;
+  event.preventDefault();
+  if (action === 'approve') requestApprove();
+  else if (action === 'reject') requestReject();
+  else next();
+}
+onMounted(() => {
+  void store.load();
+  window.addEventListener('keydown', onKey);
+});
 onUnmounted(() => window.removeEventListener('keydown', onKey));
 </script>

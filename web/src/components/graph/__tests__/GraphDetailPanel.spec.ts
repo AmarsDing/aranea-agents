@@ -6,8 +6,7 @@ import type { GraphDefinition, NodeDef, GraphExecutionSummary } from '../../../f
 
 vi.mock('vue-i18n', () => ({
   useI18n: () => ({
-    t: (key: string, params?: Record<string, unknown>) =>
-      params ? `${key}:${JSON.stringify(params)}` : key,
+    t: (key: string, params?: Record<string, unknown>) => (params ? `${key}:${JSON.stringify(params)}` : key),
   }),
 }));
 
@@ -140,7 +139,9 @@ describe('GraphDetailPanel - R2-6 重设计', () => {
   });
 
   it('R2-B.2 统计行：节点/连线/状态字段/执行次数 4 格', () => {
-    const graph = makeGraph({ stateFields: [{ name: 'f1', type: 'string', reducer: 'append', required: false, disableDeepCopy: false }] });
+    const graph = makeGraph({
+      stateFields: [{ name: 'f1', type: 'string', reducer: 'append', required: false, disableDeepCopy: false }],
+    });
     const wrapper = mountPanel(graph, {
       executions: [makeExec('e1', 'completed'), makeExec('e2', 'failed')],
       executionsHasMore: true,
@@ -279,8 +280,8 @@ describe('GraphDetailPanel - R2-6 重设计', () => {
   });
 
   it('详情面板用到的 graphs.detail* i18n key 在双语中存在（防 key 缺失回归）', async () => {
-    const zh = (await import('../../../i18n/locales/zh-CN')).default as Record<string, Record<string, string>>;
-    const en = (await import('../../../i18n/locales/en-US')).default as Record<string, Record<string, string>>;
+    const zh = (await import('../../../i18n/locales/zh-CN')).default;
+    const en = (await import('../../../i18n/locales/en-US')).default;
     const usedKeys = [
       'detailActionEdit',
       'detailActionRun',
@@ -309,7 +310,7 @@ describe('GraphDetailPanel - R2-6 重设计', () => {
       'detailRunsEmpty',
       'detailEmptyHint',
       'detailEmptySubHint',
-    ];
+    ] as const;
     for (const key of usedKeys) {
       expect(zh.graphs[key], `zh-CN 缺失 graphs.${key}`).toBeTruthy();
       expect(en.graphs[key], `en-US 缺失 graphs.${key}`).toBeTruthy();

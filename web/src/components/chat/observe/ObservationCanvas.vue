@@ -5,7 +5,6 @@
       :nodes="flowNodes"
       :edges="styledEdges"
       :fit-view-on-init="true"
-      :node-types="nodeTypes"
       :default-zoom="0.8"
       :min-zoom="0.2"
       :max-zoom="2"
@@ -18,13 +17,16 @@
       @edge-mouse-enter="onEdgeMouseEnter"
       @edge-mouse-leave="onEdgeMouseLeave"
     >
-      <Background :pattern-color="isDark ? '#333' : '#ddd'" />
+      <template #node-observe="nodeProps">
+        <ObserveNode :data="nodeProps.data" />
+      </template>
+      <Background pattern-color="var(--glass-border)" />
     </VueFlow>
   </div>
 </template>
 
 <script setup lang="ts">
-import { markRaw, provide, toRef, useTemplateRef, ref, computed } from 'vue';
+import { provide, toRef, useTemplateRef, ref, computed } from 'vue';
 import { VueFlow, type Node } from '@vue-flow/core';
 import { Background } from '@vue-flow/background';
 import '@vue-flow/core/dist/style.css';
@@ -45,10 +47,9 @@ const emit = defineEmits<{
   preview: [art: MediaArtifact];
 }>();
 
-const nodeTypes = { observe: markRaw(ObserveNode) };
 
 const spiritSessionIdRef = toRef(props, 'spiritSessionId');
-const { nodes, flowNodes, flowEdges, getDependencyChain } = useObserveGraph(spiritSessionIdRef);
+const { nodes, flowNodes, flowEdges, getDependencyChain } = useObserveGraph(spiritSessionIdRef, toRef(props, 'graphStage'));
 
 // Vue Flow instance ref for programmatic control
 const vueFlowRef = useTemplateRef('vueFlowRef');
@@ -84,7 +85,7 @@ function onNodeDoubleClick({ node }: { node: Node }) {
 
   const { x, y } = node.position;
   // Get current viewport dimensions
-  const viewport = vf.viewportRef.value;
+  const viewport = vf.viewportRef;
   if (!viewport) return;
 
   const rect = viewport.getBoundingClientRect();
@@ -92,7 +93,7 @@ function onNodeDoubleClick({ node }: { node: Node }) {
   const centerY = rect.height / 2;
 
   // Calculate new transform to center the node
-  const currentTransform = vf.viewport.value;
+  const currentTransform = vf.viewport;
   const newZoom = Math.min(currentTransform.zoom * 1.2, 2); // Zoom in 20%, max 2x
 
   vf.setTransform({

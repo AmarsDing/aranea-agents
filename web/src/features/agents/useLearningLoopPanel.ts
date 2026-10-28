@@ -5,8 +5,8 @@ import { i18n } from '../../i18n';
 
 const t = i18n.global.t;
 
-export type PatternFilter = '' | 'detected' | 'confirmed' | 'dismissed';
-export type ProposalFilter = '' | 'validated' | 'approved' | 'applied' | 'rejected' | 'conflict';
+import type { PatternFilter, ProposalFilter } from './learning.types';
+export type { PatternFilter, ProposalFilter } from './learning.types';
 
 export function useLearningLoopPanel(agentIdInput: MaybeRefOrGetter<string>) {
   const $q = useQuasar();

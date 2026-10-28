@@ -166,14 +166,14 @@ function onKeywordInput() {
 }
 
 .graph-rail__line--solid {
-  border-top: 2px solid #ff8a65;
+  border-top: 2px solid var(--color-warning);
 }
 
 .graph-rail__line--dashed {
-  border-top: 2px dashed #7986cb;
+  border-top: 2px dashed var(--color-violet);
 }
 
 .graph-rail__line--conflict {
-  border-top: 2px dashed #ef5350;
+  border-top: 2px dashed var(--color-danger);
 }
 </style>

@@ -19,7 +19,7 @@
         :chips="chips"
         :updated-at="updatedAtClock"
         :stale="stale"
-        :loading="loading"
+        :loading="loading || attentionLoading"
         @refresh="onRefresh"
       >
         <template #filters>
@@ -49,7 +49,9 @@
         </template>
       </OverviewVerdictBanner>
 
-      <OverviewAttentionQueue :lanes="board.lanes" @drill="onDrillItem" />
+      <AppWorkspaceLaunchpad :label="t('uiSystem.launchpad.label')" :items="launchpadItems" />
+
+      <OverviewAttentionQueue :lanes="board.lanes" :loading="loading || attentionLoading" @drill="onDrillItem" @refresh="onRefresh" />
 
       <OverviewRedStrip
         :model-tiles="modelTiles"
@@ -61,6 +63,7 @@
       />
 
       <OverviewCostBoard
+        :available="!!page.overview.value"
         :cost-value-usd="costValueUsd"
         :cost-delta="costDelta"
         :budget="budget"
@@ -79,6 +82,8 @@
       />
 
       <OverviewOrgBoard
+        :inventory-available="inventoryAvailable"
+        :usage-available="!!page.overview.value"
         :orgs="inventory.orgs"
         :teams="inventory.teams"
         :agents-total="inventory.agentsTotal"
@@ -106,6 +111,8 @@ import OverviewCostBoard from '../components/overview/OverviewCostBoard.vue';
 import OverviewTrendBoard from '../components/overview/OverviewTrendBoard.vue';
 import OverviewOrgBoard from '../components/overview/OverviewOrgBoard.vue';
 import OverviewFreshnessFooter from '../components/overview/OverviewFreshnessFooter.vue';
+import AppWorkspaceLaunchpad from '../components/layout/AppWorkspaceLaunchpad.vue';
+import { workspaceShortcuts } from '../config/workspaceShortcuts';
 
 const router = useRouter();
 const page = useOverviewPage();
@@ -126,11 +133,18 @@ const {
   runnerWindowOptions,
   loadRunnerMetrics,
   inventory,
+  inventoryAvailable,
   refreshAll,
 } = page;
 
-const anomalies = computed(() => page.overview.value?.anomalies ?? []);
-const { board } = useAttentionBoard(anomalies);
+const launchpadItems = computed(() => workspaceShortcuts.map((item) => ({
+  ...item,
+  title: t(`uiSystem.launchpad.${item.key}.title`),
+  description: t(`uiSystem.launchpad.${item.key}.description`),
+  action: t('uiSystem.launchpad.start'),
+})));
+
+const { board, loading: attentionLoading, refresh: refreshAttention } = useAttentionBoard();
 const {
   verdict,
   headline,
@@ -155,6 +169,7 @@ const {
 // —— 交互（路由下钻全部收在 Page 层） ——
 function onRefresh() {
   void refreshAll();
+  void refreshAttention();
 }
 function onRunWindow(v: number) {
   runnerWindowMinutes.value = v;

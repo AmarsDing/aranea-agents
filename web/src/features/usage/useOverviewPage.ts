@@ -26,7 +26,10 @@ export function useOverviewPage() {
   const { t } = useI18n();
   const route = useRoute();
   const usageStore = useUsageStore();
-  const { overview, loading, error } = storeToRefs(usageStore);
+  const { overview, loading, error: overviewError } = storeToRefs(usageStore);
+  const providerLoadError = ref('');
+  const runnerLoadError = ref('');
+  const error = computed(() => overviewError.value || providerLoadError.value || runnerLoadError.value);
 
   const initialRange = String(route.query.range || 'today');
   const filters = ref<ModelUsageQuery>({
@@ -60,8 +63,14 @@ export function useOverviewPage() {
   const usageUpdatedAt = ref('');
 
   async function loadOverview() {
-    await usageStore.loadOverview({ ...filters.value }, trendGranularity.value);
-    usageUpdatedAt.value = new Date().toISOString();
+    try {
+      await usageStore.loadOverview({ ...filters.value }, trendGranularity.value);
+      usageUpdatedAt.value = new Date().toISOString();
+      return true;
+    } catch {
+      // The store error is rendered by the page; filter changes must not reject unhandled.
+      return false;
+    }
   }
 
   // —— Runner RED 组（窗口独立于 usage 窗口，卡片上显式标注） ——
@@ -75,7 +84,12 @@ export function useOverviewPage() {
   ]);
 
   async function loadRunnerMetrics() {
-    await monitorStore.loadRunnerMetrics(runnerWindowMinutes.value);
+    runnerLoadError.value = '';
+    try {
+      await monitorStore.loadRunnerMetrics(runnerWindowMinutes.value);
+    } catch (reason) {
+      runnerLoadError.value = reason instanceof Error ? reason.message : t('uiSystem.operations.loadFailed');
+    }
   }
 
   // —— 缓存命中率（24h 窗口；低水位阈值与告警口径一致 = 0.5） ——
@@ -181,18 +195,31 @@ export function useOverviewPage() {
 
   // —— 编制计数（静态配置态，仅展示区 caption；显式标注不反映运行） ——
   const inventory = ref({ agentsEnabled: 0, agentsTotal: 0, teams: 0, orgs: 0 });
+  const inventoryAvailable = ref(false);
 
   async function loadInventory() {
-    const [active, total, teams] = await Promise.allSettled([
+    const [active, total, teams, organizations] = await Promise.allSettled([
       listAgentsPaged({ status: 'active', limit: 1, offset: 0 }),
       listAgentsPaged({ limit: 1, offset: 0 }),
       countTeams(),
       platformStore.loadTaxonomyTree('organization'),
     ]);
+    inventoryAvailable.value =
+      active.status === 'fulfilled' &&
+      total.status === 'fulfilled' &&
+      teams.status === 'fulfilled' &&
+      organizations.status === 'fulfilled';
+    if (
+      active.status !== 'fulfilled' ||
+      total.status !== 'fulfilled' ||
+      teams.status !== 'fulfilled' ||
+      organizations.status !== 'fulfilled'
+    )
+      return;
     inventory.value = {
-      agentsEnabled: active.status === 'fulfilled' ? active.value.total : 0,
-      agentsTotal: total.status === 'fulfilled' ? total.value.total : 0,
-      teams: teams.status === 'fulfilled' ? teams.value : 0,
+      agentsEnabled: active.value.total,
+      agentsTotal: total.value.total,
+      teams: teams.value,
       orgs: platformStore.taxonomyTree.length,
     };
   }
@@ -201,7 +228,22 @@ export function useOverviewPage() {
   const quota = computed(() => overview.value?.quota_dashboard ?? null);
 
   async function refreshAll() {
-    await Promise.allSettled([loadOverview(), loadRunnerMetrics(), usageStore.loadCacheHitStats(24), loadInventory()]);
+    await Promise.allSettled([
+      loadOverview(),
+      loadRunnerMetrics(),
+      usageStore.loadCacheHitStats(24),
+      loadInventory(),
+      loadProviderOptions(),
+    ]);
+  }
+
+  async function loadProviderOptions() {
+    providerLoadError.value = '';
+    try {
+      await platformStore.loadProviderModels();
+    } catch (reason) {
+      providerLoadError.value = reason instanceof Error ? reason.message : t('uiSystem.operations.loadFailed');
+    }
   }
 
   function setRange(range: string) {
@@ -216,7 +258,6 @@ export function useOverviewPage() {
 
   onMounted(() => {
     void refreshAll();
-    void platformStore.loadProviderModels();
   });
 
   return {
@@ -248,6 +289,7 @@ export function useOverviewPage() {
     cacheHitSummary,
     cacheHitDenied,
     inventory,
+    inventoryAvailable,
     usageUpdatedAt,
     refreshAll,
   };

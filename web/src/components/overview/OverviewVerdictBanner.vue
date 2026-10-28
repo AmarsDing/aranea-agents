@@ -21,7 +21,7 @@
     <div class="ov-verdict__side">
       <span class="ov-verdict__live" :class="{ 'ov-verdict__live--stale': stale }">
         <span class="ov-verdict__live-dot" aria-hidden="true" />
-        {{ t('overviewPage.v2.live') }}
+        {{ t(stale ? 'uiSystem.overview.dataIncomplete' : 'overviewPage.v2.live') }}
       </span>
       <span v-if="updatedAt" class="ov-verdict__updated">{{
         t('overviewPage.v2.updatedAt', { time: updatedAt })
@@ -34,6 +34,7 @@
         icon="refresh"
         :loading="loading"
         :title="t('overviewPage.v2.refresh')"
+        :aria-label="t('overviewPage.v2.refresh')"
         @click="$emit('refresh')"
       />
     </div>

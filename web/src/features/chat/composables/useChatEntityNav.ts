@@ -1,4 +1,4 @@
-import { nextTick, ref, type Ref } from 'vue';
+import { getCurrentScope, nextTick, onScopeDispose, ref, type Ref } from 'vue';
 import { useQuasar } from 'quasar';
 import { useRouter } from 'vue-router';
 import { useSessionStore } from '../../../stores/session';
@@ -17,6 +17,8 @@ import type { useChatSessionStore } from '../../../stores/chat/sessionStore';
 import type { useChatMessageStore } from '../../../stores/chat/messageStore';
 import type { Message } from '../types';
 import type { useChatStreamManager } from './useChatStreamManager';
+import { isChatSurface, sessionNavigationQuery } from '../taskWorkspaceNavigation';
+import { formatSessionTime } from './chatWorkspaceUtils';
 
 type AppStore = ReturnType<typeof useAppStore>;
 type SessionStore = ReturnType<typeof useChatSessionStore>;
@@ -41,6 +43,21 @@ export function useChatEntityNav(deps: EntityNavDeps) {
   const $q = useQuasar();
   const router = useRouter();
   const taxonomyTree = ref<PlatformResourceTreeNode[]>([]);
+  const navigationLoading = ref(false);
+  const navigationError = ref('');
+  let navigationEpoch = 0;
+  let pendingFocus: { key: string; coordinatorKey: string; epoch: number; promise: Promise<void> } | null = null;
+  if (getCurrentScope())
+    onScopeDispose(() => {
+      navigationEpoch++;
+      navigationLoading.value = false;
+    });
+  function beginSelection() {
+    const epoch = ++navigationEpoch;
+    navigationLoading.value = false;
+    navigationError.value = '';
+    return () => epoch === navigationEpoch;
+  }
 
   function sessionOwnerIsTeam(session: Session) {
     return session.owner_type === 'team' || Boolean(session.team_id?.trim());
@@ -103,8 +120,11 @@ export function useChatEntityNav(deps: EntityNavDeps) {
       skipMessageReload?: boolean;
       /** Deferred skip flag for merged concurrent channel focus (read immediately before hydrate). */
       resolveSkipMessageReload?: () => boolean;
+      isCurrent?: () => boolean;
     },
   ) {
+    const isCurrent = options?.isCurrent ?? beginSelection();
+    if (!isCurrent()) return;
     const sameAgent = deps.sessionStore.entityKind === 'agent' && deps.appStore.selectedAgent?.id === agent.id;
 
     if (deps.sessionStore.entityKind === 'team') {
@@ -115,6 +135,7 @@ export function useChatEntityNav(deps: EntityNavDeps) {
       deps.sessionStore.resetForAgentSwitch();
     }
     const resolved = await hydrateAgentSettings(agent);
+    if (!isCurrent()) return;
     deps.appStore.selectedAgent = resolved;
     deps.appStore.upsertAgent(resolved);
     if (!sameAgent) {
@@ -122,7 +143,9 @@ export function useChatEntityNav(deps: EntityNavDeps) {
     } else {
       await deps.sessionStore.loadAgentSessions(resolved.id, { refreshOnly: true });
     }
+    if (!isCurrent()) return;
     await nextTick();
+    if (!isCurrent()) return;
     const preferredId = options?.sessionId?.trim();
     let picked =
       preferredId != null && preferredId !== ''
@@ -130,46 +153,73 @@ export function useChatEntityNav(deps: EntityNavDeps) {
         : (deps.sessionStore.sessions[0] ?? null);
     if (preferredId && !picked) {
       const fetched = await resolveSessionById(preferredId);
-      if (fetched && fetched.agent_id?.trim() === resolved.id) {
+      if (!isCurrent()) return;
+      if (fetched && fetched.id === preferredId && fetched.agent_id?.trim() === resolved.id) {
         if (!deps.sessionStore.sessions.some((item) => item.id === preferredId)) {
           deps.sessionStore.sessions = [fetched, ...deps.sessionStore.sessions];
         }
         picked = fetched;
       }
     }
-    deps.sessionStore.selectedSession = picked ?? deps.sessionStore.sessions[0] ?? null;
+    if (preferredId && !picked) throw new Error(deps.t('chat.sessionNotFound'));
+    deps.sessionStore.selectedSession = picked;
     if (deps.sessionStore.selectedSession) {
       const sid = deps.sessionStore.selectedSession.id;
       const skipReload = options?.resolveSkipMessageReload?.() ?? options?.skipMessageReload ?? false;
       // Sync URL so route watch and alreadyFocused checks stay consistent.
-      const targetQuery: Record<string, string> = { session: sid, agent: resolved.id };
       const route = router.currentRoute.value;
+      const targetQuery = sessionNavigationQuery(route.query, sid, { agent: resolved.id });
       const routeSession = typeof route.query.session === 'string' ? route.query.session.trim() : '';
       const routeAgent = typeof route.query.agent === 'string' ? route.query.agent.trim() : '';
-      if (route.name === 'chat' && (routeSession !== sid || routeAgent !== resolved.id)) {
+      if (isChatSurface(route.name) && (routeSession !== sid || routeAgent !== resolved.id)) {
         await deps.focusCoordinator.withRouteWatchSuppressed(async () => {
-          await router.replace({ name: 'chat', query: targetQuery });
+          await router.replace({ name: route.name, query: targetQuery });
         });
       }
-      await hydrateSessionForChannelFocus(channelFocusLoadDeps(), sid, skipReload);
+      if (!isCurrent()) return;
+      await hydrateSessionForChannelFocus(channelFocusLoadDeps(), sid, skipReload, isCurrent);
     }
   }
 
-  async function selectTeam(team: TeamRow, options?: { sessionId?: string }) {
+  async function selectTeam(team: TeamRow, options?: { sessionId?: string; isCurrent?: () => boolean }) {
+    const isCurrent = options?.isCurrent ?? beginSelection();
+    if (!isCurrent()) return;
     if (deps.sessionStore.selectedTeamId && deps.sessionStore.selectedTeamId !== team.id) {
       deps.streamManager.disconnectTeamStream();
       deps.messageStore.clearAllMessages();
     }
     deps.sessionStore.resetForTeamSwitch(team.id);
     await loadTeamSessions(team.id);
+    if (!isCurrent()) return;
     const preferredId = options?.sessionId?.trim();
-    const teamList = deps.sessionStore.teamSessions[team.id] ?? [];
+    let teamList = deps.sessionStore.teamSessions[team.id] ?? [];
+    if (preferredId && !teamList.some((item) => item.id === preferredId)) {
+      const fetched = await resolveSessionById(preferredId);
+      if (!isCurrent()) return;
+      if (!fetched || fetched.id !== preferredId || fetched.team_id !== team.id || !sessionOwnerIsTeam(fetched))
+        throw new Error(deps.t('taskWorkspace.locationUnavailable'));
+      teamList = [
+        { ...fetched, at: formatSessionTime(fetched.last_message_at || fetched.updated_at || fetched.created_at) },
+        ...teamList,
+      ];
+      deps.sessionStore.teamSessions[team.id] = teamList;
+    }
     deps.sessionStore.teamSelectedSessionId = preferredId
       ? (teamList.find((item) => item.id === preferredId)?.id ?? preferredId)
       : (teamList[0]?.id ?? null);
     if (deps.sessionStore.teamSelectedSessionId) {
-      await deps.messageStore.loadMessages({ sessionId: deps.sessionStore.teamSelectedSessionId, replace: true });
-      deps.streamManager.ensureTeamStream(deps.sessionStore.teamSelectedSessionId);
+      const sid = deps.sessionStore.teamSelectedSessionId;
+      const route = router.currentRoute.value;
+      if (isChatSurface(route.name))
+        await deps.focusCoordinator.withRouteWatchSuppressed(async () => {
+          await router.replace({
+            name: route.name!,
+            query: sessionNavigationQuery(route.query, sid, { team: team.id }),
+          });
+        });
+      if (!isCurrent()) return;
+      await deps.messageStore.loadMessages({ sessionId: sid, replace: true });
+      if (isCurrent()) deps.streamManager.ensureTeamStream(sid);
     }
   }
 
@@ -178,7 +228,7 @@ export function useChatEntityNav(deps: EntityNavDeps) {
     const routeSession = typeof route.query.session === 'string' ? route.query.session.trim() : '';
     const routeAgent = typeof route.query.agent === 'string' ? route.query.agent.trim() : '';
     const alreadyFocused =
-      route.name === 'chat' &&
+      isChatSurface(route.name) &&
       routeSession === sessionId &&
       routeAgent === agentId &&
       deps.sessionStore.entityKind === 'agent' &&
@@ -186,47 +236,44 @@ export function useChatEntityNav(deps: EntityNavDeps) {
       deps.sessionStore.selectedSession?.id === sessionId;
 
     if (alreadyFocused) {
+      const isCurrent = beginSelection();
       const session = deps.sessionStore.sessions.find((item) => item.id === sessionId);
       if (session) deps.sessionStore.selectedSession = session;
-      await hydrateSessionForChannelFocus(channelFocusLoadDeps(), sessionId, options?.skipMessageReload);
+      await hydrateSessionForChannelFocus(channelFocusLoadDeps(), sessionId, options?.skipMessageReload, isCurrent);
       return;
     }
 
-    const query = { session: sessionId, agent: agentId };
-    const needsRouteSync = route.name !== 'chat' || routeSession !== sessionId || routeAgent !== agentId;
+    const query = sessionNavigationQuery(route.query, sessionId, { agent: agentId });
+    const mobile = route.path?.startsWith('/mobile/') || String(route.name).startsWith('mobile-');
+    const chatRouteName = String(route.name).includes('task-workspace')
+      ? mobile
+        ? 'mobile-task-workspace'
+        : 'task-workspace'
+      : mobile
+        ? 'mobile-chat'
+        : 'chat';
+    const needsRouteSync = route.name !== chatRouteName || routeSession !== sessionId || routeAgent !== agentId;
     await deps.focusCoordinator.withRouteWatchSuppressed(async () => {
       if (needsRouteSync) {
-        if (route.name === 'chat') {
-          await router.replace({ name: 'chat', query });
+        if (route.name === chatRouteName) {
+          await router.replace({ name: chatRouteName, query });
         } else {
-          await router.push({ name: 'chat', query });
+          await router.push({ name: chatRouteName, query });
         }
       }
+      if (router.currentRoute.value.query.session !== sessionId) return;
       // Route watch may not fire when query is unchanged; always focus in store.
       await focusSessionById(sessionId, agentId, options);
     });
   }
 
   async function onSelectSession(sessionId: string) {
+    const isCurrent = beginSelection();
     const resolved = await resolveSessionById(sessionId);
-    if (!resolved) return;
+    if (!isCurrent() || !resolved) return;
 
     if (sessionOwnerIsTeam(resolved)) {
-      const teamId = resolved.team_id?.trim();
-      if (!teamId) return;
-      const team = deps.displayTeams.value.find((item) => item.id === teamId);
-      if (!team) {
-        $q.notify({ type: 'warning', message: '找不到该会话所属的 Team' });
-        return;
-      }
-      if (deps.sessionStore.entityKind !== 'team' || deps.sessionStore.selectedTeamId !== teamId) {
-        await selectTeam(team, { sessionId });
-        deps.streamManager.ensureTeamStream(sessionId);
-        return;
-      }
-      deps.sessionStore.teamSelectedSessionId = sessionId;
-      await deps.messageStore.loadMessages({ sessionId, replace: true });
-      deps.streamManager.ensureTeamStream(sessionId);
+      await focusSessionById(sessionId);
       return;
     }
 
@@ -303,17 +350,24 @@ export function useChatEntityNav(deps: EntityNavDeps) {
 
   async function onNewSession(title?: string) {
     if (deps.sessionStore.entityKind === 'agent' && deps.appStore.selectedAgent) {
+      const agentId = deps.appStore.selectedAgent.id;
       const selectedModel = deps.selectedProviderModel.value;
-      await deps.sessionStore.addAgentSession(deps.appStore.selectedAgent.id, title || deps.t('chat.untitledSession'), {
+      const created = await deps.sessionStore.addAgentSession(agentId, title || deps.t('chat.untitledSession'), {
         dialog_mode: deps.dialogMode.value,
         default_provider: selectedModel?.provider || deps.appStore.selectedAgent.provider,
         default_model: selectedModel?.model || deps.appStore.selectedAgent.model,
       });
-      if (deps.sessionStore.selectedSession) {
-        await deps.messageStore.loadMessages({ sessionId: deps.sessionStore.selectedSession.id });
-        deps.streamManager.ensureChatStream(deps.sessionStore.selectedSession.id);
+      if (
+        created &&
+        deps.appStore.selectedAgent?.id === agentId &&
+        deps.sessionStore.selectedSession?.id === created.id
+      ) {
+        await deps.messageStore.loadMessages({ sessionId: created.id });
+        if (deps.appStore.selectedAgent?.id === agentId && deps.sessionStore.selectedSession?.id === created.id) {
+          deps.streamManager.ensureChatStream(created.id);
+        }
       }
-      return;
+      return created?.id;
     }
 
     if (deps.sessionStore.entityKind === 'team' && deps.sessionStore.selectedTeamId) {
@@ -327,10 +381,10 @@ export function useChatEntityNav(deps: EntityNavDeps) {
           default_model: selectedModel?.model || '',
         },
       );
-      if (created) {
+      if (created && deps.sessionStore.teamSelectedSessionId === created.id) {
         deps.streamManager.ensureTeamStream(created.id);
       }
-      return;
+      return created?.id;
     }
 
     // No valid entity selected — notify the user instead of silently skipping
@@ -371,26 +425,77 @@ export function useChatEntityNav(deps: EntityNavDeps) {
     const sid = sessionId.trim();
     if (!sid) return;
     const key = deps.focusCoordinator.focusKey(sid, agentId);
-    await deps.focusCoordinator.runFocusOnce(key, options, async (resolveSkipReload) => {
-      const session = await resolveSessionById(sid);
-      if (!session) {
-        $q.notify({ type: 'warning', message: deps.t('chat.sessionNotFound') });
-        return;
-      }
-      const aid = agentId?.trim() || session.agent_id?.trim() || deps.appStore.selectedAgent?.id?.trim();
-      if (!aid) return;
-      const agent =
-        deps.appStore.agents.find((a) => a.id === aid) ?? deps.displayAgents.value?.find((a) => a.id === aid);
-      if (!agent) {
-        $q.notify({ type: 'warning', message: deps.t('chat.sessionAgentNotFound') });
-        return;
-      }
-      await selectAgent(agent, { sessionId: sid, resolveSkipMessageReload: resolveSkipReload });
-    });
+    if (pendingFocus?.key === key && pendingFocus.epoch === navigationEpoch) {
+      return deps.focusCoordinator
+        .runFocusOnce(pendingFocus.coordinatorKey, options, async () => undefined)
+        .catch(() => undefined);
+    }
+    const epoch = ++navigationEpoch;
+    const isCurrent = () => epoch === navigationEpoch;
+    const coordinatorKey = `${key}::navigation-${epoch}`;
+    navigationLoading.value = true;
+    navigationError.value = '';
+    const promise = deps.focusCoordinator
+      .runFocusOnce(coordinatorKey, options, async (resolveSkipReload) => {
+        const session = await resolveSessionById(sid);
+        if (!isCurrent()) return;
+        if (!session || session.id !== sid) {
+          navigationError.value = deps.t('chat.sessionNotFound');
+          return;
+        }
+        const requestedTeam =
+          router.currentRoute.value.query.session === sid ? router.currentRoute.value.query.team : undefined;
+        if (
+          (agentId && session.agent_id !== agentId) ||
+          (typeof requestedTeam === 'string' && session.team_id !== requestedTeam)
+        ) {
+          navigationError.value = deps.t('taskWorkspace.locationScopeMismatch');
+          return;
+        }
+        if (sessionOwnerIsTeam(session)) {
+          if (!session.team_id) {
+            navigationError.value = deps.t('taskWorkspace.locationUnavailable');
+            return;
+          }
+          if (!deps.displayTeams.value.some((item) => item.id === session.team_id)) await loadTeams();
+          if (!isCurrent()) return;
+          const team = deps.displayTeams.value.find((item) => item.id === session.team_id);
+          if (!team) {
+            navigationError.value = deps.t('taskWorkspace.locationUnavailable');
+            return;
+          }
+          await selectTeam(team, { sessionId: sid, isCurrent });
+          return;
+        }
+        const aid = agentId?.trim() || session.agent_id?.trim();
+        if (!aid) {
+          navigationError.value = deps.t('taskWorkspace.locationUnavailable');
+          return;
+        }
+        const agent =
+          deps.appStore.agents.find((a) => a.id === aid) ?? deps.displayAgents.value?.find((a) => a.id === aid);
+        if (!agent) {
+          navigationError.value = deps.t('chat.sessionAgentNotFound');
+          return;
+        }
+        await selectAgent(agent, { sessionId: sid, resolveSkipMessageReload: resolveSkipReload, isCurrent });
+      })
+      .catch((error: unknown) => {
+        if (isCurrent())
+          navigationError.value = error instanceof Error ? error.message : deps.t('taskWorkspace.locationUnavailable');
+      })
+      .finally(() => {
+        if (isCurrent()) navigationLoading.value = false;
+        if (pendingFocus?.epoch === epoch) pendingFocus = null;
+      });
+    pendingFocus = { key, coordinatorKey, epoch, promise };
+    await promise;
   }
 
   return {
     taxonomyTree,
+    navigationLoading,
+    navigationError,
     loadTaxonomyTree,
     loadTeams,
     loadTeamSessions,

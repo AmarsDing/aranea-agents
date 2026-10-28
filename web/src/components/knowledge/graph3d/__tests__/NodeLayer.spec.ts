@@ -5,6 +5,12 @@ import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import { EMPH_DIM, EMPH_HI, EMPH_NORMAL, NodeLayer } from '../render/NodeLayer';
 
+function shaderMaterial(layer: NodeLayer): THREE.ShaderMaterial {
+  const material = layer.points.material;
+  if (!(material instanceof THREE.ShaderMaterial)) throw new Error('NodeLayer must use one ShaderMaterial');
+  return material;
+}
+
 function mkLayer(count = 4): NodeLayer {
   const l = new NodeLayer(count);
   const colors = new Float32Array(count * 3);
@@ -29,7 +35,7 @@ describe('NodeLayer v2', () => {
     expect(attr(l, 'aColor')).toHaveLength(8 * 3);
     expect(attr(l, 'aSize')).toHaveLength(8);
     expect(attr(l, 'aEmph')).toHaveLength(8);
-    const mat = l.points.material as THREE.ShaderMaterial;
+    const mat = shaderMaterial(l);
     expect(mat.transparent).toBe(true);
     expect(mat.depthWrite).toBe(false);
     expect(mat.blending).toBe(THREE.NormalBlending); // 弃加法混合：重叠不烧白
@@ -81,7 +87,7 @@ describe('NodeLayer v2', () => {
     const l = new NodeLayer(2);
     const tex = new THREE.DataTexture(new Float32Array(8), 2, 1, THREE.RGBAFormat, THREE.FloatType);
     l.setPositionTexture(tex, 2);
-    const mat = l.points.material as THREE.ShaderMaterial;
+    const mat = shaderMaterial(l);
     expect(mat.uniforms.uPosTex.value).toBe(tex);
     expect(mat.uniforms.uTexW.value).toBe(2);
     l.setPointScale(321);
@@ -94,14 +100,14 @@ describe('NodeLayer v2', () => {
 describe('NodeLayer（M3 reveal）', () => {
   it('uRevealT 默认 1（无动画时全显现）', () => {
     const layer = new NodeLayer(4);
-    expect((layer.points.material as { uniforms: { uRevealT: { value: number } } }).uniforms.uRevealT.value).toBe(1);
+    expect(shaderMaterial(layer).uniforms.uRevealT.value).toBe(1);
     layer.dispose();
   });
 
   it('setRevealT 更新 uRevealT uniform', () => {
     const layer = new NodeLayer(4);
     layer.setRevealT(0.3);
-    expect((layer.points.material as { uniforms: { uRevealT: { value: number } } }).uniforms.uRevealT.value).toBe(0.3);
+    expect(shaderMaterial(layer).uniforms.uRevealT.value).toBe(0.3);
     layer.dispose();
   });
 });
@@ -109,16 +115,16 @@ describe('NodeLayer（M3 reveal）', () => {
 describe('NodeLayer（V13 甜甜圈）', () => {
   it('uDonut 默认 1（环+芯+辉光三件套）', () => {
     const layer = new NodeLayer(4);
-    expect((layer.points.material as { uniforms: { uDonut: { value: number } } }).uniforms.uDonut.value).toBe(1);
+    expect(shaderMaterial(layer).uniforms.uDonut.value).toBe(1);
     layer.dispose();
   });
 
   it('setDonut(false) 回退柔光点（LOW 画质档降级）', () => {
     const layer = new NodeLayer(4);
     layer.setDonut(false);
-    expect((layer.points.material as { uniforms: { uDonut: { value: number } } }).uniforms.uDonut.value).toBe(0);
+    expect(shaderMaterial(layer).uniforms.uDonut.value).toBe(0);
     layer.setDonut(true);
-    expect((layer.points.material as { uniforms: { uDonut: { value: number } } }).uniforms.uDonut.value).toBe(1);
+    expect(shaderMaterial(layer).uniforms.uDonut.value).toBe(1);
     layer.dispose();
   });
 });

@@ -15,12 +15,7 @@ import { appStatusMeta } from '../ui/appStatusMeta';
 /** Default retention when purging; independent of the view filter range. */
 export const DEFAULT_PURGE_RETAIN_DAYS = 30;
 
-const PURGE_RETAIN_DAY_OPTIONS = [
-  { label: '保留 7 天', value: 7 },
-  { label: '保留 30 天', value: 30 },
-  { label: '保留 90 天', value: 90 },
-  { label: '保留 365 天', value: 365 },
-];
+const PURGE_RETAIN_DAYS = [7, 30, 90, 365];
 
 /** 用量事件状态枚举（label 复用 AppStatusChip 的 i18n 元数据） */
 const USAGE_EVENT_STATUSES = ['success', 'error', 'failed', 'timeout', 'cancelled'];
@@ -47,12 +42,14 @@ export function useUsageEventsPage() {
     { label: '7d', value: '7d' },
     { label: '30d', value: '30d' },
   ];
-  const statusOptions = USAGE_EVENT_STATUSES.map((v) => ({
-    label: t(appStatusMeta(v)?.labelKey ?? 'common.status.unknown'),
-    value: v,
-  }));
+  const statusOptions = computed(() =>
+    USAGE_EVENT_STATUSES.map((v) => ({
+      label: t(appStatusMeta(v)?.labelKey ?? 'common.status.unknown'),
+      value: v,
+    })),
+  );
   // 与 biz/usage Kind* 枚举全量对齐（含 aux_* 辅助计量与 unknown 兜底）
-  const usageKindOptions = [
+  const usageKindOptions = computed(() => [
     { label: t('usageEventsPage.kindAll'), value: '' },
     { label: t('usageKinds.chat_turn'), value: 'chat_turn' },
     { label: t('usageKinds.team_member'), value: 'team_member' },
@@ -67,16 +64,16 @@ export function useUsageEventsPage() {
     { label: t('usageKinds.aux_planner_decompose'), value: 'aux_planner_decompose' },
     { label: t('usageKinds.aux_allocator_match'), value: 'aux_allocator_match' },
     { label: t('usageKinds.unknown'), value: 'unknown' },
-  ];
+  ]);
   // LBG-6：思考强度过滤（与 biz.ThinkingEffort* 枚举一致；值为技术枚举不翻译）
-  const effortOptions = [
+  const effortOptions = computed(() => [
     { label: t('usageEventsPage.effortAll'), value: '' },
     { label: 'off', value: 'off' },
     { label: 'low', value: 'low' },
     { label: 'medium', value: 'medium' },
     { label: 'high', value: 'high' },
     { label: 'max', value: 'max' },
-  ];
+  ]);
 
   // ── 筛选下拉选项（显示名称、提交 ID/code；数据源为现有目录 Store，无新增 API） ──
   const agentOptions = ref<FilterOption[]>([]);
@@ -177,12 +174,17 @@ export function useUsageEventsPage() {
   }
 
   async function load() {
-    const result = await usageStore.loadEvents(buildQuery());
-    if (page.value > pageMax.value) {
-      page.value = pageMax.value;
-      await usageStore.loadEvents(buildQuery());
+    try {
+      const result = await usageStore.loadEvents(buildQuery());
+      if (page.value > pageMax.value) {
+        page.value = pageMax.value;
+        await usageStore.loadEvents(buildQuery());
+      }
+      return result;
+    } catch (reason) {
+      eventsError.value = reason instanceof Error ? reason.message : t('uiSystem.operations.loadFailed');
+      return undefined;
     }
-    return result;
   }
 
   function onPage(next: number) {
@@ -198,10 +200,15 @@ export function useUsageEventsPage() {
   }
 
   async function exportCsv() {
+    if (exporting.value) return;
     // Export uses the same filters but the dedicated export RPC (higher row cap).
-    const csv = await usageStore.exportEventsCsv(filterQuery());
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
-    downloadBlob(blob, `usage-events-${new Date().toISOString().slice(0, 10)}.csv`);
+    try {
+      const csv = await usageStore.exportEventsCsv(filterQuery());
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+      downloadBlob(blob, `usage-events-${new Date().toISOString().slice(0, 10)}.csv`);
+    } catch {
+      $q.notify({ type: 'negative', message: t('usageEventsPage.exportFailed') });
+    }
   }
 
   async function purgeEvents() {
@@ -237,25 +244,29 @@ export function useUsageEventsPage() {
   function onPurgeConfirm() {
     $q.dialog({
       class: 'app-dialog-card app-dialog-card--sm',
-      title: '删除历史用量事件',
-      message: '将删除早于所选保留天数的全部用量事件（与列表「范围」筛选无关），此操作不可撤销。',
+      title: t('usageEventsPage.purgeTitle'),
+      message: t('usageEventsPage.purgeMessage'),
       options: {
         type: 'radio',
-        model: retainDays.value,
-        items: PURGE_RETAIN_DAY_OPTIONS,
+        model: String(retainDays.value),
+        items: PURGE_RETAIN_DAYS.map((days) => ({
+          label: t('usageEventsPage.keepDays', { days }),
+          value: String(days),
+        })),
       },
-      cancel: { label: '取消', flat: true, rounded: true, noCaps: true },
-      ok: { label: '确认删除', color: 'negative', flat: true, rounded: true, noCaps: true },
+      cancel: { label: t('common.cancel'), flat: true, rounded: true, noCaps: true },
+      ok: { label: t('usageEventsPage.purgeConfirm'), color: 'negative', flat: true, rounded: true, noCaps: true },
       persistent: true,
     }).onOk(async (days) => {
-      retainDays.value = Number(days) || DEFAULT_PURGE_RETAIN_DAYS;
+      if (purging.value || !PURGE_RETAIN_DAYS.includes(Number(days))) return;
+      retainDays.value = Number(days);
       purging.value = true;
       try {
         const deleted = await purgeEvents();
-        $q.notify({ type: 'positive', message: `已删除 ${deleted} 条用量事件` });
+        $q.notify({ type: 'positive', message: t('usageEventsPage.purgeSuccess', { count: deleted }) });
       } catch (err) {
         console.warn('[usage-events] purge failed', err);
-        $q.notify({ type: 'negative', message: '删除用量事件失败' });
+        $q.notify({ type: 'negative', message: t('usageEventsPage.purgeFailed') });
       } finally {
         purging.value = false;
       }

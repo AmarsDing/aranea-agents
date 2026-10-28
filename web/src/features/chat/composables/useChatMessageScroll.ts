@@ -14,6 +14,7 @@ export type ChatMessageScrollOpts = {
   contentSignature: Ref<string> | ComputedRef<string>;
   /** session 活动树最新 task ID；新 Task 出现时锚定到其 UserMessage 顶部（G5）。 */
   lastTaskId: Ref<string> | ComputedRef<string>;
+  initialScrollTop?: Ref<number | null> | ComputedRef<number | null>;
 };
 
 export function useChatMessageScroll(opts: ChatMessageScrollOpts) {
@@ -24,7 +25,15 @@ export function useChatMessageScroll(opts: ChatMessageScrollOpts) {
   });
 
   const highlightedTurnId = ref<string | undefined>(undefined);
+  const hasNewContent = ref(false);
+  let alignmentGeneration = 0;
   let highlightTimer: ReturnType<typeof setTimeout> | null = null;
+  watch(opts.contentSignature, () => {
+    if (!follow.following.value) hasNewContent.value = true;
+  });
+  watch(follow.following, (value) => {
+    if (value) hasNewContent.value = false;
+  });
 
   function flashTurnHighlight(turnId: string) {
     highlightedTurnId.value = turnId;
@@ -40,11 +49,30 @@ export function useChatMessageScroll(opts: ChatMessageScrollOpts) {
    * 内容可能分帧渲染（WS replay / 懒加载），最多重试 4 帧。
    */
   async function alignMessageScroll() {
+    const generation = ++alignmentGeneration;
+    const sessionKey = opts.sessionKey.value;
     for (let attempt = 0; attempt < 4; attempt++) {
       await nextTick();
       await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      if (generation !== alignmentGeneration || sessionKey !== opts.sessionKey.value) return;
       const el = opts.messagesScrollEl.value;
       if (!el) continue;
+      const top = opts.initialScrollTop?.value;
+      if (top != null && Number.isFinite(top) && top >= 0) {
+        const max = Math.max(0, el.scrollHeight - el.clientHeight);
+        if ((el.clientHeight <= 0 || max < top) && attempt < 3) continue;
+        follow.pause();
+        // Restoring a saved position must be instant. CSS smooth scrolling would
+        // emit intermediate offsets and overwrite the saved reading position.
+        const behavior = el.style?.scrollBehavior;
+        if (el.style) el.style.scrollBehavior = 'auto';
+        try {
+          el.scrollTop = Math.min(top, max);
+        } finally {
+          if (el.style) el.style.scrollBehavior = behavior ?? '';
+        }
+        return;
+      }
       follow.jumpToLatest();
       if (el.clientHeight > 0 && el.scrollHeight - el.scrollTop - el.clientHeight <= 80) {
         return;
@@ -63,6 +91,7 @@ export function useChatMessageScroll(opts: ChatMessageScrollOpts) {
     () => opts.sessionKey.value,
     () => {
       lastSeenTaskId = '';
+      hasNewContent.value = false;
       void alignMessageScroll();
     },
   );
@@ -77,7 +106,13 @@ export function useChatMessageScroll(opts: ChatMessageScrollOpts) {
         return;
       }
       lastSeenTaskId = id;
+      if (!follow.following.value) {
+        hasNewContent.value = true;
+        return;
+      }
+      const sessionKey = opts.sessionKey.value;
       await nextTick();
+      if (!follow.following.value || sessionKey !== opts.sessionKey.value) return;
       const el = opts.messagesScrollEl.value;
       if (!el) return;
       const target = el.querySelector<HTMLElement>(`[data-task-id="${CSS.escape(id)}"]`);
@@ -90,6 +125,7 @@ export function useChatMessageScroll(opts: ChatMessageScrollOpts) {
   });
 
   onBeforeUnmount(() => {
+    alignmentGeneration++;
     if (highlightTimer) clearTimeout(highlightTimer);
   });
 
@@ -107,8 +143,22 @@ export function useChatMessageScroll(opts: ChatMessageScrollOpts) {
   }
 
   return {
+    following: follow.following,
+    hasNewContent,
+    pauseFollowing: () => {
+      alignmentGeneration++;
+      follow.pause();
+    },
+    jumpToLatest: () => {
+      alignmentGeneration++;
+      hasNewContent.value = false;
+      follow.jumpToLatest();
+    },
     highlightedTurnId,
-    onMessagesScroll: follow.onScroll,
+    onMessagesScroll: (event?: Event) => {
+      follow.onScroll(event);
+      if (!follow.following.value) alignmentGeneration++;
+    },
     scrollToBottom: follow.scrollToBottom,
     scrollToTurnId,
   };

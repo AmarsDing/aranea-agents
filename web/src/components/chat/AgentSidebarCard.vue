@@ -348,7 +348,7 @@ const statusText = computed(() => {
 
 @keyframes agent-card-stuck-pulse
   0%, 100%
-    box-shadow: 0 0 0 rgba(240, 155, 84, 0)
+    box-shadow: 0 0 0 transparent
   50%
-    box-shadow: 0 0 6px rgba(240, 155, 84, 0.3)
+    box-shadow: 0 0 6px color-mix(in srgb, var(--color-warning) 30%, transparent)
 </style>

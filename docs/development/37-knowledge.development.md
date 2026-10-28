@@ -1921,8 +1921,28 @@ SP1-H（重建/回填，依赖 B/C，可与 D~G 并行）
   - [x] T2 配对引擎 `PairChunksForDiff`（biz 纯函数：multiset 按 chunk_index 升序贪心、键=sha1+role、父筛约束、父死子随、角色隔离；10 夹具钉全绿）
   - [x] T3 归档/版本/tombstone/回落读内核新文件零触脏区（`knowledge_chunk_archive.go`：archiveChunksForVersionTx / mirrorChunkEmbeddingsArchiveTx / archiveWholeDocumentTx / tombstoneDocumentTx / loadChunksForPairingTx / queryChunkArchiveLatestContents + 时点截取/ANN 双腿内核；PG 钉阵 8 例全绿）
   - [x] T3b-内核 时态读数据层 + biz 窄端口声明（`chunk_temporal_port.go`：ChunkArchiveReader / ChunkTemporalReader / KnowledgeChunkIncarnation，Stability: evolving；接线= T4 清单④）
-  - [ ] T4 主手术（候 b8）：CommitIndexedDocument diff-commit 化 13 步 tx + DeleteDocument tombstone 锚 + 引用链 loadChunkContents 归档回落（DropsMissingChunks 钉演化）+ namespace×寻址同窗 + embed 经济化预配对 + vault 重试环
-  - [ ] T5 WS `knowledge_chunks_diff` 帧 + 缺 dim 收敛 e2e + 时态 e2e 钉⑨ + 三件套收口 + 对抗评审硬门
+  - [x] T4 主手术（案 B 末段吸收，2026-10-24 落地）：CommitIndexedDocument diff-commit 化 13 步 tx + DeleteDocument tombstone 锚 + 引用链 loadChunkContents 归档回落 + 时态读端口全链装配 + namespace×寻址同窗 + embed 经济化预配对 + vault 重试环
+  - [x] T5 WS `knowledge_chunks_diff` 帧 + 缺 dim 收敛 e2e + 时态 e2e 钉⑨ + 三件套收口 + 对抗评审硬门（**2026-10-25 实施+钉阵+文档全部落地；终审门 wf_f76a9b06-996（5 发现 3 确认 2 驳回）R-1/R-2 修复+T4 链内 as-of 钉迁 2 例全部收口，验证链复跑全绿**）
+  - **T5 批登记**（2026-10-25）：
+  - **帧契约落地**：service `KnowledgeChunksDiffMeta`/`PublishKnowledgeChunksDiffFrame`（`internal/service/knowledge.go`）——meta 八键（event_type/collection_id/document_id/added/deleted/kept/chunk_count/producer），chunk_count=ChildAdded+ChildKept 子块口径（与文档/集合台账同轨；added/kept 键为全行权威口径含 parent 语境行——终审 R-2 修复后双口径分离），SystemNoticeEvent meta 自由结构免 proto；终态 `knowledge_ingest` 帧逐字节冻结（六键+消息体钉锁）；`ChunkDiffStats.Exact` 哨兵由 Usecase `commitIndexedDocument` 权威 diff-commit 成功分支唯一打标（退化 fakes/错误路径恒 false → 「repo 不支持 DiffStats 时零发布」落为可机检闸）；
+  - **四产线接线**：ingest（knowledge.go，diff 帧先于终态帧）/reembed/promote 三 service 直发；vault 经 `vaultSyncApplier.SetDiffStatsHook` 回调透传（本层不二判 Exact）+ wire 注入 `service.PublishKnowledgeChunksDiffFrame(v2Bus)`——wire.go 与 wire_gen.go 手工镜像同窗（provideVaultSyncSupervisor 增 eventBus 形参）；
+  - **钉阵 9 例全绿**（service 口径钉经终审 R-2 改造为分叉钳制）：biz 3（权威打标/退化不标/错误不标）+ service 4（⑤ 八键值等——chunk_count=ChildAdded+ChildKept 钉内故意令全行 sum 分叉钳死取值源/Exact 闸与零发布/单次发布/终态帧逐字节冻结）+ internal/knowledge 2（vault 钩子恰好唤一次+未接线零 panic）；
+  - **PG e2e 钉③⑨+R-2 落地**（`internal/data/knowledge_g32_t5_e2e_test.go`，ARANEA_TEST_PG_DSN 覆盖实测）：③ 缺 dim 收敛端到端——pending dim4 入列→同体换维 CON-19B 降级补齐（侧表 3/4 双代共存）→出列（dim5 仍在列对照防恒假）→同维 fast-path 归位零写；⑨ 时态生命周期 v1→v2→tombstone——as-of t1 双腿命中编辑前化身（dense+sparse 同口径）、current 零泄漏、created_at 等值归新区间、双腿 top-k 合并恰一条、tombstone 后 as-of 可回放而 current 查无（账本 created_at 现读为锚，不控制时钟）；**R-2 子块口径钉**——1 父+2 子混合提交：Added/Kept 全行口径含父（3/3）、ChildAdded/ChildKept 只数子块（2/0→0/2）、帧 chunk_count=台账 chunk_count=2、fast-path 父行不阻断缺 dim 前哨（父子配对 pass 0 全保留）；
+  - **文档收口**：65 手册 §1.13 红线修订落字（整放纪律仅限 KnowledgeBlock/KnowledgeBlockRef——chunk 摄取层已放开 diff）+ 事件生产行登记 `knowledge_chunks_diff` + G-32 红线（T4/T5）段；design T5 落地纪要（帧契约表+Exact 哨兵决策+钉位索引）；需求档 US-60（G-32，验收标准 8 条+FR-G32-1..6）；
+  - **验证链**：build（noinline 模式）/vet 全绿五包族（biz vet 唯一命中 graph_orphan_sweep_test.go 锁拷贝=外商存量，同 T4 轮归因）；单测 biz/knowledge+internal/knowledge 全绿；**internal/service 全量 3 red 归因收口**——T4 链内钉迁 2 例（`TestServeSearchAsOf_SpanReachesQuery`/`_SingleAxisAndZeroSpan`：T4 装配把 span≠0 chunk 检索改断 `ChunkTemporalReader` 端口+未接线结构性 Unavailable，service 旧钉仍断言 SearchChunks 捕获面=吸收批覆盖面缺口；本批为 `us14MemRepo` 补时态读端口三方法+dense/sparse 捕获字段，两钉迁移至端口实收参数断言并加「不得旁路 current 快报」反向钳制，RecordedAt 拒绝哨兵仍归 data 内核 PG 钉——语义裁断非糊断言，同 d58976e48/61d18669b 先例）+ 外商存量 1 例（`TestReembedDocuments_PipelineReembedsFromContentText`，设计档 F2 分解第 8 条登记 `RebuildCurrentBlockIndex` 无条件调用归属并行企业会话、本批不代办）；终审 R-1/R-2 修复后全链复跑；PG 12 例全绿（T4 9 例回归+R-2 子块口径钉，ARANEA_TEST_PG_DSN 覆盖）；
+  - **终审门（对抗评审硬门）**：workflow wf_f76a9b06-996 五维发现（契约/正确性/并发事件纪律/ACL-1 并入复核/测试质量+CON-19B 复核）+ 逐条反驳式核验——**结果：5 发现 → 3 确认 / 2 驳回**。**确认**：R-1（minor，文档级）设计档条款 8 治理 DeferReplay 回放括号注「producer='governance'」与帧 producer 四值空间（ingest/reembed/promote/vault）及落码链路（replayPromotedDocChunks producer='promote'）自相矛盾→已修订条款 8 父注 + 65 手册 producer 值空间段（回放沿用 promote 不新增 governance 值）；**R-2（major）帧 chunk_count 口径自相矛盾**——帧取值 added+kept 为全行口径（`plan.Added`/`plan.Kept` 含 parent 语境行，chunk_pairing pass 0 父子配对），而 DB 台账/⑬ 计数/reembed 终态帧均子块口径，parent_child 摄取形状下帧值虚高（如 1 父+2 子提交帧报 3 而台账 2）→修=`ChunkDiffStats` 增 `ChildAdded/ChildKept` 子块口径字段（结构与回退化路径同注双口径纪律；data 两处返回点共用在③配对后单点现算），帧 chunk_count 改取子块口径，added/deleted/kept 三键维持全行权威口径不动（fast-path 多重集判定/⑫ 双条件版本行/账本 chunkStats JSON 语义零触碰）；R-3（minor）测试质量视角同根→并入 R-2 钉位不设独立修复。**驳回**：跨产线帧乱序（at-least-once 增量提示语义内允许交错，v2 bus 256 缓冲+nonterminal_buffer_full 丢帧指标在案）；帧速率聚合（忠实设计终态帧兜底语义，非缺陷）。**修复落地**：service 双钉改分叉钳制（chunk_count=ChildAdded+ChildKept=4 ≠ 全行 5）+ data 增 PG 口径钉 `TestG32T5ChunkDiffStatsChildCaliber` + 设计档 T5 纪要帧契约表/钉位段对位 + 65 手册 G-32 红线同步；验证链复跑全绿（build/vet/单测/PG 12 例）；
+- **T4 接线批登记**（2026-10-24）：
+  - **十三步执行体** `internal/data/knowledge_diff_commit.go`（①FOR UPDATE 锁行→②fast-path→③nextDocVersionNoTx→④⑤配对→⑥镜档→⑦归档→⑧删孤儿→⑨kept compare-and-skip（IS DISTINCT FROM jsonb 判定）→⑩added 代际命名→⑪缺 dim 条件补齐→⑫版本行双条件→⑬guard CAS/计数/syncMeta + ChunkDiffStats 透出）；`CommitIndexedDocument`/`CommitIndexedDocumentMeta` 双返回值签名，12 调用点全适配（service ingest/promote/reembed、vault_sync、7 测试夹具）；
+  - **DeleteDocument** FOR UPDATE 锚锁 + tombstoneDocumentTx(producer=user-delete 登记) + 整档归档（零账本 mint 护栏 DIS-5 原位生效）；
+  - **引用回落** loadChunkContents 缺 current 移交 queryChunkArchiveLatestContents（决策 7：有档回落、无档仍弃；授权 collection 级当下、内容用历史）；
+  - **时态读装配链**：data `knowledge_temporal_reader.go`（*knowledgeRepo 三方法 + resolveAsOfInstant 守卫——RecordedAt 非零→ErrUnsupportedOperation 哨兵（chunk_temporal_port.go 登记）、零 ValidAt→时针退化）→ biz `chunk_temporal_usecase.go`（Usecase.temporalFields 嵌位、SetChunkTemporalReader(nil→time.Now)、空腿 ErrUnavailable 不蜕化 current）→ biz 根断言接线 → 检索管线双腿路由（`internal/knowledge/temporal_search.go`：HybridRetriever/Retriever 各 dense/sparse 四腿，span 零值原路径逐字节不动；span 非零端口缺席→结构性 Unavailable）；
+  - **接线评审自检出修正两项**：**CON-19B**——②fast-path 会旁路 ⑪ 缺 dim 补齐通道（同 body 换 dim 重嵌 added=∅∧deleted=∅ 场景新向量静默丢失→pending-reembed 死循环）；修=fast-path 前哨 `pendingDimFillTx` 现检缺 dim、缺则降级走全链（⑫ 双条件天然抑制伪版本）；**ACL-1**——T3 as-of 内核无文档行级可见性谓词，private doc 历史化身会借 as-of 外泄；修=`asOfVisibilityClause` 复合谓词（活文档=当下行级可见性、宿主已 tombstone=回落 collection 级当下口径（决策 12③）、系统 ctx=不过滤），三点接入 list/ANN 双腿（本批落地，未走对抗评审门——T5 收口统一复核）；
+  - **钉阵 17 例全绿**（`ARANEA_TEST_PG_DSN` 实测）：data 9（混合差分全账/fast-path 零写/CON-19B 降级放行+补齐后真 fast-path/kept 序元实变+head-hash 腿/DeleteDocument 集成/引用回落集成/resolveAsOfInstant 守卫/RRF 同轨/as-of ACL 四维）+ biz 4（空腿拒绝/冻结时钟/nil 时钟退化/RecordedAt 透传）+ knowledge 服务层 4（stub 时态端口双腿实跑×既有 G-05 热度抑制两钉行为原议不动/未接线拒绝双腿/零 span 原路径委托钉）；
+  - **回归**：`go vet ./internal/biz/knowledge/ ./internal/data/ ./internal/knowledge/ ./internal/biz/ ./internal/service/` 全绿（唯一命中 graph_orphan_sweep_test.go 锁拷贝属并行会话存量）；`go test` biz/knowledge、internal/knowledge、internal/biz、internal/data 四包全绿。
+  - **带外 export 提交态验证台账**（2026-10-25，HEAD=be8d30a1d→+钉修 d58976e48 复跑）：首轮共享库 `aranea_test` 17 例失败，因果分流后用**新鲜隔离库**逐一归因——①`TestKnowledgeTeamNote_StaleChunkCommitCannotReplaceNewerBody`：本批引入断言滞后（⑩ 代际命名契约下幸存行身份=`pc-doc-v2-ch-0`，不变量「冲突拒绝先于块替换」本身成立），钉修为代际 ID+正文双精确钉（**d58976e48**，隔离库定向复测绿）；②外商存量 4 例（父提交 03ce0e86e 带外逐例分流复现=非本批）：TestMCPServerRepo_UpdateWritesOnlyAdminColumns、TestTaskV2Repo_ResumeInterruptedTask（event_dead_letter 缺迁移）、TestConstraintFingerprintAndRecipeKeys、TestEntRuntimeToBizFieldCoverage（internal/data/session_mapping_test.go:80 L0CompressMaxTriggerTokens ent 缺列）；③53200 系 ent-schema-create `pq: out of shared memory (53200)` 组：父提交同法复跑全绿=实例级锁压环境波动（并行会话压测期间），不影响推送判定。分流证据链：export be8d30a1d 全量×2（共享库/隔离库）+ export 03ce0e86e 外商六例定向。
+  - **二轮钉修**（d58976e48 + **61d18669b**，fresh vfy1 全知识域钉族 TestChunkEmbedding|TestKnowledge|TestG32 全绿）：①跟进分流发现 tail 窗口截断导致首轮漏报 4 例（完整日志核对），其中 knowledge 域 3 例同属另一类断言滞后——embeddings MultiDimCoexistence（⑩ 代际名重钉+同内容换维改由 ⑪ 缺 dim 条件补齐承载，dims=[3,4] 旧维保留，旧 cascade 语义钉撤）、lifecycle nil-vector（按正文锚定）、parent-child（父块回填/子块父指针按 -v1-p-0 重钉）+ 1 例 Outbox dup-seq 经父提交分流复现=外商存量；②**语义裁断（非补丁糊断言）**：parent-child 降级 nil 重嵌旧钉「NULL 子块→pending」与 G-39 判据（pending=侧表缺当前 dim，`knowledge_embed.go:117-118` 注释链）+T4 kept 语义（② fast-path 零写/⑨ 不比向量/⑪ 只补缺口）相悖——按设计真理重钉为「断供期重摄取不销毁好向量（可用性优先），真换 dim 才入队」，并补侧表行保全钉；③注释智能引号腐蚀一处（U+201D）按 '' 避让规则改写。
+  - **终审门 2**（2026-10-25，HEAD=61d18669b 带外 export 提交态四包全量，日志 /d/temp/g32-t4-final-gate2.log）：BUILD_EXIT=0 全编译绿；internal/knowledge + internal/biz/knowledge ok。失败 18 例全归因：①外商五例（父提交复现组：Outbox dup-seq、MCP UpdateWritesOnly、EntRuntime L0CompressMaxTriggerTokens、TaskV2 event_dead_letter、biz playbook fingerprint）；②53200 环境组 12 例（ent-schema-create out of shared memory，并行会话实例压）；③新增片 TestGetSkillHealth_RouteHitRate 23505→**环境性定论**：HEAD 带外+新鲜隔离库 aranea_test_vfy3 定向 3 连跑全绿（8.783s），失效仅在共享库+并行压载窗口复现，本批文件零交集（skill_invocation.go 上次改动 eb6e348a5）。**裁定=绿，满足推送前置**。
+  - **推送实况**（2026-10-25）：按授权 `git push origin dev` 遭 GitHub pre-receive **GH001** 拒绝——未推送的 58 提交历史链内含 7 个 >100MB 存量文件（`.tmp/ggml-small.bin` 465MB、openwrt 镜像 120MB、竞赛 zip×5 128-159MB，全部 2026-07/08 批次引入、HEAD 均已删除），非本批引入；远程 head 保持 4f33e11af。补救首拍 filter-repo 后用户改拍「59→9 整理压并」：**并行会话已于当日以 origin/dev 为基九桶压并推送收口（终链 tip=25fdd24a5，archive/dev-58-pre-tidy-20261025 留全粒度原史，本 T4/T5 线含 C4 bucket）；本会话自备的 filter-branch devfix=f96587823 五段方案未执行、作废归档**。其后 dev 再进 38b6bb2dd/19e8390e4；**T5 批 commit=f6e2b038a 已本地化，推送待用户点头**（口径：现象级——T5 实施/钉阵/文档/终审修复全部落地且验证链复跑全绿）。
 - **关键实现偏差**（设计→实现）：
   - **document_versions 去 FK**——初版带 `ON DELETE CASCADE`，与决策 12「tombstone 可回放」结构性矛盾（doc 行删除即级联抹账+化身区间闭端全失）；本轮修 DDL（SQL+Ensure 同改），孤儿台账清理归 TK-G32-03 GC（与 chunk_archive 无 FK 同源设计），PG 钉 TestG32T3TombstoneSurvivesDocDelete 锁存活语义；
   - 时态 ANN 计分=纯余弦（历史透镜不叠 recency/stale，决策 12 登记对称计分）；
@@ -1957,7 +1977,7 @@ SP1-H（重建/回填，依赖 B/C，可与 D~G 并行）
 - 设计轮 3 哲学 × 3 透镜，**12/12 全收**，九审全 adopt-with-grafts：mvp 84/84/79（最小二层表）、full 88/82/76（connector.proto+registry 框架）、delivery 86/85/78（运维底座）。综合裁决＝**delivery 骨架+MVP 极简+full 框架 graft**，落 §G-38 ①。
 - violations 三处闭环（迁移号撞 20261295→重锚程序；红线3 dedup 绕链→adopt 管辖语义；DOC-SYNC 堆末片→打散进每片）；grafts 22 项归宿账见 §G-38 ⑫。
 
-### 拍板清单（11 项，**待用户**，设计按推荐值预落地）
+### 拍板清单（11 项，**已终裁** 2026-10-25 五簇深度分析，终裁定论块见表后；原推荐与终裁差异逐项对照）
 
 | # | 议题 | 选项 | 推荐 | 理由摘要 |
 |---|------|------|------|----------|
@@ -1967,23 +1987,91 @@ SP1-H（重建/回填，依赖 B/C，可与 D~G 并行）
 | P4 | API 承载面 | a custom JSON+ADR-KN-20261023-G38-API，晋升条件=第二 kind GA/G-40 启动迁 proto｜b 新建 connector.proto 直接进 make api | **a** | 迭代期字段不稳+ADR-KN-20261020-K 先例+回避 knowledge.proto 并行脏区；反案主张 §8.3 契约完整 |
 | P5 | 删除宽限与级联力度 | a ConfirmDeleted 三态+直接删除（无 miss_rounds 宽限）+auth 整轮闸+walk_empty_abort｜b miss_rounds≤3 宽限轮；全案一致含 max_deletes=200 截断 | **a** | Notion retrieve 每轮可权威判定，轮内确认替代跨轮宽限；三态 Unknown 不降级删除已覆盖瞬断 |
 | P6 | 四表持久化载体 | a hand-repo 裸 SQL（channel_delivery_claim.go 内嵌裸 SQL 先例边界写明）｜b ent schema+codegen（带外 staging 配方） | **a** | CRUD 扁平+免 ent 单写者窗口税；复审触发=需 ent 查询构造面时再开窗 |
-| P7 | 迁移号段 | 程序性：20261295 已被 board_run_leases（b91072a7c）占 | **20261296–99**，W1 开工重查 max Version | SQL 文件名=版本号名且与注册行同 commit |
+| P7 | 迁移号段 | 程序性：20261295/96 已占（board_run_leases/tool_result_spills）；**20261297 亦被占**（2026-10-25 skill D1 `9fb3939ac` trust_columns） | **20261298–20261301**，W1 开工 glob 重查 max Version | SQL 文件名=版本号名且与注册行+Ensure 双轨同 commit |
 | P8 | 文档可见性默认 | a visibility=collection+owner=system+「本工作区全库可见」文案｜b private+owner 需显式选配 | **a** | 组织共享语义；Notion 页级权限不映射为首批已知限制（P11） |
 | P9 | shared_dir connector ↔ vault_backend=local 关系 | a 并存不迁移，用户可见分工写需求档｜b 归一重构 | **a** | 并存零风险；归一属 AS 级重构不在本批 |
 | P10 | runs 历史保留 | a finalize 同事务 DELETE 保最近 100 轮｜b 无 GC 全靠 cron_task_run | **a** | cron_task_run 无 GC 教训的对冲设计 |
 | P11 | Notion 页级权限映射 | a 不映射+UI 文案（首批已知限制）｜b 映射成员表 | **a** | 外部 ACL 模型不进知识域；进需求档+⑨文案 |
 
+#### 五簇终裁定论（2026-10-25，依据 wf_6de6aa33-902 五簇深度分析；簇 A/C 因 infra 衰竭由主会话按同一五段纪律亲验补写）
+
+> 分析文件（磁盘产物，不入库）：`test/g38-design/decisions/cluster-a-analysis.md`（P1）/`cluster-b-analysis.md`（P3/P5+P3×P5 耦合）/`cluster-c-analysis.md`（P4/P6/P7+撞号线索贯穿）/`cluster-d-analysis.md`（P2/P9/P11）/`cluster-e-analysis.md`（P8/P10+运营七条）。每项完整五段（决策面全空间/评估矩阵/亲验锚点/失败场景/条件反转）见对应文件；此处只落定论与置信度。
+
+| # | 终裁 | 置信度 | 与 kickoff 推荐差异 / 终裁要点 |
+|---|------|--------|------------------------------|
+| P1 | **A 确认**（行表凭据子系统） | 高 | 唯一实质修正：索引形态取 **MCP partial-unique（active-only）** 而非 channel 全唯一+resurrect（platform_mcp_user_credential.go:41-43 先例）。crypto 不分叉（复用 CredentialCrypto 参数化 domain）；无 Reveal HTTP 面硬约束；OAuth 三件以 credential_key 同表承载；`env:` 保留为降级 scheme |
+| P2 | **a 确认**（shared_dir 首发） | 高 | kickoff 理由「T4 窗口」已失效（T4 已落地），理由重锚三条独立证据（零凭据面/walk_absent 免 ConfirmDeleted/首暴露爆炸半径最小）；notion GA 门上调三层＝T4 接线+W9 对抗评审 gate+至少一个 shared_dir 生产浸泡周期 |
+| P3 | **a 确认**（items 唯一真相+rel_path=''+adopt） | 高 | 五点亲验证据链（去重契约/查询实现/vault diff 域外/唯一索引豁免/own_lifecycle 分派）；反转门三向预留（workspace 级去重/来源徽章一等公民/adopt 竞态实测错档→W3/W7 钉测试范畴） |
+| P4 | **a 确认**（custom JSON+ADR 同 PR） | 高 | 最高权反证＝`/api/v1` 子树被 twinOpenAPI 前缀遮蔽的 proto 注册翻车先例（server/http.go:201-203）；生效条件四条（ADR 契约表/中央块逐条登记/JWT+404 反 IDOR/handler 薄化留晋升切面） |
+| P5 | **a 确认**（ConfirmDeleted 三态+当轮删+四层防线+预算截断） | 高 | 唯一依赖假设明示：Notion retrieve 404/archived 语义权威；a 对两个相反反转方向（瞬态假阳性→h2 升级 / GDPR 时效→b 报废）同时免疫 |
+| P6 | **a 确认**（hand-repo 裸 SQL） | 高 | kickoff 表述瑕疵更正：「channel_delivery_claim.go 先例」文件不存在，真实先例＝知识域 hand-repo 家族本身+Ensure 双轨+guard 测试强制；条件反转=复杂查询构造需求出现→仅限读侧投影开 ent 窗 |
+| P7 | **a 重锚 20261298–20261301** | 高 | kickoff 原「20261296–99」已撞 tool_result_spills；2026-10-25 再锚一次（20261297 被 skill D1 `9fb3939ac` 占用）；磁盘实证两组历史同号并存（20261252×2/20261279×2）证明开工重查为唯一解；b 案（占位锁号）评审驳回（占位行进 guard 测试红） |
+| P8 | **a 确认**，收敛为设计⑨已成文 E 形态 | 高 | 默认 collection+owner=''+「本工作区全库可见」文案+编辑抽屉档选择器（默认锁）；B（写侧结构性不成立）、C（首批绑 org 接线）不采纳 |
+| P9 | **a 确认**（并存不迁移） | 高 | 分工轴「vault=双向工作台 vs connector=单向受管摄取」写进需求档；归一保留为 AS 级重构欠账轨道 |
+| P10 | **a 确认**，两条硬升格 | 高 | finalize 同事务 DELETE 保 100 轮（常量钉死）+**`idx_src_runs_conn (connector_id, started_at DESC)` 同批硬前置**+姊妹条款：items missing/deleted 行 90 天保留（同事务第二 DELETE，W1/W7 钉） |
+| P11 | **a 确认**，**中置信** | 中 | 生效条件三件套（per-connector visibility 档+导入即全工作区可见文案+需求档权衡登记）；管理员不自知残余风险须用户签字认领；未来兼容路径已埋（谓词第三腿+shared_with GIN 零读侧改，知识 visibility 锚点 45-49/215-217 亲验） |
+
+**贯穿性产出（落 §G-38 总原则）**：P4/P6/P7 三项否决性论据收敛为同一设计原则——「G-38 全部熵增量约束在 knowledge 域 hand-authored 面内，凡 codegen/注册面一律不新占」（cluster-c 撞号线索贯穿分析）。P11 为唯一中置信项，OPEN 项＝用户签字认领管理员可见面风险（其余 10 项高置信、无遗留 OPEN）。
+
 ### 任务切片候选（W1–W9，全 ☐；命名避开 G-32 T4 撞号）
 
-- [ ] **W1** 迁移+四表 hand-repo CRUD（20261296–99 重锚；EnsureSourceSyncSchema 双轨同 commit；due 部分索引；error_code/状态枚举纯函数钉）
-- [ ] **W2** model.go（biz/knowledge/sourcesync）+Runner/Applier/Walker 抽象（internal/knowledge/sourcesync）+ClaimRun CAS+僵尸 run_token 回收钉
-- [ ] **W3** shared_dir walker（SyncEngine.Scan 适配；sanitize 防撞键钉：a/b.md vs a-b.md）+Applier Upsert/adopt 钉
-- [ ] **W4** 单例 fan-out worker（cronrunner/jobs/source_sync.go；KnowledgeJobLocker fail-closed；due 拾取部分索引；退避分级表；skipped_missed 逾期合并单轮；kill-switch）
-- [ ] **W5** 凭据子系统（RequireKeyForSecret+Upsert/Delete+recordAudit+auth_paused 归类+PUT 唤醒）+HTTP 面七端点（custom JSON+ADR 同 PR）——P1/P4 拍板前置
-- [ ] **W6** notion walker（search 页级指纹；429/Retry-After；cursor-invalid 回退全量；ConfirmDeleted retrieve）——**GA 门=T4 十三步接线信号**，未接线期 tombstone_enabled=false
-- [ ] **W7** 删除墓碑级联八步+e2e 钉阵（walk_empty_abort/auth 闸/Unknown 不删/预算截断/adopt 不动文档/DeleteConnector 释放态）——消费 G-32 T4 后接口
-- [ ] **W8** WS 聚合帧+前端 KnowledgeConnectorsPanel+badge 禁编辑+runs/items 视图（P8 文案）
-- [ ] **W9** 收口：ADR-KN-20261023-G38-API 封尾+三件套状态翻转+65 手册 §1.13 增补（写面唯一/删除墓碑/指纹表/零横切）+21-cron 欠账注记+对抗评审 gate
+- [x] **W1** 迁移+四表 hand-repo CRUD（20261298–20261301 重锚——20261297 已被 skill D1 `9fb3939ac` 占用，开工 glob 重查 max；EnsureSourceSyncSchema 双轨同 commit；due 部分索引；error_code/状态枚举纯函数钉；凭据表 partial-unique 活性索引钉 P1）
+  - ✅ **2026-10-27 完成，commit `41e6a28e2`**（11 文件 +2399 行）：四迁移+biz 模型（枚举/Backoff/Truncate/ValidateConfig/四仓口）+Ensure 双轨+黄金列阵+hand-repo 全实现+P10 同事务双 DELETE。
+  - 验证基线：`go vet`+`go build`（data/biz）零错；biz 9 纯函数钉绿；**data 层 611 行 PG 钉阵（10 例）因本机 PG 环境未跑**（Docker 引擎未就绪+55432 无监听）——PG 恢复后补跑，红则单独 fix-up 批，不阻塞后续 W 片。
+  - 设计内不一致处置两处（详见 design as-built 增量）：③-2 items 列清单漏 `error_message` 但 Upsert 钉明文要求清→按语义钉落列；`max_fetch_bytes_per_run` 设计缺初值→登 512MiB 可调参。
+- [x] **W2** model.go（biz/knowledge/sourcesync）+Runner/Applier/Walker 抽象（internal/knowledge/sourcesync）+ClaimRun CAS+僵尸 run_token 回收钉
+  - ✅ **2026-10-27 完成**（6 文件跨 biz/data/sourcesync 三层）：ConnectorRepo 四方法（TryClaimRun CAS/HeartbeatClaim/FinalizeRunWithClaim/ReclaimZombieRuns，`updated_at` 双重角色承载租约心跳）+types.go 抽象面（Walker/Applier/JobLocker/FrameSink/AuthError/ErrBudgetExhausted）+runner.go ⑥ 八步序编排+fakes 内存镜像双阵营。
+  - 验证基线：**-race 32 钉全绿**（20 编排钉+12 评审收复钉）+biz 9 回归+`go vet`+全量 `go build`（cmd/internal）+智能引号字节扫描净；**PG 真值钉 7 例挂起批**（同 W1，Docker 引擎未就绪，恢复后补跑红则单独 fix-up）。
+  - **对抗评审收官（wf_1940525b-dd1，28 agent）：13 确认/10 驳回全修**——major 三枚：①失地宽容升格 fencing（lost 原子旗三闸+errClaimLost 哨兵 superseded 收轮）；⑤deleted 复活重绑条款；⑥fakes 故障注入+仓口故障六分支钉。minor 全收：删除候选窗显式 max(500,3×max_deletes)、RunOutcome.Error cause 贯通、游标跨轮连续性钉、字节预算哨兵钉、空 external-id 钉、级联失败保留钉、注册缺失两分支钉、fake 严格 `<` 窃取边界+服务器钟。W7 新增待办登记：DeleteDocument 反扫 items 失效绑定。
+- [x] **W3** shared_dir walker（SyncEngine.Scan 适配；sanitize 防撞键钉：a/b.md vs a-b.md）+Applier Upsert/adopt 钉
+  - ✅ **2026-10-27 完成**（6 文件跨 biz/sourcesync 两层）：model.go `SharedDirConfig/ParseSharedDirConfig`（DisallowUnknownFields+root TrimSpace+敏感键黑名单——config_json 永不藏秘密）+model_test 9 闸群分例；shared_dir.go walker（Scan 薄适配+游标 JSON codec+Fetch/ConfirmDeleted 三态）+shared_dir_test.go 5 钉；applier_doc.go（幂等短路→adopt 判定→建/更→indexing CAS→BuildIndexedChunks→CommitIndexedDocumentMeta→图谱四 hook）+applier_doc_test.go 7 钉+e2e 四轮钉。
+  - 验证基线：**-race 64 钉全绿**（32 W2 回归+22 W3：9 walker 钉+12 applier 钉+1 e2e 四轮钉）+biz sourcesync 11 闸群钉全绿+biz knowledge 包回归（Scan 域级闸不扰 vault 钉）+`go vet`+全量 `go build`（cmd/internal）+gofmt 净+智能引号字节扫描净（三处 watcher 腐化即改净：注释避写引号对邻近 CJK）。
+  - 关键设计内化为 as-built（详见 design「W3 as-built」增量段）：external_id＝rel 逐字零映射（a/b.md vs a-b.md 构造免疫，SanitizeRelPath 出入双闸）；fingerprint=内容 sha1（mtime/size 仅游标预筛——touch 不重摄取）；游标 JSON `{v:1,files:[…]}` 坏→空 prev 全量重 hash；docHash＝Applier 按 payload 字节重算自证（与 UI 上传同 hash 空间·红线 3 保 adopt 不重复建档）；adopt＝登记 own=false 零写不接管（源漂移→新 hash adopt miss→转 own 自建）；悬挂绑定→落 adopt/create 不整轮 abort（W7 反扫归口）；幂等短路 indexed∧hash 同→零写不发帧；MIME 直读口径 text/*|json|xml，他型走 Extractor 未注入即硬错进 fetch_failed 桶；embed 熔断不背远端锅（提交失败无 hash 回填→下轮 needsWork 自然重试）。
+  - 修钉各一：e2e 初版 SizeBytes 写 6（`# ok\n` 实 5 字节——断言先于 Close 触发 Fatal 致 TempDir 句柄泄露，断言改 5+先 Close 后断言）；shared_dir_test 文件名笔误 `a/x.md`→`a/b.md`（防撞键排序钉自身错位）。
+  - **对抗评审收官（wf_6f89c52c-5be，27 agent）：21 确认/1 驳回全修**——major 簇：①symlink/特殊文件围栏三通闸（biz Scan 域级 regular-file 闸[两产线同封]+Fetch Lstat+ConfirmDeleted Lstat 回放，#WALKER-1）；②D1 计数信号改 content_hash 空白度（error 残态重试不再双倍计数——**vault status 口径同序列 latent drift 挂账 W9 收口**）；③D2 chunk_count 保账双闸（indexing CAS+markError 传 prevChunkCount——PG 无条件写列传 0 即清零漂移，**vault markError 同病并挂 W9**）；④F1/D4 createDoc 孤儿补偿回滚。minor 全收：反斜杠/NUL 先验拒（改写非拒绝坍缩张冠李戴）、root 绝对路径硬闸（CWD 漂移事故形态）、黑名单 probe-first 排列（死代码复活）、ConfirmDeleted 出席谓词回放（MaxBytes() 唯一真源、改名出白名单不 limbo）、hook panic safeInvoke 拦、adopt 漂移转 own/指纹自证/孤儿补偿 D1D2 焊钉等 10 新增钉。驳回 1 例采纳：#W3-PIN-6 touch 不重摄取已由 e2e R2+游标往返覆盖。
+- [x] **W4** 单例 fan-out worker（cronrunner/jobs/source_sync.go；KnowledgeJobLocker fail-closed 在 Runner 内部；due 拾取部分索引；退避分级表消歧归 runner finalize；skipped_missed 逾期合并单轮；kill-switch 全局+按 kind 热生效）
+  - ✅ **2026-10-27 完成**（6 文件跨 jobs/cmd/admin 两层）：source_sync.go worker（Start 首扫先行+ticker 30s、崩溃回收前置、due 32 上限透传、maxParallel 4 限流、进程内 single-flight、双层 panic 收尸、kill-switch 热读、结果分级打点）+source_sync_test.go 钉阵+wire.go/wire_gen.go 手工同体镜像三 provider+wire_part2 Build 注册三件套+workers.go goAfterReady("source_sync")。
+  - 验证基线：**-race 10 钉全绿**（原 8 钉×修订[屏障化/热读/序钉并入]+新增 2 公共钉[顶层 sweep panic 收尸/Start 合同]）+jobs 包全量回归绿+`go vet`+全量 `go build`（cmd/internal）+gofmt 净+智能引号字节扫描净。
+  - as-built 消歧两录（详见 design「W4 as-built」段）：退避分级表不在本层（凭据直置 auth_paused、walk 失败 2^n min cap 60、死信/审计归 W2 runner finalize+runs 表 P10；in-tick retry 与 claim CAS 打架）；kill-switch 热生效裁决（每 sweep 重读 env——停机手段不依赖重启）；图谱四 hook 本批不接线（R-4 纪律）归 W6/W8；PG 缺席/applier 装配失败/kill-switch 三态装配面省判。
+  - **对抗评审收官（wf_c3053dc3-aa2，21 agent：16 确认归并 12 处全修/1 驳回）**——major 簇：①typed-nil 装瓶双发（D2-f-7 同款病案复发——workers.go 守卫装瓶前判空）；②wire_part2 Build 三件套漏注册（P0-6 #4 同款教训，同批注册援引判例）；③结果分级 failed/partial 拆支 Warn（头部登记即如此）+回收成功 Warn 去双发（观测独家归 runner）。minor+pin 簇全收：wire_gen 镜像体逐字复原（INV-ADMIN-1 主本纪律）、钉阵补强（BoundedParallelism 屏障确定性+窗后逐条全量钉、kind 闸热读+inflight 残位钉、顶层 sweep panic 收尸钉、回收前置序钉、单飞钉 Fatalf 清泄、Start 合同钉）。驳回 1 例采纳：#W4-WIRE-2 provideWireOut 参数位次——wire.go 为 wireinject stub 不入编译，采纳不改。
+- [x] **W5** 凭据子系统（RequireKeyForSecret+Upsert/Delete+recordAudit+auth_paused 归类+PUT 唤醒）+HTTP 面七端点（custom JSON+ADR 同 PR）——P1/P4 拍板前置
+  - 锚点：`internal/knowledge/sourcesync/admin.go`（AdminService 11 法：CRUD/Trigger/Runs/Items/Credential）＋`admin_test.go`（钉①–⑩）；`internal/service/knowledge_sourcesync.go`（11 路由 handler 薄面）＋`knowledge_sourcesync_test.go`（503/405/PATCH 继承/双形态 config/limit/审计形状/严格解码）；`internal/server/http.go` registerCustomRoutes 11 条；`internal/biz/knowledge/sourcesync/model.go`（ValidateCredentialKey/ValidateEnvSecretRef/SanitizeConfigForExport）；`internal/biz/channel_rules.go` MaskSecretRef；`internal/data/knowledge_source_sync_repo.go`（Trigger/Wake＋UpdateConnector run_token CAS）；`cmd/admin/wire{,_gen,_part2}.go` 三件套（provideSourceSyncAdmin＋setter 注入，`NewKnowledgeService` 十参签名不动）
+  - ADR 落字：design.md §⑦ **ADR-KN-20261023-G38-API**（背景/决策/后果/替代方案＋11 路由契约表＋晋升条件＝第二 kind GA 或 G-40）；as-built 段登记 PATCH 继承/管理面 CAS/凭据闸细则/唤醒语义/缺省落点/503 映射六项裁决
+  - 拍板承接：P1＝行表凭据（A 案，env:VAR 旁路）；P4＝custom JSON（11 路由 7 组，晋升 proto 一次性迁）
+  - 遗留：PG 真库钉延后（W1–W4 先例，随 PG 55432 重建批补）；冒烟推送待用户点头
+- [x] **W6** notion walker（search 页级指纹；429/Retry-After；cursor-invalid 回退全量；ConfirmDeleted retrieve）——**GA 门=T4 十三步接线信号**，未接线期 tombstone_enabled=false
+  - 锚点：`internal/knowledge/sourcesync/notion.go`（NotionWalker：search 全量出席/页级指纹=last_edited_time/游标列恒空/429 Retry-After 轮内 8 跳上限/轮内 cursor-invalid 重启一次/Fetch retrieve+blocks 全分页渲染 markdown 512KiB 截断/ConfirmDeleted pages.retrieve 三态/UUID 形状闸）＋`notion_test.go`（httptest 钉 14 枚）；`internal/biz/knowledge/sourcesync/model.go` NotionConfig/ParseNotionConfig（credential_key 白名单豁免+校验原值不 Trim）＋SanitizeConfigForExport 豁免；`internal/cronrunner/jobs/source_sync.go` SourceSyncKindGAOptIn（GA 显式开闸 SOURCE_SYNC_NOTION_ENABLED）；`cmd/admin/wire{,_gen}.go` runner 增参 CredentialCrypto＋GA 闸装配 notion walker
+  - as-built 裁决（design ⑭ W6 段）：walk 域=集成共享面全量出席（拒「只 emit 增量」省费优化——tombstone 对账前提）；游标列恒空（回退=轮内重启一次）；GA 门上调三层（T4 ✓+W9 评审 gate+shared_dir 浸泡周期），替代性 tombstone_enabled 列被否（防误删需连调度都不发生）
+  - 实现期发现钉中真缺口：`ParseNotionConfig` 原先 Trim 后校验会放行带空白 credential_key——W5「key 校验不 Trim」同口径修
+  - 遗留：真实 Notion 沙盒冒烟 + PG 真库钉（W1–W5 先例延后批）；推送待用户点头
+- [x] **W7** 删除墓碑级联八步+e2e 钉阵（walk_empty_abort/auth 闸/Unknown 不删/预算截断/adopt 不动文档/DeleteConnector 释放态）——消费 G-32 T4 后接口
+  - 覆盖盘点结论：八步序单步语义在 W2–W4 钉阵已有专钉（WalkEmptyAbort/AuthGate×3/UnknownStaysMissing/DeleteBudgetTruncation/AdoptSafety/Cascade_DeleteFailureKeepsMissing），W7 零新生产码，只补**步骤间接线** e2e 钉＋释放态闸阵
+  - 锚点：`internal/knowledge/sourcesync/runner_e2e_test.go`——TestE2E_NotionCascadeRounds（httptest 假 Notion 三端点＋真 NotionWalker/Runner/DocApplier 三轮全链：建 2→no-op→外部归档走 walk 缺席→missing→ConfirmDeleted(archived)→own_lifecycle 级联正道，runs 审计三轮齐落）；TestE2E_ReleaseGates 三子钉（disabled/真 SoftDeleteConnector 软删行不可见 not_found/running 他主行 claim_lost——三零断言：walker 零调用/审计零行/连接器零漂移逐字复核）
+  - as-built 登记 design ⑭ W7 段（八步序存量覆盖表＋e2e 钉分工＋释放态闸阵）
+  - W2 挂账「带外 DeleteDocument 反向清扫 items 悬空绑定」本批维持分治不代办——收口决议归 W9 对抗评审议题
+  - 遗留：PG 真库钉（W1–W6 先例延后批）；推送待用户点头
+- [x] **W8** WS 聚合帧+前端 KnowledgeConnectorsPanel+badge 禁编辑+runs/items 视图（P8 文案）
+  - 锚点：`internal/service/knowledge_sourcesync_frames.go`（NewSourceSyncFrameSink：v2 SystemNoticeEvent `knowledge_source_sync` 广播，nil bus 静默双闸，SourceSyncFrameMeta 键集唯一构造——started 帧零计数泄漏纪律，done 帧九计数+status+error_code 全载荷，auth 家族码原样透传=auth_paused 迁移信号）＋`knowledge_sourcesync_frames_test.go`（3 钉：started/finished 对+键集/auth 迁移码透传/nil bus）；`cmd/admin/wire{,_gen}.go` runner 增参 v2Bus biz.EventBus＋Frames 装配（双镜像逐字）
+  - 前端：`web/src/components/knowledge/KnowledgeConnectorsPanel.vue`（连接器卡片列表+编辑抽屉+runs 表+items missing 删除待决视图+凭据区 masked_preview/覆盖写/ARANEA_CREDENTIAL_KEY 提示/保存后 refresh 显唤醒面；KnowledgeEmbedderPanel 明线先例嵌 KnowledgePage 设置对话框）；`web/src/features/knowledge/api.ts`+`types.ts`（11 路由 kratosApi 裸调手映射+DTO 镜像）；`useSourceSyncWs.ts`（GLOBAL 会话+system channel+connector_id 范围过滤+800ms 尾触发防抖）
+  - 钉阵：useSourceSyncWs.spec.ts 3 枚+api.spec.ts sourceSync 段 3 枚；vitest knowledge 目录 50 文件 478 钉全绿；vue-tsc 全仓零错
+  - 裁决：badge 禁编辑在文档行的「连接器管理」只读徽章因跨页数据面未接线——面板 items 视图已曝光 document_id 绑定，文档编辑面拦截归后续批（不阻塞 GA，运维纪律>体验增强）
+  - 已知红归属：`internal/data/memory_eval_shadow.go`（未跟踪）+`memory_eval_store.go`（已改）float32/64 失配=并行会话在飞活，非本批引入——W8 面 scoped 验证（cmd/admin build+vet、service 帧钉、sourcesync 全包 -race）全绿
+  - 遗留：PG 真库钉（W1–W7 先例延后批）；推送待用户点头
+- [x] **W9** 收口（2026-10-28，commit `f941ca6ea`）：W3 挂账双债修复 + 钉阵
+  - `internal/knowledge/vault_sync.go`：
+    - **#D1 docDelta 唯看 content_hash 空白度**（upsertDoc :268-277）——旧 status 口径在「indexed→error(re-ingest 败)→重试」序列双倍计数；修复对齐 sourcesync applier #D1 同宗同策，hash 只随成功提交落库，非空⇒已计数
+    - **#D2 markError 保账**（markError :464-471）——旧调用传 chunkCount=0，PG UpdateDocumentStatus 无条件写 chunk_count 列清零漂移；修复新签名接收 prevChunkCount，4 个调用点一律传 doc.ChunkCount（:181/:190/:264/:287）
+  - 钉阵：vault_sync_test.go 新增两枚回归——
+    - `TestVaultSyncApplier_ErrorResidualReingest_NoDoubleCount`（R1 indexed→R2 modified+InsertChunks 注入败→R3 重试成功，DocumentCount 恒 1）
+    - `TestVaultSyncApplier_MarkErrorPreservesChunkCount`（R1 记 prevChunkCount=N，R2 注入败后断言 ChunkCount==N 非 0）
+  - 验证：`go test -p=1 -count=1 ./internal/knowledge/` 全绿（含两枚新钉）；gofmt+smartquote 扫零
+  - 对抗评审 gate（GA 门三层之一）：**挂上 G-40 前批**——G-38 全链对抗评审 + shared_dir 生产浸泡周期未完成前 notion 不晋升 GA
+  - ADR-KN-20261023-G38-API 封尾：维持原决议（custom JSON+11 路由），晋升条件=第二 kind GA 或 G-40 启动迁 proto；本批无新增字段，无需晋升
+  - 三件套状态翻转：development.md 本行 ✅；design.md 补 W9 as-built 段；37-knowledge.md 需求文档不动（无需求变更）
+  - 65 手册 §1.13 增补：G-38 SourceSync 红线段已落字（写面唯一/删除墓碑/指纹表/零横切/凭据闸/vault 姊妹债 W9 收口）
+  - 21-cron 欠账注记：本批不涉及 cron UI/历史（欠账目沿用 P4 晋升解决条款，G-38 未触及 cron 域）
+  - W2 挂账「带外 DeleteDocument 反向清扫 items 悬空绑定」：收口决议——**归 G-40 批次**，W9 维持分治不代办（items 绑定=连接器侧物化账本，反向清扫需 DocApplier 增 port，超本批范围）
+  - 遗留：PG 真库钉（W1–W8 先例延后批）；推送待用户点头；notion GA 门三层=T4 ✓+W9 对抗评审 gate（挂 G-40 前批）+shared_dir 浸泡周期
 
 ### 文档同步纪律（graft DOC-SYNC 打散，违前批教训）
 
@@ -1994,3 +2082,41 @@ SP1-H（重建/回填，依赖 B/C，可与 D~G 并行）
 - **T4 门**：b8 六脏文件 Monitor（bl1h3bqc9）→ 落定即启 G-32 T4 主手术；W6/W7 以 T4 接线信号为开工条件。
 - **temporal.go 仍 `??`**：chunk_temporal_port.go 持候，不落定义端不入库。
 - 欠账目（本批不做，登账防漏）：cron UI/历史（P4 晋升解决）、web connector（crawl 纯库未接线，需 checkpoint 基建）、OAuth per-user（行表 metadata_json 预留）、archive GC（TK-G32-03 已 gauge 化）、vault↔fsdir 归一、adopt 档内容冻结（已知限制+治理面提示）。
+
+## G-40 写回仲裁四操作标准化（kickoff，2026-10-28）
+
+> 定义：SOTA 缺口报告 G-40 行——写回仲裁标准化为 ADD/UPDATE/DELETE/NOOP（Mem0 四操作）+ UPDATE/DELETE 走版本链留痕；与「低置信矛盾自动失效（Graphiti 已证明安全）」合并设计。锁序末棒：G-39→G-32→G-38→G-40。
+> 需求：37-knowledge.md US-61（FR-G40-1..6）；设计定稿：37-knowledge.design.md §G-40（2026-10-28 v1，ADR-KN-20261028-G40-ARB4，决策 D1–D8 + 阈值有理 + 钉阵清单 13 枚）。
+> 结转入口三条（G-38 收官挂账）：① W2 挂账（带外 DeleteDocument 反扫 items 悬空绑定）→ **A1 已收**；② W9 对抗评审 gate（notion GA 门三层之二）→ **归本批 C 片**；③ ADR-KN-20261023-G38-API 封尾 → 裁决「本批不迁 proto」，晋升触发器条件重述（第二 connector kind GA ∧ 新增字段双支）。
+
+### 批次划分与现状
+
+- [x] **A1** 带外删档反扫（W2 挂账收口）——✅ 2026-10-28，commit `276779ec7`
+  - `internal/biz/knowledge/sourcesync_unbind.go`（SourceItemUnbinder 窄口 + SetSourceItemUnbinder 装配 + DeleteDocumentMirror 唯一钩点 best-effort 回调——清空 document_id+own_lifecycle=false，content_hash 保留为源侧 checkpoint 事实）+ data UnbindItemsByDocumentID（status<>'deleted' 谓词）+ fakes 镜像 + wire 三件套手工镜像（PG 哨兵内装配，nil-data 形态不挂空壳）
+  - 钉阵 5 枚全绿（docID 透传/nil 安全/失败仅 Warn/删除失败不触发/双入口单回调）；PG 真库钉 TestSourceSyncItem_UnbindItemsByDocumentID 已落（随 55432 重建批补跑——Docker 引擎恢复后红则单独 fix-up）
+- [x] **B** 四操作标准化本体——✅ 2026-10-28，commit `f34d70a37`（7 文件 +525/-112）
+  - biz：`evolution.go` WriteBackOp 枚举（add/update/delete/noop，字节稳定）+ WriteBackArbitration.Operation 字段（旧 Verdict 同 commit 删除，零双轨）+ recordFactVersion 墓碑豁免（NewBody 空串=失效可入档）+ recordGovernanceProposal 共享幂等闸重构（高风险 pending 与低风险 applied 同 dedup 键形）；`writeback_entry.go` upsertEntryDoc 消费重排（D3 置信分带/D5 NOOP 零旁效应/D7 失配降级 + deleteAutoInvalidateMin=0.5 + D6 事故闸 usecase 构造期读 env）
+  - knowledge：`writeback_arbiter.go` 提示词四操作化 + 解析双键兼容（operation 新键/verdict 旧键）+ 旧三值映射（D2：supersedes/contradicts/unrelated→update/delete/noop，未知值丢弃）
+  - 钉阵 13 枚全绿（biz 9：钉①–⑨按 design §⑥ 编号；arbiter 4：钉⑩–⑬）+ 全量 biz/knowledge + knowledge 包套件绿 + gofmt/vet/smartquote 扫净 + 全仓 go build 绿
+- [x] **C** 对抗评审 gate（notion GA 门三层之二）——✅ 2026-10-28，wf_6fda0b29-07e（43 agents，0 errors）：18 findings = **16 confirmed（双镜一致确认）+ 2 contested（分裂自裁）**；确认项全修，fix-up 单独 commit
+  - 范围登记（评审面清单）：G-38 W1–W9 全链（runner 八步序/claim fencing/墓碑级联/凭据闸/GA 三层门）+ A1 反扫钩点 + B 批四操作消费/墓碑语义/事故闸/失配降级 + 65 手册 G-38 红线段符合性
+  - 修复清单（详见 37-knowledge.design.md §⑨ 评审修复登记表）：#10/#111 级联删档在途行清锚→**改登记不改机制**（三处锚承诺作用域化 + unbind 头注已知边界 + PG 终态钉）；#18/#112 治理 orphan 处置→改经 DeleteDocumentMirror；#19 DeleteCollection→删除前预扫+逐文档反扫；#11 空 TargetFactID→入 D7 升级面；#12 UPDATE 空 incoming FactID→门禁降级防 lineage marker 销毁；#13 同批同目标→consumedTargets 消费登记；#14 跨带 dedup 互吞→`:auto` 命名空间 + 死代码 recordAutoInvalidateProposal 删除；#15 stmt 占位→陈述哈希归一；#16 候选截断→取尾部最新段+Warn 可观测；#17 双键→解析失败也回退 verdict；#110 Warn 文案/#113 partial 措辞作用域/#114 wire 注释对齐行为/#115 D6 措辞对齐钉⑨（实现解释成立，[0.5,0.7) 取证盲区登记已接受）
+  - Contested 自裁：c1 fact_version 写-only→登记欠账（恢复工具属后续批）；c2 推断带 Scale→驳回（显式设计保守收沿，design §⑤ 补字）
+  - 钉阵增量：biz 消费面 6 枚（钉⑩–⑮：空 incoming/空目标升级/同批双序/跨带命名空间×2 支/stmt 归一）+ arbiter 1 枚（钉⑯ 双键回退）+ 截断钉改写为尾部语义 + PG 1 枚（UnbindCascadeTombstoneTerminalState 级联终态+对照豁免）——全量 biz/knowledge + knowledge + cmd/admin 套件绿、PG 真库 SourceSync 钉批绿（含新终态钉）、gofmt/vet/smartquote 扫净
+- [x] **PG 真库钉批**（W1–W8 延后 + A1 反扫钉）——✅ 2026-10-28，容器 55432 重建窗口补跑 23 例全绿；`CollectionActiveUnique` 钉 SyncState 初值漏填修复 commit `dfa823677`（钉侧一行，生产码不动）
+- [ ] **推送**——276779ec7 + f34d70a37 + dfa823677 + C 批 fix-up 链，**待用户点头**（socks5 代理通道惯例）
+
+### as-built 差量登记（B 批实现期裁定）
+
+- 事故闸读取点：design ③「读 usecase 字段+直接读 env 一次存字段」落地为 `writeBackFields.writeBackDeleteAutoInvalidateOff` + 双构造器（NewUsecase/NewUsecaseFromRepo）构造期读 `KNOWLEDGE_WRITEBACK_DELETE_AUTO_INVALIDATE_DISABLED`——biz 内 env 读取先例（memory_platform_config/credential_key）；kill-switch 语义=**自动失效带整带关闭**（c<0.7 回落纯追加，高带人工路径不受影响），钉⑨锁定
+- delete 目标失配降级走「追加+高风险 pending 提案」（D7）——自动失效带内 target 空串视同失配（找不到即不可误删，宁升级不静默）
+- recordConflictProposal 包内签名不动（curate 侧与钉阵零扰动）；持久环改走 recordGovernanceProposal 统一入口
+- arbiter 解析双键（operation/verdict）灰度窗口——固定缓存提示词变体的旧响应仍映射正确操作
+
+### 欠账/挂账（本批不做，登账防漏）
+
+- ADR-KN-20261023-G38-API proto 迁移：触发器=第二 connector kind GA（notion）∧ SourceSync 路由面新增字段双支一即迁（design ⑦）
+- **D8 边关闭层**（2026-10-28 续批已收）：DELETE 自动失效成功后 `CloseSemanticEdgesEvidencedBy` 把该文档上 `context` 落在被删事实段内的 active semantic 边 `valid_to=NOW()`。显式/实体/共激活边不动；closer 未接线零旁效应。生产经 repo 类型断言接线。
+- **G-40 c1 回放读侧**（2026-10-28 续批已收）：`LatestFactVersion` + `RestoreTombstonedFact`。最新版本 NewBody 为空才允许把 OldBody 写回正文，并再记一条 OldBody=`tombstone` 的反向版本。最新版本不是墓碑则拒绝。事故闸置位期间 [0.5,0.7) 带零审计（D6 取证盲区）仍为已接受代价，未改。
+- **TK-G39-03 跨维并行检索**（2026-10-28 续批最小落地）：`HybridRetriever.SetExtraDimEmbedders`。空名单保持单维原路径；异维失败跳过该维；同长度向量跳过以免双计；多维命中走 `mergeDenseDims`（DenseScore 槽，不占 sparse 分解）。注册表的配置面/多模型装配留后续，本批只交付检索扇出。
+- notion GA 门三层：T4 接线 ✓ + W9 对抗评审 gate ✓（C 批已收，两项 contested 自裁见上）+ 剩第三层=shared_dir 生产浸泡周期（计期起点=C 批推送日）

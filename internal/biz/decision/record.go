@@ -28,6 +28,10 @@ const (
 	// decision_records 审计面，任何模块不得读它做业务判断（M80 单向数据流
 	// 铁律不变）。
 	CategoryMemoryShadow Category = "memory_shadow"
+	// CategoryJEVShadow 是 JEV Phase 1 四平面 shadow 扩面类别（2026-10-28）：
+	// 工具 / 技能 / MCP 决策点同样零行为影响双记；与 memory_shadow 分桶，
+	// 方便 harvest 按平面过滤。ARANEA_JEV_SHADOW=on 点亮（缺省 off）。
+	CategoryJEVShadow Category = "jev_shadow"
 )
 
 // validCategories is the Emit-time whitelist (application-layer constraint per
@@ -39,6 +43,7 @@ var validCategories = map[Category]bool{
 	CategoryKnowledgeArbitration: true,
 	CategoryEvolutionApplied:     true,
 	CategoryMemoryShadow:         true,
+	CategoryJEVShadow:            true,
 }
 
 // ActorType identifies who made the decision.

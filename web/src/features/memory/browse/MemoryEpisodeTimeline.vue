@@ -119,11 +119,11 @@ function importanceStars(value: number): number {
 }
 
 .episode-count-chip {
-  background: #4db6ac;
+  background: var(--color-success);
 }
 
 .episode-pending-chip {
-  background: #f2a541;
+  background: var(--color-warning);
   animation: episode-pulse 1.6s ease-in-out infinite;
 }
 

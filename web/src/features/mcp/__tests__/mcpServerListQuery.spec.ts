@@ -32,7 +32,7 @@ describe('MCPServerService generated client', () => {
       return Promise.resolve({ items: [], total: 0, page: 1, pageSize: 20 });
     });
 
-    await client.ListMCPServers({});
+    await client.ListMCPServers({ page: undefined, pageSize: undefined, search: undefined });
 
     expect(calls).toHaveLength(1);
     expect(calls[0].path).toBe('v1/mcp-servers');

@@ -168,10 +168,10 @@ watch(
 }
 
 .pending-body--prior {
-  background: rgba(0, 0, 0, 0.04);
+  background: color-mix(in srgb, var(--color-shadow) 4%, transparent);
 }
 
 .pending-body--proposed {
-  background: rgba(25, 118, 210, 0.07);
+  background: var(--color-info-soft);
 }
 </style>

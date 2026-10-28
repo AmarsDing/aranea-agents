@@ -1,0 +1,29 @@
+# Cursor 完整忽略清单：这些路径不参与 AI 上下文、索引与语义检索。
+# 与 .gitignore 的区别：本文件生效于 Cursor 自身；.gitignore 生效于 git/ripgrep。
+# 目的：本项目有 207 个 go.mod（vendored trpc-agent-go 子模块）+ Claude Code 在
+# .claude/worktrees 下重建整仓副本，不排除会把扩展宿主拖到 unresponsive。
+
+# Claude Code 在仓库内生成的全量 worktree 副本（会被会话反复重建）
+.claude/worktrees/
+
+# 构建与运行产物
+bin/
+build/
+blender/
+web/src-tauri/target/
+web/node_modules/
+web/.quasar/
+web/dist/
+web/dist2/
+
+# 临时/历史测试副本（含 parked overlay 整仓拷贝）
+test/
+competition/
+
+# 大体量文档素材
+docs/testing/
+
+# 工具缓存
+.codegraph/
+.trae/
+gocache/

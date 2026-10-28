@@ -48,13 +48,17 @@ export function usePluginsPage() {
 
   /** Agent 选项列表，供作用域选择器使用 */
   const agentOptions = ref<{ label: string; value: string }[]>([]);
+  let agentOptionsFailed = false;
 
   async function loadAgentOptions() {
-    const agents = await agentsCatalog.fetchAgents({ limit: 200 });
-    agentOptions.value = agents.map((a) => ({
-      label: a.display_name || a.agent_key || a.id,
-      value: a.id,
-    }));
+    try {
+      const agents = await agentsCatalog.fetchAgents({ limit: 200 });
+      agentOptions.value = agents.map((a) => ({ label: a.display_name || a.agent_key || a.id, value: a.id }));
+      agentOptionsFailed = false;
+    } catch (reason) {
+      agentOptionsFailed = true;
+      error.value = reason instanceof Error ? reason.message : t('uiSystem.operations.loadFailed');
+    }
   }
 
   const { page, pageSize, pageMax } = useListPage({
@@ -67,6 +71,7 @@ export function usePluginsPage() {
     loading.value = true;
     error.value = '';
     try {
+      if (agentOptionsFailed) await loadAgentOptions();
       await pluginsStore.loadPlugins({
         search: search.value,
         category: category.value,

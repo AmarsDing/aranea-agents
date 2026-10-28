@@ -5,7 +5,7 @@
         <q-toolbar-title class="app-toolbar-title text-weight-bold">
           {{ t('common.appTitle') }}
         </q-toolbar-title>
-        <q-btn round flat dense class="cursor-pointer">
+        <q-btn round flat dense class="cursor-pointer" :aria-label="t('uiSystem.accountMenu')">
           <q-avatar size="32px" class="app-header-avatar" font-size="13px">
             {{ auth.avatarLetter }}
           </q-avatar>
@@ -50,6 +50,11 @@
 
     <!-- 对话转评估用例对话框（P1-1）：workspace 在布局层共享，对话框需在布局层渲染，
          否则移动任务页 @add-to-eval 只改状态无 UI。绑定与桌面 ChatPage 一致。 -->
+    <ArtifactPreviewDialog
+      :model-value="artifactStore.dialogPreviewTarget"
+      @update:model-value="artifactStore.closeArtifactPreview()"
+      @download="onArtifactDownload"
+    />
     <AddEvalCaseDialog
       v-model:open="workspace.evalCase.open"
       :mode="workspace.evalCase.mode"
@@ -76,11 +81,15 @@
 import { computed, onMounted, provide } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useI18n } from 'vue-i18n';
+import { useQuasar } from 'quasar';
 import { useAuthStore } from '../stores/auth';
+import { useArtifactStore } from '../stores/artifact';
+import type { ArtifactMeta } from '../features/artifact/types';
 import { useTheme } from '../composables/useTheme';
 import { useChatWorkspace } from '../features/chat/composables/useChatWorkspace';
 import { CHAT_WORKSPACE_KEY } from '../features/chat/composables/chatWorkspaceInjection';
 import AddEvalCaseDialog from '../components/evaluation/AddEvalCaseDialog.vue';
+import ArtifactPreviewDialog from '../components/artifact/ArtifactPreviewDialog.vue';
 import { useBlockingStepNotifications } from '../features/chat/composables/useBlockingStepNotifications';
 import { initLocalNotifications } from '../services/localNotification';
 import { useNetworkStatus } from '../features/mobile/useNetworkStatus';
@@ -89,7 +98,17 @@ const { t } = useI18n();
 const route = useRoute();
 const router = useRouter();
 const auth = useAuthStore();
+const artifactStore = useArtifactStore();
+const $q = useQuasar();
 const { isDark } = useTheme();
+
+async function onArtifactDownload(meta: ArtifactMeta) {
+  try {
+    await artifactStore.download(meta);
+  } catch {
+    $q.notify({ type: 'negative', message: t('artifact.page.downloadLinkFailed') });
+  }
+}
 
 // P3.2c: drives the offline banner in the header.
 const { online } = useNetworkStatus();

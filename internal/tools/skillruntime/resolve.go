@@ -2,12 +2,15 @@ package skillruntime
 
 import (
 	"context"
+	"crypto/sha1"
+	"encoding/hex"
 	"fmt"
 	"sort"
 	"strings"
 	"unicode"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/decide"
 	"aranea-agents/internal/tools/skillrecommend"
 	"aranea-agents/internal/tools/skillrouter"
 	"aranea-agents/pkg/loggateway"
@@ -20,6 +23,10 @@ type SkillToolsetOptions struct {
 	UserQuery string
 	// HealthProvider provides historical performance data for ranking. If nil, ranking is skipped.
 	HealthProvider skillrecommend.HealthMetricsProvider
+	// Shadow is the optional JEV Phase-1 audit recorder (skill_intent). Nil
+	// keeps byte-identical behavior; when set, emits after ranking with zero
+	// effect on the returned slug list (filter-then-decide: Layer A already applied).
+	Shadow *decide.Recorder
 }
 
 // ResolveResult holds the output of skill resolution with per-slug reasons.
@@ -107,7 +114,60 @@ func ResolveSkillSlugsDetailed(ctx context.Context, skillUC SkillResolver, opts 
 
 	out := capScoredSlugs(scored, policy.MaxSkillsInToolset, reasons)
 	out = mergeMentionedSlugs(out, query, afterA, reasons, policy.MaxSkillsInToolset, skillUC.TrustGateBlocked)
+	emitSkillIntentShadow(ctx, opts, query, paths, out, scored)
 	return &ResolveResult{Slugs: out, Reasons: reasons}, nil
+}
+
+// emitSkillIntentShadow double-records the incumbent skill routing decision
+// (DetectIntentPaths + score/cap) for JEV Phase-1 gold harvest. Never changes
+// out. Key = top routed slug, or "none" when the turn mounts nothing.
+func emitSkillIntentShadow(ctx context.Context, opts *SkillToolsetOptions, query string, paths, out []string, scored []slugScore) {
+	if opts == nil || opts.Shadow == nil || !opts.Shadow.Enabled() {
+		return
+	}
+	leaves := paths
+	if len(leaves) == 0 {
+		leaves = make([]string, 0, len(scored))
+		for _, s := range scored {
+			leaves = append(leaves, s.slug)
+			if len(leaves) >= 20 {
+				break
+			}
+		}
+	}
+	scores := make(map[string]float64, len(scored))
+	for _, s := range scored {
+		scores[s.slug] = float64(s.score)
+	}
+	key := "none"
+	if len(out) > 0 {
+		key = out[0]
+	}
+	state := map[string]any{
+		"user_message": query,
+		"skill_leaves": leaves,
+	}
+	opts.Shadow.Emit(ctx, decide.ShadowEvent{
+		CorrelationID: skillShadowCorrID(query, key),
+		QuestionID:    "skill_intent",
+		State:         state,
+		Incumbent: decide.Incumbent{
+			Key:     key,
+			Scores:  scores,
+			Method:  "skillrouter",
+			Matched: key != "none",
+		},
+	})
+}
+
+func skillShadowCorrID(query, key string) string {
+	h := sha1.New()
+	h.Write([]byte("skill_intent"))
+	h.Write([]byte{0})
+	h.Write([]byte(query))
+	h.Write([]byte{0})
+	h.Write([]byte(key))
+	return hex.EncodeToString(h.Sum(nil))[:16]
 }
 
 // computeTriggerHits 返回 trigger 命中的 slug → 命中词映射（P1-3）。

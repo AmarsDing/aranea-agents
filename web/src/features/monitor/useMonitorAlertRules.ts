@@ -14,7 +14,7 @@ export function useMonitorAlertRules() {
 
   async function load() {
     try {
-      await Promise.all([monitorStore.loadAlertRules(), monitorStore.loadAlertMetrics()]);
+      await Promise.all([monitorStore.loadAlertRules(), monitorStore.loadAlertMetrics(), monitorStore.loadAlertChannelOptions()]);
     } catch (e) {
       $q.notify({ type: 'negative', message: e instanceof Error ? e.message : t('monitorPage.alerts.loadFailed') });
     }
@@ -46,7 +46,6 @@ export function useMonitorAlertRules() {
   }
 
   onMounted(() => {
-    void monitorStore.loadAlertChannelOptions();
     void load();
   });
 

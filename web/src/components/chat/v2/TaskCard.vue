@@ -3,9 +3,10 @@
   <div
     class="task-card"
     :class="{
-      'task-card--clickable': !hydrated || collapsed,
+      'task-card--clickable': !hydrated || collapsed || hydrationState === 'error',
     }"
     :data-task-id="task.ID"
+    tabindex="-1"
     @click="onCardClick"
   >
     <!-- 用户消息统一面板：时间 + 头像 + 名称 + 消息内容 + 操作按钮（原样，按钮加 .stop） -->
@@ -22,6 +23,23 @@
         <div class="task-user-panel__text">{{ task.UserMessage }}</div>
       </div>
       <div class="task-user-panel__actions">
+        <q-btn
+          flat
+          dense
+          no-caps
+          :icon="!hydrated || collapsed || hydrationState === 'error' ? 'unfold_more' : 'unfold_less'"
+          :label="
+            t(
+              hydrationState === 'error'
+                ? 'chat.v2.loadFailedRetry'
+                : !hydrated || collapsed
+                  ? 'taskWorkspace.expandTask'
+                  : 'taskWorkspace.collapseTask',
+            )
+          "
+          :aria-expanded="hydrated && !collapsed && hydrationState !== 'error'"
+          @click.stop="!hydrated || hydrationState === 'error' ? emit('hydrate', task) : emit('toggle-collapse', task)"
+        />
         <q-btn
           flat
           dense
@@ -336,7 +354,7 @@ const formattedTime = computed(() => {
 
 /** 折叠卡整卡点击：未水合 → 请求水合；水合后收起态 → 本地展开（零请求）。 */
 function onCardClick() {
-  if (!props.hydrated) emit('hydrate', props.task);
+  if (!props.hydrated || props.hydrationState === 'error') emit('hydrate', props.task);
   else if (props.collapsed) emit('toggle-collapse', props.task);
 }
 

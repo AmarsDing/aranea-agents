@@ -1,78 +1,85 @@
 <template>
-  <div v-if="step.Status === 'tool_blocked'" class="confirm-block confirm-block--blocked">
-    <div class="confirm-block__header">
-      <span class="confirm-block__icon">⚠️</span>
-      <span class="confirm-block__label">{{ t('chat.confirm.label', '需要确认') }}</span>
-      <span v-if="step.Danger" class="confirm-block__danger">{{ t('chat.confirm.danger') }}</span>
-      <span v-if="countdownText" class="confirm-block__countdown">{{ countdownText }}</span>
-    </div>
-    <div class="confirm-block__content">{{ step.Content }}</div>
-    <div class="confirm-block__tool-name">
-      <span class="confirm-block__tool-label">{{ t('chat.confirm.tool', '工具') }}</span>
-      <span class="confirm-block__tool-value">{{ step.ToolName }}</span>
-    </div>
-    <div v-if="toolArgumentsJson" class="confirm-block__args">
-      <div class="confirm-block__detail-label">{{ t('chat.confirm.arguments', '参数') }}</div>
-      <JsonCodeViewer :text="toolArgumentsJson" />
-    </div>
-    <div class="confirm-block__actions">
-      <button
-        class="confirm-block__btn confirm-block__btn--approve"
-        :disabled="confirming || expired"
-        @click="onConfirm(TOOL_CONFIRM_REPLY.approve)"
-      >
-        {{ confirming ? t('chat.confirm.submitting', '提交中…') : t('chat.confirm.approve', '允许本次') }}
-      </button>
-      <button
-        class="confirm-block__btn confirm-block__btn--reject"
-        :disabled="confirming || expired"
-        @click="onConfirm(TOOL_CONFIRM_REPLY.deny)"
-      >
-        {{ confirming ? t('chat.confirm.submitting', '提交中…') : t('chat.confirm.reject', '拒绝') }}
-      </button>
-      <!-- 75 A5/需求 §5.3：高危确认只保留「允许本次/拒绝」——后端 danger 命中
+  <div :data-step-id="step.ID" tabindex="-1">
+    <div v-if="step.Status === 'tool_blocked'" class="confirm-block confirm-block--blocked">
+      <div class="confirm-block__header">
+        <span class="confirm-block__icon">⚠️</span>
+        <span class="confirm-block__label">{{ t('chat.confirm.label', '需要确认') }}</span>
+        <span v-if="step.Danger" class="confirm-block__danger">{{ t('chat.confirm.danger') }}</span>
+        <span v-if="countdownText" class="confirm-block__countdown">{{ countdownText }}</span>
+      </div>
+      <div class="confirm-block__content">{{ step.Content }}</div>
+      <div class="confirm-block__tool-name">
+        <span class="confirm-block__tool-label">{{ t('chat.confirm.tool', '工具') }}</span>
+        <span class="confirm-block__tool-value">{{ step.ToolName }}</span>
+      </div>
+      <div v-if="toolArgumentsJson" class="confirm-block__args">
+        <div class="confirm-block__detail-label">{{ t('chat.confirm.arguments', '参数') }}</div>
+        <JsonCodeViewer :text="toolArgumentsJson" />
+      </div>
+      <div class="confirm-block__actions">
+        <button
+          class="confirm-block__btn confirm-block__btn--approve"
+          :disabled="confirming || expired"
+          @click="onConfirm(TOOL_CONFIRM_REPLY.approve)"
+        >
+          {{ confirming ? t('chat.confirm.submitting', '提交中…') : t('chat.confirm.approve', '允许本次') }}
+        </button>
+        <button
+          class="confirm-block__btn confirm-block__btn--reject"
+          :disabled="confirming || expired"
+          @click="onConfirm(TOOL_CONFIRM_REPLY.deny)"
+        >
+          {{ confirming ? t('chat.confirm.submitting', '提交中…') : t('chat.confirm.reject', '拒绝') }}
+        </button>
+        <!-- 75 A5/需求 §5.3：高危确认只保留「允许本次/拒绝」——后端 danger 命中
            强制逐次确认（授权链不生效），隐藏会话/持久授权按钮避免误导。 -->
-      <button
-        v-if="!step.Danger"
-        class="confirm-block__btn confirm-block__btn--approve-session"
-        :disabled="confirming || expired"
-        @click="onConfirm(TOOL_CONFIRM_REPLY.approveSession)"
-      >
-        {{ confirming ? t('chat.confirm.submitting', '提交中…') : t('chat.confirm.approveSession', '会话内始终允许') }}
-      </button>
-      <button
-        v-if="!step.Danger"
-        class="confirm-block__btn confirm-block__btn--approve-always"
-        :disabled="confirming || expired"
-        @click="onConfirm(TOOL_CONFIRM_REPLY.approveAlways)"
-      >
-        {{ confirming ? t('chat.confirm.submitting', '提交中…') : t('chat.confirm.approveAlways', '始终允许') }}
-      </button>
+        <button
+          v-if="!step.Danger"
+          class="confirm-block__btn confirm-block__btn--approve-session"
+          :disabled="confirming || expired"
+          @click="onConfirm(TOOL_CONFIRM_REPLY.approveSession)"
+        >
+          {{
+            confirming ? t('chat.confirm.submitting', '提交中…') : t('chat.confirm.approveSession', '会话内始终允许')
+          }}
+        </button>
+        <button
+          v-if="!step.Danger"
+          class="confirm-block__btn confirm-block__btn--approve-always"
+          :disabled="confirming || expired"
+          @click="onConfirm(TOOL_CONFIRM_REPLY.approveAlways)"
+        >
+          {{ confirming ? t('chat.confirm.submitting', '提交中…') : t('chat.confirm.approveAlways', '始终允许') }}
+        </button>
+      </div>
     </div>
-  </div>
 
-  <div v-else-if="step.Status === 'completed'" class="confirm-block confirm-block--approved">
-    <span class="confirm-block__icon">✓</span>
-    <span class="confirm-block__summary">{{ t('chat.confirm.approved', '已批准') }}</span>
-    <span class="confirm-block__tool-inline">· {{ step.ToolName }}</span>
-  </div>
+    <div v-else-if="step.Status === 'completed'" class="confirm-block confirm-block--approved">
+      <span class="confirm-block__icon">✓</span>
+      <span class="confirm-block__summary">{{ t('chat.confirm.approved', '已批准') }}</span>
+      <span class="confirm-block__tool-inline">· {{ step.ToolName }}</span>
+    </div>
 
-  <div v-else-if="step.Status === 'cancelled' && isConfirmTimeoutRetry" class="confirm-block confirm-block--timeout confirm-block--timeout-retry">
-    <span class="confirm-block__icon">⏱</span>
-    <span class="confirm-block__summary">{{ t('chat.confirm.timedOutRetry') }}</span>
-    <span class="confirm-block__tool-inline">· {{ step.ToolName }}</span>
-  </div>
+    <div
+      v-else-if="step.Status === 'cancelled' && isConfirmTimeoutRetry"
+      class="confirm-block confirm-block--timeout confirm-block--timeout-retry"
+    >
+      <span class="confirm-block__icon">⏱</span>
+      <span class="confirm-block__summary">{{ t('chat.confirm.timedOutRetry') }}</span>
+      <span class="confirm-block__tool-inline">· {{ step.ToolName }}</span>
+    </div>
 
-  <div v-else-if="step.Status === 'cancelled' && isConfirmTimeout" class="confirm-block confirm-block--timeout">
-    <span class="confirm-block__icon">⏱</span>
-    <span class="confirm-block__summary">{{ t('chat.confirm.timedOut') }}</span>
-    <span class="confirm-block__tool-inline">· {{ step.ToolName }}</span>
-  </div>
+    <div v-else-if="step.Status === 'cancelled' && isConfirmTimeout" class="confirm-block confirm-block--timeout">
+      <span class="confirm-block__icon">⏱</span>
+      <span class="confirm-block__summary">{{ t('chat.confirm.timedOut') }}</span>
+      <span class="confirm-block__tool-inline">· {{ step.ToolName }}</span>
+    </div>
 
-  <div v-else-if="step.Status === 'cancelled'" class="confirm-block confirm-block--rejected">
-    <span class="confirm-block__icon">✗</span>
-    <span class="confirm-block__summary">{{ t('chat.confirm.rejected', '已拒绝') }}</span>
-    <span class="confirm-block__tool-inline">· {{ step.ToolName }}</span>
+    <div v-else-if="step.Status === 'cancelled'" class="confirm-block confirm-block--rejected">
+      <span class="confirm-block__icon">✗</span>
+      <span class="confirm-block__summary">{{ t('chat.confirm.rejected', '已拒绝') }}</span>
+      <span class="confirm-block__tool-inline">· {{ step.ToolName }}</span>
+    </div>
   </div>
 </template>
 

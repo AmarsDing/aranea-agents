@@ -4,6 +4,7 @@
 // `rubric` 键解析并映射为框架 EvalCase.Rubrics（llm_as_judge），前端必须保证
 // 键名与扁平结构（source/task_id/session_id 与 rubric 同级）稳定。
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import type { useEvaluationStore } from '../../../stores/evaluation';
 
 const notify = vi.fn();
 vi.mock('quasar', () => ({
@@ -16,7 +17,7 @@ vi.mock('vue-i18n', () => ({
 const evaluationStoreMock = vi.hoisted(() => ({
   loadDatasets: vi.fn(async () => ({ items: [{ id: 'ds-1', name: 'D', case_count: 1 }], total: 1 })),
   addDataset: vi.fn(async () => ({ id: 'ds-new' })),
-  importCases: vi.fn(async () => 1),
+  importCases: vi.fn<ReturnType<typeof useEvaluationStore>['importCases']>().mockResolvedValue(1),
 }));
 vi.mock('../../../stores/evaluation', () => ({ useEvaluationStore: () => evaluationStoreMock }));
 

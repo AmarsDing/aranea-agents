@@ -217,9 +217,16 @@ export function useAgentSettingsPage() {
   });
 
   // ── Lifecycle ────────────────────────────────────────────────
+  async function loadInitial() {
+    try {
+      await Promise.all([persistence.loadInitial(), agentsPageStore.ensureTaxonomyTree()]);
+    } catch (reason) {
+      persistence.loadError.value = reason instanceof Error ? reason.message : t('uiSystem.operations.loadFailed');
+    }
+  }
+
   onMounted(() => {
-    void persistence.loadInitial();
-    void agentsPageStore.ensureTaxonomyTree();
+    void loadInitial();
   });
 
   watch(
@@ -317,7 +324,7 @@ export function useAgentSettingsPage() {
     pageLoading: persistence.pageLoading,
     toggleFavorite,
     reloadAgent: persistence.reloadAgent,
-    loadInitial: persistence.loadInitial,
+    loadInitial,
     saveAgent: persistence.saveAgent,
     confirmFileReload,
     promptModes,

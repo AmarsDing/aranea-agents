@@ -184,7 +184,8 @@ const scrollEl = ref<HTMLElement | null>(null);
 provide(CHAT_SCROLL_EL_KEY, scrollEl);
 
 onMounted(() => {
-  scrollEl.value = scrollRef.value?.getScrollTarget() ?? null;
+  const target = scrollRef.value?.getScrollTarget();
+  scrollEl.value = target instanceof HTMLElement ? target : null;
   offlineTimer = setInterval(() => {
     signoffOffline.value = !globalWsHubConnected();
   }, 2000);
@@ -215,7 +216,7 @@ function goToSessions() {
 
 <style scoped>
 .mobile-tasks-page__header {
-  border-bottom: 1px solid rgb(0 0 0 / 8%);
+  border-bottom: 1px solid color-mix(in srgb, var(--color-shadow) 8%, transparent);
 }
 
 .mobile-signoff {
@@ -227,8 +228,8 @@ function goToSessions() {
   padding: 4px 16px;
   font-size: 12px;
   line-height: 1.4;
-  color: var(--color-text-secondary, #9aa3b2);
-  background: color-mix(in srgb, var(--color-text-primary, #fff) 8%, transparent);
+  color: var(--color-text-secondary);
+  background: color-mix(in srgb, var(--color-text-primary) 8%, transparent);
 }
 
 .mobile-signoff__badge {
@@ -238,7 +239,7 @@ function goToSessions() {
   font-size: 11px;
   font-weight: 600;
   text-align: center;
-  color: #14181f;
+  color: var(--color-on-accent);
   background: var(--wb-await);
 }
 

@@ -40,6 +40,7 @@ export function useMonitorPage() {
     runnerLoading,
     windowMinutes: runnerWindowMinutes,
     reload: reloadRunnerMetrics,
+    runnerError,
   } = useRunnerMetrics(60);
   const { openRunsTab } = useMonitorRunNavigation();
 
@@ -123,7 +124,7 @@ export function useMonitorPage() {
   async function loadAll() {
     error.value = '';
     try {
-      await Promise.all([loadAudit(), loadEvents(), runs.refresh()]);
+      await Promise.all([loadAudit(), loadEvents(), runs.refresh(), reloadRunnerMetrics()]);
     } catch (err) {
       error.value = err instanceof Error ? err.message : '加载监控数据失败';
     }
@@ -190,7 +191,7 @@ export function useMonitorPage() {
     auditRows: auditLogs,
     auditTotal,
     loadingAudit,
-    error,
+    error: computed(() => error.value || runnerError.value || realtimeEvents.historyError.value),
     loading,
     loadAll,
     loadAudit,

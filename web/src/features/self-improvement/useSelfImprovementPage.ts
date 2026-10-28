@@ -3,7 +3,7 @@ import { useQuasar } from 'quasar';
 import { useI18n } from 'vue-i18n';
 import { storeToRefs } from 'pinia';
 import { useSelfImprovementStore } from '../../stores/selfImprovement';
-import type { SIControlCommand, SIRiskRules, SIRun } from './types';
+import type { SIControlCommand, SIRiskRules, SIRun, SIRunFilter } from './types';
 import {
   canApprove,
   canClose,

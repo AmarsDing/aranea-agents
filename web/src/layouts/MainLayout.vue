@@ -1,9 +1,11 @@
 <template>
   <q-layout view="hHh LpR fFf" class="app-layout-root">
+    <a href="#app-main-content" class="app-skip-link">{{ t('uiSystem.skipContent') }}</a>
     <q-header :elevated="false" :class="isDark ? 'dark-header' : 'cream-header'">
       <q-toolbar class="q-px-sm-md">
-        <q-btn flat dense round icon="menu" aria-label="Menu" @click="drawerOpen = !drawerOpen" />
+        <q-btn flat dense round icon="menu" :aria-label="t('uiSystem.mainMenu')" :aria-expanded="drawerOpen" aria-controls="app-navigation" @click="drawerOpen = !drawerOpen" />
         <q-btn
+          v-if="$q.screen.gt.sm"
           flat
           dense
           round
@@ -23,7 +25,7 @@
             @mark-read="inboundStore.markRead($event)"
             @mark-all-read="inboundStore.markAllRead()"
           />
-          <q-btn round flat dense class="cursor-pointer">
+          <q-btn round flat dense class="cursor-pointer" :aria-label="t('uiSystem.accountMenu')">
             <q-avatar size="36px" class="app-header-avatar" font-size="14px">
               {{ auth.avatarLetter }}
             </q-avatar>
@@ -46,7 +48,7 @@
             </q-menu>
           </q-btn>
         </div>
-        <q-btn flat round :icon="themeIcon" :aria-label="t('common.autoMode')">
+        <q-btn flat round :icon="themeIcon" :aria-label="t('uiSystem.themeMenu')">
           <q-menu anchor="bottom right" self="top right" auto-close>
             <q-list dense class="app-menu-min-160">
               <q-item clickable :active="themeMode === 'auto'" active-class="text-primary" @click="setTheme('auto')">
@@ -80,6 +82,7 @@
           borderless
           options-dense
           class="app-header-locale q-ml-sm app-menu-min-110"
+          :aria-label="t('uiSystem.language')"
         />
       </q-toolbar>
     </q-header>
@@ -88,12 +91,12 @@
       v-model="drawerOpen"
       show-if-above
       :width="256"
-      :mini="drawerMini"
-      :mini-width="90"
-      :breakpoint="0"
+      :mini="$q.screen.gt.sm && drawerMini"
+      :mini-width="80"
+      :breakpoint="1023"
       :class="['app-sidebar', { 'q-drawer--design-mini': drawerMini }]"
     >
-      <div class="app-sidebar-card">
+      <nav id="app-navigation" class="app-sidebar-card" :aria-label="t('uiSystem.mainMenu')">
         <div class="app-sidebar__scroll fit">
           <q-list class="app-sidebar-nav" :dense="drawerMini">
             <template v-for="(group, gi) in sideNavGroups" :key="`g-${gi}`">
@@ -124,10 +127,10 @@
             </template>
           </q-list>
         </div>
-      </div>
+      </nav>
     </q-drawer>
 
-    <q-page-container class="app-page-container">
+    <q-page-container id="app-main-content" class="app-page-container" tabindex="-1">
       <router-view />
     </q-page-container>
 
@@ -135,7 +138,7 @@
     <!-- 全局产物预览弹窗：目标由 artifactStore.previewTarget 驱动，
          会话页抽屉/工具产物卡片等任意深层组件均可触发（2026-09-01）。 -->
     <ArtifactPreviewDialog
-      :model-value="artifactStore.previewTarget"
+      :model-value="artifactStore.dialogPreviewTarget"
       @update:model-value="artifactStore.closeArtifactPreview()"
       @download="onArtifactDownload"
     />
@@ -166,8 +169,8 @@ const router = useRouter();
 const auth = useAuthStore();
 const inboundStore = useInboundNotificationStore();
 const artifactStore = useArtifactStore();
-const drawerOpen = ref(true);
-const drawerMini = ref(true);
+const drawerOpen = ref($q.screen.gt.sm);
+const drawerMini = ref(false);
 const pairingOpen = ref(false);
 
 /** 产物预览弹窗的下载动作：统一走 artifactStore.download，失败提示。 */
@@ -208,6 +211,7 @@ function isNavItemActive(item: { to: string; exact?: boolean }) {
 }
 
 async function navigateTo(path: string) {
+  if ($q.screen.lt.md) drawerOpen.value = false;
   if (route.path === path) return;
   await router.push(path);
 }

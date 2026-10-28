@@ -1303,7 +1303,7 @@ defineExpose({ zoomToFit, clearFocus: clearFocusLock, setLens });
   min-height: 420px;
   overflow: hidden;
   border-radius: 10px;
-  background: #050810; // 不透明深空底（bloom 兼容）
+  background: var(--hud-render-bg); // 不透明深空底（bloom 兼容）
 
   :deep(canvas) {
     display: block;
@@ -1332,9 +1332,9 @@ defineExpose({ zoomToFit, clearFocus: clearFocusLock, setLens });
     font-size: 10px;
     font-family: 'JetBrains Mono', 'SFMono-Regular', Consolas, monospace;
     letter-spacing: 0.08em;
-    color: rgba(159, 220, 255, 0.62);
+    color: var(--color-text-secondary);
     background: rgba(var(--hud-deep-rgb), 0.42);
-    border: 1px solid rgba(159, 220, 255, 0.16);
+    border: 1px solid var(--glass-border);
     pointer-events: none;
     user-select: none;
   }

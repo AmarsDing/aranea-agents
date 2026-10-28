@@ -174,7 +174,7 @@ export async function listTeams(): Promise<Team[]> {
 /** List teams with server-reported total (same scope as items). */
 export async function listTeamsPaged(): Promise<{ items: Team[]; total: number }> {
   const svc = createTeamService();
-  const res = await svc.ListTeams({});
+  const res = await svc.ListTeams({ countOnly: undefined });
   const items = (res.items ?? []).map(wireTeam);
   const total = typeof res.total === 'number' ? res.total : items.length;
   return { items, total };

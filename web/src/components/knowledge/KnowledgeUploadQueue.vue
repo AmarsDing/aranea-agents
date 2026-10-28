@@ -182,7 +182,7 @@ function stageList(task: KnowledgeUploadTask): { key: string; label: string; sta
   padding: 0 6px;
   border-radius: 999px;
   border: 1px solid var(--glass-border);
-  color: var(--grey-7, #757575);
+  color: var(--color-text-secondary);
 }
 
 .kuq-stage--active {
@@ -204,7 +204,7 @@ function stageList(task: KnowledgeUploadTask): { key: string; label: string; sta
 
 .kuq-stage-sep {
   font-size: 10px;
-  color: var(--grey-5, #9e9e9e);
+  color: var(--color-text-tertiary);
 }
 
 @keyframes kuq-stage-pulse {

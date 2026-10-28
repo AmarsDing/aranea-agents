@@ -5,6 +5,7 @@ package data
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"strings"
 
@@ -13,6 +14,7 @@ import (
 
 var (
 	_ bizknowledge.FactVersionRepo        = (*knowledgeRepo)(nil)
+	_ bizknowledge.FactVersionReader      = (*knowledgeRepo)(nil)
 	_ bizknowledge.GovernanceProposalRepo = (*knowledgeRepo)(nil)
 )
 
@@ -61,4 +63,31 @@ func (r *knowledgeRepo) InsertProposal(ctx context.Context, p bizknowledge.Gover
 		return entErrToBizErr(err, "knowledge")
 	}
 	return nil
+}
+
+// LatestFactVersion 读某事实最新一条版本（G-40 c1 回放）。无行时 found=false。
+func (r *knowledgeRepo) LatestFactVersion(ctx context.Context, docID, factID string) (bizknowledge.FactVersion, bool, error) {
+	docID = strings.TrimSpace(docID)
+	factID = strings.TrimSpace(factID)
+	if docID == "" || factID == "" {
+		return bizknowledge.FactVersion{}, false, nil
+	}
+	var v bizknowledge.FactVersion
+	var newBody sql.NullString
+	err := r.knowledgeDB(ctx).QueryRowContext(ctx,
+		`SELECT collection_id, doc_id, COALESCE(fact_id, ''), old_body, new_body
+		 FROM knowledge_fact_version
+		 WHERE doc_id = $1 AND fact_id = $2
+		 ORDER BY superseded_at DESC, id DESC
+		 LIMIT 1`, docID, factID).Scan(&v.CollectionID, &v.DocID, &v.FactID, &v.OldBody, &newBody)
+	if err == sql.ErrNoRows {
+		return bizknowledge.FactVersion{}, false, nil
+	}
+	if err != nil {
+		return bizknowledge.FactVersion{}, false, entErrToBizErr(err, "knowledge")
+	}
+	if newBody.Valid {
+		v.NewBody = newBody.String
+	}
+	return v, true, nil
 }

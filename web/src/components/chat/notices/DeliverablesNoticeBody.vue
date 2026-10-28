@@ -21,7 +21,7 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n';
 import type { DeliverableRef } from '../../../features/chat/deliverablesNotice';
-import ArtifactRefCard from '../../artifact/ArtifactRefCard.vue';
+import ArtifactRefCard from '../../../features/artifact/ArtifactRef.vue';
 
 defineProps<{ payload: DeliverableRef[] }>();
 

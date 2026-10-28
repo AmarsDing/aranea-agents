@@ -31,6 +31,7 @@ import { useLazyTaskHydration, CHAT_SCROLL_EL_KEY } from '../../../features/chat
 import type { Task, Turn } from '../../../features/chat/v2Types';
 import type { ConfirmStepPayload, SubmitClarificationPayload } from '../../../features/chat/types';
 import TaskCard from './TaskCard.vue';
+import { useScrollToActivity } from '../../../features/chat/composables/useScrollToActivity';
 
 const props = defineProps<{ sessionId: string }>();
 defineEmits<{
@@ -55,6 +56,22 @@ const lazy = useLazyTaskHydration({
   scrollEl,
   needsHydration: (taskId) => !queries.isTaskHydrated(taskId) && queries.taskHydrationState(taskId) !== 'loading',
   hydrate: (taskId) => queries.hydrateTask(taskId),
+});
+const { taskLocateCommand } = useScrollToActivity();
+watch(taskLocateCommand, async (command) => {
+  if (!command || command.sessionId !== props.sessionId) return;
+  await lazy.expandTask(command.taskId);
+  await nextTick();
+  if (command !== taskLocateCommand.value || command.sessionId !== props.sessionId) return;
+  const card = scrollEl.value?.querySelector<HTMLElement>(`[data-task-id="${CSS.escape(command.taskId)}"]`);
+  const target = command.stepId
+    ? (card?.querySelector<HTMLElement>(`[data-step-id="${CSS.escape(command.stepId)}"]`) ?? card)
+    : command.turnId
+      ? card?.querySelector<HTMLElement>(`[data-turn-id="${CSS.escape(command.turnId)}"]`)
+      : card;
+  if (target && !target.hasAttribute('tabindex')) target.tabIndex = -1;
+  target?.focus({ preventScroll: true });
+  target?.scrollIntoView({ block: 'start', behavior: 'auto' });
 });
 
 // tasks 渲染 / 水合状态变化后同步观察集合（flush: 'post' 保证 DOM 已更新）。

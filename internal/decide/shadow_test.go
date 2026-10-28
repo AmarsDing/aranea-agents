@@ -103,15 +103,18 @@ func TestRecorder_RejectsUnknownQuestionAndEmptyFields(t *testing.T) {
 func TestRecorder_OutcomeFitsCapForAllQuestions(t *testing.T) {
 	r, c := newTestRecorder()
 	keys := map[string][]string{
-		"route_mode":      {"direct_lookup", "chronological", "aggregate", "enumerative", "relational", "trend", "no_recall"},
-		"correction_gate": {"update_fact", "keep_as_is"},
-		"forget_gate":     {"erase", "retain"},
+		"route_mode":        {"direct_lookup", "chronological", "aggregate", "enumerative", "relational", "trend", "no_recall"},
+		"correction_gate":   {"update_fact", "keep_as_is"},
+		"forget_gate":       {"erase", "retain"},
+		"tool_relevance":    {"needed", "not_needed"},
+		"skill_intent":      {"none", "sales/feedback/email"},
+		"mcp_server_choice": {"none", "github"},
 	}
 	for qid, ks := range keys {
 		for _, k := range ks {
 			r.Emit(context.Background(), ShadowEvent{
 				CorrelationID: "c", QuestionID: qid,
-				State:   map[string]any{"user_message": "m"},
+				State:     map[string]any{"user_message": "m", "task": "m"},
 				Incumbent: Incumbent{Key: k, Method: "vir"},
 			})
 		}
@@ -122,6 +125,31 @@ func TestRecorder_OutcomeFitsCapForAllQuestions(t *testing.T) {
 		}
 		if err := rec.Validate(); err != nil {
 			t.Fatalf("record invalid: %v", err)
+		}
+	}
+}
+
+func TestRecorder_Phase1PlanesUseJEVShadowCategory(t *testing.T) {
+	r, c := newTestRecorder()
+	r.Emit(context.Background(), ShadowEvent{
+		CorrelationID: "c1", QuestionID: "skill_intent",
+		State:     map[string]any{"user_message": "发邮件"},
+		Incumbent: Incumbent{Key: "none", Method: "skillrouter"},
+	})
+	r.Emit(context.Background(), ShadowEvent{
+		CorrelationID: "c2", QuestionID: "tool_relevance",
+		State:     map[string]any{"task": "search docs", "tool_candidates": []string{"knowledge_search"}},
+		Incumbent: Incumbent{Key: "needed", Method: "bm25"},
+	})
+	if len(c.recs) != 2 {
+		t.Fatalf("want 2, got %d", len(c.recs))
+	}
+	for _, rec := range c.recs {
+		if rec.Category != decision.CategoryJEVShadow {
+			t.Fatalf("category = %q, want jev_shadow", rec.Category)
+		}
+		if rec.ActorKey != "system:jev_shadow" {
+			t.Fatalf("actor = %q", rec.ActorKey)
 		}
 	}
 }
@@ -175,6 +203,15 @@ func TestQuestionDef_TranscriptionMatchesContract(t *testing.T) {
 		t.Fatalf("forget_gate def drifted: %+v ok=%v", q2, ok)
 	}
 	if _, ok := QuestionDef("consolidation_representation"); ok {
-		t.Fatal("non-VIR questions must not be registered yet")
+		t.Fatal("consolidation questions stay Phase-2; must not be registered yet")
+	}
+	if q, ok := QuestionDef("skill_intent"); !ok || q.Plane != "skill" {
+		t.Fatalf("skill_intent Phase-1 def missing: %+v ok=%v", q, ok)
+	}
+	if q, ok := QuestionDef("tool_relevance"); !ok || len(q.Criteria) != 2 {
+		t.Fatalf("tool_relevance Phase-1 def drifted: %+v ok=%v", q, ok)
+	}
+	if q, ok := QuestionDef("mcp_server_choice"); !ok || q.Plane != "mcp" {
+		t.Fatalf("mcp_server_choice Phase-1 def missing: %+v ok=%v", q, ok)
 	}
 }

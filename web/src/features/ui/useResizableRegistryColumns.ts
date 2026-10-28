@@ -121,7 +121,7 @@ export function useResizableRegistryColumns(
     );
   });
 
-  function onResizeMove(event: MouseEvent) {
+  function onResizeMove(event: PointerEvent) {
     if (!activeResize.value) return;
     const delta = event.clientX - activeResize.value.startX;
     const next = Math.max(MIN_COL_WIDTH, activeResize.value.startWidth + delta);
@@ -137,20 +137,43 @@ export function useResizableRegistryColumns(
     }
     activeResize.value = null;
     document.body.classList.remove('app-registry-col-resizing');
-    document.removeEventListener('mousemove', onResizeMove);
-    document.removeEventListener('mouseup', onResizeEnd);
+    document.removeEventListener('pointermove', onResizeMove);
+    document.removeEventListener('pointerup', onResizeEnd);
+    document.removeEventListener('pointercancel', onResizeEnd);
+    window.removeEventListener('blur', onResizeEnd);
   }
 
-  function onResizeStart(colName: string, event: MouseEvent) {
+  function onResizeStart(colName: string, event: PointerEvent) {
     if (!options.enabled()) return;
+    if (!event.isPrimary || event.button !== 0) return;
 
     const th = (event.currentTarget as HTMLElement | null)?.closest('th');
     const startWidth = th?.getBoundingClientRect().width ?? MIN_COL_WIDTH;
 
     activeResize.value = { colName, startX: event.clientX, startWidth };
     document.body.classList.add('app-registry-col-resizing');
-    document.addEventListener('mousemove', onResizeMove);
-    document.addEventListener('mouseup', onResizeEnd);
+    document.addEventListener('pointermove', onResizeMove);
+    document.addEventListener('pointerup', onResizeEnd);
+    document.addEventListener('pointercancel', onResizeEnd);
+    window.addEventListener('blur', onResizeEnd);
+  }
+
+  function onResizeKeydown(colName: string, event: KeyboardEvent) {
+    if (!options.enabled() || !['ArrowLeft', 'ArrowRight', 'Home'].includes(event.key)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const columns = columnsSource();
+    if (Array.isArray(columns)) ensureLoaded(columns);
+    const nextWidths = { ...widthOverrides.value };
+    if (event.key === 'Home') {
+      delete nextWidths[colName];
+    } else {
+      const th = (event.currentTarget as HTMLElement | null)?.closest('th');
+      const current = nextWidths[colName] ?? th?.getBoundingClientRect().width ?? MIN_COL_WIDTH;
+      nextWidths[colName] = Math.max(MIN_COL_WIDTH, Math.round(current + (event.key === 'ArrowRight' ? 16 : -16)));
+    }
+    widthOverrides.value = nextWidths;
+    if (loadedPersistKey) saveStoredWidths(loadedPersistKey, loadedSchema, nextWidths);
   }
 
   onBeforeUnmount(onResizeEnd);
@@ -158,6 +181,7 @@ export function useResizableRegistryColumns(
   return {
     displayColumns,
     onResizeStart,
+    onResizeKeydown,
     isResizing: computed(() => activeResize.value != null),
   };
 }

@@ -7,6 +7,14 @@
     >
       <template #actions>
         <q-btn
+          v-if="workspaceReturn"
+          flat
+          no-caps
+          icon="arrow_back"
+          :label="t('taskWorkspace.returnToWorkspace')"
+          @click="returnToWorkspace"
+        />
+        <q-btn
           color="primary"
           unelevated
           rounded
@@ -225,6 +233,8 @@ import { useArtifactsPage, type ArtifactsPageTab } from '../features/artifact/us
 const { t } = useI18n();
 
 const {
+  workspaceReturn,
+  returnToWorkspace,
   loading,
   error,
   activeTab,

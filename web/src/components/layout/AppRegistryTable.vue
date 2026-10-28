@@ -10,9 +10,11 @@
           <span
             class="app-registry-col-resize"
             role="separator"
+            tabindex="0"
             aria-orientation="vertical"
-            :aria-label="`调整 ${slotData.col.label} 列宽`"
-            @mousedown.stop.prevent="onResizeStart(String(colName), $event)"
+            :aria-label="t('uiSystem.resizeColumn', { label: slotData.col.label })"
+            @pointerdown.stop.prevent="onResizeStart(String(colName), $event)"
+            @keydown="onResizeKeydown(String(colName), $event)"
           />
         </q-th>
       </template>
@@ -29,9 +31,11 @@
           <span
             class="app-registry-col-resize"
             role="separator"
+            tabindex="0"
             aria-orientation="vertical"
-            :aria-label="`调整 ${slotData.col.label} 列宽`"
-            @mousedown.stop.prevent="onResizeStart(String(colName), $event)"
+            :aria-label="t('uiSystem.resizeColumn', { label: slotData.col.label })"
+            @pointerdown.stop.prevent="onResizeStart(String(colName), $event)"
+            @keydown="onResizeKeydown(String(colName), $event)"
           />
         </q-th>
       </template>
@@ -41,6 +45,7 @@
 
 <script setup lang="ts">
 import { computed, useAttrs, useSlots } from 'vue';
+import { useI18n } from 'vue-i18n';
 import type { QTableProps } from 'quasar';
 import { useResizableRegistryColumns } from '../../features/ui/useResizableRegistryColumns';
 
@@ -76,6 +81,7 @@ const props = withDefaults(
 );
 
 const attrs = useAttrs();
+const { t } = useI18n();
 const slots = useSlots();
 
 const sourceColumns = computed(() => {
@@ -84,7 +90,7 @@ const sourceColumns = computed(() => {
   return Array.isArray(columns) ? columns : undefined;
 });
 
-const { displayColumns, onResizeStart } = useResizableRegistryColumns(() => sourceColumns.value, {
+const { displayColumns, onResizeStart, onResizeKeydown } = useResizableRegistryColumns(() => sourceColumns.value, {
   enabled: () => props.resizable,
   persistKey: () => props.columnPersistKey || undefined,
 });

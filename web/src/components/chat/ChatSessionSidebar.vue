@@ -2,7 +2,9 @@
   <transition name="chat-side">
     <aside v-show="open" class="chat-side chat-side--right column no-wrap">
       <div class="chat-session-header row items-center justify-between no-wrap">
-        <div class="text-caption text-cream-muted text-uppercase chat-session-header__label">Session</div>
+        <div class="text-caption text-cream-muted text-uppercase chat-session-header__label">
+          {{ t('taskWorkspace.sessions') }}
+        </div>
         <span class="chat-session-count-badge">{{ displayTotal }}</span>
       </div>
       <div v-if="searchable" class="chat-session-search">
@@ -137,6 +139,9 @@
                   />
                   <q-badge class="chat-session-time-badge" rounded :label="shortTime(session)" />
                   <q-circular-progress
+                    :aria-label="
+                      t('taskWorkspace.contextUsage', { percent: Math.round(session.context_used_ratio * 100) })
+                    "
                     :value="session.context_used_ratio * 100"
                     show-value
                     size="32px"
@@ -148,6 +153,9 @@
                     <span class="chat-session-progress__label">
                       {{ Math.round(session.context_used_ratio * 100) }}%
                     </span>
+                    <q-tooltip>{{
+                      t('taskWorkspace.contextUsage', { percent: Math.round(session.context_used_ratio * 100) })
+                    }}</q-tooltip>
                   </q-circular-progress>
                   <q-btn
                     dense
@@ -241,7 +249,15 @@
           :label="t('chat.newSession')"
           @click="$emit('new-session')"
         />
-        <q-btn flat dense color="grey" no-caps :label="t('chat.clearAllSession')" @click="confirmClearAll" />
+        <q-btn flat dense round icon="more_horiz" :aria-label="t('taskWorkspace.sessionManagement')">
+          <q-menu
+            ><q-list
+              ><q-item v-close-popup clickable @click="confirmClearAll"
+                ><q-item-section>{{ t('chat.clearAllSession') }}</q-item-section></q-item
+              ></q-list
+            ></q-menu
+          >
+        </q-btn>
       </div>
     </aside>
   </transition>

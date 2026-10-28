@@ -14,6 +14,7 @@
       </div>
     </header>
 
+    <slot name="toolbar" />
     <div class="row no-wrap col chat-page__row chat-workspace-shell__main">
       <slot />
     </div>

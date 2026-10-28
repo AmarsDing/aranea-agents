@@ -92,7 +92,7 @@ const renderedContent = computed(() => renderChatMarkdownForMessage(props.step.I
       margin: 0
 
     :deep(code)
-      background: rgba(127, 127, 127, 0.15)
+      background: var(--surface-muted)
       padding: 1px 4px
       border-radius: 3px
       font-size: 12px

@@ -2,6 +2,7 @@ package knowledge
 
 import (
 	"context"
+	"strings"
 
 	"aranea-agents/pkg/loggateway"
 )
@@ -54,6 +55,18 @@ type FactVersion struct {
 // FactVersionRepo 版本链持久化窄接口（M3.1）。派生留痕，失败不阻断写回主流程。
 type FactVersionRepo interface {
 	InsertFactVersion(ctx context.Context, v FactVersion) error
+}
+
+// FactVersionReader 版本链读侧（G-40 c1）：墓碑回放的唯一消费口。
+// 与写口拆开，避免只实现 Insert 的测试桩被迫补读。
+type FactVersionReader interface {
+	LatestFactVersion(ctx context.Context, docID, factID string) (FactVersion, bool, error)
+}
+
+// FactEdgeCloser D8：事实段自动失效后，关闭以该段正文为证据的 active semantic 边。
+// nil 时写回零旁效应。
+type FactEdgeCloser interface {
+	CloseSemanticEdgesEvidencedBy(ctx context.Context, collectionID, docID, evidence string) (int, error)
 }
 
 // GovernanceProposal 一条治理提案（M3.2 矛盾仲裁；M4 治理周期复用）。
@@ -124,6 +137,28 @@ func (u *Usecase) SetEvolutionRepos(versions FactVersionRepo, proposals Governan
 // SetWriteBackArbiter 接线写回冲突仲裁器（可选；nil 时新事实一律追加，不仲裁）。
 func (u *Usecase) SetWriteBackArbiter(a WriteBackArbiter) {
 	u.arbiter = a
+}
+
+// SetFactEdgeCloser 接线 D8 边关闭（可选；nil 时自动失效不碰 knowledge_links）。
+func (u *Usecase) SetFactEdgeCloser(c FactEdgeCloser) {
+	if u == nil {
+		return
+	}
+	u.factEdgeCloser = c
+}
+
+// closeEvidencedEdges 自动失效成功后 best-effort 关边。失败只 Warn。
+func (u *Usecase) closeEvidencedEdges(ctx context.Context, collectionID, docID, evidence string) {
+	if u == nil || u.factEdgeCloser == nil || strings.TrimSpace(evidence) == "" {
+		return
+	}
+	if _, err := u.factEdgeCloser.CloseSemanticEdgesEvidencedBy(ctx, collectionID, docID, evidence); err != nil {
+		u.lg.Warn("事实失效关边失败（正文已落，边可下轮重抽自愈）",
+			loggateway.StepID("knowledge.writeback.edge_close"),
+			loggateway.Str("doc_id", docID),
+			loggateway.Err(err),
+		)
+	}
 }
 
 // recordFactVersion 留痕一条事实段版本（best-effort：失败 Warn 不阻断写回）。

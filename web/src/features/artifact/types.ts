@@ -44,6 +44,29 @@ export type ArtifactPreview = {
   data_base64: string;
 };
 
+export type ArtifactPreviewTarget = {
+  id: string;
+  version?: number;
+  surface?: 'panel';
+  sessionId?: string;
+};
+
+export type ArtifactTextQuote = {
+  meta: ArtifactMeta;
+  text: string;
+};
+
+export type SessionArtifactList = {
+  items: ArtifactMeta[];
+  total: number | null;
+  offset: number;
+  loading: boolean;
+  loadingMore: boolean;
+  error: string;
+  generation: number;
+  exhausted: boolean;
+};
+
 export type SignDownloadUrlResult = {
   url: string;
   expires_at: string;

@@ -4,12 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 	"unicode/utf8"
 
 	"aranea-agents/internal/agent/callbacks"
 	"aranea-agents/internal/agent/reposkills"
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/decide"
 	"aranea-agents/internal/skill/manifest"
 	"aranea-agents/internal/skill/render"
 	"aranea-agents/internal/tools/skillruntime"
@@ -237,6 +239,11 @@ func resolveAndWriteSkillState(ctx context.Context, ag biz.Agent, deps TRPCBuild
 	// skipped inside ResolveSkillSlugsDetailed.
 	if deps.SkillHealthProvider != nil {
 		opts.HealthProvider = deps.SkillHealthProvider
+	}
+	// JEV Phase-1 skill_intent shadow (ARANEA_JEV_SHADOW=on). Nil recorder
+	// path is byte-identical; Emit never changes the returned slug set.
+	if os.Getenv("ARANEA_JEV_SHADOW") == "on" && deps.DecisionCollector != nil {
+		opts.Shadow = decide.NewRecorder(deps.DecisionCollector, deps.Logger())
 	}
 	// Avoid typed-nil interface: only set Runtime if runtime is non-nil,
 	// otherwise the nil *biz.AgentRuntimeSettings creates a non-nil interface

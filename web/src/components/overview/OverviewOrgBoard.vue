@@ -25,54 +25,59 @@
           @click="$emit('drill')"
         />
       </div>
-      <div v-if="!worstAgents.length" class="ov-trend__empty">{{ t('overviewPage.v2.orgAgentsEmpty') }}</div>
-      <table v-else class="ov-org__table">
-        <thead>
-          <tr>
-            <th class="text-left">{{ t('overviewPage.v2.orgColAgent') }}</th>
-            <th class="text-right">{{ t('overviewPage.v2.orgColCalls') }}</th>
-            <th class="text-right">{{ t('overviewPage.v2.orgColRate') }}</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="a in worstAgents" :key="a.key">
-            <td class="ov-org__name" :title="a.key">{{ a.name }}</td>
-            <td class="text-right">{{ formatCount(a.calls) }}</td>
-            <td class="text-right ov-org__rate" :class="`ov-org__rate--${rateTone(a.successRate)}`">
-              {{ (a.successRate * 100).toFixed(1) }}%
-            </td>
-          </tr>
-        </tbody>
-      </table>
+      <div v-if="!usageAvailable || !worstAgents.length" class="ov-trend__empty">
+        {{ t(usageAvailable ? 'overviewPage.v2.orgAgentsEmpty' : 'uiSystem.overview.dataUnavailable') }}
+      </div>
+      <AppRegistryMarkupTable v-else :rows="worstAgents" :columns="columns" row-key="key" table-class="ov-org__table">
+        <template #cell-agent="{ row }"
+          ><span class="ov-org__name" :title="String(row.key)">{{ row.name }}</span></template
+        >
+        <template #cell-calls="{ row }">{{ formatCount(Number(row.calls)) }}</template>
+        <template #cell-rate="{ row }"
+          ><span class="ov-org__rate" :class="`ov-org__rate--${rateTone(Number(row.successRate))}`"
+            >{{ (Number(row.successRate) * 100).toFixed(1) }}%</span
+          ></template
+        >
+      </AppRegistryMarkupTable>
     </div>
   </q-expansion-item>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue';
+import AppRegistryMarkupTable from '../layout/AppRegistryMarkupTable.vue';
+import { buildOverviewAgentColumns } from '../../features/usage/overviewTableUi';
 import { useI18n } from 'vue-i18n';
 import { formatCount } from '../../features/usage/moneyFormat';
 import type { OvWorstAgent } from './ovTypes';
 
-const props = defineProps<{
-  orgs: number;
-  teams: number;
-  agentsTotal: number;
-  agentsEnabled: number;
-  worstAgents: OvWorstAgent[];
-}>();
+const props = withDefaults(
+  defineProps<{
+    inventoryAvailable?: boolean;
+    usageAvailable?: boolean;
+    orgs: number;
+    teams: number;
+    agentsTotal: number;
+    agentsEnabled: number;
+    worstAgents: OvWorstAgent[];
+  }>(),
+  { inventoryAvailable: true, usageAvailable: true },
+);
 
 defineEmits<{ drill: [] }>();
 
 const { t } = useI18n();
+const columns = computed(() => buildOverviewAgentColumns(t));
 
 const captionLine = computed(() =>
-  t('overviewPage.v2.orgCaption', {
-    orgs: props.orgs,
-    teams: props.teams,
-    enabled: props.agentsEnabled,
-    total: props.agentsTotal,
-  }),
+  !props.inventoryAvailable
+    ? t('uiSystem.overview.dataUnavailable')
+    : t('overviewPage.v2.orgCaption', {
+        orgs: props.orgs,
+        teams: props.teams,
+        enabled: props.agentsEnabled,
+        total: props.agentsTotal,
+      }),
 );
 
 function rateTone(rate: number): 'ok' | 'warn' | 'danger' {

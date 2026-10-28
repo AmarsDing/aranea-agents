@@ -4,9 +4,9 @@ import { useRouter } from 'vue-router';
 import { useArtifactStore } from '../../../stores/artifact';
 import { useChatRuntimeStore } from '../../../stores/chat/runtimeStore';
 import { useSessionStore } from '../../../stores/session/index';
-import type { ArtifactMeta } from '../../artifact/types';
 import type { SessionTimeline } from '../../session/types';
 import type { ChatEntityKind } from '../../../components/chat/types';
+import { safeWorkspaceReturn } from '../taskWorkspaceNavigation';
 
 export function useChatTraceDialog(
   selectedEntityKind: Ref<ChatEntityKind>,
@@ -111,42 +111,52 @@ export function useChatTraceDialog(
 export function useChatSessionArtifacts(sessionId: ComputedRef<string | undefined>) {
   const router = useRouter();
   const artifactStore = useArtifactStore();
-  const sessionArtifacts = ref<ArtifactMeta[]>([]);
-  const sessionArtifactsLoading = ref(false);
+  const currentList = computed(() => artifactStore.sessionLists[sessionId.value ?? '']);
+  const sessionArtifacts = computed(() => currentList.value?.items ?? []);
+  const sessionArtifactsLoading = computed(() => currentList.value?.loading ?? false);
+  const sessionArtifactsTotal = computed(() => currentList.value?.total ?? null);
+  const sessionArtifactsError = computed(() => currentList.value?.error ?? '');
+  const sessionArtifactsLoadingMore = computed(() => currentList.value?.loadingMore ?? false);
+  const sessionArtifactsHasMore = computed(() => Boolean(currentList.value && !currentList.value.exhausted));
   // P0 会话产物抽屉（2026-09-01）：header 产物按钮的会话内查看入口，
   // 点击条目经 artifactStore.openArtifactPreview 打开全局预览弹窗。
   const artifactsDrawerOpen = ref(false);
 
   async function loadSessionArtifacts(sid: string) {
-    if (!sid) {
-      sessionArtifacts.value = [];
-      return;
-    }
-    sessionArtifactsLoading.value = true;
-    try {
-      const res = await artifactStore.loadArtifacts({ session_id: sid, limit: 20 });
-      sessionArtifacts.value = res.items;
-    } finally {
-      sessionArtifactsLoading.value = false;
-    }
+    await artifactStore.loadSessionArtifacts(sid);
   }
 
   watch(
     () => sessionId.value ?? '',
-    (sid) => void loadSessionArtifacts(sid),
+    (sid, _previous, onCleanup) => {
+      if (!sid) return;
+      void loadSessionArtifacts(sid);
+      onCleanup(() => artifactStore.releaseSessionArtifacts(sid));
+    },
     { immediate: true },
   );
 
   /** 打开会话内产物抽屉（header 产物按钮的默认行为，替代直接跳页）。 */
   function openArtifactsDrawer() {
     artifactsDrawerOpen.value = true;
+    void loadSessionArtifacts(sessionId.value ?? '');
   }
 
   /** 抽屉「管理全部产物」：跳转产物管理页（保留会话筛选）。 */
   function goArtifactsPage() {
     const sid = String(sessionId.value ?? '').trim();
     artifactsDrawerOpen.value = false;
-    void router.push({ path: '/artifacts', query: sid ? { session: sid } : {} });
+    const route = router.currentRoute.value;
+    const identity = new URLSearchParams(sid ? { session: sid } : {});
+    for (const key of ['agent', 'team']) {
+      const value = route.query[key];
+      if (typeof value === 'string') identity.set(key, value);
+    }
+    const returnTo = safeWorkspaceReturn(`${route.path}${identity.size ? `?${identity}` : ''}`);
+    void router.push({
+      path: '/artifacts',
+      query: { ...(sid ? { session: sid } : {}), ...(returnTo ? { returnTo } : {}) },
+    });
   }
 
   /**
@@ -156,12 +166,18 @@ export function useChatSessionArtifacts(sessionId: ComputedRef<string | undefine
    */
 
   function onArtifactDeleted(id: string) {
-    sessionArtifacts.value = sessionArtifacts.value.filter((a) => a.id !== id);
+    artifactStore.removeSessionArtifact(sessionId.value ?? '', id);
   }
 
   return {
     sessionArtifacts,
     sessionArtifactsLoading,
+    sessionArtifactsTotal,
+    sessionArtifactsError,
+    sessionArtifactsLoadingMore,
+    sessionArtifactsHasMore,
+    reloadSessionArtifacts: () => loadSessionArtifacts(sessionId.value ?? ''),
+    loadMoreSessionArtifacts: () => artifactStore.loadSessionArtifacts(sessionId.value ?? '', true),
     artifactsDrawerOpen,
     openArtifactsDrawer,
     goArtifactsPage,

@@ -47,13 +47,13 @@
 ### 1.2 各分区契约
 
 **① 裁决横幅（OverviewVerdictBanner）**
-- verdict 三态：`critical`（任一分栏有 critical 条目）/ `warning`（任一分栏计数>0）/ `ok`
+- verdict 四态：`critical`（已知严重项）/ `warning`（已知待处理项）/ `unknown`（必需来源未确认）/ `ok`（来源完整且无待处理项）
 - 横幅内容：verdict 图标脉冲点 + 标题 + 副标题（待处理总数）+ 4 栏计数 chips + LIVE 圆点 + 更新时间 + 刷新按钮 + filters slot（时间范围/Provider）
-- 滞后检测：`stale` = 最新数据源更新时刻距今 >120s（30s ticker 驱动），LIVE 圆点转灰
+- 滞后检测：`stale` = 来源不完整或最旧成功更新距今 >120s（30s ticker 驱动），显示“数据待确认”
 - 加载失败：横幅上方出现 `q-banner` 错误条（ov-error）+ 重试按钮（usageStore.error 非空即显）
 
 **② 注意力队列（OverviewAttentionQueue）**
-- 4 个 lane，每栏最多 3 条 + 「共 N 项」footer；空栏显示「无待处理项」（不伪装成告警色）
+- 4 个 lane，每栏最多 3 条 + 「共 N 项」footer；仅 `ready` 空栏显示“无待处理项”，其他状态显示加载/部分数据/不可用与重试
 - 条目：severity 点 + 标题 + 摘要（2 行截断）+ 时刻；有 `to` 的条目可点击下钻
 
 | lane | 数据源 | severity 规则 | 下钻 |
@@ -97,7 +97,7 @@
 Page(OverviewPage.vue 只做模板拼装与路由下钻，script ≤200 行)
  ├─ features/usage/useOverviewPage.ts（窗口=range/provider）
  ├─ features/usage/useOverviewView.ts（view-model：窗口数据+注意力队列 → 7 分区展示绑定；
- │     含 30s ticker 驱动的滞后检测，最新数据源更新距今 >120s 判定 stale）
+ │     含 30s ticker 驱动的滞后检测，任一必需源未确认或最旧成功更新距今 >120s 判定 stale）
 
  │   ├─ stores/usage        → overview/runner 无关用量（range/yesterday/month/trends/top_models/top_agents/anomalies/quota_dashboard/cacheHit）
  │   ├─ stores/monitor      → runnerMetrics（runner 窗口独立）
@@ -105,15 +105,25 @@ Page(OverviewPage.vue 只做模板拼装与路由下钻，script ≤200 行)
  │   └─ features/agents|teams api（limit=1 取 total 的编制计数）
  │       ※ TECH-DEBT: 直调 api 未过 store，后端 P1 org runtime-summary 上线后切换
  ├─ features/usage/useAttentionBoard.ts（30s 轮询，可见性守卫）
- │   ├─ features/monitor/api: listMonitorAlertRules / listAlertMetrics / getRunnerMetrics
- │   ├─ features/teams/api: listTaskDeadLetters
- │   ├─ features/decision/api: listDecisionRecords
- │   └─ features/cron/api: listCronTaskRuns
- │       ※ TECH-DEBT: 后端 P1 attention-summary 聚合端点上线后切换
+ │   └─ stores/usage/attention.ts（六个来源的最近成功快照、失败源、初始化、加载和完整更新时间）
+ │       ├─ features/monitor/api: listMonitorAlertRules / listAlertMetrics / getRunnerMetrics
+ │       ├─ features/teams/api: listTaskDeadLetters
+ │       ├─ features/decision/api: listDecisionRecords
+ │       └─ features/cron/api: listCronTaskRuns
  └─ components/overview/*（props/emits only，禁 import store/api；格式化仅 moneyFormat + ovTime）
 ```
 
-数据流铁律保持：api.ts → Store → composable → Page → Component(props/emits)。两处跨域直读均有 `TECH-DEBT` 注释并登记 P1 后端任务（见 §7）。
+注意力队列遵守 api.ts → Store → composable → Page → Component(props/emits)。编制计数的跨域直读仍属已登记技术债；后端聚合接口是减少请求数的后续优化，并非当前状态正确性的前提。
+
+### 2.1 来源可用性与刷新
+
+`AttentionLaneState.status` 为 `loading | ready | partial | unavailable`。告警依赖规则及指标，失败运行依赖Runner及Cron，积压依赖死信及审批；调用异常读取现有Usage Store。已启用规则缺失对应指标也属于 `partial`。四栏始终存在，未知计数显示“—”，部分来源的已知计数带“+”表示下界。
+
+横幅为 `critical | warning | unknown | ok`：已知严重事项优先，其次已知待处理数，再次缺失来源；所有必需来源成功且无待处理事项才为 `ok`。部分来源失败时仍展示已有告警及上次成功快照，但不推进完整更新时间；新鲜度取队列与用量成功时间中的较早值。未知或过期状态显示“数据待确认”，不用LIVE暗示已确认。
+
+Store合并重叠刷新，六个请求独立结算后一次性提交快照。页面手动刷新重试注意力和用量两组请求；筛选与Runner窗口请求失败收敛为可见错误，不产生未处理Promise。30秒轮询受页面可见性约束，卸载清理监听与计时器。翻译在computed投影中生成，切换语言无需重新请求。
+
+首次未成功读取的调用数、执行数与费用显示“—”；预算、定价与编制标明数据不可用。编制只有全部计数源成功才展示计数。已加载的Top模型未发现定价缺失，只能说明当前结果，不宣称全量模型都已定价。组织表复用 `AppRegistryMarkupTable` 与 `overviewTableUi.ts` 列定义。
 
 ## 3. 组件分层（components/overview/）
 
@@ -122,11 +132,11 @@ Page(OverviewPage.vue 只做模板拼装与路由下钻，script ≤200 行)
 | `OverviewSparkline.vue` | 纯 SVG 折线（归一化，全等画中线） | `points: number[]` |
 | `OverviewStatTile.vue` | KPI 瓷贴（label+值+delta chip+caption+spark） | `label/value/caption/delta/tone/spark/clickable` |
 | `OverviewVerdictBanner.vue` | ①横幅 + filters slot | `verdict/headline/subline/chips/updatedAt/loading` |
-| `OverviewAttentionQueue.vue` | ②四栏队列 | `lanes: AttentionLaneState[]`，emit `drill(item)` |
+| `OverviewAttentionQueue.vue` | ②四栏队列 | `lanes: AttentionLaneState[]`、`loading`，emit `drill(item)` / `refresh` |
 | `OverviewRedStrip.vue` | ③双 RED 组 + runner 窗口切换 | `modelTiles/runTiles/runWindow(runWindowOptions)` |
-| `OverviewCostBoard.vue` | ④成本/预算/未定价/缓存/Top5 条形 | `costValueUsd/costDelta/budget/unpricedCount/topBars/cache` |
+| `OverviewCostBoard.vue` | ④成本/预算/未定价/缓存/Top5 条形 | `available/costValueUsd/costDelta/budget/unpricedCount/topBars/cache` |
 | `OverviewTrendBoard.vue` | ⑤双 CSS 柱状图 | `labels/calls/failures/costsUsd/granularity` |
-| `OverviewOrgBoard.vue` | ⑥折叠编制 + 最弱 Agent 表 | `orgs/teams/agentsTotal/agentsEnabled/worstAgents` |
+| `OverviewOrgBoard.vue` | ⑥折叠编制 + 最弱 Agent 表 | `inventoryAvailable/usageAvailable/orgs/teams/agentsTotal/agentsEnabled/worstAgents` |
 | `OverviewFreshnessFooter.vue` | ⑦页脚披露 | `sources/notes` |
 | `ovTypes.ts` / `ovTime.ts` | 共享展示类型（SFC 不能 export type，故独立） / 绝对时间格式化 | — |
 

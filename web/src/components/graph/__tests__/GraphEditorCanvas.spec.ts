@@ -2,6 +2,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 import GraphEditorCanvas from '../GraphEditorCanvas.vue';
+import { graphDefinitionFixture } from '../../../features/graph/__tests__/graphFixtures';
 
 // Mock VueFlow components to avoid complex rendering
 vi.mock('@vue-flow/core', () => ({
@@ -77,7 +78,7 @@ vi.mock('quasar', () => ({
 }));
 
 describe('GraphEditorCanvas - R2-1 Canvas Control Simplification', () => {
-  const mockGraphDef = {
+  const mockGraphDef = graphDefinitionFixture({
     id: 'test-graph',
     name: 'Test Graph',
     version: 1,
@@ -88,7 +89,7 @@ describe('GraphEditorCanvas - R2-1 Canvas Control Simplification', () => {
     finishPoint: '',
     stateFields: [],
     description: '',
-  };
+  });
 
   it('does NOT render VueFlow Controls component', () => {
     const wrapper = mount(GraphEditorCanvas, {

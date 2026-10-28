@@ -375,7 +375,7 @@ const columns = computed(() => createSIRunColumns(t));
   margin: 0
   padding: 12px 16px
   border-radius: 8px
-  background: rgba(127, 127, 127, 0.12)
+  background: var(--surface-muted)
   font-size: 12px
   line-height: 1.6
   text-align: left

@@ -5,6 +5,20 @@
  */
 
 import type { ComputedRef, InjectionKey } from 'vue';
+import type { MemberSession, Step, Task, Turn } from './v2Types';
+
+/** Read-only process projection; Task/Turn/Step facts remain in the v2 store. */
+export interface TaskWorkspaceProcessView {
+  task: Task | null;
+  turn: Turn | null;
+  turns: Turn[];
+  steps: Step[];
+  member: MemberSession | null;
+  state: 'idle' | 'loading' | 'ready' | 'error';
+  manual: boolean;
+  missingSelection: boolean;
+  canLocateTurn: boolean;
+}
 
 // Re-export shared domain types
 export type { Message, RunStatus, RunStatusValue } from '../../domain/types';

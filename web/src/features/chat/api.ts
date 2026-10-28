@@ -198,6 +198,7 @@ export async function enqueueMessage(
       sessionId,
       content,
       requestId: requestId || undefined,
+      kind: undefined,
     });
     return {
       accepted: !!data?.accepted,

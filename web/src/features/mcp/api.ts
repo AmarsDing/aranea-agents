@@ -68,7 +68,7 @@ export type McpServerListResult = {
 
 /** Full catalog (no page params) — pickers / platform resource manager. */
 export async function listMcpServers(): Promise<McpServerRow[]> {
-  const res = asRecord(await svc.ListMCPServers({}));
+  const res = asRecord(await svc.ListMCPServers({ page: undefined, pageSize: undefined, search: undefined }));
   const items = res.items ?? res.Items;
   return Array.isArray(items) ? items.map(mcpRowToPlatform) : [];
 }
@@ -136,6 +136,8 @@ export async function updateMcpServer(id: string, payload: Partial<PlatformResou
       createdAt: pickStr(cur, 'created_at', 'createdAt'),
       updatedAt: pickStr(cur, 'updated_at', 'updatedAt'),
       deletedAt: pickStr(cur, 'deleted_at', 'deletedAt'),
+      // Derived read-only response field; keep it absent from the update payload.
+      shared: undefined,
     },
   });
   return mcpRowToPlatform(row);

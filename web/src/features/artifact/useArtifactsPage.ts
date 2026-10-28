@@ -10,6 +10,7 @@ import type { Session } from '../session/types';
 import { validateArtifactFileSize, artifactMaxSizeHint } from './limits';
 import { readFileAsBase64 } from './fileBase64';
 import { formatBytes, formatDate } from '../../shared/format';
+import { safeWorkspaceReturn } from '../chat/taskWorkspaceNavigation';
 
 export type ArtifactsPageTab = 'session' | 'all';
 
@@ -37,6 +38,10 @@ export function useArtifactsPage() {
   const router = useRouter();
   const artifactStore = useArtifactStore();
   const { t } = useI18n();
+  const workspaceReturn = computed(() => safeWorkspaceReturn(route.query.returnTo));
+  function returnToWorkspace() {
+    if (workspaceReturn.value) void router.push(workspaceReturn.value);
+  }
 
   const rows = ref<ArtifactMeta[]>([]);
   const loading = ref(false);
@@ -133,7 +138,6 @@ export function useArtifactsPage() {
       sessionList.value = [];
     }
   }
-
 
   /** 会话 Tab 下未填写 Session ID 时展示提示而非加载全部。 */
   const sessionFilterRequired = computed(() => activeTab.value === 'session' && !sessionFilter.value.trim());
@@ -408,6 +412,8 @@ export function useArtifactsPage() {
   watch([page, pageSize], () => void loadRows());
 
   return {
+    workspaceReturn,
+    returnToWorkspace,
     rows,
     loading,
     error,

@@ -119,7 +119,7 @@ const { membersOf } = useGraphNodeTeam();
 const nodes = computed(() => store.getGraphStageNodes(props.graphStage.ID));
 
 const { layoutDAG } = usePlanDAGLayout();
-const layoutResult = computed(() => layoutDAG(nodes.value, { width: 0 }));
+const layoutResult = computed(() => layoutDAG(nodes.value, { width: 0, nodeWidth: 1, nodeHeight: 1, gapX: 0, gapY: 0 }));
 const orderedNodes = computed(() =>
   orderGraphNodesForList(nodes.value, layoutResult.value.layers, layoutResult.value.orderInLayer),
 );
@@ -156,12 +156,12 @@ function nodeStatusLabel(status: string): string {
   return map[status] || status;
 }
 
-function progressOf(node: { ID: string }) {
+function progressOf(node: GraphNode) {
   const members = membersOf(node);
   return { completed: members.filter((ms) => ms.Status === 'completed').length, total: members.length };
 }
 
-function statusRowOf(node: { ID: string }) {
+function statusRowOf(node: GraphNode) {
   return graphTeamNodeStatusText(
     membersOf(node),
     (ms) => {

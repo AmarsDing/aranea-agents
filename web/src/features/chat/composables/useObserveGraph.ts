@@ -61,11 +61,7 @@ export function useObserveNodeEnrichment() {
    * Returns the sub-task description for display in the node body.
    */
   function extractDescription(node: GraphNode): string | undefined {
-    // Try to get description from TeamStage first
-    const ts = findTeamStage(node);
-    if (ts?.Description) return ts.Description;
-    // Fallback to node label if no description available
-    return undefined;
+    return activityStore.planSteps.get(node.DagNodeID)?.Description?.trim() || undefined;
   }
 
   /**
@@ -74,24 +70,18 @@ export function useObserveNodeEnrichment() {
    */
   function extractTextOutput(node: GraphNode): string | undefined {
     if (node.Status !== 'completed') return undefined;
+    const output = activityStore.planSteps.get(node.DagNodeID)?.Result?.Output?.trim();
+    if (output) return output.slice(0, 200);
     const ts = findTeamStage(node);
     if (!ts) return undefined;
 
-    // Get the final reply from TeamRuns
     const teamRuns = activityStore.getTeamStageTeamRuns(ts.ID);
-    for (const tr of teamRuns) {
-      if (tr.FinalReply) {
-        return tr.FinalReply.slice(0, 200);
-      }
-    }
-
-    // Fallback: check member sessions for final reply
+    // Member replies are Step entities; TeamRun/MemberSession carry no FinalReply field.
     for (const tr of teamRuns) {
       const sessions = activityStore.getTeamRunMemberSessions(tr.ID);
       for (const ms of sessions) {
-        if (ms.FinalReply) {
-          return ms.FinalReply.slice(0, 200);
-        }
+        const reply = activityStore.getMemberSessionSteps(ms).filter((step) => step.Kind === 'reply' && step.Status === 'completed' && step.Content?.trim()).at(-1);
+        if (reply) return reply.Content.slice(0, 200);
       }
     }
     return undefined;
@@ -201,7 +191,7 @@ export function useObserveNodeEnrichment() {
   };
 }
 
-export function useObserveGraph(spiritSessionId: Ref<string>) {
+export function useObserveGraph(spiritSessionId: Ref<string>, selectedStage?: Ref<GraphStage | null>) {
   const activityStore = useChatActivityStore();
   const { extractMembers, extractDuration, extractError, extractDescription, extractTextOutput, extractMediaOutputs } =
     useObserveNodeEnrichment();
@@ -232,10 +222,10 @@ export function useObserveGraph(spiritSessionId: Ref<string>) {
 
   // Find the GraphStage for this spirit session
   const graphStage = computed<GraphStage | null>(() => {
-    for (const [, gs] of activityStore.graphStages) {
-      if (gs.SessionID === spiritSessionId.value) return gs;
-    }
-    return null;
+    if (selectedStage) return selectedStage.value?.SessionID === spiritSessionId.value ? selectedStage.value : null;
+    return [...activityStore.graphStages.values()]
+      .filter((stage) => stage.SessionID === spiritSessionId.value)
+      .sort((a, b) => b.Seq - a.Seq)[0] ?? null;
   });
 
   // Get nodes for the current GraphStage.
@@ -330,28 +320,25 @@ export function useObserveGraph(spiritSessionId: Ref<string>) {
 
     nodeIds.add(nodeId);
 
-    // Upstream: all nodes this node depends on (transitive)
-    const upstreamQueue = [...(node.DependsOn || [])];
-    while (upstreamQueue.length > 0) {
-      const depId = upstreamQueue.shift()!;
-      if (nodeIds.has(depId)) continue;
-      nodeIds.add(depId);
-      edgeIds.add(`${depId}→${nodeId}`);
-      const depNode = nodes.value.find((n) => n.ID === depId);
-      if (depNode) {
-        upstreamQueue.push(...(depNode.DependsOn || []));
+    // Record real adjacent edges at every hop, including both branches of a diamond.
+    // Reusing the selected node ID at every hop invents non-existent A→C edges.
+    const byId = new Map(nodes.value.map((item) => [item.ID, item]));
+    for (const upstream of [true, false]) {
+      const queue = [nodeId];
+      const visited = new Set<string>();
+      while (queue.length) {
+        const current = queue.shift()!;
+        if (visited.has(current)) continue;
+        visited.add(current);
+        const neighbors = upstream ? byId.get(current)?.DependsOn ?? []
+          : nodes.value.filter((item) => item.DependsOn?.includes(current)).map((item) => item.ID);
+        for (const neighbor of neighbors) {
+          if (!byId.has(neighbor)) continue;
+          nodeIds.add(neighbor);
+          edgeIds.add(upstream ? `${neighbor}→${current}` : `${current}→${neighbor}`);
+          queue.push(neighbor);
+        }
       }
-    }
-
-    // Downstream: all nodes that depend on this node (transitive)
-    const downstreamQueue = nodes.value.filter((n) => (n.DependsOn || []).includes(nodeId)).map((n) => n.ID);
-    while (downstreamQueue.length > 0) {
-      const childId = downstreamQueue.shift()!;
-      if (nodeIds.has(childId)) continue;
-      nodeIds.add(childId);
-      edgeIds.add(`${nodeId}→${childId}`);
-      const children = nodes.value.filter((n) => (n.DependsOn || []).includes(childId)).map((n) => n.ID);
-      downstreamQueue.push(...children);
     }
 
     return { nodeIds, edgeIds };

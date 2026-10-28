@@ -9,13 +9,13 @@
 
 import { describe, expect, it } from 'vitest';
 
-import type { VoiceError } from '../../companion/types';
-import type { AudioCapture, AudioCaptureOptions } from '../../companion/voice/audioCapture';
+import type { VoiceError } from '../../../companion/types';
+import type { AudioCapture, AudioCaptureOptions } from '../../../companion/voice/audioCapture';
 import type {
   VoiceSessionClient,
   VoiceSessionClientOptions,
   VoiceStartParams,
-} from '../../companion/voice/useVoiceSession';
+} from '../../../companion/voice/useVoiceSession';
 import {
   joinDictationText,
   useVoiceDictation,
@@ -23,7 +23,7 @@ import {
   type VoiceDictationDeps,
 } from '../useVoiceDictation';
 
-class FakeClient {
+class FakeClient implements VoiceSessionClient {
   opts: VoiceSessionClientOptions;
   connectCalls = 0;
   disconnectCalls = 0;
@@ -49,6 +49,7 @@ class FakeClient {
   commit(): void {}
   bargeIn(): void {}
   cancel(): void {}
+  wake(): void {}
   sendAudio(f: ArrayBuffer): void {
     this.audio.push(f);
   }
@@ -57,7 +58,7 @@ class FakeClient {
   }
 }
 
-class FakeCapture {
+class FakeCapture implements AudioCapture {
   opts: AudioCaptureOptions;
   started = false;
   stopped = false;
@@ -94,13 +95,13 @@ function makeDeps(overrides: Partial<VoiceDictationDeps> & { failCapture?: boole
     clientFactory: (opts) => {
       const c = new FakeClient(opts);
       clients.push(c);
-      return c as unknown as VoiceSessionClient;
+      return c;
     },
     captureFactory: (opts) => {
       const c = new FakeCapture(opts);
       c.failStart = failCapture === true;
       captures.push(c);
-      return c as unknown as AudioCapture;
+      return c;
     },
     ...rest,
   };
@@ -117,9 +118,7 @@ describe('useVoiceDictation — 启动/停止', () => {
 
     expect(clients.length).toBe(1);
     expect(clients[0].connectCalls).toBe(1);
-    expect(clients[0].startParams).toEqual([
-      { sampleRate: 16000, mode: VOICE_MODE_DICTATION },
-    ]);
+    expect(clients[0].startParams).toEqual([{ sampleRate: 16000, mode: VOICE_MODE_DICTATION }]);
     expect(captures[0].started).toBe(true);
     expect(d.dictating.value).toBe(true);
   });

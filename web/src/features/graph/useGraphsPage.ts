@@ -5,7 +5,7 @@ import { useRouter } from 'vue-router';
 import { storeToRefs } from 'pinia';
 import { useGraphStore } from '../../stores/graph';
 import { useTeamsStore } from '../../stores/teams';
-import type { GraphDefinition, GraphExecutionSummary, GraphTemplateInfo } from './types';
+import type { GraphDefinition, GraphExecutionSummary, GraphTemplateInfo, NodeType } from './types';
 import { NODE_TYPE_STYLES } from './types';
 import { buildCompositionChips, deriveGraphStatus, relativeTime } from './utils';
 import { listGraphExecutions } from './api';

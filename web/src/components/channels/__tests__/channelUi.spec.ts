@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { ChannelRow } from 'src/features/channels/types';
+import type { ChannelRow } from '../../../features/channels/types';
 import { channelStatusBadgeText } from '../channelUi';
 
 function row(overrides: Partial<ChannelRow>): ChannelRow {

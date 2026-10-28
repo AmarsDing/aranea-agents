@@ -1,12 +1,15 @@
 import { computed, onMounted, onUnmounted, reactive, ref, toRef, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useQuasar } from 'quasar';
-import { useRoute } from 'vue-router';
+import { onBeforeRouteLeave, useRoute } from 'vue-router';
 import type { SessionView, TeamRow } from '../../../components/chat/types';
 import type { Agent } from '../../agents/types';
 import type { SpiritPanelMode } from '../../spirit/types';
 import { SPIRIT_AGENT_KEY } from '../../spirit/types';
 import { useAppStore } from '../../../stores/app';
+import { useAuthStore } from '../../../stores/auth';
+import { useChatDraftStore } from '../../../stores/chat/draftStore';
+import { getBackendOrigin } from '../../../config/runtime';
 import { useChatSessionStore } from '../../../stores/chat/sessionStore';
 import { useChatMessageStore } from '../../../stores/chat/messageStore';
 import { useChatRuntimeStore } from '../../../stores/chat/runtimeStore';
@@ -24,6 +27,7 @@ import { clearChatMarkdownCache } from '../chatMessageMarkdown';
 import { getProviderModelValue, sessionToView } from './chatWorkspaceUtils';
 import { useChatSidebarOrder } from './useChatSidebarOrder';
 import { useChatAttachments } from './useChatAttachments';
+import { useChatDrafts } from './useChatDrafts';
 import { fileAcceptForModel, modelSupportsFileInput, type ChatModelDescriptor } from '../modelCapabilities';
 import { useChatProviderOptions } from './useChatProviderOptions';
 import { useChatDeleteFlow } from './useChatDeleteFlow';
@@ -84,6 +88,8 @@ export function useChatWorkspace() {
   const $q = useQuasar();
   const route = useRoute();
   const appStore = useAppStore();
+  const authStore = useAuthStore();
+  const draftStore = useChatDraftStore();
   const sessionStore = useChatSessionStore();
   const messageStore = useChatMessageStore();
   const spiritStore = useSpiritTeamStore();
@@ -101,7 +107,6 @@ export function useChatWorkspace() {
   const displayAgents = ref<Agent[]>([]);
   const displayTeams = ref<TeamRow[]>([]);
   const inputText = ref('');
-  const sessionDrafts = reactive(new Map<string, string>());
 
   // Skill 选择器（chat 输入框）：当前已选中的 skill slug 列表。
   // 发送时由 composerActions 注入加载提示；发送成功/会话切换时清空。
@@ -258,6 +263,18 @@ export function useChatWorkspace() {
   const sessionIdForPending = computed(() => selectedSessionForUi.value?.id);
   const sessionIdForArtifacts = computed(() => selectedSessionForUi.value?.id);
   const selectedSessionId = computed(() => selectedSessionForUi.value?.id);
+  const drafts = useChatDrafts(
+    inputText,
+    () =>
+      JSON.stringify([
+        getBackendOrigin(),
+        authStore.user?.id ?? null,
+        sessionStore.entityKind,
+        sessionStore.entityKind === 'team' ? sessionStore.selectedTeamId : appStore.selectedAgent?.id,
+      ]),
+    () => selectedSessionId.value,
+    { records: draftStore.records, persist: draftStore.persist },
+  );
 
   const reasoningSidebar = useReasoningSidebar({
     messages: displayMessages,
@@ -267,6 +284,8 @@ export function useChatWorkspace() {
   const inboundHydrateError = ref('');
   const sessionLoading = ref(false);
   const coreReady = ref(false);
+  const coreLoading = ref(false);
+  const coreLoadError = ref('');
   const focusTurnId = ref<string | undefined>(undefined);
 
   function focusSessionTurn(turnId: string) {
@@ -279,8 +298,16 @@ export function useChatWorkspace() {
     focusTurnId.value = undefined;
   }
 
-  const { fileRef, attachments, pickFile, onFileChange, uploadFile, removeAttachment } =
+  const { fileRef, attachments, hasAttachments, pickFile, onFileChange, uploadFile, removeAttachment } =
     useChatAttachments(sessionIdForArtifacts);
+  onBeforeRouteLeave(() => {
+    if (!hasAttachments.value || !authStore.user) return true;
+    return new Promise<boolean>((resolve) => {
+      $q.dialog({ message: t('taskWorkspace.leaveAttachments'), cancel: true, persistent: true })
+        .onOk(() => resolve(true))
+        .onCancel(() => resolve(false));
+    });
+  });
 
   const streamManager = useChatStreamManager({
     runtimeStore,
@@ -290,12 +317,19 @@ export function useChatWorkspace() {
     // call time, so late assignment takes effect. WS events only arrive
     // after setup completes, so the assignment always happens before invocation.
     onV2Event: (envelope) => handleV2Event(envelope),
-    refreshRunStatus: refreshRunStatusForUi,
+    visibleSessionId: () => selectedSessionForUi.value?.id,
+    refreshRunStatus: async (sid) => {
+      if (sid && sid === selectedSessionForUi.value?.id) await refreshRunStatusForced(sid);
+    },
     // B-06: after WS reconnect, re-fetch authoritative v2 entity snapshot.
     // Server also replays missed critical outbox frames via last_event_id;
     // REST hydrate remains the safety net for non-critical / full state.
     onReconnectHydrate: async (sessionId) => {
-      await activityStore.fetchSessionHistory(sessionId);
+      await activityStore.fetchSessionHistory(sessionId, { reconcile: true });
+      if (sessionId === selectedSessionForUi.value?.id) {
+        await refreshPendingMessages({ throwOnError: true });
+        if (sessionId === selectedSessionForUi.value?.id) await reloadSessionArtifacts();
+      }
     },
     onUpstreamUserMessageDropped: (sessionId, requestId) => {
       activityStore.removeTask(requestId);
@@ -499,7 +533,7 @@ export function useChatWorkspace() {
     selectedSessionId,
     wsReplaying: streamManager.wsReplaying,
     onSpiritActivityEvent: contextualLoading.onSpiritActivityEvent,
-    isChatRoute: () => route.name === 'chat',
+    isChatRoute: () => route.name === 'chat' || route.name === 'task-workspace',
     shouldAutoFocusChannel: () => {
       // Default OFF: channel inbound messages no longer auto-focus the session
       // to avoid interrupting the user's current workflow. Users can opt in
@@ -541,7 +575,15 @@ export function useChatWorkspace() {
     ensureChatStream: streamManager.ensureChatStream,
     ensureTeamStream: streamManager.ensureTeamStream,
     sendChatViaWs: streamManager.sendChatViaWs,
-    onNewSession: (title?: string) => entityNav.onNewSession(title),
+    onNewSession: (title?: string) => drafts.createSession(() => entityNav.onNewSession(title)),
+    captureDraft: () => {
+      const consumeText = drafts.capture();
+      const skills = selectedSkillSlugs.value;
+      return () => {
+        consumeText();
+        if (selectedSkillSlugs.value === skills) selectedSkillSlugs.value = [];
+      };
+    },
     makeSessionTitle,
     refreshRunStatus: refreshRunStatusForUi,
     reconcileRunStatus: reconcileRunStatusForUi,
@@ -609,6 +651,12 @@ export function useChatWorkspace() {
   const {
     sessionArtifacts,
     sessionArtifactsLoading,
+    sessionArtifactsTotal,
+    sessionArtifactsError,
+    sessionArtifactsLoadingMore,
+    sessionArtifactsHasMore,
+    reloadSessionArtifacts,
+    loadMoreSessionArtifacts,
     artifactsDrawerOpen,
     openArtifactsDrawer,
     goArtifactsPage,
@@ -651,9 +699,9 @@ export function useChatWorkspace() {
     selectedSessionId: computed(() => selectedSessionForUi.value?.id),
     notify: (opts) => $q.notify(opts),
     t,
-    sessionDrafts,
     inputText,
     selectedSkillSlugs,
+    attachments,
   });
 
   const isRunnerActive = computed(
@@ -663,6 +711,7 @@ export function useChatWorkspace() {
   // Refresh background jobs when run transitions to idle (tasks may complete after turn ends)
   watch(runStatus, (newVal, oldVal) => {
     if (newVal === 'idle' && oldVal !== 'idle') {
+      void reloadSessionArtifacts();
       jobsRefreshNonce.value += 1;
     }
     // Bugfix P1#4: WS send success path doesn't call markSendingDone() —
@@ -710,8 +759,7 @@ export function useChatWorkspace() {
     try {
       const res = await runtimeStore.enqueue(sid, content.trim());
       if (res.accepted) {
-        // Clear input only after successful enqueue
-        inputText.value = '';
+        // The separate follow-up editor does not consume the main draft.
         $q.notify({
           type: 'positive',
           message: res.queued
@@ -844,8 +892,10 @@ export function useChatWorkspace() {
   });
 
   let visibleRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+  let viewLoadGeneration = 0;
 
   async function bindSessionView(sessionId: string, replace = true, streamKind?: 'chat' | 'team') {
+    const generation = ++viewLoadGeneration;
     if (streamKind === 'team' || (!streamKind && sessionStore.entityKind === 'team')) {
       streamManager.ensureTeamStream(sessionId);
     } else {
@@ -864,33 +914,35 @@ export function useChatWorkspace() {
       await messageStore.loadMessages(replace ? { sessionId, replace: true } : { sessionId });
       await v2Promise;
     } catch (err) {
+      if (generation !== viewLoadGeneration || sessionId !== selectedSessionForUi.value?.id) return;
       $q.notify({
         type: 'negative',
         message: err instanceof Error ? err.message : t('chat.loadMessagesFailed'),
       });
     } finally {
-      sessionLoading.value = false;
+      if (generation === viewLoadGeneration && sessionId === selectedSessionForUi.value?.id)
+        sessionLoading.value = false;
     }
   }
 
   watch(
     () => selectedSessionForUi.value?.id,
     (sid, prevSid) => {
-      if (prevSid) {
-        sessionDrafts.set(prevSid, inputText.value);
-      }
       // 会话切换：已选 skill 不跨会话保留
+      if (prevSid && sid !== prevSid && selectedSkillSlugs.value.length) {
+        $q.notify({ type: 'info', message: t('taskWorkspace.skillsCleared') });
+      }
       selectedSkillSlugs.value = [];
       if (!sid) {
+        viewLoadGeneration++;
+        sessionLoading.value = false;
         onSessionSwitch(undefined);
         isAwaitingUser.value = false;
         awaitingRunId.value = '';
         clearAwaitMeta();
-        inputText.value = '';
         sender.clearFailedPendingForSession(prevSid);
         return;
       }
-      inputText.value = sessionDrafts.get(sid) || '';
       onSessionSwitch(sid);
       sessionStore.resetCompressStatus();
       stopCompressPolling();
@@ -985,10 +1037,18 @@ export function useChatWorkspace() {
     streamManager.disconnectAll();
   });
 
-  onMounted(async () => {
-    document.addEventListener('visibilitychange', onPageVisible);
-
-    await Promise.all([loadChatOptions(), appStore.loadAgents()]);
+  async function initializeWorkspace() {
+    if (coreLoading.value || coreReady.value) return;
+    coreLoading.value = true;
+    coreLoadError.value = '';
+    try {
+      await Promise.all([loadChatOptions(), appStore.loadAgents()]);
+    } catch {
+      coreLoadError.value = t('uiSystem.chatLoadFailed');
+      return;
+    } finally {
+      coreLoading.value = false;
+    }
 
     const defaultAgent = appStore.agents.find((a) => a.agent_key === SPIRIT_AGENT_KEY) || appStore.agents[0];
     defaultAgentId.value = defaultAgent?.id ?? null;
@@ -1000,36 +1060,45 @@ export function useChatWorkspace() {
     // selectedAgentId only loads sessions but skips URL sync and hydration.
     const routeSession = typeof route.query.session === 'string' ? route.query.session.trim() : '';
     const routeAgent = typeof route.query.agent === 'string' ? route.query.agent.trim() : '';
-    if (routeSession && routeAgent) {
+    if (routeSession) {
       void entityNav.focusSessionById(routeSession, routeAgent);
     } else if (appStore.selectedAgent) {
       void entityNav.selectAgent(appStore.selectedAgent, { sessionId: routeSession || undefined });
     }
 
-    void Promise.all([entityNav.loadTaxonomyTree(), entityNav.loadTeams()]).then(() => {
-      displayTeams.value = loadTeamOrder([...displayTeams.value], defaultTeamId.value);
-      const routeTeamID = typeof route.query.team === 'string' ? route.query.team : '';
-      const routeTeam = routeTeamID ? displayTeams.value.find((team) => team.id === routeTeamID) : undefined;
-      if (routeTeam) {
-        void entityNav.selectTeam(routeTeam);
-      } else if (!appStore.agents[0] && displayTeams.value[0]) {
-        void entityNav.selectTeam(displayTeams.value[0]!);
-      }
-    });
+    void Promise.all([entityNav.loadTaxonomyTree(), entityNav.loadTeams()])
+      .then(() => {
+        displayTeams.value = loadTeamOrder([...displayTeams.value], defaultTeamId.value);
+        const routeTeamID = typeof route.query.team === 'string' ? route.query.team : '';
+        const routeTeam = routeTeamID ? displayTeams.value.find((team) => team.id === routeTeamID) : undefined;
+        if (routeTeam && !routeSession) {
+          void entityNav.selectTeam(routeTeam);
+        } else if (!appStore.agents[0] && displayTeams.value[0]) {
+          void entityNav.selectTeam(displayTeams.value[0]!);
+        }
+      })
+      .catch((error: unknown) => {
+        console.warn('Workspace navigation could not be loaded', error);
+      });
+  }
+
+  onMounted(() => {
+    document.addEventListener('visibilitychange', onPageVisible);
+    void initializeWorkspace();
   });
 
-  watch(
-    () => ({ session: route.query.session, agent: route.query.agent }),
-    ({ session: sid }) => {
-      if (focusCoordinator.isRouteSessionWatchSuppressed()) return;
-      if (typeof sid !== 'string' || !sid.trim()) return;
-      const routeAgent = typeof route.query.agent === 'string' ? route.query.agent.trim() : '';
-      void entityNav.focusSessionById(sid.trim(), routeAgent || undefined);
-    },
-  );
+  watch([() => route.query.session, () => route.query.agent, () => route.query.team], ([sid]) => {
+    if (focusCoordinator.isRouteSessionWatchSuppressed()) return;
+    if (typeof sid !== 'string' || !sid.trim()) return;
+    const routeAgent = typeof route.query.agent === 'string' ? route.query.agent.trim() : '';
+    void entityNav.focusSessionById(sid.trim(), routeAgent || undefined);
+  });
 
   return {
     coreReady,
+    coreLoading,
+    coreLoadError,
+    initializeWorkspace,
     fileRef,
     layout: reactive({
       t,
@@ -1069,15 +1138,19 @@ export function useChatWorkspace() {
         void sessionStore.searchAgentSessions(keyword);
       },
       selectedSessionForUi,
+      navigationLoading: entityNav.navigationLoading,
+      navigationError: entityNav.navigationError,
       composerUsageSnapshot,
       contextBreakdown,
       displayMessages,
       sessionRevision,
       wsConnected: computed(() => {
-        const sid = sessionStore.currentSessionId();
+        const sid = selectedSessionForUi.value?.id;
         return sid ? runtimeStore.isWsConnected(sid) : false;
       }),
       wsReplaying: streamManager.wsReplaying,
+      reconnectError: streamManager.reconnectError,
+      retryReconnect: streamManager.retryReconnect,
       spiritLoadingMessage: contextualLoading.loadingMessage,
       spiritPulseStates: statusPulse.pulseStates,
       spiritOnTeamStatusChanged: statusPulse.onTeamStatusChanged,
@@ -1094,6 +1167,12 @@ export function useChatWorkspace() {
       unpinReasoning: reasoningSidebar.unpin,
       sessionArtifacts,
       sessionArtifactsLoading,
+      sessionArtifactsTotal,
+      sessionArtifactsError,
+      sessionArtifactsLoadingMore,
+      sessionArtifactsHasMore,
+      reloadSessionArtifacts,
+      loadMoreSessionArtifacts,
       artifactsDrawerOpen,
       openArtifactsDrawer,
       goArtifactsPage,
@@ -1142,9 +1221,11 @@ export function useChatWorkspace() {
       provOpts,
       attachments,
       selectedSkillSlugs,
+      draftSaveFailed: computed(() => draftStore.saveFailed),
       toggleSkill,
       clearSkills,
       sending: sender.sending,
+      submitting: sender.submitting,
       inputDisabled: sender.inputDisabled,
       pendingMessages,
       isAwaitingUser,

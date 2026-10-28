@@ -4,9 +4,10 @@ import type { V2WsEnvelope } from '../../chat/v2Types';
 
 function notice(meta: Record<string, string>, type = 'knowledge_ingest'): V2WsEnvelope {
   return {
+    type: 'v2_event',
     kind: 'system.notice',
-    payload: { NoticeType: type, Meta: meta },
-  } as V2WsEnvelope;
+    payload: { NoticeType: type, Message: '', Meta: meta },
+  };
 }
 
 describe('isKnowledgeIngestNotice', () => {
@@ -17,6 +18,11 @@ describe('isKnowledgeIngestNotice', () => {
   it('rejects other collections and notice types', () => {
     expect(isKnowledgeIngestNotice(notice({ collection_id: 'c2' }), 'c1')).toBe(false);
     expect(isKnowledgeIngestNotice(notice({ collection_id: 'c1' }, 'other'), 'c1')).toBe(false);
-    expect(isKnowledgeIngestNotice({ kind: 'chat.delta', payload: {} } as V2WsEnvelope, 'c1')).toBe(false);
+    expect(
+      isKnowledgeIngestNotice(
+        { type: 'v2_event', kind: 'system.heartbeat', payload: { Message: '', Meta: null } },
+        'c1',
+      ),
+    ).toBe(false);
   });
 });

@@ -1,16 +1,13 @@
-// Workbench Cockpit（作战总台）wb-* 令牌 + .wb-scope 金色立约（ADR-WB-01）。
-// 唯一新增实体色 = --wb-await #DCA03E（构建期 quasar-variables $primary 同款金，明暗恒定）。
-// 其余全部 token 别名填充；组件内禁止散写金（#dc 起首散写即违规）。
-// 分期：P0 落令牌、壳骨架、金色四形态、走廊载波、戳/心跳/咳嗽/闪底动效预算。
+// Workbench domain semantics inherit M95. Warning retains the meaning of human attention.
+// The waiting frames and operational structure remain independent of the visual palette.
 
-// stylelint-disable color-no-hex -- 令牌定义文件，--wb-await 必须落 hex（先例：_color-palette.sass）
-
-\:root
+\:root,
+body.body--dark
   // ——— ADR-WB-01 语义色账本 ———
-  --wb-await: #DCA03E
+  --wb-await: var(--color-warning)
   // 「轮到人」四形态的软底/线条变体（同源派生，非新色）
-  --wb-await-soft: rgba(220, 160, 62, 0.14)
-  --wb-await-line: rgba(220, 160, 62, 0.55)
+  --wb-await-soft: var(--color-warning-soft)
+  --wb-await-line: color-mix(in srgb, var(--color-warning) 55%, transparent)
   // SKIP/机审扣分：琥珀，与金色物理隔离（对抗评审修复点）
   --wb-skip: var(--color-warning)
   // 正常/通过/已批准
@@ -48,11 +45,7 @@
   font-size: var(--wb-body)
   font-variant-numeric: tabular-nums
 
-// 浅色态主强调重映射：存量 light accent=金（金色噪音源）→ 本域靛青（ADR-WB-01/开放问题 1）
-body:not(.body--dark) .wb-scope
-  --color-accent: #4F46E5
-  --color-accent-hover: #6366F1
-  --q-primary: #4F46E5
+// M95: action colors inherit the global palette; waiting remains warning semantics.
 
 // 暗态 accent 既为青，--wb-flow 免重映射（注释即证据，无规则）
 

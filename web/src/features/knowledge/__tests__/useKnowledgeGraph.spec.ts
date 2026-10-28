@@ -40,6 +40,7 @@ function makeCollection(id: string): KnowledgeCollection {
     root_path: `/vault-${id}`,
     sync_state: 'active',
     last_sync_at: '',
+    vault_backend: 'local',
   };
 }
 

@@ -70,6 +70,27 @@ describe('useChatMessageScroll（状态制重构）', () => {
     await nextTick();
     expect(anchor.scrollIntoView).toHaveBeenCalledWith({ block: 'start' });
   });
+  it('reading history survives new tasks and tokens until explicitly returning to latest', async () => {
+    const anchor = { scrollIntoView: vi.fn() } as unknown as HTMLElement;
+    const c = setup({ querySelector: () => anchor });
+    c.el.scrollTop = 100;
+    c.onMessagesScroll();
+    c.lastTaskId.value = 't2';
+    c.contentSignature.value = 'new-task';
+    await nextTick();
+    await vi.advanceTimersByTimeAsync(100);
+    expect(c.el.scrollTop).toBe(100);
+    expect(anchor.scrollIntoView).not.toHaveBeenCalled();
+    expect(c.hasNewContent.value).toBe(true);
+    expect(c.following.value).toBe(false);
+    c.jumpToLatest();
+    expect(c.el.scrollTop).toBe(600);
+    expect(c.hasNewContent.value).toBe(false);
+    c.contentSignature.value = 'more-tokens';
+    await nextTick();
+    await vi.advanceTimersByTimeAsync(100);
+    expect(c.following.value).toBe(true);
+  });
 
   it('初始加载（lastTaskId 空→有值）不锚定——滚底生效（2026-07-22 会话切换 bug 修复）', async () => {
     const anchor = { scrollIntoView: vi.fn() } as unknown as HTMLElement;

@@ -94,6 +94,36 @@ describe('useChatRunStatus.refreshRunStatusForced', () => {
     expect(ctrl.runStatus.value).toBe('idle');
     expect(ctrl.runMeta.value).toBeNull();
   });
+
+  it('accepts the new session run while the previous session is still running', async () => {
+    const ctrl = useChatRunStatus({ applyAwaitRunStatus: vi.fn() });
+    ctrl.onSessionSwitch('A');
+    ctrl.applyFromV2RunStatus({ RunID: 'run-A', Status: 'running', Meta: null });
+    ctrl.onSessionSwitch('B');
+    runtimeStoreMock.fetchRunStatus.mockResolvedValue({ ...makeRs('awaiting_user'), runId: 'run-B' });
+    expect(await ctrl.refreshRunStatusForced('B')).toBe('awaiting_user');
+    expect(ctrl.runMeta.value?.runId).toBe('run-B');
+  });
+
+  it('rejects an old response after A to B to A even though the session ID matches again', async () => {
+    const ctrl = useChatRunStatus({ applyAwaitRunStatus: vi.fn() });
+    ctrl.onSessionSwitch('A');
+    let resolve!: (value: RunStatus) => void;
+    runtimeStoreMock.fetchRunStatus.mockReturnValueOnce(
+      new Promise<RunStatus>((r) => {
+        resolve = r;
+      }),
+    );
+    const old = ctrl.refreshRunStatusForced('A');
+    ctrl.onSessionSwitch('B');
+    ctrl.onSessionSwitch('A');
+    runtimeStoreMock.fetchRunStatus.mockResolvedValueOnce({ ...makeRs('running'), runId: 'new-run-A' });
+    expect(await ctrl.refreshRunStatusForced('A')).toBe('running');
+    resolve({ ...makeRs('completed'), runId: 'old-run-A' });
+    expect(await old).toBeNull();
+    expect(ctrl.runMeta.value?.runId).toBe('new-run-A');
+    expect(ctrl.runStatus.value).toBe('running');
+  });
 });
 
 /**

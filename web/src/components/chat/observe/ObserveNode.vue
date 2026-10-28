@@ -179,13 +179,13 @@ const durationLabel = computed(() => formatDuration(props.data.durationMs));
   padding: 10px
   font-size: 12px
   color: var(--color-text-primary)
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08)
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--color-shadow) 8%, transparent)
   transition: border-color 0.3s ease, box-shadow 0.3s ease, background 0.3s ease, border-width 0.15s ease
   animation: observe-node-enter 0.25s ease
 
   &:hover
     border-width: 3px
-    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.14)
+    box-shadow: 0 4px 14px color-mix(in srgb, var(--color-shadow) 14%, transparent)
 
   &--running
     border-color: var(--color-warning)
@@ -425,9 +425,9 @@ const durationLabel = computed(() => formatDuration(props.data.durationMs));
 // ── Animations ──
 @keyframes observe-pulse
   0%, 100%
-    box-shadow: 0 0 0 0 rgba(255, 152, 0, 0.4)
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-warning) 40%, transparent)
   50%
-    box-shadow: 0 0 0 8px rgba(255, 152, 0, 0)
+    box-shadow: 0 0 0 8px transparent
 
 @keyframes observe-progress-breathe
   0%, 100%

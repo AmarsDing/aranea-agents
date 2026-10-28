@@ -33,3 +33,5 @@ export type LearningProposal = {
   created_at: string;
   updated_at: string;
 };
+export type PatternFilter = '' | 'detected' | 'confirmed' | 'dismissed';
+export type ProposalFilter = '' | 'validated' | 'approved' | 'applied' | 'rejected' | 'conflict';

@@ -210,7 +210,7 @@ async function applySign(item: YouItem, verb: 'approved' | 'rejected' | 'acked',
     // 异常合约（设计 §4.2）：弹出 reason + 金日志记录（不欺骗）；不落戳不写绿行，浮层停留供重试
     const reason = err instanceof Error ? err.message : String(err);
     $q.notify({ type: 'negative', message: t('workbench.sign.failed', { reason }) });
-    stream.pushGoldLog(t('workbench.sign.failedLog', { title: item.title.slice(0, 40), reason }));
+    stream.pushGoldLog(t('workbench.sign.failedLog', { title: item.summary.slice(0, 40), reason }));
   } finally {
     signing.value = false;
   }

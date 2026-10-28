@@ -43,6 +43,8 @@ type writeBackFields struct {
 	factVersions    FactVersionRepo
 	proposals       GovernanceProposalRepo
 	arbiter         WriteBackArbiter
+	// factEdgeCloser D8 边关闭（nil = 自动失效不碰 semantic 边）。
+	factEdgeCloser FactEdgeCloser
 	// writeBackDeleteAutoInvalidateOff G-40 D6 事故闸（构造期读 env 一次；
 	// true=DELETE 自动失效带整带关闭，回落 G-40 前行为：c≥0.7 维持高风险
 	// pending 提案人工二审，c<0.7 纯追加零审计——C 批修措辞对齐钉⑨断言）。

@@ -514,7 +514,7 @@ function onListDrop(ev: DragEvent) {
     background: var(--kb-text-dim)
 
     &--ok
-      background: var(--kb-ok, #3ddc97)
+      background: var(--color-success)
 
     &--busy
       background: var(--kb-accent-cyan)

@@ -174,7 +174,7 @@ type evalIntentVec struct {
 // EvalIntentRouter classifies a text embedding into eval intents via anchor
 // vectors. Anchors are embedded once at construction with the SAME
 // biz.EmbeddingService the store uses for facts/queries, so the vector space
-// is always self-consistent regardless of provider (Jina/JEV/…).
+// is always self-consistent regardless of provider (Jina/bge-m3/…).
 type EvalIntentRouter struct {
 	intents map[EvalIntent]evalIntentVec
 }

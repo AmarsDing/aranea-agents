@@ -21,6 +21,7 @@ func TestRecordValidate_OK(t *testing.T) {
 	for _, cat := range []Category{
 		CategoryHITLApproval, CategoryPlannerOrchestration, CategorySystemGuard,
 		CategoryKnowledgeArbitration, CategoryEvolutionApplied,
+		CategoryMemoryShadow, CategoryJEVShadow,
 	} {
 		r := validRecord()
 		r.Category = cat

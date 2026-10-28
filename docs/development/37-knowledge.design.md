@@ -3876,7 +3876,9 @@ chunk/正文历史显式划给本轮裁决。
    收敛挂 TK-G32-01）；ctx 戳沿用 b8 DocumentContentVersion 体系（其落线后 T4 为
    vault upsertDoc 补戳+Conflict→重读 latest body→重算 diff→重试≤3 收敛环，
    RebuildCurrentBlockIndex 对型）；治理 DeferReplay 不增新机制（回放 commit 走同一
-   diff 管道、producer='governance'）；fail 分支不得覆盖胜者 indexed 终态（既有
+   diff 管道——链路经 replayGovernanceQueue→writeBackReplay→replayPromotedDocChunks，
+   WS 帧 producer 沿用 promote 四值空间，**不新增 governance 值；T5 终审对位
+   R-1**）；fail 分支不得覆盖胜者 indexed 终态（既有
    document_state_machine.go:51-62 坑位声明纪律+钉，不冒充修复）；
    UpdateChunkEmbeddings 的 chunk 行 `FOR UPDATE OF c` 与 diff-commit 锁序
    =doc→chunk 单向无环记档。
@@ -4019,6 +4021,42 @@ as-of recall 命中编辑前化身内容、current 召回零泄漏（档案向�
 区间边界（created_at 等值归入新区间）、当前+档案两腿 top-k 合并排序钉、tombstone
 后 as-of 仍可回放而 current 查无。
 
+**G-32 T5 落地纪要（2026-10-25，实施与决策9 的对位收口）**：
+
+帧契约（`knowledge_chunks_diff`，SystemNoticeEvent meta 自由结构免 proto）八键恒等：
+
+| 键 | 取值口径 |
+| ---- | --------- |
+| `event_type` | 恒 `knowledge_chunks_diff`（与终态帧 `knowledge_ingest` 并存不冒充） |
+| `collection_id` / `document_id` | 目标集合/文档标识 |
+| `added` / `deleted` / `kept` | diff-commit 十三步权威统计透传 |
+| `chunk_count` | `ChildAdded+ChildKept`（子块口径，与文档/集合台账同轨，不含 parent 语境行——T5 终审 R-2；`added`/`kept` 键仍为全行权威口径透传） |
+| `producer` | 值空间 `ingest` / `reembed` / `promote` / `vault` |
+
+**Exact 哨兵决策**：`ChunkDiffStats.Exact` 仅由 Usecase `commitIndexedDocument` 的
+IngestCommitter 权威 diff-commit 成功分支打标；退化顺序写路径（单元 fakes/无
+IngestCommitter 存量环境）与错误路径恒 false——「repo 不支持 DiffStats 时零发布」
+由此从文档纪律落为可机检闸（帧函数判 Exact；vault 层 `SetDiffStatsHook` 回调透传
+不二判）。接线面：ingest（`internal/service/knowledge.go`）/reembed（`knowledge_reembed.go`）
+/promote（`knowledge_promote.go`）三产线直发；vault 通道经
+`vaultSyncApplier.SetDiffStatsHook` + wire 注入 `service.PublishKnowledgeChunksDiffFrame`
+（`v2Bus`，wire.go 与 wire_gen.go 手工镜像同窗）。
+
+钉位（测试矩阵 ③⑤⑨ 缺口收口 + 终审 R-1/R-2 修复钉）：biz `chunk_diffstats_marker_test.go`
+三钉（权威打标/退化不标/错误不标）；service `knowledge_chunks_diff_frame_test.go`
+四钉（⑤ 键集值等——chunk_count=ChildAdded+ChildKept 子块口径，钉内故意令
+全行口径 sum 分叉钳死取值源、Exact 闸与零发布纪律、单次发布、终态帧六键+消息体逐
+字节冻结）；`internal/knowledge/vault_sync_diffstats_test.go` 两钉（钩子恰好唤一次/
+未接线零 panic）；data `knowledge_g32_t5_e2e_test.go` 三 PG e2e——③ 缺 dim 收敛
+（pending 入列→CON-19B 同体换维降级放行→侧表双代共存→出列→同维 fast-path 归位）、
+⑨ 时态生命周期（as-of t1 双腿命中编辑前化身、current 零泄漏、created_at 等值归新
+区间、双腿 top-k 合并恰一条、tombstone 后 as-of 可回放而 current 查无）、
+R-2 子块口径钉（1 父+2 子混合提交：Added/Kept 全行含父、ChildAdded/ChildKept
+只数子、帧 chunk_count=台账值、fast-path 父行不阻断缺 dim 前哨）；时态锚点
+从 document_versions 账本 created_at 现读（不控制时钟，与真实摄取同形）。65 手册
+§1.13 红句修订同窗落字（仅 chunk 级放开 diff，块/refs 整放纪律不变）+ 事件生产
+行登记 `knowledge_chunks_diff`。
+
 ---
 
 ```text
@@ -4144,6 +4182,47 @@ notion 灰度期（T4 未接线窗口）默认 `tombstone_enabled=false`＝addit
 
 权限：CreateConnector 从 ctx 盖 workspace_id（CreateDocument owner 盖章先例）；绑定共享库 ws='' 仅 system ctx 放行＋先于 assertCollectionMutateAccess 判定（404 反枚举）；写闸 assertCollectionMutateAccess（目标库）；读闸 assertCollectionAccess；config_json 出库前 sanitize 密文键。DELETE 默认软删 connector＋级联软删 credential（同笔 recordAudit）＋**保留已摄取文档**；`purge=1`→202 异步入队（同 advisory key 防与轮巡并发），逐条走 ⑥ 序，deleted_documents 汇入聚合帧——禁请求内开环跑 tombstone 事务。
 
+**ADR-KN-20261023-G38-API（W5 落字）**：SourceSync 管理面 11 条 HTTP 路由 / 7 组
+契约**走 custom JSON 不走 proto**。
+
+- **背景**：proto 红线下生成 handler 收不了新字段（ADR-KN-20261020-K 同款）；
+  SourceSync 字段面迭代期不稳（W6 notion kind 即将加列）；knowledge.proto 是
+  并行脏区，叠加 make api 生成物（pb+TS）合并成本；US-39 autolink-preview
+  「custom JSON，避免 make api」三先例同宗。
+- **决策**：`registerCustomRoutes` knowledge 块集中登记 11 路由
+  （internal/server/http.go，justification 注释援引本 ADR）；handler 薄化
+  （internal/service/knowledge_sourcesync.go 只做参数解析 / 状态码映射 /
+  workspace 盖章 / 集合访问闸 / recordAudit，业务裁决全部在
+  internal/knowledge/sourcesync/admin.go——晋升 proto 时本层可整体替换而
+  编排层零改）；严格 JSON 解码（DisallowUnknownFields，1MB 上限）；
+  未知字段即 400（迭代期契约无向后兼容包袱，比 proto 的 proto3 静默丢弃更严）。
+- **契约面（11 路由，错误映射复用 writeKnowledgeJSONError：
+  NotFound→404 / BadRequest→400 / Forbidden→404（IDOR 反枚举）/
+  Conflict→409 / Unavailable→503）**：
+
+  |方法|路径|语义|成功码|审计|
+  |---|---|---|---|---|
+  |GET|/v1/knowledge/connectors|列表（含 auth_paused/error）|200|—|
+  |POST|/v1/knowledge/connectors|创建（workspace 从 ctx 盖）|201|create|
+  |GET|/v1/knowledge/connectors/{id}|详情|200|—|
+  |PATCH|/v1/knowledge/connectors/{id}|声明面局部更新（nil 继承）|200|update|
+  |DELETE|/v1/knowledge/connectors/{id}|软删＋级联软删凭据（保留文档）|200|delete|
+  |PUT|/v1/knowledge/connectors/{id}/credential|写凭据（成功即唤醒 auth_paused）|200|credentials|
+  |GET|/v1/knowledge/connectors/{id}/credential|只返 configured+masked_preview|200|—|
+  |DELETE|/v1/knowledge/connectors/{id}/credential|软删单键|200|credentials|
+  |POST|/v1/knowledge/connectors/{id}/sync|手动触发（在途→409）|202|sync|
+  |GET|/v1/knowledge/connectors/{id}/runs?limit|轮次史（limit 仅下限钳）|200|—|
+  |GET|/v1/knowledge/connectors/{id}/items?status|指纹行（missing 排查）|200|—|
+
+- **后果**：无 pb/TS 生成物，web 端 types.ts ConnectorDTO 手写镜像（⑧ 前端
+  片同步登记）；契约无编译期保证——由 internal/service/
+  knowledge_sourcesync_test.go + admin_test.go 双层钉阵兜底；**晋升条件＝
+  第二 connector kind GA 或 G-40 启动**，一次性迁 proto（pb+TS 同批）；
+  晋升前每加字段必须同 PR 补 service 测试钉（DOC-SYNC-1 字面）。
+- **替代方案**：新建 api/kratos/knowledge/connector/v1/connector.proto
+  full 设计（§8.3 契约完整性优先）——本批否：迭代期字段 churn 会把生成物
+  合并税放大成每次 PR 成本，且 knowledge.proto 并行脏区未清。
+
 ### ⑧ WS 帧契约
 
 `event_type='knowledge_source_sync'`，SystemNoticeEvent WS-only（Informational，AS-EVT-01 分级表不动）：meta=`{connector_id, run_token, collection_id, kind, phase:'started|progress|done|auth_paused', status, created, updated, unchanged, fetch_failed, deleted, miss_unknown, error_code, duration_ms}`。聚合纪律：每轮 ≤1 started＋节流 progress（≥15s 或计数变化>20%）＋≤1 done；auth_paused 状态迁移必发 1 帧（抑制 5min 重发）；变更集>50 时 per-doc 帧全压制并入终帧计数；手动触发∧变更≤10 豁免走既有 publishKnowledgeIngest（前端零改）；错误明细落 runs/connector 列不进帧。G-32 决策 9 producer 值空间登记 `connector_source_*` 前缀（tombstone 组合），与 T5 `knowledge_chunks_diff` 不双发（DOC-SYNC 项）。
@@ -4168,9 +4247,342 @@ KnowledgePage 设置区新增 `KnowledgeConnectorsPanel.vue`（KnowledgeEmbedder
 
 首项＝kickoff 预留的 Notion 凭据模型。逐项 topic/选项/推荐/理由见 37-knowledge.development.md G-38 kickoff；本设计按推荐值落地成文，拍板反转的受影响面：P1 凭据（④+W5）、P2 scope（W3/W6 排序）、P3 寻址（③+⑦）、P4 API（⑦+W5/W8）、P5 删除宽限（⑥+W7）、P6 载体（③）、P8 visibility（⑨）、P9 vault 关系（需求档分工）、P10 run 保留（③-4）、P11 权限映射（需求档+⑨文案）。
 
----
+### ⑭ 实施增量 as-built（每 W 片行为面落地登记）
 
-## V12.14 长期供粮核心可靠性（2026-08-17）
+> 本段是 W1–W9 实施期「设计 vs 落码」差异的唯一登记处（DOC-SYNC-1 同批）。W9 封尾时三件套状态翻转以本段为准。
+
+#### W1（2026-10-27，commit `41e6a28e2`）四表迁移+双轨 Ensure+hand-repo
+
+- **③-2 items 加列**：设计列清单 16 项未列 `error_message`，但同段 Upsert 钉明文「出席即…清 error_message」——按语义钉落列（第 10 列，列序在 `last_seen_run_id` 与 `first_seen_at` 之间）；登记处：migration 20261299 头注+commit message。
+- **max_fetch_bytes_per_run 初值**：设计 ③-1 列名有但缺初值；取 **512MiB**（单文件 32MB 白名单上限 × 约一轮新增批经验上界），W1 登记为「可调参」（DefaultMaxFetchBytesPerRun 常量同源）；不锁死曲线只防单轮失控。
+- **due 初值 id-hash 撒点**：设计 ③-1 括号提「due 初值=id-hash 撒点」；W1 未实现撒点（CreateConnector 由调用方传 next_run_at）——**W4 调度落**（interval-validated 创建时落撒点），本批不在 W1。
+- **auth 连 5 次→auth_paused （③-1) vs ⑥-4 「任一 401/403→auth_paused」**：设计双口径并存；原则取更保守的 ⑥-4（单发即 auth_paused＋告警，防雷头号事故），③-1 的 5 连档保留为「非 401/403 的 auth-adjacent 持续失败」兜底计数——双口径不互斥，由 W2 Runner 编码时区分。
+- **时间列布局**：四表全部 TEXT 定宽 `'2006-01-02T15:04:05.000000000Z07:00'`（字典序==时序）；repo 重用 `boardRunLeaseTimeLayout`（tool_spill 先例），不新定义 layout 常量。
+
+#### W2（2026-10-27，runner/claim 编排层）Runner ⑥ 八步序 + 认领/收轮 CAS + 僵尸回收
+
+- **认领时间戳载体裁决**：迁移 20261298 列冻结无 `run_claimed_at` 列——`updated_at` 双重角色承载「最后写时刻」与「租约心跳」（TryClaimRun 落 now；长轮 Runner 周期 heartbeat 续期，防窃取/误回收；Finalize 收轮再落）。管理面 PATCH/PUT 顺带续期为已认领的可接受副作用（最多延迟回收一个 TTL，无害）。`DefaultRunLeaseTTL=30min` 登记可调参；心跳间隔=LeaseTTL/3 钳 [5s, 3min]。
+- **工作预算裁决（items/bytes）**：预算只闸**提交工作量**不闸出席事实——触顶即哨兵 `ErrBudgetExhausted` 中止 walk、**游标不动**、partial 收轮、**跳候选圈定与删除**（部分 walk 非缺席权威，与 walk_empty_abort 同源安全理由）；未处理项续传靠 needsWork 判定（`DocumentID=="" ∨ ContentHash=="" ∨ 指纹漂移 ∨ Status==deleted`，后者见复活条款）+ 失败/跳过路径**保留旧指纹**，下轮自然重扫。设计 ⑥-6 的「预算截断」原文仅指 max_deletes，工作预算语义为 W2 新注册。
+- **auth 闸即时裁决**：任一 401/403（含 emit 内 Fetch）即中止整轮 walk（不续走烧配额——「整轮闸」保守读法）→ `auth_paused` 收轮：status=failed + error_code=auth_failed/credential_*，**不入退避序列、不动 next_run_at、游标不动、零圈定零删除**，等凭据 PUT 唤醒（⑤ 退避分级表）。③-1 的「连 5 次」档按 W1 登记保留为非 401/403 的 auth-adjacent 持续失败兜底（W5+ 凭据子系统接线时生效，本批不编码）。
+- **fetch_failed 桶合口**：runs 表列冻结无 apply 专列——`applier.Upsert` 失败与 `walker.Fetch` 失败同桶累计 `fetch_failed`；逐条病态 `SetItemError` 带阶段前缀（`fetch:`/`apply:`）可辨。**partial 收尾判定（完满 walk 前提）唯一由 FetchFailed>0 触发**；预算哨兵为独立 partial 收轮分支（见上条 ⑥-6，fetch_failed 可为 0、error_code 为空——C 批修措辞对齐，评审 #113）；`miss_unknown>0` 是删除面常态（三态保守性）不降级轮评级。
+- **增量出席语义**：取代 vault 全有/全无的「整轮 walk error＝零指纹变更」——walk error 时**零圈定零删除**+游标回滚（walker 契约），但已出席标记保留（出席是事实）；`runs` 行照旧落（failed + walk_failed）。仓口基础设施失败归一 error_code=walk_failed（walk/圈定前段）/ confirm_failed（确认/级联段），真相文本进 error_message。
+- **fencing 取代心跳失地宽容（评审 W2 修 #1，推翻宽容读法）**：HeartbeatClaim 失地即置 `lost` 原子旗——emit 顶闸 / ⑥-3 圈定前闸 / 删除循环随检三处读旗**全线止步**（老 runner 不得继续圈定/级联——否则与新主写面交错）；失地经 `errClaimLost` 哨兵归一 superseded 收轮：failed+walk_failed、**游标不动、零圈定零删除**、已出席标记保留、**run 审计行照落**（宁留审计不丢真相）、收轮 `FinalizeRunWithClaim` 的 token CAS 作兜底必报 ClaimLost。run 审计插入失败仅记日志仍续收轮（宁缺审计不留僵尸）。fakes 以严格 `<` 谓词镜像 SQL 窃取边界（等值即未过期）、Finalize 用服务器钟（`time.Now()`）落 `updated_at`；钉阵以 1ms 心跳 + 失地同步通道实现确定性无竞态断言。
+- **deleted 复活重绑条款（评审 W2 修 #5）**：needsWork 判定含 `Status==deleted`——deleted 项重新出席必须重取重绑（指纹相同也不得省），否则指针挂旧 `document_id`（或已级联删除）成悬挂绑定。另登记 **W7 待办**：`DeleteDocument` 反扫清理 items 失效绑定（带外文档删除盲区分治，本批不动）。
+- **删除候选窗显式化（评审 W2 修 #2）**：`ListItemsByStatus(missing)` limit=**显式 max(500, 3×max_deletes_per_run)**——PG repo 对 limit<=0 静默钳 500，口径在编排层唯一显式化；Unknown 大队首挤占时预算消耗仍受 max_deletes 闸（fail-safe 方向），超窗候选留 missing 下轮续议。
+- **RunOutcome.Error 贯通（评审 W2 修 #4）**：finalize 增 `cause` 参数贯通观测面死字段——调用侧/测试可取原始错误链（`errors.Is/As` 可用，auth 闸保粒度）；error_message 仍是落库 ≤512 截断口径。仓口故障六分支钉（Get item/UpsertSeen 归 walk_failed，MarkAbsent/List 归 confirm_failed，Finalize 仓故障不误报失地，审计插入失败续收轮）+ 注册缺失两分支钉 + 游标跨轮连续性钉（fake 原样记录每轮 Walk 收到的 prev）。
+- **FrameSink 缝**：W8 前的 noop 帧缝；事件点=started（claim 成功后）+ finished（finalize 唯一出口，含 auth_paused 迁移——⑧ 「auth_paused 必发 1 帧」由实现侧据此区分去重）。节流纪律（≥15s 或 >20%）由 W8 实现承担，Runner 不管控。
+- **分层**:internal/knowledge/sourcesync 不 import internal/service、internal/data——跨副本排他锁契约本地镜像 `JobLocker`（与 service.KnowledgeJobLocker 同构，W4 cron 装配 PG 实现注入）。
+
+#### W3 as-built 登记（2026-10-27 落定）
+
+- **external_id＝监视根内相对路径逐字保留**（正斜杠，零映射——「a/b.md vs
+  a-b.md」防撞键按构造免疫：不存在破坏性归一处；出入两侧守卫＝
+  **先验拒反斜杠/NUL**（评审修：SanitizeRelPath 首步是反斜杠→正斜杠改写
+  而非拒绝，直接代理会让手改 items 行坍缩张冠李戴）+ SanitizeRelPath 终审
+  拒 ../绝对路径；Walk 侧畸形名粒级 warn 跳过不杀全轮）；
+- **fingerprint＝文件内容 sha1**（Scan 同源 HashContent 输出）——mtime/size 只作
+  Scan 游标预筛复用 hash，不进指纹（**touch 不触发重摄取**）；
+- **游标 JSON `{v:1,files:[{p,m,s,h}]}`**——items 表只存 hash 不存 mtime，游标是
+  mtime 预筛唯一载体；损坏→空 prev 全量重 hash（成本换不丢失、不误删：walk
+  出席全列）；超大目录登记调参项（W4 可退化为每轮全量 hash 不持久化游标）；
+- **docHash＝Applier 以 payload 字节重算 HashContent**（不信传输指纹——walker
+  指纹同空间即可自证）；adopt 判定与 UI 上传共用同一 hash 空间（红线 3
+  「同库同 hash 不重复建档」由 GetDocumentByContentHash 命中保）；
+- **adopt 语义**：命中即登记（own_lifecycle=false）不改写既有文档、不接管
+  生命周期、不 tombstone——adopt 档内容冻结不随源更新为已知限制（治理面
+  提示挂 kickoff 挂账条目）；源内容漂移→按新 hash 再判，未命中即转 own
+  自建（同库不同 hash 不算撞红线）；
+- **悬挂绑定线路**：绑定 docID GetDocument not-found（带外删档）→落 adopt/create
+  重新建档，不整轮 abort（W2 评审修 #5 派生条款）；旧 item 行由 W7 反扫
+  归口清理；
+- **幂等短路**：documents.content_hash 已一致 ∧ status=indexed → 零写返回
+  （content/chunks 不重编排、图谱帧不发布）；
+- **提交序列（connector→文档唯一正道）**：建/更→indexing CAS（UpdateDocumentStatus
+  FSM）→BuildIndexedChunks（embedder nil=词法降级 R-4）→
+  CommitIndexedDocumentMeta（IngestCommitter 十三步 tx，G-32 T4 消费点）→
+  图谱四 hook（entity/relation/blockIndex/diffStats 全函数注入，未注入即跳；
+  block/reindex 失败仅降级 Warn 不回滚主提交——vault rebuildBlockIndex 同口径）；
+- **MIME 归一化**：text/*|json|xml 直读为正文（connector 无 vault frontmatter
+  语义）；他型走 ExtractorRegistry——未注入即硬错进 fetch_failed 桶（不静默
+  降级为乱码正文）；documents.mime_type 保留原件类型；
+- **config_json 敏感键黑名单**：`ParseSharedDirConfig` probe 先解 → 敏感键
+  （token/secret/password/credential/api_key 子串命中即拒——凭据一律走
+  credential 行表③-1）→ DisallowUnknownFields 严格 decode → root Trim+非空+
+  **绝对路径硬闸**（评审修：相对 root 随进程 CWD 漂移是配置事故，宁拒不歧义）；
+  缺失/畸形归 walk_failed 非 auth 家族；
+- **embed 熔断不背远端锅**：本层不落 EmbedCircuitAllow——BuildIndexedChunks 错误
+  的重试节奏由 interval≥900s 天然限流承载；提交失败不回填 content_hash→
+  下轮 needsWork 自然重试。
+
+##### W3 评审修轮关闭（wf_6f89c52c-5be，27 agent：21 确认 1 驳回，全修收官）
+
+- **symlink/特殊文件围栏**（#WALKER-1）：域级单点＝biz `SyncEngine.Scan`
+  regular-file 闸（WalkDir lstat 语义 vs `os.ReadFile` 解析链接的非对称不闸即
+  根内投毒读根外，vault/shared_dir 两产线同封）；Fetch 再持 Lstat 闸关
+  Scan→Fetch 偷换 TOCTOU；ConfirmDeleted 以 **Lstat** 回放（对齐 Scan 出席
+  谓词），非正则=Confirmed；
+- **ConfirmDeleted 出席谓词回放**（#W3-F2）：StillExists 唯「Scan 会出席」——
+  非正则/点文件/白名单外扩展/超 MaxBytes（`SyncEngine.MaxBytes()` 唯一真源）
+  =Confirmed（改名出白名单/超限不 limbo）；I/O 病/坏配置/守卫拒绝/取消 ctx
+  =Unknown 保守不删；
+- **docDelta 计数信号＝content_hash 空白度**（#D1）：hash 只随成功提交写入——
+  非空（含 error 残态重试）已计补 0，空=首交计 1；**vault status 口径在
+  「indexed→error→重试」序列双倍计数为 latent drift，connector 侧先行修正，
+  vault 侧挂账 W9 收口待办**；
+- **chunk_count 保账双闸**（#D2）：indexing CAS 与 markError 均传
+  prevChunkCount（PG `UpdateDocumentStatus` 无条件写 chunk_count 列，传 0 即
+  清零旧账→窗内删除按 0 减账永久漂移；**vault markError 传 0 同病，并挂 W9**）；
+- **图谱 hook panic 护栏**（#D3）：四 hook 全经 safeInvoke recover→Warn——
+  panic 不外逸越过 runner.finalize（收轮/审计行/租约归还优先于图谱增强）；
+- **孤儿补偿**（#W3-F1/D4）：createDoc 建档后 indexCommit 失败即 best-effort
+  DeleteDocument 回滚（无 hash 残档 adopt 不可见、W7 反扫无锚，重试每轮重复
+  建档必泄）；回滚失败仅告警登记；
+- **驳回 1 例（采纳）**：#W3-PIN-6「touch 不触发重摄取未钉」——e2e R2
+  unchanged 桶 + 游标往返钉已覆盖可观面上游（内容同 hash 同快照同出席），
+  采纳驳回不加冗余钉。
+
+#### W4 as-built（cronrunner/jobs/source_sync.go + cmd/admin 装配面；设计⑤接入面 B）
+
+- **单例 fan-out worker**（KnowledgeCurate 模板定型）：Start＝首扫先行＋ticker
+  30s（`SourceSyncDefaultPollInterval`——connector min interval 900s 下
+  3% 开销比），sweep＝崩溃回收前置→`ListDueConnectors`（next_run_at ASC
+  LIMIT **部分索引 SQL**——禁 Go 全表内存筛）→due 行逐条 fan-out；
+  `dueLimit=32`/`maxParallel=4` 双登记可调参（超窗随 next_run_at ASC 序
+  下 tick 自然续；全 kind 统一闸免 per-kind 分叉调参）；
+- **skipped_missed 逾期合并单轮**：一轮对一行至多一次 SyncOnce，无 backlog
+  追跑（walk 全量对账天然幂等；finalize 将 next_run_at 推进至未来后，逾期
+  全部坍缩入这一轮）；宕机对齐同⑤沉降口径；
+- **跨副本排他在 Runner 内部**（`lockKeyPrefix=knowledge-sourcesync:<id>`
+  advisory，fail-closed——抢不到即 skipped 常态打点）；进程内 single-flight
+  map 防同 connector 双跑（本 ticker 串行天然不撞，此闸为 W5 手动触发同
+  入口预留＋长轮跨 sweep 防御）；fan-out goroutine 退出 4 段 defers
+  （wg.Done/退 sem/退 inflight/桶级收尸 recover——主 goroutine recover
+  管不到子协程，panic 圈禁单轮）；RunOnce 顶层 recover 再圈禁仓口链路
+  panic（单 sweep 失败不致死，下 tick 自然重试）；
+- **kill-switch 热生效（登记裁决）**：`SOURCE_SYNC_DISABLED` 全局＋
+  `SOURCE_SYNC_<KIND>_DISABLED` 按 kind（大写），**每 sweep 重读 env**——
+  配额/凭据事故的停机手段不应要求进程重启（30s 周期读 env 零成本）；wire
+  provider 构造期同款前置（禁用即整个 worker 不装配，KnowledgeCurate 同款），
+  kind 闸于单条 due 热检跳过不动 inflight 槽；
+- **退避分级表不在本层（as-built 消歧）**：凭据直置 auth_paused、walk 失败
+  2^n min cap 60、死信与审计均由 W2 runner finalize＋runs 表（P10 100 轮
+  同事务 DELETE）承载；本 worker 只做拾取/分发/观察日志，不二次重试
+  （in-tick retry 会与 claim CAS 租约语义打架——首轮持 token 重试必撞 locked）；
+- **装配面**：cmd/admin wire.go＋wire_gen.go 手工同体镜像
+  `provideSourceSyncRunner`（仓口聚合＋`NewPGKnowledgeJobLocker`＋shared_dir
+  walker＋DocApplier；**图谱四 hook 本批不接线**——R-4 可选增强纪律，归
+  W6/W8 统一接线；PG 缺席/applier 装配失败返回 nil）＋
+  `provideSourceSyncWorker`（runner nil/SOURCE_SYNC_DISABLED 三态返回 nil
+  即不装配）；wire_part2.go Build 注册三件套（防 regen 丢接线）；
+  workers.go `goAfterReady("source_sync", Start)` 30s——typed-nil 守卫装瓶
+  前判空（杀闸=零注册）；
+- **结果打点分级**：SyncOnce 非 nil error（锁面/仓口基础设施故障 fail-closed
+  面）＝Warn；out.Skipped（locked 等抢常态＋disabled/not_found 免打扰）＝
+  Debug；**failed/partial＝Warn**（同级统计字段）；有活动量成功＝Info；
+  全不变＝Debug——30s 周期静默路径必须零日志洪；
+- **崩溃回收观测独家归 runner**：runner.ReclaimZombies 自担成功计数 Warn，
+  worker 侧仅告警回收失败（防同名双发）。
+
+##### W4 评审修轮关闭（wf_c3053dc3-aa2，21 agent：16 确认[跨维度归并 12 处全修]/1 驳回，全修收官）
+
+- **typed-nil 装瓶双发**（#W4-1＋#W4-WIRE-3）：workers.go 直接字面量装入
+  BackgroundStarter 接口——杀闸/PG 缺席/applier 装配失败三态 typed-nil
+  判真成非 nil 接口，假印 scheduled＋白起 goroutine（D2-f-7 同款病案复发）；
+  修＝装瓶前对具体指针判空，守卫置 D2-f-7 注释块侧枝；
+- **Build 集合漏注册**（#W4-1＋#W4-WIRE-1）：wire_part2.go 未注册
+  `data.NewSourceSyncRepo`/`provideSourceSyncRunner`/`provideSourceSyncWorker`
+  ——wire regen 即报错丢接线（P0-6 对抗评审 #4 同款教训，commit e9e3e53cc
+  判例）；修＝三件套注册至知识 worker 簇侧并注释援引判例；
+- **镜像体漂移**（#W4-2）：wire_gen 副本错误日志文案/字段与 wire.go 主本
+  分叉（运维按主本文案 grep 会漏）——修＝函数体逐字镜像复原（INV-ADMIN-1
+  主本纪律）；
+- **日志分级两处**（#W4-3＋#W4-JOB-1、#W4-4＋#W4-JOB-2）：failed/partial 折进
+  Info 违反本文件头部分级钉（SyncOnce 以 nil-error 返回运维级失败，Warn 阈
+  下必沉）——修＝拆支 `lg.Warn`；回收成功 Warn 与 runner 同名双发——修＝
+  worker 删，观测独家归 runner；
+- **钉阵补强六枚**（#W4-PIN-1/2/3/4/5/6/7）：BoundedParallelism 屏障栅确定性
+  化＋窗后 8 条逐条全量钉（截断到并发窗原不可见）；kind 闸热读钉＋跳过路径
+  inflight 残位钉（漏槽即单飞永久饿死）；顶层 sweep panic 收尸钉（顶层
+  recover 原零钉——deleta 全绿证明）；回收前置序钉（块对换原不可见）；单飞钉
+  Fatalf 路径清泄（被闸 goroutine 原泄漏）；另加 Start 合同钉（首扫先行＋
+  ctx 取消即返回——此前全程 RunOnce 手工驱动）；
+- **驳回 1 例（采纳）**：#W4-WIRE-2 provideWireOut 参数位次 wire.go/wire_gen
+  分歧——证伪：wire.go 带 wireinject 标签不入编译，位置仅 codegen stub 语义，
+  且本仓约定永不 regen；wire_gen 签名/调用点/keyed 字面量三者自洽构建绿，
+  采纳驳回不改。
+
+#### W5 as-built（2026-10-27，凭据子系统＋HTTP 面七端点；设计 ④⑦）
+
+- **代码锚点**：`internal/knowledge/sourcesync/admin.go`（AdminService 编排层：
+  CRUD/Trigger/Runs/Items/Credential 11 法）＋`admin_test.go`（钉①–⑩：无 key
+  硬拒/env 方案/同键保 ID/唤醒分级/trigger 分级/运行态零漂移/IDOR 404/级联
+  凭据/撒点缺省/墓碑免复活）；`internal/service/knowledge_sourcesync.go`（11
+  路由 handler 薄面）＋`knowledge_sourcesync_test.go`（503 装配守卫/405 分派/
+  PATCH 继承/双形态 config/limit 钳制/审计形状/严格解码）；`internal/server/
+  http.go` registerCustomRoutes knowledge 块 11 条登记；`internal/biz/knowledge/
+  sourcesync/model.go` ValidateCredentialKey/ValidateEnvSecretRef/
+  SanitizeConfigForExport；`internal/biz/channel_rules.go` MaskSecretRef（三
+  出口共用掩码唯一源）；`internal/data/knowledge_source_sync_repo.go`
+  TriggerConnectorSync/WakeConnectorFromAuthPaused＋UpdateConnector
+  run_token CAS；`internal/service/knowledge_http.go` Unavailable→503 映射新增。
+- **PATCH 继承语义（实现期裁决，服务层承担）**：请求体指针字段 nil=继承既有
+  （mergeConnectorBody）；`config_json` 空串/null/**空对象 `{}`** 同档视为未
+  提供——shared_dir config 必填 path，显式清空必过不了 ValidateConfig，按
+  继承处理（防「只想改名」的 PATCH 被 400 拒）。运行态字段（sync_state/
+  cursor/next_run_at/last_*/consecutive_failures/error_*/run_token/
+  workspace_id）请求体**结构上无槽位**，管理面不可写（`TestAdmin..._
+  RunStateZeroDrift` 钉）。
+- **管理面 CAS（评审派生硬闸）**：UpdateConnector SQL 谓词追加
+  `run_token = ''`——在途认领中管理写原子落空；编排层读后 CAS 失配**分级
+  409**（读成功证明存在≠404）；repo 与 fake 双镜像。
+- **凭据闸细则**：`env:` 前缀方案经 ValidateEnvSecretRef（POSIX 名形）后
+  **绕过加密闸**（K8s 注入旁路）；其余必须 `RequireKeyForSecret`（无 key→
+  Unavailable 硬拒，绝不静默明文落库）＋`EncryptChannelSecretRef`；同
+  credential_key 重写保原行 ID（partial-unique active-only 索引不换行）；
+  删后墓碑免复活（软删行存在即拒重写同键，防审计断链）。**key 校验不 Trim**
+  （`" pad"` 是形错不是空白噪声——评审钉）；Summary 只含 key，secret 仅存在
+  于解码后的请求体局部变量，出参 CredentialView 只有 configured+
+  masked_preview（无泄露槽位）。
+- **唤醒语义**：UpsertCredential 成功且 connector `sync_state='auth_paused'`
+  → WakeConnectorFromAuthPaused（idle＋ErrCodeNone＋consecutive=0）；**不动
+  next_run_at**（⑤：唤醒≠插队，下轮按原 due）；非 auth_paused 不写（防误
+  翻转 idle）。
+- **默认值落点**（W1「due 撒点挂 W4」的收口）：CreateConnector 由编排层补
+  interval 缺省（≥900 下限校验归 ValidateConfig）＋budget 三缺省（500/200/
+  512MiB）＋**next_run_at id-hash 撒点**（防新建风暴同 tick 齐发）；PATCH
+  **不补撒点**（更新不重排 due）。
+- **ErrorCode 归口**：admin 失败统一经 apierror（NotFound/BadRequest/
+  Conflict/Unavailable 四档）；`writeKnowledgeJSONError` 新增 Unavailable→
+  503（此前落 500，前端无法区分「未启用」与「内部错」——W5 钉发现并修）。
+- **装配面**：`NewKnowledgeService` 十参签名**不动**（setter 注入先例：
+  SetVaultSyncController/SetMonitorBus 同宗）——`SetSourceSyncAdmin`＋
+  `SetMonitorUsecase`；cmd/admin wire_gen.go 新增 `provideSourceSyncAdmin`
+  （sourceSyncRepos＋credentialCrypto＋logger），wire.go 手工同体镜像＋
+  wire_part2.go Build 注册（三件套纪律同 W4）。
+
+#### W6 as-built（2026-10-28，notion walker；设计 ②④ 运行时侧）
+
+- **walk 域＝集成共享面全量出席**（实现期裁决）：search API filter object=page
+  逐轮全量列（Notion 集成共享模型是天然边界——子树过滤须逐页拉 parent 链，
+  违反 ② 成本模型钉，不实现）；每轮全量出席是 tombstone 对账（⑥-3
+  active∧缺席→missing）的前提——任何「只 emit 增量页」的省费优化都会把
+  未变页误判 missing，拒做。**游标列恒空串**（Notion 无跨轮增量游标；
+  next_cursor 只在轮内分页用；「cursor-invalid 回退」实现为**轮内**
+  next_cursor 失效（400 validation_error 含 cursor）→ 清游标从头重 walk
+  一次，二次失效即 abort walk_failed）。
+- **429/Retry-After**：每次 429 读 Retry-After 头（缺省 1s，单跳上限 60s），
+  轮内累计上限 8 跳——尊重但不无限烧租约；超限普错归 walk_failed 入 2^n
+  分钟退避梯（⑤ 分级表），不误归 auth 家族。
+- **凭据运行时链（④）**：token 决议＝config `credential_key`（缺省 default）
+  → 凭据行表 GetCredential → secret_ref env: 方案读环境变量（不经解密）/
+  enc: 信封 DecryptChannelSecretRef；缺行→credential_missing、解密失败→
+  credential_decrypt_failed、401/403→auth_failed（全经 AuthError 包装，
+  runner 整轮闸收 auth_paused）。
+- **credential_key sanitize 白名单**（实现期裁决）：字面值 credential_key
+  是凭据行表**指针名**（非密）——`SanitizeConfigForExport` 豁免该键（大小写
+  不敏感精确相等；credential_key_v2 等变体仍剥），否则前端
+  read-modify-write PATCH 回环丢绑定；入库侧 ParseNotionConfig 同样豁免
+  白名单后扫敏感键黑名单（api_token 等仍拒）。**config 输入 credential_key
+  校验原值不 Trim**（W5 admin 同口径——先 Trim 会静默归一带空白键）。
+- **external_id＝Notion page UUID**：UUID 形状闸（32 hex/带横杠两形态），
+  防手改 items 行或畸形响应把路径段注进 URL；分页间漂移 dup 去重（search
+  非稳定快照，同页两窗出现只出席一次）；归档页 walk 跳过不出席。
+- **Fetch**＝retrieve（archived→普错进 fetch_failed 桶，下轮缺席走
+  ConfirmDeleted 正道）+ blocks.children 全分页渲染 markdown（13 块类型
+  白名单渲染，未知类型跳过不杀全页；512KiB 截断保真——轮预算
+  max_fetch_bytes_per_run 由 runner 另闸）；MIME=text/markdown 直读。
+- **ConfirmDeleted＝pages.retrieve 三态**：404/archived=true→Confirmed；
+  活性→StillExists；401/403/429/5xx/网络病→Unknown 保守不删（令牌吊销
+  返 401 非 404——Unknown 即误删防线，设计⑥-4 头号事故模式同宗）。
+- **GA 门（P2 拍板上调三层）**：装配面显式开闸 `SOURCE_SYNC_NOTION_ENABLED`
+  （jobs.SourceSyncKindGAOptIn，默认关——未开闸即不挂 walker；notion connector
+  行若误建/遗留，认领后以 walker 未注册判 walk_failed 失败收轮并
+  ConsecutiveFailures 指数退避重排（walk 不触地、零圈定零删除），非
+  not_found 静默跳过——C 批修措辞对齐行为，评审 #114；汰留靠不建行或
+  `SOURCE_SYNC_NOTION_DISABLED=1`。进程内编译期装配，开闸须重启，与
+  DISABLED 每 sweep 热读正交：一个管装配准入一个管事故停机）。GA 门三层＝
+  T4 十三步接线 ✓（commit f6e2b038a）+ W9 对抗评审 gate + 至少一个
+  shared_dir 生产浸泡周期；W9 收口岸翻转此默认。**替代性「tombstone_enabled
+  配置列」被否**（防误删需层级更深：连调度都不应发生）。
+- **DocApplier kind 无关**（复用钉）：notion 走同一 DocApplier 实例——
+  content_hash 重算/adopt/幂等短路全链 kind 无感。
+- **wire 三件套**：provideSourceSyncRunner 增参 CredentialCrypto（wire.go/
+  wire_gen.go 逐字镜像＋调用点 credentialCrypto 实参）；Build 注册面不变
+  （provider 名未增删）。
+- **HTTP 客户端**：outboundguard.NewClient(30s)（SSRF 护栏＋重定向同规则，
+  webresearch 先例）；BaseURL/Sleep 注入缝供 httptest 钉阵（假服务器面：
+  分页/dup/429 记账不真睡/cursor 重启/auth 归一/Fetch 渲染/ConfirmDeleted
+  三态/config 闸 14 枚钉）。
+
+#### W7 as-built（2026-10-28，墓碑级联 e2e 钉阵＋释放态闸阵）
+
+- **八步序存量覆盖确认**（本批零新生产码）：walk_empty_abort 通用闸
+  （TestRunner_WalkEmptyAbort）/auth 整轮闸 from-walk/from-fetch/粒度晋级
+  （AuthGateFromWalk/FromFetch/AuthCodeGranularity）/Unknown∧StillExists 不删
+  留 missing（UnknownStaysMissing）/删除预算截断（DeleteBudgetTruncation）/
+  adopt 不动文档（AdoptSafety）/级联失败留 missing（Cascade_DeleteFailure
+  KeepsMissing）——⑥-1…⑥-7 每步在 W2–W4 钉阵已有专钉，W7 不重复钉单步语义。
+- **notion e2e 三轮全链钉**（TestE2E_NotionCascadeRounds）：httptest 假 Notion
+  三端点（search/pages.retrieve/blocks.children）＋真 NotionWalker＋真 Runner
+  八步序＋真 DocApplier——与单元钉分工：单元钉锁每步语义，本钉锁**步骤间接线**
+  （walker 契约/runner 归一/applier 直读通道三层真实组合）。R1 search 出席建 2
+  → R2 指纹不变全 unchanged 零写动 → R3 page2 外部归档（检索面消失＋retrieve
+  报 archived）走「walk 缺席→missing→ConfirmDeleted(archived)=Confirmed→
+  own_lifecycle 级联」正道：item 落 deleted、文档级删、page1 文档不动、runs
+  审计三轮齐落。
+- **DeleteConnector 释放态闸阵**（TestE2E_ReleaseGates 三子钉）：disabled →
+  闸 1 skipped/disabled；真 SoftDeleteConnector 软删后行不可见 → 闸 1
+  skipped/not_found（PG GetConnector WHERE deleted_at 恒空串守卫的 runner 侧
+  语义——调度面与「全新未知 ID」同面）；SyncState=running∧心跳鲜活他主行 →
+  闸 3 skipped/claim_lost。三零断言面：walker 零调用（walkCalls=0）、runs 审计
+  零行、连接器零漂移（cursor/failures/sync_state/next_run_at 逐字复核——
+  claim_lost 属主行 running 基线非 idle，断言面按基线比对）。
+- **带外文档删除盲区（W2 挂账）**：本批维持「分治不代办」——带外 DeleteDocument
+  反向清扫 items 悬空绑定未实现，design ② 条已注记；收口决议归 W9 对抗评审
+  议题（要么本周期落 ListItemsByDocumentID 反向清扫 port，要么留 G-40）。
+
+#### W8 as-built（2026-10-28，WS 聚合帧＋前端 KnowledgeConnectorsPanel）
+
+- **帧缝实现**（`internal/service/knowledge_sourcesync_frames.go`）：
+  `NewSourceSyncFrameSink(bus)`——v2 SystemNoticeEvent（NoticeType=
+  `knowledge_source_sync`）WS-only 广播，nil bus 返回 nil（runner nil-Frames
+  闸即 noop——双闸与 PublishKnowledgeChunksDiffFrame 同款）。**零节流**：
+  runner 已保证 ≤1 started（SyncOnce 闸 3 后）+ ≤1 done（finalize 无条件
+  帧点）/轮，FrameSink 契约的节流条款（≥15s 或 >20%）留给未来 progress
+  帧，本批不发；skipped 轮零帧（runner 不触发事件点）；auth_paused 迁移
+  帧＝done 帧 status=failed∧error_code∈auth 家族原样透传（前端依此高亮
+  凭据区）。meta 键集唯一构造在 `SourceSyncFrameMeta`（started 帧零计数
+  泄漏纪律——计数只在终态帧）。装配：wire provideSourceSyncRunner 增参
+  `v2Bus biz.EventBus`（wire.go/wire_gen.go 双镜像＋Build 调用点 v2Bus
+  实参）。
+- **前端面板**（`web/src/components/knowledge/KnowledgeConnectorsPanel.vue`，
+  KnowledgeEmbedderPanel 明线先例——设置区嵌 KnowledgePage 设置对话框）：
+  连接器卡片列表（kind 徽章/sync_state 色点/last_success/next_run/error 摘要/
+  手动同步 running 禁用态）；编辑抽屉（kind 选择仅创建期/config 表单化
+  shared_dir=root、notion=credential_key+query/interval ≥900 前端钳/预算三值/
+  enabled 开关/read-modify-write 回环——sanitize 出库 credential_key 保活钉
+  在此消费）；runs 表＋items status=missing「删除待决」运营视图＋凭据区
+  （masked_preview 只读＋覆盖写 secret 密码框＋删键＋ARANEA_CREDENTIAL_KEY
+  提示文案＋保存后 refresh 显 auth_paused 唤醒面）。
+- **api/types 镜像**（features/knowledge/api.ts＋types.ts）：kratosApi 裸调
+  先例（.data 解包）＋asRecord/pickStr/pickBool/pickI32/pickI64 手映射；
+  11 路由全覆盖（list/create/get/patch/delete/trigger/runs/items/credential
+  GET/PUT/DELETE）；items status 过滤参数直通。
+- **WS 订阅**（useSourceSyncWs.ts）：useKnowledgeIngestWs 同款——GLOBAL
+  会话＋system channel＋NoticeType 过滤＋connector_id 范围（空串=面板
+  全收）＋800ms 尾触发防抖（started+finished 双帧收敛一次列表刷新）。
+- **badge 禁编辑裁决**：items[].document_id 即判定面（连接器文档在工作区
+  全库可见=visibilityHint 文案已落面板）；文档行内「连接器管理」只读徽章
+  因跨页数据面（文档视图不知 connector 绑定）未在本批接线——面板内
+  items 视图已曝光 document_id 绑定，文档编辑面拦截归后续批（不阻塞
+  GA：连接器的 own_lifecycle 文档在源侧管理是运维纪律，前端拦截是体验
+  增强非安全闸）。
+- **前端钉阵**：useSourceSyncWs.spec.ts（NoticeType/connector 范围/异 kind
+  三态过滤）＋api.spec.ts sourceSync 段（snake_case 视图映射/items status
+  过滤直通/runs 参数形状/URL 编码）；vitest knowledge 全目录 50 文件 478
+  钉绿。
+
+
 
 > 对应需求 US-49。目标是修复检索热路径和派生索引闭环，不引入新的知识真相源。
 
@@ -4367,3 +4779,171 @@ Agent 预检索与 HTTP Search 的 auto 模式都走 AdaptiveRouter，因此词�
 - **纯前端改动**：零 Proto/API/DB 变更；🔔 徽章数据复用 `GET /v1/knowledge/collections/{id}/writeback-pending` 与治理提案接口。
 - **性能目标**：知识库页 0 个 rAF 循环、0 个 SVG 折射滤镜、0 个常驻 canvas 粒子（图谱全屏除外）；移除 deep-space.sass 整块样式；编辑区无 backdrop-filter 重绘。
 - **测试**：`effects.spec.ts` 随组件删除；`workbench.spec.ts`/`WorkbenchSidebar.spec.ts` 等按新结构改断言；新增 CommandCenter 三分段与快捷键别名、图标轨展开收起、🔔 徽章计数测试。验收 `pnpm lint && pnpm test && pnpm build`；运行时 Docker 后端 + quasar dev(9301) 人工核验（R3）。
+
+## V12.21 G-38 W9 收口：W3 挂账双债修复（2026-10-28）
+
+### 背景
+
+G-38 W3 对抗评审（wf_6f89c52c-5be）发现两处计数/状态漂移潜伏债，挂账 W9 收口：
+
+- **#D1**：vault `docDelta` 旧口径唯看 `status`——`indexed→error(re-ingest 败)→重试` 序列中，重试时 `status="error"` 被误判为「未计数」再计 1，集合 `document_count` 双倍漂移。
+- **#D2**：`markError` 旧签名传 `chunkCount=0`，PG `UpdateDocumentStatus` 无条件写 `chunk_count` 列——error 残态把既有 chunk 账目清零，窗内删除按 0 减账永久失真。
+
+### 决策
+
+**#D1 修复**：`upsertDoc` 的 `docDelta` 唯看 `content_hash` 空白度（与 sourcesync applier #D1 同宗同策）：
+
+- `content_hash` 只随成功提交落库（`CommitIndexedDocumentMeta` 事务内 `UpdateDocumentSyncMeta` 回写）。
+- 非空 ⇒ 此前已计数（含 error 残态重试——hash 不清空）。
+- 空 ⇒ 首次成功提交 = 计 1。
+- `compiler==nil` 路径 hash 恒空故恒计 1，恰好对齐「首次计入发生在编译成功后」语义。
+
+**#D2 修复**：`markError` 新签名接收 `prevChunkCount`，4 个调用点一律传 `doc.ChunkCount`（残态前值）。PG 侧列写保持现状（无条件写），调用方负责传对值——避免改 PG 实现影响其他调用点。
+
+### 钉阵
+
+`vault_sync_test.go` 新增两枚回归（与 runner_e2e_test.go 同级）：
+
+| 钉 | 场景 | 断言 |
+|----|------|------|
+| `ErrorResidualReingest_NoDoubleCount` | R1 indexed → R2 modified+InsertChunks 注入败 → R3 重试成功 | `DocumentCount` 恒 1（R3 不得重复计 doc） |
+| `MarkErrorPreservesChunkCount` | R1 记 `prevChunkCount=N` → R2 注入败 → markError | `doc.ChunkCount==N`（非 0） |
+
+### 替代方案（驳回）
+
+- **#D1 改 PG 实现加 CAS 条件**：`UPDATE ... WHERE content_hash=''`——过度侵入，且 mem repo 语义需对齐；content_hash 空白度信号已足够。
+- **#D2 改 PG 实现条件写列**：`chunk_count = CASE WHEN $4=0 THEN chunk_count ELSE $4 END`——魔法值语义污染；调用方传对值更直白。
+
+### 遗留
+
+- PG 真库钉（W1–W8 先例延后批，待 PG 55432 重建）。
+- 推送待用户点头。
+- notion GA 门三层：T4 ✓ + W9 对抗评审 gate（挂 G-40 前批）+ shared_dir 生产浸泡周期。
+
+## G-40 写回仲裁四操作标准化（2026-10-28 设计定稿 v1，ADR-KN-20261028-G40-ARB4）
+
+> 需求：[37-knowledge.md US-61](./37-knowledge.md#us-61写回仲裁四操作标准化暂定矛盾自动失效可回放g-402026-10-28)｜调研：SOTA 缺口报告 G-40 行（Mem0 四操作 + Graphiti 低置信自动失效合并设计）｜锁序：G-39 → G-32 → G-38 → G-40 末棒
+
+### ① 背景与现状判据
+
+M3.2 写回仲裁已在词条页内运行：arbiter（LLM 批量）对同页既有事实段给出
+`supersedes/contradicts/unrelated` 三值裁决，消费面 upsertEntryDoc —
+supersedes（≥0.8）走版本链顶替+lineage 稳定、contradicts（≥0.7）落高风险
+提案+旧段不动、unrelated 追加。缺口判据（SOTA 报告）：
+
+1. 词表非标：Mem0 业界词表是 ADD/UPDATE/DELETE/NOOP 四操作，本仓三值使人
+   机契约与外部基准不对齐（微调/评测/审计词面跨项目漂移）；
+2. DELETE 无路径：contradicts 全带交审（提案堆积=治理债），暂定性矛盾
+   （推断置信带）的旧陈述长期并存——知识新鲜度被锁死；
+3. Graphiti 已证明：矛盾旧事实带审计链自动失效是安全的（可回放⇒误处置可逆）。
+
+### ② 决策总览（ADR-KN-20261028-G40-ARB4）
+
+| # | 决策 | 选定 | 边界 |
+|---|------|------|------|
+| D1 | 操作词表 | `WriteBackOp ∈ {add, update, delete, noop}` | biz 内字节稳定枚举；LLM 提示词即以四操作表达 |
+| D2 | 契约演化 | 解析层兼容旧值映射：supersedes→update、contradicts→delete、unrelated→noop；未知值丢弃（与现行过滤同纪律） | 一次切换无灰度——消费点唯二（arbiter 解析/upsertEntryDoc 消费） |
+| D3 | DELETE 置信分带 | 高置信 c≥0.7 维持现行人工二审；**低置信带 [0.5, 0.7) 自动失效** | 阈值常量 `deleteAutoInvalidateMin=0.5`、人工带沿用 `arbitrateContradictMinConfidence=0.7` |
+| D4 | 自动失效账本 | 旧段移除 + fact_version 墓碑（OldBody=旧段快照、NewBody=''）+ 低风险 conflict 提案直接 **applied**（payload 带 `auto_invalidated/confidence/reason/双 fact_id/dedup_key` 证据） | 回放=版本链；治理可见=M4 低风险自动应用先例，不堆 pending 债市 |
+| D5 | NOOP 零旁效应 | 不写入、不留版本、不产提案（与现行 unrelated 追加语义相异——仲裁明判重复/无关即跳过；verbatim 去重由 writeBackAlreadyPresent 兜底未触达全民） | 仲裁未判（不在输出列表）仍追加——NOOP 必须显式判定 |
+| D6 | 事故闸 | `KNOWLEDGE_WRITEBACK_DELETE_AUTO_INVALIDATE_DISABLED=1` → DELETE 自动失效带整带关闭，回落 G-40 前行为（c≥0.7 维持高风险 pending 提案人工二审；c<0.7 纯追加零审计——该带零提案零版本，与 G-40 前逐字节一致；C 批修措辞对齐钉⑨断言，评审 #115） | 生产装配侧读 env 注入 usecase 级布尔；事故期 [0.5,0.7) 带取证盲区为已接受代价（恢复 G-40 前语义，不新增审计事件） |
+| D7 | 失配降级 | DELETE/UPDATE 目标段在正文找不到（并发编辑/账实漂移）→ 降级：DELETE 行为同高带（追加+高风险提案）；UPDATE 行为同 append | 不丢新事实、不误删 |
+| D8 | 范围边界 | 事实段层 G-40 本体；边关闭层独立续批（2026-10-28 已收） | 续批只关 semantic 且 context 是被删事实段子串的 active 边；显式/实体/共激活边仍不动 |
+
+### ③ 代码分层与锚点
+
+- **biz**（本批唯一写面）：
+  - `evolution.go`：`WriteBackOp` 枚举 + `WriteBackArbitration.Operation` 字段
+    （旧 `Verdict` 字段同 commit 删除——内外消费面同批切换，不留双轨账）。
+  - `writeback_entry.go` upsertEntryDoc 消费重排：ADD→追加；UPDATE→现行顶替
+    路径轴移；DELETE→D3 分带；NOOP→跳过。失配降级 D7；kill-switch D6 读
+    usecase 字段 `writeBackDeleteAutoInvalidateOff bool`（SetWriteBackArbiter
+    姊妹 setter `SetWriteBackDeleteAutoInvalidateDisabled(bool)`？——否：
+    直接读 env 一次存字段 生产装配同位零新增接线（先例
+    `WriteBackArbiterDisabled()` 同文件同模式）。
+  - 提案构造：新 `recordAutoInvalidateProposal`（status=applied 直落、
+    dedup_key 含双 fact_id——与 recordConflictProposal 同幂等闸）。
+- **knowledge**：`writeback_arbiter.go` 提示词四操作化 + 解析映射（D2）。
+- **data**：零变更——fact_version 表既有 OldBody/NewBody 承载墓碑（NewBody=''
+  语义化）；governance_proposals 既有 status=applied 承载自动处置痕。
+
+### ④ FactVersion 墓碑语义补丁（03-u4）
+
+既有 `recordFactVersion` 守卫 `oldBody=="" || oldBody==newBody` 跳过——DELETE
+墓碑 NewBody='' 须豁免：判定改以「NewBody 空即 tombstone」可入档（旧段非空前提）。
+文档化：NewBody 空串=事实已被失效移除（回放方为空即理解为墓碑）。
+
+### ⑤ 阈值有理
+
+| 常量 | 值 | 依据 |
+|------|-----|------|
+| `deleteAutoInvalidateMin` | 0.5 | 现行提示词「推断 0.5-0.8」分布带自然下界；之下=猜。**非对称收沿有依据（C 批自裁 c2）**：推断带上沿延伸到 0.8 显见于提示词，但 [0.7,0.8) 仍交人工带——矛盾处置比顶替更不可逆，向高置信侧保守收沿是显式设计而非带窗错位。 |
+| 人工带下沿 | 0.7 | `arbitrateContradictMinConfidence` 现行值不动——高风险门槛历史行为冻结。 |
+| UPDATE 顶替 | 0.8 | `arbitrateSupersedeMinConfidence` 现行值不动。 |
+
+### ⑥ 测试策略（钉阵清单）
+
+biz（upsertEntryDoc / arbiter 假桩全链）：
+1. ADD 追加（含缺失仲裁→默认追加不 NOOP 化）；
+2. UPDATE ≥0.8 顶替+版本链+lineage（回归现行）；
+3. UPDATE 目标失配→降级追加；
+4. DELETE [0.5,0.7) 自动失效：旧段移除、新追加、fact_version 墓碑（NewBody 空）、
+   applied 提案 payload 证据齐全、版本链传参（OldBody=旧段）；
+5. DELETE ≥0.7 维持现行（旧段在、新追加、pending 高风险提案）；
+6. DELETE 目标失配→追加+高风险提案（不丢新）；
+7. DELETE c<0.5 → 追加（不 NOOP 化——未达自动带也不人造保守）;
+8. NOOP 零旁效应；
+9. kill-switch env 置位→DELETE 全带回落 G-40 前行为（c≥0.7 维持高风险 pending 提案、c<0.7 纯追加零审计——[0.5,0.7) 带零提案零版本，钉⑨显式断言 proposals==0 && versions==0，与前版本逐字节一致）；
+arbiter（LLM 假桩）：
+10. 四操作直出消费；11. 旧词表映射（supersedes/contradicts→update/delete）；
+12. 未知值丢弃；13. noop 在输出中透传被消费面跳过。
+
+### ⑦ ADR-KN-20261023-G38-API 封尾裁决
+
+晋升条件「G-40 启动迁 proto」裁定为：**本批不迁**——G-40 语义主体（四操作）
+与 API 承载面无耦合；2nd kind（notion）GA 前置未过（对抗评审 gate+shared_dir
+浸泡同在 G-40 期完成度位），批量迁 proto 的 pb+TS 生成物与并行会话脏区叠加
+风险高于收益。封尾采用「条件重述」：晋升触发器改为「第二 connector kind GA
+「notion」∧ SourceSync 路由面再有新增字段」双支一即迁；余波再议归 roadmap。
+（若后续拍板提前迁，独立批次走 §G-38 P4-b 路径一次性迁。）
+
+### ⑧ 挂账回收登记
+
+- **W2 挂账（带外 DeleteDocument 反扫 items 悬空绑定）**→ 已收：A1（本批
+  `internal/biz/knowledge/sourcesync_unbind.go` + commit 276779ec7）；C 批评审
+  (#10/#111 双镜确认) 登记级联边界：⑥-7 级联删档同经此钩点，级联在途行
+  （status='missing'）被先到的反扫清锚、级联新生 deleted 墓碑恒无
+  document_id——拍板「改登记不改机制」（谓词豁免仅保护删档前已存在的墓碑），
+  PG 钉 TestSourceSyncItem_UnbindCascadeTombstoneTerminalState 钉死终态。
+- **W9 对抗评审 gate**（notion GA 三层之一）→ 已收：C 批 wf_6fda0b29-07e
+  （43 agents / 18 findings / 16 confirmed / 2 contested），确认项全部修复
+  （fix-up 单独 commit，见 §⑨）；c1（fact_version 自动失效「可回放⇒可逆」
+  论证所依赖的回放读侧——当前生产无回放消费方，留痕写-only）自裁登记为
+  欠账：恢复工具/回放读侧属后续批，不作为本批缺陷；c2（推断带 0.5-0.8 上沿
+  ≥0.7 仍交人工）自裁驳回=显式设计保守收沿（见 §⑤）。
+- **治理处置/集合级联钩点**（评审 #18/#112/#19）→ 已收：治理 orphan 处置改经
+  DeleteDocumentMirror（NotFound 幂等吞没口径不变）；DeleteCollection 删除前
+  预扫文档 ID、删除成功后逐文档 best-effort 反扫。
+
+### ⑨ C 批评审修复登记（wf_6fda0b29-07e，2026-10-28，18 findings = 16 confirmed + 2 contested）
+
+确认项处置（每条含双镜 verify 结论；#10/#111、#18/#112 为同根双 finding）：
+
+| 评审 # | 严重级 | 处置 |
+|--------|--------|------|
+| #10/#111 级联删档反扫描清级联在途行锚（级联新生墓碑无 document_id） | major（爆炸半径镜降 minor） | 改登记不改机制（双镜首选零风险档）：三处锚承诺改作用域陈述 + sourcesync_unbind.go 头注已知边界 + PG 终态钉；机制档（deleted_doc_id write-only 列）留待治理面真正消费工程锚时再议 |
+| #11 DELETE 自动带内空 TargetFactID 静默平追加 | minor | 空目标纳入 D7 升级面：追加+高风险 pending 提案（同正文失配分支） |
+| #12 UPDATE 空 incoming FactID 顶替销毁正文 lineage marker | major | 顶替门禁 `FactID!=""`——空 incoming 按 D7 失配降级平追加（与首循环 stmt 纪律对齐） |
+| #13 同批 update→delete 同 TargetFactID 静默互吃 | major | 消费循环 `consumedTargets` 登记：update/delete 就地改写成功即登记目标；同批后续命中已消费目标一律 D7 降级 |
+| #14 跨带共享 dedup 键互吞（applied 审计痕吞人工二审复裁） | major | 自动失效键加 `:auto` 命名空间后缀；同带 verbatim 复发仍去重；死代码 `recordAutoInvalidateProposal`（同键形宣称）同批删除 |
+| #15 buildConflictPayload 未归一占位 `stmt` | minor | `stmt` 与空 ID 同归一陈述哈希（与 upsert 主循环/extractFactBlocks 纪律对齐） |
+| #16 候选截断取头部=最旧 20 段，最新段永不仲裁 | major | 截断改取尾部（正文序≈创建序，新块尾追加）+ 截断事件 Warn 可观测 |
+| #17 operation 未知值 + verdict 有效旧值被整条丢弃 | minor | 旧键兜底放宽为「空串或解析失败」均回退 verdict |
+| #18/#112 治理 orphan 处置 repo 直连绕过 DeleteDocumentMirror 钩点 | major | 治理处置改经 DeleteDocumentMirror（NotFound 幂等吞没口径不变） |
+| #19 DeleteCollection 集合级联不经钩点批量悬空 | minor | 删除前预扫全量文档 ID、删除成功后逐文档 best-effort 反扫；预扫失败仅 Warn |
+| #110 Warn「下轮兜底」与 needsWork 语义撕裂（静态源永不到达） | minor | Warn/注释改写为真实窗口（源漂移经 W3 dangling 兜底；静态源不自愈）+ `heal=on_next_source_drift_only` 字段 |
+| #113 W2「partial 判定唯一由 FetchFailed>0」与预算哨兵分支矛盾 | minor | 措辞作用域化（完满 walk 前提）——design 本条与 runner.go 头注双载体 |
+| #114 wire 注释「未开闸拾取即 not_found 跳过」与实测失败收轮+退避矛盾 | minor | wire.go/wire_gen.go 双镜像注释对齐行为（推荐档：改文不改行为） |
+| #115 D6「全带回落提案路径」与钉⑨零审计断言矛盾 | major（措辞） | 实现解释成立（整带关闭=G-40 前行为精确兑付），只修三处措辞载体（本条 D6/§⑥ 钉⑨/domains.go）；事故期 [0.5,0.7) 取证盲区登记为已接受代价 |
+
+Contested 自裁：**c1** fact_version 写-only（无生产回放消费方）→ 登记欠账（恢复工具属后续批，本批「可回放⇒可逆」论证效力降级为「留痕完整⇒事后可人工对账」）；**c2** 推断带 Scale 错位 → 驳回（显式设计保守收沿，见 §⑤ 措辞补充）。

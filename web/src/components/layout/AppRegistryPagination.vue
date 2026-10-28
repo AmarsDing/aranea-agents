@@ -19,6 +19,7 @@
         dense
         flat
         icon="chevron_left"
+        :aria-label="t('uiSystem.previousPage')"
         :disable="page <= 1 || loading"
         @click="emit('update:page', page - 1)"
       />
@@ -27,6 +28,7 @@
         dense
         flat
         icon="chevron_right"
+        :aria-label="t('uiSystem.nextPage')"
         :disable="page >= pageMax || loading"
         @click="emit('update:page', page + 1)"
       />

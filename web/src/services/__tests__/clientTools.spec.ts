@@ -27,7 +27,7 @@ function okOutcome(output = 'launched wechat'): ClientToolOutcome {
 
 describe('isDesktopCompanion', () => {
   afterEach(() => {
-    delete (window as Record<string, unknown>).__TAURI_INTERNALS__;
+    Reflect.deleteProperty(window, '__TAURI_INTERNALS__');
   });
 
   it('is false in a plain browser', () => {
@@ -35,12 +35,12 @@ describe('isDesktopCompanion', () => {
   });
 
   it('is true inside the desktop Tauri shell', () => {
-    (window as Record<string, unknown>).__TAURI_INTERNALS__ = {};
+    Object.defineProperty(window, '__TAURI_INTERNALS__', { value: {}, configurable: true });
     expect(isDesktopCompanion()).toBe(true);
   });
 
   it('is false on Android (UNSUPPORTED_CAPABILITY on the Rust side)', () => {
-    (window as Record<string, unknown>).__TAURI_INTERNALS__ = {};
+    Object.defineProperty(window, '__TAURI_INTERNALS__', { value: {}, configurable: true });
     const original = navigator.userAgent;
     Object.defineProperty(navigator, 'userAgent', {
       value: 'Mozilla/5.0 (Linux; Android 14)',
@@ -60,7 +60,7 @@ describe('isDesktopCompanion', () => {
 
 describe('createTauriClientToolExecutor', () => {
   afterEach(() => {
-    delete (window as Record<string, unknown>).__TAURI_INTERNALS__;
+    Reflect.deleteProperty(window, '__TAURI_INTERNALS__');
   });
 
   it('returns null outside the desktop shell', () => {
@@ -88,10 +88,7 @@ describe('executeClientToolInvoke', () => {
 
   it('rejects unknown tools without calling the executor', async () => {
     const exec: ClientToolExecutor = vi.fn(async () => okOutcome());
-    const outcome = await executeClientToolInvoke(
-      exec,
-      invokeMsg({ tool: 'client_screenshot', args: {} }),
-    );
+    const outcome = await executeClientToolInvoke(exec, invokeMsg({ tool: 'client_screenshot', args: {} }));
     expect(exec).not.toHaveBeenCalled();
     expect(outcome.ok).toBe(false);
     expect(outcome.error_code).toBe('UNSUPPORTED_TOOL');

@@ -2,11 +2,11 @@
   <q-page class="app-standard-page app-registry-page">
     <AppPageHero
       kicker="Token / Usage"
-      title="用量事件明细"
-      subtitle="按时间查看 model_token_usage_events 原始记录（费用来自 model_pricing_rules 快照）。列表为服务端分页。"
+      :title="t('usageEventsPage.title')"
+      :subtitle="t('usageEventsPage.subtitle')"
     >
       <template #actions>
-        <q-btn outline rounded no-caps icon="download" label="导出 CSV" :loading="exporting" @click="onExportCsv" />
+        <q-btn outline rounded no-caps icon="download" :label="t('usageEventsPage.export')" :loading="exporting" @click="onExportCsv" />
       </template>
     </AppPageHero>
 
@@ -18,7 +18,7 @@
         outlined
         emit-value
         map-options
-        label="范围"
+        :label="t('usageEventsPage.range')"
         :options="rangeOptions"
         @update:model-value="onFilterChange"
       />
@@ -30,7 +30,7 @@
         clearable
         emit-value
         map-options
-        label="Provider"
+        :label="t('usageEventsPage.provider')"
         :options="providerOptions"
         @update:model-value="onProviderChange"
       />
@@ -42,7 +42,7 @@
         clearable
         emit-value
         map-options
-        label="模型"
+        :label="t('usageEventsPage.model')"
         :options="modelOptions"
         @update:model-value="onFilterChange"
       />
@@ -54,7 +54,7 @@
         clearable
         emit-value
         map-options
-        label="Agent"
+        :label="t('usageEventsPage.agent')"
         :options="agentOptions"
         @update:model-value="onFilterChange"
       />
@@ -66,7 +66,7 @@
         clearable
         emit-value
         map-options
-        label="Team"
+        :label="t('usageEventsPage.team')"
         :options="teamOptions"
         @update:model-value="onFilterChange"
       />
@@ -78,7 +78,7 @@
         clearable
         emit-value
         map-options
-        label="来源"
+        :label="t('usageEventsPage.source')"
         :options="usageKindOptions"
         @update:model-value="onFilterChange"
       />
@@ -102,19 +102,19 @@
         clearable
         emit-value
         map-options
-        label="状态"
+        :label="t('usageEventsPage.status')"
         :options="statusOptions"
         @update:model-value="onFilterChange"
       />
       <template #actions>
-        <q-btn flat dense rounded no-caps label="重置" icon="restart_alt" @click="onResetFilters" />
-        <q-btn flat dense rounded no-caps label="查询" icon="manage_search" :loading="loading" @click="onSearch" />
+        <q-btn flat dense rounded no-caps :label="t('usageEventsPage.reset')" icon="restart_alt" @click="onResetFilters" />
+        <q-btn flat dense rounded no-caps :label="t('usageEventsPage.search')" icon="manage_search" :loading="loading" @click="onSearch" />
         <q-btn
           flat
           dense
           rounded
           no-caps
-          label="清理"
+          :label="t('usageEventsPage.purge')"
           icon="delete_outline"
           :loading="purging"
           @click="onPurgeConfirm"
@@ -122,17 +122,20 @@
       </template>
     </AppPageToolbar>
 
-    <q-banner v-if="error" rounded class="bg-negative text-white q-mb-md">{{ error }}</q-banner>
+    <q-banner v-if="error" rounded class="bg-negative text-white q-mb-md" role="alert">
+      {{ error }}
+      <template #action><q-btn flat :label="t('usageEventsPage.retry')" :loading="loading" @click="load" /></template>
+    </q-banner>
 
-    <q-card v-if="!loading && events.length === 0" flat class="app-registry-empty app-empty-state-center">
+    <q-card v-if="!loading && !error && events.length === 0" flat class="app-registry-empty app-empty-state-center">
       <q-card-section class="column items-center text-center q-pa-xl">
         <q-avatar size="72px" color="primary" text-color="white" icon="insights" />
-        <div class="text-h6 q-mt-md">暂无用量事件</div>
-        <div class="text-body2 text-grey-7 q-mt-sm">调整筛选条件后重新查询。</div>
+        <div class="text-h6 q-mt-md">{{ t('usageEventsPage.empty') }}</div>
+        <div class="text-body2 text-grey-7 q-mt-sm">{{ t('usageEventsPage.emptyHint') }}</div>
       </q-card-section>
     </q-card>
 
-    <template v-else>
+    <template v-else-if="!error || events.length">
       <AppRegistryTable
         :rows="events"
         :columns="columns"
@@ -195,7 +198,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted } from 'vue';
+import { computed, onMounted } from 'vue';
 import { useI18n } from 'vue-i18n';
 import AppPageHero from '../components/layout/AppPageHero.vue';
 import AppPageToolbar from '../components/layout/AppPageToolbar.vue';
@@ -206,7 +209,7 @@ import AppStatusChip from '../components/common/AppStatusChip.vue';
 import { useUsageEventsPage } from '../features/usage/useUsageEventsPage';
 import type { ModelTokenUsageEvent } from '../features/usage/types';
 import { type RegistryTableColumn } from '../features/ui/registryTableColumns';
-import { USAGE_EVENT_TABLE_COLUMNS } from '../features/usage/usageTableUi';
+import { buildUsageEventTableColumns } from '../features/usage/usageTableUi';
 
 const { t } = useI18n();
 
@@ -241,7 +244,7 @@ const {
   formatLatency,
 } = useUsageEventsPage();
 
-const columns = USAGE_EVENT_TABLE_COLUMNS satisfies RegistryTableColumn<ModelTokenUsageEvent>[];
+const columns = computed(() => buildUsageEventTableColumns(t) satisfies RegistryTableColumn<ModelTokenUsageEvent>[]);
 
 function onResetFilters() {
   resetFilters();
@@ -256,7 +259,7 @@ async function onExportCsv() {
   try {
     await exportCsv();
   } catch {
-    // error surfaced via store
+    // Domain composable owns export failure feedback.
   }
 }
 
