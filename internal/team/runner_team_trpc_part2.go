@@ -297,6 +297,12 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 		}
 		streamOpts.AbortOnStall = abortRun
 
+		// 输出预算护栏（2026-10-29 44 实测缺口）：推理型成员 reasoning 无上限
+		// 空转会把输出烧到 provider 上下文溢出（实测 reasoning 3 分钟 → 流中段
+		// "Context size has been exceeded"）；消费端超限自中止并立即失败收敛。
+		streamOpts.MaxReasoningChars, streamOpts.MaxOutputChars = agent.StreamOutputGuardLimitsFromEnv(
+			"ARANEA_TEAM", agent.DefaultTeamMaxReasoningChars, agent.DefaultTeamMaxOutputChars)
+
 		streamOpts.OnPromptTokensAccumulated = func(delta int) {
 			if r.accumulateRunTokenBudgetFromStream(attemptRunCtx, run, teamRow.ID, delta) {
 				abortRun()
@@ -351,9 +357,26 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 		r.finishRunErr(ctx, &run, t0, streamErr.Error())
 		return userMsg, biz.ChatMessage{}, streamErr
 	}
+	// 终态流错误守卫（2026-10-29 44 实测缺口）：流中段 response_error
+	// （如 "Context size has been exceeded"）只置 HasError/LastError 不中止
+	// 消费；若不拦截，下方 lastRunCtx 块会把真实 provider 错误包装成
+	// "stream aborted before first byte or mid-stream liveness"
+	// （ErrFirstByteTimeout）→ PlanExecutor 判 transient → 复活第二个团队
+	// （实测双团队并存）。真实错误必须原样透传，由 ClassifyStepFailure
+	// 分类为 overflow/output_budget（终态不重试）。doom loop 除外——
+	// doom 走既有的截断持久化语义。
+	if agent.IsTerminalStreamFailure(result) {
+		errMsg := strings.TrimSpace(result.LastError)
+		turnStatus = biz.TeamMemberStepStatusError
+		logTeamRunError(teamEmitter, "team.run.execute", errMsg+" hint=stream_terminal_error", mode)
+		rt.PublishLLMFailureNotice(r.td.Pipeline.EventBus, r.lg, ctx, deriveSpiritSessionID(sess), errors.New(errMsg))
+		r.finishRunErr(ctx, &run, t0, errMsg)
+		return userMsg, biz.ChatMessage{}, errors.New(errMsg)
+	}
 	if lastRunCtx != nil && lastRunCtx.Err() != nil {
 		hint := ""
 		errMsg := lastRunCtx.Err().Error()
+		outErr := lastRunCtx.Err()
 		switch {
 		case errors.Is(lastRunCtx.Err(), context.DeadlineExceeded):
 			if dur := TurnDeadlineDuration(def); dur > 0 {
@@ -363,14 +386,26 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 			if reason := r.cancelReason(sess.ID); reason != "" {
 				hint = " hint=cancel_reason:" + reason
 				errMsg += " (cancel_reason=" + reason + ")"
+				// Only user_cancel (and aliases) keep bare Canceled so
+				// StartTeamTurn's isUserCancelledErr maps to cancelled.
+				// First-byte / stall / AbortOnStall leave reason empty —
+				// wrap as ErrFirstByteTimeout so they stay failed, not
+				// user_cancelled (live44 orch probe 2026-10-29).
+				if !isUserInitiatedCancelReason(reason) {
+					errMsg = "stream aborted before first byte or mid-stream liveness"
+					hint = " hint=infra_liveness_abort"
+					outErr = fmt.Errorf("%w: %s", agent.ErrFirstByteTimeout, errMsg)
+				}
 			} else {
-				hint = " hint=client_disconnect_or_abort"
+				errMsg = "stream aborted before first byte or mid-stream liveness"
+				hint = " hint=infra_liveness_abort"
+				outErr = fmt.Errorf("%w: %s", agent.ErrFirstByteTimeout, errMsg)
 			}
 		}
 		logTeamRunError(teamEmitter, "team.run.execute", errMsg+hint, mode)
 		turnStatus = biz.TeamMemberStepStatusError
 		r.finishRunErr(ctx, &run, t0, errMsg)
-		return userMsg, biz.ChatMessage{}, lastRunCtx.Err()
+		return userMsg, biz.ChatMessage{}, outErr
 	}
 
 	if teamEmitter != nil {
