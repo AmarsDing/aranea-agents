@@ -48,6 +48,16 @@ func TestClassifyStepFailure(t *testing.T) {
 		{"rate limit 429 维持 transient", "rate limit 429", StepFailureTransient},
 		{"agent not found 维持 capability", "agent not found", StepFailureCapability},
 		{"空串维持 transient", "", StepFailureTransient},
+		// 上下文溢出（2026-10-29 44 实测缺口）：终态不重试——重试只会把
+		// 同一会话重打到溢出并复活第二个团队。
+		{"context size exceeded", `received error while streaming: {"code":500,"message":"Context size has been exceeded.","type":"server_error"}`, StepFailureOverflow},
+		{"context length exceeded", "maximum context length is 8192 tokens", StepFailureOverflow},
+		{"prompt too long", "prompt is too long: 213452 tokens > 200000 maximum", StepFailureOverflow},
+		// 输出预算护栏自中止：预算已耗尽，终态不重试。
+		{"output budget exceeded", "output budget exceeded: reasoning length 17000 chars > limit 16384 chars", StepFailureOutputBudget},
+		// 优先级 pin：溢出标记先于 transient 命中（"token limit exceeded"
+		// 含 "limit" 但不得被 transient 吞掉）。
+		{"溢出优先于 transient", "token limit exceeded after retry", StepFailureOverflow},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

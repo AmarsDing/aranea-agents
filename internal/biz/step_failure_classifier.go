@@ -39,14 +39,34 @@ const (
 	// team_cancel 等）。自动重跑违背用户意图——不重试、不消耗重试预算，
 	// 下游经 cascadeSkip 收敛（可被 ResumePlanBoard 复活）。
 	StepFailureCancel StepFailureClass = "cancel"
+	// StepFailureOverflow 上下文溢出（2026-10-29 44 实测缺口）：provider
+	// 流中段返回 "Context size has been exceeded" 等。重试只会把同一会话
+	// 重打到溢出（实测造成 PlanExecutor 复活第二个团队、双团队并存）。
+	// 镜像 provider.contextOverflowMarkers（biz 不依赖 provider，保持字符串规则）。
+	StepFailureOverflow StepFailureClass = "overflow"
+	// StepFailureOutputBudget 输出预算护栏自中止（stream consumer
+	// MaxReasoningChars/MaxOutputChars）。预算已耗尽，重试只会再次耗尽。
+	StepFailureOutputBudget StepFailureClass = "output_budget"
 )
 
-// 匹配优先级：cancel → capability → semantic → transient → 默认 transient。
-// 全部小写，匹配前对消息 lowercase。
+// 匹配优先级：cancel → overflow → output_budget → capability → semantic →
+// transient → 默认 transient。全部小写，匹配前对消息 lowercase。
 var stepFailureCancelPatterns = []string{
 	"context canceled", "context cancelled",
 	"user_cancel", "user_cancelled",
 	"team_cancel", "team_cancelled",
+}
+
+var stepFailureOverflowPatterns = []string{
+	"context length exceeded", "context_length_exceeded",
+	"context window", "maximum context length",
+	"context size has been exceeded", "context size exceeded",
+	"token limit exceeded", "request too large", "prompt is too long",
+	"maximum number of tokens allowed", "range of input length should be",
+}
+
+var stepFailureOutputBudgetPatterns = []string{
+	"output budget exceeded",
 }
 
 var stepFailureCapabilityPatterns = []string{
@@ -70,12 +90,23 @@ var stepFailureTransientPatterns = []string{
 
 // ClassifyStepFailure 对 team 执行失败消息做规则分类。空消息/未知消息
 // 返回 transient（fail-open，保持 F2 语义）。
-// 匹配优先级（D1-F3）：cancel → capability → semantic → transient → 默认。
+// 匹配优先级（D1-F3 + 2026-10-29 溢出/预算）：cancel → overflow →
+// output_budget → capability → semantic → transient → 默认。
 func ClassifyStepFailure(msg string) StepFailureClass {
 	m := strings.ToLower(msg)
 	for _, p := range stepFailureCancelPatterns {
 		if strings.Contains(m, p) {
 			return StepFailureCancel
+		}
+	}
+	for _, p := range stepFailureOverflowPatterns {
+		if strings.Contains(m, p) {
+			return StepFailureOverflow
+		}
+	}
+	for _, p := range stepFailureOutputBudgetPatterns {
+		if strings.Contains(m, p) {
+			return StepFailureOutputBudget
 		}
 	}
 	for _, p := range stepFailureCapabilityPatterns {
