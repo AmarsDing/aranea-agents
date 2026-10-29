@@ -785,6 +785,10 @@ func (o *ChatOrchestrator) consumeTurnStream(
 		streamOpts = &chatagent.StreamConsumeOptions{}
 	}
 	streamOpts.AbortOnStall = abortRun
+	// 输出预算护栏（2026-10-29 44 实测缺口）：chat 单聊/综合回合同样可能
+	// reasoning 空转烧穿上下文；超限即自中止，persistTurn 按终态失败收敛。
+	streamOpts.MaxReasoningChars, streamOpts.MaxOutputChars = chatagent.StreamOutputGuardLimitsFromEnv(
+		"ARANEA_CHAT", chatagent.DefaultChatMaxReasoningChars, chatagent.DefaultChatMaxOutputChars)
 	o.lg().With(loggateway.SessionID(sessionID)).Info("runSingleAgentViaTRPC: 开始消费事件流",
 		loggateway.StepID("chat.stream_consume_start"),
 		loggateway.Any("first_byte_timeout", firstByteTimeout.String()))
@@ -906,8 +910,10 @@ func (o *ChatOrchestrator) handleEmptyReply(
 	}
 	o.transitionSessionStatus(ctx, sessionID, sessstatus.SessionStatusInterrupted, sessstatus.StatusReasonError)
 	code := TurnErrEmptyReply
-	if fail.Kind == provider.FailureBilling || fail.Kind == provider.FailureAuth || fail.Kind == provider.FailureStall {
-		code = turnCodeFromFailure(fail)
+	// 已知失败类别（billing/auth/stall/overflow…）映射到专属错误码，
+	// 未知类别回落 EMPTY_REPLY。
+	if mapped := turnCodeFromFailure(fail); mapped != TurnErrLLMCallFailed {
+		code = mapped
 	}
 	te := TurnError(code, detail)
 	// Cancel 排除：用户取消早于首字节时流消费者以 nil error 返回空结果，
@@ -1063,7 +1069,12 @@ func (o *ChatOrchestrator) postProcessTurn(
 			loggateway.Str("run_id", runID),
 			loggateway.Err(serr))
 	}
-	if !clarifySuspended && !o.spiritWorkInFlight(ctx, sessionID) {
+	// 2026-10-29 修复（会话收敛缺口）：pending 队列非空时禁止翻 SessionStatus
+	// completed——实测团队在跑时用户连发两条消息、turn 收官后 session 直接
+	// completed，但队列里的消息从未被消费（用户看到「已加入队列」后无下文）。
+	// 出队 turn 执行完毕后由它自己的 postProcessTurn 收官。
+	hasPending := o.chatUC != nil && len(o.chatUC.GetPendingMessages(sessionID)) > 0
+	if !clarifySuspended && !hasPending && !o.spiritWorkInFlight(ctx, sessionID) {
 		o.transitionSessionStatus(ctx, sessionID, sessstatus.SessionStatusCompleted, "")
 	}
 	o.persistRememberIfRequested(ctx, sess, ag, input, execResult)

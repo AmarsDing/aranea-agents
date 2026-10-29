@@ -247,6 +247,35 @@ func TestPostProcessTurn_CompletesWhenSpiritPlanTerminal(t *testing.T) {
 	}
 }
 
+// TestPostProcessTurn_KeepsSessionRunningWhenPendingQueued（2026-10-29 会话
+// 收敛缺口）：pending 队列非空时禁止翻 SessionStatus completed——实测团队
+// 在跑时用户连发消息，turn 收官后 session 直接 completed，队列里的消息
+// 从未被消费。出队 turn 收尾时由它自己的 postProcessTurn 收官。
+func TestPostProcessTurn_KeepsSessionRunningWhenPendingQueued(t *testing.T) {
+	f := newPostProcessFixture(rt.NewRunRegistry())
+	pendingQ := rt.NewPendingMessageQueue()
+	pendingQ.Enqueue("sess-1", "queued followup")
+	f.orch.chatUC = biz.NewChatUsecase(nil, nil, NewPendingQueueAdapter(pendingQ), nil, nil, loggateway.NewNoop())
+
+	f.run()
+
+	// run 本身仍记 completed；只有 Session 翻转被抑制。
+	var runCompletedSeen bool
+	for _, c := range f.rs.setCalls {
+		if c.status == "completed" {
+			runCompletedSeen = true
+		}
+	}
+	if !runCompletedSeen {
+		t.Fatalf("expected SetRunStatus(completed), got %+v", f.rs.setCalls)
+	}
+	for _, s := range f.transitor.calls {
+		if s == sessstatus.SessionStatusCompleted {
+			t.Fatalf("pending queue non-empty must not transition session to completed: %+v", f.transitor.calls)
+		}
+	}
+}
+
 func TestPersistRememberIfRequested_NoopWhenWriterNil(t *testing.T) {
 	f := newPostProcessFixture(rt.NewRunRegistry())
 	f.orch.persistRememberIfRequested(

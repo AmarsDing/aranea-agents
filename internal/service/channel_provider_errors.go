@@ -46,6 +46,7 @@ func classifyChannelTurnError(err error) biz.ChannelTurnErrorKind {
 	if strings.Contains(msg, "context length") ||
 		strings.Contains(msg, "maximum context") ||
 		strings.Contains(msg, "context window") ||
+		strings.Contains(msg, "context size") ||
 		strings.Contains(msg, "prompt is too long") ||
 		strings.Contains(msg, "token") && (strings.Contains(msg, "exceed") || strings.Contains(msg, "limit")) {
 		return biz.ChannelTurnErrContextOverflow

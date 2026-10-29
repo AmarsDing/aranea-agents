@@ -139,6 +139,41 @@ func (o *ChatOrchestrator) submitChatMessageAsync(ctx context.Context, req *chat
 		preMsgID = uuid.NewString()
 	}
 
+	// When a run is already active, enqueue synchronously so the ACK status
+	// matches proto ("queued") instead of always claiming "accepted" before
+	// Execute discovers the conflict (live44 orch probe 2026-10-29).
+	//
+	// 2026-10-29 修复（split-brain）：EnqueueUserMessage 成功分两种——
+	// 进 pending 队列（queued=true）与 steer 进在跑 run（queued=false）。
+	// 原实现只在 queued=true 时返回 "queued"，steer 成功会穿透到下方
+	// 异步 Execute → 准入冲突 → 同一条内容再排一次队（实测同一会话出现
+	// 两条「消息已加入队列」notice + ACK 报 accepted）。任意形式的排队
+	// 成功都必须立即 ACK "queued"，绝不再走 Execute。
+	if o.runs != nil && o.runs.HasActive(sessionID) {
+		accepted, queued, pendingID, rejectReason, err := o.EnqueueUserMessage(sessionID, input.Content)
+		if err != nil {
+			o.releaseTurnIdem(sessionID, input.RequestID)
+			return nil, err
+		}
+		if !accepted {
+			o.releaseTurnIdem(sessionID, input.RequestID)
+			return nil, enqueueRejectError(rejectReason)
+		}
+		msgID := strings.TrimSpace(pendingID)
+		if msgID == "" {
+			msgID = preMsgID
+		}
+		lg.Info("SubmitChatMessage: queued behind active run",
+			loggateway.Str("pending_id", msgID),
+			loggateway.Bool("steer", !queued))
+		return &chatv1.SubmitChatMessageResponse{
+			Accepted:  true,
+			Status:    "queued",
+			MessageId: msgID,
+			TurnId:    msgID,
+		}, nil
+	}
+
 	// Derive from appctx.Ctx() so the turn outlives the HTTP request.
 	// StopGeneration cancels via the RunRegistry, not via this context.
 	// P0-02 fix: extract the authenticated userID from the HTTP context and

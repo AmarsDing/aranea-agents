@@ -272,6 +272,16 @@ func (p *turnPhases) persistTurn(
 		*ctx = bgCtx
 	}
 
+	// Terminal stream failure guard（2026-10-29 44 实测缺口）：流中段
+	// response_error（如 "Context size has been exceeded"）只置 HasError/
+	// LastError 不中止消费；若 reasoning 非空，DisplayMarkdownFromStream 的
+	// reasoning 回退会让 displayMarkdown 非空 → 真实失败被持久化为成功
+	// （实测：343 chunks/189s、has_error=true、outcome=completed、用户看不到
+	// 任何失败）。先判失败再判空回复，让 handleEmptyReply 以真实错误诚实收敛。
+	if chatagent.IsTerminalStreamFailure(result) {
+		return turnPersistResult{}, p.handleEmptyReply(*ctx, ag, admit, emitter, result, turnStart, turnStatus, turnErr, turnErrMsg, sessionID, execResult.turnProjector)
+	}
+
 	// Empty reply detection
 	displayMarkdown, reasoningAsDisplay := chatagent.DisplayMarkdownFromStream(result)
 	if displayMarkdown == "" {

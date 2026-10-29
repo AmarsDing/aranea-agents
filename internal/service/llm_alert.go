@@ -19,6 +19,8 @@ func turnCodeFromFailure(fail provider.Failure) TurnErrorCode {
 		return TurnErrProviderAuth
 	case provider.FailureStall:
 		return TurnErrFirstByteTimeout
+	case provider.FailureOverflow:
+		return TurnErrProviderOverflow
 	default:
 		return TurnErrLLMCallFailed
 	}

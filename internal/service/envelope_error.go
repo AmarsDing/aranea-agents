@@ -43,6 +43,8 @@ func turnErrorHint(code TurnErrorCode) string {
 		return "请在供应商控制台充值后重新发送"
 	case TurnErrProviderAuth:
 		return "检查供应商 API Key 是否有效，或更换模型"
+	case TurnErrProviderOverflow:
+		return "开启新会话，或减少附件/上下文长度后重试"
 	case TurnErrEmptyReply:
 		return "调整提问方式或关闭过于严格的工具限制"
 	case TurnErrAgentForbidden:
