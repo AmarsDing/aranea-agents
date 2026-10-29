@@ -284,6 +284,11 @@ func (s *ChatService) submitClarification(ctx context.Context, step biz.Step, an
 	// Transition session back to running.
 	s.orch.transitionSessionStatus(ctx, sessionID, sessstatus.SessionStatusRunning, "")
 
+	// 挂起 run 让位：澄清解除后收尾挂起的 interactive session_run，续跑
+	// turn 开新 run——否则 Begin 撞 StartInteractive 并发守卫被 fail-closed
+	// CONFLICT，用户答复从未落库（live44 2026-10-29 十轮复测 P1）。
+	s.orch.completeHeldSessionRun(ctx, sessionID)
+
 	// Resume the turn with clarified context.
 	// The clarified context is injected as a user-perspective message.
 	// envelope.OriginalInput 用于 cache 缺失时从信封重建续跑输入。
@@ -454,6 +459,10 @@ func (o *ChatOrchestrator) resolveClarificationFreeTextHint(ctx context.Context,
 	o.transitionSessionStatus(ctx, sessionID, sessstatus.SessionStatusRunning, "")
 	o.pendingClarifications.Delete(sessionID)
 
+	// 挂起 run 让位（与卡片作答同口径）：收尾挂起的 interactive
+	// session_run，本 turn 后续 Begin 开新 run，不再 fail-closed CONFLICT。
+	o.completeHeldSessionRun(ctx, sessionID)
+
 	o.lg().Info("clarification resolved via free text",
 		loggateway.SessionID(sessionID),
 		loggateway.Str("step_id", pc.StepID),
@@ -578,6 +587,20 @@ func (o *ChatOrchestrator) clarifyOriginalInput(ctx context.Context, step biz.St
 		loggateway.Str("task_id", step.TaskID),
 	)
 	return task.UserMessage
+}
+
+// completeHeldSessionRun 在澄清解除（卡片作答/自由回复）时收尾挂起的
+// interactive session_run：挂起 turn 的 runner 已退场，行留在 interactive
+// 只会让续跑 turn 撞 StartInteractive 并发守卫被 fail-closed（答复静默丢失）。
+// 收尾后续跑 turn 开新 run；无澄清等待态的会话不经过本路径，真并发/泄漏
+// 冲突仍由 Begin fail-closed 把关。lifecycle 缺失（部分测试 orch）时静默跳过。
+func (o *ChatOrchestrator) completeHeldSessionRun(ctx context.Context, sessionID string) {
+	if o == nil {
+		return
+	}
+	if lc := o.sessionRunLC(); lc != nil {
+		lc.CompleteHeldSessionRun(ctx, sessionID)
+	}
 }
 
 // clarifyTask loads the task owning a clarify step; nil-safe on every

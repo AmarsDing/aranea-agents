@@ -38,6 +38,12 @@ type sessionRunLifecycle interface {
 	BeginSessionRunLifecycle(ctx context.Context, p SessionRunStartParams) (context.Context, string, error)
 	// FinishSessionRunLifecycle ends a session run and cleans up the binding.
 	FinishSessionRunLifecycle(ctx context.Context, sessionID, sessionRunID string, turnErr error)
+	// CompleteHeldSessionRun finalizes the session's parked interactive run
+	// (phase=completed) when a clarification hold resolves and the runner is
+	// already gone. The resume turn then starts a fresh run instead of being
+	// fail-closed by StartInteractive's concurrency guard. Genuine conflicts
+	// (no clarify resolution) never reach this path and still fail closed.
+	CompleteHeldSessionRun(ctx context.Context, sessionID string)
 	// EscalateToDurableByUser escalates a session run from interactive to durable mode by user action.
 	EscalateToDurableByUser(ctx context.Context, sessionID, sessionRunID string)
 	// EscalateToDurableOnShutdown escalates an interactive session run to durable mode
@@ -326,6 +332,52 @@ func (l *chatSessionRunLifecycle) applyDurableTransition(
 		}
 	}
 	return true
+}
+
+// CompleteHeldSessionRun 在澄清挂起解除（卡片作答/自由回复）时收尾挂起的
+// interactive session_run。
+//
+// 背景（live44 2026-10-29 十轮复测 P1）：挂起 turn 的 Finish 按 G2 设计把
+// session_runs 行保持 interactive（等待用户作答），但 runner 已随 turn 收尾
+// 关闭、框架队列不复存在；续跑 turn 的 Begin 撞 StartInteractive 并发守卫后，
+// G2 收养路径（adoptAwaitingRun）依赖的进程内 awaiting_user 标记已被
+// RunRegistry.Finish 在挂起 turn teardown 时清除（续跑 turn 的 early-ack
+// SetRunStatus(running) 也会在 Begin 前覆盖它）→ 收养永不命中 → fail-closed
+// CONFLICT → 用户答复从未落库（静默丢失）。
+//
+// 问答回合在澄清解除时已闭环，此处把挂起行收尾为 completed（终态幂等），
+// 续跑 turn 开新 run。runner 仍在跑（HITL-await 等在跑挂起）或行为 durable
+// 时跳过——那些行各有自己的收尾路径。
+func (l *chatSessionRunLifecycle) CompleteHeldSessionRun(ctx context.Context, sessionID string) {
+	if l == nil || l.sessionRuns == nil {
+		return
+	}
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return
+	}
+	// runner 仍在跑的行由在跑 turn 自身的 Finish 收尾，禁止代收尾。
+	if l.runs != nil && l.runs.HasActive(sessionID) {
+		return
+	}
+	run, err := l.sessionRuns.GetActiveForSession(ctx, sessionID)
+	if err != nil || run.ID == "" || run.Phase != biz.SessionRunPhaseInteractive {
+		return
+	}
+	if err := l.sessionRuns.Complete(ctx, run.ID); err != nil {
+		l.lg.Warn("complete held session run failed",
+			loggateway.StepID("chat.session_run_complete_held"),
+			loggateway.SessionID(sessionID),
+			loggateway.Str("session_run_id", run.ID),
+			loggateway.Err(err),
+		)
+		return
+	}
+	l.lg.Info("澄清挂起 run 已收尾，续跑 turn 将开新 run",
+		loggateway.StepID("chat.session_run_complete_held"),
+		loggateway.SessionID(sessionID),
+		loggateway.Str("session_run_id", run.ID),
+	)
 }
 
 // adoptAwaitingRun re-adopts the still-interactive session run of a

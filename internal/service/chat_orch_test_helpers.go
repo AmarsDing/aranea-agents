@@ -112,6 +112,7 @@ func (noopSessionRunLifecycle) BeginSessionRunLifecycle(ctx context.Context, _ S
 	return ctx, "", nil
 }
 func (noopSessionRunLifecycle) FinishSessionRunLifecycle(context.Context, string, string, error) {}
+func (noopSessionRunLifecycle) CompleteHeldSessionRun(context.Context, string)                   {}
 func (noopSessionRunLifecycle) EscalateToDurableByUser(context.Context, string, string)          {}
 func (noopSessionRunLifecycle) EscalateToDurableOnShutdown(context.Context, string, string) bool {
 	return false

@@ -29,6 +29,8 @@ func (s *finishExecuteErrorLifecycleSpy) FinishSessionRunLifecycle(_ context.Con
 	s.turnErr = turnErr
 }
 
+func (s *finishExecuteErrorLifecycleSpy) CompleteHeldSessionRun(context.Context, string) {}
+
 func (s *finishExecuteErrorLifecycleSpy) EscalateToDurableByUser(context.Context, string, string) {
 	s.escalateHit = true
 }
