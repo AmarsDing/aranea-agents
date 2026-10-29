@@ -517,6 +517,43 @@ func (c *turnStreamConsumer) handleEvent(ev *trpcevent.Event) bool {
 		}
 		accumulateChoiceStream(&c.result, choice, partial)
 	}
+	// 输出预算护栏（2026-10-29）：reasoning/reply 累计字符超限 → 自中止。
+	// 与 doom loop 相同的 drain-only 语义（返回 false，调用方后台 drain）：
+	// 不主动打断 HTTP——本护栏的诉求是「turn/team 立即失败收敛」，打断流
+	// 不是必要条件且会打断 v2 projector 的正常收官。
+	if c.exceedsOutputBudget() {
+		return false
+	}
+	return true
+}
+
+// exceedsOutputBudget 检查输出预算并在首次超限时置终态信号。
+// 返回 true 表示本轮应中止消费。
+func (c *turnStreamConsumer) exceedsOutputBudget() bool {
+	if c.opts == nil || c.result.OutputBudgetExceeded {
+		return false
+	}
+	var side string
+	var got, limit int
+	switch {
+	case c.opts.MaxReasoningChars > 0 && c.result.Reasoning.Len() > c.opts.MaxReasoningChars:
+		side, got, limit = "reasoning", c.result.Reasoning.Len(), c.opts.MaxReasoningChars
+	case c.opts.MaxOutputChars > 0 && c.result.Reply.Len() > c.opts.MaxOutputChars:
+		side, got, limit = "reply", c.result.Reply.Len(), c.opts.MaxOutputChars
+	default:
+		return false
+	}
+	c.result.HasError = true
+	c.result.OutputBudgetExceeded = true
+	c.result.LastError = fmt.Sprintf("output budget exceeded: %s length %d chars > limit %d chars", side, got, limit)
+	// 与 doom loop 对齐：turn 被中止，终态必须是 Cancelled 而非 Completed。
+	c.canceled = true
+	c.lg.Warn("output budget exceeded, aborting turn stream",
+		loggateway.StepID("stream.output_budget"),
+		loggateway.Str("invocation_id", c.projectMeta.InvocationID),
+		loggateway.Str("side", side),
+		loggateway.Int("chars", got),
+		loggateway.Int("limit", limit))
 	return true
 }
 

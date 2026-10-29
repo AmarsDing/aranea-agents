@@ -43,6 +43,11 @@ func TestClassifyInvalidStream(t *testing.T) {
 		// ── 明确不属于本分类器的边界（防双重重试 pin）──
 		{"err_context_overflow", StreamInvalidObs{HasError: true, LastError: "maximum context length exceeded"}, StreamInvalidNone},
 		{"err_context_overflow_code", StreamInvalidObs{HasError: true, LastError: "context_length_exceeded: reduce your prompt"}, StreamInvalidNone},
+		// 2026-10-29 44 实测：本地网关流中段 500 "Context size has been
+		// exceeded."——溢出终态，恒 None（防 invalid-retry 重打到溢出）。
+		{"err_context_size_exceeded", StreamInvalidObs{HasError: true, LastError: `received error while streaming: {"code":500,"message":"Context size has been exceeded.","type":"server_error"}`, LastErrorType: "response_error"}, StreamInvalidNone},
+		// 输出预算护栏自中止：预算已耗尽，恒 None（重试只会再次耗尽）。
+		{"err_output_budget_exceeded", StreamInvalidObs{HasError: true, LastError: "output budget exceeded: reasoning length 17000 chars > limit 16384 chars"}, StreamInvalidNone},
 		{"err_stall_liveness_exhausted", StreamInvalidObs{HasError: true, LastError: "llm stream liveness exhausted: phase=stall reconnects=5/5 stall_timeout=1m30s", LastErrorType: "stream_error"}, StreamInvalidNone},
 
 		// ── 混合：finish_reason 优先于错误猜测 ──

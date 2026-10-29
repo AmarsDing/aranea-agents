@@ -133,6 +133,11 @@ type EventStreamResult struct {
 	// InvalidRetryAttempts 记录 invalid-retry 助手实际执行过的重试次数
 	// （不含首次尝试；未启用/未重试时为 0）。
 	InvalidRetryAttempts int
+	// OutputBudgetExceeded 为 true 表示消费端输出预算护栏自中止
+	// （MaxReasoningChars/MaxOutputChars 任一超限）：此时 HasError=true 且
+	// LastError 以 "output budget exceeded" 前缀描述超限侧。该信号是终态，
+	// 调用方必须按失败收敛（不重试、不持久化为成功）。
+	OutputBudgetExceeded bool
 }
 
 func NewRunnerDepsFromRuntime(trpcSession trpcsession.Service, memory trpcmemory.Service, artifact trpcartifact.Service, plugins ...trpcplugin.Plugin) TRPCRunnerDeps {
@@ -183,6 +188,16 @@ type StreamConsumeOptions struct {
 	// Keep the hook cheap — it runs on the single consume goroutine; throttle
 	// inside the closure.
 	OnStreamActivity func()
+	// MaxReasoningChars / MaxOutputChars（2026-10-29 输出预算护栏）：累计
+	// reasoning / reply 字符数超限时消费端自中止——置 HasError +
+	// OutputBudgetExceeded 并提前退出消费循环（与 doom loop 相同的 drain-only
+	// 语义：不打断 HTTP，后台 drain 防 goroutine 泄漏，turn/team 立即失败）。
+	// 动机：推理型模型（qwen3.8-flash-next 等）reasoning 无上限空转会把
+	// 输出一路烧到 provider 上下文溢出（实测 reasoning 3 分钟 → 流中段
+	// "Context size has been exceeded"）；输入侧 token 预算（team token
+	// budget）管不到输出方向。0 = 不启用。
+	MaxReasoningChars int
+	MaxOutputChars    int
 }
 
 func ConsumeEventStream(

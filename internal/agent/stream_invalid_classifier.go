@@ -204,6 +204,15 @@ var (
 		"maximum context length",
 		"token limit exceeded",
 		"request too large",
+		// 2026-10-29 44 实测：本地网关 500 "Context size has been exceeded."
+		// （OpenAI 兼容 server_error），镜像 provider.contextOverflowMarkers。
+		"context size has been exceeded",
+		"context size exceeded",
+	}
+	// invalidOutputBudgetMarkers：流消费者输出预算护栏自中止（MaxReasoningChars /
+	// MaxOutputChars）。预算耗尽是本进程主动终判，恒 None——不属于可重试 invalid。
+	invalidOutputBudgetMarkers = []string{
+		"output budget exceeded",
 	}
 	// invalidHTTPEOFMarkers：HTTP 流中段 EOF。
 	invalidHTTPEOFMarkers = []string{
@@ -269,6 +278,10 @@ func ClassifyInvalidStream(obs StreamInvalidObs) StreamInvalidKind {
 		}
 		// 溢出是 P0-3 SHRINK 独占领地：恒 None，防双重重试。
 		if matchInvalidMarker(errText, invalidOverflowMarkers) {
+			return StreamInvalidNone
+		}
+		// 输出预算护栏自中止：预算已耗尽，恒 None（重试只会再次耗尽）。
+		if matchInvalidMarker(errText, invalidOutputBudgetMarkers) {
 			return StreamInvalidNone
 		}
 		if matchInvalidMarker(errText, invalidMaxTokensMarkers) {
