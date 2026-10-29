@@ -427,6 +427,15 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	if err != nil {
 
 		markTurnError(&turnStatus, &turnErr, &turnErrMsg, err)
+		// 2026-10-29 活跃 run 泄漏修复：EXECUTE 失败（首字节超时/上下文溢出/
+		// 供应商故障）同样必须终结 session run。此前仅成功路径注册 Finish
+		// defer（下方），失败分支直接 return，session_runs 行残留
+		// interactive 相位；活跃唯一索引使后续所有 turn 走 fail-closed
+		// CONFLICT（44 实测：首字节超时后 synthesis attempt 3 起全部
+		// CONFLICT，spirit poller 每 30s 空转无法收敛）。此处与
+		// chat_orchestrator_turn_phases.go:396 的设计意图对齐（错误路径
+		// 上抛 sessionRunID 正是为了终结 run）。
+		finishSessionRunOnExecuteError(ctx, o.sessionRunLC(), sessionID, execResult.sessionRunID, turnErr)
 		return execResult.userMsg, biz.ChatMessage{}, err
 	}
 	defer func() {
@@ -472,4 +481,15 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	o.postProcessTurn(ctx, sess, ag, input, admit, execResult, persistResult, emitter, turnStart, turnStatus, clarifySuspended)
 
 	return userMsg, persistResult.assistantMsg, nil
+}
+
+// finishSessionRunOnExecuteError 在 EXECUTE 失败路径终结 session run
+// （phase=failed/cancelled）。空 runID（Begin 未成功/未挂绑）与缺失
+// lifecycle 时静默跳过。FinishSessionRunLifecycle 终态幂等、cancelled
+// 分类内部处理，此处不重复判别。
+func finishSessionRunOnExecuteError(ctx context.Context, lc sessionRunLifecycle, sessionID, sessionRunID string, turnErr error) {
+	if lc == nil || sessionRunID == "" {
+		return
+	}
+	lc.FinishSessionRunLifecycle(ctx, sessionID, sessionRunID, turnErr)
 }
