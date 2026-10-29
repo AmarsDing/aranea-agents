@@ -6,7 +6,6 @@ import (
 	artifactbiz "aranea-agents/internal/biz/artifact"
 	"aranea-agents/internal/biz/decision"
 	"aranea-agents/internal/event"
-	"aranea-agents/internal/provider"
 	rt "aranea-agents/internal/runtime"
 	"aranea-agents/internal/sandbox"
 	sessctx "aranea-agents/internal/session"
@@ -14,8 +13,6 @@ import (
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/strutil"
 	"context"
-	"errors"
-	"fmt"
 	"strings"
 	"time"
 
@@ -275,137 +272,39 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 		}
 	}()
 
-	var lastRunCtx context.Context
-	invokeFailed := false
-	attemptFn := func(attemptCtx context.Context, attemptNo int) (agent.EventStreamResult, error) {
-		// invalid-retry stall 共账（P0-4 §12.2③）：第 1 次尝试保持全量
-		// stall 重连池（equals 接线前行为，OFF 直通时逐字节一致）；后续
-		// 每次重试递减重连预算，经 provider.WithStallBudget 同一 ctx key
-		// 注入，消费端守卫总时限按剩余重连数同步重算。
-		remainingReconnects := agent.InvalidStallReconnects(stallMaxReconnects, attemptNo)
-		attemptRunCtx := provider.WithFirstByteRetryBudget(attemptCtx, firstByteBudget)
-		attemptRunCtx = provider.WithStallBudget(attemptRunCtx, stallTimeout, remainingReconnects)
-		attemptRunCtx, abortRun := context.WithCancel(attemptRunCtx)
-		defer abortRun()
-		lastRunCtx = attemptRunCtx
-
-		// 每次尝试新建 consume options（内嵌独立 v2 projector，attempt 间
-		// 无共享态；factory 语义见 newStreamConsumeOptions）。
-		streamOpts := r.newStreamConsumeOptions()
-		if streamOpts == nil {
-			streamOpts = &agent.StreamConsumeOptions{}
-		}
-		streamOpts.AbortOnStall = abortRun
-
-		// 输出预算护栏（2026-10-29 44 实测缺口）：推理型成员 reasoning 无上限
-		// 空转会把输出烧到 provider 上下文溢出（实测 reasoning 3 分钟 → 流中段
-		// "Context size has been exceeded"）；消费端超限自中止并立即失败收敛。
-		streamOpts.MaxReasoningChars, streamOpts.MaxOutputChars = agent.StreamOutputGuardLimitsFromEnv(
-			"ARANEA_TEAM", agent.DefaultTeamMaxReasoningChars, agent.DefaultTeamMaxOutputChars)
-
-		streamOpts.OnPromptTokensAccumulated = func(delta int) {
-			if r.accumulateRunTokenBudgetFromStream(attemptRunCtx, run, teamRow.ID, delta) {
-				abortRun()
-			}
-		}
-
-		if r.heartbeatWriter != nil && run.TeamRunV2ID != "" {
-			pinger := newTeamRunHeartbeatPinger(r.heartbeatWriter, run.TeamRunV2ID, r.lg)
-			streamOpts.OnStreamActivity = func() { pinger.Ping(attemptRunCtx) }
-		}
-		if streamOpts.V2Projector != nil {
-			streamOpts.V2Projector.Configure(v2Meta)
-			attemptRunCtx = biz.WithActivityEmitter(attemptRunCtx, streamOpts.V2Projector)
-		}
-
-		attemptEvents, runErr := agent.RunTRPCUserTurnMsg(attemptRunCtx, runner, uid, sess.ID, userTurnMsg, runOpts...)
-		if runErr != nil {
-			invokeFailed = true
-			return agent.EventStreamResult{}, runErr
-		}
-		invokeFailed = false
-		// F-C: 团队 Graph 路径绕过 trpcGraphRuntime.Run（唯一 EventBridge 宿主），
-		// node_start/node_end 到不了 coordinator 的 step watch，per-member
-		// team_run_steps 不持久化。tee 框架事件流，把图节点生命周期以 graph_stage
-		// system notice 重发到 EventBus（watch 按 spiritSessionID + execution_id 过滤）。
-		// Y3: HITL interrupt 经 tee 内联同步标记（先于流结束），避免 async bus
-		// 握手与 run 收尾竞态（DeferTeamRunSuccessIfHITL 读到陈旧 Running 把暂停误判完成）。
-		attemptEvents = teeGraphStageNotices(ctx, attemptEvents, r.td.Pipeline.EventBus, sess.ID, deriveSpiritSessionID(sess), StageGraphAssetID(teamRow.LinkedGraphID, teamRow.DefinitionJSON), graphExecID, onGraphInterrupt, r.lg)
-		attemptEvents = event.WrapFrameworkEventsWithOtel(attemptEvents, teamEmitter, teamBridge, teamBridge)
-
-		firstByteTimeout := provider.FirstByteGuardWithRetry(firstByteBudget, remainingReconnects)
-		return agent.ConsumeWithFirstByteGuard(attemptRunCtx, firstByteTimeout, attemptEvents, projectMeta, streamOpts, r.lg)
-	}
-
-	// invalid-retry（P0-4 A10）：默认关闭（env 开关），关闭时单次直通——
-	// 与接线前逐字节一致。
-	retryOpts := agent.InvalidRetryOptionsFromEnv()
-	retryOpts.Emitter = teamEmitter
-	result, streamErr := agent.RunTurnWithInvalidRetry(runCtx, attemptFn, retryOpts, r.lg)
+	// 流式执行段（attempt 闭包 + invalid-retry + 终态判定）已提取为
+	// executeTeamStreamAttempts（runner_team_trpc_stream.go）——终态判定
+	// 由「闭包内 defer 触发前的取消态快照」驱动，干净收官不再被清理性
+	// cancel 误判为流中止（2026-10-29 冤杀事故修复）。
+	result, streamErr := r.executeTeamStreamAttempts(teamStreamAttemptInput{
+		outerCtx:              ctx,
+		runCtx:                runCtx,
+		sess:                  sess,
+		teamRow:               teamRow,
+		def:                   def,
+		mode:                  mode,
+		run:                   &run,
+		runner:                runner,
+		uid:                   uid,
+		userTurnMsg:           userTurnMsg,
+		runOpts:               runOpts,
+		projectMeta:           projectMeta,
+		v2Meta:                v2Meta,
+		graphExecID:           graphExecID,
+		onGraphInterrupt:      onGraphInterrupt,
+		firstByteBudget:       firstByteBudget,
+		stallTimeout:          stallTimeout,
+		stallMaxReconnects:    stallMaxReconnects,
+		teamEmitter:           teamEmitter,
+		teamBridge:            teamBridge,
+		turnStatus:            &turnStatus,
+		t0:                    t0,
+		rollbackRunnerSession: rollbackRunnerSession,
+	})
 	streamLastRoundPromptTok = result.LastRoundPromptTok
 	streamLastRoundCompletionTok = result.LastRoundCompletionTok
-	if streamErr != nil && invokeFailed {
-		// LLM 调用发起失败（RunTRPCUserTurnMsg err）：保留原错误路径。
-		logTeamRunError(teamEmitter, "team.run.execute", streamErr.Error(), mode)
-		r.finishTeamRunWithError(ctx, &run, t0, streamErr.Error(), &turnStatus, rollbackRunnerSession)
-		return userMsg, biz.ChatMessage{}, streamErr
-	}
 	if streamErr != nil {
-		turnStatus = biz.TeamMemberStepStatusError
-		logTeamRunError(teamEmitter, "team.run.execute", streamErr.Error(), mode)
-		rt.PublishLLMFailureNotice(r.td.Pipeline.EventBus, r.lg, ctx, deriveSpiritSessionID(sess), streamErr)
-		r.finishRunErr(ctx, &run, t0, streamErr.Error())
 		return userMsg, biz.ChatMessage{}, streamErr
-	}
-	// 终态流错误守卫（2026-10-29 44 实测缺口）：流中段 response_error
-	// （如 "Context size has been exceeded"）只置 HasError/LastError 不中止
-	// 消费；若不拦截，下方 lastRunCtx 块会把真实 provider 错误包装成
-	// "stream aborted before first byte or mid-stream liveness"
-	// （ErrFirstByteTimeout）→ PlanExecutor 判 transient → 复活第二个团队
-	// （实测双团队并存）。真实错误必须原样透传，由 ClassifyStepFailure
-	// 分类为 overflow/output_budget（终态不重试）。doom loop 除外——
-	// doom 走既有的截断持久化语义。
-	if agent.IsTerminalStreamFailure(result) {
-		errMsg := strings.TrimSpace(result.LastError)
-		turnStatus = biz.TeamMemberStepStatusError
-		logTeamRunError(teamEmitter, "team.run.execute", errMsg+" hint=stream_terminal_error", mode)
-		rt.PublishLLMFailureNotice(r.td.Pipeline.EventBus, r.lg, ctx, deriveSpiritSessionID(sess), errors.New(errMsg))
-		r.finishRunErr(ctx, &run, t0, errMsg)
-		return userMsg, biz.ChatMessage{}, errors.New(errMsg)
-	}
-	if lastRunCtx != nil && lastRunCtx.Err() != nil {
-		hint := ""
-		errMsg := lastRunCtx.Err().Error()
-		outErr := lastRunCtx.Err()
-		switch {
-		case errors.Is(lastRunCtx.Err(), context.DeadlineExceeded):
-			if dur := TurnDeadlineDuration(def); dur > 0 {
-				hint = fmt.Sprintf(" hint=definition_timeout_hit effective=%s", dur)
-			}
-		case errors.Is(lastRunCtx.Err(), context.Canceled):
-			if reason := r.cancelReason(sess.ID); reason != "" {
-				hint = " hint=cancel_reason:" + reason
-				errMsg += " (cancel_reason=" + reason + ")"
-				// Only user_cancel (and aliases) keep bare Canceled so
-				// StartTeamTurn's isUserCancelledErr maps to cancelled.
-				// First-byte / stall / AbortOnStall leave reason empty —
-				// wrap as ErrFirstByteTimeout so they stay failed, not
-				// user_cancelled (live44 orch probe 2026-10-29).
-				if !isUserInitiatedCancelReason(reason) {
-					errMsg = "stream aborted before first byte or mid-stream liveness"
-					hint = " hint=infra_liveness_abort"
-					outErr = fmt.Errorf("%w: %s", agent.ErrFirstByteTimeout, errMsg)
-				}
-			} else {
-				errMsg = "stream aborted before first byte or mid-stream liveness"
-				hint = " hint=infra_liveness_abort"
-				outErr = fmt.Errorf("%w: %s", agent.ErrFirstByteTimeout, errMsg)
-			}
-		}
-		logTeamRunError(teamEmitter, "team.run.execute", errMsg+hint, mode)
-		turnStatus = biz.TeamMemberStepStatusError
-		r.finishRunErr(ctx, &run, t0, errMsg)
-		return userMsg, biz.ChatMessage{}, outErr
 	}
 
 	if teamEmitter != nil {
