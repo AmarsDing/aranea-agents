@@ -383,6 +383,9 @@ func TestIsContextOverflow_MarkerPin(t *testing.T) {
 		"prompt exceeds context window",
 		// E2E-H3: Anthropic 400 规范文案——不得漏出 shrink-retry 触发集。
 		`POST /v1/messages: 400 {"type":"error","error":{"type":"invalid_request_error","message":"prompt is too long: 213452 tokens > 200000 maximum"}}`,
+		// 2026-10-29 44 实测：本地网关流中段 500 server_error，缺失时
+		// 落通用 Fatal → PlanExecutor 复活第二团队。
+		`received error while streaming: {"code":500,"message":"Context size has been exceeded.","type":"server_error"}`,
 	}
 	for _, msg := range positives {
 		if !IsContextOverflow(msg) {

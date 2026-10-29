@@ -87,6 +87,12 @@ var contextOverflowMarkers = []string{
 	// RetryFatal，shrink-retry 阶梯不触发（与 E2E-H3 同型缺口）。
 	"maximum number of tokens allowed",
 	"range of input length should be",
+	// 2026-10-29 44 环境实测：本地模型网关（OpenAI 兼容）流中段返回
+	// {"code":500,"message":"Context size has been exceeded.","type":"server_error"}。
+	// 缺失时该错误落通用 Fatal/StreamError：invalid-retry 与 PlanExecutor
+	// transient 重试会把同一会话重打到溢出，表现为团队复活/双团队。
+	"context size has been exceeded",
+	"context size exceeded",
 }
 
 // contentFilterMarkers match provider safety-system rejections; these should
