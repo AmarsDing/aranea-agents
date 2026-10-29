@@ -129,11 +129,32 @@ func FirstByteGuardWithRetry(budget time.Duration, maxReconnects int) time.Durat
 	return time.Duration(1+maxReconnects)*budget + stallBackoffSum(maxReconnects) + livenessGuardSlack
 }
 
+// LivenessGuardOptions 携带活性守卫的每模型兜底预算（2026-10-29 自模型
+// 目录 config_json 下沉）：first_byte_timeout_sec / stall_timeout_sec /
+// stall_max_attempts。优先级：ctx 注入预算（WithFirstByteRetryBudget /
+// WithStallBudget，聊天/团队编排路径）> 本结构体字段 > 包默认值。
+// 零值结构体 = 与治理前行为完全一致（stall 落包默认 90s/5，首字节维度无
+// ctx 注入时不监控）——睡眠记忆固化等不注入 ctx 预算的辅助调用链由此
+// 吃到目录行声明的预算，而不是静默跑包默认值。
+type LivenessGuardOptions struct {
+	// FirstByteTimeoutFallback 无 ctx 首字节预算注入时使用的首字节预算；
+	// <=0 保持「无注入不监控首字节维度」旧语义。
+	FirstByteTimeoutFallback time.Duration
+	// StallTimeoutFallback 无 ctx stall 预算注入时使用的事件间隔预算；
+	// <=0 落回 DefaultStallTimeout。
+	StallTimeoutFallback time.Duration
+	// StallMaxReconnectsFallback 无 ctx stall 预算注入时使用的重连上限；
+	// <=0 落回 DefaultStallMaxReconnects。
+	StallMaxReconnectsFallback int
+}
+
 // WrapModelWithLivenessGuard wraps inner with a full-stream liveness guard
 // （2026-09-01 治理由「首字节单发重试」升级）：
 //
-//   - 首事件前：首字节预算（ctx 注入，无注入则该维度不监控——保持旧语义）。
-//   - 首事件后：相邻事件间隔 stall 预算（ctx 注入 > 包默认 90s）。
+//   - 首事件前：首字节预算（ctx 注入 > 每模型兜底；两者皆无则该维度不
+//     监控——保持旧语义）。
+//   - 首事件后：相邻事件间隔 stall 预算（ctx 注入 > 每模型兜底 > 包默认
+//     90s/5 次）。
 //     任何事件到达即重置计时器——有响应就不超时，流可合法跑任意久。
 //   - 计时器触发 / 中段 stream_error：取消本 attempt（断开 HTTP）→ 指数
 //     退避 → 重发同一 Request，最多重连 maxReconnects 次（默认 5）。
@@ -151,7 +172,7 @@ func FirstByteGuardWithRetry(budget time.Duration, maxReconnects int) time.Durat
 // （reconnect-N），下游 llmflow ID 归一化与 v2 projector 据此切断旧轮次 /
 // 截断半截累积内容——事件流上的重发段可辨、可截断，不再以裸 delta 重复。
 // 消费端首字节守卫总时限已按 FirstByteGuardWithRetry 重算，不会误杀重连。
-func WrapModelWithLivenessGuard(inner trpcmodel.Model, providerType, modelName string, lg loggateway.Logger) trpcmodel.Model {
+func WrapModelWithLivenessGuard(inner trpcmodel.Model, providerType, modelName string, lg loggateway.Logger, opts ...LivenessGuardOptions) trpcmodel.Model {
 	if inner == nil {
 		return nil
 	}
@@ -160,6 +181,9 @@ func WrapModelWithLivenessGuard(inner trpcmodel.Model, providerType, modelName s
 		provider: providerType,
 		model:    modelName,
 		lg:       lg,
+	}
+	if len(opts) > 0 {
+		base.opts = opts[0]
 	}
 	if _, ok := inner.(trpcmodel.IterModel); ok {
 		return &livenessGuardIterModel{livenessGuardModel: base}
@@ -172,10 +196,42 @@ type livenessGuardModel struct {
 	provider string
 	model    string
 	lg       loggateway.Logger
+	opts     LivenessGuardOptions
 }
 
 type livenessGuardIterModel struct {
 	*livenessGuardModel
+}
+
+// firstByteBudget 按「ctx 注入 > 每模型兜底 > 0（该维度不监控，旧语义）」
+// 解析本轮首字节预算。
+func (m *livenessGuardModel) firstByteBudget(ctx context.Context) time.Duration {
+	if d := firstByteRetryBudgetFromContext(ctx); d > 0 {
+		return d
+	}
+	return m.opts.FirstByteTimeoutFallback
+}
+
+// stallPolicy 按「ctx 注入 > 每模型兜底 > 包默认值」解析本轮 stall 策略。
+func (m *livenessGuardModel) stallPolicy(ctx context.Context) stallPolicy {
+	p := stallPolicy{timeout: DefaultStallTimeout, maxReconnects: DefaultStallMaxReconnects}
+	if m.opts.StallTimeoutFallback > 0 {
+		p.timeout = m.opts.StallTimeoutFallback
+	}
+	if m.opts.StallMaxReconnectsFallback > 0 {
+		p.maxReconnects = m.opts.StallMaxReconnectsFallback
+	}
+	if ctx != nil {
+		if v, ok := ctx.Value(stallBudgetKey{}).(stallPolicy); ok {
+			if v.timeout > 0 {
+				p.timeout = v.timeout
+			}
+			if v.maxReconnects > 0 {
+				p.maxReconnects = v.maxReconnects
+			}
+		}
+	}
+	return p
 }
 
 func (m *livenessGuardModel) Info() trpcmodel.Info {
@@ -244,8 +300,8 @@ func (m *livenessGuardModel) generateWithGuard(ctx context.Context, request *trp
 	if ctx.Err() != nil {
 		return m.callOnce(ctx, request)
 	}
-	fbBudget := firstByteRetryBudgetFromContext(ctx)
-	policy := stallPolicyFromContext(ctx)
+	fbBudget := m.firstByteBudget(ctx)
+	policy := m.stallPolicy(ctx)
 
 	attemptCtx, cancelAttempt := context.WithCancel(ctx)
 	ch1, err := m.callOnce(attemptCtx, request)

@@ -98,10 +98,17 @@ func TRPCModelForProviderModel(ctx context.Context, catalog biz.TeamModelCatalog
 		})
 	}
 	// 活性守卫最外层（2026-09-01 治理由首字节单发重试升级为全程监控）：
-	// 首字节预算 + 流中段 stall 预算均由编排层经 ctx 注入
-	// （WithFirstByteRetryBudget / WithStallBudget）；stall 无注入时落回
-	// 包默认值，零预算首字节维度保持不重试的旧语义。
-	m = WrapModelWithLivenessGuard(m, strings.TrimSpace(cfg.ProviderType), strings.TrimSpace(cfg.ModelAPI), lg)
+	// 首字节预算 + 流中段 stall 预算优先取编排层经 ctx 注入的值
+	// （WithFirstByteRetryBudget / WithStallBudget）；未注入时落回本行
+	// 从目录 config_json 解析的每模型兜底默认值（2026-10-29 下沉——睡眠
+	// 记忆固化等不注入 ctx 预算的辅助调用链由此吃到目录行声明的预算，
+	// 而非包默认 90s×5）；目录行未声明时保持包默认值与「首字节不监控」
+	// 旧语义。
+	guardOpts := LivenessGuardOptions{
+		FirstByteTimeoutFallback: FirstByteTimeoutFromConfigJSON(pm.ConfigJSON),
+	}
+	guardOpts.StallTimeoutFallback, guardOpts.StallMaxReconnectsFallback = StallPolicyFromConfigJSON(pm.ConfigJSON)
+	m = WrapModelWithLivenessGuard(m, strings.TrimSpace(cfg.ProviderType), strings.TrimSpace(cfg.ModelAPI), lg, guardOpts)
 	// Q5 批 D3（94 三件套）：finish_reason/EOF 结构化透传——观测层挂
 	// LivenessGuard 之外，单个逻辑 GenerateContent 恰观测一次（liveness
 	// 内部首字节重连不可见，finish/EOF 以 reconnect 后终态为准）。rt 为
