@@ -70,6 +70,33 @@ func (s *TeamStarter) countFailedEvidenceMembers(ctx context.Context, teamID str
 	return failed, total
 }
 
+// lookupV1RunError 从 v1 team_runs 取失败原因：优先匹配 TeamRunV2ID 桥接列，
+// 否则回退最新一条 failed 且带 error_message 的记录。best-effort——读失败
+// 返回空串，不阻塞完成事件发布。
+func (s *TeamStarter) lookupV1RunError(ctx context.Context, teamID, teamRunV2ID string) string {
+	if s.team.TeamUC == nil {
+		return ""
+	}
+	runs, err := s.team.TeamUC.ListRuns(ctx, teamID, 10)
+	if err != nil {
+		s.lg.Warn("publishV2TeamRunCompletion: 读取 v1 团队运行记录失败，跳过 error 回填",
+			loggateway.StepID("spirit.v2.team_run_completion.v1_err_lookup_fail"),
+			loggateway.Str("team_id", teamID),
+			loggateway.Err(err))
+		return ""
+	}
+	var fallback string
+	for _, r := range runs { // ListRuns 按 created_at DESC（最新在前）
+		if r.TeamRunV2ID == teamRunV2ID && strings.TrimSpace(r.ErrorMessage) != "" {
+			return strings.TrimSpace(r.ErrorMessage)
+		}
+		if fallback == "" && r.Status == "failed" && strings.TrimSpace(r.ErrorMessage) != "" {
+			fallback = strings.TrimSpace(r.ErrorMessage)
+		}
+	}
+	return fallback
+}
+
 // publishV2TeamRunCompletion 发布 v2 TeamRun 完成事件 + MemberSession 更新事件。
 // 由 HandleTeamTurnResult 在团队状态变为 completed/failed/cancelled 时调用。
 //
@@ -195,6 +222,14 @@ func (s *TeamStarter) publishV2TeamRunCompletion(
 		StartedAt:       currentTR.StartedAt, // 回填真实开始时刻；零值时由下方兜底
 		CompletedAt:     &now,
 		Version:         newVersion,
+	}
+	// 2026-10-29 P2 修复（v1→v2 失败原因断层）：finishRunErr 把真实失败
+	// 原因写入 v1 team_runs.error_message，但本事件此前不填 tr.Error，
+	// team_runs_v2.error 恒空 → SpiritDelivery.ListFailedTeamBriefs 读 v2
+	// 只能给出「任务失败（无详细错误记录）」（44 实证：综合轮总结无法
+	// 归因 Context size exceeded）。失败终态时经 TeamRunV2ID 桥从 v1 回填。
+	if newStatus == biz.TeamRunV2StatusFailed {
+		tr.Error = s.lookupV1RunError(ctx, teamID, teamRunID)
 	}
 	if tr.StartedAt.IsZero() {
 		tr.StartedAt = now // 行不存在（首建）或早建行缺 StartedAt 时的兜底
