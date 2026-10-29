@@ -142,6 +142,25 @@ func TestFinishSessionRunLifecycle_DurableHandoffNotMisreadAsCancel(t *testing.T
 	}
 }
 
+// Race window: checkpoint written, phase still interactive, registry already
+// stamped cancelled/durable_escalate. Finish must not CAS to cancelled.
+func TestFinishSessionRunLifecycle_DurableHandoffInteractiveNotCancelled(t *testing.T) {
+	repo := &finishSessionRunRepoStub{run: biz.SessionRun{
+		ID: "srid-1", SessionID: "sess-1", Phase: biz.SessionRunPhaseInteractive,
+		CheckpointID: "cp-1",
+	}}
+	reg := rt.NewRunRegistry()
+	reg.SetStatus("sess-1", "run-1", biz.SessionRunPhaseCancelled, "durable_escalate")
+	lc := newFinishTestLifecycle(repo, reg)
+	lc.FinishSessionRunLifecycle(context.Background(), "sess-1", "srid-1", context.Canceled)
+	if repo.run.Phase != biz.SessionRunPhaseInteractive {
+		t.Fatalf("interactive handoff row must not be rewritten, got phase=%s", repo.run.Phase)
+	}
+	if repo.transitionCalls != 0 {
+		t.Fatalf("no cancel transition expected during durable handoff, got %d", repo.transitionCalls)
+	}
+}
+
 // 终态幂等：行已被并发路径写终态时 Finish 不覆写、不再发起终态迁移（原
 // Error 日志属误导性终态竞态）。
 func TestFinishSessionRunLifecycle_TerminalIdempotent(t *testing.T) {

@@ -300,9 +300,13 @@ func (l *chatSessionRunLifecycle) applyDurableTransition(
 		)
 		return false
 	}
-	stopped, runID := l.runs.Cancel(sessionID, "durable_escalate")
+	stopped, runID := l.runs.Cancel(sessionID, durableEscalateCancelReason)
 	if stopped {
-		if err := l.runStatus.SetRunStatus(ctx, sessionID, runID, biz.SessionRunPhaseCancelled, ""); err != nil {
+		// Keep durable_escalate in ErrMsg — FinishSessionRunLifecycle must
+		// see the handoff reason. Passing "" here previously wiped it and
+		// let finishCancelledRun race TransitionPhase(interactive→durable)
+		// into a cancelled row with an orphan checkpoint (live44 2026-10-29).
+		if err := l.runStatus.SetRunStatus(ctx, sessionID, runID, biz.SessionRunPhaseCancelled, durableEscalateCancelReason); err != nil {
 			l.lg.Warn("set run status failed on durable escalate cancel",
 				loggateway.StepID(flowStepRunEscalate),
 				loggateway.Str("session_id", sessionID),
@@ -354,12 +358,25 @@ func (l *chatSessionRunLifecycle) FinishSessionRunLifecycle(ctx context.Context,
 		return
 	}
 	awaitingUser := false
+	durableHandoff := false
 	if l.runs != nil {
-		if entry, ok := l.runs.GetStatus(sessionID); ok && strings.EqualFold(strings.TrimSpace(entry.Status), string(biz.RunStateAwaitingUser)) {
-			awaitingUser = true
+		if entry, ok := l.runs.GetStatus(sessionID); ok {
+			if strings.EqualFold(strings.TrimSpace(entry.Status), string(biz.RunStateAwaitingUser)) {
+				awaitingUser = true
+			}
+			if entry.Status == biz.SessionRunPhaseCancelled && isDurableEscalateReason(entry.ErrMsg) {
+				durableHandoff = true
+			}
 		}
 	}
 	l.runStatus.DeleteBinding(sessionID)
+	// Durable handoff owns phase CAS (interactive→durable). Finish must not
+	// Complete/Fail/Cancel the row while the escalate path is in flight —
+	// otherwise a checkpointed interactive row becomes cancelled/failed and
+	// the durable worker never resumes it.
+	if durableHandoff {
+		return
+	}
 	// N1 取消感知必须在 Detach 前判定（session-eval-20260827 S10）：Detach
 	// 用 context.WithoutCancel 剥离取消信号，之后 ctx.Err() 恒 nil。
 	wasCancelled := l.finishRunWasCancelled(ctx, sessionID, turnErr)
@@ -404,12 +421,21 @@ func (l *chatSessionRunLifecycle) FinishSessionRunLifecycle(ctx context.Context,
 	}
 }
 
+// durableEscalateCancelReason is the RunRegistry ErrMsg written when shutdown
+// / user escalate hands an interactive run to the durable worker.
+const durableEscalateCancelReason = "durable_escalate"
+
 // finishRunWasCancelled 判定 run 是否应按用户取消落库（N1）。与 C-10
 // runWasCancelled 同源三信号：runtime 注册表 cancelled 状态、turnErr 的
 // context.Canceled、原始 ctx 的取消信号（含 cause）。
+// durable_escalate 交棒信号显式排除——否则 Finish 与 TransitionPhase→durable
+// 竞态会把行写成 cancelled，检查点变孤儿、worker 永不续跑。
 func (l *chatSessionRunLifecycle) finishRunWasCancelled(ctx context.Context, sessionID string, turnErr error) bool {
 	if l.runs != nil {
 		if entry, ok := l.runs.GetStatus(sessionID); ok && entry.Status == biz.SessionRunPhaseCancelled {
+			if isDurableEscalateReason(entry.ErrMsg) {
+				return false
+			}
 			return true
 		}
 	}
@@ -426,6 +452,10 @@ func (l *chatSessionRunLifecycle) finishRunWasCancelled(ctx context.Context, ses
 		return true
 	}
 	return false
+}
+
+func isDurableEscalateReason(reason string) bool {
+	return strings.EqualFold(strings.TrimSpace(reason), durableEscalateCancelReason)
 }
 
 // finishCancelledRun 将取消 run 的行 phase 迁移为 cancelled（状态机校验
@@ -447,6 +477,17 @@ func (l *chatSessionRunLifecycle) finishCancelledRun(ctx context.Context, sessio
 	}
 	phase := biz.ParseSessionRunPhase(cur.Phase)
 	if biz.IsSessionRunPhaseTerminal(phase) || phase == biz.PhaseDurable {
+		return
+	}
+	// Checkpoint without durable phase means escalate won the Create but
+	// Finish is about to stamp cancelled — refuse and leave the row for
+	// escalate's TransitionPhase (or startup repair).
+	if strings.TrimSpace(cur.CheckpointID) != "" {
+		l.lg.Warn("cancelled run finish: skip cancel — durable checkpoint present",
+			loggateway.StepID("chat.session_run_cancel"),
+			loggateway.Str("session_run_id", sessionRunID),
+			loggateway.Str("checkpoint_id", cur.CheckpointID),
+		)
 		return
 	}
 	if _, err := l.sessionRuns.TransitionPhase(ctx, sessionRunID, biz.PhaseEventCancel); err != nil {

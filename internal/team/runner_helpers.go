@@ -166,6 +166,18 @@ func mergeTeamUserTurnMetaJSON(userOpts string, displayContent, sendText string,
 	return string(out), nil
 }
 
+// isUserInitiatedCancelReason reports StopGeneration / Interrupt reasons.
+// Infra reasons (no_progress, token budget, durable_escalate, empty) must
+// not be treated as user_cancelled by StartTeamTurn.
+func isUserInitiatedCancelReason(reason string) bool {
+	switch strings.ToLower(strings.TrimSpace(reason)) {
+	case "user_cancel", "user_cancelled", "stop", "interrupt":
+		return true
+	default:
+		return false
+	}
+}
+
 // cancelReason 读回 RunRegistry 记录的 run 取消原因（79-runtime-governance
 // P2.5：Cancel 时 reason 记入状态条目 ErrMsg——no_progress /
 // team_token_budget_exceeded / user_cancel / team_pause …）。仅当条目处于

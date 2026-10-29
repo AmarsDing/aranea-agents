@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	chatagent "aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
 	rt "aranea-agents/internal/runtime"
 	"aranea-agents/pkg/apierror"
@@ -300,6 +301,8 @@ func TestIsUserCancelledErr(t *testing.T) {
 		{name: "WithCancelCause(context.Canceled)", ctx: causeCtx, err: nil, want: true},
 		{name: "DeadlineExceeded err is NOT user cancel", ctx: context.Background(), err: context.DeadlineExceeded, want: false},
 		{name: "exceeded deadline ctx is NOT user cancel", ctx: deadlineCtx, err: nil, want: false},
+		{name: "first byte timeout is NOT user cancel", ctx: context.Background(), err: fmt.Errorf("%w after 30s", chatagent.ErrFirstByteTimeout), want: false},
+		{name: "stream aborted wrap is NOT user cancel", ctx: context.Background(), err: fmt.Errorf("%w: stream aborted before first byte", chatagent.ErrFirstByteTimeout), want: false},
 		{name: "generic error, live ctx", ctx: context.Background(), err: errors.New("boom"), want: false},
 		{name: "nil ctx", ctx: nil, err: context.Canceled, want: true},
 		{name: "nil everything", ctx: nil, err: nil, want: false},

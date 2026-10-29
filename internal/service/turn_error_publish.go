@@ -3,7 +3,9 @@ package service
 import (
 	"context"
 	"errors"
+	"strings"
 
+	chatagent "aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
 	sessstatus "aranea-agents/internal/biz/session"
 	"aranea-agents/pkg/apierror"
@@ -12,13 +14,21 @@ import (
 // isUserCancelledErr 是三处团队回调（executeTeamTurnViaHooks / pending-queue
 // / StartTeamTurn）共用的「用户取消」判别（87-orchestration-chain-hardening
 // D1-F1）：err 链 context.Canceled / ctx.Err() / context.Cause(ctx) 三源
-// 任一命中即视为用户取消。显式不把 context.DeadlineExceeded 判为取消——
-// TeamMaxLifetime 墙钟超时是 infra 失败语义，必须走 failed 路径。
+// 任一命中即视为用户取消。显式排除：
+//   - context.DeadlineExceeded（TeamMaxLifetime 墙钟超时 → failed）
+//   - ErrFirstByteTimeout / 活性守卫中止（infra 失败 → failed；live44
+//     orch probe 2026-10-29 把首字节耗尽的 Canceled 误标 user_cancelled）
 func isUserCancelledErr(ctx context.Context, err error) bool {
+	if isInfraStreamAbort(err) {
+		return false
+	}
 	if err != nil && errors.Is(err, context.Canceled) {
 		return true
 	}
 	if ctx == nil {
+		return false
+	}
+	if isInfraStreamAbort(context.Cause(ctx)) {
 		return false
 	}
 	if errors.Is(ctx.Err(), context.Canceled) {
@@ -28,6 +38,21 @@ func isUserCancelledErr(ctx context.Context, err error) bool {
 		return true
 	}
 	return false
+}
+
+// isInfraStreamAbort reports stream/liveness failures that cancel a context
+// without a user Stop click. Those must stay on the failed path.
+func isInfraStreamAbort(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, chatagent.ErrFirstByteTimeout) {
+		return true
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "first byte timeout") ||
+		strings.Contains(msg, "stream aborted") ||
+		strings.Contains(msg, "liveness")
 }
 
 // runWasCancelled reports whether the run should be treated as user-cancelled
