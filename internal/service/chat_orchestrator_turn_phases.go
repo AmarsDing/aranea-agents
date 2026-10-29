@@ -320,7 +320,11 @@ func (o *ChatOrchestrator) invokeTurnLLMAndStream(
 	// sets the meta without emitting events. OnTurnStart (called later by the
 	// stream consumer) will emit task.created + turn.started.
 	var turnProjector *v2.ActivityProjector
-	var lastRunCtx context.Context
+	// lastRunCanceled 是「运行期间真实取消」的快照：attempt 闭包在 defer
+	// abortRun() 触发【前】捕获 attemptRunCtx 的取消态。闭包返回后再读
+	// ctx 会被清理性 cancel 无条件污染（2026-10-29 冤杀事故：干净收官的
+	// turn 恒被误判 cancelled，session_runs.phase 恒落 cancelled）。
+	lastRunCanceled := false
 	lastFirstByteTimeout := provider.FirstByteGuardWithRetry(firstByteBudget, stallMaxReconnects)
 	invokeFailed := false
 	attemptFn := func(attemptCtx context.Context, attemptNo int) (chatagent.EventStreamResult, error) {
@@ -334,7 +338,7 @@ func (o *ChatOrchestrator) invokeTurnLLMAndStream(
 		firstByteTimeout := provider.FirstByteGuardWithRetry(firstByteBudget, remainingReconnects)
 		attemptRunCtx, abortRun := context.WithCancel(attemptRunCtx)
 		defer abortRun()
-		lastRunCtx = attemptRunCtx
+		lastRunCanceled = false
 		lastFirstByteTimeout = firstByteTimeout
 
 		// B-06/R4-Q3: per-attempt fresh projector（factory 每次返回独立实例，
@@ -384,7 +388,12 @@ func (o *ChatOrchestrator) invokeTurnLLMAndStream(
 		invokeFailed = false
 
 		// Stream consumption
-		return o.consumeTurnStream(attemptRunCtx, abortRun, sess, ag, admit, emitter, traceBridge, events, firstByteTimeout, turnProjector, time.Now(), content, input.ParentTaskID, input.Synthesis)
+		streamResult, consumeErr := o.consumeTurnStream(attemptRunCtx, abortRun, sess, ag, admit, emitter, traceBridge, events, firstByteTimeout, turnProjector, time.Now(), content, input.ParentTaskID, input.Synthesis)
+		// 在 defer abortRun() 触发【前】快照真实取消态——闭包返回后清理性
+		// cancel 会无条件污染 ctx.Err()，收尾判定只认此快照（用户取消 /
+		// 显式 abort 均为运行期间事实，会被如实捕获）。
+		lastRunCanceled = errors.Is(attemptRunCtx.Err(), context.Canceled)
+		return streamResult, consumeErr
 	}
 
 	// invalid-retry（P0-4 A10）：默认关闭（env 开关），关闭时单次直通——
@@ -413,7 +422,9 @@ func (o *ChatOrchestrator) invokeTurnLLMAndStream(
 	// (parent of runCtx) may not carry the signal because cancellation
 	// propagates parent→child, not child→parent. Flag it so the
 	// FinishSessionRunLifecycle defer can align session_runs.phase.
-	if !execResult.cancelled && lastRunCtx != nil && errors.Is(lastRunCtx.Err(), context.Canceled) {
+	// 判定依据是闭包内快照（lastRunCanceled）——defer abortRun() 的清理性
+	// cancel 不构成取消证据（2026-10-29 冤杀事故修复）。
+	if !execResult.cancelled && lastRunCanceled {
 		execResult.cancelled = true
 	}
 	return execResult, nil
