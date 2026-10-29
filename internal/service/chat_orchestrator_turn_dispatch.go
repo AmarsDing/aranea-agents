@@ -21,6 +21,7 @@ import (
 	"aranea-agents/pkg/safego"
 
 	"github.com/google/uuid"
+	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
 )
 
 // pendingQueueLoopKey is a context key used to suppress the recursive
@@ -283,6 +284,48 @@ func (o *ChatOrchestrator) injectA2AContext(ctx context.Context, callerAgentID s
 	}
 	inv := a2apkg.NewInvoker(o, o.a2aUC(), o.td().ReadDeps.Agents, o.lg(), a2abiz.DefaultRetryPolicy())
 	return a2apkg.InjectRunContext(ctx, o.a2aUC(), callerAgentID, inv, o.lg())
+}
+
+// requeueUnconsumedQueuedMessages 回收框架 run 终结时仍未消费的 steer 消息
+// （2026-10-29 44 实测 round-8 丢消息）：steer 在最终 LLM step 期间入队成功
+// （ACK queued/steer=true），但流循环再无下一迭代消费，干净收官后框架随 run
+// 注销把滞留消息静默丢弃——无新 session_run、无回复。框架经 RunOptions
+// 回调把未消费消息交还，此处以 followup 级重新入 pending 队列
+// （ForceEnqueueFollowup 跳过 steer 重试与无活跃 run 拒绝门），与中止/失败
+// 收尾路径的排队消息对齐。
+//
+// 本函数只入队、不触发排空：调用点位于框架 run 事件循环收尾
+// （processedEventCh 关闭前），时序上必先于 turn 收尾 defer 的
+// processPendingQueue 触发，由后者统一排空——防 mid-run 抢跑与重复派发。
+// Stability:internal
+func (o *ChatOrchestrator) requeueUnconsumedQueuedMessages(sessionID string, messages []trpcmodel.Message) {
+	if o == nil || o.chatUC == nil {
+		return
+	}
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" || len(messages) == 0 {
+		return
+	}
+	for _, msg := range messages {
+		content := strings.TrimSpace(msg.Content)
+		if content == "" {
+			continue
+		}
+		pid, reason, err := o.chatUC.ForceEnqueueFollowup(sessionID, content)
+		if err != nil || pid == "" {
+			o.lg().Error("回收未消费 steer 消息失败：重新入队被拒绝",
+				loggateway.StepID("chat.pending_queue.steer_rescue_reject"),
+				loggateway.Str("session_id", sessionID),
+				loggateway.Str("reject_reason", reason),
+				loggateway.Err(err))
+			continue
+		}
+		o.lg().Info("回收 run 收官未消费的 steer 消息",
+			loggateway.StepID("chat.pending_queue.steer_rescue"),
+			loggateway.Str("session_id", sessionID),
+			loggateway.Str("pending_id", pid),
+			loggateway.Int("content_len", len(content)))
+	}
 }
 
 // processPendingQueue drains pending messages for a session iteratively in a

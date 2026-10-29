@@ -752,6 +752,7 @@ func (r *runner) Run(
 		ro,
 	); err != nil {
 		finishRunnerLatencySpan(persistSpan, persistStarted, err)
+		deliverUnconsumedQueuedUserMessages(invocation, handle)
 		steer.Clear(invocation)
 		r.unregisterRun(ro.RequestID)
 		execCancel()
@@ -786,6 +787,7 @@ func (r *runner) Run(
 	finishRunnerLatencySpan(startSpan, startStarted, err)
 	if err != nil {
 		r.persistAgentRunError(execCtx, currentTurnSession, invocation, ag, err)
+		deliverUnconsumedQueuedUserMessages(invocation, handle)
 		steer.Clear(invocation)
 		r.unregisterRun(ro.RequestID)
 		execCancel()
@@ -1091,6 +1093,41 @@ func (r *runner) CancelQueuedUserMessages(requestID string) bool {
 	}
 	handle.queue.Discard()
 	return true
+}
+
+// deliverUnconsumedQueuedUserMessages hands user messages that were accepted
+// via EnqueueUserMessage but never consumed by the flow to the run's
+// UnconsumedQueuedUserMessagesHandler, if one is set. Without this hand-off
+// such messages are dropped silently when the run handle is unregistered
+// (e.g. a steer message enqueued during the final model step, after the
+// flow's last safe-boundary drain). It must be called before steer.Clear and
+// unregisterRun while the handle still references the queue.
+func deliverUnconsumedQueuedUserMessages(
+	invocation *agent.Invocation,
+	handle *runHandle,
+) {
+	if invocation == nil || handle == nil || handle.queue == nil {
+		return
+	}
+	handler := invocation.RunOptions.UnconsumedQueuedUserMessagesHandler
+	if handler == nil {
+		return
+	}
+	leftover := handle.queue.Drain()
+	if len(leftover) == 0 {
+		return
+	}
+	defer func() {
+		if rr := recover(); rr != nil {
+			log.Errorf(
+				log.PanicPrefix+" panic in unconsumed queued user "+
+					"messages handler: %v\n%s",
+				rr,
+				string(debug.Stack()),
+			)
+		}
+	}()
+	handler(leftover)
 }
 
 func (r *runner) newExecutionContext(
@@ -1457,6 +1494,7 @@ func (r *runner) runEventLoop(ctx context.Context, loop *eventLoopContext) {
 		flush.Clear(loop.invocation)
 		appender.Clear(loop.invocation)
 		livesession.Clear(loop.invocation)
+		deliverUnconsumedQueuedUserMessages(loop.invocation, loop.runHandle)
 		steer.Clear(loop.invocation)
 		r.unregisterRun(loop.invocation.RunOptions.RequestID)
 		close(loop.processedEventCh)

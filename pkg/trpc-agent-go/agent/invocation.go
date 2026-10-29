@@ -501,6 +501,26 @@ func WithResume(enabled bool) RunOption {
 	}
 }
 
+// WithUnconsumedQueuedUserMessagesHandler registers a handler that receives
+// user messages which were accepted for the run via EnqueueUserMessage but
+// never consumed by the flow before the run terminated (for example a steer
+// message enqueued during the final model step, after the flow's last
+// safe-boundary drain).
+//
+// The handler runs at most once per run, on the runner's event-loop
+// goroutine, before the run handle is unregistered. It is not invoked when
+// no unconsumed messages remain. Runner recovers panics raised by the
+// handler. Implementations must be non-blocking; a common use is re-queueing
+// the messages onto a caller-owned followup queue so they are answered by a
+// subsequent run instead of being dropped silently.
+func WithUnconsumedQueuedUserMessagesHandler(
+	handler func(messages []model.Message),
+) RunOption {
+	return func(opts *RunOptions) {
+		opts.UnconsumedQueuedUserMessagesHandler = handler
+	}
+}
+
 // WithPersistInterruptedAssistant controls whether a cancelled streaming run
 // persists already-emitted assistant text as a final assistant message.
 //
@@ -1461,6 +1481,12 @@ type RunOptions struct {
 	// that emit tool calls as visible text instead of structured tool_calls.
 	// When nil, text repair is disabled by default.
 	ToolCallTextRepairEnabled *bool
+
+	// UnconsumedQueuedUserMessagesHandler, when non-nil, is invoked at most
+	// once when the run terminates while user messages accepted via
+	// EnqueueUserMessage remain unconsumed by the flow. See
+	// [WithUnconsumedQueuedUserMessagesHandler] for the full contract.
+	UnconsumedQueuedUserMessagesHandler func(messages []model.Message)
 
 	// runControlConfig stores internal event and buffering controls.
 	runControlConfig runControlConfig

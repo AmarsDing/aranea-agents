@@ -30,6 +30,7 @@ import (
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcevent "trpc.group/trpc-go/trpc-agent-go/event"
+	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
 	trpcrunner "trpc.group/trpc-go/trpc-agent-go/runner"
 )
 
@@ -528,6 +529,14 @@ func (o *ChatOrchestrator) invokeLLMCall(
 	llmCtx, llmSpan := traceBridge.StartChild(runCtx, "chat.llm.invoke")
 	uid := chatagent.UserIDFromCtx(llmCtx)
 	llmCallStart := time.Now()
+	// 2026-10-29 修复（steer 干净收官丢消息，44 实测 round-8）：steer 在最终
+	// LLM step 期间被框架队列受理（ACK queued/steer=true），但流循环再无下一
+	// 迭代消费，run 注销时滞留消息被静默丢弃。框架终结 run 前经此回调把未
+	// 消费消息交还，回收进 pending 队列后由 turn 收尾 defer 统一排空。
+	runOpts = append(runOpts, trpcagent.WithUnconsumedQueuedUserMessagesHandler(
+		func(messages []trpcmodel.Message) {
+			o.requeueUnconsumedQueuedMessages(sessionID, messages)
+		}))
 	events, err := chatagent.RunTRPCUserTurnMsg(llmCtx, runner, uid, sessionID, userTurnMsg, runOpts...)
 	turntrace.EndChild(llmSpan, err)
 	o.lg().With(loggateway.SessionID(sessionID)).Info("turn timing: RunTRPCUserTurnMsg (LLM call)",
