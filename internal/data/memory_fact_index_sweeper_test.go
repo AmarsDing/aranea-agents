@@ -180,3 +180,56 @@ func TestMemoryFactIndexSweeper_RunStopsOnCancel(t *testing.T) {
 		t.Fatal("Run did not return promptly after ctx cancel")
 	}
 }
+
+// recordingFactIndexBatchSyncer captures whole batches handed to
+// SyncFactIndexBatchFromRows; per-row SyncFactIndexFromRow fails the test if
+// the sweeper ever falls back to the serial path.
+type recordingFactIndexBatchSyncer struct {
+	recordingFactIndexSyncer
+	batches   int
+	batchSize []int
+}
+
+func (r *recordingFactIndexBatchSyncer) SyncFactIndexBatchFromRows(_ context.Context, raws [][]byte) (int, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.batches++
+	r.batchSize = append(r.batchSize, len(raws))
+	for _, raw := range raws {
+		var m map[string]any
+		if json.Unmarshal(raw, &m) != nil {
+			return 0, biz.ErrMemoryUnavailable
+		}
+		id, _ := m["id"].(string)
+		r.ids = append(r.ids, id)
+	}
+	return len(raws), nil
+}
+
+// 2026-11-01: syncer implementing MemoryFactIndexBatchSyncer gets the whole
+// picked batch in one call (AMC seed-flood backlog throughput fix); the
+// serial SyncFactIndexFromRow path must not run.
+func TestMemoryFactIndexSweeper_BatchSyncerFastPath(t *testing.T) {
+	db, d := openSweeperTestData(t)
+	insertSweeperFact(t, db, "batch-1", "stale", 1, "2020-01-01T00:00:00Z", "active")
+	insertSweeperFact(t, db, "batch-2", "pending", 0, "2020-01-01T00:00:00Z", "active")
+	insertSweeperFact(t, db, "batch-3", "stale", 3, "2020-01-01T00:00:00Z", "active")
+
+	rec := &recordingFactIndexBatchSyncer{}
+	sw := NewMemoryFactIndexSweeper(d, rec, loggateway.NewNoop(), time.Minute, 10, 8)
+	if got := sw.sweepOnce(context.Background()); got != 3 {
+		t.Fatalf("expected 3 rows synced, got %d", got)
+	}
+	if rec.batches != 1 || rec.batchSize[0] != 3 {
+		t.Fatalf("expected exactly one batch of 3 rows, got batches=%d sizes=%v", rec.batches, rec.batchSize)
+	}
+	picked := map[string]bool{}
+	for _, id := range rec.picked() {
+		picked[id] = true
+	}
+	for _, id := range []string{"batch-1", "batch-2", "batch-3"} {
+		if !picked[id] {
+			t.Fatalf("row %s not picked: %v", id, rec.picked())
+		}
+	}
+}

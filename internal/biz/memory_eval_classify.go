@@ -17,6 +17,12 @@ func ClassifyEvalFactKind(statement string) string {
 	if k := EvalCaseFactKind(body); k != "" {
 		return k
 	}
+	// File writes/edits and unified diffs are immutable coding-trajectory
+	// events. Their JSON/docstring wording must not turn them into mutable
+	// preferences or constraints that generic supersession can dismember.
+	if EvalKeepsCodeUnit(body) {
+		return "event"
+	}
 	if IsEvalPlannedStatement(body) || IsEvalHistoricalStatement(body) {
 		return "event"
 	}
@@ -165,7 +171,7 @@ func SplitEvalStatements(content string, maxAtoms int) []string {
 	if strings.TrimSpace(content) == "" {
 		return []string{content}
 	}
-	if IsEvalStructuredEvidence(content) {
+	if IsEvalStructuredEvidence(content) || EvalKeepsCodeUnit(content) {
 		return []string{content}
 	}
 	runes := []rune(content)

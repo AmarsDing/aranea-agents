@@ -189,8 +189,25 @@ func TestEvalStore_EmbedIsAsync(t *testing.T) {
 	r := setupL3FTSTestRepo(t, nil, 0)
 	store := NewEvalMemoryStore(r.data, nil, loggateway.NewNoop()).(*evalMemoryStore)
 	started := make(chan struct{})
+	finished := make(chan struct{}, 8)
 	var running atomic.Bool
-	store.syncer = &evalSlowSyncer{started: started, running: &running}
+	store.syncer = &evalSlowSyncer{started: started, finished: finished, running: &running}
+	t.Cleanup(func() {
+		var expected int
+		if err := r.data.rawDB.QueryRowContext(context.Background(),
+			`SELECT count(*) FROM memory_facts WHERE user_id='u-async'`).Scan(&expected); err != nil {
+			t.Errorf("count scheduled facts: %v", err)
+			return
+		}
+		for range expected {
+			select {
+			case <-finished:
+			case <-time.After(2 * time.Second):
+				t.Error("async index fixture did not finish")
+				return
+			}
+		}
+	})
 	ctx := context.Background()
 	begin := time.Now()
 	if _, err := store.AddMessages(ctx, "u-async", "s-async", []biz.EvalMessage{
@@ -218,9 +235,10 @@ func evalContents(items []biz.EvalMemoryItem) string {
 }
 
 type evalSlowSyncer struct {
-	started chan struct{}
-	running *atomic.Bool
-	once    sync.Once
+	started  chan struct{}
+	finished chan struct{}
+	running  *atomic.Bool
+	once     sync.Once
 }
 
 func (s *evalSlowSyncer) SyncFactIndex(context.Context, string, string, string, string) error {
@@ -232,6 +250,9 @@ func (s *evalSlowSyncer) SyncFactIndexFromRow(context.Context, []byte) error {
 	s.running.Store(true)
 	time.Sleep(300 * time.Millisecond)
 	s.running.Store(false)
+	if s.finished != nil {
+		s.finished <- struct{}{}
+	}
 	return nil
 }
 

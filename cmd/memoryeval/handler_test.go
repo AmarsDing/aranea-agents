@@ -59,6 +59,32 @@ func TestSearchOptionsReachStoreWithoutReplacingQuery(t *testing.T) {
 	}
 }
 
+func TestSearchAuditRecordsQueryMetadataWithoutMemoryContent(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "search-audit.jsonl")
+	t.Setenv("EVAL_SEARCH_AUDIT_PATH", path)
+	fake := &fakeEvalStore{searchItems: []biz.EvalMemoryItem{{Content: "private patch body"}}}
+	r := doJSON(t, newTestHandler(fake, ""), http.MethodPost, "/v1/memory/search", "", map[string]any{
+		"user_id": "u", "query": "core.py implementation details", "top_k": 100,
+	})
+	if r.Code != http.StatusOK {
+		t.Fatal(r.Body.String())
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var entry searchAuditEntry
+	if err := json.Unmarshal(bytes.TrimSpace(data), &entry); err != nil {
+		t.Fatal(err)
+	}
+	if entry.UserID != "u" || entry.Query != "core.py implementation details" || entry.TopK != 100 || entry.Items != 1 || entry.ReturnSize != len("private patch body") {
+		t.Fatalf("audit entry = %+v", entry)
+	}
+	if strings.Contains(string(data), "private patch body") {
+		t.Fatalf("audit leaked returned memory content: %s", data)
+	}
+}
+
 func TestAddDerivesStableMessageIdentityFromRequest(t *testing.T) {
 	fake := &fakeEvalStore{}
 	h := newTestHandler(fake, "")
@@ -486,9 +512,9 @@ func TestHandleAdd_ImagePartNeverFailsTheRequest(t *testing.T) {
 	if len(store.addMsgs) != 1 || store.addMsgs[0].Content != "看图：这是架构草图" {
 		t.Fatalf("store msgs = %+v", store.addMsgs)
 	}
-	// Media sink disabled by default: no parts evidence is attached.
-	if len(store.addMsgs[0].Parts) != 0 {
-		t.Fatalf("media sink disabled, expected no Parts, got %+v", store.addMsgs[0].Parts)
+	// Media sink disabled: the caption is tagged with a descriptor, not a file.
+	if len(store.addMsgs[0].Parts) != 1 || store.addMsgs[0].Parts[0].Mime != "image/png" || store.addMsgs[0].Parts[0].Ref != "" {
+		t.Fatalf("media sink disabled, expected a path-free image descriptor, got %+v", store.addMsgs[0].Parts)
 	}
 }
 
@@ -518,6 +544,28 @@ func TestHandleAdd_ImageOnlyBatchAcknowledged(t *testing.T) {
 	}
 	if len(store.addMsgs) != 0 {
 		t.Fatalf("no text evidence should reach the store, got %+v", store.addMsgs)
+	}
+}
+
+func TestHandleAdd_DisallowedMimeKeepsCaption(t *testing.T) {
+	store := &fakeEvalStore{}
+	h := newTestHandler(store, "")
+	rec := doJSON(t, h, http.MethodPost, "/v1/memory/add", "", map[string]any{
+		"user_id": "u-gif",
+		"messages": []map[string]any{{
+			"role": "user",
+			"content": []map[string]any{
+				{"type": "text", "text": "看图：架构草图"},
+				{"type": "image_url", "image_url": map[string]any{"url": "data:image/gif;base64," + testTinyPNGBase64}},
+				{"type": "video", "source": "clip.mp4"},
+			},
+		}},
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	if len(store.addMsgs) != 1 || store.addMsgs[0].Content != "看图：架构草图" || len(store.addMsgs[0].Parts) != 0 {
+		t.Fatalf("gif and video must not become evidence, got %+v", store.addMsgs)
 	}
 }
 

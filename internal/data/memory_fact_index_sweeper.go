@@ -96,6 +96,26 @@ func (s *MemoryFactIndexSweeper) sweepOnce(ctx context.Context) int {
 			loggateway.StepID("memory.index_sweep_query_fail"), loggateway.Err(err))
 		return 0
 	}
+	if len(rows) == 0 {
+		return 0
+	}
+	// 批量快路径：syncer 实现 MemoryFactIndexBatchSyncer 时整批一次嵌入往返
+	// （2026-11-01 AMC 种子洪峰 111 万积压，逐行吞吐约 100 行/分钟不够）。
+	// 批量失败时 syncer 已整批标 stale + 递增 attempts，退避过滤自然 pacing。
+	if batcher, ok := s.syncer.(biz.MemoryFactIndexBatchSyncer); ok {
+		batchCtx, cancel := context.WithTimeout(ctx, factIndexSweepBatchTimeout(len(rows)))
+		synced, berr := batcher.SyncFactIndexBatchFromRows(batchCtx, rows)
+		cancel()
+		if berr != nil {
+			s.lg.Warn("fact index sweep batch failed",
+				loggateway.StepID("memory.index_sweep_sync_fail"),
+				loggateway.Int("picked", len(rows)), loggateway.Err(berr))
+			return 0
+		}
+		s.lg.Info("fact index sweep batch done", loggateway.StepID("memory.index_sweep"),
+			loggateway.Int("picked", len(rows)), loggateway.Int("synced", synced))
+		return synced
+	}
 	synced := 0
 	for _, raw := range rows {
 		if ctx.Err() != nil {
@@ -114,11 +134,20 @@ func (s *MemoryFactIndexSweeper) sweepOnce(ctx context.Context) int {
 		}
 		synced++
 	}
-	if len(rows) > 0 {
-		s.lg.Info("fact index sweep batch done", loggateway.StepID("memory.index_sweep"),
-			loggateway.Int("picked", len(rows)), loggateway.Int("synced", synced))
-	}
+	s.lg.Info("fact index sweep batch done", loggateway.StepID("memory.index_sweep"),
+		loggateway.Int("picked", len(rows)), loggateway.Int("synced", synced))
 	return synced
+}
+
+// factIndexSweepBatchTimeout scales the batch deadline with row count:
+// 30s base + 2s/row, capped at 15 minutes (one dashscope batch of 10 texts
+// per request ≈ 0.5s, so 2s/row is generous headroom for 429 backoff).
+func factIndexSweepBatchTimeout(n int) time.Duration {
+	d := factIndexSweepPerRowTimeout + time.Duration(n)*2*time.Second
+	if d > 15*time.Minute {
+		d = 15 * time.Minute
+	}
+	return d
 }
 
 // pickDueStaleFactRows selects due rows, projecting the full fact columns so

@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -13,28 +14,184 @@ import (
 	"aranea-agents/pkg/apierror"
 )
 
+// Governance vectors are best-effort enrichment. Reserve the rest of the
+// caller's Add deadline for the atomic facts/governance database commit.
+const evalGovernanceEmbedTimeout = 5 * time.Second
+
+// evalAddChunkAtomsDefault bounds how many atoms one Add transaction
+// processes before committing. AMC 长会话重放（单请求数千原子、每原子多次
+// 查询）曾整体超过平台 worker 的单请求超时（约 40s）：单事务回滚后平台
+// 重试又从零开始，确定性反复超时（2026-11-01 teval_e9efcf9f2a515e66
+// attempt 1/2 均因此 failed）。分块提交把重试变成增量推进——已提交块
+// 经发生指纹去重在下次尝试中跳过。EVAL_ADD_CHUNK_ATOMS<=0 恢复单事务。
+const evalAddChunkAtomsDefault = 400
+
+func evalAddChunkAtoms() int {
+	if v := strings.TrimSpace(os.Getenv("EVAL_ADD_CHUNK_ATOMS")); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			return n
+		}
+	}
+	return evalAddChunkAtomsDefault
+}
+
+// splitEvalMessagesByAtomBudget groups whole messages into chunks whose atom
+// count stays within budget (a message is never split). budget<=0 keeps the
+// legacy single-chunk behavior.
+func splitEvalMessagesByAtomBudget(msgs []biz.EvalMessage, budget int) [][]biz.EvalMessage {
+	if len(msgs) == 0 {
+		return nil
+	}
+	if budget <= 0 {
+		return [][]biz.EvalMessage{msgs}
+	}
+	var chunks [][]biz.EvalMessage
+	start, atoms := 0, 0
+	for i, m := range msgs {
+		n := len(biz.SplitEvalStatements(m.Content, biz.EvalMaxStatementAtoms))
+		if i > start && atoms+n > budget {
+			chunks = append(chunks, msgs[start:i])
+			start, atoms = i, 0
+		}
+		atoms += n
+	}
+	return append(chunks, msgs[start:])
+}
+
+// sanitizeEvalMessagesForPG strips NUL (0x00) bytes from message content:
+// PostgreSQL text columns reject them (pq 22021), and coding-track seeds
+// embed raw file bytes, which otherwise fail the whole add transaction
+// deterministically on every retry (2026-11-01 attempt 3, seed 149/150).
+// Done once at ingest so facts, episodes, digests and FTS all stay clean,
+// and retry fingerprints remain deterministic (same input, same strip).
+func sanitizeEvalMessagesForPG(msgs []biz.EvalMessage) {
+	for i := range msgs {
+		if strings.IndexByte(msgs[i].Content, 0) >= 0 {
+			msgs[i].Content = strings.ReplaceAll(msgs[i].Content, "\x00", "")
+		}
+	}
+}
+
 // AddMessages serializes updates for one user across replicas. The same
 // transaction owns facts, supersession, links and the searchable L2 projection.
 func (s *evalMemoryStore) AddMessages(ctx context.Context, userID, sessionID string, msgs []biz.EvalMessage) (int, error) {
 	if strings.TrimSpace(userID) == "" {
 		return 0, apierror.BadRequest("MEMORY_EVAL", "user_id is required")
 	}
-	var written []evalWrittenFact
-	stored := 0
-	err := s.facts.data.ExecInTx(ctx, func(txCtx context.Context) error {
-		if _, err := s.facts.data.RWDB().WriteDB(txCtx).ExecContext(txCtx,
-			`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, "memoryeval:user:"+userID); err != nil {
-			return err
-		}
-		var err error
-		stored, err = s.addMessages(txCtx, userID, sessionID, msgs, &written)
-		return err
-	})
-	if err != nil {
+	if err := ctx.Err(); err != nil {
 		return 0, err
 	}
-	s.scheduleEmbed(written)
+	sanitizeEvalMessagesForPG(msgs)
+	// Provider latency must not consume the database transaction's deadline.
+	// All facts and their governance changes still commit together below.
+	embeddings := s.prepareEvalWriteEmbeddings(ctx, msgs)
+	if err := ctx.Err(); err != nil {
+		return 0, err
+	}
+	chunks := splitEvalMessagesByAtomBudget(msgs, evalAddChunkAtoms())
+	stored := 0
+	var allWritten []evalWrittenFact
+	shared := &evalAddBatchState{touchedSlots: map[string]struct{}{}, batchIDs: map[string]struct{}{}}
+	offset := 0
+	for ci, chunk := range chunks {
+		// Remap whole-request governance embeddings onto chunk-local indices.
+		var chunkEmb map[int]evalMessageEmbeddings
+		if len(embeddings) > 0 {
+			chunkEmb = make(map[int]evalMessageEmbeddings, len(chunk))
+			for i := range chunk {
+				if emb, ok := embeddings[offset+i]; ok {
+					chunkEmb[i] = emb
+				}
+			}
+		}
+		last := ci == len(chunks)-1
+		var written, derivedWritten []evalWrittenFact
+		chunkStored := 0
+		err := s.facts.data.ExecInTx(ctx, func(txCtx context.Context) error {
+			if _, err := s.facts.data.RWDB().WriteDB(txCtx).ExecContext(txCtx,
+				`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, "memoryeval:user:"+userID); err != nil {
+				return err
+			}
+			var err error
+			chunkStored, err = s.addMessages(txCtx, userID, sessionID, chunk, chunkEmb, &written, shared)
+			if err != nil {
+				return err
+			}
+			if last && shared.changed {
+				// One derived rollup per request, atomic with the final
+				// chunk: raw evidence and its projections still commit
+				// together, and a retry re-runs the idempotent projection,
+				// repairing chunks committed by earlier canceled attempts.
+				return s.rollupEvalDerivedRows(txCtx, userID, sessionID, shared.touchedSlots, shared.batchIDs, &derivedWritten)
+			}
+			return nil
+		})
+		offset += len(chunk)
+		stored += chunkStored
+		allWritten = append(allWritten, written...)
+		allWritten = append(allWritten, derivedWritten...)
+		if err != nil {
+			// Committed chunks persist; the platform retry resumes past them
+			// via occurrence fingerprints instead of starting over.
+			return stored, err
+		}
+	}
+	s.scheduleEmbed(allWritten)
 	return stored, nil
+}
+
+type evalMessageEmbeddings struct {
+	prefixed map[int][]float32
+	routed   map[int][]float32
+}
+
+// prepareEvalWriteEmbeddings batches mutable atoms across the whole request.
+// Message and atom indices survive filtering so immutable evidence, skipped
+// controls and mixed messages cannot shift vectors onto the wrong fact.
+func (s *evalMemoryStore) prepareEvalWriteEmbeddings(ctx context.Context, msgs []biz.EvalMessage) map[int]evalMessageEmbeddings {
+	if s.emb == nil {
+		return nil
+	}
+	type atomRef struct{ message, atom int }
+	var refs []atomRef
+	var statements []string
+	for i, m := range msgs {
+		atoms := biz.SplitEvalStatements(m.Content, biz.EvalMaxStatementAtoms)
+		if _, directControl := biz.ParseEvalMemoryDirective(m.Role, m.Content); len(atoms) == 1 && directControl {
+			continue
+		}
+		for j, atom := range atoms {
+			statement := atom
+			if m.Role != "" {
+				statement = m.Role + ": " + atom
+			}
+			if !evalGovernableKindForStore(biz.ClassifyEvalFactKind(statement)) || biz.IsHypotheticalStatement(stripEvalRolePrefix(statement)) {
+				continue
+			}
+			refs = append(refs, atomRef{i, j})
+			statements = append(statements, statement)
+		}
+	}
+	if len(statements) == 0 {
+		return nil
+	}
+	embedCtx, cancel := context.WithTimeout(ctx, evalGovernanceEmbedTimeout)
+	defer cancel()
+	prefixed, routed := s.embedEvalStatements(embedCtx, statements)
+	if len(prefixed) == 0 && len(routed) == 0 {
+		return nil
+	}
+	result := make(map[int]evalMessageEmbeddings)
+	for index, ref := range refs {
+		entry, ok := result[ref.message]
+		if !ok {
+			entry = evalMessageEmbeddings{prefixed: make(map[int][]float32), routed: make(map[int][]float32)}
+		}
+		entry.prefixed[ref.atom] = prefixed[index]
+		entry.routed[ref.atom] = routed[index]
+		result[ref.message] = entry
+	}
+	return result
 }
 
 func evalStableHash(parts ...string) string {
@@ -137,6 +294,40 @@ func evalSourceMetadata(session string, msg, atom int, dates []string, prev []ev
 	if len(spans) > 0 {
 		meta["event_spans"] = spans
 	}
+	return evalFinishMetadata(meta)
+}
+
+// evalAttachMedia records image descriptors on a caption fact. The filesystem
+// path stays out of metadata: Search evidence is the caption text, and the
+// descriptor only lets a visual question find that caption.
+func evalAttachMedia(metaJSON string, parts []biz.EvalContentPart) string {
+	if len(parts) == 0 {
+		return metaJSON
+	}
+	var meta map[string]any
+	if json.Unmarshal([]byte(metaJSON), &meta) != nil || meta == nil {
+		return metaJSON
+	}
+	media := make([]map[string]any, 0, len(parts))
+	for _, p := range parts {
+		if strings.TrimSpace(p.Mime) == "" && strings.TrimSpace(p.Type) == "" {
+			continue
+		}
+		media = append(media, map[string]any{
+			"type":  p.Type,
+			"index": p.Index,
+			"mime":  p.Mime,
+			"bytes": p.Bytes,
+		})
+	}
+	if len(media) == 0 {
+		return metaJSON
+	}
+	meta["media"] = media
+	return evalFinishMetadata(meta)
+}
+
+func evalFinishMetadata(meta map[string]any) string {
 	b, _ := json.Marshal(meta)
 	return string(b)
 }

@@ -9,9 +9,12 @@ import (
 
 // evalEvidenceUnits joins only atoms from the same stored source message.
 // Rules, exceptions and demonstrations remain an ordered evidence unit even
-// at top_k=1. Historical states retain separate validity labels.
+// at top_k=1. Code queries need the same join: a file write stored before
+// the tool-payload keep-rule exists only as fragments, and the patch is
+// usable only when the fragments are reassembled. Historical states retain
+// separate validity labels.
 func evalEvidenceUnits(items []evalCollectedItem, qa biz.EvalQueryAnalysis) []evalCollectedItem {
-	if !qa.Procedural && !qa.Aggregate || qa.Chronological || qa.Relational {
+	if !qa.Procedural && !qa.Aggregate && !qa.Code || qa.Chronological || qa.Relational {
 		return items
 	}
 	type source struct{ session, message, timestamp string }

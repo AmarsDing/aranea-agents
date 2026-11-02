@@ -124,11 +124,28 @@ func (s *evalMemoryStore) appendEvalCandidates(ctx context.Context, userID strin
 	}
 	where := ` WHERE scope_type='user' AND scope_id=$1 AND user_id=$1 AND status='active' AND deleted_at='' AND source_kind NOT IN ('agent_memory_challenge_control','agent_memory_challenge_derived')`
 	if !qa.Historical {
-		where += ` AND valid_until=''`
+		// Exclude superseded rows AND explicitly historical past-state facts
+		// (metadata.historical_context) so keyword recall cannot surface
+		// "I used to live in Berlin" on a current-city question.
+		where += ` AND valid_until='' AND COALESCE(metadata_json::jsonb->>'historical_context','false')<>'true'`
 	}
 	where += evalCandidateRangeSQL(qa, &args)
 	if qa.Procedural {
 		match += `+CASE WHEN fact_kind IN ('constraint','agent_instruction') THEN 1 ELSE 0 END`
+	}
+	tokenMatch := match
+	if qa.Code && len(queries) > 0 {
+		// A commit that already shares a query token outranks equally matching
+		// prose. Scope equality still surfaces the right repo area when the
+		// subject wording differs.
+		match += `+CASE WHEN fact_kind IN ('case_fix','case_feature') AND (` + tokenMatch + `)>0 THEN 2 ELSE 0 END`
+		for _, scope := range biz.EvalQueryCaseScopes(queries[0]) {
+			args = append(args, scope)
+			match += fmt.Sprintf(`+CASE WHEN lower(COALESCE(metadata_json::jsonb->>'case_scope',''))=$%d THEN 4 ELSE 0 END`, len(args))
+		}
+	}
+	if qa.Visual {
+		match += `+CASE WHEN jsonb_typeof(metadata_json::jsonb->'media')='array' THEN 1 ELSE 0 END`
 	}
 	args = append(args, limit)
 	direction := "DESC"
@@ -181,8 +198,14 @@ func rankEvalEvidence(items []evalCollectedItem, queries []string, qa biz.EvalQu
 		}
 		if strings.HasPrefix(env.item.ID, "l2:") {
 			env.item.Content = evalEpisodeContentForQuery(env.item.Content, queries[0])
+			if qa.Code {
+				env.item.Content = evalEpisodeCodeExcerpt(env.item.Content, queries[0])
+			}
 		}
 		if strings.TrimSpace(env.item.Content) == "" || !biz.EvalEvidenceApplicable(env.item.Content, queries[0]) {
+			continue
+		}
+		if qa.Code && !strings.HasPrefix(env.item.ID, "l2:") && !evalCodeQueryKeeps(env, queries[0]) {
 			continue
 		}
 		lexical := 0.0
@@ -209,6 +232,24 @@ func rankEvalEvidence(items []evalCollectedItem, queries []string, qa biz.EvalQu
 		}
 		if qa.Procedural && (env.kind == "constraint" || env.kind == "agent_instruction") {
 			relevance = math.Max(relevance, 0.5)
+		}
+		if qa.Code && biz.IsEvalCaseKind(env.kind) && lexical > 0 {
+			relevance = math.Max(relevance, math.Min(1, lexical+0.2))
+		}
+		if qa.Code && env.caseScope != "" && len(queries) > 0 {
+			for _, scope := range biz.EvalQueryCaseScopes(queries[0]) {
+				if scope == env.caseScope {
+					relevance = math.Max(relevance, 0.85)
+					break
+				}
+			}
+		}
+		if qa.Visual && env.hasMedia {
+			if lexical > 0 {
+				relevance = math.Max(relevance, math.Min(1, lexical+0.15))
+			} else {
+				relevance = math.Max(relevance, 0.35)
+			}
 		}
 		if relevance <= 0 || math.IsNaN(relevance) || math.IsInf(relevance, 0) {
 			continue

@@ -144,30 +144,31 @@ func TestApplyEvalQueryModes(t *testing.T) {
 	s := newIntentTestStore(emb)
 
 	var qa biz.EvalQueryAnalysis
-	s.applyEvalQueryModes(ctx, &qa, evalIntentTestAxis(2, 1))
+	const q = "marker"
+	s.applyEvalQueryModes(ctx, &qa, q, evalIntentTestAxis(2, 1))
 	if !qa.Enumerative || qa.Chronological || qa.Aggregate || qa.Relational || qa.Trend {
 		t.Errorf("enumerative-axis query routed wrongly: %+v", qa)
 	}
 	// P3-c：趋势轴 → 仅 Trend。
 	qa = biz.EvalQueryAnalysis{}
-	s.applyEvalQueryModes(ctx, &qa, evalIntentTestAxis(6, 1))
+	s.applyEvalQueryModes(ctx, &qa, q, evalIntentTestAxis(6, 1))
 	if !qa.Trend || qa.Chronological || qa.Aggregate || qa.Enumerative || qa.Relational {
 		t.Errorf("trend-axis query routed wrongly: %+v", qa)
 	}
 	qa = biz.EvalQueryAnalysis{}
-	s.applyEvalQueryModes(ctx, &qa, evalIntentTestAxis(7, 1))
+	s.applyEvalQueryModes(ctx, &qa, q, evalIntentTestAxis(7, 1))
 	if qa.Chronological || qa.Aggregate || qa.Enumerative || qa.Relational || qa.Trend {
 		t.Errorf("neutral query must not route anywhere: %+v", qa)
 	}
 	qa = biz.EvalQueryAnalysis{}
-	s.applyEvalQueryModes(ctx, &qa, nil)
+	s.applyEvalQueryModes(ctx, &qa, q, nil)
 	if qa.Chronological || qa.Aggregate || qa.Enumerative || qa.Relational || qa.Trend {
 		t.Errorf("empty embedding must not touch modes: %+v", qa)
 	}
 	// Router unavailable → all modes stay false even on a clear intent axis.
 	sNoRouter := &evalMemoryStore{lg: loggateway.NewNoop()}
 	qa = biz.EvalQueryAnalysis{}
-	sNoRouter.applyEvalQueryModes(ctx, &qa, evalIntentTestAxis(0, 1))
+	sNoRouter.applyEvalQueryModes(ctx, &qa, q, evalIntentTestAxis(0, 1))
 	if qa.Chronological || qa.Aggregate || qa.Enumerative || qa.Relational || qa.Trend {
 		t.Errorf("degrade path must keep modes false: %+v", qa)
 	}

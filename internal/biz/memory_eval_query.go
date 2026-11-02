@@ -4,6 +4,7 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"unicode"
 )
 
 // memory_eval_query.go — AMC C3-A Q6 deterministic query analysis.
@@ -25,8 +26,18 @@ type EvalQueryAnalysis struct {
 	Relational    bool
 	Stepwise      bool
 	Trend         bool
-	RangeStart    *time.Time
-	RangeEnd      *time.Time
+	// Code asks for commit/diff evidence (case_fix / case_feature).
+	// CodeSolve is the narrower single-trajectory repair prompt used by
+	// CAMBench; ordinary code queries retain cross-session and L2 behavior.
+	// Visual asks for an image caption. These are lexical hints only.
+	Code      bool
+	CodeSolve bool
+	// CodeError is an exception/test-failure follow-up. It needs precise
+	// source/API evidence and must not be flooded by unrelated solved patches.
+	CodeError  bool
+	Visual     bool
+	RangeStart *time.Time
+	RangeEnd   *time.Time
 }
 
 var (
@@ -46,7 +57,50 @@ var (
 
 	evalRangeSinceCues = []string{"之后", "以后", "自从", "since", "after"}
 	evalRangeUntilCues = []string{"以前", "之前", "before", "until"}
+
+	evalCodePathRe = regexp.MustCompile(`(?i)\b[\w.-]+/[\w./-]+\.(?:py|go|js|jsx|ts|tsx|java|rs|cpp|cc|c|h|hpp|rb|php|cs)\b`)
+	// CamelCase class names such as TimeSeries and QTable distinguish code
+	// implementation follow-ups from ordinary prose questions.
+	evalCodeIdentifierRe = regexp.MustCompile(`\b[A-Z][a-z0-9]+(?:[A-Z][A-Za-z0-9]*)+\b`)
+	evalCodeSymbolRe     = regexp.MustCompile(`\b_?[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b`)
+	// Strong code signals route a query to the coding evidence pack even
+	// without error/fix keywords. CAMBench coding agents mostly issue bare
+	// keyword-soup follow-ups ("count query strip unused annotations
+	// Count('chapters')"); under the keyword-only rule 65% of real queries
+	// missed Code classification and fell back to generic MMR fragments.
+	//
+	// evalCodeCallRe matches function-call shapes such as count() or
+	// Book.objects.annotate(Count('chapters')). Natural prose essentially
+	// never attaches a parenthesised argument list directly to a word.
+	evalCodeCallRe = regexp.MustCompile(`\b[A-Za-z_][\w.]*\([^)]{0,60}\)`)
+	// evalCodeModAttrRe matches module/Class attribute access
+	// (Card.fromstring, requests.get). The attribute side must start
+	// lowercase/underscore so prose abbreviations ("U.S.") do not qualify.
+	evalCodeModAttrRe = regexp.MustCompile(`\b(?:[A-Z]\w*|[a-z_][\w]*_[\w]*)\.[a-z_]\w*`)
+	// evalCodeHeaderRe matches HTTP-header-style tokens (Content-Length,
+	// WWW-Authenticate): capitalised segments joined by hyphens. A match
+	// must contain a lowercase letter (checked in evalCodeStrongSignal) so
+	// all-caps prose acronyms such as COVID-19 stay non-code.
+	evalCodeHeaderRe = regexp.MustCompile(`\b[A-Z][A-Za-z0-9]*(?:-[A-Za-z0-9]+)+\b`)
 )
+
+// evalCodeStrongSignal reports whether the query carries an unambiguous code
+// token — a source path, snake_case symbol, function call, module attribute
+// or header-style token. Unlike the CamelCase identifier heuristic these
+// shapes essentially never occur in natural-language prose, so they alone
+// suffice for Code classification.
+func evalCodeStrongSignal(query, low string) bool {
+	if evalCodePathRe.MatchString(query) || evalCodeSymbolRe.MatchString(low) ||
+		evalCodeCallRe.MatchString(query) || evalCodeModAttrRe.MatchString(query) {
+		return true
+	}
+	for _, m := range evalCodeHeaderRe.FindAllString(query, -1) {
+		if strings.IndexFunc(m, unicode.IsLower) >= 0 {
+			return true
+		}
+	}
+	return false
+}
 
 // evalQueryContainsAny reports case-insensitive substring presence (the cue
 // vocabulary is semantics-insensitive to casing, e.g. "Order" / "BEFORE").
@@ -66,6 +120,23 @@ func evalQueryContainsAny(low string, cues []string) bool {
 		}
 	}
 	return false
+}
+
+// EvalQueryAsksCurrentState reports a present-tense current-value question
+// ("now", "currently", "目前", "现在"). Such asks must not open Historical
+// mode from VIR chronological false-positives, or past residence leaks into
+// the current-city answer (AMC live-quality: Rome vs Berlin).
+func EvalQueryAsksCurrentState(query string) bool {
+	low := strings.ToLower(strings.TrimSpace(query))
+	if low == "" {
+		return false
+	}
+	// Cues must be bare tokens: trailing spaces break evalQueryContainsAny's
+	// ASCII word-boundary check ("current " fails on "current address").
+	return evalQueryContainsAny(low, []string{
+		"now", "currently", "current", "at the moment", "right now",
+		"现在", "目前", "当前", "此刻",
+	})
 }
 
 // AnalyzeEvalQuery parses date ranges and deterministic modes. now anchors
@@ -88,7 +159,51 @@ func AnalyzeEvalQuery(query string, now time.Time) EvalQueryAnalysis {
 	qa.Procedural = qa.Procedural || qa.Stepwise || evalQueryContainsAny(low, []string{"format", "response format", "格式", "输出约束"})
 	qa.RangeStart, qa.RangeEnd = evalQueryDateRange(query, low, now)
 	qa.Historical = qa.Historical || qa.RangeStart != nil || qa.RangeEnd != nil
+	errorCue := evalQueryContainsAny(low, []string{
+		"error", "invalid", "missing", "required", "expected", "exception", "failed", "failure", "traceback",
+	}) || strings.Contains(low, "required_columns")
+	codeEntity := evalCodePathRe.MatchString(query) || evalCodeIdentifierRe.MatchString(query) ||
+		evalCodeSymbolRe.MatchString(low) || evalQueryContainsAny(low, []string{"column", "columns"})
+	qa.CodeSolve = evalQueryContainsAny(low, []string{
+		"pr introduces", "source changes", "repository is checked out",
+		"investigate the issue", "implement the fix",
+	}) || evalCodeSolveFollowupQuery(query, low)
+	qa.Code = qa.CodeSolve || EvalCaseFactKind(query) != "" || len(EvalQueryCaseScopes(query)) > 0 || evalQueryContainsAny(low, []string{
+		"bug", "panic", "stack trace", "nil pointer", "nil-pointer", "commit", "patch", "regression",
+		"traceback", "exception", "diff", "fix", "sub-package", "codebase", "pull request",
+		"报错", "空指针", "堆栈", "补丁", "编译失败", "怎么修", "如何修", "修复",
+	}) || codeEntity && (errorCue || evalQueryContainsAny(low, []string{"test", "tests"})) ||
+		evalCodeStrongSignal(query, low)
+	qa.CodeError = qa.Code && !qa.CodeSolve && errorCue && codeEntity
+	qa.Visual = evalQueryContainsAny(low, []string{
+		"screenshot", "image", "picture", "diagram", "photo", "figure",
+		"截图", "图片", "照片", "示意图", "看图", "图里", "图中", "这张图", "附图",
+	})
 	return qa
+}
+
+// evalCodeSolveFollowupQuery keeps subsequent implementation questions on the
+// same complete trajectory as the initial repair prompt. Without this, a
+// follow-up about a class, source file or expected test behavior falls back to
+// generic fragment retrieval and loses the very patch found by the first query.
+func evalCodeSolveFollowupQuery(query, low string) bool {
+	if evalQueryContainsAny(low, []string{
+		"exception", "error", "invalid", "missing", "failed", "failure", "traceback", "fix",
+	}) {
+		// Error-driven searches need the exact function/source evidence, not a
+		// whole historical solve trajectory merely because they also ask about
+		// expected behavior.
+		return false
+	}
+	codeEntity := evalCodePathRe.MatchString(query) || evalCodeIdentifierRe.MatchString(query)
+	if codeEntity && evalQueryContainsAny(low, []string{
+		"implementation details", "implemented using", "implementation of",
+		"source implementation", "expected behavior", "test behavior",
+	}) {
+		return true
+	}
+	return evalQueryContainsAny(low, []string{"expected behavior", "test behavior"}) &&
+		evalQueryContainsAny(low, []string{"test", "tests"})
 }
 
 // evalQueryDateRange resolves absolute (2025年5月7日 / 2025-05-07 /

@@ -105,3 +105,45 @@ func TestAnalyzeEvalQuery_DateRanges(t *testing.T) {
 		})
 	}
 }
+
+func TestAnalyzeEvalQuery_CodeStrongSignals(t *testing.T) {
+	t.Parallel()
+	a := evalQueryTestAnchor()
+	cases := []struct {
+		name  string
+		query string
+		want  bool
+	}{
+		// 真实 CAMBench coding agent 查询（成功 run 审计样本）：裸代码实体、
+		// 无 fix/bug/error 关键词，旧规则不命中 Code。
+		{"蛇形符号", "count query strip unused annotations select_related ignored count", true},
+		{"前导下划线符号", "Nominal scale special-casing _finalize_figure _seed_values grid axis", true},
+		{"带参调用", "count query strip unused annotations Count('chapters')", true},
+		{"空调用", "strip annotations count() optimization", true},
+		{"模块属性", "FITS Card null string parsing Card.fromstring", true},
+		{"HTTP 头", "requests GET sends Content-Length header automatically 503", true},
+		{"全大写头段", "Digest Auth qop options WWW-Authenticate header", true},
+		{"源码路径", "astropy/timeseries/core.py behavior", true},
+		{"错误+实体仍命中", "ValueError in get_search_results when filtering", true},
+		// 文本赛道自然语言不得误入 Code。
+		{"中文日常", "我上周三午饭吃了什么", false},
+		{"英文日常", "what did I buy at the store yesterday", false},
+		{"英文偏好", "which coffee do I prefer in the morning", false},
+		{"全大写缩写非代码", "did I mention COVID-19 in my notes", false},
+		{"缩写非模块属性", "U.S. travel plans for spring", false},
+		{"带空格的括号非调用", "I read the book (a novel) last week", false},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			qa := AnalyzeEvalQuery(tc.query, a)
+			if qa.Code != tc.want {
+				t.Errorf("Code=%v, want %v (query %q)", qa.Code, tc.want, tc.query)
+			}
+			if tc.want && qa.CodeSolve {
+				t.Errorf("CodeSolve=true, want false for bare entity query %q", tc.query)
+			}
+		})
+	}
+}

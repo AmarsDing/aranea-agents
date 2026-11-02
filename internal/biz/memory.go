@@ -96,6 +96,35 @@ func (uc *MemoryUsecase) EmbedText(ctx context.Context, text string) ([]float32,
 	return uc.embedder.Embed(ctx, text)
 }
 
+// EmbedTexts 批量嵌入多段文本：embedder 实现 EmbeddingBatchService 时一次
+// 批量往返（供应商侧再按模型批上限分块），否则回退逐条 Embed。返回切片与
+// 输入等长；空白文本对应位置为 nil。任一文本失败即整体返回错误（调用方
+// 按批失败处理，与写管线批语义一致）。
+func (uc *MemoryUsecase) EmbedTexts(ctx context.Context, texts []string) ([][]float32, error) {
+	if uc == nil || uc.embedder == nil {
+		return nil, ErrMemoryUnavailable
+	}
+	if len(texts) == 0 {
+		return nil, nil
+	}
+	if b, ok := uc.embedder.(EmbeddingBatchService); ok {
+		return b.EmbedBatch(ctx, texts)
+	}
+	out := make([][]float32, len(texts))
+	for i, t := range texts {
+		t = strings.TrimSpace(t)
+		if t == "" {
+			continue
+		}
+		v, err := uc.embedder.Embed(ctx, t)
+		if err != nil {
+			return nil, err
+		}
+		out[i] = v
+	}
+	return out, nil
+}
+
 // Recall embeds query text and returns topK hits for agent (default user scope "").
 func (uc *MemoryUsecase) Recall(ctx context.Context, agentID, query string, topK int) ([]*AgentMemory, error) {
 	return uc.RecallWithUser(ctx, agentID, "", query, topK)

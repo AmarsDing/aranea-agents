@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/jsonutil"
 	"aranea-agents/pkg/loggateway"
 )
@@ -34,28 +35,38 @@ func (s *memoryFactIndexSync) SyncFactIndex(ctx context.Context, agentID, userID
 	if s == nil || s.vec == nil {
 		return biz.ErrMemoryUnavailable
 	}
-	markStale := func(reason error) {
-		if s.data == nil {
-			return
-		}
-		if serr := s.markFactIndexStale(ctx, factID, reason.Error()); serr != nil {
-			s.lg.Warn("failed to mark fact index stale", loggateway.StepID("memory.l4_fail"), loggateway.Str("fact_id", factID), loggateway.Err(serr))
-		}
-	}
 	embedding, err := s.vec.EmbedText(ctx, statement)
 	if err != nil {
 		s.lg.Warn("embed text failed", loggateway.StepID("memory.l4_fail"), loggateway.Str("fact_id", factID), loggateway.Err(err))
-		markStale(err)
+		s.markStaleOnError(ctx, factID, err)
 		return err
 	}
+	return s.writeFactIndex(ctx, agentID, userID, factID, statement, embedding)
+}
+
+// markStaleOnError flips a fact back to stale (and bumps index_attempts) so the
+// sweeper retries it later; warn-only by contract.
+func (s *memoryFactIndexSync) markStaleOnError(ctx context.Context, factID string, reason error) {
+	if s == nil || s.data == nil {
+		return
+	}
+	if serr := s.markFactIndexStale(ctx, factID, reason.Error()); serr != nil {
+		s.lg.Warn("failed to mark fact index stale", loggateway.StepID("memory.l4_fail"), loggateway.Str("fact_id", factID), loggateway.Err(serr))
+	}
+}
+
+// writeFactIndex persists a precomputed embedding to pgvector + primary DB
+// embedding_blob + shared read index, then marks the row fresh. Any failure
+// marks the row stale (sweeper retries) and is returned to the caller.
+func (s *memoryFactIndexSync) writeFactIndex(ctx context.Context, agentID, userID, factID, statement string, embedding []float32) error {
 	if err := s.vec.UpsertFactVector(ctx, agentID, userID, factID, statement, embedding); err != nil {
 		s.lg.Warn("upsert fact vector failed", loggateway.StepID("memory.l4_fail"), loggateway.Str("fact_id", factID), loggateway.Err(err))
-		markStale(err)
+		s.markStaleOnError(ctx, factID, err)
 		return err
 	}
 	if err := s.syncEmbeddingBlob(ctx, factID, embedding); err != nil {
 		s.lg.Warn("sync embedding blob failed", loggateway.StepID("memory.l4_fail"), loggateway.Str("fact_id", factID), loggateway.Err(err))
-		markStale(err)
+		s.markStaleOnError(ctx, factID, err)
 		return entErrToBizErr(err, "MEMORY_L3")
 	}
 	// Dual-write the shared read index (vector_embeddings). L2/L3 recall
@@ -97,25 +108,104 @@ func (s *memoryFactIndexSync) SyncFactIndex(ctx context.Context, agentID, userID
 	return nil
 }
 
+// factIndexRowRef is one parsed memory_facts row ready for index sync.
+type factIndexRowRef struct {
+	agentID   string
+	userID    string
+	factID    string
+	statement string
+}
+
+// parseFactIndexRow extracts the fields SyncFactIndex consumes from a raw
+// memory_facts JSON row. valid=false means the row is permanently unusable
+// (missing agent/fact/statement) — not a transient error, never marked stale.
+func parseFactIndexRow(raw []byte) (ref factIndexRowRef, valid bool, err error) {
+	var m map[string]any
+	if err = json.Unmarshal(raw, &m); err != nil {
+		return ref, false, err
+	}
+	ref.agentID = jsonutil.IfaceStr(m, "agent_id")
+	if ref.agentID == "" {
+		ref.agentID = jsonutil.IfaceStr(m, "scope_id")
+	}
+	ref.factID = jsonutil.IfaceStr(m, "id")
+	ref.userID = jsonutil.IfaceStr(m, "user_id")
+	ref.statement = jsonutil.IfaceStr(m, "statement")
+	if ref.agentID == "" || ref.factID == "" || ref.statement == "" {
+		return ref, false, nil
+	}
+	return ref, true, nil
+}
+
+// SyncFactIndexBatchFromRows implements biz.MemoryFactIndexBatchSyncer: one
+// batched embed call for the whole picked sweep batch, then per-row writes.
+// Embed failure marks every parsed row stale and returns the error (sweeper
+// backoff paces the retry); per-row write failures only mark that row stale.
+func (s *memoryFactIndexSync) SyncFactIndexBatchFromRows(ctx context.Context, raws [][]byte) (int, error) {
+	if s == nil || s.vec == nil {
+		return 0, biz.ErrMemoryUnavailable
+	}
+	refs := make([]factIndexRowRef, 0, len(raws))
+	texts := make([]string, 0, len(raws))
+	for _, raw := range raws {
+		ref, valid, perr := parseFactIndexRow(raw)
+		if perr != nil {
+			s.lg.Warn("fact index sync json parse failed", loggateway.StepID("memory.index_sync_parse_fail"), loggateway.Err(perr))
+			continue
+		}
+		if !valid {
+			continue
+		}
+		refs = append(refs, ref)
+		texts = append(texts, ref.statement)
+	}
+	if len(refs) == 0 {
+		return 0, nil
+	}
+	vecs, err := s.vec.EmbedTexts(ctx, texts)
+	if err != nil {
+		s.lg.Warn("batch embed texts failed", loggateway.StepID("memory.l4_fail"),
+			loggateway.Int("batch", len(refs)), loggateway.Err(err))
+		for _, ref := range refs {
+			s.markStaleOnError(ctx, ref.factID, err)
+		}
+		return 0, err
+	}
+	if len(vecs) != len(refs) {
+		cntErr := apierror.Internal(apierror.DomainKnowledge, "embedder batch: expected %d embeddings, got %d", len(refs), len(vecs))
+		s.lg.Warn("batch embed count mismatch", loggateway.StepID("memory.l4_fail"),
+			loggateway.Int("expected", len(refs)), loggateway.Int("got", len(vecs)))
+		for _, ref := range refs {
+			s.markStaleOnError(ctx, ref.factID, cntErr)
+		}
+		return 0, cntErr
+	}
+	synced := 0
+	for i, ref := range refs {
+		if len(vecs[i]) == 0 {
+			continue
+		}
+		if werr := s.writeFactIndex(ctx, ref.agentID, ref.userID, ref.factID, ref.statement, vecs[i]); werr != nil {
+			continue
+		}
+		synced++
+	}
+	return synced, nil
+}
+
 func (s *memoryFactIndexSync) SyncFactIndexFromRow(ctx context.Context, raw []byte) error {
 	if s == nil || s.vec == nil || len(raw) == 0 {
 		return biz.ErrMemoryUnavailable
 	}
-	var m map[string]any
-	if err := json.Unmarshal(raw, &m); err != nil {
+	ref, valid, err := parseFactIndexRow(raw)
+	if err != nil {
 		s.lg.Warn("fact index sync json parse failed", loggateway.StepID("memory.index_sync_parse_fail"), loggateway.Err(err))
 		return err
 	}
-	agentID := jsonutil.IfaceStr(m, "agent_id")
-	if agentID == "" {
-		agentID = jsonutil.IfaceStr(m, "scope_id")
-	}
-	factID := jsonutil.IfaceStr(m, "id")
-	statement := jsonutil.IfaceStr(m, "statement")
-	if agentID == "" || factID == "" || statement == "" {
+	if !valid {
 		return nil
 	}
-	return s.SyncFactIndex(ctx, agentID, jsonutil.IfaceStr(m, "user_id"), factID, statement)
+	return s.SyncFactIndex(ctx, ref.agentID, ref.userID, ref.factID, ref.statement)
 }
 
 func (s *memoryFactIndexSync) syncEmbeddingBlob(ctx context.Context, factID string, embedding []float32) error {

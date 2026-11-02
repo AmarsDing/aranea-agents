@@ -85,7 +85,18 @@ func NewEvalMemoryStore(d *Data, emb biz.EmbeddingService, lg loggateway.Logger)
 	return s
 }
 
-func (s *evalMemoryStore) addMessages(ctx context.Context, userID, sessionID string, msgs []biz.EvalMessage, indexed *[]evalWrittenFact) (int, error) {
+// evalAddBatchState carries request-scoped write state across chunk
+// transactions so chunked commits match single-transaction semantics
+// (2026-11-01): batchIDs keeps same-batch rows exempt from vector
+// correction, and the expensive derived rollup runs once per request
+// instead of once per chunk.
+type evalAddBatchState struct {
+	touchedSlots map[string]struct{}
+	batchIDs     map[string]struct{}
+	changed      bool
+}
+
+func (s *evalMemoryStore) addMessages(ctx context.Context, userID, sessionID string, msgs []biz.EvalMessage, embeddings map[int]evalMessageEmbeddings, indexed *[]evalWrittenFact, shared *evalAddBatchState) (int, error) {
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
 		sessionID = "eval-default"
@@ -96,6 +107,10 @@ func (s *evalMemoryStore) addMessages(ctx context.Context, userID, sessionID str
 	touchedSlots := map[string]struct{}{}
 	changed := false
 	batchIDs := map[string]struct{}{}
+	if shared != nil {
+		touchedSlots = shared.touchedSlots
+		batchIDs = shared.batchIDs
+	}
 	policies, err := s.evalMemoryPolicies(ctx, userID)
 	if err != nil {
 		return 0, err
@@ -117,17 +132,7 @@ func (s *evalMemoryStore) addMessages(ctx context.Context, userID, sessionID str
 		atoms := biz.SplitEvalStatements(m.Content, biz.EvalMaxStatementAtoms)
 		_, directControl := biz.ParseEvalMemoryDirective(m.Role, m.Content)
 		controlMessage := len(atoms) == 1 && directControl
-		var atomEmbeddings, routeEmbeddings map[int][]float32
-		if !controlMessage && s.emb != nil {
-			statements := make([]string, len(atoms))
-			for j, atom := range atoms {
-				statements[j] = atom
-				if m.Role != "" {
-					statements[j] = m.Role + ": " + atom
-				}
-			}
-			atomEmbeddings, routeEmbeddings = s.embedEvalStatements(ctx, statements)
-		}
+		atomEmbeddings, routeEmbeddings := embeddings[i].prefixed, embeddings[i].routed
 		var headingSpans []biz.EvalDateSpan
 		for j, atom := range atoms {
 			if controlMessage {
@@ -201,7 +206,7 @@ func (s *evalMemoryStore) addMessages(ctx context.Context, userID, sessionID str
 				ValidFrom:       eventAt,
 				ValidUntil:      validUntil,
 				SkipPIIRedact:   true,
-				MetadataJSON:    evalSourceMetadata(sessionID, i, j, atomDates, prevs, spans, eventAt, anchor.Format(time.RFC3339Nano), statement),
+				MetadataJSON:    evalAttachMedia(evalSourceMetadata(sessionID, i, j, atomDates, prevs, spans, eventAt, anchor.Format(time.RFC3339Nano), statement), m.Parts),
 			})
 			if err != nil {
 				return stored, err
@@ -238,7 +243,11 @@ func (s *evalMemoryStore) addMessages(ctx context.Context, userID, sessionID str
 			return stored, err
 		}
 	}
-	if changed {
+	if shared != nil {
+		// Chunked path: the caller runs the rollup once after the final
+		// chunk commit; derived projections then reflect the whole request.
+		shared.changed = shared.changed || changed
+	} else if changed {
 		if err := s.rollupEvalDerivedRows(ctx, userID, sessionID, touchedSlots, batchIDs, &derivedWritten); err != nil {
 			return stored, err
 		}
@@ -263,6 +272,8 @@ type evalCollectedItem struct {
 	semantic     float64
 	relevance    float64
 	kind         string
+	caseScope    string
+	hasMedia     bool
 	historical   bool
 	evidenceUnit bool
 	support      string
@@ -305,7 +316,7 @@ func (s *evalMemoryStore) SearchMemories(ctx context.Context, userID, query stri
 	poolLimit := evalCandidateLimit(topK)
 	// T8 shadow：词法判定快照（VIR 合并前），供分歧分析（P29 入料）。
 	lexicalQA := qa
-	s.applyEvalQueryModes(ctx, &qa, embedding)
+	s.applyEvalQueryModes(ctx, &qa, query, embedding)
 	s.shadowRouteMode(ctx, userID, query, embedding, lexicalQA)
 	// A future horizon in a trend question asks for a forecast, not evidence
 	// recorded in that future window. Keep the observed series available.
@@ -372,12 +383,15 @@ func (s *evalMemoryStore) SearchMemories(ctx context.Context, userID, query stri
 	}
 	s.appendSessionHop(ctx, userID, rows, appendRow)
 	s.appendLinkHop(ctx, userID, rows, appendRow)
-	if qa.Historical || qa.Aggregate || qa.Procedural || qa.Relational || qa.Trend || qa.RangeStart != nil || qa.RangeEnd != nil || len(biz.EvalBackgroundFacets(query)) > 0 {
+	if qa.Code || qa.Historical || qa.Aggregate || qa.Procedural || qa.Relational || qa.Trend || qa.RangeStart != nil || qa.RangeEnd != nil || len(biz.EvalBackgroundFacets(query)) > 0 {
 		if err := s.appendEvalCandidates(ctx, userID, queries, qa, int(poolLimit), appendRow); err != nil {
 			return nil, err
 		}
 	}
-	if s.episodes != nil && qa.RangeStart == nil && qa.RangeEnd == nil && !qa.Chronological && !qa.Relational {
+	// A coding trajectory's L2 transcript duplicates the L3 evidence and is
+	// capped at 32 KiB, so it can contain the exploration while omitting the
+	// final patch. Code search uses complete L3 evidence units instead.
+	if s.episodes != nil && !qa.CodeSolve && qa.RangeStart == nil && qa.RangeEnd == nil && !qa.Chronological && !qa.Relational {
 		l2lim := evalL2SearchLimit
 		if int(topK) > 0 && int(topK) < l2lim {
 			l2lim = int(topK)
@@ -426,7 +440,11 @@ func (s *evalMemoryStore) SearchMemories(ctx context.Context, userID, query stri
 		items = rankEvalEvidence(items, queries, qa)
 		items = filterEvalItemsByRange(items, qa)
 	}
-	items = s.appendEvalContext(ctx, userID, query, items, qa, topK)
+	if qa.CodeSolve {
+		items = s.appendEvalCodeContext(ctx, userID, query, items)
+	} else {
+		items = s.appendEvalContext(ctx, userID, query, items, qa, topK)
+	}
 	if qa.Relational {
 		items = s.appendEvalRelations(ctx, userID, query, items, qa)
 	}
@@ -478,6 +496,10 @@ func (s *evalMemoryStore) SearchMemories(ctx context.Context, userID, query stri
 		items = evalTrendCapItems(items, topK)
 	} else if qa.Enumerative {
 		items = evalEnumerativeCapItems(items, topK)
+	} else if qa.CodeError {
+		items = evalCodeErrorCapItems(items, query, topK)
+	} else if qa.Code {
+		items = evalCodeCapItemsMode(items, query, topK, qa.CodeSolve)
 	} else {
 		items = evalMMRCapItems(items, topK)
 	}
@@ -491,16 +513,34 @@ func (s *evalMemoryStore) SearchMemories(ctx context.Context, userID, query stri
 		// Q9 evidence gating: identifier masking, then the evidence prefix
 		// (which goes before the role prefix inside the statement).
 		budget := 1800
-		if env.evidenceUnit {
-			budget = 6000
-		}
-		// Reserve a fair share for each selected evidence unit so the fixed
-		// total budget cannot silently discard all later sources.
-		if fair := remaining / (len(items) - i); fair < budget {
-			budget = fair
-		}
-		if remaining < budget {
-			budget = remaining
+		codeUnit := evalIsCodeUnit(it.Content, env.kind)
+		if qa.Code {
+			// Every coding result is an evidence unit, including test output and
+			// the final summary. Never excerpt a JSON patch or return a passing
+			// test's first lines without its verdict. The pack ranks outcome
+			// evidence first; when the 36K budget is full, skip a whole lower-
+			// value unit rather than emitting a misleading partial one.
+			budget = len([]rune(it.Content))
+			if budget > remaining {
+				continue
+			}
+		} else {
+			if env.evidenceUnit || codeUnit {
+				budget = 6000
+			}
+			if codeUnit {
+				if size := len([]rune(it.Content)); size <= budget && size > remaining {
+					continue
+				}
+			}
+			// Reserve a fair share for each selected evidence unit so the fixed
+			// total budget cannot silently discard all later sources.
+			if fair := remaining / (len(items) - i); !codeUnit && fair < budget {
+				budget = fair
+			}
+			if remaining < budget {
+				budget = remaining
+			}
 		}
 		content := evalEvidenceExcerpt(MaskEvalEvidence(it.Content, query), queries, budget)
 		remaining -= len([]rune(content))
@@ -760,18 +800,12 @@ func (s *evalMemoryStore) supersedeContradictions(ctx context.Context, userID, n
 		return prevs, successor, nil
 	}
 	var emb []float32
-	var embErr error
 	if len(embeddings) > 0 {
 		emb = embeddings[0]
 	}
 	if len(emb) == 0 {
-		emb, embErr = s.vec.EmbedText(ctx, newStmt)
-	}
-	if embErr != nil || len(emb) == 0 {
-		if embErr != nil {
-			s.lg.Warn("eval correction embed failed, vector supersede skipped",
-				loggateway.StepID("memoryeval.correction_embed"), loggateway.Err(embErr))
-		}
+		// Preparation already attempted embedding before this transaction.
+		// An outage degrades only vector correction, never same-slot updates.
 		return prevs, successor, nil
 	}
 	hits, searchErr := s.facts.vectorStore.Search(ctx, float32To64(emb), evalCorrectionTopK, 0)
@@ -1107,14 +1141,18 @@ func evalFactEnvelope(raw []byte, fallback float64) (evalCollectedItem, bool) {
 	sess := factJSONString(raw, "source_session_id")
 	day := EvalEvidenceDate(meta, item.Timestamp, item.CreatedAt)
 	var metadata struct {
-		Spans        []biz.EvalDateSpan `json:"event_spans"`
-		EventDates   []string           `json:"event_dates"`
-		SourceTime   *string            `json:"source_timestamp"`
-		LocalTime    string             `json:"source_local_timestamp"`
-		Historical   bool               `json:"historical_context"`
-		Structured   bool               `json:"structured"`
-		MessageIndex int                `json:"message_index"`
-		AtomIndex    int                `json:"atom_index"`
+		Spans      []biz.EvalDateSpan `json:"event_spans"`
+		EventDates []string           `json:"event_dates"`
+		SourceTime *string            `json:"source_timestamp"`
+		LocalTime  string             `json:"source_local_timestamp"`
+		Historical bool               `json:"historical_context"`
+		Structured bool               `json:"structured"`
+		CaseScope  string             `json:"case_scope"`
+		Media      []struct {
+			Type string `json:"type"`
+		} `json:"media"`
+		MessageIndex int `json:"message_index"`
+		AtomIndex    int `json:"atom_index"`
 	}
 	if json.Unmarshal([]byte(meta), &metadata) != nil {
 		metadata.SourceTime = nil
@@ -1149,7 +1187,9 @@ func evalFactEnvelope(raw []byte, fallback float64) (evalCollectedItem, bool) {
 	}
 	return evalCollectedItem{item: item, day: day, sess: sess, raw: raw, spans: metadata.Spans,
 		sourceTime: sourceTime, messageIndex: metadata.MessageIndex, atomIndex: metadata.AtomIndex,
-		invalidUntil: factJSONString(raw, "valid_until"), semantic: scores.Scores.Vector, kind: factJSONString(raw, "fact_kind"), historical: metadata.Historical, evidenceUnit: metadata.Structured}, true
+		invalidUntil: factJSONString(raw, "valid_until"), semantic: scores.Scores.Vector, kind: factJSONString(raw, "fact_kind"),
+		caseScope: strings.ToLower(metadata.CaseScope), hasMedia: len(metadata.Media) > 0,
+		historical: metadata.Historical, evidenceUnit: metadata.Structured}, true
 }
 
 func evalItemFromEpisodeJSON(raw []byte) (biz.EvalMemoryItem, bool) {

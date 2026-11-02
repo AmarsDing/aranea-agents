@@ -53,6 +53,21 @@ func (s *evalMemoryStore) intentRouter(ctx context.Context) *biz.EvalIntentRoute
 	}
 	s.routerMu.Lock()
 	defer s.routerMu.Unlock()
+	return s.intentRouterLocked(ctx)
+}
+
+// tryIntentRouter keeps optional write enrichment from waiting behind another
+// request's cold router initialization, which may outlive the write budget.
+func (s *evalMemoryStore) tryIntentRouter(ctx context.Context) *biz.EvalIntentRouter {
+	if s.emb == nil || !s.routerMu.TryLock() {
+		return nil
+	}
+	defer s.routerMu.Unlock()
+	return s.intentRouterLocked(ctx)
+}
+
+// intentRouterLocked requires routerMu to be held by the caller.
+func (s *evalMemoryStore) intentRouterLocked(ctx context.Context) *biz.EvalIntentRouter {
 	if s.router != nil {
 		return s.router
 	}
@@ -76,7 +91,7 @@ func (s *evalMemoryStore) intentRouter(ctx context.Context) *biz.EvalIntentRoute
 	return s.router
 }
 
-// embedEvalStatements embeds one message's atoms in BOTH forms within a
+// embedEvalStatements embeds the supplied statements in BOTH forms within a
 // single batch round-trip (评测流一条消息多枚原子 → 2n 文本一次往返；无批
 // 量支持时逐条)：
 //   - prefixed：带角色前缀的完整语句，与存量事实向量同一文本分布，供
@@ -88,7 +103,7 @@ func (s *evalMemoryStore) intentRouter(ctx context.Context) *biz.EvalIntentRoute
 // 两个返回 map 均以 statement 索引为键；nil map（路由器缺席）或缺失条目
 // （该文本嵌入失败）安全降级——同槽 supersede 通道不受影响。
 func (s *evalMemoryStore) embedEvalStatements(ctx context.Context, stmts []string) (prefixed, routed map[int][]float32) {
-	if len(stmts) == 0 || s.emb == nil || s.intentRouter(ctx) == nil {
+	if len(stmts) == 0 || s.emb == nil || s.tryIntentRouter(ctx) == nil {
 		return nil, nil
 	}
 	all := make([]string, 0, 2*len(stmts))
@@ -109,6 +124,9 @@ func (s *evalMemoryStore) embedEvalStatements(ctx context.Context, stmts []strin
 	if vecs == nil {
 		vecs = make([][]float32, len(all))
 		for i, t := range all {
+			if ctx.Err() != nil {
+				break
+			}
 			v, err := s.emb.Embed(ctx, t)
 			if err != nil {
 				s.lg.Warn("eval atom embed failed, intent routing skipped for it",
@@ -163,6 +181,32 @@ func escapeEvalLike(s string) string {
 // Derived rows never anchor relative dates or enter the session transcript.
 const evalDerivedSource = "agent_memory_challenge_derived"
 
+// listEvalSeriesDigestRows loads the live digest rows for one series key.
+// Scoping to source_kind='agent_memory_challenge_derived' is essential: the
+// generic statement_normalized substring scan degenerates on common keys —
+// pg_trgm on '%[series-digest: first]%' bitmap-matched 1.2M of 1.6M rows
+// (2026-11-01 teval_e9efcf9f2a515e66 add timeouts), while derived rows are
+// only a handful per user. Statement normalization lowercases, so the LIKE
+// mirrors ListFactRowsForUser's lowercased substring semantics.
+func (s *evalMemoryStore) listEvalSeriesDigestRows(ctx context.Context, userID, prefix string) ([][]byte, error) {
+	rows, err := s.facts.data.RWDB().ReadDB(ctx).QueryContext(ctx, sqlFactSelectSQL(false)+
+		` WHERE status='active' AND deleted_at='' AND valid_until='' AND scope_type='user' AND scope_id=$1 AND user_id=$1 AND source_kind=$2 AND statement_normalized LIKE $3 ORDER BY updated_at DESC,id ASC LIMIT $4`,
+		userID, evalDerivedSource, "%"+strings.ToLower(escapeEvalLike(prefix))+"%", evalDigestKeyLook)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out [][]byte
+	for rows.Next() {
+		raw, err := scanFactRowJSON(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, raw)
+	}
+	return out, rows.Err()
+}
+
 func evalIsDerivedRaw(raw []byte) bool {
 	return factJSONString(raw, "source_kind") == evalDerivedSource ||
 		factJSONString(raw, "source_session_id") == "" && biz.IsEvalRollupStatement(factJSONString(raw, "statement"))
@@ -203,7 +247,7 @@ func (s *evalMemoryStore) upsertNumericDigests(ctx context.Context, userID, sess
 	sort.Strings(keys)
 	for _, key := range keys {
 		prefix := "[series-digest: " + key + "]"
-		rows, err := s.facts.ListFactRowsForUser(ctx, "user", userID, userID, escapeEvalLike(prefix), evalDigestKeyLook, 0)
+		rows, err := s.listEvalSeriesDigestRows(ctx, userID, prefix)
 		if err != nil {
 			return err
 		}
@@ -386,8 +430,10 @@ func (s *evalMemoryStore) rebuildEvalNumericDigests(ctx context.Context, userID 
 
 // applyEvalQueryModes assigns the query-side modes via the VIR router over
 // the already-computed query embedding (AMC P3). When the router is
-// unavailable deterministic modes stay intact.
-func (s *evalMemoryStore) applyEvalQueryModes(ctx context.Context, qa *biz.EvalQueryAnalysis, embedding []float32) {
+// unavailable deterministic modes stay intact. query is required so
+// present-tense current-state asks never inherit Historical from a VIR
+// chronological false-positive.
+func (s *evalMemoryStore) applyEvalQueryModes(ctx context.Context, qa *biz.EvalQueryAnalysis, query string, embedding []float32) {
 	if len(embedding) == 0 {
 		return
 	}
@@ -400,7 +446,12 @@ func (s *evalMemoryStore) applyEvalQueryModes(ctx context.Context, qa *biz.EvalQ
 	qa.Enumerative = qa.Enumerative || r.Match(embedding, biz.EvalIntentEnumerative)
 	qa.Relational = qa.Relational || r.Match(embedding, biz.EvalIntentRelational)
 	qa.Trend = qa.Trend || r.Match(embedding, biz.EvalIntentTrend)
-	qa.Historical = qa.Historical || qa.Chronological
+	// Present-tense "now/currently" asks for the live state. Do not promote
+	// Historical from a VIR chronological false-positive (AMC quality:
+	// "I used to live in Berlin" must not replace "I live in Rome").
+	if !biz.EvalQueryAsksCurrentState(query) {
+		qa.Historical = qa.Historical || qa.Chronological
+	}
 }
 
 // evalRelationalHop2Budget returns the remaining link-id budget for the

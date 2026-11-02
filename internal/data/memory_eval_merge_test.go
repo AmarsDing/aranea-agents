@@ -12,8 +12,9 @@ import (
 
 func TestEvalMerge_RouterPreservesOfflineModes(t *testing.T) {
 	s := newIntentTestStore(newEvalIntentTestEmbedder(nil))
-	qa := biz.AnalyzeEvalQuery("List all fields in the workflow", time.Now())
-	s.applyEvalQueryModes(context.Background(), &qa, evalIntentTestAxis(7, 1))
+	query := "List all fields in the workflow"
+	qa := biz.AnalyzeEvalQuery(query, time.Now())
+	s.applyEvalQueryModes(context.Background(), &qa, query, evalIntentTestAxis(7, 1))
 	if !qa.Enumerative || !qa.Aggregate || !qa.Procedural || !qa.Stepwise {
 		t.Fatalf("neutral semantic routing cleared explicit modes: %+v", qa)
 	}

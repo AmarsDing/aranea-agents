@@ -7,6 +7,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"aranea-agents/internal/biz"
@@ -35,6 +36,11 @@ type evalServer struct {
 	// EVAL_MAX_MEDIA_BYTES), defaulting to the contract limits.
 	maxImageBytes int64
 	maxMediaBytes int64
+
+	// searchAuditPath enables local, metadata-only Search diagnostics. It is
+	// disabled by default and never records returned memory or patch content.
+	searchAuditPath string
+	searchAuditMu   sync.Mutex
 }
 
 func newEvalServer(store biz.EvalMemoryStore, token string, lg loggateway.Logger) *evalServer {
@@ -52,6 +58,7 @@ func newEvalServer(store biz.EvalMemoryStore, token string, lg loggateway.Logger
 	if v := strings.TrimSpace(os.Getenv("EVAL_MEDIA_DIR")); v != "" {
 		s.mediaDir = v
 	}
+	s.searchAuditPath = strings.TrimSpace(os.Getenv("EVAL_SEARCH_AUDIT_PATH"))
 	if n := envInt64("EVAL_MAX_IMAGE_BYTES", 0); n > 0 {
 		s.maxImageBytes = n
 	}
@@ -382,6 +389,9 @@ func (s *evalServer) persistMediaParts(requestID, userID string, msgIndex int, i
 		}
 		(*ack)++
 		if s.mediaDir == "" {
+			// Caption retrieval still needs to know an image was attached.
+			// No bytes are decoded and no path is kept when the file sink is off.
+			parts = append(parts, biz.EvalContentPart{Type: "image_url", Index: img.Index, Mime: mime})
 			continue
 		}
 		raw, err := decodeEvalImagePayload(payload, s.maxImageBytes)
@@ -429,6 +439,44 @@ type searchResponse struct {
 	Error string               `json:"error,omitempty"`
 }
 
+type searchAuditEntry struct {
+	Time       string `json:"time"`
+	UserID     string `json:"user_id"`
+	Query      string `json:"query"`
+	TopK       int32  `json:"top_k"`
+	Items      int    `json:"items"`
+	ReturnSize int    `json:"return_size_bytes"`
+	DurationMS int64  `json:"duration_ms"`
+	Error      string `json:"error,omitempty"`
+}
+
+func (s *evalServer) auditSearch(started time.Time, req searchRequest, query string, topK int32, items []biz.EvalMemoryItem, searchErr error) {
+	if s.searchAuditPath == "" {
+		return
+	}
+	entry := searchAuditEntry{
+		Time: time.Now().UTC().Format(time.RFC3339Nano), UserID: req.UserID, Query: query,
+		TopK: topK, Items: len(items), DurationMS: time.Since(started).Milliseconds(),
+	}
+	for _, item := range items {
+		entry.ReturnSize += len(item.Content)
+	}
+	if searchErr != nil {
+		entry.Error = searchErr.Error()
+	}
+	s.searchAuditMu.Lock()
+	defer s.searchAuditMu.Unlock()
+	file, err := os.OpenFile(s.searchAuditPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
+	if err != nil {
+		s.lg.Warn("eval search audit unavailable", loggateway.StepID("memoryeval.search_audit"), loggateway.Err(err))
+		return
+	}
+	defer file.Close()
+	if err := json.NewEncoder(file).Encode(entry); err != nil {
+		s.lg.Warn("eval search audit write failed", loggateway.StepID("memoryeval.search_audit"), loggateway.Err(err))
+	}
+}
+
 func (s *evalServer) handleSearch(w http.ResponseWriter, r *http.Request) {
 	if s.maxBodyBytes > 0 {
 		r.Body = http.MaxBytesReader(w, r.Body, s.maxBodyBytes)
@@ -459,7 +507,9 @@ func (s *evalServer) handleSearch(w http.ResponseWriter, r *http.Request) {
 	if topK <= 0 {
 		topK = 100 // platform default
 	}
+	started := time.Now()
 	items, err := s.store.SearchMemories(r.Context(), req.UserID, query, topK, req.Options...)
+	s.auditSearch(started, req, query, topK, items, err)
 	if err != nil {
 		s.lg.Error("eval search failed",
 			loggateway.StepID("memoryeval.search"), loggateway.Str("user_id", req.UserID), loggateway.Err(err))

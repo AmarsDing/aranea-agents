@@ -38,7 +38,7 @@ try {
             @{ role='user'; content='My favorite color is red. Contact alice@example.com and phone +1-415-555-1212.'; timestamp=1710928800000 },
             @{ role='system'; content="Rule: label examples define colors.`nA=red`nB=blue"; timestamp=1710928860000 },
             @{ role='user'; content='Telemetry identifier is orbital-code42.'; timestamp=1711015200000 },
-            @{ role='user'; content='我最喜欢的饮料是乌龙茶'; timestamp=1711015260000 }
+            @{ role='user'; content='我最喜欢的颜色是蓝色'; timestamp=1711015260000 },
         )
     }
     $add = Invoke-SmokePost '/v1/memory/add' $batch
@@ -52,10 +52,10 @@ try {
     Assert-Smoke 'short examples preserved' ($rules.Contains('B=blue'))
     $choices = Find-Smoke 'Which statement matches the record?' @('A. orbital-code42 is the telemetry identifier', 'B. never-stored-code99 is the telemetry identifier')
     Assert-Smoke 'choice hints return stored evidence only' ($choices.Contains('orbital-code42') -and -not $choices.Contains('never-stored-code99'))
-    $chinese = Find-Smoke '用户最喜欢的饮料是什么'
-    Assert-Smoke 'UTF-8 Chinese evidence' ($chinese.Contains('乌龙茶'))
+    $chinese = Find-Smoke '用户最喜欢的颜色是什么'
+    Assert-Smoke 'UTF-8 Chinese evidence' ($chinese.Contains('蓝色'))
     $profile = Find-Smoke 'What do you know about me?'
-    Assert-Smoke 'generic profile retains relevant user evidence' ($profile.Contains('favorite color is red') -and $profile.Contains('乌龙茶'))
+    Assert-Smoke 'generic profile retains relevant user evidence' ($profile.Contains('favorite color is red') -and $profile.Contains('蓝色'))
     $calendar = Find-Smoke 'What happened on 2024-03-21?'
     Assert-Smoke 'date-only view retains event evidence' ($calendar.Contains('orbital-code42'))
     $isolation = Invoke-SmokePost '/v1/memory/search' @{ user_id="$user-other"; query='orbital-code42'; top_k=20 }

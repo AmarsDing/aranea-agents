@@ -36,6 +36,10 @@ import (
 //	EMBEDDING_API_KEY     embedding API key
 //	EMBEDDING_MODEL       embedding model (default text-embedding-3-small)
 //	EMBEDDING_DIM         embedding dimension (default 1536)
+//	EVAL_SEARCH_AUDIT_PATH optional Search audit log path (query/user/count/size/latency)
+//	EVAL_SWEEP_INTERVAL_SEC  stale-index sweep interval seconds (default 30)
+//	EVAL_SWEEP_BATCH         rows picked per sweep (default 50; batch-embedded 10/request)
+//	EVAL_SWEEP_MAX_ATTEMPTS  per-row embed attempts before aging out (default 8)
 //	ARANEA_MEM_SHADOW     on = T8 shadow audit chain (JEV Phase 0): double-record
 //	                      VIR route/correction decisions + full state into the
 //	                      M80 decision layer (default off, byte-identical behavior)
@@ -116,14 +120,22 @@ func main() {
 
 	// C3-C: embedding 索引补偿——Add 的 fire-and-forget 索引失败后事实永久停在
 	// stale，sweeper 周期性重试到期批次，恢复向量召回；emb 为空时无向量可写不启动。
+	// 2026-11-01 起旋钮经环境变量可调（AMC 种子洪峰 111 万积压需提速）：
+	// EVAL_SWEEP_INTERVAL_SEC / EVAL_SWEEP_BATCH / EVAL_SWEEP_MAX_ATTEMPTS。
 	var sweeperCancel context.CancelFunc
 	if emb != nil {
+		sweepIntervalSec, _ := strconv.Atoi(envOr("EVAL_SWEEP_INTERVAL_SEC", "30"))
+		sweepBatch, _ := strconv.Atoi(envOr("EVAL_SWEEP_BATCH", "50"))
+		sweepMaxAttempts, _ := strconv.Atoi(envOr("EVAL_SWEEP_MAX_ATTEMPTS", "8"))
 		var sweepCtx context.Context
 		sweepCtx, sweeperCancel = context.WithCancel(context.Background())
 		sweeper := data.NewMemoryFactIndexSweeper(d,
 			data.NewMemoryFactIndexSync(biz.NewMemoryUsecase(data.NewMemoryRepo(d), emb), d, lg),
-			lg, 0, 0, 0)
+			lg, time.Duration(sweepIntervalSec)*time.Second, sweepBatch, sweepMaxAttempts)
 		safego.Go(sweepCtx, "memoryeval.index_sweeper", func() { _ = sweeper.Run(sweepCtx) })
+		lg.Info("fact index sweeper armed", loggateway.StepID("memoryeval.startup"),
+			loggateway.Int("interval_sec", sweepIntervalSec), loggateway.Int("batch", sweepBatch),
+			loggateway.Int("max_attempts", sweepMaxAttempts))
 	}
 
 	errCh := make(chan error, 1)
