@@ -4,6 +4,7 @@ import (
 	"context"
 	"strconv"
 	"strings"
+	"time"
 
 	"aranea-agents/internal/biz/decision"
 	"aranea-agents/pkg/loggateway"
@@ -55,10 +56,15 @@ type Incumbent struct {
 // Recorder emits shadow records into the M80 decision layer. A nil Recorder
 // (or nil Collector inside) makes every emit a no-op, so hot paths can hold
 // one unconditionally. Construction is the wiring-site kill switch
-// (ARANEA_MEM_SHADOW, default off).
+// (ARANEA_MEM_SHADOW / ARANEA_JEV_SHADOW, default off).
+//
+// When ARANEA_JEV_URL is set, NewRecorder auto-wires an HTTP Decider so Emit
+// fills ShadowEvent.JEV before persistence (incumbent+JEV double-record).
+// Decider errors leave jev=pending and never fail the turn.
 type Recorder struct {
-	c  decision.Collector
-	lg loggateway.Logger
+	c       decision.Collector
+	lg      loggateway.Logger
+	decider Decider
 }
 
 // ShadowRecorderWired is the optional wiring contract a store implements to
@@ -70,22 +76,40 @@ type ShadowRecorderWired interface {
 }
 
 // NewRecorder builds a Recorder; c may be nil (fully disabled, zero-cost).
+// Auto-wires DeciderFromEnv when ARANEA_JEV_URL is present.
 func NewRecorder(c decision.Collector, lg loggateway.Logger) *Recorder {
 	if lg == nil {
 		lg = loggateway.NewNoop()
 	}
-	return &Recorder{c: c, lg: lg.With(loggateway.Domain("mem_shadow"))}
+	lg = lg.With(loggateway.Domain("mem_shadow"))
+	return &Recorder{c: c, lg: lg, decider: DeciderFromEnv(lg)}
+}
+
+// WithDecider replaces the auto-wired Decider (tests / explicit injection).
+func (r *Recorder) WithDecider(d Decider) *Recorder {
+	if r != nil {
+		r.decider = d
+	}
+	return r
 }
 
 // Enabled reports whether emits actually reach the decision layer.
 func (r *Recorder) Enabled() bool { return r != nil && r.c != nil }
 
-// Emit records one shadow event. It never blocks the caller (Collector.Emit
-// hands off to the async outbox) and never fails the turn: validation errors
+const jevFillTimeout = 5 * time.Second
+
+// Emit records one shadow event. It never fails the turn: validation errors
 // or a disabled recorder log and drop, mirroring decision.EmitGate discipline.
+// When a Decider is wired and JEV is unset, Emit asks it once under a short
+// timeout; failure keeps jev=pending.
 func (r *Recorder) Emit(ctx context.Context, ev ShadowEvent) {
 	if !r.Enabled() {
 		return
+	}
+	if ev.JEV == nil && r.decider != nil {
+		if ans := r.fillJEV(ctx, ev); ans != nil {
+			ev.JEV = ans
+		}
 	}
 	rec, err := r.build(ev)
 	if err != nil {
@@ -93,6 +117,33 @@ func (r *Recorder) Emit(ctx context.Context, ev ShadowEvent) {
 		return
 	}
 	r.c.Emit(ctx, rec)
+}
+
+// fillJEV asks the Decider for one question; returns nil on any failure.
+func (r *Recorder) fillJEV(ctx context.Context, ev ShadowEvent) *Answer {
+	qdef, ok := QuestionDef(ev.QuestionID)
+	if !ok {
+		return nil
+	}
+	q := qdef
+	if len(q.Criteria) == 0 {
+		q.Criteria = criteriaFromState(q, ev.State)
+	}
+	if len(q.Criteria) == 0 {
+		return nil
+	}
+	dctx, cancel := context.WithTimeout(ctx, jevFillTimeout)
+	defer cancel()
+	answers, err := r.decider.Decide(dctx, ev.State, []Question{q})
+	if err != nil {
+		r.lg.Warn("jev fill skipped", loggateway.Err(err), loggateway.StepID("jev.shadow_fill"))
+		return nil
+	}
+	if a, ok := answers[q.ID]; ok {
+		cp := a
+		return &cp
+	}
+	return nil
 }
 
 // build maps one event to a decision.Record. The shadow payload lives in
