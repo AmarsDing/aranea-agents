@@ -123,8 +123,28 @@ const PlanningInProgressUserHint = "任务正在分解规划中，请向用户�
 // user-facing deliverable in this turn — the team owns that work.
 const AwaitOrchestrationNextAction = "await_orchestration"
 
-// AwaitOrchestrationUserHint is the user-facing status Spirit should relay.
-const AwaitOrchestrationUserHint = "编排已启动，团队正在执行。请向用户说明已派发，等待团队交付后再汇报结果。禁止在本轮直接撰写交付物正文。"
+// AwaitOrchestrationUserSpeech is the assistant-visible status shown to the
+// user when BlockFinal replaces a DIY deliverable. It must not contain
+// model-facing directives ("请向用户说明" / "禁止撰写").
+const AwaitOrchestrationUserSpeech = "编排已启动，团队正在执行。交付完成后会汇总结果，请稍候。"
+
+// AwaitOrchestrationModelHint is the instruction for the Spirit model
+// (BeforeModel cue / tool reuse_reason for model consumption). Never paste
+// this verbatim into the assistant message channel.
+const AwaitOrchestrationModelHint = "请向用户说明已派发，等待团队交付后再汇报结果。禁止在本轮直接撰写交付物正文。"
+
+// AwaitOrchestrationUserHint is kept as an alias of the user-visible speech
+// for callers that historically stored reuse_reason into BlockFinal Hint.
+// New model-facing copy must use AwaitOrchestrationModelHint.
+const AwaitOrchestrationUserHint = AwaitOrchestrationUserSpeech
+
+// AwaitOrchestrationCancelledSpeech is shown when BlockFinal fires after
+// teams already reached a cancelled terminal state in the same turn.
+const AwaitOrchestrationCancelledSpeech = "编排已中止，团队未完成交付。"
+
+// AwaitOrchestrationFailedSpeech is shown when BlockFinal fires after
+// teams already reached a failed terminal state (no cancellations).
+const AwaitOrchestrationFailedSpeech = "编排未成功完成，部分或全部团队执行失败。"
 
 // DecomposeFailedNextAction is returned by plan_and_execute when medium+
 // decomposition fails. Spirit must not treat StrategyDirect as success.
