@@ -2,10 +2,12 @@ package knowledge
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/json"
 	"io"
 	"math"
+	"math/big"
 	"net/http"
 	"os"
 	"strconv"
@@ -70,6 +72,13 @@ type MultiProviderEmbedder struct {
 	Model    string
 	dim      int
 	lg       loggateway.Logger
+	// inflight 限制同时进行中的嵌入 HTTP 调用数（评测批量摄取时防止瞬时
+	// 洪峰触发供应商 429）；retryMax 为 429 限流时的最大重试次数。
+	inflight chan struct{}
+	retryMax int
+	// chunkWorkers 为单次 embedOpenAIBatch 内部的 chunk 并发度（默认 4，
+	// KRATOS_KNOWLEDGE_EMBED_CHUNK_WORKERS；≤1 保持串行）。
+	chunkWorkers int
 	// lastPrewarmAt 记录最近一次成功预热时间（60s 窗口去重；仅成功才写入）。
 	lastPrewarmAt time.Time
 	// monitorBus 流程日志总线（装配层经 SetMonitorBus 注入；nil 时跳过流程日志）。
@@ -122,14 +131,35 @@ func NewMultiProviderEmbedder(provider, baseURL, apiKey, model string, dim int, 
 	if provider == ProviderHuggingFace && baseURL == "" {
 		baseURL = "http://localhost:8080"
 	}
+	maxInflight := 4
+	if v := os.Getenv("KRATOS_KNOWLEDGE_EMBED_MAX_INFLIGHT"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			maxInflight = n
+		}
+	}
+	retryMax := 3
+	if v := os.Getenv("KRATOS_KNOWLEDGE_EMBED_RETRY_MAX"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 0 {
+			retryMax = n
+		}
+	}
+	chunkWorkers := 4
+	if v := os.Getenv("KRATOS_KNOWLEDGE_EMBED_CHUNK_WORKERS"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			chunkWorkers = n
+		}
+	}
 	return &MultiProviderEmbedder{
-		Provider:   provider,
-		BaseURL:    strings.TrimRight(baseURL, "/"),
-		APIKey:     apiKey,
-		Model:      model,
-		dim:        dim,
-		lg:         lg,
-		queryCache: make(map[[sha256.Size]byte]queryEmbeddingCacheEntry),
+		Provider:     provider,
+		BaseURL:      strings.TrimRight(baseURL, "/"),
+		APIKey:       apiKey,
+		Model:        model,
+		dim:          dim,
+		lg:           lg,
+		inflight:     make(chan struct{}, maxInflight),
+		retryMax:     retryMax,
+		chunkWorkers: chunkWorkers,
+		queryCache:   make(map[[sha256.Size]byte]queryEmbeddingCacheEntry),
 	}
 }
 
@@ -395,82 +425,201 @@ func (e *MultiProviderEmbedder) embedBatchInternal(ctx context.Context, texts []
 	defer func() {
 		e.recordUsage(ctx, texts, taskType, tokens, time.Since(start), err, prewarm)
 	}()
-	switch provider {
-	case ProviderOllama:
-		vecs, err = e.embedOllamaBatch(ctx, baseURL, model, texts)
-	case ProviderGemini:
-		vecs, err = e.embedGeminiBatch(ctx, apiKey, model, dim, texts, taskType)
-	case ProviderHuggingFace:
-		vecs, err = e.embedHuggingFaceBatch(ctx, baseURL, dim, texts)
-	default:
-		vecs, tokens, err = e.embedOpenAIBatch(ctx, baseURL, apiKey, model, texts)
+	// 并发闸门：批量摄取（评测种子导入等）会产生大量并行后台嵌入协程，
+	// 不设上限时瞬时洪峰会打满供应商 QPS 配额（阿里云 429 limit_requests），
+	// 导致写侧大面积 stale、查询侧向量通道同步退化。
+	if e.inflight != nil {
+		select {
+		case e.inflight <- struct{}{}:
+			defer func() { <-e.inflight }()
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
 	}
-	return vecs, err
+	call := func() ([][]float32, int, error) {
+		switch provider {
+		case ProviderOllama:
+			v, eerr := e.embedOllamaBatch(ctx, baseURL, model, texts)
+			return v, 0, eerr
+		case ProviderGemini:
+			v, eerr := e.embedGeminiBatch(ctx, apiKey, model, dim, texts, taskType)
+			return v, 0, eerr
+		case ProviderHuggingFace:
+			v, eerr := e.embedHuggingFaceBatch(ctx, baseURL, dim, texts)
+			return v, 0, eerr
+		default:
+			return e.embedOpenAIBatch(ctx, baseURL, apiKey, model, texts)
+		}
+	}
+	for attempt := 0; ; attempt++ {
+		var toks int
+		vecs, toks, err = call()
+		tokens += toks
+		if err == nil || !isEmbedRateLimited(err) || attempt >= e.retryMax {
+			return vecs, err
+		}
+		// 限流退避：0.5s/1s/2s… + ≤250ms 抖动，尊重 ctx 取消；耗尽后维持
+		// 原有 fail-soft 语义（调用方降级 keyword 召回或标记 stale 待重试）。
+		backoff := time.Duration(500*(1<<attempt))*time.Millisecond + time.Duration(embedBackoffJitterNanos())*time.Nanosecond
+		timer := time.NewTimer(backoff)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return nil, ctx.Err()
+		case <-timer.C:
+		}
+	}
+}
+
+// isEmbedRateLimited 判定供应商限流错误（HTTP 429 / limit_requests）。
+// 字符串匹配源于 jsonPOST 的 "embedder http %d" 包装与 genai 的错误文案；
+// 误判代价仅为多一次退避重试，最终失败语义不变。
+func isEmbedRateLimited(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "http 429") ||
+		(strings.Contains(msg, "429") && strings.Contains(msg, "limit"))
+}
+
+// embedBackoffJitterNanos 返回 [0, 250ms) 的随机抖动（纳秒），避免多协程
+// 退避后同刻重试形成二次洪峰。独立变量便于测试注入。
+var embedBackoffJitterNanos = func() int64 {
+	n, err := rand.Int(rand.Reader, big.NewInt(250_000_000))
+	if err != nil {
+		return 0
+	}
+	return n.Int64()
 }
 
 // embedOpenAIBatch returns the embeddings plus the provider-reported prompt
 // token sum across chunk requests (0 when the gateway omits usage — callers
 // then fall back to chars-based estimation).
+//
+// 2026-11-01：chunk 间并发化（KRATOS_KNOWLEDGE_EMBED_CHUNK_WORKERS，默认 4，
+// ≤1 保持原串行）。动机：AMC 全量评测种子洪峰造成 111 万 stale 积压，串行
+// chunk 每 10 文本一次往返、单请求 1–3s，sweeper 吞吐被钉在约 200–400
+// 行/分钟（全量消化需 2 天）；4 路并发后约 4 倍。顺序经按下标 copy 保持，
+// 与 embedder_batch_limit_test 的顺序契约一致；429 退避仍由
+// embedBatchInternal 统一处理（任一块失败即整体重试）。
 func (e *MultiProviderEmbedder) embedOpenAIBatch(ctx context.Context, baseURL, apiKey, model string, texts []string) ([][]float32, int, error) {
 	if baseURL == "" {
 		return nil, 0, ErrEmbedderNotConfigured
 	}
-	out := make([][]float32, 0, len(texts))
-	promptTokens := 0
-	for start := 0; start < len(texts); start += defaultEmbedBatchSize {
-		end := start + defaultEmbedBatchSize
+	batchSize := defaultEmbedBatchSize
+	if model == "text-embedding-v4" {
+		// DashScope's OpenAI-compatible endpoint accepts at most ten texts.
+		batchSize = 10
+	}
+	type chunk struct{ start, end int }
+	var chunks []chunk
+	for start := 0; start < len(texts); start += batchSize {
+		end := start + batchSize
 		if end > len(texts) {
 			end = len(texts)
 		}
-		batch := texts[start:end]
-		type req struct {
-			Model string   `json:"model"`
-			Input []string `json:"input"`
+		chunks = append(chunks, chunk{start, end})
+	}
+	if len(chunks) == 1 || e.chunkWorkers <= 1 {
+		out := make([][]float32, 0, len(texts))
+		promptTokens := 0
+		for _, c := range chunks {
+			vecs, toks, err := e.embedOpenAIChunk(ctx, baseURL, apiKey, model, texts[c.start:c.end], c.start)
+			if err != nil {
+				return nil, 0, err
+			}
+			out = append(out, vecs...)
+			promptTokens += toks
 		}
-		type embObj struct {
-			Index     int       `json:"index"`
-			Embedding []float32 `json:"embedding"`
-		}
-		type usage struct {
-			PromptTokens int `json:"prompt_tokens"`
-			TotalTokens  int `json:"total_tokens"`
-		}
-		type resp struct {
-			Data  []embObj `json:"data"`
-			Usage usage    `json:"usage"`
-		}
-		body, err := jsonPOST(ctx, embedHTTPClient, baseURL+"/v1/embeddings", apiKey, req{
-			Model: model,
-			Input: batch,
-		})
+		return out, promptTokens, nil
+	}
+	vecs := make([][]float32, len(texts))
+	toks := make([]int, len(chunks))
+	errs := make([]error, len(chunks))
+	sem := make(chan struct{}, e.chunkWorkers)
+	var wg sync.WaitGroup
+	for i, c := range chunks {
+		wg.Add(1)
+		go func(i int, c chunk) {
+			defer wg.Done()
+			select {
+			case sem <- struct{}{}:
+				defer func() { <-sem }()
+			case <-ctx.Done():
+				errs[i] = ctx.Err()
+				return
+			}
+			v, t, cerr := e.embedOpenAIChunk(ctx, baseURL, apiKey, model, texts[c.start:c.end], c.start)
+			if cerr != nil {
+				errs[i] = cerr
+				return
+			}
+			copy(vecs[c.start:c.end], v)
+			toks[i] = t
+		}(i, c)
+	}
+	wg.Wait()
+	for _, err := range errs {
 		if err != nil {
 			return nil, 0, err
 		}
-		var r resp
-		if err := json.Unmarshal(body, &r); err != nil {
-			e.lg.Error("knowledge embedder openai parse failed", loggateway.StepID("knowledge.embed_fail"), loggateway.Err(err))
-			return nil, 0, apierror.Internal(apierror.DomainKnowledge, "embedder openai parse failed").WithCause(err)
+	}
+	promptTokens := 0
+	for _, t := range toks {
+		promptTokens += t
+	}
+	return vecs, promptTokens, nil
+}
+
+// embedOpenAIChunk 执行单块（≤batchSize 条文本）的 embeddings 请求并按
+// 返回 index 重排。base 为块在整批中的起始下标，仅用于错误定位。
+func (e *MultiProviderEmbedder) embedOpenAIChunk(ctx context.Context, baseURL, apiKey, model string, batch []string, base int) ([][]float32, int, error) {
+	type req struct {
+		Model string   `json:"model"`
+		Input []string `json:"input"`
+	}
+	type embObj struct {
+		Index     int       `json:"index"`
+		Embedding []float32 `json:"embedding"`
+	}
+	type usage struct {
+		PromptTokens int `json:"prompt_tokens"`
+		TotalTokens  int `json:"total_tokens"`
+	}
+	type resp struct {
+		Data  []embObj `json:"data"`
+		Usage usage    `json:"usage"`
+	}
+	body, err := jsonPOST(ctx, embedHTTPClient, baseURL+"/v1/embeddings", apiKey, req{
+		Model: model,
+		Input: batch,
+	})
+	if err != nil {
+		return nil, 0, err
+	}
+	var r resp
+	if err := json.Unmarshal(body, &r); err != nil {
+		e.lg.Error("knowledge embedder openai parse failed", loggateway.StepID("knowledge.embed_fail"), loggateway.Err(err))
+		return nil, 0, apierror.Internal(apierror.DomainKnowledge, "embedder openai parse failed").WithCause(err)
+	}
+	if len(r.Data) != len(batch) {
+		e.lg.Error("knowledge embedder openai count mismatch", loggateway.StepID("knowledge.embed_fail"), loggateway.Int("expected", len(batch)), loggateway.Int("got", len(r.Data)))
+		return nil, 0, apierror.Internal(apierror.DomainKnowledge, "embedder openai: expected %d embeddings, got %d", len(batch), len(r.Data))
+	}
+	ordered := make([][]float32, len(batch))
+	for _, item := range r.Data {
+		if item.Index < 0 || item.Index >= len(batch) {
+			return nil, 0, apierror.Internal(apierror.DomainKnowledge, "embedder openai: invalid index %d", item.Index)
 		}
-		if len(r.Data) != len(batch) {
-			e.lg.Error("knowledge embedder openai count mismatch", loggateway.StepID("knowledge.embed_fail"), loggateway.Int("expected", len(batch)), loggateway.Int("got", len(r.Data)))
-			return nil, 0, apierror.Internal(apierror.DomainKnowledge, "embedder openai: expected %d embeddings, got %d", len(batch), len(r.Data))
-		}
-		promptTokens += r.Usage.PromptTokens
-		ordered := make([][]float32, len(batch))
-		for _, item := range r.Data {
-			if item.Index < 0 || item.Index >= len(batch) {
-				return nil, 0, apierror.Internal(apierror.DomainKnowledge, "embedder openai: invalid index %d", item.Index)
-			}
-			ordered[item.Index] = item.Embedding
-		}
-		for i, vec := range ordered {
-			if len(vec) == 0 {
-				return nil, 0, apierror.Internal(apierror.DomainKnowledge, "embedder openai: empty embedding at %d", start+i)
-			}
-			out = append(out, vec)
+		ordered[item.Index] = item.Embedding
+	}
+	for i, vec := range ordered {
+		if len(vec) == 0 {
+			return nil, 0, apierror.Internal(apierror.DomainKnowledge, "embedder openai: empty embedding at %d", base+i)
 		}
 	}
-	return out, promptTokens, nil
+	return ordered, r.Usage.PromptTokens, nil
 }
 
 func (e *MultiProviderEmbedder) embedOllamaBatch(ctx context.Context, baseURL, model string, texts []string) ([][]float32, error) {
