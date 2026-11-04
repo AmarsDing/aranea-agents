@@ -10,6 +10,11 @@ function wireString(row: Record<string, unknown>, camel: string, snake: string):
   return typeof v === 'string' ? v : '';
 }
 
+function wireOptionalString(row: Record<string, unknown>, camel: string, snake: string): string | undefined {
+  const value = row[camel] ?? row[snake];
+  return typeof value === 'string' && value ? value : undefined;
+}
+
 function wireDecision(row: Record<string, unknown>): DecisionRecordItem {
   return {
     decision_key: wireString(row, 'decisionKey', 'decision_key'),
@@ -20,6 +25,9 @@ function wireDecision(row: Record<string, unknown>): DecisionRecordItem {
     actor_type: wireString(row, 'actorType', 'actor_type'),
     actor_key: wireString(row, 'actorKey', 'actor_key'),
     created_at: wireString(row, 'createdAt', 'created_at'),
+    session_id: wireOptionalString(row, 'sessionId', 'session_id'),
+    task_id: wireOptionalString(row, 'taskId', 'task_id'),
+    step_id: wireOptionalString(row, 'stepId', 'step_id'),
   };
 }
 

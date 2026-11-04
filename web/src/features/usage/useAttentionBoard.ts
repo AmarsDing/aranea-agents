@@ -13,7 +13,6 @@ import {
 } from './types';
 
 const POLL_INTERVAL_MS = 30_000;
-const MAX_ROWS = 3;
 
 function severityOf(rule: { severity?: string }): AttentionSeverity {
   const severity = (rule.severity ?? '').toLowerCase();
@@ -108,6 +107,18 @@ export function useAttentionBoard() {
           title: t('uiSystem.overview.awaitingApproval', { scenario: item.scenario || item.category }),
           detail: truncate(item.reasoning || item.actor_key || t('uiSystem.overview.awaitingHuman')),
           occurred_at: item.created_at ?? '',
+          to:
+            item.session_id && item.task_id
+              ? {
+                  path: '/task-workspace',
+                  query: {
+                    session: item.session_id,
+                    task: item.task_id,
+                    ...(item.step_id ? { step: item.step_id } : {}),
+                    from: '/overview',
+                  },
+                }
+              : undefined,
         }),
       ),
     ].sort((a, b) => Number(b.severity === 'critical') - Number(a.severity === 'critical'));
@@ -118,20 +129,20 @@ export function useAttentionBoard() {
       {
         lane: 'alerts',
         status: alertStatus === 'ready' && missingMetric ? 'partial' : alertStatus,
-        items: alerts.slice(0, MAX_ROWS),
+        items: alerts,
         count: alerts.length,
       },
       {
         lane: 'failed_runs',
         status: statusOf(['runner', 'cron']),
-        items: runs.slice(0, MAX_ROWS),
+        items: runs,
         count: (data.runner?.error_runs ?? 0) + cron.length,
       },
-      { lane: 'call_errors', status: usageStatus, items: calls.slice(0, MAX_ROWS), count: calls.length },
+      { lane: 'call_errors', status: usageStatus, items: calls, count: calls.length },
       {
         lane: 'backlog',
         status: statusOf(['dead', 'decisions']),
-        items: backlog.slice(0, MAX_ROWS),
+        items: backlog,
         count: backlog.length,
       },
     ];

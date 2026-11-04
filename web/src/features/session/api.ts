@@ -1,4 +1,4 @@
-import { createSessionService } from '../../services/index';
+import { createSessionService, createSessionV2Service } from '../../services/index';
 import type {
   ChatMessageRow,
   Session as KratosSession,
@@ -7,6 +7,7 @@ import type {
   SessionTimelineSummary as KratosTimelineSummary,
   SessionTreeNode as KratosSessionTreeNode,
   SessionTurn as KratosSessionTurn,
+  TaskSituationV2,
 } from '../../services/kratos/session/v1/index';
 import { asRecord, pickStr } from '../../shared/wireJson';
 import type {
@@ -18,6 +19,9 @@ import type {
   SessionListResult,
   SessionParticipant,
   SessionRunRecord,
+  TaskSituationItem,
+  TaskSituationPage,
+  TaskSituationQuery,
 } from './types';
 import type {
   SessionSearchQuery,
@@ -38,6 +42,9 @@ export type {
   Session,
   SessionSearchQuery,
   SessionListResult,
+  TaskSituationItem,
+  TaskSituationPage,
+  TaskSituationQuery,
   SessionTimelineItem,
   SessionTimelineSummary,
   SessionTimeline,
@@ -54,6 +61,7 @@ export type {
 } from './types';
 
 const sessionApi = createSessionService();
+const sessionV2Api = createSessionV2Service();
 
 function kratosSessionToLegacy(s: KratosSession): Session {
   const r = asRecord(s as unknown);
@@ -180,6 +188,45 @@ export async function searchSessions(query: SessionSearchQuery = {}): Promise<Se
     items,
     total: data.total ?? items.length,
     limit: data.limit ?? query.limit ?? query.page_size ?? items.length,
+    offset: data.offset ?? query.offset ?? 0,
+  };
+}
+
+function taskSituationToLegacy(row: TaskSituationV2): TaskSituationItem {
+  return {
+    task_id: row.taskId ?? '',
+    session_id: row.sessionId ?? '',
+    status: row.status ?? '',
+    current_turn_id: row.currentTurnId,
+    title: row.title,
+    current_step_id: row.currentStepId,
+    current_step_summary: row.currentStepSummary,
+    executor_summary: row.executorSummary,
+    waiting_since: row.waitingSince,
+    failed_step_id: row.failedStepId,
+    intervention_type: row.interventionType,
+    artifact_count: row.artifactCount,
+    retry_available: row.retryAvailable,
+    takeover_available: row.takeoverAvailable,
+    updated_at: row.updatedAt,
+  };
+}
+
+export async function listTaskSituations(query: TaskSituationQuery = {}): Promise<TaskSituationPage> {
+  const data = await sessionV2Api.ListTaskSituations({
+    sessionId: query.session_id,
+    status: query.status,
+    keyword: query.keyword,
+    limit: query.limit,
+    offset: query.offset,
+    sortBy: query.sort_by ?? 'updated_at',
+    sortOrder: query.sort_order ?? 'desc',
+  });
+  const items = (data.items ?? []).map(taskSituationToLegacy);
+  return {
+    items,
+    total: data.total ?? items.length,
+    limit: data.limit ?? query.limit ?? 20,
     offset: data.offset ?? query.offset ?? 0,
   };
 }

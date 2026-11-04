@@ -651,6 +651,11 @@ type DecisionRecord struct {
 	// virtual_parent：链查询兜底补链标记（设计 §5）——同 run 内时间最近的
 	// 前置 planner 决策作为虚拟父节点返回时不回写，仅此节点置 true。
 	VirtualParent bool `protobuf:"varint,17,opt,name=virtual_parent,json=virtualParent,proto3" json:"virtual_parent,omitempty"`
+	// Authoritative optional deep-link identities copied from source_ref.
+	// Absence means unassociated; clients must not infer an association.
+	SessionId     *string `protobuf:"bytes,18,opt,name=session_id,json=sessionId,proto3,oneof" json:"session_id,omitempty"`
+	TaskId        *string `protobuf:"bytes,19,opt,name=task_id,json=taskId,proto3,oneof" json:"task_id,omitempty"`
+	StepId        *string `protobuf:"bytes,20,opt,name=step_id,json=stepId,proto3,oneof" json:"step_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -804,6 +809,27 @@ func (x *DecisionRecord) GetVirtualParent() bool {
 	return false
 }
 
+func (x *DecisionRecord) GetSessionId() string {
+	if x != nil && x.SessionId != nil {
+		return *x.SessionId
+	}
+	return ""
+}
+
+func (x *DecisionRecord) GetTaskId() string {
+	if x != nil && x.TaskId != nil {
+		return *x.TaskId
+	}
+	return ""
+}
+
+func (x *DecisionRecord) GetStepId() string {
+	if x != nil && x.StepId != nil {
+		return *x.StepId
+	}
+	return ""
+}
+
 var File_kratos_decision_v1_decision_proto protoreflect.FileDescriptor
 
 const file_kratos_decision_v1_decision_proto_rawDesc = "" +
@@ -857,7 +883,7 @@ const file_kratos_decision_v1_decision_proto_rawDesc = "" +
 	"\x11param_rule_denies\x18\a \x01(\x05R\x0fparamRuleDenies\x12,\n" +
 	"\x12input_risk_flagged\x18\b \x01(\x05R\x10inputRiskFlagged\"Y\n" +
 	"\x1bGetSessionGateStatsResponse\x12:\n" +
-	"\x05stats\x18\x01 \x01(\v2$.kratos.decision.v1.SessionGateStatsR\x05stats\"\xe1\x05\n" +
+	"\x05stats\x18\x01 \x01(\v2$.kratos.decision.v1.SessionGateStatsR\x05stats\"\xe8\x06\n" +
 	"\x0eDecisionRecord\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x03R\x02id\x12!\n" +
 	"\fdecision_key\x18\x02 \x01(\tR\vdecisionKey\x12\x1a\n" +
@@ -882,9 +908,18 @@ const file_kratos_decision_v1_decision_proto_rawDesc = "" +
 	"created_at\x18\x0f \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
 	"\n" +
 	"updated_at\x18\x10 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x12%\n" +
-	"\x0evirtual_parent\x18\x11 \x01(\bR\rvirtualParentB\r\n" +
+	"\x0evirtual_parent\x18\x11 \x01(\bR\rvirtualParent\x12\"\n" +
+	"\n" +
+	"session_id\x18\x12 \x01(\tH\x02R\tsessionId\x88\x01\x01\x12\x1c\n" +
+	"\atask_id\x18\x13 \x01(\tH\x03R\x06taskId\x88\x01\x01\x12\x1c\n" +
+	"\astep_id\x18\x14 \x01(\tH\x04R\x06stepId\x88\x01\x01B\r\n" +
 	"\v_confidenceB\x15\n" +
-	"\x13_parent_decision_id2\x83\x05\n" +
+	"\x13_parent_decision_idB\r\n" +
+	"\v_session_idB\n" +
+	"\n" +
+	"\b_task_idB\n" +
+	"\n" +
+	"\b_step_id2\x83\x05\n" +
 	"\x15DecisionRecordService\x12\x8d\x01\n" +
 	"\x13ListDecisionRecords\x12..kratos.decision.v1.ListDecisionRecordsRequest\x1a/.kratos.decision.v1.ListDecisionRecordsResponse\"\x15\x82\xd3\xe4\x93\x02\x0f\x12\r/v1/decisions\x12\x96\x01\n" +
 	"\x11GetDecisionRecord\x12,.kratos.decision.v1.GetDecisionRecordRequest\x1a-.kratos.decision.v1.GetDecisionRecordResponse\"$\x82\xd3\xe4\x93\x02\x1e\x12\x1c/v1/decisions/{decision_key}\x12\x99\x01\n" +

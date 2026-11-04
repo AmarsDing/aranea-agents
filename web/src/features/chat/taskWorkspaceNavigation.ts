@@ -84,6 +84,24 @@ export function chatBreakpointTarget(path: string, query: LocationQuery, narrow:
   return null;
 }
 
+function safeOverviewReturn(url: URL): string | null {
+  const allowed = new URLSearchParams();
+  const seen = new Set<string>();
+  for (const [key, value] of url.searchParams) {
+    if (seen.has(key)) return null;
+    seen.add(key);
+    if (!['status', 'keyword', 'limit', 'offset', 'sort_by', 'sort_order'].includes(key)) continue;
+    if (key === 'status' && value && !['queued', 'running', 'waiting', 'failed', 'completed', 'cancelled'].includes(value))
+      return null;
+    if ((key === 'limit' || key === 'offset') && !/^(0|[1-9]\d*)$/.test(value)) return null;
+    if ((key === 'limit' || key === 'offset') && !Number.isSafeInteger(Number(value))) return null;
+    if (key === 'sort_by' && value && !['updated_at', 'created_at'].includes(value)) return null;
+    if (key === 'sort_order' && value && !['asc', 'desc'].includes(value)) return null;
+    allowed.set(key, value);
+  }
+  return `/overview${allowed.size ? `?${allowed}` : ''}`;
+}
+
 /** Allow only local chat surfaces, and discard unrelated query data from return links. */
 export function safeWorkspaceReturn(value: unknown): string | null {
   if (
@@ -96,6 +114,7 @@ export function safeWorkspaceReturn(value: unknown): string | null {
   )
     return null;
   const url = new URL(value, 'https://aranea.invalid');
+  if (url.origin === 'https://aranea.invalid' && url.pathname === '/overview') return safeOverviewReturn(url);
   if (
     url.origin !== 'https://aranea.invalid' ||
     !['/chat', '/task-workspace', '/mobile/chat', '/mobile/task-workspace'].includes(url.pathname)

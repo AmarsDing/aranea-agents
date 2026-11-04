@@ -21,7 +21,7 @@
           {{ t('overviewPage.v2.laneEmpty') }}
         </div>
         <ul v-if="lane.items.length" class="ov-lane__items">
-          <li v-for="item in lane.items" :key="item.id">
+          <li v-for="item in visibleItems(lane)" :key="item.id">
             <component
               :is="item.to ? 'button' : 'div'"
               :type="item.to ? 'button' : undefined"
@@ -35,10 +35,27 @@
                 <span class="ov-item__time">{{ fmtClock(item.occurred_at) }}</span>
               </div>
               <div class="ov-item__detail">{{ item.detail }}</div>
+              <span
+                v-if="item.id.startsWith('hitl:') && !item.to"
+                class="ov-item__unassociated"
+                :data-testid="`attention-unassociated-${item.id}`"
+              >
+                {{ t('overviewPage.v2.unassociated') }}
+              </span>
               <q-icon v-if="item.to" name="chevron_right" size="14px" class="ov-item__go" />
             </component>
           </li>
         </ul>
+        <q-btn
+          v-if="lane.items.length > 3"
+          flat
+          dense
+          class="ov-lane__toggle"
+          :data-testid="`attention-toggle-${lane.lane}`"
+          :aria-expanded="String(!!expanded[lane.lane])"
+          :label="expanded[lane.lane] ? t('overviewPage.v2.collapse') : t('overviewPage.v2.showAll', { count: lane.items.length })"
+          @click="expanded[lane.lane] = !expanded[lane.lane]"
+        />
         <div v-if="lane.count > lane.items.length" class="ov-lane__more">
           {{ t('overviewPage.v2.laneTotal', { count: lane.count }) }}
         </div>
@@ -48,6 +65,7 @@
 </template>
 
 <script setup lang="ts">
+import { reactive } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { AttentionItem, AttentionLane, AttentionLaneState } from '../../features/usage/types';
 import { fmtClock } from './ovTime';
@@ -63,6 +81,11 @@ withDefaults(defineProps<{ lanes: AttentionLaneState[]; loading?: boolean }>(), 
 defineEmits<{ drill: [item: AttentionItem]; refresh: [] }>();
 
 const { t } = useI18n();
+const expanded = reactive<Partial<Record<AttentionLane, boolean>>>({});
+
+function visibleItems(lane: AttentionLaneState): AttentionItem[] {
+  return expanded[lane.lane] ? lane.items : lane.items.slice(0, 3);
+}
 
 function laneTone(lane: AttentionLaneState): string {
   if (lane.items.some((i) => i.severity === 'critical')) return 'ov-lane--critical';

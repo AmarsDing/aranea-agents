@@ -157,7 +157,9 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.SelfImprovement, *co
 		provideV2EventBus,
 		provideV2RepoSet,
 
+		wire.Bind(new(biz.TaskV2Repo), new(biz.TaskSituationV2Repo)),
 		wire.Bind(new(biz.TaskV2Reader), new(biz.TaskV2Repo)),
+		wire.Bind(new(biz.TaskSituationV2Reader), new(biz.TaskSituationV2Repo)),
 		wire.Bind(new(biz.TurnV2Reader), new(biz.TurnV2Repo)),
 		wire.Bind(new(biz.StepV2Reader), new(biz.StepV2Repo)),
 		wire.Bind(new(biz.StepV2Writer), new(biz.StepV2Repo)),

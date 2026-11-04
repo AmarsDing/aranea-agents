@@ -119,6 +119,41 @@ export type SessionListResult = {
   offset: number;
 };
 
+export type TaskSituationItem = {
+  task_id: string;
+  session_id: string;
+  status: string;
+  current_turn_id?: string;
+  title?: string;
+  current_step_id?: string;
+  current_step_summary?: string;
+  executor_summary?: string;
+  waiting_since?: string;
+  failed_step_id?: string;
+  intervention_type?: string;
+  artifact_count?: number;
+  retry_available?: boolean;
+  takeover_available?: boolean;
+  updated_at?: string;
+};
+
+export type TaskSituationQuery = {
+  session_id?: string;
+  status?: string;
+  keyword?: string;
+  limit?: number;
+  offset?: number;
+  sort_by?: 'updated_at' | 'created_at';
+  sort_order?: 'asc' | 'desc';
+};
+
+export type TaskSituationPage = {
+  items: TaskSituationItem[];
+  total: number;
+  limit: number;
+  offset: number;
+};
+
 export type SessionTimelineItem = {
   id: string;
   kind: 'message' | 'tool' | 'skill' | 'mcp' | string;

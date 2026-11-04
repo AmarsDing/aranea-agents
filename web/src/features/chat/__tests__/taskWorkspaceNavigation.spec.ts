@@ -61,4 +61,12 @@ describe('workspace location contracts', () => {
     ])
       expect(safeWorkspaceReturn(value)).toBeNull();
   });
+  it('allows overview returns with only task filters and server pagination', () => {
+    expect(
+      safeWorkspaceReturn(
+        '/overview?status=waiting&keyword=release&limit=20&offset=20&sort_by=updated_at&sort_order=desc&secret=discard',
+      ),
+    ).toBe('/overview?status=waiting&keyword=release&limit=20&offset=20&sort_by=updated_at&sort_order=desc');
+    expect(safeWorkspaceReturn('/overview?session=other&offset=-1')).toBeNull();
+  });
 });

@@ -63,9 +63,47 @@ type TaskV2Writer interface {
 	CompleteTaskTerminal(ctx context.Context, t Task) (Task, error)
 }
 
+// TaskSituationListOptions controls the server-side task projection query.
+// Limit is normalized by the service (default 20, maximum 100).
+type TaskSituationListOptions struct {
+	SessionID string
+	Status    string
+	Keyword   string
+	Limit     int
+	Offset    int
+	SortBy    string
+	SortOrder string
+}
+
+// TaskSituation bundles only authoritative records used by the read projection.
+// Nil/empty child fields remain unknown; no runtime state is synthesized here.
+type TaskSituation struct {
+	Task  Task
+	Turns []Turn
+	Steps []Step
+}
+
+type TaskSituationPage struct {
+	Items []TaskSituation
+	Total int
+}
+
+// TaskSituationV2Reader applies workspace visibility before count and pagination.
+// Stability:evolving
+type TaskSituationV2Reader interface {
+	ListTaskSituations(ctx context.Context, opts TaskSituationListOptions) (TaskSituationPage, error)
+}
+
 type TaskV2Repo interface {
 	TaskV2Reader
 	TaskV2Writer
+}
+
+// TaskSituationV2Repo is the concrete repository's full read/write surface.
+// Keeping the new projection out of TaskV2Repo avoids widening legacy consumers.
+type TaskSituationV2Repo interface {
+	TaskV2Repo
+	TaskSituationV2Reader
 }
 
 // === Turn ===

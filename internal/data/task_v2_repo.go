@@ -3,12 +3,17 @@ package data
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
+
+	entsql "entgo.io/ent/dialect/sql"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/ent"
 	"aranea-agents/internal/data/ent/predicate"
+	"aranea-agents/internal/data/ent/stepv2"
 	"aranea-agents/internal/data/ent/taskv2"
+	"aranea-agents/internal/data/ent/turnv2"
 	"aranea-agents/internal/workspace"
 	"aranea-agents/pkg/loggateway"
 )
@@ -20,11 +25,11 @@ type taskV2Repo struct {
 	lg   loggateway.Logger
 }
 
-var _ biz.TaskV2Repo = (*taskV2Repo)(nil)
+var _ biz.TaskSituationV2Repo = (*taskV2Repo)(nil)
 
 // NewTaskV2Repo creates a new TaskV2Repo.
 // Logger is preset with domain "TASK_V2" per loggateway convention.
-func NewTaskV2Repo(d *Data, lg loggateway.Logger) biz.TaskV2Repo {
+func NewTaskV2Repo(d *Data, lg loggateway.Logger) biz.TaskSituationV2Repo {
 	return &taskV2Repo{data: d, lg: lg.With(loggateway.Domain("TASK_V2"))}
 }
 
@@ -69,6 +74,129 @@ func (r *taskV2Repo) ListTasksBySession(ctx context.Context, sessionID string) (
 		return nil, entErrToBizErr(err, "TASK_V2")
 	}
 	return entTasksV2ToBiz(rows), nil
+}
+
+// ListTaskSituations returns one ACL-filtered page and batches its child reads.
+func (r *taskV2Repo) ListTaskSituations(ctx context.Context, opts biz.TaskSituationListOptions) (biz.TaskSituationPage, error) {
+	if r == nil || r.data == nil {
+		return biz.TaskSituationPage{}, fmt.Errorf("task v2 repo: database not configured")
+	}
+	preds := make([]predicate.TaskV2, 0, 4)
+	if sessionID := strings.TrimSpace(opts.SessionID); sessionID != "" {
+		preds = append(preds, taskv2.SessionIDEQ(sessionID))
+	}
+	if status := strings.TrimSpace(opts.Status); status != "" {
+		switch status {
+		case "queued":
+			preds = append(preds, taskv2.StatusEQ(string(biz.TaskStatusPending)))
+		case "waiting":
+			preds = append(preds, taskSituationWaitingPredicate())
+		default:
+			preds = append(preds, taskv2.StatusEQ(status))
+		}
+	}
+	if keyword := strings.TrimSpace(opts.Keyword); keyword != "" {
+		preds = append(preds, taskv2.UserMessageContainsFold(keyword))
+	}
+	if wsPred := taskV2WorkspacePredicate(ctx); wsPred != nil {
+		preds = append(preds, wsPred)
+	}
+
+	base := r.data.RW().Read(ctx).TaskV2.Query().Where(preds...)
+	total, err := base.Clone().Count(ctx)
+	if err != nil {
+		return biz.TaskSituationPage{}, entErrToBizErr(err, "TASK_V2")
+	}
+	sortField := taskv2.FieldUpdatedAt
+	if opts.SortBy == "created_at" {
+		sortField = taskv2.FieldCreatedAt
+	}
+	order := ent.Desc
+	if strings.EqualFold(opts.SortOrder, "asc") {
+		order = ent.Asc
+	}
+	rows, err := base.
+		Order(order(sortField), order(taskv2.FieldID)).
+		Offset(opts.Offset).
+		Limit(opts.Limit).
+		All(ctx)
+	if err != nil {
+		return biz.TaskSituationPage{}, entErrToBizErr(err, "TASK_V2")
+	}
+
+	tasks := entTasksV2ToBiz(rows)
+	items := make([]biz.TaskSituation, len(tasks))
+	taskIDs := make([]string, len(tasks))
+	indexes := make(map[string]int, len(tasks))
+	for i, task := range tasks {
+		items[i].Task = task
+		taskIDs[i] = task.ID
+		indexes[task.ID] = i
+	}
+	if len(taskIDs) == 0 {
+		return biz.TaskSituationPage{Items: items, Total: total}, nil
+	}
+
+	turnRows, err := r.data.RW().Read(ctx).TurnV2.Query().Where(turnv2.TaskIDIn(taskIDs...)).All(ctx)
+	if err != nil {
+		return biz.TaskSituationPage{}, entErrToBizErr(err, "TASK_V2")
+	}
+	for i, turn := range entTurnsV2ToBiz(turnRows) {
+		if index, ok := indexes[turnRows[i].TaskID]; ok {
+			items[index].Turns = append(items[index].Turns, turn)
+		}
+	}
+	stepRows, err := r.data.RW().Read(ctx).StepV2.Query().Where(stepv2.TaskIDIn(taskIDs...)).All(ctx)
+	if err != nil {
+		return biz.TaskSituationPage{}, entErrToBizErr(err, "TASK_V2")
+	}
+	for i, step := range entStepsV2ToBiz(stepRows) {
+		if index, ok := indexes[stepRows[i].TaskID]; ok {
+			items[index].Steps = append(items[index].Steps, step)
+		}
+	}
+	return biz.TaskSituationPage{Items: items, Total: total}, nil
+}
+
+// taskSituationWaitingPredicate mirrors the service projection: interrupted
+// tasks plus running tasks whose latest step in the latest turn is blocked.
+func taskSituationWaitingPredicate() predicate.TaskV2 {
+	return taskv2.Or(
+		taskv2.StatusEQ(string(biz.TaskStatusInterrupted)),
+		taskv2.And(
+			taskv2.StatusEQ(string(biz.TaskStatusRunning)),
+			predicate.TaskV2(func(s *entsql.Selector) {
+				query := fmt.Sprintf(`EXISTS (
+					SELECT 1
+					FROM turns_v2 AS current_turn
+					JOIN steps_v2 AS current_step ON current_step.turn_id = current_turn.id
+					WHERE current_turn.task_id = %[1]s
+					  AND current_step.task_id = %[1]s
+					  AND current_step.status IN ('%[2]s', '%[3]s')
+					  AND NOT EXISTS (
+						SELECT 1 FROM turns_v2 AS later_turn
+						WHERE later_turn.task_id = current_turn.task_id
+						  AND (
+							later_turn.seq > current_turn.seq
+							OR (later_turn.seq = current_turn.seq AND later_turn.started_at > current_turn.started_at)
+							OR (later_turn.seq = current_turn.seq AND later_turn.started_at = current_turn.started_at AND later_turn.id > current_turn.id)
+						  )
+					  )
+					  AND NOT EXISTS (
+						SELECT 1 FROM steps_v2 AS later_step
+						WHERE later_step.turn_id = current_step.turn_id
+						  AND later_step.task_id = current_step.task_id
+						  AND (
+							later_step.started_at > current_step.started_at
+							OR (later_step.started_at = current_step.started_at AND later_step.seq > current_step.seq)
+							OR (later_step.started_at = current_step.started_at AND later_step.seq = current_step.seq AND later_step.id > current_step.id)
+						  )
+					  )
+				)`, s.C(taskv2.FieldID), biz.StepStatusAwaitingInput, biz.StepStatusToolBlocked)
+				s.Where(entsql.ExprP(query))
+			}),
+		),
+	)
 }
 
 // MaxSeqBySession returns the highest Seq stored for the session (0 if none).

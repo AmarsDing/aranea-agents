@@ -49,6 +49,22 @@
         </template>
       </OverviewVerdictBanner>
 
+      <OverviewTaskBoard
+        :items="taskSituations.items.value"
+        :total="taskSituations.total.value"
+        :limit="taskSituations.limit.value"
+        :offset="taskSituations.offset.value"
+        :loading="taskSituations.loading.value"
+        :error="taskSituations.error.value"
+        :query="taskSituations.query.value"
+        @refresh="taskSituations.refresh"
+        @filter="taskSituations.setQuery"
+        @page="(offset) => taskSituations.setQuery({ offset })"
+        @page-size="(limit) => taskSituations.setQuery({ limit, offset: 0 })"
+        @drill="onTaskDrill"
+        @create="onTaskCreate"
+      />
+
       <AppWorkspaceLaunchpad :label="t('uiSystem.launchpad.label')" :items="launchpadItems" />
 
       <OverviewAttentionQueue :lanes="board.lanes" :loading="loading || attentionLoading" @drill="onDrillItem" @refresh="onRefresh" />
@@ -103,8 +119,12 @@ import { useRouter } from 'vue-router';
 import { useOverviewPage } from '../features/usage/useOverviewPage';
 import { useOverviewView } from '../features/usage/useOverviewView';
 import { useAttentionBoard } from '../features/usage/useAttentionBoard';
+import { useTaskSituations } from '../features/session/useTaskSituations';
+import { workspaceLocationQuery } from '../features/chat/taskWorkspaceNavigation';
+import type { TaskSituationItem } from '../features/session/types';
 import type { AttentionItem } from '../features/usage/types';
 import OverviewVerdictBanner from '../components/overview/OverviewVerdictBanner.vue';
+import OverviewTaskBoard from '../components/overview/OverviewTaskBoard.vue';
 import OverviewAttentionQueue from '../components/overview/OverviewAttentionQueue.vue';
 import OverviewRedStrip from '../components/overview/OverviewRedStrip.vue';
 import OverviewCostBoard from '../components/overview/OverviewCostBoard.vue';
@@ -145,6 +165,7 @@ const launchpadItems = computed(() => workspaceShortcuts.map((item) => ({
 })));
 
 const { board, loading: attentionLoading, refresh: refreshAttention } = useAttentionBoard();
+const taskSituations = useTaskSituations();
 const {
   verdict,
   headline,
@@ -170,6 +191,19 @@ const {
 function onRefresh() {
   void refreshAll();
   void refreshAttention();
+  void taskSituations.refresh();
+}
+function onTaskDrill(item: TaskSituationItem) {
+  const query = workspaceLocationQuery({
+    sessionId: item.session_id,
+    taskId: item.task_id,
+    stepId: item.current_step_id,
+  });
+  query.from = router.currentRoute.value.fullPath;
+  void router.push({ path: '/task-workspace', query });
+}
+function onTaskCreate() {
+  void router.push('/chat');
 }
 function onRunWindow(v: number) {
   runnerWindowMinutes.value = v;

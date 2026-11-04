@@ -1086,6 +1086,7 @@ var SessionService_ServiceDesc = grpc.ServiceDesc{
 }
 
 const (
+	SessionV2Service_ListTaskSituations_FullMethodName       = "/kratos.session.v1.SessionV2Service/ListTaskSituations"
 	SessionV2Service_ListTasks_FullMethodName                = "/kratos.session.v1.SessionV2Service/ListTasks"
 	SessionV2Service_ListTurns_FullMethodName                = "/kratos.session.v1.SessionV2Service/ListTurns"
 	SessionV2Service_ListSteps_FullMethodName                = "/kratos.session.v1.SessionV2Service/ListSteps"
@@ -1107,6 +1108,8 @@ const (
 // SessionV2Service exposes v2 entity read RPCs (Task/Turn/Step) backed by the
 // v2 repo tables (tasks_v2/turns_v2/steps_v2). Replaces v1 ListActivities.
 type SessionV2ServiceClient interface {
+	// ListTaskSituations lists a workspace-scoped, read-only business task projection.
+	ListTaskSituations(ctx context.Context, in *ListTaskSituationsRequest, opts ...grpc.CallOption) (*ListTaskSituationsResponse, error)
 	// ListTasks lists tasks for a session.
 	ListTasks(ctx context.Context, in *ListTasksV2Request, opts ...grpc.CallOption) (*ListTasksV2Response, error)
 	// ListTurns lists turns for a task.
@@ -1137,6 +1140,16 @@ type sessionV2ServiceClient struct {
 
 func NewSessionV2ServiceClient(cc grpc.ClientConnInterface) SessionV2ServiceClient {
 	return &sessionV2ServiceClient{cc}
+}
+
+func (c *sessionV2ServiceClient) ListTaskSituations(ctx context.Context, in *ListTaskSituationsRequest, opts ...grpc.CallOption) (*ListTaskSituationsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListTaskSituationsResponse)
+	err := c.cc.Invoke(ctx, SessionV2Service_ListTaskSituations_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func (c *sessionV2ServiceClient) ListTasks(ctx context.Context, in *ListTasksV2Request, opts ...grpc.CallOption) (*ListTasksV2Response, error) {
@@ -1266,6 +1279,8 @@ func (c *sessionV2ServiceClient) ListGraphNodes(ctx context.Context, in *ListGra
 // SessionV2Service exposes v2 entity read RPCs (Task/Turn/Step) backed by the
 // v2 repo tables (tasks_v2/turns_v2/steps_v2). Replaces v1 ListActivities.
 type SessionV2ServiceServer interface {
+	// ListTaskSituations lists a workspace-scoped, read-only business task projection.
+	ListTaskSituations(context.Context, *ListTaskSituationsRequest) (*ListTaskSituationsResponse, error)
 	// ListTasks lists tasks for a session.
 	ListTasks(context.Context, *ListTasksV2Request) (*ListTasksV2Response, error)
 	// ListTurns lists turns for a task.
@@ -1298,6 +1313,9 @@ type SessionV2ServiceServer interface {
 // pointer dereference when methods are called.
 type UnimplementedSessionV2ServiceServer struct{}
 
+func (UnimplementedSessionV2ServiceServer) ListTaskSituations(context.Context, *ListTaskSituationsRequest) (*ListTaskSituationsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListTaskSituations not implemented")
+}
 func (UnimplementedSessionV2ServiceServer) ListTasks(context.Context, *ListTasksV2Request) (*ListTasksV2Response, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListTasks not implemented")
 }
@@ -1353,6 +1371,24 @@ func RegisterSessionV2ServiceServer(s grpc.ServiceRegistrar, srv SessionV2Servic
 		t.testEmbeddedByValue()
 	}
 	s.RegisterService(&SessionV2Service_ServiceDesc, srv)
+}
+
+func _SessionV2Service_ListTaskSituations_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListTaskSituationsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SessionV2ServiceServer).ListTaskSituations(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SessionV2Service_ListTaskSituations_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SessionV2ServiceServer).ListTaskSituations(ctx, req.(*ListTaskSituationsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
 func _SessionV2Service_ListTasks_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
@@ -1578,6 +1614,10 @@ var SessionV2Service_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "kratos.session.v1.SessionV2Service",
 	HandlerType: (*SessionV2ServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "ListTaskSituations",
+			Handler:    _SessionV2Service_ListTaskSituations_Handler,
+		},
 		{
 			MethodName: "ListTasks",
 			Handler:    _SessionV2Service_ListTasks_Handler,

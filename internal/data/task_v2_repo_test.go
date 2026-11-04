@@ -2,10 +2,12 @@ package data
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/workspace"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -281,5 +283,158 @@ func TestTaskV2Repo_CompleteTaskTerminal(t *testing.T) {
 	}
 	if got.Status != biz.TaskStatusFailed || got.ID != "t-shadow" {
 		t.Errorf("shadow task: id=%s status=%s, want t-shadow/failed", got.ID, got.Status)
+	}
+}
+
+func TestTaskV2Repo_ListTaskSituations_ACLBeforeCountAndStablePages(t *testing.T) {
+	d := openTestDataWithRWDB(t)
+	repo := NewTaskV2Repo(d, loggateway.NewNoop())
+	ctx := workspace.WithContext(context.Background(), "ws-own")
+	now := time.Now().UTC().Truncate(time.Second)
+
+	for i := 0; i < 35; i++ {
+		id := fmt.Sprintf("task-%02d", i)
+		if _, err := repo.CreateTask(ctx, biz.Task{
+			ID: id, SessionID: "session-own", UserMessage: "visible " + id,
+			Status: biz.TaskStatusRunning, Version: 1, WorkspaceID: "ws-own",
+			CreatedAt: now, UpdatedAt: now,
+		}); err != nil {
+			t.Fatalf("seed visible %s: %v", id, err)
+		}
+	}
+	for i := 0; i < 4; i++ {
+		id := fmt.Sprintf("foreign-%02d", i)
+		if _, err := repo.CreateTask(ctx, biz.Task{
+			ID: id, SessionID: "session-foreign", UserMessage: "hidden " + id,
+			Status: biz.TaskStatusRunning, Version: 1, WorkspaceID: "ws-other",
+			CreatedAt: now, UpdatedAt: now,
+		}); err != nil {
+			t.Fatalf("seed foreign %s: %v", id, err)
+		}
+	}
+
+	first, err := repo.ListTaskSituations(ctx, biz.TaskSituationListOptions{Limit: 20})
+	if err != nil {
+		t.Fatalf("first page: %v", err)
+	}
+	second, err := repo.ListTaskSituations(ctx, biz.TaskSituationListOptions{Limit: 20, Offset: 20})
+	if err != nil {
+		t.Fatalf("second page: %v", err)
+	}
+	if first.Total != 35 || second.Total != 35 {
+		t.Fatalf("ACL must apply before count: totals=%d/%d, want 35", first.Total, second.Total)
+	}
+	if len(first.Items) != 20 || len(second.Items) != 15 {
+		t.Fatalf("page sizes=%d/%d, want 20/15", len(first.Items), len(second.Items))
+	}
+	seen := make(map[string]int, 35)
+	for page, items := range [][]biz.TaskSituation{first.Items, second.Items} {
+		for _, item := range items {
+			seen[item.Task.ID]++
+			if item.Task.WorkspaceID != "ws-own" {
+				t.Fatalf("foreign task leaked on page %d: %+v", page+1, item.Task)
+			}
+		}
+	}
+	if len(seen) != 35 {
+		t.Fatalf("paged union=%d, want 35; counts=%v", len(seen), seen)
+	}
+	for id, count := range seen {
+		if count != 1 {
+			t.Errorf("task %s appeared %d times", id, count)
+		}
+	}
+	// Identical updated_at values must still have a deterministic id tie-breaker.
+	for i := 1; i < len(first.Items); i++ {
+		if first.Items[i-1].Task.ID <= first.Items[i].Task.ID {
+			t.Fatalf("unstable desc id order at %d: %s <= %s", i, first.Items[i-1].Task.ID, first.Items[i].Task.ID)
+		}
+	}
+}
+
+func TestTaskV2Repo_ListTaskSituations_WaitingMatchesProjection(t *testing.T) {
+	d := openTestDataWithRWDB(t)
+	taskRepo := NewTaskV2Repo(d, loggateway.NewNoop())
+	turnRepo := NewTurnV2Repo(d, loggateway.NewNoop())
+	stepRepo := NewStepV2Repo(d, loggateway.NewNoop())
+	ctx := workspace.WithContext(context.Background(), "ws-own")
+	now := time.Now().UTC().Truncate(time.Second)
+
+	tasks := []biz.Task{
+		{ID: "wait-interrupted", Status: biz.TaskStatusInterrupted},
+		{ID: "wait-input", Status: biz.TaskStatusRunning},
+		{ID: "wait-tool", Status: biz.TaskStatusRunning},
+		{ID: "active-latest-step", Status: biz.TaskStatusRunning},
+		{ID: "active-latest-turn", Status: biz.TaskStatusRunning},
+	}
+	for _, task := range tasks {
+		task.SessionID = "session-own"
+		task.UserMessage = task.ID
+		task.Version = 1
+		task.WorkspaceID = "ws-own"
+		task.CreatedAt = now
+		task.UpdatedAt = now
+		if _, err := taskRepo.CreateTask(ctx, task); err != nil {
+			t.Fatalf("seed task %s: %v", task.ID, err)
+		}
+	}
+
+	turns := []biz.Turn{
+		{ID: "turn-input", TaskID: "wait-input", Seq: 1},
+		{ID: "turn-tool", TaskID: "wait-tool", Seq: 1},
+		{ID: "turn-latest-step", TaskID: "active-latest-step", Seq: 1},
+		{ID: "turn-old", TaskID: "active-latest-turn", Seq: 1, StartedAt: now},
+		{ID: "turn-new", TaskID: "active-latest-turn", Seq: 2, StartedAt: now.Add(time.Second)},
+	}
+	for _, turn := range turns {
+		turn.SessionID = "session-own"
+		turn.SpiritSessionID = "session-own"
+		turn.Status = biz.TurnStatusRunning
+		turn.Version = 1
+		if turn.StartedAt.IsZero() {
+			turn.StartedAt = now
+		}
+		if _, err := turnRepo.CreateTurn(ctx, turn); err != nil {
+			t.Fatalf("seed turn %s: %v", turn.ID, err)
+		}
+	}
+
+	steps := []biz.Step{
+		{ID: "step-input", TurnID: "turn-input", TaskID: "wait-input", Seq: 1, Status: biz.StepStatusAwaitingInput},
+		{ID: "step-tool", TurnID: "turn-tool", TaskID: "wait-tool", Seq: 1, Status: biz.StepStatusToolBlocked},
+		{ID: "step-old-wait", TurnID: "turn-latest-step", TaskID: "active-latest-step", Seq: 1, Status: biz.StepStatusAwaitingInput, StartedAt: now},
+		{ID: "step-new-run", TurnID: "turn-latest-step", TaskID: "active-latest-step", Seq: 2, Status: biz.StepStatusRunning, StartedAt: now.Add(time.Second)},
+		{ID: "step-old-turn", TurnID: "turn-old", TaskID: "active-latest-turn", Seq: 1, Status: biz.StepStatusAwaitingInput},
+		{ID: "step-new-turn", TurnID: "turn-new", TaskID: "active-latest-turn", Seq: 1, Status: biz.StepStatusRunning},
+	}
+	for _, step := range steps {
+		step.SessionID = "session-own"
+		step.SpiritSessionID = "session-own"
+		step.Kind = biz.StepKindThinking
+		step.Version = 1
+		if step.StartedAt.IsZero() {
+			step.StartedAt = now
+		}
+		if _, err := stepRepo.CreateStep(ctx, step); err != nil {
+			t.Fatalf("seed step %s: %v", step.ID, err)
+		}
+	}
+
+	page, err := taskRepo.ListTaskSituations(ctx, biz.TaskSituationListOptions{Status: "waiting", Limit: 20})
+	if err != nil {
+		t.Fatalf("list waiting: %v", err)
+	}
+	if page.Total != 3 || len(page.Items) != 3 {
+		t.Fatalf("waiting total/items=%d/%d, want 3/3", page.Total, len(page.Items))
+	}
+	want := map[string]bool{"wait-interrupted": true, "wait-input": true, "wait-tool": true}
+	for _, item := range page.Items {
+		if !want[item.Task.ID] {
+			t.Errorf("non-waiting task leaked: %s", item.Task.ID)
+		}
+		delete(want, item.Task.ID)
+	}
+	if len(want) != 0 {
+		t.Fatalf("waiting tasks missing: %v", want)
 	}
 }

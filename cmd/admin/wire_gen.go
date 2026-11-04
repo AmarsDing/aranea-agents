@@ -517,7 +517,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	toolService := service.NewToolService(toolUsecase, agentUsecase, monitorUsecase)
 	sessionForkStore := data.NewSessionForkRepo(dataData)
 	sessionForkUsecase := biz.ProvideSessionForkUsecase(sessionRepo, sessionForkStore, loggatewayLogger)
-	sessionV2Service := service.NewSessionV2Service(taskV2Repo, turnV2Repo, stepV2Repo, teamStageV2Repo, teamRunV2Repo, memberSessionV2Repo, planBoardV2Repo, planStepV2Repo, graphStageV2Repo, graphNodeV2Repo)
+	sessionV2Service := service.NewSessionV2Service(taskV2Repo, turnV2Repo, stepV2Repo, teamStageV2Repo, teamRunV2Repo, memberSessionV2Repo, planBoardV2Repo, planStepV2Repo, graphStageV2Repo, graphNodeV2Repo, taskV2Repo, sessionUsecase)
 	serviceSessionService := service.NewSessionService(sessionUsecase, sessionForkUsecase, monitorUsecase, sessionRunUsecase, sessionCompressor, sessionCompressor, sessionMetricsReader, sessionV2Service, loggatewayLogger)
 	cronTriggerGateway := service.NewCronTriggerGatewayAdapter(cronService)
 	turnAdmissionUsecase := provideChannelIngressAdmission(usageUsecase, agentRepository, channelUsecase)

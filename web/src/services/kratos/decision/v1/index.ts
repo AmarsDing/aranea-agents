@@ -61,6 +61,11 @@ export type DecisionRecord = {
   // virtual_parent：链查询兜底补链标记（设计 §5）——同 run 内时间最近的
   // 前置 planner 决策作为虚拟父节点返回时不回写，仅此节点置 true。
   virtualParent: boolean | undefined;
+  // Authoritative optional deep-link identities copied from source_ref.
+  // Absence means unassociated; clients must not infer an association.
+  sessionId?: string;
+  taskId?: string;
+  stepId?: string;
 };
 
 type wellKnownListValue = wellKnownValue[];

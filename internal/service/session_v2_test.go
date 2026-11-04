@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"testing"
+	"time"
 
 	v1 "aranea-agents/api/kratos/session/v1"
 	"aranea-agents/internal/biz"
@@ -290,5 +291,75 @@ func TestSessionV2Service_ListSteps_TaskBranchIgnoresPaging(t *testing.T) {
 	}
 	if stub.pagedOpts != nil {
 		t.Error("paged method must not be called for task_id branch")
+	}
+}
+
+type stubTaskSituationReader struct {
+	page biz.TaskSituationPage
+	opts *biz.TaskSituationListOptions
+}
+
+func (s *stubTaskSituationReader) ListTaskSituations(_ context.Context, opts biz.TaskSituationListOptions) (biz.TaskSituationPage, error) {
+	s.opts = &opts
+	return s.page, nil
+}
+
+func TestSessionV2Service_ListTaskSituations_AuthoritativePresence(t *testing.T) {
+	started := time.Date(2026, 11, 4, 2, 0, 0, 0, time.UTC)
+	updated := started.Add(time.Minute)
+	reader := &stubTaskSituationReader{page: biz.TaskSituationPage{Total: 2, Items: []biz.TaskSituation{
+		{
+			Task: biz.Task{ID: "task-1", SessionID: "sess-1", UserMessage: "发布生产版本", Status: biz.TaskStatusRunning, UpdatedAt: updated},
+			Turns: []biz.Turn{{ID: "turn-1", TaskID: "task-1", AgentKey: "agent-release", Seq: 1}},
+			Steps: []biz.Step{{ID: "step-1", TaskID: "task-1", TurnID: "turn-1", Content: "等待发布确认", Status: biz.StepStatusAwaitingInput, StartedAt: started, Seq: 1}},
+		},
+		{Task: biz.Task{ID: "task-2", SessionID: "sess-2", Status: biz.TaskStatusPending}},
+	}}}
+	svc := &SessionV2Service{situationReader: reader}
+	resp, err := svc.ListTaskSituations(context.Background(), &v1.ListTaskSituationsRequest{})
+	if err != nil {
+		t.Fatalf("ListTaskSituations: %v", err)
+	}
+	if resp.GetTotal() != 2 || resp.GetLimit() != 20 || len(resp.GetItems()) != 2 {
+		t.Fatalf("response metadata: %+v", resp)
+	}
+	if reader.opts == nil || reader.opts.Limit != 20 || reader.opts.SortBy != "updated_at" || reader.opts.SortOrder != "desc" {
+		t.Fatalf("server defaults not passed to repo: %+v", reader.opts)
+	}
+	got := resp.GetItems()[0]
+	if got.GetStatus() != "waiting" || got.GetCurrentTurnId() != "turn-1" ||
+		got.GetCurrentStepId() != "step-1" || got.GetCurrentStepSummary() != "等待发布确认" ||
+		got.GetExecutorSummary() != "agent-release" || got.GetWaitingSince() != started.Format(time.RFC3339) {
+		t.Fatalf("authoritative projection mismatch: %+v", got)
+	}
+	if got.ArtifactCount != nil || got.RetryAvailable != nil || got.TakeoverAvailable != nil {
+		t.Fatalf("unavailable facts must remain unknown: %+v", got)
+	}
+	missing := resp.GetItems()[1]
+	if missing.Title != nil || missing.UpdatedAt != nil || missing.CurrentTurnId != nil || missing.ExecutorSummary != nil {
+		t.Fatalf("missing source fields must not use zero-value fallbacks: %+v", missing)
+	}
+}
+
+func TestSessionV2Service_ListTaskSituations_DirectedSessionAccess(t *testing.T) {
+	reader := &stubTaskSituationReader{}
+	sessions := &fakeSessionWorkspaceReader{byID: map[string]biz.Session{
+		"sess-own": {ID: "sess-own", WorkspaceID: "ws-a"},
+		"sess-other": {ID: "sess-other", WorkspaceID: "ws-b"},
+	}}
+	svc := &SessionV2Service{situationReader: reader, sessionReader: sessions}
+	ctx := workspace.WithContext(context.Background(), "ws-a")
+
+	if _, err := svc.ListTaskSituations(ctx, &v1.ListTaskSituationsRequest{SessionId: "sess-other"}); !apierror.IsCode(err, apierror.CodeNotFound) {
+		t.Fatalf("cross-workspace directed read must be NotFound, got %v", err)
+	}
+	if reader.opts != nil {
+		t.Fatal("projection reader must not run after denied access")
+	}
+	if _, err := svc.ListTaskSituations(ctx, &v1.ListTaskSituationsRequest{SessionId: "sess-own"}); err != nil {
+		t.Fatalf("visible empty session must not be confused with IDOR: %v", err)
+	}
+	if reader.opts == nil || reader.opts.SessionID != "sess-own" {
+		t.Fatalf("directed scope not propagated: %+v", reader.opts)
 	}
 }

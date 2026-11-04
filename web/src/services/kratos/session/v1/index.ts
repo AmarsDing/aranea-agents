@@ -559,6 +559,44 @@ export type ListActivitiesResponse = {
   items: Activity[] | undefined;
 };
 
+export type ListTaskSituationsRequest = {
+  // Optional directed scope. Cross-workspace targets return NotFound.
+  sessionId: string | undefined;
+  status: string | undefined;
+  keyword: string | undefined;
+  limit: number | undefined;
+  offset: number | undefined;
+  sortBy: string | undefined;
+  sortOrder: string | undefined;
+};
+
+export type ListTaskSituationsResponse = {
+  items: TaskSituationV2[] | undefined;
+  total: number | undefined;
+  limit: number | undefined;
+  offset: number | undefined;
+};
+
+// TaskSituationV2 is derived only from persisted Task/Turn/Step records.
+// Optional fields stay absent when authoritative data was not collected.
+export type TaskSituationV2 = {
+  taskId: string | undefined;
+  sessionId: string | undefined;
+  currentTurnId?: string;
+  title?: string;
+  status: string | undefined;
+  currentStepId?: string;
+  currentStepSummary?: string;
+  executorSummary?: string;
+  waitingSince?: string;
+  failedStepId?: string;
+  interventionType?: string;
+  artifactCount?: number;
+  retryAvailable?: boolean;
+  takeoverAvailable?: boolean;
+  updatedAt?: string;
+};
+
 export type ListTasksV2Request = {
   //
   // Behaviors: REQUIRED
@@ -1545,6 +1583,8 @@ type wellKnownEmpty = Record<never, never>;
 // SessionV2Service exposes v2 entity read RPCs (Task/Turn/Step) backed by the
 // v2 repo tables (tasks_v2/turns_v2/steps_v2). Replaces v1 ListActivities.
 export interface SessionV2Service {
+  // ListTaskSituations lists a workspace-scoped, read-only business task projection.
+  ListTaskSituations(request: ListTaskSituationsRequest): Promise<ListTaskSituationsResponse>;
   // ListTasks lists tasks for a session.
   ListTasks(request: ListTasksV2Request): Promise<ListTasksV2Response>;
   // ListTurns lists turns for a task.
@@ -1571,6 +1611,44 @@ export function createSessionV2ServiceClient(
   handler: RequestHandler
 ): SessionV2Service {
   return {
+    ListTaskSituations(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      const path = `v2/task-situations`; // eslint-disable-line quotes
+      const body = null;
+      const queryParams: string[] = [];
+      if (request.sessionId) {
+        queryParams.push(`sessionId=${encodeURIComponent(request.sessionId.toString())}`)
+      }
+      if (request.status) {
+        queryParams.push(`status=${encodeURIComponent(request.status.toString())}`)
+      }
+      if (request.keyword) {
+        queryParams.push(`keyword=${encodeURIComponent(request.keyword.toString())}`)
+      }
+      if (request.limit) {
+        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`)
+      }
+      if (request.offset) {
+        queryParams.push(`offset=${encodeURIComponent(request.offset.toString())}`)
+      }
+      if (request.sortBy) {
+        queryParams.push(`sortBy=${encodeURIComponent(request.sortBy.toString())}`)
+      }
+      if (request.sortOrder) {
+        queryParams.push(`sortOrder=${encodeURIComponent(request.sortOrder.toString())}`)
+      }
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "SessionV2Service",
+        method: "ListTaskSituations",
+      }) as Promise<ListTaskSituationsResponse>;
+    },
     ListTasks(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.sessionId) {
         throw new Error("missing required field request.session_id");

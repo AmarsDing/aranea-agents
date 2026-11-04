@@ -371,3 +371,29 @@ func TestDecisionRecordService_SessionGateStats(t *testing.T) {
 		t.Fatal("empty session_id must be rejected")
 	}
 }
+
+func TestDecisionRecordToProto_OptionalAssociationPresence(t *testing.T) {
+	linked, err := decisionRecordToProto(&decision.Record{SourceRef: decision.SourceRef{
+		SessionID: "sess-1", TaskID: "task-1", StepID: "step-1",
+	}})
+	if err != nil {
+		t.Fatalf("linked record: %v", err)
+	}
+	if linked.SessionId == nil || linked.GetSessionId() != "sess-1" ||
+		linked.TaskId == nil || linked.GetTaskId() != "task-1" ||
+		linked.StepId == nil || linked.GetStepId() != "step-1" {
+		t.Fatalf("authoritative ids not preserved: %+v", linked)
+	}
+
+	// Similar-looking text must never be interpreted as an association.
+	unlinked, err := decisionRecordToProto(&decision.Record{
+		Scenario: "approve sess-guess task-guess step-guess",
+		ActorKey: "sess-guess",
+	})
+	if err != nil {
+		t.Fatalf("unlinked record: %v", err)
+	}
+	if unlinked.SessionId != nil || unlinked.TaskId != nil || unlinked.StepId != nil {
+		t.Fatalf("unlinked record must preserve absence: %+v", unlinked)
+	}
+}

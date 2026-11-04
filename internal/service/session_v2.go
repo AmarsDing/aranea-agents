@@ -8,6 +8,7 @@ import (
 
 	v1 "aranea-agents/api/kratos/session/v1"
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/workspace"
 	"aranea-agents/pkg/apierror"
 )
 
@@ -30,6 +31,8 @@ type SessionV2Service struct {
 	planStepReader      biz.PlanStepV2Reader
 	graphStageReader    biz.GraphStageV2Reader
 	graphNodeReader     biz.GraphNodeV2Reader
+	situationReader     biz.TaskSituationV2Reader
+	sessionReader       SessionWorkspaceReader
 }
 
 // NewSessionV2Service constructs a SessionV2Service from v2 repo readers.
@@ -44,6 +47,8 @@ func NewSessionV2Service(
 	planStepReader biz.PlanStepV2Reader,
 	graphStageReader biz.GraphStageV2Reader,
 	graphNodeReader biz.GraphNodeV2Reader,
+	situationReader biz.TaskSituationV2Reader,
+	sessionReader SessionWorkspaceReader,
 ) *SessionV2Service {
 	return &SessionV2Service{
 		taskReader:          taskReader,
@@ -56,7 +61,198 @@ func NewSessionV2Service(
 		planStepReader:      planStepReader,
 		graphStageReader:    graphStageReader,
 		graphNodeReader:     graphNodeReader,
+		situationReader:     situationReader,
+		sessionReader:       sessionReader,
 	}
+}
+
+const (
+	taskSituationDefaultLimit = 20
+	taskSituationMaxLimit     = 100
+)
+
+// ListTaskSituations returns a deterministic read-only projection of visible tasks.
+func (s *SessionV2Service) ListTaskSituations(ctx context.Context, req *v1.ListTaskSituationsRequest) (*v1.ListTaskSituationsResponse, error) {
+	limit := int(req.GetLimit())
+	offset := int(req.GetOffset())
+	if limit < 0 || offset < 0 {
+		return nil, apierror.BadRequest(apierror.DomainShared, "limit and offset must be >= 0")
+	}
+	if limit == 0 {
+		limit = taskSituationDefaultLimit
+	}
+	if limit > taskSituationMaxLimit {
+		limit = taskSituationMaxLimit
+	}
+	sortBy := strings.TrimSpace(req.GetSortBy())
+	if sortBy == "" {
+		sortBy = "updated_at"
+	}
+	if sortBy != "updated_at" && sortBy != "created_at" {
+		return nil, apierror.BadRequest(apierror.DomainShared, "sort_by must be updated_at or created_at")
+	}
+	sortOrder := strings.ToLower(strings.TrimSpace(req.GetSortOrder()))
+	if sortOrder == "" {
+		sortOrder = "desc"
+	}
+	if sortOrder != "asc" && sortOrder != "desc" {
+		return nil, apierror.BadRequest(apierror.DomainShared, "sort_order must be asc or desc")
+	}
+	status := strings.TrimSpace(req.GetStatus())
+	switch status {
+	case "", "queued", "running", "waiting", "failed", "completed", "cancelled":
+	default:
+		return nil, apierror.BadRequest(apierror.DomainShared, "unsupported task situation status")
+	}
+	sessionID := strings.TrimSpace(req.GetSessionId())
+	if sessionID != "" {
+		if err := s.assertTaskSituationSessionAccess(ctx, sessionID); err != nil {
+			return nil, err
+		}
+	}
+	page, err := s.situationReader.ListTaskSituations(ctx, biz.TaskSituationListOptions{
+		SessionID: sessionID,
+		Status:    status,
+		Keyword:   strings.TrimSpace(req.GetKeyword()),
+		Limit:     limit,
+		Offset:    offset,
+		SortBy:    sortBy,
+		SortOrder: sortOrder,
+	})
+	if err != nil {
+		return nil, err
+	}
+	out := &v1.ListTaskSituationsResponse{
+		Items:  make([]*v1.TaskSituationV2, 0, len(page.Items)),
+		Total:  int32(page.Total),
+		Limit:  int32(limit),
+		Offset: int32(offset),
+	}
+	for _, item := range page.Items {
+		out.Items = append(out.Items, taskSituationToProto(item))
+	}
+	return out, nil
+}
+
+func (s *SessionV2Service) assertTaskSituationSessionAccess(ctx context.Context, sessionID string) error {
+	if workspace.IsSystem(ctx) {
+		return nil
+	}
+	if s.sessionReader == nil {
+		return apierror.NotFound("SESSION", "session %s not found", sessionID)
+	}
+	sess, err := s.sessionReader.Get(ctx, sessionID)
+	if err != nil {
+		if apierror.IsCode(err, apierror.CodeNotFound) {
+			return apierror.NotFound("SESSION", "session %s not found", sessionID)
+		}
+		return err
+	}
+	if err := workspace.AssertWorkspace(workspace.IDFromContext(ctx), sess.WorkspaceID); err != nil {
+		return apierror.NotFound("SESSION", "session %s not found", sessionID)
+	}
+	return nil
+}
+
+func taskSituationToProto(item biz.TaskSituation) *v1.TaskSituationV2 {
+	task := item.Task
+	out := &v1.TaskSituationV2{TaskId: task.ID, SessionId: task.SessionID}
+	if title := strings.TrimSpace(task.UserMessage); title != "" {
+		out.Title = &title
+	}
+	if !task.UpdatedAt.IsZero() {
+		updatedAt := task.UpdatedAt.UTC().Format(time.RFC3339)
+		out.UpdatedAt = &updatedAt
+	}
+
+	var turn *biz.Turn
+	for i := range item.Turns {
+		candidate := &item.Turns[i]
+		if turn == nil || candidate.Seq > turn.Seq ||
+			(candidate.Seq == turn.Seq && candidate.StartedAt.After(turn.StartedAt)) ||
+			(candidate.Seq == turn.Seq && candidate.StartedAt.Equal(turn.StartedAt) && candidate.ID > turn.ID) {
+			turn = candidate
+		}
+	}
+	if turn != nil {
+		if turn.ID != "" {
+			out.CurrentTurnId = &turn.ID
+		}
+		if turn.AgentKey != "" {
+			executor := turn.AgentKey
+			out.ExecutorSummary = &executor
+		} else if turn.TeamID != "" {
+			executor := turn.TeamID
+			out.ExecutorSummary = &executor
+		}
+	}
+
+	var step *biz.Step
+	var failedStep *biz.Step
+	for i := range item.Steps {
+		candidate := &item.Steps[i]
+		if candidate.Status == biz.StepStatusFailed && (failedStep == nil || situationStepLater(candidate, failedStep)) {
+			failedStep = candidate
+		}
+		if turn != nil && candidate.TurnID != turn.ID {
+			continue
+		}
+		if step == nil || situationStepLater(candidate, step) {
+			step = candidate
+		}
+	}
+	if step != nil {
+		if step.ID != "" {
+			out.CurrentStepId = &step.ID
+		}
+		if summary := strings.TrimSpace(step.Content); summary != "" {
+			out.CurrentStepSummary = &summary
+		}
+		if step.AuthorAgentKey != "" {
+			executor := step.AuthorAgentKey
+			out.ExecutorSummary = &executor
+		}
+	}
+
+	out.Status = string(task.Status)
+	switch task.Status {
+	case biz.TaskStatusPending:
+		out.Status = "queued"
+	case biz.TaskStatusInterrupted:
+		out.Status = "waiting"
+		intervention := "retry"
+		out.InterventionType = &intervention
+		if !task.UpdatedAt.IsZero() {
+			waitingSince := task.UpdatedAt.UTC().Format(time.RFC3339)
+			out.WaitingSince = &waitingSince
+		}
+	case biz.TaskStatusRunning:
+		if step != nil && (step.Status == biz.StepStatusAwaitingInput || step.Status == biz.StepStatusToolBlocked) {
+			out.Status = "waiting"
+			if !step.StartedAt.IsZero() {
+				waitingSince := step.StartedAt.UTC().Format(time.RFC3339)
+				out.WaitingSince = &waitingSince
+			}
+			if step.Kind == biz.StepKindConfirm {
+				intervention := "approval"
+				out.InterventionType = &intervention
+			}
+		}
+	}
+	if task.Status == biz.TaskStatusFailed && failedStep != nil && failedStep.ID != "" {
+		out.FailedStepId = &failedStep.ID
+	}
+	return out
+}
+
+func situationStepLater(candidate, current *biz.Step) bool {
+	if !candidate.StartedAt.Equal(current.StartedAt) {
+		return candidate.StartedAt.After(current.StartedAt)
+	}
+	if candidate.Seq != current.Seq {
+		return candidate.Seq > current.Seq
+	}
+	return candidate.ID > current.ID
 }
 
 // ListTasks returns all tasks for a session.

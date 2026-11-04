@@ -270,6 +270,7 @@ func decisionRecordToProto(rec *decision.Record) (*v1.DecisionRecord, error) {
 		}
 	}
 	putNonEmpty("run_id", rec.SourceRef.RunID)
+	putNonEmpty("session_id", rec.SourceRef.SessionID)
 	putNonEmpty("step_id", rec.SourceRef.StepID)
 	putNonEmpty("tool_invocation_id", rec.SourceRef.ToolInvocationID)
 	putNonEmpty("twin_approval_id", rec.SourceRef.TwinApprovalID)
@@ -277,6 +278,15 @@ func decisionRecordToProto(rec *decision.Record) (*v1.DecisionRecord, error) {
 	putNonEmpty("suggestion_id", rec.SourceRef.SuggestionID)
 	putNonEmpty("fact_id", rec.SourceRef.FactID)
 	putNonEmpty("task_id", rec.SourceRef.TaskID)
+	if rec.SourceRef.SessionID != "" {
+		msg.SessionId = &rec.SourceRef.SessionID
+	}
+	if rec.SourceRef.TaskID != "" {
+		msg.TaskId = &rec.SourceRef.TaskID
+	}
+	if rec.SourceRef.StepID != "" {
+		msg.StepId = &rec.SourceRef.StepID
+	}
 	srcPB, err := structpb.NewStruct(src)
 	if err != nil {
 		return nil, err

@@ -649,6 +649,10 @@ service SessionService {
 // SessionV2Service exposes v2 entity read RPCs (Task/Turn/Step) backed by the
 // v2 repo tables (tasks_v2/turns_v2/steps_v2). Replaces v1 ListActivities.
 service SessionV2Service {
+  // ListTaskSituations lists a workspace-scoped, read-only business task projection.
+  rpc ListTaskSituations(ListTaskSituationsRequest) returns (ListTaskSituationsResponse) {
+    option (google.api.http) = {get: "/v2/task-situations"};
+  }
   // ListTasks lists tasks for a session.
   rpc ListTasks(ListTasksV2Request) returns (ListTasksV2Response) {
     option (google.api.http) = {get: "/v2/sessions/{session_id}/tasks"};
@@ -693,6 +697,43 @@ service SessionV2Service {
   rpc ListGraphNodes(ListGraphNodesV2Request) returns (ListGraphNodesV2Response) {
     option (google.api.http) = {get: "/v2/graph_stages/{stage_id}/graph_nodes"};
   }
+}
+
+message ListTaskSituationsRequest {
+  // Optional directed scope. Cross-workspace targets return NotFound.
+  string session_id = 1;
+  string status = 2;
+  string keyword = 3;
+  int32 limit = 4;
+  int32 offset = 5;
+  string sort_by = 6;
+  string sort_order = 7;
+}
+message ListTaskSituationsResponse {
+  repeated TaskSituationV2 items = 1;
+  int32 total = 2;
+  int32 limit = 3;
+  int32 offset = 4;
+}
+
+// TaskSituationV2 is derived only from persisted Task/Turn/Step records.
+// Optional fields stay absent when authoritative data was not collected.
+message TaskSituationV2 {
+  string task_id = 1;
+  string session_id = 2;
+  optional string current_turn_id = 3;
+  optional string title = 4;
+  string status = 5;
+  optional string current_step_id = 6;
+  optional string current_step_summary = 7;
+  optional string executor_summary = 8;
+  optional string waiting_since = 9;
+  optional string failed_step_id = 10;
+  optional string intervention_type = 11;
+  optional int32 artifact_count = 12;
+  optional bool retry_available = 13;
+  optional bool takeover_available = 14;
+  optional string updated_at = 15;
 }
 
 message ListTasksV2Request {

@@ -1090,6 +1090,7 @@ const OperationSessionV2ServiceListOrphanMemberSessions = "/kratos.session.v1.Se
 const OperationSessionV2ServiceListPlanBoards = "/kratos.session.v1.SessionV2Service/ListPlanBoards"
 const OperationSessionV2ServiceListPlanSteps = "/kratos.session.v1.SessionV2Service/ListPlanSteps"
 const OperationSessionV2ServiceListSteps = "/kratos.session.v1.SessionV2Service/ListSteps"
+const OperationSessionV2ServiceListTaskSituations = "/kratos.session.v1.SessionV2Service/ListTaskSituations"
 const OperationSessionV2ServiceListTasks = "/kratos.session.v1.SessionV2Service/ListTasks"
 const OperationSessionV2ServiceListTeamRuns = "/kratos.session.v1.SessionV2Service/ListTeamRuns"
 const OperationSessionV2ServiceListTeamStages = "/kratos.session.v1.SessionV2Service/ListTeamStages"
@@ -1107,6 +1108,8 @@ type SessionV2ServiceHTTPServer interface {
 	ListPlanSteps(context.Context, *ListPlanStepsV2Request) (*ListPlanStepsV2Response, error)
 	// ListSteps ListSteps lists steps for a turn, task, or session.
 	ListSteps(context.Context, *ListStepsV2Request) (*ListStepsV2Response, error)
+	// ListTaskSituations ListTaskSituations lists a workspace-scoped, read-only business task projection.
+	ListTaskSituations(context.Context, *ListTaskSituationsRequest) (*ListTaskSituationsResponse, error)
 	// ListTasks ListTasks lists tasks for a session.
 	ListTasks(context.Context, *ListTasksV2Request) (*ListTasksV2Response, error)
 	ListTeamRuns(context.Context, *ListTeamRunsV2Request) (*ListTeamRunsV2Response, error)
@@ -1120,7 +1123,8 @@ type SessionV2ServiceHTTPServer interface {
 
 func RegisterSessionV2ServiceHTTPServer(s *http.Server, srv SessionV2ServiceHTTPServer) {
 	r := s.Route("/")
-	r.GET("/v2/sessions/{session_id}/tasks", _SessionV2Service_ListTasks2_HTTP_Handler(srv))
+	r.GET("/v2/task-situations", _SessionV2Service_ListTaskSituations0_HTTP_Handler(srv))
+	r.GET("/v2/sessions/{session_id}/tasks", _SessionV2Service_ListTasks0_HTTP_Handler(srv))
 	r.GET("/v2/tasks/{task_id}/turns", _SessionV2Service_ListTurns0_HTTP_Handler(srv))
 	r.GET("/v2/sessions/{session_id}/steps", _SessionV2Service_ListSteps0_HTTP_Handler(srv))
 	r.GET("/v2/tasks/{task_id}/team_stages", _SessionV2Service_ListTeamStages0_HTTP_Handler(srv))
@@ -1133,7 +1137,26 @@ func RegisterSessionV2ServiceHTTPServer(s *http.Server, srv SessionV2ServiceHTTP
 	r.GET("/v2/graph_stages/{stage_id}/graph_nodes", _SessionV2Service_ListGraphNodes0_HTTP_Handler(srv))
 }
 
-func _SessionV2Service_ListTasks2_HTTP_Handler(srv SessionV2ServiceHTTPServer) func(ctx http.Context) error {
+func _SessionV2Service_ListTaskSituations0_HTTP_Handler(srv SessionV2ServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in ListTaskSituationsRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationSessionV2ServiceListTaskSituations)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.ListTaskSituations(ctx, req.(*ListTaskSituationsRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*ListTaskSituationsResponse)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _SessionV2Service_ListTasks0_HTTP_Handler(srv SessionV2ServiceHTTPServer) func(ctx http.Context) error {
 	return func(ctx http.Context) error {
 		var in ListTasksV2Request
 		if err := ctx.BindQuery(&in); err != nil {
@@ -1387,6 +1410,8 @@ type SessionV2ServiceHTTPClient interface {
 	ListPlanSteps(ctx context.Context, req *ListPlanStepsV2Request, opts ...http.CallOption) (rsp *ListPlanStepsV2Response, err error)
 	// ListSteps ListSteps lists steps for a turn, task, or session.
 	ListSteps(ctx context.Context, req *ListStepsV2Request, opts ...http.CallOption) (rsp *ListStepsV2Response, err error)
+	// ListTaskSituations ListTaskSituations lists a workspace-scoped, read-only business task projection.
+	ListTaskSituations(ctx context.Context, req *ListTaskSituationsRequest, opts ...http.CallOption) (rsp *ListTaskSituationsResponse, err error)
 	// ListTasks ListTasks lists tasks for a session.
 	ListTasks(ctx context.Context, req *ListTasksV2Request, opts ...http.CallOption) (rsp *ListTasksV2Response, err error)
 	ListTeamRuns(ctx context.Context, req *ListTeamRunsV2Request, opts ...http.CallOption) (rsp *ListTeamRunsV2Response, err error)
@@ -1493,6 +1518,20 @@ func (c *SessionV2ServiceHTTPClientImpl) ListSteps(ctx context.Context, in *List
 	pattern := "/v2/sessions/{session_id}/steps"
 	path := binding.EncodeURL(pattern, in, true)
 	opts = append(opts, http.Operation(OperationSessionV2ServiceListSteps))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// ListTaskSituations ListTaskSituations lists a workspace-scoped, read-only business task projection.
+func (c *SessionV2ServiceHTTPClientImpl) ListTaskSituations(ctx context.Context, in *ListTaskSituationsRequest, opts ...http.CallOption) (*ListTaskSituationsResponse, error) {
+	var out ListTaskSituationsResponse
+	pattern := "/v2/task-situations"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationSessionV2ServiceListTaskSituations))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
 	if err != nil {

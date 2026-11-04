@@ -221,4 +221,44 @@ describe('attention board availability', () => {
     expect(view.board.value.lanes[0].status).toBe('partial');
     expect(view.board.value.worstSeverity).toBe('unknown');
   });
+
+  it('keeps the full backlog and links approvals only through authoritative IDs', async () => {
+    vi.mocked(listDecisionRecords).mockResolvedValue({
+      total: 2,
+      items: [
+        {
+          decision_key: 'linked',
+          category: 'hitl_approval',
+          scenario: 'release',
+          reasoning: 'confirm release',
+          outcome: 'pending',
+          actor_type: 'human',
+          actor_key: 'owner',
+          created_at: '',
+          session_id: 'sess-real',
+          task_id: 'task-real',
+          step_id: 'step-real',
+        },
+        {
+          decision_key: 'unlinked',
+          category: 'hitl_approval',
+          scenario: 'sess-guess task-guess step-guess',
+          reasoning: 'task-guess',
+          outcome: 'pending',
+          actor_type: 'human',
+          actor_key: 'task-guess',
+          created_at: '',
+        },
+      ],
+    });
+    const { view } = setup();
+    await flushPromises();
+    const items = view.board.value.lanes[3].items;
+    expect(items).toHaveLength(2);
+    expect(items.find((item) => item.id === 'hitl:linked')?.to).toEqual({
+      path: '/task-workspace',
+      query: { session: 'sess-real', task: 'task-real', step: 'step-real', from: '/overview' },
+    });
+    expect(items.find((item) => item.id === 'hitl:unlinked')?.to).toBeUndefined();
+  });
 });
