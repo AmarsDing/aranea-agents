@@ -17,6 +17,8 @@
       @expand="(ids) => $emit('expand', ids)"
       @confirm-step="(p) => $emit('confirm-step', p)"
       @fork-turn="(t) => $emit('fork-turn', t)"
+      @error-retry="(s) => $emit('error-retry', s)"
+      @error-switch-model="(s) => $emit('error-switch-model', s)"
       @submit-clarification="(p) => $emit('submit-clarification', p)"
       @hydrate="(t) => lazy.expandTask(t.ID)"
       @toggle-collapse="(t) => lazy.toggleCollapse(t.ID)"
@@ -28,7 +30,7 @@
 import { computed, inject, nextTick, watch, type Ref } from 'vue';
 import { useActivityQueries } from '../../../features/chat/composables/useActivityQueries';
 import { useLazyTaskHydration, CHAT_SCROLL_EL_KEY } from '../../../features/chat/composables/useLazyTaskHydration';
-import type { Task, Turn } from '../../../features/chat/v2Types';
+import type { Step, Task, Turn } from '../../../features/chat/v2Types';
 import type { ConfirmStepPayload, SubmitClarificationPayload } from '../../../features/chat/types';
 import TaskCard from './TaskCard.vue';
 import { useScrollToActivity } from '../../../features/chat/composables/useScrollToActivity';
@@ -44,6 +46,8 @@ defineEmits<{
   expand: [sessionIds: string[]];
   'confirm-step': [payload: ConfirmStepPayload];
   'fork-turn': [turn: Turn];
+  'error-retry': [step: Step];
+  'error-switch-model': [step: Step];
   'submit-clarification': [payload: SubmitClarificationPayload];
 }>();
 const queries = useActivityQueries();

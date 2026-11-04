@@ -51,6 +51,8 @@
         @confirm-step="(p) => $emit('confirm-step', p)"
         @fork-turn="(t) => $emit('fork-turn', t)"
         @submit-clarification="(p) => $emit('submit-clarification', p)"
+        @error-retry="(s) => $emit('error-retry', s)"
+        @error-switch-model="(s) => $emit('error-switch-model', s)"
       />
     </div>
     <ChatPendingQueue

@@ -32,7 +32,13 @@
       <ReplyBlock v-else-if="step.Kind === 'reply'" :step="step" :data-step-id="step.ID" />
       <div v-else-if="step.Kind === 'notice'" :data-step-id="step.ID" tabindex="-1"><NoticeBlock :step="step" /></div>
       <ConfirmBlock v-else-if="step.Kind === 'confirm'" :step="step" @confirm="(p) => $emit('confirm-step', p)" />
-      <ErrorBlock v-else-if="step.Kind === 'error'" :step="step" :data-step-id="step.ID" />
+      <ErrorBlock
+        v-else-if="step.Kind === 'error'"
+        :step="step"
+        :data-step-id="step.ID"
+        @retry="(s) => $emit('error-retry', s)"
+        @switch-model="(s) => $emit('error-switch-model', s)"
+      />
     </template>
     <!-- 75：含 computer_use 会话时内嵌步骤流。运行中可急停；历史 turn 只读回放。 -->
     <CuStepStream v-if="cuSessionId" :session-id="cuSessionId" :readonly="!isLiveTurn" />
@@ -43,7 +49,7 @@
 import { toRef } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useTurnPresentation } from '../../../features/chat/composables/useTurnPresentation';
-import type { Turn } from '../../../features/chat/v2Types';
+import type { Step, Turn } from '../../../features/chat/v2Types';
 import type { ConfirmStepPayload } from '../../../features/chat/types';
 import ThinkingBlock from '../ThinkingBlock.vue';
 import ActionBlock from '../ActionBlock.vue';
@@ -59,6 +65,8 @@ const props = defineProps<{ turn: Turn }>();
 defineEmits<{
   'confirm-step': [payload: ConfirmStepPayload];
   'fork-turn': [turn: Turn];
+  'error-retry': [step: Step];
+  'error-switch-model': [step: Step];
 }>();
 
 // Safe i18n wrapper — 单测环境未装 i18n 插件时回退为 key。
