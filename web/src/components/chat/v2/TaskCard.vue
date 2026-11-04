@@ -6,6 +6,7 @@
       'task-card--clickable': !hydrated || collapsed || hydrationState === 'error',
     }"
     :data-task-id="task.ID"
+    :data-task-seq="task.Seq"
     tabindex="-1"
     @click="onCardClick"
   >

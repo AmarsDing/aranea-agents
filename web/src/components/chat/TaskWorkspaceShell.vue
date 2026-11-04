@@ -228,4 +228,38 @@ watch(contextVisible, (visible) => emit('context-visible', visible), { immediate
     display: none
   .task-workspace[data-task-pane='artifacts'] :deep(.task-context)
     flex: 1
+@container task-workspace (max-width: 479px)
+  .task-workspace-toolbar:not(.task-workspace-toolbar--mobile)
+    display: grid
+    grid-template-columns: minmax(0, 1fr)
+    > .q-icon, > .q-space
+      display: none
+    .task-workspace-heading
+      width: 100%
+      max-width: none
+    > .q-btn, > .q-btn-dropdown
+      width: 100%
+      min-width: 0
+    :deep(.q-btn__content)
+      min-width: 0
+    :deep(.q-btn__content > .block)
+      overflow: hidden
+      text-overflow: ellipsis
+  .task-workspace :deep(.chat-empty-state)
+    padding-left: 0
+    padding-right: 0
+  .task-workspace :deep(.chat-empty-state__halo)
+    width: 56px
+    height: 56px
+  .task-workspace :deep(.chat-empty-state__suggestions)
+    width: 100%
+    min-width: 0
+    margin-left: 0
+    margin-right: 0
+  .task-workspace :deep(.chat-empty-state__chip)
+    max-width: 100%
+    min-width: 0
+  .task-workspace :deep(.chat-empty-state__chip .q-chip__content)
+    min-width: 0
+    overflow: hidden
 </style>
