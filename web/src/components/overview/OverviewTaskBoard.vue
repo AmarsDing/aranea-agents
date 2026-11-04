@@ -2,8 +2,8 @@
   <section class="task-board" data-testid="task-situation-board" :aria-busy="loading">
     <header class="task-board__head">
       <div>
-        <h2>{{ t('overviewPage.v2.taskBoard.title') }}</h2>
-        <p>{{ t('overviewPage.v2.taskBoard.subtitle') }}</p>
+        <h2>{{ title ?? t('overviewPage.v2.taskBoard.title') }}</h2>
+        <p>{{ subtitle ?? t('overviewPage.v2.taskBoard.subtitle') }}</p>
       </div>
       <strong data-testid="task-board-total">{{ t('overviewPage.v2.taskBoard.total', { count: total }) }}</strong>
     </header>
@@ -54,10 +54,10 @@
       class="task-board__state task-board__empty"
       data-testid="task-board-empty"
     >
-      <strong>{{ t('overviewPage.v2.taskBoard.emptyTitle') }}</strong>
-      <p>{{ t('overviewPage.v2.taskBoard.emptyHint') }}</p>
+      <strong>{{ emptyTitle ?? t('overviewPage.v2.taskBoard.emptyTitle') }}</strong>
+      <p>{{ emptyHint ?? t('overviewPage.v2.taskBoard.emptyHint') }}</p>
       <button type="button" data-testid="task-board-create" @click="$emit('create')">
-        {{ t('overviewPage.v2.taskBoard.create') }}
+        {{ createLabel ?? t('overviewPage.v2.taskBoard.create') }}
       </button>
     </div>
 
@@ -94,13 +94,24 @@
         <button
           type="button"
           class="task-board__open"
-          :data-testid="`task-drill-${item.task_id}`"
-          :aria-label="t('overviewPage.v2.taskBoard.open')"
-          @click="$emit('drill', item)"
+          :data-testid="expandable ? `task-expand-${item.task_id}` : `task-drill-${item.task_id}`"
+          :aria-label="expandable ? t(expandedTaskIds.includes(item.task_id) ? 'taskWorkspace.collapseTask' : 'taskWorkspace.expandTask') : t('overviewPage.v2.taskBoard.open')"
+          :aria-expanded="expandable ? expandedTaskIds.includes(item.task_id) : undefined"
+          @click="expandable ? $emit('toggle-expand', item) : $emit('drill', item)"
         >
-          <span aria-hidden="true">→</span>
-          <span class="task-board__open-label">{{ t('overviewPage.v2.taskBoard.open') }}</span>
+          <span aria-hidden="true">{{ expandable ? (expandedTaskIds.includes(item.task_id) ? '−' : '+') : '→' }}</span>
+          <span class="task-board__open-label">{{ expandable ? t(expandedTaskIds.includes(item.task_id) ? 'taskWorkspace.collapseTask' : 'taskWorkspace.expandTask') : t('overviewPage.v2.taskBoard.open') }}</span>
         </button>
+        <dl v-if="expandable && expandedTaskIds.includes(item.task_id)" class="task-board__detail" :data-testid="`task-detail-${item.task_id}`">
+          <dt>{{ t('overviewPage.v2.taskBoard.progress') }}</dt>
+          <dd>{{ item.current_step_summary ?? t('overviewPage.v2.taskBoard.notCollected') }}</dd>
+          <dt>current_turn_id / current_step_id</dt>
+          <dd>{{ item.current_turn_id ?? t('overviewPage.v2.taskBoard.notCollected') }} / {{ item.current_step_id ?? t('overviewPage.v2.taskBoard.notCollected') }}</dd>
+          <dt>failed_step_id</dt>
+          <dd>{{ item.failed_step_id ?? t('overviewPage.v2.taskBoard.notCollected') }}</dd>
+          <dt>{{ t('overviewPage.v2.taskBoard.executor') }}</dt>
+          <dd>{{ item.executor_summary ?? t('overviewPage.v2.taskBoard.notCollected') }}</dd>
+        </dl>
       </article>
     </div>
 
@@ -124,7 +135,7 @@ import { useI18n } from 'vue-i18n';
 import AppRegistryPagination from '../layout/AppRegistryPagination.vue';
 import type { TaskSituationItem, TaskSituationQuery } from '../../features/session/types';
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   items: TaskSituationItem[];
   total: number;
   limit: number;
@@ -132,7 +143,14 @@ const props = defineProps<{
   loading: boolean;
   error: string;
   query: TaskSituationQuery;
-}>();
+  title?: string;
+  subtitle?: string;
+  emptyTitle?: string;
+  emptyHint?: string;
+  createLabel?: string;
+  expandable?: boolean;
+  expandedTaskIds?: string[];
+}>(), { expandable: false, expandedTaskIds: () => [] });
 
 const emit = defineEmits<{
   refresh: [];
@@ -141,6 +159,7 @@ const emit = defineEmits<{
   filter: [query: TaskSituationQuery];
   page: [offset: number];
   'page-size': [limit: number];
+  'toggle-expand': [item: TaskSituationItem];
 }>();
 
 const { t } = useI18n();
@@ -241,6 +260,9 @@ function formatTime(value: string | undefined) {
   line-height: 20px;
 }
 .task-board__row > * { min-width: 0; overflow-wrap: anywhere; }
+.task-board__detail { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(120px, .3fr) minmax(0, 1fr); gap: 4px 12px; margin: 4px 0 8px; padding: 10px 12px; border-radius: 7px; background: var(--app-surface-muted); }
+.task-board__detail dt { color: var(--app-text-secondary); }
+.task-board__detail dd { margin: 0; white-space: pre-wrap; }
 .task-board__row--head { padding-block: 5px; border-top: 0; color: var(--app-text-secondary); font-size: 12px; line-height: 18px; }
 .task-board__task strong,
 .task-board__task small { display: block; }
@@ -268,6 +290,27 @@ function formatTime(value: string | undefined) {
   .task-board__open-label { display: none; }
 }
 @media (max-width: 600px) {
+  .task-board { padding: 12px; }
+  .task-board__filters label,
+  .task-board__filters .task-board__keyword { flex: 1 1 100%; min-width: 0; }
+  .task-board__row { grid-template-columns: minmax(0, 1fr) auto; }
+  .task-board__task,
+  .task-board__progress { grid-column: 1 / -1; }
+  .task-board__status { grid-column: 2; grid-row: 1; }
+  .task-board__row > time { grid-column: 1 / -1; }
+}
+@container task-situation (max-width: 1100px) {
+  .task-board__row--head { display: none; }
+  .task-board__row {
+    grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) auto;
+    gap: 6px 12px;
+  }
+  .task-board__task { grid-column: 1 / 3; }
+  .task-board__status { grid-column: 3; grid-row: 1; }
+  .task-board__progress { grid-column: 1 / 3; }
+  .task-board__open-label { display: none; }
+}
+@container task-situation (max-width: 600px) {
   .task-board { padding: 12px; }
   .task-board__filters label,
   .task-board__filters .task-board__keyword { flex: 1 1 100%; min-width: 0; }

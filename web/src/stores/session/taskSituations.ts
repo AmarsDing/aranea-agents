@@ -27,5 +27,14 @@ export const useTaskSituationStore = defineStore('task-situations', () => {
     }
   }
 
-  return { items, total, limit, offset, loading, error, load };
+  function reset() {
+    items.value = [];
+    total.value = 0;
+    limit.value = 20;
+    offset.value = 0;
+    loading.value = false;
+    error.value = '';
+  }
+
+  return { items, total, limit, offset, loading, error, load, reset };
 });

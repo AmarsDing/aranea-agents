@@ -31,6 +31,9 @@ export function useTaskWorkspaceView(enabled: () => boolean, sessionId: () => st
   const chatScrollTop = field('chatScrollTop');
   const processTaskId = field('processTaskId');
   const processTurnId = field('processTurnId');
+  const situationQuery = field('situationQuery');
+  const situationExpandedTaskIds = field('situationExpandedTaskIds');
+  const situationScrollTop = field('situationScrollTop');
   let previewTrigger: HTMLElement | null = null;
   const panelTarget = computed(() => {
     const target = artifactStore.previewTarget;
@@ -109,6 +112,9 @@ export function useTaskWorkspaceView(enabled: () => boolean, sessionId: () => st
     chatScrollTop,
     processTaskId,
     processTurnId,
+    situationQuery,
+    situationExpandedTaskIds,
+    situationScrollTop,
     contextScrollTop,
     saveContextScroll,
     panelTarget,

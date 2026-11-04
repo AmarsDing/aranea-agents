@@ -1,9 +1,10 @@
 import { defineStore } from 'pinia';
 import { onScopeDispose, reactive } from 'vue';
 import { CHAT_DRAFT_RESET } from '../../features/chat/chatDraftPersistence';
+import type { TaskSituationQuery } from '../../features/session/types';
 
 export interface ChatWorkspaceView {
-  pane: 'chat' | 'navigation' | 'artifacts';
+  pane: 'chat' | 'activity' | 'navigation' | 'artifacts';
   navigation: 'sessions' | 'members' | 'tree';
   contextOpen: boolean;
   contextTab: 'artifacts' | 'activity';
@@ -14,9 +15,12 @@ export interface ChatWorkspaceView {
   listScrollTop: number;
   processTaskId: string | null;
   processTurnId: string | null;
+  situationQuery: TaskSituationQuery;
+  situationExpandedTaskIds: string[];
+  situationScrollTop: number;
 }
 export const newWorkspaceView = (): ChatWorkspaceView => ({
-  pane: 'chat',
+  pane: 'activity',
   navigation: 'sessions',
   contextOpen: false,
   contextTab: 'artifacts',
@@ -27,6 +31,9 @@ export const newWorkspaceView = (): ChatWorkspaceView => ({
   listScrollTop: 0,
   processTaskId: null,
   processTurnId: null,
+  situationQuery: { limit: 20, offset: 0, sort_by: 'updated_at', sort_order: 'desc' },
+  situationExpandedTaskIds: [],
+  situationScrollTop: 0,
 });
 
 /** UI positions only. Business entities and authorization remain in their existing stores. */

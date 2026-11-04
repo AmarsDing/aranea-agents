@@ -1,4 +1,4 @@
-import { defineComponent, h } from 'vue';
+import { defineComponent, h, ref } from 'vue';
 import { flushPromises, mount } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
 import { createMemoryHistory, createRouter } from 'vue-router';
@@ -11,6 +11,7 @@ vi.mock('../../../services/index', () => ({
 }));
 
 import { useTaskSituations } from '../useTaskSituations';
+import type { TaskSituationQuery } from '../types';
 
 beforeEach(() => {
   setActivePinia(createPinia());
@@ -64,6 +65,60 @@ describe('useTaskSituations route-driven server queries', () => {
     expect(router.currentRoute.value.query).toMatchObject({ status: 'failed', offset: '0', keyword: 'release' });
     expect(router.currentRoute.value.query.secret).toBeUndefined();
     expect(listMock).toHaveBeenLastCalledWith(expect.objectContaining({ status: 'failed', offset: 0 }));
+    wrapper.unmount();
+  });
+
+  it('scopes the same projection to a workspace without navigating away or resetting its query', async () => {
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [
+        { path: '/overview', component: { template: '<div />' } },
+        { path: '/task-workspace', component: { template: '<div />' } },
+      ],
+    });
+    await router.push('/task-workspace?session=S');
+    await router.isReady();
+    listMock.mockResolvedValue({
+      items: [{ taskId: 'task-1', sessionId: 'S', status: 'waiting' }],
+      total: 21,
+      limit: 20,
+      offset: 20,
+    });
+    const sessionId = ref<string | undefined>('S');
+    const externalQuery = ref<TaskSituationQuery>({
+      status: 'waiting',
+      offset: 20,
+      limit: 20,
+      sort_by: 'updated_at',
+      sort_order: 'desc',
+    });
+    let view!: ReturnType<typeof useTaskSituations>;
+    const wrapper = mount(
+      defineComponent({
+        setup() {
+          view = useTaskSituations({
+            sessionId: () => sessionId.value,
+            query: () => externalQuery.value,
+            onQueryChange: (query) => {
+              externalQuery.value = query;
+            },
+          });
+          return () => h('div');
+        },
+      }),
+      { global: { plugins: [router] } },
+    );
+    await flushPromises();
+    expect(listMock).toHaveBeenCalledWith(expect.objectContaining({ sessionId: 'S', status: 'waiting', offset: 20 }));
+    await view.setQuery({ status: 'failed', offset: 0 });
+    await flushPromises();
+    expect(router.currentRoute.value.fullPath).toBe('/task-workspace?session=S');
+    expect(externalQuery.value).toMatchObject({ status: 'failed', offset: 0 });
+    expect(listMock).toHaveBeenLastCalledWith(expect.objectContaining({ sessionId: 'S', status: 'failed', offset: 0 }));
+    sessionId.value = undefined;
+    await flushPromises();
+    expect(view.items.value).toEqual([]);
+    expect(listMock).toHaveBeenCalledTimes(2);
     wrapper.unmount();
   });
 });

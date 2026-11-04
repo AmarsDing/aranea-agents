@@ -5,6 +5,20 @@ import { clearChatDrafts } from '../../../features/chat/chatDraftPersistence';
 
 beforeEach(() => setActivePinia(createPinia()));
 describe('workspace view cache', () => {
+  it('defaults to task progress and preserves filters, expansion and scroll across chat round trips', () => {
+    const store = useChatWorkspaceViewStore();
+    const state = store.ensure(JSON.stringify(['backend', 'user', 'S']));
+    expect(state.pane).toBe('activity');
+    state.situationQuery = { status: 'waiting', offset: 20, limit: 20, sort_by: 'updated_at', sort_order: 'desc' };
+    state.situationExpandedTaskIds = ['task-1', 'task-2'];
+    state.situationScrollTop = 160;
+    state.pane = 'chat';
+    state.pane = 'activity';
+    expect(state.situationQuery).toMatchObject({ status: 'waiting', offset: 20 });
+    expect(state.situationExpandedTaskIds).toEqual(['task-1', 'task-2']);
+    expect(state.situationScrollTop).toBe(160);
+  });
+
   it('retains IDs and positions without storing business content', () => {
     const store = useChatWorkspaceViewStore();
     const key = JSON.stringify(['backend', 'user', 'S']);

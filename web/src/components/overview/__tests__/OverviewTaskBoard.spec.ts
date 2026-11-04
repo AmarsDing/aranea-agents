@@ -73,4 +73,33 @@ describe('OverviewTaskBoard states and server pagination', () => {
     expect(wrapper.find('[role="alert"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="task-drill-task-long"]').exists()).toBe(true);
   });
+
+  it('keeps expanded task details under the same authoritative projection', async () => {
+    const wrapper = mountBoard({ items: [longItem], total: 1, expandable: true, expandedTaskIds: [] });
+    expect(wrapper.find('[data-testid="task-detail-task-long"]').exists()).toBe(false);
+    await wrapper.get('[data-testid="task-expand-task-long"]').trigger('click');
+    expect(wrapper.emitted('toggle-expand')?.[0]).toEqual([longItem]);
+    await wrapper.setProps({ expandedTaskIds: ['task-long'] });
+    expect(wrapper.findAll('[data-testid^="task-detail-"]')).toHaveLength(1);
+    expect(wrapper.get('[data-testid="task-detail-task-long"]').text()).toContain(longItem.current_step_summary);
+  });
+
+  it('uses workspace-specific empty guidance and keeps terminal tasks on the progress view', () => {
+    const empty = mountBoard({
+      emptyTitle: '先选择会话',
+      emptyHint: '前往会话历史选择会话',
+      createLabel: '选择会话',
+    });
+    expect(empty.get('[data-testid="task-board-empty"]').text()).toContain('先选择会话');
+    expect(empty.get('[data-testid="task-board-create"]').text()).toContain('选择会话');
+
+    const terminal = mountBoard({
+      items: [{ ...longItem, task_id: 'task-done', status: 'completed' }],
+      total: 1,
+      expandable: true,
+      expandedTaskIds: [],
+    });
+    expect(terminal.get('[data-task-id="task-done"]').text()).toContain('已完成');
+    expect(terminal.find('[data-testid="task-board-empty"]').exists()).toBe(false);
+  });
 });

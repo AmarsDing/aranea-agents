@@ -42,21 +42,50 @@ function routeQuery(query: TaskSituationQuery): LocationQueryRaw {
   };
 }
 
-export function useTaskSituations() {
+export interface TaskSituationOptions {
+  sessionId?: () => string | undefined;
+  query?: () => TaskSituationQuery;
+  enabled?: () => boolean;
+  onQueryChange?: (query: TaskSituationQuery) => void;
+}
+
+export function useTaskSituations(options: TaskSituationOptions = {}) {
   const route = useRoute();
   const router = useRouter();
   const store = useTaskSituationStore();
   const { items, total, limit, offset, loading, error } = storeToRefs(store);
-  const query = computed(() => taskSituationQueryFromRoute(route.query));
+  const query = computed(() => options.query?.() ?? taskSituationQueryFromRoute(route.query));
+  const sessionId = computed(() => options.sessionId?.());
+  const enabled = computed(() => options.enabled?.() ?? true);
+  let previousSessionId: string | undefined;
 
-  watch(query, (value) => void store.load(value), { immediate: true });
+  watch(
+    [query, sessionId, enabled],
+    ([value, sid, active]) => {
+      if (!active) return;
+      if (options.sessionId && previousSessionId !== sid) store.reset();
+      previousSessionId = sid;
+      if (options.sessionId && !sid) {
+        store.reset();
+        return;
+      }
+      void store.load({ ...value, session_id: sid });
+    },
+    { immediate: true, deep: true },
+  );
 
   async function setQuery(patch: TaskSituationQuery) {
-    await router.replace({ path: '/overview', query: routeQuery({ ...query.value, ...patch }) });
+    const next = { ...query.value, ...patch };
+    if (options.onQueryChange) {
+      options.onQueryChange(next);
+      return;
+    }
+    await router.replace({ path: '/overview', query: routeQuery(next) });
   }
 
   function refresh() {
-    return store.load(query.value);
+    if (!enabled.value || (options.sessionId && !sessionId.value)) return Promise.resolve();
+    return store.load({ ...query.value, session_id: sessionId.value });
   }
 
   return { items, total, limit, offset, loading, error, query, setQuery, refresh };

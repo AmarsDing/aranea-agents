@@ -105,7 +105,42 @@
         :message="llmRetry.message"
         @dismiss="dismissLlmAlert"
       />
+      <section
+        v-show="taskMode && taskPane === 'activity'"
+        id="task-workspace-activity"
+        ref="situationPanelRef"
+        class="task-situation-panel"
+        data-testid="task-workspace-activity"
+        :aria-label="layout.t('taskWorkspace.progressTitle')"
+        tabindex="-1"
+        @scroll="onSituationScroll"
+      >
+        <OverviewTaskBoard
+          :items="situationItems"
+          :total="situationTotal"
+          :limit="situationLimit"
+          :offset="situationOffset"
+          :loading="situationLoading"
+          :error="situationError"
+          :query="situationQuery"
+          :title="layout.t('taskWorkspace.progressTitle')"
+          :subtitle="layout.t('taskWorkspace.progressSubtitle')"
+          :empty-title="layout.t(session.selectedSessionForUi ? 'taskWorkspace.noTasksTitle' : 'taskWorkspace.noSessionTitle')"
+          :empty-hint="layout.t(session.selectedSessionForUi ? 'taskWorkspace.noTasksHint' : 'taskWorkspace.noSessionHint')"
+          :create-label="layout.t(session.selectedSessionForUi ? 'taskWorkspace.startTask' : 'taskWorkspace.selectSession')"
+          expandable
+          :expanded-task-ids="situationExpandedTaskIds"
+          @create="onSituationEmptyAction"
+          @filter="setSituationQuery"
+          @refresh="refreshSituations"
+          @page="setSituationQuery({ offset: $event })"
+          @page-size="setSituationQuery({ limit: $event, offset: 0 })"
+          @toggle-expand="toggleSituationExpanded"
+        />
+      </section>
       <ChatMessagePanel
+        v-show="!taskMode || taskPane !== 'activity'"
+        id="task-workspace-chat"
         v-model="composer.inputText"
         :reconnect-error="session.reconnectError"
         :draft-save-failed="composer.draftSaveFailed"
@@ -432,11 +467,12 @@ import ChatSideToggle from '../../components/chat/ChatSideToggle.vue';
 import ChatSettingsDialog from '../../components/chat/ChatSettingsDialog.vue';
 import ChatWorkspaceShell from '../../components/chat/ChatWorkspaceShell.vue';
 import TaskWorkspaceShell from '../../components/chat/TaskWorkspaceShell.vue';
+import OverviewTaskBoard from '../../components/overview/OverviewTaskBoard.vue';
 import LlmRetryBanner from '../../components/chat/LlmRetryBanner.vue';
 import MemberSessionDialog from '../../components/chat/v2/MemberSessionDialog.vue';
 import SessionTimelineDialog from '../../components/chat/SessionTimelineDialog.vue';
 import SessionTreeSidebar from '../../components/chat/SessionTreeSidebar.vue';
-import { computed, inject, nextTick, ref } from 'vue';
+import { computed, inject, nextTick, ref, watch } from 'vue';
 import TaskWorkspaceActivityPanel from '../../components/chat/TaskWorkspaceActivityPanel.vue';
 import { useTaskWorkspaceActivity } from './composables/useTaskWorkspaceActivity';
 import { useTaskWorkspaceProcess } from './composables/useTaskWorkspaceProcess';
@@ -449,6 +485,7 @@ import { useChatWorkspace } from './composables/useChatWorkspace';
 import { useChatSpiritPanel } from './composables/useChatSpiritPanel';
 import { useBlockedStatus } from './composables/useBlockedStatus';
 import { useTaskWorkspaceView } from './composables/useTaskWorkspaceView';
+import { useTaskSituations } from '../session/useTaskSituations';
 import { useSpiritTeamStore } from '../../stores/spirit';
 import { useUiConfigStore } from '../../stores/uiConfig';
 import { useChatRuntimeStore } from '../../stores/chat/runtimeStore';
@@ -456,6 +493,7 @@ import { useLlmRetryStore } from '../../stores/chat/llmRetryStore';
 import { useArtifactStore } from '../../stores/artifact';
 import type { Agent } from '../agents/types';
 import type { ArtifactMeta, ArtifactTextQuote } from '../artifact/types';
+import type { TaskSituationItem } from '../session/types';
 
 const props = withDefaults(defineProps<{ taskMode?: boolean }>(), { taskMode: false });
 const route = useRoute();
@@ -492,6 +530,9 @@ const {
   chatScrollTop,
   processTaskId,
   processTurnId,
+  situationQuery,
+  situationExpandedTaskIds,
+  situationScrollTop,
   contextScrollTop,
   saveContextScroll,
   panelTarget: taskPanelTarget,
@@ -505,6 +546,50 @@ const {
 } = useTaskWorkspaceView(
   () => props.taskMode && coreReady.value && !session.navigationLoading,
   () => session.selectedSessionForUi?.id,
+);
+const {
+  items: situationItems,
+  total: situationTotal,
+  limit: situationLimit,
+  offset: situationOffset,
+  loading: situationLoading,
+  error: situationError,
+  setQuery: setSituationQuery,
+  refresh: refreshSituations,
+} = useTaskSituations({
+  sessionId: () => session.selectedSessionForUi?.id,
+  query: () => situationQuery.value,
+  enabled: () => props.taskMode && coreReady.value && !session.navigationLoading,
+  onQueryChange: (query) => {
+    situationQuery.value = query;
+  },
+});
+const situationPanelRef = ref<HTMLElement>();
+function onSituationScroll(event: Event) {
+  situationScrollTop.value = (event.target as HTMLElement).scrollTop;
+}
+function toggleSituationExpanded(item: TaskSituationItem) {
+  situationExpandedTaskIds.value = situationExpandedTaskIds.value.includes(item.task_id)
+    ? situationExpandedTaskIds.value.filter((id) => id !== item.task_id)
+    : [...situationExpandedTaskIds.value, item.task_id];
+}
+async function onSituationEmptyAction() {
+  if (!session.selectedSessionForUi) {
+    showTaskNavigation('sessions');
+    return;
+  }
+  taskPane.value = 'chat';
+  await nextTick();
+  document.querySelector<HTMLTextAreaElement>('.task-workspace .composer-input textarea')?.focus();
+}
+watch(
+  [taskPane, situationPanelRef, () => session.selectedSessionForUi?.id],
+  async ([pane, panel]) => {
+    if (pane !== 'activity' || !panel) return;
+    await nextTick();
+    panel.scrollTop = situationScrollTop.value;
+  },
+  { flush: 'post' },
 );
 const {
   view: processView,
@@ -529,8 +614,9 @@ function showTaskArtifacts() {
   openTaskArtifacts();
 }
 function showTaskActivity() {
-  contextTab.value = 'activity';
-  openTaskArtifacts();
+  taskContextOpen.value = false;
+  contextTab.value = 'artifacts';
+  taskPane.value = 'activity';
 }
 async function locateWorkspaceTask(taskId: string, stepId?: string, isCurrent = () => true) {
   const sid = session.selectedSessionForUi?.id;
@@ -691,3 +777,18 @@ function onErrorRelogin() {
   router.push({ name: 'login' });
 }
 </script>
+
+<style scoped>
+.task-situation-panel {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  box-sizing: border-box;
+  overflow: auto;
+  padding: 12px;
+  container: task-situation / inline-size;
+}
+.task-situation-panel > :deep(.task-board) {
+  min-height: 100%;
+}
+</style>

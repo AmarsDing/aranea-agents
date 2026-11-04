@@ -57,4 +57,17 @@ describe('workspace keyboard navigation', () => {
     await wrapper.find('aside').trigger('keydown', { key: 'Escape' });
     expect(wrapper.emitted('close-context')).toHaveLength(1);
   });
+  it('exposes task progress and conversation as sibling main tabs', async () => {
+    const wrapper = setup();
+    await wrapper.setProps({ pane: 'activity' });
+    const activity = wrapper.get('[data-testid="task-tab-activity"]');
+    const chat = wrapper.get('[data-testid="task-tab-chat"]');
+    expect(activity.attributes('aria-pressed')).toBe('true');
+    expect(activity.attributes('aria-expanded')).toBeUndefined();
+    expect(chat.attributes('aria-pressed')).toBe('false');
+    await activity.trigger('click');
+    await chat.trigger('click');
+    expect(wrapper.emitted('show-activity')).toHaveLength(1);
+    expect(wrapper.emitted('show-chat')).toHaveLength(1);
+  });
 });

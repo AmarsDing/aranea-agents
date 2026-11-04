@@ -31,20 +31,23 @@
           no-caps
           icon="checklist"
           data-task-action="activity"
+          data-testid="task-tab-activity"
           :label="t(mobileMode ? 'taskWorkspace.activityShort' : 'taskWorkspace.activity')"
           :aria-label="t('taskWorkspace.activity')"
-          :aria-expanded="contextVisible && contextTab === 'activity'"
-          aria-controls="task-workspace-context"
+          :aria-pressed="pane === 'activity'"
+          aria-controls="task-workspace-activity"
           aria-keyshortcuts="Alt+4"
-          @click="contextVisible && contextTab === 'activity' ? emit('close-context') : emit('show-activity')"
+          @click="emit('show-activity')"
         />
         <q-btn
           flat
           dense
           no-caps
           icon="chat_bubble_outline"
+          data-testid="task-tab-chat"
           :label="t('taskWorkspace.chat')"
-          :aria-pressed="contentWidth >= 944 || pane === 'chat'"
+          :aria-pressed="pane === 'chat'"
+          aria-controls="task-workspace-chat"
           aria-keyshortcuts="Alt+1"
           @click="emit('show-chat')"
         />
@@ -98,7 +101,7 @@ import { computed, nextTick, ref, watch } from 'vue';
 import ChatWorkspaceShell from './ChatWorkspaceShell.vue';
 const props = withDefaults(
   defineProps<{
-    pane: 'chat' | 'navigation' | 'artifacts';
+    pane: 'chat' | 'activity' | 'navigation' | 'artifacts';
     sessionTitle?: string;
     readingExpanded?: boolean;
     mobileMode?: boolean;
@@ -137,7 +140,9 @@ async function onKeydown(event: KeyboardEvent) {
         ? '.task-conversation [role="region"]'
         : event.key === '2'
           ? '.task-navigation input, .task-navigation [tabindex="0"], .task-navigation button'
-          : '.task-context';
+          : event.key === '3'
+            ? '.task-context'
+            : '[data-testid="task-workspace-activity"]';
     const target =
       (event.key === '1' ? root.querySelector<HTMLElement>('.task-conversation textarea:not(:disabled)') : null) ??
       root.querySelector<HTMLElement>(selector);
