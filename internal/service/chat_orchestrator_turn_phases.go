@@ -30,7 +30,6 @@ import (
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcevent "trpc.group/trpc-go/trpc-agent-go/event"
-	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
 	trpcrunner "trpc.group/trpc-go/trpc-agent-go/runner"
 )
 
@@ -531,12 +530,10 @@ func (o *ChatOrchestrator) invokeLLMCall(
 	llmCallStart := time.Now()
 	// 2026-10-29 修复（steer 干净收官丢消息，44 实测 round-8）：steer 在最终
 	// LLM step 期间被框架队列受理（ACK queued/steer=true），但流循环再无下一
-	// 迭代消费，run 注销时滞留消息被静默丢弃。框架终结 run 前经此回调把未
-	// 消费消息交还，回收进 pending 队列后由 turn 收尾 defer 统一排空。
-	runOpts = append(runOpts, trpcagent.WithUnconsumedQueuedUserMessagesHandler(
-		func(messages []trpcmodel.Message) {
-			o.requeueUnconsumedQueuedMessages(sessionID, messages)
-		}))
+	// 迭代消费，run 注销时滞留消息被静默丢弃。trpc 出库（2026-11-03）后框架
+	// 无回收钩子，改由应用层对账：RunRegistry 记账（EnqueueUserMessage）+
+	// stream 消费端嗅探 steer 消费事件核销（OnSteerConsumed）+ turn 收尾
+	// defer 在 runner.Close 后 DrainUnconsumedSteer 回收进 pending 队列。
 	events, err := chatagent.RunTRPCUserTurnMsg(llmCtx, runner, uid, sessionID, userTurnMsg, runOpts...)
 	turntrace.EndChild(llmSpan, err)
 	o.lg().With(loggateway.SessionID(sessionID)).Info("turn timing: RunTRPCUserTurnMsg (LLM call)",
@@ -645,12 +642,10 @@ func (o *ChatOrchestrator) buildTurnRunOptions(
 	}
 	runOpts := durableResumeRunOpts(durableCtx.active, []trpcagent.RunOption{
 		trpcagent.WithRequestID(sessionID),
-		// R6 fork id 空间统一（79-runtime-governance，路线A 框架补丁
-		// ADR 2026-08-27）：v2 turns_v2.id = admit.runID，框架事件
-		// invocationId 同源对齐，session_fork_repo 的
-		// event->>'invocationId' 边界匹配才命中。缺省会退化为框架
-		// uuid → fork 恒 404 "turn has no runtime events"。
-		trpcagent.WithRunInvocationID(admit.runID),
+		// trpc 出库（2026-11-03）：fork 的 WithRunInvocationID 补丁已移除——
+		// 框架 invocation id 为随机 uuid，由 v2 projector 自首条根事件捕获
+		// 落库 turns_v2.runtime_invocation_id；FindTurnEventBoundary 经该列
+		// 匹配事件边界，旧行回退 turn id 直连（migration 20261307）。
 		skillruntime.RunOptionWithTurnQuery(content),
 		// 批次 B：按 agent policy 安装概览预算渲染器（显式 0 = 不安装）。
 		skillruntime.RunOptionWithOverviewBudget(skillRuntime),
@@ -805,6 +800,11 @@ func (o *ChatOrchestrator) consumeTurnStream(
 		streamOpts = &chatagent.StreamConsumeOptions{}
 	}
 	streamOpts.AbortOnStall = abortRun
+	// trpc 出库（2026-11-03）：steer 消费事件核销 RunRegistry 记账，
+	// turn 收尾 defer 据此对账未消费消息（替代 fork 的回收钩子）。
+	streamOpts.OnSteerConsumed = func(content string) {
+		o.runs.MarkSteerConsumed(sessionID, content)
+	}
 	// 输出预算护栏（2026-10-29 44 实测缺口）：chat 单聊/综合回合同样可能
 	// reasoning 空转烧穿上下文；超限即自中止，persistTurn 按终态失败收敛。
 	streamOpts.MaxReasoningChars, streamOpts.MaxOutputChars = chatagent.StreamOutputGuardLimitsFromEnv(

@@ -20,18 +20,6 @@ import (
 
 const TRPCDefaultAppName = trpcscope.DefaultAppName
 
-// midRunMemoryIntervalSteps 是框架 v1.11 mid-run memory 的触发步长：每处理
-// N 个 agent 事件增量提取一次记忆（走既有 EnqueueAutoMemoryJob 管线，
-// AutoMemoryWorker 幂等性已被 turn-end 路径验证）。面向 24h 长编排场景，
-// 避免 turn-end 一次性处理超大 session。
-//
-// 注意框架按原始 agent 事件计数（含流式 LLM chunk，runner.go
-// maybeEnqueueMidRunMemory），流式 turn 每秒约 15~40 事件。实质提取频率由
-// MemoryJobQueue 的 30s 会话级防抖兜底；但过小的步长会让防抖拦截（每次
-// 拦截写一条 dead-letter upsert）变得频繁。取 100：长 turn 中每 2.5~7s
-// 一次入队尝试，防抖后提取频率不变，dead-letter 写放大降一个量级。
-const midRunMemoryIntervalSteps = 100
-
 type TRPCRunnerDeps struct {
 	AppName               string
 	SessionService        trpcsession.Service
@@ -63,7 +51,9 @@ func NewTRPCRunner(root trpcagent.Agent, deps TRPCRunnerDeps, opts ...trpcrunner
 	}
 	if deps.MemoryService != nil {
 		opts = append([]trpcrunner.Option{trpcrunner.WithMemoryService(deps.MemoryService)}, opts...)
-		opts = append(opts, trpcrunner.WithMidRunMemoryInterval(midRunMemoryIntervalSteps))
+		// 注：原 vendored fork 的 WithMidRunMemoryInterval（mid-run 增量记忆
+		// 提取）上游 v1.11.2 无等价能力，随出库移除；记忆提取回落到
+		// turn-end 批处理。详见出库记录。
 	}
 	if deps.EvolutionService != nil {
 		opts = append(opts, trpcrunner.WithEvolutionService(deps.EvolutionService))

@@ -3,7 +3,7 @@ package event
 import (
 	trpcevent "trpc.group/trpc-go/trpc-agent-go/event"
 
-	frameworktracing "trpc.group/trpc-go/trpc-agent-go/event/tracing"
+	frameworktracing "aranea-agents/internal/event/tracing"
 )
 
 // UsageAggregator observes framework events and aggregates usage metadata.

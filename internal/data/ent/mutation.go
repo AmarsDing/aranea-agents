@@ -128424,27 +128424,28 @@ func (m *ToolResultReplacementMutation) ResetEdge(name string) error {
 // TurnV2Mutation represents an operation that mutates the TurnV2 nodes in the graph.
 type TurnV2Mutation struct {
 	config
-	op                Op
-	typ               string
-	id                *string
-	task_id           *string
-	session_id        *string
-	spirit_session_id *string
-	parent_turn_id    *string
-	agent_key         *string
-	team_id           *string
-	team_stage_id     *string
-	seq               *int64
-	addseq            *int64
-	version           *int64
-	addversion        *int64
-	status            *string
-	started_at        *time.Time
-	completed_at      *time.Time
-	clearedFields     map[string]struct{}
-	done              bool
-	oldValue          func(context.Context) (*TurnV2, error)
-	predicates        []predicate.TurnV2
+	op                    Op
+	typ                   string
+	id                    *string
+	task_id               *string
+	session_id            *string
+	spirit_session_id     *string
+	parent_turn_id        *string
+	agent_key             *string
+	team_id               *string
+	team_stage_id         *string
+	seq                   *int64
+	addseq                *int64
+	version               *int64
+	addversion            *int64
+	status                *string
+	started_at            *time.Time
+	completed_at          *time.Time
+	runtime_invocation_id *string
+	clearedFields         map[string]struct{}
+	done                  bool
+	oldValue              func(context.Context) (*TurnV2, error)
+	predicates            []predicate.TurnV2
 }
 
 var _ ent.Mutation = (*TurnV2Mutation)(nil)
@@ -129036,6 +129037,42 @@ func (m *TurnV2Mutation) ResetCompletedAt() {
 	delete(m.clearedFields, turnv2.FieldCompletedAt)
 }
 
+// SetRuntimeInvocationID sets the "runtime_invocation_id" field.
+func (m *TurnV2Mutation) SetRuntimeInvocationID(s string) {
+	m.runtime_invocation_id = &s
+}
+
+// RuntimeInvocationID returns the value of the "runtime_invocation_id" field in the mutation.
+func (m *TurnV2Mutation) RuntimeInvocationID() (r string, exists bool) {
+	v := m.runtime_invocation_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRuntimeInvocationID returns the old "runtime_invocation_id" field's value of the TurnV2 entity.
+// If the TurnV2 object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TurnV2Mutation) OldRuntimeInvocationID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRuntimeInvocationID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRuntimeInvocationID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRuntimeInvocationID: %w", err)
+	}
+	return oldValue.RuntimeInvocationID, nil
+}
+
+// ResetRuntimeInvocationID resets all changes to the "runtime_invocation_id" field.
+func (m *TurnV2Mutation) ResetRuntimeInvocationID() {
+	m.runtime_invocation_id = nil
+}
+
 // Where appends a list predicates to the TurnV2Mutation builder.
 func (m *TurnV2Mutation) Where(ps ...predicate.TurnV2) {
 	m.predicates = append(m.predicates, ps...)
@@ -129070,7 +129107,7 @@ func (m *TurnV2Mutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *TurnV2Mutation) Fields() []string {
-	fields := make([]string, 0, 12)
+	fields := make([]string, 0, 13)
 	if m.task_id != nil {
 		fields = append(fields, turnv2.FieldTaskID)
 	}
@@ -129107,6 +129144,9 @@ func (m *TurnV2Mutation) Fields() []string {
 	if m.completed_at != nil {
 		fields = append(fields, turnv2.FieldCompletedAt)
 	}
+	if m.runtime_invocation_id != nil {
+		fields = append(fields, turnv2.FieldRuntimeInvocationID)
+	}
 	return fields
 }
 
@@ -129139,6 +129179,8 @@ func (m *TurnV2Mutation) Field(name string) (ent.Value, bool) {
 		return m.StartedAt()
 	case turnv2.FieldCompletedAt:
 		return m.CompletedAt()
+	case turnv2.FieldRuntimeInvocationID:
+		return m.RuntimeInvocationID()
 	}
 	return nil, false
 }
@@ -129172,6 +129214,8 @@ func (m *TurnV2Mutation) OldField(ctx context.Context, name string) (ent.Value, 
 		return m.OldStartedAt(ctx)
 	case turnv2.FieldCompletedAt:
 		return m.OldCompletedAt(ctx)
+	case turnv2.FieldRuntimeInvocationID:
+		return m.OldRuntimeInvocationID(ctx)
 	}
 	return nil, fmt.Errorf("unknown TurnV2 field %s", name)
 }
@@ -129264,6 +129308,13 @@ func (m *TurnV2Mutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetCompletedAt(v)
+		return nil
+	case turnv2.FieldRuntimeInvocationID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRuntimeInvocationID(v)
 		return nil
 	}
 	return fmt.Errorf("unknown TurnV2 field %s", name)
@@ -129385,6 +129436,9 @@ func (m *TurnV2Mutation) ResetField(name string) error {
 		return nil
 	case turnv2.FieldCompletedAt:
 		m.ResetCompletedAt()
+		return nil
+	case turnv2.FieldRuntimeInvocationID:
+		m.ResetRuntimeInvocationID()
 		return nil
 	}
 	return fmt.Errorf("unknown TurnV2 field %s", name)

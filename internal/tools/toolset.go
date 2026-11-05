@@ -33,6 +33,7 @@ import (
 	workingmemory "aranea-agents/internal/tools/working_memory"
 	"aranea-agents/internal/toolspill"
 
+	"aranea-agents/internal/tools/mcptoolset"
 	trpcmcp "trpc.group/trpc-go/trpc-agent-go/tool/mcp"
 	trpcmcpbroker "trpc.group/trpc-go/trpc-agent-go/tool/mcpbroker"
 	trpctodo "trpc.group/trpc-go/trpc-agent-go/tool/todo"
@@ -253,10 +254,10 @@ func Registry() []*ToolRegistration {
 				// spec then broke the whole Agent build. Degrade instead: enabled
 				// without spec assembles nothing (warned in assembleOpenAPIToolsets),
 				// consistent with every other config-gated tool (TPM-P2-02).
-				ToolSetFactory:      placeholderToolSetFactory,
-				AssembledElsewhere:  true,
-				EnabledByDefault: false,
-				RiskLevel:        "medium",
+				ToolSetFactory:     placeholderToolSetFactory,
+				AssembledElsewhere: true,
+				EnabledByDefault:   false,
+				RiskLevel:          "medium",
 			},
 			{
 				Name:             "agent",
@@ -335,10 +336,10 @@ func Registry() []*ToolRegistration {
 				RequiresConfirmation: true,
 			},
 			{
-				Name:                "read_document",
-				Description:         "Read a document from a local path (PDF, DOCX, plain text). Use instead of exec_command to inspect documents.",
-				Category:            "media",
-				Tags:                []string{"document", "pdf", "docx", "read"},
+				Name:        "read_document",
+				Description: "Read a document from a local path (PDF, DOCX, plain text). Use instead of exec_command to inspect documents.",
+				Category:    "media",
+				Tags:        []string{"document", "pdf", "docx", "read"},
 				// Placeholder: actual assembly happens in assembleBuiltinToolsets().
 				Factory:             placeholderToolFactory,
 				AssembledElsewhere:  true,
@@ -368,10 +369,10 @@ func Registry() []*ToolRegistration {
 				RiskLevel:          "medium",
 			},
 			{
-				Name:                "read_spreadsheet",
-				Description:         "Read tabular files (XLSX, CSV). Use instead of exec_command when the user asks for rows, sheets, or table excerpts.",
-				Category:            "media",
-				Tags:                []string{"spreadsheet", "xlsx", "csv", "read"},
+				Name:        "read_spreadsheet",
+				Description: "Read tabular files (XLSX, CSV). Use instead of exec_command when the user asks for rows, sheets, or table excerpts.",
+				Category:    "media",
+				Tags:        []string{"spreadsheet", "xlsx", "csv", "read"},
 				// Placeholder: actual assembly happens in assembleBuiltinToolsets().
 				Factory:             placeholderToolFactory,
 				AssembledElsewhere:  true,
@@ -512,15 +513,18 @@ type MCPBrokerConfig struct {
 
 // ToConnectionConfig is the SINGLE mapping from MCPServerConfig to the framework
 // ConnectionConfig. All runtime code paths (buildMCPToolSet, buildMCPBrokerTools)
-// must call this instead of constructing trpcmcp.ConnectionConfig manually so
+// must call this instead of constructing mcptoolset.ConnectionConfig manually so
 // transport normalization, timeout defaults, and field mapping stay aligned.
 // TPM-P1-12.
-func (c MCPServerConfig) ToConnectionConfig() trpcmcp.ConnectionConfig {
+//
+// 返回 vendored mcptoolset.ConnectionConfig（含 Env 扩展）；broker 路径经
+// toUpstreamMCPConnectionConfig 收敛为上游类型。
+func (c MCPServerConfig) ToConnectionConfig() mcptoolset.ConnectionConfig {
 	transport := mcpconfig.NormalizeTransport(c.Transport)
 	if transport == "" {
 		transport = string(mcpconfig.TransportStdio)
 	}
-	return trpcmcp.ConnectionConfig{
+	return mcptoolset.ConnectionConfig{
 		Transport: transport,
 		ServerURL: strings.TrimSpace(c.ServerURL),
 		Headers:   c.Headers,
@@ -528,6 +532,23 @@ func (c MCPServerConfig) ToConnectionConfig() trpcmcp.ConnectionConfig {
 		Args:      c.Args,
 		Env:       c.Env,
 		Timeout:   mcpTimeoutDuration(c.TimeoutSec),
+	}
+}
+
+// toUpstreamMCPConnectionConfig 收敛为上游 tool/mcp 的 ConnectionConfig
+// （mcpbroker 路径）。Env 是 vendored 扩展字段，上游无对应——broker 托管的
+// stdio 服务器不携带环境变量（broker 实际场景均为 HTTP/SSE 远端服务器）。
+// 丢弃不是静默的：buildMCPBrokerTools 在检测到 stdio+Env 非空时打 Warn。
+func toUpstreamMCPConnectionConfig(c mcptoolset.ConnectionConfig) trpcmcp.ConnectionConfig {
+	return trpcmcp.ConnectionConfig{
+		Transport:   c.Transport,
+		ServerURL:   c.ServerURL,
+		Headers:     c.Headers,
+		Command:     c.Command,
+		Args:        c.Args,
+		Timeout:     c.Timeout,
+		Description: c.Description,
+		ClientInfo:  c.ClientInfo,
 	}
 }
 
@@ -575,7 +596,7 @@ type SessionConfig struct {
 	BlobReader      biz.ToolResultBlobReader
 	// SpillStore 是 P0-2 locator 回读消费口（批 B）；nil → read_tool_result 走
 	// blob repo 直接取回（老行为）。
-	SpillStore      toolspill.Store
+	SpillStore toolspill.Store
 	// ClientBridge is the process-wide client tool bridge singleton. Optional:
 	// when nil, the "client" ToolSet is skipped even if enabled.
 	ClientBridge *clientbridge.Bridge
@@ -787,20 +808,20 @@ func mcpTimeoutDuration(timeoutSec int) time.Duration {
 func buildMCPToolSet(cfg MCPServerConfig) (ToolSet, error) {
 	connCfg := cfg.ToConnectionConfig()
 
-	opts := []trpcmcp.ToolSetOption{
-		trpcmcp.WithName(cfg.Name),
-		trpcmcp.WithToolsCacheTTL(DefaultMCPToolsCacheTTL),
+	opts := []mcptoolset.ToolSetOption{
+		mcptoolset.WithName(cfg.Name),
+		mcptoolset.WithToolsCacheTTL(DefaultMCPToolsCacheTTL),
 	}
 	if pred := ToolFilterForPrefix(cfg.ToolPrefix); pred != nil {
-		opts = append(opts, trpcmcp.WithToolFilterFunc(pred))
+		opts = append(opts, mcptoolset.WithToolFilterFunc(pred))
 	}
 	reconnectMax := mcpobserve.EffectiveSessionReconnectMax(connCfg.Transport, cfg.SessionReconnectMax)
 	if reconnectMax > 0 {
-		opts = append(opts, trpcmcp.WithSessionReconnect(reconnectMax))
+		opts = append(opts, mcptoolset.WithSessionReconnect(reconnectMax))
 	}
 	if cfg.HeaderInjector != nil {
 		injector := cfg.HeaderInjector
-		opts = append(opts, trpcmcp.WithMCPOptions(tmcp.WithHTTPBeforeRequest(
+		opts = append(opts, mcptoolset.WithMCPOptions(tmcp.WithHTTPBeforeRequest(
 			func(ctx context.Context, req *http.Request) error {
 				if req == nil {
 					return nil
@@ -817,24 +838,36 @@ func buildMCPToolSet(cfg MCPServerConfig) (ToolSet, error) {
 		)))
 	}
 
-	return trpcmcp.NewMCPToolSet(connCfg, opts...), nil
+	return mcptoolset.NewMCPToolSet(connCfg, opts...), nil
 }
 
 // BuildMCPBrokerTools 导出 broker 工具构建，供 P0-2 阶段A 分片合并期在治理
 // 降级（直连 declaration 总量超预算且无 broker 分片）时现场构建 broker 工具，
-// 语义与装配期 assembleMCPTools 的降级分支一致。
-func BuildMCPBrokerTools(cfg MCPBrokerConfig) ([]Tool, error) {
-	return buildMCPBrokerTools(cfg)
+// 语义与装配期 assembleMCPTools 的降级分支一致。lg 可为 nil（跳过观测日志）。
+func BuildMCPBrokerTools(cfg MCPBrokerConfig, lg loggateway.Logger) ([]Tool, error) {
+	return buildMCPBrokerTools(cfg, lg)
 }
 
-func buildMCPBrokerTools(cfg MCPBrokerConfig) ([]Tool, error) {
+func buildMCPBrokerTools(cfg MCPBrokerConfig, lg loggateway.Logger) ([]Tool, error) {
 	servers := make(map[string]trpcmcp.ConnectionConfig, len(cfg.Servers))
 	for _, s := range cfg.Servers {
 		name := strings.TrimSpace(s.Name)
 		if name == "" {
 			continue
 		}
-		servers[name] = s.ToConnectionConfig()
+		connCfg := s.ToConnectionConfig()
+		// 2026-11-03 trpc 出库：上游 mcpbroker ConnectionConfig 无 Env 载体
+		//（vendored 扩展字段），stdio 服务器配置的环境变量在此被丢弃——
+		// 不允许静默退化，显式 Warn（只记键数不记值，防泄密）。需要环境
+		// 变量的 stdio 服务器应改用直连 toolset（mcp_tool_set 路径经
+		// vendored mcptoolset，Env 完整透传）。
+		if len(connCfg.Env) > 0 && connCfg.Transport == string(mcpconfig.TransportStdio) && lg != nil {
+			lg.Warn("MCP broker 托管 stdio 服务器的环境变量被丢弃（上游 mcpbroker 无 Env 载体）；如需环境变量请改用直连 mcp_tool_set",
+				loggateway.Domain("tools.mcp"),
+				loggateway.Str("server", name),
+				loggateway.Int("env_keys", len(connCfg.Env)))
+		}
+		servers[name] = toUpstreamMCPConnectionConfig(connCfg)
 	}
 
 	brokerOpts := []trpcmcpbroker.Option{}

@@ -7,8 +7,6 @@ import (
 
 	"aranea-agents/internal/metrics"
 
-	"trpc.group/trpc-go/trpc-agent-go/toolsnapshot"
-
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 	trpcfunction "trpc.group/trpc-go/trpc-agent-go/tool/function"
 )
@@ -117,10 +115,10 @@ func (t *ToolLoadTool) execute(ctx context.Context, in toolLoadInput) (toolLoadO
 
 	// 本轮快照已缓存时直接追加，下一次模型请求立刻看见新工具；
 	// 尚无快照则 Invalidate，让下一轮按激活态重建。
-	if live, ok := t.manager.GetTool(canonical); ok && toolsnapshot.AppendFromContext(ctx, live) {
+	if live, ok := t.manager.GetTool(canonical); ok && SnapshotAppendFromContext(ctx, live) {
 		// snapshot already carried the new tool
 	} else {
-		toolsnapshot.InvalidateFromContext(ctx)
+		SnapshotInvalidateFromContext(ctx)
 	}
 
 	// 构建结果：返回完整声明供模型立即了解 schema

@@ -37,6 +37,12 @@ import (
 //	EMBEDDING_MODEL       embedding model (default text-embedding-3-small)
 //	EMBEDDING_DIM         embedding dimension (default 1536)
 //	EVAL_SEARCH_AUDIT_PATH optional Search audit log path (query/user/count/size/latency)
+//	EVAL_MEDIA_VLM_BASE_URL OpenAI-compatible vision endpoint; with EVAL_MEDIA_VLM_API_KEY
+//	                        enables image captioning (default off = caption-only ack route)
+//	EVAL_MEDIA_VLM_API_KEY  vision endpoint API key
+//	EVAL_MEDIA_VLM_MODEL    caption model (default gpt-4o-mini, Cycle 2 academic-track rule)
+//	EVAL_MEDIA_VLM_TIMEOUT_SEC / EVAL_MEDIA_VLM_MAX_CONCURRENCY /
+//	EVAL_MEDIA_VLM_MAX_IMAGES / EVAL_MEDIA_VLM_BUDGET_SEC / EVAL_MEDIA_VLM_CACHE_ENTRIES
 //	EVAL_SWEEP_INTERVAL_SEC  stale-index sweep interval seconds (default 30)
 //	EVAL_SWEEP_BATCH         rows picked per sweep (default 50; batch-embedded 10/request)
 //	EVAL_SWEEP_MAX_ATTEMPTS  per-row embed attempts before aging out (default 8)
@@ -175,7 +181,9 @@ func main() {
 // biz.EmbeddingBatchService (AMC P3 评审 #4/#7：缺少批路径会让 VIR 锚点建
 // 构与 per-message 原子嵌入退化为逐条串行往返——生产唯一服役 binary 上的
 // 死路径，且违反 Add 热路径延迟契约)。
-type singleEmbedder struct{ e *knowledge.MultiProviderEmbedder }
+type singleEmbedder struct {
+	e *knowledge.MultiProviderEmbedder
+}
 
 func (a singleEmbedder) Embed(ctx context.Context, text string) ([]float32, error) {
 	return a.e.EmbedSingle(ctx, text)

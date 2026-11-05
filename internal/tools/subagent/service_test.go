@@ -12,7 +12,6 @@ import (
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcevent "trpc.group/trpc-go/trpc-agent-go/event"
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
-	trpcsubagent "trpc.group/trpc-go/trpc-agent-go/openclaw/subagent"
 	trpcsession "trpc.group/trpc-go/trpc-agent-go/session"
 )
 
@@ -71,11 +70,11 @@ func seedFinishedRun(t *testing.T, svc *Service, runID, parentSID, owner, result
 	t.Helper()
 	svc.mu.Lock()
 	svc.runs[runID] = &runRecord{
-		Run: trpcsubagent.Run{
+		Run: Run{
 			ID:              runID,
 			ParentSessionID: parentSID,
 			Task:            "task",
-			Status:          trpcsubagent.StatusCompleted,
+			Status:          StatusCompleted,
 			Result:          result,
 			Summary:         summary,
 		},

@@ -6,8 +6,8 @@ import (
 
 	"aranea-agents/pkg/loggateway"
 
+	trpcfile "aranea-agents/internal/tools/file"
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
-	trpcfile "trpc.group/trpc-go/trpc-agent-go/tool/file"
 )
 
 func TestWrapFileToolSetWithWorktree_NotGitPassthrough(t *testing.T) {

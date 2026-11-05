@@ -87,7 +87,7 @@ func mergeShardProducts(ctx context.Context, sp *shardPlan, prods []*shardProduc
 				}
 			}
 			if sp.brokerIdx < 0 {
-				bt, err := tools.BuildMCPBrokerTools(*sp.brokerFallback)
+				bt, err := tools.BuildMCPBrokerTools(*sp.brokerFallback, lg)
 				if err != nil {
 					releaseShardRefs(releases)
 					return nil, apierror.Internal(apierror.DomainTool, "mcpbroker: "+err.Error())

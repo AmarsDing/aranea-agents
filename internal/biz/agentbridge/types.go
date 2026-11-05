@@ -35,8 +35,13 @@ type CodingAgent struct {
 	LastProbeError string
 	// LivenessOverride M4 P3-6：按 key 覆盖 liveness 阈值（JSON，空=用全局默认）
 	LivenessOverride map[string]any
-	CreatedAt        string
-	UpdatedAt        string
+	// 03 P0：注册表驱动前端渲染——图标（静态资源路径或 URL，空=前端首字母占位）、
+	// 能力声明（read_workspace/write_workspace/exec_command）、默认自治级别（readonly/workspace/full）。
+	IconURL         string
+	Capabilities    []string
+	DefaultAutonomy string
+	CreatedAt       string
+	UpdatedAt       string
 }
 
 // CodingProject 是一个可派发任务的本机项目目录（cwd 白名单）。
@@ -70,6 +75,11 @@ type CodingTask struct {
 	LastExcerpt   string
 	HeartbeatMiss int
 	LivenessState string // healthy / silent / suspect / lost
+	// 03 P0：发起来源（chat=会话内 LLM 派发 / workbench=看板表单直发）与验收结果。
+	Origin        string
+	ReviewStatus  string // "" / approved / rejected / archived
+	ReviewComment string
+	ReviewedAt    string
 	CreatedAt     string
 	UpdatedAt     string
 	CompletedAt   string
@@ -95,4 +105,17 @@ type ProjectCandidate struct {
 	Name        string
 	Path        string
 	Description string
+}
+
+// CodingTaskEvent 统一步骤事件（03 P0 ④：所有工具运行输出归一化为同一套
+// 步骤结构并持久化，支持刷新后回看与回放；借鉴 vibe-kanban NormalizedEntry
+// crates/executors/src/logs/mod.rs，裁剪为 seq 游标 + kind + title + text）。
+type CodingTaskEvent struct {
+	ID        string
+	TaskID    string
+	Seq       int64  // 任务内单调序号（回放/增量拉取游标）
+	Kind      string // agent_message_chunk / tool_call / plan / permission / error / heartbeat
+	Title     string // 步骤标题（tool_call 的工具名等）
+	Text      string // 步骤详情（截断存储）
+	CreatedAt string
 }

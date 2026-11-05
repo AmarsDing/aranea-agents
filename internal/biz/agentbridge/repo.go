@@ -30,8 +30,18 @@ type TaskRepo interface {
 	// UpdateStatus 以 CAS 方式转换状态：当前状态不等于 from 时返回冲突错误。
 	UpdateStatus(ctx context.Context, id string, from, to TaskStatus, patch TaskPatch) error
 	ListBySession(ctx context.Context, sessionID string, limit int) ([]*CodingTask, error)
+	// ListRecent 03 P0：跨会话看板（按创建时间倒序；agentKey 空=全部工具）。
+	ListRecent(ctx context.Context, limit int, agentKey string) ([]*CodingTask, error)
 	// ListActive 返回所有非终态任务（服务重启恢复用）。
 	ListActive(ctx context.Context) ([]*CodingTask, error)
+	// UpdateReview 03 P0：验收三动作落库（status: approved/rejected/archived）。
+	UpdateReview(ctx context.Context, id, status, comment, reviewedAt string) error
+}
+
+// TaskEventRepo 03 P0 ④：统一步骤事件持久化（回放游标=任务内单调 seq）。
+type TaskEventRepo interface {
+	Append(ctx context.Context, ev *CodingTaskEvent) error
+	List(ctx context.Context, taskID string, afterSeq int64, limit int) ([]*CodingTaskEvent, error)
 }
 
 // ACPSession 是 biz 对 ACP 协议层的端口（service 层实现注入，便于 mock）。

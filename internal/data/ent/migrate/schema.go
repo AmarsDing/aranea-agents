@@ -4154,6 +4154,7 @@ var (
 		{Name: "status", Type: field.TypeString, Size: 32, Default: "running"},
 		{Name: "started_at", Type: field.TypeTime},
 		{Name: "completed_at", Type: field.TypeTime, Nullable: true},
+		{Name: "runtime_invocation_id", Type: field.TypeString, Size: 64, Default: ""},
 	}
 	// TurnsV2Table holds the schema information for the "turns_v2" table.
 	TurnsV2Table = &schema.Table{

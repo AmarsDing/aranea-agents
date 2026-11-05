@@ -12,6 +12,9 @@ export type DecisionRecordItem = {
   actor_type: string;
   actor_key: string;
   created_at: string;
+  session_id?: string;
+  task_id?: string;
+  step_id?: string;
 };
 
 export type DecisionRecordPage = {

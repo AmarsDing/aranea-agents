@@ -14,7 +14,6 @@ import (
 	"aranea-agents/internal/outbound"
 	"aranea-agents/pkg/loggateway"
 
-	trpcsubagent "trpc.group/trpc-go/trpc-agent-go/openclaw/subagent"
 	trpcrunner "trpc.group/trpc-go/trpc-agent-go/runner"
 )
 
@@ -322,7 +321,7 @@ func (s *Service) runForUser(userID string, runID string) (*runRecord, error) {
 
 	record := s.runs[strings.TrimSpace(runID)]
 	if record == nil || record.OwnerUserID != strings.TrimSpace(userID) {
-		return nil, trpcsubagent.ErrRunNotFound
+		return nil, ErrRunNotFound
 	}
 	return record.clone(), nil
 }
@@ -383,9 +382,9 @@ func svcNow(s *Service) time.Time {
 	return s.clock()
 }
 
-func (r *runRecord) publicView() trpcsubagent.Run {
+func (r *runRecord) publicView() Run {
 	if r == nil {
-		return trpcsubagent.Run{}
+		return Run{}
 	}
 	return r.Run
 }

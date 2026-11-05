@@ -7,7 +7,6 @@ import (
 
 	"aranea-agents/internal/biz"
 
-	trpcsubagent "trpc.group/trpc-go/trpc-agent-go/openclaw/subagent"
 	trpcrunner "trpc.group/trpc-go/trpc-agent-go/runner"
 )
 
@@ -228,7 +227,7 @@ type runningRun struct {
 }
 
 type runRecord struct {
-	trpcsubagent.Run
+	Run
 	OwnerUserID string `json:"owner_user_id,omitempty"`
 	// resultRunes is the max rune count for stored subagent results.
 	// When <= 0, defaultStoredResultRunes is used.

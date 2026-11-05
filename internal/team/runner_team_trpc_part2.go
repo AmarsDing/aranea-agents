@@ -232,7 +232,9 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 	runOpts := append(teamTurnBaseRunOptions(teamRow.ID, ti.content),
 		skillruntime.RunOptionWithOverviewBudget(anchorSkillRuntime))
 
-	runOpts = append(runOpts, trpcagent.WithRunInvocationID(run.ID))
+	// trpc 出库（2026-11-03）：fork 的 WithRunInvocationID(run.ID) 已移除——
+	// 框架 invocation id 为随机 uuid，由 v2 projector 自首条根事件捕获落库
+	// turns_v2.runtime_invocation_id 供 fork 边界定位（migration 20261307）。
 	runOpts = append(runOpts, utOpts.intentRunOpts...)
 
 	if seed := r.resolveUpstreamDeliverableSeed(ctx, teamRow); len(seed) > 0 {

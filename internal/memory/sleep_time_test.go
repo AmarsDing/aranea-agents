@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"aranea-agents/internal/memory/memx"
 	"aranea-agents/pkg/loggateway"
 
 	trpcmemory "trpc.group/trpc-go/trpc-agent-go/memory"
@@ -19,7 +20,7 @@ import (
 // fakeMemoryService implements MemoryReaderWriter for testing.
 type fakeMemoryService struct {
 	mu      sync.Mutex
-	entries map[string][]*trpcmemory.Entry // keyed by userID
+	entries map[string][]*memx.Entry // keyed by userID
 	added   []fakeAddedMemory
 	updated map[string]string // memoryID -> new content
 	deleted []string
@@ -33,7 +34,7 @@ type fakeAddedMemory struct {
 	topics  []string
 }
 
-func (f *fakeMemoryService) ReadMemories(_ context.Context, uk trpcmemory.UserKey, limit int) ([]*trpcmemory.Entry, error) {
+func (f *fakeMemoryService) ReadMemories(_ context.Context, uk trpcmemory.UserKey, limit int) ([]*memx.Entry, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.readErr != nil {
@@ -43,7 +44,7 @@ func (f *fakeMemoryService) ReadMemories(_ context.Context, uk trpcmemory.UserKe
 	if limit > 0 && limit < len(entries) {
 		entries = entries[:limit]
 	}
-	out := make([]*trpcmemory.Entry, len(entries))
+	out := make([]*memx.Entry, len(entries))
 	copy(out, entries)
 	return out, nil
 }
@@ -159,15 +160,17 @@ func buildLLMResponse(jsonContent string) *trpcmodel.Response {
 	}
 }
 
-func makeEntry(id, content string, topics ...string) *trpcmemory.Entry {
-	return &trpcmemory.Entry{
-		ID:      id,
-		AppName: "agent-1",
-		Memory: &trpcmemory.Memory{
+func makeEntry(id, content string, topics ...string) *memx.Entry {
+	return &memx.Entry{
+		Entry: trpcmemory.Entry{
+			ID:      id,
+			AppName: "agent-1",
+			UserID:  "user-1",
+		},
+		Memory: &memx.Memory{
 			Memory: content,
 			Topics: topics,
 		},
-		UserID: "user-1",
 	}
 }
 
@@ -202,7 +205,7 @@ func TestSleepTime_EnqueueConsolidationJob_NilQueue(t *testing.T) {
 // target memory and deletes the source memories.
 func TestSleepTime_Consolidate_Merge(t *testing.T) {
 	ms := &fakeMemoryService{
-		entries: map[string][]*trpcmemory.Entry{
+		entries: map[string][]*memx.Entry{
 			"user-1": {
 				makeEntry("mem-1", "User likes Go"),
 				makeEntry("mem-2", "User prefers Go language"),
@@ -229,7 +232,7 @@ func TestSleepTime_Consolidate_Merge(t *testing.T) {
 // new reflection memory.
 func TestSleepTime_Consolidate_Reflect(t *testing.T) {
 	ms := &fakeMemoryService{
-		entries: map[string][]*trpcmemory.Entry{
+		entries: map[string][]*memx.Entry{
 			"user-1": {
 				makeEntry("mem-1", "User asked about Go"),
 				makeEntry("mem-2", "User asked about Rust"),
@@ -259,7 +262,7 @@ func TestSleepTime_Consolidate_Reflect(t *testing.T) {
 // adds core memory entries.
 func TestSleepTime_Consolidate_UpdateCore(t *testing.T) {
 	ms := &fakeMemoryService{
-		entries: map[string][]*trpcmemory.Entry{
+		entries: map[string][]*memx.Entry{
 			"user-1": {
 				makeEntry("mem-1", "My name is Alice"),
 			},
@@ -288,7 +291,7 @@ func TestSleepTime_Consolidate_UpdateCore(t *testing.T) {
 // graceful degradation (logs warn, no panic, no error returned).
 func TestSleepTime_Consolidate_LLMFailure(t *testing.T) {
 	ms := &fakeMemoryService{
-		entries: map[string][]*trpcmemory.Entry{
+		entries: map[string][]*memx.Entry{
 			"user-1": {makeEntry("mem-1", "User likes Go")},
 		},
 	}
@@ -311,7 +314,7 @@ func TestSleepTime_Consolidate_LLMFailure(t *testing.T) {
 // in the LLM response also results in graceful degradation.
 func TestSleepTime_Consolidate_LLMResponseError(t *testing.T) {
 	ms := &fakeMemoryService{
-		entries: map[string][]*trpcmemory.Entry{
+		entries: map[string][]*memx.Entry{
 			"user-1": {makeEntry("mem-1", "User likes Go")},
 		},
 	}
@@ -334,7 +337,7 @@ func TestSleepTime_Consolidate_LLMResponseError(t *testing.T) {
 // in a no-op (not an error) and the LLM is not called.
 func TestSleepTime_Consolidate_EmptyMemories(t *testing.T) {
 	ms := &fakeMemoryService{
-		entries: map[string][]*trpcmemory.Entry{
+		entries: map[string][]*memx.Entry{
 			"user-1": {},
 		},
 	}
@@ -354,7 +357,7 @@ func TestSleepTime_Consolidate_EmptyMemories(t *testing.T) {
 // (not an error) when memories exist.
 func TestSleepTime_Consolidate_NoLLM(t *testing.T) {
 	ms := &fakeMemoryService{
-		entries: map[string][]*trpcmemory.Entry{
+		entries: map[string][]*memx.Entry{
 			"user-1": {makeEntry("mem-1", "User likes Go")},
 		},
 	}
@@ -373,7 +376,7 @@ func TestSleepTime_Consolidate_NoLLM(t *testing.T) {
 // operations of different types are all executed.
 func TestSleepTime_Consolidate_MultipleOperations(t *testing.T) {
 	ms := &fakeMemoryService{
-		entries: map[string][]*trpcmemory.Entry{
+		entries: map[string][]*memx.Entry{
 			"user-1": {
 				makeEntry("mem-1", "User likes Go"),
 				makeEntry("mem-2", "User likes Go lang"),
@@ -410,7 +413,7 @@ func TestSleepTime_Consolidate_MultipleOperations(t *testing.T) {
 // output results in graceful degradation.
 func TestSleepTime_Consolidate_MalformedJSON(t *testing.T) {
 	ms := &fakeMemoryService{
-		entries: map[string][]*trpcmemory.Entry{
+		entries: map[string][]*memx.Entry{
 			"user-1": {makeEntry("mem-1", "User likes Go")},
 		},
 	}
@@ -444,7 +447,7 @@ func TestSleepTime_Consolidate_ReadFailure(t *testing.T) {
 // array from the LLM is a valid no-op.
 func TestSleepTime_Consolidate_EmptyOperations(t *testing.T) {
 	ms := &fakeMemoryService{
-		entries: map[string][]*trpcmemory.Entry{
+		entries: map[string][]*memx.Entry{
 			"user-1": {makeEntry("mem-1", "User likes Go")},
 		},
 	}
@@ -520,7 +523,7 @@ func TestSleepTime_Consolidate_MutationFailure_GracefulDegradation(t *testing.T)
 	// Test reflect (AddMemory) failure.
 	t.Run("reflect_add_failure", func(t *testing.T) {
 		ms := &fakeMemoryService{
-			entries: map[string][]*trpcmemory.Entry{
+			entries: map[string][]*memx.Entry{
 				"user-1": {makeEntry("mem-1", "User likes Go")},
 			},
 			addErr: errors.New("add memory failed"),
@@ -537,7 +540,7 @@ func TestSleepTime_Consolidate_MutationFailure_GracefulDegradation(t *testing.T)
 	// Test merge (UpdateMemory) failure.
 	t.Run("merge_update_failure", func(t *testing.T) {
 		ms := &fakeMemoryService{
-			entries: map[string][]*trpcmemory.Entry{
+			entries: map[string][]*memx.Entry{
 				"user-1": {makeEntry("mem-1", "User likes Go")},
 			},
 			updErr: errors.New("update memory failed"),
@@ -587,7 +590,7 @@ func TestSleepTime_QueueChan(t *testing.T) {
 // model passed to the constructor (P1-1: ModelCatalog-based resolution).
 func TestSleepTime_Consolidate_LLMResolverPreferred(t *testing.T) {
 	ms := &fakeMemoryService{
-		entries: map[string][]*trpcmemory.Entry{
+		entries: map[string][]*memx.Entry{
 			"user-1": {makeEntry("mem-1", "User asked about Go")},
 		},
 	}
@@ -618,7 +621,7 @@ func TestSleepTime_Consolidate_LLMResolverPreferred(t *testing.T) {
 // static constructor model is used as fallback.
 func TestSleepTime_Consolidate_LLMResolverNilFallsBack(t *testing.T) {
 	ms := &fakeMemoryService{
-		entries: map[string][]*trpcmemory.Entry{
+		entries: map[string][]*memx.Entry{
 			"user-1": {makeEntry("mem-1", "User asked about Go")},
 		},
 	}

@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"strings"
 
-	frameworktracing "trpc.group/trpc-go/trpc-agent-go/event/tracing"
+	frameworktracing "aranea-agents/internal/event/tracing"
 )
 
 // SpanCollector manages the span tree using a SpanContext.

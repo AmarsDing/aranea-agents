@@ -216,6 +216,20 @@ func (_u *TurnV2Update) ClearCompletedAt() *TurnV2Update {
 	return _u
 }
 
+// SetRuntimeInvocationID sets the "runtime_invocation_id" field.
+func (_u *TurnV2Update) SetRuntimeInvocationID(v string) *TurnV2Update {
+	_u.mutation.SetRuntimeInvocationID(v)
+	return _u
+}
+
+// SetNillableRuntimeInvocationID sets the "runtime_invocation_id" field if the given value is not nil.
+func (_u *TurnV2Update) SetNillableRuntimeInvocationID(v *string) *TurnV2Update {
+	if v != nil {
+		_u.SetRuntimeInvocationID(*v)
+	}
+	return _u
+}
+
 // Mutation returns the TurnV2Mutation object of the builder.
 func (_u *TurnV2Update) Mutation() *TurnV2Mutation {
 	return _u.mutation
@@ -290,6 +304,11 @@ func (_u *TurnV2Update) check() error {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "TurnV2.status": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.RuntimeInvocationID(); ok {
+		if err := turnv2.RuntimeInvocationIDValidator(v); err != nil {
+			return &ValidationError{Name: "runtime_invocation_id", err: fmt.Errorf(`ent: validator failed for field "TurnV2.runtime_invocation_id": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -349,6 +368,9 @@ func (_u *TurnV2Update) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.CompletedAtCleared() {
 		_spec.ClearField(turnv2.FieldCompletedAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.RuntimeInvocationID(); ok {
+		_spec.SetField(turnv2.FieldRuntimeInvocationID, field.TypeString, value)
 	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
@@ -558,6 +580,20 @@ func (_u *TurnV2UpdateOne) ClearCompletedAt() *TurnV2UpdateOne {
 	return _u
 }
 
+// SetRuntimeInvocationID sets the "runtime_invocation_id" field.
+func (_u *TurnV2UpdateOne) SetRuntimeInvocationID(v string) *TurnV2UpdateOne {
+	_u.mutation.SetRuntimeInvocationID(v)
+	return _u
+}
+
+// SetNillableRuntimeInvocationID sets the "runtime_invocation_id" field if the given value is not nil.
+func (_u *TurnV2UpdateOne) SetNillableRuntimeInvocationID(v *string) *TurnV2UpdateOne {
+	if v != nil {
+		_u.SetRuntimeInvocationID(*v)
+	}
+	return _u
+}
+
 // Mutation returns the TurnV2Mutation object of the builder.
 func (_u *TurnV2UpdateOne) Mutation() *TurnV2Mutation {
 	return _u.mutation
@@ -645,6 +681,11 @@ func (_u *TurnV2UpdateOne) check() error {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "TurnV2.status": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.RuntimeInvocationID(); ok {
+		if err := turnv2.RuntimeInvocationIDValidator(v); err != nil {
+			return &ValidationError{Name: "runtime_invocation_id", err: fmt.Errorf(`ent: validator failed for field "TurnV2.runtime_invocation_id": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -721,6 +762,9 @@ func (_u *TurnV2UpdateOne) sqlSave(ctx context.Context) (_node *TurnV2, err erro
 	}
 	if _u.mutation.CompletedAtCleared() {
 		_spec.ClearField(turnv2.FieldCompletedAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.RuntimeInvocationID(); ok {
+		_spec.SetField(turnv2.FieldRuntimeInvocationID, field.TypeString, value)
 	}
 	_node = &TurnV2{config: _u.config}
 	_spec.Assign = _node.assignValues

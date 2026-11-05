@@ -455,3 +455,64 @@ func TestForkIDPrefix_Deterministic(t *testing.T) {
 // inv-A×3 + inv-B×2 + inv-D×1
 
 // ④ 中间代源会话零影响：dst1 计数不变（events 6 / turns 3 / tasks 3 / steps 3）。
+
+// TestSessionForkRepo_RuntimeInvocationID 覆盖 trpc 出库后的新边界定位路径
+// （migration 20261307）：turn id ≠ 框架 invocation id 时经
+// turns_v2.runtime_invocation_id 解析；列为 ” 的旧行回退 turn id 直连。
+func TestSessionForkRepo_RuntimeInvocationID(t *testing.T) {
+	d := openTestDataWithRWDB(t)
+	setupForkTestTables(t, d)
+	const src = "src-rinv-1"
+	ctx := context.Background()
+	w := d.RWDB().WriteDB(ctx)
+
+	// 新数据形态：turn id 是应用分配的运行 id，事件 invocationId 是框架 uuid。
+	if _, err := w.ExecContext(ctx, `
+		INSERT INTO tasks_v2 (id, session_id, user_message, status, seq, version, workspace_id, created_at, updated_at)
+		VALUES ('task-r1', '`+src+`', 'm', 'completed', 1, 1, '', now(), now())`); err != nil {
+		t.Fatalf("seed task: %v", err)
+	}
+	if _, err := w.ExecContext(ctx, `
+		INSERT INTO turns_v2 (id, task_id, session_id, spirit_session_id, parent_turn_id, agent_key, team_id, team_stage_id, seq, version, status, started_at, runtime_invocation_id)
+		VALUES ('turn-r1', 'task-r1', '`+src+`', '`+src+`', '', 'a', '', '', 1, 1, 'completed', now(), 'fw-uuid-1')`); err != nil {
+		t.Fatalf("seed turn: %v", err)
+	}
+	for _, inv := range []string{"fw-uuid-1", "fw-uuid-1", "fw-other"} {
+		if _, err := w.ExecContext(ctx, `
+			INSERT INTO trpc_session_events (app_name, user_id, session_id, event)
+			VALUES ('app', 'u1', $1, $2::jsonb)`, src, `{"invocationId":"`+inv+`","author":"agent"}`); err != nil {
+			t.Fatalf("seed event %s: %v", inv, err)
+		}
+	}
+
+	repo := NewSessionForkRepo(d)
+	boundary, found, err := repo.FindTurnEventBoundary(ctx, src, "turn-r1")
+	if err != nil || !found {
+		t.Fatalf("FindTurnEventBoundary: found=%v err=%v", found, err)
+	}
+	// 边界 = 第二条 fw-uuid-1 事件的自增 id（fw-other 在界外）。
+	var maxID int64
+	if err := queryRowScan(ctx, d.RWDB().ReadDB(ctx), `
+		SELECT COALESCE(MAX(id),0) FROM trpc_session_events
+		WHERE session_id = $1 AND event->>'invocationId' = 'fw-uuid-1'`, []any{src}, &maxID); err != nil {
+		t.Fatalf("scan max id: %v", err)
+	}
+	if boundary != maxID {
+		t.Fatalf("boundary = %d, want %d", boundary, maxID)
+	}
+
+	// 旧语义回退：runtime_invocation_id 为 '' 的行按剥离前缀后的 turn id 直连。
+	if _, err := w.ExecContext(ctx, `
+		INSERT INTO turns_v2 (id, task_id, session_id, spirit_session_id, parent_turn_id, agent_key, team_id, team_stage_id, seq, version, status, started_at)
+		VALUES ('legacy-1', 'task-r1', '`+src+`', '`+src+`', '', 'a', '', '', 2, 1, 'completed', now())`); err != nil {
+		t.Fatalf("seed legacy turn: %v", err)
+	}
+	if _, err := w.ExecContext(ctx, `
+		INSERT INTO trpc_session_events (app_name, user_id, session_id, event)
+		VALUES ('app', 'u1', $1, '{"invocationId":"legacy-1","author":"agent"}'::jsonb)`, src); err != nil {
+		t.Fatalf("seed legacy event: %v", err)
+	}
+	if _, found, err := repo.FindTurnEventBoundary(ctx, src, "legacy-1"); err != nil || !found {
+		t.Fatalf("legacy fallback: found=%v err=%v", found, err)
+	}
+}

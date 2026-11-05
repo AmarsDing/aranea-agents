@@ -14,7 +14,6 @@ import (
 
 	trpcevent "trpc.group/trpc-go/trpc-agent-go/event"
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
-	trpcsubagent "trpc.group/trpc-go/trpc-agent-go/openclaw/subagent"
 )
 
 func normalizeLoadedRuns(runs map[string]*runRecord, now time.Time) bool {
@@ -24,7 +23,7 @@ func normalizeLoadedRuns(runs map[string]*runRecord, now time.Time) bool {
 			continue
 		}
 		if !r.Status.IsTerminal() {
-			r.Status = trpcsubagent.StatusFailed
+			r.Status = StatusFailed
 			r.Error = "interrupted"
 			r.Summary = truncateRunes("interrupted", defaultStoredSummaryRunes)
 			r.UpdatedAt = now

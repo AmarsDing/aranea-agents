@@ -7,8 +7,8 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/loggateway"
 
+	"aranea-agents/internal/agent/runtimeprofile"
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
-	"trpc.group/trpc-go/trpc-agent-go/openclaw/runtimeprofile"
 )
 
 // ProfileResolver resolves the active runtime profile for an agent and

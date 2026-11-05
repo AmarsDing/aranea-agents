@@ -19,6 +19,7 @@ import (
 
 	"golang.org/x/sync/errgroup"
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
+	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
 )
 
 // runSingleAgentViaTRPC runs a single agent turn via the trpc-agent-go framework.
@@ -406,6 +407,18 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 		}
 		o.runs.Finish(sessionID, runID)
 		runner.Close()
+
+		// trpc 出库（2026-11-03）：fork 的 UnconsumedQueuedUserMessagesHandler
+		// 补丁已移除。此处框架 run 已终结（Close 后队列不再消费），对账
+		// RunRegistry 的 steer 记账，未消费内容回 pending 队列，由下方
+		// processPendingQueue 统一排空（对齐 fork 的 deliver 语义）。
+		if left := o.runs.DrainUnconsumedSteer(sessionID); len(left) > 0 {
+			msgs := make([]trpcmodel.Message, 0, len(left))
+			for _, content := range left {
+				msgs = append(msgs, trpcmodel.NewUserMessage(content))
+			}
+			o.requeueUnconsumedQueuedMessages(sessionID, msgs)
+		}
 
 		if !inPendingLoop(ctx) {
 			o.processPendingQueue(sessionID, sess, ag, dialogMode, prov, mod,

@@ -173,17 +173,32 @@ func assessContext(userMessage string, artifact *biz.IntentArtifact) float64 {
 // mode passed by the Spirit LLM. The three valid modes are: direct, parallel,
 // dag (see DECISION.md). Empty/auto mode defaults to direct.
 //
-// The complexity level/score are still computed for logging and metrics, but
-// no longer drive strategy selection — the LLM is the sole decision authority.
-func (impl *taskPlannerImpl) determineStrategy(_ biz.ComplexityLevel, _ float64, input biz.PlanInput) (biz.OrchestrationStrategy, string, biz.TopologyType) {
+// decisionSource must match Plan()'s evidence-chain labels (llm_mode /
+// keyword_fallback / route_commit / …). StrategyReason must not claim
+// 「用户指定」when the mode came from keyword_fallback or route_commit —
+// live44 orch probe 2026-10-29 attributed detectTeamIntent("组建一个团队")
+// as 「用户指定 dag 模式」.
+func (impl *taskPlannerImpl) determineStrategy(_ biz.ComplexityLevel, _ float64, input biz.PlanInput, decisionSource string) (biz.OrchestrationStrategy, string, biz.TopologyType) {
 	mode := strings.ToLower(strings.TrimSpace(input.Mode))
+	reasonFor := func(m string) string {
+		switch strings.TrimSpace(decisionSource) {
+		case "keyword_fallback":
+			return "关键词回退：检测到组队意图，采用 " + m + " 模式"
+		case "route_commit":
+			return "路由提交 PlanTeam，采用 " + m + " 模式"
+		case "evidence_gate_downgrade":
+			return "组队证据闸降级后采用 " + m + " 模式"
+		default:
+			return "用户指定 " + m + " 模式"
+		}
+	}
 	switch mode {
 	case "direct":
-		return biz.StrategyDirect, "用户指定 direct 模式", biz.TopologyDirect
+		return biz.StrategyDirect, reasonFor("direct"), biz.TopologyDirect
 	case "parallel":
-		return biz.StrategyParallel, "用户指定 parallel 模式", biz.TopologyParallel
+		return biz.StrategyParallel, reasonFor("parallel"), biz.TopologyParallel
 	case "dag":
-		return biz.StrategyDAG, "用户指定 dag 模式", biz.TopologyHybrid
+		return biz.StrategyDAG, reasonFor("dag"), biz.TopologyHybrid
 	}
 	// Empty / auto / unknown mode: default to direct. The LLM is instructed
 	// (DECISION.md) to always pass an explicit mode; reaching this branch means

@@ -10,6 +10,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
 	"aranea-agents/internal/event/contract"
+	"aranea-agents/internal/streamgen"
 
 	trpcevent "trpc.group/trpc-go/trpc-agent-go/event"
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
@@ -1173,6 +1174,72 @@ func TestEmitStreaming_FirstDeltaWithGenerationNoTruncate(t *testing.T) {
 	p.mu.Unlock()
 	if got != "Hello" {
 		t.Errorf("content = %q, want %q（空 step 不得被截断语义误伤）", got, "Hello")
+	}
+}
+
+// TestProcessEvent_StreamgenWiring pins 应用层代际机制的端到端接线
+//（2026-11-03 trpc 出库恢复，W-1 等价语义）：活性守卫对某框架 invocation
+// Bump 后，ProcessEvent 处理该 invocation 的流式 delta 时代际标签生效——
+// 截断旧半截内容并立即快照，与 fork 的 Response.GenerationID 语义等价；
+// 其他 invocation 的流不受 Bump 影响。
+func TestProcessEvent_StreamgenWiring(t *testing.T) {
+	p, capture := testProjector()
+	capture.events = nil
+	const invID = "inv-streamgen-wiring-1"
+
+	chunk := func(invID, delta string) *trpcevent.Event {
+		ev := trpcevent.New(invID, "agent-1")
+		ev.Response = &trpcmodel.Response{
+			Object:    trpcmodel.ObjectTypeChatCompletionChunk,
+			IsPartial: true,
+			Choices:   []trpcmodel.Choice{{Delta: trpcmodel.Message{Content: delta}}},
+		}
+		return ev
+	}
+
+	// attempt-1 半截内容（无重连：代际恒 ""，纯 append）。
+	p.ProcessEvent(context.Background(), chunk(invID, "Hello"))
+	p.ProcessEvent(context.Background(), chunk(invID, " world"))
+	stepID := p.replyStepIDs["agent-1"]
+	if stepID == "" {
+		t.Fatal("expected reply step created")
+	}
+	p.mu.Lock()
+	if got := p.activeStep[stepID].Content; got != "Hello world" {
+		p.mu.Unlock()
+		t.Fatalf("attempt-1 accumulation = %q, want %q", got, "Hello world")
+	}
+	p.mu.Unlock()
+
+	// 守卫重连 → Bump；attempt-2 从头重发，projector 须截断旧半截并立即快照。
+	if got := streamgen.Bump(invID); got != "reconnect-1" {
+		t.Fatalf("Bump = %q, want reconnect-1", got)
+	}
+	capture.events = nil
+	p.ProcessEvent(context.Background(), chunk(invID, "重新生成"))
+	p.mu.Lock()
+	got := p.activeStep[stepID].Content
+	p.mu.Unlock()
+	if got != "重新生成" {
+		t.Fatalf("post-bump content = %q, want %q（旧半截必须被截断）", got, "重新生成")
+	}
+	var sawForcedSnapshot bool
+	for _, e := range capture.events {
+		if upd, ok := e.(*biz.StepUpdatedEvent); ok && upd.Step.ID == stepID && upd.Step.Content == "重新生成" {
+			sawForcedSnapshot = true
+		}
+	}
+	if !sawForcedSnapshot {
+		t.Error("generation reset must force an immediate step.updated snapshot")
+	}
+
+	// 同代际续写正常累加。
+	p.ProcessEvent(context.Background(), chunk(invID, "。"))
+	p.mu.Lock()
+	got = p.activeStep[stepID].Content
+	p.mu.Unlock()
+	if got != "重新生成。" {
+		t.Fatalf("same-generation continuation = %q, want %q", got, "重新生成。")
 	}
 }
 

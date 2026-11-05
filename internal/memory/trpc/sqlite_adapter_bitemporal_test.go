@@ -11,6 +11,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/loggateway"
 
+	"aranea-agents/internal/memory/memx"
 	trpcmemory "trpc.group/trpc-go/trpc-agent-go/memory"
 )
 
@@ -279,7 +280,7 @@ func (l *bitemporalSettingsLoader) GetAgentRuntimeSettings(_ context.Context, _ 
 	return &biz.AgentRuntimeSettings{MemoryEnabled: true, L3Enabled: true}, nil
 }
 
-func newBitemporalService() (trpcmemory.Service, *bitemporalMockStore) {
+func newBitemporalService() (memx.Service, *bitemporalMockStore) {
 	store := newBitemporalMockStore()
 	svc := NewMemoryService(
 		store,                       // factReader
@@ -427,8 +428,8 @@ func TestSQLiteAdapter_SearchMemories_IncludeInvalidated(t *testing.T) {
 	store.mu.Unlock()
 
 	// SearchMemories with IncludeInvalidated=true should return both.
-	entries, err := svc.SearchMemories(ctx, uk, "", trpcmemory.WithSearchOptions(
-		trpcmemory.SearchOptions{IncludeInvalidated: true},
+	entries, err := svc.SearchMemories(ctx, uk, "", memx.WithSearchOptions(
+		memx.SearchOptions{IncludeInvalidated: true},
 	))
 	if err != nil {
 		t.Fatalf("SearchMemories: %v", err)

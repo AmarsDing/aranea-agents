@@ -18,6 +18,11 @@ type Turn struct {
 	Status          TurnStatus
 	StartedAt       time.Time
 	CompletedAt     *time.Time
+	// RuntimeInvocationID 是框架侧本次 run 的真实 invocation id
+	// （trpc 出库后框架 uuid ≠ 应用 turn id），由 v2 projector 自首条
+	// 根事件捕获并随 turn 终态落库；空串 = 旧行或未捕获。仅供 session
+	// fork 事件边界定位（migration 20261307），不参与 WS 语义。
+	RuntimeInvocationID string
 }
 
 type TurnStatus string

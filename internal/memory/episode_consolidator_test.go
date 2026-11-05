@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/memory/memx"
 	"aranea-agents/pkg/loggateway"
 
 	trpcmemory "trpc.group/trpc-go/trpc-agent-go/memory"
@@ -369,7 +370,7 @@ func TestEpisodeConsolidator_NilActionLogWriter(t *testing.T) {
 func TestSleepTime_WithEpisodeConsolidator(t *testing.T) {
 	// trpcmemory phase: no memories (empty).
 	ms := &fakeMemoryService{
-		entries: map[string][]*trpcmemory.Entry{
+		entries: map[string][]*memx.Entry{
 			"user-1": {},
 		},
 	}

@@ -6,8 +6,7 @@ import (
 	"unicode"
 
 	"aranea-agents/internal/biz"
-
-	trpcmemory "trpc.group/trpc-go/trpc-agent-go/memory"
+	"aranea-agents/internal/memory/memx"
 )
 
 // Codex Phase2 consolidator contract (C3):
@@ -32,7 +31,7 @@ var (
 // prepareConsolidationMemories redacts secrets and drops low-signal / secret-only
 // entries. Returns the sanitized set and whether any durable high-signal
 // memory remains. Callers skip the LLM when ok is false.
-func prepareConsolidationMemories(memories []*trpcmemory.Entry) (kept []*trpcmemory.Entry, ok bool) {
+func prepareConsolidationMemories(memories []*memx.Entry) (kept []*memx.Entry, ok bool) {
 	for _, e := range memories {
 		sanitized := sanitizeMemoryForConsolidate(e)
 		if sanitized == nil || !isHighSignalMemory(sanitized) {
@@ -43,7 +42,7 @@ func prepareConsolidationMemories(memories []*trpcmemory.Entry) (kept []*trpcmem
 	return kept, len(kept) > 0
 }
 
-func sanitizeMemoryForConsolidate(e *trpcmemory.Entry) *trpcmemory.Entry {
+func sanitizeMemoryForConsolidate(e *memx.Entry) *memx.Entry {
 	if e == nil || e.Memory == nil {
 		return nil
 	}
@@ -64,7 +63,7 @@ func sanitizeMemoryForConsolidate(e *trpcmemory.Entry) *trpcmemory.Entry {
 	return &cp
 }
 
-func isHighSignalMemory(e *trpcmemory.Entry) bool {
+func isHighSignalMemory(e *memx.Entry) bool {
 	if e == nil || e.Memory == nil {
 		return false
 	}

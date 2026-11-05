@@ -15,7 +15,7 @@ import (
 // 项目使用 trpcagent.MergeRuntimeState() 在模型调用时异步注入运行时状态到框架内部状态管理，
 // 而 RenderStateTemplate 在 prompt 构建时同步渲染状态到文本。两者机制不同，接入会造成双重状态注入。
 // 解除方案：Phase 1 AgentFactory 实施时重新评估（与 B-5 同步评估）。
-// 详见 docs/trpc-agent-go/alignment-plan.md §十一/B-6。
+//（原参考文档 docs/trpc-agent-go/alignment-plan.md 随 2026-11-03 trpc 出库一并删除。）
 
 // RenderStateTemplate renders template placeholders using values from the
 // invocation state and session state, following the same resolution rules as

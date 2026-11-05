@@ -3,6 +3,7 @@
 package ent
 
 import (
+	"aranea-agents/internal/data/ent/schema"
 	"aranea-agents/internal/data/ent/admin"
 	"aranea-agents/internal/data/ent/agent"
 	"aranea-agents/internal/data/ent/agentperformance"
@@ -84,7 +85,6 @@ import (
 	"aranea-agents/internal/data/ent/publishjob"
 	"aranea-agents/internal/data/ent/resourceaccessaudit"
 	"aranea-agents/internal/data/ent/reviewtask"
-	"aranea-agents/internal/data/ent/schema"
 	"aranea-agents/internal/data/ent/selfcheckreport"
 	"aranea-agents/internal/data/ent/selfimprovementrun"
 	"aranea-agents/internal/data/ent/session"
@@ -7529,6 +7529,12 @@ func init() {
 	turnv2DescStartedAt := turnv2Fields[11].Descriptor()
 	// turnv2.DefaultStartedAt holds the default value on creation for the started_at field.
 	turnv2.DefaultStartedAt = turnv2DescStartedAt.Default.(func() time.Time)
+	// turnv2DescRuntimeInvocationID is the schema descriptor for runtime_invocation_id field.
+	turnv2DescRuntimeInvocationID := turnv2Fields[13].Descriptor()
+	// turnv2.DefaultRuntimeInvocationID holds the default value on creation for the runtime_invocation_id field.
+	turnv2.DefaultRuntimeInvocationID = turnv2DescRuntimeInvocationID.Default.(string)
+	// turnv2.RuntimeInvocationIDValidator is a validator for the "runtime_invocation_id" field. It is called by the builders before save.
+	turnv2.RuntimeInvocationIDValidator = turnv2DescRuntimeInvocationID.Validators[0].(func(string) error)
 	// turnv2DescID is the schema descriptor for id field.
 	turnv2DescID := turnv2Fields[0].Descriptor()
 	// turnv2.IDValidator is a validator for the "id" field. It is called by the builders before save.

@@ -6,9 +6,11 @@ import (
 	"time"
 
 	"aranea-agents/internal/metrics"
+	"aranea-agents/internal/streamgen"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 
+	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
 )
 
@@ -168,9 +170,16 @@ type LivenessGuardOptions struct {
 // 为什么安全：工具调用在完整响应组装后才执行，stall 发生时该次响应的
 // 工具尚未进入执行阶段，半成品零副作用；重连 = 重新生成，最终消息采用
 // 替换语义（openai accumulator 每调用独立），落库 = 成功 attempt 的完整
-// 聚合。重连 attempt 的响应经 stampGeneration 携带 GenerationID 标记
-// （reconnect-N），下游 llmflow ID 归一化与 v2 projector 据此切断旧轮次 /
-// 截断半截累积内容——事件流上的重发段可辨、可截断，不再以裸 delta 重复。
+// 聚合。
+//
+// 出库说明（2026-11-03）：原 W-1/W-2 代际标记（GenerationID="reconnect-N"，
+// 供 llmflow ID 归一化切断旧 ID、v2 projector 截断重发段）依赖 fork 的
+// model.Response.GenerationID 字段；上游 v1.11.2 无此载体，且 llmflow 的
+// normalizeResponseIDs 会在流内强制归一 Response.ID（重连后新 attempt 的
+// 帧被克隆回旧 ID），无法借用 ID 通道。改为应用层代际计数器
+//（internal/streamgen）：重连决策时按框架 invocation Bump，projector 处理
+// delta 时按 ev.InvocationID 读取当前代际标签，截断语义与 fork 等价
+//（差异与竞态窗口见 streamgen 包注释）。
 // 消费端首字节守卫总时限已按 FirstByteGuardWithRetry 重算，不会误杀重连。
 func WrapModelWithLivenessGuard(inner trpcmodel.Model, providerType, modelName string, lg loggateway.Logger, opts ...LivenessGuardOptions) trpcmodel.Model {
 	if inner == nil {
@@ -315,9 +324,15 @@ func (m *livenessGuardModel) generateWithGuard(ctx context.Context, request *trp
 	}
 
 	out := make(chan *trpcmodel.Response, 16)
+	// 代际机制（streamgen）：本次调用的框架 invocation id 在调用入口解析
+	// 一次（ctx 由 llmflow 传入，携带 agent.Invocation），重连时 Bump。
+	invID := ""
+	if inv, ok := trpcagent.InvocationFromContext(ctx); ok && inv != nil {
+		invID = inv.InvocationID
+	}
 	safego.Go(ctx, "liveness-guard-forward", func() {
 		defer close(out)
-		m.forwardLoop(ctx, request, ch1, cancelAttempt, fbBudget, policy, out)
+		m.forwardLoop(ctx, request, ch1, cancelAttempt, fbBudget, policy, invID, out)
 	})
 	return out, nil
 }
@@ -332,6 +347,7 @@ func (m *livenessGuardModel) forwardLoop(
 	cancelAttempt context.CancelFunc,
 	fbBudget time.Duration,
 	policy stallPolicy,
+	invID string,
 	out chan<- *trpcmodel.Response,
 ) {
 	// 闭包捕获变量而非 defer 时求值：重连替换 cancelAttempt 后，
@@ -361,7 +377,7 @@ func (m *livenessGuardModel) forwardLoop(
 			if isReconnectableStreamError(resp) && reconnects < policy.maxReconnects {
 				// 中段 stream_error（连接健康类故障）：不转发半截错误，
 				// 直接重连重新生成。
-				if next, nextCancel, ok2 := m.reconnect(ctx, request, ch, cancelAttempt, reconnects, policy, "stream_error"); ok2 {
+				if next, nextCancel, ok2 := m.reconnect(ctx, request, ch, cancelAttempt, reconnects, policy, invID, "stream_error"); ok2 {
 					ch, cancelAttempt = next, nextCancel
 					reconnects++
 					gotFirstEvent = false
@@ -370,7 +386,7 @@ func (m *livenessGuardModel) forwardLoop(
 				// ctx 已取消或重连发起失败：reconnect 内已处理终局。
 				return
 			}
-			if !forwardResponse(ctx, out, stampGeneration(normalizeErrorObject(resp), reconnects)) {
+			if !forwardResponse(ctx, out, normalizeErrorObject(resp)) {
 				safego.Go(context.Background(), "liveness-guard-drain", func() { drainResponseChannel(ch) })
 				return
 			}
@@ -385,7 +401,7 @@ func (m *livenessGuardModel) forwardLoop(
 				safego.Go(context.Background(), "liveness-guard-drain", func() { drainResponseChannel(ch) })
 				return
 			}
-			if next, nextCancel, ok := m.reconnect(ctx, request, ch, cancelAttempt, reconnects, policy, phase); ok {
+			if next, nextCancel, ok := m.reconnect(ctx, request, ch, cancelAttempt, reconnects, policy, invID, phase); ok {
 				ch, cancelAttempt = next, nextCancel
 				reconnects++
 				gotFirstEvent = false
@@ -416,6 +432,12 @@ func (m *livenessGuardModel) activeBudget(fbBudget time.Duration, policy stallPo
 // 发起新 attempt。返回 ok=false 表示终局已定（ctx 取消或重连发起失败，
 // 失败已记日志，out 由 forwardLoop  defer 关闭，消费端守卫按首字节超时
 // 判死整轮），调用方直接结束循环。
+//
+// 代际 Bump 在进入本函数（重连决策点）即执行而非退避后：决策后 forwardLoop
+// 不再转发旧 attempt 的任何帧（旧 channel 被 drain 到黑洞），而 projector
+// 侧是异步消费——越早 Bump，「决策前最后一帧被误读为新代际」的窗口越小
+// （详见 internal/streamgen 包注释的竞态分析）。Bump 后退避期间 ctx 取消
+// 导致重连未发起也无害：流随之终结，不再产生 delta。
 func (m *livenessGuardModel) reconnect(
 	ctx context.Context,
 	request *trpcmodel.Request,
@@ -423,8 +445,10 @@ func (m *livenessGuardModel) reconnect(
 	cancelAttempt context.CancelFunc,
 	reconnects int,
 	policy stallPolicy,
+	invID string,
 	reason string,
 ) (<-chan *trpcmodel.Response, context.CancelFunc, bool) {
+	newGen := streamgen.Bump(invID)
 	cancelAttempt()
 	safego.Go(context.Background(), "liveness-guard-drain", func() { drainResponseChannel(ch) })
 	// LLMFirstByteRetryTotal 语义随治理扩展为「活性重连总数」（首字节
@@ -437,6 +461,8 @@ func (m *livenessGuardModel) reconnect(
 			loggateway.Str("provider", m.provider),
 			loggateway.Str("model", m.model),
 			loggateway.Str("reason", reason),
+			loggateway.Str("generation", newGen),
+			loggateway.Str("invocation_id", invID),
 			loggateway.Int("reconnect", reconnects+1),
 			loggateway.Int("max_reconnects", policy.maxReconnects),
 			loggateway.Str("stall_timeout", policy.timeout.String()))
@@ -515,19 +541,9 @@ func normalizeErrorObject(resp *trpcmodel.Response) *trpcmodel.Response {
 	return resp
 }
 
-// stampGeneration 给重连 attempt 的响应打代际标记（W-1/W-2，2026-10-26
-// 评审二轮）：首发 attempt（reconnects=0）保持空 GenerationID——空值即
-// 「原生单 attempt」语义，下游零感知；第 N 次重连后的流打 "reconnect-N"。
-// llmflow 的响应 ID 归一化据此切断旧 ID（新 attempt 不再伪装成同一轮），
-// v2 projector/前端据此重置已累积的半截内容而不是继续 append（重连 = 重新
-// 生成，前半截会被完整重发，纯追加必然整段重复）。
-func stampGeneration(resp *trpcmodel.Response, reconnects int) *trpcmodel.Response {
-	if resp == nil || reconnects <= 0 {
-		return resp
-	}
-	resp.GenerationID = fmt.Sprintf("reconnect-%d", reconnects)
-	return resp
-}
+// 代际标记（2026-11-03 恢复）：fork 的 stampGeneration 依赖
+// model.Response.GenerationID 扩展字段，已随出库移除；等价能力由
+// internal/streamgen 代际计数器提供（重连决策点在 reconnect() 内 Bump）。
 
 // forwardResponse forwards one response, returning false when ctx is done.
 func forwardResponse(ctx context.Context, out chan<- *trpcmodel.Response, resp *trpcmodel.Response) bool {

@@ -27,19 +27,20 @@ func taskToWire(t biz.Task) taskWire {
 
 func turnToWire(t biz.Turn) turnWire {
 	return turnWire{
-		ID:              t.ID,
-		TaskID:          t.TaskID,
-		SessionID:       t.SessionID,
-		SpiritSessionID: t.SpiritSessionID,
-		ParentTurnID:    t.ParentTurnID,
-		AgentKey:        t.AgentKey,
-		TeamID:          t.TeamID,
-		TeamStageID:     t.TeamStageID,
-		Seq:             t.Seq,
-		Version:         t.Version,
-		Status:          t.Status,
-		StartedAt:       t.StartedAt,
-		CompletedAt:     t.CompletedAt,
+		ID:                  t.ID,
+		TaskID:              t.TaskID,
+		SessionID:           t.SessionID,
+		SpiritSessionID:     t.SpiritSessionID,
+		ParentTurnID:        t.ParentTurnID,
+		AgentKey:            t.AgentKey,
+		TeamID:              t.TeamID,
+		TeamStageID:         t.TeamStageID,
+		Seq:                 t.Seq,
+		Version:             t.Version,
+		Status:              t.Status,
+		StartedAt:           t.StartedAt,
+		CompletedAt:         t.CompletedAt,
+		RuntimeInvocationID: t.RuntimeInvocationID,
 	}
 }
 

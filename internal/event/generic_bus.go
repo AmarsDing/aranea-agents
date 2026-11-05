@@ -6,11 +6,11 @@ import (
 	"sync/atomic"
 	"time"
 
+	frameworkbus "aranea-agents/internal/event/bus"
 	"aranea-agents/internal/event/contract"
 	"aranea-agents/pkg/appctx"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
-	frameworkbus "trpc.group/trpc-go/trpc-agent-go/event/bus"
 )
 
 // GenericBus is a type-safe wrapper around frameworkbus.Bus[T].

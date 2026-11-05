@@ -49,6 +49,15 @@ func (s *ChatService) GetRunStatus(ctx context.Context, req *chatv1.GetRunStatus
 			resp.AwaitToolCallId = snap.AwaitToolCallID
 		}
 	}
+	// After restart / shutdown interrupt, stateJson may still say running while
+	// the session row is interrupted/completed and no in-memory run exists.
+	// Refuse that lie so clients do not poll a dead run forever (live44 2026-10-29).
+	if strings.EqualFold(strings.TrimSpace(resp.Status), "running") {
+		if sessStatus := s.sessionLifecycleStatus(ctx, sessionID); sessionStatusBlocksRunning(sessStatus) {
+			resp.Status = "idle"
+			resp.ErrorMessage = ""
+		}
+	}
 	if runnerIface, _, active := s.orch.ActiveRunner(sessionID); active {
 		if runner, ok := runnerIface.(trpcrunner.Runner); ok {
 			applyFrameworkRunStatus(resp, runner, sessionID)
@@ -60,6 +69,26 @@ func (s *ChatService) GetRunStatus(ctx context.Context, req *chatv1.GetRunStatus
 		resp.AwaitToolCallId = meta.ToolCallID
 	}
 	return resp, nil
+}
+
+func (s *ChatService) sessionLifecycleStatus(ctx context.Context, sessionID string) string {
+	if s == nil || s.sessions == nil || strings.TrimSpace(sessionID) == "" {
+		return ""
+	}
+	sess, err := s.sessions.Get(ctx, sessionID)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(sess.Status)
+}
+
+func sessionStatusBlocksRunning(status string) bool {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "interrupted", "completed", "failed", "cancelled", "canceled", "archived":
+		return true
+	default:
+		return false
+	}
 }
 
 func applyFrameworkRunStatus(resp *chatv1.RunStatus, runner trpcrunner.Runner, requestID string) {

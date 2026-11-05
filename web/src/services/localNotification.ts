@@ -47,8 +47,8 @@ async function ensurePermission(plugin: NotificationPlugin): Promise<boolean> {
 export async function initLocalNotifications(onOpenRoute: (route: string) => void): Promise<boolean> {
   const plugin = await loadPlugin();
   if (!plugin) return false;
-  await plugin.onAction((notification) => {
-    const route = (notification.extra as { route?: unknown } | undefined)?.route;
+  await plugin.onAction((action) => {
+    const route = (action.notification?.extra as { route?: unknown } | undefined)?.route;
     if (typeof route === 'string' && route.startsWith('/')) {
       onOpenRoute(route);
     }

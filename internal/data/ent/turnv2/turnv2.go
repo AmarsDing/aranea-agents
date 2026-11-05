@@ -37,6 +37,8 @@ const (
 	FieldStartedAt = "started_at"
 	// FieldCompletedAt holds the string denoting the completed_at field in the database.
 	FieldCompletedAt = "completed_at"
+	// FieldRuntimeInvocationID holds the string denoting the runtime_invocation_id field in the database.
+	FieldRuntimeInvocationID = "runtime_invocation_id"
 	// Table holds the table name of the turnv2 in the database.
 	Table = "turns_v2"
 )
@@ -56,6 +58,7 @@ var Columns = []string{
 	FieldStatus,
 	FieldStartedAt,
 	FieldCompletedAt,
+	FieldRuntimeInvocationID,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -101,6 +104,10 @@ var (
 	StatusValidator func(string) error
 	// DefaultStartedAt holds the default value on creation for the "started_at" field.
 	DefaultStartedAt func() time.Time
+	// DefaultRuntimeInvocationID holds the default value on creation for the "runtime_invocation_id" field.
+	DefaultRuntimeInvocationID string
+	// RuntimeInvocationIDValidator is a validator for the "runtime_invocation_id" field. It is called by the builders before save.
+	RuntimeInvocationIDValidator func(string) error
 	// IDValidator is a validator for the "id" field. It is called by the builders before save.
 	IDValidator func(string) error
 )
@@ -171,4 +178,9 @@ func ByStartedAt(opts ...sql.OrderTermOption) OrderOption {
 // ByCompletedAt orders the results by the completed_at field.
 func ByCompletedAt(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldCompletedAt, opts...).ToFunc()
+}
+
+// ByRuntimeInvocationID orders the results by the runtime_invocation_id field.
+func ByRuntimeInvocationID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldRuntimeInvocationID, opts...).ToFunc()
 }

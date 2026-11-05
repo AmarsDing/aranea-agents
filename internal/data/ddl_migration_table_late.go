@@ -598,4 +598,30 @@ var ddlMigrationsLate = []ddlMigration{
 	// 链与后续批次落地，旧二进制零读零写字节级旧行为。raw-SQL 管理表不动
 	// ent schema、不播种。编号顺延当时最大值（20261304）+1。幂等，重跑安全。
 	{Version: 20261305, Name: "memory_facts_embedder_epoch", SQL: "sql/migrations/20261305_memory_facts_embedder_epoch.sql"},
+	// 20261306 twin_openapi_idempotency（三仓联动 P0 底座安全前置，
+	// 2026-11-02）：机器面 run 提交幂等键持久化——原进程内 map 重启即
+	// 失效，消费方（HCF AGT / NT harness）at-least-once 契约在底座重启
+	// 窗口内会产出重复 run。(caller, idem_key) 复合主键，Store=INSERT
+	// ... ON CONFLICT DO NOTHING 先到者赢；Store 同事务 lazy GC 早于 7
+	// 天的行。旧二进制对本表零读零写。仅建表：不加 ent schema、不播种。
+	// 幂等，重跑安全。
+	{Version: 20261306, Name: "twin_openapi_idempotency", SQL: "sql/migrations/20261306_twin_openapi_idempotency.sql"},
+	// 20261307 turns_v2.runtime_invocation_id（trpc 出库 / session fork
+	// 事件边界定位解耦，2026-11-03）：fork 的 WithRunInvocationID 补丁
+	// 随出库移除后，框架 invocation id 退化为随机 uuid，turn id 不再能
+	// 直连 event->>'invocationId'。本列由 v2 projector 捕获真实
+	// invocation id 落库，FindTurnEventBoundary 优先按本列匹配、空值
+	// 回退旧语义兼容存量行。仅加列（NOT NULL DEFAULT ''）、不加索引
+	// （查询经主键 id 定位），旧二进制零读零写。幂等，重跑安全。
+	{Version: 20261307, Name: "turns_v2_runtime_invocation_id", SQL: "sql/migrations/20261307_turns_v2_runtime_invocation_id.sql"},
+	// 20261308 coding_workbench（03 方案 P0 外部编码工具看板，2026-11-03）：
+	// coding_agents +icon_url/capabilities/default_autonomy（注册表驱动前端渲染），
+	// coding_tasks +origin/review_status/review_comment/reviewed_at（看板来源与验收），
+	// 新建 coding_task_events 统一步骤事件表（raw-SQL 管理，不加 ent schema，
+	// 先例 20261295_board_run_leases）。旧二进制零读零写。幂等，重跑安全。
+	{Version: 20261308, Name: "coding_workbench", SQL: "sql/migrations/20261308_coding_workbench.sql"},
+	// 20261309 coding_agents_seed（03 方案 P0，2026-11-03）：种 Codex/Claude Code 两条
+	// 注册记录（真实图标 + 能力声明 + 默认自治级别），默认 enabled=false，探测后再启用。
+	// 幂等：按 (workspace, agent_key) 存在即跳过；不覆盖用户已改配置。
+	{Version: 20261309, Name: "coding_agents_seed", Func: ddlCodingAgentsSeed},
 }

@@ -40,8 +40,10 @@ type TurnV2 struct {
 	// StartedAt holds the value of the "started_at" field.
 	StartedAt time.Time `json:"started_at,omitempty"`
 	// CompletedAt holds the value of the "completed_at" field.
-	CompletedAt  *time.Time `json:"completed_at,omitempty"`
-	selectValues sql.SelectValues
+	CompletedAt *time.Time `json:"completed_at,omitempty"`
+	// framework run invocation id (trpc-agent-go); empty for legacy rows pre-20261307
+	RuntimeInvocationID string `json:"runtime_invocation_id,omitempty"`
+	selectValues        sql.SelectValues
 }
 
 // scanValues returns the types for scanning values from sql.Rows.
@@ -51,7 +53,7 @@ func (*TurnV2) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case turnv2.FieldSeq, turnv2.FieldVersion:
 			values[i] = new(sql.NullInt64)
-		case turnv2.FieldID, turnv2.FieldTaskID, turnv2.FieldSessionID, turnv2.FieldSpiritSessionID, turnv2.FieldParentTurnID, turnv2.FieldAgentKey, turnv2.FieldTeamID, turnv2.FieldTeamStageID, turnv2.FieldStatus:
+		case turnv2.FieldID, turnv2.FieldTaskID, turnv2.FieldSessionID, turnv2.FieldSpiritSessionID, turnv2.FieldParentTurnID, turnv2.FieldAgentKey, turnv2.FieldTeamID, turnv2.FieldTeamStageID, turnv2.FieldStatus, turnv2.FieldRuntimeInvocationID:
 			values[i] = new(sql.NullString)
 		case turnv2.FieldStartedAt, turnv2.FieldCompletedAt:
 			values[i] = new(sql.NullTime)
@@ -149,6 +151,12 @@ func (_m *TurnV2) assignValues(columns []string, values []any) error {
 				_m.CompletedAt = new(time.Time)
 				*_m.CompletedAt = value.Time
 			}
+		case turnv2.FieldRuntimeInvocationID:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field runtime_invocation_id", values[i])
+			} else if value.Valid {
+				_m.RuntimeInvocationID = value.String
+			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
 		}
@@ -222,6 +230,9 @@ func (_m *TurnV2) String() string {
 		builder.WriteString("completed_at=")
 		builder.WriteString(v.Format(time.ANSIC))
 	}
+	builder.WriteString(", ")
+	builder.WriteString("runtime_invocation_id=")
+	builder.WriteString(_m.RuntimeInvocationID)
 	builder.WriteByte(')')
 	return builder.String()
 }

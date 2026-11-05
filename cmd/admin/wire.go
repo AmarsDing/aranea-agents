@@ -59,6 +59,7 @@ import (
 	"aranea-agents/internal/mcp/alert"
 	"aranea-agents/internal/mcp/health"
 	"aranea-agents/internal/memory"
+	"aranea-agents/internal/memory/memx"
 	memtrpc "aranea-agents/internal/memory/trpc"
 	"aranea-agents/internal/modelregistry"
 	"aranea-agents/internal/outbound"
@@ -2455,7 +2456,7 @@ const memorySleepTimeQueueSize = 100
 //
 // Disabled via MEMORY_SLEEP_TIME_DISABLED env var.
 func provideMemorySleepTimeWorker(
-	memSvc trpcmemory.Service,
+	memSvc memx.Service,
 	agents *biz.AgentUsecase,
 	catalog *biz.LlmProviderModelUsecase,
 	sessionReader biz.SessionReader,

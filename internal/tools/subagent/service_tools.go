@@ -12,7 +12,6 @@ import (
 	"aranea-agents/pkg/loggateway"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
-	trpcsubagent "trpc.group/trpc-go/trpc-agent-go/openclaw/subagent"
 	trpcsession "trpc.group/trpc-go/trpc-agent-go/session"
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
@@ -202,7 +201,7 @@ func (t *listTool) Call(ctx context.Context, args []byte) (any, error) {
 	now := svcNow(t.svc)
 	raw := t.svc.ListForUser(
 		userID,
-		trpcsubagent.ListFilter{
+		ListFilter{
 			ParentSessionID: sess.ID,
 		},
 	)
@@ -273,7 +272,7 @@ func (t *getTool) Call(ctx context.Context, args []byte) (any, error) {
 		return nil, err
 	}
 	if run == nil {
-		return nil, trpcsubagent.ErrRunNotFound
+		return nil, ErrRunNotFound
 	}
 	view := enrichRunView(*run, svcNow(t.svc))
 

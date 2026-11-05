@@ -198,6 +198,14 @@ type StreamConsumeOptions struct {
 	// budget）管不到输出方向。0 = 不启用。
 	MaxReasoningChars int
 	MaxOutputChars    int
+	// OnSteerConsumed，非 nil 时在消费循环嗅探到框架 steer 消费事件
+	//（llmflow emitQueuedUserMessageEvent，extension
+	// "trpc_agent.steer.queued_user_message" status=consumed）后同步回调，
+	// 参数为被消费的用户消息内容。trpc 出库（2026-11-03）：fork 的
+	// UnconsumedQueuedUserMessagesHandler 补丁移除后，应用层以此核销
+	// RunRegistry 的 steer 记账，turn 收尾对账未消费消息回 pending 队列。
+	// 在单一消费 goroutine 上运行，保持廉价。
+	OnSteerConsumed func(content string)
 }
 
 func ConsumeEventStream(

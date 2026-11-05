@@ -5,4 +5,5 @@ export const workspaceShortcuts = [
   { key: 'knowledge', to: '/knowledge', icon: 'library_books', tone: 'green' },
   { key: 'agents', to: '/agents', icon: 'smart_toy', tone: 'amber' },
   { key: 'workbench', to: '/workbench', icon: 'space_dashboard', tone: 'pink' },
+  { key: 'codingTasks', to: '/coding-tasks', icon: 'terminal', tone: 'cyan' },
 ] as const;

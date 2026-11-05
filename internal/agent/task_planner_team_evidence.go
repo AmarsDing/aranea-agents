@@ -9,10 +9,15 @@ import (
 )
 
 // Team-count detection regexes (F10): compiled once. Complexity patterns live in task_planner_complexity.go.
+// Flex variants allow a short modifier between the measure word and 团队/team
+// so Spirit-rewritten phrasing like「组建一个两名成员的极简团队」still yields
+// count=1 (live44 orch probe 2026-10-29: count missed → LLM free-split to 3).
 var (
-	teamCountDigitPattern = regexp.MustCompile(`(\d+)\s*(?:个|支)?\s*(?:teams?|团队)`)
-	teamCountCNPattern    = regexp.MustCompile(`(一|两|二|三|四|五|六|七|八|九|十)\s*(?:个|支)?\s*(?:teams?|团队)`)
-	teamCountENPattern    = regexp.MustCompile(`\b(one|two|three|four|five|six|seven|eight|nine|ten)\s+teams?\b`)
+	teamCountDigitPattern     = regexp.MustCompile(`(\d+)\s*(?:个|支)?\s*(?:teams?|团队)`)
+	teamCountDigitFlexPattern = regexp.MustCompile(`(\d+)\s*(?:个|支)\s*.{0,16}?(?:teams?|团队)`)
+	teamCountCNPattern        = regexp.MustCompile(`(一|两|二|三|四|五|六|七|八|九|十)\s*(?:个|支)?\s*(?:teams?|团队)`)
+	teamCountCNFlexPattern    = regexp.MustCompile(`(一|两|二|三|四|五|六|七|八|九|十)\s*(?:个|支)\s*.{0,16}?(?:teams?|团队)`)
+	teamCountENPattern        = regexp.MustCompile(`\b(one|two|three|four|five|six|seven|eight|nine|ten)\s+teams?\b`)
 )
 
 // detectTeamCount extracts the user's explicit team count from the message.
@@ -34,12 +39,22 @@ func detectTeamCount(message string) int {
 			return n
 		}
 	}
+	if m := teamCountDigitFlexPattern.FindStringSubmatch(lower); len(m) >= 2 {
+		if n, err := strconv.Atoi(m[1]); err == nil && n > 0 && n <= 20 {
+			return n
+		}
+	}
 
 	cnNumMap := map[string]int{
 		"一": 1, "两": 2, "二": 2, "三": 3, "四": 4, "五": 5,
 		"六": 6, "七": 7, "八": 8, "九": 9, "十": 10,
 	}
 	if m := teamCountCNPattern.FindStringSubmatch(lower); len(m) >= 2 {
+		if n, ok := cnNumMap[m[1]]; ok && n > 0 {
+			return n
+		}
+	}
+	if m := teamCountCNFlexPattern.FindStringSubmatch(lower); len(m) >= 2 {
 		if n, ok := cnNumMap[m[1]]; ok && n > 0 {
 			return n
 		}

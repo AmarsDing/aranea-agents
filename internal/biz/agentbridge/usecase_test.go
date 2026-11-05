@@ -222,6 +222,35 @@ func (m *mockTaskRepo) ListActive(_ context.Context) ([]*CodingTask, error) {
 	return out, nil
 }
 
+// ListRecent 03 P0：按创建时间倒序返回全部（mock 无 agent 过滤需求）。
+func (m *mockTaskRepo) ListRecent(_ context.Context, limit int, _ string) ([]*CodingTask, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make([]*CodingTask, 0, len(m.byID))
+	for _, t := range m.byID {
+		cp := *t
+		out = append(out, &cp)
+	}
+	if limit > 0 && len(out) > limit {
+		out = out[:limit]
+	}
+	return out, nil
+}
+
+// UpdateReview 03 P0：验收落库。
+func (m *mockTaskRepo) UpdateReview(_ context.Context, id, status, comment, reviewedAt string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	t, ok := m.byID[id]
+	if !ok {
+		return errTestNotFound
+	}
+	t.ReviewStatus = status
+	t.ReviewComment = comment
+	t.ReviewedAt = reviewedAt
+	return nil
+}
+
 var errTestNotFound = apierror.NotFound(apierror.DomainAgentBridge, "not found")
 var errTestConflict = apierror.Conflict(apierror.DomainAgentBridge, "conflict")
 

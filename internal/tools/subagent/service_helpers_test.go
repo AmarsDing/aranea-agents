@@ -7,8 +7,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	trpcsubagent "trpc.group/trpc-go/trpc-agent-go/openclaw/subagent"
 )
 
 func TestTruncateRunes(t *testing.T) {
@@ -84,13 +82,13 @@ func TestCloneTime(t *testing.T) {
 func TestNormalizeLoadedRuns_NonTerminal(t *testing.T) {
 	now := time.Now()
 	runs := map[string]*runRecord{
-		"r1": {Run: trpcsubagent.Run{ID: "r1", Status: trpcsubagent.StatusQueued}},
+		"r1": {Run: Run{ID: "r1", Status: StatusQueued}},
 	}
 	changed := normalizeLoadedRuns(runs, now)
 	if !changed {
 		t.Fatal("expected changed for non-terminal run")
 	}
-	if runs["r1"].Status != trpcsubagent.StatusFailed {
+	if runs["r1"].Status != StatusFailed {
 		t.Fatalf("expected failed, got %q", runs["r1"].Status)
 	}
 	if runs["r1"].Error != "interrupted" {
@@ -101,7 +99,7 @@ func TestNormalizeLoadedRuns_NonTerminal(t *testing.T) {
 func TestNormalizeLoadedRuns_TerminalUnchanged(t *testing.T) {
 	now := time.Now()
 	runs := map[string]*runRecord{
-		"r1": {Run: trpcsubagent.Run{ID: "r1", Status: trpcsubagent.StatusCompleted, CreatedAt: now, UpdatedAt: now}},
+		"r1": {Run: Run{ID: "r1", Status: StatusCompleted, CreatedAt: now, UpdatedAt: now}},
 	}
 	changed := normalizeLoadedRuns(runs, now)
 	if changed {
@@ -112,7 +110,7 @@ func TestNormalizeLoadedRuns_TerminalUnchanged(t *testing.T) {
 func TestNormalizeLoadedRuns_ZeroTimes(t *testing.T) {
 	now := time.Now()
 	runs := map[string]*runRecord{
-		"r1": {Run: trpcsubagent.Run{ID: "r1", Status: trpcsubagent.StatusCompleted}},
+		"r1": {Run: Run{ID: "r1", Status: StatusCompleted}},
 	}
 	changed := normalizeLoadedRuns(runs, now)
 	if !changed {
@@ -151,7 +149,7 @@ func TestSaveAndLoadRuns(t *testing.T) {
 	p := filepath.Join(dir, "subagents", "runs.json")
 	now := time.Now()
 	runs := map[string]*runRecord{
-		"r1": {Run: trpcsubagent.Run{ID: "r1", Status: trpcsubagent.StatusCompleted, CreatedAt: now, UpdatedAt: now}, OwnerUserID: "user-1"},
+		"r1": {Run: Run{ID: "r1", Status: StatusCompleted, CreatedAt: now, UpdatedAt: now}, OwnerUserID: "user-1"},
 	}
 	if err := saveRuns(p, runs); err != nil {
 		t.Fatal(err)

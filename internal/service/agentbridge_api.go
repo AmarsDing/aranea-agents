@@ -43,6 +43,10 @@ func (a *AgentBridgeAPI) UpsertAgent(ctx context.Context, req *v1.UpsertAgentReq
 		Args:        req.Args,
 		Env:         req.Env,
 		Enabled:     req.Enabled,
+		// 03 P0：extras 透传（省略=保留旧值；capabilities 空数组=清空）
+		IconURL:         strings.TrimSpace(req.IconUrl),
+		Capabilities:    req.Capabilities,
+		DefaultAutonomy: strings.TrimSpace(req.DefaultAutonomy),
 	}
 	// M4 P3-6：liveness_override JSON 文本透传（省略=保留旧值；"{}"=显式清空回全局默认）。
 	if s := strings.TrimSpace(req.LivenessOverrideJson); s != "" {
@@ -147,8 +151,17 @@ func (a *AgentBridgeAPI) DeleteProject(ctx context.Context, req *v1.DeleteProjec
 // --- tasks ---
 
 func (a *AgentBridgeAPI) ListTasks(ctx context.Context, req *v1.ListTasksRequest) (*v1.ListTasksResponse, error) {
+	// 03 P0：session_id 空=跨会话看板视图（按创建时间倒序，可按 agent_key 过滤）。
 	if strings.TrimSpace(req.SessionId) == "" {
-		return nil, apierror.BadRequest(apierror.DomainAgentBridge, "session_id is required")
+		tasks, err := a.svc.ListRecentTasks(ctx, int(req.Limit), strings.TrimSpace(req.AgentKey))
+		if err != nil {
+			return nil, err
+		}
+		out := &v1.ListTasksResponse{Items: make([]*v1.CodingTask, 0, len(tasks))}
+		for _, t := range tasks {
+			out.Items = append(out.Items, a.taskToProto(t))
+		}
+		return out, nil
 	}
 	tasks, err := a.svc.ListSessionTasks(ctx, req.SessionId, int(req.Limit))
 	if err != nil {
@@ -180,6 +193,84 @@ func (a *AgentBridgeAPI) CancelTask(ctx context.Context, req *v1.CancelTaskReque
 		return nil, err
 	}
 	t, err := a.svc.GetTask(ctx, req.Id)
+	if err != nil {
+		return nil, err
+	}
+	return a.taskToProto(t), nil
+}
+
+// DispatchTask 03 P0：工作台表单直发（不经 LLM）。agent_key 空=自动路由；
+// 项目名歧义时不落任务、返回 candidates 由前端消歧重发。
+func (a *AgentBridgeAPI) DispatchTask(ctx context.Context, req *v1.DispatchTaskRequest) (*v1.DispatchTaskResponse, error) {
+	if strings.TrimSpace(req.ProjectQuery) == "" {
+		return nil, apierror.BadRequest(apierror.DomainAgentBridge, "project_query is required")
+	}
+	if strings.TrimSpace(req.Prompt) == "" {
+		return nil, apierror.BadRequest(apierror.DomainAgentBridge, "prompt is required")
+	}
+	origin := strings.TrimSpace(req.Origin)
+	if origin == "" {
+		origin = "workbench"
+	}
+	agentKey := strings.TrimSpace(req.AgentKey)
+	if agentKey == "" {
+		var err error
+		agentKey, err = a.svc.AutoRouteAgentKey(ctx, agentBridgeWorkspace)
+		if err != nil {
+			return nil, err
+		}
+	}
+	res, err := a.svc.DispatchTaskWithOrigin(ctx, req.SessionId, agentKey, req.ProjectQuery, req.Prompt, origin)
+	if err != nil {
+		return nil, err
+	}
+	out := &v1.DispatchTaskResponse{}
+	if len(res.Candidates) > 0 {
+		out.Candidates = make([]*v1.ProjectCandidate, 0, len(res.Candidates))
+		for _, c := range res.Candidates {
+			out.Candidates = append(out.Candidates, &v1.ProjectCandidate{
+				Id: c.ID, Name: c.Name, Path: c.Path, Description: c.Description,
+			})
+		}
+		return out, nil
+	}
+	out.Task = a.taskToProto(res.Task)
+	return out, nil
+}
+
+// ListTaskEvents 03 P0 ④：任务步骤事件增量拉取（after_seq 回放游标）。
+func (a *AgentBridgeAPI) ListTaskEvents(ctx context.Context, req *v1.ListTaskEventsRequest) (*v1.ListTaskEventsResponse, error) {
+	if strings.TrimSpace(req.TaskId) == "" {
+		return nil, apierror.BadRequest(apierror.DomainAgentBridge, "task_id is required")
+	}
+	events, err := a.svc.ListTaskEvents(ctx, req.TaskId, req.AfterSeq, int(req.Limit))
+	if err != nil {
+		return nil, err
+	}
+	out := &v1.ListTaskEventsResponse{Items: make([]*v1.CodingTaskEvent, 0, len(events))}
+	for _, ev := range events {
+		out.Items = append(out.Items, &v1.CodingTaskEvent{
+			Id:        ev.ID,
+			TaskId:    ev.TaskID,
+			Seq:       ev.Seq,
+			Kind:      ev.Kind,
+			Title:     ev.Title,
+			Text:      ev.Text,
+			CreatedAt: ev.CreatedAt,
+		})
+	}
+	return out, nil
+}
+
+// ReviewTask 03 P0：验收三动作（approve/reject/archive）。
+func (a *AgentBridgeAPI) ReviewTask(ctx context.Context, req *v1.ReviewTaskRequest) (*v1.CodingTask, error) {
+	if strings.TrimSpace(req.Id) == "" {
+		return nil, apierror.BadRequest(apierror.DomainAgentBridge, "id is required")
+	}
+	if strings.TrimSpace(req.Action) == "" {
+		return nil, apierror.BadRequest(apierror.DomainAgentBridge, "action is required")
+	}
+	t, err := a.svc.ReviewTask(ctx, req.Id, req.Action, req.Comment)
 	if err != nil {
 		return nil, err
 	}
@@ -231,6 +322,10 @@ func agentToProto(agent *agentbridge.CodingAgent) *v1.CodingAgent {
 		UpdatedAt:      agent.UpdatedAt,
 		// M4 P3-6：liveness_override 透传（空=未配置，全局默认生效）
 		LivenessOverrideJson: marshalLivenessOverride(agent.LivenessOverride),
+		// 03 P0：注册表驱动前端渲染
+		IconUrl:         agent.IconURL,
+		Capabilities:    agent.Capabilities,
+		DefaultAutonomy: agent.DefaultAutonomy,
 	}
 }
 
@@ -277,6 +372,11 @@ func (a *AgentBridgeAPI) taskToProto(t *agentbridge.CodingTask) *v1.CodingTask {
 		LastExcerpt:   t.LastExcerpt,
 		HeartbeatMiss: int32(t.HeartbeatMiss),
 		LivenessState: t.LivenessState,
+		// 03 P0：发起来源与验收
+		Origin:        t.Origin,
+		ReviewStatus:  t.ReviewStatus,
+		ReviewComment: t.ReviewComment,
+		ReviewedAt:    t.ReviewedAt,
 	}
 }
 

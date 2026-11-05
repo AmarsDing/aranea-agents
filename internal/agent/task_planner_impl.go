@@ -391,7 +391,7 @@ func (impl *taskPlannerImpl) Plan(ctx context.Context, input biz.PlanInput) (*bi
 	)
 
 	// Step 2: Determine strategy
-	strategy, strategyReason, topologyHint := impl.determineStrategy(complexityLevel, complexityScore, input)
+	strategy, strategyReason, topologyHint := impl.determineStrategy(complexityLevel, complexityScore, input, decisionSource)
 
 	impl.lg.Info("策略路由完成",
 		loggateway.StepID(biz.SpiritStepPlannerRoute),

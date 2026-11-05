@@ -2,39 +2,12 @@ module aranea-agents
 
 go 1.26.3
 
-// Agent runtime migrations must resolve to the vendored framework source.
-replace trpc.group/trpc-go/trpc-agent-go => ./pkg/trpc-agent-go
-
-replace trpc.group/trpc-go/trpc-agent-go/model/hunyuan => ./pkg/trpc-agent-go/model/hunyuan
-
-replace trpc.group/trpc-go/trpc-agent-go/model/anthropic => ./pkg/trpc-agent-go/model/anthropic
-
-replace trpc.group/trpc-go/trpc-agent-go/model/bedrock => ./pkg/trpc-agent-go/model/bedrock
-
-replace trpc.group/trpc-go/trpc-agent-go/knowledge/document/reader/pdf => ./pkg/trpc-agent-go/knowledge/document/reader/pdf
-
-replace trpc.group/trpc-go/trpc-agent-go/codeexecutor/container => ./pkg/trpc-agent-go/codeexecutor/container
-
-replace trpc.group/trpc-go/trpc-agent-go/server/agui => ./pkg/trpc-agent-go/server/agui
-
-// Agent runtime storage/session backends must resolve to the vendored framework source.
-replace trpc.group/trpc-go/trpc-agent-go/session/postgres => ./pkg/trpc-agent-go/session/postgres
-
-replace trpc.group/trpc-go/trpc-agent-go/storage/postgres => ./pkg/trpc-agent-go/storage/postgres
-
-// OpenClaw runtime profile support must resolve to the vendored framework source.
-replace trpc.group/trpc-go/trpc-agent-go/openclaw => ./pkg/trpc-agent-go/openclaw
-
-// Evaluation framework must resolve to the vendored source: published v1.9.0
-// lacks case-level rubrics (EvalCase.Rubrics) required for per-case judge
-// scoring standards (P3-2).
-replace trpc.group/trpc-go/trpc-agent-go/evaluation => ./pkg/trpc-agent-go/evaluation
-
 require (
 	entgo.io/ent v0.14.6
 	github.com/aws/aws-sdk-go-v2/config v1.32.17
 	github.com/bmatcuk/doublestar/v4 v4.9.1
 	github.com/bwmarrin/discordgo v0.29.0
+	github.com/creack/pty v1.1.24
 	github.com/fatih/color v1.19.0
 	github.com/fsnotify/fsnotify v1.7.0
 	github.com/go-kratos/aip-go/ents v0.0.0-20251213081434-74ffa1fc1588
@@ -46,7 +19,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/google/wire v0.6.0
 	github.com/gorilla/mux v1.8.1
-	github.com/jackc/pgx/v5 v5.7.2
+	github.com/hashicorp/go-multierror v1.1.1
 	github.com/larksuite/oapi-sdk-go/v3 v3.9.2
 	github.com/ledongthuc/pdf v0.0.0-20250511090121-5959a4027728
 	github.com/lib/pq v1.12.3
@@ -92,7 +65,7 @@ require (
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 	gopkg.in/yaml.v3 v3.0.1
 	trpc.group/trpc-go/trpc-a2a-go v0.2.6-0.20260721084546-18c8244d0acb
-	trpc.group/trpc-go/trpc-agent-go v1.11.1
+	trpc.group/trpc-go/trpc-agent-go v1.11.2
 	trpc.group/trpc-go/trpc-agent-go/agent/extension/toolpipe v1.10.0
 	trpc.group/trpc-go/trpc-agent-go/artifact/s3 v1.9.0
 	trpc.group/trpc-go/trpc-agent-go/codeexecutor/container v1.11.0
@@ -179,7 +152,6 @@ require (
 	github.com/containerd/log v0.1.0 // indirect
 	github.com/containerd/platforms v0.2.1 // indirect
 	github.com/cpuguy83/dockercfg v0.3.2 // indirect
-	github.com/creack/pty v1.1.24 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.0 // indirect
 	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
@@ -206,7 +178,6 @@ require (
 	github.com/google/go-querystring v1.0.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.28.0 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
-	github.com/hashicorp/go-multierror v1.1.1 // indirect
 	github.com/hashicorp/hcl/v2 v2.23.0 // indirect
 	github.com/hhrutter/lzw v1.0.0 // indirect
 	github.com/hhrutter/pkcs7 v0.2.0 // indirect
@@ -216,6 +187,7 @@ require (
 	github.com/itchyny/timefmt-go v0.1.6 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
+	github.com/jackc/pgx/v5 v5.7.2 // indirect
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/klauspost/compress v1.18.5 // indirect

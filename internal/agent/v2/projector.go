@@ -12,6 +12,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
+	"aranea-agents/internal/streamgen"
 	"aranea-agents/pkg/loggateway"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
@@ -112,6 +113,11 @@ type ActivityProjector struct {
 	// ProcessEvent exit. Replaces the old p.meta.AgentKey swap+defer-restore,
 	// which data-raced with ActivityEmitter readers.
 	eventAgentKey string
+	// runtimeInvocationID 是本 turn 对应框架 run 的真实 invocation id
+	// （trpc 出库后框架 uuid ≠ 应用 turn id），由 ProcessEvent 自首条根事件
+	// 捕获（mu 保护），随 turn 终态 Upsert 落库 turns_v2.runtime_invocation_id，
+	// 供 session fork 的 FindTurnEventBoundary 匹配事件边界。
+	runtimeInvocationID string
 	// thinkingStepIDs maps agentKey → stepID of the current thinking step
 	// (lazily created on the first reasoning delta, finalized on OnReasoningDone).
 	//
@@ -317,6 +323,7 @@ func (p *ActivityProjector) OnTurnStart(ctx context.Context, meta ProjectMeta) {
 	p.turnStarted = true
 	p.turnEnded = false
 	p.errorProjected = false
+	p.runtimeInvocationID = ""
 	p.mu.Unlock()
 
 	if p.seq == nil {
@@ -363,6 +370,21 @@ func (p *ActivityProjector) OnTurnStart(ctx context.Context, meta ProjectMeta) {
 	p.activeTurn[meta.TurnID] = &turn
 	p.mu.Unlock()
 	p.seq.Publish(ctx, biz.NewTurnStartedEvent(turn))
+}
+
+// captureRuntimeInvocationID 记录本 turn 框架 run 的真实 invocation id
+// （仅首条根事件生效），写入 activeTurn 使后续 turn 终态 Upsert 携带落库。
+// 空 activeTurn（OnTurnStart 之前的乱序事件）安全 no-op。
+func (p *ActivityProjector) captureRuntimeInvocationID(id string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.runtimeInvocationID != "" {
+		return
+	}
+	p.runtimeInvocationID = id
+	if t := p.activeTurn[p.meta.TurnID]; t != nil {
+		t.RuntimeInvocationID = id
+	}
 }
 
 // Configure sets the ProjectMeta for the current turn WITHOUT emitting events.
@@ -1420,6 +1442,17 @@ func (p *ActivityProjector) ProcessEvent(ctx context.Context, ev *trpcevent.Even
 	if ev == nil || p.seq == nil || p.meta.TaskID == "" {
 		return
 	}
+	// trpc 出库（2026-11-03）：框架 invocation id 不再等于应用 turn id
+	//（fork 的 WithRunInvocationID 补丁随出库移除）。捕获首条根事件的
+	// InvocationID 写入 activeTurn，随 turn 终态落库
+	// turns_v2.runtime_invocation_id（FindTurnEventBoundary 据此匹配
+	// trpc_session_events 的 event->>'invocationId'）。子调用
+	//（AgentTool/graph member）事件经 ParentInvocationID 排除。必须在
+	// ev.Response == nil 早退之前捕获：run 首事件（runner 生命周期）无
+	// Response。
+	if ev.InvocationID != "" && ev.ParentInvocationID == "" {
+		p.captureRuntimeInvocationID(ev.InvocationID)
+	}
 	if ev.Response == nil {
 		return
 	}
@@ -1503,12 +1536,17 @@ func (p *ActivityProjector) processChatChunk(ctx context.Context, ev *trpcevent.
 		// Text and reasoning content
 		text, reasoning := choiceStreamContent(choice, ev.Response.IsPartial)
 		if ev.Response.IsPartial {
-			// GenerationID 透传（W-1）：活性重连 attempt 的重发段据此截断。
+			// 代际标记（2026-11-03 应用层恢复）：活性守卫重连时按框架
+			// invocation Bump streamgen 计数器；此处按事件的 InvocationID
+			// 读取当前代际标签，与守卫侧同源（模型调用 ctx 的
+			// agent.Invocation == 事件 inv.InvocationID）。未重连恒 ""，
+			// 零行为差异；竞态窗口见 internal/streamgen 包注释。
+			gen := streamgen.Label(ev.InvocationID)
 			if reasoning != "" {
-				p.handleReasoningDelta(ctx, reasoning, ev.Response.GenerationID)
+				p.handleReasoningDelta(ctx, reasoning, gen)
 			}
 			if text != "" {
-				p.handleTextDelta(ctx, text, ev.Response.GenerationID)
+				p.handleTextDelta(ctx, text, gen)
 			}
 		} else {
 			// Final chunk: finalize the step even if content is empty.

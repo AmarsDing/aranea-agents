@@ -20,6 +20,7 @@ import (
 )
 
 func (s *TwinOpenAPICompatService) handleWriteMemoryFact(w http.ResponseWriter, r *http.Request) {
+	caller := twinCallerFrom(r.Context())
 	var in twinMemoryFact
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&in); err != nil {
 		writeTwinError(w, http.StatusBadRequest, "invalid json: "+err.Error())
@@ -35,14 +36,20 @@ func (s *TwinOpenAPICompatService) handleWriteMemoryFact(w http.ResponseWriter, 
 		scopeType = "agent"
 		scopeID = in.Key
 	}
-	metaJSON, _ := json.Marshal(in.Metadata)
+	// 来源归因按 caller（P0 多调用方改造）：存量单 token 的 caller 名恒为
+	// "twinmonitor"，历史 SourceKind 数据字节级不变；新调用方各自归因。
+	meta := map[string]any{"source_caller": caller.Name}
+	for k, v := range in.Metadata {
+		meta[k] = v
+	}
+	metaJSON, _ := json.Marshal(meta)
 	if _, err := s.memory.UpsertFactRow(r.Context(), biz.FactUpsert{
 		ScopeType:    scopeType,
 		ScopeID:      scopeID,
 		Statement:    in.Content,
 		Fingerprint:  in.Key,
 		FactKind:     "reference",
-		SourceKind:   "twinmonitor",
+		SourceKind:   caller.Name,
 		MetadataJSON: string(metaJSON),
 	}); err != nil {
 		writeTwinError(w, http.StatusInternalServerError, err.Error())
@@ -70,6 +77,7 @@ func (s *TwinOpenAPICompatService) handleMemoryFactPendingDecision(w http.Respon
 		writeTwinError(w, http.StatusServiceUnavailable, "memory fact pending decider not wired")
 		return
 	}
+	caller := twinCallerFrom(r.Context())
 	var in twinMemoryFactPendingDecision
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&in); err != nil {
 		writeTwinError(w, http.StatusBadRequest, "invalid json: "+err.Error())
@@ -83,9 +91,10 @@ func (s *TwinOpenAPICompatService) handleMemoryFactPendingDecision(w http.Respon
 			decision = biz.MemoryFactDecisionApprove
 		}
 	}
-	approver := "twinmonitor"
+	// 审批人归因按 caller（存量单 token 恒为 "twinmonitor"，审计字段不变）。
+	approver := caller.Name
 	if in.ApproverID != 0 {
-		approver = "twinmonitor:" + strconv.FormatUint(uint64(in.ApproverID), 10)
+		approver = caller.Name + ":" + strconv.FormatUint(uint64(in.ApproverID), 10)
 	}
 	applied, replayErr := s.mfpDecider.Decide(r.Context(), r.PathValue("id"), decision, approver, in.Comment)
 	if !applied {

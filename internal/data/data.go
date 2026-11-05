@@ -51,6 +51,7 @@ var ProviderSet = wire.NewSet(
 	NewPluginCostGuardUsageRepo,
 	NewMCPServerRepo,
 	NewMCPServerUserCredentialRepo,
+	NewTwinIdempotencyRepo,
 	NewSkillRepo,
 	NewSkillTagRepo,
 	NewSkillImportJobStore,
@@ -206,6 +207,8 @@ var ProviderSet = wire.NewSet(
 	NewCodingAgentRepo,
 	NewCodingProjectRepo,
 	NewCodingTaskRepo,
+	// 03 P0 ④：统一步骤事件（raw-SQL，返回 biz 接口）。
+	NewCodingTaskEventRepo,
 	// 79-runtime-governance R6：Fork-from-Turn 复制原语（raw-SQL，返回 biz 接口）。
 	NewSessionForkRepo,
 )

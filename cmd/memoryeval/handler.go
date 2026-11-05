@@ -37,6 +37,11 @@ type evalServer struct {
 	maxImageBytes int64
 	maxMediaBytes int64
 
+	// captioner generates VLM text captions for inline images
+	// (EVAL_MEDIA_VLM_*); nil keeps the caption-only ack route, making the
+	// server byte-identical to the textual-run behavior.
+	captioner *evalVLMCaptioner
+
 	// searchAuditPath enables local, metadata-only Search diagnostics. It is
 	// disabled by default and never records returned memory or patch content.
 	searchAuditPath string
@@ -65,6 +70,7 @@ func newEvalServer(store biz.EvalMemoryStore, token string, lg loggateway.Logger
 	if n := envInt64("EVAL_MAX_MEDIA_BYTES", 0); n > 0 {
 		s.maxMediaBytes = n
 	}
+	s.captioner = newEvalVLMCaptionerFromEnv(s.lg, s.maxImageBytes)
 	return s
 }
 
@@ -305,12 +311,25 @@ func (s *evalServer) handleAdd(w http.ResponseWriter, r *http.Request) {
 	mediaAck := 0
 	mediaBudget := s.maxMediaBytes
 	unknown := map[string]int{}
+	// Multimodal: caption all contract-valid images up front (bounded by the
+	// per-request budget). Nil when the VLM component is disabled.
+	captions := s.captioner.captionAll(r.Context(), collectEvalCaptionJobs(req.Messages))
 	for i, m := range req.Messages {
 		for _, typ := range m.Content.unknownTypes {
 			unknown[typ]++
 		}
 		body := strings.TrimSpace(m.body())
 		parts := s.persistMediaParts(req.RequestID, req.UserID, i, m.Content.images, &mediaAck, &mediaBudget)
+		// Captions become ordinary text atoms: an image-only message with a
+		// successful caption now stores searchable evidence instead of
+		// acknowledge-only (Q23 still holds when captioning is off/failed).
+		if lines := evalCaptionLines(i, m.Content.images, captions); lines != "" {
+			if body != "" {
+				body += "\n" + lines
+			} else {
+				body = lines
+			}
+		}
 		if body == "" {
 			continue
 		}
@@ -492,9 +511,25 @@ func (s *evalServer) handleSearch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	req.UserID = strings.TrimSpace(req.UserID)
-	// query may be a string or a ContentPart array; image parts carry no text
-	// and are ignored by the caption-only retrieval route.
+	// query may be a string or a ContentPart array. With the VLM component
+	// enabled, query images are captioned and folded into the query text,
+	// so an image-only question can retrieve captioned memories; without it,
+	// image parts are ignored exactly as the caption-only route did.
 	query := strings.TrimSpace(req.Query.joinedQuery())
+	if s.captioner != nil && len(req.Query.images) > 0 {
+		jobs := collectEvalCaptionJobs([]rawMessage{{Content: req.Query}})
+		if caps := s.captioner.captionAll(r.Context(), jobs); len(caps) > 0 {
+			extra := make([]string, 0, len(caps))
+			for _, img := range req.Query.images {
+				if cpt, ok := caps[evalImageKey{msg: 0, part: img.Index}]; ok {
+					extra = append(extra, cpt)
+				}
+			}
+			if len(extra) > 0 {
+				query = strings.TrimSpace(query + " " + strings.Join(extra, " "))
+			}
+		}
+	}
 	if req.UserID == "" {
 		writeJSON(w, http.StatusBadRequest, searchResponse{Data: []biz.EvalMemoryItem{}, Error: "user_id is required"})
 		return

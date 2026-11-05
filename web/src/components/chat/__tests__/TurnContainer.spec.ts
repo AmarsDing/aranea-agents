@@ -208,3 +208,4 @@ describe('TurnContainer.visibleSteps — showToolCalls action filtering', () => 
     expect(wrapper.findAll('.act-activity')).toHaveLength(1);
   });
 });
+

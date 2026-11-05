@@ -79,9 +79,19 @@ func stripForkPrefixSQL(d Dialect, col string) string {
 }
 
 func (r *sessionForkRepo) FindTurnEventBoundary(ctx context.Context, sessionID, turnID string) (int64, bool, error) {
-	// 多代 fork：分叉点为继承 turn 时 id 带 fk 前缀，剥离后匹配复制事件的
-	// 无前缀 invocationId（根会话 turn id 无前缀，剥离为恒等）。
-	turnID = stripForkIDPrefixes(turnID)
+	// trpc 出库（2026-11-03, migration 20261307）：框架 invocation id 不再
+	// 恒等于应用 turn id（fork 的 WithRunInvocationID 补丁随出库移除）。
+	// 新行的真实 invocation id 由 v2 projector 捕获落库于
+	// turns_v2.runtime_invocation_id；迁移前旧行（列为 ''）的框架事件
+	// invocationId 恒等于 turn id，多代 fork 时继承 turn 的 id 带 fk 前缀
+	//（剥离后匹配复制事件的无前缀 invocationId）。
+	invID, err := r.resolveRuntimeInvocationID(ctx, sessionID, turnID)
+	if err != nil {
+		return 0, false, err
+	}
+	if invID == "" {
+		invID = stripForkIDPrefixes(turnID)
+	}
 	// JSONExtract：PG COALESCE(NULLIF(event::text,'')::jsonb,...)->>'invocationId'。
 	invExpr := r.data.Dialect().JSONExtract("event", "invocationId")
 	q := r.data.Dialect().RenumberPlaceholders(`
@@ -89,10 +99,30 @@ func (r *sessionForkRepo) FindTurnEventBoundary(ctx context.Context, sessionID, 
 		WHERE session_id = ? AND deleted_at IS NULL AND ` + invExpr + ` = ?`)
 	var count int
 	var boundary int64
-	if err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx), q, []any{sessionID, turnID}, &count, &boundary); err != nil {
+	if err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx), q, []any{sessionID, invID}, &count, &boundary); err != nil {
 		return 0, false, err
 	}
 	return boundary, count > 0, nil
+}
+
+// resolveRuntimeInvocationID 读取 turns_v2.runtime_invocation_id（分叉 turn
+// 对应框架 run 的真实 invocation id）。行不存在（v2 写入缺失的遗留会话）
+// 或列为 ”（迁移前旧行）时返回空串，由调用方回退到旧语义；其余错误上抛。
+// turnID 按调用方原样匹配：fork 会话内继承 turn 的 id 带 fk 前缀，命中的
+// 复制行已 verbatim 携带原 invocation id（CopyV2Records 不对本列加前缀，
+// 与复制事件保留原 invocationId 一致）。
+func (r *sessionForkRepo) resolveRuntimeInvocationID(ctx context.Context, sessionID, turnID string) (string, error) {
+	var invID string
+	err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx), r.data.Dialect().RenumberPlaceholders(`
+		SELECT runtime_invocation_id FROM turns_v2 WHERE id = ? AND session_id = ?`),
+		[]any{turnID, sessionID}, &invID)
+	if err != nil {
+		if apierror.IsCode(err, apierror.CodeNotFound) {
+			return "", nil
+		}
+		return "", err
+	}
+	return invID, nil
 }
 
 func (r *sessionForkRepo) CopyFrameworkEvents(ctx context.Context, srcSessionID, dstSessionID string, boundary int64) (int, error) {
@@ -237,10 +267,10 @@ func (r *sessionForkRepo) CopyV2Records(ctx context.Context, srcSessionID, dstSe
 	// turns：边界 task 之前全量 + 边界 task 内 seq ≤ forkTurn.seq。
 	// JOIN 命中的是源行（复制行 id 带新前缀，不会被 t.task_id = k.id 匹配）。
 	turnRes, err := write.ExecContext(ctx, d.RenumberPlaceholders(`
-		INSERT INTO turns_v2 (id, task_id, session_id, spirit_session_id, parent_turn_id, agent_key, team_id, team_stage_id, seq, version, status, started_at, completed_at)
+		INSERT INTO turns_v2 (id, task_id, session_id, spirit_session_id, parent_turn_id, agent_key, team_id, team_stage_id, seq, version, status, started_at, completed_at, runtime_invocation_id)
 		SELECT ? || `+stripForkPrefixSQL(d, "t.id")+`, ? || `+stripForkPrefixSQL(d, "t.task_id")+`, ?, ?,
 			CASE WHEN t.parent_turn_id = '' THEN '' ELSE ? || `+stripForkPrefixSQL(d, "t.parent_turn_id")+` END,
-			t.agent_key, t.team_id, t.team_stage_id, t.seq, t.version, t.status, t.started_at, t.completed_at
+			t.agent_key, t.team_id, t.team_stage_id, t.seq, t.version, t.status, t.started_at, t.completed_at, t.runtime_invocation_id
 		FROM turns_v2 t JOIN tasks_v2 k ON k.id = t.task_id
 		WHERE t.session_id = ? AND (k.seq < ? OR (k.seq = ? AND t.seq <= ?))
 		ORDER BY k.seq, t.seq`),

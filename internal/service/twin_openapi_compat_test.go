@@ -27,11 +27,14 @@ func (twinNoopLogger) Warn(string, ...loggateway.Field)             {}
 func (twinNoopLogger) Error(string, ...loggateway.Field)            {}
 func (l twinNoopLogger) With(...loggateway.Field) loggateway.Logger { return l }
 
-// newTwinFacadeForTest 构造仅含 token/订阅表的门面（不触达 Usecase 依赖）。
+// newTwinFacadeForTest 构造仅含 caller 注册表/订阅表的门面（不触达 Usecase 依赖）。
+// token 注册为存量兼容 caller（name=twinmonitor，系统级），与单 token 环境变量语义一致。
 func newTwinFacadeForTest(token string) *TwinOpenAPICompatService {
 	return &TwinOpenAPICompatService{
-		token:   token,
-		lg:      twinNoopLogger{},
+		lg: twinNoopLogger{},
+		sec: &twinSecurity{
+			callers: []*twinCaller{{Name: twinLegacyCallerName, Token: token}},
+		},
 		hc:      &http.Client{Timeout: 5 * time.Second},
 		subs:    make(map[string]*twinRunSub),
 		idempot: make(map[string]string),
@@ -220,10 +223,11 @@ func TestTwinGraphInNamespace(t *testing.T) {
 	}
 }
 
-// TestEnsureTwinGraphSource 打标为合并语义：nil 初始化、保留 twin_seed 等既有键、覆写 source。
+// TestEnsureTwinGraphSource 打标为合并语义：nil 初始化、保留 twin_seed 等既有键、
+// 覆写 source 为 caller 名（系统级 caller=twinmonitor 与存量数据一致）。
 func TestEnsureTwinGraphSource(t *testing.T) {
 	def := &biz.GraphDefinition{}
-	ensureTwinGraphSource(def)
+	ensureTwinGraphSource(def, twinSourceTag)
 	if def.Metadata["source"] != twinSourceTag {
 		t.Fatalf("nil metadata should be initialized and tagged, got %v", def.Metadata)
 	}
@@ -232,11 +236,18 @@ func TestEnsureTwinGraphSource(t *testing.T) {
 		"source":    "stale",
 		"twin_seed": map[string]any{"key": "alarm-diagnosis"},
 	}}
-	ensureTwinGraphSource(def)
+	ensureTwinGraphSource(def, twinSourceTag)
 	if def.Metadata["source"] != twinSourceTag {
 		t.Fatalf("source should be overwritten, got %v", def.Metadata["source"])
 	}
 	if _, ok := def.Metadata["twin_seed"].(map[string]any); !ok {
 		t.Fatalf("twin_seed should be preserved, got %v", def.Metadata)
+	}
+
+	// 租户 caller 打标为自身名。
+	def = &biz.GraphDefinition{}
+	ensureTwinGraphSource(def, "hotcraftflow")
+	if def.Metadata["source"] != "hotcraftflow" {
+		t.Fatalf("tenant caller tag wrong, got %v", def.Metadata["source"])
 	}
 }

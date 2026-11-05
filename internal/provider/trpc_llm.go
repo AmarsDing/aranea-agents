@@ -623,8 +623,8 @@ func wrapFailover(cfg ProviderModelConfig, rt *RoundTrip, primary trpcmodel.Mode
 		return primary, nil
 	}
 	fo, err := trpcfailover.New(
-		trpcfailover.WithCandidates(candidates...),
-		trpcfailover.WithSwitchCallback(haSwitchCallback(lg, flowBusFromRT(rt), "failover", "system.provider.ha_failover")),
+		trpcfailover.WithCandidates(wrapFailoverCandidatesForObserve(candidates,
+			haSwitchCallback(lg, flowBusFromRT(rt), "failover", "system.provider.ha_failover"))...),
 	)
 	if err != nil {
 		lg.Warn("HA failover 构建失败，回退到主模型", loggateway.StepID("provider.ha_failover_build_fail"), loggateway.Err(err))
@@ -653,8 +653,8 @@ func wrapHedge(cfg ProviderModelConfig, rt *RoundTrip, primary trpcmodel.Model, 
 		return primary, nil
 	}
 	hedgeOpts := []trpchedge.Option{
-		trpchedge.WithCandidates(candidates...),
-		trpchedge.WithSwitchCallback(haSwitchCallback(lg, flowBusFromRT(rt), "hedge", "system.provider.ha_hedge")),
+		trpchedge.WithCandidates(wrapHedgeCandidatesForObserve(candidates,
+			haSwitchCallback(lg, flowBusFromRT(rt), "hedge", "system.provider.ha_hedge"))...),
 	}
 	if cfg.HA.HedgeDelayMs > 0 {
 		hedgeOpts = append(hedgeOpts, trpchedge.WithDelay(time.Duration(cfg.HA.HedgeDelayMs)*time.Millisecond))

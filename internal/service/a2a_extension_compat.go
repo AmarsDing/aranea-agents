@@ -117,7 +117,10 @@ func (s *A2AExtensionCompatService) ensureServer(ctx context.Context) error {
 		trpca2a.WithHost(host),
 		trpca2a.WithUserIDHeader("X-User-ID"),
 		// V-2：验签舰队内签名身份头，恢复 aranea→aranea 身份传递。
-		trpca2a.WithUserIDHeaderHMACSecret(a2apkg.IdentityHMACSecretFromEnv()),
+		// 出库后为应用层 pre-auth 中间件实现：未签名的非匿名身份头在
+		// defaultAuthProvider 之前被剥离（internal/a2a/identity_hmac_middleware.go）。
+		trpca2a.WithPreAuthA2AMiddleware(a2apkg.NewSignedIdentityPreAuthMiddleware(
+			a2apkg.IdentityHMACSecretFromEnv(), "X-User-ID", agentCard.URL)),
 	}
 
 	srv, err := trpca2a.New(opts...)

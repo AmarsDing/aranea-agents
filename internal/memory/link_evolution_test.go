@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/memory/memx"
 	"aranea-agents/pkg/loggateway"
 
 	trpcmemory "trpc.group/trpc-go/trpc-agent-go/memory"
@@ -246,14 +247,16 @@ func withKeywords(keywords string) func(map[string]any) {
 	return func(m map[string]any) { m["keywords"] = keywords }
 }
 
-func makeEvolutionEntry(id, content string) *trpcmemory.Entry {
-	return &trpcmemory.Entry{
-		ID:      id,
-		AppName: "agent-1",
-		Memory: &trpcmemory.Memory{
+func makeEvolutionEntry(id, content string) *memx.Entry {
+	return &memx.Entry{
+		Entry: trpcmemory.Entry{
+			ID:      id,
+			AppName: "agent-1",
+			UserID:  "user-1",
+		},
+		Memory: &memx.Memory{
 			Memory: content,
 		},
-		UserID: "user-1",
 	}
 }
 

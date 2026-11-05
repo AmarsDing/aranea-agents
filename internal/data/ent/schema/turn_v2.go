@@ -34,6 +34,7 @@ func (TurnV2) Fields() []ent.Field {
 		field.String("status").MaxLen(32).Default("running"),
 		field.Time("started_at").Default(timeNow),
 		field.Time("completed_at").Optional().Nillable(),
+		field.String("runtime_invocation_id").MaxLen(64).Default("").Comment("framework run invocation id (trpc-agent-go); empty for legacy rows pre-20261307"),
 	}
 }
 

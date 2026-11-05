@@ -212,5 +212,9 @@ func (m *Manager) RunnerPluginsForAgent(agentID, workspaceID string) []trpcplugi
 		trpctoolcallid.New(),
 		trpcmessagemerger.New(),
 	)
+	// 出库补偿：AfterTool 哨兵必须注册在全部业务插件之后，阻断上游
+	// finalizeAfterToolResult 把原始结果捏造为 CustomResult 而短路
+	// agent 级 AfterTool 链（见 after_tool_sentinel.go）。
+	plugins = append(plugins, NewAfterToolSentinelPlugin())
 	return plugins
 }

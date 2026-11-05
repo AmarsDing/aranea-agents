@@ -13,7 +13,7 @@ import (
 // 项目的 BuildSystemPrompt() 使用 strings.Builder 结构化拼接 capability cues/sections/runtime cues，
 // 而非模板字符串 + 变量替换。Render() 适用于模板化 Agent 定义，当前项目 prompt 架构非模板化。
 // 解除方案：Phase 1 AgentFactory 实施时重新评估（若引入模板化 Agent 定义则接入）。
-// 详见 docs/trpc-agent-go/alignment-plan.md §十一/B-5。
+//（原参考文档 docs/trpc-agent-go/alignment-plan.md 随 2026-11-03 trpc 出库一并删除。）
 
 // promptRequiredPlaceholders lists the placeholders that are expected in
 // RenderPromptTemplate and RenderCapabilityCue templates. If any of these

@@ -1,20 +1,27 @@
 // Package service — twin_openapi_compat.go
 //
-// TwinOpenAPICompatService 是 twinmonitor（AI 运维治理面）对接 aranea 的
-// OpenAPI 兼容门面：将 twinmonitor AraneaClient 期望的 /api/v1/* 契约映射到
-// aranea 内部 Usecase 能力（agents/graphs/runs/memory/quota/metrics），
-// 并实现 biz.GraphRunEventSink 把图执行生命周期事件以 HMAC 签名 webhook
-// 回传 twinmonitor，形成「监控 → 分析 → 执行 → 回写」闭环。
+// TwinOpenAPICompatService 是业务系统（twinmonitor / HotCraftFlow AGT /
+// NovaTrader harness 等）对接 aranea 的机器面 OpenAPI 兼容门面：将消费方
+// 期望的 /api/v1/* 契约映射到 aranea 内部 Usecase 能力（agents/graphs/runs/
+// memory/quota/metrics），并实现 biz.GraphRunEventSink 把图执行生命周期
+// 事件以 HMAC 签名 webhook 回传消费方，形成「监控 → 分析 → 执行 → 回写」闭环。
 //
-// 鉴权：独立于 JWT 用户体系，使用机器对机器 Bearer token
-// （环境变量 ARANEA_TWINOPENAPI_TOKEN；未配置时门面禁用，路由不注册）。
-// 路由前缀 /api/v1/ 下的门面子树在 server 层注册为 noAuth（由本服务自校验），
-// 不影响 /api/v1/admin/* 既有 JWT 保护。
+// 鉴权（P0 多调用方改造，2026-11-02）：独立于 JWT 用户体系，使用机器对机器
+// Bearer token——单 token 兼容面（环境变量 ARANEA_TWINOPENAPI_TOKEN，
+// caller 恒为 "twinmonitor"）+ 多调用方注册表（ARANEA_TWINOPENAPI_CALLERS
+// JSON，token→name/workspace_id 绑定）。guard 认证后 caller 入请求上下文，
+// 各 handler 按租户门禁（读面=共享+自有；写面=仅自有）。
+// 未配置任何 token 时门面禁用，路由不注册；路由前缀 /api/v1/ 下的门面子树
+// 在 server 层注册为 noAuth（由本服务自校验），不影响 /api/v1/admin/* 既有
+// JWT 保护。
+//
+// 安全闸：
+//   - webhook_url 提交闸 + 拨号闸（twin_openapi_webhook.go）；
+//   - 幂等键持久化（twin_openapi_idempotency 表，biz.TwinIdempotencyStore）。
 package service
 
 import (
 	"context"
-	"crypto/subtle"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -31,10 +38,10 @@ import (
 	"aranea-agents/pkg/loggateway"
 )
 
-// TwinOpenAPITokenEnv 是门面机器 token 的环境变量名。
+// TwinOpenAPITokenEnv 是门面机器 token 的环境变量名（存量单 token 兼容面）。
 const TwinOpenAPITokenEnv = "ARANEA_TWINOPENAPI_TOKEN"
 
-// twinRunSub 单次执行的 webhook 订阅（内存态；进程重启后由 twinmonitor
+// twinRunSub 单次执行的 webhook 订阅（内存态；进程重启后由消费方
 // 兜底轮询 GET /api/v1/runs/{id} 补齐终态）。
 type twinRunSub struct {
 	WebhookURL string
@@ -55,7 +62,15 @@ type twinNodeMeta struct {
 	Type string
 }
 
-// TwinOpenAPICompatService twinmonitor OpenAPI 兼容门面。
+// twinSecurity 门面安全面（caller 注册表 + webhook 白名单 + 幂等存储）。
+// 独立成组以守 AS-COG-01 struct 字段上限。
+type twinSecurity struct {
+	callers []*twinCaller
+	webhook *webhookAllowPolicy
+	idem    biz.TwinIdempotencyStore
+}
+
+// TwinOpenAPICompatService 机器面 OpenAPI 兼容门面。
 // 同时实现 biz.GraphRunEventSink（构造时自注册到 GraphExecutionUsecase）。
 type TwinOpenAPICompatService struct {
 	agents     *biz.AgentUsecase
@@ -66,19 +81,20 @@ type TwinOpenAPICompatService struct {
 	llmModels  *biz.LlmProviderModelUsecase
 	mfpDecider *biz.MemoryFactPendingDecider
 	lg         loggateway.Logger
-
-	token   string
-	mux     *http.ServeMux
-	startAt time.Time
-	hc      *http.Client
+	sec        *twinSecurity
+	mux        *http.ServeMux
+	startAt    time.Time
+	hc         *http.Client
 
 	mu      sync.Mutex
 	subs    map[string]*twinRunSub
-	idempot map[string]string // idempotency_key → run_id
+	idempot map[string]string // idempotency_key → run_id（进程内热缓存；权威存储为 sec.idem）
 }
 
 // NewTwinOpenAPICompatService 创建门面并向 GraphExecutionUsecase 注册事件水槽。
-// token 取自环境变量 ARANEA_TWINOPENAPI_TOKEN；为空时 Enabled() 返回 false。
+// caller 注册表取自环境（见 twin_openapi_callers.go）；无任何 token 时
+// Enabled() 返回 false。idem 为幂等键持久化端口（nil 时退化为进程内缓存，
+// 仅测试/装配缺省场景；生产经 wire 注入）。
 func NewTwinOpenAPICompatService(
 	agents *biz.AgentUsecase,
 	graphs *biz.GraphUsecase,
@@ -87,8 +103,10 @@ func NewTwinOpenAPICompatService(
 	monitorUC *monitor.Usecase,
 	llmModels *biz.LlmProviderModelUsecase,
 	mfpDecider *biz.MemoryFactPendingDecider,
+	idem biz.TwinIdempotencyStore,
 	lg loggateway.Logger,
 ) *TwinOpenAPICompatService {
+	webhookPolicy := loadWebhookAllowPolicy(lg)
 	s := &TwinOpenAPICompatService{
 		agents:     agents,
 		graphs:     graphs,
@@ -98,11 +116,16 @@ func NewTwinOpenAPICompatService(
 		llmModels:  llmModels,
 		mfpDecider: mfpDecider,
 		lg:         lg,
-		token:      strings.TrimSpace(os.Getenv(TwinOpenAPITokenEnv)),
-		startAt:    time.Now(),
-		hc:         &http.Client{Timeout: 10 * time.Second},
-		subs:       make(map[string]*twinRunSub),
-		idempot:    make(map[string]string),
+		sec: &twinSecurity{
+			callers: loadTwinCallers(lg),
+			webhook: webhookPolicy,
+			idem:    idem,
+		},
+		startAt: time.Now(),
+		// 投递客户端走 webhook 拨号闸（拒连非公网白名单/元数据地址）。
+		hc:      webhookPolicy.httpClient(10 * time.Second),
+		subs:    make(map[string]*twinRunSub),
+		idempot: make(map[string]string),
 	}
 	s.routes()
 	if graphs != nil && graphs.ExecUC() != nil {
@@ -113,17 +136,47 @@ func NewTwinOpenAPICompatService(
 		graphs.ExecUC().SetGraphUsageRecorder(&twinGraphUsageRecorder{usageUC: usageUC, lg: lg})
 	}
 	if s.Enabled() {
-		lg.Info("twinmonitor OpenAPI 兼容门面已启用",
-			loggateway.StepID("twinopenapi.enabled"), loggateway.Str("path", s.Path()))
+		names := make([]string, 0, len(s.sec.callers))
+		for _, c := range s.sec.callers {
+			names = append(names, c.Name)
+		}
+		lg.Info("twinopenapi 机器面已启用",
+			loggateway.StepID("twinopenapi.enabled"),
+			loggateway.Str("path", s.Path()),
+			loggateway.Str("callers", strings.Join(names, ",")))
 	} else {
-		lg.Warn("twinmonitor OpenAPI 兼容门面未启用（缺少 "+TwinOpenAPITokenEnv+"）",
+		lg.Warn("twinopenapi 机器面未启用（缺少 "+TwinOpenAPITokenEnv+"/"+TwinOpenAPICallersEnv+"）",
 			loggateway.StepID("twinopenapi.disabled"))
 	}
 	return s
 }
 
-// Enabled 报告门面是否可用（token 已配置）。
-func (s *TwinOpenAPICompatService) Enabled() bool { return s != nil && s.token != "" }
+// callerList 注册表访问（nil-safe，测试直构门面时 sec 可能为空）。
+func (s *TwinOpenAPICompatService) callerList() []*twinCaller {
+	if s == nil || s.sec == nil {
+		return nil
+	}
+	return s.sec.callers
+}
+
+// webhookPolicyOf 白名单策略访问（nil-safe；缺省按默认「内网可用」档）。
+func (s *TwinOpenAPICompatService) webhookPolicyOf() *webhookAllowPolicy {
+	if s == nil || s.sec == nil || s.sec.webhook == nil {
+		return &webhookAllowPolicy{}
+	}
+	return s.sec.webhook
+}
+
+// idemStore 幂等存储访问（nil-safe；未接线时 handleCreateRun 退化为进程内缓存）。
+func (s *TwinOpenAPICompatService) idemStore() biz.TwinIdempotencyStore {
+	if s == nil || s.sec == nil {
+		return nil
+	}
+	return s.sec.idem
+}
+
+// Enabled 报告门面是否可用（至少一个 caller token 已配置）。
+func (s *TwinOpenAPICompatService) Enabled() bool { return len(s.callerList()) > 0 }
 
 // Path 返回注册前缀。
 func (s *TwinOpenAPICompatService) Path() string { return "/api/v1/" }
@@ -144,6 +197,7 @@ func (s *TwinOpenAPICompatService) routes() {
 	mux.HandleFunc("POST /api/v1/graphs", s.guard(s.handleCreateGraph))
 	mux.HandleFunc("GET /api/v1/graphs/{id}", s.guard(s.handleGetGraph))
 	mux.HandleFunc("PUT /api/v1/graphs/{id}", s.guard(s.handleUpdateGraph))
+	mux.HandleFunc("GET /api/v1/runs", s.guard(s.handleListRuns))
 	mux.HandleFunc("POST /api/v1/runs", s.guard(s.handleCreateRun))
 	mux.HandleFunc("GET /api/v1/runs/{id}", s.guard(s.handleGetRun))
 	mux.HandleFunc("POST /api/v1/runs/{id}/cancel", s.guard(s.handleCancelRun))
@@ -155,21 +209,25 @@ func (s *TwinOpenAPICompatService) routes() {
 	s.mux = mux
 }
 
-// guard 机器 token 校验（常量时间比较防时序侧信道）。
+// guard 机器 token 校验（常量时间比较防时序侧信道）；认证后 caller 入请求上下文。
 func (s *TwinOpenAPICompatService) guard(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		authz := strings.TrimSpace(r.Header.Get("Authorization"))
 		token, found := strings.CutPrefix(authz, "Bearer ")
-		if !found || subtle.ConstantTimeCompare([]byte(strings.TrimSpace(token)), []byte(s.token)) != 1 {
+		var caller *twinCaller
+		if found {
+			caller = s.authenticate(strings.TrimSpace(token))
+		}
+		if caller == nil {
 			writeTwinError(w, http.StatusUnauthorized, "invalid api token")
 			return
 		}
-		next(w, r)
+		next(w, r.WithContext(withTwinCaller(r.Context(), caller)))
 	}
 }
 
 // ---------------------------------------------------------------------------
-// 健康与清单
+// 健康
 // ---------------------------------------------------------------------------
 
 func (s *TwinOpenAPICompatService) handleHealth(w http.ResponseWriter, r *http.Request) {
@@ -203,415 +261,11 @@ func twinFacadeVersion() string {
 	return "dev"
 }
 
-func (s *TwinOpenAPICompatService) handleListAgents(w http.ResponseWriter, r *http.Request) {
-	res, err := s.agents.List(r.Context(), biz.AgentListQuery{Limit: 1000})
-	if err != nil {
-		writeTwinError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	// 注：Agent 清单保持全量返回（不做 ?source= 命名空间过滤）——twin 种子同步
-	// 按名匹配的 12 个预设 Agent 实为 aranea 侧 pkg 预设资产，无 twin 标签载体
-	// （agents 表无 metadata_json 列，config_json 被 tools/skills 投影占用）；
-	// 且 Agent 侧无覆盖写路径，全量可见无正确性风险。命名空间隔离仅落 Graph 侧。
-	items := make([]map[string]any, 0, len(res.Items))
-	for _, a := range res.Items {
-		def := twinAgentDefinition(a)
-		// 附带真实生效面（runtime settings 的 tools_allow），供 twinmonitor 漂移
-		// 比对「声明 vs 生效」；读失败不阻塞清单返回（降级为缺省空面，会触发
-		// 一次漂移更新自愈）。
-		if st, serr := s.agents.GetAgentRuntimeSettings(r.Context(), a.ID); serr == nil {
-			var allow []string
-			if json.Unmarshal([]byte(st.ToolsAllowJSON), &allow) == nil {
-				def["tools_allow"] = allow
-			}
-		}
-		items = append(items, map[string]any{
-			"id":          a.ID,
-			"name":        a.DisplayName,
-			"description": a.AgentDescription,
-			"definition":  def,
-		})
-	}
-	writeTwinJSON(w, http.StatusOK, map[string]any{"items": items})
-}
-
-// twinToolKeyAliases 把 TwinMonitor aiops 内部 MCP 工具名（alarm.query 等）
-// 映射为 aranea 目录内的 twin_* 工具 key（internal/tools/twinops）。
-// 2026-09-01 修复：此前种子同步仅把 tool_whitelist 写入 metadata_json 展示字段，
-// 从未落 agent_runtime_settings.tools_allow_json，导致全部预设 Agent 在 aranea 侧
-// effective-tools 面为空——spirit 组队无兵可用、tool_search 搜不到 twin_*。
-// 未映射的 aiops 工具名（server.exec_command / network.* / db.* / diagnose.* 等
-// 进程内 MCP 工具）跳过并记 warn，待 twinops 补齐对应工具后扩表。
-var twinToolKeyAliases = map[string][]string{
-	"alarm.query":        {"twin_alarm_query"},
-	"alarm.get":          {"twin_alarm_get"},
-	"alarm.ack":          {"twin_alarm_ack"},
-	"alarm.rule_get":     {"twin_alarm_rule_get"},
-	"asset.get":          {"twin_device_get", "twin_device_search"},
-	"asset.search":       {"twin_device_search"},
-	"metric.query":       {"twin_device_metrics"},
-	"line.status":        {"twin_line_status"},
-	"line.events":        {"twin_line_events"},
-	"line.probe":         {"twin_line_probe"},
-	"collector.status":   {"twin_collector_status"},
-	"inspection.query":   {"twin_inspection_query"},
-	"remediation.status": {"twin_remediation_status"},
-	"config.diff":        {"twin_config_diff"},
-	"config.push":        {"twin_config_push"},
-	"config.rollback":    {"twin_config_rollback"},
-	// knowledge.search → aranea 自有 knowledge_search（知识检索语义一致）。
-	"knowledge.search": {"knowledge_search"},
-}
-
-// mapTwinToolWhitelist 转换 aiops 工具白名单为 aranea 工具 key 集（去重、保序）。
-func mapTwinToolWhitelist(whitelist []string, lg loggateway.Logger) []string {
-	seen := map[string]bool{}
-	out := make([]string, 0, len(whitelist))
-	// datetime 基础时间感知对诊断/巡检类专项必备，随专项工具一并授予。
-	seen["datetime"] = true
-	out = append(out, "datetime")
-	for _, raw := range whitelist {
-		key := strings.TrimSpace(raw)
-		if key == "" {
-			continue
-		}
-		mapped, ok := twinToolKeyAliases[key]
-		if !ok {
-			if lg != nil {
-				lg.Warn("twin seed tool_whitelist key has no aranea twin_* mapping, skipped",
-					loggateway.Str("tool_key", key))
-			}
-			continue
-		}
-		for _, m := range mapped {
-			if !seen[m] {
-				seen[m] = true
-				out = append(out, m)
-			}
-		}
-	}
-	return out
-}
-
-// twinAgentDefinition 组装漂移比对用的 Agent 定义视图。
-// 种子字段（description/system_prompt/role/model_policy/temperature/tool_whitelist/tags）
-// 存于 metadata_json（handleCreateAgent 写入），须透传给 twinmonitor 漂移比对。
-func twinAgentDefinition(a biz.Agent) map[string]any {
-	def := map[string]any{
-		"agent_key": a.AgentKey,
-		"provider":  a.Provider,
-		"model":     a.Model,
-		"roles":     a.Roles,
-		"status":    a.Status,
-	}
-	if a.ConfigJSON != "" {
-		var cfg map[string]any
-		if json.Unmarshal([]byte(a.ConfigJSON), &cfg) == nil {
-			def["config"] = cfg
-		}
-	}
-	// 种子元数据透传：twinmonitor seedAgentDrifted 逐字段比对依赖这些键。
-	if a.MetadataJSON != "" {
-		var meta map[string]any
-		if json.Unmarshal([]byte(a.MetadataJSON), &meta) == nil {
-			for _, k := range []string{"description", "system_prompt", "role", "model_policy", "temperature", "tool_whitelist", "tags"} {
-				if v, ok := meta[k]; ok {
-					def[k] = v
-				}
-			}
-		}
-	}
-	return def
-}
-
-// twinAgentInput twinmonitor Agent 种子同步载荷（对齐 biz.AraneaAgentInput）。
-type twinAgentInput struct {
-	Name          string         `json:"name"`
-	Role          string         `json:"role"`
-	Description   string         `json:"description"`
-	SystemPrompt  string         `json:"system_prompt"`
-	ModelPolicy   string         `json:"model_policy"`
-	Temperature   float64        `json:"temperature"`
-	ToolWhitelist []string       `json:"tool_whitelist"`
-	Tags          []string       `json:"tags"`
-	Metadata      map[string]any `json:"metadata"`
-	// AgentKey TwinMonitor 预设 Agent 稳定键（ops_*）；图节点 agent_name 按 agent_key 解析，
-	// 缺失时 CreateWithFilesAndSettings 校验拒绝（2026-09-01 种子同步 12/13 失败根因）。
-	AgentKey string `json:"agent_key"`
-}
-
-func (s *TwinOpenAPICompatService) handleCreateAgent(w http.ResponseWriter, r *http.Request) {
-	var in twinAgentInput
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&in); err != nil {
-		writeTwinError(w, http.StatusBadRequest, "invalid json: "+err.Error())
-		return
-	}
-	if strings.TrimSpace(in.Name) == "" {
-		writeTwinError(w, http.StatusBadRequest, "name is required")
-		return
-	}
-	meta, _ := json.Marshal(map[string]any{
-		"source":         "twinmonitor",
-		"model_policy":   in.ModelPolicy,
-		"temperature":    in.Temperature,
-		"tool_whitelist": in.ToolWhitelist,
-		"tags":           in.Tags,
-		"metadata":       in.Metadata,
-	})
-	agent := biz.Agent{
-		AgentKey:         strings.TrimSpace(in.AgentKey),
-		DisplayName:      in.Name,
-		AgentDescription: in.Description,
-		MetadataJSON:     string(meta),
-		// Kind/Source 显式归类：TwinMonitor 种子同步的预设 Agent 属生态预设（不可直接删除，
-		// 由种子同步全生命周期管理）；缺省时 agent_repo_write 无条件 SetKind("") 会冲掉
-		// ent 默认值触发枚举校验失败（2026-09-01 种子同步 12/13 失败根因之二）。
-		Kind:   "ecosystem_preset",
-		Source: "imported",
-	}
-	if in.Role != "" {
-		agent.Roles = []string{in.Role}
-	}
-	// 工具白名单落 runtime settings（effective-tools 生效面），而非仅 metadata 展示：
-	// profile=minimal 空集起步，专项工具全部由 allow 显式授予（对齐 org-invariants
-	// 「岗位专项自带工具面」铁律；datetime 由映射函数附带）。
-	allowKeys := mapTwinToolWhitelist(in.ToolWhitelist, s.lg)
-	allowJSON, _ := json.Marshal(allowKeys)
-	settings := &biz.AgentRuntimeSettings{
-		ToolsEnabled:   true,
-		ToolsProfile:   "minimal",
-		ToolsAllowJSON: string(allowJSON),
-	}
-	var files []biz.AgentPromptFile
-	if strings.TrimSpace(in.SystemPrompt) != "" {
-		files = append(files, biz.AgentPromptFile{Name: "system.md", Body: in.SystemPrompt})
-	}
-	created, err := s.agents.CreateWithFilesAndSettings(r.Context(), agent, files, settings)
-	if err != nil {
-		writeTwinError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	writeTwinJSON(w, http.StatusOK, map[string]any{"id": created.ID})
-}
-
-func (s *TwinOpenAPICompatService) handleUpdateAgent(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	var in twinAgentInput
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&in); err != nil {
-		writeTwinError(w, http.StatusBadRequest, "invalid json: "+err.Error())
-		return
-	}
-	// 同步 metadata（含 tool_whitelist 等种子字段），供漂移检测下轮比对。
-	meta, _ := json.Marshal(map[string]any{
-		"source":         "twinmonitor",
-		"model_policy":   in.ModelPolicy,
-		"temperature":    in.Temperature,
-		"tool_whitelist": in.ToolWhitelist,
-		"tags":           in.Tags,
-		"metadata":       in.Metadata,
-	})
-	patch := biz.Agent{
-		DisplayName:      in.Name,
-		AgentDescription: in.Description,
-		MetadataJSON:     string(meta),
-	}
-	if in.Role != "" {
-		patch.Roles = []string{in.Role}
-	}
-	if _, err := s.agents.Update(r.Context(), id, patch); err != nil {
-		writeTwinError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	// 同步工具白名单授权（与 create 路径同口径：minimal 空集 + allow 显式授予）。
-	// 种子漂移更新时授权一并收敛，避免存量 Agent 停在旧空工具面。
-	allowKeys := mapTwinToolWhitelist(in.ToolWhitelist, s.lg)
-	if _, _, terr := s.agents.UpdateAgentToolPolicy(r.Context(), id, biz.AgentToolPolicyInput{
-		ToolsEnabled: true,
-		Profile:      "minimal",
-		Allow:        allowKeys,
-	}); terr != nil {
-		writeTwinError(w, http.StatusInternalServerError, terr.Error())
-		return
-	}
-	if strings.TrimSpace(in.SystemPrompt) != "" {
-		// 幂等替换 system.md：存在则更新，否则新建。
-		current, err := s.agents.Get(r.Context(), id)
-		if err == nil {
-			replaced := false
-			for _, f := range current.Files {
-				if f.Name == "system.md" {
-					_, _ = s.agents.UpdatePromptFile(r.Context(), biz.AgentPromptFile{
-						ID: f.ID, AgentID: id, Name: "system.md", Body: in.SystemPrompt,
-					})
-					replaced = true
-					break
-				}
-			}
-			if !replaced {
-				_, _ = s.agents.CreatePromptFile(r.Context(), biz.AgentPromptFile{
-					AgentID: id, Name: "system.md", Body: in.SystemPrompt,
-				})
-			}
-		}
-	}
-	writeTwinJSON(w, http.StatusOK, map[string]any{"ok": true})
-}
-
-// ---------------------------------------------------------------------------
-// Graph 校验与导入
-// ---------------------------------------------------------------------------
-
-// twinGraphView 图清单/详情视图（definition 为原始定义，供漂移比对与执行参数推断）。
-func twinGraphView(def *biz.GraphDefinition) map[string]any {
-	nodes := make([]map[string]any, 0, len(def.Nodes))
-	for _, n := range def.Nodes {
-		nodes = append(nodes, map[string]any{
-			"id":   n.ID,
-			"type": n.Type,
-			"name": twinNodeDisplayName(n),
-		})
-	}
-	return map[string]any{
-		"id":      def.ID,
-		"name":    def.Name,
-		"ref":     def.Name, // graph 引用键：aranea 以名称作为稳定 ref
-		"version": fmt.Sprintf("%d", def.Version),
-		"definition": map[string]any{
-			"description": def.Description,
-			"nodes":       nodes,
-			"entry_point": def.EntryPoint,
-			"metadata":    def.Metadata,
-		},
-	}
-}
-
-// twinNodeDisplayName 节点显示名（描述优先，回退 ID）。
-func twinNodeDisplayName(n biz.NodeDef) string {
-	if s := strings.TrimSpace(n.Description); s != "" {
-		return s
-	}
-	if s := strings.TrimSpace(n.AgentName); s != "" {
-		return s
-	}
-	return n.ID
-}
-
-func (s *TwinOpenAPICompatService) handleListGraphs(w http.ResponseWriter, r *http.Request) {
-	defs, _, err := s.graphs.ListGraphs(r.Context(), 1000, "")
-	if err != nil {
-		writeTwinError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	source := strings.TrimSpace(r.URL.Query().Get("source"))
-	items := make([]map[string]any, 0, len(defs))
-	for _, d := range defs {
-		if source != "" && !twinGraphInNamespace(d.Metadata, source) {
-			continue
-		}
-		items = append(items, twinGraphView(d))
-	}
-	writeTwinJSON(w, http.StatusOK, map[string]any{"items": items})
-}
-
-// twinSourceTag P1 图命名空间隔离：经本门面创建/更新的 Graph 强制打标
-// metadata.source=twinmonitor，清单接口支持 ?source= 过滤，
-// 使 twinmonitor 同步/解析只见自己的命名空间（Agent 侧无持久化标签载体，不过滤）。
-const twinSourceTag = "twinmonitor"
-
-// twinGraphInNamespace 判定 Graph 是否属于指定来源命名空间（P1 命名空间隔离）。
-// 命中条件：metadata.source 一致；或查询 twinmonitor 命名空间时带有 twin_seed 种子戳
-// （兼容打标机制上线前已注册的存量种子图，其首次漂移更新会被补打 source 标）。
-func twinGraphInNamespace(meta map[string]any, source string) bool {
-	if meta == nil {
-		return false
-	}
-	if s, _ := meta["source"].(string); s == source {
-		return true
-	}
-	if source == twinSourceTag {
-		_, ok := meta["twin_seed"].(map[string]any)
-		return ok
-	}
-	return false
-}
-
-// ensureTwinGraphSource 强制打标 Graph 命名空间（合并保留 twin_seed 等既有键）。
-func ensureTwinGraphSource(def *biz.GraphDefinition) {
-	if def.Metadata == nil {
-		def.Metadata = map[string]any{}
-	}
-	def.Metadata["source"] = twinSourceTag
-}
-
-func (s *TwinOpenAPICompatService) handleGetGraph(w http.ResponseWriter, r *http.Request) {
-	def, err := s.graphs.GetGraph(r.Context(), r.PathValue("id"))
-	if err != nil || def == nil {
-		writeTwinError(w, http.StatusNotFound, "graph not found")
-		return
-	}
-	writeTwinJSON(w, http.StatusOK, twinGraphView(def))
-}
-
-// handleCreateGraph 导入 Graph JSON（场景导入注册；body 为 GraphDefinition JSON）。
-func (s *TwinOpenAPICompatService) handleCreateGraph(w http.ResponseWriter, r *http.Request) {
-	body, err := readTwinBody(w, r, 4<<20)
-	if err != nil {
-		writeTwinError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	var def biz.GraphDefinition
-	if err := json.Unmarshal(body, &def); err != nil {
-		writeTwinError(w, http.StatusBadRequest, "invalid graph json: "+err.Error())
-		return
-	}
-	ensureTwinGraphSource(&def)
-	created, err := s.graphs.CreateGraph(r.Context(), &def)
-	if err != nil {
-		writeTwinError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	writeTwinJSON(w, http.StatusOK, map[string]any{"id": created.ID})
-}
-
-// handleUpdateGraph 原位更新 Graph 定义（twin 种子漂移更新用；ID 不变，版本历史追加）。
-// 名称保护：ref=name 是 twin 侧种子同步的匹配键，改名会导致下次同步重复建图，故拒绝改名。
-func (s *TwinOpenAPICompatService) handleUpdateGraph(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	existing, err := s.graphs.GetGraph(r.Context(), id)
-	if err != nil || existing == nil {
-		writeTwinError(w, http.StatusNotFound, "graph not found")
-		return
-	}
-	body, err := readTwinBody(w, r, 4<<20)
-	if err != nil {
-		writeTwinError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	var def biz.GraphDefinition
-	if err := json.Unmarshal(body, &def); err != nil {
-		writeTwinError(w, http.StatusBadRequest, "invalid graph json: "+err.Error())
-		return
-	}
-	if def.Name != "" && def.Name != existing.Name {
-		writeTwinError(w, http.StatusBadRequest, "graph name is immutable via this API (ref=name 同步口径)")
-		return
-	}
-	def.ID = id
-	def.Name = existing.Name
-	ensureTwinGraphSource(&def)
-	saved, err := s.graphs.UpdateGraph(r.Context(), &def)
-	if err != nil {
-		writeTwinError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	writeTwinJSON(w, http.StatusOK, twinGraphView(saved))
-}
-
 // ---------------------------------------------------------------------------
 // 执行（Run）
 // ---------------------------------------------------------------------------
 
-// twinRunInput 对齐 twinmonitor RunInput。
+// twinRunInput 机器面 Run 提交载荷。
 type twinRunInput struct {
 	GraphID        string         `json:"graph_id"`
 	AgentID        string         `json:"agent_id"`
@@ -623,6 +277,7 @@ type twinRunInput struct {
 }
 
 func (s *TwinOpenAPICompatService) handleCreateRun(w http.ResponseWriter, r *http.Request) {
+	caller := twinCallerFrom(r.Context())
 	var in twinRunInput
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&in); err != nil {
 		writeTwinError(w, http.StatusBadRequest, "invalid json: "+err.Error())
@@ -630,15 +285,26 @@ func (s *TwinOpenAPICompatService) handleCreateRun(w http.ResponseWriter, r *htt
 	}
 	ctx := r.Context()
 
-	// 幂等键命中直接返回原 run_id。
+	// 幂等键命中直接返回原 run_id。权威存储为 idemStore（重启后仍有效）；
+	// 进程内 map 仅为未接线场景的退化缓存。
 	if key := strings.TrimSpace(in.IdempotencyKey); key != "" {
-		s.mu.Lock()
-		if runID, ok := s.idempot[key]; ok {
+		if store := s.idemStore(); store != nil {
+			if runID, err := store.LookupRunID(ctx, caller.Name, key); err != nil {
+				s.lg.Warn("twinopenapi 幂等键查询失败，按未命中处理",
+					loggateway.StepID("twinopenapi.idem_lookup_fail"), loggateway.Err(err))
+			} else if runID != "" {
+				writeTwinJSON(w, http.StatusOK, map[string]any{"run_id": runID, "idempotent_replay": true})
+				return
+			}
+		} else {
+			s.mu.Lock()
+			runID, ok := s.idempot[caller.Name+"|"+key]
 			s.mu.Unlock()
-			writeTwinJSON(w, http.StatusOK, map[string]any{"run_id": runID})
-			return
+			if ok {
+				writeTwinJSON(w, http.StatusOK, map[string]any{"run_id": runID, "idempotent_replay": true})
+				return
+			}
 		}
-		s.mu.Unlock()
 	}
 
 	if strings.TrimSpace(in.GraphID) == "" {
@@ -649,13 +315,21 @@ func (s *TwinOpenAPICompatService) handleCreateRun(w http.ResponseWriter, r *htt
 	}
 
 	def, err := s.graphs.GetGraph(ctx, in.GraphID)
-	if err != nil || def == nil {
+	if err != nil || def == nil || !twinGraphWritable(def, caller) {
 		writeTwinError(w, http.StatusNotFound, "graph not found")
 		return
 	}
 
+	// webhook 提交闸：白名单策略校验（默认档=内网限定由拨号闸兜底）。
+	if in.WebhookURL != "" {
+		if err := s.webhookPolicyOf().allows(in.WebhookURL); err != nil {
+			writeTwinError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+	}
+
 	execID := uuid.NewString()
-	sessionID := "twin-" + uuid.NewString()
+	sessionID := "twin-" + caller.Name + "-" + uuid.NewString()
 
 	// 注册 webhook 订阅（先于执行启动，保证 run.started 先于节点事件到达）。
 	if in.WebhookURL != "" {
@@ -689,14 +363,21 @@ func (s *TwinOpenAPICompatService) handleCreateRun(w http.ResponseWriter, r *htt
 	}
 
 	if key := strings.TrimSpace(in.IdempotencyKey); key != "" {
-		s.mu.Lock()
-		s.idempot[key] = execID
-		s.mu.Unlock()
+		if store := s.idemStore(); store != nil {
+			if err := store.SaveRunID(ctx, caller.Name, key, execID, in.GraphID); err != nil {
+				s.lg.Warn("twinopenapi 幂等键保存失败（本次提交已生效，重启窗口内重试可能重复执行）",
+					loggateway.StepID("twinopenapi.idem_save_fail"), loggateway.Err(err))
+			}
+		} else {
+			s.mu.Lock()
+			s.idempot[caller.Name+"|"+key] = execID
+			s.mu.Unlock()
+		}
 	}
 	writeTwinJSON(w, http.StatusOK, map[string]any{"run_id": execID})
 }
 
-// twinRunStatus aranea 执行状态 → twinmonitor 任务状态视图。
+// twinRunStatus aranea 执行状态 → 机器面任务状态视图。
 func twinRunStatus(status string) string {
 	if status == string(biz.GraphExecWaitingHuman) {
 		return "waiting_approval"
@@ -704,15 +385,8 @@ func twinRunStatus(status string) string {
 	return status
 }
 
-func (s *TwinOpenAPICompatService) handleGetRun(w http.ResponseWriter, r *http.Request) {
-	exec, err := s.graphs.GetExecution(r.Context(), r.PathValue("id"))
-	if err != nil || exec == nil {
-		writeTwinError(w, http.StatusNotFound, "run not found")
-		return
-	}
-	status := twinRunStatus(exec.GetStatus())
-	// 终态 state（current_state_json）提取节点输出/运行输出，
-	// 供 twinmonitor 兜底轮询补齐 output_summary（与 webhook 路径一致）。
+// twinRunView 组装 run 详情视图（list/get 共用形状）。
+func (s *TwinOpenAPICompatService) twinRunView(ctx context.Context, exec *biz.GraphExecution) map[string]any {
 	nodeOutputs, _ := exec.CurrentState["node_responses"].(map[string]any)
 	runOutput, _ := exec.CurrentState["output"].(string)
 	if runOutput == "" {
@@ -749,21 +423,97 @@ func (s *TwinOpenAPICompatService) handleGetRun(w http.ResponseWriter, r *http.R
 	} else {
 		durationMs = time.Since(exec.StartedAt).Milliseconds()
 	}
-	// G2：从用量表聚合本运行的 model/tokens（执行时按 "twin-" 会话落账）。
-	modelUsed, tokIn, tokOut := s.runTelemetry(r.Context(), exec)
-	writeTwinJSON(w, http.StatusOK, map[string]any{
+	return map[string]any{
 		"run_id":        exec.ID,
 		"graph_id":      exec.GraphID,
-		"status":        status,
+		"status":        twinRunStatus(exec.GetStatus()),
+		"started_at":    exec.StartedAt.UTC().Format(time.RFC3339),
+		"finished_at":   twinFinishedAtRFC3339(exec),
 		"output":        runOutput,
 		"error_message": exec.ErrorMessage,
 		"nodes":         nodes,
-		"model_used":    modelUsed,
-		"tokens_input":  tokIn,
-		"tokens_output": tokOut,
 		"duration_ms":   durationMs,
-		"trace_url":     "",
-	})
+	}
+}
+
+// twinFinishedAtRFC3339 终态时间格式化（未终态返回空串）。
+func twinFinishedAtRFC3339(exec *biz.GraphExecution) string {
+	if exec.FinishedAt == nil {
+		return ""
+	}
+	return exec.FinishedAt.UTC().Format(time.RFC3339)
+}
+
+// twinRunGraphAccessible 校验 run 所属图对 caller 可写（租户门禁共用件）：
+// 通过 exec→graph 反查归属，系统级 caller 直通。
+func (s *TwinOpenAPICompatService) twinRunGraphAccessible(ctx context.Context, exec *biz.GraphExecution, caller *twinCaller) bool {
+	if caller.isSystem() || exec == nil {
+		return exec != nil
+	}
+	def, err := s.graphs.GetGraph(ctx, exec.GraphID)
+	if err != nil || def == nil {
+		return false
+	}
+	return twinGraphWritable(def, caller)
+}
+
+// handleListRuns 机器面 run 列表（P0 补齐的已知缺口：此前消费方被迫绕行
+// JWT 交互面 /v1/sessions 做全局枚举）。graph_id 必填（按图归属做租户门禁；
+// 消费方从 GET /api/v1/graphs 获得自有图清单后逐图枚举）。
+func (s *TwinOpenAPICompatService) handleListRuns(w http.ResponseWriter, r *http.Request) {
+	caller := twinCallerFrom(r.Context())
+	q := r.URL.Query()
+	graphID := strings.TrimSpace(q.Get("graph_id"))
+	if graphID == "" {
+		writeTwinError(w, http.StatusBadRequest, "graph_id is required")
+		return
+	}
+	def, err := s.graphs.GetGraph(r.Context(), graphID)
+	if err != nil || def == nil || !twinGraphWritable(def, caller) {
+		writeTwinError(w, http.StatusNotFound, "graph not found")
+		return
+	}
+	pageSize := 50
+	if v := strings.TrimSpace(q.Get("page_size")); v != "" {
+		var n int
+		if _, err := fmt.Sscanf(v, "%d", &n); err == nil && n > 0 && n <= 200 {
+			pageSize = n
+		}
+	}
+	opt := biz.GraphRunListOption{Status: strings.TrimSpace(q.Get("status"))}
+	execs, nextToken, err := s.graphs.ListExecutions(r.Context(), graphID, pageSize, strings.TrimSpace(q.Get("cursor")), opt)
+	if err != nil {
+		writeTwinError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	items := make([]map[string]any, 0, len(execs))
+	for _, exec := range execs {
+		items = append(items, map[string]any{
+			"run_id":      exec.ID,
+			"graph_id":    exec.GraphID,
+			"status":      twinRunStatus(exec.GetStatus()),
+			"started_at":  exec.StartedAt.UTC().Format(time.RFC3339),
+			"finished_at": twinFinishedAtRFC3339(exec),
+		})
+	}
+	writeTwinJSON(w, http.StatusOK, map[string]any{"items": items, "next_cursor": nextToken})
+}
+
+func (s *TwinOpenAPICompatService) handleGetRun(w http.ResponseWriter, r *http.Request) {
+	caller := twinCallerFrom(r.Context())
+	exec, err := s.graphs.GetExecution(r.Context(), r.PathValue("id"))
+	if err != nil || exec == nil || !s.twinRunGraphAccessible(r.Context(), exec, caller) {
+		writeTwinError(w, http.StatusNotFound, "run not found")
+		return
+	}
+	view := s.twinRunView(r.Context(), exec)
+	// G2：从用量表聚合本运行的 model/tokens（执行时按 "twin-" 会话落账）。
+	modelUsed, tokIn, tokOut := s.runTelemetry(r.Context(), exec)
+	view["model_used"] = modelUsed
+	view["tokens_input"] = tokIn
+	view["tokens_output"] = tokOut
+	view["trace_url"] = ""
+	writeTwinJSON(w, http.StatusOK, view)
 }
 
 // runTelemetry 聚合一次运行的用量遥测：twin 运行落账的 graph_run 行
@@ -772,8 +522,8 @@ func (s *TwinOpenAPICompatService) handleGetRun(w http.ResponseWriter, r *http.R
 // tokens=0 与旧版硬编码行为一致）。
 //
 // 查询键取 exec.ID（execID）：落账行 SessionID=execID（对齐框架 runner
-// 真实 session 行），SpiritSessionID/SessionID（"twin-<uuid>"）仅作归属
-// 判定。日期范围必须显式给出——usage.Usecase.Events 的 normalizeQuery
+// 真实 session 行），SpiritSessionID/SessionID（"twin-<caller>-<uuid>"）仅作
+// 归属判定。日期范围必须显式给出——usage.Usecase.Events 的 normalizeQuery
 // 对空 StartDate/EndDate 默认只查最近 30 天，历史运行的遥测会被静默
 // 清零，故从运行起始日查到今天。
 func (s *TwinOpenAPICompatService) runTelemetry(ctx context.Context, exec *biz.GraphExecution) (modelUsed string, tokIn, tokOut int) {
@@ -829,6 +579,12 @@ func (s *TwinOpenAPICompatService) runTelemetry(ctx context.Context, exec *biz.G
 }
 
 func (s *TwinOpenAPICompatService) handleCancelRun(w http.ResponseWriter, r *http.Request) {
+	caller := twinCallerFrom(r.Context())
+	exec, err := s.graphs.GetExecution(r.Context(), r.PathValue("id"))
+	if err != nil || exec == nil || !s.twinRunGraphAccessible(r.Context(), exec, caller) {
+		writeTwinError(w, http.StatusNotFound, "run not found")
+		return
+	}
 	if err := s.graphs.CancelExecution(r.Context(), r.PathValue("id")); err != nil {
 		writeTwinError(w, http.StatusBadRequest, err.Error())
 		return
@@ -844,6 +600,7 @@ type twinResumeDecision struct {
 }
 
 func (s *TwinOpenAPICompatService) handleResumeInterrupt(w http.ResponseWriter, r *http.Request) {
+	caller := twinCallerFrom(r.Context())
 	runID := r.PathValue("id")
 	interruptID := r.PathValue("interrupt_id")
 	var in twinResumeDecision
@@ -852,7 +609,7 @@ func (s *TwinOpenAPICompatService) handleResumeInterrupt(w http.ResponseWriter, 
 		return
 	}
 	exec, err := s.graphs.GetExecution(r.Context(), runID)
-	if err != nil || exec == nil {
+	if err != nil || exec == nil || !s.twinRunGraphAccessible(r.Context(), exec, caller) {
 		writeTwinError(w, http.StatusNotFound, "run not found")
 		return
 	}
@@ -874,7 +631,7 @@ func (s *TwinOpenAPICompatService) handleResumeInterrupt(w http.ResponseWriter, 
 }
 
 // ---------------------------------------------------------------------------
-// 记忆与可观测
+// 记忆与可观测（实现见 twin_openapi_compat_part2.go）
 // ---------------------------------------------------------------------------
 
 // twinMemoryFact 对齐 twinmonitor MemoryFact（L3 全局处置经验回写）。
@@ -885,78 +642,13 @@ type twinMemoryFact struct {
 	Metadata map[string]any `json:"metadata"`
 }
 
-// twinMemoryFactPendingDecision 对齐 twinmonitor 审批决议回写（R3 3.3 C7 桥）。
-// Decision 为 E4 四档（approve/deny/approve_session/approve_always，3.4）；
-// 空时按 Approved 布尔兼容映射（旧审批中心两档）。
-
-// handleMemoryFactPendingDecision 审批中心决议回写：approve 档回放原 bi-temporal
-// 写，deny 仅置态；approve_session/approve_always 另加 E4 免审授权。Decider
-// 内部 fail-closed（MarkDecided 仅 pending 行可迁），未找到/已决议/非法决议
-// 一律 404，与 twinmonitor 侧 ai_approvals 状态机对齐。
-
-// 兼容旧两档调用方：decision 缺省/非法时按 approved 布尔映射。
-
-// 决议已生效不回滚；回放失败显式透出供审批侧告警/补偿。
-
-// ---------------------------------------------------------------------------
-// GraphRunEventSink 实现（事件桥接 → twinmonitor webhook）
-// ---------------------------------------------------------------------------
-
-// 与 resume 端点的 interrupt_id 约定一致
-
-// OnRunOutput GraphRunEventSinkOutput 扩展实现：先逐节点同步投递
-// run.node_output（aiops 据此回写 ai_task_nodes.output_summary），
-// 并把运行级 output 暂存到订阅，供紧随其后的 run.completed 携带。
-// 同步投递保证事件顺序：node_output 先于 run.completed 到达。
-
-// ---------------------------------------------------------------------------
-// 图运行用量落账（G2，2026-09-12）
-// ---------------------------------------------------------------------------
-
-// KindGraphRun 独立图运行（含本门面触发的 twin 运行）的用量行 UsageKind。
-// 计入聚合/配额（billable 过滤仅排除 team_turn），供按会话聚合回填
-// handleGetRun 的 model_used/tokens，并让 twin 运行成本可见。
-
-// twinGraphUsageRecorder 把 biz.GraphUsageRecorder 适配到 usage.Usecase，
-// 仅对 twin 会话（"twin-" 前缀）落账——团队运行的图执行已有
-// team_member/team_turn 落账，按前缀过滤避免与团队路径双重计费。
-
-// RecordGraphRunUsage implements biz.GraphUsageRecorder.
-
-// 归属判定用 aranea 会话（twin-<uuid>）：仅门面触发的 twin 运行落账，
-// 团队运行（team_member/team_turn 已有行）与其余独立图执行不重复计费。
-
-// 用量行 SessionID 取 RunID（execID），而非 "twin-<uuid>"：
-// 框架 runner 以 execID 创建 session 行（r.runner.Run(ctx, "graph", execID, msg)），
-// 对齐后 RecordAuxLLMUsage 的 session 指标增量落得到真实存在的行——
-// 用 "twin-<uuid>" 会命中 sessions 表不存在的 id，触发 UpdateOneID
-// NotFound 的 reaccumulate 重试风暴（刷错误日志），并在新表路径下
-// upsert 出孤儿 session_metrics 行。twin 会话仍可从用量行 MetadataJSON
-// 的 aranea_session_id 反查；handleGetRun 遥测按 exec.ID 查询。
-
-// mergeGraphRunSessionMeta 把 aranea 归属会话（"twin-<uuid>"）写入用量行
-// metadata（JSON 合并，保留既有键），供归属反查；非法 JSON 时原样返回
-// （RecordAuxLLMUsage 侧有默认 "{}" 兜底，不做静默改写）。
-
-// ---------------------------------------------------------------------------
-// 订阅注册表与事件投递
-// ---------------------------------------------------------------------------
-
-// twinSubTTL 订阅最大保留时长（超时未终态的订阅由 GC 清理，防泄漏）。
-
-// gcSubsLocked 惰性清理过期订阅与幂等键（调用方须持锁）。
-
-// twinEventEnvelope twinmonitor WebhookReceiver 统一事件信封（AraneaWebhookEvent）。
-
-// postEventAsync 异步投递（节点/中断事件，不阻塞图执行事件循环）。
-
-// postEvent 同步投递 HMAC 签名事件（X-Webhook-Signature: v1=<hex> +
-// X-Webhook-Timestamp，对齐 outboundwebhook 签名规范；twinmonitor 侧按此验签）。
-
-// ---------------------------------------------------------------------------
-// 工具函数
-// ---------------------------------------------------------------------------
-
-// twinRandomSecret 生成随机 webhook 密钥（twinmonitor 未传 webhook_secret 时兜底）。
-
-// writeTwinError 输出裸 JSON 错误（twinmonitor doRaw 按 HTTP 状态码分类错误）。
+// 以下门面组成部分的实现见 twin_openapi_compat_part2.go（AS-COG-01 拆分）：
+//   - 记忆/可观测端点：handleWriteMemoryFact、handleMemoryFactPendingDecision、
+//     handleQuotaUsage、handleAgentMetrics；
+//   - GraphRunEventSink 事件桥接（OnNodeStarted/OnNodeCompleted/OnRunOutput/
+//     OnRunCompleted/OnRunFailed/OnRunCancelled/OnRunWaitingApproval → webhook）；
+//   - 图运行用量落账（KindGraphRun、twinGraphUsageRecorder、
+//     mergeGraphRunSessionMeta；"twin-<caller>-" 前缀归属判定）；
+//   - 订阅注册表（registerSub/unregisterSub/getSub/gcSubsLocked、twinSubTTL）
+//     与 HMAC 签名投递（postEvent/postEventAsync、twinEventEnvelope）；
+//   - 工具函数（twinRandomSecret、readTwinBody、writeTwinJSON、writeTwinError）。

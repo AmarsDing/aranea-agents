@@ -167,6 +167,20 @@ func (_c *TurnV2Create) SetNillableCompletedAt(v *time.Time) *TurnV2Create {
 	return _c
 }
 
+// SetRuntimeInvocationID sets the "runtime_invocation_id" field.
+func (_c *TurnV2Create) SetRuntimeInvocationID(v string) *TurnV2Create {
+	_c.mutation.SetRuntimeInvocationID(v)
+	return _c
+}
+
+// SetNillableRuntimeInvocationID sets the "runtime_invocation_id" field if the given value is not nil.
+func (_c *TurnV2Create) SetNillableRuntimeInvocationID(v *string) *TurnV2Create {
+	if v != nil {
+		_c.SetRuntimeInvocationID(*v)
+	}
+	return _c
+}
+
 // SetID sets the "id" field.
 func (_c *TurnV2Create) SetID(v string) *TurnV2Create {
 	_c.mutation.SetID(v)
@@ -239,6 +253,10 @@ func (_c *TurnV2Create) defaults() {
 	if _, ok := _c.mutation.StartedAt(); !ok {
 		v := turnv2.DefaultStartedAt()
 		_c.mutation.SetStartedAt(v)
+	}
+	if _, ok := _c.mutation.RuntimeInvocationID(); !ok {
+		v := turnv2.DefaultRuntimeInvocationID
+		_c.mutation.SetRuntimeInvocationID(v)
 	}
 }
 
@@ -316,6 +334,14 @@ func (_c *TurnV2Create) check() error {
 	}
 	if _, ok := _c.mutation.StartedAt(); !ok {
 		return &ValidationError{Name: "started_at", err: errors.New(`ent: missing required field "TurnV2.started_at"`)}
+	}
+	if _, ok := _c.mutation.RuntimeInvocationID(); !ok {
+		return &ValidationError{Name: "runtime_invocation_id", err: errors.New(`ent: missing required field "TurnV2.runtime_invocation_id"`)}
+	}
+	if v, ok := _c.mutation.RuntimeInvocationID(); ok {
+		if err := turnv2.RuntimeInvocationIDValidator(v); err != nil {
+			return &ValidationError{Name: "runtime_invocation_id", err: fmt.Errorf(`ent: validator failed for field "TurnV2.runtime_invocation_id": %w`, err)}
+		}
 	}
 	if v, ok := _c.mutation.ID(); ok {
 		if err := turnv2.IDValidator(v); err != nil {
@@ -405,6 +431,10 @@ func (_c *TurnV2Create) createSpec() (*TurnV2, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.CompletedAt(); ok {
 		_spec.SetField(turnv2.FieldCompletedAt, field.TypeTime, value)
 		_node.CompletedAt = &value
+	}
+	if value, ok := _c.mutation.RuntimeInvocationID(); ok {
+		_spec.SetField(turnv2.FieldRuntimeInvocationID, field.TypeString, value)
+		_node.RuntimeInvocationID = value
 	}
 	return _node, _spec
 }
@@ -617,6 +647,18 @@ func (u *TurnV2Upsert) UpdateCompletedAt() *TurnV2Upsert {
 // ClearCompletedAt clears the value of the "completed_at" field.
 func (u *TurnV2Upsert) ClearCompletedAt() *TurnV2Upsert {
 	u.SetNull(turnv2.FieldCompletedAt)
+	return u
+}
+
+// SetRuntimeInvocationID sets the "runtime_invocation_id" field.
+func (u *TurnV2Upsert) SetRuntimeInvocationID(v string) *TurnV2Upsert {
+	u.Set(turnv2.FieldRuntimeInvocationID, v)
+	return u
+}
+
+// UpdateRuntimeInvocationID sets the "runtime_invocation_id" field to the value that was provided on create.
+func (u *TurnV2Upsert) UpdateRuntimeInvocationID() *TurnV2Upsert {
+	u.SetExcluded(turnv2.FieldRuntimeInvocationID)
 	return u
 }
 
@@ -854,6 +896,20 @@ func (u *TurnV2UpsertOne) UpdateCompletedAt() *TurnV2UpsertOne {
 func (u *TurnV2UpsertOne) ClearCompletedAt() *TurnV2UpsertOne {
 	return u.Update(func(s *TurnV2Upsert) {
 		s.ClearCompletedAt()
+	})
+}
+
+// SetRuntimeInvocationID sets the "runtime_invocation_id" field.
+func (u *TurnV2UpsertOne) SetRuntimeInvocationID(v string) *TurnV2UpsertOne {
+	return u.Update(func(s *TurnV2Upsert) {
+		s.SetRuntimeInvocationID(v)
+	})
+}
+
+// UpdateRuntimeInvocationID sets the "runtime_invocation_id" field to the value that was provided on create.
+func (u *TurnV2UpsertOne) UpdateRuntimeInvocationID() *TurnV2UpsertOne {
+	return u.Update(func(s *TurnV2Upsert) {
+		s.UpdateRuntimeInvocationID()
 	})
 }
 
@@ -1258,6 +1314,20 @@ func (u *TurnV2UpsertBulk) UpdateCompletedAt() *TurnV2UpsertBulk {
 func (u *TurnV2UpsertBulk) ClearCompletedAt() *TurnV2UpsertBulk {
 	return u.Update(func(s *TurnV2Upsert) {
 		s.ClearCompletedAt()
+	})
+}
+
+// SetRuntimeInvocationID sets the "runtime_invocation_id" field.
+func (u *TurnV2UpsertBulk) SetRuntimeInvocationID(v string) *TurnV2UpsertBulk {
+	return u.Update(func(s *TurnV2Upsert) {
+		s.SetRuntimeInvocationID(v)
+	})
+}
+
+// UpdateRuntimeInvocationID sets the "runtime_invocation_id" field to the value that was provided on create.
+func (u *TurnV2UpsertBulk) UpdateRuntimeInvocationID() *TurnV2UpsertBulk {
+	return u.Update(func(s *TurnV2Upsert) {
+		s.UpdateRuntimeInvocationID()
 	})
 }
 

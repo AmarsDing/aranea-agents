@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"aranea-agents/internal/memory/memx"
 	"aranea-agents/pkg/loggateway"
 
 	trpcmemory "trpc.group/trpc-go/trpc-agent-go/memory"
@@ -32,7 +33,7 @@ const (
 // SleepTimeService. Defining a narrow interface here follows the
 // interface-segregation principle and makes testing easier.
 type MemoryReaderWriter interface {
-	ReadMemories(ctx context.Context, uk trpcmemory.UserKey, limit int) ([]*trpcmemory.Entry, error)
+	ReadMemories(ctx context.Context, uk trpcmemory.UserKey, limit int) ([]*memx.Entry, error)
 	AddMemory(ctx context.Context, uk trpcmemory.UserKey, memory string, topics []string, opts ...trpcmemory.AddOption) error
 	UpdateMemory(ctx context.Context, mk trpcmemory.Key, memory string, topics []string, opts ...trpcmemory.UpdateOption) error
 	DeleteMemory(ctx context.Context, mk trpcmemory.Key) error
@@ -382,7 +383,7 @@ func (s *SleepTimeService) processJob(ctx context.Context, req ConsolidationJobR
 
 // llmConsolidate calls the LLM with the memories and parses the JSON response.
 // Returns an empty result (no operations) when the LLM is not wired.
-func (s *SleepTimeService) llmConsolidate(ctx context.Context, memories []*trpcmemory.Entry, llm trpcmodel.Model) (*ConsolidationResult, error) {
+func (s *SleepTimeService) llmConsolidate(ctx context.Context, memories []*memx.Entry, llm trpcmodel.Model) (*ConsolidationResult, error) {
 	if llm == nil {
 		return &ConsolidationResult{}, nil
 	}
@@ -503,7 +504,7 @@ func (s *SleepTimeService) executeUpdateCore(ctx context.Context, uk trpcmemory.
 
 // buildConsolidationPrompt constructs the user prompt containing the memories
 // to consolidate, serialised as a JSON array.
-func buildConsolidationPrompt(memories []*trpcmemory.Entry) string {
+func buildConsolidationPrompt(memories []*memx.Entry) string {
 	type memItem struct {
 		ID     string   `json:"id"`
 		Memory string   `json:"memory"`

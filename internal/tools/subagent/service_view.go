@@ -7,11 +7,9 @@ import (
 	"unicode/utf8"
 
 	"aranea-agents/internal/biz"
-
-	trpcsubagent "trpc.group/trpc-go/trpc-agent-go/openclaw/subagent"
 )
 
-func enrichRunView(run trpcsubagent.Run, now time.Time) map[string]any {
+func enrichRunView(run Run, now time.Time) map[string]any {
 	b, err := json.Marshal(run)
 	if err != nil {
 		return map[string]any{"id": run.ID, "status": run.Status, "kind": run.Kind}
@@ -24,7 +22,7 @@ func enrichRunView(run trpcsubagent.Run, now time.Time) map[string]any {
 	if run.StartedAt != nil && !run.StartedAt.IsZero() {
 		start = *run.StartedAt
 	}
-	if !start.IsZero() && (run.Status == trpcsubagent.StatusQueued || run.Status == trpcsubagent.StatusRunning) {
+	if !start.IsZero() && (run.Status == StatusQueued || run.Status == StatusRunning) {
 		ms := now.Sub(start).Milliseconds()
 		if ms < 0 {
 			ms = 0

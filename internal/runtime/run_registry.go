@@ -110,6 +110,19 @@ type RunRegistry struct {
 	runStatuses    statusMap
 	lg             loggateway.Logger
 	cancelMu       sync.Mutex // serializes Cancel/Finish to prevent double-close races
+	// steerTrack: sessionID → *steerTracker。trpc 出库（2026-11-03）：fork 的
+	// UnconsumedQueuedUserMessagesHandler 补丁移除后的应用层对账——
+	// EnqueueUserMessage 成功即记账，stream 消费端嗅探到框架 steer 消费事件
+	// 经 MarkSteerConsumed 核销，turn 收尾 defer 在 runner.Close 后
+	// DrainUnconsumedSteer 取回未消费内容回 pending 队列（对齐 fork 在 run
+	// 全部退出路径 deliver 的语义）。条目在 Drain 时删除，无泄漏。
+	steerTrack sync.Map
+}
+
+// steerTracker 记录单会话已投进框架 run 队列、尚未观察到消费的 steer 内容。
+type steerTracker struct {
+	mu       sync.Mutex
+	contents []string
 }
 
 func NewRunRegistry() *RunRegistry {
@@ -458,12 +471,62 @@ func (r *RunRegistry) EnqueueUserMessage(sessionID, content string) (bool, error
 	}
 	err := trpcrunner.EnqueueUserMessage(run.runner, sessionID, trpcmodel.NewUserMessage(content))
 	if err == nil {
+		r.trackSteer(sessionID, content)
 		return true, nil
 	}
 	if errors.Is(err, trpcrunner.ErrQueuedUserMessageUnsupported) || errors.Is(err, trpcrunner.ErrRunNotFound) {
 		return false, nil
 	}
 	return false, err
+}
+
+// trackSteer 记账一条已被框架 run 队列接受的 steer 消息（见 steerTrack 注释）。
+func (r *RunRegistry) trackSteer(sessionID, content string) {
+	v, _ := r.steerTrack.LoadOrStore(sessionID, &steerTracker{})
+	t := v.(*steerTracker)
+	t.mu.Lock()
+	t.contents = append(t.contents, content)
+	t.mu.Unlock()
+}
+
+// MarkSteerConsumed 核销一条 steer 消息（FIFO 匹配首个等值内容；重复内容
+// 按序各核销一次）。session 无记账条目时 no-op。由 stream 消费端在嗅探到
+// 框架 steer 消费事件时调用。
+func (r *RunRegistry) MarkSteerConsumed(sessionID, content string) {
+	if r == nil {
+		return
+	}
+	v, ok := r.steerTrack.Load(sessionID)
+	if !ok {
+		return
+	}
+	t := v.(*steerTracker)
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	for i, c := range t.contents {
+		if c == content {
+			t.contents = append(t.contents[:i], t.contents[i+1:]...)
+			return
+		}
+	}
+}
+
+// DrainUnconsumedSteer 取回并删除 session 的全部未消费 steer 内容（turn 收尾
+// 一次性调用，调用点须在框架 run 事件循环终结、runner.Close 之后）。
+func (r *RunRegistry) DrainUnconsumedSteer(sessionID string) []string {
+	if r == nil {
+		return nil
+	}
+	v, ok := r.steerTrack.LoadAndDelete(sessionID)
+	if !ok {
+		return nil
+	}
+	t := v.(*steerTracker)
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	out := t.contents
+	t.contents = nil
+	return out
 }
 
 func (r *RunRegistry) SetStatus(sessionID, runID, status, errMsg string) {

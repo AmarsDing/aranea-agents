@@ -49,6 +49,9 @@ type turnWire struct {
 	Status          biz.TurnStatus `json:"Status"`
 	StartedAt       time.Time      `json:"StartedAt"`
 	CompletedAt     *time.Time     `json:"CompletedAt"`
+	// RuntimeInvocationID 与 biz.Turn 对齐（20261307）：空值序列化为 ""，
+	// 字段序与 biz.Turn 一致（位于 CompletedAt 之后）以保持字节级 parity。
+	RuntimeInvocationID string `json:"RuntimeInvocationID"`
 }
 
 type stepWire struct {

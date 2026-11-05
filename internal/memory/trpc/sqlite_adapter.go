@@ -14,6 +14,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/vector"
 	memlink "aranea-agents/internal/memory"
+	"aranea-agents/internal/memory/memx"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 
@@ -75,7 +76,7 @@ type memoryService struct {
 // WireFusedRecall injects the biz L3 fused recall chain into this package's
 // memory service (C3 统一召回层, session-eval-20260827 P6/S02). No-op when
 // svc is another trpcmemory.Service implementation or r is nil.
-func WireFusedRecall(svc trpcmemory.Service, r biz.MemoryL3Recaller) {
+func WireFusedRecall(svc memx.Service, r biz.MemoryL3Recaller) {
 	if s, ok := svc.(*memoryService); ok && s != nil && r != nil {
 		s.fusedRecall = r
 	}
@@ -92,7 +93,7 @@ type factConsistencyChecker interface {
 	GetFactResyncRow(ctx context.Context, factID string) (agentID, userID, statement string, err error)
 }
 
-var _ trpcmemory.Service = (*memoryService)(nil)
+var _ memx.Service = (*memoryService)(nil)
 
 type singleflightGroup struct {
 	mu sync.Mutex
@@ -118,7 +119,7 @@ func (g *singleflightGroup) Done(key string) {
 	delete(g.m, key)
 }
 
-func NewMemoryService(factReader biz.L3FactReader, factWriter biz.L3FactWriter, indexSync biz.MemoryFactIndexSyncer, queue AutoMemoryQueue, vector vectorFactSearcher, settingsLoader AgentRuntimeSettingsLoader, consistency factConsistencyChecker, linkEvolver memlink.LinkEvolutionService, lg loggateway.Logger) trpcmemory.Service {
+func NewMemoryService(factReader biz.L3FactReader, factWriter biz.L3FactWriter, indexSync biz.MemoryFactIndexSyncer, queue AutoMemoryQueue, vector vectorFactSearcher, settingsLoader AgentRuntimeSettingsLoader, consistency factConsistencyChecker, linkEvolver memlink.LinkEvolutionService, lg loggateway.Logger) memx.Service {
 	if factReader == nil {
 		return nil
 	}
@@ -295,7 +296,7 @@ func (s *memoryService) ClearMemories(ctx context.Context, uk trpcmemory.UserKey
 	return err
 }
 
-func (s *memoryService) ReadMemories(ctx context.Context, uk trpcmemory.UserKey, limit int) ([]*trpcmemory.Entry, error) {
+func (s *memoryService) ReadMemories(ctx context.Context, uk trpcmemory.UserKey, limit int) ([]*memx.Entry, error) {
 	if s == nil {
 		return nil, nil
 	}
@@ -314,14 +315,14 @@ func (s *memoryService) ReadMemories(ctx context.Context, uk trpcmemory.UserKey,
 	return s.listEntries(ctx, uk, "", limit, minScore, false)
 }
 
-func (s *memoryService) SearchMemories(ctx context.Context, uk trpcmemory.UserKey, query string, opts ...trpcmemory.SearchOption) ([]*trpcmemory.Entry, error) {
+func (s *memoryService) SearchMemories(ctx context.Context, uk trpcmemory.UserKey, query string, opts ...memx.SearchOption) ([]*memx.Entry, error) {
 	if s == nil {
 		return nil, nil
 	}
 	if err := s.requireStore(); err != nil {
 		return nil, err
 	}
-	searchOpts := trpcmemory.ResolveSearchOptions(query, opts)
+	searchOpts := memx.ResolveSearchOptions(query, opts)
 	q := strings.TrimSpace(query)
 	if q == "" {
 		q = strings.TrimSpace(searchOpts.Query)
@@ -407,22 +408,24 @@ func (s *memoryService) SearchMemories(ctx context.Context, uk trpcmemory.UserKe
 			}
 			// Fallback: build minimal entries from vector data when
 			// enrichment is unavailable (factReader nil or no matches).
-			out := make([]*trpcmemory.Entry, 0, len(hitMap))
+			out := make([]*memx.Entry, 0, len(hitMap))
 			for fid, hit := range hitMap {
 				now := time.Now()
 				memContent := hit.memText
 				if memContent == "" {
 					memContent = fid
 				}
-				out = append(out, &trpcmemory.Entry{
-					ID:      hit.factID,
-					AppName: uk.AppName,
-					UserID:  uk.UserID,
-					Memory: &trpcmemory.Memory{
+				out = append(out, &memx.Entry{
+					Entry: trpcmemory.Entry{
+						ID:      hit.factID,
+						AppName: uk.AppName,
+						UserID:  uk.UserID,
+						Score:   hit.score,
+					},
+					Memory: &memx.Memory{
 						Memory:      memContent,
 						LastUpdated: &now,
 					},
-					Score: hit.score,
 				})
 			}
 			if len(out) > 0 {
@@ -493,14 +496,14 @@ func (s *memoryService) asyncResyncFact(ctx context.Context, factID string) {
 // from the authoritative SQLite fact rows for vector search hits.
 // This ensures SearchMemories returns complete entries regardless of
 // whether the hit came from vector similarity or keyword search.
-func (s *memoryService) enrichVectorHits(ctx context.Context, uk trpcmemory.UserKey, factIDs []string, hitMap map[string]vecHit) []*trpcmemory.Entry {
+func (s *memoryService) enrichVectorHits(ctx context.Context, uk trpcmemory.UserKey, factIDs []string, hitMap map[string]vecHit) []*memx.Entry {
 	// Fetch fact rows directly by ID to avoid limit/offset truncation
 	// that could occur with ListFactRowsForUser.
 	rows, err := s.factReader.GetFactRowsByIDs(ctx, factIDs)
 	if err != nil {
 		return nil
 	}
-	var out []*trpcmemory.Entry
+	var out []*memx.Entry
 	for _, raw := range rows {
 		e, convErr := factRowToEntry(raw, uk)
 		if convErr != nil {
@@ -514,7 +517,7 @@ func (s *memoryService) enrichVectorHits(ctx context.Context, uk trpcmemory.User
 	return out
 }
 
-func (s *memoryService) listEntries(ctx context.Context, uk trpcmemory.UserKey, keyword string, limit int, minImportance float64, includeInvalidated bool) ([]*trpcmemory.Entry, error) {
+func (s *memoryService) listEntries(ctx context.Context, uk trpcmemory.UserKey, keyword string, limit int, minImportance float64, includeInvalidated bool) ([]*memx.Entry, error) {
 	limit32 := int32(limit)
 	if limit32 <= 0 {
 		limit32 = defaultListEntriesLimit
@@ -626,7 +629,7 @@ func sessionStateString(state session.StateMap, key string) string {
 // minImportance keeps the memory-tool-specific MemoryToolMinScore policy as a
 // post-filter (its semantic is an importance floor, distinct from the fused
 // relevance minScore).
-func (s *memoryService) searchViaFusedRecall(ctx context.Context, uk trpcmemory.UserKey, q string, topK int32, minImportance float64) ([]*trpcmemory.Entry, error) {
+func (s *memoryService) searchViaFusedRecall(ctx context.Context, uk trpcmemory.UserKey, q string, topK int32, minImportance float64) ([]*memx.Entry, error) {
 	policy := s.resolveMemoryPolicy(ctx, uk.AppName)
 	rows, err := s.fusedRecall.RecallFactsFused(ctx, biz.L3FusedRecallQuery{
 		Runtime:         memoryRuntimeFromCtx(ctx, uk),
@@ -644,11 +647,11 @@ func (s *memoryService) searchViaFusedRecall(ctx context.Context, uk trpcmemory.
 
 // dropLifestyleMemoryEntries mirrors prompt-injection filtering (S05) so
 // memory_search does not surface lifestyle chatter on a work request.
-func dropLifestyleMemoryEntries(query string, entries []*trpcmemory.Entry) []*trpcmemory.Entry {
+func dropLifestyleMemoryEntries(query string, entries []*memx.Entry) []*memx.Entry {
 	if len(entries) == 0 || !biz.ShouldDropLifestyleMemories(query) {
 		return entries
 	}
-	out := make([]*trpcmemory.Entry, 0, len(entries))
+	out := make([]*memx.Entry, 0, len(entries))
 	for _, e := range entries {
 		text := ""
 		if e != nil && e.Memory != nil {
@@ -665,9 +668,9 @@ func dropLifestyleMemoryEntries(query string, entries []*trpcmemory.Entry) []*tr
 // entriesFromFactRows converts raw fact-row JSON to memory entries, applying
 // the importance post-filter and ID dedup. Shared by the legacy list path and
 // the fused recall path (C3); input order is preserved.
-func (s *memoryService) entriesFromFactRows(rows [][]byte, uk trpcmemory.UserKey, minImportance float64) []*trpcmemory.Entry {
+func (s *memoryService) entriesFromFactRows(rows [][]byte, uk trpcmemory.UserKey, minImportance float64) []*memx.Entry {
 	seen := make(map[string]struct{}, len(rows))
-	out := make([]*trpcmemory.Entry, 0, len(rows))
+	out := make([]*memx.Entry, 0, len(rows))
 	for _, raw := range rows {
 		if minImportance > 0 {
 			var row map[string]any
@@ -694,7 +697,7 @@ func (s *memoryService) entriesFromFactRows(rows [][]byte, uk trpcmemory.UserKey
 }
 
 // entryLastUpdated is the sort key for the recency-ordered list path.
-func entryLastUpdated(e *trpcmemory.Entry) time.Time {
+func entryLastUpdated(e *memx.Entry) time.Time {
 	if e == nil {
 		return time.Time{}
 	}
@@ -788,7 +791,7 @@ func (s *memoryService) Close() error {
 //     with a stored memory, that memory is prioritised (boosted score).
 //   - Results are deduplicated by memory ID and sorted by score descending.
 func (s *memoryService) ProactiveRecall(ctx context.Context, uk trpcmemory.UserKey,
-	convCtx trpcmemory.ConversationContext) ([]*trpcmemory.Entry, error) {
+	convCtx memx.ConversationContext) ([]*memx.Entry, error) {
 	if s == nil {
 		return nil, nil
 	}
@@ -808,7 +811,7 @@ func (s *memoryService) ProactiveRecall(ctx context.Context, uk trpcmemory.UserK
 	}
 
 	// Collect candidate entries from each query, deduplicating by ID.
-	seen := make(map[string]*trpcmemory.Entry, topK)
+	seen := make(map[string]*memx.Entry, topK)
 	for _, q := range queries {
 		entries, err := s.SearchMemories(ctx, uk, q)
 		if err != nil {
@@ -854,7 +857,7 @@ func (s *memoryService) ProactiveRecall(ctx context.Context, uk trpcmemory.UserK
 	}
 
 	// Sort by score descending and cap at topK.
-	out := make([]*trpcmemory.Entry, 0, len(seen))
+	out := make([]*memx.Entry, 0, len(seen))
 	for _, e := range seen {
 		out = append(out, e)
 	}
@@ -870,7 +873,7 @@ func (s *memoryService) ProactiveRecall(ctx context.Context, uk trpcmemory.UserK
 // For UserStatement, individual keywords are extracted (not the full
 // statement) so contradiction detection can find memories sharing
 // conceptual keywords (e.g. "live" matches "lives in London").
-func collectProactiveQueries(convCtx trpcmemory.ConversationContext) []string {
+func collectProactiveQueries(convCtx memx.ConversationContext) []string {
 	var queries []string
 	for _, e := range convCtx.MentionedEntities {
 		e = strings.TrimSpace(e)

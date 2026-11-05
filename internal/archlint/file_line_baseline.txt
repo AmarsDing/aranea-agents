@@ -203,7 +203,7 @@ internal/service/skill_intelligence_integration_test.go 868
 internal/service/spirit_team_handle_result_test.go 1890
 internal/service/team.go 672
 internal/service/tool.go 657
-internal/service/twin_openapi_compat.go 962
+internal/service/twin_openapi_compat.go 654
 internal/session/compress_policy.go 620
 internal/session/compress_policy_test.go 770
 internal/session/compressor.go 1146

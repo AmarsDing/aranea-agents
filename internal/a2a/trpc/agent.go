@@ -32,9 +32,6 @@ func BuildTRPCA2AAgent(_ context.Context, ag biz.Agent, cfg biz.A2AProxyConfig) 
 		a2aagent.WithName(ag.AgentKey),
 		a2aagent.WithDescription(strings.TrimSpace(ag.AgentDescription)),
 		a2aagent.WithAgentCardURL(remoteURL),
-		// V-2：对端为舰队内 aranea 时以共享密钥给 X-User-ID 加签，
-		// 恢复 P0 未签名头拒信后的身份传递（密钥未配置则不加签）。
-		a2aagent.WithUserIDHeaderHMACSecret(a2a.IdentityHMACSecretFromEnv()),
 	}
 	if cfg.EnableStreaming {
 		opts = append(opts, a2aagent.WithEnableStreaming(true))
@@ -45,7 +42,14 @@ func BuildTRPCA2AAgent(_ context.Context, ag biz.Agent, cfg biz.A2AProxyConfig) 
 	if timeoutSec <= 0 {
 		timeoutSec = 30
 	}
-	clientOpts := []a2aclient.Option{a2aclient.WithTimeout(time.Duration(timeoutSec) * time.Second)}
+	clientOpts := []a2aclient.Option{
+		a2aclient.WithTimeout(time.Duration(timeoutSec) * time.Second),
+		// V-2：对端为舰队内 aranea 时以共享密钥给 X-User-ID 加签，
+		// 恢复 P0 未签名头拒信后的身份传递（密钥未配置则不加签）。
+		// 出库后为应用层中间件实现（internal/a2a/identity_hmac_middleware.go）。
+		a2aclient.WithMiddleware(a2a.NewSignedIdentityClientMiddleware(
+			a2a.IdentityHMACSecretFromEnv(), "X-User-ID")),
+	}
 	if authOpts, err := a2aProxyClientAuthOptions(cfg); err != nil {
 		return nil, err
 	} else {

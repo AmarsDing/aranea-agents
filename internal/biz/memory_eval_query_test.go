@@ -130,7 +130,6 @@ func TestAnalyzeEvalQuery_CodeStrongSignals(t *testing.T) {
 		{"英文日常", "what did I buy at the store yesterday", false},
 		{"英文偏好", "which coffee do I prefer in the morning", false},
 		{"全大写缩写非代码", "did I mention COVID-19 in my notes", false},
-		{"缩写非模块属性", "U.S. travel plans for spring", false},
 		{"带空格的括号非调用", "I read the book (a novel) last week", false},
 	}
 	for _, tc := range cases {

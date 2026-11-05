@@ -60,6 +60,7 @@ import (
 	alert2 "aranea-agents/internal/mcp/alert"
 	"aranea-agents/internal/mcp/health"
 	"aranea-agents/internal/memory"
+	"aranea-agents/internal/memory/memx"
 	"aranea-agents/internal/memory/trpc"
 	"aranea-agents/internal/modelregistry"
 	"aranea-agents/internal/outbound"
@@ -102,7 +103,6 @@ import (
 	artifact2 "trpc.group/trpc-go/trpc-agent-go/artifact"
 	"trpc.group/trpc-go/trpc-agent-go/evolution"
 	graph2 "trpc.group/trpc-go/trpc-agent-go/graph"
-	memory2 "trpc.group/trpc-go/trpc-agent-go/memory"
 	"trpc.group/trpc-go/trpc-agent-go/model"
 	session3 "trpc.group/trpc-go/trpc-agent-go/session"
 	"trpc.group/trpc-go/trpc-agent-go/skill"
@@ -384,8 +384,9 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	agentRepo := data.NewCodingAgentRepo(dataData)
 	projectRepo := data.NewCodingProjectRepo(dataData)
 	agentbridgeTaskRepo := data.NewCodingTaskRepo(dataData)
+	agentbridgeTaskEventRepo := data.NewCodingTaskEventRepo(dataData)
 	sessionFactory := service.NewACPSessionFactory()
-	agentBridgeService := service.ProvideAgentBridgeService(agentRepo, projectRepo, agentbridgeTaskRepo, sessionFactory, v2Bus, infra, loggatewayLogger)
+	agentBridgeService := service.ProvideAgentBridgeService(agentRepo, projectRepo, agentbridgeTaskRepo, agentbridgeTaskEventRepo, sessionFactory, v2Bus, infra, loggatewayLogger)
 	runtimeTooling := provideRuntimeTooling(plugintrpcRuntime, manager, repository, skillHealthMetricsAdapter, retriever, adaptiveRouter, federatedRetriever, retrievalEvaluator, knowledgeUsecase, factory, kanbanToolBridge, recorderFactory, organizationUsecase, toolResultGate, router, subagentService, parallelToolExecutor, resourceAccessUsecase, deptMailboxUsecase, sessionSearchUsecase, bridge, computerUseUsecase, agentBridgeService, sessionLeases, runtime)
 	observationReadWriter := data.NewObservationRepo(dataData)
 	patternReadWriter := data.NewPatternRepo(dataData)
@@ -653,7 +654,8 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	a2AExtensionCompatService := service.NewA2AExtensionCompatService(chatService, sessionService, confServer, loggatewayLogger)
 	memoryFactSessionGrants := provideMemoryFactSessionGrants()
 	memoryFactPendingDecider := provideMemoryFactPendingDecider(dataData, memoryFactSessionGrants, loggatewayLogger)
-	twinOpenAPICompatService := service.NewTwinOpenAPICompatService(agentUsecase, graphUsecase, memoryAdminUsecase, usageUsecase, monitorUsecase, llmProviderModelUsecase, memoryFactPendingDecider, loggatewayLogger)
+	twinIdempotencyStore := data.NewTwinIdempotencyRepo(dataData)
+	twinOpenAPICompatService := service.NewTwinOpenAPICompatService(agentUsecase, graphUsecase, memoryAdminUsecase, usageUsecase, monitorUsecase, llmProviderModelUsecase, memoryFactPendingDecider, twinIdempotencyStore, loggatewayLogger)
 	runtimeProfileService := service.NewRuntimeProfileService(runtimeProfileUsecase)
 	learningLoopService := service.NewLearningLoopService(learningLoopUsecase)
 	computerUseService := service.NewComputerUseService(computerUseUsecase)
@@ -3083,7 +3085,7 @@ const memorySleepTimeQueueSize = 100
 //
 // Disabled via MEMORY_SLEEP_TIME_DISABLED env var.
 func provideMemorySleepTimeWorker(
-	memSvc memory2.Service,
+	memSvc memx.Service,
 	agents *biz.AgentUsecase,
 	catalog *biz.LlmProviderModelUsecase,
 	sessionReader biz.SessionReader,

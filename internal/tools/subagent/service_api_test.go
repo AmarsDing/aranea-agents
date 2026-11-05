@@ -5,8 +5,6 @@ import (
 	"context"
 	"testing"
 	"time"
-
-	trpcsubagent "trpc.group/trpc-go/trpc-agent-go/openclaw/subagent"
 )
 
 func TestNewService_EmptyStateDir(t *testing.T) {
@@ -39,7 +37,7 @@ func TestNewService_NilRunner(t *testing.T) {
 
 func TestService_ListForUser_NilService(t *testing.T) {
 	var s *Service
-	if s.ListForUser("user", trpcsubagent.ListFilter{}) != nil {
+	if s.ListForUser("user", ListFilter{}) != nil {
 		t.Fatal("nil service should return nil")
 	}
 }
@@ -158,7 +156,7 @@ func TestRunRecord_Clone_Nil(t *testing.T) {
 func TestRunRecord_Clone_DeepCopy(t *testing.T) {
 	now := time.Now()
 	r := &runRecord{
-		Run: trpcsubagent.Run{
+		Run: Run{
 			ID:         "r1",
 			StartedAt:  &now,
 			FinishedAt: &now,

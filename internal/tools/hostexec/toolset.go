@@ -3,8 +3,8 @@ package hostexec
 import (
 	"context"
 
+	trpchostexec "aranea-agents/internal/tools/hostexec/core"
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
-	trpchostexec "trpc.group/trpc-go/trpc-agent-go/tool/hostexec"
 )
 
 type redactingToolSet struct {

@@ -139,6 +139,15 @@ package tools
 //	  mcp/        — MCP ToolSet — internal/tools/toolset.go buildMCPToolSet
 //	  mcpbroker/  — MCP Broker — internal/tools/toolset.go buildMCPBrokerTools
 //
+// MCP 配置说明（2026-11-03 trpc 出库后生效）：
+//
+//   - 直连 toolset（mcp_tool_set）经 internal/tools/mcptoolset（vendored fork
+//     保留 Env 扩展），stdio 服务器的 env 配置完整透传。
+//   - broker（mcp_broker）走上游 tool/mcpbroker，其 ConnectionConfig 无 Env
+//     载体——broker 托管的 stdio 服务器 env 配置不生效（构建时打 Warn，
+//     见 buildMCPBrokerTools）。需要环境变量的 stdio 服务器请配置为直连
+//     toolset，不要挂 broker。
+//
 // Custom tool guide:
 //
 //  1. Create a new file in custom/ (e.g. custom/my_tool.go)

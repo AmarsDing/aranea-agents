@@ -22,10 +22,10 @@ import (
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 
+	trpcfile "aranea-agents/internal/tools/file"
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 	trpcagenttool "trpc.group/trpc-go/trpc-agent-go/tool/agent"
 	trpcclaudecode "trpc.group/trpc-go/trpc-agent-go/tool/claudecode"
-	trpcfile "trpc.group/trpc-go/trpc-agent-go/tool/file"
 	trpcgooglesearch "trpc.group/trpc-go/trpc-agent-go/tool/google/search"
 	trpcopenapi "trpc.group/trpc-go/trpc-agent-go/tool/openapi"
 	trpcgeminifetch "trpc.group/trpc-go/trpc-agent-go/tool/webfetch/geminifetch"
@@ -364,7 +364,7 @@ func (ac *assembleContext) assembleMCPTools() error {
 					_ = ts.Close()
 				}
 				mcpSets = nil
-				brokerTools, err := buildMCPBrokerTools(*brokerCfg)
+				brokerTools, err := buildMCPBrokerTools(*brokerCfg, ac.lg)
 				if err != nil {
 					return apierror.Internal(apierror.DomainTool, "mcpbroker: "+err.Error())
 				}
@@ -392,7 +392,7 @@ func (ac *assembleContext) assembleMCPTools() error {
 	}
 
 	if !brokerAdded && ac.enabled["mcpbroker"] && ac.cfg.MCP.Broker != nil {
-		brokerTools, err := buildMCPBrokerTools(*ac.cfg.MCP.Broker)
+		brokerTools, err := buildMCPBrokerTools(*ac.cfg.MCP.Broker, ac.lg)
 		if err != nil {
 			return apierror.Internal(apierror.DomainTool, "mcpbroker: "+err.Error())
 		}

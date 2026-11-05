@@ -14,7 +14,6 @@ import (
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
-	trpcsubagent "trpc.group/trpc-go/trpc-agent-go/openclaw/subagent"
 )
 
 func (s *Service) runChild(
@@ -80,9 +79,9 @@ func (s *Service) markRunning(
 	record := s.runs[strings.TrimSpace(runID)]
 	if record == nil {
 		s.mu.Unlock()
-		return nil, nil, runningRun{}, trpcsubagent.ErrRunNotFound
+		return nil, nil, runningRun{}, ErrRunNotFound
 	}
-	if record.Status == trpcsubagent.StatusCanceled {
+	if record.Status == StatusCanceled {
 		s.mu.Unlock()
 		return nil, nil, runningRun{}, apierror.BadRequest(apierror.DomainSubagent, "run canceled before start")
 	}
@@ -111,7 +110,7 @@ func (s *Service) markRunning(
 		started.cancel = cancel
 	}
 
-	record.Status = trpcsubagent.StatusRunning
+	record.Status = StatusRunning
 	record.ChildSessionID = started.childSession
 	record.UpdatedAt = now
 	record.StartedAt = cloneTime(now)
@@ -136,7 +135,7 @@ func (s *Service) markRunning(
 		s.mu.Lock()
 		delete(s.running, runID)
 		if current := s.runs[runID]; current != nil {
-			current.Status = trpcsubagent.StatusFailed
+			current.Status = StatusFailed
 			current.Error = err.Error()
 			current.Summary = summarizeResult(current.Error, 0)
 			current.UpdatedAt = now
@@ -220,7 +219,7 @@ func (s *Service) finishRun(runID string, output string, runErr error, summaryRu
 
 	switch {
 	case running != nil && running.cancelRequested:
-		record.Status = trpcsubagent.StatusCanceled
+		record.Status = StatusCanceled
 		record.Error = ""
 
 		reason := strings.TrimSpace(running.cancelReason)
@@ -229,15 +228,15 @@ func (s *Service) finishRun(runID string, output string, runErr error, summaryRu
 		}
 		record.Summary = summarizeResult(reason, summaryRunes)
 	case errors.Is(runErr, context.Canceled):
-		record.Status = trpcsubagent.StatusCanceled
+		record.Status = StatusCanceled
 		record.Error = ""
 		record.Summary = summarizeResult("canceled", summaryRunes)
 	case runErr != nil:
-		record.Status = trpcsubagent.StatusFailed
+		record.Status = StatusFailed
 		record.Error = runErr.Error()
 		record.Summary = summarizeResult(record.Error, summaryRunes)
 	default:
-		record.Status = trpcsubagent.StatusCompleted
+		record.Status = StatusCompleted
 		record.Error = ""
 		record.Summary = summarizeResult(output, summaryRunes)
 	}
@@ -252,9 +251,9 @@ func (s *Service) finishRun(runID string, output string, runErr error, summaryRu
 
 	finishedStatus := "completed"
 	switch record.Status {
-	case trpcsubagent.StatusFailed:
+	case StatusFailed:
 		finishedStatus = "failed"
-	case trpcsubagent.StatusCanceled:
+	case StatusCanceled:
 		finishedStatus = "cancelled"
 	}
 	s.emitModeBFinished(context.Background(), ModeBFinishedInfo{
@@ -268,7 +267,7 @@ func (s *Service) finishRun(runID string, output string, runErr error, summaryRu
 	router := s.outboundRouter
 	cloned := record.clone()
 	s.mu.Unlock()
-	if router != nil && cloned != nil && cloned.Status == trpcsubagent.StatusCompleted {
+	if router != nil && cloned != nil && cloned.Status == StatusCompleted {
 		s.doNotifyCompletion(router, cloned)
 	}
 }

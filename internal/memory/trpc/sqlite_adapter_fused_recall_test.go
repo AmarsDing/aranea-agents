@@ -10,6 +10,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/loggateway"
 
+	"aranea-agents/internal/memory/memx"
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcmemory "trpc.group/trpc-go/trpc-agent-go/memory"
 	"trpc.group/trpc-go/trpc-agent-go/session"
@@ -52,7 +53,7 @@ func factRowJSON(id, statement string, importance float64, updatedAt time.Time) 
 	return b
 }
 
-func newFusedService(store *bitemporalMockStore, loader AgentRuntimeSettingsLoader, fused biz.MemoryL3Recaller) trpcmemory.Service {
+func newFusedService(store *bitemporalMockStore, loader AgentRuntimeSettingsLoader, fused biz.MemoryL3Recaller) memx.Service {
 	svc := NewMemoryService(
 		store, store, nil, nil, nil, loader, nil, nil, loggateway.NewNoop(),
 	)
@@ -179,7 +180,7 @@ func TestSearchMemories_IncludeInvalidatedSkipsFused(t *testing.T) {
 
 	entries, err := svc.SearchMemories(context.Background(),
 		trpcmemory.UserKey{AppName: "agent-x", UserID: "user-x"}, "预算",
-		trpcmemory.WithSearchOptions(trpcmemory.SearchOptions{IncludeInvalidated: true}))
+		memx.WithSearchOptions(memx.SearchOptions{IncludeInvalidated: true}))
 	if err != nil {
 		t.Fatalf("SearchMemories: %v", err)
 	}

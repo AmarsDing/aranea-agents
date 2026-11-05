@@ -193,6 +193,7 @@ export default {
       knowledge: { title: '知识库', description: '整理资料、查看关联，让答案有据可查。' },
       agents: { title: '智能体', description: '管理岗位专项与各自的能力配置。' },
       workbench: { title: '作战总台', description: '查看待办与业务状态，处理需要你决策的事项。' },
+      codingTasks: { title: '编码任务', description: '向外部编程工具派发任务，并在看板里跟踪每一步。' },
     },
   },
   ecommerceLoop: {
@@ -2003,6 +2004,8 @@ export default {
     usageEvents: '用量事件',
     usageQuotas: '用量配额',
     chat: '聊天',
+    codingTasks: '编码任务',
+    codingTools: '编码工具',
     companion: '语音伴侣',
     sessions: '会话历史',
     memory: '记忆中心',

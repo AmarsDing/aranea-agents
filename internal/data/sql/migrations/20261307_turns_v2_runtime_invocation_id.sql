@@ -1,0 +1,14 @@
+-- Version 20261307: turns_v2.runtime_invocation_id（trpc 出库 / session fork
+-- 事件边界定位解耦，2026-11-03）
+-- 背景：vendored fork 的 WithRunInvocationID 补丁使框架 invocation id 恒等于
+-- 应用 turn id，session fork 据此以 event->>'invocationId' = turn id 定位
+-- 分叉边界。出库后框架 invocation id 退化为每次 run 的随机 uuid，上述匹配
+-- 失效。本列由 v2 projector 在流式消费首条根事件（ParentInvocationID 为空）
+-- 时捕获真实 invocation id，随 turn 终态落库；FindTurnEventBoundary 优先按
+-- 本列匹配事件，空值回退旧语义（turn id 直连），兼容迁移前存量行。
+-- 语义：框架侧本次 run 的 invocation uuid；空串 = 迁移前旧行或未捕获
+-- （LLM 调用前失败、无任何框架事件的 turn）。列上限 64 对齐同表 id 列。
+-- 不加索引：查询一律经主键 id 定位行后读本列。NOT NULL DEFAULT '' 与
+-- 20261305 等同律免 NULL 三值；旧二进制不感知本列，ent 查询列清单由
+-- 生成代码决定，旧二进制字节级旧行为。幂等，重跑安全。
+ALTER TABLE turns_v2 ADD COLUMN IF NOT EXISTS runtime_invocation_id VARCHAR(64) NOT NULL DEFAULT '';

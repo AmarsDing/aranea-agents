@@ -11,7 +11,6 @@ import (
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
-	"trpc.group/trpc-go/trpc-agent-go/toolsnapshot"
 )
 
 // newOrchestrationPhasePromoteBeforeHook activates deferred closeout tools for
@@ -50,7 +49,7 @@ func newOrchestrationPhasePromoteBeforeHook(dm *deferred.DeferredToolManager, lg
 			activated++
 		}
 		if activated > 0 {
-			toolsnapshot.InvalidateFromContext(ctx)
+			deferred.SnapshotInvalidateFromContext(ctx)
 		}
 		return &trpcagent.BeforeAgentResult{Context: ctx}, nil
 	})

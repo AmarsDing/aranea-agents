@@ -20,6 +20,7 @@ export const sideNavGroups: NavGroup[] = [
       { to: '/task-workspace', icon: 'view_quilt', labelKey: 'menu.taskWorkspace' },
       { to: '/usage/events', icon: 'receipt_long', labelKey: 'menu.usageEvents' },
       { to: '/chat', icon: 'chat', labelKey: 'menu.chat' },
+      { to: '/coding-tasks', icon: 'terminal', labelKey: 'menu.codingTasks' },
       { to: '/companion', icon: 'record_voice_over', labelKey: 'menu.companion' },
       { to: '/sessions', icon: 'history', labelKey: 'menu.sessions', exact: false },
       { to: '/memory', icon: 'psychology', labelKey: 'menu.memory', exact: false },
@@ -45,6 +46,7 @@ export const sideNavGroups: NavGroup[] = [
     labelKey: 'menu.groupTools',
     items: [
       { to: '/mcp-servers', icon: 'extension', labelKey: 'menu.mcp' },
+      { to: '/settings/coding-tools', icon: 'code', labelKey: 'menu.codingTools' },
       { to: '/tools', icon: 'handyman', labelKey: 'menu.tools' },
       { to: '/skills', icon: 'psychology', labelKey: 'menu.skills' },
       { to: '/skills/tags', icon: 'sell', labelKey: 'menu.skillTags' },

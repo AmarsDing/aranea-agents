@@ -5,13 +5,40 @@ import (
 	"testing"
 
 	bridge "aranea-agents/internal/biz/agentbridge"
+	"aranea-agents/internal/data/testhelper"
 	"aranea-agents/pkg/apierror"
+	"aranea-agents/pkg/loggateway"
 )
+
+// newCodingReposTestDataPG 在 ent 自动迁移之上镜像补齐 20261308_coding_workbench.sql
+// 的 raw-SQL 列（icon_url/capabilities/default_autonomy、origin/review_*）——
+// 这些列不在 ent schema，生产由 DDL 迁移落地；测试镜像 DDL 为先例
+// （board_run_lease / event_delivery_outbox 同款做法）。
+func newCodingReposTestDataPG(t *testing.T) *Data {
+	t.Helper()
+	client, db := testhelper.SetupTestPG(t)
+	for _, s := range []string{
+		`ALTER TABLE coding_agents ADD COLUMN IF NOT EXISTS icon_url TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE coding_agents ADD COLUMN IF NOT EXISTS capabilities TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE coding_agents ADD COLUMN IF NOT EXISTS default_autonomy VARCHAR(32) NOT NULL DEFAULT ''`,
+		`ALTER TABLE coding_tasks ADD COLUMN IF NOT EXISTS origin VARCHAR(16) NOT NULL DEFAULT ''`,
+		`ALTER TABLE coding_tasks ADD COLUMN IF NOT EXISTS review_status VARCHAR(16) NOT NULL DEFAULT ''`,
+		`ALTER TABLE coding_tasks ADD COLUMN IF NOT EXISTS review_comment TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE coding_tasks ADD COLUMN IF NOT EXISTS reviewed_at TEXT NOT NULL DEFAULT ''`,
+	} {
+		if _, err := db.ExecContext(context.Background(), s); err != nil {
+			t.Fatalf("mirror 20261308 coding columns: %v", err)
+		}
+	}
+	d := &Data{}
+	d.SetEntClientForTest(client, db, loggateway.NewNoop())
+	return d
+}
 
 // ---------- AgentRepo ----------
 
 func TestCodingAgentRepo_UpsertPreservesIdentity(t *testing.T) {
-	d := newTestDataPG(t)
+	d := newCodingReposTestDataPG(t)
 	r := NewCodingAgentRepo(d)
 	ctx := context.Background()
 
@@ -65,7 +92,7 @@ func TestCodingAgentRepo_UpsertPreservesIdentity(t *testing.T) {
 }
 
 func TestCodingAgentRepo_GetByKeyNotFoundAndList(t *testing.T) {
-	d := newTestDataPG(t)
+	d := newCodingReposTestDataPG(t)
 	r := NewCodingAgentRepo(d)
 	ctx := context.Background()
 
@@ -100,7 +127,7 @@ func TestCodingAgentRepo_GetByKeyNotFoundAndList(t *testing.T) {
 }
 
 func TestCodingAgentRepo_UpdateProbe(t *testing.T) {
-	d := newTestDataPG(t)
+	d := newCodingReposTestDataPG(t)
 	r := NewCodingAgentRepo(d)
 	ctx := context.Background()
 
@@ -139,7 +166,7 @@ func TestCodingAgentRepo_UpdateProbe(t *testing.T) {
 // ---------- ProjectRepo ----------
 
 func TestCodingProjectRepo_UpsertGetListDelete(t *testing.T) {
-	d := newTestDataPG(t)
+	d := newCodingReposTestDataPG(t)
 	r := NewCodingProjectRepo(d)
 	ctx := context.Background()
 
@@ -191,7 +218,7 @@ func TestCodingProjectRepo_UpsertGetListDelete(t *testing.T) {
 }
 
 func TestCodingProjectRepo_MatchRanking(t *testing.T) {
-	d := newTestDataPG(t)
+	d := newCodingReposTestDataPG(t)
 	r := NewCodingProjectRepo(d)
 	ctx := context.Background()
 
@@ -252,7 +279,7 @@ func TestCodingProjectRepo_MatchRanking(t *testing.T) {
 // ---------- TaskRepo ----------
 
 func TestCodingTaskRepo_CreateGetList(t *testing.T) {
-	d := newTestDataPG(t)
+	d := newCodingReposTestDataPG(t)
 	r := NewCodingTaskRepo(d)
 	ctx := context.Background()
 
@@ -310,7 +337,7 @@ func TestCodingTaskRepo_CreateGetList(t *testing.T) {
 }
 
 func TestCodingTaskRepo_UpdateStatusCAS(t *testing.T) {
-	d := newTestDataPG(t)
+	d := newCodingReposTestDataPG(t)
 	r := NewCodingTaskRepo(d)
 	ctx := context.Background()
 
@@ -367,7 +394,7 @@ func TestCodingTaskRepo_UpdateStatusCAS(t *testing.T) {
 }
 
 func TestCodingTaskRepo_ListActive(t *testing.T) {
-	d := newTestDataPG(t)
+	d := newCodingReposTestDataPG(t)
 	r := NewCodingTaskRepo(d)
 	ctx := context.Background()
 

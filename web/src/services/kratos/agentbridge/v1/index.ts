@@ -15,6 +15,15 @@ export type CodingAgent = {
   lastProbeError: string | undefined;
   createdAt: string | undefined;
   updatedAt: string | undefined;
+  // M4 P3-6：liveness 阈值覆盖（JSON 文本，空=用全局默认；键见设计「活跃性监管」§E）
+  livenessOverrideJson: string | undefined;
+  // 03 P0（实施与交互设计）：工具图标（前端静态资源路径或 URL；
+  // 空=前端按工具名首字母占位，不允许白块）。
+  iconUrl: string | undefined;
+  // 能力声明（看板/表单展示）：read_workspace / write_workspace / exec_command。
+  capabilities: string[] | undefined;
+  // 默认自治级别：readonly / workspace / full（发起表单高级项默认值）。
+  defaultAutonomy: string | undefined;
 };
 
 export type UpsertAgentRequest = {
@@ -28,6 +37,12 @@ export type UpsertAgentRequest = {
   args: string[] | undefined;
   env: { [key: string]: string } | undefined;
   enabled: boolean | undefined;
+  // M4 P3-6：liveness 阈值覆盖（JSON 文本；省略=保留旧值，"{}"=显式清空回全局默认）
+  livenessOverrideJson: string | undefined;
+  // 03 P0：图标与能力声明（省略=保留旧值；capabilities 传空数组=清空）。
+  iconUrl: string | undefined;
+  capabilities: string[] | undefined;
+  defaultAutonomy: string | undefined;
 };
 
 export type ListAgentsResponse = {
@@ -88,13 +103,25 @@ export type CodingTask = {
   progressCount: number | undefined;
   createdAt: string | undefined;
   completedAt: string | undefined;
+  // M4：子进程 PID（进程组根）+ 活跃性监管（UI 徽标数据源，设计 §B/§F）
+  childPid: number | undefined;
+  lastActiveAt: string | undefined;
+  lastExcerpt: string | undefined;
+  heartbeatMiss: number | undefined;
+  livenessState: string | undefined;
+  // 03 P0：发起来源（chat=会话内 LLM 派发 / workbench=看板表单直发）与验收结果。
+  origin: string | undefined;
+  reviewStatus: string | undefined;
+  reviewComment: string | undefined;
+  reviewedAt: string | undefined;
 };
 
 export type ListTasksRequest = {
-  //
-  // Behaviors: REQUIRED
+  // 03 P0：空=全部会话（看板跨会话视图）；传值=该会话任务（会话内播报）。
   sessionId: string | undefined;
   limit: number | undefined;
+  // 空=全部工具；传值=按工具过滤（看板泳道）。
+  agentKey: string | undefined;
 };
 
 export type ListTasksResponse = {
@@ -113,6 +140,68 @@ export type CancelTaskRequest = {
   id: string | undefined;
 };
 
+// 03 P0（实施与交互设计）：工作台表单直发任务（不经 LLM）。
+// agent_key 空=自动路由（服务端写死的分工表按序挑首个 enabled 工具）。
+export type DispatchTaskRequest = {
+  sessionId: string | undefined;
+  agentKey: string | undefined;
+  //
+  // Behaviors: REQUIRED
+  projectQuery: string | undefined;
+  //
+  // Behaviors: REQUIRED
+  prompt: string | undefined;
+  origin: string | undefined;
+};
+
+export type ProjectCandidate = {
+  id: string | undefined;
+  name: string | undefined;
+  path: string | undefined;
+  description: string | undefined;
+};
+
+export type DispatchTaskResponse = {
+  task: CodingTask | undefined;
+  candidates: ProjectCandidate[] | undefined;
+};
+
+// CodingTaskEvent 是统一步骤事件（03 P0 ④：所有工具输出归一化为同一套
+// 步骤结构并持久化，支持刷新后回看与回放）。
+export type CodingTaskEvent = {
+  id: string | undefined;
+  taskId: string | undefined;
+  seq: number | undefined;
+  kind: string | undefined;
+  title: string | undefined;
+  text: string | undefined;
+  createdAt: string | undefined;
+};
+
+export type ListTaskEventsRequest = {
+  //
+  // Behaviors: REQUIRED
+  taskId: string | undefined;
+  afterSeq: number | undefined;
+  limit: number | undefined;
+};
+
+export type ListTaskEventsResponse = {
+  items: CodingTaskEvent[] | undefined;
+};
+
+// ReviewTaskRequest 验收三动作：approve=通过 / reject=打回（comment 必填，
+// 重做由前端以原 prompt+意见重新派发）/ archive=仅存档。
+export type ReviewTaskRequest = {
+  //
+  // Behaviors: REQUIRED
+  id: string | undefined;
+  //
+  // Behaviors: REQUIRED
+  action: string | undefined;
+  comment: string | undefined;
+};
+
 export interface AgentBridgeService {
   // 工具注册管理（删除经 enabled=false，M1 不提供物理删除）
   UpsertAgent(request: UpsertAgentRequest): Promise<CodingAgent>;
@@ -126,6 +215,10 @@ export interface AgentBridgeService {
   ListTasks(request: ListTasksRequest): Promise<ListTasksResponse>;
   GetTask(request: GetTaskRequest): Promise<CodingTask>;
   CancelTask(request: CancelTaskRequest): Promise<CodingTask>;
+  // 03 P0：工作台直发 / 步骤事件回放 / 验收
+  DispatchTask(request: DispatchTaskRequest): Promise<DispatchTaskResponse>;
+  ListTaskEvents(request: ListTaskEventsRequest): Promise<ListTaskEventsResponse>;
+  ReviewTask(request: ReviewTaskRequest): Promise<CodingTask>;
 }
 
 type RequestType = {
@@ -255,6 +348,9 @@ export function createAgentBridgeServiceClient(
       if (request.limit) {
         queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`)
       }
+      if (request.agentKey) {
+        queryParams.push(`agentKey=${encodeURIComponent(request.agentKey.toString())}`)
+      }
       let uri = path;
       if (queryParams.length > 0) {
         uri += `?${queryParams.join("&")}`
@@ -306,6 +402,69 @@ export function createAgentBridgeServiceClient(
       }, {
         service: "AgentBridgeService",
         method: "CancelTask",
+      }) as Promise<CodingTask>;
+    },
+    DispatchTask(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      const path = `v1/agentbridge/tasks`; // eslint-disable-line quotes
+      const body = JSON.stringify(request);
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "AgentBridgeService",
+        method: "DispatchTask",
+      }) as Promise<DispatchTaskResponse>;
+    },
+    ListTaskEvents(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      if (!request.taskId) {
+        throw new Error("missing required field request.task_id");
+      }
+      const path = `v1/agentbridge/tasks/${request.taskId}/events`; // eslint-disable-line quotes
+      const body = null;
+      const queryParams: string[] = [];
+      if (request.afterSeq) {
+        queryParams.push(`afterSeq=${encodeURIComponent(request.afterSeq.toString())}`)
+      }
+      if (request.limit) {
+        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`)
+      }
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "AgentBridgeService",
+        method: "ListTaskEvents",
+      }) as Promise<ListTaskEventsResponse>;
+    },
+    ReviewTask(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      if (!request.id) {
+        throw new Error("missing required field request.id");
+      }
+      const path = `v1/agentbridge/tasks/${request.id}/review`; // eslint-disable-line quotes
+      const body = JSON.stringify(request);
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "AgentBridgeService",
+        method: "ReviewTask",
       }) as Promise<CodingTask>;
     },
   };

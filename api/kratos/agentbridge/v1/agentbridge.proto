@@ -25,6 +25,13 @@ message CodingAgent {
   string updated_at = 11;
   // M4 P3-6：liveness 阈值覆盖（JSON 文本，空=用全局默认；键见设计「活跃性监管」§E）
   string liveness_override_json = 12;
+  // 03 P0（实施与交互设计）：工具图标（前端静态资源路径或 URL；
+  // 空=前端按工具名首字母占位，不允许白块）。
+  string icon_url = 13;
+  // 能力声明（看板/表单展示）：read_workspace / write_workspace / exec_command。
+  repeated string capabilities = 14;
+  // 默认自治级别：readonly / workspace / full（发起表单高级项默认值）。
+  string default_autonomy = 15;
 }
 
 message UpsertAgentRequest {
@@ -36,6 +43,10 @@ message UpsertAgentRequest {
   bool enabled = 6;
   // M4 P3-6：liveness 阈值覆盖（JSON 文本；省略=保留旧值，"{}"=显式清空回全局默认）
   string liveness_override_json = 7;
+  // 03 P0：图标与能力声明（省略=保留旧值；capabilities 传空数组=清空）。
+  string icon_url = 8;
+  repeated string capabilities = 9;
+  string default_autonomy = 10;
 }
 
 message ListAgentsResponse {
@@ -94,11 +105,19 @@ message CodingTask {
   string last_excerpt = 14;
   int32 heartbeat_miss = 15;
   string liveness_state = 16; // healthy/silent/suspect/lost，默认 healthy
+  // 03 P0：发起来源（chat=会话内 LLM 派发 / workbench=看板表单直发）与验收结果。
+  string origin = 17;
+  string review_status = 18; // 空=未验收 / approved / rejected / archived
+  string review_comment = 19;
+  string reviewed_at = 20;
 }
 
 message ListTasksRequest {
-  string session_id = 1 [(google.api.field_behavior) = REQUIRED];
+  // 03 P0：空=全部会话（看板跨会话视图）；传值=该会话任务（会话内播报）。
+  string session_id = 1;
   int32 limit = 2;
+  // 空=全部工具；传值=按工具过滤（看板泳道）。
+  string agent_key = 3;
 }
 
 message ListTasksResponse {
@@ -111,6 +130,58 @@ message GetTaskRequest {
 
 message CancelTaskRequest {
   string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+// 03 P0（实施与交互设计）：工作台表单直发任务（不经 LLM）。
+// agent_key 空=自动路由（服务端写死的分工表按序挑首个 enabled 工具）。
+message DispatchTaskRequest {
+  string session_id = 1; // 可选：留痕会话（前端先建会话传入，进度/终态通知路由目标）
+  string agent_key = 2;
+  string project_query = 3 [(google.api.field_behavior) = REQUIRED]; // 项目名（消歧同 LLM 路径）
+  string prompt = 4 [(google.api.field_behavior) = REQUIRED];
+  string origin = 5; // 空=workbench；chat 由 LLM 工具路径使用
+}
+
+message ProjectCandidate {
+  string id = 1;
+  string name = 2;
+  string path = 3;
+  string description = 4;
+}
+
+message DispatchTaskResponse {
+  CodingTask task = 1; // 歧义时为空
+  repeated ProjectCandidate candidates = 2; // 项目名歧义候选（未落任务）
+}
+
+// CodingTaskEvent 是统一步骤事件（03 P0 ④：所有工具输出归一化为同一套
+// 步骤结构并持久化，支持刷新后回看与回放）。
+message CodingTaskEvent {
+  string id = 1;
+  string task_id = 2;
+  int64 seq = 3;        // 任务内单调序号（回放游标）
+  string kind = 4;      // agent_message_chunk / tool_call / plan / permission / error / heartbeat
+  string title = 5;     // 步骤标题（tool_call 的工具名等）
+  string text = 6;      // 步骤详情（截断存储）
+  string created_at = 7;
+}
+
+message ListTaskEventsRequest {
+  string task_id = 1 [(google.api.field_behavior) = REQUIRED];
+  int64 after_seq = 2; // 增量拉取游标（0=从头）
+  int32 limit = 3;
+}
+
+message ListTaskEventsResponse {
+  repeated CodingTaskEvent items = 1;
+}
+
+// ReviewTaskRequest 验收三动作：approve=通过 / reject=打回（comment 必填，
+// 重做由前端以原 prompt+意见重新派发）/ archive=仅存档。
+message ReviewTaskRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+  string action = 2 [(google.api.field_behavior) = REQUIRED];
+  string comment = 3;
 }
 
 service AgentBridgeService {
@@ -153,6 +224,22 @@ service AgentBridgeService {
   rpc CancelTask(CancelTaskRequest) returns (CodingTask) {
     option (google.api.http) = {
       post: "/v1/agentbridge/tasks/{id}/cancel"
+      body: "*"
+    };
+  }
+  // 03 P0：工作台直发 / 步骤事件回放 / 验收
+  rpc DispatchTask(DispatchTaskRequest) returns (DispatchTaskResponse) {
+    option (google.api.http) = {
+      post: "/v1/agentbridge/tasks"
+      body: "*"
+    };
+  }
+  rpc ListTaskEvents(ListTaskEventsRequest) returns (ListTaskEventsResponse) {
+    option (google.api.http) = {get: "/v1/agentbridge/tasks/{task_id}/events"};
+  }
+  rpc ReviewTask(ReviewTaskRequest) returns (CodingTask) {
+    option (google.api.http) = {
+      post: "/v1/agentbridge/tasks/{id}/review"
       body: "*"
     };
   }

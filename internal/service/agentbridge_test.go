@@ -256,6 +256,35 @@ func (f *abFakeTasks) ListActive(_ context.Context) ([]*agentbridge.CodingTask, 
 	return out, nil
 }
 
+// ListRecent 03 P0：按创建时间倒序返回全部（fake 无 agent 过滤需求）。
+func (f *abFakeTasks) ListRecent(_ context.Context, limit int, _ string) ([]*agentbridge.CodingTask, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make([]*agentbridge.CodingTask, 0, len(f.byID))
+	for _, t := range f.byID {
+		cp := *t
+		out = append(out, &cp)
+	}
+	if limit > 0 && len(out) > limit {
+		out = out[:limit]
+	}
+	return out, nil
+}
+
+// UpdateReview 03 P0：验收落库。
+func (f *abFakeTasks) UpdateReview(_ context.Context, id, status, comment, reviewedAt string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	t, ok := f.byID[id]
+	if !ok {
+		return apierror.NotFound(apierror.DomainAgentBridge, "task not found")
+	}
+	t.ReviewStatus = status
+	t.ReviewComment = comment
+	t.ReviewedAt = reviewedAt
+	return nil
+}
+
 type abFakeFactory struct {
 	sessions []*abFakeSession
 }

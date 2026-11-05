@@ -6,8 +6,6 @@ import (
 	"testing"
 
 	"aranea-agents/pkg/loggateway"
-
-	trpcsubagent "trpc.group/trpc-go/trpc-agent-go/openclaw/subagent"
 )
 
 // stubTagRunner 与 service_test.go 的 stubRunner 同构，带身份标签以区分
@@ -87,7 +85,7 @@ func TestRunChildWithoutCapturedRunnerFails(t *testing.T) {
 		t.Fatal(err)
 	}
 	rec := &runRecord{
-		Run:         trpcsubagent.Run{ID: "r-no-runner", Task: "t"},
+		Run:         Run{ID: "r-no-runner", Task: "t"},
 		OwnerUserID: "u1",
 	}
 	result := replyAccumulator{}
@@ -109,7 +107,7 @@ func TestRunRecordPersistRoundTripDropsRunner(t *testing.T) {
 		t.Fatal(err)
 	}
 	svc.SetTurnContext("sess-a", &stubTagRunner{tag: "turn-A"}, "prov", "mod", "agent", "key")
-	run, err := func() (trpcsubagent.Run, error) {
+	run, err := func() (Run, error) {
 		svc.Start(context.Background())
 		defer func() { _ = svc.Close() }()
 		return svc.Spawn(context.Background(), SpawnRequest{

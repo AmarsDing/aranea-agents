@@ -11,6 +11,7 @@ import (
 	"aranea-agents/internal/conf"
 	"aranea-agents/internal/data"
 	"aranea-agents/internal/memory"
+	"aranea-agents/internal/memory/memx"
 	memtrpc "aranea-agents/internal/memory/trpc"
 	"aranea-agents/internal/provider"
 	rt "aranea-agents/internal/runtime"
@@ -20,7 +21,6 @@ import (
 
 	trpcartifact "trpc.group/trpc-go/trpc-agent-go/artifact"
 	trpcevolution "trpc.group/trpc-go/trpc-agent-go/evolution"
-	trpcmemory "trpc.group/trpc-go/trpc-agent-go/memory"
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
 	trpcsession "trpc.group/trpc-go/trpc-agent-go/session"
 )
@@ -164,7 +164,7 @@ func provideFeedbackMemoryEnqueuer(q memtrpc.AutoMemoryQueue) biz.FeedbackMemory
 	return biz.FeedbackMemoryEnqueuerFunc(memtrpc.NewFeedbackMemoryEnqueuer(q))
 }
 
-func provideMemoryCompositeRecall(d *data.Data, memSvc trpcmemory.Service, l2Recall biz.MemoryL2Recaller, l3Recall biz.MemoryL3Recaller, vec *biz.MemoryUsecase, lg loggateway.Logger) biz.MemoryCompositeRecaller {
+func provideMemoryCompositeRecall(d *data.Data, memSvc memx.Service, l2Recall biz.MemoryL2Recaller, l3Recall biz.MemoryL3Recaller, vec *biz.MemoryUsecase, lg loggateway.Logger) biz.MemoryCompositeRecaller {
 	uc := biz.NewMemoryCompositeRecallUsecase(data.NewMemoryCompositeRecallAdapter(d))
 	if uc == nil {
 		return nil
@@ -204,7 +204,7 @@ func provideMemoryTRPCService(
 	q memtrpc.AutoMemoryQueue,
 	linkEvolver memory.LinkEvolutionService,
 	lg loggateway.Logger,
-) trpcmemory.Service {
+) memx.Service {
 	if d == nil {
 		return nil
 	}
@@ -329,7 +329,7 @@ func providePersistenceSet(
 	sess trpcsession.Service,
 	artifact trpcartifact.Service,
 	artifactUC *biz.ArtifactUsecase,
-	memSvc trpcmemory.Service,
+	memSvc memx.Service,
 	q memtrpc.AutoMemoryQueue,
 	policy *biz.MemoryPolicyEngine,
 	l2Recall biz.MemoryL2Recaller,
@@ -344,7 +344,7 @@ func providePersistenceSet(
 	var mem rt.MemorySet
 	if d != nil {
 		mem = rt.MemorySet{
-			TRPC:              memSvc,
+			TRPC:              memx.AsUpstream(memSvc),
 			MemoryLayerPorts:  data.NewMemoryLayerPorts(d, d.VectorStore()),
 			AdminUsecase:      adminUC,
 			ActionLogWriter:   data.NewMemoryActionLogWriter(d),

@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"time"
 
@@ -24,6 +25,8 @@ const (
 	noticeCodingTaskCompleted = "coding_task_completed"
 	noticeCodingTaskFailed    = "coding_task_failed"
 	noticeCodingTaskCancelled = "coding_task_cancelled"
+	// noticeCodingTaskReviewed 03 P0：验收结果通知。
+	noticeCodingTaskReviewed = "coding_task_reviewed"
 )
 
 // AgentBridgeServiceDeps 是 AgentBridgeService 的构造依赖。
@@ -31,10 +34,12 @@ const (
 type AgentBridgeServiceDeps struct {
 	Agents   agentbridge.AgentRepo
 	Projects agentbridge.ProjectRepo
-	Bus      biz.EventBus
-	Infra    *event.Infra      // 可选：nil 时流程日志仅落进程日志
-	Clock    func() time.Time  // 可选：默认 time.Now（测试注入假时钟）
-	Logger   loggateway.Logger // 可选：默认 Noop
+	// Events 03 P0 ④：统一步骤事件持久化（可选：nil 时仅 WS 进度通知不落库回放）。
+	Events  agentbridge.TaskEventRepo
+	Bus     biz.EventBus
+	Infra   *event.Infra      // 可选：nil 时流程日志仅落进程日志
+	Clock   func() time.Time  // 可选：默认 time.Now（测试注入假时钟）
+	Logger  loggateway.Logger // 可选：默认 Noop
 }
 
 // AgentBridgeService 对 tools/proto 暴露编程桥接用例，并负责：
@@ -44,6 +49,7 @@ type AgentBridgeServiceDeps struct {
 type AgentBridgeService struct {
 	agents   agentbridge.AgentRepo
 	projects agentbridge.ProjectRepo
+	events   agentbridge.TaskEventRepo
 	bus      biz.EventBus
 	infra    *event.Infra
 	clock    func() time.Time
@@ -75,6 +81,7 @@ func NewAgentBridgeService(deps AgentBridgeServiceDeps) *AgentBridgeService {
 	return &AgentBridgeService{
 		agents:   deps.Agents,
 		projects: deps.Projects,
+		events:   deps.Events,
 		bus:      deps.Bus,
 		infra:    deps.Infra,
 		clock:    clock,
@@ -85,10 +92,11 @@ func NewAgentBridgeService(deps AgentBridgeServiceDeps) *AgentBridgeService {
 // ProvideAgentBridgeService 是 Wire provider：装配 service + usecase 构造环
 // （usecase 的 TaskListener 是 service 自身，须 NewAgentBridgeService →
 // NewAgentBridgeUsecase(Listener) → BindUsecase 二次绑定，wire 无法表达）。
-func ProvideAgentBridgeService(agents agentbridge.AgentRepo, projects agentbridge.ProjectRepo, tasks agentbridge.TaskRepo, factory agentbridge.SessionFactory, bus biz.EventBus, infra *event.Infra, lg loggateway.Logger) *AgentBridgeService {
+func ProvideAgentBridgeService(agents agentbridge.AgentRepo, projects agentbridge.ProjectRepo, tasks agentbridge.TaskRepo, events agentbridge.TaskEventRepo, factory agentbridge.SessionFactory, bus biz.EventBus, infra *event.Infra, lg loggateway.Logger) *AgentBridgeService {
 	svc := NewAgentBridgeService(AgentBridgeServiceDeps{
 		Agents:   agents,
 		Projects: projects,
+		Events:   events,
 		Bus:      bus,
 		Infra:    infra,
 		Logger:   lg,
@@ -130,6 +138,12 @@ func (s *AgentBridgeService) usecase() (*agentbridge.AgentBridgeUsecase, error) 
 // DispatchTask 派发编程任务：解析项目（歧义返回候选，不发事件）→ 落任务 →
 // spawn ACP 会话异步执行。进度经限流 handler 转发，终态经 OnTaskTerminal 发射。
 func (s *AgentBridgeService) DispatchTask(ctx context.Context, sessionID, agentKey, projectQuery, prompt string) (*agentbridge.DispatchResult, error) {
+	return s.DispatchTaskWithOrigin(ctx, sessionID, agentKey, projectQuery, prompt, "chat")
+}
+
+// DispatchTaskWithOrigin 03 P0：同 DispatchTask，额外落发起来源
+// （chat=会话内 LLM 派发 / workbench=看板表单直发）。
+func (s *AgentBridgeService) DispatchTaskWithOrigin(ctx context.Context, sessionID, agentKey, projectQuery, prompt, origin string) (*agentbridge.DispatchResult, error) {
 	uc, err := s.usecase()
 	if err != nil {
 		return nil, err
@@ -140,6 +154,7 @@ func (s *AgentBridgeService) DispatchTask(ctx context.Context, sessionID, agentK
 		AgentKey:     agentKey,
 		ProjectQuery: projectQuery,
 		Prompt:       prompt,
+		Origin:       origin,
 		Handler:      h,
 	})
 	if res == nil || res.Task == nil {
@@ -177,6 +192,77 @@ func (s *AgentBridgeService) ListSessionTasks(ctx context.Context, sessionID str
 		return nil, err
 	}
 	return uc.ListSessionTasks(ctx, sessionID, limit)
+}
+
+// ListRecentTasks 03 P0：跨会话看板（agentKey 空=全部工具）。
+func (s *AgentBridgeService) ListRecentTasks(ctx context.Context, limit int, agentKey string) ([]*agentbridge.CodingTask, error) {
+	uc, err := s.usecase()
+	if err != nil {
+		return nil, err
+	}
+	return uc.ListRecentTasks(ctx, limit, agentKey)
+}
+
+// ListTaskEvents 03 P0 ④：任务步骤事件增量拉取（afterSeq 回放游标）。
+func (s *AgentBridgeService) ListTaskEvents(ctx context.Context, taskID string, afterSeq int64, limit int) ([]*agentbridge.CodingTaskEvent, error) {
+	if s.events == nil {
+		return []*agentbridge.CodingTaskEvent{}, nil
+	}
+	return s.events.List(ctx, taskID, afterSeq, limit)
+}
+
+// ReviewTask 03 P0：验收三动作（approve/reject/archive），落库后向发起会话
+// 发 WS 通知（看板/会话即时刷新）。
+func (s *AgentBridgeService) ReviewTask(ctx context.Context, id, action, comment string) (*agentbridge.CodingTask, error) {
+	uc, err := s.usecase()
+	if err != nil {
+		return nil, err
+	}
+	task, err := uc.ReviewTask(ctx, id, action, comment)
+	if err != nil {
+		return nil, err
+	}
+	agentKey, projectName := s.resolveNames(task.Workspace, task.AgentID, task.ProjectID)
+	s.publish(biz.NewSystemNoticeEvent(task.SessionID, noticeCodingTaskReviewed, comment, map[string]any{
+		"task_id":       task.ID,
+		"agent_key":     agentKey,
+		"project_name":  projectName,
+		"session_id":    task.SessionID,
+		"review_status": task.ReviewStatus,
+	}))
+	s.emitter(ctx, task.SessionID).LogDone("agentbridge.task.review", "编程任务验收",
+		event.P("task_id", task.ID), event.P("review_status", task.ReviewStatus))
+	return task, nil
+}
+
+// autoRoutePreference 03 P0 ②：自动路由分工表（先写死）——agent_key 空时
+// 按序挑首个 enabled 工具；都不命中则取任意 enabled；无 enabled 报"去添加工具"。
+var autoRoutePreference = []string{"codex", "claude_code", "claude-code", "codebuddy", "deepseek", "grok"}
+
+// AutoRouteAgentKey 自动路由：为未指定工具的派发挑选 agent_key。
+func (s *AgentBridgeService) AutoRouteAgentKey(ctx context.Context, workspace string) (string, error) {
+	agents, err := s.agents.List(ctx, workspace)
+	if err != nil {
+		return "", err
+	}
+	enabled := map[string]bool{}
+	for _, a := range agents {
+		if a.Enabled {
+			enabled[a.AgentKey] = true
+		}
+	}
+	for _, key := range autoRoutePreference {
+		if enabled[key] {
+			return key, nil
+		}
+	}
+	for _, a := range agents {
+		if a.Enabled {
+			return a.AgentKey, nil
+		}
+	}
+	return "", apierror.NotFound(apierror.DomainAgentBridge,
+		"no enabled coding agent; add one in coding tools settings")
 }
 
 // CancelTask 取消任务（running/awaiting_approval → cancelling → cancelled）。
@@ -354,6 +440,9 @@ func (s *AgentBridgeService) emitter(ctx context.Context, sessionID string) *eve
 
 // bridgeProgressHandler 是单任务的进度回调：OnUpdate 限流（5s 窗口
 // leading-edge）后经 EventBus 发射 coding_task_progress。
+// 03 P0 ④：同时把步骤事件持久化到 coding_task_events（seq 任务内单调，
+// 回放/刷新后回看）。agent_message_chunk 节流落库（全文摘要在 task.summary，
+// 避免 token 流打爆事件表）；`_aranea/heartbeat` 心跳不落库（仅活跃性证据）。
 // taskID 等元数据在 Dispatch 返回后由 bind 填充（任务 ID 由 data 层分配），
 // OnUpdate 在 bind 前阻塞等待，保证事件必带 task_id。
 type bridgeProgressHandler struct {
@@ -367,7 +456,16 @@ type bridgeProgressHandler struct {
 	project  string
 	mu       sync.Mutex
 	lastEmit time.Time
+	// 03 P0 ④：事件 seq 计数与 chunk 节流游标（OnUpdate 仅在 conn 读循环调用）。
+	seq              int64
+	lastChunkPersist time.Time
 }
+
+// chunkPersistWindow 03 P0：agent_message_chunk 落库节流窗口（其余 kind 全量落库）。
+const chunkPersistWindow = 1500 * time.Millisecond
+
+// acpHeartbeatKind 与 biz liveness.go heartbeatKind 同值（避免跨包导出常量）。
+const acpHeartbeatKind = "_aranea/heartbeat"
 
 func newBridgeProgressHandler(svc *AgentBridgeService, sessionID string) *bridgeProgressHandler {
 	return &bridgeProgressHandler{svc: svc, sessionID: sessionID, ready: make(chan struct{})}
@@ -388,6 +486,7 @@ func (h *bridgeProgressHandler) OnUpdate(kind, text string) {
 	if h.taskID == "" {
 		return
 	}
+	h.persistEvent(kind, text)
 	h.mu.Lock()
 	now := h.svc.clock()
 	if now.Sub(h.lastEmit) < bridgeProgressWindow {
@@ -403,6 +502,50 @@ func (h *bridgeProgressHandler) OnUpdate(kind, text string) {
 		"session_id":   h.sessionID,
 		"update_kind":  kind,
 	}))
+}
+
+// persistEvent 03 P0 ④：步骤事件落库（best-effort，失败仅告警不阻断任务）。
+func (h *bridgeProgressHandler) persistEvent(kind, text string) {
+	events := h.svc.events
+	if events == nil || kind == acpHeartbeatKind {
+		return
+	}
+	h.mu.Lock()
+	now := h.svc.clock()
+	if kind == "agent_message_chunk" {
+		if now.Sub(h.lastChunkPersist) < chunkPersistWindow {
+			h.mu.Unlock()
+			return
+		}
+		h.lastChunkPersist = now
+	}
+	h.seq++
+	seq := h.seq
+	h.mu.Unlock()
+	// tool_call 的 text 由采集器合成（首行=工具标题，余下=详情），拆回 title/text。
+	title, body := "", text
+	if kind == "tool_call" {
+		title, body = splitFirstLine(text)
+	}
+	if err := events.Append(context.Background(), &agentbridge.CodingTaskEvent{
+		TaskID:    h.taskID,
+		Seq:       seq,
+		Kind:      kind,
+		Title:     title,
+		Text:      body,
+		CreatedAt: now.UTC().Format(time.RFC3339),
+	}); err != nil {
+		h.svc.lg.Warn("agentbridge task event persist failed",
+			loggateway.Str("task_id", h.taskID), loggateway.Err(err))
+	}
+}
+
+// splitFirstLine 拆分首行与其余内容（无换行时 body 为空）。
+func splitFirstLine(s string) (first, rest string) {
+	if i := strings.IndexByte(s, '\n'); i >= 0 {
+		return s[:i], s[i+1:]
+	}
+	return s, ""
 }
 
 // OnPermission 实现见 agentbridge_approval.go（M2 审批中继）。

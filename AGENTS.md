@@ -41,7 +41,7 @@
 
 | 任务 | 位置 | 说明 |
 |------|------|------|
-| Agent 运行时 | `pkg/trpc-agent-go/docs/` | 框架真相源 |
+| Agent 运行时 | 上游 `trpc.group/trpc-go/trpc-agent-go`（go.mod 依赖，2026-11-03 起不再 vendor；模块缓存本地路径 `$(go env GOMODCACHE)/trpc.group/trpc-go/trpc-agent-go@v1.11.2`） | 框架真相源 |
 
 ### 日志架构
 

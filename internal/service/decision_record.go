@@ -106,7 +106,7 @@ func (s *DecisionRecordService) GetDecisionRecord(ctx context.Context, req *v1.G
 
 // decisionVisibleTo 校验记录的 workspace 归属对 caller 是否可见（t-dr-3，
 // 与 checkTeamAccess 同款 fail-closed：跨租户按 NotFound 处理，不透出存在
-// 性）。系统 caller 与共享（''）记录恒可见。
+// 性）。系统 caller 与共享（”）记录恒可见。
 func decisionVisibleTo(ctx context.Context, recWorkspaceID string) bool {
 	return workspace.AssertWorkspaceOrShared(workspace.IDFromContext(ctx), recWorkspaceID) == nil
 }

@@ -113,7 +113,8 @@ func (r *turnV2Repo) CreateTurn(ctx context.Context, t biz.Turn) (biz.Turn, erro
 		SetSeq(t.Seq).
 		SetStatus(string(t.Status)).
 		SetStartedAt(t.StartedAt).
-		SetVersion(t.Version)
+		SetVersion(t.Version).
+		SetRuntimeInvocationID(t.RuntimeInvocationID)
 	if t.CompletedAt != nil {
 		b.SetCompletedAt(*t.CompletedAt)
 	}
@@ -159,7 +160,8 @@ func (r *turnV2Repo) UpsertTurn(ctx context.Context, t biz.Turn) (biz.Turn, erro
 		SetTeamStageID(t.TeamStageID).
 		SetSeq(t.Seq).
 		SetStatus(string(t.Status)).
-		SetVersion(t.Version)
+		SetVersion(t.Version).
+		SetRuntimeInvocationID(t.RuntimeInvocationID)
 	if t.CompletedAt != nil {
 		b.SetCompletedAt(*t.CompletedAt)
 	}
@@ -192,7 +194,8 @@ func (r *turnV2Repo) UpsertTurn(ctx context.Context, t biz.Turn) (biz.Turn, erro
 		SetSeq(t.Seq).
 		SetStatus(string(t.Status)).
 		SetStartedAt(t.StartedAt).
-		SetVersion(t.Version)
+		SetVersion(t.Version).
+		SetRuntimeInvocationID(t.RuntimeInvocationID)
 	if t.CompletedAt != nil {
 		cb.SetCompletedAt(*t.CompletedAt)
 	}
@@ -218,19 +221,20 @@ func entTurnV2ToBiz(row *ent.TurnV2) biz.Turn {
 		completedAt = &t
 	}
 	return biz.Turn{
-		ID:              row.ID,
-		TaskID:          row.TaskID,
-		SessionID:       row.SessionID,
-		SpiritSessionID: row.SpiritSessionID,
-		ParentTurnID:    row.ParentTurnID,
-		AgentKey:        row.AgentKey,
-		TeamID:          row.TeamID,
-		TeamStageID:     row.TeamStageID,
-		Seq:             row.Seq,
-		Version:         row.Version,
-		Status:          biz.TurnStatus(row.Status),
-		StartedAt:       row.StartedAt,
-		CompletedAt:     completedAt,
+		ID:                  row.ID,
+		TaskID:              row.TaskID,
+		SessionID:           row.SessionID,
+		SpiritSessionID:     row.SpiritSessionID,
+		ParentTurnID:        row.ParentTurnID,
+		AgentKey:            row.AgentKey,
+		TeamID:              row.TeamID,
+		TeamStageID:         row.TeamStageID,
+		Seq:                 row.Seq,
+		Version:             row.Version,
+		Status:              biz.TurnStatus(row.Status),
+		StartedAt:           row.StartedAt,
+		CompletedAt:         completedAt,
+		RuntimeInvocationID: row.RuntimeInvocationID,
 	}
 }
 

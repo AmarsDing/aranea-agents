@@ -7,8 +7,6 @@ import (
 	"time"
 
 	"aranea-agents/pkg/loggateway"
-
-	trpcsubagent "trpc.group/trpc-go/trpc-agent-go/openclaw/subagent"
 )
 
 func TestNormalizeKind(t *testing.T) {
@@ -40,9 +38,9 @@ func TestWaitForUser_AlreadyTerminal(t *testing.T) {
 	svc.Start(context.Background())
 	svc.mu.Lock()
 	svc.runs["r1"] = &runRecord{
-		Run: trpcsubagent.Run{
+		Run: Run{
 			ID:     "r1",
-			Status: trpcsubagent.StatusCompleted,
+			Status: StatusCompleted,
 			Kind:   kindExplore,
 			Task:   "find X",
 		},
@@ -60,9 +58,9 @@ func TestWaitForUser_AlreadyTerminal(t *testing.T) {
 
 func TestEnrichRunView_RunningFor(t *testing.T) {
 	start := time.Unix(1_700_000_000, 0)
-	m := enrichRunView(trpcsubagent.Run{
+	m := enrichRunView(Run{
 		ID:        "x",
-		Status:    trpcsubagent.StatusRunning,
+		Status:    StatusRunning,
 		StartedAt: &start,
 		Kind:      kindVerify,
 	}, start.Add(1500*time.Millisecond))

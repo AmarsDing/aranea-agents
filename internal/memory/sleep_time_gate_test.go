@@ -5,13 +5,14 @@ import (
 	"strings"
 	"testing"
 
+	"aranea-agents/internal/memory/memx"
 	"aranea-agents/pkg/loggateway"
 
 	trpcmemory "trpc.group/trpc-go/trpc-agent-go/memory"
 )
 
 func TestPrepareConsolidationMemories_SkipsGreetings(t *testing.T) {
-	kept, ok := prepareConsolidationMemories([]*trpcmemory.Entry{
+	kept, ok := prepareConsolidationMemories([]*memx.Entry{
 		makeEntry("a", "hi"),
 		makeEntry("b", "谢谢"),
 		makeEntry("c", "ok"),
@@ -22,7 +23,7 @@ func TestPrepareConsolidationMemories_SkipsGreetings(t *testing.T) {
 }
 
 func TestPrepareConsolidationMemories_KeepsPreferences(t *testing.T) {
-	kept, ok := prepareConsolidationMemories([]*trpcmemory.Entry{
+	kept, ok := prepareConsolidationMemories([]*memx.Entry{
 		makeEntry("a", "hello"),
 		makeEntry("b", "User likes Go"),
 	})
@@ -32,7 +33,7 @@ func TestPrepareConsolidationMemories_KeepsPreferences(t *testing.T) {
 }
 
 func TestPrepareConsolidationMemories_RedactsSecrets(t *testing.T) {
-	kept, ok := prepareConsolidationMemories([]*trpcmemory.Entry{
+	kept, ok := prepareConsolidationMemories([]*memx.Entry{
 		makeEntry("a", `User prefers dark mode. api_key: sk-abcdefgh`),
 	})
 	if !ok || len(kept) != 1 {
@@ -47,7 +48,7 @@ func TestPrepareConsolidationMemories_RedactsSecrets(t *testing.T) {
 }
 
 func TestPrepareConsolidationMemories_SecretOnlyIsNoop(t *testing.T) {
-	kept, ok := prepareConsolidationMemories([]*trpcmemory.Entry{
+	kept, ok := prepareConsolidationMemories([]*memx.Entry{
 		makeEntry("a", `api_key: sk-abcdefgh`),
 	})
 	if ok || len(kept) != 0 {
@@ -57,7 +58,7 @@ func TestPrepareConsolidationMemories_SecretOnlyIsNoop(t *testing.T) {
 
 func TestSleepTime_Consolidate_NoHighSignalSkipsLLM(t *testing.T) {
 	ms := &fakeMemoryService{
-		entries: map[string][]*trpcmemory.Entry{
+		entries: map[string][]*memx.Entry{
 			"user-1": {makeEntry("mem-1", "hi"), makeEntry("mem-2", "ok")},
 		},
 	}
@@ -72,7 +73,7 @@ func TestSleepTime_Consolidate_NoHighSignalSkipsLLM(t *testing.T) {
 }
 
 func TestExecuteOperations_RefusesSecretWrite(t *testing.T) {
-	ms := &fakeMemoryService{entries: map[string][]*trpcmemory.Entry{}}
+	ms := &fakeMemoryService{entries: map[string][]*memx.Entry{}}
 	svc := NewSleepTimeService(ms, nil, nil, loggateway.NewNoop())
 	err := svc.executeOperations(context.Background(), trpcmemory.UserKey{AppName: "a", UserID: "u"},
 		[]ConsolidationOperation{{

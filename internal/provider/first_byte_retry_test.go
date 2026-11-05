@@ -6,8 +6,10 @@ import (
 	"testing"
 	"time"
 
+	"aranea-agents/internal/streamgen"
 	"aranea-agents/pkg/loggateway"
 
+	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
 )
 
@@ -337,11 +339,64 @@ drained:
 	}
 }
 
-// TestLivenessGuard_ReconnectStampsGeneration pins W-1/W-2（2026-10-26 评审
-// 二轮）：首发 attempt 的响应 GenerationID 保持为空（下游零感知、向后兼容），
-// 重连 attempt 的每一帧都携带 "reconnect-N"——llmflow 响应 ID 归一化据此
-// 切断旧 ID，v2 projector/前端据此截断而非续 append 已重发的半截内容。
-func TestLivenessGuard_ReconnectStampsGeneration(t *testing.T) {
+// TestLivenessGuard_ReconnectBumpsStreamGeneration pins 应用层代际机制
+//（2026-11-03 streamgen）：重连决策点即 Bump 该框架 invocation 的代际
+// 计数——钉住「Bump 发生在退避期内、新 attempt 首帧之前」的时序（这是
+// 缩小 projector 侧「决策前末帧被误读为新代际」窗口的关键，见
+// internal/streamgen 包注释竞态分析）。
+func TestLivenessGuard_ReconnectBumpsStreamGeneration(t *testing.T) {
+	inner := &midStallThenAnswerModel{}
+	wrapped := WrapModelWithLivenessGuard(inner, "deepseek", "deepseek-v4-flash", loggateway.NewNoop())
+
+	const invID = "inv-streamgen-guard-1"
+	ctx := WithStallBudget(context.Background(), 50*time.Millisecond, 3)
+	ctx = trpcagent.NewInvocationContext(ctx, &trpcagent.Invocation{InvocationID: invID})
+	out, err := wrapped.GenerateContent(ctx, &trpcmodel.Request{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// 退避窗口内（stall 50ms 触发、第一次重连退避 1s）必须已观察到
+	// Bump——即 Bump 在重连决策点发生，而非新 attempt 首帧到达时。
+	bumped := false
+	deadline := time.Now().Add(800 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		if streamgen.Label(invID) == "reconnect-1" {
+			bumped = true
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if !bumped {
+		t.Fatal("generation not bumped within backoff window — Bump must happen at the reconnect decision point")
+	}
+	// 流正常收官（attempt2 chunk + Done）。
+	timeout := time.After(5 * time.Second)
+	var last *trpcmodel.Response
+	for {
+		select {
+		case resp, ok := <-out:
+			if !ok {
+				goto drained
+			}
+			last = resp
+		case <-timeout:
+			t.Fatal("stream hung — reconnect did not complete")
+		}
+	}
+drained:
+	if last == nil || !last.Done {
+		t.Fatal("last event must be attempt2's Done response")
+	}
+	if got := streamgen.Label(invID); got != "reconnect-1" {
+		t.Fatalf("final generation = %q, want reconnect-1 (exactly one reconnect)", got)
+	}
+}
+
+// TestLivenessGuard_ReconnectForwardsNewAttempt pins 活性重连转发语义：
+// attempt-1 的 stream_error 被吞，重连 attempt 的完整流接续下行。
+// 代际语义由 streamgen 计数器承载（TestLivenessGuard_ReconnectBumpsStreamGeneration），
+// 重连帧本身不携带代际标记（上游 model.Response 无扩展字段）。
+func TestLivenessGuard_ReconnectForwardsNewAttempt(t *testing.T) {
 	inner := &streamErrorMidModel{}
 	wrapped := WrapModelWithLivenessGuard(inner, "openai", "gpt-4o", loggateway.NewNoop())
 
@@ -365,17 +420,12 @@ func TestLivenessGuard_ReconnectStampsGeneration(t *testing.T) {
 	}
 drained:
 	// streamErrorMidModel：attempt1 的 stream_error 被吞，转发可见 3 帧——
-	// a1-chunk（无标记）、a2-chunk 与 a2-Done（reconnect-1）。
+	// a1-chunk、a2-chunk 与 a2-Done。
 	if len(got) != 3 {
 		t.Fatalf("forwarded %d events, want 3 (a1 chunk + a2 chunk + a2 done)", len(got))
 	}
-	if g := got[0].GenerationID; g != "" {
-		t.Fatalf("attempt-1 chunk GenerationID = %q, want empty（首发 attempt 零标记，旧下游同语义）", g)
-	}
-	for i, resp := range got[1:] {
-		if resp.GenerationID != "reconnect-1" {
-			t.Fatalf("attempt-2 event[%d] GenerationID = %q, want reconnect-1", i+1, resp.GenerationID)
-		}
+	if got[2] == nil || !got[2].Done {
+		t.Fatalf("last forwarded event Done = %v, want true（重连 attempt 完整收官）", got[2] != nil && got[2].Done)
 	}
 }
 

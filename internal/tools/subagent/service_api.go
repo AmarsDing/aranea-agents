@@ -14,21 +14,20 @@ import (
 	"aranea-agents/pkg/safego"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
-	trpcsubagent "trpc.group/trpc-go/trpc-agent-go/openclaw/subagent"
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
 
-func (s *Service) Spawn(ctx context.Context, req SpawnRequest) (trpcsubagent.Run, error) {
+func (s *Service) Spawn(ctx context.Context, req SpawnRequest) (Run, error) {
 	if s == nil {
-		return trpcsubagent.Run{}, apierror.Internal(apierror.DomainSubagent, "nil service")
+		return Run{}, apierror.Internal(apierror.DomainSubagent, "nil service")
 	}
 	if s.baseCtx == nil {
-		return trpcsubagent.Run{}, apierror.Internal(apierror.DomainSubagent, "not started")
+		return Run{}, apierror.Internal(apierror.DomainSubagent, "not started")
 	}
 
 	nested, _ := trpcagent.GetRuntimeStateValueFromContext[bool](ctx, runtimeStateSubagentRun)
 	if nested {
-		return trpcsubagent.Run{}, apierror.BadRequest(apierror.DomainSubagent, "nested subagent spawn is not allowed")
+		return Run{}, apierror.BadRequest(apierror.DomainSubagent, "nested subagent spawn is not allowed")
 	}
 
 	s.mu.Lock()
@@ -38,7 +37,7 @@ func (s *Service) Spawn(ctx context.Context, req SpawnRequest) (trpcsubagent.Run
 	tc := s.turnContextFor(req.ParentSessionID)
 	if tc.runner == nil {
 		s.mu.Unlock()
-		return trpcsubagent.Run{}, apierror.Internal(apierror.DomainSubagent, "runner not configured")
+		return Run{}, apierror.Internal(apierror.DomainSubagent, "runner not configured")
 	}
 	if len(s.running) >= s.maxConcurrent {
 
@@ -48,12 +47,12 @@ func (s *Service) Spawn(ctx context.Context, req SpawnRequest) (trpcsubagent.Run
 		}
 		sort.Strings(active)
 		s.mu.Unlock()
-		return trpcsubagent.Run{}, apierror.RateLimit(apierror.DomainSubagent, fmt.Sprintf("too many concurrent sub-agents (limit: %d); active run ids: [%s] — track them with subagents_get and wait for completion notifications instead of retrying immediately", s.maxConcurrent, strings.Join(active, ", ")))
+		return Run{}, apierror.RateLimit(apierror.DomainSubagent, fmt.Sprintf("too many concurrent sub-agents (limit: %d); active run ids: [%s] — track them with subagents_get and wait for completion notifications instead of retrying immediately", s.maxConcurrent, strings.Join(active, ", ")))
 	}
 
 	if err := validateSpawnRequest(req); err != nil {
 		s.mu.Unlock()
-		return trpcsubagent.Run{}, err
+		return Run{}, err
 	}
 
 	if s.parentBudgetInputTokens > 0 {
@@ -67,7 +66,7 @@ func (s *Service) Spawn(ctx context.Context, req SpawnRequest) (trpcsubagent.Run
 			}
 			s.mu.Unlock()
 			s.emitBudgetTrip(context.Background(), trip)
-			return trpcsubagent.Run{}, apierror.RateLimit(apierror.DomainSubagent, fmt.Sprintf("parent session subagent input-token budget exhausted (used %d, budget %d) — do NOT spawn more subagents; compose the answer from runs already available via subagents_list/subagents_get", used, s.parentBudgetInputTokens))
+			return Run{}, apierror.RateLimit(apierror.DomainSubagent, fmt.Sprintf("parent session subagent input-token budget exhausted (used %d, budget %d) — do NOT spawn more subagents; compose the answer from runs already available via subagents_list/subagents_get", used, s.parentBudgetInputTokens))
 		}
 	}
 
@@ -84,7 +83,7 @@ func (s *Service) Spawn(ctx context.Context, req SpawnRequest) (trpcsubagent.Run
 		s.mu.Lock()
 		delete(s.runs, record.ID)
 		s.mu.Unlock()
-		return trpcsubagent.Run{}, apierror.Internal(apierror.DomainSubagent, "persist: "+err.Error())
+		return Run{}, apierror.Internal(apierror.DomainSubagent, "persist: "+err.Error())
 	}
 
 	s.wg.Add(1)
@@ -132,12 +131,12 @@ func (s *Service) newRunRecord(req SpawnRequest) *runRecord {
 		summaryRunes = defaultStoredSummaryRunes
 	}
 	return &runRecord{
-		Run: trpcsubagent.Run{
+		Run: Run{
 			ID:              uuid.NewString(),
 			ParentSessionID: strings.TrimSpace(req.ParentSessionID),
 			Task:            strings.TrimSpace(req.Task),
 			Kind:            normalizeKind(req.Kind),
-			Status:          trpcsubagent.StatusQueued,
+			Status:          StatusQueued,
 			CreatedAt:       now,
 			UpdatedAt:       now,
 		},
@@ -149,7 +148,7 @@ func (s *Service) newRunRecord(req SpawnRequest) *runRecord {
 	}
 }
 
-func (s *Service) ListForUser(userID string, filter trpcsubagent.ListFilter) []trpcsubagent.Run {
+func (s *Service) ListForUser(userID string, filter ListFilter) []Run {
 	if s == nil {
 		return nil
 	}
@@ -159,7 +158,7 @@ func (s *Service) ListForUser(userID string, filter trpcsubagent.ListFilter) []t
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	runs := make([]trpcsubagent.Run, 0, len(s.runs))
+	runs := make([]Run, 0, len(s.runs))
 	for _, item := range s.runs {
 		if item == nil || item.OwnerUserID != userID {
 			continue
@@ -175,7 +174,7 @@ func (s *Service) ListForUser(userID string, filter trpcsubagent.ListFilter) []t
 	return runs
 }
 
-func (s *Service) GetForUser(userID string, runID string) (*trpcsubagent.Run, error) {
+func (s *Service) GetForUser(userID string, runID string) (*Run, error) {
 	record, err := s.runForUser(userID, runID)
 	if err != nil {
 		return nil, err
@@ -187,7 +186,7 @@ func (s *Service) GetForUser(userID string, runID string) (*trpcsubagent.Run, er
 const subagentWaitPoll = 200 * time.Millisecond
 
 // WaitForUser polls GetForUser until the run is terminal or wait elapses.
-func (s *Service) WaitForUser(ctx context.Context, userID, runID string, wait time.Duration) (*trpcsubagent.Run, error) {
+func (s *Service) WaitForUser(ctx context.Context, userID, runID string, wait time.Duration) (*Run, error) {
 	run, err := s.GetForUser(userID, runID)
 	if err != nil || run == nil || wait <= 0 || run.Status.IsTerminal() {
 		return run, err
@@ -214,7 +213,7 @@ func (s *Service) WaitForUser(ctx context.Context, userID, runID string, wait ti
 	}
 }
 
-func (s *Service) CancelForUser(userID string, runID string) (*trpcsubagent.Run, bool, error) {
+func (s *Service) CancelForUser(userID string, runID string) (*Run, bool, error) {
 	record, err := s.runForUser(userID, runID)
 	if err != nil {
 		return nil, false, err
@@ -224,7 +223,7 @@ func (s *Service) CancelForUser(userID string, runID string) (*trpcsubagent.Run,
 	current := s.runs[record.ID]
 	if current == nil {
 		s.mu.Unlock()
-		return nil, false, trpcsubagent.ErrRunNotFound
+		return nil, false, ErrRunNotFound
 	}
 	if current.Status.IsTerminal() {
 		view := current.publicView()
@@ -233,7 +232,7 @@ func (s *Service) CancelForUser(userID string, runID string) (*trpcsubagent.Run,
 	}
 
 	now := s.clock()
-	current.Status = trpcsubagent.StatusCanceled
+	current.Status = StatusCanceled
 	current.Error = ""
 	current.Summary = summarizeResult("canceled", 0)
 	current.UpdatedAt = now

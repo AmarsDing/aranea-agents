@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"aranea-agents/internal/agent/callbacks"
+	"aranea-agents/internal/biz"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
@@ -255,4 +256,39 @@ func TestNextActionRouteAfterModelHook(t *testing.T) {
 			t.Fatalf("pending must clear after block-final, got %+v", p)
 		}
 	})
+
+	t.Run("block_final_sanitizes_model_facing_hint", func(t *testing.T) {
+		ctx, inv := nextActionTestCtx()
+		inv.SetState(pendingNextActionStateKey, pendingNextAction{
+			BlockFinal: true,
+			Hint:       biz.AwaitOrchestrationModelHint,
+		})
+		res := invokeForcePlanningHook(t, newHook(), ctx, &trpcmodel.AfterModelArgs{
+			Request:  &trpcmodel.Request{Messages: []trpcmodel.Message{}},
+			Response: finalTextResponse(),
+		})
+		if res == nil || res.CustomResponse == nil {
+			t.Fatal("DIY final must be replaced")
+		}
+		got := res.CustomResponse.Choices[0].Message.Content
+		if got != biz.AwaitOrchestrationUserSpeech {
+			t.Fatalf("model hint leaked to user channel: %q", got)
+		}
+		if strings.Contains(got, "请向用户说明") || strings.Contains(got, "禁止") {
+			t.Fatalf("user speech must not contain model directives: %q", got)
+		}
+	})
+}
+
+func TestSanitizeAwaitOrchestrationSpeech(t *testing.T) {
+	if got := sanitizeAwaitOrchestrationSpeech(biz.AwaitOrchestrationModelHint); got != biz.AwaitOrchestrationUserSpeech {
+		t.Fatalf("model hint → user speech, got %q", got)
+	}
+	if got := sanitizeAwaitOrchestrationSpeech(""); got != biz.AwaitOrchestrationUserSpeech {
+		t.Fatalf("empty → user speech, got %q", got)
+	}
+	custom := "团队已派出，请稍候。"
+	if got := sanitizeAwaitOrchestrationSpeech(custom); got != custom {
+		t.Fatalf("custom user speech preserved, got %q", got)
+	}
 }

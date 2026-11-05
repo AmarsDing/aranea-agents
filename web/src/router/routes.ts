@@ -35,6 +35,8 @@ import SessionsPage from '../pages/SessionsPage.vue';
 import SessionDetailPage from '../pages/SessionDetailPage.vue';
 import ChannelsPage from '../pages/ChannelsPage.vue';
 import McpServersPage from '../pages/McpServersPage.vue';
+import CodingToolsPage from '../pages/CodingToolsPage.vue';
+import CodingTasksPage from '../pages/CodingTasksPage.vue';
 import CronTasksPage from '../pages/CronTasksPage.vue';
 import MemoryCenterPage from '../pages/MemoryCenterPage.vue';
 import SystemSettingsPage from '../pages/SystemSettingsPage.vue';
@@ -170,6 +172,16 @@ export const routes: RouteRecordRaw[] = [
         path: 'mcp-servers',
         name: 'mcp-servers',
         component: McpServersPage,
+      },
+      {
+        path: 'settings/coding-tools',
+        name: 'coding-tools',
+        component: CodingToolsPage,
+      },
+      {
+        path: 'coding-tasks',
+        name: 'coding-tasks',
+        component: CodingTasksPage,
       },
       {
         path: 'skills',

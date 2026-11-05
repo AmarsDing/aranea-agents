@@ -2,6 +2,9 @@ package data
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
+	"strings"
 
 	bridge "aranea-agents/internal/biz/agentbridge"
 	dataent "aranea-agents/internal/data/ent"
@@ -49,7 +52,15 @@ func (r *codingAgentRepo) GetByKey(ctx context.Context, workspace, key string) (
 	if err != nil {
 		return nil, entErrToBizErr(err, apierror.DomainAgentBridge)
 	}
-	return entCodingAgentToBiz(row), nil
+	agent := entCodingAgentToBiz(row)
+	extras, err := r.loadAgentExtras(ctx, workspace)
+	if err != nil {
+		return nil, err
+	}
+	if ex, ok := extras[agent.ID]; ok {
+		agent.IconURL, agent.Capabilities, agent.DefaultAutonomy = ex.iconURL, ex.caps, ex.autonomy
+	}
+	return agent, nil
 }
 
 func (r *codingAgentRepo) List(ctx context.Context, workspace string) ([]*bridge.CodingAgent, error) {
@@ -63,6 +74,15 @@ func (r *codingAgentRepo) List(ctx context.Context, workspace string) ([]*bridge
 	out := make([]*bridge.CodingAgent, 0, len(rows))
 	for _, row := range rows {
 		out = append(out, entCodingAgentToBiz(row))
+	}
+	extras, err := r.loadAgentExtras(ctx, workspace)
+	if err != nil {
+		return nil, err
+	}
+	for _, a := range out {
+		if ex, ok := extras[a.ID]; ok {
+			a.IconURL, a.Capabilities, a.DefaultAutonomy = ex.iconURL, ex.caps, ex.autonomy
+		}
 	}
 	return out, nil
 }
@@ -124,7 +144,21 @@ func (r *codingAgentRepo) Upsert(ctx context.Context, agent *bridge.CodingAgent)
 	if err != nil {
 		return entErrToBizErr(err, apierror.DomainAgentBridge)
 	}
+	// 03 P0：extras 列（icon/capabilities/default_autonomy）走 raw SQL；先暂存
+	// 调用方入参（回读会覆盖 agent），省略（空值/nil）= 保留旧值，空数组=清空。
+	iconURL, caps, autonomy := agent.IconURL, agent.Capabilities, agent.DefaultAutonomy
 	*agent = *entCodingAgentToBiz(row)
+	extrasIn := &bridge.CodingAgent{IconURL: iconURL, Capabilities: caps, DefaultAutonomy: autonomy}
+	if err := r.saveAgentExtras(ctx, agent.Workspace, agent.AgentKey, extrasIn); err != nil {
+		return err
+	}
+	extras, err := r.loadAgentExtras(ctx, agent.Workspace)
+	if err != nil {
+		return err
+	}
+	if ex, ok := extras[agent.ID]; ok {
+		agent.IconURL, agent.Capabilities, agent.DefaultAutonomy = ex.iconURL, ex.caps, ex.autonomy
+	}
 	return nil
 }
 
@@ -135,4 +169,79 @@ func (r *codingAgentRepo) UpdateProbe(ctx context.Context, id string, ok bool, e
 		SetUpdatedAt(nowRFC3339()).
 		Exec(ctx)
 	return entErrToBizErr(err, apierror.DomainAgentBridge)
+}
+
+// --- 03 P0：图标/能力/默认自治级别（raw SQL 列，ent 模型不含，迁移 20261308） ---
+
+type codingAgentExtras struct {
+	iconURL  string
+	caps     []string
+	autonomy string
+}
+
+// parseAgentCapabilities 解析 capabilities JSON 数组文本（空/非法=空切片）。
+func parseAgentCapabilities(raw string) []string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	var caps []string
+	if err := json.Unmarshal([]byte(raw), &caps); err != nil {
+		return nil
+	}
+	return caps
+}
+
+func (r *codingAgentRepo) loadAgentExtras(ctx context.Context, workspace string) (map[string]codingAgentExtras, error) {
+	db := r.data.RWDB().ReadDB(ctx)
+	if db == nil {
+		return nil, apierror.Internal(apierror.DomainAgentBridge, "repository unavailable")
+	}
+	rows, err := db.QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(
+		`SELECT id, icon_url, capabilities, default_autonomy FROM coding_agents WHERE workspace=?`), workspace)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]codingAgentExtras{}
+	for rows.Next() {
+		var id, icon, caps, autonomy string
+		if err := rows.Scan(&id, &icon, &caps, &autonomy); err != nil {
+			return nil, err
+		}
+		out[id] = codingAgentExtras{iconURL: icon, caps: parseAgentCapabilities(caps), autonomy: autonomy}
+	}
+	return out, rows.Err()
+}
+
+func (r *codingAgentRepo) saveAgentExtras(ctx context.Context, workspace, key string, agent *bridge.CodingAgent) error {
+	sets := []string{}
+	args := []any{}
+	if agent.IconURL != "" {
+		sets = append(sets, "icon_url=?")
+		args = append(args, agent.IconURL)
+	}
+	if agent.Capabilities != nil {
+		raw, err := json.Marshal(agent.Capabilities)
+		if err != nil {
+			return apierror.BadRequest(apierror.DomainAgentBridge, "capabilities must be a string array")
+		}
+		sets = append(sets, "capabilities=?")
+		args = append(args, string(raw))
+	}
+	if agent.DefaultAutonomy != "" {
+		sets = append(sets, "default_autonomy=?")
+		args = append(args, agent.DefaultAutonomy)
+	}
+	if len(sets) == 0 {
+		return nil
+	}
+	db := r.data.RWDB().WriteDB(ctx)
+	if db == nil {
+		return apierror.Internal(apierror.DomainAgentBridge, "repository unavailable")
+	}
+	q := fmt.Sprintf(`UPDATE coding_agents SET %s, updated_at=? WHERE workspace=? AND agent_key=?`, strings.Join(sets, ", "))
+	args = append(args, nowRFC3339(), workspace, key)
+	_, err := db.ExecContext(ctx, r.data.Dialect().RenumberPlaceholders(q), args...)
+	return err
 }

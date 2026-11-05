@@ -36,6 +36,7 @@ import { createPackServiceClient } from './kratos/pack/v1/index';
 import { createRuntimeProfileServiceClient } from './kratos/runtime_profile/v1/index';
 import { createChatServiceClient } from './kratos/chat/v1/index';
 import { createComputerUseServiceClient } from './kratos/computeruse/v1/index';
+import { createAgentBridgeServiceClient } from './kratos/agentbridge/v1/index';
 import { requestHandler, kratosApi } from './axiosHandler';
 
 // 每个功能模块的 service（proto 生成客户端 + requestHandler → kratosApi）。
@@ -141,6 +142,10 @@ export function createChatService() {
 
 export function createComputerUseService() {
   return createComputerUseServiceClient(requestHandler);
+}
+
+export function createAgentBridgeService() {
+  return createAgentBridgeServiceClient(requestHandler);
 }
 
 export function createArtifactService() {

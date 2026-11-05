@@ -56,6 +56,32 @@ curl -X POST http://127.0.0.1:8910/healthz
 | `EVAL_MAX_IMAGE_BYTES` | `10485760`（10 MiB） | 单图解码后上限（契约值） |
 | `EVAL_MAX_MEDIA_BYTES` | `31457280`（30 MiB） | 单次 Add 全部图像解码累计上限（契约值） |
 
+### VLM 图像 caption（新增，2026-11-02；默认关闭）
+
+| 环境变量 | 默认 | 语义 |
+|----------|------|------|
+| `EVAL_MEDIA_VLM_BASE_URL` | 空（关闭） | OpenAI 兼容视觉端点；与 API_KEY 同时设置才启用 caption |
+| `EVAL_MEDIA_VLM_API_KEY` | 空 | 端点密钥 |
+| `EVAL_MEDIA_VLM_MODEL` | `gpt-4o-mini` | caption 模型。**学术榜合规锁定 gpt-4o-mini**；仅工业榜可改 |
+| `EVAL_MEDIA_VLM_TIMEOUT_SEC` | `25` | 单次 caption 调用超时 |
+| `EVAL_MEDIA_VLM_MAX_CONCURRENCY` | `4` | 全局并发上限 |
+| `EVAL_MEDIA_VLM_MAX_IMAGES` | `12` | 单请求 caption 图片数上限（超出部分回落 ack-only） |
+| `EVAL_MEDIA_VLM_BUDGET_SEC` | `45` | 单请求 caption 总时间预算 |
+| `EVAL_MEDIA_VLM_CACHE_ENTRIES` | `4096` | 内容哈希 caption 缓存容量（FIFO 驱逐） |
+
+启用后行为（全部有单测守护）：
+
+- **Add**：图像经 gpt-4o-mini 生成密集事实 caption（含 OCR 逐字转录），
+  以 `Image attachment (part N): …` 行追加进消息正文，作为普通文本原子
+  入存、经 text-embedding-v4 向量化——纯图像消息从"确认不入存"升级为
+  "caption 入存可检索"。检索完全复用现有文本链路，无图像向量。
+- **Search**：查询中的图像分片同样 caption 后拼入查询文本；纯图像查询
+  在 caption 成功时不再 400。
+- **降级**：VLM 超时/5xx/空响应只 warn，该图回落 acknowledge-only，
+  绝不使 Add/Search 失败（Q23 不变）；未配置时全链路零行为差异。
+- **去重**：同一请求内相同内容的图片（重放/重复分片）按 SHA-256 分组
+  共享一次调用；跨请求走缓存。
+
 行为要点（全部有单测守护）：
 
 - `messages[].content` 与 `query` 同时容忍 string 与有序 ContentPart
@@ -81,9 +107,11 @@ curl -X POST http://127.0.0.1:8910/healthz
 
 ## 4. 参评材料披露义务
 
-- **caption-only 声明**：本链路按 Q23 合规地把图像分片确认为载荷、
-  以文本 caption 入存；原图仅在 `EVAL_MEDIA_DIR` 设置时留文件存证，
-  检索证据为纯文本（官方确认无图像引用评分规则）。
+- **多模态路线声明（2026-11-02 更新）**：图像分片由 **gpt-4o-mini**
+  （学术榜合规模型）生成文本 caption 入存，检索证据为纯文本；原图仅在
+  `EVAL_MEDIA_DIR` 设置时留文件存证。未配置 VLM 时退化为 Q23 caption-only
+  确认路线。系统内**再无其他 LLM 组件**（digest/聚合/排序/意图路由均
+  规则+向量），Answer/Eval 的 LLM 在平台侧。
 - embedding 申报：`text-embedding-v4`（DashScope 兼容网关，默认 1024 维——实测）。
 - C2 已完成轮的 bge-m3 合规风险维持既有结论，本轮不得复用 C2 库。
 

@@ -3,6 +3,7 @@ package agentbridge
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -89,7 +90,9 @@ type DispatchInput struct {
 	AgentKey     string
 	ProjectQuery string // 项目名（语音解析键）
 	Prompt       string
-	Handler      EventHandler // 进度/审批回调（service 注入）；nil 时丢弃
+	// Origin 03 P0：发起来源（chat=会话内 LLM 派发 / workbench=看板表单直发）；空=chat。
+	Origin  string
+	Handler EventHandler // 进度/审批回调（service 注入）；nil 时丢弃
 }
 
 // DispatchResult 是派发出参。Candidates 非空表示项目名歧义（未落任务）。
@@ -107,6 +110,9 @@ func (u *AgentBridgeUsecase) Dispatch(ctx context.Context, in DispatchInput) (*D
 	if in.Handler == nil {
 		in.Handler = discardEvents{}
 	}
+	if in.Origin == "" {
+		in.Origin = "chat"
+	}
 	agent, project, candidates, err := u.resolveTarget(ctx, in)
 	if err != nil || candidates != nil {
 		return &DispatchResult{Candidates: candidates}, err
@@ -122,6 +128,7 @@ func (u *AgentBridgeUsecase) Dispatch(ctx context.Context, in DispatchInput) (*D
 		ProjectID: project.ID,
 		Prompt:    in.Prompt,
 		Status:    StatusDispatched,
+		Origin:    in.Origin,
 	}
 	if err := u.tasks.Create(ctx, task); err != nil {
 		return nil, err
@@ -387,6 +394,46 @@ func (u *AgentBridgeUsecase) GetTask(ctx context.Context, id string) (*CodingTas
 // ListSessionTasks 列出会话任务（播报/查询用）。
 func (u *AgentBridgeUsecase) ListSessionTasks(ctx context.Context, sessionID string, limit int) ([]*CodingTask, error) {
 	return u.tasks.ListBySession(ctx, sessionID, limit)
+}
+
+// ListRecentTasks 03 P0：跨会话看板（按创建时间倒序；agentKey 空=全部工具）。
+func (u *AgentBridgeUsecase) ListRecentTasks(ctx context.Context, limit int, agentKey string) ([]*CodingTask, error) {
+	if limit <= 0 || limit > 200 {
+		limit = 100
+	}
+	return u.tasks.ListRecent(ctx, limit, agentKey)
+}
+
+// ReviewTask 03 P0：验收三动作（approve/reject/archive）。仅终态任务可验收；
+// reject 必须附意见（重做由前端以原 prompt+意见重新派发，不在这里分叉）。
+func (u *AgentBridgeUsecase) ReviewTask(ctx context.Context, id, action, comment string) (*CodingTask, error) {
+	task, err := u.tasks.Get(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if !task.Status.IsTerminal() {
+		return nil, apierror.Conflict(apierror.DomainAgentBridge,
+			"task %s is not terminal (%s)", id, task.Status)
+	}
+	var status string
+	switch strings.TrimSpace(action) {
+	case "approve":
+		status = "approved"
+	case "reject":
+		if strings.TrimSpace(comment) == "" {
+			return nil, apierror.BadRequest(apierror.DomainAgentBridge, "reject requires comment")
+		}
+		status = "rejected"
+	case "archive":
+		status = "archived"
+	default:
+		return nil, apierror.BadRequest(apierror.DomainAgentBridge,
+			"action must be approve/reject/archive")
+	}
+	if err := u.tasks.UpdateReview(ctx, id, status, strings.TrimSpace(comment), nowRFC3339()); err != nil {
+		return nil, err
+	}
+	return u.tasks.Get(ctx, id)
 }
 
 // RecoverActiveTasks 服务重启恢复：所有非终态任务标记 failed（设计 §10）。

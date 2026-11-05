@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"aranea-agents/internal/memory/memx"
 	trpcmemory "trpc.group/trpc-go/trpc-agent-go/memory"
 )
 
@@ -22,7 +23,7 @@ func TestProactiveRecall_SingleEntityMention(t *testing.T) {
 		t.Fatalf("AddMemory: %v", err)
 	}
 
-	entries, err := svc.ProactiveRecall(ctx, uk, trpcmemory.ConversationContext{
+	entries, err := svc.ProactiveRecall(ctx, uk, memx.ConversationContext{
 		MentionedEntities: []string{"London"},
 	})
 	if err != nil {
@@ -60,7 +61,7 @@ func TestProactiveRecall_MultipleEntityMentions(t *testing.T) {
 		t.Fatalf("AddMemory: %v", err)
 	}
 
-	entries, err := svc.ProactiveRecall(ctx, uk, trpcmemory.ConversationContext{
+	entries, err := svc.ProactiveRecall(ctx, uk, memx.ConversationContext{
 		MentionedEntities: []string{"coffee", "engineer"},
 	})
 	if err != nil {
@@ -105,7 +106,7 @@ func TestProactiveRecall_TopicMatch(t *testing.T) {
 		t.Fatalf("AddMemory: %v", err)
 	}
 
-	entries, err := svc.ProactiveRecall(ctx, uk, trpcmemory.ConversationContext{
+	entries, err := svc.ProactiveRecall(ctx, uk, memx.ConversationContext{
 		CurrentTopic: "theme",
 	})
 	if err != nil {
@@ -135,7 +136,7 @@ func TestProactiveRecall_ContradictionDetection(t *testing.T) {
 		t.Fatalf("AddMemory: %v", err)
 	}
 	// User now claims to live in Paris — potential contradiction.
-	entries, err := svc.ProactiveRecall(ctx, uk, trpcmemory.ConversationContext{
+	entries, err := svc.ProactiveRecall(ctx, uk, memx.ConversationContext{
 		UserStatement: "I live in Paris",
 	})
 	if err != nil {
@@ -166,7 +167,7 @@ func TestProactiveRecall_EmptyInput(t *testing.T) {
 		t.Fatalf("AddMemory: %v", err)
 	}
 
-	entries, err := svc.ProactiveRecall(ctx, uk, trpcmemory.ConversationContext{})
+	entries, err := svc.ProactiveRecall(ctx, uk, memx.ConversationContext{})
 	if err != nil {
 		t.Fatalf("ProactiveRecall with empty context: %v", err)
 	}
@@ -186,7 +187,7 @@ func TestProactiveRecall_NoMatch(t *testing.T) {
 		t.Fatalf("AddMemory: %v", err)
 	}
 
-	entries, err := svc.ProactiveRecall(ctx, uk, trpcmemory.ConversationContext{
+	entries, err := svc.ProactiveRecall(ctx, uk, memx.ConversationContext{
 		MentionedEntities: []string{"quantum-physics-unrelated-topic"},
 		CurrentTopic:      "astronomy-unrelated-topic",
 	})
@@ -208,8 +209,8 @@ func TestProactiveRecall_NilDefense(t *testing.T) {
 
 	// nil pointer to memoryService wrapped in the interface — the
 	// method must handle nil receiver without panicking.
-	var nilSvc trpcmemory.Service = (*memoryService)(nil)
-	entries, err := nilSvc.ProactiveRecall(ctx, uk, trpcmemory.ConversationContext{
+	var nilSvc memx.Service = (*memoryService)(nil)
+	entries, err := nilSvc.ProactiveRecall(ctx, uk, memx.ConversationContext{
 		MentionedEntities: []string{"anything"},
 	})
 	if err != nil {
@@ -243,7 +244,7 @@ func TestProactiveRecall_FiltersInvalidated(t *testing.T) {
 	}
 	store.mu.Unlock()
 
-	entries, err := svc.ProactiveRecall(ctx, uk, trpcmemory.ConversationContext{
+	entries, err := svc.ProactiveRecall(ctx, uk, memx.ConversationContext{
 		MentionedEntities: []string{"coffee", "tea"},
 	})
 	if err != nil {
@@ -268,7 +269,7 @@ func TestProactiveRecall_DeduplicatesAndRanks(t *testing.T) {
 	}
 
 	// Both entity mention and topic match the same memory.
-	entries, err := svc.ProactiveRecall(ctx, uk, trpcmemory.ConversationContext{
+	entries, err := svc.ProactiveRecall(ctx, uk, memx.ConversationContext{
 		MentionedEntities: []string{"Google"},
 		CurrentTopic:      "Google",
 	})

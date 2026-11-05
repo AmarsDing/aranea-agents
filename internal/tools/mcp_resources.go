@@ -8,7 +8,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	trpcmcp "trpc.group/trpc-go/trpc-agent-go/tool/mcp"
+	trpcmcp "aranea-agents/internal/tools/mcptoolset"
 	"trpc.group/trpc-go/trpc-agent-go/tool/function"
 	trpcmcpbroker "trpc.group/trpc-go/trpc-agent-go/tool/mcpbroker"
 	tmcp "trpc.group/trpc-go/trpc-mcp-go"

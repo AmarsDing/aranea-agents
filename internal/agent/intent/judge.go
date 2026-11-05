@@ -10,6 +10,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -21,16 +22,104 @@ import (
 // judgeMaxReplyRunes 是送入判定器的回复文本上限（取尾部——问题在结尾）。
 const judgeMaxReplyRunes = 2000
 
-// LooksLikeTrailingQuestion 报告回复文本是否含疑问标记（?/？）。
+// LooksLikeTrailingQuestion 报告回复文本是否疑似阻断性提问收尾。
 // 仅作预筛：通过后才走 LLM 判定，避免对每条回复都付出一次旁路调用。
-// 含问号即放行（不要求结尾——问句可能出现在回复中段，后随句号收尾的补充
-// 说明）；误放进来的礼貌性收尾/设问由 LLM 判定器排除。
+// 两条放行路径：
+//  1. 含问号（?/？）即放行（不要求结尾——问句可能出现在回复中段，后随句号
+//     收尾的补充说明）；误放进来的礼貌性收尾/设问由 LLM 判定器排除。
+//  2. 祈使式信息请求（2026-10-29 round-11：本地模型常用无问号祈使句反问，
+//     如「请告诉我你想重复哪一项：」「请补充：1.…2.…」「回我一个编号或名字
+//     就行」）。为控制误放（每次误判挂起都会终结 turn 等待用户），本路径
+//     要求双重锚定：请求必须出现在收尾位置（最后一个非空行；若回复以列表
+//     收尾则取列表引导行）且该行末句含信息请求短语；同句含礼貌软化语
+//     （如需/如果/随时…）时不放行——那是「如需调整请告诉我」式客套收尾。
 func LooksLikeTrailingQuestion(reply string) bool {
 	s := strings.TrimSpace(reply)
 	if s == "" {
 		return false
 	}
-	return strings.Contains(s, "?") || strings.Contains(s, "？")
+	if strings.Contains(s, "?") || strings.Contains(s, "？") {
+		return true
+	}
+	return looksLikeImperativeInfoRequest(s)
+}
+
+// infoRequestMarkers 是用户导向的信息请求短语（索取信息/确认/选择/补充）。
+// 仅在收尾句中生效；「告诉我/回我」等口语化表达由 LLM 判定器兜底误放。
+var infoRequestMarkers = []string{
+	"请告诉我", "请提供", "请问", "请确认", "请选择", "请补充", "请说明",
+	"请告知", "请回复", "请指明", "请给出", "请填", "请输入",
+	"麻烦", "告诉我", "回我",
+	"你想", "你想要", "你需要", "你希望", "你打算", "你指的是",
+	"我需要", "还需要",
+}
+
+// infoRequestSofteners 是礼貌性/假设性软化语：与请求短语同句出现时不视为
+// 阻断请求（「如需调整请告诉我」是收尾客套，而非挂起等待用户作答）。
+var infoRequestSofteners = []string{
+	"如需", "如有", "如果", "若是", "随时", "欢迎", "的话",
+}
+
+// listItemLineRe 匹配 Markdown 列表项行（-/* • 或 1. 1、1) 编号）。
+var listItemLineRe = regexp.MustCompile(`^\s*(?:[-*•·]|\d{1,2}[.、)）])`)
+
+// sentenceEndRe 按中文/英文句末标点切句（不含 .，避免切断「1.」编号）。
+var sentenceEndRe = regexp.MustCompile(`[。！？!?；;…]+`)
+
+// looksLikeImperativeInfoRequest 报告回复是否以祈使式信息请求收尾。
+func looksLikeImperativeInfoRequest(reply string) bool {
+	line := tailRequestLine(reply)
+	if line == "" {
+		return false
+	}
+	segments := sentenceEndRe.Split(line, -1)
+	for i := len(segments) - 1; i >= 0; i-- {
+		sent := strings.TrimSpace(segments[i])
+		if sent == "" {
+			continue
+		}
+		// 只看末句：请求短语在收尾句才算 terminal position；
+		// 中段祈使句后随陈述收尾的不放行（由问号路径或判定器覆盖）。
+		if !containsAnySubstr(sent, infoRequestMarkers) {
+			return false
+		}
+		return !containsAnySubstr(sent, infoRequestSofteners)
+	}
+	return false
+}
+
+// tailRequestLine 取用于祈使句检测的收尾候选行：最后一个非空行；若回复以
+// 列表（选项/待补清单）收尾，则向上取列表的引导行——请求通常写在引导行上
+// （「请提供以下信息：\n1. …\n2. …」）。
+func tailRequestLine(reply string) string {
+	lines := strings.Split(reply, "\n")
+	idx := len(lines) - 1
+	for idx >= 0 && strings.TrimSpace(lines[idx]) == "" {
+		idx--
+	}
+	if idx < 0 {
+		return ""
+	}
+	if !listItemLineRe.MatchString(lines[idx]) {
+		return strings.TrimSpace(lines[idx])
+	}
+	// 列表收尾：跳过连续列表项与空行，取上方引导行。
+	for idx >= 0 && (strings.TrimSpace(lines[idx]) == "" || listItemLineRe.MatchString(lines[idx])) {
+		idx--
+	}
+	if idx < 0 {
+		return ""
+	}
+	return strings.TrimSpace(lines[idx])
+}
+
+func containsAnySubstr(s string, subs []string) bool {
+	for _, p := range subs {
+		if strings.Contains(s, p) {
+			return true
+		}
+	}
+	return false
 }
 
 const blockingQuestionJudgeSystem = `You judge whether an assistant's reply is a BLOCKING question directed at the user: the assistant cannot make meaningful progress on the user's request until the user answers. Reply with ONE JSON object only, no markdown fences, no commentary. Keys:
@@ -44,8 +133,8 @@ type BlockingQuestionVerdict struct {
 	PromptTok     int
 	CompletionTok int
 	// CachedTok 是 prompt-cache 命中部分（2026-10-20 补透出，此前解析层丢弃）。
-	CachedTok     int
-	Duration      time.Duration
+	CachedTok int
+	Duration  time.Duration
 	// Outcome: completed | skipped_preflight | skipped_catalog | skipped_llm | skipped_parse
 	Outcome string
 }

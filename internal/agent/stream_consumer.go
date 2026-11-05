@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"runtime/debug"
@@ -17,6 +18,13 @@ import (
 
 	trpcevent "trpc.group/trpc-go/trpc-agent-go/event"
 )
+
+// steerConsumedExtKey 是框架 llmflow steer 消费事件的 extension key
+// （上游 internal/state/steer.ExtensionKeyQueuedUserMessage；应用无法 import
+// 框架 internal 包，以字面量对齐——若上游改 key，对账退化为"全部未消费"
+// 即多回 pending 队列一次（重复执行一轮），不会丢消息——升级框架版本时需
+// 复核该 key 是否漂移）。
+const steerConsumedExtKey = "trpc_agent.steer.queued_user_message"
 
 // turnStreamConsumer projects trpc events to envelopes, aggregates reply text, and tracks tool state.
 type turnStreamConsumer struct {
@@ -420,6 +428,21 @@ func (c *turnStreamConsumer) countToolCall(id string) {
 }
 
 func (c *turnStreamConsumer) handleEvent(ev *trpcevent.Event) bool {
+	// trpc 出库（2026-11-03）：steer 未消费消息的应用层对账——嗅探框架
+	// llmflow 的 steer 消费事件（上游 internal/state/steer 包的
+	// ExtensionKeyQueuedUserMessage，应用不可 import internal 包，key 以
+	// 字面量对齐），上报 RunRegistry 核销 steer 记账。必须在
+	// Response/Object 早退分支之前：该事件 Object 为空、会被跳过。
+	if c.opts != nil && c.opts.OnSteerConsumed != nil && ev.Author == "user" && ev.Response != nil && len(ev.Response.Choices) > 0 {
+		if raw, ok := ev.Extensions[steerConsumedExtKey]; ok {
+			var sm struct {
+				Status string `json:"status"`
+			}
+			if json.Unmarshal(raw, &sm) == nil && sm.Status == "consumed" {
+				c.opts.OnSteerConsumed(ev.Response.Choices[0].Message.Content)
+			}
+		}
+	}
 	if ev.Response != nil && ev.Response.Error != nil {
 		c.result.HasError = true
 		c.result.LastError = ev.Response.Error.Message

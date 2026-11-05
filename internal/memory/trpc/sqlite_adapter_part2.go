@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"aranea-agents/internal/memory/memx"
 	trpcmemory "trpc.group/trpc-go/trpc-agent-go/memory"
 	"trpc.group/trpc-go/trpc-agent-go/session"
 )
@@ -30,25 +31,25 @@ func hasKeywordOverlap(memoryText string, keywords []string) bool {
 
 // sortProactiveEntries sorts entries by score descending. Entries with
 // equal scores retain their relative order (stable sort).
-func sortProactiveEntries(entries []*trpcmemory.Entry) {
+func sortProactiveEntries(entries []*memx.Entry) {
 	sort.SliceStable(entries, func(i, j int) bool {
 		return entries[i].Score > entries[j].Score
 	})
 }
 
-// ProactiveRecallAdapter wraps a trpcmemory.Service and exposes it as a
+// ProactiveRecallAdapter wraps a memx.Service and exposes it as a
 // biz.ProactiveRecaller. This adapter is necessary because the framework
 // Service.ProactiveRecall and biz.ProactiveRecaller.ProactiveRecall methods
 // have different signatures (framework uses UserKey + ConversationContext,
 // biz uses agentID/userID + ProactiveRecallContext), and Go does not allow
 // two methods with the same name on the same type.
 type ProactiveRecallAdapter struct {
-	svc trpcmemory.Service
+	svc memx.Service
 }
 
 // NewProactiveRecallAdapter creates a biz.ProactiveRecaller backed by the
 // given framework memory Service. Returns nil if svc is nil.
-func NewProactiveRecallAdapter(svc trpcmemory.Service) biz.ProactiveRecaller {
+func NewProactiveRecallAdapter(svc memx.Service) biz.ProactiveRecaller {
 	if svc == nil {
 		return nil
 	}
@@ -64,7 +65,7 @@ func (a *ProactiveRecallAdapter) ProactiveRecall(ctx context.Context, agentID, u
 		return nil, nil
 	}
 	uk := trpcmemory.UserKey{AppName: agentID, UserID: userID}
-	entries, err := a.svc.ProactiveRecall(ctx, uk, trpcmemory.ConversationContext{
+	entries, err := a.svc.ProactiveRecall(ctx, uk, memx.ConversationContext{
 		MentionedEntities: convCtx.MentionedEntities,
 		CurrentTopic:      convCtx.CurrentTopic,
 		UserStatement:     convCtx.UserStatement,
@@ -136,7 +137,7 @@ type factRow struct {
 	KeywordsJSON string  `json:"keywords"`
 }
 
-func factRowToEntry(raw []byte, uk trpcmemory.UserKey) (*trpcmemory.Entry, error) {
+func factRowToEntry(raw []byte, uk trpcmemory.UserKey) (*memx.Entry, error) {
 	var row factRow
 	if err := json.Unmarshal(raw, &row); err != nil {
 		return nil, err
@@ -167,20 +168,22 @@ func factRowToEntry(raw []byte, uk trpcmemory.UserKey) (*trpcmemory.Entry, error
 			validUntil = &t
 		}
 	}
-	return &trpcmemory.Entry{
-		ID:      row.ID,
-		AppName: uk.AppName,
-		Memory: &trpcmemory.Memory{
+	return &memx.Entry{
+		Entry: trpcmemory.Entry{
+			ID:        row.ID,
+			AppName:   uk.AppName,
+			UserID:    uk.UserID,
+			CreatedAt: createdAt,
+			UpdatedAt: lastUpdated,
+			Score:     row.Importance,
+		},
+		Memory: &memx.Memory{
 			Memory:      memText,
 			Topics:      topics,
 			LastUpdated: &lastUpdated,
 			ValidFrom:   validFrom,
 			ValidUntil:  validUntil,
 		},
-		UserID:     uk.UserID,
-		CreatedAt:  createdAt,
-		UpdatedAt:  lastUpdated,
-		Score:      row.Importance,
 		ValidFrom:  validFrom,
 		ValidUntil: validUntil,
 		Links:      decodeTagsJSON(row.LinksJSON),

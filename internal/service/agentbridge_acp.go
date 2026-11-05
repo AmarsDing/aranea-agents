@@ -136,6 +136,16 @@ func (c *acpEventCollector) OnUpdate(_ context.Context, n acp.SessionNotificatio
 	if n.Update.Content != nil {
 		text = n.Update.Content.Text
 	}
+	// 03 P0：tool_call 步骤需要标题（「正在修改 xxx.ts」的看板摘要来源）——
+	// ACP SessionUpdate.Title 与 Content.Text 分离，这里合成「标题\n详情」，
+	// 下游事件持久化拆回首行作 title（service splitFirstLine）。
+	if kind == "tool_call" && n.Update.Title != "" {
+		if text != "" {
+			text = n.Update.Title + "\n" + text
+		} else {
+			text = n.Update.Title
+		}
+	}
 	if kind == "agent_message_chunk" && text != "" {
 		c.mu.Lock()
 		// 上限截断：防止超长输出撑爆内存（摘要语义，非全文转录）。

@@ -9,8 +9,8 @@ import (
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 
+	trpcgraphpg "aranea-agents/internal/graph/trpc/checkpointpg"
 	trpcgraph "trpc.group/trpc-go/trpc-agent-go/graph"
-	trpcgraphpg "trpc.group/trpc-go/trpc-agent-go/graph/checkpoint/postgres"
 )
 
 // CheckpointSaver is a wrapper around the framework's Postgres checkpoint saver.

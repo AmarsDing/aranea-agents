@@ -390,12 +390,25 @@ func TestDetermineStrategy_ModeOverride(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			input := biz.PlanInput{Mode: tt.mode, HistoryDQScore: 0}
-			strategy, _, _ := impl.determineStrategy(tt.level, 0.5, input)
+			strategy, _, _ := impl.determineStrategy(tt.level, 0.5, input, "llm_mode")
 			if strategy != tt.wantStrategy {
 				t.Errorf("mode=%q level=%s: got strategy=%s, want %s",
 					tt.mode, tt.level, strategy, tt.wantStrategy)
 			}
 		})
+	}
+}
+
+func TestDetermineStrategyReasonByDecisionSource(t *testing.T) {
+	impl := &taskPlannerImpl{lg: loggateway.NewNoop()}
+	input := biz.PlanInput{Mode: "dag"}
+	_, reason, _ := impl.determineStrategy(biz.ComplexityModerate, 0.3, input, "keyword_fallback")
+	if !strings.Contains(reason, "关键词回退") || strings.Contains(reason, "用户指定") {
+		t.Fatalf("keyword_fallback reason must not claim 用户指定, got %q", reason)
+	}
+	_, reason, _ = impl.determineStrategy(biz.ComplexityModerate, 0.3, input, "llm_mode")
+	if !strings.Contains(reason, "用户指定") {
+		t.Fatalf("llm_mode reason should say 用户指定, got %q", reason)
 	}
 }
 
@@ -506,6 +519,10 @@ func TestDetectTeamCount(t *testing.T) {
 		{"two teams", "I need two teams to handle this", 2},
 		{"three teams", "dispatch three teams", 3},
 		{"five teams", "five teams working in parallel", 5},
+
+		// 量词与「团队」之间夹修饰语（Spirit 改写后的常见形态）
+		{"一个两名成员的极简团队", "组建一个两名成员的极简团队，禁止搜索", 1},
+		{"2个并行研发团队", "请组建2个并行研发团队分别负责前后端", 2},
 
 		// 不识别的数量
 		{"no count", "组建团队完成项目", 0},

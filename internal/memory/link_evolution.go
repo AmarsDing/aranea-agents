@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/memory/memx"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 
@@ -55,13 +56,13 @@ type LinkEvolutionService interface {
 	// EvolveLinks analyses a newly added memory and updates links/keywords
 	// of related historical memories. Returns the links generated for the
 	// new memory (IDs of related historical memories).
-	EvolveLinks(ctx context.Context, uk trpcmemory.UserKey, newEntry *trpcmemory.Entry) ([]string, error)
+	EvolveLinks(ctx context.Context, uk trpcmemory.UserKey, newEntry *memx.Entry) ([]string, error)
 }
 
 // EvolutionJobRequest represents a queued link evolution job.
 type EvolutionJobRequest struct {
 	UserKey    trpcmemory.UserKey
-	NewEntry   *trpcmemory.Entry
+	NewEntry   *memx.Entry
 	EnqueuedAt time.Time
 }
 
@@ -190,7 +191,7 @@ func (s *LinkEvolutionServiceImpl) SetLinkEvolutionEnabled(enabled bool) {
 // EnqueueEvolution enqueues a link evolution job for the given user key and
 // new entry. Returns nil when no queue is wired (no-op). Respects context
 // cancellation. Non-blocking: drops the job if the queue is full.
-func (s *LinkEvolutionServiceImpl) EnqueueEvolution(ctx context.Context, uk trpcmemory.UserKey, newEntry *trpcmemory.Entry) error {
+func (s *LinkEvolutionServiceImpl) EnqueueEvolution(ctx context.Context, uk trpcmemory.UserKey, newEntry *memx.Entry) error {
 	if s == nil || s.queue == nil {
 		return nil
 	}
@@ -245,7 +246,7 @@ func (s *LinkEvolutionServiceImpl) processJob(ctx context.Context, req Evolution
 //   - LLM failure (function error, API error, malformed JSON) → returns nil, nil.
 //   - No related historical memories → returns nil, nil.
 //   - factReader/factWriter failure → logs warn and returns nil (best-effort).
-func (s *LinkEvolutionServiceImpl) EvolveLinks(ctx context.Context, uk trpcmemory.UserKey, newEntry *trpcmemory.Entry) ([]string, error) {
+func (s *LinkEvolutionServiceImpl) EvolveLinks(ctx context.Context, uk trpcmemory.UserKey, newEntry *memx.Entry) ([]string, error) {
 	if s == nil {
 		return nil, nil
 	}

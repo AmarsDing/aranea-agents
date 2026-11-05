@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"aranea-agents/pkg/loggateway"
+
 	trpcmcpbroker "trpc.group/trpc-go/trpc-agent-go/tool/mcpbroker"
 	tmcp "trpc.group/trpc-go/trpc-mcp-go"
 )
@@ -71,7 +73,7 @@ func TestBuildMCPResourceTools_EmptyServers(t *testing.T) {
 }
 
 func TestBuildMCPBrokerTools_IncludesResourceTools(t *testing.T) {
-	tools, err := buildMCPBrokerTools(resourceTestBrokerCfg("http://127.0.0.1:1/mcp"))
+	tools, err := buildMCPBrokerTools(resourceTestBrokerCfg("http://127.0.0.1:1/mcp"), loggateway.NewNoop())
 	if err != nil {
 		t.Fatalf("buildMCPBrokerTools: %v", err)
 	}

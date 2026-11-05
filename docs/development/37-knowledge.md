@@ -14,7 +14,7 @@
 - Agent 引用图谱派生陈述时须与原文片段明确区分，并能核对当次引用的证据内容及访问权限。
 - 本补充不改变公司、部门、岗位与专项 Agent 架构；共享名单的用户语义遵守 US-58。
 
-> 对标 `pkg/trpc-agent-go/knowledge` 包，实现 RAG 知识库能力。
+> 对标上游 trpc-agent-go `knowledge` 包（go.mod 依赖 `trpc.group/trpc-go/trpc-agent-go`；2026-11-03 出库前为 vendored `pkg/trpc-agent-go`），实现 RAG 知识库能力。
 >
 > 架构设计、Proto/API 契约、数据模型、代码分层详见 [37-knowledge.design.md](./37-knowledge.design.md)。
 > 代码锚点、现状评估、任务清单、Phase 划分详见 [37-knowledge.development.md](./37-knowledge.development.md)。

@@ -6,8 +6,6 @@ import (
 	"testing"
 
 	"aranea-agents/pkg/loggateway"
-
-	trpcsubagent "trpc.group/trpc-go/trpc-agent-go/openclaw/subagent"
 )
 
 // C4-②：env 覆盖语义与 team.TokenBudgetInputTokens 对齐——>0 覆盖默认、
@@ -198,7 +196,7 @@ func TestRecordRunUsage_TripReasonRecorded(t *testing.T) {
 	usage := &usageAccum{}
 	usage.consume(usageEvent(10, 5, 0, "m"))
 	svc.recordRunUsage(
-		&runRecord{Run: trpcsubagent.Run{ID: "r"}},
+		&runRecord{Run: Run{ID: "r"}},
 		runningRun{startedAt: svc.clock()}, usage, context.Canceled,
 		"subagent input-token budget tripped (used 210, budget 100)")
 	if len(rec.calls) != 1 {

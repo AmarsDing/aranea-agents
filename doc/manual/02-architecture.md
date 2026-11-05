@@ -45,7 +45,7 @@ Aranea-Agents 是企业级多智能体编排平台，提供 Agent 创建、编�
 ## 设计原则
 
 1. **领域层纯净**：`internal/biz` 不 import 框架运行时与传输层，依赖方向由 `make archlint` 强制守护；
-2. **框架源码不可改**：`pkg/trpc-agent-go` 是上游 vendored 副本（go.mod replace），发现框架 bug 走例外流程，不擅改；
+2. **框架源码不可改**：trpc-agent-go 为上游 go.mod 依赖（`trpc.group/trpc-go/trpc-agent-go`，2026-11-03 出库，原 vendored `pkg/trpc-agent-go` 已删除），发现框架 bug 走例外流程，不擅改；
 3. **Repo 窄接口**：每个 Repo 接口 ≤5 个方法，biz 层可完整 mock 测试；
 4. **No-Timeout 原则**：WS turn 不设写死超时，长任务靠心跳与显式取消；
 5. **Graph 即 Team**：Team 编排定义统一编译为 Graph 执行，单一底层引擎；

@@ -19,7 +19,7 @@ import (
 //   3. 任务状态追踪（per-session、per-run 的任务索引）
 //   4. 任务结果回调机制
 // 解除方案：Phase 1 统一执行引擎实施时解除（唯一有明确解除路径的阻塞项）。
-// 详见 docs/trpc-agent-go/alignment-plan.md §十一/B-7。
+//（原参考文档 docs/trpc-agent-go/alignment-plan.md 随 2026-11-03 trpc 出库一并删除。）
 
 // TaskRunAdapter wraps the framework's taskrun tools to allow Agent async
 // delegation while coexisting with the project's existing tool system.

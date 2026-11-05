@@ -181,10 +181,7 @@ func newNextActionRouteAfterModelHook(deps TRPCBuilderDeps) callbacks.Callback {
 		}
 		if p.BlockFinal {
 			inv.SetState(pendingNextActionStateKey, pendingNextAction{})
-			text := strings.TrimSpace(p.Hint)
-			if text == "" {
-				text = biz.AwaitOrchestrationUserHint
-			}
+			text := resolveAwaitOrchestrationSpeech(ctx, deps, sessionID, p.Hint)
 			synthetic := buildStatusTextResponse(resp, text)
 			if synthetic == nil {
 				return nil, nil
@@ -192,6 +189,7 @@ func newNextActionRouteAfterModelHook(deps TRPCBuilderDeps) callbacks.Callback {
 			lg.Warn("next_action 硬约束：拦截组队后 DIY 终答，改为状态汇报",
 				loggateway.StepID("chat.next_action.block_final"),
 				loggateway.SessionID(sessionID),
+				loggateway.Str("speech", text),
 			)
 			event.EmitDecision(ctx, deps.DecisionCollector, decision.Record{
 				DecisionKey: uuid.NewString(),
@@ -332,6 +330,41 @@ func buildToolLoadCallResponse(orig *trpcmodel.Response, toolName string) *trpcm
 		out.Object = trpcmodel.ObjectTypeChatCompletion
 	}
 	return out
+}
+
+// resolveAwaitOrchestrationSpeech picks the assistant-visible status for
+// BlockFinal. Model-facing directives (「请向用户说明」「禁止撰写」) must never
+// land in the message channel. When teams already reached a terminal state in
+// the same turn, prefer a truthful cancelled/failed speech over「正在执行」.
+func resolveAwaitOrchestrationSpeech(ctx context.Context, deps TRPCBuilderDeps, sessionID, hint string) string {
+	if deps.TeamCompletionChecker != nil && strings.TrimSpace(sessionID) != "" {
+		r := deps.TeamCompletionChecker.CheckAllTeamsCompleted(ctx, sessionID)
+		if r.AllDone && r.TotalTeams > 0 {
+			if r.CancelledTeams > 0 {
+				return biz.AwaitOrchestrationCancelledSpeech
+			}
+			if r.FailedTeams > 0 {
+				return biz.AwaitOrchestrationFailedSpeech
+			}
+		}
+	}
+	return sanitizeAwaitOrchestrationSpeech(hint)
+}
+
+// sanitizeAwaitOrchestrationSpeech strips model-facing directives that were
+// historically stored in reuse_reason / BlockFinal Hint.
+func sanitizeAwaitOrchestrationSpeech(hint string) string {
+	h := strings.TrimSpace(hint)
+	switch {
+	case h == "":
+		return biz.AwaitOrchestrationUserSpeech
+	case h == biz.AwaitOrchestrationModelHint:
+		return biz.AwaitOrchestrationUserSpeech
+	case strings.Contains(h, "禁止在本轮直接撰写"), strings.Contains(h, "请向用户说明"):
+		return biz.AwaitOrchestrationUserSpeech
+	default:
+		return h
+	}
 }
 
 // buildStatusTextResponse replaces a DIY final with a status-only reply.

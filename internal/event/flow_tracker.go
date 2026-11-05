@@ -8,7 +8,7 @@ import (
 	"aranea-agents/internal/event/contract"
 	"aranea-agents/pkg/loggateway"
 
-	frameworktracing "trpc.group/trpc-go/trpc-agent-go/event/tracing"
+	frameworktracing "aranea-agents/internal/event/tracing"
 )
 
 // FlowTracker holds FlowContext + optional SpanCollector + optional UsageAggregator.

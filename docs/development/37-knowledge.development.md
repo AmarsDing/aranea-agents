@@ -844,8 +844,8 @@ Phase 1.4 质量评估 ──────┘
 
 | # | 约束 | 说明 |
 |---|------|------|
-| 1 | 依赖方向 | 所有新增代码遵循 `biz → data` 单向依赖，`internal/knowledge` 不 import `pkg/trpc-agent-go` |
-| 2 | 框架真相源 | 向量存储、Embedder、Reranker 等框架能力优先使用 `pkg/trpc-agent-go/knowledge/` 已有实现 |
+| 1 | 依赖方向 | 所有新增代码遵循 `biz → data` 单向依赖，`internal/knowledge` 不 import 框架内核（`trpc.group/trpc-go/trpc-agent-go`） |
+| 2 | 框架真相源 | 向量存储、Embedder、Reranker 等框架能力优先使用上游 trpc-agent-go `knowledge/` 包已有实现（go.mod 依赖，2026-11-03 出库后不再 vendor） |
 | 3 | 工具注册 | 新工具通过 `internal/tools/` 的 Registry 注册，走 `ToolKeyKnowledge*` 常量 |
 | 4 | Wire 注入 | 新依赖通过 Wire ProviderSet 注入，不手动 new |
 | 5 | 并发安全 | 所有 `go func()` 走 `pkg/safego` |

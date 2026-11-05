@@ -59,7 +59,7 @@ query ──► Embedding（OpenAI 兼容 API，可降级）──► 向量召�
 
 | 引用 | 作者/来源 | 用途 | 许可 |
 |------|-----------|------|------|
-| trpc-agent-go | Tencent（项目内嵌 `pkg/trpc-agent-go`） | Agent 运行时内核；`memory.Service` 接口定义 | Apache-2.0（以仓库 LICENSE 为准） |
+| trpc-agent-go | Tencent（go.mod 上游依赖；2026-11-03 出库前为项目内嵌 `pkg/trpc-agent-go`） | Agent 运行时内核；`memory.Service` 接口定义 | Apache-2.0（以仓库 LICENSE 为准） |
 | pgvector | pgvector/pgvector | Postgres 向量相似度检索 | PostgreSQL License |
 | mem0 | mem0ai/mem0 | 记忆管理范式参考（提取-巩固-召回）；**未复用其代码** | Apache-2.0 |
 | 分层记忆理论 | 认知科学感觉/工作/情景/语义记忆模型 | L0–L4 分层理论基础 | — |

@@ -193,6 +193,7 @@ export default {
       knowledge: { title: 'Knowledge', description: 'Organize sources and explore connections for grounded answers.' },
       agents: { title: 'Agents', description: 'Manage specialist roles and their individual capabilities.' },
       workbench: { title: 'Operations', description: 'Review business activity and items that need your decision.' },
+      codingTasks: { title: 'Coding tasks', description: 'Dispatch tasks to external coding tools and track every step on the board.' },
     },
   },
   ecommerceLoop: {
@@ -1991,6 +1992,8 @@ export default {
     usageEvents: 'Usage events',
     usageQuotas: 'Usage quotas',
     chat: 'Chat',
+    codingTasks: 'Coding tasks',
+    codingTools: 'Coding tools',
     companion: 'Voice Companion',
     sessions: 'Session history',
     memory: 'Memory Center',

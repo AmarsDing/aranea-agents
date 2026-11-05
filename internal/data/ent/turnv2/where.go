@@ -124,6 +124,11 @@ func CompletedAt(v time.Time) predicate.TurnV2 {
 	return predicate.TurnV2(sql.FieldEQ(FieldCompletedAt, v))
 }
 
+// RuntimeInvocationID applies equality check predicate on the "runtime_invocation_id" field. It's identical to RuntimeInvocationIDEQ.
+func RuntimeInvocationID(v string) predicate.TurnV2 {
+	return predicate.TurnV2(sql.FieldEQ(FieldRuntimeInvocationID, v))
+}
+
 // TaskIDEQ applies the EQ predicate on the "task_id" field.
 func TaskIDEQ(v string) predicate.TurnV2 {
 	return predicate.TurnV2(sql.FieldEQ(FieldTaskID, v))
@@ -812,6 +817,71 @@ func CompletedAtIsNil() predicate.TurnV2 {
 // CompletedAtNotNil applies the NotNil predicate on the "completed_at" field.
 func CompletedAtNotNil() predicate.TurnV2 {
 	return predicate.TurnV2(sql.FieldNotNull(FieldCompletedAt))
+}
+
+// RuntimeInvocationIDEQ applies the EQ predicate on the "runtime_invocation_id" field.
+func RuntimeInvocationIDEQ(v string) predicate.TurnV2 {
+	return predicate.TurnV2(sql.FieldEQ(FieldRuntimeInvocationID, v))
+}
+
+// RuntimeInvocationIDNEQ applies the NEQ predicate on the "runtime_invocation_id" field.
+func RuntimeInvocationIDNEQ(v string) predicate.TurnV2 {
+	return predicate.TurnV2(sql.FieldNEQ(FieldRuntimeInvocationID, v))
+}
+
+// RuntimeInvocationIDIn applies the In predicate on the "runtime_invocation_id" field.
+func RuntimeInvocationIDIn(vs ...string) predicate.TurnV2 {
+	return predicate.TurnV2(sql.FieldIn(FieldRuntimeInvocationID, vs...))
+}
+
+// RuntimeInvocationIDNotIn applies the NotIn predicate on the "runtime_invocation_id" field.
+func RuntimeInvocationIDNotIn(vs ...string) predicate.TurnV2 {
+	return predicate.TurnV2(sql.FieldNotIn(FieldRuntimeInvocationID, vs...))
+}
+
+// RuntimeInvocationIDGT applies the GT predicate on the "runtime_invocation_id" field.
+func RuntimeInvocationIDGT(v string) predicate.TurnV2 {
+	return predicate.TurnV2(sql.FieldGT(FieldRuntimeInvocationID, v))
+}
+
+// RuntimeInvocationIDGTE applies the GTE predicate on the "runtime_invocation_id" field.
+func RuntimeInvocationIDGTE(v string) predicate.TurnV2 {
+	return predicate.TurnV2(sql.FieldGTE(FieldRuntimeInvocationID, v))
+}
+
+// RuntimeInvocationIDLT applies the LT predicate on the "runtime_invocation_id" field.
+func RuntimeInvocationIDLT(v string) predicate.TurnV2 {
+	return predicate.TurnV2(sql.FieldLT(FieldRuntimeInvocationID, v))
+}
+
+// RuntimeInvocationIDLTE applies the LTE predicate on the "runtime_invocation_id" field.
+func RuntimeInvocationIDLTE(v string) predicate.TurnV2 {
+	return predicate.TurnV2(sql.FieldLTE(FieldRuntimeInvocationID, v))
+}
+
+// RuntimeInvocationIDContains applies the Contains predicate on the "runtime_invocation_id" field.
+func RuntimeInvocationIDContains(v string) predicate.TurnV2 {
+	return predicate.TurnV2(sql.FieldContains(FieldRuntimeInvocationID, v))
+}
+
+// RuntimeInvocationIDHasPrefix applies the HasPrefix predicate on the "runtime_invocation_id" field.
+func RuntimeInvocationIDHasPrefix(v string) predicate.TurnV2 {
+	return predicate.TurnV2(sql.FieldHasPrefix(FieldRuntimeInvocationID, v))
+}
+
+// RuntimeInvocationIDHasSuffix applies the HasSuffix predicate on the "runtime_invocation_id" field.
+func RuntimeInvocationIDHasSuffix(v string) predicate.TurnV2 {
+	return predicate.TurnV2(sql.FieldHasSuffix(FieldRuntimeInvocationID, v))
+}
+
+// RuntimeInvocationIDEqualFold applies the EqualFold predicate on the "runtime_invocation_id" field.
+func RuntimeInvocationIDEqualFold(v string) predicate.TurnV2 {
+	return predicate.TurnV2(sql.FieldEqualFold(FieldRuntimeInvocationID, v))
+}
+
+// RuntimeInvocationIDContainsFold applies the ContainsFold predicate on the "runtime_invocation_id" field.
+func RuntimeInvocationIDContainsFold(v string) predicate.TurnV2 {
+	return predicate.TurnV2(sql.FieldContainsFold(FieldRuntimeInvocationID, v))
 }
 
 // And groups predicates with the AND operator between them.
