@@ -207,3 +207,29 @@ web/vitest-result.json
 
 # 本地 agent 记忆/工作笔记（不入库）
 .workbuddy/
+
+# ----- 项目外统一产物目录约定（2026-11-03）-----
+# 构建/运行/测试产物一律不提交；物理文件归档到 ..\temp\aranea-agents 与 ..\test\aranea-agents
+/bin/
+/var/
+/storage/
+/output/
+/runtime/
+/openapi.yaml
+/admin.exe
+/memoryeval.exe
+/internal/agent/workspace/
+/internal/computeruse/**/bin/
+/internal/computeruse/**/obj/
+/internal/computeruse/**/artifacts/
+/internal/computeruse/**/TestResults/
+/docker/bin/
+/docker/volumes/
+/docker/.test-*
+web/dist/
+web/build/
+web/.quasar/
+web/*.log
+web/*-out.txt
+web/vitest-result.json
+/tmp*/
