@@ -89,6 +89,16 @@ type NATSManager struct {
 	// ConsumerSampleInterval 是 ConsumerInfo 周期采样间隔;默认 15s。
 	ConsumerSampleInterval time.Duration
 
+	// DurablePrefix 是 durable 名前缀;默认 "ceoboard"。
+	// 双跑期(P2-11,方案 §10 P2)改为 "ceoboard-v2" 之类——同名 durable 会形成
+	// queue-group 分流,新旧系统各收一半消息(R5 严重事故)。
+	DurablePrefix string
+	// DeliverAll 为 true 时新建 consumer 用 DeliverAllPolicy(从最早 offset 重放
+	// 建库,双跑期口径);false 用 DeliverNewPolicy(默认,只看实时流量,历史回填
+	// 会把窗口指标打爆)。注意:DeliverPolicy 对已存在 durable 不可变,本开关只
+	// 影响新建 consumer;追平后无需调回(consumer 重放完自然进入实时流)。
+	DeliverAll bool
+
 	mu        sync.Mutex
 	states    map[string]*NATSNodeState // key = wfID/nodeID
 	consumers map[string]*ConsumerState // key = nodeKey/durable
@@ -101,6 +111,7 @@ func NewNATSManager(st *store.Store, platformOf map[string]string, log loggatewa
 		st: st, platformOf: platformOf, log: log,
 		states: map[string]*NATSNodeState{}, consumers: map[string]*ConsumerState{},
 		ConsumerSampleInterval: 15 * time.Second,
+		DurablePrefix:          "ceoboard",
 	}
 	m.dial = func(endpoint string, opts ...nats.Option) (*nats.Conn, error) { return nats.Connect(endpoint, opts...) }
 	m.jsOf = func(nc *nats.Conn) (jetAPI, error) {
@@ -301,8 +312,12 @@ func (m *NATSManager) wireOnce(ctx context.Context, wfID string, n *registry.Nod
 	}
 
 	anyConsuming := false
+	prefix := m.DurablePrefix
+	if prefix == "" { // 零值兜底(手工构造的 manager)
+		prefix = "ceoboard"
+	}
 	for _, subject := range src.Subjects {
-		durable := "ceoboard-" + sanitizeDurable(nodeKey) + "-" + sanitizeDurable(SubjectKey(subject))
+		durable := prefix + "-" + sanitizeDurable(nodeKey) + "-" + sanitizeDurable(SubjectKey(subject))
 		if err := m.consumeSubject(ctx, js, stream, durable, subject, platform, entityPath, st); err != nil {
 			// 单 subject 失败隔离:记录并继续其余 subject
 			m.setErr(st, subject+": "+err.Error())
@@ -334,10 +349,14 @@ func (m *NATSManager) setErr(st *NATSNodeState, msg string) {
 func (m *NATSManager) consumeSubject(ctx context.Context, js jetAPI,
 	stream, durable, subject, platform, entityPath string, st *NATSNodeState) error {
 
+	deliverPolicy := nats.DeliverNewPolicy // 只看实时流量;历史回填会把窗口指标打爆(乱序/回填风险)
+	if m.DeliverAll {
+		deliverPolicy = nats.DeliverAllPolicy // 双跑期:新 durable 从最早 offset 重放建库(仅新建生效)
+	}
 	cfg := &nats.ConsumerConfig{
 		Durable:       durable,
 		FilterSubject: subject,
-		DeliverPolicy: nats.DeliverNewPolicy, // 只看实时流量;历史回填会把窗口指标打爆(乱序/回填风险)
+		DeliverPolicy: deliverPolicy,
 		AckPolicy:     nats.AckExplicitPolicy,
 		MaxDeliver:    -1,
 		AckWait:       30 * time.Second,

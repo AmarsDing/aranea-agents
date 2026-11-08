@@ -113,6 +113,11 @@ message Ceoboard {
   repeated AuthProvider auth_providers = 15;
   repeated Platform platforms = 16;
   repeated Approval approvals = 17;
+  // 双跑编排(P2-11,方案 §10 P2):新系统用独立 durable 名 + 最早 offset 重放建库,
+  // 与旧看板各自完整消费(同名 durable 会形成 queue-group 分流,R5)。
+  string nats_durable_prefix = 18;          // durable 名前缀("" = "ceoboard";双跑期改 "ceoboard-v2" 之类)
+  bool nats_deliver_all = 19;               // true = 新建 consumer 从最早 offset 重放(双跑建库);
+                                            // false = DeliverNew 只看实时流量(默认;只对新建 consumer 生效)
 }
 
 // SelfImprovement configures the platform self-improvement (V3) pipeline

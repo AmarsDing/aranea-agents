@@ -132,6 +132,10 @@ func NewRuntime(bc *conf.Ceoboard, st *store.Store, lg loggateway.Logger) (*Runt
 
 	receiver := adapter.NewWebhookReceiver(st, c.webhookKey)
 	natsMgr := adapter.NewNATSManager(st, c.natsPlatforms, lg)
+	if c.natsDurablePrefix != "" { // 双跑期独立 durable 名(防 queue-group 分流,R5)
+		natsMgr.DurablePrefix = c.natsDurablePrefix
+	}
+	natsMgr.DeliverAll = c.natsDeliverAll // 双跑建库:新 durable 从最早 offset 重放
 
 	agCfg := &agg.Config{NATSPlatforms: c.natsPlatforms}
 	for _, p := range c.platforms {
@@ -324,6 +328,8 @@ type resolvedConfig struct {
 	pollInterval      time.Duration
 	staleAfter        time.Duration
 	natsPlatforms     map[string]string
+	natsDurablePrefix string
+	natsDeliverAll    bool
 	authProviders     []*conf.Ceoboard_AuthProvider
 	platforms         []*conf.Ceoboard_Platform
 	approvals         []*conf.Ceoboard_Approval
@@ -387,6 +393,10 @@ func resolveConfig(bc *conf.Ceoboard) *resolvedConfig {
 	if len(bc.GetNatsPlatforms()) > 0 {
 		c.natsPlatforms = bc.GetNatsPlatforms()
 	}
+	// 双跑编排(P2-11):durable 前缀与最早 offset 重放开关原样透传
+	// (adapter 层默认 "ceoboard"/DeliverNew,这里只在显式配置时覆盖)。
+	c.natsDurablePrefix = bc.GetNatsDurablePrefix()
+	c.natsDeliverAll = bc.GetNatsDeliverAll()
 	c.authProviders = bc.GetAuthProviders()
 	c.platforms = bc.GetPlatforms()
 	c.approvals = bc.GetApprovals()

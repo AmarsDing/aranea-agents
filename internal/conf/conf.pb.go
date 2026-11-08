@@ -349,8 +349,12 @@ type Ceoboard struct {
 	AuthProviders      []*Ceoboard_AuthProvider `protobuf:"bytes,15,rep,name=auth_providers,json=authProviders,proto3" json:"auth_providers,omitempty"`
 	Platforms          []*Ceoboard_Platform     `protobuf:"bytes,16,rep,name=platforms,proto3" json:"platforms,omitempty"`
 	Approvals          []*Ceoboard_Approval     `protobuf:"bytes,17,rep,name=approvals,proto3" json:"approvals,omitempty"`
-	unknownFields      protoimpl.UnknownFields
-	sizeCache          protoimpl.SizeCache
+	// 双跑编排(P2-11,方案 §10 P2):新系统用独立 durable 名 + 最早 offset 重放建库,
+	// 与旧看板各自完整消费(同名 durable 会形成 queue-group 分流,R5)。
+	NatsDurablePrefix string `protobuf:"bytes,18,opt,name=nats_durable_prefix,json=natsDurablePrefix,proto3" json:"nats_durable_prefix,omitempty"` // durable 名前缀("" = "ceoboard";双跑期改 "ceoboard-v2" 之类)
+	NatsDeliverAll    bool   `protobuf:"varint,19,opt,name=nats_deliver_all,json=natsDeliverAll,proto3" json:"nats_deliver_all,omitempty"`         // true = 新建 consumer 从最早 offset 重放(双跑建库);
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *Ceoboard) Reset() {
@@ -500,6 +504,20 @@ func (x *Ceoboard) GetApprovals() []*Ceoboard_Approval {
 		return x.Approvals
 	}
 	return nil
+}
+
+func (x *Ceoboard) GetNatsDurablePrefix() string {
+	if x != nil {
+		return x.NatsDurablePrefix
+	}
+	return ""
+}
+
+func (x *Ceoboard) GetNatsDeliverAll() bool {
+	if x != nil {
+		return x.NatsDeliverAll
+	}
+	return false
 }
 
 // SelfImprovement configures the platform self-improvement (V3) pipeline
@@ -3702,7 +3720,8 @@ const file_conf_conf_proto_rawDesc = "" +
 	"proxy_http\x18\x02 \x01(\tR\tproxyHttp\x1aX\n" +
 	"\rProfilesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x121\n" +
-	"\x05value\x18\x02 \x01(\v2\x1b.kratos.api.Sandbox.ProfileR\x05value:\x028\x01\"\xc3\t\n" +
+	"\x05value\x18\x02 \x01(\v2\x1b.kratos.api.Sandbox.ProfileR\x05value:\x028\x01\"\x9d\n" +
+	"\n" +
 	"\bCeoboard\x12!\n" +
 	"\fregistry_dir\x18\x01 \x01(\tR\vregistryDir\x12\x1b\n" +
 	"\tspool_dir\x18\x02 \x01(\tR\bspoolDir\x12.\n" +
@@ -3724,7 +3743,9 @@ const file_conf_conf_proto_rawDesc = "" +
 	"\x0enats_platforms\x18\x0e \x03(\v2'.kratos.api.Ceoboard.NatsPlatformsEntryR\rnatsPlatforms\x12H\n" +
 	"\x0eauth_providers\x18\x0f \x03(\v2!.kratos.api.Ceoboard.AuthProviderR\rauthProviders\x12;\n" +
 	"\tplatforms\x18\x10 \x03(\v2\x1d.kratos.api.Ceoboard.PlatformR\tplatforms\x12;\n" +
-	"\tapprovals\x18\x11 \x03(\v2\x1d.kratos.api.Ceoboard.ApprovalR\tapprovals\x1a\x84\x01\n" +
+	"\tapprovals\x18\x11 \x03(\v2\x1d.kratos.api.Ceoboard.ApprovalR\tapprovals\x12.\n" +
+	"\x13nats_durable_prefix\x18\x12 \x01(\tR\x11natsDurablePrefix\x12(\n" +
+	"\x10nats_deliver_all\x18\x13 \x01(\bR\x0enatsDeliverAll\x1a\x84\x01\n" +
 	"\fAuthProvider\x12\x14\n" +
 	"\x05match\x18\x01 \x01(\tR\x05match\x12\x12\n" +
 	"\x04type\x18\x02 \x01(\tR\x04type\x12\x1b\n" +
