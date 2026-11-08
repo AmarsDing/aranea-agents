@@ -69,6 +69,17 @@ var builtinRolePermissions = map[string][]string{
 	},
 }
 
+// BuiltinRolePermissions returns a deep copy of the builtin role→permission
+// mapping（P0 详设 01 §3）。它是 DB seed 的唯一来源——P1-9 迁移工具用它生成
+// roles/permissions/role_permissions 种子 SQL，禁止手工誊抄（防漂移）。
+func BuiltinRolePermissions() map[string][]string {
+	out := make(map[string][]string, len(builtinRolePermissions))
+	for role, codes := range builtinRolePermissions {
+		out[role] = append([]string(nil), codes...)
+	}
+	return out
+}
+
 // builtinResolver 是默认解析器：仅含内置角色静态映射。
 type builtinResolver struct{}
 
