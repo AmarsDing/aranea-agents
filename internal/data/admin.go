@@ -7,21 +7,27 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/ent"
-	"aranea-agents/internal/data/ent/admin"
+	entadmin "aranea-agents/internal/data/ent/admin"
 	"github.com/go-kratos/aip-go/ents"
 )
 
 func convertAdmin(po *ent.Admin) *biz.Admin {
 	return &biz.Admin{
-		ID:          po.ID,
-		Name:        po.Name,
-		Email:       po.Email,
-		Avatar:      po.Avatar,
-		Access:      po.Access,
-		Password:    po.Password,
-		WorkspaceID: po.WorkspaceID,
-		CreateTime:  po.CreateTime,
-		UpdateTime:  po.UpdateTime,
+		ID:           po.ID,
+		Name:         po.Name,
+		Email:        po.Email,
+		Avatar:       po.Avatar,
+		Access:       po.Access,
+		Password:     po.Password,
+		WorkspaceID:  po.WorkspaceID,
+		Roles:        po.Roles,
+		Clearance:    po.Clearance,
+		Dept:         po.Dept,
+		Status:       string(po.Status),
+		ForceReset:   po.ForceReset,
+		TokenVersion: po.TokenVersion,
+		CreateTime:   po.CreateTime,
+		UpdateTime:   po.UpdateTime,
 	}
 }
 
@@ -60,7 +66,7 @@ func (r *adminRepo) FindByID(ctx context.Context, id int64) (*biz.Admin, error) 
 }
 
 func (r *adminRepo) FindByName(ctx context.Context, name string) (*biz.Admin, error) {
-	po, err := r.data.RW().Read(ctx).Admin.Query().Where(admin.NameEQ(name)).Only(ctx)
+	po, err := r.data.RW().Read(ctx).Admin.Query().Where(entadmin.NameEQ(name)).Only(ctx)
 	if err != nil {
 		if ent.IsNotFound(err) {
 			return nil, biz.ErrAdminNotFound
@@ -71,7 +77,7 @@ func (r *adminRepo) FindByName(ctx context.Context, name string) (*biz.Admin, er
 }
 
 func (r *adminRepo) FindByEmail(ctx context.Context, email string) (*biz.Admin, error) {
-	po, err := r.data.RW().Read(ctx).Admin.Query().Where(admin.EmailEQ(email)).Only(ctx)
+	po, err := r.data.RW().Read(ctx).Admin.Query().Where(entadmin.EmailEQ(email)).Only(ctx)
 	if err != nil {
 		if ent.IsNotFound(err) {
 			return nil, biz.ErrAdminNotFound
@@ -107,7 +113,7 @@ func (r *adminRepo) CreateAdmin(ctx context.Context, admin *biz.Admin) (*biz.Adm
 	if ws == "" {
 		ws = "default"
 	}
-	po, err := r.data.RW().Write(ctx).Admin.Create().
+	create := r.data.RW().Write(ctx).Admin.Create().
 		SetName(admin.Name).
 		SetEmail(admin.Email).
 		SetAvatar(admin.Avatar).
@@ -115,8 +121,25 @@ func (r *adminRepo) CreateAdmin(ctx context.Context, admin *biz.Admin) (*biz.Adm
 		SetPassword(admin.Password).
 		SetWorkspaceID(ws).
 		SetCreateTime(time.Now()).
-		SetUpdateTime(time.Now()).
-		Save(ctx)
+		SetUpdateTime(time.Now())
+	// P1 权限底座字段：仅在显式提供时写入，其余交给 ent 默认值
+	// （roles=[]、clearance=1、status=active、token_version=0）。
+	if admin.Roles != nil {
+		create.SetRoles(admin.Roles)
+	}
+	if admin.Clearance >= 1 {
+		create.SetClearance(admin.Clearance)
+	}
+	if admin.Dept != "" {
+		create.SetDept(admin.Dept)
+	}
+	if admin.Status != "" {
+		create.SetStatus(entadmin.Status(admin.Status))
+	}
+	if admin.ForceReset {
+		create.SetForceReset(true)
+	}
+	po, err := create.Save(ctx)
 	if err != nil {
 		return nil, entErrToBizErr(err, "ADMIN")
 	}

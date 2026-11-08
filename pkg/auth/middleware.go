@@ -129,6 +129,11 @@ func Middleware(lg loggateway.Logger) httpm.FilterFunc {
 				http.Error(w, ec.Message, int(ec.Code))
 				return
 			}
+			// P1-3 会话吊销：claims.tv 与服务端 token_version 逐请求比对。
+			if err := enforceTokenVersion(r.Context(), auth, lg, "auth.session_revoked"); err != nil {
+				http.Error(w, "Unauthorized", http.StatusUnauthorized)
+				return
+			}
 			ctx := NewContext(r.Context(), auth)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
@@ -154,8 +159,17 @@ func SetCookie(ctx context.Context, userID int64, access string, expiresAt time.
 // sets it as the session cookie AND returns it in the response body so
 // cross-origin clients (WebView / frp) can authenticate via Bearer header or
 // WS `?token=` query when the HttpOnly cookie is unavailable.
+//
+// Deprecated(transition): P1 起登录链路改用 IssueTokenForPrincipal 以携带
+// roles/clearance/tv claims；本函数仅兼容无角色的旧调用点。
 func IssueTokenForWorkspace(userID int64, access, workspaceID string, expiresAt time.Time) (string, error) {
 	return GenerateTokenForWorkspace(userID, access, workspaceID, authSecretKey, expiresAt)
+}
+
+// IssueTokenForPrincipal generates a JWT carrying the full P1 claim set
+// (roles/clearance/tv) using the server secret. 登录链路唯一入口（P1-2）。
+func IssueTokenForPrincipal(p Principal, expiresAt time.Time) (string, error) {
+	return GenerateTokenForPrincipal(p, authSecretKey, expiresAt)
 }
 
 // SetCookieWithToken sets the login cookie from an already-issued token so

@@ -84,6 +84,26 @@ func WorkspaceID(v string) predicate.Admin {
 	return predicate.Admin(sql.FieldEQ(FieldWorkspaceID, v))
 }
 
+// Clearance applies equality check predicate on the "clearance" field. It's identical to ClearanceEQ.
+func Clearance(v int) predicate.Admin {
+	return predicate.Admin(sql.FieldEQ(FieldClearance, v))
+}
+
+// Dept applies equality check predicate on the "dept" field. It's identical to DeptEQ.
+func Dept(v string) predicate.Admin {
+	return predicate.Admin(sql.FieldEQ(FieldDept, v))
+}
+
+// ForceReset applies equality check predicate on the "force_reset" field. It's identical to ForceResetEQ.
+func ForceReset(v bool) predicate.Admin {
+	return predicate.Admin(sql.FieldEQ(FieldForceReset, v))
+}
+
+// TokenVersion applies equality check predicate on the "token_version" field. It's identical to TokenVersionEQ.
+func TokenVersion(v int64) predicate.Admin {
+	return predicate.Admin(sql.FieldEQ(FieldTokenVersion, v))
+}
+
 // CreateTime applies equality check predicate on the "create_time" field. It's identical to CreateTimeEQ.
 func CreateTime(v time.Time) predicate.Admin {
 	return predicate.Admin(sql.FieldEQ(FieldCreateTime, v))
@@ -482,6 +502,181 @@ func WorkspaceIDEqualFold(v string) predicate.Admin {
 // WorkspaceIDContainsFold applies the ContainsFold predicate on the "workspace_id" field.
 func WorkspaceIDContainsFold(v string) predicate.Admin {
 	return predicate.Admin(sql.FieldContainsFold(FieldWorkspaceID, v))
+}
+
+// ClearanceEQ applies the EQ predicate on the "clearance" field.
+func ClearanceEQ(v int) predicate.Admin {
+	return predicate.Admin(sql.FieldEQ(FieldClearance, v))
+}
+
+// ClearanceNEQ applies the NEQ predicate on the "clearance" field.
+func ClearanceNEQ(v int) predicate.Admin {
+	return predicate.Admin(sql.FieldNEQ(FieldClearance, v))
+}
+
+// ClearanceIn applies the In predicate on the "clearance" field.
+func ClearanceIn(vs ...int) predicate.Admin {
+	return predicate.Admin(sql.FieldIn(FieldClearance, vs...))
+}
+
+// ClearanceNotIn applies the NotIn predicate on the "clearance" field.
+func ClearanceNotIn(vs ...int) predicate.Admin {
+	return predicate.Admin(sql.FieldNotIn(FieldClearance, vs...))
+}
+
+// ClearanceGT applies the GT predicate on the "clearance" field.
+func ClearanceGT(v int) predicate.Admin {
+	return predicate.Admin(sql.FieldGT(FieldClearance, v))
+}
+
+// ClearanceGTE applies the GTE predicate on the "clearance" field.
+func ClearanceGTE(v int) predicate.Admin {
+	return predicate.Admin(sql.FieldGTE(FieldClearance, v))
+}
+
+// ClearanceLT applies the LT predicate on the "clearance" field.
+func ClearanceLT(v int) predicate.Admin {
+	return predicate.Admin(sql.FieldLT(FieldClearance, v))
+}
+
+// ClearanceLTE applies the LTE predicate on the "clearance" field.
+func ClearanceLTE(v int) predicate.Admin {
+	return predicate.Admin(sql.FieldLTE(FieldClearance, v))
+}
+
+// DeptEQ applies the EQ predicate on the "dept" field.
+func DeptEQ(v string) predicate.Admin {
+	return predicate.Admin(sql.FieldEQ(FieldDept, v))
+}
+
+// DeptNEQ applies the NEQ predicate on the "dept" field.
+func DeptNEQ(v string) predicate.Admin {
+	return predicate.Admin(sql.FieldNEQ(FieldDept, v))
+}
+
+// DeptIn applies the In predicate on the "dept" field.
+func DeptIn(vs ...string) predicate.Admin {
+	return predicate.Admin(sql.FieldIn(FieldDept, vs...))
+}
+
+// DeptNotIn applies the NotIn predicate on the "dept" field.
+func DeptNotIn(vs ...string) predicate.Admin {
+	return predicate.Admin(sql.FieldNotIn(FieldDept, vs...))
+}
+
+// DeptGT applies the GT predicate on the "dept" field.
+func DeptGT(v string) predicate.Admin {
+	return predicate.Admin(sql.FieldGT(FieldDept, v))
+}
+
+// DeptGTE applies the GTE predicate on the "dept" field.
+func DeptGTE(v string) predicate.Admin {
+	return predicate.Admin(sql.FieldGTE(FieldDept, v))
+}
+
+// DeptLT applies the LT predicate on the "dept" field.
+func DeptLT(v string) predicate.Admin {
+	return predicate.Admin(sql.FieldLT(FieldDept, v))
+}
+
+// DeptLTE applies the LTE predicate on the "dept" field.
+func DeptLTE(v string) predicate.Admin {
+	return predicate.Admin(sql.FieldLTE(FieldDept, v))
+}
+
+// DeptContains applies the Contains predicate on the "dept" field.
+func DeptContains(v string) predicate.Admin {
+	return predicate.Admin(sql.FieldContains(FieldDept, v))
+}
+
+// DeptHasPrefix applies the HasPrefix predicate on the "dept" field.
+func DeptHasPrefix(v string) predicate.Admin {
+	return predicate.Admin(sql.FieldHasPrefix(FieldDept, v))
+}
+
+// DeptHasSuffix applies the HasSuffix predicate on the "dept" field.
+func DeptHasSuffix(v string) predicate.Admin {
+	return predicate.Admin(sql.FieldHasSuffix(FieldDept, v))
+}
+
+// DeptEqualFold applies the EqualFold predicate on the "dept" field.
+func DeptEqualFold(v string) predicate.Admin {
+	return predicate.Admin(sql.FieldEqualFold(FieldDept, v))
+}
+
+// DeptContainsFold applies the ContainsFold predicate on the "dept" field.
+func DeptContainsFold(v string) predicate.Admin {
+	return predicate.Admin(sql.FieldContainsFold(FieldDept, v))
+}
+
+// StatusEQ applies the EQ predicate on the "status" field.
+func StatusEQ(v Status) predicate.Admin {
+	return predicate.Admin(sql.FieldEQ(FieldStatus, v))
+}
+
+// StatusNEQ applies the NEQ predicate on the "status" field.
+func StatusNEQ(v Status) predicate.Admin {
+	return predicate.Admin(sql.FieldNEQ(FieldStatus, v))
+}
+
+// StatusIn applies the In predicate on the "status" field.
+func StatusIn(vs ...Status) predicate.Admin {
+	return predicate.Admin(sql.FieldIn(FieldStatus, vs...))
+}
+
+// StatusNotIn applies the NotIn predicate on the "status" field.
+func StatusNotIn(vs ...Status) predicate.Admin {
+	return predicate.Admin(sql.FieldNotIn(FieldStatus, vs...))
+}
+
+// ForceResetEQ applies the EQ predicate on the "force_reset" field.
+func ForceResetEQ(v bool) predicate.Admin {
+	return predicate.Admin(sql.FieldEQ(FieldForceReset, v))
+}
+
+// ForceResetNEQ applies the NEQ predicate on the "force_reset" field.
+func ForceResetNEQ(v bool) predicate.Admin {
+	return predicate.Admin(sql.FieldNEQ(FieldForceReset, v))
+}
+
+// TokenVersionEQ applies the EQ predicate on the "token_version" field.
+func TokenVersionEQ(v int64) predicate.Admin {
+	return predicate.Admin(sql.FieldEQ(FieldTokenVersion, v))
+}
+
+// TokenVersionNEQ applies the NEQ predicate on the "token_version" field.
+func TokenVersionNEQ(v int64) predicate.Admin {
+	return predicate.Admin(sql.FieldNEQ(FieldTokenVersion, v))
+}
+
+// TokenVersionIn applies the In predicate on the "token_version" field.
+func TokenVersionIn(vs ...int64) predicate.Admin {
+	return predicate.Admin(sql.FieldIn(FieldTokenVersion, vs...))
+}
+
+// TokenVersionNotIn applies the NotIn predicate on the "token_version" field.
+func TokenVersionNotIn(vs ...int64) predicate.Admin {
+	return predicate.Admin(sql.FieldNotIn(FieldTokenVersion, vs...))
+}
+
+// TokenVersionGT applies the GT predicate on the "token_version" field.
+func TokenVersionGT(v int64) predicate.Admin {
+	return predicate.Admin(sql.FieldGT(FieldTokenVersion, v))
+}
+
+// TokenVersionGTE applies the GTE predicate on the "token_version" field.
+func TokenVersionGTE(v int64) predicate.Admin {
+	return predicate.Admin(sql.FieldGTE(FieldTokenVersion, v))
+}
+
+// TokenVersionLT applies the LT predicate on the "token_version" field.
+func TokenVersionLT(v int64) predicate.Admin {
+	return predicate.Admin(sql.FieldLT(FieldTokenVersion, v))
+}
+
+// TokenVersionLTE applies the LTE predicate on the "token_version" field.
+func TokenVersionLTE(v int64) predicate.Admin {
+	return predicate.Admin(sql.FieldLTE(FieldTokenVersion, v))
 }
 
 // CreateTimeEQ applies the EQ predicate on the "create_time" field.

@@ -99,7 +99,7 @@
       <nav id="app-navigation" class="app-sidebar-card" :aria-label="t('uiSystem.mainMenu')">
         <div class="app-sidebar__scroll fit">
           <q-list class="app-sidebar-nav" :dense="drawerMini">
-            <template v-for="(group, gi) in sideNavGroups" :key="`g-${gi}`">
+            <template v-for="(group, gi) in navGroups" :key="`g-${gi}`">
               <q-item-label v-show="!drawerMini" header class="app-sidebar-section-label">
                 {{ t(group.labelKey) }}
               </q-item-label>
@@ -123,7 +123,7 @@
                   <q-item-section v-show="!drawerMini">{{ t(item.labelKey) }}</q-item-section>
                 </q-item>
               </div>
-              <q-separator v-if="gi < sideNavGroups.length - 1" v-show="!drawerMini" class="app-sidebar-divider" />
+              <q-separator v-if="gi < navGroups.length - 1" v-show="!drawerMini" class="app-sidebar-divider" />
             </template>
           </q-list>
         </div>
@@ -153,6 +153,7 @@ import { useQuasar } from 'quasar';
 import { setQuasarLangFor } from '../i18n/quasar-lang';
 import { sideNavGroups } from '../config/sideNav';
 import { useAuthStore } from '../stores/auth';
+import { useNavStore } from '../stores/nav';
 import { useInboundNotificationStore } from '../stores/inboundNotifications';
 import InboundNotificationBell from '../components/layout/InboundNotificationBell.vue';
 import PairingQrDialog from '../components/mobile/PairingQrDialog.vue';
@@ -209,6 +210,23 @@ watch(locale, (v) => {
 function isNavItemActive(item: { to: string; exact?: boolean }) {
   return item.exact === false ? route.path.startsWith(item.to) : route.path === item.to;
 }
+
+// P1-7：侧栏按后端下发的可见菜单过滤（仅展示；后端对每个 API 硬判）。
+// 下发失败时 nav.isPathVisible 放行全部——可用性优先，安全由后端兜底。
+const nav = useNavStore();
+const navGroups = computed(() =>
+  sideNavGroups
+    .map((g) => ({ ...g, items: g.items.filter((item) => nav.isPathVisible(item.to)) }))
+    .filter((g) => g.items.length > 0),
+);
+
+watch(
+  () => auth.user?.id ?? null,
+  async (id) => {
+    if (id !== null) await nav.ensureMenus();
+  },
+  { immediate: true },
+);
 
 async function navigateTo(path: string) {
   if ($q.screen.lt.md) drawerOpen.value = false;

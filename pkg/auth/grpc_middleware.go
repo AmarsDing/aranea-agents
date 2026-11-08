@@ -61,6 +61,10 @@ func GRPCMiddleware(lg loggateway.Logger) middleware.Middleware {
 				}
 				return nil, ErrUnauthorized
 			}
+			// P1-3 会话吊销：claims.tv 与服务端 token_version 逐请求比对。
+			if err := enforceTokenVersion(ctx, auth, lg, "grpc.session_revoked"); err != nil {
+				return nil, err
+			}
 			return handler(NewContext(ctx, auth), req)
 		}
 	}

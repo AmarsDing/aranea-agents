@@ -77,6 +77,7 @@ import (
 	"aranea-agents/internal/data/ent/orchestrationstep"
 	"aranea-agents/internal/data/ent/organization"
 	"aranea-agents/internal/data/ent/patchoutcome"
+	"aranea-agents/internal/data/ent/permission"
 	"aranea-agents/internal/data/ent/planboardv2"
 	"aranea-agents/internal/data/ent/planstepv2"
 	"aranea-agents/internal/data/ent/platformchannel"
@@ -92,6 +93,8 @@ import (
 	"aranea-agents/internal/data/ent/publishjob"
 	"aranea-agents/internal/data/ent/resourceaccessaudit"
 	"aranea-agents/internal/data/ent/reviewtask"
+	"aranea-agents/internal/data/ent/role"
+	"aranea-agents/internal/data/ent/rolepermission"
 	"aranea-agents/internal/data/ent/schemamigration"
 	"aranea-agents/internal/data/ent/selfcheckreport"
 	"aranea-agents/internal/data/ent/selfimprovementrun"
@@ -128,6 +131,7 @@ import (
 	"aranea-agents/internal/data/ent/turnv2"
 	"aranea-agents/internal/data/ent/usagequota"
 	"aranea-agents/internal/data/ent/userembeddingsetting"
+	"aranea-agents/internal/data/ent/userrole"
 
 	"entgo.io/ent"
 	"entgo.io/ent/dialect"
@@ -274,6 +278,8 @@ type Client struct {
 	Organization *OrganizationClient
 	// PatchOutcome is the client for interacting with the PatchOutcome builders.
 	PatchOutcome *PatchOutcomeClient
+	// Permission is the client for interacting with the Permission builders.
+	Permission *PermissionClient
 	// PlanBoardV2 is the client for interacting with the PlanBoardV2 builders.
 	PlanBoardV2 *PlanBoardV2Client
 	// PlanStepV2 is the client for interacting with the PlanStepV2 builders.
@@ -304,6 +310,10 @@ type Client struct {
 	ResourceAccessAudit *ResourceAccessAuditClient
 	// ReviewTask is the client for interacting with the ReviewTask builders.
 	ReviewTask *ReviewTaskClient
+	// Role is the client for interacting with the Role builders.
+	Role *RoleClient
+	// RolePermission is the client for interacting with the RolePermission builders.
+	RolePermission *RolePermissionClient
 	// SchemaMigration is the client for interacting with the SchemaMigration builders.
 	SchemaMigration *SchemaMigrationClient
 	// SelfCheckReport is the client for interacting with the SelfCheckReport builders.
@@ -376,6 +386,8 @@ type Client struct {
 	UsageQuota *UsageQuotaClient
 	// UserEmbeddingSetting is the client for interacting with the UserEmbeddingSetting builders.
 	UserEmbeddingSetting *UserEmbeddingSettingClient
+	// UserRole is the client for interacting with the UserRole builders.
+	UserRole *UserRoleClient
 }
 
 // NewClient creates a new client configured with the given options.
@@ -453,6 +465,7 @@ func (c *Client) init() {
 	c.OrchestrationStep = NewOrchestrationStepClient(c.config)
 	c.Organization = NewOrganizationClient(c.config)
 	c.PatchOutcome = NewPatchOutcomeClient(c.config)
+	c.Permission = NewPermissionClient(c.config)
 	c.PlanBoardV2 = NewPlanBoardV2Client(c.config)
 	c.PlanStepV2 = NewPlanStepV2Client(c.config)
 	c.PlatformChannel = NewPlatformChannelClient(c.config)
@@ -468,6 +481,8 @@ func (c *Client) init() {
 	c.PublishJob = NewPublishJobClient(c.config)
 	c.ResourceAccessAudit = NewResourceAccessAuditClient(c.config)
 	c.ReviewTask = NewReviewTaskClient(c.config)
+	c.Role = NewRoleClient(c.config)
+	c.RolePermission = NewRolePermissionClient(c.config)
 	c.SchemaMigration = NewSchemaMigrationClient(c.config)
 	c.SelfCheckReport = NewSelfCheckReportClient(c.config)
 	c.SelfImprovementRun = NewSelfImprovementRunClient(c.config)
@@ -504,6 +519,7 @@ func (c *Client) init() {
 	c.TurnV2 = NewTurnV2Client(c.config)
 	c.UsageQuota = NewUsageQuotaClient(c.config)
 	c.UserEmbeddingSetting = NewUserEmbeddingSettingClient(c.config)
+	c.UserRole = NewUserRoleClient(c.config)
 }
 
 type (
@@ -662,6 +678,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		OrchestrationStep:          NewOrchestrationStepClient(cfg),
 		Organization:               NewOrganizationClient(cfg),
 		PatchOutcome:               NewPatchOutcomeClient(cfg),
+		Permission:                 NewPermissionClient(cfg),
 		PlanBoardV2:                NewPlanBoardV2Client(cfg),
 		PlanStepV2:                 NewPlanStepV2Client(cfg),
 		PlatformChannel:            NewPlatformChannelClient(cfg),
@@ -677,6 +694,8 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		PublishJob:                 NewPublishJobClient(cfg),
 		ResourceAccessAudit:        NewResourceAccessAuditClient(cfg),
 		ReviewTask:                 NewReviewTaskClient(cfg),
+		Role:                       NewRoleClient(cfg),
+		RolePermission:             NewRolePermissionClient(cfg),
 		SchemaMigration:            NewSchemaMigrationClient(cfg),
 		SelfCheckReport:            NewSelfCheckReportClient(cfg),
 		SelfImprovementRun:         NewSelfImprovementRunClient(cfg),
@@ -713,6 +732,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		TurnV2:                     NewTurnV2Client(cfg),
 		UsageQuota:                 NewUsageQuotaClient(cfg),
 		UserEmbeddingSetting:       NewUserEmbeddingSettingClient(cfg),
+		UserRole:                   NewUserRoleClient(cfg),
 	}, nil
 }
 
@@ -798,6 +818,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		OrchestrationStep:          NewOrchestrationStepClient(cfg),
 		Organization:               NewOrganizationClient(cfg),
 		PatchOutcome:               NewPatchOutcomeClient(cfg),
+		Permission:                 NewPermissionClient(cfg),
 		PlanBoardV2:                NewPlanBoardV2Client(cfg),
 		PlanStepV2:                 NewPlanStepV2Client(cfg),
 		PlatformChannel:            NewPlatformChannelClient(cfg),
@@ -813,6 +834,8 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		PublishJob:                 NewPublishJobClient(cfg),
 		ResourceAccessAudit:        NewResourceAccessAuditClient(cfg),
 		ReviewTask:                 NewReviewTaskClient(cfg),
+		Role:                       NewRoleClient(cfg),
+		RolePermission:             NewRolePermissionClient(cfg),
 		SchemaMigration:            NewSchemaMigrationClient(cfg),
 		SelfCheckReport:            NewSelfCheckReportClient(cfg),
 		SelfImprovementRun:         NewSelfImprovementRunClient(cfg),
@@ -849,6 +872,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		TurnV2:                     NewTurnV2Client(cfg),
 		UsageQuota:                 NewUsageQuotaClient(cfg),
 		UserEmbeddingSetting:       NewUserEmbeddingSettingClient(cfg),
+		UserRole:                   NewUserRoleClient(cfg),
 	}, nil
 }
 
@@ -894,20 +918,20 @@ func (c *Client) Use(hooks ...Hook) {
 		c.KnowledgeWriteBackOutbox, c.LlmProviderModel, c.MediaProvider,
 		c.MemberSessionV2, c.MemoryFactAllowRule, c.MemoryFactPending,
 		c.ModelPricingRule, c.ModelTokenUsageHourly, c.Opportunity, c.Orchestration,
-		c.OrchestrationStep, c.Organization, c.PatchOutcome, c.PlanBoardV2,
-		c.PlanStepV2, c.PlatformChannel, c.PlatformChannelCredential,
+		c.OrchestrationStep, c.Organization, c.PatchOutcome, c.Permission,
+		c.PlanBoardV2, c.PlanStepV2, c.PlatformChannel, c.PlatformChannelCredential,
 		c.PlatformChannelDelivery, c.PlatformChannelPeerSession, c.PlatformHook,
 		c.PlatformMCPServer, c.PlatformMCPUserCredential, c.PlatformPlugin,
 		c.PlatformSkill, c.PlatformTool, c.PublishJob, c.ResourceAccessAudit,
-		c.ReviewTask, c.SchemaMigration, c.SelfCheckReport, c.SelfImprovementRun,
-		c.Session, c.SessionMetrics, c.SessionParticipant, c.SessionRun,
-		c.SessionRunCheckpoint, c.SessionRuntime, c.SessionTurn, c.SessionV2,
-		c.SkillImportJob, c.SkillInvocation, c.SkillTag, c.SkillVersion, c.StepV2,
-		c.SupplierCandidate, c.SystemSetting, c.TaskDeadLetter, c.TaskPlan, c.TaskV2,
-		c.Team, c.TeamRun, c.TeamRunStep, c.TeamRunV2, c.TeamStageV2,
+		c.ReviewTask, c.Role, c.RolePermission, c.SchemaMigration, c.SelfCheckReport,
+		c.SelfImprovementRun, c.Session, c.SessionMetrics, c.SessionParticipant,
+		c.SessionRun, c.SessionRunCheckpoint, c.SessionRuntime, c.SessionTurn,
+		c.SessionV2, c.SkillImportJob, c.SkillInvocation, c.SkillTag, c.SkillVersion,
+		c.StepV2, c.SupplierCandidate, c.SystemSetting, c.TaskDeadLetter, c.TaskPlan,
+		c.TaskV2, c.Team, c.TeamRun, c.TeamRunStep, c.TeamRunV2, c.TeamStageV2,
 		c.ToolAgentOverride, c.ToolGrant, c.ToolInvocation, c.ToolInvocationAudit,
 		c.ToolInvocationParam, c.ToolResultBlob, c.ToolResultReplacement, c.TurnV2,
-		c.UsageQuota, c.UserEmbeddingSetting,
+		c.UsageQuota, c.UserEmbeddingSetting, c.UserRole,
 	} {
 		n.Use(hooks...)
 	}
@@ -933,20 +957,20 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 		c.KnowledgeWriteBackOutbox, c.LlmProviderModel, c.MediaProvider,
 		c.MemberSessionV2, c.MemoryFactAllowRule, c.MemoryFactPending,
 		c.ModelPricingRule, c.ModelTokenUsageHourly, c.Opportunity, c.Orchestration,
-		c.OrchestrationStep, c.Organization, c.PatchOutcome, c.PlanBoardV2,
-		c.PlanStepV2, c.PlatformChannel, c.PlatformChannelCredential,
+		c.OrchestrationStep, c.Organization, c.PatchOutcome, c.Permission,
+		c.PlanBoardV2, c.PlanStepV2, c.PlatformChannel, c.PlatformChannelCredential,
 		c.PlatformChannelDelivery, c.PlatformChannelPeerSession, c.PlatformHook,
 		c.PlatformMCPServer, c.PlatformMCPUserCredential, c.PlatformPlugin,
 		c.PlatformSkill, c.PlatformTool, c.PublishJob, c.ResourceAccessAudit,
-		c.ReviewTask, c.SchemaMigration, c.SelfCheckReport, c.SelfImprovementRun,
-		c.Session, c.SessionMetrics, c.SessionParticipant, c.SessionRun,
-		c.SessionRunCheckpoint, c.SessionRuntime, c.SessionTurn, c.SessionV2,
-		c.SkillImportJob, c.SkillInvocation, c.SkillTag, c.SkillVersion, c.StepV2,
-		c.SupplierCandidate, c.SystemSetting, c.TaskDeadLetter, c.TaskPlan, c.TaskV2,
-		c.Team, c.TeamRun, c.TeamRunStep, c.TeamRunV2, c.TeamStageV2,
+		c.ReviewTask, c.Role, c.RolePermission, c.SchemaMigration, c.SelfCheckReport,
+		c.SelfImprovementRun, c.Session, c.SessionMetrics, c.SessionParticipant,
+		c.SessionRun, c.SessionRunCheckpoint, c.SessionRuntime, c.SessionTurn,
+		c.SessionV2, c.SkillImportJob, c.SkillInvocation, c.SkillTag, c.SkillVersion,
+		c.StepV2, c.SupplierCandidate, c.SystemSetting, c.TaskDeadLetter, c.TaskPlan,
+		c.TaskV2, c.Team, c.TeamRun, c.TeamRunStep, c.TeamRunV2, c.TeamStageV2,
 		c.ToolAgentOverride, c.ToolGrant, c.ToolInvocation, c.ToolInvocationAudit,
 		c.ToolInvocationParam, c.ToolResultBlob, c.ToolResultReplacement, c.TurnV2,
-		c.UsageQuota, c.UserEmbeddingSetting,
+		c.UsageQuota, c.UserEmbeddingSetting, c.UserRole,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -1087,6 +1111,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.Organization.mutate(ctx, m)
 	case *PatchOutcomeMutation:
 		return c.PatchOutcome.mutate(ctx, m)
+	case *PermissionMutation:
+		return c.Permission.mutate(ctx, m)
 	case *PlanBoardV2Mutation:
 		return c.PlanBoardV2.mutate(ctx, m)
 	case *PlanStepV2Mutation:
@@ -1117,6 +1143,10 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.ResourceAccessAudit.mutate(ctx, m)
 	case *ReviewTaskMutation:
 		return c.ReviewTask.mutate(ctx, m)
+	case *RoleMutation:
+		return c.Role.mutate(ctx, m)
+	case *RolePermissionMutation:
+		return c.RolePermission.mutate(ctx, m)
 	case *SchemaMigrationMutation:
 		return c.SchemaMigration.mutate(ctx, m)
 	case *SelfCheckReportMutation:
@@ -1189,6 +1219,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.UsageQuota.mutate(ctx, m)
 	case *UserEmbeddingSettingMutation:
 		return c.UserEmbeddingSetting.mutate(ctx, m)
+	case *UserRoleMutation:
+		return c.UserRole.mutate(ctx, m)
 	default:
 		return nil, fmt.Errorf("ent: unknown mutation type %T", m)
 	}
@@ -10100,6 +10132,139 @@ func (c *PatchOutcomeClient) mutate(ctx context.Context, m *PatchOutcomeMutation
 	}
 }
 
+// PermissionClient is a client for the Permission schema.
+type PermissionClient struct {
+	config
+}
+
+// NewPermissionClient returns a client for the Permission from the given config.
+func NewPermissionClient(c config) *PermissionClient {
+	return &PermissionClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `permission.Hooks(f(g(h())))`.
+func (c *PermissionClient) Use(hooks ...Hook) {
+	c.hooks.Permission = append(c.hooks.Permission, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `permission.Intercept(f(g(h())))`.
+func (c *PermissionClient) Intercept(interceptors ...Interceptor) {
+	c.inters.Permission = append(c.inters.Permission, interceptors...)
+}
+
+// Create returns a builder for creating a Permission entity.
+func (c *PermissionClient) Create() *PermissionCreate {
+	mutation := newPermissionMutation(c.config, OpCreate)
+	return &PermissionCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of Permission entities.
+func (c *PermissionClient) CreateBulk(builders ...*PermissionCreate) *PermissionCreateBulk {
+	return &PermissionCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *PermissionClient) MapCreateBulk(slice any, setFunc func(*PermissionCreate, int)) *PermissionCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &PermissionCreateBulk{err: fmt.Errorf("calling to PermissionClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*PermissionCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &PermissionCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for Permission.
+func (c *PermissionClient) Update() *PermissionUpdate {
+	mutation := newPermissionMutation(c.config, OpUpdate)
+	return &PermissionUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *PermissionClient) UpdateOne(_m *Permission) *PermissionUpdateOne {
+	mutation := newPermissionMutation(c.config, OpUpdateOne, withPermission(_m))
+	return &PermissionUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *PermissionClient) UpdateOneID(id int64) *PermissionUpdateOne {
+	mutation := newPermissionMutation(c.config, OpUpdateOne, withPermissionID(id))
+	return &PermissionUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for Permission.
+func (c *PermissionClient) Delete() *PermissionDelete {
+	mutation := newPermissionMutation(c.config, OpDelete)
+	return &PermissionDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *PermissionClient) DeleteOne(_m *Permission) *PermissionDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *PermissionClient) DeleteOneID(id int64) *PermissionDeleteOne {
+	builder := c.Delete().Where(permission.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &PermissionDeleteOne{builder}
+}
+
+// Query returns a query builder for Permission.
+func (c *PermissionClient) Query() *PermissionQuery {
+	return &PermissionQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypePermission},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a Permission entity by its id.
+func (c *PermissionClient) Get(ctx context.Context, id int64) (*Permission, error) {
+	return c.Query().Where(permission.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *PermissionClient) GetX(ctx context.Context, id int64) *Permission {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *PermissionClient) Hooks() []Hook {
+	return c.hooks.Permission
+}
+
+// Interceptors returns the client interceptors.
+func (c *PermissionClient) Interceptors() []Interceptor {
+	return c.inters.Permission
+}
+
+func (c *PermissionClient) mutate(ctx context.Context, m *PermissionMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&PermissionCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&PermissionUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&PermissionUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&PermissionDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown Permission mutation op: %q", m.Op())
+	}
+}
+
 // PlanBoardV2Client is a client for the PlanBoardV2 schema.
 type PlanBoardV2Client struct {
 	config
@@ -12092,6 +12257,272 @@ func (c *ReviewTaskClient) mutate(ctx context.Context, m *ReviewTaskMutation) (V
 		return (&ReviewTaskDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown ReviewTask mutation op: %q", m.Op())
+	}
+}
+
+// RoleClient is a client for the Role schema.
+type RoleClient struct {
+	config
+}
+
+// NewRoleClient returns a client for the Role from the given config.
+func NewRoleClient(c config) *RoleClient {
+	return &RoleClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `role.Hooks(f(g(h())))`.
+func (c *RoleClient) Use(hooks ...Hook) {
+	c.hooks.Role = append(c.hooks.Role, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `role.Intercept(f(g(h())))`.
+func (c *RoleClient) Intercept(interceptors ...Interceptor) {
+	c.inters.Role = append(c.inters.Role, interceptors...)
+}
+
+// Create returns a builder for creating a Role entity.
+func (c *RoleClient) Create() *RoleCreate {
+	mutation := newRoleMutation(c.config, OpCreate)
+	return &RoleCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of Role entities.
+func (c *RoleClient) CreateBulk(builders ...*RoleCreate) *RoleCreateBulk {
+	return &RoleCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *RoleClient) MapCreateBulk(slice any, setFunc func(*RoleCreate, int)) *RoleCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &RoleCreateBulk{err: fmt.Errorf("calling to RoleClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*RoleCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &RoleCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for Role.
+func (c *RoleClient) Update() *RoleUpdate {
+	mutation := newRoleMutation(c.config, OpUpdate)
+	return &RoleUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *RoleClient) UpdateOne(_m *Role) *RoleUpdateOne {
+	mutation := newRoleMutation(c.config, OpUpdateOne, withRole(_m))
+	return &RoleUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *RoleClient) UpdateOneID(id int64) *RoleUpdateOne {
+	mutation := newRoleMutation(c.config, OpUpdateOne, withRoleID(id))
+	return &RoleUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for Role.
+func (c *RoleClient) Delete() *RoleDelete {
+	mutation := newRoleMutation(c.config, OpDelete)
+	return &RoleDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *RoleClient) DeleteOne(_m *Role) *RoleDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *RoleClient) DeleteOneID(id int64) *RoleDeleteOne {
+	builder := c.Delete().Where(role.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &RoleDeleteOne{builder}
+}
+
+// Query returns a query builder for Role.
+func (c *RoleClient) Query() *RoleQuery {
+	return &RoleQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeRole},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a Role entity by its id.
+func (c *RoleClient) Get(ctx context.Context, id int64) (*Role, error) {
+	return c.Query().Where(role.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *RoleClient) GetX(ctx context.Context, id int64) *Role {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *RoleClient) Hooks() []Hook {
+	return c.hooks.Role
+}
+
+// Interceptors returns the client interceptors.
+func (c *RoleClient) Interceptors() []Interceptor {
+	return c.inters.Role
+}
+
+func (c *RoleClient) mutate(ctx context.Context, m *RoleMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&RoleCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&RoleUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&RoleUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&RoleDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown Role mutation op: %q", m.Op())
+	}
+}
+
+// RolePermissionClient is a client for the RolePermission schema.
+type RolePermissionClient struct {
+	config
+}
+
+// NewRolePermissionClient returns a client for the RolePermission from the given config.
+func NewRolePermissionClient(c config) *RolePermissionClient {
+	return &RolePermissionClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `rolepermission.Hooks(f(g(h())))`.
+func (c *RolePermissionClient) Use(hooks ...Hook) {
+	c.hooks.RolePermission = append(c.hooks.RolePermission, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `rolepermission.Intercept(f(g(h())))`.
+func (c *RolePermissionClient) Intercept(interceptors ...Interceptor) {
+	c.inters.RolePermission = append(c.inters.RolePermission, interceptors...)
+}
+
+// Create returns a builder for creating a RolePermission entity.
+func (c *RolePermissionClient) Create() *RolePermissionCreate {
+	mutation := newRolePermissionMutation(c.config, OpCreate)
+	return &RolePermissionCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of RolePermission entities.
+func (c *RolePermissionClient) CreateBulk(builders ...*RolePermissionCreate) *RolePermissionCreateBulk {
+	return &RolePermissionCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *RolePermissionClient) MapCreateBulk(slice any, setFunc func(*RolePermissionCreate, int)) *RolePermissionCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &RolePermissionCreateBulk{err: fmt.Errorf("calling to RolePermissionClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*RolePermissionCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &RolePermissionCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for RolePermission.
+func (c *RolePermissionClient) Update() *RolePermissionUpdate {
+	mutation := newRolePermissionMutation(c.config, OpUpdate)
+	return &RolePermissionUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *RolePermissionClient) UpdateOne(_m *RolePermission) *RolePermissionUpdateOne {
+	mutation := newRolePermissionMutation(c.config, OpUpdateOne, withRolePermission(_m))
+	return &RolePermissionUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *RolePermissionClient) UpdateOneID(id int64) *RolePermissionUpdateOne {
+	mutation := newRolePermissionMutation(c.config, OpUpdateOne, withRolePermissionID(id))
+	return &RolePermissionUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for RolePermission.
+func (c *RolePermissionClient) Delete() *RolePermissionDelete {
+	mutation := newRolePermissionMutation(c.config, OpDelete)
+	return &RolePermissionDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *RolePermissionClient) DeleteOne(_m *RolePermission) *RolePermissionDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *RolePermissionClient) DeleteOneID(id int64) *RolePermissionDeleteOne {
+	builder := c.Delete().Where(rolepermission.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &RolePermissionDeleteOne{builder}
+}
+
+// Query returns a query builder for RolePermission.
+func (c *RolePermissionClient) Query() *RolePermissionQuery {
+	return &RolePermissionQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeRolePermission},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a RolePermission entity by its id.
+func (c *RolePermissionClient) Get(ctx context.Context, id int64) (*RolePermission, error) {
+	return c.Query().Where(rolepermission.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *RolePermissionClient) GetX(ctx context.Context, id int64) *RolePermission {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *RolePermissionClient) Hooks() []Hook {
+	return c.hooks.RolePermission
+}
+
+// Interceptors returns the client interceptors.
+func (c *RolePermissionClient) Interceptors() []Interceptor {
+	return c.inters.RolePermission
+}
+
+func (c *RolePermissionClient) mutate(ctx context.Context, m *RolePermissionMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&RolePermissionCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&RolePermissionUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&RolePermissionUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&RolePermissionDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown RolePermission mutation op: %q", m.Op())
 	}
 }
 
@@ -16883,6 +17314,139 @@ func (c *UserEmbeddingSettingClient) mutate(ctx context.Context, m *UserEmbeddin
 	}
 }
 
+// UserRoleClient is a client for the UserRole schema.
+type UserRoleClient struct {
+	config
+}
+
+// NewUserRoleClient returns a client for the UserRole from the given config.
+func NewUserRoleClient(c config) *UserRoleClient {
+	return &UserRoleClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `userrole.Hooks(f(g(h())))`.
+func (c *UserRoleClient) Use(hooks ...Hook) {
+	c.hooks.UserRole = append(c.hooks.UserRole, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `userrole.Intercept(f(g(h())))`.
+func (c *UserRoleClient) Intercept(interceptors ...Interceptor) {
+	c.inters.UserRole = append(c.inters.UserRole, interceptors...)
+}
+
+// Create returns a builder for creating a UserRole entity.
+func (c *UserRoleClient) Create() *UserRoleCreate {
+	mutation := newUserRoleMutation(c.config, OpCreate)
+	return &UserRoleCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of UserRole entities.
+func (c *UserRoleClient) CreateBulk(builders ...*UserRoleCreate) *UserRoleCreateBulk {
+	return &UserRoleCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *UserRoleClient) MapCreateBulk(slice any, setFunc func(*UserRoleCreate, int)) *UserRoleCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &UserRoleCreateBulk{err: fmt.Errorf("calling to UserRoleClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*UserRoleCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &UserRoleCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for UserRole.
+func (c *UserRoleClient) Update() *UserRoleUpdate {
+	mutation := newUserRoleMutation(c.config, OpUpdate)
+	return &UserRoleUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *UserRoleClient) UpdateOne(_m *UserRole) *UserRoleUpdateOne {
+	mutation := newUserRoleMutation(c.config, OpUpdateOne, withUserRole(_m))
+	return &UserRoleUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *UserRoleClient) UpdateOneID(id int64) *UserRoleUpdateOne {
+	mutation := newUserRoleMutation(c.config, OpUpdateOne, withUserRoleID(id))
+	return &UserRoleUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for UserRole.
+func (c *UserRoleClient) Delete() *UserRoleDelete {
+	mutation := newUserRoleMutation(c.config, OpDelete)
+	return &UserRoleDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *UserRoleClient) DeleteOne(_m *UserRole) *UserRoleDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *UserRoleClient) DeleteOneID(id int64) *UserRoleDeleteOne {
+	builder := c.Delete().Where(userrole.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &UserRoleDeleteOne{builder}
+}
+
+// Query returns a query builder for UserRole.
+func (c *UserRoleClient) Query() *UserRoleQuery {
+	return &UserRoleQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeUserRole},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a UserRole entity by its id.
+func (c *UserRoleClient) Get(ctx context.Context, id int64) (*UserRole, error) {
+	return c.Query().Where(userrole.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *UserRoleClient) GetX(ctx context.Context, id int64) *UserRole {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *UserRoleClient) Hooks() []Hook {
+	return c.hooks.UserRole
+}
+
+// Interceptors returns the client interceptors.
+func (c *UserRoleClient) Interceptors() []Interceptor {
+	return c.inters.UserRole
+}
+
+func (c *UserRoleClient) mutate(ctx context.Context, m *UserRoleMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&UserRoleCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&UserRoleUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&UserRoleUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&UserRoleDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown UserRole mutation op: %q", m.Op())
+	}
+}
+
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
@@ -16900,19 +17464,19 @@ type (
 		KnowledgeAccessLog, KnowledgeLinkUsed, KnowledgeWriteBackOutbox,
 		LlmProviderModel, MediaProvider, MemberSessionV2, MemoryFactAllowRule,
 		MemoryFactPending, ModelPricingRule, ModelTokenUsageHourly, Opportunity,
-		Orchestration, OrchestrationStep, Organization, PatchOutcome, PlanBoardV2,
-		PlanStepV2, PlatformChannel, PlatformChannelCredential,
+		Orchestration, OrchestrationStep, Organization, PatchOutcome, Permission,
+		PlanBoardV2, PlanStepV2, PlatformChannel, PlatformChannelCredential,
 		PlatformChannelDelivery, PlatformChannelPeerSession, PlatformHook,
 		PlatformMCPServer, PlatformMCPUserCredential, PlatformPlugin, PlatformSkill,
-		PlatformTool, PublishJob, ResourceAccessAudit, ReviewTask, SchemaMigration,
-		SelfCheckReport, SelfImprovementRun, Session, SessionMetrics,
-		SessionParticipant, SessionRun, SessionRunCheckpoint, SessionRuntime,
-		SessionTurn, SessionV2, SkillImportJob, SkillInvocation, SkillTag,
-		SkillVersion, StepV2, SupplierCandidate, SystemSetting, TaskDeadLetter,
-		TaskPlan, TaskV2, Team, TeamRun, TeamRunStep, TeamRunV2, TeamStageV2,
-		ToolAgentOverride, ToolGrant, ToolInvocation, ToolInvocationAudit,
+		PlatformTool, PublishJob, ResourceAccessAudit, ReviewTask, Role,
+		RolePermission, SchemaMigration, SelfCheckReport, SelfImprovementRun, Session,
+		SessionMetrics, SessionParticipant, SessionRun, SessionRunCheckpoint,
+		SessionRuntime, SessionTurn, SessionV2, SkillImportJob, SkillInvocation,
+		SkillTag, SkillVersion, StepV2, SupplierCandidate, SystemSetting,
+		TaskDeadLetter, TaskPlan, TaskV2, Team, TeamRun, TeamRunStep, TeamRunV2,
+		TeamStageV2, ToolAgentOverride, ToolGrant, ToolInvocation, ToolInvocationAudit,
 		ToolInvocationParam, ToolResultBlob, ToolResultReplacement, TurnV2, UsageQuota,
-		UserEmbeddingSetting []ent.Hook
+		UserEmbeddingSetting, UserRole []ent.Hook
 	}
 	inters struct {
 		Admin, Agent, AgentPerformance, AgentPromptFile, AgentRuntimeSetting,
@@ -16929,19 +17493,19 @@ type (
 		KnowledgeAccessLog, KnowledgeLinkUsed, KnowledgeWriteBackOutbox,
 		LlmProviderModel, MediaProvider, MemberSessionV2, MemoryFactAllowRule,
 		MemoryFactPending, ModelPricingRule, ModelTokenUsageHourly, Opportunity,
-		Orchestration, OrchestrationStep, Organization, PatchOutcome, PlanBoardV2,
-		PlanStepV2, PlatformChannel, PlatformChannelCredential,
+		Orchestration, OrchestrationStep, Organization, PatchOutcome, Permission,
+		PlanBoardV2, PlanStepV2, PlatformChannel, PlatformChannelCredential,
 		PlatformChannelDelivery, PlatformChannelPeerSession, PlatformHook,
 		PlatformMCPServer, PlatformMCPUserCredential, PlatformPlugin, PlatformSkill,
-		PlatformTool, PublishJob, ResourceAccessAudit, ReviewTask, SchemaMigration,
-		SelfCheckReport, SelfImprovementRun, Session, SessionMetrics,
-		SessionParticipant, SessionRun, SessionRunCheckpoint, SessionRuntime,
-		SessionTurn, SessionV2, SkillImportJob, SkillInvocation, SkillTag,
-		SkillVersion, StepV2, SupplierCandidate, SystemSetting, TaskDeadLetter,
-		TaskPlan, TaskV2, Team, TeamRun, TeamRunStep, TeamRunV2, TeamStageV2,
-		ToolAgentOverride, ToolGrant, ToolInvocation, ToolInvocationAudit,
+		PlatformTool, PublishJob, ResourceAccessAudit, ReviewTask, Role,
+		RolePermission, SchemaMigration, SelfCheckReport, SelfImprovementRun, Session,
+		SessionMetrics, SessionParticipant, SessionRun, SessionRunCheckpoint,
+		SessionRuntime, SessionTurn, SessionV2, SkillImportJob, SkillInvocation,
+		SkillTag, SkillVersion, StepV2, SupplierCandidate, SystemSetting,
+		TaskDeadLetter, TaskPlan, TaskV2, Team, TeamRun, TeamRunStep, TeamRunV2,
+		TeamStageV2, ToolAgentOverride, ToolGrant, ToolInvocation, ToolInvocationAudit,
 		ToolInvocationParam, ToolResultBlob, ToolResultReplacement, TurnV2, UsageQuota,
-		UserEmbeddingSetting []ent.Interceptor
+		UserEmbeddingSetting, UserRole []ent.Interceptor
 	}
 )
 

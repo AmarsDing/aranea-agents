@@ -91,7 +91,6 @@ import (
 	trpcartifact "trpc.group/trpc-go/trpc-agent-go/artifact"
 	trpcevolution "trpc.group/trpc-go/trpc-agent-go/evolution"
 	trpcgraph "trpc.group/trpc-go/trpc-agent-go/graph"
-	trpcmemory "trpc.group/trpc-go/trpc-agent-go/memory"
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
 	trpcsession "trpc.group/trpc-go/trpc-agent-go/session"
 	trpcskill "trpc.group/trpc-go/trpc-agent-go/skill"
@@ -624,6 +623,13 @@ func provideRedisClient(c *conf.Data, lg loggateway.Logger) *data.RedisClient {
 		chatagent.ConfigureCapacityRedis(nil)
 	}
 	return rdb
+}
+
+// provideTokenVersionStore builds the P1-3 session-revocation store (Redis
+// write-through + DB 回源）。注册进 pkg/auth 与 biz.AdminUsecase 的动作在
+// newApp 组合根完成（见 app.go）。
+func provideTokenVersionStore(d *data.Data, rdb *data.RedisClient, lg loggateway.Logger) *data.TokenVersionStore {
+	return data.NewTokenVersionStore(d, rdb, lg)
 }
 
 func provideTurnLifecycleUsecase(sessions *biz.SessionUsecase, lg loggateway.Logger) *biz.TurnLifecycleUsecase {
@@ -3705,6 +3711,9 @@ type wireOut struct {
 	// ConfigGraphIndexer is the M81 config-asset graph background component
 	// (P0: rebuild capability only; started by startBackgroundWorkers).
 	ConfigGraphIndexer *bizcg.Indexer
+	// KnowledgeGraphProjection G-38 W4 图谱投影 worker（workers.go 消费；
+	// wireinject 变体漏登记导致 wire 再生成失败，2026-11-08 补齐）。
+	KnowledgeGraphProjection *jobs.KnowledgeGraphProjectionJob
 }
 
 func provideWireOut(
@@ -3773,6 +3782,7 @@ func provideWireOut(
 	pathBExtractor *biz.PathBExtractor,
 	wsV2Sub *server.WSV2Subscriber,
 	configGraphIndexer *bizcg.Indexer,
+	knowledgeGraphProjection *jobs.KnowledgeGraphProjectionJob,
 ) wireOut {
 	return wireOut{
 		App: app, Data: dataData, CronRunner: runner, SkillWatch: skillWatch, AutoMemory: autoMem,
@@ -3822,6 +3832,7 @@ func provideWireOut(
 		PathBExtractor:              pathBExtractor,
 		WSV2Subscriber:              wsV2Sub,
 		ConfigGraphIndexer:          configGraphIndexer,
+		KnowledgeGraphProjection:    knowledgeGraphProjection,
 	}
 }
 

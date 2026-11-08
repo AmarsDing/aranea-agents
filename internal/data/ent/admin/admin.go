@@ -3,6 +3,7 @@
 package admin
 
 import (
+	"fmt"
 	"time"
 
 	"entgo.io/ent/dialect/sql"
@@ -25,6 +26,18 @@ const (
 	FieldPassword = "password"
 	// FieldWorkspaceID holds the string denoting the workspace_id field in the database.
 	FieldWorkspaceID = "workspace_id"
+	// FieldRoles holds the string denoting the roles field in the database.
+	FieldRoles = "roles"
+	// FieldClearance holds the string denoting the clearance field in the database.
+	FieldClearance = "clearance"
+	// FieldDept holds the string denoting the dept field in the database.
+	FieldDept = "dept"
+	// FieldStatus holds the string denoting the status field in the database.
+	FieldStatus = "status"
+	// FieldForceReset holds the string denoting the force_reset field in the database.
+	FieldForceReset = "force_reset"
+	// FieldTokenVersion holds the string denoting the token_version field in the database.
+	FieldTokenVersion = "token_version"
 	// FieldCreateTime holds the string denoting the create_time field in the database.
 	FieldCreateTime = "create_time"
 	// FieldUpdateTime holds the string denoting the update_time field in the database.
@@ -42,6 +55,12 @@ var Columns = []string{
 	FieldAccess,
 	FieldPassword,
 	FieldWorkspaceID,
+	FieldRoles,
+	FieldClearance,
+	FieldDept,
+	FieldStatus,
+	FieldForceReset,
+	FieldTokenVersion,
 	FieldCreateTime,
 	FieldUpdateTime,
 }
@@ -71,6 +90,18 @@ var (
 	DefaultWorkspaceID string
 	// WorkspaceIDValidator is a validator for the "workspace_id" field. It is called by the builders before save.
 	WorkspaceIDValidator func(string) error
+	// DefaultRoles holds the default value on creation for the "roles" field.
+	DefaultRoles []string
+	// DefaultClearance holds the default value on creation for the "clearance" field.
+	DefaultClearance int
+	// ClearanceValidator is a validator for the "clearance" field. It is called by the builders before save.
+	ClearanceValidator func(int) error
+	// DefaultDept holds the default value on creation for the "dept" field.
+	DefaultDept string
+	// DefaultForceReset holds the default value on creation for the "force_reset" field.
+	DefaultForceReset bool
+	// DefaultTokenVersion holds the default value on creation for the "token_version" field.
+	DefaultTokenVersion int64
 	// DefaultCreateTime holds the default value on creation for the "create_time" field.
 	DefaultCreateTime func() time.Time
 	// DefaultUpdateTime holds the default value on creation for the "update_time" field.
@@ -78,6 +109,33 @@ var (
 	// UpdateDefaultUpdateTime holds the default value on update for the "update_time" field.
 	UpdateDefaultUpdateTime func() time.Time
 )
+
+// Status defines the type for the "status" enum field.
+type Status string
+
+// StatusActive is the default value of the Status enum.
+const DefaultStatus = StatusActive
+
+// Status values.
+const (
+	StatusActive     Status = "active"
+	StatusFrozen     Status = "frozen"
+	StatusOffboarded Status = "offboarded"
+)
+
+func (s Status) String() string {
+	return string(s)
+}
+
+// StatusValidator is a validator for the "status" field enum values. It is called by the builders before save.
+func StatusValidator(s Status) error {
+	switch s {
+	case StatusActive, StatusFrozen, StatusOffboarded:
+		return nil
+	default:
+		return fmt.Errorf("admin: invalid enum value for status field: %q", s)
+	}
+}
 
 // OrderOption defines the ordering options for the Admin queries.
 type OrderOption func(*sql.Selector)
@@ -115,6 +173,31 @@ func ByPassword(opts ...sql.OrderTermOption) OrderOption {
 // ByWorkspaceID orders the results by the workspace_id field.
 func ByWorkspaceID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldWorkspaceID, opts...).ToFunc()
+}
+
+// ByClearance orders the results by the clearance field.
+func ByClearance(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldClearance, opts...).ToFunc()
+}
+
+// ByDept orders the results by the dept field.
+func ByDept(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldDept, opts...).ToFunc()
+}
+
+// ByStatus orders the results by the status field.
+func ByStatus(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldStatus, opts...).ToFunc()
+}
+
+// ByForceReset orders the results by the force_reset field.
+func ByForceReset(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldForceReset, opts...).ToFunc()
+}
+
+// ByTokenVersion orders the results by the token_version field.
+func ByTokenVersion(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldTokenVersion, opts...).ToFunc()
 }
 
 // ByCreateTime orders the results by the create_time field.

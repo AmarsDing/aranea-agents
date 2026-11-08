@@ -3,7 +3,6 @@
 package ent
 
 import (
-	"aranea-agents/internal/data/ent/schema"
 	"aranea-agents/internal/data/ent/admin"
 	"aranea-agents/internal/data/ent/agent"
 	"aranea-agents/internal/data/ent/agentperformance"
@@ -70,6 +69,7 @@ import (
 	"aranea-agents/internal/data/ent/orchestrationstep"
 	"aranea-agents/internal/data/ent/organization"
 	"aranea-agents/internal/data/ent/patchoutcome"
+	"aranea-agents/internal/data/ent/permission"
 	"aranea-agents/internal/data/ent/planboardv2"
 	"aranea-agents/internal/data/ent/planstepv2"
 	"aranea-agents/internal/data/ent/platformchannel"
@@ -85,6 +85,8 @@ import (
 	"aranea-agents/internal/data/ent/publishjob"
 	"aranea-agents/internal/data/ent/resourceaccessaudit"
 	"aranea-agents/internal/data/ent/reviewtask"
+	"aranea-agents/internal/data/ent/role"
+	"aranea-agents/internal/data/ent/schema"
 	"aranea-agents/internal/data/ent/selfcheckreport"
 	"aranea-agents/internal/data/ent/selfimprovementrun"
 	"aranea-agents/internal/data/ent/session"
@@ -120,6 +122,7 @@ import (
 	"aranea-agents/internal/data/ent/turnv2"
 	"aranea-agents/internal/data/ent/usagequota"
 	"aranea-agents/internal/data/ent/userembeddingsetting"
+	"aranea-agents/internal/data/ent/userrole"
 	"time"
 )
 
@@ -155,12 +158,34 @@ func init() {
 	admin.DefaultWorkspaceID = adminDescWorkspaceID.Default.(string)
 	// admin.WorkspaceIDValidator is a validator for the "workspace_id" field. It is called by the builders before save.
 	admin.WorkspaceIDValidator = adminDescWorkspaceID.Validators[0].(func(string) error)
+	// adminDescRoles is the schema descriptor for roles field.
+	adminDescRoles := adminFields[7].Descriptor()
+	// admin.DefaultRoles holds the default value on creation for the roles field.
+	admin.DefaultRoles = adminDescRoles.Default.([]string)
+	// adminDescClearance is the schema descriptor for clearance field.
+	adminDescClearance := adminFields[8].Descriptor()
+	// admin.DefaultClearance holds the default value on creation for the clearance field.
+	admin.DefaultClearance = adminDescClearance.Default.(int)
+	// admin.ClearanceValidator is a validator for the "clearance" field. It is called by the builders before save.
+	admin.ClearanceValidator = adminDescClearance.Validators[0].(func(int) error)
+	// adminDescDept is the schema descriptor for dept field.
+	adminDescDept := adminFields[9].Descriptor()
+	// admin.DefaultDept holds the default value on creation for the dept field.
+	admin.DefaultDept = adminDescDept.Default.(string)
+	// adminDescForceReset is the schema descriptor for force_reset field.
+	adminDescForceReset := adminFields[11].Descriptor()
+	// admin.DefaultForceReset holds the default value on creation for the force_reset field.
+	admin.DefaultForceReset = adminDescForceReset.Default.(bool)
+	// adminDescTokenVersion is the schema descriptor for token_version field.
+	adminDescTokenVersion := adminFields[12].Descriptor()
+	// admin.DefaultTokenVersion holds the default value on creation for the token_version field.
+	admin.DefaultTokenVersion = adminDescTokenVersion.Default.(int64)
 	// adminDescCreateTime is the schema descriptor for create_time field.
-	adminDescCreateTime := adminFields[7].Descriptor()
+	adminDescCreateTime := adminFields[13].Descriptor()
 	// admin.DefaultCreateTime holds the default value on creation for the create_time field.
 	admin.DefaultCreateTime = adminDescCreateTime.Default.(func() time.Time)
 	// adminDescUpdateTime is the schema descriptor for update_time field.
-	adminDescUpdateTime := adminFields[8].Descriptor()
+	adminDescUpdateTime := adminFields[14].Descriptor()
 	// admin.DefaultUpdateTime holds the default value on creation for the update_time field.
 	admin.DefaultUpdateTime = adminDescUpdateTime.Default.(func() time.Time)
 	// admin.UpdateDefaultUpdateTime holds the default value on update for the update_time field.
@@ -4253,6 +4278,22 @@ func init() {
 	patchoutcome.DefaultID = patchoutcomeDescID.Default.(func() string)
 	// patchoutcome.IDValidator is a validator for the "id" field. It is called by the builders before save.
 	patchoutcome.IDValidator = patchoutcomeDescID.Validators[0].(func(string) error)
+	permissionFields := schema.Permission{}.Fields()
+	_ = permissionFields
+	// permissionDescCode is the schema descriptor for code field.
+	permissionDescCode := permissionFields[1].Descriptor()
+	// permission.CodeValidator is a validator for the "code" field. It is called by the builders before save.
+	permission.CodeValidator = permissionDescCode.Validators[0].(func(string) error)
+	// permissionDescDescription is the schema descriptor for description field.
+	permissionDescDescription := permissionFields[3].Descriptor()
+	// permission.DefaultDescription holds the default value on creation for the description field.
+	permission.DefaultDescription = permissionDescDescription.Default.(string)
+	// permission.DescriptionValidator is a validator for the "description" field. It is called by the builders before save.
+	permission.DescriptionValidator = permissionDescDescription.Validators[0].(func(string) error)
+	// permissionDescCreateTime is the schema descriptor for create_time field.
+	permissionDescCreateTime := permissionFields[4].Descriptor()
+	// permission.DefaultCreateTime holds the default value on creation for the create_time field.
+	permission.DefaultCreateTime = permissionDescCreateTime.Default.(func() time.Time)
 	planboardv2Fields := schema.PlanBoardV2{}.Fields()
 	_ = planboardv2Fields
 	// planboardv2DescTaskID is the schema descriptor for task_id field.
@@ -5263,6 +5304,38 @@ func init() {
 	reviewtaskDescID := reviewtaskFields[0].Descriptor()
 	// reviewtask.IDValidator is a validator for the "id" field. It is called by the builders before save.
 	reviewtask.IDValidator = reviewtaskDescID.Validators[0].(func(string) error)
+	roleFields := schema.Role{}.Fields()
+	_ = roleFields
+	// roleDescCode is the schema descriptor for code field.
+	roleDescCode := roleFields[1].Descriptor()
+	// role.CodeValidator is a validator for the "code" field. It is called by the builders before save.
+	role.CodeValidator = roleDescCode.Validators[0].(func(string) error)
+	// roleDescName is the schema descriptor for name field.
+	roleDescName := roleFields[2].Descriptor()
+	// role.DefaultName holds the default value on creation for the name field.
+	role.DefaultName = roleDescName.Default.(string)
+	// role.NameValidator is a validator for the "name" field. It is called by the builders before save.
+	role.NameValidator = roleDescName.Validators[0].(func(string) error)
+	// roleDescDescription is the schema descriptor for description field.
+	roleDescDescription := roleFields[3].Descriptor()
+	// role.DefaultDescription holds the default value on creation for the description field.
+	role.DefaultDescription = roleDescDescription.Default.(string)
+	// role.DescriptionValidator is a validator for the "description" field. It is called by the builders before save.
+	role.DescriptionValidator = roleDescDescription.Validators[0].(func(string) error)
+	// roleDescBuiltin is the schema descriptor for builtin field.
+	roleDescBuiltin := roleFields[4].Descriptor()
+	// role.DefaultBuiltin holds the default value on creation for the builtin field.
+	role.DefaultBuiltin = roleDescBuiltin.Default.(bool)
+	// roleDescCreateTime is the schema descriptor for create_time field.
+	roleDescCreateTime := roleFields[5].Descriptor()
+	// role.DefaultCreateTime holds the default value on creation for the create_time field.
+	role.DefaultCreateTime = roleDescCreateTime.Default.(func() time.Time)
+	// roleDescUpdateTime is the schema descriptor for update_time field.
+	roleDescUpdateTime := roleFields[6].Descriptor()
+	// role.DefaultUpdateTime holds the default value on creation for the update_time field.
+	role.DefaultUpdateTime = roleDescUpdateTime.Default.(func() time.Time)
+	// role.UpdateDefaultUpdateTime holds the default value on update for the update_time field.
+	role.UpdateDefaultUpdateTime = roleDescUpdateTime.UpdateDefault.(func() time.Time)
 	selfcheckreportFields := schema.SelfCheckReport{}.Fields()
 	_ = selfcheckreportFields
 	// selfcheckreportDescCheckResultsJSON is the schema descriptor for check_results_json field.
@@ -7601,4 +7674,10 @@ func init() {
 	userembeddingsetting.DefaultUpdateTime = userembeddingsettingDescUpdateTime.Default.(func() time.Time)
 	// userembeddingsetting.UpdateDefaultUpdateTime holds the default value on update for the update_time field.
 	userembeddingsetting.UpdateDefaultUpdateTime = userembeddingsettingDescUpdateTime.UpdateDefault.(func() time.Time)
+	userroleFields := schema.UserRole{}.Fields()
+	_ = userroleFields
+	// userroleDescCreateTime is the schema descriptor for create_time field.
+	userroleDescCreateTime := userroleFields[3].Descriptor()
+	// userrole.DefaultCreateTime holds the default value on creation for the create_time field.
+	userrole.DefaultCreateTime = userroleDescCreateTime.Default.(func() time.Time)
 }

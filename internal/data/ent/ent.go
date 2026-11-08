@@ -69,6 +69,7 @@ import (
 	"aranea-agents/internal/data/ent/orchestrationstep"
 	"aranea-agents/internal/data/ent/organization"
 	"aranea-agents/internal/data/ent/patchoutcome"
+	"aranea-agents/internal/data/ent/permission"
 	"aranea-agents/internal/data/ent/planboardv2"
 	"aranea-agents/internal/data/ent/planstepv2"
 	"aranea-agents/internal/data/ent/platformchannel"
@@ -84,6 +85,8 @@ import (
 	"aranea-agents/internal/data/ent/publishjob"
 	"aranea-agents/internal/data/ent/resourceaccessaudit"
 	"aranea-agents/internal/data/ent/reviewtask"
+	"aranea-agents/internal/data/ent/role"
+	"aranea-agents/internal/data/ent/rolepermission"
 	"aranea-agents/internal/data/ent/schemamigration"
 	"aranea-agents/internal/data/ent/selfcheckreport"
 	"aranea-agents/internal/data/ent/selfimprovementrun"
@@ -120,6 +123,7 @@ import (
 	"aranea-agents/internal/data/ent/turnv2"
 	"aranea-agents/internal/data/ent/usagequota"
 	"aranea-agents/internal/data/ent/userembeddingsetting"
+	"aranea-agents/internal/data/ent/userrole"
 	"context"
 	"errors"
 	"fmt"
@@ -255,6 +259,7 @@ func checkColumn(t, c string) error {
 			orchestrationstep.Table:          orchestrationstep.ValidColumn,
 			organization.Table:               organization.ValidColumn,
 			patchoutcome.Table:               patchoutcome.ValidColumn,
+			permission.Table:                 permission.ValidColumn,
 			planboardv2.Table:                planboardv2.ValidColumn,
 			planstepv2.Table:                 planstepv2.ValidColumn,
 			platformchannel.Table:            platformchannel.ValidColumn,
@@ -270,6 +275,8 @@ func checkColumn(t, c string) error {
 			publishjob.Table:                 publishjob.ValidColumn,
 			resourceaccessaudit.Table:        resourceaccessaudit.ValidColumn,
 			reviewtask.Table:                 reviewtask.ValidColumn,
+			role.Table:                       role.ValidColumn,
+			rolepermission.Table:             rolepermission.ValidColumn,
 			schemamigration.Table:            schemamigration.ValidColumn,
 			selfcheckreport.Table:            selfcheckreport.ValidColumn,
 			selfimprovementrun.Table:         selfimprovementrun.ValidColumn,
@@ -306,6 +313,7 @@ func checkColumn(t, c string) error {
 			turnv2.Table:                     turnv2.ValidColumn,
 			usagequota.Table:                 usagequota.ValidColumn,
 			userembeddingsetting.Table:       userembeddingsetting.ValidColumn,
+			userrole.Table:                   userrole.ValidColumn,
 		})
 	})
 	return columnCheck(t, c)

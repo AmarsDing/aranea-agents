@@ -15,14 +15,41 @@ func GenerateToken(userID int64, access, secret string, expiresAt time.Time) (st
 
 // GenerateTokenForWorkspace generates a JWT bound to an explicit workspace membership.
 func GenerateTokenForWorkspace(userID int64, access, workspaceID, secret string, expiresAt time.Time) (string, error) {
+	return GenerateTokenForPrincipal(Principal{
+		UserID:      userID,
+		Access:      access,
+		WorkspaceID: workspaceID,
+	}, secret, expiresAt)
+}
+
+// Principal carries the full P1 claim set stamped into a JWT
+// (P0 详设 01 §5：{id, roles[], clearance, workspace_id, tv}）。
+// Access 为过渡字段，随 admins.access 列迁移完成后删除。
+type Principal struct {
+	UserID       int64
+	Access       string
+	WorkspaceID  string
+	Roles        []string
+	Clearance    int
+	TokenVersion int64
+}
+
+// GenerateTokenForPrincipal generates a JWT carrying the full P1 claim set.
+// TokenVersion 取自签发时刻的 admins.token_version；服务端每次校验时与
+// Redis（write-through）/DB 当前值比对，不一致即拒绝（P1-3）。
+func GenerateTokenForPrincipal(p Principal, secret string, expiresAt time.Time) (string, error) {
+	workspaceID := p.WorkspaceID
 	if workspaceID == "" {
 		workspaceID = DefaultWorkspaceID
 	}
 	now := time.Now()
 	claims := Auth{
-		UserID:      userID,
-		Access:      access,
-		WorkspaceID: workspaceID,
+		UserID:       p.UserID,
+		Access:       p.Access,
+		WorkspaceID:  workspaceID,
+		Roles:        p.Roles,
+		Clearance:    p.Clearance,
+		TokenVersion: p.TokenVersion,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ID:        uuid.NewString(),
 			Issuer:    "kratos",

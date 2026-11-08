@@ -353,6 +353,7 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.SelfImprovement, *co
 		provideFilesystemHealthReader,
 		provideProcessLogEnabled,
 		provideRedisClient,
+		provideTokenVersionStore,
 		provideTurnLifecycleUsecase,
 		provideMonitorUsecase,
 		provideUsageUsecaseRef,

@@ -3,7 +3,7 @@
  * **`SetCookie`** 由服务端经 **`access_token`**（可 `KRATOS_AUTH_COOKIE`）下发；前端 **`kratosApi.withCredentials`** 携带。
  */
 import { createAdminService } from '../../services';
-import type { Admin, LoginRequest } from '../../services/kratos/admin/v1/index';
+import type { Admin, LoginRequest, MenusReply } from '../../services/kratos/admin/v1/index';
 import type { AdminSession } from './types';
 
 const adminSvc = createAdminService();
@@ -41,4 +41,16 @@ export async function logoutAdmin(): Promise<void> {
 export async function getCurrentAdmin(): Promise<AdminSession> {
   const data = await adminSvc.Current({});
   return mapAdmin(data as Admin);
+}
+
+/**
+ * P1-7 菜单下发：后端按角色裁剪后的侧栏目录 + 生效权限码。
+ * 返回 null 表示接口不可用（调用方放行展示——真正的判定在后端）。
+ */
+export async function getMenus(): Promise<MenusReply | null> {
+  try {
+    return await adminSvc.GetMenus({});
+  } catch {
+    return null;
+  }
 }

@@ -106,6 +106,82 @@ func (_c *AdminCreate) SetNillableWorkspaceID(v *string) *AdminCreate {
 	return _c
 }
 
+// SetRoles sets the "roles" field.
+func (_c *AdminCreate) SetRoles(v []string) *AdminCreate {
+	_c.mutation.SetRoles(v)
+	return _c
+}
+
+// SetClearance sets the "clearance" field.
+func (_c *AdminCreate) SetClearance(v int) *AdminCreate {
+	_c.mutation.SetClearance(v)
+	return _c
+}
+
+// SetNillableClearance sets the "clearance" field if the given value is not nil.
+func (_c *AdminCreate) SetNillableClearance(v *int) *AdminCreate {
+	if v != nil {
+		_c.SetClearance(*v)
+	}
+	return _c
+}
+
+// SetDept sets the "dept" field.
+func (_c *AdminCreate) SetDept(v string) *AdminCreate {
+	_c.mutation.SetDept(v)
+	return _c
+}
+
+// SetNillableDept sets the "dept" field if the given value is not nil.
+func (_c *AdminCreate) SetNillableDept(v *string) *AdminCreate {
+	if v != nil {
+		_c.SetDept(*v)
+	}
+	return _c
+}
+
+// SetStatus sets the "status" field.
+func (_c *AdminCreate) SetStatus(v admin.Status) *AdminCreate {
+	_c.mutation.SetStatus(v)
+	return _c
+}
+
+// SetNillableStatus sets the "status" field if the given value is not nil.
+func (_c *AdminCreate) SetNillableStatus(v *admin.Status) *AdminCreate {
+	if v != nil {
+		_c.SetStatus(*v)
+	}
+	return _c
+}
+
+// SetForceReset sets the "force_reset" field.
+func (_c *AdminCreate) SetForceReset(v bool) *AdminCreate {
+	_c.mutation.SetForceReset(v)
+	return _c
+}
+
+// SetNillableForceReset sets the "force_reset" field if the given value is not nil.
+func (_c *AdminCreate) SetNillableForceReset(v *bool) *AdminCreate {
+	if v != nil {
+		_c.SetForceReset(*v)
+	}
+	return _c
+}
+
+// SetTokenVersion sets the "token_version" field.
+func (_c *AdminCreate) SetTokenVersion(v int64) *AdminCreate {
+	_c.mutation.SetTokenVersion(v)
+	return _c
+}
+
+// SetNillableTokenVersion sets the "token_version" field if the given value is not nil.
+func (_c *AdminCreate) SetNillableTokenVersion(v *int64) *AdminCreate {
+	if v != nil {
+		_c.SetTokenVersion(*v)
+	}
+	return _c
+}
+
 // SetCreateTime sets the "create_time" field.
 func (_c *AdminCreate) SetCreateTime(v time.Time) *AdminCreate {
 	_c.mutation.SetCreateTime(v)
@@ -199,6 +275,30 @@ func (_c *AdminCreate) defaults() {
 		v := admin.DefaultWorkspaceID
 		_c.mutation.SetWorkspaceID(v)
 	}
+	if _, ok := _c.mutation.Roles(); !ok {
+		v := admin.DefaultRoles
+		_c.mutation.SetRoles(v)
+	}
+	if _, ok := _c.mutation.Clearance(); !ok {
+		v := admin.DefaultClearance
+		_c.mutation.SetClearance(v)
+	}
+	if _, ok := _c.mutation.Dept(); !ok {
+		v := admin.DefaultDept
+		_c.mutation.SetDept(v)
+	}
+	if _, ok := _c.mutation.Status(); !ok {
+		v := admin.DefaultStatus
+		_c.mutation.SetStatus(v)
+	}
+	if _, ok := _c.mutation.ForceReset(); !ok {
+		v := admin.DefaultForceReset
+		_c.mutation.SetForceReset(v)
+	}
+	if _, ok := _c.mutation.TokenVersion(); !ok {
+		v := admin.DefaultTokenVersion
+		_c.mutation.SetTokenVersion(v)
+	}
 	if _, ok := _c.mutation.CreateTime(); !ok {
 		v := admin.DefaultCreateTime()
 		_c.mutation.SetCreateTime(v)
@@ -233,6 +333,34 @@ func (_c *AdminCreate) check() error {
 		if err := admin.WorkspaceIDValidator(v); err != nil {
 			return &ValidationError{Name: "workspace_id", err: fmt.Errorf(`ent: validator failed for field "Admin.workspace_id": %w`, err)}
 		}
+	}
+	if _, ok := _c.mutation.Roles(); !ok {
+		return &ValidationError{Name: "roles", err: errors.New(`ent: missing required field "Admin.roles"`)}
+	}
+	if _, ok := _c.mutation.Clearance(); !ok {
+		return &ValidationError{Name: "clearance", err: errors.New(`ent: missing required field "Admin.clearance"`)}
+	}
+	if v, ok := _c.mutation.Clearance(); ok {
+		if err := admin.ClearanceValidator(v); err != nil {
+			return &ValidationError{Name: "clearance", err: fmt.Errorf(`ent: validator failed for field "Admin.clearance": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.Dept(); !ok {
+		return &ValidationError{Name: "dept", err: errors.New(`ent: missing required field "Admin.dept"`)}
+	}
+	if _, ok := _c.mutation.Status(); !ok {
+		return &ValidationError{Name: "status", err: errors.New(`ent: missing required field "Admin.status"`)}
+	}
+	if v, ok := _c.mutation.Status(); ok {
+		if err := admin.StatusValidator(v); err != nil {
+			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "Admin.status": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.ForceReset(); !ok {
+		return &ValidationError{Name: "force_reset", err: errors.New(`ent: missing required field "Admin.force_reset"`)}
+	}
+	if _, ok := _c.mutation.TokenVersion(); !ok {
+		return &ValidationError{Name: "token_version", err: errors.New(`ent: missing required field "Admin.token_version"`)}
 	}
 	if _, ok := _c.mutation.CreateTime(); !ok {
 		return &ValidationError{Name: "create_time", err: errors.New(`ent: missing required field "Admin.create_time"`)}
@@ -296,6 +424,30 @@ func (_c *AdminCreate) createSpec() (*Admin, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.WorkspaceID(); ok {
 		_spec.SetField(admin.FieldWorkspaceID, field.TypeString, value)
 		_node.WorkspaceID = value
+	}
+	if value, ok := _c.mutation.Roles(); ok {
+		_spec.SetField(admin.FieldRoles, field.TypeJSON, value)
+		_node.Roles = value
+	}
+	if value, ok := _c.mutation.Clearance(); ok {
+		_spec.SetField(admin.FieldClearance, field.TypeInt, value)
+		_node.Clearance = value
+	}
+	if value, ok := _c.mutation.Dept(); ok {
+		_spec.SetField(admin.FieldDept, field.TypeString, value)
+		_node.Dept = value
+	}
+	if value, ok := _c.mutation.Status(); ok {
+		_spec.SetField(admin.FieldStatus, field.TypeEnum, value)
+		_node.Status = value
+	}
+	if value, ok := _c.mutation.ForceReset(); ok {
+		_spec.SetField(admin.FieldForceReset, field.TypeBool, value)
+		_node.ForceReset = value
+	}
+	if value, ok := _c.mutation.TokenVersion(); ok {
+		_spec.SetField(admin.FieldTokenVersion, field.TypeInt64, value)
+		_node.TokenVersion = value
 	}
 	if value, ok := _c.mutation.CreateTime(); ok {
 		_spec.SetField(admin.FieldCreateTime, field.TypeTime, value)
@@ -426,6 +578,90 @@ func (u *AdminUpsert) SetWorkspaceID(v string) *AdminUpsert {
 // UpdateWorkspaceID sets the "workspace_id" field to the value that was provided on create.
 func (u *AdminUpsert) UpdateWorkspaceID() *AdminUpsert {
 	u.SetExcluded(admin.FieldWorkspaceID)
+	return u
+}
+
+// SetRoles sets the "roles" field.
+func (u *AdminUpsert) SetRoles(v []string) *AdminUpsert {
+	u.Set(admin.FieldRoles, v)
+	return u
+}
+
+// UpdateRoles sets the "roles" field to the value that was provided on create.
+func (u *AdminUpsert) UpdateRoles() *AdminUpsert {
+	u.SetExcluded(admin.FieldRoles)
+	return u
+}
+
+// SetClearance sets the "clearance" field.
+func (u *AdminUpsert) SetClearance(v int) *AdminUpsert {
+	u.Set(admin.FieldClearance, v)
+	return u
+}
+
+// UpdateClearance sets the "clearance" field to the value that was provided on create.
+func (u *AdminUpsert) UpdateClearance() *AdminUpsert {
+	u.SetExcluded(admin.FieldClearance)
+	return u
+}
+
+// AddClearance adds v to the "clearance" field.
+func (u *AdminUpsert) AddClearance(v int) *AdminUpsert {
+	u.Add(admin.FieldClearance, v)
+	return u
+}
+
+// SetDept sets the "dept" field.
+func (u *AdminUpsert) SetDept(v string) *AdminUpsert {
+	u.Set(admin.FieldDept, v)
+	return u
+}
+
+// UpdateDept sets the "dept" field to the value that was provided on create.
+func (u *AdminUpsert) UpdateDept() *AdminUpsert {
+	u.SetExcluded(admin.FieldDept)
+	return u
+}
+
+// SetStatus sets the "status" field.
+func (u *AdminUpsert) SetStatus(v admin.Status) *AdminUpsert {
+	u.Set(admin.FieldStatus, v)
+	return u
+}
+
+// UpdateStatus sets the "status" field to the value that was provided on create.
+func (u *AdminUpsert) UpdateStatus() *AdminUpsert {
+	u.SetExcluded(admin.FieldStatus)
+	return u
+}
+
+// SetForceReset sets the "force_reset" field.
+func (u *AdminUpsert) SetForceReset(v bool) *AdminUpsert {
+	u.Set(admin.FieldForceReset, v)
+	return u
+}
+
+// UpdateForceReset sets the "force_reset" field to the value that was provided on create.
+func (u *AdminUpsert) UpdateForceReset() *AdminUpsert {
+	u.SetExcluded(admin.FieldForceReset)
+	return u
+}
+
+// SetTokenVersion sets the "token_version" field.
+func (u *AdminUpsert) SetTokenVersion(v int64) *AdminUpsert {
+	u.Set(admin.FieldTokenVersion, v)
+	return u
+}
+
+// UpdateTokenVersion sets the "token_version" field to the value that was provided on create.
+func (u *AdminUpsert) UpdateTokenVersion() *AdminUpsert {
+	u.SetExcluded(admin.FieldTokenVersion)
+	return u
+}
+
+// AddTokenVersion adds v to the "token_version" field.
+func (u *AdminUpsert) AddTokenVersion(v int64) *AdminUpsert {
+	u.Add(admin.FieldTokenVersion, v)
 	return u
 }
 
@@ -573,6 +809,104 @@ func (u *AdminUpsertOne) SetWorkspaceID(v string) *AdminUpsertOne {
 func (u *AdminUpsertOne) UpdateWorkspaceID() *AdminUpsertOne {
 	return u.Update(func(s *AdminUpsert) {
 		s.UpdateWorkspaceID()
+	})
+}
+
+// SetRoles sets the "roles" field.
+func (u *AdminUpsertOne) SetRoles(v []string) *AdminUpsertOne {
+	return u.Update(func(s *AdminUpsert) {
+		s.SetRoles(v)
+	})
+}
+
+// UpdateRoles sets the "roles" field to the value that was provided on create.
+func (u *AdminUpsertOne) UpdateRoles() *AdminUpsertOne {
+	return u.Update(func(s *AdminUpsert) {
+		s.UpdateRoles()
+	})
+}
+
+// SetClearance sets the "clearance" field.
+func (u *AdminUpsertOne) SetClearance(v int) *AdminUpsertOne {
+	return u.Update(func(s *AdminUpsert) {
+		s.SetClearance(v)
+	})
+}
+
+// AddClearance adds v to the "clearance" field.
+func (u *AdminUpsertOne) AddClearance(v int) *AdminUpsertOne {
+	return u.Update(func(s *AdminUpsert) {
+		s.AddClearance(v)
+	})
+}
+
+// UpdateClearance sets the "clearance" field to the value that was provided on create.
+func (u *AdminUpsertOne) UpdateClearance() *AdminUpsertOne {
+	return u.Update(func(s *AdminUpsert) {
+		s.UpdateClearance()
+	})
+}
+
+// SetDept sets the "dept" field.
+func (u *AdminUpsertOne) SetDept(v string) *AdminUpsertOne {
+	return u.Update(func(s *AdminUpsert) {
+		s.SetDept(v)
+	})
+}
+
+// UpdateDept sets the "dept" field to the value that was provided on create.
+func (u *AdminUpsertOne) UpdateDept() *AdminUpsertOne {
+	return u.Update(func(s *AdminUpsert) {
+		s.UpdateDept()
+	})
+}
+
+// SetStatus sets the "status" field.
+func (u *AdminUpsertOne) SetStatus(v admin.Status) *AdminUpsertOne {
+	return u.Update(func(s *AdminUpsert) {
+		s.SetStatus(v)
+	})
+}
+
+// UpdateStatus sets the "status" field to the value that was provided on create.
+func (u *AdminUpsertOne) UpdateStatus() *AdminUpsertOne {
+	return u.Update(func(s *AdminUpsert) {
+		s.UpdateStatus()
+	})
+}
+
+// SetForceReset sets the "force_reset" field.
+func (u *AdminUpsertOne) SetForceReset(v bool) *AdminUpsertOne {
+	return u.Update(func(s *AdminUpsert) {
+		s.SetForceReset(v)
+	})
+}
+
+// UpdateForceReset sets the "force_reset" field to the value that was provided on create.
+func (u *AdminUpsertOne) UpdateForceReset() *AdminUpsertOne {
+	return u.Update(func(s *AdminUpsert) {
+		s.UpdateForceReset()
+	})
+}
+
+// SetTokenVersion sets the "token_version" field.
+func (u *AdminUpsertOne) SetTokenVersion(v int64) *AdminUpsertOne {
+	return u.Update(func(s *AdminUpsert) {
+		s.SetTokenVersion(v)
+	})
+}
+
+// AddTokenVersion adds v to the "token_version" field.
+func (u *AdminUpsertOne) AddTokenVersion(v int64) *AdminUpsertOne {
+	return u.Update(func(s *AdminUpsert) {
+		s.AddTokenVersion(v)
+	})
+}
+
+// UpdateTokenVersion sets the "token_version" field to the value that was provided on create.
+func (u *AdminUpsertOne) UpdateTokenVersion() *AdminUpsertOne {
+	return u.Update(func(s *AdminUpsert) {
+		s.UpdateTokenVersion()
 	})
 }
 
@@ -888,6 +1222,104 @@ func (u *AdminUpsertBulk) SetWorkspaceID(v string) *AdminUpsertBulk {
 func (u *AdminUpsertBulk) UpdateWorkspaceID() *AdminUpsertBulk {
 	return u.Update(func(s *AdminUpsert) {
 		s.UpdateWorkspaceID()
+	})
+}
+
+// SetRoles sets the "roles" field.
+func (u *AdminUpsertBulk) SetRoles(v []string) *AdminUpsertBulk {
+	return u.Update(func(s *AdminUpsert) {
+		s.SetRoles(v)
+	})
+}
+
+// UpdateRoles sets the "roles" field to the value that was provided on create.
+func (u *AdminUpsertBulk) UpdateRoles() *AdminUpsertBulk {
+	return u.Update(func(s *AdminUpsert) {
+		s.UpdateRoles()
+	})
+}
+
+// SetClearance sets the "clearance" field.
+func (u *AdminUpsertBulk) SetClearance(v int) *AdminUpsertBulk {
+	return u.Update(func(s *AdminUpsert) {
+		s.SetClearance(v)
+	})
+}
+
+// AddClearance adds v to the "clearance" field.
+func (u *AdminUpsertBulk) AddClearance(v int) *AdminUpsertBulk {
+	return u.Update(func(s *AdminUpsert) {
+		s.AddClearance(v)
+	})
+}
+
+// UpdateClearance sets the "clearance" field to the value that was provided on create.
+func (u *AdminUpsertBulk) UpdateClearance() *AdminUpsertBulk {
+	return u.Update(func(s *AdminUpsert) {
+		s.UpdateClearance()
+	})
+}
+
+// SetDept sets the "dept" field.
+func (u *AdminUpsertBulk) SetDept(v string) *AdminUpsertBulk {
+	return u.Update(func(s *AdminUpsert) {
+		s.SetDept(v)
+	})
+}
+
+// UpdateDept sets the "dept" field to the value that was provided on create.
+func (u *AdminUpsertBulk) UpdateDept() *AdminUpsertBulk {
+	return u.Update(func(s *AdminUpsert) {
+		s.UpdateDept()
+	})
+}
+
+// SetStatus sets the "status" field.
+func (u *AdminUpsertBulk) SetStatus(v admin.Status) *AdminUpsertBulk {
+	return u.Update(func(s *AdminUpsert) {
+		s.SetStatus(v)
+	})
+}
+
+// UpdateStatus sets the "status" field to the value that was provided on create.
+func (u *AdminUpsertBulk) UpdateStatus() *AdminUpsertBulk {
+	return u.Update(func(s *AdminUpsert) {
+		s.UpdateStatus()
+	})
+}
+
+// SetForceReset sets the "force_reset" field.
+func (u *AdminUpsertBulk) SetForceReset(v bool) *AdminUpsertBulk {
+	return u.Update(func(s *AdminUpsert) {
+		s.SetForceReset(v)
+	})
+}
+
+// UpdateForceReset sets the "force_reset" field to the value that was provided on create.
+func (u *AdminUpsertBulk) UpdateForceReset() *AdminUpsertBulk {
+	return u.Update(func(s *AdminUpsert) {
+		s.UpdateForceReset()
+	})
+}
+
+// SetTokenVersion sets the "token_version" field.
+func (u *AdminUpsertBulk) SetTokenVersion(v int64) *AdminUpsertBulk {
+	return u.Update(func(s *AdminUpsert) {
+		s.SetTokenVersion(v)
+	})
+}
+
+// AddTokenVersion adds v to the "token_version" field.
+func (u *AdminUpsertBulk) AddTokenVersion(v int64) *AdminUpsertBulk {
+	return u.Update(func(s *AdminUpsert) {
+		s.AddTokenVersion(v)
+	})
+}
+
+// UpdateTokenVersion sets the "token_version" field to the value that was provided on create.
+func (u *AdminUpsertBulk) UpdateTokenVersion() *AdminUpsertBulk {
+	return u.Update(func(s *AdminUpsert) {
+		s.UpdateTokenVersion()
 	})
 }
 

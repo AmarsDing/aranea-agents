@@ -143,6 +143,58 @@ export type DeleteAdminRequest = {
   id: number | undefined;
 };
 
+// MenuItem is one navigable entry of the caller's sidebar tree.
+export type MenuItem = {
+  // Stable identifier of the entry (frontend key / test anchor).
+  key: string | undefined;
+  // Frontend route path.
+  path: string | undefined;
+  // i18n message key of the label.
+  labelKey: string | undefined;
+  // Material icon name.
+  icon: string | undefined;
+  // Whether route matching must be exact (default false = prefix match).
+  exact: boolean | undefined;
+  // Permission code the caller must hold. Empty means "authenticated only".
+  permission: string | undefined;
+  // Optional nested entries.
+  children: MenuItem[] | undefined;
+};
+
+// MenuGroup is a labelled section of the sidebar.
+export type MenuGroup = {
+  // Stable identifier of the group.
+  key: string | undefined;
+  // i18n message key of the group label.
+  labelKey: string | undefined;
+  // Entries of the group.
+  items: MenuItem[] | undefined;
+};
+
+// MenusReply is the response message for the GetMenus method.
+export type MenusReply = {
+  // Menu groups visible to the caller, in display order; groups whose entries
+  // are all filtered out are omitted.
+  groups: MenuGroup[] | undefined;
+  // Effective permission codes of the caller ("*" for superadmin). Lets the
+  // frontend gate finer-grained controls without a second round trip.
+  permissions: string[] | undefined;
+  // Effective role codes of the caller.
+  roles: string[] | undefined;
+};
+
+// ChangePasswordRequest is the request message for the ChangePassword method.
+export type ChangePasswordRequest = {
+  // Required. The caller's current password (re-authentication).
+  //
+  // Behaviors: REQUIRED
+  oldPassword: string | undefined;
+  // Required. The replacement password. Minimum length is enforced server-side.
+  //
+  // Behaviors: REQUIRED
+  newPassword: string | undefined;
+};
+
 // AdminService is the admin service definition.
 export interface AdminService {
   // Login a user and return the username.
@@ -161,6 +213,15 @@ export interface AdminService {
   DeleteAdmin(request: DeleteAdminRequest): Promise<wellKnownEmpty>;
   // GetAdmin retrieves an admin by ID.
   GetAdmin(request: GetAdminRequest): Promise<Admin>;
+  // GetMenus returns the caller's visible navigation tree, already filtered by
+  // the caller's effective permissions (P0 详设 01 §6). Presentation-only: the
+  // frontend hides what it is not given, while every API call is still
+  // hard-checked server-side by the permission middleware.
+  GetMenus(request: wellKnownEmpty): Promise<MenusReply>;
+  // ChangePassword changes the caller's own password. Success bumps the
+  // caller's token_version, so every previously issued session (including the
+  // one that made this call) is revoked and must re-authenticate.
+  ChangePassword(request: ChangePasswordRequest): Promise<wellKnownEmpty>;
 }
 
 type RequestType = {
@@ -331,6 +392,40 @@ export function createAdminServiceClient(
         service: "AdminService",
         method: "GetAdmin",
       }) as Promise<Admin>;
+    },
+    GetMenus(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      const path = `v1/auth/menus`; // eslint-disable-line quotes
+      const body = null;
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "AdminService",
+        method: "GetMenus",
+      }) as Promise<MenusReply>;
+    },
+    ChangePassword(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      const path = `v1/users/change-password`; // eslint-disable-line quotes
+      const body = JSON.stringify(request);
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "AdminService",
+        method: "ChangePassword",
+      }) as Promise<wellKnownEmpty>;
     },
   };
 }

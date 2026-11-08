@@ -108,7 +108,9 @@ type WSServer struct {
 	// last_event_id replay, optional) with the lifecycle guard of the P1-3
 	// compensation sweeper, keeping this coordinator's field count flat
 	// (AS-COG-01).
-	outboxSweep  outboxSweepRuntime
+	outboxSweep outboxSweepRuntime
+	// revocation 收纳 P1-4 会话吊销（WS 长连接主动关闭）的订阅者与生命周期守卫。
+	revocation   revocationRuntime
 	canceller    RunCanceller
 	sender       ChatSender
 	turnExecutor WSTurnExecutor
@@ -240,6 +242,8 @@ func (s *WSServer) Start(ctx context.Context) error {
 		}
 		sw.Start(ctx)
 	}
+	// P1-4: 会话吊销对长连接生效（pub/sub 即时关闭 + 周期兜底扫描）。
+	s.startSessionRevocation(ctx)
 	return nil
 }
 
@@ -356,7 +360,7 @@ func (s *WSServer) handleWS(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Build connection object
-	wc := s.newWSConn(conn, sessionID, userID, globalMode, probeMode, r)
+	wc := s.newWSConn(conn, sessionID, userID, claims.TokenVersion, globalMode, probeMode, r)
 
 	// Register connection with atomic limit admission (M1): the HTTP 429
 	// precheck above is only a cheap early filter; handshakes that raced past
@@ -439,7 +443,8 @@ func wsAuthenticate(r *http.Request) (*auth.Auth, error) {
 }
 
 // newWSConn creates a wsConn from the upgraded WebSocket connection and request parameters.
-func (s *WSServer) newWSConn(conn *websocket.Conn, sessionID, userID string, globalMode, probeMode bool, r *http.Request) *wsConn {
+// tokenVersion 是握手期 JWT 的 tv claim，供 P1-4 会话吊销比对（长连接不逐请求校验）。
+func (s *WSServer) newWSConn(conn *websocket.Conn, sessionID, userID string, tokenVersion int64, globalMode, probeMode bool, r *http.Request) *wsConn {
 	logEnabled := r.URL.Query().Get("log_enabled") == "1" || r.URL.Query().Get("log_enabled") == "true"
 	if globalMode && !probeMode && !logEnabled && s.serverConf != nil && s.serverConf.ProcessLogEnabled() {
 		logEnabled = true
@@ -453,18 +458,19 @@ func (s *WSServer) newWSConn(conn *websocket.Conn, sessionID, userID string, glo
 	queues.flow = flow
 	queues.onLaneDrop = makeSendDropHook(flow)
 	return &wsConn{
-		conn:       conn,
-		sessionID:  sessionID,
-		userID:     userID,
-		channels:   wsBuildChannels(globalMode, probeMode),
-		filterKey:  filterKey,
-		send:       make(chan []byte, cfg.NormalCap),
-		queues:     queues,
-		logEnabled: logEnabled,
-		globalMode: globalMode,
-		probeMode:  probeMode,
-		connCtx:    wcCtx,
-		connCancel: wcCancel,
+		conn:         conn,
+		sessionID:    sessionID,
+		userID:       userID,
+		tokenVersion: tokenVersion,
+		channels:     wsBuildChannels(globalMode, probeMode),
+		filterKey:    filterKey,
+		send:         make(chan []byte, cfg.NormalCap),
+		queues:       queues,
+		logEnabled:   logEnabled,
+		globalMode:   globalMode,
+		probeMode:    probeMode,
+		connCtx:      wcCtx,
+		connCancel:   wcCancel,
 	}
 }
 

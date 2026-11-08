@@ -18,6 +18,12 @@ var (
 		{Name: "access", Type: field.TypeString, Default: ""},
 		{Name: "password", Type: field.TypeString, Default: ""},
 		{Name: "workspace_id", Type: field.TypeString, Size: 128, Default: "default"},
+		{Name: "roles", Type: field.TypeJSON},
+		{Name: "clearance", Type: field.TypeInt, Default: 1},
+		{Name: "dept", Type: field.TypeString, Default: ""},
+		{Name: "status", Type: field.TypeEnum, Enums: []string{"active", "frozen", "offboarded"}, Default: "active"},
+		{Name: "force_reset", Type: field.TypeBool, Default: false},
+		{Name: "token_version", Type: field.TypeInt64, Default: 0},
 		{Name: "create_time", Type: field.TypeTime},
 		{Name: "update_time", Type: field.TypeTime},
 	}
@@ -2318,6 +2324,27 @@ var (
 			},
 		},
 	}
+	// PermissionsColumns holds the columns for the "permissions" table.
+	PermissionsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "code", Type: field.TypeString, Unique: true, Size: 128},
+		{Name: "kind", Type: field.TypeEnum, Enums: []string{"menu", "api"}, Default: "api"},
+		{Name: "description", Type: field.TypeString, Size: 512, Default: ""},
+		{Name: "create_time", Type: field.TypeTime},
+	}
+	// PermissionsTable holds the schema information for the "permissions" table.
+	PermissionsTable = &schema.Table{
+		Name:       "permissions",
+		Columns:    PermissionsColumns,
+		PrimaryKey: []*schema.Column{PermissionsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "permission_kind",
+				Unique:  false,
+				Columns: []*schema.Column{PermissionsColumns[2]},
+			},
+		},
+	}
 	// PlanBoardsV2Columns holds the columns for the "plan_boards_v2" table.
 	PlanBoardsV2Columns = []*schema.Column{
 		{Name: "id", Type: field.TypeString, Unique: true, Size: 64},
@@ -2864,6 +2891,53 @@ var (
 				Name:    "reviewtask_graph_execution_id",
 				Unique:  false,
 				Columns: []*schema.Column{ReviewTasksColumns[2]},
+			},
+		},
+	}
+	// RolesColumns holds the columns for the "roles" table.
+	RolesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "code", Type: field.TypeString, Unique: true, Size: 64},
+		{Name: "name", Type: field.TypeString, Size: 128, Default: ""},
+		{Name: "description", Type: field.TypeString, Size: 512, Default: ""},
+		{Name: "builtin", Type: field.TypeBool, Default: false},
+		{Name: "create_time", Type: field.TypeTime},
+		{Name: "update_time", Type: field.TypeTime},
+	}
+	// RolesTable holds the schema information for the "roles" table.
+	RolesTable = &schema.Table{
+		Name:       "roles",
+		Columns:    RolesColumns,
+		PrimaryKey: []*schema.Column{RolesColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "role_builtin",
+				Unique:  false,
+				Columns: []*schema.Column{RolesColumns[4]},
+			},
+		},
+	}
+	// RolePermissionsColumns holds the columns for the "role_permissions" table.
+	RolePermissionsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "role_id", Type: field.TypeInt64},
+		{Name: "permission_id", Type: field.TypeInt64},
+	}
+	// RolePermissionsTable holds the schema information for the "role_permissions" table.
+	RolePermissionsTable = &schema.Table{
+		Name:       "role_permissions",
+		Columns:    RolePermissionsColumns,
+		PrimaryKey: []*schema.Column{RolePermissionsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "rolepermission_role_id_permission_id",
+				Unique:  true,
+				Columns: []*schema.Column{RolePermissionsColumns[1], RolePermissionsColumns[2]},
+			},
+			{
+				Name:    "rolepermission_permission_id",
+				Unique:  false,
+				Columns: []*schema.Column{RolePermissionsColumns[2]},
 			},
 		},
 	}
@@ -4219,6 +4293,31 @@ var (
 		Columns:    UserEmbeddingSettingsColumns,
 		PrimaryKey: []*schema.Column{UserEmbeddingSettingsColumns[0]},
 	}
+	// UserRolesColumns holds the columns for the "user_roles" table.
+	UserRolesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "user_id", Type: field.TypeInt64},
+		{Name: "role_id", Type: field.TypeInt64},
+		{Name: "create_time", Type: field.TypeTime},
+	}
+	// UserRolesTable holds the schema information for the "user_roles" table.
+	UserRolesTable = &schema.Table{
+		Name:       "user_roles",
+		Columns:    UserRolesColumns,
+		PrimaryKey: []*schema.Column{UserRolesColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "userrole_user_id_role_id",
+				Unique:  true,
+				Columns: []*schema.Column{UserRolesColumns[1], UserRolesColumns[2]},
+			},
+			{
+				Name:    "userrole_role_id",
+				Unique:  false,
+				Columns: []*schema.Column{UserRolesColumns[2]},
+			},
+		},
+	}
 	// Tables holds all the tables in the schema.
 	Tables = []*schema.Table{
 		AdminsTable,
@@ -4287,6 +4386,7 @@ var (
 		OrchestrationStepsTable,
 		OrganizationsTable,
 		PatchOutcomesTable,
+		PermissionsTable,
 		PlanBoardsV2Table,
 		PlanStepsV2Table,
 		ChannelTable,
@@ -4302,6 +4402,8 @@ var (
 		PublishJobsTable,
 		ResourceAccessAuditsTable,
 		ReviewTasksTable,
+		RolesTable,
+		RolePermissionsTable,
 		SchemaMigrationsTable,
 		SelfCheckReportsTable,
 		SelfImprovementRunsTable,
@@ -4338,6 +4440,7 @@ var (
 		TurnsV2Table,
 		UsageQuotasTable,
 		UserEmbeddingSettingsTable,
+		UserRolesTable,
 	}
 )
 
@@ -4541,6 +4644,9 @@ func init() {
 	PatchOutcomesTable.Annotation = &entsql.Annotation{
 		Table: "patch_outcomes",
 	}
+	PermissionsTable.Annotation = &entsql.Annotation{
+		Table: "permissions",
+	}
 	PlanBoardsV2Table.Annotation = &entsql.Annotation{
 		Table: "plan_boards_v2",
 	}
@@ -4585,6 +4691,12 @@ func init() {
 	}
 	ReviewTasksTable.Annotation = &entsql.Annotation{
 		Table: "review_tasks",
+	}
+	RolesTable.Annotation = &entsql.Annotation{
+		Table: "roles",
+	}
+	RolePermissionsTable.Annotation = &entsql.Annotation{
+		Table: "role_permissions",
 	}
 	SchemaMigrationsTable.Annotation = &entsql.Annotation{
 		Table: "schema_migrations",
@@ -4687,5 +4799,8 @@ func init() {
 	}
 	UsageQuotasTable.Annotation = &entsql.Annotation{
 		Table: "usage_quotas",
+	}
+	UserRolesTable.Annotation = &entsql.Annotation{
+		Table: "user_roles",
 	}
 }

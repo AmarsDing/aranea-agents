@@ -48,6 +48,8 @@ func newApp(
 	teamUC *biz.TeamUsecase,
 	organizationUC *biz.OrganizationUsecase,
 	d *data.Data,
+	tvStore *data.TokenVersionStore,
+	adminUC *biz.AdminUsecase,
 	guard *service.SessionStatusGuard,
 	orchCache *biz.OrchestrationCache,
 	sessions *biz.SessionUsecase,
@@ -79,6 +81,21 @@ func newApp(
 	// hook implementation lives in internal/server and is wired here.
 	if eventInfra != nil {
 		server.RegisterAuthFlowHooks(eventInfra.MonitorEventBus, lg)
+	}
+
+	// P1-3 会话吊销接线（P0 详设 01 §5）：tv 校验器注入 pkg/auth（HTTP/gRPC
+	// 中间件逐请求比对 claims.tv）；吊销执行器注入 AdminUsecase（踢会话/改密/
+	// 离职/角色密级变更共用入口）。
+	if tvStore != nil {
+		auth.SetTokenVersionChecker(tvStore)
+		if adminUC != nil {
+			adminUC.SetSessionRevoker(tvStore)
+		}
+		// P1-4：WS 长连接主动关闭——订阅 auth:tv_bump（Bump 发布）即时踢连接；
+		// WSServer.Start 内还会拉起周期兜底扫描（checker 不可用时自动降级）。
+		if wsSrv != nil {
+			wsSrv.SetTokenBumpSubscriber(tvStore)
+		}
 	}
 
 	// MCP OAuth2 refresh_token 轮换回写钩子：进程级全局钩子，注册属于组合根

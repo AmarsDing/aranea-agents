@@ -55,6 +55,10 @@ func isDevOrTestEnv() bool {
 		ci == "true" || ci == "1"
 }
 
+// DevOrTestEnv 导出 isDevOrTestEnv，供 internal 层（如权限中间件的 gRPC
+// 内网直通 carve-out）复用同一判定，禁止各处自行读 env 复制逻辑。
+func DevOrTestEnv() bool { return isDevOrTestEnv() }
+
 // persistentDevSecret returns a stable JWT signing secret for dev/test.
 // The secret is generated once (32 random bytes, base64-encoded) and
 // persisted to secretPath with 0600 permissions. Subsequent calls load

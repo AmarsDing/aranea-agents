@@ -146,6 +146,8 @@ type Tx struct {
 	Organization *OrganizationClient
 	// PatchOutcome is the client for interacting with the PatchOutcome builders.
 	PatchOutcome *PatchOutcomeClient
+	// Permission is the client for interacting with the Permission builders.
+	Permission *PermissionClient
 	// PlanBoardV2 is the client for interacting with the PlanBoardV2 builders.
 	PlanBoardV2 *PlanBoardV2Client
 	// PlanStepV2 is the client for interacting with the PlanStepV2 builders.
@@ -176,6 +178,10 @@ type Tx struct {
 	ResourceAccessAudit *ResourceAccessAuditClient
 	// ReviewTask is the client for interacting with the ReviewTask builders.
 	ReviewTask *ReviewTaskClient
+	// Role is the client for interacting with the Role builders.
+	Role *RoleClient
+	// RolePermission is the client for interacting with the RolePermission builders.
+	RolePermission *RolePermissionClient
 	// SchemaMigration is the client for interacting with the SchemaMigration builders.
 	SchemaMigration *SchemaMigrationClient
 	// SelfCheckReport is the client for interacting with the SelfCheckReport builders.
@@ -248,6 +254,8 @@ type Tx struct {
 	UsageQuota *UsageQuotaClient
 	// UserEmbeddingSetting is the client for interacting with the UserEmbeddingSetting builders.
 	UserEmbeddingSetting *UserEmbeddingSettingClient
+	// UserRole is the client for interacting with the UserRole builders.
+	UserRole *UserRoleClient
 
 	// lazily loaded.
 	client     *Client
@@ -445,6 +453,7 @@ func (tx *Tx) init() {
 	tx.OrchestrationStep = NewOrchestrationStepClient(tx.config)
 	tx.Organization = NewOrganizationClient(tx.config)
 	tx.PatchOutcome = NewPatchOutcomeClient(tx.config)
+	tx.Permission = NewPermissionClient(tx.config)
 	tx.PlanBoardV2 = NewPlanBoardV2Client(tx.config)
 	tx.PlanStepV2 = NewPlanStepV2Client(tx.config)
 	tx.PlatformChannel = NewPlatformChannelClient(tx.config)
@@ -460,6 +469,8 @@ func (tx *Tx) init() {
 	tx.PublishJob = NewPublishJobClient(tx.config)
 	tx.ResourceAccessAudit = NewResourceAccessAuditClient(tx.config)
 	tx.ReviewTask = NewReviewTaskClient(tx.config)
+	tx.Role = NewRoleClient(tx.config)
+	tx.RolePermission = NewRolePermissionClient(tx.config)
 	tx.SchemaMigration = NewSchemaMigrationClient(tx.config)
 	tx.SelfCheckReport = NewSelfCheckReportClient(tx.config)
 	tx.SelfImprovementRun = NewSelfImprovementRunClient(tx.config)
@@ -496,6 +507,7 @@ func (tx *Tx) init() {
 	tx.TurnV2 = NewTurnV2Client(tx.config)
 	tx.UsageQuota = NewUsageQuotaClient(tx.config)
 	tx.UserEmbeddingSetting = NewUserEmbeddingSettingClient(tx.config)
+	tx.UserRole = NewUserRoleClient(tx.config)
 }
 
 // txDriver wraps the given dialect.Tx with a nop dialect.Driver implementation.

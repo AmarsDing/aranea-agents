@@ -16,6 +16,7 @@ import (
 	chatv1 "aranea-agents/api/kratos/chat/v1"
 	computerusev1 "aranea-agents/api/kratos/computeruse/v1"
 	cronv1 "aranea-agents/api/kratos/cron/v1"
+	decisionv1 "aranea-agents/api/kratos/decision/v1"
 	ecosystemv1 "aranea-agents/api/kratos/ecosystem/v1"
 	evaluationv1 "aranea-agents/api/kratos/evaluation/v1"
 	evolutionv1 "aranea-agents/api/kratos/evolution/v1"
@@ -34,7 +35,6 @@ import (
 	pluginv1 "aranea-agents/api/kratos/plugin/v1"
 	runtimeprofilev1 "aranea-agents/api/kratos/runtime_profile/v1"
 	sandboxv1 "aranea-agents/api/kratos/sandbox/v1"
-	decisionv1 "aranea-agents/api/kratos/decision/v1"
 	selfimprovementv1 "aranea-agents/api/kratos/self_improvement/v1"
 	sessionv1 "aranea-agents/api/kratos/session/v1"
 	skillv1 "aranea-agents/api/kratos/skill/v1"
@@ -70,6 +70,8 @@ func NewGRPCServer(c *conf.Server, s *ServiceRegistry, lg loggateway.Logger) *gr
 			recovery.Recovery(),
 			servermw.APIToKratos(),
 			validate.Middleware(),
+			// P1-5: 敏感域权限码硬判（必须在 auth.GRPCMiddleware 之后）。
+			servermw.Permission(servermw.DefaultPermissionRegistry(), lg),
 		),
 	}
 	if c.Grpc.Network != "" {
