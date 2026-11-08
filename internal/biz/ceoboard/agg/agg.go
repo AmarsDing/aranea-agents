@@ -76,7 +76,7 @@ type PollQuerier interface {
 
 // WebhookCounter 是 agg 对 webhook 接收端的计数依赖面。
 type WebhookCounter interface {
-	CountSince(source, event string, since time.Time) int
+	CountSince(ctx context.Context, source, event string, since time.Time) int
 }
 
 // NATSQuerier 是 agg 对 NATS 管理器运行态的只读依赖面。
@@ -469,7 +469,7 @@ func (a *Aggregator) evalSource(ctx context.Context, wf *registry.Workflow, n *r
 			}
 		}
 	case adapter.KindWebhook:
-		cnt := a.Receiver.CountSince(webhookSourceOf(n), "", now.Add(-24*time.Hour))
+		cnt := a.Receiver.CountSince(ctx, webhookSourceOf(n), "", now.Add(-24*time.Hour))
 		sv.MsgCount = int64(cnt)
 		evOK = true // 接收端常驻;不代表源可达(无对账时按流量分级)
 		if last := a.lastDeliveryAt(ctx, webhookSourceOf(n)); !last.IsZero() {
@@ -868,7 +868,7 @@ func (a *Aggregator) countEnterExit(ctx context.Context, wf *registry.Workflow, 
 		if !strings.HasPrefix(n.Enter, "webhook(") || !enter {
 			return 0, "webhook 节点仅 enter 可计数", false
 		}
-		v := float64(a.Receiver.CountSince(webhookSourceOf(n), webhookEventOf(n), now.Add(-win)))
+		v := float64(a.Receiver.CountSince(ctx, webhookSourceOf(n), webhookEventOf(n), now.Add(-win)))
 		note := ""
 		if v == 0 {
 			note = "窗口内未收到 webhook"
@@ -1031,7 +1031,7 @@ func (a *Aggregator) nodeVolume1h(ctx context.Context, wf *registry.Workflow, n 
 	}
 	switch n.Source.Adapter {
 	case adapter.KindWebhook:
-		return a.Receiver.CountSince(webhookSourceOf(n), "", now.Add(-time.Hour))
+		return a.Receiver.CountSince(ctx, webhookSourceOf(n), "", now.Add(-time.Hour))
 	case adapter.KindNATS, adapter.KindHybrid:
 		if a.Store == nil {
 			return 0

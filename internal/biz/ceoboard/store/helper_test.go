@@ -1,89 +1,37 @@
-// 测试辅助:enttest 风格的内存/文件 SQLite(modernc 纯 Go 驱动,无 cgo 依赖,
-// F 盘 PG 环境窗口外可跑)。Ent 方言显式 SQLite,时间一律 UTC(见 store 包注释)。
+// 测试辅助:内存/文件 SQLite 基建已收敛到 storetest 子包(与 adapter 等下游包
+// 测试共用,防迁移钩子漂移);本文件只留 store 包内部断言/构造辅助。
 package store
 
 import (
 	"context"
 	"database/sql"
-	"fmt"
-	"net/url"
 	"path/filepath"
 	"testing"
 	"time"
 
-	"entgo.io/ent/dialect"
-	entsql "entgo.io/ent/dialect/sql"
-	sqlschema "entgo.io/ent/dialect/sql/schema"
-	_ "modernc.org/sqlite"
-
+	"aranea-agents/internal/biz/ceoboard/store/storetest"
 	"aranea-agents/internal/data/ent"
 )
-
-// ceoboardTables 是测试迁移范围:仅 ceoboard_* 五表。其余 schema 含 PG 专属
-// 索引定义(如 mcp_server 的部分索引 :: 转换),sqlite 方言下无法生成合法 DDL;
-// 生产 PG 走全量迁移,不受影响。
-var ceoboardTables = map[string]bool{
-	"ceoboard_events":             true,
-	"ceoboard_webhook_deliveries": true,
-	"ceoboard_dead_letters":       true,
-	"ceoboard_audit":              true,
-	"ceoboard_latency_samples":    true,
-}
-
-func ceoboardOnly(next sqlschema.Creator) sqlschema.Creator {
-	return sqlschema.CreateFunc(func(ctx context.Context, tables ...*sqlschema.Table) error {
-		keep := make([]*sqlschema.Table, 0, len(tables))
-		for _, tbl := range tables {
-			if ceoboardTables[tbl.Name] {
-				keep = append(keep, tbl)
-			}
-		}
-		return next.Create(ctx, keep...)
-	})
-}
-
-// newEntOnDB 在给定 *sql.DB 上建 Ent 客户端并迁移 ceoboard schema。
-func newEntOnDB(t *testing.T, db *sql.DB) *ent.Client {
-	t.Helper()
-	client := ent.NewClient(ent.Driver(entsql.OpenDB(dialect.SQLite, db)))
-	if err := client.Schema.Create(context.Background(), sqlschema.WithHooks(ceoboardOnly)); err != nil {
-		db.Close()
-		t.Fatalf("建测试 schema: %v", err)
-	}
-	return client
-}
 
 // openTest 打开独立内存库(每测试唯一命名,shared-cache 不串测试)。
 func openTest(t *testing.T) *Store {
 	t.Helper()
-	s, _ := openTestWithDB(t)
-	return s
+	client, _ := storetest.Open(t)
+	return New(client, nil)
 }
 
 // openTestWithDB 同 openTest,但返回原始 *sql.DB(模拟"DB 宕机"用)。
 func openTestWithDB(t *testing.T) (*Store, *sql.DB) {
 	t.Helper()
-	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared&_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)",
-		url.PathEscape(t.Name()))
-	db, err := sql.Open("sqlite", dsn)
-	if err != nil {
-		t.Fatal(err)
-	}
-	client := newEntOnDB(t, db)
-	t.Cleanup(func() { client.Close(); db.Close() })
+	client, db := storetest.Open(t)
 	return New(client, nil), db
 }
 
 // openFileStore 打开文件库(WAL;并发/锁行为测试用),返回原始 *sql.DB 供
-// 模拟"DB 宕机"(Close)或外部写锁。
+// 模拟"DB 宕机"(Close)或外部写锁。Ent 客户端经 s.client 由调用方关闭。
 func openFileStore(t *testing.T, path string) (*Store, *sql.DB) {
 	t.Helper()
-	dsn := fmt.Sprintf("file:%s?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)", path)
-	db, err := sql.Open("sqlite", dsn)
-	if err != nil {
-		t.Fatal(err)
-	}
-	client := newEntOnDB(t, db)
+	client, db := storetest.OpenFile(t, path)
 	return New(client, db), db
 }
 

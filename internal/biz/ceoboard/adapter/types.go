@@ -3,7 +3,8 @@
 // 统一限流(每平台 QPS 池)与失败隔离(工作流×节点×适配器实例粒度)。
 //
 // 本文件只放跨适配器共享的类型常量与运行态视图(agg 依赖面);
-// 各适配器实现(Poller/WebhookReceiver/NATSManager/TokenProvider)在 P2-6 落地。
+// 各适配器实现:restpoll.go(Poller)、webhookrecv.go(WebhookReceiver)、
+// natsjs.go(NATSManager)、authtoken.go(TokenProvider)、outbox.go(进程内直投)。
 package adapter
 
 import (

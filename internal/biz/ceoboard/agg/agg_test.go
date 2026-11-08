@@ -32,7 +32,7 @@ type fakeReceiver struct {
 	counts map[string]int // source|event → 24h 计数(测试按窗口直接给)
 }
 
-func (f *fakeReceiver) CountSince(source, event string, since time.Time) int {
+func (f *fakeReceiver) CountSince(_ context.Context, source, event string, since time.Time) int {
 	if f.counts == nil {
 		return 0
 	}
