@@ -4,6 +4,7 @@
 package agg
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"testing"
@@ -97,7 +98,8 @@ func TestLatency_MaterializeMatchesHandCalc(t *testing.T) {
 	insertPairEvent(t, st, "b-orphan", "trade.order", "sig-orphan", base, base)
 
 	mat := NewLatencyMaterializer(reg, st, latencyPlatforms(), nil)
-	n, notes := mat.MaterializeOnce(time.Now())
+	ctx := context.Background()
+	n, notes := mat.MaterializeOnce(ctx, time.Now())
 	if len(notes) != 0 {
 		t.Fatalf("意外跳过: %v", notes)
 	}
@@ -105,11 +107,11 @@ func TestLatency_MaterializeMatchesHandCalc(t *testing.T) {
 		t.Fatalf("首轮应产出 5 条样本,实得 %d", n)
 	}
 	// 幂等:同窗重跑 0 新增
-	if n2, _ := mat.MaterializeOnce(time.Now()); n2 != 0 {
+	if n2, _ := mat.MaterializeOnce(ctx, time.Now()); n2 != 0 {
 		t.Fatalf("重复物化应幂等,实得新增 %d", n2)
 	}
 
-	samples, err := st.LatencyWindow("m.b2b3.lead", time.Now().Add(-time.Hour))
+	samples, err := st.LatencyWindow(ctx, "m.b2b3.lead", time.Now().Add(-time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -128,7 +130,7 @@ func TestLatency_MaterializeMatchesHandCalc(t *testing.T) {
 	ag := &Aggregator{Reg: reg, Store: st, Poller: &fakePoller{},
 		Receiver: &fakeReceiver{}, Cfg: &Config{NATSPlatforms: latencyPlatforms()}, Tracker: NewDurationTracker(), StaleDef: 90 * time.Second}
 	wf := reg.Get("wf.latency-test")
-	mv, _ := ag.evalMetric(wf, &wf.Nodes[1], &wf.Nodes[1].Metrics[0], nil, false, time.Now())
+	mv, _ := ag.evalMetric(ctx, wf, &wf.Nodes[1], &wf.Nodes[1].Metrics[0], nil, false, time.Now())
 	if mv.Value == nil || *mv.Value != 300 {
 		t.Fatalf("evalMetric 值 = %v, 期望 300", mv.Value)
 	}
@@ -157,14 +159,14 @@ func TestLatency_PairingRules(t *testing.T) {
 	insertPairEvent(t, st, "b-late", "trade.order", "sig-late", base, base)
 	insertPairEvent(t, st, "a-late", "strategy.signal.updated", "sig-late", base.Add(time.Second), base.Add(time.Second))
 
-	n, notes := mat.MaterializeOnce(time.Now())
+	n, notes := mat.MaterializeOnce(context.Background(), time.Now())
 	if len(notes) != 0 {
 		t.Fatalf("意外跳过: %v", notes)
 	}
 	if n != 2 {
 		t.Fatalf("应产出 2 条样本(sig-near/sig-noocc),实得 %d", n)
 	}
-	samples, err := st.LatencyWindow("m.b2b3.lead", time.Now().Add(-time.Hour))
+	samples, err := st.LatencyWindow(context.Background(), "m.b2b3.lead", time.Now().Add(-time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -219,7 +221,7 @@ nodes:
 	insertPairEvent(t, st, "b1", "trade.order", "sig-1", base.Add(time.Second), base.Add(time.Second))
 
 	mat := NewLatencyMaterializer(reg, st, latencyPlatforms(), nil)
-	n, notes := mat.MaterializeOnce(time.Now())
+	n, notes := mat.MaterializeOnce(context.Background(), time.Now())
 	if n != 0 {
 		t.Fatalf("join 失配不应产出样本,实得 %d", n)
 	}

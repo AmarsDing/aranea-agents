@@ -29,9 +29,9 @@ import (
 // LatencyStore 是物化器对事件存储的依赖面(P2-5 由 Ent 仓储实现)。
 type LatencyStore interface {
 	// ListPairEvents 取配对候选(entity_id 非空,received_at >= since,升序,上限由实现封顶)。
-	ListPairEvents(platform, subjectKey string, since time.Time) ([]store.PairEvent, error)
+	ListPairEvents(ctx context.Context, platform, subjectKey string, since time.Time) ([]store.PairEvent, error)
 	// UpsertLatencySample 幂等写入(同 metric_id+b_uid 重复忽略);返回 true 表示新插入。
-	UpsertLatencySample(sm *store.LatencySample) (bool, error)
+	UpsertLatencySample(ctx context.Context, sm *store.LatencySample) (bool, error)
 }
 
 // LatencyMaterializer 周期把事件表配对成延迟样本。
@@ -100,7 +100,7 @@ func (m *LatencyMaterializer) resolveRef(wf *registry.Workflow, ref *latencyRef)
 
 // MaterializeOnce 跑一轮配对(幂等;可手工调用做验证)。
 // 返回 (产出样本数, 跳过原因列表)。
-func (m *LatencyMaterializer) MaterializeOnce(now time.Time) (int, []string) {
+func (m *LatencyMaterializer) MaterializeOnce(ctx context.Context, now time.Time) (int, []string) {
 	produced := 0
 	var notes []string
 	if m.st == nil {
@@ -139,7 +139,7 @@ func (m *LatencyMaterializer) MaterializeOnce(now time.Time) (int, []string) {
 				if mismatch {
 					continue
 				}
-				n2, err := m.pairMetric(mt.ID, refs[0], refs[1], now)
+				n2, err := m.pairMetric(ctx, mt.ID, refs[0], refs[1], now)
 				if err != nil {
 					notes = append(notes, fmt.Sprintf("%s: %v", mt.ID, err))
 					continue
@@ -152,14 +152,14 @@ func (m *LatencyMaterializer) MaterializeOnce(now time.Time) (int, []string) {
 }
 
 // pairMetric 配对单个指标:A/B 两侧各取窗口候选,同 entity 配对,B 侧幂等落样本。
-func (m *LatencyMaterializer) pairMetric(metricID string, a, b latencyRef, now time.Time) (int, error) {
+func (m *LatencyMaterializer) pairMetric(ctx context.Context, metricID string, a, b latencyRef, now time.Time) (int, error) {
 	// 配对搜索窗:覆盖长尾(24h);样本按 B.At 落窗,查询侧再按指标 window 过滤
 	since := now.Add(-24 * time.Hour)
-	as, err := m.st.ListPairEvents(a.platform, a.subjectKey, since)
+	as, err := m.st.ListPairEvents(ctx, a.platform, a.subjectKey, since)
 	if err != nil {
 		return 0, fmt.Errorf("A 侧取数: %w", err)
 	}
-	bs, err := m.st.ListPairEvents(b.platform, b.subjectKey, since)
+	bs, err := m.st.ListPairEvents(ctx, b.platform, b.subjectKey, since)
 	if err != nil {
 		return 0, fmt.Errorf("B 侧取数: %w", err)
 	}
@@ -189,7 +189,7 @@ func (m *LatencyMaterializer) pairMetric(metricID string, a, b latencyRef, now t
 		if lat < 0 {
 			continue
 		}
-		new, err := m.st.UpsertLatencySample(&store.LatencySample{
+		new, err := m.st.UpsertLatencySample(ctx, &store.LatencySample{
 			MetricID: metricID, BUID: bev.UID, AUID: best.UID,
 			EntityID: bev.EntityID, LatencyMs: lat, At: bev.At,
 		})
@@ -212,7 +212,7 @@ func (m *LatencyMaterializer) RunLoop(ctx context.Context, interval time.Duratio
 		case <-ctx.Done():
 			return
 		case <-t.C:
-			n, notes := m.MaterializeOnce(time.Now())
+			n, notes := m.MaterializeOnce(ctx, time.Now())
 			if m.log == nil {
 				continue
 			}

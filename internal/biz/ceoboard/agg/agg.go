@@ -8,6 +8,7 @@
 package agg
 
 import (
+	"context"
 	"fmt"
 	"regexp"
 	"sort"
@@ -86,11 +87,11 @@ type NATSQuerier interface {
 // EventReadStore 是 agg 对事件存储的只读依赖面(P2-5 由 Ent 仓储实现)。
 type EventReadStore interface {
 	// RecentDeliveries 取某源最近投递(按时间倒序,limit 封顶)。
-	RecentDeliveries(source string, limit int) ([]store.Delivery, error)
+	RecentDeliveries(ctx context.Context, source string, limit int) ([]store.Delivery, error)
 	// CountEvents 统计窗口内某平台某 subject_key 的事件数。
-	CountEvents(platform, subjectKey string, since time.Time) (int, error)
+	CountEvents(ctx context.Context, platform, subjectKey string, since time.Time) (int, error)
 	// LatencyWindow 取窗口内某指标的延迟样本毫秒列(供 p50/p95)。
-	LatencyWindow(metricID string, since time.Time) ([]int64, error)
+	LatencyWindow(ctx context.Context, metricID string, since time.Time) ([]int64, error)
 }
 
 // ---------- 视图模型(service 层映射到 proto;json tag 保留原系统线形供双跑对比) ----------
@@ -249,7 +250,7 @@ const alertDedupWindow = 30 * time.Minute
 var laneOrder = []string{"content", "ecommerce", "invest", "platform"}
 
 // Build 生成一次总览快照。
-func (a *Aggregator) Build(now time.Time) *Overview {
+func (a *Aggregator) Build(ctx context.Context, now time.Time) *Overview {
 	ov := &Overview{AsOf: now, Platforms: []PlatformView{}, Lanes: []LaneView{}}
 	alerts := []AlertView{}
 
@@ -276,11 +277,11 @@ func (a *Aggregator) Build(now time.Time) *Overview {
 			worst = HealthGreen
 		}
 		for i := range wf.Nodes {
-			nv, nAlerts := a.evalNode(wf, &wf.Nodes[i], now)
+			nv, nAlerts := a.evalNode(ctx, wf, &wf.Nodes[i], now)
 			alerts = append(alerts, nAlerts...)
 			nvAlerts := len(nAlerts)
 			wv.Alerts += nvAlerts
-			volume[wf.ID] += a.nodeVolume1h(wf, &wf.Nodes[i], now)
+			volume[wf.ID] += a.nodeVolume1h(ctx, wf, &wf.Nodes[i], now)
 			if healthRank(nv.Health) < healthRank(worst) {
 				worst = nv.Health
 			}
@@ -381,7 +382,7 @@ func (a *Aggregator) evalPlatform(p Platform, now time.Time) PlatformView {
 }
 
 // evalNode 评估单节点健康与指标。
-func (a *Aggregator) evalNode(wf *registry.Workflow, n *registry.Node, now time.Time) (NodeView, []AlertView) {
+func (a *Aggregator) evalNode(ctx context.Context, wf *registry.Workflow, n *registry.Node, now time.Time) (NodeView, []AlertView) {
 	nv := NodeView{ID: n.ID, Name: n.Name, Order: n.Order, Health: HealthGray, Metrics: []MetricView{}, Drill: []DrillView{}}
 	var alerts []AlertView
 
@@ -397,12 +398,12 @@ func (a *Aggregator) evalNode(wf *registry.Workflow, n *registry.Node, now time.
 		nv.Health, nv.Reason = HealthGray, "适配器未接入(P2)"
 		nv.Source = &SourceView{Adapter: src.Adapter, Unwired: true}
 	default:
-		nv.Health, nv.Reason, probeAlive, alerts = a.evalSource(wf, n, &nv, now)
+		nv.Health, nv.Reason, probeAlive, alerts = a.evalSource(ctx, wf, n, &nv, now)
 	}
 
 	// 指标求值(事件类走 store,轮询类走 Poller;算不出的一律 note 说明,不假装)
 	for i := range n.Metrics {
-		mv, mAlerts := a.evalMetric(wf, n, &n.Metrics[i], nv.Source, probeAlive, now)
+		mv, mAlerts := a.evalMetric(ctx, wf, n, &n.Metrics[i], nv.Source, probeAlive, now)
 		alerts = append(alerts, mAlerts...)
 		nv.Metrics = append(nv.Metrics, mv)
 	}
@@ -415,7 +416,7 @@ func (a *Aggregator) evalNode(wf *registry.Workflow, n *registry.Node, now time.
 
 // evalSource 评估节点数据源健康(双轨:事件侧 event / 对账侧 reconcile;冲突时健康度以对账为准)。
 // 返回 (健康度, 原因, 探针是否活, 告警);并填充 nv.Source。
-func (a *Aggregator) evalSource(wf *registry.Workflow, n *registry.Node, nv *NodeView, now time.Time) (string, string, bool, []AlertView) {
+func (a *Aggregator) evalSource(ctx context.Context, wf *registry.Workflow, n *registry.Node, nv *NodeView, now time.Time) (string, string, bool, []AlertView) {
 	src := n.Source
 	stale := a.StaleDef
 	if wf.Probe != nil && wf.Probe.StaleAfter.D() > 0 {
@@ -471,7 +472,7 @@ func (a *Aggregator) evalSource(wf *registry.Workflow, n *registry.Node, nv *Nod
 		cnt := a.Receiver.CountSince(webhookSourceOf(n), "", now.Add(-24*time.Hour))
 		sv.MsgCount = int64(cnt)
 		evOK = true // 接收端常驻;不代表源可达(无对账时按流量分级)
-		if last := a.lastDeliveryAt(webhookSourceOf(n)); !last.IsZero() {
+		if last := a.lastDeliveryAt(ctx, webhookSourceOf(n)); !last.IsZero() {
 			t := last
 			sv.LastEventAt = &t
 		}
@@ -584,11 +585,11 @@ func pollReason(sv *SourceView, recHealth string) string {
 }
 
 // lastDeliveryAt 取某源最近一次成功投递时间。
-func (a *Aggregator) lastDeliveryAt(source string) time.Time {
+func (a *Aggregator) lastDeliveryAt(ctx context.Context, source string) time.Time {
 	if a.Store == nil {
 		return time.Time{}
 	}
-	ds, err := a.Store.RecentDeliveries(source, 1)
+	ds, err := a.Store.RecentDeliveries(ctx, source, 1)
 	if err != nil || len(ds) == 0 {
 		return time.Time{}
 	}
@@ -612,7 +613,7 @@ func (a *Aggregator) PlatformOfNodePublic(endpoint string) string {
 }
 
 // evalMetric 评估单指标;返回视图与该指标应产生的告警(持续阈值只在跃迁/续报时产生)。
-func (a *Aggregator) evalMetric(wf *registry.Workflow, n *registry.Node, m *registry.Metric, src *SourceView, probeAlive bool, now time.Time) (MetricView, []AlertView) {
+func (a *Aggregator) evalMetric(ctx context.Context, wf *registry.Workflow, n *registry.Node, m *registry.Metric, src *SourceView, probeAlive bool, now time.Time) (MetricView, []AlertView) {
 	mv := MetricView{ID: m.ID, Unit: m.Unit, Window: m.Window, Health: HealthGray}
 	if m.Pending != "" {
 		mv.Pending = true
@@ -632,7 +633,7 @@ func (a *Aggregator) evalMetric(wf *registry.Workflow, n *registry.Node, m *regi
 			mv.Note = "store 未接线"
 			return mv, nil
 		}
-		samples, err := a.Store.LatencyWindow(m.ID, now.Add(-win))
+		samples, err := a.Store.LatencyWindow(ctx, m.ID, now.Add(-win))
 		if err != nil || len(samples) == 0 {
 			mv.Display = "—"
 			mv.Note = "窗口内无配对样本(事件侧无流量或关联键缺失)"
@@ -658,7 +659,7 @@ func (a *Aggregator) evalMetric(wf *registry.Workflow, n *registry.Node, m *regi
 			mv.Origin = "reconcile"
 		}
 	case expr == "count(enter)" || expr == "count(exit)":
-		v, note, ok := a.countEnterExit(wf, n, expr == "count(enter)", now, win)
+		v, note, ok := a.countEnterExit(ctx, wf, n, expr == "count(enter)", now, win)
 		if !ok {
 			mv.Display = "—"
 			mv.Note = note
@@ -674,7 +675,7 @@ func (a *Aggregator) evalMetric(wf *registry.Workflow, n *registry.Node, m *regi
 			mv.Note = "subject 字面量解析失败"
 			return mv, nil
 		}
-		v, ok := a.countSubject(wf, n, subj, now, win)
+		v, ok := a.countSubject(ctx, wf, n, subj, now, win)
 		if !ok {
 			mv.Display = "—"
 			mv.Note = "事件侧未接线或无事件流"
@@ -689,8 +690,8 @@ func (a *Aggregator) evalMetric(wf *registry.Workflow, n *registry.Node, m *regi
 			mv.Note = "ratio 表达式不支持(仅支持 ratio(count,count))"
 			return mv, nil
 		}
-		num, nOK, nOrigin := a.countOperand(wf, n, sub[0], items, now, win)
-		den, dOK, dOrigin := a.countOperand(wf, n, sub[1], items, now, win)
+		num, nOK, nOrigin := a.countOperand(ctx, wf, n, sub[0], items, now, win)
+		den, dOK, dOrigin := a.countOperand(ctx, wf, n, sub[1], items, now, win)
 		if !nOK || !dOK {
 			mv.Display = "—"
 			mv.Note = "无数据(事件侧未接线或无轮询数据)"
@@ -725,7 +726,7 @@ func (a *Aggregator) evalMetric(wf *registry.Workflow, n *registry.Node, m *regi
 
 	if mv.Value != nil {
 		mv.Display = fmt.Sprintf("%s%s", strconv.FormatFloat(*mv.Value, 'f', -1, 64), unitSuffix(m.Unit))
-		health, alerts := a.applyThresholds(wf, n, m, *mv.Value, probeAlive, now)
+		health, alerts := a.applyThresholds(ctx, wf, n, m, *mv.Value, probeAlive, now)
 		mv.Health = health
 		return mv, alerts
 	}
@@ -736,7 +737,7 @@ func (a *Aggregator) evalMetric(wf *registry.Workflow, n *registry.Node, m *regi
 }
 
 // applyThresholds 应用阈值(即时/持续);持续阈值经 DurationTracker 判定,告警按 30m 去重。
-func (a *Aggregator) applyThresholds(wf *registry.Workflow, n *registry.Node, m *registry.Metric, v float64, probeAlive bool, now time.Time) (string, []AlertView) {
+func (a *Aggregator) applyThresholds(ctx context.Context, wf *registry.Workflow, n *registry.Node, m *registry.Metric, v float64, probeAlive bool, now time.Time) (string, []AlertView) {
 	if m.Thresholds == nil {
 		return HealthGreen, nil
 	}
@@ -769,7 +770,7 @@ func (a *Aggregator) applyThresholds(wf *registry.Workflow, n *registry.Node, m 
 		}
 		// 持续阈值
 		key := wf.ID + "/" + n.ID + "/" + m.ID + "/" + level
-		hold := a.historicalHold(wf, n, m, te, now)
+		hold := a.historicalHold(ctx, wf, n, m, te, now)
 		res := a.Tracker.Eval(key, now, cond, te.Dur, alertDedupWindow, hold)
 		if res.Firing {
 			var alerts []AlertView
@@ -789,7 +790,7 @@ func (a *Aggregator) applyThresholds(wf *registry.Workflow, n *registry.Node, m 
 
 // historicalHold 判定"过去 te.Dur 内条件一直成立"(重启后无 30m 盲区)。
 // 仅支持 =0 / <1 类 count 条件(窗口内任意一条匹配事件即违背);且事件侧须已覆盖整个窗口。
-func (a *Aggregator) historicalHold(wf *registry.Workflow, n *registry.Node, m *registry.Metric, te ThreshExpr, now time.Time) bool {
+func (a *Aggregator) historicalHold(ctx context.Context, wf *registry.Workflow, n *registry.Node, m *registry.Metric, te ThreshExpr, now time.Time) bool {
 	if a.Store == nil || a.NATS == nil {
 		return false
 	}
@@ -808,7 +809,7 @@ func (a *Aggregator) historicalHold(wf *registry.Workflow, n *registry.Node, m *
 	if platform == "" {
 		return false
 	}
-	cnt, err := a.Store.CountEvents(platform, subj, now.Add(-te.Dur))
+	cnt, err := a.Store.CountEvents(ctx, platform, subj, now.Add(-te.Dur))
 	return err == nil && cnt == 0
 }
 
@@ -859,7 +860,7 @@ func parseSubjectLit(expr string) string {
 }
 
 // countEnterExit 计算 count(enter)/count(exit):webhook 节点走投递表,nats/hybrid 走事件表。
-func (a *Aggregator) countEnterExit(wf *registry.Workflow, n *registry.Node, enter bool, now time.Time, win time.Duration) (float64, string, bool) {
+func (a *Aggregator) countEnterExit(ctx context.Context, wf *registry.Workflow, n *registry.Node, enter bool, now time.Time, win time.Duration) (float64, string, bool) {
 	if n.Source == nil {
 		return 0, "无数据源声明", false
 	}
@@ -883,7 +884,7 @@ func (a *Aggregator) countEnterExit(wf *registry.Workflow, n *registry.Node, ent
 	if !ok {
 		return 0, "enter/exit 非 event(subject=...) 形,不可计数", false
 	}
-	v, ok := a.countSubject(wf, n, subj, now, win)
+	v, ok := a.countSubject(ctx, wf, n, subj, now, win)
 	if !ok {
 		return 0, "事件侧未接线", false
 	}
@@ -891,7 +892,7 @@ func (a *Aggregator) countEnterExit(wf *registry.Workflow, n *registry.Node, ent
 }
 
 // countSubject 统计窗口内某 subject_key 的事件数(平台由 endpoint 映射)。
-func (a *Aggregator) countSubject(wf *registry.Workflow, n *registry.Node, subjectKey string, now time.Time, win time.Duration) (float64, bool) {
+func (a *Aggregator) countSubject(ctx context.Context, wf *registry.Workflow, n *registry.Node, subjectKey string, now time.Time, win time.Duration) (float64, bool) {
 	if a.Store == nil {
 		return 0, false
 	}
@@ -899,7 +900,7 @@ func (a *Aggregator) countSubject(wf *registry.Workflow, n *registry.Node, subje
 	if platform == "" {
 		return 0, false
 	}
-	cnt, err := a.Store.CountEvents(platform, subjectKey, now.Add(-win))
+	cnt, err := a.Store.CountEvents(ctx, platform, subjectKey, now.Add(-win))
 	if err != nil {
 		return 0, false
 	}
@@ -907,28 +908,28 @@ func (a *Aggregator) countSubject(wf *registry.Workflow, n *registry.Node, subje
 }
 
 // countOperand 计算 ratio 的单个 count 操作数;返回 (值, 是否可算, 来源 origin)。
-func (a *Aggregator) countOperand(wf *registry.Workflow, n *registry.Node, operand string, items []map[string]any, now time.Time, win time.Duration) (float64, bool, string) {
+func (a *Aggregator) countOperand(ctx context.Context, wf *registry.Workflow, n *registry.Node, operand string, items []map[string]any, now time.Time, win time.Duration) (float64, bool, string) {
 	op := strings.TrimSpace(operand)
 	switch {
 	case op == "count(enter)":
-		v, _, ok := a.countEnterExit(wf, n, true, now, win)
+		v, _, ok := a.countEnterExit(ctx, wf, n, true, now, win)
 		return v, ok, "event"
 	case op == "count(exit)":
-		v, _, ok := a.countEnterExit(wf, n, false, now, win)
+		v, _, ok := a.countEnterExit(ctx, wf, n, false, now, win)
 		return v, ok, "event"
 	case strings.HasPrefix(op, "count(branch."):
 		subj, ok := countSubjectOf(n, op)
 		if !ok {
 			return 0, false, ""
 		}
-		v, ok := a.countSubject(wf, n, subj, now, win)
+		v, ok := a.countSubject(ctx, wf, n, subj, now, win)
 		return v, ok, "event"
 	case strings.HasPrefix(op, "count(subject="):
 		subj := parseSubjectLit(op)
 		if subj == "" {
 			return 0, false, ""
 		}
-		v, ok := a.countSubject(wf, n, subj, now, win)
+		v, ok := a.countSubject(ctx, wf, n, subj, now, win)
 		return v, ok, "event"
 	case strings.HasPrefix(op, "count("):
 		if items == nil {
@@ -1024,7 +1025,7 @@ func splitTopLevelRatio(expr string) []string {
 }
 
 // nodeVolume1h 业务量:webhook 投递 + nats 事件近 1h 计数;纯轮询节点计 0。
-func (a *Aggregator) nodeVolume1h(wf *registry.Workflow, n *registry.Node, now time.Time) int {
+func (a *Aggregator) nodeVolume1h(ctx context.Context, wf *registry.Workflow, n *registry.Node, now time.Time) int {
 	if n.Source == nil {
 		return 0
 	}
@@ -1041,7 +1042,7 @@ func (a *Aggregator) nodeVolume1h(wf *registry.Workflow, n *registry.Node, now t
 		}
 		total := 0
 		for _, s := range n.Source.Subjects {
-			cnt, err := a.Store.CountEvents(platform, adapter.SubjectKey(s), now.Add(-time.Hour))
+			cnt, err := a.Store.CountEvents(ctx, platform, adapter.SubjectKey(s), now.Add(-time.Hour))
 			if err == nil {
 				total += cnt
 			}

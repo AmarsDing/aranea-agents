@@ -5,6 +5,7 @@
 package agg
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"sort"
@@ -55,7 +56,7 @@ func (f *fakeStore) insertEvent(ev store.Event) {
 	f.events = append(f.events, ev)
 }
 
-func (f *fakeStore) RecentDeliveries(source string, limit int) ([]store.Delivery, error) {
+func (f *fakeStore) RecentDeliveries(_ context.Context, source string, limit int) ([]store.Delivery, error) {
 	out := []store.Delivery{}
 	for i := len(f.deliveries) - 1; i >= 0 && len(out) < limit; i-- {
 		if f.deliveries[i].Source == source {
@@ -65,7 +66,7 @@ func (f *fakeStore) RecentDeliveries(source string, limit int) ([]store.Delivery
 	return out, nil
 }
 
-func (f *fakeStore) CountEvents(platform, subjectKey string, since time.Time) (int, error) {
+func (f *fakeStore) CountEvents(_ context.Context, platform, subjectKey string, since time.Time) (int, error) {
 	n := 0
 	for _, e := range f.events {
 		if e.Platform == platform && e.SubjectKey == subjectKey && !e.ReceivedAt.Before(since) {
@@ -75,7 +76,7 @@ func (f *fakeStore) CountEvents(platform, subjectKey string, since time.Time) (i
 	return n, nil
 }
 
-func (f *fakeStore) LatencyWindow(metricID string, since time.Time) ([]int64, error) {
+func (f *fakeStore) LatencyWindow(_ context.Context, metricID string, since time.Time) ([]int64, error) {
 	out := []int64{}
 	for _, s := range f.samples {
 		if s.MetricID == metricID && !s.At.Before(since) {
@@ -85,7 +86,7 @@ func (f *fakeStore) LatencyWindow(metricID string, since time.Time) ([]int64, er
 	return out, nil
 }
 
-func (f *fakeStore) ListPairEvents(platform, subjectKey string, since time.Time) ([]store.PairEvent, error) {
+func (f *fakeStore) ListPairEvents(_ context.Context, platform, subjectKey string, since time.Time) ([]store.PairEvent, error) {
 	out := []store.PairEvent{}
 	for _, e := range f.events {
 		if e.Platform != platform || e.SubjectKey != subjectKey || e.EntityID == "" || e.ReceivedAt.Before(since) {
@@ -104,7 +105,7 @@ func (f *fakeStore) ListPairEvents(platform, subjectKey string, since time.Time)
 	return out, nil
 }
 
-func (f *fakeStore) UpsertLatencySample(sm *store.LatencySample) (bool, error) {
+func (f *fakeStore) UpsertLatencySample(_ context.Context, sm *store.LatencySample) (bool, error) {
 	k := sm.MetricID + "\x00" + sm.BUID
 	if _, ok := f.samples[k]; ok {
 		return false, nil
@@ -156,7 +157,7 @@ nodes:
 
 	ag := &Aggregator{Reg: reg, Rep: registry.NewReportHolder(rep), Poller: p, Receiver: &fakeReceiver{},
 		Cfg: &Config{}, StaleDef: 90 * time.Second}
-	ov := ag.Build(time.Now())
+	ov := ag.Build(context.Background(), time.Now())
 
 	if len(ov.Lanes) != 2 {
 		t.Fatalf("lanes=%d", len(ov.Lanes))
@@ -206,7 +207,7 @@ nodes:
 	reg, rep, _ := registry.LoadDir(dir)
 	ag := &Aggregator{Reg: reg, Rep: registry.NewReportHolder(rep), Poller: &fakePoller{},
 		Receiver: &fakeReceiver{}, Cfg: &Config{}, StaleDef: 90 * time.Second}
-	ov := ag.Build(time.Now())
+	ov := ag.Build(context.Background(), time.Now())
 	nodes := ov.Lanes[0].Workflows[0].Nodes
 	if nodes[0].Health != HealthGray || nodes[0].Reason != "数据未接通(声明待补)" {
 		t.Fatalf("待补节点状态错误: %+v", nodes[0])
