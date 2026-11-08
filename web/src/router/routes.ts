@@ -8,6 +8,8 @@ import AgentSettingsPage from '../pages/AgentSettingsPage.vue';
 import MonitorPage from '../pages/MonitorPage.vue';
 import OverviewPage from '../pages/OverviewPage.vue';
 import WorkbenchCockpitPage from '../pages/WorkbenchCockpitPage.vue';
+import CeoOverviewPage from '../pages/CeoOverviewPage.vue';
+import CeoOncallPage from '../pages/CeoOncallPage.vue';
 import UsageEventsPage from '../pages/UsageEventsPage.vue';
 import ResourceManagerPage from '../pages/ResourceManagerPage.vue';
 import OrganizationPage from '../pages/OrganizationPage.vue';
@@ -111,6 +113,8 @@ export const routes: RouteRecordRaw[] = [
       { path: '', redirect: '/overview' },
       { path: 'overview', name: 'overview', component: OverviewPage },
       { path: 'workbench', name: 'workbench', component: WorkbenchCockpitPage },
+      { path: 'ceo/overview', name: 'ceo-overview', component: CeoOverviewPage },
+      { path: 'ceo/oncall', name: 'ceo-oncall', component: CeoOncallPage },
       { path: 'ecommerce-loop', name: 'ecommerce-loop', component: () => import('../pages/EcommerceLoopPage.vue') },
       { path: 'content-inbox', name: 'content-inbox', component: ContentInboxPage },
       { path: 'review-queue', name: 'review-queue', component: ReviewQueuePage },

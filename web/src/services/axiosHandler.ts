@@ -216,11 +216,13 @@ export function requestHandler({ path, method, body }: Request, meta?: RequestMe
   }
   // CreateAgent：内联字段错误自呈现；SelfImprovementService：页面经
   // featureDisabled 空态 / 错误横幅 / notifyError 全量自呈现（含 503 功能
-  // 未启用结构化信号），全局 toast 均属重复。
+  // 未启用结构化信号），全局 toast 均属重复；CeoboardService：15s 轮询 +
+  // 抽屉降级全部由页面 banner 自呈现（整合 P2-8），全局 toast 会每 15s 重复骚扰。
   const skipErrorNotify =
     (meta?.skipErrorNotify ?? meta?.method === 'CreateAgent') ||
     meta?.method === 'EnqueueUserMessage' ||
     meta?.service === 'SelfImprovementService' ||
+    meta?.service === 'CeoboardService' ||
     isSelfPresentedToolWrite(meta) ||
     isSelfPresentedChannelWrite(meta);
   const urlPath = '/' + path.replace(/^\//, '');

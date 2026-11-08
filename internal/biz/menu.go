@@ -48,6 +48,9 @@ const (
 	permSystemCron    = "system.cron"    // /cron
 	permSystemMonitor = "system.monitor" // /monitor/logs
 	permSystemSetting = "system.setting" // /settings
+	// P2-8：经营驾驶舱两页。ceoboard.view 已在内置角色矩阵（pkg/auth/permissions.go：
+	// ceo 经 ceoboard.* 通配授予，oncall/viewer 显式授予），打码不收紧可见性。
+	permCeoboardView = "ceoboard.view" // /ceo/overview、/ceo/oncall
 )
 
 // NavigationCatalog 返回侧栏菜单目录（显示顺序即数组顺序）。
@@ -59,6 +62,8 @@ func NavigationCatalog() []MenuGroup {
 			Items: []MenuEntry{
 				{Key: "overview", Path: "/overview", Icon: "dashboard", LabelKey: "menu.overview"},
 				{Key: "cockpit", Path: "/workbench", Icon: "track_changes", LabelKey: "menu.cockpit"},
+				{Key: "ceoOverview", Path: "/ceo/overview", Icon: "monitoring", LabelKey: "menu.ceoOverview", Permission: permCeoboardView},
+				{Key: "ceoOncall", Path: "/ceo/oncall", Icon: "engineering", LabelKey: "menu.ceoOncall", Permission: permCeoboardView},
 				{Key: "taskWorkspace", Path: "/task-workspace", Icon: "view_quilt", LabelKey: "menu.taskWorkspace"},
 				{Key: "usageEvents", Path: "/usage/events", Icon: "receipt_long", LabelKey: "menu.usageEvents", Permission: permUsageRead},
 				{Key: "chat", Path: "/chat", Icon: "chat", LabelKey: "menu.chat"},
