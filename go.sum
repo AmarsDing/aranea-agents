@@ -808,8 +808,6 @@ trpc.group/trpc-go/trpc-agent-go/model/provider v1.9.0 h1:rMnGaZJGvC0DOxOd78zkPL
 trpc.group/trpc-go/trpc-agent-go/model/provider v1.9.0/go.mod h1:J4UGlMawNN/OlRnAvcQnv6QIiuZj+ehoM5oPyZzLRzI=
 trpc.group/trpc-go/trpc-agent-go/model/tiktoken v1.10.0 h1:CTn/TuKJpRgcQUcUFiGaji/3V/JVLuiB8RoIQ2qEhU4=
 trpc.group/trpc-go/trpc-agent-go/model/tiktoken v1.10.0/go.mod h1:SgExIJ+lBn6iLlPAapOwcKGOpR3OM86e6LZmSR51Z5o=
-trpc.group/trpc-go/trpc-agent-go/openclaw v0.0.1 h1:EaW/WWF/waMPA0VmsimGzT5N0jmQQ3pqExw0kUyoRQc=
-trpc.group/trpc-go/trpc-agent-go/openclaw v0.0.1/go.mod h1:glaew326MZurpuDMYJYW+Z6wddbET+IThbcWpDNJves=
 trpc.group/trpc-go/trpc-agent-go/server/agui v1.11.0 h1:ZPAAPDYcbirj0NjFffNzv9q0kRcH9QyUedr0L95imvQ=
 trpc.group/trpc-go/trpc-agent-go/server/agui v1.11.0/go.mod h1:g+PJqsyPyctAZ3dnoaVp4bx4q1R/524RiBAEgbE0Uso=
 trpc.group/trpc-go/trpc-agent-go/session/postgres v1.11.0 h1:k6a6Sa9i2mjlLVZVmRnYwEFLdQeOsbIXb2aRFCVHxlg=

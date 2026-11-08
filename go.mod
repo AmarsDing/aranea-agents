@@ -77,7 +77,6 @@ require (
 	trpc.group/trpc-go/trpc-agent-go/model/ollama v1.9.0
 	trpc.group/trpc-go/trpc-agent-go/model/provider v1.9.0
 	trpc.group/trpc-go/trpc-agent-go/model/tiktoken v1.10.0
-	trpc.group/trpc-go/trpc-agent-go/openclaw v0.0.1
 	trpc.group/trpc-go/trpc-agent-go/server/agui v1.11.0
 	trpc.group/trpc-go/trpc-agent-go/session/postgres v1.11.0
 	trpc.group/trpc-go/trpc-agent-go/tool/arxivsearch v1.9.0

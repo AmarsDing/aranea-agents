@@ -45,7 +45,9 @@ jobs:
           if echo "$FILES" | grep -q "^web/src/"; then
             AFFECTED_SPECS="$AFFECTED_SPECS openspec/specs/module-cross-reference.md"
           fi
-          if echo "$FILES" | grep -q "^pkg/trpc-agent-go/"; then
+          # 框架出库（2026-11-03）：trpc-agent-go 改为 go.mod 依赖，
+          # vendored pkg/trpc-agent-go 已删除；框架侧变更经 go.mod 版本行体现。
+          if echo "$FILES" | grep -q "^go.mod$"; then
             AFFECTED_SPECS="$AFFECTED_SPECS openspec/specs/architecture-blueprint.md"
             CRITICAL_SPECS="$CRITICAL_SPECS openspec/specs/architecture-blueprint.md"
           fi

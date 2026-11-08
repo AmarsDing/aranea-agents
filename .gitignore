@@ -204,3 +204,6 @@ web/vitest-result.json
 
 # 编译产物误落根部（二进制一律进 bin/，勿提交）
 /admin
+
+# 本地 agent 记忆/工作笔记（不入库）
+.workbuddy/

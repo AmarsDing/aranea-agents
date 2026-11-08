@@ -186,9 +186,26 @@ func comparablePath(path string) (string, error) {
 		return "", err
 	}
 	if resolved, err := filepath.EvalSymlinks(abs); err == nil {
-		abs = resolved
+		return filepath.Clean(resolved), nil
 	}
-	return filepath.Clean(abs), nil
+	// 目标不存在（如工作区内待创建的子路径）：逐层向上解析最深现存
+	// 祖先并拼回尾部，保证与已存在 root 的 EvalSymlinks 结果同基。
+	// 否则 Windows 8.3 短名（如 TEMP 的 ADMINI~2）或 symlink 场景下
+	// 两侧基准不一致，Containment 误判为逃逸（2026-11-08 出库测试暴露）。
+	var tail []string
+	cursor := abs
+	for {
+		parent := filepath.Dir(cursor)
+		if parent == cursor {
+			return filepath.Clean(abs), nil
+		}
+		tail = append([]string{filepath.Base(cursor)}, tail...)
+		if resolved, rerr := filepath.EvalSymlinks(parent); rerr == nil {
+			parts := append([]string{resolved}, tail...)
+			return filepath.Clean(filepath.Join(parts...)), nil
+		}
+		cursor = parent
+	}
 }
 
 func cloneWorkspacePolicy(policy WorkspacePolicy) WorkspacePolicy {

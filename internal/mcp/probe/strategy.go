@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"aranea-agents/internal/mcp/config"
-	"aranea-agents/pkg/outboundguard"
 )
 
 type ProbeMode string
@@ -38,8 +37,16 @@ func (ConnectivityProbe) Probe(_ context.Context, cfg config.ServerConfig) TestR
 	switch cfg.Transport {
 	case config.TransportStdio:
 		return evaluateStdio(cfg)
-	case config.TransportSSE, config.TransportStreamable:
+	case config.TransportSSE:
 		return evaluateHTTP(cfg)
+	case config.TransportStreamable:
+		// 2026-11-03 44 实录：trpc-mcp-go streamable 服务对裸 GET 回 400，
+		// 但真实握手 POST initialize 返回 200。streamable 探针改走 POST initialize。
+		rawURL, timeout, errResult := validateHTTPConfig(cfg)
+		if errResult != nil {
+			return *errResult
+		}
+		return doStreamableInitializeProbe(rawURL, cfg.Headers, newProbeClient(timeout))
 	default:
 		return TestResult{
 			OK:      false,
@@ -89,8 +96,16 @@ func (a *AuthAwareProbe) Probe(ctx context.Context, cfg config.ServerConfig) Tes
 	}
 
 	hasAuth := cfg.Auth.Type != "" || cfg.Auth.APIKey != "" || cfg.Auth.AccessToken != "" || cfg.Auth.RefreshToken != ""
+
+	// 2026-11-03 44 实录：trpc-mcp-go streamable 服务对裸 GET 回 400，
+	// 但真实握手 POST initialize 返回 200。streamable 探针改走 POST initialize。
+	probeFn := doHTTPProbe
+	if cfg.Transport == config.TransportStreamable {
+		probeFn = doStreamableInitializeProbe
+	}
+
 	if !hasAuth {
-		result := doHTTPProbe(rawURL, cfg.Headers, outboundguard.NewClient(timeout))
+		result := probeFn(rawURL, cfg.Headers, newProbeClient(timeout))
 		if result.Status == "auth_required" {
 			result.OK = false
 			result.Status = "auth_required"
@@ -110,7 +125,7 @@ func (a *AuthAwareProbe) Probe(ctx context.Context, cfg config.ServerConfig) Tes
 
 	headers := a.buildAuthHeaders(cfg, token)
 
-	result := doHTTPProbe(rawURL, headers, outboundguard.NewClient(timeout))
+	result := probeFn(rawURL, headers, newProbeClient(timeout))
 	if result.Status == "auth_required" {
 		result.OK = false
 		result.Status = "auth_failed"
@@ -174,9 +189,13 @@ func (f *FullHandshakeProbe) Probe(ctx context.Context, cfg config.ServerConfig)
 	if f.handshake == nil {
 		return TestResult{OK: false, Status: "error", Message: "full_handshake 探针未配置握手能力（服务未注入 HandshakeFunc）"}
 	}
-	inner := f.inner.Probe(ctx, cfg)
-	if !inner.OK {
-		return inner
+	// 2026-11-03 44 实录：streamable 服务对裸 GET 回 400，但真实握手可用。
+	// 跳过 GET 前置探针，直接走 initialize + tools/list。
+	if cfg.Transport != config.TransportStreamable {
+		inner := f.inner.Probe(ctx, cfg)
+		if !inner.OK {
+			return inner
+		}
 	}
 	headers, err := f.inner.resolveHeaders(ctx, cfg)
 	if err != nil {
