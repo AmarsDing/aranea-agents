@@ -41,7 +41,7 @@ export function useChatV2EventHandlers(deps: {
   followUp: { onRunStatusV2: (payload: RunStatusEventPayload) => void };
   applyFromV2RunStatus: (payload: RunStatusEventPayload) => void;
   contextualLoading: {
-    onSpiritNoticeType: (noticeType: string) => void;
+    onSpiritNoticeType: (noticeType: string, meta?: Record<string, unknown>) => void;
     onRunHeartbeat: (payload: HeartbeatEventPayload) => void;
     clearMessage: () => void;
   };
@@ -273,7 +273,7 @@ export function useChatV2EventHandlers(deps: {
       Notify.create({ type: 'negative', message: t('chat.sendFailed'), position: 'top' });
     }
     spiritStore.handleSystemNotice(noticeType, meta);
-    deps.contextualLoading.onSpiritNoticeType(noticeType);
+    deps.contextualLoading.onSpiritNoticeType(noticeType, meta);
   }
 
   /**

@@ -41,7 +41,8 @@ func TestProbe_NotInstalled(t *testing.T) {
 	if level != ProbeNotInstalled {
 		t.Fatalf("level = %s, want not_installed", level)
 	}
-	if detail == "" || strings.Contains(detail, os.Getenv("HOME")) {
+	home := os.Getenv("HOME") // 裸 PowerShell 下 HOME 为空串，Contains(detail,"") 恒真
+	if detail == "" || (home != "" && strings.Contains(detail, home)) {
 		t.Fatalf("detail 应含中文引导且无敏感信息，got %q", detail)
 	}
 }

@@ -124,7 +124,8 @@ func newDispatchTool(svc BridgeService) *dispatchTool { return &dispatchTool{svc
 func (t *dispatchTool) Declaration() *trpctool.Declaration {
 	return &trpctool.Declaration{
 		Name: "dispatch_task",
-		Description: "Dispatch a coding task to an external coding agent (Claude Code / Codex / CodeBuddy) " +
+		Description: "Dispatch a coding task to an external coding agent (any agent registered and enabled in " +
+			"coding tools settings, e.g. Claude Code / Codex / CodeBuddy or an OpenAI-compatible shim) " +
 			"running on a registered local project. Returns immediately with task_id; the task runs in background " +
 			"and its result is announced when finished. If the project name is ambiguous, returns candidates " +
 			"for the user to pick — then re-dispatch with the exact project name.",
@@ -132,7 +133,7 @@ func (t *dispatchTool) Declaration() *trpctool.Declaration {
 			Type:     "object",
 			Required: []string{"agent_key", "project_name", "task"},
 			Properties: map[string]*trpctool.Schema{
-				"agent_key":    {Type: "string", Description: "Registered coding agent key, e.g. claude_code / codex / codebuddy."},
+				"agent_key":    {Type: "string", Description: "Registered coding agent key (must exist and be enabled), e.g. claude_code / codex / codebuddy."},
 				"project_name": {Type: "string", Description: "Registered project name (fuzzy match allowed; exact name avoids ambiguity)."},
 				"task":         {Type: "string", Description: "The coding task description in natural language."},
 			},

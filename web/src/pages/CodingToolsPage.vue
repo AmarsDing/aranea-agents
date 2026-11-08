@@ -26,7 +26,15 @@
         <div class="text-caption text-grey-7">
           注册一个外部编程 CLI（命令行工具），即可在「编码任务」看板中派发只读或改代码任务。
         </div>
-        <q-btn class="q-mt-md" color="primary" rounded unelevated icon="add" label="添加第一个工具" @click="openCreate" />
+        <q-btn
+          class="q-mt-md"
+          color="primary"
+          rounded
+          unelevated
+          icon="add"
+          label="添加第一个工具"
+          @click="openCreate"
+        />
       </q-card-section>
     </q-card>
 
@@ -106,7 +114,15 @@
             <q-item-label v-if="p.description" caption class="text-grey-6">{{ p.description }}</q-item-label>
           </q-item-section>
           <q-item-section side>
-            <q-btn flat dense round icon="delete" color="negative" aria-label="删除项目" @click="confirmDeleteProject(p)" />
+            <q-btn
+              flat
+              dense
+              round
+              icon="delete"
+              color="negative"
+              aria-label="删除项目"
+              @click="confirmDeleteProject(p)"
+            />
           </q-item-section>
         </q-item>
       </q-list>
@@ -122,12 +138,39 @@
           </div>
           <q-btn flat dense round icon="close" aria-label="关闭" @click="editorOpen = false" />
         </q-card-section>
+        <q-card-section v-if="!editingAgent" class="q-pt-none q-pb-sm">
+          <q-btn
+            flat
+            dense
+            color="primary"
+            icon="auto_fix_high"
+            :label="$t('codingTools.shimPresetLabel')"
+            @click="applyBuiltinShimPreset"
+          />
+          <div class="text-caption text-grey-6 q-mt-xs">
+            {{ $t('codingTools.shimPresetHint') }}
+          </div>
+        </q-card-section>
         <q-separator />
         <q-card-section class="mcp-form-scroll">
           <q-form class="app-form-field-grid app-form-field-grid--2col" @submit.prevent="saveAgent">
-            <q-input v-model="form.agentKey" dense outlined label="工具标识 (agentKey) *" :readonly="!!editingAgent" :rules="[(v) => !!v || '必填']" />
+            <q-input
+              v-model="form.agentKey"
+              dense
+              outlined
+              label="工具标识 (agentKey) *"
+              :readonly="!!editingAgent"
+              :rules="[(v) => !!v || '必填']"
+            />
             <q-input v-model="form.displayName" dense outlined label="显示名称" />
-            <q-input v-model="form.command" dense outlined label="命令 (command) *" placeholder="npx" :rules="[(v) => !!v || '必填']" />
+            <q-input
+              v-model="form.command"
+              dense
+              outlined
+              label="命令 (command) *"
+              placeholder="npx"
+              :rules="[(v) => !!v || '必填']"
+            />
             <q-input v-model="form.argsText" dense outlined label="参数 (args)" hint="逗号分隔，例如 acp, --stdio" />
             <q-input v-model="form.iconUrl" dense outlined label="图标 URL" hint="留空时使用工具名首字母占位" />
             <q-select
@@ -155,7 +198,14 @@
             <div class="app-grid-span-full">
               <div class="row items-center justify-between q-mb-sm">
                 <div class="section-label">环境变量</div>
-                <q-btn flat dense color="primary" icon="add" label="添加一行" @click="form.envRows.push({ key: '', value: '', masked: false })" />
+                <q-btn
+                  flat
+                  dense
+                  color="primary"
+                  icon="add"
+                  label="添加一行"
+                  @click="form.envRows.push({ key: '', value: '', masked: false })"
+                />
               </div>
               <div v-for="(row, i) in form.envRows" :key="i" class="row q-gutter-sm items-center q-mb-sm">
                 <q-input v-model="row.key" dense outlined class="col-4" label="键" :readonly="row.masked" />
@@ -193,7 +243,14 @@
         <q-card-section>
           <q-form class="q-gutter-md" @submit.prevent="saveProject">
             <q-input v-model="projectForm.name" dense outlined label="项目名称 *" :rules="[(v) => !!v || '必填']" />
-            <q-input v-model="projectForm.path" dense outlined label="本机路径 *" placeholder="F:\project\demo" :rules="[(v) => !!v || '必填']" />
+            <q-input
+              v-model="projectForm.path"
+              dense
+              outlined
+              label="本机路径 *"
+              placeholder="F:\project\demo"
+              :rules="[(v) => !!v || '必填']"
+            />
             <q-input v-model="projectForm.description" dense outlined type="textarea" autogrow label="描述" />
           </q-form>
         </q-card-section>
@@ -229,7 +286,16 @@
         </q-card-section>
         <q-card-actions align="right" class="q-pa-md">
           <q-btn flat rounded label="取消" @click="tryRunOpen = false" />
-          <q-btn color="primary" rounded unelevated icon="play_arrow" label="开始试跑" :loading="tryRunning" :disable="!tryRunProject" @click="runTryRun" />
+          <q-btn
+            color="primary"
+            rounded
+            unelevated
+            icon="play_arrow"
+            label="开始试跑"
+            :loading="tryRunning"
+            :disable="!tryRunProject"
+            @click="runTryRun"
+          />
         </q-card-actions>
       </q-card>
     </q-dialog>
@@ -322,7 +388,9 @@ const candidates = ref<ProjectCandidate[]>([]);
 // 候选重发时保留上一次派发上下文。
 const pendingDispatch = ref<{ agentKey: string; prompt: string } | null>(null);
 
-const projectOptions = computed(() => projects.value.map((p) => ({ label: `${p.name}（${p.path}）`, value: p.name ?? '' })));
+const projectOptions = computed(() =>
+  projects.value.map((p) => ({ label: `${p.name}（${p.path}）`, value: p.name ?? '' })),
+);
 
 function isMaskedValue(v: string): boolean {
   return v.length > 0 && /^[*•]+$/.test(v);
@@ -335,7 +403,8 @@ async function loadAll(manual = false) {
     const [a, p] = await Promise.all([listCodingAgents(), listCodingProjects()]);
     agents.value = a;
     projects.value = p;
-    if (manual) $q.notify({ type: 'positive', message: `已刷新，共 ${a.length} 个工具、${p.length} 个项目`, timeout: 2000 });
+    if (manual)
+      $q.notify({ type: 'positive', message: `已刷新，共 ${a.length} 个工具、${p.length} 个项目`, timeout: 2000 });
   } catch (err) {
     error.value = err instanceof Error ? err.message : '加载失败';
   } finally {
@@ -365,6 +434,13 @@ function openCreate() {
     enabled: true,
   });
   editorOpen.value = true;
+}
+
+// 内置通用 shim 预设：command=@self 解析为宿主进程自身（admin），配合
+// acp-shim 子命令把任意 OpenAI 兼容端点包成 ACP 工具——新增厂商零代码。
+function applyBuiltinShimPreset() {
+  form.command = '@self';
+  form.argsText = 'acp-shim, --base-url=https://api.example.com/v1, --model=your-model, --api-key-env=OPENAI_API_KEY';
 }
 
 function openEdit(agent: CodingAgent) {

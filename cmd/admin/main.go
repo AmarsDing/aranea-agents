@@ -41,6 +41,11 @@ func init() {
 }
 
 func main() {
+	// 内置通用 ACP shim 子命令（admin acp-shim …）：先于一切初始化拦截，
+	// 纯 stdio 桥进程——不加载配置、不起 HTTP/gRPC 服务。
+	if handled, code := maybeRunACPShim(); handled {
+		os.Exit(code)
+	}
 	// Check --version before flag.Parse to avoid triggering init-time panics (e.g. auth).
 	for _, arg := range os.Args[1:] {
 		if arg == "--version" || arg == "-version" {

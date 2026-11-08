@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 )
 
 // SessionHandler 接收 agent 的流式事件与审批请求（业务层实现）。
@@ -52,20 +53,37 @@ func Start(ctx context.Context, opt SpawnOptions, h SessionHandler) (*Client, er
 		},
 	})
 	if err != nil {
+		tail := proc.StderrTail()
 		proc.Kill()
-		return nil, fmt.Errorf("acp: initialize: %w", err)
+		return nil, fmt.Errorf("acp: initialize: %w%s", err, stderrHint(tail))
 	}
 	var ir InitializeResult
 	if err := json.Unmarshal(res, &ir); err != nil {
+		tail := proc.StderrTail()
 		proc.Kill()
-		return nil, fmt.Errorf("acp: initialize result: %w", err)
+		return nil, fmt.Errorf("acp: initialize result: %w%s", err, stderrHint(tail))
 	}
 	if ir.ProtocolVersion != ProtocolVersion {
+		tail := proc.StderrTail()
 		proc.Kill()
-		return nil, fmt.Errorf("acp: unsupported protocol version %d (client=%d)", ir.ProtocolVersion, ProtocolVersion)
+		return nil, fmt.Errorf("acp: unsupported protocol version %d (client=%d)%s", ir.ProtocolVersion, ProtocolVersion, stderrHint(tail))
 	}
 	c.caps = ir.AgentCapabilities
 	return c, nil
+}
+
+// stderrHint 把子进程 stderr 尾部附加到握手失败错误（此前仅探针路径可见，
+// 派发路径失败时 LLM/用户拿不到任何诊断）。取尾部 2KiB 防超长输出撑爆消息。
+func stderrHint(tail string) string {
+	tail = strings.TrimSpace(tail)
+	if tail == "" {
+		return ""
+	}
+	const max = 2048
+	if len(tail) > max {
+		tail = "…" + tail[len(tail)-max:]
+	}
+	return "（stderr 尾部: " + tail + "）"
 }
 
 // Proc 暴露底层子进程（监控/恢复用）。

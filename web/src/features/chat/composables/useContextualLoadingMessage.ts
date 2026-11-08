@@ -158,9 +158,12 @@ export function useContextualLoadingMessage(isReplaying: Ref<boolean>) {
       const attempt = typeof meta.attempt === 'number' ? meta.attempt : 0;
       // 2026-08-21 P0：team_count_mismatch 参数（task_planner_impl.go 截断/放行通知）。
       const requestedTeamCount = typeof meta.requested_team_count === 'number' ? meta.requested_team_count : 0;
-      const decomposedSubtaskCount = typeof meta.decomposed_subtask_count === 'number' ? meta.decomposed_subtask_count : 0;
+      const decomposedSubtaskCount =
+        typeof meta.decomposed_subtask_count === 'number' ? meta.decomposed_subtask_count : 0;
       const droppedRaw: unknown = meta.dropped_subtask_names;
-      const droppedSubtaskNames = Array.isArray(droppedRaw) ? droppedRaw.filter((n): n is string => typeof n === 'string').join('、') : '';
+      const droppedSubtaskNames = Array.isArray(droppedRaw)
+        ? droppedRaw.filter((n): n is string => typeof n === 'string').join('、')
+        : '';
       const elapsed = typeof meta.elapsed_seconds === 'number' ? meta.elapsed_seconds : 0;
       const teamCount = typeof meta.team_count === 'number' ? meta.team_count : 0;
       const summary = typeof meta.summary === 'string' ? meta.summary : '';
@@ -218,7 +221,7 @@ export function useContextualLoadingMessage(isReplaying: Ref<boolean>) {
   }
 
   /** Apply contextual loading from a v2 system.notice NoticeType. */
-  function onSpiritNoticeType(noticeType: string): void {
+  function onSpiritNoticeType(noticeType: string, meta?: Record<string, unknown>): void {
     if (isReplaying.value) return;
     if (noticeType === 'hitl_wait') {
       loadingMessage.value = {
@@ -226,6 +229,25 @@ export function useContextualLoadingMessage(isReplaying: Ref<boolean>) {
         icon: 'hourglass_top',
         color: 'orange',
       };
+      return;
+    }
+    // 编程桥接（M5）：派发后进度事件 5s 节流到达，期间在输入区显示
+    // 「外部编程工具执行中」；终态（completed/failed/cancelled）清除。
+    if (noticeType === 'coding_task_progress') {
+      const agent = String(meta?.agent_key ?? '').trim() || 'agent';
+      loadingMessage.value = {
+        text: t('chat.codingTaskRunning', { agent }),
+        icon: 'code',
+        color: 'teal',
+      };
+      return;
+    }
+    if (
+      noticeType === 'coding_task_completed' ||
+      noticeType === 'coding_task_failed' ||
+      noticeType === 'coding_task_cancelled'
+    ) {
+      loadingMessage.value = null;
       return;
     }
     const envType = noticeTypeToLoadingType(noticeType);

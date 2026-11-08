@@ -731,6 +731,64 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
           }
         }
         return;
+      case 'coding_task_completed': {
+        // 终态回执：后端此前只发 WS 但无人消费——聊天里只有流程日志，
+        // 这里补顶部回执（摘要截断，详情去 /coding-tasks 看板）。
+        pendingCodingApproval.value = null;
+        const agentKey = String(meta.agent_key ?? '');
+        const summary = String(meta.message ?? '').trim();
+        const clip = summary.length > 160 ? `${summary.slice(0, 160)}…` : summary;
+        const doneMsg = clip
+          ? i18n.global.t('spirit.codingTaskCompletedWithSummary', { agent: agentKey, summary: clip })
+          : i18n.global.t('spirit.codingTaskCompleted', { agent: agentKey });
+        Notify.create({ type: 'positive', message: doneMsg, position: 'top', timeout: 6000 });
+        return;
+      }
+      case 'coding_task_failed': {
+        pendingCodingApproval.value = null;
+        const agentKey = String(meta.agent_key ?? '');
+        const errText = String(meta.error ?? meta.message ?? '').trim();
+        const clipErr = errText.length > 160 ? `${errText.slice(0, 160)}…` : errText;
+        Notify.create({
+          type: 'negative',
+          message: i18n.global.t('spirit.codingTaskFailed', { agent: agentKey, error: clipErr }),
+          position: 'top',
+          timeout: 8000,
+        });
+        return;
+      }
+      case 'coding_task_liveness': {
+        // 活跃性阶梯弱信号：hint 类（静默提示/处置结果）用中性 toast；
+        // suspect/lost/recovered 阶梯迁移给对应语义提示；healthy 首报不打扰。
+        const hintText = String(meta.message ?? '').trim();
+        if (String(meta.kind ?? '') === 'hint') {
+          if (hintText) Notify.create({ type: 'info', message: hintText, position: 'top' });
+          return;
+        }
+        const agentKey = String(meta.agent_key ?? '');
+        const state = String(meta.liveness_state ?? '');
+        if (state === 'suspect') {
+          Notify.create({
+            type: 'warning',
+            message: i18n.global.t('spirit.codingTaskSuspect', { agent: agentKey }),
+            position: 'top',
+          });
+        } else if (state === 'lost') {
+          Notify.create({
+            type: 'negative',
+            message: i18n.global.t('spirit.codingTaskLost', { agent: agentKey }),
+            position: 'top',
+            timeout: 8000,
+          });
+        } else if (state === 'healthy' && String(meta.from_state ?? '') !== '') {
+          Notify.create({
+            type: 'positive',
+            message: i18n.global.t('spirit.codingTaskRecovered', { agent: agentKey }),
+            position: 'top',
+          });
+        }
+        return;
+      }
       default:
         return;
     }

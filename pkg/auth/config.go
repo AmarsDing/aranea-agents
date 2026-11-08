@@ -19,6 +19,12 @@ func authSecretFromEnv(key string) string {
 			return "version-placeholder"
 		}
 	}
+	// Allow the built-in `acp-shim` subcommand (admin acp-shim …) to run
+	// without server env: it is a pure stdio bridge process and never serves
+	// HTTP/JWT, so the signing secret is irrelevant on that path.
+	if len(os.Args) > 1 && os.Args[1] == "acp-shim" {
+		return "acp-shim-placeholder"
+	}
 	if secret := os.Getenv(key); secret != "" {
 		return secret
 	}
