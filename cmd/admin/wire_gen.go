@@ -21,6 +21,7 @@ import (
 	"aranea-agents/internal/biz/artifact"
 	"aranea-agents/internal/biz/avatar"
 	"aranea-agents/internal/biz/backgroundjob"
+	"aranea-agents/internal/biz/ceoboard"
 	"aranea-agents/internal/biz/computeruse"
 	configgraph2 "aranea-agents/internal/biz/configgraph"
 	"aranea-agents/internal/biz/cron"
@@ -116,7 +117,7 @@ import (
 // Injectors from wire.go:
 
 // wireApp init kratos application.
-func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime, selfImprovement *conf.SelfImprovement, sandbox *conf.Sandbox, debugRecorder *conf.DebugRecorder, logger log.Logger, loggatewayLogger loggateway.Logger, pipeline logpipeline.Pipeline, arg []*conf.LoggingSink) (wireOut, func(), error) {
+func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime, selfImprovement *conf.SelfImprovement, sandbox *conf.Sandbox, ceoboard *conf.Ceoboard, debugRecorder *conf.DebugRecorder, logger log.Logger, loggatewayLogger loggateway.Logger, pipeline logpipeline.Pipeline, arg []*conf.LoggingSink) (wireOut, func(), error) {
 	reranker := knowledge.NewMemoryReranker(loggatewayLogger)
 	dataData, cleanup, err := data.NewData(confData, loggatewayLogger, reranker)
 	if err != nil {
@@ -672,7 +673,16 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	configGraphService := provideConfigGraphService(indexer, configgraphRepo, loggatewayLogger)
 	diagnosticsUsecase := provideDiagnosticsUsecase(llmProviderModelUsecase, mcpServerUsecase, agentUsecase, dataData, usageRepo, indexer, configgraphRepo, loggatewayLogger)
 	diagnosticsService := provideDiagnosticsService(diagnosticsUsecase, loggatewayLogger)
-	serviceRegistry := server.NewServiceRegistry(adminService, avatarService, agentService, llmProviderModelService, hookService, cronService, pluginService, mcpServerService, skillService, toolService, serviceSessionService, sessionV2Service, channelService, usageService, monitorService, serviceMemoryService, systemSettingService, modelCatalogService, teamService, chatService, graphService, serviceArtifactService, knowledgeService, evaluationService, a2AService, endpointRegistry, federationService, ecosystemService, gatewayService, channelIngress, aiRefineService, taxonomyService, organizationService, skillIntelligenceService, skillDedupService, packService, skillEvolutionSuggestionService, serviceEvolutionService, selfImprovementService, ecosystemPresetService, aguiCompatService, openAISessionCompatService, a2AExtensionCompatService, twinOpenAPICompatService, runtimeProfileService, learningLoopService, computerUseService, agentBridgeAPI, sandboxService, decisionRecordService, configGraphService, diagnosticsService)
+	// P2-7 ceoboard 域装配（wire-gen-hand-merge-convention：与 wire_part2.go
+	// Build 列表同步镜像；registry 加载/spool/回源凭据失败即拒绝启动）。
+	ceoboardStore := provideCeoboardStore(dataData)
+	ceoboardRuntime, err := provideCeoboardRuntime(ceoboard, ceoboardStore, loggatewayLogger)
+	if err != nil {
+		cleanup()
+		return wireOut{}, nil, err
+	}
+	ceoboardService := provideCeoboardService(ceoboardRuntime, loggatewayLogger)
+	serviceRegistry := server.NewServiceRegistry(adminService, avatarService, agentService, llmProviderModelService, hookService, cronService, pluginService, mcpServerService, skillService, toolService, serviceSessionService, sessionV2Service, channelService, usageService, monitorService, serviceMemoryService, systemSettingService, modelCatalogService, teamService, chatService, graphService, serviceArtifactService, knowledgeService, evaluationService, a2AService, endpointRegistry, federationService, ecosystemService, gatewayService, channelIngress, aiRefineService, taxonomyService, organizationService, skillIntelligenceService, skillDedupService, packService, skillEvolutionSuggestionService, serviceEvolutionService, selfImprovementService, ecosystemPresetService, aguiCompatService, openAISessionCompatService, a2AExtensionCompatService, twinOpenAPICompatService, runtimeProfileService, learningLoopService, computerUseService, agentBridgeAPI, sandboxService, decisionRecordService, configGraphService, diagnosticsService, ceoboardService)
 	grpcServer := server.NewGRPCServer(confServer, serviceRegistry, loggatewayLogger)
 	speechRegistry := provideSpeechRegistry()
 	speechConfigReader := provideSpeechConfigReader(systemSettingRepo, loggatewayLogger)
@@ -805,7 +815,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	memoryEnhancedExtractor := service.NewMemoryEnhancedExtractor(memoryEnhancedExtractorConfig)
 	pathBL4Writer := providePathBL4Writer(dataData)
 	pathBExtractor := providePathBExtractor(memoryEnhancedExtractor, pathBL4Writer, memoryAdminUsecase, dataData, loggatewayLogger)
-	mainWireOut := provideWireOut(app, dataData, cronrunnerRunner, watchRunner, autoMemoryWorker, healthRunner, runner2, learningLoopScanner, providerHealthScanner, channelHealthScanner, jobsChannelDeliveryWorker, sessionRunDurableWorker, recoveryWorker, backgroundJobWorker, channelRuntime, plugintrpcRuntime, toolAuditCleanup, flowLogCleanup, toolSpillGC, monitorEventsCleanup, autoHealTTLCleanup, alertEvalWorker, monitorTraceBackfillWorker, memoryL2DecayWorker, memoryL1ArchiveWorker, channelTurnJobSweeper, memoryL3DecayWorker, memoryL4DecayWorker, memoryEbbinghausDecayWorker, memoryCanaryWorker, memoryCitationBackfillWorker, knowledgeCitationBackfillWorker, knowledgeRelationExtractWorker, knowledgeIndexRepairWorker, knowledgeCurateWorker, knowledgeWriteBackSweeperWorker, knowledgeGraphProjectionWorker, memorySleepTimeWorker, memoryEpisodeBackfillWorker, memoryDataMigrationWorker, memoryFactIndexReconciler, memoryDeadLetterReplayer, modelRegistrySyncAgent, selfCheckScheduler, selfHealObserver, infra, selfCheckCleanup, selfCheckJob, cronRepo, skillIntelligenceUsecase, skillIntelligenceWorker, curatorWorker, evolutionOrchestratorWorker, selfImproveObserveWorker, selfImproveDriveWorker, selfImproveWatchdogWorker, selfImproveOutcomeWorker, failurePatternSyncJob, predictiveHealUsecase, predictiveHealJob, patternMiningUsecase, patternMiningJob, pathBExtractor, wsv2Subscriber, indexer, sourceSyncWorker)
+	mainWireOut := provideWireOut(app, dataData, cronrunnerRunner, watchRunner, autoMemoryWorker, healthRunner, runner2, learningLoopScanner, providerHealthScanner, channelHealthScanner, jobsChannelDeliveryWorker, sessionRunDurableWorker, recoveryWorker, backgroundJobWorker, channelRuntime, plugintrpcRuntime, toolAuditCleanup, flowLogCleanup, toolSpillGC, monitorEventsCleanup, autoHealTTLCleanup, alertEvalWorker, monitorTraceBackfillWorker, memoryL2DecayWorker, memoryL1ArchiveWorker, channelTurnJobSweeper, memoryL3DecayWorker, memoryL4DecayWorker, memoryEbbinghausDecayWorker, memoryCanaryWorker, memoryCitationBackfillWorker, knowledgeCitationBackfillWorker, knowledgeRelationExtractWorker, knowledgeIndexRepairWorker, knowledgeCurateWorker, knowledgeWriteBackSweeperWorker, knowledgeGraphProjectionWorker, memorySleepTimeWorker, memoryEpisodeBackfillWorker, memoryDataMigrationWorker, memoryFactIndexReconciler, memoryDeadLetterReplayer, modelRegistrySyncAgent, selfCheckScheduler, selfHealObserver, infra, selfCheckCleanup, selfCheckJob, cronRepo, skillIntelligenceUsecase, skillIntelligenceWorker, curatorWorker, evolutionOrchestratorWorker, selfImproveObserveWorker, selfImproveDriveWorker, selfImproveWatchdogWorker, selfImproveOutcomeWorker, failurePatternSyncJob, predictiveHealUsecase, predictiveHealJob, patternMiningUsecase, patternMiningJob, pathBExtractor, wsv2Subscriber, indexer, sourceSyncWorker, ceoboardRuntime)
 	return mainWireOut, func() {
 		cleanup()
 	}, nil
@@ -4236,6 +4246,10 @@ type wireOut struct {
 	// ConfigGraphIndexer is the M81 config-asset graph background component
 	// (P0: rebuild capability only; started by startBackgroundWorkers).
 	ConfigGraphIndexer *configgraph2.Indexer
+	// CeoboardRuntime 是 CEO 驾驶舱运行时（整合 P2-7）；由
+	// startBackgroundWorkers 在数据就绪后 Start（spool 导入/归档/registry
+	// 热载/延迟探针/平台轮询/节点接线）。
+	CeoboardRuntime *ceoboard.Runtime
 }
 
 func provideWireOut(
@@ -4305,6 +4319,7 @@ func provideWireOut(
 	wsV2Sub *server.WSV2Subscriber,
 	configGraphIndexer *configgraph2.Indexer,
 	sourceSyncWorker *jobs.SourceSyncWorker,
+	ceoboardRuntime *ceoboard.Runtime,
 ) wireOut {
 	return wireOut{
 		App: app, Data: dataData, CronRunner: runner, SkillWatch: skillWatch, AutoMemory: autoMem,
@@ -4357,6 +4372,7 @@ func provideWireOut(
 		PathBExtractor:              pathBExtractor,
 		WSV2Subscriber:              wsV2Sub,
 		ConfigGraphIndexer:          configGraphIndexer,
+		CeoboardRuntime:             ceoboardRuntime,
 	}
 }
 

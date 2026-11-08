@@ -14,6 +14,7 @@ message Bootstrap {
   Runtime runtime = 6;
   SelfImprovement self_improvement = 7;
   Sandbox sandbox = 8;
+  Ceoboard ceoboard = 9;
 }
 
 // Sandbox configures the M82 agent sandbox infrastructure (pooled,
@@ -67,6 +68,51 @@ message Sandbox {
   TTL ttl = 5;
   map<string, Profile> profiles = 6;
   Egress egress = 7;
+}
+
+// Ceoboard configures the CEO 驾驶舱运行时(整合 P2-7,自 ceo-dashboard
+// internal/config 迁移):registry 目录、事件存储(spool/archive/保留期)、
+// 轮询/webhook/NATS 适配器与导出上限。数值/时长字段 0 或空串 = 采用设计
+// 默认值(注释给出,口径与 ceo-dashboard config.Load 默认值一致)。
+message Ceoboard {
+  // AuthProvider 是登录型 token 源(REST 轮询回源自动携带 Bearer,
+  // 401 时 Invalidate 并重登一次)。
+  message AuthProvider {
+    string match = 1;      // host:port 匹配前缀
+    string type = 2;       // nt-login | hcf-login
+    string login_url = 3;  // 登录端点
+    string user = 4;
+    string pass_env = 5;   // 密码环境变量名(密码不落配置文件;装配时展开,缺失即报错)
+  }
+  // Platform 是一个被观测平台健康灯;probe 形如 "GET http://host:port/path"。
+  message Platform {
+    string id = 1;
+    string name = 2;
+    string probe = 3;
+  }
+  // Approval 是一个待拍板数据源(只读清单接口);path 形如 "GET http://..."。
+  message Approval {
+    string lane = 1;
+    string label = 2;
+    string path = 3;
+  }
+  string registry_dir = 1;                  // 工作流 YAML 目录("" = configs/workflows)
+  string spool_dir = 2;                     // spool 落盘目录("" = data/ceoboard/spool)
+  int64 spool_segment_bytes = 3;            // spool 段轮转上限(0 = 16MiB)
+  int64 spool_total_bytes = 4;              // spool 总量上限(0 = 256MiB)
+  string archive_dir = 5;                   // 归档目录("" = data/ceoboard/archive)
+  int32 event_retention_days = 6;           // 在线保留天数(0 = 90)
+  int64 db_capacity_bytes = 7;              // 库容量预算(0 = 10GiB)
+  int64 export_max_rows = 8;                // 审计导出行数上限(0 = 100000)
+  google.protobuf.Duration export_timeout = 9;   // 审计导出超时(0 = 60s)
+  string webhook_key = 10;                  // webhook 共享密钥(X-CEO-Key;空 = 不校验,仅内网)
+  double qps_per_platform = 11;             // 每 host 回源 QPS 池上限(0 = 5)
+  google.protobuf.Duration poll_interval = 12;   // 默认轮询间隔(0 = 30s)
+  google.protobuf.Duration stale_after = 13;     // 陈旧阈值(0 = 90s)
+  map<string, string> nats_platforms = 14;  // NATS endpoint host:port → 平台 id(事件打标口径)
+  repeated AuthProvider auth_providers = 15;
+  repeated Platform platforms = 16;
+  repeated Approval approvals = 17;
 }
 
 // SelfImprovement configures the platform self-improvement (V3) pipeline

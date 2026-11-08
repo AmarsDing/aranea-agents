@@ -15,6 +15,7 @@ import (
 	airefinev1 "aranea-agents/api/kratos/ai_refine/v1"
 	artifactv1 "aranea-agents/api/kratos/artifact/v1"
 	avatarv1 "aranea-agents/api/kratos/avatar/v1"
+	ceoboardv1 "aranea-agents/api/kratos/ceoboard/v1"
 	channelv1 "aranea-agents/api/kratos/channel/v1"
 	chatv1 "aranea-agents/api/kratos/chat/v1"
 	computerusev1 "aranea-agents/api/kratos/computeruse/v1"
@@ -123,7 +124,7 @@ func NewHTTPServer(c *conf.Server, s *ServiceRegistry, wsSrv *WSServer, voiceSrv
 	// Custom routes MUST be registered before proto services so that exact
 	// paths (e.g. /v1/artifacts/download) take priority over wildcard
 	// patterns (e.g. /v1/artifacts/{id}).
-	registerCustomRoutes(srv, s.ChannelIngress, s.Artifact, s.Knowledge, s.A2APublic, s.SystemSetting, s.EcosystemPreset, s.AGUICompat, s.OpenAISession, s.A2AExtension, s.TwinOpenAPI, s.ConfigGraph, s.Diagnostics)
+	registerCustomRoutes(srv, s.ChannelIngress, s.Artifact, s.Knowledge, s.A2APublic, s.SystemSetting, s.EcosystemPreset, s.AGUICompat, s.OpenAISession, s.A2AExtension, s.TwinOpenAPI, s.ConfigGraph, s.Diagnostics, s.Ceoboard)
 	registerMVPMediaRoutes(srv)
 	registerProtoServices(srv, s)
 	registerCompatibilityRedirects(srv)
@@ -188,6 +189,9 @@ func registerProtoServices(srv *kratoshttp.Server, s *ServiceRegistry) {
 	if s.SelfImprovement != nil {
 		selfimprovementv1.RegisterSelfImprovementServiceHTTPServer(srv, s.SelfImprovement)
 	}
+	if s.Ceoboard != nil {
+		ceoboardv1.RegisterCeoboardServiceHTTPServer(srv, s.Ceoboard)
+	}
 }
 
 // registerCustomRoutes registers cross-cutting operational routes that bypass proto
@@ -210,6 +214,11 @@ func registerProtoServices(srv *kratoshttp.Server, s *ServiceRegistry) {
 //   - /api/v1/admin/diagnostics: 79-runtime-governance R8 doctor API（同
 //     ecosystem preset 先例：/api/v1 子树被 twinOpenAPI 前缀接管，proto
 //     注册次序在其后会被遮蔽，故走 custom route）
+//   - /v1/ceoboard/webhooks/{source}: ceoboard webhook 机器入口（整合 P2-7）。
+//     共享密钥 X-CEO-Key 由 receiver 自备校验，JWT 权限链不适用；且
+//     「原始 body 字节 → sha256 digest → 幂等键链」的保真语义要求绕过
+//     proto Struct 解码，故不走 proto 注册（P2-1 已裁定 webhook 入站
+//     不进契约）。no-auth 前缀注册使 auth filter 放行，密钥是唯一闸门。
 //
 // All custom routes are explicitly documented here for auditability. New bypass routes
 // MUST be added to this centralized block with justification comments.
@@ -227,6 +236,7 @@ func registerCustomRoutes(
 	twinOpenAPI *service.TwinOpenAPICompatService,
 	configGraphSvc *service.ConfigGraphService,
 	diagnosticsSvc *service.DiagnosticsService,
+	ceoboardSvc *service.CeoboardService,
 ) {
 	// GET /v1/system/info — CLI info endpoint; requires auth (not in noAuthPaths).
 	if systemSettingSvc != nil {
@@ -235,6 +245,14 @@ func registerCustomRoutes(
 	if channelIngress != nil {
 		auth.RegisterWebhookPath("/webhooks/")
 		srv.Route("/").POST("/webhooks/{channel_key}", channelIngress.FeishuWebhookHTTP())
+	}
+	if ceoboardSvc != nil {
+		// 见上方 custom-route 清单：X-CEO-Key 机器入口，receiver 自备校验。
+		auth.RegisterNoAuthPathPrefix("/v1/ceoboard/webhooks/")
+		srv.Route("/").POST("/v1/ceoboard/webhooks/{source}", func(ctx kratoshttp.Context) error {
+			ceoboardSvc.WebhookHandler(ctx.Vars().Get("source")).ServeHTTP(ctx.Response(), ctx.Request())
+			return nil
+		})
 	}
 	if artifactSvc != nil {
 		auth.RegisterNoAuthPath("/v1/artifacts/download")

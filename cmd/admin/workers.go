@@ -9,6 +9,7 @@ import (
 
 	a2ahealth "aranea-agents/internal/a2a/health"
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/biz/ceoboard"
 	bizcg "aranea-agents/internal/biz/configgraph"
 	"aranea-agents/internal/biz/monitor"
 	"aranea-agents/internal/cronrunner"
@@ -81,6 +82,10 @@ type backgroundWorkersConfig struct {
 	ModelRegistrySyncAgent      any // presence check only
 	CronRepo                    biz.CronRepo
 	ConfigGraphIndexer          *bizcg.Indexer
+	// CeoboardRuntime CEO 驾驶舱运行时（整合 P2-7）。具体指针而非
+	// BackgroundStarter：conf 未声明 ceoboard 段时 provider 返回 nil，
+	// 具体指针判空避免 typed-nil 装瓶（同 ToolSpillGC D2-f-7 教训）。
+	CeoboardRuntime *ceoboard.Runtime
 }
 
 // backgroundWorkersConfigFromOutput maps the wire output onto the worker
@@ -142,6 +147,7 @@ func backgroundWorkersConfigFromOutput(watchCtx context.Context, out *wireOut) *
 		ModelRegistrySyncAgent:      out.ModelRegistrySyncAgent,
 		CronRepo:                    out.CronRepo,
 		ConfigGraphIndexer:          out.ConfigGraphIndexer,
+		CeoboardRuntime:             out.CeoboardRuntime,
 	}
 	// D2-f-7（对抗评审确认）：ToolSpillGC 在 wireOut 中是具体指针
 	// （*jobs.ToolSpillGC，杀闸 TOOLSPILL_GC_DISABLED 时 provider 返回 nil）。
@@ -488,6 +494,13 @@ func startBackgroundWorkers(
 	// itself (loggateway, design R7); do not duplicate it here.
 	if cfg.ConfigGraphIndexer != nil {
 		goAfterReady("configgraph_indexer", func() { cfg.ConfigGraphIndexer.Start(ctx) })
+	}
+
+	// P2-7：ceoboard 运行时（spool 导入/归档/registry 热载/延迟探针/平台
+	// 轮询/NATS 节点接线）。走 goAfterReady：spool 导入依赖 DB 就绪。
+	if cfg.CeoboardRuntime != nil {
+		goAfterReady("ceoboard", func() { cfg.CeoboardRuntime.Start(ctx) })
+		logger.Log(log.LevelInfo, "msg", "ceoboard runtime scheduled")
 	}
 }
 

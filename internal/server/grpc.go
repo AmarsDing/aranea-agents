@@ -12,6 +12,7 @@ import (
 	airefinev1 "aranea-agents/api/kratos/ai_refine/v1"
 	artifactv1 "aranea-agents/api/kratos/artifact/v1"
 	avatarv1 "aranea-agents/api/kratos/avatar/v1"
+	ceoboardv1 "aranea-agents/api/kratos/ceoboard/v1"
 	channelv1 "aranea-agents/api/kratos/channel/v1"
 	chatv1 "aranea-agents/api/kratos/chat/v1"
 	computerusev1 "aranea-agents/api/kratos/computeruse/v1"
@@ -134,6 +135,9 @@ func NewGRPCServer(c *conf.Server, s *ServiceRegistry, lg loggateway.Logger) *gr
 	}
 	if s.SelfImprovement != nil {
 		selfimprovementv1.RegisterSelfImprovementServiceServer(srv, s.SelfImprovement)
+	}
+	if s.Ceoboard != nil {
+		ceoboardv1.RegisterCeoboardServiceServer(srv, s.Ceoboard)
 	}
 	return srv
 }

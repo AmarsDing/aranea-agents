@@ -73,6 +73,8 @@ type ServiceRegistry struct {
 	// Diagnostics exposes the 79-runtime-governance R8 doctor API
 	// (GET /api/v1/admin/diagnostics).
 	Diagnostics *service.DiagnosticsService
+	// Ceoboard exposes the CEO 驾驶舱 BFF(整合 P2-7;/v1/ceoboard/*)。
+	Ceoboard *service.CeoboardService
 }
 
 // NewServiceRegistry assembles all services into a single registry for Wire injection.
@@ -130,6 +132,7 @@ func NewServiceRegistry(
 	decisionRecord *service.DecisionRecordService,
 	configGraph *service.ConfigGraphService,
 	diagnostics *service.DiagnosticsService,
+	ceoboard *service.CeoboardService,
 ) *ServiceRegistry {
 	return &ServiceRegistry{
 		Admin:              admin,
@@ -184,5 +187,6 @@ func NewServiceRegistry(
 		DecisionRecord:     decisionRecord,
 		ConfigGraph:        configGraph,
 		Diagnostics:        diagnostics,
+		Ceoboard:           ceoboard,
 	}
 }

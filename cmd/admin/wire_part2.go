@@ -47,7 +47,7 @@ import (
 )
 
 // wireApp init kratos application.
-func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.SelfImprovement, *conf.Sandbox, *conf.DebugRecorder, log.Logger, loggateway.Logger, logpipeline.Pipeline, []*conf.LoggingSink) (wireOut, func(), error) {
+func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.SelfImprovement, *conf.Sandbox, *conf.Ceoboard, *conf.DebugRecorder, log.Logger, loggateway.Logger, logpipeline.Pipeline, []*conf.LoggingSink) (wireOut, func(), error) {
 	panic(wire.Build(
 		server.ProviderSet,
 		data.ProviderSet,
@@ -58,6 +58,9 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.SelfImprovement, *co
 		data.NewPackRepoAdapter,
 		wire.Bind(new(service.PackExporterImporterValidator), new(*data.PackRepoAdapter)),
 		provideEventBusSideConsumers,
+		provideCeoboardStore,
+		provideCeoboardRuntime,
+		provideCeoboardService,
 		provideCronRunnerDeps,
 		provideCronRunner,
 		wire.Bind(new(biz.CronTaskTrigger), new(*cronrunner.Runner)),

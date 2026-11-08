@@ -28,6 +28,7 @@ import (
 	"aranea-agents/internal/biz"
 	a2abiz "aranea-agents/internal/biz/a2a"
 	"aranea-agents/internal/biz/backgroundjob"
+	"aranea-agents/internal/biz/ceoboard"
 	bizcu "aranea-agents/internal/biz/computeruse"
 	bizcg "aranea-agents/internal/biz/configgraph"
 	"aranea-agents/internal/biz/decision"
@@ -3714,6 +3715,9 @@ type wireOut struct {
 	// KnowledgeGraphProjection G-38 W4 图谱投影 worker（workers.go 消费；
 	// wireinject 变体漏登记导致 wire 再生成失败，2026-11-08 补齐）。
 	KnowledgeGraphProjection *jobs.KnowledgeGraphProjectionJob
+	// CeoboardRuntime CEO 驾驶舱运行时（整合 P2-7；workers.go 消费，与
+	// wire_gen.go 镜像保持一致）。
+	CeoboardRuntime *ceoboard.Runtime
 }
 
 func provideWireOut(
@@ -3783,6 +3787,7 @@ func provideWireOut(
 	wsV2Sub *server.WSV2Subscriber,
 	configGraphIndexer *bizcg.Indexer,
 	knowledgeGraphProjection *jobs.KnowledgeGraphProjectionJob,
+	ceoboardRuntime *ceoboard.Runtime,
 ) wireOut {
 	return wireOut{
 		App: app, Data: dataData, CronRunner: runner, SkillWatch: skillWatch, AutoMemory: autoMem,
@@ -3833,6 +3838,7 @@ func provideWireOut(
 		WSV2Subscriber:              wsV2Sub,
 		ConfigGraphIndexer:          configGraphIndexer,
 		KnowledgeGraphProjection:    knowledgeGraphProjection,
+		CeoboardRuntime:             ceoboardRuntime,
 	}
 }
 
