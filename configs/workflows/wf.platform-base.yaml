@@ -1,0 +1,50 @@
+# 平台底座健康(四平台存活与降级)— P0 组织单元
+# P0 范围(方案 §10)要求"四平台健康灯 + aranea 待拍板 + dh 场次状态";文档 §14.2 仅给出两条业务线示例,
+# 故底座健康以本声明承载(组织决策,见交付报告偏差说明)。biz_line=platform,组顺序恒在最后(§15.1)。
+api_version: ceoboard/v1
+kind: Workflow
+id: wf.platform-base
+name: 平台底座健康
+biz_line: platform
+owner: sre
+version: 1
+permissions: [ceo, oncall, viewer]
+changelog:
+  - { version: 1, date: "2026-11-03", note: "P0 新增:承载 aranea/digital-human 健康与 dh 场次态" }
+
+probe: { type: rest, path: "GET http://192.168.4.44:8800/api/v1/mvp/opportunities?limit=1", interval: 30s, stale_after: 90s }
+  # aranea 无健康端点(方案 §17.1 R3-Q4)→ 连通性探测代替,健康端点由 aranea 侧后补(开放问题 Q10)
+
+nodes:
+  - id: base-aranea
+    name: aranea 编排底座
+    order: 1
+    enter: "poll(ok)"                             # 连通即进入
+    exit:  "poll(ok)"
+    source:
+      adapter: rest-poll
+      rest_path: "GET http://192.168.4.44:8800/api/v1/mvp/opportunities?limit=1"  # mvp/api.ts:93,只读
+      field_map: { entity_id: id, status: status }   # Opportunity 字段 types.go:23-34
+    metrics:
+      - { id: m.base.aranea.rtt, unit: ms, window: realtime, expr: "gauge(rtt)" }
+    drill:
+      - { label: 发文审批队列, type: rest, path: "GET http://192.168.4.44:8800/api/v1/mvp/review/pending",
+          empty_state: "无待审批发文" }              # mvp/api.ts:78
+      - { label: 上架确认队列, type: rest, path: "GET http://192.168.4.44:8800/api/v1/mvp/opportunities",
+          empty_state: "无待确认商机" }              # mvp/api.ts:93
+
+  - id: base-dh
+    name: digital-human 直播场次
+    order: 2
+    enter: "session(phase='live')"                # LiveSession.phase, internal/data/ent/schema/live.go:10-37
+    exit:  "session(phase in ('idle','error'))"
+    source:
+      adapter: rest-poll
+      rest_path: "GET http://192.168.4.44:8795/healthz"   # 免鉴权(internal/server/auth.go:138);含 capabilities 与依赖探测(data.go:134)
+      field_map: { status: status, capabilities: capabilities }
+      # 注:8795 默认仅回环(dh README),从看板机不可达 → 探针失败如实显示,不假装绿灯
+    metrics:
+      - { id: m.base.dh.phase, unit: 场, window: realtime, expr: "gauge(count(phase='live'))" }
+    drill:
+      - { label: 场次状态, type: rest, path: "GET http://192.168.4.44:8795/api/v1/live/status",
+          note: "需鉴权(auth.go 白名单),P0 显示需凭据", empty_state: "当前无直播场次" }

@@ -39,6 +39,21 @@ type BorrowRequest func(*sql.Selector)
 // BudgetAlert is the predicate function for budgetalert builders.
 type BudgetAlert func(*sql.Selector)
 
+// CeoboardAudit is the predicate function for ceoboardaudit builders.
+type CeoboardAudit func(*sql.Selector)
+
+// CeoboardDeadLetter is the predicate function for ceoboarddeadletter builders.
+type CeoboardDeadLetter func(*sql.Selector)
+
+// CeoboardEvent is the predicate function for ceoboardevent builders.
+type CeoboardEvent func(*sql.Selector)
+
+// CeoboardLatencySample is the predicate function for ceoboardlatencysample builders.
+type CeoboardLatencySample func(*sql.Selector)
+
+// CeoboardWebhookDelivery is the predicate function for ceoboardwebhookdelivery builders.
+type CeoboardWebhookDelivery func(*sql.Selector)
+
 // ChannelInboundReceipt is the predicate function for channelinboundreceipt builders.
 type ChannelInboundReceipt func(*sql.Selector)
 

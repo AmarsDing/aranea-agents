@@ -47,6 +47,23 @@ func requireAuthenticatedRPC(r *PermissionRegistry, domain, svc, rpc, httpMethod
 }
 
 func registerSensitiveDomainPermissions(r *PermissionRegistry) {
+	// ── ceoboard（12 rpc，整合 P2 并入的经营驾驶舱域）──
+	// view 面（查询）= ceoboard.view；ops 面（死信/审计）= ceoboard.ops。
+	// 入站 webhook 不走本域 rpc：共享密钥入口直接挂 HTTP server（基础设施层），
+	// 与 WS/SPA 同层，不参与本登记表。
+	requireRPC(r, "ceoboard", "CeoboardService", "GetOverview", "GET", "/v1/ceoboard/overview", "ceoboard.view")
+	requireRPC(r, "ceoboard", "CeoboardService", "GetWorkflow", "GET", "/v1/ceoboard/workflows/{id}", "ceoboard.view")
+	requireRPC(r, "ceoboard", "CeoboardService", "GetNode", "GET", "/v1/ceoboard/workflows/{workflow_id}/nodes/{node_id}", "ceoboard.view")
+	requireRPC(r, "ceoboard", "CeoboardService", "GetPlatform", "GET", "/v1/ceoboard/platforms/{id}", "ceoboard.view")
+	requireRPC(r, "ceoboard", "CeoboardService", "ListConsumers", "GET", "/v1/ceoboard/consumers", "ceoboard.view")
+	requireRPC(r, "ceoboard", "CeoboardService", "ListEvents", "GET", "/v1/ceoboard/events", "ceoboard.view")
+	requireRPC(r, "ceoboard", "CeoboardService", "GetEvent", "GET", "/v1/ceoboard/events/{uid}", "ceoboard.view")
+	requireRPC(r, "ceoboard", "CeoboardService", "GetRegistryReport", "GET", "/v1/ceoboard/registry/report", "ceoboard.view")
+	requireRPC(r, "ceoboard", "CeoboardService", "ListDeadLetters", "GET", "/v1/ceoboard/deadletters", "ceoboard.ops")
+	requireRPC(r, "ceoboard", "CeoboardService", "ReplayDeadLetter", "POST", "/v1/ceoboard/deadletters/{id}/replay", "ceoboard.ops")
+	requireRPC(r, "ceoboard", "CeoboardService", "ListAudit", "GET", "/v1/ceoboard/audit", "ceoboard.ops")
+	requireRPC(r, "ceoboard", "CeoboardService", "ExportAudit", "GET", "/v1/ceoboard/audit/export", "ceoboard.ops")
+
 	// ── admin（10 rpc；Login/Logout/Current 豁免）──
 	requireRPC(r, "admin", "AdminService", "ListAdmins", "GET", "/v1/admins/list", "user.read")
 	requireRPC(r, "admin", "AdminService", "GetAdmin", "GET", "/v1/admins/{id}", "user.read")

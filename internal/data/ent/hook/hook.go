@@ -140,6 +140,66 @@ func (f BudgetAlertFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value,
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.BudgetAlertMutation", m)
 }
 
+// The CeoboardAuditFunc type is an adapter to allow the use of ordinary
+// function as CeoboardAudit mutator.
+type CeoboardAuditFunc func(context.Context, *ent.CeoboardAuditMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f CeoboardAuditFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.CeoboardAuditMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.CeoboardAuditMutation", m)
+}
+
+// The CeoboardDeadLetterFunc type is an adapter to allow the use of ordinary
+// function as CeoboardDeadLetter mutator.
+type CeoboardDeadLetterFunc func(context.Context, *ent.CeoboardDeadLetterMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f CeoboardDeadLetterFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.CeoboardDeadLetterMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.CeoboardDeadLetterMutation", m)
+}
+
+// The CeoboardEventFunc type is an adapter to allow the use of ordinary
+// function as CeoboardEvent mutator.
+type CeoboardEventFunc func(context.Context, *ent.CeoboardEventMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f CeoboardEventFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.CeoboardEventMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.CeoboardEventMutation", m)
+}
+
+// The CeoboardLatencySampleFunc type is an adapter to allow the use of ordinary
+// function as CeoboardLatencySample mutator.
+type CeoboardLatencySampleFunc func(context.Context, *ent.CeoboardLatencySampleMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f CeoboardLatencySampleFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.CeoboardLatencySampleMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.CeoboardLatencySampleMutation", m)
+}
+
+// The CeoboardWebhookDeliveryFunc type is an adapter to allow the use of ordinary
+// function as CeoboardWebhookDelivery mutator.
+type CeoboardWebhookDeliveryFunc func(context.Context, *ent.CeoboardWebhookDeliveryMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f CeoboardWebhookDeliveryFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.CeoboardWebhookDeliveryMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.CeoboardWebhookDeliveryMutation", m)
+}
+
 // The ChannelInboundReceiptFunc type is an adapter to allow the use of ordinary
 // function as ChannelInboundReceipt mutator.
 type ChannelInboundReceiptFunc func(context.Context, *ent.ChannelInboundReceiptMutation) (ent.Value, error)

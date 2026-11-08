@@ -12,8 +12,10 @@ import (
 )
 
 // P1-6 敏感域清单（P0 详设 02 §2），与其 proto 目录名一致。
+// P2 并入 ceoboard（整合方案 §5.1：经营驾驶舱域全量收严 view/ops 两档）。
 var sensitiveDomains = []string{
 	"admin",
+	"ceoboard",
 	"computeruse",
 	"cron",
 	"llm_provider_model",

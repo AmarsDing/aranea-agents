@@ -14,6 +14,11 @@ import (
 	"aranea-agents/internal/data/ent/backgroundjob"
 	"aranea-agents/internal/data/ent/borrowrequest"
 	"aranea-agents/internal/data/ent/budgetalert"
+	"aranea-agents/internal/data/ent/ceoboardaudit"
+	"aranea-agents/internal/data/ent/ceoboarddeadletter"
+	"aranea-agents/internal/data/ent/ceoboardevent"
+	"aranea-agents/internal/data/ent/ceoboardlatencysample"
+	"aranea-agents/internal/data/ent/ceoboardwebhookdelivery"
 	"aranea-agents/internal/data/ent/channelinboundreceipt"
 	"aranea-agents/internal/data/ent/channelruntimelease"
 	"aranea-agents/internal/data/ent/channelturnjob"
@@ -204,6 +209,11 @@ func checkColumn(t, c string) error {
 			backgroundjob.Table:              backgroundjob.ValidColumn,
 			borrowrequest.Table:              borrowrequest.ValidColumn,
 			budgetalert.Table:                budgetalert.ValidColumn,
+			ceoboardaudit.Table:              ceoboardaudit.ValidColumn,
+			ceoboarddeadletter.Table:         ceoboarddeadletter.ValidColumn,
+			ceoboardevent.Table:              ceoboardevent.ValidColumn,
+			ceoboardlatencysample.Table:      ceoboardlatencysample.ValidColumn,
+			ceoboardwebhookdelivery.Table:    ceoboardwebhookdelivery.ValidColumn,
 			channelinboundreceipt.Table:      channelinboundreceipt.ValidColumn,
 			channelruntimelease.Table:        channelruntimelease.ValidColumn,
 			channelturnjob.Table:             channelturnjob.ValidColumn,

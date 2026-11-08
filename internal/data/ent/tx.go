@@ -36,6 +36,16 @@ type Tx struct {
 	BorrowRequest *BorrowRequestClient
 	// BudgetAlert is the client for interacting with the BudgetAlert builders.
 	BudgetAlert *BudgetAlertClient
+	// CeoboardAudit is the client for interacting with the CeoboardAudit builders.
+	CeoboardAudit *CeoboardAuditClient
+	// CeoboardDeadLetter is the client for interacting with the CeoboardDeadLetter builders.
+	CeoboardDeadLetter *CeoboardDeadLetterClient
+	// CeoboardEvent is the client for interacting with the CeoboardEvent builders.
+	CeoboardEvent *CeoboardEventClient
+	// CeoboardLatencySample is the client for interacting with the CeoboardLatencySample builders.
+	CeoboardLatencySample *CeoboardLatencySampleClient
+	// CeoboardWebhookDelivery is the client for interacting with the CeoboardWebhookDelivery builders.
+	CeoboardWebhookDelivery *CeoboardWebhookDeliveryClient
 	// ChannelInboundReceipt is the client for interacting with the ChannelInboundReceipt builders.
 	ChannelInboundReceipt *ChannelInboundReceiptClient
 	// ChannelRuntimeLease is the client for interacting with the ChannelRuntimeLease builders.
@@ -398,6 +408,11 @@ func (tx *Tx) init() {
 	tx.BackgroundJob = NewBackgroundJobClient(tx.config)
 	tx.BorrowRequest = NewBorrowRequestClient(tx.config)
 	tx.BudgetAlert = NewBudgetAlertClient(tx.config)
+	tx.CeoboardAudit = NewCeoboardAuditClient(tx.config)
+	tx.CeoboardDeadLetter = NewCeoboardDeadLetterClient(tx.config)
+	tx.CeoboardEvent = NewCeoboardEventClient(tx.config)
+	tx.CeoboardLatencySample = NewCeoboardLatencySampleClient(tx.config)
+	tx.CeoboardWebhookDelivery = NewCeoboardWebhookDeliveryClient(tx.config)
 	tx.ChannelInboundReceipt = NewChannelInboundReceiptClient(tx.config)
 	tx.ChannelRuntimeLease = NewChannelRuntimeLeaseClient(tx.config)
 	tx.ChannelTurnJob = NewChannelTurnJobClient(tx.config)

@@ -530,6 +530,158 @@ var (
 			},
 		},
 	}
+	// CeoboardAuditColumns holds the columns for the "ceoboard_audit" table.
+	CeoboardAuditColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "at", Type: field.TypeTime},
+		{Name: "actor", Type: field.TypeString, Size: 128, Default: ""},
+		{Name: "action", Type: field.TypeString, Size: 64},
+		{Name: "target", Type: field.TypeString, Size: 256, Default: ""},
+		{Name: "ok", Type: field.TypeBool, Default: false},
+		{Name: "detail", Type: field.TypeString, Size: 1024, Default: ""},
+	}
+	// CeoboardAuditTable holds the schema information for the "ceoboard_audit" table.
+	CeoboardAuditTable = &schema.Table{
+		Name:       "ceoboard_audit",
+		Columns:    CeoboardAuditColumns,
+		PrimaryKey: []*schema.Column{CeoboardAuditColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "ceoboardaudit_at",
+				Unique:  false,
+				Columns: []*schema.Column{CeoboardAuditColumns[1]},
+			},
+		},
+	}
+	// CeoboardDeadLettersColumns holds the columns for the "ceoboard_dead_letters" table.
+	CeoboardDeadLettersColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "kind", Type: field.TypeString, Size: 32},
+		{Name: "source", Type: field.TypeString, Size: 64, Default: ""},
+		{Name: "ref_key", Type: field.TypeString, Size: 512, Default: ""},
+		{Name: "payload", Type: field.TypeString, Size: 2147483647, Default: ""},
+		{Name: "reason", Type: field.TypeString, Size: 1024, Default: ""},
+		{Name: "failed_at", Type: field.TypeTime},
+		{Name: "replayed_at", Type: field.TypeTime, Nullable: true},
+	}
+	// CeoboardDeadLettersTable holds the schema information for the "ceoboard_dead_letters" table.
+	CeoboardDeadLettersTable = &schema.Table{
+		Name:       "ceoboard_dead_letters",
+		Columns:    CeoboardDeadLettersColumns,
+		PrimaryKey: []*schema.Column{CeoboardDeadLettersColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "ceoboarddeadletter_kind_source_ref_key",
+				Unique:  false,
+				Columns: []*schema.Column{CeoboardDeadLettersColumns[1], CeoboardDeadLettersColumns[2], CeoboardDeadLettersColumns[3]},
+			},
+			{
+				Name:    "ceoboarddeadletter_replayed_at",
+				Unique:  false,
+				Columns: []*schema.Column{CeoboardDeadLettersColumns[7]},
+			},
+		},
+	}
+	// CeoboardEventsColumns holds the columns for the "ceoboard_events" table.
+	CeoboardEventsColumns = []*schema.Column{
+		{Name: "event_uid", Type: field.TypeString, Size: 512},
+		{Name: "platform", Type: field.TypeString, Size: 64},
+		{Name: "subject", Type: field.TypeString, Size: 256},
+		{Name: "subject_key", Type: field.TypeString, Size: 256},
+		{Name: "event_id", Type: field.TypeString, Size: 256, Default: ""},
+		{Name: "entity_id", Type: field.TypeString, Size: 256, Default: ""},
+		{Name: "occurred_at", Type: field.TypeTime, Nullable: true},
+		{Name: "received_at", Type: field.TypeTime},
+		{Name: "payload", Type: field.TypeString, Size: 2147483647, Default: ""},
+		{Name: "imported_from_spool", Type: field.TypeBool, Default: false},
+		{Name: "payload_complete", Type: field.TypeBool, Default: false},
+	}
+	// CeoboardEventsTable holds the schema information for the "ceoboard_events" table.
+	CeoboardEventsTable = &schema.Table{
+		Name:       "ceoboard_events",
+		Columns:    CeoboardEventsColumns,
+		PrimaryKey: []*schema.Column{CeoboardEventsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "ceoboardevent_subject_key_received_at",
+				Unique:  false,
+				Columns: []*schema.Column{CeoboardEventsColumns[3], CeoboardEventsColumns[7]},
+			},
+			{
+				Name:    "ceoboardevent_platform_received_at",
+				Unique:  false,
+				Columns: []*schema.Column{CeoboardEventsColumns[1], CeoboardEventsColumns[7]},
+			},
+			{
+				Name:    "ceoboardevent_platform_received_at_event_uid",
+				Unique:  false,
+				Columns: []*schema.Column{CeoboardEventsColumns[1], CeoboardEventsColumns[7], CeoboardEventsColumns[0]},
+			},
+			{
+				Name:    "ceoboardevent_platform_subject_received_at",
+				Unique:  false,
+				Columns: []*schema.Column{CeoboardEventsColumns[1], CeoboardEventsColumns[2], CeoboardEventsColumns[7]},
+			},
+			{
+				Name:    "ceoboardevent_platform_event_id",
+				Unique:  false,
+				Columns: []*schema.Column{CeoboardEventsColumns[1], CeoboardEventsColumns[4]},
+			},
+		},
+	}
+	// CeoboardLatencySamplesColumns holds the columns for the "ceoboard_latency_samples" table.
+	CeoboardLatencySamplesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "metric_id", Type: field.TypeString, Size: 128},
+		{Name: "b_uid", Type: field.TypeString, Size: 512},
+		{Name: "entity_id", Type: field.TypeString, Size: 256, Default: ""},
+		{Name: "a_uid", Type: field.TypeString, Size: 512, Default: ""},
+		{Name: "latency_ms", Type: field.TypeInt64},
+		{Name: "at", Type: field.TypeTime},
+	}
+	// CeoboardLatencySamplesTable holds the schema information for the "ceoboard_latency_samples" table.
+	CeoboardLatencySamplesTable = &schema.Table{
+		Name:       "ceoboard_latency_samples",
+		Columns:    CeoboardLatencySamplesColumns,
+		PrimaryKey: []*schema.Column{CeoboardLatencySamplesColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "ceoboardlatencysample_metric_id_b_uid",
+				Unique:  true,
+				Columns: []*schema.Column{CeoboardLatencySamplesColumns[1], CeoboardLatencySamplesColumns[2]},
+			},
+			{
+				Name:    "ceoboardlatencysample_metric_id_at",
+				Unique:  false,
+				Columns: []*schema.Column{CeoboardLatencySamplesColumns[1], CeoboardLatencySamplesColumns[6]},
+			},
+		},
+	}
+	// CeoboardWebhookDeliveriesColumns holds the columns for the "ceoboard_webhook_deliveries" table.
+	CeoboardWebhookDeliveriesColumns = []*schema.Column{
+		{Name: "key", Type: field.TypeString, Size: 512},
+		{Name: "source", Type: field.TypeString, Size: 64},
+		{Name: "event", Type: field.TypeString, Size: 128, Default: ""},
+		{Name: "entity_id", Type: field.TypeString, Size: 256, Default: ""},
+		{Name: "at", Type: field.TypeTime},
+		{Name: "digest", Type: field.TypeString, Size: 64, Default: ""},
+		{Name: "fields", Type: field.TypeString, Size: 2147483647, Default: "{}"},
+		{Name: "status", Type: field.TypeString, Size: 32, Default: "ok"},
+		{Name: "error", Type: field.TypeString, Size: 1024, Default: ""},
+	}
+	// CeoboardWebhookDeliveriesTable holds the schema information for the "ceoboard_webhook_deliveries" table.
+	CeoboardWebhookDeliveriesTable = &schema.Table{
+		Name:       "ceoboard_webhook_deliveries",
+		Columns:    CeoboardWebhookDeliveriesColumns,
+		PrimaryKey: []*schema.Column{CeoboardWebhookDeliveriesColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "ceoboardwebhookdelivery_source_at",
+				Unique:  false,
+				Columns: []*schema.Column{CeoboardWebhookDeliveriesColumns[1], CeoboardWebhookDeliveriesColumns[4]},
+			},
+		},
+	}
 	// ChannelInboundReceiptColumns holds the columns for the "channel_inbound_receipt" table.
 	ChannelInboundReceiptColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString, Unique: true, Size: 256},
@@ -4331,6 +4483,11 @@ var (
 		BackgroundJobsTable,
 		BorrowRequestsTable,
 		BudgetAlertsTable,
+		CeoboardAuditTable,
+		CeoboardDeadLettersTable,
+		CeoboardEventsTable,
+		CeoboardLatencySamplesTable,
+		CeoboardWebhookDeliveriesTable,
 		ChannelInboundReceiptTable,
 		ChannelRuntimeLeaseTable,
 		ChannelTurnJobTable,
@@ -4474,6 +4631,21 @@ func init() {
 	}
 	BudgetAlertsTable.Annotation = &entsql.Annotation{
 		Table: "budget_alerts",
+	}
+	CeoboardAuditTable.Annotation = &entsql.Annotation{
+		Table: "ceoboard_audit",
+	}
+	CeoboardDeadLettersTable.Annotation = &entsql.Annotation{
+		Table: "ceoboard_dead_letters",
+	}
+	CeoboardEventsTable.Annotation = &entsql.Annotation{
+		Table: "ceoboard_events",
+	}
+	CeoboardLatencySamplesTable.Annotation = &entsql.Annotation{
+		Table: "ceoboard_latency_samples",
+	}
+	CeoboardWebhookDeliveriesTable.Annotation = &entsql.Annotation{
+		Table: "ceoboard_webhook_deliveries",
 	}
 	ChannelInboundReceiptTable.Annotation = &entsql.Annotation{
 		Table: "channel_inbound_receipt",

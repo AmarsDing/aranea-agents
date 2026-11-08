@@ -1,0 +1,474 @@
+syntax = "proto3";
+
+package kratos.ceoboard.v1;
+
+import "google/protobuf/empty.proto";
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/struct.proto";
+import "google/api/annotations.proto";
+import "google/api/field_behavior.proto";
+
+option go_package = "aranea-agents/api/kratos/ceoboard/v1;v1";
+option java_multiple_files = true;
+option java_package = "api.kratos.ceoboard.v1";
+
+// ============================================================================
+// CeoboardService —— 经营驾驶舱（自 ceo-dashboard 并入，整合 P2）
+//
+// 语义来源：ceo-dashboard internal/{registry,agg,store,adapter,api}（P0 详设
+// 05-proto草案 §1 + 2026-11-08 后端普查）。与原系统的差异：
+//   - 认证改为 aranea JWT（P1 权限底座）；原 /login、/me、/sessions/kick 不迁移
+//     （登录走 admin 域，踢会话走 token_version 统一吊销）。
+//   - 原 ceoboard sessions 表不迁移（JWT 无状态 + token_version）。
+//   - 入站 webhook（共享密钥 X-CEO-Key，机器对机器）不走本服务：作为基础设施
+//     入口直接挂在 HTTP server 上（与 WS/SPA 静态资源同层），单独做密钥校验。
+//   - 时间戳一律 google.protobuf.Timestamp（原系统为 unix 纳秒 int64，
+//     迁移脚本负责换算；未发生的时点留空而非零值）。
+//   - 权限码：view=ceoboard.view，ops=ceoboard.ops（登记于
+//     internal/server/middleware/permission_codes.go；proto option 待 codegen）。
+//   - 工作流 YAML permissions 声明式裁剪保留：服务端按「工作流可见角色 ∩ 主体
+//     角色」过滤 lanes/alerts/registry/drill，空 permissions 语义 = 仅 ceo。
+// ============================================================================
+
+// Health 健康度四态（原系统字符串 red/yellow/green/gray 的枚举化）。
+// gray = 未接入 / 待补 / 未知（不参与红黄告警）。
+enum Health {
+  HEALTH_UNSPECIFIED = 0;
+  HEALTH_RED = 1;
+  HEALTH_YELLOW = 2;
+  HEALTH_GREEN = 3;
+  HEALTH_GRAY = 4;
+}
+
+// ---------------------------------------------------------------------------
+// 视图模型（agg 层产出，服务端已按主体角色裁剪）
+// ---------------------------------------------------------------------------
+
+// PlatformView 平台健康灯（探针口径：从未成功=红；超 stale_after=黄；否则绿）。
+message PlatformView {
+  string id = 1;    // 内部平台 id（对外输出前已做公开 id 映射，如 hcf→hotcraft）
+  string name = 2;
+  Health health = 3;
+  string probe = 4;                        // 探针声明，如 "GET http://host/healthz"
+  google.protobuf.Timestamp last_ok_at = 5; // 从未成功则留空
+  string last_err = 6;
+  int64 latency_ms = 7;
+}
+
+// AlertView 告警条（30 分钟去重窗口；level 只会是 RED/YELLOW）。
+message AlertView {
+  string id = 1;
+  Health level = 2;
+  string target = 3;  // 告警对象（节点 / 平台 / 指标 id）
+  string text = 4;    // 原始工程文案；老板视图的「人话」翻译在前端做
+  google.protobuf.Timestamp since = 5;
+}
+
+// ApprovalItem 待办条目（lane=publish → 发文审批；其余 → 上架确认）。
+message ApprovalItem {
+  string lane = 1;
+  string id = 2;
+  string title = 3;
+  string extra = 4;
+}
+
+// ApprovalsView 审批聚合（health 反映审批数据源本身的健康度）。
+message ApprovalsView {
+  Health health = 1;
+  google.protobuf.Timestamp last_ok_at = 2;
+  int32 count = 3;
+  repeated ApprovalItem items = 4;
+  string note = 5;  // 非空 = 数据源暂不可用（前端按 health 着色提示）
+}
+
+// MetricView 指标读数。value 为空 = 无数据（前端不显示 0，显示「—」）。
+// pending 非空 = 声明了但 [待补] 跳过（前端黄色占位「（待补）」）。
+// origin ∈ {"", "event", "reconcile", "event+reconcile"} —— 指标口径来源。
+message MetricView {
+  string id = 1;
+  string unit = 2;
+  string window = 3;
+  optional double value = 4;
+  string display = 5;   // 服务端格式化好的展示值（含单位换算）
+  Health health = 6;
+  string note = 7;
+  string pending = 8;
+  string origin = 9;
+}
+
+// SourceView 节点数据源双轨状态（事件轨 + 对账轨，裁决规则见 biz/ceoboard/agg）。
+message SourceView {
+  string adapter = 1;     // nats-jetstream|rest-poll|webhook-recv|sse|ws|hybrid|db-query
+  string rest_path = 2;   // 对账轨 REST 声明（"GET <url>"）
+  bool skipped = 3;       // [待补] 裁剪：整个 source 被显式跳过
+  string skip_reason = 4;
+  bool unwired = 5;       // 声明了适配器但运行时尚未接线（如配置变更未重启）
+  string origin = 6;      // 当前口径：event|reconcile|event+reconcile
+  // —— 事件轨（NATS JetStream）——
+  string stream = 7;
+  bool consuming = 8;
+  bool connected = 9;
+  int64 msg_count = 10;
+  int64 dup_count = 11;
+  bool stream_missing = 12;    // 声明的 stream 在 JetStream 不存在
+  bool stream_optional = 13;   // 条件创建流：missing 时按「未启用」而非漂移处理
+  bool backlog = 14;           // 消费积压（满批指示）
+  google.protobuf.Timestamp last_event_at = 15;
+  // —— 对账轨（REST 轮询）——
+  google.protobuf.Timestamp as_of = 16;       // 数据时点（响应体提取）
+  google.protobuf.Timestamp last_ok_at = 17;  // 从未成功则留空
+  string last_err = 18;
+  int32 fail_count = 19;       // 连续失败次数
+  int64 latency_ms = 20;       // 最近一次轮询 RTT
+}
+
+// DrillView 下钻声明（已按 drill.permission ∩ 主体角色裁剪）。
+message DrillView {
+  string label = 1;
+  string type = 2;   // rest|sse|console_url
+  string path = 3;
+  map<string, string> params = 4;
+  repeated string fields = 5;
+  string empty_state = 6;
+  string note = 7;
+  string permission = 8;
+}
+
+// NodeView 流程节点（order 单调；skipped 节点在前端显示「待补·已跳过」）。
+message NodeView {
+  string id = 1;
+  string name = 2;
+  int32 order = 3;
+  Health health = 4;
+  string reason = 5;  // 原始工程结论文案（值班视图直显；老板视图前端翻译）
+  repeated MetricView metrics = 6;
+  SourceView source = 7;  // 无 source 声明时为空
+  repeated DrillView drill = 8;
+}
+
+// WorkflowView 工作流（health = 组内最差节点；volume_1h = 近 1h 业务量）。
+message WorkflowView {
+  string id = 1;
+  string name = 2;
+  string biz_line = 3;
+  string owner = 4;
+  int32 version = 5;
+  repeated string permissions = 6;  // YAML 声明的可见角色（空 = 仅 ceo，服务端语义）
+  Health health = 7;
+  int32 alerts = 8;      // 当前活跃告警数
+  int64 volume_1h = 9;
+  repeated NodeView nodes = 10;
+}
+
+// LaneView 业务线分组（biz_line ∈ content|ecommerce|invest|platform|…；
+// 组内排序：health rank → alerts 降序 → volume_1h 降序 → id；
+// collapsible = 全绿/灰才可折叠，含红/黄恒展开）。
+message LaneView {
+  string biz_line = 1;
+  Health health = 2;
+  bool collapsible = 3;
+  repeated WorkflowView workflows = 4;
+}
+
+// RegistryReport 注册表加载报告（失败隔离 + [待补] 裁剪留痕）。
+message RegistryReport {
+  string dir = 1;
+  google.protobuf.Timestamp loaded_at = 2;
+  repeated string loaded = 3;
+  repeated RegistryFailEntry failed = 4;
+  repeated RegistrySkipEntry skipped = 5;
+}
+
+message RegistryFailEntry {
+  string file = 1;
+  repeated string errors = 2;
+}
+
+// RegistrySkipEntry [待补] 裁剪记录：node 级跳过、field_map 单条删除、
+// metric 占位（metric 非空时 node 同填）。
+message RegistrySkipEntry {
+  string workflow = 1;
+  string node = 2;
+  string metric = 3;
+  string field = 4;
+  string reason = 5;
+}
+
+// Overview 整屏数据（老板视图与值班视图共用同一份口径）。
+message Overview {
+  google.protobuf.Timestamp as_of = 1;
+  repeated PlatformView platforms = 2;
+  repeated AlertView alerts = 3;
+  ApprovalsView approvals = 4;
+  repeated LaneView lanes = 5;
+  RegistryReport registry = 6;
+  string notice = 7;           // 一般提示（黄条）
+  string registry_notice = 8;  // 注册表热加载失败提示（黄条）
+}
+
+// ---------------------------------------------------------------------------
+// 事件 / 消费者 / 下钻明细
+// ---------------------------------------------------------------------------
+
+// EventSummary 事件流水条目（event_uid = platform + ":" + 去重键，
+// webhook 与 NATS 同表同源；payload_complete=0 表示 payload 被截断）。
+message EventSummary {
+  string uid = 1;
+  string platform = 2;  // 公开平台 id
+  string subject = 3;
+  string subject_key = 4;  // 剥离 .vN 后缀的归并键
+  string event_id = 5;
+  string entity_id = 6;
+  google.protobuf.Timestamp occurred_at = 7;  // 信封未带时间则留空
+  google.protobuf.Timestamp received_at = 8;
+  bool imported_from_spool = 9;
+  bool payload_complete = 10;
+}
+
+// EventDetail 事件详情。payload 为脱敏后的 JSON（敏感键 [REDACTED]，
+// 名单见 biz 层）；payload 不是单篇 JSON 文档时返回 422。
+message EventDetail {
+  EventSummary summary = 1;
+  google.protobuf.Value payload = 2;
+  repeated string redacted_fields = 3;
+}
+
+// ConsumerState NATS durable consumer 状态采样（15s 采样间隔）。
+message ConsumerState {
+  string node_key = 1;
+  string platform = 2;  // 公开平台 id
+  string stream = 3;
+  string durable = 4;
+  string subject = 5;
+  int32 num_pending = 6;
+  bool connected = 7;
+  google.protobuf.Timestamp as_of = 8;
+  string sample_error = 9;
+}
+
+// WebhookEventView webhook 投递流水条目（近 20 条，供抽屉展示）。
+message WebhookEventView {
+  string source = 1;
+  string event = 2;  // 无事件名时为空（前端显示「（无事件名）」）
+  string key = 3;
+  string entity_id = 4;
+  google.protobuf.Timestamp at = 5;
+  string digest = 6;
+  google.protobuf.Struct fields = 7;
+  bool deduped = 8;
+  string status = 9;  // ok|failed
+  string err_msg = 10;
+}
+
+// NodeDetail 节点抽屉明细。下钻接口失败时前端用 overview 快照降级拼装，
+// 不由本消息表达降级态。
+message NodeDetail {
+  NodeView node = 1;
+  string workflow_id = 2;
+  string workflow_name = 3;
+  string enter = 4;  // 进入条件表达式原文
+  string exit = 5;   // 退出条件表达式原文
+  google.protobuf.Timestamp as_of = 6;
+  string poll_snippet = 7;  // 最近一次回源响应截断（≤300 字符）
+  repeated WebhookEventView events = 8;       // webhook 事件流水（近 20 条）
+  repeated EventSummary nats_events = 9;      // NATS 事件流水（近 20 条）
+}
+
+// PlatformDetail 平台详情（平台灯 + 该平台相关工作流）。
+message PlatformDetail {
+  PlatformView platform = 1;
+  google.protobuf.Timestamp as_of = 2;
+  repeated WorkflowView workflows = 3;
+}
+
+// ---------------------------------------------------------------------------
+// 死信 / 审计（ceoboard.ops）
+// ---------------------------------------------------------------------------
+
+// DeadLetter 死信条目（kind ∈ webhook-receive|webhook-process|nats-decode；
+// replayed_at 为空 = 未重放）。
+message DeadLetter {
+  int64 id = 1;
+  string kind = 2;
+  string source = 3;
+  string ref_key = 4;
+  string payload = 5;
+  string reason = 6;
+  google.protobuf.Timestamp failed_at = 7;
+  google.protobuf.Timestamp replayed_at = 8;
+}
+
+// AuditEntry 审计条目（高危操作前门：intent 落库失败即拒绝执行，fail-closed）。
+message AuditEntry {
+  int64 id = 1;
+  google.protobuf.Timestamp at = 2;
+  string actor = 3;
+  string action = 4;
+  string target = 5;
+  bool ok = 6;
+  string detail = 7;
+}
+
+// ---------------------------------------------------------------------------
+// 请求 / 响应
+// ---------------------------------------------------------------------------
+
+message GetWorkflowRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message GetNodeRequest {
+  string workflow_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string node_id = 2 [(google.api.field_behavior) = REQUIRED];
+}
+
+message GetPlatformRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message ListConsumersRequest {
+  string platform = 1;    // 公开平台 id（hotcraft 等，服务端转内部 id）
+  string workflow_id = 2;
+  string node_id = 3;
+}
+
+message ListConsumersResponse {
+  repeated ConsumerState items = 1;
+}
+
+// ListEventsRequest 事件查询。platform 必填；subject/event_id 为字面相等
+// （不解释 NATS 通配符）；subject 必须在主体可见工作流声明的白名单内，
+// 否则按空集返回。时间窗默认最近 1h、最大 7d；to 排他。
+// cursor 为服务端签发的翻页游标（绑定筛选条件 hash，改筛选即失效）。
+message ListEventsRequest {
+  string platform = 1 [(google.api.field_behavior) = REQUIRED];
+  string subject = 2;
+  string event_id = 3;
+  string workflow_id = 4;
+  string node_id = 5;
+  google.protobuf.Timestamp from = 6;
+  google.protobuf.Timestamp to = 7;
+  int32 limit = 8;   // 默认 50，封顶 200
+  string cursor = 9;
+}
+
+message ListEventsResponse {
+  repeated EventSummary items = 1;
+  string next_cursor = 2;
+  google.protobuf.Timestamp as_of = 3;
+}
+
+message GetEventRequest {
+  string uid = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message ListDeadLettersRequest {
+  int32 limit = 1;  // 默认 200 封顶
+}
+
+message ListDeadLettersResponse {
+  int32 pending = 1;
+  repeated DeadLetter items = 2;  // 未重放在前
+}
+
+message ReplayDeadLetterRequest {
+  int64 id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+// ReplayDeadLetterResponse 重放结果（用原 ref_key 作强制幂等键保真去重；
+// deduped=true 表示投递键已存在、未重复落库）。
+message ReplayDeadLetterResponse {
+  bool replayed = 1;
+  string key = 2;
+  bool deduped = 3;
+  string status = 4;
+}
+
+// ListAuditRequest 审计查询（默认最近 24h，最大 31d；limit 默认/封顶 500）。
+message ListAuditRequest {
+  int32 limit = 1;
+  string action = 2;
+  google.protobuf.Timestamp from = 3;
+  google.protobuf.Timestamp to = 4;
+}
+
+message ListAuditResponse {
+  repeated AuditEntry items = 1;
+}
+
+// ExportAuditRequest 审计导出（CSV；limit 默认/封顶 100000；
+// 全服务同时仅允许 1 个导出，服务端串行化）。
+message ExportAuditRequest {
+  string action = 1;
+  google.protobuf.Timestamp from = 2;
+  google.protobuf.Timestamp to = 3;
+  int32 limit = 4;
+}
+
+// ExportAuditResponse CSV 文本（首行表头 id,at,actor,action,target,ok,detail；
+// at 为 RFC3339Nano UTC；首字符 =+-@ 的单元格前置单引号防公式注入）。
+// 前端自行生成下载文件名（audit-<UTC>.csv）。
+message ExportAuditResponse {
+  string csv = 1;
+}
+
+// ---------------------------------------------------------------------------
+// 服务
+// ---------------------------------------------------------------------------
+
+// CeoboardService 经营驾驶舱查询与运维面。
+// 权限码登记于 internal/server/middleware/permission_codes.go：
+// view 面 = ceoboard.view，ops 面 = ceoboard.ops。
+service CeoboardService {
+  // GetOverview 整屏数据（按主体角色做工作流可见性裁剪）。
+  rpc GetOverview(google.protobuf.Empty) returns (Overview) {
+    option (google.api.http) = {get: "/v1/ceoboard/overview"};
+  }
+  // GetWorkflow 单工作流（含裁剪后的 drill）。
+  rpc GetWorkflow(GetWorkflowRequest) returns (WorkflowView) {
+    option (google.api.http) = {get: "/v1/ceoboard/workflows/{id}"};
+  }
+  // GetNode 节点抽屉明细。
+  rpc GetNode(GetNodeRequest) returns (NodeDetail) {
+    option (google.api.http) = {get: "/v1/ceoboard/workflows/{workflow_id}/nodes/{node_id}"};
+  }
+  // GetPlatform 平台详情。
+  rpc GetPlatform(GetPlatformRequest) returns (PlatformDetail) {
+    option (google.api.http) = {get: "/v1/ceoboard/platforms/{id}"};
+  }
+  // ListConsumers NATS consumer 状态（按可见工作流过滤）。
+  rpc ListConsumers(ListConsumersRequest) returns (ListConsumersResponse) {
+    option (google.api.http) = {get: "/v1/ceoboard/consumers"};
+  }
+  // ListEvents 事件流水（subject 白名单由可见工作流动态生成）。
+  rpc ListEvents(ListEventsRequest) returns (ListEventsResponse) {
+    option (google.api.http) = {get: "/v1/ceoboard/events"};
+  }
+  // GetEvent 事件详情（payload 脱敏）。
+  rpc GetEvent(GetEventRequest) returns (EventDetail) {
+    option (google.api.http) = {get: "/v1/ceoboard/events/{uid}"};
+  }
+  // GetRegistryReport 注册表加载报告（裁剪后）。
+  rpc GetRegistryReport(google.protobuf.Empty) returns (RegistryReport) {
+    option (google.api.http) = {get: "/v1/ceoboard/registry/report"};
+  }
+  // ListDeadLetters 死信列表。
+  rpc ListDeadLetters(ListDeadLettersRequest) returns (ListDeadLettersResponse) {
+    option (google.api.http) = {get: "/v1/ceoboard/deadletters"};
+  }
+  // ReplayDeadLetter 死信重放（审计前门 fail-closed）。
+  rpc ReplayDeadLetter(ReplayDeadLetterRequest) returns (ReplayDeadLetterResponse) {
+    option (google.api.http) = {
+      post: "/v1/ceoboard/deadletters/{id}/replay"
+      body: "*"
+    };
+  }
+  // ListAudit 审计查询。
+  rpc ListAudit(ListAuditRequest) returns (ListAuditResponse) {
+    option (google.api.http) = {get: "/v1/ceoboard/audit"};
+  }
+  // ExportAudit 审计导出 CSV。
+  rpc ExportAudit(ExportAuditRequest) returns (ExportAuditResponse) {
+    option (google.api.http) = {get: "/v1/ceoboard/audit/export"};
+  }
+}

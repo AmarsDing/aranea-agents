@@ -14,6 +14,11 @@ import (
 	"aranea-agents/internal/data/ent/backgroundjob"
 	"aranea-agents/internal/data/ent/borrowrequest"
 	"aranea-agents/internal/data/ent/budgetalert"
+	"aranea-agents/internal/data/ent/ceoboardaudit"
+	"aranea-agents/internal/data/ent/ceoboarddeadletter"
+	"aranea-agents/internal/data/ent/ceoboardevent"
+	"aranea-agents/internal/data/ent/ceoboardlatencysample"
+	"aranea-agents/internal/data/ent/ceoboardwebhookdelivery"
 	"aranea-agents/internal/data/ent/channelinboundreceipt"
 	"aranea-agents/internal/data/ent/channelruntimelease"
 	"aranea-agents/internal/data/ent/channelturnjob"
@@ -1316,6 +1321,170 @@ func init() {
 	budgetalertDescID := budgetalertFields[0].Descriptor()
 	// budgetalert.IDValidator is a validator for the "id" field. It is called by the builders before save.
 	budgetalert.IDValidator = budgetalertDescID.Validators[0].(func(string) error)
+	ceoboardauditFields := schema.CeoboardAudit{}.Fields()
+	_ = ceoboardauditFields
+	// ceoboardauditDescActor is the schema descriptor for actor field.
+	ceoboardauditDescActor := ceoboardauditFields[2].Descriptor()
+	// ceoboardaudit.DefaultActor holds the default value on creation for the actor field.
+	ceoboardaudit.DefaultActor = ceoboardauditDescActor.Default.(string)
+	// ceoboardaudit.ActorValidator is a validator for the "actor" field. It is called by the builders before save.
+	ceoboardaudit.ActorValidator = ceoboardauditDescActor.Validators[0].(func(string) error)
+	// ceoboardauditDescAction is the schema descriptor for action field.
+	ceoboardauditDescAction := ceoboardauditFields[3].Descriptor()
+	// ceoboardaudit.ActionValidator is a validator for the "action" field. It is called by the builders before save.
+	ceoboardaudit.ActionValidator = ceoboardauditDescAction.Validators[0].(func(string) error)
+	// ceoboardauditDescTarget is the schema descriptor for target field.
+	ceoboardauditDescTarget := ceoboardauditFields[4].Descriptor()
+	// ceoboardaudit.DefaultTarget holds the default value on creation for the target field.
+	ceoboardaudit.DefaultTarget = ceoboardauditDescTarget.Default.(string)
+	// ceoboardaudit.TargetValidator is a validator for the "target" field. It is called by the builders before save.
+	ceoboardaudit.TargetValidator = ceoboardauditDescTarget.Validators[0].(func(string) error)
+	// ceoboardauditDescOk is the schema descriptor for ok field.
+	ceoboardauditDescOk := ceoboardauditFields[5].Descriptor()
+	// ceoboardaudit.DefaultOk holds the default value on creation for the ok field.
+	ceoboardaudit.DefaultOk = ceoboardauditDescOk.Default.(bool)
+	// ceoboardauditDescDetail is the schema descriptor for detail field.
+	ceoboardauditDescDetail := ceoboardauditFields[6].Descriptor()
+	// ceoboardaudit.DefaultDetail holds the default value on creation for the detail field.
+	ceoboardaudit.DefaultDetail = ceoboardauditDescDetail.Default.(string)
+	// ceoboardaudit.DetailValidator is a validator for the "detail" field. It is called by the builders before save.
+	ceoboardaudit.DetailValidator = ceoboardauditDescDetail.Validators[0].(func(string) error)
+	ceoboarddeadletterFields := schema.CeoboardDeadLetter{}.Fields()
+	_ = ceoboarddeadletterFields
+	// ceoboarddeadletterDescKind is the schema descriptor for kind field.
+	ceoboarddeadletterDescKind := ceoboarddeadletterFields[1].Descriptor()
+	// ceoboarddeadletter.KindValidator is a validator for the "kind" field. It is called by the builders before save.
+	ceoboarddeadletter.KindValidator = ceoboarddeadletterDescKind.Validators[0].(func(string) error)
+	// ceoboarddeadletterDescSource is the schema descriptor for source field.
+	ceoboarddeadletterDescSource := ceoboarddeadletterFields[2].Descriptor()
+	// ceoboarddeadletter.DefaultSource holds the default value on creation for the source field.
+	ceoboarddeadletter.DefaultSource = ceoboarddeadletterDescSource.Default.(string)
+	// ceoboarddeadletter.SourceValidator is a validator for the "source" field. It is called by the builders before save.
+	ceoboarddeadletter.SourceValidator = ceoboarddeadletterDescSource.Validators[0].(func(string) error)
+	// ceoboarddeadletterDescRefKey is the schema descriptor for ref_key field.
+	ceoboarddeadletterDescRefKey := ceoboarddeadletterFields[3].Descriptor()
+	// ceoboarddeadletter.DefaultRefKey holds the default value on creation for the ref_key field.
+	ceoboarddeadletter.DefaultRefKey = ceoboarddeadletterDescRefKey.Default.(string)
+	// ceoboarddeadletter.RefKeyValidator is a validator for the "ref_key" field. It is called by the builders before save.
+	ceoboarddeadletter.RefKeyValidator = ceoboarddeadletterDescRefKey.Validators[0].(func(string) error)
+	// ceoboarddeadletterDescPayload is the schema descriptor for payload field.
+	ceoboarddeadletterDescPayload := ceoboarddeadletterFields[4].Descriptor()
+	// ceoboarddeadletter.DefaultPayload holds the default value on creation for the payload field.
+	ceoboarddeadletter.DefaultPayload = ceoboarddeadletterDescPayload.Default.(string)
+	// ceoboarddeadletterDescReason is the schema descriptor for reason field.
+	ceoboarddeadletterDescReason := ceoboarddeadletterFields[5].Descriptor()
+	// ceoboarddeadletter.DefaultReason holds the default value on creation for the reason field.
+	ceoboarddeadletter.DefaultReason = ceoboarddeadletterDescReason.Default.(string)
+	// ceoboarddeadletter.ReasonValidator is a validator for the "reason" field. It is called by the builders before save.
+	ceoboarddeadletter.ReasonValidator = ceoboarddeadletterDescReason.Validators[0].(func(string) error)
+	ceoboardeventFields := schema.CeoboardEvent{}.Fields()
+	_ = ceoboardeventFields
+	// ceoboardeventDescPlatform is the schema descriptor for platform field.
+	ceoboardeventDescPlatform := ceoboardeventFields[1].Descriptor()
+	// ceoboardevent.PlatformValidator is a validator for the "platform" field. It is called by the builders before save.
+	ceoboardevent.PlatformValidator = ceoboardeventDescPlatform.Validators[0].(func(string) error)
+	// ceoboardeventDescSubject is the schema descriptor for subject field.
+	ceoboardeventDescSubject := ceoboardeventFields[2].Descriptor()
+	// ceoboardevent.SubjectValidator is a validator for the "subject" field. It is called by the builders before save.
+	ceoboardevent.SubjectValidator = ceoboardeventDescSubject.Validators[0].(func(string) error)
+	// ceoboardeventDescSubjectKey is the schema descriptor for subject_key field.
+	ceoboardeventDescSubjectKey := ceoboardeventFields[3].Descriptor()
+	// ceoboardevent.SubjectKeyValidator is a validator for the "subject_key" field. It is called by the builders before save.
+	ceoboardevent.SubjectKeyValidator = ceoboardeventDescSubjectKey.Validators[0].(func(string) error)
+	// ceoboardeventDescEventID is the schema descriptor for event_id field.
+	ceoboardeventDescEventID := ceoboardeventFields[4].Descriptor()
+	// ceoboardevent.DefaultEventID holds the default value on creation for the event_id field.
+	ceoboardevent.DefaultEventID = ceoboardeventDescEventID.Default.(string)
+	// ceoboardevent.EventIDValidator is a validator for the "event_id" field. It is called by the builders before save.
+	ceoboardevent.EventIDValidator = ceoboardeventDescEventID.Validators[0].(func(string) error)
+	// ceoboardeventDescEntityID is the schema descriptor for entity_id field.
+	ceoboardeventDescEntityID := ceoboardeventFields[5].Descriptor()
+	// ceoboardevent.DefaultEntityID holds the default value on creation for the entity_id field.
+	ceoboardevent.DefaultEntityID = ceoboardeventDescEntityID.Default.(string)
+	// ceoboardevent.EntityIDValidator is a validator for the "entity_id" field. It is called by the builders before save.
+	ceoboardevent.EntityIDValidator = ceoboardeventDescEntityID.Validators[0].(func(string) error)
+	// ceoboardeventDescPayload is the schema descriptor for payload field.
+	ceoboardeventDescPayload := ceoboardeventFields[8].Descriptor()
+	// ceoboardevent.DefaultPayload holds the default value on creation for the payload field.
+	ceoboardevent.DefaultPayload = ceoboardeventDescPayload.Default.(string)
+	// ceoboardeventDescImportedFromSpool is the schema descriptor for imported_from_spool field.
+	ceoboardeventDescImportedFromSpool := ceoboardeventFields[9].Descriptor()
+	// ceoboardevent.DefaultImportedFromSpool holds the default value on creation for the imported_from_spool field.
+	ceoboardevent.DefaultImportedFromSpool = ceoboardeventDescImportedFromSpool.Default.(bool)
+	// ceoboardeventDescPayloadComplete is the schema descriptor for payload_complete field.
+	ceoboardeventDescPayloadComplete := ceoboardeventFields[10].Descriptor()
+	// ceoboardevent.DefaultPayloadComplete holds the default value on creation for the payload_complete field.
+	ceoboardevent.DefaultPayloadComplete = ceoboardeventDescPayloadComplete.Default.(bool)
+	// ceoboardeventDescID is the schema descriptor for id field.
+	ceoboardeventDescID := ceoboardeventFields[0].Descriptor()
+	// ceoboardevent.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	ceoboardevent.IDValidator = ceoboardeventDescID.Validators[0].(func(string) error)
+	ceoboardlatencysampleFields := schema.CeoboardLatencySample{}.Fields()
+	_ = ceoboardlatencysampleFields
+	// ceoboardlatencysampleDescMetricID is the schema descriptor for metric_id field.
+	ceoboardlatencysampleDescMetricID := ceoboardlatencysampleFields[1].Descriptor()
+	// ceoboardlatencysample.MetricIDValidator is a validator for the "metric_id" field. It is called by the builders before save.
+	ceoboardlatencysample.MetricIDValidator = ceoboardlatencysampleDescMetricID.Validators[0].(func(string) error)
+	// ceoboardlatencysampleDescBUID is the schema descriptor for b_uid field.
+	ceoboardlatencysampleDescBUID := ceoboardlatencysampleFields[2].Descriptor()
+	// ceoboardlatencysample.BUIDValidator is a validator for the "b_uid" field. It is called by the builders before save.
+	ceoboardlatencysample.BUIDValidator = ceoboardlatencysampleDescBUID.Validators[0].(func(string) error)
+	// ceoboardlatencysampleDescEntityID is the schema descriptor for entity_id field.
+	ceoboardlatencysampleDescEntityID := ceoboardlatencysampleFields[3].Descriptor()
+	// ceoboardlatencysample.DefaultEntityID holds the default value on creation for the entity_id field.
+	ceoboardlatencysample.DefaultEntityID = ceoboardlatencysampleDescEntityID.Default.(string)
+	// ceoboardlatencysample.EntityIDValidator is a validator for the "entity_id" field. It is called by the builders before save.
+	ceoboardlatencysample.EntityIDValidator = ceoboardlatencysampleDescEntityID.Validators[0].(func(string) error)
+	// ceoboardlatencysampleDescAUID is the schema descriptor for a_uid field.
+	ceoboardlatencysampleDescAUID := ceoboardlatencysampleFields[4].Descriptor()
+	// ceoboardlatencysample.DefaultAUID holds the default value on creation for the a_uid field.
+	ceoboardlatencysample.DefaultAUID = ceoboardlatencysampleDescAUID.Default.(string)
+	// ceoboardlatencysample.AUIDValidator is a validator for the "a_uid" field. It is called by the builders before save.
+	ceoboardlatencysample.AUIDValidator = ceoboardlatencysampleDescAUID.Validators[0].(func(string) error)
+	ceoboardwebhookdeliveryFields := schema.CeoboardWebhookDelivery{}.Fields()
+	_ = ceoboardwebhookdeliveryFields
+	// ceoboardwebhookdeliveryDescSource is the schema descriptor for source field.
+	ceoboardwebhookdeliveryDescSource := ceoboardwebhookdeliveryFields[1].Descriptor()
+	// ceoboardwebhookdelivery.SourceValidator is a validator for the "source" field. It is called by the builders before save.
+	ceoboardwebhookdelivery.SourceValidator = ceoboardwebhookdeliveryDescSource.Validators[0].(func(string) error)
+	// ceoboardwebhookdeliveryDescEvent is the schema descriptor for event field.
+	ceoboardwebhookdeliveryDescEvent := ceoboardwebhookdeliveryFields[2].Descriptor()
+	// ceoboardwebhookdelivery.DefaultEvent holds the default value on creation for the event field.
+	ceoboardwebhookdelivery.DefaultEvent = ceoboardwebhookdeliveryDescEvent.Default.(string)
+	// ceoboardwebhookdelivery.EventValidator is a validator for the "event" field. It is called by the builders before save.
+	ceoboardwebhookdelivery.EventValidator = ceoboardwebhookdeliveryDescEvent.Validators[0].(func(string) error)
+	// ceoboardwebhookdeliveryDescEntityID is the schema descriptor for entity_id field.
+	ceoboardwebhookdeliveryDescEntityID := ceoboardwebhookdeliveryFields[3].Descriptor()
+	// ceoboardwebhookdelivery.DefaultEntityID holds the default value on creation for the entity_id field.
+	ceoboardwebhookdelivery.DefaultEntityID = ceoboardwebhookdeliveryDescEntityID.Default.(string)
+	// ceoboardwebhookdelivery.EntityIDValidator is a validator for the "entity_id" field. It is called by the builders before save.
+	ceoboardwebhookdelivery.EntityIDValidator = ceoboardwebhookdeliveryDescEntityID.Validators[0].(func(string) error)
+	// ceoboardwebhookdeliveryDescDigest is the schema descriptor for digest field.
+	ceoboardwebhookdeliveryDescDigest := ceoboardwebhookdeliveryFields[5].Descriptor()
+	// ceoboardwebhookdelivery.DefaultDigest holds the default value on creation for the digest field.
+	ceoboardwebhookdelivery.DefaultDigest = ceoboardwebhookdeliveryDescDigest.Default.(string)
+	// ceoboardwebhookdelivery.DigestValidator is a validator for the "digest" field. It is called by the builders before save.
+	ceoboardwebhookdelivery.DigestValidator = ceoboardwebhookdeliveryDescDigest.Validators[0].(func(string) error)
+	// ceoboardwebhookdeliveryDescFields is the schema descriptor for fields field.
+	ceoboardwebhookdeliveryDescFields := ceoboardwebhookdeliveryFields[6].Descriptor()
+	// ceoboardwebhookdelivery.DefaultFields holds the default value on creation for the fields field.
+	ceoboardwebhookdelivery.DefaultFields = ceoboardwebhookdeliveryDescFields.Default.(string)
+	// ceoboardwebhookdeliveryDescStatus is the schema descriptor for status field.
+	ceoboardwebhookdeliveryDescStatus := ceoboardwebhookdeliveryFields[7].Descriptor()
+	// ceoboardwebhookdelivery.DefaultStatus holds the default value on creation for the status field.
+	ceoboardwebhookdelivery.DefaultStatus = ceoboardwebhookdeliveryDescStatus.Default.(string)
+	// ceoboardwebhookdelivery.StatusValidator is a validator for the "status" field. It is called by the builders before save.
+	ceoboardwebhookdelivery.StatusValidator = ceoboardwebhookdeliveryDescStatus.Validators[0].(func(string) error)
+	// ceoboardwebhookdeliveryDescError is the schema descriptor for error field.
+	ceoboardwebhookdeliveryDescError := ceoboardwebhookdeliveryFields[8].Descriptor()
+	// ceoboardwebhookdelivery.DefaultError holds the default value on creation for the error field.
+	ceoboardwebhookdelivery.DefaultError = ceoboardwebhookdeliveryDescError.Default.(string)
+	// ceoboardwebhookdelivery.ErrorValidator is a validator for the "error" field. It is called by the builders before save.
+	ceoboardwebhookdelivery.ErrorValidator = ceoboardwebhookdeliveryDescError.Validators[0].(func(string) error)
+	// ceoboardwebhookdeliveryDescID is the schema descriptor for id field.
+	ceoboardwebhookdeliveryDescID := ceoboardwebhookdeliveryFields[0].Descriptor()
+	// ceoboardwebhookdelivery.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	ceoboardwebhookdelivery.IDValidator = ceoboardwebhookdeliveryDescID.Validators[0].(func(string) error)
 	channelinboundreceiptFields := schema.ChannelInboundReceipt{}.Fields()
 	_ = channelinboundreceiptFields
 	// channelinboundreceiptDescChannelID is the schema descriptor for channel_id field.
