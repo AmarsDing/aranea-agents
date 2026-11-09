@@ -27,6 +27,7 @@
         <q-tab name="panorama" icon="dashboard" :label="t('memory.tabs.panorama')" />
         <q-tab name="graph" icon="bubble_chart" :label="t('memory.tabs.graph')" />
         <q-tab name="browse" icon="travel_explore" :label="t('memory.tabs.browse')" />
+        <q-tab name="notes" icon="sticky_note_2" :label="t('memory.tabs.notes')" />
         <q-tab name="governance" icon="verified_user" :label="t('memory.tabs.governance')" />
         <q-tab name="pending" icon="pending_actions" :label="t('memory.tabs.pending')" />
         <q-tab v-if="isPlatformAdmin" name="ops" icon="admin_panel_settings" :label="t('memory.tabs.ops')" />
@@ -92,6 +93,10 @@
             />
           </template>
         </memory-browse-tab>
+      </q-tab-panel>
+
+      <q-tab-panel name="notes">
+        <memory-notes-tab />
       </q-tab-panel>
 
       <q-tab-panel name="governance">
@@ -192,6 +197,7 @@ import MemoryRecallTesterPanel from '../features/memory/MemoryRecallTesterPanel.
 import MemoryWorkerStatusPanel from '../components/memory/MemoryWorkerStatusPanel.vue';
 import MemoryBrowseTab, { type BrowseLayer } from '../features/memory/browse/MemoryBrowseTab.vue';
 import MemoryEpisodeTimeline from '../features/memory/browse/MemoryEpisodeTimeline.vue';
+import MemoryNotesTab from '../features/memory/notes/MemoryNotesTab.vue';
 import MemoryCascadePanel from '../features/memory/MemoryCascadePanel.vue';
 import MemoryConflictPanel from '../features/memory/MemoryConflictPanel.vue';
 import MemoryEvolutionPanel from '../components/memory/MemoryEvolutionPanel.vue';

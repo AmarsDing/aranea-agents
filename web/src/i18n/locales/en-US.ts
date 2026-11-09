@@ -3943,6 +3943,7 @@ export default {
       panorama: 'Layer Panorama',
       graph: 'Relation Graph',
       browse: 'Memory Browse',
+      notes: 'Notes',
       governance: 'Trust',
       pending: 'Pending approval',
       ops: 'Memory Ops',
@@ -4040,6 +4041,17 @@ export default {
       layers: {
         all: 'All',
       },
+    },
+    notes: {
+      scopeLabel: 'Note domain',
+      scopePersonal: 'Personal',
+      scopeWorkspace: 'Company space',
+      searchPlaceholder: 'Search notes',
+      refresh: 'Refresh',
+      emptyTitle: 'No notes yet',
+      emptyCaption: 'Personal and company notes migrated from the workbench appear here.',
+      unavailableBanner: 'Notes are temporarily unavailable. Check the `memory/v1` gateway or filters.',
+      total: '{count} notes',
     },
     episodes: {
       title: 'L2 Episode Timeline',

@@ -3895,6 +3895,7 @@ export default {
       panorama: '层级全景',
       graph: '关联图谱',
       browse: '记忆浏览',
+      notes: '笔记',
       governance: '信任',
       pending: '待审批',
       ops: '运维',
@@ -3991,6 +3992,17 @@ export default {
       layers: {
         all: '全部',
       },
+    },
+    notes: {
+      scopeLabel: '笔记域',
+      scopePersonal: '个人',
+      scopeWorkspace: '公司空间',
+      searchPlaceholder: '搜索笔记',
+      refresh: '刷新',
+      emptyTitle: '暂无笔记',
+      emptyCaption: '工作台迁移的个人与公司笔记会出现在这里。',
+      unavailableBanner: '笔记列表暂时不可用。请检查 `memory/v1` 网关或筛选条件。',
+      total: '共 {count} 条笔记',
     },
     episodes: {
       title: 'L2 情景时间线',
