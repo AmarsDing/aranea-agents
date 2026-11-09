@@ -77,6 +77,7 @@ import (
 	"aranea-agents/internal/skill/watch"
 	"aranea-agents/internal/team"
 	"aranea-agents/internal/tools"
+	"aranea-agents/internal/tools/calendar"
 	"aranea-agents/internal/tools/clientbridge"
 	"aranea-agents/internal/tools/codingbridge"
 	kanbanpkg "aranea-agents/internal/tools/kanban"
@@ -755,6 +756,7 @@ func provideRuntimeTooling(
 	codeExecFactory *localexec.Factory,
 	kanbanBridge kanbanpkg.Bridge,
 	credentialUC *biz.CredentialUsecase,
+	calendarTool calendar.Service,
 	debugRecorder *debug.RecorderFactory,
 	orgUC *biz.OrganizationUsecase,
 	toolResultGate *biz.ToolResultGate,
@@ -790,6 +792,7 @@ func provideRuntimeTooling(
 		Bridges: service.ToolBridges{
 			Kanban:      kanbanBridge,
 			Credential:  credentialUC,
+			Calendar:    calendarTool,
 			ComputerUse: computerUseUC,
 			Coding:      codingBridgeSvc,
 			Client:      clientBridge,

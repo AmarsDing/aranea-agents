@@ -179,6 +179,11 @@ var builtinPlatformToolSeeds = []platformToolSeed{
 	// 直送 executor），高敏站点默认拒绝（清单配置化）。双闸：本种子
 	// enabled=false + ARANEA_CREDENTIAL_TOOLS=1 环境闸。
 	{key: "credential", displayName: "凭据执行", description: "凭据托管执行动词（credential_login_execute / credential_token_issue）：经策略引擎裁决（高敏站点默认拒绝）后，agent 在目的站点执行登录或签发一次性临时令牌；secret 明文对 agent 永不可见。全量审计落 credential_executions。", category: "integration", riskLevel: "high", enabled: false, reqConfirm: true, paramsSchema: `{"type":"object","properties":{"site":{"type":"string","description":"目标站点，如 github.com"}},"required":["site"]}`},
+	// E 阶段 W1c 日程工具（需求文档 §2.3，拍板 K-1..K-5）：calendar_list 读本会话
+	// 属主时间窗事件（只读）；calendar_create_draft 只产 schedule_draft 草案进审批
+	// 中心，人批准后方落 office_events——审批中心即闸门，故种子不设 reqConfirm。
+	// 无环境闸，默认 enabled=false 按 agent 授予。
+	{key: "calendar", displayName: "日程", description: "日程工具集（calendar_list / calendar_create_draft）：读本人时间窗内的日程事件；提交排期草案进审批中心（schedule_draft），批准后才落入日程，拒绝不留事件。身份从会话解析，agent 不可自报身份。", category: "integration", riskLevel: "low", enabled: false, paramsSchema: `{"type":"object","properties":{"start":{"type":"string","description":"时间窗起点 RFC3339（可选，默认现在）"},"end":{"type":"string","description":"时间窗终点 RFC3339（可选，默认 +7d）"}}}`},
 }
 
 func ensureBuiltinPlatformTools(ctx context.Context, client *ent.Client, d Dialect, lg loggateway.Logger) error {

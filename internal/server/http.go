@@ -36,6 +36,7 @@ import (
 	memoryv1 "aranea-agents/api/kratos/memory/v1"
 	modelcatalogv1 "aranea-agents/api/kratos/model_catalog/v1"
 	monitorv1 "aranea-agents/api/kratos/monitor/v1"
+	officev1 "aranea-agents/api/kratos/office/v1"
 	organizationv1 "aranea-agents/api/kratos/organization/v1"
 	packv1 "aranea-agents/api/kratos/pack/v1"
 	pluginv1 "aranea-agents/api/kratos/plugin/v1"
@@ -65,6 +66,7 @@ import (
 	"github.com/go-kratos/kratos/v2/middleware/recovery"
 	"github.com/go-kratos/kratos/v2/middleware/tracing"
 	kratoshttp "github.com/go-kratos/kratos/v2/transport/http"
+	"google.golang.org/genproto/googleapis/api/httpbody"
 )
 
 type ReadinessProbe interface {
@@ -207,6 +209,15 @@ func registerProtoServices(srv *kratoshttp.Server, s *ServiceRegistry) {
 	}
 	if s.Review != nil {
 		reviewv1.RegisterReviewServiceHTTPServer(srv, s.Review)
+	}
+	if s.OfficeSchedule != nil {
+		officev1.RegisterOfficeScheduleServiceHTTPServer(srv, s.OfficeSchedule)
+	}
+	if s.OfficeNotify != nil {
+		officev1.RegisterOfficeNotifyServiceHTTPServer(srv, s.OfficeNotify)
+	}
+	if s.OfficeApps != nil {
+		officev1.RegisterOfficeAppsServiceHTTPServer(srv, s.OfficeApps)
 	}
 }
 
@@ -573,7 +584,18 @@ type healthzOKResponse struct {
 // Content-Type includes charset=utf-8. Without this, Kratos sets
 // "application/json" without charset, which can cause Windows HTTP clients
 // to misinterpret UTF-8 bytes as GBK/GB2312, rendering Chinese as "????".
+//
+// *httpbody.HttpBody 直通（E 阶段 K-3 ics 订阅等原始字节端点）：kratos
+// v2.9.2 的 DefaultResponseEncoder 也不特判 HttpBody，缺省会被 codec
+// JSON/base64 包裹，日历客户端无法消费；此处按其声明 Content-Type 原样写出。
 func utf8ResponseEncoder(w nethttp.ResponseWriter, r *nethttp.Request, v interface{}) error {
+	if hb, ok := v.(*httpbody.HttpBody); ok {
+		if hb.ContentType != "" {
+			w.Header().Set("Content-Type", hb.ContentType)
+		}
+		_, err := w.Write(hb.Data)
+		return err
+	}
 	codec, _ := kratoshttp.CodecForRequest(r, "Accept")
 	data, err := codec.Marshal(v)
 	if err != nil {

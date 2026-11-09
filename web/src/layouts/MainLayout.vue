@@ -3,7 +3,16 @@
     <a href="#app-main-content" class="app-skip-link">{{ t('uiSystem.skipContent') }}</a>
     <q-header :elevated="false" :class="isDark ? 'dark-header' : 'cream-header'">
       <q-toolbar class="q-px-sm-md">
-        <q-btn flat dense round icon="menu" :aria-label="t('uiSystem.mainMenu')" :aria-expanded="drawerOpen" aria-controls="app-navigation" @click="drawerOpen = !drawerOpen" />
+        <q-btn
+          flat
+          dense
+          round
+          icon="menu"
+          :aria-label="t('uiSystem.mainMenu')"
+          :aria-expanded="drawerOpen"
+          aria-controls="app-navigation"
+          @click="drawerOpen = !drawerOpen"
+        />
         <q-btn
           v-if="$q.screen.gt.sm"
           flat
@@ -24,6 +33,12 @@
             @open-session="onOpenInboundSession"
             @mark-read="inboundStore.markRead($event)"
             @mark-all-read="inboundStore.markAllRead()"
+          />
+          <OfficeNotificationBell
+            :items="officeNotifyItems"
+            :unread-count="officeNotifyUnread"
+            @mark-read="officeNotifyDismiss($event)"
+            @mark-all-read="officeNotifyMarkAll()"
           />
           <q-btn round flat dense class="cursor-pointer" :aria-label="t('uiSystem.accountMenu')">
             <q-avatar size="36px" class="app-header-avatar" font-size="14px">
@@ -156,6 +171,8 @@ import { useAuthStore } from '../stores/auth';
 import { useNavStore } from '../stores/nav';
 import { useInboundNotificationStore } from '../stores/inboundNotifications';
 import InboundNotificationBell from '../components/layout/InboundNotificationBell.vue';
+import OfficeNotificationBell from '../components/layout/OfficeNotificationBell.vue';
+import { useOfficeNotifications } from '../features/office/useOfficeNotifications';
 import PairingQrDialog from '../components/mobile/PairingQrDialog.vue';
 import ArtifactPreviewDialog from '../components/artifact/ArtifactPreviewDialog.vue';
 import { useArtifactStore } from '../stores/artifact';
@@ -173,6 +190,15 @@ const artifactStore = useArtifactStore();
 const drawerOpen = ref($q.screen.gt.sm);
 const drawerMini = ref(false);
 const pairingOpen = ref(false);
+
+// E 阶段 W1c：office 通知中心铃铛（30s 轮询 + 聚焦即刷；已读管理走
+// /v1/office/notifications*，全认证用户可用）。
+const {
+  items: officeNotifyItems,
+  unreadCount: officeNotifyUnread,
+  dismiss: officeNotifyDismiss,
+  markAll: officeNotifyMarkAll,
+} = useOfficeNotifications();
 
 /** 产物预览弹窗的下载动作：统一走 artifactStore.download，失败提示。 */
 async function onArtifactDownload(meta: ArtifactMeta) {

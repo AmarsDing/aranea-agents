@@ -321,6 +321,21 @@ func computeShardPlan(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps, p
 		}
 	}
 
+	// E 阶段 W1c 日程工具（calendar_list / calendar_create_draft）：无环境闸——
+	// 审批中心即闸门（create_draft 只产 schedule_draft 草案，人批准后方落事件），
+	// 由 tools 表种子按 agent 授予（eff key，仅在 ToolsEnabled 门内置位）。
+	// CalendarSvc 未注入时裁剪（诚实降级，不伪造空表）。
+	if cfg.Calendar {
+		if deps.CalendarSvc != nil {
+			cfg.CalendarService = deps.CalendarSvc
+		} else {
+			lg.Warn("calendar 已授予但 CalendarSvc 未注入，跳过日程工具",
+				loggateway.StepID("agent.tool_build"),
+				loggateway.Str("agent_id", ag.ID))
+			cfg.Calendar = false
+		}
+	}
+
 	memoryMaster := deps.HasMemory && biz.ResolveMemoryRuntimePolicy(ag.Settings).MasterEnabled
 	if memoryMaster {
 		cfg.MemoryEnabled = true

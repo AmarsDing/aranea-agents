@@ -14,6 +14,7 @@ import (
 	"aranea-agents/internal/sandbox"
 	"aranea-agents/internal/tools"
 	"aranea-agents/internal/tools/cache"
+	calendarpkg "aranea-agents/internal/tools/calendar"
 	"aranea-agents/internal/tools/clientbridge"
 	"aranea-agents/internal/tools/codingbridge"
 	credentialpkg "aranea-agents/internal/tools/credential"
@@ -62,6 +63,10 @@ type TRPCToolAssemblyDeps struct {
 	// CredentialExecutor 是凭据执行面（computer-use 接线前恒 nil——工具裁决/
 	// 审计完整执行，执行步诚实返回 unavailable）。
 	CredentialExecutor credentialpkg.Executor
+	// CalendarSvc 是 E 阶段 W1c 日程工具窄口（calendar_list /
+	// calendar_create_draft；service 层 session→user 解析适配）。nil 时日程
+	// 工具被裁剪（诚实降级，不伪造空表）。
+	CalendarSvc calendarpkg.Service
 	// MediaProviders resolves media generation provider configs for the
 	// generate_image / generate_video / image_to_video tools. Optional: when
 	// nil, media tools are skipped even if enabled in effective tool keys.

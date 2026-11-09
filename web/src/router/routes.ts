@@ -10,6 +10,8 @@ import MonitorPage from '../pages/MonitorPage.vue';
 import OverviewPage from '../pages/OverviewPage.vue';
 import WorkbenchCockpitPage from '../pages/WorkbenchCockpitPage.vue';
 import ApprovalsPage from '../pages/ApprovalsPage.vue';
+import SchedulePage from '../pages/SchedulePage.vue';
+import AppsPage from '../pages/AppsPage.vue';
 import CeoOverviewPage from '../pages/CeoOverviewPage.vue';
 import CeoOncallPage from '../pages/CeoOncallPage.vue';
 import UsageEventsPage from '../pages/UsageEventsPage.vue';
@@ -125,6 +127,8 @@ export const routes: RouteRecordRaw[] = [
       { path: 'overview', name: 'overview', component: OverviewPage },
       { path: 'workbench', name: 'workbench', component: WorkbenchCockpitPage },
       { path: 'approvals', name: 'approvals', component: ApprovalsPage, meta: { titleKey: 'menu.approvals' } },
+      { path: 'schedule', name: 'schedule', component: SchedulePage, meta: { titleKey: 'menu.schedule' } },
+      { path: 'apps', name: 'apps', component: AppsPage, meta: { titleKey: 'menu.apps' } },
       { path: 'ceo/overview', name: 'ceo-overview', component: CeoOverviewPage },
       { path: 'ceo/oncall', name: 'ceo-oncall', component: CeoOncallPage },
       { path: 'ecommerce-loop', name: 'ecommerce-loop', component: () => import('../pages/EcommerceLoopPage.vue') },

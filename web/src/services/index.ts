@@ -41,6 +41,11 @@ import { createAgentBridgeServiceClient } from './kratos/agentbridge/v1/index';
 import { createCeoboardServiceClient } from './kratos/ceoboard/v1/index';
 import { createApprovalCenterServiceClient } from './kratos/approval/v1/index';
 import { createReviewServiceClient } from './kratos/review/v1/index';
+import {
+  createOfficeScheduleServiceClient,
+  createOfficeNotifyServiceClient,
+  createOfficeAppsServiceClient,
+} from './kratos/office/v1/index';
 import { requestHandler, kratosApi } from './axiosHandler';
 
 // 每个功能模块的 service（proto 生成客户端 + requestHandler → kratosApi）。
@@ -91,6 +96,20 @@ export function createApprovalCenterService() {
 
 export function createReviewService() {
   return createReviewServiceClient(requestHandler);
+}
+
+// E 阶段 W1c：办公套件（日程 /v1/office/events*、通知 /v1/office/notifications*、
+// 应用启动器 /v1/office/apps*；拍板 K-1..K-5）。
+export function createOfficeScheduleService() {
+  return createOfficeScheduleServiceClient(requestHandler);
+}
+
+export function createOfficeNotifyService() {
+  return createOfficeNotifyServiceClient(requestHandler);
+}
+
+export function createOfficeAppsService() {
+  return createOfficeAppsServiceClient(requestHandler);
 }
 
 export function createDecisionService() {

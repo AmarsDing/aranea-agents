@@ -121,6 +121,19 @@ message SubmitScheduleDraftResponse {
   string approval_id = 1; // 审批中心条目 id
 }
 
+// 草案决议（审批中心 schedule_draft 类的领域出口——聚合端点只读，决议走本
+// 对 RPC）。Approve 在单事务内逐项复检 409 冲突：任一项与已落库事件重叠即
+// 整体 409、草案保持 pending（不部分落库）；全部通过才落 office_events 并
+// 标记 approved。Reject 仅留 decided_by/reason 审计，不落事件。
+message ApproveScheduleDraftRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED]; // 草案 id（=审批条目 id）
+}
+
+message RejectScheduleDraftRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+  string reason = 2;
+}
+
 // ICalToken ics 只读订阅令牌（feed 本身为 token-in-path 公开端点，吊销即 401）。
 message ICalToken {
   string id = 1;
@@ -184,6 +197,20 @@ service OfficeScheduleService {
     option (aranea.auth.v1.requirement) = {permission: "office.schedule"};
     option (google.api.http) = {
       post: "/v1/office/schedule-drafts"
+      body: "*"
+    };
+  }
+  rpc ApproveScheduleDraft(ApproveScheduleDraftRequest) returns (google.protobuf.Empty) {
+    option (aranea.auth.v1.requirement) = {permission: "office.schedule"};
+    option (google.api.http) = {
+      post: "/v1/office/schedule-drafts/{id}/approve"
+      body: "*"
+    };
+  }
+  rpc RejectScheduleDraft(RejectScheduleDraftRequest) returns (google.protobuf.Empty) {
+    option (aranea.auth.v1.requirement) = {permission: "office.schedule"};
+    option (google.api.http) = {
+      post: "/v1/office/schedule-drafts/{id}/reject"
       body: "*"
     };
   }

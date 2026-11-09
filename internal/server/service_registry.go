@@ -81,6 +81,12 @@ type ServiceRegistry struct {
 	ApprovalCenter *service.ApprovalCenterService
 	// Review 是 E 阶段 W1b MVP 发文审批/商机签收的 proto 收编（/v1/review/*）。
 	Review *service.ReviewService
+	// OfficeSchedule/OfficeNotify/OfficeApps 是 E 阶段 W1c 办公套件
+	// （/v1/office/events*、/v1/office/notifications*、/v1/office/apps*，
+	// 需求文档 §2，拍板 K-1..K-5）。
+	OfficeSchedule *service.OfficeScheduleService
+	OfficeNotify   *service.OfficeNotifyService
+	OfficeApps     *service.OfficeAppsService
 }
 
 // NewServiceRegistry assembles all services into a single registry for Wire injection.
@@ -142,6 +148,9 @@ func NewServiceRegistry(
 	ceoboard *service.CeoboardService,
 	approvalCenter *service.ApprovalCenterService,
 	reviewSvc *service.ReviewService,
+	officeSchedule *service.OfficeScheduleService,
+	officeNotify *service.OfficeNotifyService,
+	officeApps *service.OfficeAppsService,
 ) *ServiceRegistry {
 	return &ServiceRegistry{
 		Admin:              admin,
@@ -200,5 +209,8 @@ func NewServiceRegistry(
 		Ceoboard:           ceoboard,
 		ApprovalCenter:     approvalCenter,
 		Review:             reviewSvc,
+		OfficeSchedule:     officeSchedule,
+		OfficeNotify:       officeNotify,
+		OfficeApps:         officeApps,
 	}
 }

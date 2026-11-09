@@ -21,18 +21,20 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	OfficeScheduleService_CreateEvent_FullMethodName         = "/kratos.office.v1.OfficeScheduleService/CreateEvent"
-	OfficeScheduleService_UpdateEvent_FullMethodName         = "/kratos.office.v1.OfficeScheduleService/UpdateEvent"
-	OfficeScheduleService_DeleteEvent_FullMethodName         = "/kratos.office.v1.OfficeScheduleService/DeleteEvent"
-	OfficeScheduleService_GetEvent_FullMethodName            = "/kratos.office.v1.OfficeScheduleService/GetEvent"
-	OfficeScheduleService_ListEventsRange_FullMethodName     = "/kratos.office.v1.OfficeScheduleService/ListEventsRange"
-	OfficeScheduleService_ScheduleTask_FullMethodName        = "/kratos.office.v1.OfficeScheduleService/ScheduleTask"
-	OfficeScheduleService_ListTaskEvents_FullMethodName      = "/kratos.office.v1.OfficeScheduleService/ListTaskEvents"
-	OfficeScheduleService_SubmitScheduleDraft_FullMethodName = "/kratos.office.v1.OfficeScheduleService/SubmitScheduleDraft"
-	OfficeScheduleService_CreateICalToken_FullMethodName     = "/kratos.office.v1.OfficeScheduleService/CreateICalToken"
-	OfficeScheduleService_RevokeICalToken_FullMethodName     = "/kratos.office.v1.OfficeScheduleService/RevokeICalToken"
-	OfficeScheduleService_ListICalTokens_FullMethodName      = "/kratos.office.v1.OfficeScheduleService/ListICalTokens"
-	OfficeScheduleService_GetICalFeed_FullMethodName         = "/kratos.office.v1.OfficeScheduleService/GetICalFeed"
+	OfficeScheduleService_CreateEvent_FullMethodName          = "/kratos.office.v1.OfficeScheduleService/CreateEvent"
+	OfficeScheduleService_UpdateEvent_FullMethodName          = "/kratos.office.v1.OfficeScheduleService/UpdateEvent"
+	OfficeScheduleService_DeleteEvent_FullMethodName          = "/kratos.office.v1.OfficeScheduleService/DeleteEvent"
+	OfficeScheduleService_GetEvent_FullMethodName             = "/kratos.office.v1.OfficeScheduleService/GetEvent"
+	OfficeScheduleService_ListEventsRange_FullMethodName      = "/kratos.office.v1.OfficeScheduleService/ListEventsRange"
+	OfficeScheduleService_ScheduleTask_FullMethodName         = "/kratos.office.v1.OfficeScheduleService/ScheduleTask"
+	OfficeScheduleService_ListTaskEvents_FullMethodName       = "/kratos.office.v1.OfficeScheduleService/ListTaskEvents"
+	OfficeScheduleService_SubmitScheduleDraft_FullMethodName  = "/kratos.office.v1.OfficeScheduleService/SubmitScheduleDraft"
+	OfficeScheduleService_ApproveScheduleDraft_FullMethodName = "/kratos.office.v1.OfficeScheduleService/ApproveScheduleDraft"
+	OfficeScheduleService_RejectScheduleDraft_FullMethodName  = "/kratos.office.v1.OfficeScheduleService/RejectScheduleDraft"
+	OfficeScheduleService_CreateICalToken_FullMethodName      = "/kratos.office.v1.OfficeScheduleService/CreateICalToken"
+	OfficeScheduleService_RevokeICalToken_FullMethodName      = "/kratos.office.v1.OfficeScheduleService/RevokeICalToken"
+	OfficeScheduleService_ListICalTokens_FullMethodName       = "/kratos.office.v1.OfficeScheduleService/ListICalTokens"
+	OfficeScheduleService_GetICalFeed_FullMethodName          = "/kratos.office.v1.OfficeScheduleService/GetICalFeed"
 )
 
 // OfficeScheduleServiceClient is the client API for OfficeScheduleService service.
@@ -47,6 +49,8 @@ type OfficeScheduleServiceClient interface {
 	ScheduleTask(ctx context.Context, in *ScheduleTaskRequest, opts ...grpc.CallOption) (*OfficeEvent, error)
 	ListTaskEvents(ctx context.Context, in *ListTaskEventsRequest, opts ...grpc.CallOption) (*ListTaskEventsResponse, error)
 	SubmitScheduleDraft(ctx context.Context, in *SubmitScheduleDraftRequest, opts ...grpc.CallOption) (*SubmitScheduleDraftResponse, error)
+	ApproveScheduleDraft(ctx context.Context, in *ApproveScheduleDraftRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	RejectScheduleDraft(ctx context.Context, in *RejectScheduleDraftRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	CreateICalToken(ctx context.Context, in *CreateICalTokenRequest, opts ...grpc.CallOption) (*ICalToken, error)
 	RevokeICalToken(ctx context.Context, in *RevokeICalTokenRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	ListICalTokens(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ListICalTokensResponse, error)
@@ -144,6 +148,26 @@ func (c *officeScheduleServiceClient) SubmitScheduleDraft(ctx context.Context, i
 	return out, nil
 }
 
+func (c *officeScheduleServiceClient) ApproveScheduleDraft(ctx context.Context, in *ApproveScheduleDraftRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, OfficeScheduleService_ApproveScheduleDraft_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *officeScheduleServiceClient) RejectScheduleDraft(ctx context.Context, in *RejectScheduleDraftRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, OfficeScheduleService_RejectScheduleDraft_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *officeScheduleServiceClient) CreateICalToken(ctx context.Context, in *CreateICalTokenRequest, opts ...grpc.CallOption) (*ICalToken, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ICalToken)
@@ -196,6 +220,8 @@ type OfficeScheduleServiceServer interface {
 	ScheduleTask(context.Context, *ScheduleTaskRequest) (*OfficeEvent, error)
 	ListTaskEvents(context.Context, *ListTaskEventsRequest) (*ListTaskEventsResponse, error)
 	SubmitScheduleDraft(context.Context, *SubmitScheduleDraftRequest) (*SubmitScheduleDraftResponse, error)
+	ApproveScheduleDraft(context.Context, *ApproveScheduleDraftRequest) (*emptypb.Empty, error)
+	RejectScheduleDraft(context.Context, *RejectScheduleDraftRequest) (*emptypb.Empty, error)
 	CreateICalToken(context.Context, *CreateICalTokenRequest) (*ICalToken, error)
 	RevokeICalToken(context.Context, *RevokeICalTokenRequest) (*emptypb.Empty, error)
 	ListICalTokens(context.Context, *emptypb.Empty) (*ListICalTokensResponse, error)
@@ -236,6 +262,12 @@ func (UnimplementedOfficeScheduleServiceServer) ListTaskEvents(context.Context, 
 }
 func (UnimplementedOfficeScheduleServiceServer) SubmitScheduleDraft(context.Context, *SubmitScheduleDraftRequest) (*SubmitScheduleDraftResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method SubmitScheduleDraft not implemented")
+}
+func (UnimplementedOfficeScheduleServiceServer) ApproveScheduleDraft(context.Context, *ApproveScheduleDraftRequest) (*emptypb.Empty, error) {
+	return nil, status.Error(codes.Unimplemented, "method ApproveScheduleDraft not implemented")
+}
+func (UnimplementedOfficeScheduleServiceServer) RejectScheduleDraft(context.Context, *RejectScheduleDraftRequest) (*emptypb.Empty, error) {
+	return nil, status.Error(codes.Unimplemented, "method RejectScheduleDraft not implemented")
 }
 func (UnimplementedOfficeScheduleServiceServer) CreateICalToken(context.Context, *CreateICalTokenRequest) (*ICalToken, error) {
 	return nil, status.Error(codes.Unimplemented, "method CreateICalToken not implemented")
@@ -414,6 +446,42 @@ func _OfficeScheduleService_SubmitScheduleDraft_Handler(srv interface{}, ctx con
 	return interceptor(ctx, in, info, handler)
 }
 
+func _OfficeScheduleService_ApproveScheduleDraft_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ApproveScheduleDraftRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OfficeScheduleServiceServer).ApproveScheduleDraft(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: OfficeScheduleService_ApproveScheduleDraft_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OfficeScheduleServiceServer).ApproveScheduleDraft(ctx, req.(*ApproveScheduleDraftRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _OfficeScheduleService_RejectScheduleDraft_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RejectScheduleDraftRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OfficeScheduleServiceServer).RejectScheduleDraft(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: OfficeScheduleService_RejectScheduleDraft_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OfficeScheduleServiceServer).RejectScheduleDraft(ctx, req.(*RejectScheduleDraftRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _OfficeScheduleService_CreateICalToken_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(CreateICalTokenRequest)
 	if err := dec(in); err != nil {
@@ -524,6 +592,14 @@ var OfficeScheduleService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SubmitScheduleDraft",
 			Handler:    _OfficeScheduleService_SubmitScheduleDraft_Handler,
+		},
+		{
+			MethodName: "ApproveScheduleDraft",
+			Handler:    _OfficeScheduleService_ApproveScheduleDraft_Handler,
+		},
+		{
+			MethodName: "RejectScheduleDraft",
+			Handler:    _OfficeScheduleService_RejectScheduleDraft_Handler,
 		},
 		{
 			MethodName: "CreateICalToken",

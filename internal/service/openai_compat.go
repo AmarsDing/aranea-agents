@@ -57,6 +57,7 @@ func (s *ChatService) BuildOpenAIRunner(ctx context.Context, agentKey string) (t
 			MCPTooling:      s.orch.td().Persist.AgentMCP,
 			KanbanBridge:    s.orch.rt().Bridges.Kanban,
 			CredentialVault: s.orch.rt().Bridges.Credential,
+			CalendarSvc:     s.orch.rt().Bridges.Calendar,
 			ComputerUseUC:   s.orch.rt().Bridges.ComputerUse,
 			SandboxFSStore:  s.orch.rt().Bridges.SandboxFS,
 		},

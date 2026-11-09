@@ -144,6 +144,7 @@ func registerGeneratedPermissions(r *PermissionRegistry) {
 	requireAuthenticatedRPC(r, "office", "OfficeNotifyService", "DismissNotification", "POST", "/v1/office/notifications/{id}/dismiss")
 	requireAuthenticatedRPC(r, "office", "OfficeNotifyService", "ListNotifications", "GET", "/v1/office/notifications")
 	requireAuthenticatedRPC(r, "office", "OfficeNotifyService", "MarkAllNotificationsRead", "POST", "/v1/office/notifications:markAllRead")
+	requireRPC(r, "office", "OfficeScheduleService", "ApproveScheduleDraft", "POST", "/v1/office/schedule-drafts/{id}/approve", "office.schedule")
 	requireRPC(r, "office", "OfficeScheduleService", "CreateEvent", "POST", "/v1/office/events", "office.schedule")
 	requireRPC(r, "office", "OfficeScheduleService", "CreateICalToken", "POST", "/v1/office/calendar/tokens", "office.schedule")
 	requireRPC(r, "office", "OfficeScheduleService", "DeleteEvent", "DELETE", "/v1/office/events/{id}", "office.schedule")
@@ -152,6 +153,7 @@ func registerGeneratedPermissions(r *PermissionRegistry) {
 	requireRPC(r, "office", "OfficeScheduleService", "ListEventsRange", "GET", "/v1/office/events", "office.schedule")
 	requireRPC(r, "office", "OfficeScheduleService", "ListICalTokens", "GET", "/v1/office/calendar/tokens", "office.schedule")
 	requireRPC(r, "office", "OfficeScheduleService", "ListTaskEvents", "GET", "/v1/office/events:byTask", "office.schedule")
+	requireRPC(r, "office", "OfficeScheduleService", "RejectScheduleDraft", "POST", "/v1/office/schedule-drafts/{id}/reject", "office.schedule")
 	requireRPC(r, "office", "OfficeScheduleService", "RevokeICalToken", "DELETE", "/v1/office/calendar/tokens/{id}", "office.schedule")
 	requireRPC(r, "office", "OfficeScheduleService", "ScheduleTask", "POST", "/v1/office/events:scheduleTask", "office.schedule")
 	requireRPC(r, "office", "OfficeScheduleService", "SubmitScheduleDraft", "POST", "/v1/office/schedule-drafts", "office.schedule")
@@ -264,4 +266,4 @@ var generatedPublicRPCs = []string{
 	"/kratos.office.v1.OfficeScheduleService/GetICalFeed",
 }
 
-// 统计:permission=167 authenticated=36 public=4
+// 统计:permission=169 authenticated=36 public=4

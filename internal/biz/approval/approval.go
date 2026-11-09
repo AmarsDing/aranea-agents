@@ -11,8 +11,9 @@
 //   - task_review：agentbridge 编码任务验收（review_status='' 的终态任务）；
 //   - evolution_suggestion：统一进化存储中 target=agent 的 pending 建议；
 //   - skill_approval：统一进化存储 target=skill 的 pending 建议。
-// mask_proposal/offboard_export/schedule_draft/memory_fact 预留（随 D6/D3/
-// W1c 落位接入），kind 常量已定义、源未注册时对调用方表现为空 lane。
+// W1c 接入 schedule_draft（office 排期草案，source_schedule_draft.go）。
+// mask_proposal/offboard_export/memory_fact 预留（随 D6/D3 落位接入），
+// kind 常量已定义、源未注册时对调用方表现为空 lane。
 package approval
 
 import (

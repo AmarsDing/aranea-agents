@@ -3,6 +3,7 @@ import {
   createAgentBridgeService,
   createAgentService,
   createApprovalCenterService,
+  createOfficeScheduleService,
   createSkillEvolutionSuggestionService,
 } from '../../services';
 import type { ApprovalItemRow, ApprovalKindKey, DecideAction, RiskLevelKey, RiskMatrixRowModel } from './types';
@@ -150,9 +151,20 @@ export async function decideApproval({ item, action, note, actor }: DecideInput)
       }
       return;
     }
+    case 'schedule_draft': {
+      // W1c 日程草案决议出口（office 域 RPC；批准=单事务逐项 409 复检+落库，
+      // 拒绝须理由——服务端 400/409 语义与上一致）。
+      const svc = createOfficeScheduleService();
+      if (action === 'approve') {
+        await svc.ApproveScheduleDraft({ id: item.id });
+      } else {
+        await svc.RejectScheduleDraft({ id: item.id, reason: note });
+      }
+      return;
+    }
     default:
-      // mask_proposal / offboard_export / schedule_draft / memory_fact 一期
-      // 无聚合源（列表恒空）；防御分支，理论上不可达。
+      // mask_proposal / offboard_export / memory_fact 一期无聚合源（列表
+      // 恒空）；防御分支，理论上不可达。
       throw new Error(`approval kind ${item.kind} has no decide path`);
   }
 }

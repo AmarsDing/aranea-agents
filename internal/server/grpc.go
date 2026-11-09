@@ -33,6 +33,7 @@ import (
 	memoryv1 "aranea-agents/api/kratos/memory/v1"
 	modelcatalogv1 "aranea-agents/api/kratos/model_catalog/v1"
 	monitorv1 "aranea-agents/api/kratos/monitor/v1"
+	officev1 "aranea-agents/api/kratos/office/v1"
 	organizationv1 "aranea-agents/api/kratos/organization/v1"
 	packv1 "aranea-agents/api/kratos/pack/v1"
 	pluginv1 "aranea-agents/api/kratos/plugin/v1"
@@ -150,6 +151,15 @@ func NewGRPCServer(c *conf.Server, s *ServiceRegistry, lg loggateway.Logger) *gr
 	}
 	if s.Review != nil {
 		reviewv1.RegisterReviewServiceServer(srv, s.Review)
+	}
+	if s.OfficeSchedule != nil {
+		officev1.RegisterOfficeScheduleServiceServer(srv, s.OfficeSchedule)
+	}
+	if s.OfficeNotify != nil {
+		officev1.RegisterOfficeNotifyServiceServer(srv, s.OfficeNotify)
+	}
+	if s.OfficeApps != nil {
+		officev1.RegisterOfficeAppsServiceServer(srv, s.OfficeApps)
 	}
 	return srv
 }

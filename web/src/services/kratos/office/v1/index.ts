@@ -948,6 +948,23 @@ export type SubmitScheduleDraftResponse = {
   approvalId: string | undefined;
 };
 
+// 草案决议（审批中心 schedule_draft 类的领域出口——聚合端点只读，决议走本
+// 对 RPC）。Approve 在单事务内逐项复检 409 冲突：任一项与已落库事件重叠即
+// 整体 409、草案保持 pending（不部分落库）；全部通过才落 office_events 并
+// 标记 approved。Reject 仅留 decided_by/reason 审计，不落事件。
+export type ApproveScheduleDraftRequest = {
+  //
+  // Behaviors: REQUIRED
+  id: string | undefined;
+};
+
+export type RejectScheduleDraftRequest = {
+  //
+  // Behaviors: REQUIRED
+  id: string | undefined;
+  reason: string | undefined;
+};
+
 // ICalToken ics 只读订阅令牌（feed 本身为 token-in-path 公开端点，吊销即 401）。
 export type ICalToken = {
   id: string | undefined;
@@ -988,6 +1005,8 @@ export interface OfficeScheduleService {
   ScheduleTask(request: ScheduleTaskRequest): Promise<OfficeEvent>;
   ListTaskEvents(request: ListTaskEventsRequest): Promise<ListTaskEventsResponse>;
   SubmitScheduleDraft(request: SubmitScheduleDraftRequest): Promise<SubmitScheduleDraftResponse>;
+  ApproveScheduleDraft(request: ApproveScheduleDraftRequest): Promise<wellKnownEmpty>;
+  RejectScheduleDraft(request: RejectScheduleDraftRequest): Promise<wellKnownEmpty>;
   CreateICalToken(request: CreateICalTokenRequest): Promise<ICalToken>;
   RevokeICalToken(request: RevokeICalTokenRequest): Promise<wellKnownEmpty>;
   ListICalTokens(request: wellKnownEmpty): Promise<ListICalTokensResponse>;
@@ -1154,6 +1173,46 @@ export function createOfficeScheduleServiceClient(
         service: "OfficeScheduleService",
         method: "SubmitScheduleDraft",
       }) as Promise<SubmitScheduleDraftResponse>;
+    },
+    ApproveScheduleDraft(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      if (!request.id) {
+        throw new Error("missing required field request.id");
+      }
+      const path = `v1/office/schedule-drafts/${request.id}/approve`; // eslint-disable-line quotes
+      const body = JSON.stringify(request);
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "OfficeScheduleService",
+        method: "ApproveScheduleDraft",
+      }) as Promise<wellKnownEmpty>;
+    },
+    RejectScheduleDraft(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      if (!request.id) {
+        throw new Error("missing required field request.id");
+      }
+      const path = `v1/office/schedule-drafts/${request.id}/reject`; // eslint-disable-line quotes
+      const body = JSON.stringify(request);
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "OfficeScheduleService",
+        method: "RejectScheduleDraft",
+      }) as Promise<wellKnownEmpty>;
     },
     CreateICalToken(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/office/calendar/tokens`; // eslint-disable-line quotes

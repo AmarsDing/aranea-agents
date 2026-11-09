@@ -11,6 +11,7 @@ import (
 	plugintrpc "aranea-agents/internal/plugin/trpc"
 	"aranea-agents/internal/sandbox"
 	"aranea-agents/internal/tools"
+	"aranea-agents/internal/tools/calendar"
 	"aranea-agents/internal/tools/clientbridge"
 	"aranea-agents/internal/tools/codingbridge"
 	kanbanpkg "aranea-agents/internal/tools/kanban"
@@ -79,6 +80,10 @@ type ToolBridges struct {
 	// Credential 是 E 阶段凭据托管用例（credential_login_execute /
 	// credential_token_issue 的 vault 裁决/解密封口）。nil 时凭据工具被裁剪。
 	Credential *biz.CredentialUsecase
+	// Calendar 是 E 阶段 W1c 日程工具窄口（calendar_list /
+	// calendar_create_draft；service 层 session→user 解析适配）。nil 时日程
+	// 工具被裁剪（诚实降级）。
+	Calendar calendar.Service
 	// SandboxFS is the process-wide shared session-lease store backing
 	// sandbox_fs_write/read (M82 P1-2); the same instance is bound to the
 	// codeexecutor sandbox backend so code_exec and sandbox_fs share one

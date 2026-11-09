@@ -648,6 +648,12 @@ var ddlMigrationsLate = []ddlMigration{
 	// 注：credentials / credential_executions 两表为 ent 管理表，生产由
 	// Schema.Create 自动建表（ceoboard 先例），无需 CREATE TABLE 迁移。
 	{Version: 20261320, Name: "builtin_platform_tools_credential_reseed", Func: ddlBuiltinPlatformTools},
+	// 20261321 office_suite（E 阶段 W1c 日程+通知+apps，需求文档 §2，拍板
+	// K-1..K-5）：office_events（原生 TIMESTAMPTZ 承载范围聚合与 409 重叠
+	// 检测）/office_notifications/office_ical_tokens（token 只存哈希）/
+	// office_apps/office_schedule_drafts（审批中心 schedule_draft 领域承载）。
+	// 幂等 IF NOT EXISTS，不重写存量行，重跑安全。
+	{Version: 20261321, Name: "office_suite", SQL: "sql/migrations/20261321_office_suite.sql"},
 	// 20261323 approval_risk_matrix（E 阶段 W1b 审批中心，拍板 A-4）：三级风险 ×
 	// approval-policy 四档默认档映射配置表（matcher_key 主键），配置存库可审计
 	// 变更（PutRiskMatrix 走 audit）。消费点=approval-policy 求值默认档建议

@@ -37,6 +37,7 @@ import (
 	"aranea-agents/internal/biz/monitor"
 	"aranea-agents/internal/biz/monitor/alert"
 	"aranea-agents/internal/biz/monitor/heal"
+	"aranea-agents/internal/biz/office"
 	"aranea-agents/internal/biz/plugin"
 	"aranea-agents/internal/biz/session"
 	skill3 "aranea-agents/internal/biz/skill"
@@ -80,6 +81,7 @@ import (
 	"aranea-agents/internal/skill/watch"
 	"aranea-agents/internal/team"
 	"aranea-agents/internal/tools"
+	"aranea-agents/internal/tools/calendar"
 	"aranea-agents/internal/tools/clientbridge"
 	"aranea-agents/internal/tools/codingbridge"
 	"aranea-agents/internal/tools/kanban"
@@ -393,7 +395,14 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	agentbridgeTaskEventRepo := data.NewCodingTaskEventRepo(dataData)
 	sessionFactory := service.NewACPSessionFactory()
 	agentBridgeService := service.ProvideAgentBridgeService(agentRepo, projectRepo, agentbridgeTaskRepo, agentbridgeTaskEventRepo, sessionFactory, v2Bus, infra, loggatewayLogger)
-	runtimeTooling := provideRuntimeTooling(plugintrpcRuntime, manager, repository, skillHealthMetricsAdapter, retriever, adaptiveRouter, federatedRetriever, retrievalEvaluator, knowledgeUsecase, factory, kanbanToolBridge, credentialUsecase, recorderFactory, organizationUsecase, toolResultGate, router, subagentService, parallelToolExecutor, resourceAccessUsecase, deptMailboxUsecase, sessionSearchUsecase, bridge, computerUseUsecase, agentBridgeService, sessionLeases, runtime)
+	// E 阶段 W1c：日程工具窄口（calendar_list / calendar_create_draft）须在
+	// provideRuntimeTooling 之前装配，以注入 ToolBridges.Calendar；officeRepo
+	// 与审批中心/服务层（下方 office 块）复用同一实例。
+	officeRepo := provideOfficeRepo(dataData)
+	officeScheduleUsecase := provideOfficeScheduleUsecase(officeRepo)
+	officeDraftUsecase := provideOfficeDraftUsecase(officeRepo)
+	officeCalendarTool := provideOfficeCalendarTool(officeScheduleUsecase, officeDraftUsecase, sessionUsecase)
+	runtimeTooling := provideRuntimeTooling(plugintrpcRuntime, manager, repository, skillHealthMetricsAdapter, retriever, adaptiveRouter, federatedRetriever, retrievalEvaluator, knowledgeUsecase, factory, kanbanToolBridge, credentialUsecase, officeCalendarTool, recorderFactory, organizationUsecase, toolResultGate, router, subagentService, parallelToolExecutor, resourceAccessUsecase, deptMailboxUsecase, sessionSearchUsecase, bridge, computerUseUsecase, agentBridgeService, sessionLeases, runtime)
 	observationReadWriter := data.NewObservationRepo(dataData)
 	patternReadWriter := data.NewPatternRepo(dataData)
 	proposalReadWriter := data.NewProposalRepo(dataData)
@@ -693,11 +702,23 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	// 与 wire_part2.go Build 列表同步镜像；拍板 A-1/A-2/A-4）。
 	approvalTaskReviewReader := provideApprovalTaskReviewReader(agentbridgeTaskRepo)
 	approvalEvolutionReader := provideApprovalEvolutionReader(unifiedEvolutionRepo)
-	approvalAggregator := provideApprovalAggregator(approvalTaskReviewReader, approvalEvolutionReader)
 	approvalMatrix := provideApprovalMatrix(dataData, monitorUsecase)
-	approvalCenterService := provideApprovalCenterService(approvalAggregator, approvalMatrix)
 	reviewService := provideReviewService()
-	serviceRegistry := server.NewServiceRegistry(adminService, avatarService, agentService, llmProviderModelService, hookService, cronService, credentialService, pluginService, mcpServerService, skillService, toolService, serviceSessionService, sessionV2Service, channelService, usageService, monitorService, serviceMemoryService, systemSettingService, modelCatalogService, teamService, chatService, graphService, serviceArtifactService, knowledgeService, evaluationService, a2AService, endpointRegistry, federationService, ecosystemService, gatewayService, channelIngress, aiRefineService, taxonomyService, organizationService, skillIntelligenceService, skillDedupService, packService, skillEvolutionSuggestionService, serviceEvolutionService, selfImprovementService, ecosystemPresetService, aguiCompatService, openAISessionCompatService, a2AExtensionCompatService, twinOpenAPICompatService, runtimeProfileService, learningLoopService, computerUseService, agentBridgeAPI, sandboxService, decisionRecordService, configGraphService, diagnosticsService, ceoboardService, approvalCenterService, reviewService)
+	// E 阶段 W1c office 套件（wire-gen-hand-merge-convention：与 wire_part2.go
+	// Build 列表同步镜像；拍板 K-1..K-5）。日程草案读口先于聚合器装配；
+	// officeRepo / officeScheduleUsecase / officeDraftUsecase 已在上方
+	// provideRuntimeTooling 前装配（日程工具注入），此处复用同一实例。
+	scheduleDraftReader := provideScheduleDraftReader(officeRepo)
+	approvalAggregator := provideApprovalAggregator(approvalTaskReviewReader, approvalEvolutionReader, scheduleDraftReader)
+	approvalCenterService := provideApprovalCenterService(approvalAggregator, approvalMatrix)
+	officeNotifyUsecase := provideOfficeNotifyUsecase(officeRepo)
+	officeICalUsecase := provideOfficeICalUsecase(officeRepo)
+	officeAppsUsecase := provideOfficeAppsUsecase(officeRepo)
+	officeReminderWorker := provideOfficeReminderWorker(officeRepo, channelUsecase, loggatewayLogger)
+	officeScheduleService := provideOfficeScheduleService(officeScheduleUsecase, officeDraftUsecase, officeICalUsecase)
+	officeNotifyService := provideOfficeNotifyService(officeNotifyUsecase)
+	officeAppsService := provideOfficeAppsService(officeAppsUsecase)
+	serviceRegistry := server.NewServiceRegistry(adminService, avatarService, agentService, llmProviderModelService, hookService, cronService, credentialService, pluginService, mcpServerService, skillService, toolService, serviceSessionService, sessionV2Service, channelService, usageService, monitorService, serviceMemoryService, systemSettingService, modelCatalogService, teamService, chatService, graphService, serviceArtifactService, knowledgeService, evaluationService, a2AService, endpointRegistry, federationService, ecosystemService, gatewayService, channelIngress, aiRefineService, taxonomyService, organizationService, skillIntelligenceService, skillDedupService, packService, skillEvolutionSuggestionService, serviceEvolutionService, selfImprovementService, ecosystemPresetService, aguiCompatService, openAISessionCompatService, a2AExtensionCompatService, twinOpenAPICompatService, runtimeProfileService, learningLoopService, computerUseService, agentBridgeAPI, sandboxService, decisionRecordService, configGraphService, diagnosticsService, ceoboardService, approvalCenterService, reviewService, officeScheduleService, officeNotifyService, officeAppsService)
 	grpcServer := server.NewGRPCServer(confServer, serviceRegistry, loggatewayLogger)
 	speechRegistry := provideSpeechRegistry()
 	speechConfigReader := provideSpeechConfigReader(systemSettingRepo, loggatewayLogger)
@@ -830,7 +851,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	memoryEnhancedExtractor := service.NewMemoryEnhancedExtractor(memoryEnhancedExtractorConfig)
 	pathBL4Writer := providePathBL4Writer(dataData)
 	pathBExtractor := providePathBExtractor(memoryEnhancedExtractor, pathBL4Writer, memoryAdminUsecase, dataData, loggatewayLogger)
-	mainWireOut := provideWireOut(app, dataData, cronrunnerRunner, watchRunner, autoMemoryWorker, healthRunner, runner2, learningLoopScanner, providerHealthScanner, channelHealthScanner, jobsChannelDeliveryWorker, sessionRunDurableWorker, recoveryWorker, backgroundJobWorker, channelRuntime, plugintrpcRuntime, toolAuditCleanup, flowLogCleanup, toolSpillGC, monitorEventsCleanup, autoHealTTLCleanup, alertEvalWorker, monitorTraceBackfillWorker, memoryL2DecayWorker, memoryL1ArchiveWorker, channelTurnJobSweeper, memoryL3DecayWorker, memoryL4DecayWorker, memoryEbbinghausDecayWorker, memoryCanaryWorker, memoryCitationBackfillWorker, knowledgeCitationBackfillWorker, knowledgeRelationExtractWorker, knowledgeIndexRepairWorker, knowledgeCurateWorker, knowledgeWriteBackSweeperWorker, knowledgeGraphProjectionWorker, memorySleepTimeWorker, memoryEpisodeBackfillWorker, memoryDataMigrationWorker, memoryFactIndexReconciler, memoryDeadLetterReplayer, modelRegistrySyncAgent, selfCheckScheduler, selfHealObserver, infra, selfCheckCleanup, selfCheckJob, cronRepo, skillIntelligenceUsecase, skillIntelligenceWorker, curatorWorker, evolutionOrchestratorWorker, selfImproveObserveWorker, selfImproveDriveWorker, selfImproveWatchdogWorker, selfImproveOutcomeWorker, failurePatternSyncJob, predictiveHealUsecase, predictiveHealJob, patternMiningUsecase, patternMiningJob, pathBExtractor, wsv2Subscriber, indexer, sourceSyncWorker, ceoboardRuntime)
+	mainWireOut := provideWireOut(app, dataData, cronrunnerRunner, watchRunner, autoMemoryWorker, healthRunner, runner2, learningLoopScanner, providerHealthScanner, channelHealthScanner, jobsChannelDeliveryWorker, sessionRunDurableWorker, recoveryWorker, backgroundJobWorker, channelRuntime, plugintrpcRuntime, toolAuditCleanup, flowLogCleanup, toolSpillGC, monitorEventsCleanup, autoHealTTLCleanup, alertEvalWorker, monitorTraceBackfillWorker, memoryL2DecayWorker, memoryL1ArchiveWorker, channelTurnJobSweeper, memoryL3DecayWorker, memoryL4DecayWorker, memoryEbbinghausDecayWorker, memoryCanaryWorker, memoryCitationBackfillWorker, knowledgeCitationBackfillWorker, knowledgeRelationExtractWorker, knowledgeIndexRepairWorker, knowledgeCurateWorker, knowledgeWriteBackSweeperWorker, knowledgeGraphProjectionWorker, memorySleepTimeWorker, memoryEpisodeBackfillWorker, memoryDataMigrationWorker, memoryFactIndexReconciler, memoryDeadLetterReplayer, modelRegistrySyncAgent, selfCheckScheduler, selfHealObserver, infra, selfCheckCleanup, selfCheckJob, cronRepo, skillIntelligenceUsecase, skillIntelligenceWorker, curatorWorker, evolutionOrchestratorWorker, selfImproveObserveWorker, selfImproveDriveWorker, selfImproveWatchdogWorker, selfImproveOutcomeWorker, failurePatternSyncJob, predictiveHealUsecase, predictiveHealJob, patternMiningUsecase, patternMiningJob, pathBExtractor, wsv2Subscriber, indexer, sourceSyncWorker, ceoboardRuntime, officeReminderWorker)
 	return mainWireOut, func() {
 		cleanup()
 	}, nil
@@ -1470,6 +1491,7 @@ func provideRuntimeTooling(
 	codeExecFactory *codeexecutor.Factory,
 	kanbanBridge kanban.Bridge,
 	credentialUC *biz.CredentialUsecase,
+	calendarTool calendar.Service,
 	debugRecorder *debug.RecorderFactory,
 	orgUC *biz.OrganizationUsecase,
 	toolResultGate *biz.ToolResultGate,
@@ -1505,6 +1527,7 @@ func provideRuntimeTooling(
 		Bridges: service.ToolBridges{
 			Kanban:      kanbanBridge,
 			Credential:  credentialUC,
+			Calendar:    calendarTool,
 			ComputerUse: computerUseUC,
 			Coding:      codingBridgeSvc,
 			Client:      clientBridge,
@@ -4285,6 +4308,9 @@ type wireOut struct {
 	// startBackgroundWorkers 在数据就绪后 Start（spool 导入/归档/registry
 	// 热载/延迟探针/平台轮询/节点接线）。
 	CeoboardRuntime *ceoboard.Runtime
+	// OfficeReminderWorker 是 E 阶段 W1c 日程提醒扫描（K-4；每分钟窗口，
+	// 通知中心落表 + IM 声明式接收点投递）。
+	OfficeReminderWorker *office.ReminderWorker
 }
 
 func provideWireOut(
@@ -4355,6 +4381,7 @@ func provideWireOut(
 	configGraphIndexer *configgraph2.Indexer,
 	sourceSyncWorker *jobs.SourceSyncWorker,
 	ceoboardRuntime *ceoboard.Runtime,
+	officeReminderWorker *office.ReminderWorker,
 ) wireOut {
 	return wireOut{
 		App: app, Data: dataData, CronRunner: runner, SkillWatch: skillWatch, AutoMemory: autoMem,
@@ -4408,6 +4435,7 @@ func provideWireOut(
 		WSV2Subscriber:              wsV2Sub,
 		ConfigGraphIndexer:          configGraphIndexer,
 		CeoboardRuntime:             ceoboardRuntime,
+		OfficeReminderWorker:        officeReminderWorker,
 	}
 }
 

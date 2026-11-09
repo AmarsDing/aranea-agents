@@ -200,3 +200,19 @@ self_improvement:
 #   high_sensitivity_sites:           # 附加高敏站点清单（规范化 host，后缀匹配子域）
 #     - "intranet.example.com"
 #     - "erp.internal"
+
+# E 阶段 W1c 办公套件一期（2026-11-09，拍板 K-1..K-5）。本期无可调配置项：
+#   - 日程/通知/apps/ics 全部行为由代码与权限码（office.schedule / office.apps）
+#     控制；ics 订阅令牌只存 SHA-256 哈希，吊销即 feed 401；
+#   - 提醒扫描 worker 固定 1 分钟间隔（at-least-once：IM 幂等键
+#     sched-rem-<eventID>-<channelID> 去重 + 通知落表/事件置标事务恰好一次；
+#     停机错过的窗口恢复后首个 tick 补投，宁迟勿漏）；
+#   - agent 日程工具（calendar_list / calendar_create_draft）按 tools 表种子
+#     enabled=false 逐 agent 授予；create_draft 只产 schedule_draft 草案进审批
+#     中心，人批准后方落事件（审批中心即闸门，无环境闸）。
+#
+# IM 提醒接收点声明式契约（channel 元数据，非本文件）：
+#   在「渠道管理」编辑目标通道的 metadata_json，加入：
+#     {"reminder_sink": true, "reminder_recipient": "<平台接收方 id>"}
+#   工作区过滤规则：共享通道（workspace 为空）或属主空间通道生效；
+#   停用/已删除通道自动跳过。无声明 = 仅通知中心收件箱，IM 腿静默跳过。

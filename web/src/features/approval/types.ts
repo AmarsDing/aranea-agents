@@ -39,7 +39,8 @@ export type RiskMatrixRowModel = {
   updated_at: string;
 };
 
-/** 一期聚合器实际覆盖的三类（其余四类为 proto 预留，列表恒空）。 */
+/** 聚合器实际覆盖的四类（task_review/evolution_suggestion/skill_approval/
+ *  schedule_draft，W1c 起）；其余三类为 proto 预留，列表恒空。 */
 export const APPROVAL_KINDS: ApprovalKindKey[] = [
   'task_review',
   'evolution_suggestion',

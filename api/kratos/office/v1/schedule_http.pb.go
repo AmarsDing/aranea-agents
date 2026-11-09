@@ -21,6 +21,7 @@ var _ = binding.EncodeURL
 
 const _ = http.SupportPackageIsVersion1
 
+const OperationOfficeScheduleServiceApproveScheduleDraft = "/kratos.office.v1.OfficeScheduleService/ApproveScheduleDraft"
 const OperationOfficeScheduleServiceCreateEvent = "/kratos.office.v1.OfficeScheduleService/CreateEvent"
 const OperationOfficeScheduleServiceCreateICalToken = "/kratos.office.v1.OfficeScheduleService/CreateICalToken"
 const OperationOfficeScheduleServiceDeleteEvent = "/kratos.office.v1.OfficeScheduleService/DeleteEvent"
@@ -29,12 +30,14 @@ const OperationOfficeScheduleServiceGetICalFeed = "/kratos.office.v1.OfficeSched
 const OperationOfficeScheduleServiceListEventsRange = "/kratos.office.v1.OfficeScheduleService/ListEventsRange"
 const OperationOfficeScheduleServiceListICalTokens = "/kratos.office.v1.OfficeScheduleService/ListICalTokens"
 const OperationOfficeScheduleServiceListTaskEvents = "/kratos.office.v1.OfficeScheduleService/ListTaskEvents"
+const OperationOfficeScheduleServiceRejectScheduleDraft = "/kratos.office.v1.OfficeScheduleService/RejectScheduleDraft"
 const OperationOfficeScheduleServiceRevokeICalToken = "/kratos.office.v1.OfficeScheduleService/RevokeICalToken"
 const OperationOfficeScheduleServiceScheduleTask = "/kratos.office.v1.OfficeScheduleService/ScheduleTask"
 const OperationOfficeScheduleServiceSubmitScheduleDraft = "/kratos.office.v1.OfficeScheduleService/SubmitScheduleDraft"
 const OperationOfficeScheduleServiceUpdateEvent = "/kratos.office.v1.OfficeScheduleService/UpdateEvent"
 
 type OfficeScheduleServiceHTTPServer interface {
+	ApproveScheduleDraft(context.Context, *ApproveScheduleDraftRequest) (*emptypb.Empty, error)
 	CreateEvent(context.Context, *CreateEventRequest) (*OfficeEvent, error)
 	CreateICalToken(context.Context, *CreateICalTokenRequest) (*ICalToken, error)
 	DeleteEvent(context.Context, *DeleteEventRequest) (*emptypb.Empty, error)
@@ -46,6 +49,7 @@ type OfficeScheduleServiceHTTPServer interface {
 	ListEventsRange(context.Context, *ListEventsRangeRequest) (*ListEventsRangeResponse, error)
 	ListICalTokens(context.Context, *emptypb.Empty) (*ListICalTokensResponse, error)
 	ListTaskEvents(context.Context, *ListTaskEventsRequest) (*ListTaskEventsResponse, error)
+	RejectScheduleDraft(context.Context, *RejectScheduleDraftRequest) (*emptypb.Empty, error)
 	RevokeICalToken(context.Context, *RevokeICalTokenRequest) (*emptypb.Empty, error)
 	ScheduleTask(context.Context, *ScheduleTaskRequest) (*OfficeEvent, error)
 	SubmitScheduleDraft(context.Context, *SubmitScheduleDraftRequest) (*SubmitScheduleDraftResponse, error)
@@ -62,6 +66,8 @@ func RegisterOfficeScheduleServiceHTTPServer(s *http.Server, srv OfficeScheduleS
 	r.POST("/v1/office/events:scheduleTask", _OfficeScheduleService_ScheduleTask0_HTTP_Handler(srv))
 	r.GET("/v1/office/events:byTask", _OfficeScheduleService_ListTaskEvents2_HTTP_Handler(srv))
 	r.POST("/v1/office/schedule-drafts", _OfficeScheduleService_SubmitScheduleDraft0_HTTP_Handler(srv))
+	r.POST("/v1/office/schedule-drafts/{id}/approve", _OfficeScheduleService_ApproveScheduleDraft0_HTTP_Handler(srv))
+	r.POST("/v1/office/schedule-drafts/{id}/reject", _OfficeScheduleService_RejectScheduleDraft0_HTTP_Handler(srv))
 	r.POST("/v1/office/calendar/tokens", _OfficeScheduleService_CreateICalToken0_HTTP_Handler(srv))
 	r.DELETE("/v1/office/calendar/tokens/{id}", _OfficeScheduleService_RevokeICalToken0_HTTP_Handler(srv))
 	r.GET("/v1/office/calendar/tokens", _OfficeScheduleService_ListICalTokens0_HTTP_Handler(srv))
@@ -241,6 +247,56 @@ func _OfficeScheduleService_SubmitScheduleDraft0_HTTP_Handler(srv OfficeSchedule
 	}
 }
 
+func _OfficeScheduleService_ApproveScheduleDraft0_HTTP_Handler(srv OfficeScheduleServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in ApproveScheduleDraftRequest
+		if err := ctx.Bind(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationOfficeScheduleServiceApproveScheduleDraft)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.ApproveScheduleDraft(ctx, req.(*ApproveScheduleDraftRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*emptypb.Empty)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _OfficeScheduleService_RejectScheduleDraft0_HTTP_Handler(srv OfficeScheduleServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in RejectScheduleDraftRequest
+		if err := ctx.Bind(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationOfficeScheduleServiceRejectScheduleDraft)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.RejectScheduleDraft(ctx, req.(*RejectScheduleDraftRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*emptypb.Empty)
+		return ctx.Result(200, reply)
+	}
+}
+
 func _OfficeScheduleService_CreateICalToken0_HTTP_Handler(srv OfficeScheduleServiceHTTPServer) func(ctx http.Context) error {
 	return func(ctx http.Context) error {
 		var in CreateICalTokenRequest
@@ -327,6 +383,7 @@ func _OfficeScheduleService_GetICalFeed0_HTTP_Handler(srv OfficeScheduleServiceH
 }
 
 type OfficeScheduleServiceHTTPClient interface {
+	ApproveScheduleDraft(ctx context.Context, req *ApproveScheduleDraftRequest, opts ...http.CallOption) (rsp *emptypb.Empty, err error)
 	CreateEvent(ctx context.Context, req *CreateEventRequest, opts ...http.CallOption) (rsp *OfficeEvent, err error)
 	CreateICalToken(ctx context.Context, req *CreateICalTokenRequest, opts ...http.CallOption) (rsp *ICalToken, err error)
 	DeleteEvent(ctx context.Context, req *DeleteEventRequest, opts ...http.CallOption) (rsp *emptypb.Empty, err error)
@@ -338,6 +395,7 @@ type OfficeScheduleServiceHTTPClient interface {
 	ListEventsRange(ctx context.Context, req *ListEventsRangeRequest, opts ...http.CallOption) (rsp *ListEventsRangeResponse, err error)
 	ListICalTokens(ctx context.Context, req *emptypb.Empty, opts ...http.CallOption) (rsp *ListICalTokensResponse, err error)
 	ListTaskEvents(ctx context.Context, req *ListTaskEventsRequest, opts ...http.CallOption) (rsp *ListTaskEventsResponse, err error)
+	RejectScheduleDraft(ctx context.Context, req *RejectScheduleDraftRequest, opts ...http.CallOption) (rsp *emptypb.Empty, err error)
 	RevokeICalToken(ctx context.Context, req *RevokeICalTokenRequest, opts ...http.CallOption) (rsp *emptypb.Empty, err error)
 	ScheduleTask(ctx context.Context, req *ScheduleTaskRequest, opts ...http.CallOption) (rsp *OfficeEvent, err error)
 	SubmitScheduleDraft(ctx context.Context, req *SubmitScheduleDraftRequest, opts ...http.CallOption) (rsp *SubmitScheduleDraftResponse, err error)
@@ -350,6 +408,19 @@ type OfficeScheduleServiceHTTPClientImpl struct {
 
 func NewOfficeScheduleServiceHTTPClient(client *http.Client) OfficeScheduleServiceHTTPClient {
 	return &OfficeScheduleServiceHTTPClientImpl{client}
+}
+
+func (c *OfficeScheduleServiceHTTPClientImpl) ApproveScheduleDraft(ctx context.Context, in *ApproveScheduleDraftRequest, opts ...http.CallOption) (*emptypb.Empty, error) {
+	var out emptypb.Empty
+	pattern := "/v1/office/schedule-drafts/{id}/approve"
+	path := binding.EncodeURL(pattern, in, false)
+	opts = append(opts, http.Operation(OperationOfficeScheduleServiceApproveScheduleDraft))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
 }
 
 func (c *OfficeScheduleServiceHTTPClientImpl) CreateEvent(ctx context.Context, in *CreateEventRequest, opts ...http.CallOption) (*OfficeEvent, error) {
@@ -453,6 +524,19 @@ func (c *OfficeScheduleServiceHTTPClientImpl) ListTaskEvents(ctx context.Context
 	opts = append(opts, http.Operation(OperationOfficeScheduleServiceListTaskEvents))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *OfficeScheduleServiceHTTPClientImpl) RejectScheduleDraft(ctx context.Context, in *RejectScheduleDraftRequest, opts ...http.CallOption) (*emptypb.Empty, error) {
+	var out emptypb.Empty
+	pattern := "/v1/office/schedule-drafts/{id}/reject"
+	path := binding.EncodeURL(pattern, in, false)
+	opts = append(opts, http.Operation(OperationOfficeScheduleServiceRejectScheduleDraft))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
 	if err != nil {
 		return nil, err
 	}

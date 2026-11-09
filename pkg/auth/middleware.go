@@ -25,6 +25,10 @@ var (
 	}
 	noAuthPathPrefixes = []string{
 		"/v1/a2a/public/",
+		// E 阶段 K-3：ics 只读订阅为 token-in-path 公开端点（日历客户端无法带
+		// Bearer，令牌即凭据；吊销即 401）。与 permission_registry_gen.go 的
+		// public 豁免留痕一致（GetICalFeed 不登记权限项；该前缀下无其他路由）。
+		"/v1/office/calendar/feeds/",
 	}
 	// authSecretKey is the secret key used for signing JWT tokens.
 	authSecretKey = authSecretFromEnv("KRATOS_AUTH_SECRET")

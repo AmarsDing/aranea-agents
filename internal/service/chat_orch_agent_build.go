@@ -159,6 +159,7 @@ func (d *chatAgentBuildDirector) BuildTRPCDeps(ctx context.Context, p AgentBuild
 			CustomTools:          customTools,
 			KanbanBridge:         d.rt.Bridges.Kanban,
 			CredentialVault:      d.rt.Bridges.Credential,
+			CalendarSvc:          d.rt.Bridges.Calendar,
 			ComputerUseUC:        d.rt.Bridges.ComputerUse,
 			CodingBridgeSvc:      d.rt.Bridges.Coding,
 			SandboxFSStore:       d.rt.Bridges.SandboxFS,
