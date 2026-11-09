@@ -633,6 +633,13 @@ func provideTokenVersionStore(d *data.Data, rdb *data.RedisClient, lg loggateway
 	return data.NewTokenVersionStore(d, rdb, lg)
 }
 
+// providePermissionResolver builds the P1 DB 版角色→权限解析器（读
+// roles/permissions/role_permissions 三小表，周期刷新缓存；P1 任务分解 §4 收口）。
+// 首刷与 auth.SetPermissionResolver 注入在 newApp 组合根完成（见 app.go）。
+func providePermissionResolver(d *data.Data, lg loggateway.Logger) *data.RolePermissionResolver {
+	return data.NewRolePermissionResolver(data.NewRolePermissionLoader(d), lg)
+}
+
 func provideTurnLifecycleUsecase(sessions *biz.SessionUsecase, lg loggateway.Logger) *biz.TurnLifecycleUsecase {
 	return biz.NewTurnLifecycleUsecase(biz.TurnLifecycleUsecaseConfig{
 		Sessions: sessions,

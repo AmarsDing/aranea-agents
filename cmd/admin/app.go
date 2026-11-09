@@ -49,6 +49,7 @@ func newApp(
 	organizationUC *biz.OrganizationUsecase,
 	d *data.Data,
 	tvStore *data.TokenVersionStore,
+	permResolver *data.RolePermissionResolver,
 	adminUC *biz.AdminUsecase,
 	guard *service.SessionStatusGuard,
 	orchCache *biz.OrchestrationCache,
@@ -98,6 +99,18 @@ func newApp(
 		}
 	}
 
+	// P1 权限底座·DB 版角色→权限解析器接线（P0 详设 01 §3；P1 任务分解 §4 收口）。
+	// 首刷失败仅降级不阻断启动：空缓存 = 纯内置兜底（fail-usable 而非 fail-open，
+	// DB 收窄的授权不会因此放大）；DB 就绪后由周期刷新接管（循环在下方
+	// consumerCtx 上拉起）。注入进程级解析器后,Permission 中间件/菜单下发/
+	// HasPermission 全链路即走 DB。
+	if permResolver != nil {
+		if err := permResolver.Refresh(context.Background()); err != nil {
+			lg.Warn("permission resolver initial refresh failed; builtin fallback until first success", loggateway.StepID("auth.perm_resolver_init"), loggateway.Err(err))
+		}
+		auth.SetPermissionResolver(permResolver)
+	}
+
 	// MCP OAuth2 refresh_token 轮换回写钩子：进程级全局钩子，注册属于组合根
 	// 职责（勿放回 service 构造函数，避免重复构造相互覆写）。
 	if mcpServerUC != nil {
@@ -112,6 +125,14 @@ func newApp(
 	}
 
 	consumerCtx, consumerCancel := context.WithCancel(context.Background())
+
+	// DB 版权限解析器周期刷新（60s：RBAC 三小表变更低频；F 期角色管理台落地后
+	// 可在变更路径上直接 Refresh 获得即时生效）。失败保旧缓存,不致命。
+	if permResolver != nil {
+		safego.Go(consumerCtx, "auth.perm_resolver_refresh", func() {
+			permResolver.RunRefreshLoop(consumerCtx, 60*time.Second)
+		})
+	}
 
 	app := kratos.New(
 		kratos.ID(id),

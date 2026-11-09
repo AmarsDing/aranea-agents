@@ -591,6 +591,8 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	// P1-3 会话吊销存储（手工镜像 wire.go provideTokenVersionStore；本仓库 wire_gen
 	// 按既定约定手工合并，wire 全量再生成当前不可用，见 wire.go 镜像约定注释）。
 	tokenVersionStore := provideTokenVersionStore(dataData, redisClient, loggatewayLogger)
+	// P1 权限底座·DB 版角色→权限解析器（手工镜像 wire.go providePermissionResolver）。
+	rolePermissionResolver := providePermissionResolver(dataData, loggatewayLogger)
 	limiter := provideA2ALimiter(redisClient, loggatewayLogger)
 	a2AService := provideA2AService(a2aUsecase, chatService, agentRepository, endpointRegistry, publicBaseURLStore, limiter, loggatewayLogger)
 	a2AFederationRepo := data.NewA2AFederationRepo(dataData, loggatewayLogger)
@@ -703,7 +705,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	wsv2Subscriber := provideWSV2Subscriber(v2Bus, wsServer, loggatewayLogger)
 	trpcBuilderDeps := provideTRPCBuilderDeps(llmProviderModelUsecase, toolUsecase, agentUsecase, agentRepository, systemSettingRepo, skillUsecase, persistenceSet, repository, factory, retriever, knowledgeUsecase, manager, organizationUsecase, toolResultGate, router, subagentService, a2aUsecase, circuitBreakerRegistry, bridge, runtime, lifecycle, loggatewayLogger, dataData, finishObserverHooks)
 	vaultSyncSupervisor := provideVaultSyncSupervisor(knowledgeUsecase, vaultFiler, multiProviderEmbedder, entityPipeline, relationExtractor, extractorRegistry, v2Bus, loggatewayLogger)
-	app := newApp(logger, loggatewayLogger, pipeline, arg, grpcServer, httpServer, wsServer, eventBusSideConsumers, infra, memoryDataMigrationWorker, agentUsecase, teamUsecase, organizationUsecase, dataData, tokenVersionStore, adminUsecase, sessionStatusGuard, orchestrationCache, sessionUsecase, mcpServerUsecase, chatService, spiritTeamUsecase, teamStarter, lifecycleManager, wsv2Subscriber, trpcBuilderDeps, knowledgeService, vaultSyncSupervisor, multiProviderEmbedder, channelGateCards, agentBridgeService, sandboxManager, lifecycle, lifecycle, teamService, plugintrpcRuntime)
+	app := newApp(logger, loggatewayLogger, pipeline, arg, grpcServer, httpServer, wsServer, eventBusSideConsumers, infra, memoryDataMigrationWorker, agentUsecase, teamUsecase, organizationUsecase, dataData, tokenVersionStore, rolePermissionResolver, adminUsecase, sessionStatusGuard, orchestrationCache, sessionUsecase, mcpServerUsecase, chatService, spiritTeamUsecase, teamStarter, lifecycleManager, wsv2Subscriber, trpcBuilderDeps, knowledgeService, vaultSyncSupervisor, multiProviderEmbedder, channelGateCards, agentBridgeService, sandboxManager, lifecycle, lifecycle, teamService, plugintrpcRuntime)
 	watchRunner := provideSkillWatchRunner(skillUsecase, skillUsecase, systemSettingRepo, monitorBus, monitorUsecase, loggatewayLogger)
 	l4GraphWriter := provideL4GraphWriter(dataData, l4CascadeUsecase, loggatewayLogger)
 	episodeIndexSyncer := provideEpisodeIndexSync(memoryUsecase, dataData)
@@ -1232,6 +1234,12 @@ func provideRedisClient(c *conf.Data, lg loggateway.Logger) *data.RedisClient {
 // write-through + DB 回源）。手工镜像 wire.go 同名 provider（wire_gen 手工合并约定）。
 func provideTokenVersionStore(d *data.Data, rdb *data.RedisClient, lg loggateway.Logger) *data.TokenVersionStore {
 	return data.NewTokenVersionStore(d, rdb, lg)
+}
+
+// providePermissionResolver builds the P1 DB 版角色→权限解析器。手工镜像
+// wire.go 同名 provider（wire_gen 手工合并约定）。
+func providePermissionResolver(d *data.Data, lg loggateway.Logger) *data.RolePermissionResolver {
+	return data.NewRolePermissionResolver(data.NewRolePermissionLoader(d), lg)
 }
 
 func provideTurnLifecycleUsecase(sessions *biz.SessionUsecase, lg loggateway.Logger) *biz.TurnLifecycleUsecase {
