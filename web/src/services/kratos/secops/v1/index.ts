@@ -177,6 +177,10 @@ export interface SecopsService {
   ApproveMaskProposal(request: MaskProposalActionRequest): Promise<MaskProposal>;
   RejectMaskProposal(request: MaskProposalActionRequest): Promise<MaskProposal>;
   ActivateMaskProposal(request: ActivateMaskProposalRequest): Promise<MaskProposal>;
+  // 离职处置五步（W2a D3，需求文档 §6.3）：整体为 sysadmin 专属域
+  // （user.offboard 码位，P1 码位分配 admin 行）。wb 原流 freeze/request 亦允许
+  // secadmin——aranea 收敛为 sysadmin 专属（用户生命周期=user.* 码位），
+  // 不可自批在 sysadmin A/B 之间保持请求/审批隔离。
   FreezeUser(request: FreezeUserRequest): Promise<wellKnownEmpty>;
   RequestOffboardExport(request: RequestOffboardExportRequest): Promise<OffboardRequest>;
   // ApproveOffboardExport 不可自批（申请人 != 审批人服务端强制）。

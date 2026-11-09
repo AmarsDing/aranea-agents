@@ -31,15 +31,17 @@ func provideApprovalEvolutionReader(repo *data.UnifiedEvolutionRepo) approval.Ev
 }
 
 // provideApprovalAggregator 装配审批聚合器：一期三类源（任务验收/进化建议/
-// 技能审批）+ W1c 日程草案（schedule_draft，可见性闸门 office.schedule）。
+// 技能审批）+ W1c 日程草案（schedule_draft，可见性闸门 office.schedule）
+// + W2a D3 离职导出（offboard_export，闸门 user.offboard 且非自提）。
 // reader 为 nil 时对应源不注册（NewXxxSource nil→nil 语义），
-// mask_proposal/offboard_export/memory_fact 随 D6/D3 接入。
-func provideApprovalAggregator(tasks approval.CodingTaskReviewReader, evo approval.EvolutionQueryReader, drafts approval.ScheduleDraftReader) *approval.Aggregator {
+// mask_proposal/memory_fact 随 D6/D3 接入。
+func provideApprovalAggregator(tasks approval.CodingTaskReviewReader, evo approval.EvolutionQueryReader, drafts approval.ScheduleDraftReader, offboard approval.OffboardRequestReader) *approval.Aggregator {
 	return approval.NewAggregator(
 		approval.NewTaskReviewSource(tasks),
 		approval.NewEvolutionSuggestionSource(evo),
 		approval.NewSkillApprovalSource(evo),
 		approval.NewScheduleDraftSource(drafts),
+		approval.NewOffboardExportSource(offboard),
 	)
 }
 

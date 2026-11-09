@@ -40,6 +40,7 @@ import (
 	reviewv1 "aranea-agents/api/kratos/review/v1"
 	runtimeprofilev1 "aranea-agents/api/kratos/runtime_profile/v1"
 	sandboxv1 "aranea-agents/api/kratos/sandbox/v1"
+	secopsv1 "aranea-agents/api/kratos/secops/v1"
 	selfimprovementv1 "aranea-agents/api/kratos/self_improvement/v1"
 	sessionv1 "aranea-agents/api/kratos/session/v1"
 	skillv1 "aranea-agents/api/kratos/skill/v1"
@@ -163,6 +164,9 @@ func NewGRPCServer(c *conf.Server, s *ServiceRegistry, lg loggateway.Logger) *gr
 	}
 	if s.OfficeMail != nil {
 		officev1.RegisterOfficeMailServiceServer(srv, s.OfficeMail)
+	}
+	if s.Secops != nil {
+		secopsv1.RegisterSecopsServiceServer(srv, s.Secops)
 	}
 	return srv
 }

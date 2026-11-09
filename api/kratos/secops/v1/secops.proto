@@ -122,7 +122,7 @@ message OffboardRequest {
   string id = 1;
   string user_id = 2;      // 离职成员
   string requested_by = 3;
-  string status = 4;       // pending | approved | rejected | completed
+  string status = 4;       // requested | approved | rejected | completed（建单即 requested，迁移 20261325 默认值同）
   string approved_by = 5;
   google.protobuf.Timestamp created_at = 6;
   google.protobuf.Timestamp approved_at = 7;
@@ -228,15 +228,19 @@ service SecopsService {
       body: "*"
     };
   }
+  // 离职处置五步（W2a D3，需求文档 §6.3）：整体为 sysadmin 专属域
+  // （user.offboard 码位，P1 码位分配 admin 行）。wb 原流 freeze/request 亦允许
+  // secadmin——aranea 收敛为 sysadmin 专属（用户生命周期=user.* 码位），
+  // 不可自批在 sysadmin A/B 之间保持请求/审批隔离。
   rpc FreezeUser(FreezeUserRequest) returns (google.protobuf.Empty) {
-    option (aranea.auth.v1.requirement) = {permission: "secops.policy"};
+    option (aranea.auth.v1.requirement) = {permission: "user.offboard"};
     option (google.api.http) = {
       post: "/v1/secops/offboard/freeze"
       body: "*"
     };
   }
   rpc RequestOffboardExport(RequestOffboardExportRequest) returns (OffboardRequest) {
-    option (aranea.auth.v1.requirement) = {permission: "secops.policy"};
+    option (aranea.auth.v1.requirement) = {permission: "user.offboard"};
     option (google.api.http) = {
       post: "/v1/secops/offboard/export-request"
       body: "*"
@@ -244,26 +248,26 @@ service SecopsService {
   }
   // ApproveOffboardExport 不可自批（申请人 != 审批人服务端强制）。
   rpc ApproveOffboardExport(ApproveOffboardExportRequest) returns (OffboardRequest) {
-    option (aranea.auth.v1.requirement) = {permission: "secops.policy"};
+    option (aranea.auth.v1.requirement) = {permission: "user.offboard"};
     option (google.api.http) = {
       post: "/v1/secops/offboard/export-approve"
       body: "*"
     };
   }
   rpc GetOffboardExport(GetOffboardExportRequest) returns (OffboardExport) {
-    option (aranea.auth.v1.requirement) = {permission: "secops.policy"};
+    option (aranea.auth.v1.requirement) = {permission: "user.offboard"};
     option (google.api.http) = {get: "/v1/secops/offboard/export/{user_id}"};
   }
   // DeleteOffboardedUser 前置：存在 approved 且已导出的审计记录，否则拒。
   rpc DeleteOffboardedUser(DeleteOffboardedUserRequest) returns (google.protobuf.Empty) {
-    option (aranea.auth.v1.requirement) = {permission: "secops.policy"};
+    option (aranea.auth.v1.requirement) = {permission: "user.offboard"};
     option (google.api.http) = {
       post: "/v1/secops/offboard/delete"
       body: "*"
     };
   }
   rpc ListOffboardRequests(google.protobuf.Empty) returns (ListOffboardRequestsResponse) {
-    option (aranea.auth.v1.requirement) = {permission: "secops.policy"};
+    option (aranea.auth.v1.requirement) = {permission: "user.offboard"};
     option (google.api.http) = {get: "/v1/secops/offboard"};
   }
 }

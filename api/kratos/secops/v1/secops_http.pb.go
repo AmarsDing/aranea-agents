@@ -47,6 +47,10 @@ type SecopsServiceHTTPServer interface {
 	CreateMaskProposal(context.Context, *CreateMaskProposalRequest) (*MaskProposal, error)
 	// DeleteOffboardedUser DeleteOffboardedUser 前置：存在 approved 且已导出的审计记录，否则拒。
 	DeleteOffboardedUser(context.Context, *DeleteOffboardedUserRequest) (*emptypb.Empty, error)
+	// FreezeUser 离职处置五步（W2a D3，需求文档 §6.3）：整体为 sysadmin 专属域
+	// （user.offboard 码位，P1 码位分配 admin 行）。wb 原流 freeze/request 亦允许
+	// secadmin——aranea 收敛为 sysadmin 专属（用户生命周期=user.* 码位），
+	// 不可自批在 sysadmin A/B 之间保持请求/审批隔离。
 	FreezeUser(context.Context, *FreezeUserRequest) (*emptypb.Empty, error)
 	GetModelPolicy(context.Context, *emptypb.Empty) (*ModelPolicy, error)
 	GetOffboardExport(context.Context, *GetOffboardExportRequest) (*OffboardExport, error)
@@ -465,6 +469,10 @@ type SecopsServiceHTTPClient interface {
 	CreateMaskProposal(ctx context.Context, req *CreateMaskProposalRequest, opts ...http.CallOption) (rsp *MaskProposal, err error)
 	// DeleteOffboardedUser DeleteOffboardedUser 前置：存在 approved 且已导出的审计记录，否则拒。
 	DeleteOffboardedUser(ctx context.Context, req *DeleteOffboardedUserRequest, opts ...http.CallOption) (rsp *emptypb.Empty, err error)
+	// FreezeUser 离职处置五步（W2a D3，需求文档 §6.3）：整体为 sysadmin 专属域
+	// （user.offboard 码位，P1 码位分配 admin 行）。wb 原流 freeze/request 亦允许
+	// secadmin——aranea 收敛为 sysadmin 专属（用户生命周期=user.* 码位），
+	// 不可自批在 sysadmin A/B 之间保持请求/审批隔离。
 	FreezeUser(ctx context.Context, req *FreezeUserRequest, opts ...http.CallOption) (rsp *emptypb.Empty, err error)
 	GetModelPolicy(ctx context.Context, req *emptypb.Empty, opts ...http.CallOption) (rsp *ModelPolicy, err error)
 	GetOffboardExport(ctx context.Context, req *GetOffboardExportRequest, opts ...http.CallOption) (rsp *OffboardExport, err error)
@@ -555,6 +563,10 @@ func (c *SecopsServiceHTTPClientImpl) DeleteOffboardedUser(ctx context.Context, 
 	return &out, nil
 }
 
+// FreezeUser 离职处置五步（W2a D3，需求文档 §6.3）：整体为 sysadmin 专属域
+// （user.offboard 码位，P1 码位分配 admin 行）。wb 原流 freeze/request 亦允许
+// secadmin——aranea 收敛为 sysadmin 专属（用户生命周期=user.* 码位），
+// 不可自批在 sysadmin A/B 之间保持请求/审批隔离。
 func (c *SecopsServiceHTTPClientImpl) FreezeUser(ctx context.Context, in *FreezeUserRequest, opts ...http.CallOption) (*emptypb.Empty, error) {
 	var out emptypb.Empty
 	pattern := "/v1/secops/offboard/freeze"

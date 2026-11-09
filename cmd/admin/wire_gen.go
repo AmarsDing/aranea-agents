@@ -721,8 +721,15 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	// officeRepo / officeScheduleUsecase / officeDraftUsecase 已在上方
 	// provideRuntimeTooling 前装配（日程工具注入），此处复用同一实例。
 	scheduleDraftReader := provideScheduleDraftReader(officeRepo)
-	approvalAggregator := provideApprovalAggregator(approvalTaskReviewReader, approvalEvolutionReader, scheduleDraftReader)
+	// E 阶段 W2a D3 secops 离职处置五步（wire-gen-hand-merge-convention：与
+	// wire_part2.go Build 列表同步镜像；拍板 §6.3）。台账实例被 usecase 与
+	// 审批中心 offboard lane 共享。
+	secopsOffboardRepo := provideSecopsOffboardRepo(dataData)
+	approvalOffboardReader := provideApprovalOffboardReader(secopsOffboardRepo)
+	approvalAggregator := provideApprovalAggregator(approvalTaskReviewReader, approvalEvolutionReader, scheduleDraftReader, approvalOffboardReader)
 	approvalCenterService := provideApprovalCenterService(approvalAggregator, approvalMatrix)
+	secopsOffboardUsecase := provideSecopsOffboardUsecase(adminReader, adminWriter, secopsOffboardRepo, dataData, tokenVersionStore, loggatewayLogger)
+	secopsService := provideSecopsService(secopsOffboardUsecase, loggatewayLogger)
 	officeNotifyUsecase := provideOfficeNotifyUsecase(officeRepo)
 	officeICalUsecase := provideOfficeICalUsecase(officeRepo)
 	officeAppsUsecase := provideOfficeAppsUsecase(officeRepo)
@@ -742,7 +749,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	officeMailIdleSupervisor := provideOfficeMailIdleSupervisor(officeMailRepo, officeMailSyncUsecase, loggatewayLogger)
 	officeMailDigestWorker := provideOfficeMailDigestWorker(officeMailRepo, officeMailDigestUsecase, loggatewayLogger)
 	officeMailService := provideOfficeMailService(officeMailAccountUsecase, officeMailMessageUsecase, officeMailSyncUsecase, officeMailDigestUsecase)
-	serviceRegistry := server.NewServiceRegistry(adminService, avatarService, agentService, llmProviderModelService, hookService, cronService, credentialService, pluginService, mcpServerService, skillService, toolService, serviceSessionService, sessionV2Service, channelService, usageService, monitorService, serviceMemoryService, systemSettingService, modelCatalogService, teamService, chatService, graphService, serviceArtifactService, knowledgeService, evaluationService, a2AService, endpointRegistry, federationService, ecosystemService, gatewayService, channelIngress, aiRefineService, taxonomyService, organizationService, skillIntelligenceService, skillDedupService, packService, skillEvolutionSuggestionService, serviceEvolutionService, selfImprovementService, ecosystemPresetService, aguiCompatService, openAISessionCompatService, a2AExtensionCompatService, twinOpenAPICompatService, runtimeProfileService, learningLoopService, computerUseService, agentBridgeAPI, sandboxService, decisionRecordService, configGraphService, diagnosticsService, ceoboardService, approvalCenterService, reviewService, officeScheduleService, officeNotifyService, officeAppsService, officeMailService)
+	serviceRegistry := server.NewServiceRegistry(adminService, avatarService, agentService, llmProviderModelService, hookService, cronService, credentialService, pluginService, mcpServerService, skillService, toolService, serviceSessionService, sessionV2Service, channelService, usageService, monitorService, serviceMemoryService, systemSettingService, modelCatalogService, teamService, chatService, graphService, serviceArtifactService, knowledgeService, evaluationService, a2AService, endpointRegistry, federationService, ecosystemService, gatewayService, channelIngress, aiRefineService, taxonomyService, organizationService, skillIntelligenceService, skillDedupService, packService, skillEvolutionSuggestionService, serviceEvolutionService, selfImprovementService, ecosystemPresetService, aguiCompatService, openAISessionCompatService, a2AExtensionCompatService, twinOpenAPICompatService, runtimeProfileService, learningLoopService, computerUseService, agentBridgeAPI, sandboxService, decisionRecordService, configGraphService, diagnosticsService, ceoboardService, approvalCenterService, reviewService, officeScheduleService, officeNotifyService, officeAppsService, officeMailService, secopsService)
 	grpcServer := server.NewGRPCServer(confServer, serviceRegistry, loggatewayLogger)
 	speechRegistry := provideSpeechRegistry()
 	speechConfigReader := provideSpeechConfigReader(systemSettingRepo, loggatewayLogger)

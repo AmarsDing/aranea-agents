@@ -871,7 +871,7 @@ type OffboardRequest struct {
 	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
 	UserId        string                 `protobuf:"bytes,2,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"` // 离职成员
 	RequestedBy   string                 `protobuf:"bytes,3,opt,name=requested_by,json=requestedBy,proto3" json:"requested_by,omitempty"`
-	Status        string                 `protobuf:"bytes,4,opt,name=status,proto3" json:"status,omitempty"` // pending | approved | rejected | completed
+	Status        string                 `protobuf:"bytes,4,opt,name=status,proto3" json:"status,omitempty"` // requested | approved | rejected | completed（建单即 requested，迁移 20261325 默认值同）
 	ApprovedBy    string                 `protobuf:"bytes,5,opt,name=approved_by,json=approvedBy,proto3" json:"approved_by,omitempty"`
 	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	ApprovedAt    *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=approved_at,json=approvedAt,proto3" json:"approved_at,omitempty"`
@@ -1428,17 +1428,17 @@ const file_kratos_secops_v1_secops_proto_rawDesc = "" +
 	"\rsecops.policy\x82\xd3\xe4\x93\x02,:\x01*\"'/v1/secops/mask-proposals/{id}/activate\x12\x83\x01\n" +
 	"\n" +
 	"FreezeUser\x12#.kratos.secops.v1.FreezeUserRequest\x1a\x16.google.protobuf.Empty\"8\xca\xf3\x18\x0f\n" +
-	"\rsecops.policy\x82\xd3\xe4\x93\x02\x1f:\x01*\"\x1a/v1/secops/offboard/freeze\x12\xac\x01\n" +
+	"\ruser.offboard\x82\xd3\xe4\x93\x02\x1f:\x01*\"\x1a/v1/secops/offboard/freeze\x12\xac\x01\n" +
 	"\x15RequestOffboardExport\x12..kratos.secops.v1.RequestOffboardExportRequest\x1a!.kratos.secops.v1.OffboardRequest\"@\xca\xf3\x18\x0f\n" +
-	"\rsecops.policy\x82\xd3\xe4\x93\x02':\x01*\"\"/v1/secops/offboard/export-request\x12\xac\x01\n" +
+	"\ruser.offboard\x82\xd3\xe4\x93\x02':\x01*\"\"/v1/secops/offboard/export-request\x12\xac\x01\n" +
 	"\x15ApproveOffboardExport\x12..kratos.secops.v1.ApproveOffboardExportRequest\x1a!.kratos.secops.v1.OffboardRequest\"@\xca\xf3\x18\x0f\n" +
-	"\rsecops.policy\x82\xd3\xe4\x93\x02':\x01*\"\"/v1/secops/offboard/export-approve\x12\xa2\x01\n" +
+	"\ruser.offboard\x82\xd3\xe4\x93\x02':\x01*\"\"/v1/secops/offboard/export-approve\x12\xa2\x01\n" +
 	"\x11GetOffboardExport\x12*.kratos.secops.v1.GetOffboardExportRequest\x1a .kratos.secops.v1.OffboardExport\"?\xca\xf3\x18\x0f\n" +
-	"\rsecops.policy\x82\xd3\xe4\x93\x02&\x12$/v1/secops/offboard/export/{user_id}\x12\x97\x01\n" +
+	"\ruser.offboard\x82\xd3\xe4\x93\x02&\x12$/v1/secops/offboard/export/{user_id}\x12\x97\x01\n" +
 	"\x14DeleteOffboardedUser\x12-.kratos.secops.v1.DeleteOffboardedUserRequest\x1a\x16.google.protobuf.Empty\"8\xca\xf3\x18\x0f\n" +
-	"\rsecops.policy\x82\xd3\xe4\x93\x02\x1f:\x01*\"\x1a/v1/secops/offboard/delete\x12\x8e\x01\n" +
+	"\ruser.offboard\x82\xd3\xe4\x93\x02\x1f:\x01*\"\x1a/v1/secops/offboard/delete\x12\x8e\x01\n" +
 	"\x14ListOffboardRequests\x12\x16.google.protobuf.Empty\x1a..kratos.secops.v1.ListOffboardRequestsResponse\".\xca\xf3\x18\x0f\n" +
-	"\rsecops.policy\x82\xd3\xe4\x93\x02\x15\x12\x13/v1/secops/offboardB?\n" +
+	"\ruser.offboard\x82\xd3\xe4\x93\x02\x15\x12\x13/v1/secops/offboardB?\n" +
 	"\x14api.kratos.secops.v1P\x01Z%aranea-agents/api/kratos/secops/v1;v1b\x06proto3"
 
 var (

@@ -90,6 +90,9 @@ type ServiceRegistry struct {
 	// OfficeMail 是 E 阶段 W1d 邮件域（/v1/office/mail/*，需求文档 §1，
 	// 拍板 E-1..E-5）。
 	OfficeMail *service.OfficeMailService
+	// Secops 是 E 阶段 W2a D3 离职处置五步（/v1/secops/offboard/*，需求 §6.3；
+	// 脱敏五闸/模型策略等 RPC 随 D6 接入，当前嵌入 Unimplemented 桩）。
+	Secops *service.SecopsService
 }
 
 // NewServiceRegistry assembles all services into a single registry for Wire injection.
@@ -155,6 +158,7 @@ func NewServiceRegistry(
 	officeNotify *service.OfficeNotifyService,
 	officeApps *service.OfficeAppsService,
 	officeMail *service.OfficeMailService,
+	secops *service.SecopsService,
 ) *ServiceRegistry {
 	return &ServiceRegistry{
 		Admin:              admin,
@@ -217,5 +221,6 @@ func NewServiceRegistry(
 		OfficeNotify:       officeNotify,
 		OfficeApps:         officeApps,
 		OfficeMail:         officeMail,
+		Secops:             secops,
 	}
 }

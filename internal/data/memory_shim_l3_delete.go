@@ -131,3 +131,64 @@ func (r *l3FactRepo) ClearFactsByScope(ctx context.Context, scopeType, scopeID, 
 	}
 	return factIDs, nil
 }
+
+// ClearUserDomainFacts 软删除指定 (scope_type, scope_id) 下全部 active 事实，
+// 返回被清行 id。离职删除专用（W2a D3）：导出侧 ListFactRows(scope_type,
+// scope_id) 不按 user_id 列过滤，删除必须同口径对称——ClearFactsByScope 多
+// 一重 user_id 谓词，CopyFactRow 进 user 域未填 user_id 的行会漏删（W4 日志 (i)）。
+// 事务内先读 id 再批量软删，防止清理期间新事实逃逸（与 ClearFactsByScope 同法）。
+func (r *l3FactRepo) ClearUserDomainFacts(ctx context.Context, scopeType, scopeID string) ([]string, error) {
+	var factIDs []string
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	err := r.data.ExecInTx(ctx, func(txCtx context.Context) error {
+		rows, queryErr := r.data.RWDB().ReadDB(txCtx).QueryContext(txCtx,
+			r.data.Dialect().RenumberPlaceholders(`SELECT id FROM memory_facts WHERE scope_type = ? AND scope_id = ? AND status = 'active' AND deleted_at = ''`),
+			scopeType, scopeID)
+		if queryErr != nil {
+			return queryErr
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var id string
+			if scanErr := rows.Scan(&id); scanErr != nil {
+				return scanErr
+			}
+			factIDs = append(factIDs, id)
+		}
+		if err := rows.Err(); err != nil {
+			return entErrToBizErr(err, "MEMORY_L3")
+		}
+		if len(factIDs) == 0 {
+			return nil
+		}
+		_, execErr := r.data.RWDB().WriteDB(txCtx).ExecContext(txCtx,
+			r.data.Dialect().RenumberPlaceholders(`UPDATE memory_facts SET deleted_at = ?, status = 'deleted', valid_until = ? WHERE scope_type = ? AND scope_id = ? AND status = 'active' AND deleted_at = ''`),
+			now, now, scopeType, scopeID)
+		return execErr
+	})
+	if err != nil {
+		return nil, entErrToBizErr(err, "MEMORY_L3")
+	}
+	if len(factIDs) == 0 {
+		return nil, nil
+	}
+
+	if r.vectorStore != nil {
+		for _, fid := range factIDs {
+			if delErr := r.vectorStore.Delete(ctx, fid); delErr != nil {
+				r.data.lg.Warn("cascade: clear user-domain fact vector failed, marking stale",
+					loggateway.StepID("memory.l3.user_domain_vector_clear"),
+					loggateway.Str("fact_id", fid),
+					loggateway.Err(delErr))
+
+				if markErr := r.markFactEmbeddingStale(ctx, fid); markErr != nil {
+					r.data.lg.Warn("cascade: mark fact embedding stale failed",
+						loggateway.StepID("memory.l3.vector_mark_stale"),
+						loggateway.Str("fact_id", fid),
+						loggateway.Err(markErr))
+				}
+			}
+		}
+	}
+	return factIDs, nil
+}
