@@ -131,6 +131,22 @@ func NewRuntime(bc *conf.Ceoboard, st *store.Store, lg loggateway.Logger) (*Runt
 	}
 
 	receiver := adapter.NewWebhookReceiver(st, c.webhookKey)
+	// 评审 2026-11-09 M1(B2):密钥为空时 receiver 跳过 X-CEO-Key 校验
+	// (webhookrecv.go sharedKey=="" 分支),而 /v1/ceoboard/webhooks/{source}
+	// 作为 no-auth 机器入口挂在对外 HTTP 端口、任意 source 都落库——共享密钥是
+	// 唯一闸门,空 = 入口对所有来源开放。装配期打一次持久 Warn(每进程一次)。
+	if c.webhookKey == "" {
+		webhookNodes := 0
+		for _, wf := range reg.List() {
+			for i := range wf.Nodes {
+				if src := wf.Nodes[i].Source; src != nil && !src.Skipped && src.Adapter == adapter.KindWebhook {
+					webhookNodes++
+				}
+			}
+		}
+		lg.Warn("ceoboard webhook 未配置 shared key:入口 /v1/ceoboard/webhooks/{source} 对所有来源开放(X-CEO-Key 校验被跳过,仅适合内网/联调),生产必须配置 ceoboard.webhook_key",
+			loggateway.Int("webhook_nodes", webhookNodes))
+	}
 	natsMgr := adapter.NewNATSManager(st, c.natsPlatforms, lg)
 	if c.natsDurablePrefix != "" { // 双跑期独立 durable 名(防 queue-group 分流,R5)
 		natsMgr.DurablePrefix = c.natsDurablePrefix

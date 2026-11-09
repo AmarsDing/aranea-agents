@@ -6,6 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"unicode/utf8"
+
+	"golang.org/x/text/encoding/simplifiedchinese"
 )
 
 // SessionHandler 接收 agent 的流式事件与审批请求（业务层实现）。
@@ -73,17 +76,41 @@ func Start(ctx context.Context, opt SpawnOptions, h SessionHandler) (*Client, er
 }
 
 // stderrHint 把子进程 stderr 尾部附加到握手失败错误（此前仅探针路径可见，
-// 派发路径失败时 LLM/用户拿不到任何诊断）。取尾部 2KiB 防超长输出撑爆消息。
+// 派发路径失败时 LLM/用户拿不到任何诊断）。取尾部 2048 rune 防超长输出撑爆消息。
+//
+// 输出保证是合法 UTF-8（评审 2026-11-09 D 项）：error 文本最终写入 PG TEXT 列，
+// 非法字节序列会被拒收（SQLSTATE 22021）。Windows 下子进程 stderr 常是 GBK，
+// 先归一编码再按 rune 边界截断——此前的裸字节截断既可能在多字节序列中间切刀，
+// 也可能把整段非法字节带进 error。
 func stderrHint(tail string) string {
+	tail = stderrToUTF8(tail)
 	tail = strings.TrimSpace(tail)
 	if tail == "" {
 		return ""
 	}
-	const max = 2048
-	if len(tail) > max {
-		tail = "…" + tail[len(tail)-max:]
+	rs := []rune(tail)
+	const maxRunes = 2048
+	if len(rs) > maxRunes {
+		tail = "…" + string(rs[len(rs)-maxRunes:])
 	}
 	return "（stderr 尾部: " + tail + "）"
+}
+
+// stderrToUTF8 把子进程 stderr 尾部归一为合法 UTF-8。合法输入原样返回；
+// 非法输入按 GB18030（GBK 超集，对应 Windows zh-CN 控制台代码页 CP936）整段
+// 试探解码（非法/截断字节会被解码器替换为 U+FFFD），与逐字节替换兜底串比较
+// 替换符数量取更优者——真实 GBK 文本整段还原为零替换，纯乱码则退回
+// ToValidUTF8 保住散落的 ASCII 片段。
+func stderrToUTF8(s string) string {
+	if utf8.ValidString(s) {
+		return s
+	}
+	decoded, err := simplifiedchinese.GB18030.NewDecoder().String(s)
+	fallback := strings.ToValidUTF8(s, "�")
+	if err == nil || strings.Count(decoded, "�") <= strings.Count(fallback, "�") {
+		return decoded
+	}
+	return fallback
 }
 
 // Proc 暴露底层子进程（监控/恢复用）。
