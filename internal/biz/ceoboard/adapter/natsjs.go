@@ -42,6 +42,8 @@ import (
 type jetAPI interface {
 	AddConsumer(stream string, cfg *nats.ConsumerConfig) (*nats.ConsumerInfo, error)
 	UpdateConsumer(stream string, cfg *nats.ConsumerConfig) (*nats.ConsumerInfo, error)
+	ConsumerInfo(stream, consumer string, opts ...nats.JSOpt) (*nats.ConsumerInfo, error)
+	DeleteConsumer(stream, consumer string, opts ...nats.JSOpt) error
 	PullSubscribe(subj, durable string, opts ...nats.SubOpt) (pullSub, error)
 	StreamInfo(stream string, opts ...nats.JSOpt) (*nats.StreamInfo, error)
 	StreamNameBySubject(subj string, opts ...nats.JSOpt) (string, error)
@@ -61,6 +63,12 @@ func (r realJS) AddConsumer(s string, c *nats.ConsumerConfig) (*nats.ConsumerInf
 }
 func (r realJS) UpdateConsumer(s string, c *nats.ConsumerConfig) (*nats.ConsumerInfo, error) {
 	return r.js.UpdateConsumer(s, c)
+}
+func (r realJS) ConsumerInfo(s, consumer string, opts ...nats.JSOpt) (*nats.ConsumerInfo, error) {
+	return r.js.ConsumerInfo(s, consumer, opts...)
+}
+func (r realJS) DeleteConsumer(s, consumer string, opts ...nats.JSOpt) error {
+	return r.js.DeleteConsumer(s, consumer, opts...)
 }
 func (r realJS) PullSubscribe(subj, durable string, opts ...nats.SubOpt) (pullSub, error) {
 	return r.js.PullSubscribe(subj, durable, opts...)
@@ -89,6 +97,9 @@ type NATSManager struct {
 	FetchRetryWait time.Duration
 	// ConsumerSampleInterval 是 ConsumerInfo 周期采样间隔;默认 15s。
 	ConsumerSampleInterval time.Duration
+	// OptionalProbeInterval 是 stream_optional 声明流缺失时的慢速重探间隔
+	// (MEDIUM-4:条件创建流平台启用后自动接线,不再依赖重启);默认 60s。
+	OptionalProbeInterval time.Duration
 
 	// DurablePrefix 是 durable 名前缀;默认 "ceoboard"。
 	// 双跑期(P2-11,方案 §10 P2)改为 "ceoboard-v2" 之类——同名 durable 会形成
@@ -130,8 +141,13 @@ func NewNATSManager(st *store.Store, platformOf map[string]string, log loggatewa
 		return d
 	}
 	m.FetchRetryWait = 2 * time.Second
+	m.OptionalProbeInterval = time.Minute
 	return m
 }
+
+// errStreamOptionalPending 是 stream_optional 声明流缺失的哨兵(MEDIUM-4):
+// wireOnce 用它告诉 WatchNode「缺失=平台未启用,慢速重探而非失败退避」。
+var errStreamOptionalPending = errors.New("声明流(可选)尚未创建")
 
 func (m *NATSManager) logInfo(msg string, fields ...loggateway.Field) {
 	if m.log != nil {
@@ -248,6 +264,19 @@ func (m *NATSManager) WatchNode(ctx context.Context, wfID string, n *registry.No
 		if err == nil {
 			return // 消费协程已启动,WatchNode 使命完成(断线重连由 nats.go 层负责)
 		}
+		if errors.Is(err, errStreamOptionalPending) {
+			// 条件创建流未启用:不占失败退避,按 OptionalProbeInterval 慢速重探,
+			// 平台启用后自动接线(MEDIUM-4)。
+			m.logInfo("[nats] 可选流未创建(平台未启用),慢速重探中",
+				loggateway.Str("node", nodeKey),
+				loggateway.Str("wait", m.OptionalProbeInterval.String()))
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(m.OptionalProbeInterval):
+			}
+			continue
+		}
 		m.setErr(st, err.Error())
 		backoffAttempt++
 		wait := m.RetryWait(backoffAttempt)
@@ -333,11 +362,10 @@ func (m *NATSManager) wireOnce(ctx context.Context, wfID string, n *registry.Nod
 			st.StreamMissing = true
 			m.mu.Unlock()
 			if src.StreamOptional {
-				// 条件创建流(如 HCF MM_PUB 仅 MAP worker 启用时建):缺失=未启用,非漂移,不阻断重试
-				m.logInfo("[nats] 声明流未创建(声明显式可选,平台方未启用)",
-					loggateway.Str("node", nodeKey), loggateway.Str("stream", stream))
-				wired = true // 空探测连接按设计保留(Stop 统一关闭)
-				return nil
+				// 条件创建流(如 HCF MM_PUB 仅 MAP worker 启用时建):缺失=未启用,
+				// 非漂移(MEDIUM-4)。返回哨兵让 WatchNode 慢速重探(平台启用后自动
+				// 接线,不再依赖重启);探测连接经 defer 摘除关闭,不占纳管清单。
+				return fmt.Errorf("%w: %s", errStreamOptionalPending, stream)
 			}
 			return errors.New("声明漂移: stream " + stream + " 在 JetStream 不存在(" + err.Error() + ")")
 		}
@@ -405,12 +433,39 @@ func (m *NATSManager) consumeSubject(ctx context.Context, js jetAPI,
 	}
 	info, err := js.AddConsumer(stream, cfg)
 	if err != nil || info.Config.MaxDeliver != cfg.MaxDeliver {
-		// 已存在的 durable 也要迁移 MaxDeliver,否则旧配置仍会在持久化故障时终态丢弃。
-		updated, updateErr := js.UpdateConsumer(stream, cfg)
-		if updateErr != nil {
-			return fmt.Errorf("创建 consumer: %v; 更新已有 consumer: %w", err, updateErr)
+		// 已存在 durable:读现配置甄别漂移类型(Add 成功但返回旧配置同此径)。
+		existing := info
+		if existing == nil {
+			if e, infoErr := js.ConsumerInfo(stream, durable); infoErr == nil {
+				existing = e
+			}
 		}
-		info = updated
+		if existing != nil &&
+			(existing.Config.FilterSubject != cfg.FilterSubject || existing.Config.DeliverPolicy != cfg.DeliverPolicy) {
+			// 不可变字段(FilterSubject/DeliverPolicy)漂移(MEDIUM-3):典型场景
+			// 是 subject 版本升级 v1→v2 而 durable 名锚定稳定的 subject_key——
+			// JetStream 拒改这些字段,只能删旧重建。进度重置无档案损失:
+			// DeliverNew 默认只看实时;DeliverAll(双跑)重建后从最早 offset 重放。
+			if delErr := js.DeleteConsumer(stream, durable); delErr != nil {
+				return fmt.Errorf("consumer 不可变字段漂移,删除旧 consumer 失败: %w(add 原错: %v)", delErr, err)
+			}
+			m.logWarn("[nats] consumer 不可变字段漂移,删除重建(消费进度重置)",
+				loggateway.Str("node", st.NodeKey),
+				loggateway.Str("durable", durable),
+				loggateway.Str("old_subject", existing.Config.FilterSubject),
+				loggateway.Str("new_subject", cfg.FilterSubject))
+			if info, err = js.AddConsumer(stream, cfg); err != nil {
+				return fmt.Errorf("漂移 consumer 重建: %w", err)
+			}
+		} else {
+			// 已存在的 durable 也要迁移 MaxDeliver 等可变字段,否则旧配置仍会在
+			// 持久化故障时终态丢弃。
+			updated, updateErr := js.UpdateConsumer(stream, cfg)
+			if updateErr != nil {
+				return fmt.Errorf("创建 consumer: %v; 更新已有 consumer: %w", err, updateErr)
+			}
+			info = updated
+		}
 	}
 	sub, err := js.PullSubscribe(subject, durable, nats.BindStream(stream))
 	if err != nil {

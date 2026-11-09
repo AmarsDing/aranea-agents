@@ -428,6 +428,7 @@ func (a *Aggregator) evalSource(ctx context.Context, wf *registry.Workflow, n *r
 
 	// ---- 事件侧 ----
 	evOK := false
+	evOptionalAbsent := false // 可选流未启用(MEDIUM-5):缺失≠中断,健康度交给对账侧
 	evNote := ""
 	switch src.Adapter {
 	case adapter.KindNATS, adapter.KindHybrid:
@@ -449,7 +450,8 @@ func (a *Aggregator) evalSource(ctx context.Context, wf *registry.Workflow, n *r
 			switch {
 			case ns.StreamMissing && ns.StreamOptional:
 				// 条件创建流(如 MM_PUB 仅 MAP worker 启用时建):缺失=未启用,非漂移;
-				// 事件侧不判红,健康度交给对账侧(evOK=false 由双轨裁决处理)
+				// 事件侧不判红不亮黄,健康度交给对账侧(MEDIUM-5 双轨裁决读此旗标)
+				evOptionalAbsent = true
 				evNote = "声明流 " + ns.Stream + " 未创建(声明显式可选,平台方未启用;见 smoke.sh 预期降级)"
 				sv.LastErr = ns.LastErr
 			case ns.StreamMissing:
@@ -545,6 +547,13 @@ func (a *Aggregator) evalSource(ctx context.Context, wf *registry.Workflow, n *r
 		if evOK {
 			sv.Origin = "event+reconcile"
 			return HealthGreen, "对账正常;" + evNote, true, alerts
+		}
+		if evOptionalAbsent {
+			// MEDIUM-5:可选流未启用不是事件侧中断;对账绿即绿,不再永久 yellow
+			// (此前 reconcile green + stream_optional 缺失组合与文档承诺的
+			// "未启用不算红/跟随对账"语义矛盾)。
+			sv.Origin = "reconcile"
+			return HealthGreen, "对账正常;事件侧流声明可选且平台未启用(非中断)", true, alerts
 		}
 		sv.Origin = "reconcile"
 		return HealthYellow, "事件侧中断,以对账为准;" + evNote, true, alerts

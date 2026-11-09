@@ -168,7 +168,7 @@ type captureConsumerJS struct {
 
 func (j *captureConsumerJS) AddConsumer(stream string, cfg *nats.ConsumerConfig) (*nats.ConsumerInfo, error) {
 	j.cfg = *cfg
-	return &nats.ConsumerInfo{}, nil
+	return &nats.ConsumerInfo{Config: *cfg}, nil
 }
 
 func TestNATSConsumerRedeliversDuringPersistenceOutage(t *testing.T) {
@@ -204,7 +204,11 @@ type legacyConsumerJS struct {
 }
 
 func (j *legacyConsumerJS) AddConsumer(stream string, cfg *nats.ConsumerConfig) (*nats.ConsumerInfo, error) {
-	return &nats.ConsumerInfo{Config: nats.ConsumerConfig{MaxDeliver: 3}}, nil
+	// 回显完整旧配置(仅 MaxDeliver 老化);真实 JetStream 在兼容重声明时亦如此。
+	return &nats.ConsumerInfo{Config: nats.ConsumerConfig{
+		Durable: cfg.Durable, FilterSubject: cfg.FilterSubject,
+		DeliverPolicy: nats.DeliverNewPolicy, MaxDeliver: 3,
+	}}, nil
 }
 
 func TestNATSAddReturningLegacyConfigStillUpdates(t *testing.T) {
@@ -225,7 +229,9 @@ func TestNATSAddReturningLegacyConfigStillUpdates(t *testing.T) {
 func TestNATSExistingConsumerMigratesMaxDeliver(t *testing.T) {
 	mgr := NewNATSManager(openTestStore(t), nil, nil)
 	var addCalls, fetchCalls atomic.Int32
-	js := &existingConsumerJS{fakeJS: &fakeJS{addConsumerCalls: &addCalls, sub: &fakeSub{fetchCalls: &fetchCalls}}}
+	js := &existingConsumerJS{fakeJS: &fakeJS{addConsumerCalls: &addCalls, sub: &fakeSub{fetchCalls: &fetchCalls},
+		// durable 已存在:同 subject/同 DeliverPolicy,仅 MaxDeliver 老化 → 走 Update 迁移。
+		existingConfig: &nats.ConsumerConfig{Durable: "D", FilterSubject: "a", DeliverPolicy: nats.DeliverNewPolicy, MaxDeliver: 3}}}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	if err := mgr.consumeSubject(ctx, js, "S", "D", "a", "hcf", "", &NATSNodeState{}); err != nil {

@@ -54,28 +54,14 @@ func TestWireOnceDriftReleasesConn(t *testing.T) {
 	}
 }
 
-// stream_optional 探测连接按设计保留在纳管清单(StreamInfo 缺失不算接线失败),
-// 但必须能被 Close 关闭;Close 对 nil 连接(测试 fake dial 产物)不得 panic,
-// 且幂等清空清单。
+// Close 对 nil 连接(fake dial 产物)不得 panic;幂等清空纳管清单。
 func TestCloseClosesTrackedConns_NilGuard(t *testing.T) {
-	st := openTestStore(t)
-	mgr := NewNATSManager(st, map[string]string{"127.0.0.1:4222": "test"}, nil)
-	mgr.dial = func(endpoint string, opts ...nats.Option) (*nats.Conn, error) { return nil, nil }
-	mgr.jsOf = func(nc *nats.Conn) (jetAPI, error) {
-		return &driftStreamJS{fakeJS: &fakeJS{}}, nil
-	}
+	mgr := NewNATSManager(nil, nil, nil)
+	mgr.mu.Lock()
+	mgr.conns = []*nats.Conn{nil, nil} // 接线中纳管的连接(含 fake dial 的 nil)
+	mgr.mu.Unlock()
 
-	node := testNode("mm.map.>")
-	node.Source.StreamOptional = true
-	nodeState := &NATSNodeState{NodeKey: "wf.t/n1"}
-	if err := mgr.wireOnce(context.Background(), "wf.t", node, nodeState, "test"); err != nil {
-		t.Fatalf("stream_optional 探测不算接线失败,应返回 nil: %v", err)
-	}
-	if n := trackedConns(mgr); n != 1 {
-		t.Fatalf("探测连接应留在纳管清单(Stop 统一关闭),实际 %d 个", n)
-	}
-
-	mgr.Close() // nil 连接(nil-guard)+ 清空清单;不得 panic
+	mgr.Close() // nil-guard + 清空清单;不得 panic
 	if n := trackedConns(mgr); n != 0 {
 		t.Fatalf("Close 后纳管清单应为空,实际 %d 个", n)
 	}

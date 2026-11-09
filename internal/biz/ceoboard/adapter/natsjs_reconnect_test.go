@@ -16,17 +16,34 @@ import (
 )
 
 // fakeJS 是脚本化的 jetAPI:记录 consumer 建立次数,PullSubscribe 返回脚本化 fakeSub。
+// existingConfig 非 nil 时模拟「durable 已存在」:ConsumerInfo 返回之,
+// DeleteConsumer 清之(漂移删旧重建演练);AddConsumer 返回回显配置。
 type fakeJS struct {
 	addConsumerCalls *atomic.Int32
 	sub              *fakeSub
+	existingConfig   *nats.ConsumerConfig
+	deleteCalls      *atomic.Int32
 }
 
 func (f *fakeJS) AddConsumer(stream string, cfg *nats.ConsumerConfig) (*nats.ConsumerInfo, error) {
 	f.addConsumerCalls.Add(1)
-	return &nats.ConsumerInfo{}, nil
+	return &nats.ConsumerInfo{Config: *cfg}, nil
 }
 func (f *fakeJS) UpdateConsumer(stream string, cfg *nats.ConsumerConfig) (*nats.ConsumerInfo, error) {
-	return &nats.ConsumerInfo{}, nil
+	return &nats.ConsumerInfo{Config: *cfg}, nil
+}
+func (f *fakeJS) ConsumerInfo(stream, consumer string, opts ...nats.JSOpt) (*nats.ConsumerInfo, error) {
+	if f.existingConfig == nil {
+		return nil, errors.New("nats: consumer not found")
+	}
+	return &nats.ConsumerInfo{Config: *f.existingConfig}, nil
+}
+func (f *fakeJS) DeleteConsumer(stream, consumer string, opts ...nats.JSOpt) error {
+	if f.deleteCalls != nil {
+		f.deleteCalls.Add(1)
+	}
+	f.existingConfig = nil
+	return nil
 }
 func (f *fakeJS) PullSubscribe(subj, durable string, opts ...nats.SubOpt) (pullSub, error) {
 	return f.sub, nil
