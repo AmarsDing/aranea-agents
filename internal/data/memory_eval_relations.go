@@ -77,7 +77,7 @@ func (s *evalMemoryStore) evalRelationRows(ctx context.Context, userID string, s
 	defer rows.Close()
 	var out [][]byte
 	for rows.Next() {
-		raw, err := scanFactRowJSON(rows)
+		raw, err := scanFactRowJSON(ctx, rows, s.facts.data.factCipher)
 		if err != nil {
 			return nil, err
 		}

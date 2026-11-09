@@ -833,7 +833,7 @@ func (s *evalMemoryStore) supersedeContradictions(ctx context.Context, userID, n
 	}
 	var candidates []evalFactRow
 	for candRows.Next() {
-		raw, scanErr := scanFactRowJSON(candRows)
+		raw, scanErr := scanFactRowJSON(ctx, candRows, s.facts.data.factCipher)
 		if scanErr != nil {
 			continue
 		}
@@ -1035,7 +1035,7 @@ func (s *evalMemoryStore) appendLinkHop(ctx context.Context, userID string, hits
 		return
 	}
 	defer rows.Close()
-	scored := scoreFactRows(rows, nil, nil, nil, 0, time.Now().UTC())
+	scored := scoreFactRows(ctx, s.facts.data.factCipher, rows, nil, nil, nil, 0, time.Now().UTC())
 	for _, sf := range scored {
 		appendRow(sf.raw, sf.score)
 	}

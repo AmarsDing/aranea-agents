@@ -168,7 +168,7 @@ func (r *l3FactRepo) listFactsBySourceSession(ctx context.Context, scopeType, sc
 	defer rows.Close()
 	var out [][]byte
 	for rows.Next() {
-		b, scanErr := scanFactRowJSON(rows)
+		b, scanErr := scanFactRowJSON(ctx, rows, r.data.factCipher)
 		if scanErr != nil {
 			return nil, entErrToBizErr(scanErr, "MEMORY_L3")
 		}

@@ -31,7 +31,7 @@ func (r *l3FactRepo) InvalidateFact(ctx context.Context, factID string) ([]byte,
 		if !rows.Next() {
 			return apierror.NotFound("MEMORY", "fact row not found after invalidate")
 		}
-		result, execErr = scanFactRowJSON(rows)
+		result, execErr = scanFactRowJSON(ctx, rows, r.data.factCipher)
 		return execErr
 	})
 	if err != nil {
@@ -184,7 +184,7 @@ ON CONFLICT(scope_type, scope_id, fingerprint) DO UPDATE SET
 			}
 			return apierror.NotFound("MEMORY", "fact row not found after upsert")
 		}
-		result, execErr = scanFactRowJSON(rows)
+		result, execErr = scanFactRowJSON(ctx, rows, r.data.factCipher)
 		return execErr
 	})
 	if err != nil {

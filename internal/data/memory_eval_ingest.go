@@ -361,7 +361,7 @@ func (s *evalMemoryStore) evalActiveWrittenMessages(ctx context.Context, userID 
 	defer rows.Close()
 	active := map[string]string{}
 	for rows.Next() {
-		raw, err := scanFactRowJSON(rows)
+		raw, err := scanFactRowJSON(ctx, rows, s.facts.data.factCipher)
 		if err != nil {
 			return nil, err
 		}

@@ -163,7 +163,7 @@ func (s *evalMemoryStore) appendEvalCandidates(ctx context.Context, userID strin
 	}
 	defer rows.Close()
 	for rows.Next() {
-		raw, err := scanFactRowJSON(rows)
+		raw, err := scanFactRowJSON(ctx, rows, s.facts.data.factCipher)
 		if err != nil {
 			return err
 		}
@@ -337,7 +337,7 @@ func (s *evalMemoryStore) appendEvalContext(ctx context.Context, userID, query s
 	}
 	defer rows.Close()
 	for rows.Next() {
-		raw, err := scanFactRowJSON(rows)
+		raw, err := scanFactRowJSON(ctx, rows, s.facts.data.factCipher)
 		if err != nil {
 			s.lg.Warn("eval context row skipped", loggateway.StepID("memoryeval.context"), loggateway.Err(err))
 			continue
