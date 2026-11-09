@@ -10,13 +10,17 @@ import (
 	"context"
 	"encoding/json"
 	"strings"
+	"time"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/biz/approval"
+	cbstore "aranea-agents/internal/biz/ceoboard/store"
+	"aranea-agents/internal/biz/monitor"
 	"aranea-agents/internal/biz/office"
 	"aranea-agents/internal/data"
 	"aranea-agents/internal/service"
 	"aranea-agents/internal/tools/calendar"
+	"aranea-agents/internal/tools/mail"
 	loggateway "aranea-agents/pkg/loggateway"
 )
 
@@ -78,6 +82,13 @@ func provideOfficeCalendarTool(s *office.ScheduleUsecase, d *office.DraftUsecase
 	return service.ProvideOfficeCalendarTool(s, d, sessions)
 }
 
+// provideOfficeMailTool 装配 agent 邮件工具窄口（mail_list/mail_read/
+// mail_search/mail_to_task；service 层 session→user 解析适配），注入
+// ToolBridges.Mail。任一为 nil → nil（工具被裁剪，诚实降级）。
+func provideOfficeMailTool(m *office.MailMessageUsecase, sessions *biz.SessionUsecase) mail.Service {
+	return service.ProvideOfficeMailTool(m, sessions)
+}
+
 // ============================================================================
 // officeReminderDelivery —— 提醒 IM 投递适配（office.ReminderDelivery ←
 // biz.ChannelUsecase）。接收点声明式：channel MetadataJSON
@@ -132,4 +143,196 @@ func (d officeReminderDelivery) Enqueue(ctx context.Context, sink office.Reminde
 		IdempotencyKey: idempotencyKey,
 	})
 	return err
+}
+
+// ============================================================================
+// E 阶段 W1d 邮件 providers（需求文档 §1，拍板 E-1..E-5；与 wire_part2.go
+// Build 列表同步镜像，循上方 W1c 段先例）
+// ============================================================================
+
+// provideOfficeMailRepo 装配邮件仓储（raw-SQL，迁移 20261322）。
+func provideOfficeMailRepo(d *data.Data) *data.OfficeMailRepo {
+	return data.NewOfficeMailRepo(d)
+}
+
+// provideOfficeMailAccountUsecase 账号 CRUD。E-1：密码信封加解密复用
+// credential 设施（*biz.CredentialCrypto 的方法签名与 office.MailSecretCrypto
+// 逐字匹配，直接满足窄口，无需适配器）。
+func provideOfficeMailAccountUsecase(repo *data.OfficeMailRepo, crypto *biz.CredentialCrypto, lg loggateway.Logger) *office.MailAccountUsecase {
+	return office.NewMailAccountUsecase(repo, crypto, lg)
+}
+
+// provideOfficeMailSyncUsecase 同步编排（dialer 默认真实 IMAP；mock 由
+// 测试注入，不经 wire）。
+func provideOfficeMailSyncUsecase(repo *data.OfficeMailRepo, crypto *biz.CredentialCrypto, audit office.MailAuditSink, lg loggateway.Logger) *office.MailSyncUsecase {
+	return office.NewMailSyncUsecase(repo, repo, crypto, nil, audit, lg)
+}
+
+func provideOfficeMailMessageUsecase(repo *data.OfficeMailRepo, knowledge office.MailKnowledgeSink, lg loggateway.Logger) *office.MailMessageUsecase {
+	return office.NewMailMessageUsecase(repo, repo, repo, knowledge, lg)
+}
+
+// provideOfficeMailDigestUsecase 摘要编排：通知中心 + IM 腿（复用
+// reminder_sink 声明式接收点）+ 作战总台卡片。
+func provideOfficeMailDigestUsecase(mailRepo *data.OfficeMailRepo, officeRepo *data.OfficeRepo, channels *biz.ChannelUsecase, cb office.MailCeoboardSink, lg loggateway.Logger) *office.MailDigestUsecase {
+	return office.NewMailDigestUsecase(mailRepo, officeRepo, officeReminderDelivery{channels: channels}, cb, lg)
+}
+
+func provideOfficeMailIdleSupervisor(repo *data.OfficeMailRepo, syncer *office.MailSyncUsecase, lg loggateway.Logger) *office.MailIdleSupervisor {
+	return office.NewMailIdleSupervisor(repo, syncer, lg)
+}
+
+func provideOfficeMailDigestWorker(repo *data.OfficeMailRepo, digest *office.MailDigestUsecase, lg loggateway.Logger) *office.MailDigestWorker {
+	return office.NewMailDigestWorker(repo, digest, lg)
+}
+
+func provideOfficeMailService(a *office.MailAccountUsecase, m *office.MailMessageUsecase, s *office.MailSyncUsecase, d *office.MailDigestUsecase) *service.OfficeMailService {
+	return service.NewOfficeMailService(a, m, s, d)
+}
+
+// provideOfficeMailAuditSink 邮件域审计窄口（适配 monitor.Usecase）。
+func provideOfficeMailAuditSink(mon *biz.MonitorUsecase) office.MailAuditSink {
+	return officeMailAuditSink{mon: mon}
+}
+
+// provideOfficeMailCeoboardSink 摘要作战总台窄口（适配 ceoboard store；
+// UID aranea:mail-digest-<user>-<date> 幂等）。
+func provideOfficeMailCeoboardSink(st *cbstore.Store) office.MailCeoboardSink {
+	if st == nil {
+		return nil
+	}
+	return officeMailCeoboardSink{st: st}
+}
+
+// provideOfficeMailKnowledgeSink 附件入知识库窄口（适配 knowledge 域；
+// 密级随行透传——D6 标签体系落位前，classification 记录于文档 Source
+// 元数据注释，标签落地后映射）。
+func provideOfficeMailKnowledgeSink(k *biz.KnowledgeUsecase, lg loggateway.Logger) office.MailKnowledgeSink {
+	if k == nil {
+		return nil
+	}
+	return officeMailKnowledgeSink{knowledge: k, lg: lg}
+}
+
+// ============================================================================
+// 适配器实现
+// ============================================================================
+
+type officeMailAuditSink struct {
+	mon *biz.MonitorUsecase
+}
+
+func (s officeMailAuditSink) RecordMailAudit(ctx context.Context, action, resourceID, summary string) {
+	if s.mon == nil {
+		return
+	}
+	s.mon.RecordAdminAudit(ctx, monitor.AdminAuditEntry{
+		Action:     action,
+		Resource:   "mail_account",
+		ResourceID: resourceID,
+		Summary:    summary,
+	})
+}
+
+type officeMailCeoboardSink struct {
+	st *cbstore.Store
+}
+
+func (s officeMailCeoboardSink) EmitMailDigest(ctx context.Context, userID, title, body string, occurredAt time.Time) error {
+	uid := "aranea:mail-digest-" + userID + "-" + occurredAt.Format("2006-01-02")
+	payload, _ := json.Marshal(map[string]any{
+		"title":   title,
+		"body":    body,
+		"user_id": userID,
+		"kind":    "mail_digest",
+	})
+	_, err := s.st.IngestEvent(ctx, &cbstore.Event{
+		UID:             uid,
+		Platform:        "aranea",
+		Subject:         "office.mail.digest.v1",
+		SubjectKey:      "office.mail.digest",
+		EventID:         uid,
+		EntityID:        userID,
+		OccurredAt:      occurredAt,
+		ReceivedAt:      occurredAt,
+		Payload:         string(payload),
+		PayloadComplete: true,
+	}, nil)
+	return err
+}
+
+// officeMailKnowledgeCollectionName 附件入库的默认集合名（每工作区
+// find-or-create；team 后端=PG 真相源，无需文件系统 vault）。
+const officeMailKnowledgeCollectionName = "邮件附件"
+
+type officeMailKnowledgeSink struct {
+	knowledge *biz.KnowledgeUsecase
+	lg        loggateway.Logger
+}
+
+func (s officeMailKnowledgeSink) IngestAttachment(ctx context.Context, in office.MailKnowledgeIngest) (string, error) {
+	colID, err := s.resolveCollection(ctx, in.WorkspaceID)
+	if err != nil {
+		return "", err
+	}
+	// 文本类附件落 content_text（可检索）；二进制附件 F1 仅元数据行
+	// （vault 文件留存随任务中心/对象存储评估，见需求文档 §1.4 F2）。
+	var contentText string
+	if mailAttachmentTextLike(in.Filename, in.ContentType) {
+		content := in.Content
+		if len(content) > 1<<20 { // 文本检索面 1MB 截断（超大文本附件罕见）
+			content = content[:1<<20]
+		}
+		contentText = string(content)
+	}
+	doc, err := s.knowledge.CreateDocument(ctx, biz.KnowledgeDocument{
+		CollectionID: colID,
+		Source:       in.Filename,
+		MimeType:     in.ContentType,
+		SizeBytes:    int64(len(in.Content)),
+		ContentText:  contentText,
+		Status:       "pending",
+	})
+	if err != nil {
+		return "", err
+	}
+	return doc.ID, nil
+}
+
+// resolveCollection find-or-create 默认「邮件附件」集合（team 后端）。
+func (s officeMailKnowledgeSink) resolveCollection(ctx context.Context, workspaceID string) (string, error) {
+	cols, _, err := s.knowledge.ListCollections(ctx, workspaceID, 500, 0)
+	if err != nil {
+		return "", err
+	}
+	for _, c := range cols {
+		if c.Name == officeMailKnowledgeCollectionName {
+			return c.ID, nil
+		}
+	}
+	col, err := s.knowledge.CreateCollection(ctx, biz.KnowledgeCollection{
+		Name:         officeMailKnowledgeCollectionName,
+		Description:  "office 邮件附件入库集合（W1d 自动创建；team 后端=PG 真相源）",
+		Workspace:    workspaceID,
+		VaultBackend: "team",
+	})
+	if err != nil {
+		return "", err
+	}
+	return col.ID, nil
+}
+
+// mailAttachmentTextLike 文本类附件判定（content_text 落库面）。
+func mailAttachmentTextLike(filename, contentType string) bool {
+	ct := strings.ToLower(strings.TrimSpace(contentType))
+	if strings.HasPrefix(ct, "text/") || ct == "application/json" || ct == "application/xml" {
+		return true
+	}
+	name := strings.ToLower(filename)
+	for _, ext := range []string{".txt", ".md", ".csv", ".log", ".json", ".yaml", ".yml"} {
+		if strings.HasSuffix(name, ext) {
+			return true
+		}
+	}
+	return false
 }

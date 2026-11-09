@@ -39,6 +39,7 @@ import (
 	bizmedia "aranea-agents/internal/biz/media"
 	"aranea-agents/internal/biz/monitor"
 	"aranea-agents/internal/biz/monitor/heal"
+	"aranea-agents/internal/biz/office"
 	bizsession "aranea-agents/internal/biz/session"
 	bizskill "aranea-agents/internal/biz/skill"
 	biztool "aranea-agents/internal/biz/tool"
@@ -81,6 +82,7 @@ import (
 	"aranea-agents/internal/tools/clientbridge"
 	"aranea-agents/internal/tools/codingbridge"
 	kanbanpkg "aranea-agents/internal/tools/kanban"
+	"aranea-agents/internal/tools/mail"
 	subagenttool "aranea-agents/internal/tools/subagent"
 	"aranea-agents/internal/toolspill"
 	"aranea-agents/internal/voice"
@@ -757,6 +759,7 @@ func provideRuntimeTooling(
 	kanbanBridge kanbanpkg.Bridge,
 	credentialUC *biz.CredentialUsecase,
 	calendarTool calendar.Service,
+	mailTool mail.Service,
 	debugRecorder *debug.RecorderFactory,
 	orgUC *biz.OrganizationUsecase,
 	toolResultGate *biz.ToolResultGate,
@@ -793,6 +796,7 @@ func provideRuntimeTooling(
 			Kanban:      kanbanBridge,
 			Credential:  credentialUC,
 			Calendar:    calendarTool,
+			Mail:        mailTool,
 			ComputerUse: computerUseUC,
 			Coding:      codingBridgeSvc,
 			Client:      clientBridge,
@@ -3742,6 +3746,14 @@ type wireOut struct {
 	// CeoboardRuntime CEO 驾驶舱运行时（整合 P2-7；workers.go 消费，与
 	// wire_gen.go 镜像保持一致）。
 	CeoboardRuntime *ceoboard.Runtime
+	// OfficeReminderWorker E 阶段 W1c 日程提醒扫描（K-4）。补登：W1c 漏登记
+	// wireinject 变体，W1d 顺手补齐（循 3739 行 KnowledgeGraphProjection
+	// 同款教训）。
+	OfficeReminderWorker *office.ReminderWorker
+	// OfficeMailIdleSupervisor / OfficeMailDigestWorker E 阶段 W1d 邮件
+	// IDLE 监听（E-5）与每日摘要（E-4）；workers.go 消费。
+	OfficeMailIdleSupervisor *office.MailIdleSupervisor
+	OfficeMailDigestWorker   *office.MailDigestWorker
 }
 
 func provideWireOut(
@@ -3812,6 +3824,9 @@ func provideWireOut(
 	configGraphIndexer *bizcg.Indexer,
 	knowledgeGraphProjection *jobs.KnowledgeGraphProjectionJob,
 	ceoboardRuntime *ceoboard.Runtime,
+	officeReminderWorker *office.ReminderWorker,
+	officeMailIdleSupervisor *office.MailIdleSupervisor,
+	officeMailDigestWorker *office.MailDigestWorker,
 ) wireOut {
 	return wireOut{
 		App: app, Data: dataData, CronRunner: runner, SkillWatch: skillWatch, AutoMemory: autoMem,
@@ -3863,6 +3878,9 @@ func provideWireOut(
 		ConfigGraphIndexer:          configGraphIndexer,
 		KnowledgeGraphProjection:    knowledgeGraphProjection,
 		CeoboardRuntime:             ceoboardRuntime,
+		OfficeReminderWorker:        officeReminderWorker,
+		OfficeMailIdleSupervisor:    officeMailIdleSupervisor,
+		OfficeMailDigestWorker:      officeMailDigestWorker,
 	}
 }
 

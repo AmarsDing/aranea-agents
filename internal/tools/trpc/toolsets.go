@@ -18,6 +18,7 @@ import (
 	credentialpkg "aranea-agents/internal/tools/credential"
 	kanbanpkg "aranea-agents/internal/tools/kanban"
 	knowledgepkg "aranea-agents/internal/tools/knowledge"
+	mailpkg "aranea-agents/internal/tools/mail"
 	sandboxfspkg "aranea-agents/internal/tools/sandboxfs"
 	serviceawaitreply "aranea-agents/internal/tools/serviceawaitreply"
 	subagenttool "aranea-agents/internal/tools/subagent"
@@ -77,10 +78,16 @@ type ToolsetConfig struct {
 	// W1c）。Requires CalendarService；nil 时该开关被裁剪（诚实降级）。
 	Calendar        bool
 	CalendarService calendarpkg.Service
-	MemoryEnabled   bool
-	MemoryTools     []trpctool.Tool
-	DeferredTools   []string
-	BlobReader      biz.ToolResultBlobReader
+	// Mail 启用邮件只读工具（mail_list / mail_read / mail_search，E 阶段 W1d）；
+	// MailTask 启用转任务动词（mail_to_task，中风险独立授权键）。Requires
+	// MailService；nil 时对应开关被裁剪（诚实降级）。
+	Mail          bool
+	MailTask      bool
+	MailService   mailpkg.Service
+	MemoryEnabled bool
+	MemoryTools   []trpctool.Tool
+	DeferredTools []string
+	BlobReader    biz.ToolResultBlobReader
 	// SpillStore 是 P0-2 locator 回读消费口（批 B）；nil → read_tool_result 走
 	// blob repo 直接取回（老行为）。
 	SpillStore      toolspill.Store
@@ -286,6 +293,16 @@ func BuildToolsets(ctx context.Context, cfg ToolsetConfig, lg loggateway.Logger)
 	}
 	if cfg.Calendar {
 		for _, t := range calendarpkg.NewToolset(cfg.CalendarService) {
+			customTools = append(customTools, t)
+		}
+	}
+	if cfg.Mail {
+		for _, t := range mailpkg.NewToolset(cfg.MailService) {
+			customTools = append(customTools, t)
+		}
+	}
+	if cfg.MailTask {
+		for _, t := range mailpkg.NewTaskToolset(cfg.MailService) {
 			customTools = append(customTools, t)
 		}
 	}

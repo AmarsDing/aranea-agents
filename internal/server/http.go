@@ -219,6 +219,9 @@ func registerProtoServices(srv *kratoshttp.Server, s *ServiceRegistry) {
 	if s.OfficeApps != nil {
 		officev1.RegisterOfficeAppsServiceHTTPServer(srv, s.OfficeApps)
 	}
+	if s.OfficeMail != nil {
+		officev1.RegisterOfficeMailServiceHTTPServer(srv, s.OfficeMail)
+	}
 }
 
 // registerCustomRoutes registers cross-cutting operational routes that bypass proto

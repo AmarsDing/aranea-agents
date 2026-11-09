@@ -15,6 +15,7 @@ import (
 	"aranea-agents/internal/tools/clientbridge"
 	"aranea-agents/internal/tools/codingbridge"
 	kanbanpkg "aranea-agents/internal/tools/kanban"
+	"aranea-agents/internal/tools/mail"
 	"aranea-agents/internal/tools/skillrecommend"
 	subagenttool "aranea-agents/internal/tools/subagent"
 
@@ -84,6 +85,9 @@ type ToolBridges struct {
 	// calendar_create_draft；service 层 session→user 解析适配）。nil 时日程
 	// 工具被裁剪（诚实降级）。
 	Calendar calendar.Service
+	// Mail 是 E 阶段 W1d 邮件工具窄口（mail_list / mail_read / mail_search /
+	// mail_to_task；service 层 session→user 解析适配）。nil 时邮件工具被裁剪。
+	Mail mail.Service
 	// SandboxFS is the process-wide shared session-lease store backing
 	// sandbox_fs_write/read (M82 P1-2); the same instance is bound to the
 	// codeexecutor sandbox backend so code_exec and sandbox_fs share one

@@ -336,6 +336,21 @@ func computeShardPlan(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps, p
 		}
 	}
 
+	// E 阶段 W1d 邮件工具（mail_list / mail_read / mail_search 只读默认开；
+	// mail_to_task 中风险独立授权键 mail_task）：无环境闸，tools 表种子裁决。
+	// MailSvc 未注入时裁剪（诚实降级）。
+	if cfg.Mail || cfg.MailTask {
+		if deps.MailSvc != nil {
+			cfg.MailService = deps.MailSvc
+		} else {
+			lg.Warn("mail 已授予但 MailSvc 未注入，跳过邮件工具",
+				loggateway.StepID("agent.tool_build"),
+				loggateway.Str("agent_id", ag.ID))
+			cfg.Mail = false
+			cfg.MailTask = false
+		}
+	}
+
 	memoryMaster := deps.HasMemory && biz.ResolveMemoryRuntimePolicy(ag.Settings).MasterEnabled
 	if memoryMaster {
 		cfg.MemoryEnabled = true

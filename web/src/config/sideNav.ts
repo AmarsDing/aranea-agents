@@ -29,6 +29,7 @@ export const sideNavGroups: NavGroup[] = [
       { to: '/approvals', icon: 'approval', labelKey: 'menu.approvals', permission: 'approval.review' },
       { to: '/schedule', icon: 'event', labelKey: 'menu.schedule', permission: 'office.schedule' },
       { to: '/apps', icon: 'apps', labelKey: 'menu.apps', permission: 'office.apps' },
+      { to: '/mail', icon: 'mail', labelKey: 'menu.mail', permission: 'office.mail' },
       { to: '/ceo/overview', icon: 'monitoring', labelKey: 'menu.ceoOverview', permission: 'ceoboard.view' },
       { to: '/ceo/oncall', icon: 'engineering', labelKey: 'menu.ceoOncall', permission: 'ceoboard.view' },
       { to: '/task-workspace', icon: 'view_quilt', labelKey: 'menu.taskWorkspace' },

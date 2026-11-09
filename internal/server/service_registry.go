@@ -87,6 +87,9 @@ type ServiceRegistry struct {
 	OfficeSchedule *service.OfficeScheduleService
 	OfficeNotify   *service.OfficeNotifyService
 	OfficeApps     *service.OfficeAppsService
+	// OfficeMail 是 E 阶段 W1d 邮件域（/v1/office/mail/*，需求文档 §1，
+	// 拍板 E-1..E-5）。
+	OfficeMail *service.OfficeMailService
 }
 
 // NewServiceRegistry assembles all services into a single registry for Wire injection.
@@ -151,6 +154,7 @@ func NewServiceRegistry(
 	officeSchedule *service.OfficeScheduleService,
 	officeNotify *service.OfficeNotifyService,
 	officeApps *service.OfficeAppsService,
+	officeMail *service.OfficeMailService,
 ) *ServiceRegistry {
 	return &ServiceRegistry{
 		Admin:              admin,
@@ -212,5 +216,6 @@ func NewServiceRegistry(
 		OfficeSchedule:     officeSchedule,
 		OfficeNotify:       officeNotify,
 		OfficeApps:         officeApps,
+		OfficeMail:         officeMail,
 	}
 }

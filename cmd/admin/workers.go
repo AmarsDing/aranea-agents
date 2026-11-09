@@ -90,6 +90,10 @@ type backgroundWorkersConfig struct {
 	// OfficeReminderWorker 日程提醒扫描（E 阶段 W1c，K-4）。具体指针同理
 	// 判空（worker provider 恒非 nil，但保持与 CeoboardRuntime 同款防御）。
 	OfficeReminderWorker *office.ReminderWorker
+	// OfficeMailIdleSupervisor 邮件 IDLE 监听（E 阶段 W1d，E-5）；
+	// OfficeMailDigestWorker 每日摘要触发（E-4）。同为具体指针判空。
+	OfficeMailIdleSupervisor *office.MailIdleSupervisor
+	OfficeMailDigestWorker   *office.MailDigestWorker
 }
 
 // backgroundWorkersConfigFromOutput maps the wire output onto the worker
@@ -153,6 +157,8 @@ func backgroundWorkersConfigFromOutput(watchCtx context.Context, out *wireOut) *
 		ConfigGraphIndexer:          out.ConfigGraphIndexer,
 		CeoboardRuntime:             out.CeoboardRuntime,
 		OfficeReminderWorker:        out.OfficeReminderWorker,
+		OfficeMailIdleSupervisor:    out.OfficeMailIdleSupervisor,
+		OfficeMailDigestWorker:      out.OfficeMailDigestWorker,
 	}
 	// D2-f-7（对抗评审确认）：ToolSpillGC 在 wireOut 中是具体指针
 	// （*jobs.ToolSpillGC，杀闸 TOOLSPILL_GC_DISABLED 时 provider 返回 nil）。
@@ -513,6 +519,20 @@ func startBackgroundWorkers(
 	if cfg.OfficeReminderWorker != nil {
 		goAfterReady("office_reminder", func() { cfg.OfficeReminderWorker.Start(ctx) })
 		logger.Log(log.LevelInfo, "msg", "office reminder worker scheduled", "interval", "1m")
+	}
+
+	// E 阶段 W1d：邮件 IDLE 监听（E-5，per-account goroutine + 30s 账号集
+	// 重扫 + 5min 兜底轮询；推送到达即触发同步）。
+	if cfg.OfficeMailIdleSupervisor != nil {
+		goAfterReady("office_mail_idle", func() { cfg.OfficeMailIdleSupervisor.Start(ctx) })
+		logger.Log(log.LevelInfo, "msg", "office mail idle supervisor scheduled")
+	}
+
+	// E 阶段 W1d：邮件每日摘要（E-4，ARANEA_MAIL_DIGEST_HOUR 整点，默认
+	// 08:00；通知中心 + IM 腿 + 作战总台卡片三腿幂等）。
+	if cfg.OfficeMailDigestWorker != nil {
+		goAfterReady("office_mail_digest", func() { cfg.OfficeMailDigestWorker.Start(ctx) })
+		logger.Log(log.LevelInfo, "msg", "office mail digest worker scheduled", "interval", "1m tick")
 	}
 }
 

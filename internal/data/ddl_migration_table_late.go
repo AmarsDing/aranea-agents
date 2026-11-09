@@ -654,6 +654,13 @@ var ddlMigrationsLate = []ddlMigration{
 	// office_apps/office_schedule_drafts（审批中心 schedule_draft 领域承载）。
 	// 幂等 IF NOT EXISTS，不重写存量行，重跑安全。
 	{Version: 20261321, Name: "office_suite", SQL: "sql/migrations/20261321_office_suite.sql"},
+	// 20261322 office_mail（E 阶段 W1d 邮件，需求文档 §1，拍板 E-1..E-5）：
+	// office_mail_accounts（password_enc 信封密文、无明文列）/office_mail_messages
+	//（(account_id,uid) 部分唯一索引幂等 + classification 密级列 + quadrant
+	// 预留 + task_ref 回写）/office_mail_attachments（BYTEA+16MB 上限+
+	// knowledge_doc_id 回链，ON DELETE CASCADE）/office_tasks（邮件转任务
+	// F1 落点，统一任务中心前身）。幂等 IF NOT EXISTS，重跑安全。
+	{Version: 20261322, Name: "office_mail", SQL: "sql/migrations/20261322_office_mail.sql"},
 	// 20261323 approval_risk_matrix（E 阶段 W1b 审批中心，拍板 A-4）：三级风险 ×
 	// approval-policy 四档默认档映射配置表（matcher_key 主键），配置存库可审计
 	// 变更（PutRiskMatrix 走 audit）。消费点=approval-policy 求值默认档建议

@@ -44,3 +44,40 @@ export type OfficeAppRow = {
   group_name: string;
   sort_order: number;
 };
+
+// ---------- W1d 邮件聚合 ----------
+
+export type MailTlsMode = 'TLS_MODE_TLS' | 'TLS_MODE_STARTTLS' | 'TLS_MODE_NONE';
+
+export type MailAccountRow = {
+  id: string;
+  name: string;
+  host: string;
+  port: number;
+  tls_mode: MailTlsMode;
+  username: string;
+  last_uid: number;
+  /** RFC3339；空串 = 从未同步。 */
+  last_sync_at: string;
+};
+
+export type MailMessageRow = {
+  id: string;
+  account_id: string;
+  subject: string;
+  sender: string;
+  snippet: string;
+  /** RFC3339；空串 = 无 Date 头（按 created_at 兜底排序）。 */
+  received_at: string;
+  task_ref: string;
+  has_attachments: boolean;
+};
+
+export type MailAttachmentRow = {
+  id: string;
+  message_id: string;
+  filename: string;
+  content_type: string;
+  size: number;
+  knowledge_doc_id: string;
+};

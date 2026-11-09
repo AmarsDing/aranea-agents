@@ -17,13 +17,17 @@ import (
 // 本文件实现三项目整合 P1-5 权限中间件（P0 详设 01 §6、02 §4）：
 // 按 transport operation 查表执行权限码硬判。
 //
-// operation 键形态（kratos v2.9.2 实测）：
+// operation 键形态（kratos v2.9.2 实测，W1d 冒烟 S3b 钉死）：
 //   - gRPC：info.FullMethod，如 /kratos.admin.v1.AdminService/UpdateAdmin
-//   - HTTP：路由 pathTemplate，如 /v1/admins/{id}（{id} 占位符原样保留）
+//   - HTTP（proto 生成路由）：同为 gRPC 全方法——生成的 *_http.pb.go 以
+//     OperationXxx 常量注册路由，pathTemplate 不经 Operation 暴露
+//   - HTTP（srv.Route 自定义路由）：pathTemplate 形态（本项目自定义路由
+//     均不登记权限码，未命中即落默认策略）
 //
-// HTTP 面同一 pathTemplate 会对应多个方法（GET /v1/admins/{id} 读、
-// DELETE /v1/admins/{id} 注销），故 HTTP 键额外前置大写方法：`GET /v1/admins/{id}`。
-// 方法从 http.RequestFromServerContext 取，gRPC 面取不到时报文键即全方法。
+// 查表顺序：先裸 operation（覆盖 gRPC 面与 proto HTTP 路由）；未命中且为
+// HTTP 请求时再查 `<大写方法> <operation>` 复合键（pathTemplate 形态下同
+// 路径多方法以此区分，如 GET/DELETE /v1/admins/{id}；方法从
+// http.RequestFromServerContext 取，gRPC 面取不到时即只查裸键）。
 //
 // 登记两个键各一份；未登记的 operation 落默认策略 authenticated（Q7-A 兜底，
 // 只要求登录——HTTP 面由 auth.Middleware 保证，gRPC 面由 GRPCMiddleware 保证）。
@@ -155,12 +159,21 @@ func Permission(registry *PermissionRegistry, lg loggateway.Logger) middleware.M
 			if !ok {
 				return handler(ctx, req)
 			}
-			key := tr.Operation()
-			// HTTP 面：同 pathTemplate 多方法需以方法区分（GET/DELETE 同路径）。
-			if hreq, ok := kratoshttp.RequestFromServerContext(ctx); ok && hreq != nil && hreq.Method != "" {
-				key = HTTPKey(hreq.Method, tr.Operation())
+			op := tr.Operation()
+			key := op
+			// 先查裸 operation：kratos v2.9.2 下 gRPC 面与 proto 生成 HTTP
+			// 路由的 Operation 均为 gRPC 全方法，绝大多数请求在此命中。
+			code, required := registry.CodeFor(op)
+			if !required {
+				// HTTP 面兜底：pathTemplate 形态的 operation（自定义路由）
+				// 以 `<大写方法> <pathTemplate>` 复合键登记，同路径多方法
+				// 由方法前缀区分。
+				if hreq, ok := kratoshttp.RequestFromServerContext(ctx); ok && hreq != nil && hreq.Method != "" {
+					if c, hit := registry.CodeFor(HTTPKey(hreq.Method, op)); hit {
+						key, code, required = HTTPKey(hreq.Method, op), c, true
+					}
+				}
 			}
-			code, required := registry.CodeFor(key)
 			if !required || code == "" {
 				// 未登记（默认策略 authenticated）或显式声明仅需登录。
 				return handler(ctx, req)

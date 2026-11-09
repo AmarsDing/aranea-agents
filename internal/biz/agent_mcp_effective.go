@@ -21,6 +21,8 @@ const (
 	ToolKeyCallAgent        = tool.ToolKeyCallAgent
 	ToolKeyCredential       = tool.ToolKeyCredential
 	ToolKeyCalendar         = tool.ToolKeyCalendar
+	ToolKeyMail             = tool.ToolKeyMail
+	ToolKeyMailTask         = tool.ToolKeyMailTask
 )
 
 // EffectiveMCPServer is a biz DTO for one enabled MCP server row — no ADK imports.

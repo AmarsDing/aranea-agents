@@ -82,6 +82,21 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.SelfImprovement, *co
 		provideOfficeAppsService,
 		// W1c agent 日程工具窄口（calendar_list / calendar_create_draft）→ ToolBridges.Calendar。
 		provideOfficeCalendarTool,
+		// E 阶段 W1d 邮件（拍板 E-1..E-5）：账号/同步/阅读/摘要/IDLE。
+		provideOfficeMailRepo,
+		provideOfficeMailAuditSink,
+		provideOfficeMailCeoboardSink,
+		provideOfficeMailKnowledgeSink,
+		provideOfficeMailAccountUsecase,
+		provideOfficeMailSyncUsecase,
+		provideOfficeMailMessageUsecase,
+		provideOfficeMailDigestUsecase,
+		provideOfficeMailIdleSupervisor,
+		provideOfficeMailDigestWorker,
+		provideOfficeMailService,
+		// W1d agent 邮件工具窄口（mail_list/mail_read/mail_search/mail_to_task）
+		// → ToolBridges.Mail。
+		provideOfficeMailTool,
 		provideCronRunnerDeps,
 		provideCronRunner,
 		wire.Bind(new(biz.CronTaskTrigger), new(*cronrunner.Runner)),

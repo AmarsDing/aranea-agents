@@ -184,6 +184,12 @@ var builtinPlatformToolSeeds = []platformToolSeed{
 	// 中心，人批准后方落 office_events——审批中心即闸门，故种子不设 reqConfirm。
 	// 无环境闸，默认 enabled=false 按 agent 授予。
 	{key: "calendar", displayName: "日程", description: "日程工具集（calendar_list / calendar_create_draft）：读本人时间窗内的日程事件；提交排期草案进审批中心（schedule_draft），批准后才落入日程，拒绝不留事件。身份从会话解析，agent 不可自报身份。", category: "integration", riskLevel: "low", enabled: false, paramsSchema: `{"type":"object","properties":{"start":{"type":"string","description":"时间窗起点 RFC3339（可选，默认现在）"},"end":{"type":"string","description":"时间窗终点 RFC3339（可选，默认 +7d）"}}}`},
+	// E 阶段 W1d 邮件工具（需求文档 §1.3「agent 触达」）：mail_list /
+	// mail_read / mail_search 只读低风险，enabled=true 默认开；mail_to_task
+	// 中风险（建个人任务+回写 task_ref，幂等），enabled=false 按 agent 授予。
+	// 身份从会话解析，agent 不可自报身份；无任何口令/附件字节出参。
+	{key: "mail", displayName: "邮件", description: "邮件只读工具集（mail_list / mail_read / mail_search）：读本人邮件列表/正文/关键词检索。身份从会话解析，属主隔离在服务端。", category: "integration", riskLevel: "low", enabled: true, paramsSchema: `{"type":"object","properties":{"query":{"type":"string","description":"检索关键词（mail_search）"}}}`},
+	{key: "mail_task", displayName: "邮件转任务", description: "邮件转个人任务（mail_to_task）：以邮件主题/正文建个人任务（含回链），幂等——重复转换返回既有任务引用。中风险按 agent 授予。", category: "integration", riskLevel: "medium", enabled: false, paramsSchema: `{"type":"object","properties":{"message_id":{"type":"string","description":"邮件 id"}},"required":["message_id"]}`},
 }
 
 func ensureBuiltinPlatformTools(ctx context.Context, client *ent.Client, d Dialect, lg loggateway.Logger) error {

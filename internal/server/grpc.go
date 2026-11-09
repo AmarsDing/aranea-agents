@@ -161,6 +161,9 @@ func NewGRPCServer(c *conf.Server, s *ServiceRegistry, lg loggateway.Logger) *gr
 	if s.OfficeApps != nil {
 		officev1.RegisterOfficeAppsServiceServer(srv, s.OfficeApps)
 	}
+	if s.OfficeMail != nil {
+		officev1.RegisterOfficeMailServiceServer(srv, s.OfficeMail)
+	}
 	return srv
 }
 

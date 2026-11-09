@@ -20,6 +20,7 @@ import (
 	credentialpkg "aranea-agents/internal/tools/credential"
 	"aranea-agents/internal/tools/deferred"
 	kanbanpkg "aranea-agents/internal/tools/kanban"
+	mailpkg "aranea-agents/internal/tools/mail"
 	"aranea-agents/internal/tools/skillrecommend"
 	subagenttool "aranea-agents/internal/tools/subagent"
 	tooltrpc "aranea-agents/internal/tools/trpc"
@@ -67,6 +68,10 @@ type TRPCToolAssemblyDeps struct {
 	// calendar_create_draft；service 层 session→user 解析适配）。nil 时日程
 	// 工具被裁剪（诚实降级，不伪造空表）。
 	CalendarSvc calendarpkg.Service
+	// MailSvc 是 E 阶段 W1d 邮件工具窄口（mail_list / mail_read /
+	// mail_search / mail_to_task；service 层 session→user 解析适配）。nil 时
+	// 邮件工具被裁剪（诚实降级）。
+	MailSvc mailpkg.Service
 	// MediaProviders resolves media generation provider configs for the
 	// generate_image / generate_video / image_to_video tools. Optional: when
 	// nil, media tools are skipped even if enabled in effective tool keys.

@@ -79,6 +79,7 @@ func (s *ChatService) BuildA2ARunner(ctx context.Context, agentID, publicURL str
 			KanbanBridge:    s.orch.rt().Bridges.Kanban,
 			CredentialVault: s.orch.rt().Bridges.Credential,
 			CalendarSvc:     s.orch.rt().Bridges.Calendar,
+			MailSvc:         s.orch.rt().Bridges.Mail,
 			ComputerUseUC:   s.orch.rt().Bridges.ComputerUse,
 			SandboxFSStore:  s.orch.rt().Bridges.SandboxFS,
 		},

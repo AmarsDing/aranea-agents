@@ -145,6 +145,30 @@ func TestPermissionMiddleware(t *testing.T) {
 		assertAuthForbidden(t, err)
 	})
 
+	// W1d 冒烟 S3b 暴露并钉死：kratos v2.9.2 下 proto 生成 HTTP 路由的
+	// tr.Operation() 返回 gRPC 全方法（如 /kratos.admin.v1.AdminService/UpdateAdmin）
+	// 而非 pathTemplate。中间件若只查 `<方法> <operation>` 复合键，所有
+	// proto HTTP 请求落「未登记 → 放行」，权限硬判全局失效。以下两条用例
+	// 钉住裸键查表路径。
+	t.Run("HTTP面operation为gRPC全方法_无权_403", func(t *testing.T) {
+		t.Setenv("DEPLOY_ENV", "production")
+		ctx := auth.NewContext(httpCtxWithRoute(http.MethodPut, "/kratos.admin.v1.AdminService/UpdateAdmin"), userRole)
+		err, called := run(ctx)
+		if called {
+			t.Fatal("http op=grpc-method denied must not call handler")
+		}
+		assertAuthForbidden(t, err)
+	})
+
+	t.Run("HTTP面operation为gRPC全方法_授权_放行", func(t *testing.T) {
+		t.Setenv("DEPLOY_ENV", "production")
+		ctx := auth.NewContext(httpCtxWithRoute(http.MethodPut, "/kratos.admin.v1.AdminService/UpdateAdmin"), superadmin)
+		err, called := run(ctx)
+		if err != nil || !called {
+			t.Fatalf("http op=grpc-method authorized must pass: err=%v called=%v", err, called)
+		}
+	})
+
 	t.Run("生产环境无主体_fail-closed", func(t *testing.T) {
 		t.Setenv("DEPLOY_ENV", "production")
 		ctx := grpcCtxWithOperation("/kratos.admin.v1.AdminService/UpdateAdmin")

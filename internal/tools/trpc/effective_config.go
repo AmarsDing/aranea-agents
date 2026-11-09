@@ -36,6 +36,8 @@ func ToolsetConfigFromEffectiveKeys(eff map[string]bool) ToolsetConfig {
 		Kanban:           has(biz.ToolKeyKanban),
 		Credential:       has(biz.ToolKeyCredential),
 		Calendar:         has(biz.ToolKeyCalendar),
+		Mail:             has(biz.ToolKeyMail),
+		MailTask:         has(biz.ToolKeyMailTask),
 		ReadDocument:     has("read_document"),
 		ReadSpreadsheet:  has("read_spreadsheet"),
 		WorkingMemory:    has("working_memory_read") || has("working_memory_list") || has("working_memory_write") || has("working_memory_patch") || has("working_memory_delete") || has("working_memory_complete"),
@@ -57,7 +59,7 @@ func ToolsetConfigHasAny(cfg ToolsetConfig) bool {
 	return cfg.Filesystem || cfg.ShellExec || cfg.WebFetch || cfg.WebSearch || cfg.WebResearch ||
 		cfg.GeminiFetch || cfg.GoogleSearch || cfg.ArxivSearch || cfg.Wikipedia ||
 		cfg.Email || cfg.Todo || cfg.AwaitReply || cfg.ClaudeCode ||
-		cfg.KnowledgeSearch || cfg.KnowledgeReflect || cfg.CallAgent || cfg.Kanban || cfg.Credential || cfg.Calendar || cfg.MemoryEnabled ||
+		cfg.KnowledgeSearch || cfg.KnowledgeReflect || cfg.CallAgent || cfg.Kanban || cfg.Credential || cfg.Calendar || cfg.Mail || cfg.MailTask || cfg.MemoryEnabled ||
 		cfg.ReadDocument || cfg.ReadSpreadsheet || cfg.ReadLints || cfg.DeleteFile || cfg.WorkingMemory || cfg.Datetime || cfg.Message || cfg.BrowserEnabled || cfg.SubAgent ||
 		cfg.ClientBridge || cfg.ComputerUse || cfg.CodingBridge || cfg.SandboxFS ||
 		len(cfg.AgentTools) > 0 || len(cfg.MCPServers) > 0 || cfg.MCPBroker != nil || len(cfg.CustomTools) > 0

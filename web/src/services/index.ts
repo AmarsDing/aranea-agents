@@ -45,6 +45,7 @@ import {
   createOfficeScheduleServiceClient,
   createOfficeNotifyServiceClient,
   createOfficeAppsServiceClient,
+  createOfficeMailServiceClient,
 } from './kratos/office/v1/index';
 import { requestHandler, kratosApi } from './axiosHandler';
 
@@ -110,6 +111,12 @@ export function createOfficeNotifyService() {
 
 export function createOfficeAppsService() {
   return createOfficeAppsServiceClient(requestHandler);
+}
+
+// E 阶段 W1d：邮件聚合（/v1/office/mail*；账号密码仅创建/轮换时上行，
+// 列表与详情永不含密码）。
+export function createOfficeMailService() {
+  return createOfficeMailServiceClient(requestHandler);
 }
 
 export function createDecisionService() {
