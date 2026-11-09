@@ -986,6 +986,71 @@ var (
 			},
 		},
 	}
+	// CredentialsColumns holds the columns for the "credentials" table.
+	CredentialsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "workspace_id", Type: field.TypeString, Size: 64, Default: ""},
+		{Name: "name", Type: field.TypeString, Size: 128},
+		{Name: "site", Type: field.TypeString, Size: 256},
+		{Name: "url", Type: field.TypeString, Size: 512, Default: ""},
+		{Name: "username", Type: field.TypeString, Size: 256, Default: ""},
+		{Name: "secret_kind", Type: field.TypeString, Size: 16},
+		{Name: "sensitivity", Type: field.TypeString, Size: 16, Default: "normal"},
+		{Name: "note", Type: field.TypeString, Size: 1024, Default: ""},
+		{Name: "secret_enc", Type: field.TypeString, Size: 2147483647},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// CredentialsTable holds the schema information for the "credentials" table.
+	CredentialsTable = &schema.Table{
+		Name:       "credentials",
+		Columns:    CredentialsColumns,
+		PrimaryKey: []*schema.Column{CredentialsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "credential_workspace_id_site",
+				Unique:  false,
+				Columns: []*schema.Column{CredentialsColumns[1], CredentialsColumns[3]},
+			},
+			{
+				Name:    "credential_site",
+				Unique:  false,
+				Columns: []*schema.Column{CredentialsColumns[3]},
+			},
+		},
+	}
+	// CredentialExecutionsColumns holds the columns for the "credential_executions" table.
+	CredentialExecutionsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "credential_id", Type: field.TypeInt64, Default: 0},
+		{Name: "site", Type: field.TypeString, Size: 256},
+		{Name: "action", Type: field.TypeString, Size: 32},
+		{Name: "actor_type", Type: field.TypeString, Size: 16},
+		{Name: "actor_key", Type: field.TypeString, Size: 128, Default: ""},
+		{Name: "agent_id", Type: field.TypeString, Size: 128, Default: ""},
+		{Name: "session_id", Type: field.TypeString, Size: 128, Default: ""},
+		{Name: "verdict", Type: field.TypeString, Size: 32},
+		{Name: "reason", Type: field.TypeString, Size: 512, Default: ""},
+		{Name: "created_at", Type: field.TypeTime},
+	}
+	// CredentialExecutionsTable holds the schema information for the "credential_executions" table.
+	CredentialExecutionsTable = &schema.Table{
+		Name:       "credential_executions",
+		Columns:    CredentialExecutionsColumns,
+		PrimaryKey: []*schema.Column{CredentialExecutionsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "credentialexecution_credential_id_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{CredentialExecutionsColumns[1], CredentialExecutionsColumns[10]},
+			},
+			{
+				Name:    "credentialexecution_site_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{CredentialExecutionsColumns[2], CredentialExecutionsColumns[10]},
+			},
+		},
+	}
 	// CronTaskColumns holds the columns for the "cron_task" table.
 	CronTaskColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString, Unique: true, Size: 256},
@@ -4493,6 +4558,8 @@ var (
 		CompiledTeamsTable,
 		ComputerUseAuditTable,
 		ContentItemsTable,
+		CredentialsTable,
+		CredentialExecutionsTable,
 		CronTaskTable,
 		CronTaskRunTable,
 		DecisionRecordsTable,
@@ -4671,6 +4738,12 @@ func init() {
 	}
 	ContentItemsTable.Annotation = &entsql.Annotation{
 		Table: "content_items",
+	}
+	CredentialsTable.Annotation = &entsql.Annotation{
+		Table: "credentials",
+	}
+	CredentialExecutionsTable.Annotation = &entsql.Annotation{
+		Table: "credential_executions",
 	}
 	CronTaskTable.Annotation = &entsql.Annotation{
 		Table: "cron_task",

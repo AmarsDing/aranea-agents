@@ -10,12 +10,14 @@ import (
 // only this struct and the Wire provider need updating — server constructors
 // are unaffected.
 type ServiceRegistry struct {
-	Admin              *service.AdminService
-	Avatar             *service.AvatarService
-	Agents             *service.AgentService
-	LLM                *service.LlmProviderModelService
-	Hook               *service.HookService
-	Cron               *service.CronService
+	Admin  *service.AdminService
+	Avatar *service.AvatarService
+	Agents *service.AgentService
+	LLM    *service.LlmProviderModelService
+	Hook   *service.HookService
+	Cron   *service.CronService
+	// Credential 是 E 阶段凭据托管服务（/v1/credentials*）。
+	Credential         *service.CredentialService
 	Plugin             *service.PluginService
 	MCPServer          *service.MCPServerService
 	Skill              *service.SkillService
@@ -86,6 +88,7 @@ func NewServiceRegistry(
 	llm *service.LlmProviderModelService,
 	hookSvc *service.HookService,
 	cronSvc *service.CronService,
+	credentialSvc *service.CredentialService,
 	pluginSvc *service.PluginService,
 	mcpSvc *service.MCPServerService,
 	skillSvc *service.SkillService,
@@ -141,6 +144,7 @@ func NewServiceRegistry(
 		LLM:                llm,
 		Hook:               hookSvc,
 		Cron:               cronSvc,
+		Credential:         credentialSvc,
 		Plugin:             pluginSvc,
 		MCPServer:          mcpSvc,
 		Skill:              skillSvc,

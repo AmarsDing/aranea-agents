@@ -19,6 +19,10 @@ const (
 	ToolKeyWebResearch      = "web_research"
 	ToolKeyKanban           = "kanban"
 	ToolKeyCallAgent        = "call_agent"
+	// ToolKeyCredential 是 E 阶段凭据执行工具集授权键（credential_login_execute /
+	// credential_token_issue 两动词同闸）。默认关/高风险/需确认（种子），另受
+	// ARANEA_CREDENTIAL_TOOLS 环境闸与高敏站点清单裁决。
+	ToolKeyCredential = "credential"
 )
 
 // Tool is capability catalog row + aggregates.

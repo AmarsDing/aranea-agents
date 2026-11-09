@@ -320,6 +320,30 @@ func (f ContentItemFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value,
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ContentItemMutation", m)
 }
 
+// The CredentialFunc type is an adapter to allow the use of ordinary
+// function as Credential mutator.
+type CredentialFunc func(context.Context, *ent.CredentialMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f CredentialFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.CredentialMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.CredentialMutation", m)
+}
+
+// The CredentialExecutionFunc type is an adapter to allow the use of ordinary
+// function as CredentialExecution mutator.
+type CredentialExecutionFunc func(context.Context, *ent.CredentialExecutionMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f CredentialExecutionFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.CredentialExecutionMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.CredentialExecutionMutation", m)
+}
+
 // The CronTaskFunc type is an adapter to allow the use of ordinary
 // function as CronTask mutator.
 type CronTaskFunc func(context.Context, *ent.CronTaskMutation) (ent.Value, error)

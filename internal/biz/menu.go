@@ -58,6 +58,8 @@ const (
 	// P2-8：经营驾驶舱两页。ceoboard.view 已在内置角色矩阵（pkg/auth/permissions.go：
 	// ceo 经 ceoboard.* 通配授予，oncall/viewer 显式授予），打码不收紧可见性。
 	permCeoboardView = "ceoboard.view" // /ceo/overview、/ceo/oncall
+	// E 阶段 W1a：凭据管理（高敏收窄仅 sysadmin，矩阵见 pkg/auth/permissions.go）。
+	permCredentialManage = "credential.manage" // /credentials
 )
 
 // NavigationCatalog 返回侧栏菜单目录（显示顺序即数组顺序）。
@@ -112,6 +114,7 @@ func NavigationCatalog() []MenuGroup {
 				{Key: "plugins", Path: "/plugins", Icon: "tune", LabelKey: "menu.plugins"},
 				{Key: "hooks", Path: "/hooks", Icon: "link", LabelKey: "menu.hooks"},
 				{Key: "webhooks", Path: "/webhooks", Icon: "webhook", LabelKey: "menu.webhooks"},
+				{Key: "credentials", Path: "/credentials", Icon: "key", LabelKey: "menu.credentials", Permission: permCredentialManage},
 				{Key: "a2a", Path: "/a2a", Icon: "swap_horiz", LabelKey: "menu.a2a"},
 			},
 		},

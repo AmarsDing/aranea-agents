@@ -209,6 +209,16 @@ func provideCredentialCrypto(sys biz.SystemSettingRepo, lg loggateway.Logger) *b
 	return cc
 }
 
+// provideCredentialUsecase 装配 E 阶段凭据托管用例（需求文档 §3，V-1/V-2/V-3）。
+// 高敏清单：内置默认清单 ∪ configs credential.high_sensitivity_sites（只增不减）。
+func provideCredentialUsecase(repo biz.CredentialRepo, crypto *biz.CredentialCrypto, cfg *conf.Credential, lg loggateway.Logger) *biz.CredentialUsecase {
+	var highSites []string
+	if cfg != nil {
+		highSites = cfg.HighSensitivitySites
+	}
+	return biz.NewCredentialUsecase(repo, crypto, highSites, lg)
+}
+
 func provideLlmProviderModelUsecaseWithDeps(repo biz.LlmProviderModelRepo, inspector biz.LLMInspector, crypto *biz.CredentialCrypto, agentRefs biz.AgentReferenceChecker, statsInjector *biz.ModelStatsInjector, lg loggateway.Logger) *biz.LlmProviderModelUsecase {
 	return biz.NewLlmProviderModelUsecase(repo, repo, repo, repo, inspector, crypto, agentRefs, statsInjector, lg)
 }
@@ -744,6 +754,7 @@ func provideRuntimeTooling(
 	knowledgeUC *biz.KnowledgeUsecase,
 	codeExecFactory *localexec.Factory,
 	kanbanBridge kanbanpkg.Bridge,
+	credentialUC *biz.CredentialUsecase,
 	debugRecorder *debug.RecorderFactory,
 	orgUC *biz.OrganizationUsecase,
 	toolResultGate *biz.ToolResultGate,
@@ -778,6 +789,7 @@ func provideRuntimeTooling(
 		},
 		Bridges: service.ToolBridges{
 			Kanban:      kanbanBridge,
+			Credential:  credentialUC,
 			ComputerUse: computerUseUC,
 			Coding:      codingBridgeSvc,
 			Client:      clientBridge,
@@ -915,6 +927,7 @@ func provideRunnerConfig(
 	outboundRouter *outbound.Router,
 	subAgentSvc *subagenttool.Service,
 	kanbanBridge kanbanpkg.Bridge,
+	credentialUC *biz.CredentialUsecase,
 	computerUseUC *bizcu.ComputerUseUsecase,
 	sandboxLeases *sandbox.SessionLeases,
 	sandboxMgr *sandbox.Manager,
@@ -957,6 +970,7 @@ func provideRunnerConfig(
 		OutboundRouter:    outboundRouter,
 		SubAgentService:   subAgentSvc,
 		KanbanBridge:      kanbanBridge,
+		CredentialVault:   credentialUC,
 		ComputerUseUC:     computerUseUC,
 		SandboxFSStore:    sandboxLeases,
 		SandboxManager:    sandboxMgr,

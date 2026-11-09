@@ -29,6 +29,8 @@ import (
 	"aranea-agents/internal/data/ent/compiledteam"
 	"aranea-agents/internal/data/ent/computeruseaudit"
 	"aranea-agents/internal/data/ent/contentitem"
+	"aranea-agents/internal/data/ent/credential"
+	"aranea-agents/internal/data/ent/credentialexecution"
 	"aranea-agents/internal/data/ent/crontask"
 	"aranea-agents/internal/data/ent/crontaskrun"
 	"aranea-agents/internal/data/ent/decisionrecord"
@@ -1961,6 +1963,96 @@ func init() {
 	contentitemDescID := contentitemFields[0].Descriptor()
 	// contentitem.IDValidator is a validator for the "id" field. It is called by the builders before save.
 	contentitem.IDValidator = contentitemDescID.Validators[0].(func(string) error)
+	credentialFields := schema.Credential{}.Fields()
+	_ = credentialFields
+	// credentialDescWorkspaceID is the schema descriptor for workspace_id field.
+	credentialDescWorkspaceID := credentialFields[1].Descriptor()
+	// credential.DefaultWorkspaceID holds the default value on creation for the workspace_id field.
+	credential.DefaultWorkspaceID = credentialDescWorkspaceID.Default.(string)
+	// credential.WorkspaceIDValidator is a validator for the "workspace_id" field. It is called by the builders before save.
+	credential.WorkspaceIDValidator = credentialDescWorkspaceID.Validators[0].(func(string) error)
+	// credentialDescName is the schema descriptor for name field.
+	credentialDescName := credentialFields[2].Descriptor()
+	// credential.NameValidator is a validator for the "name" field. It is called by the builders before save.
+	credential.NameValidator = credentialDescName.Validators[0].(func(string) error)
+	// credentialDescSite is the schema descriptor for site field.
+	credentialDescSite := credentialFields[3].Descriptor()
+	// credential.SiteValidator is a validator for the "site" field. It is called by the builders before save.
+	credential.SiteValidator = credentialDescSite.Validators[0].(func(string) error)
+	// credentialDescURL is the schema descriptor for url field.
+	credentialDescURL := credentialFields[4].Descriptor()
+	// credential.DefaultURL holds the default value on creation for the url field.
+	credential.DefaultURL = credentialDescURL.Default.(string)
+	// credential.URLValidator is a validator for the "url" field. It is called by the builders before save.
+	credential.URLValidator = credentialDescURL.Validators[0].(func(string) error)
+	// credentialDescUsername is the schema descriptor for username field.
+	credentialDescUsername := credentialFields[5].Descriptor()
+	// credential.DefaultUsername holds the default value on creation for the username field.
+	credential.DefaultUsername = credentialDescUsername.Default.(string)
+	// credential.UsernameValidator is a validator for the "username" field. It is called by the builders before save.
+	credential.UsernameValidator = credentialDescUsername.Validators[0].(func(string) error)
+	// credentialDescSecretKind is the schema descriptor for secret_kind field.
+	credentialDescSecretKind := credentialFields[6].Descriptor()
+	// credential.SecretKindValidator is a validator for the "secret_kind" field. It is called by the builders before save.
+	credential.SecretKindValidator = credentialDescSecretKind.Validators[0].(func(string) error)
+	// credentialDescSensitivity is the schema descriptor for sensitivity field.
+	credentialDescSensitivity := credentialFields[7].Descriptor()
+	// credential.DefaultSensitivity holds the default value on creation for the sensitivity field.
+	credential.DefaultSensitivity = credentialDescSensitivity.Default.(string)
+	// credential.SensitivityValidator is a validator for the "sensitivity" field. It is called by the builders before save.
+	credential.SensitivityValidator = credentialDescSensitivity.Validators[0].(func(string) error)
+	// credentialDescNote is the schema descriptor for note field.
+	credentialDescNote := credentialFields[8].Descriptor()
+	// credential.DefaultNote holds the default value on creation for the note field.
+	credential.DefaultNote = credentialDescNote.Default.(string)
+	// credential.NoteValidator is a validator for the "note" field. It is called by the builders before save.
+	credential.NoteValidator = credentialDescNote.Validators[0].(func(string) error)
+	credentialexecutionFields := schema.CredentialExecution{}.Fields()
+	_ = credentialexecutionFields
+	// credentialexecutionDescCredentialID is the schema descriptor for credential_id field.
+	credentialexecutionDescCredentialID := credentialexecutionFields[1].Descriptor()
+	// credentialexecution.DefaultCredentialID holds the default value on creation for the credential_id field.
+	credentialexecution.DefaultCredentialID = credentialexecutionDescCredentialID.Default.(int64)
+	// credentialexecutionDescSite is the schema descriptor for site field.
+	credentialexecutionDescSite := credentialexecutionFields[2].Descriptor()
+	// credentialexecution.SiteValidator is a validator for the "site" field. It is called by the builders before save.
+	credentialexecution.SiteValidator = credentialexecutionDescSite.Validators[0].(func(string) error)
+	// credentialexecutionDescAction is the schema descriptor for action field.
+	credentialexecutionDescAction := credentialexecutionFields[3].Descriptor()
+	// credentialexecution.ActionValidator is a validator for the "action" field. It is called by the builders before save.
+	credentialexecution.ActionValidator = credentialexecutionDescAction.Validators[0].(func(string) error)
+	// credentialexecutionDescActorType is the schema descriptor for actor_type field.
+	credentialexecutionDescActorType := credentialexecutionFields[4].Descriptor()
+	// credentialexecution.ActorTypeValidator is a validator for the "actor_type" field. It is called by the builders before save.
+	credentialexecution.ActorTypeValidator = credentialexecutionDescActorType.Validators[0].(func(string) error)
+	// credentialexecutionDescActorKey is the schema descriptor for actor_key field.
+	credentialexecutionDescActorKey := credentialexecutionFields[5].Descriptor()
+	// credentialexecution.DefaultActorKey holds the default value on creation for the actor_key field.
+	credentialexecution.DefaultActorKey = credentialexecutionDescActorKey.Default.(string)
+	// credentialexecution.ActorKeyValidator is a validator for the "actor_key" field. It is called by the builders before save.
+	credentialexecution.ActorKeyValidator = credentialexecutionDescActorKey.Validators[0].(func(string) error)
+	// credentialexecutionDescAgentID is the schema descriptor for agent_id field.
+	credentialexecutionDescAgentID := credentialexecutionFields[6].Descriptor()
+	// credentialexecution.DefaultAgentID holds the default value on creation for the agent_id field.
+	credentialexecution.DefaultAgentID = credentialexecutionDescAgentID.Default.(string)
+	// credentialexecution.AgentIDValidator is a validator for the "agent_id" field. It is called by the builders before save.
+	credentialexecution.AgentIDValidator = credentialexecutionDescAgentID.Validators[0].(func(string) error)
+	// credentialexecutionDescSessionID is the schema descriptor for session_id field.
+	credentialexecutionDescSessionID := credentialexecutionFields[7].Descriptor()
+	// credentialexecution.DefaultSessionID holds the default value on creation for the session_id field.
+	credentialexecution.DefaultSessionID = credentialexecutionDescSessionID.Default.(string)
+	// credentialexecution.SessionIDValidator is a validator for the "session_id" field. It is called by the builders before save.
+	credentialexecution.SessionIDValidator = credentialexecutionDescSessionID.Validators[0].(func(string) error)
+	// credentialexecutionDescVerdict is the schema descriptor for verdict field.
+	credentialexecutionDescVerdict := credentialexecutionFields[8].Descriptor()
+	// credentialexecution.VerdictValidator is a validator for the "verdict" field. It is called by the builders before save.
+	credentialexecution.VerdictValidator = credentialexecutionDescVerdict.Validators[0].(func(string) error)
+	// credentialexecutionDescReason is the schema descriptor for reason field.
+	credentialexecutionDescReason := credentialexecutionFields[9].Descriptor()
+	// credentialexecution.DefaultReason holds the default value on creation for the reason field.
+	credentialexecution.DefaultReason = credentialexecutionDescReason.Default.(string)
+	// credentialexecution.ReasonValidator is a validator for the "reason" field. It is called by the builders before save.
+	credentialexecution.ReasonValidator = credentialexecutionDescReason.Validators[0].(func(string) error)
 	crontaskFields := schema.CronTask{}.Fields()
 	_ = crontaskFields
 	// crontaskDescTaskKey is the schema descriptor for task_key field.

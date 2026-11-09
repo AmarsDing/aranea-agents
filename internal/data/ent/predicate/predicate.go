@@ -84,6 +84,12 @@ type ComputerUseAudit func(*sql.Selector)
 // ContentItem is the predicate function for contentitem builders.
 type ContentItem func(*sql.Selector)
 
+// Credential is the predicate function for credential builders.
+type Credential func(*sql.Selector)
+
+// CredentialExecution is the predicate function for credentialexecution builders.
+type CredentialExecution func(*sql.Selector)
+
 // CronTask is the predicate function for crontask builders.
 type CronTask func(*sql.Selector)
 

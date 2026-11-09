@@ -16,6 +16,7 @@ import (
 	channelv1 "aranea-agents/api/kratos/channel/v1"
 	chatv1 "aranea-agents/api/kratos/chat/v1"
 	computerusev1 "aranea-agents/api/kratos/computeruse/v1"
+	credentialv1 "aranea-agents/api/kratos/credential/v1"
 	cronv1 "aranea-agents/api/kratos/cron/v1"
 	decisionv1 "aranea-agents/api/kratos/decision/v1"
 	ecosystemv1 "aranea-agents/api/kratos/ecosystem/v1"
@@ -96,6 +97,7 @@ func NewGRPCServer(c *conf.Server, s *ServiceRegistry, lg loggateway.Logger) *gr
 	llmprovidermodelv1.RegisterLlmProviderModelServiceServer(srv, s.LLM)
 	hookv1.RegisterHookServiceServer(srv, s.Hook)
 	cronv1.RegisterCronServiceServer(srv, s.Cron)
+	credentialv1.RegisterCredentialServiceServer(srv, s.Credential)
 	pluginv1.RegisterPluginServiceServer(srv, s.Plugin)
 	mcpserverv1.RegisterMCPServerServiceServer(srv, s.MCPServer)
 	skillv1.RegisterSkillServiceServer(srv, s.Skill)

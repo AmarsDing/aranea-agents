@@ -507,15 +507,17 @@ func (x *GetCredentialRequest) GetId() string {
 	return ""
 }
 
+// UpdateCredentialRequest 全字段 optional：nil = 不动该列（PATCH 语义，
+// 允许把 url/username/note 显式置空）。
 type UpdateCredentialRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
-	Url           string                 `protobuf:"bytes,3,opt,name=url,proto3" json:"url,omitempty"`
-	Username      string                 `protobuf:"bytes,4,opt,name=username,proto3" json:"username,omitempty"`
-	Sensitivity   Sensitivity            `protobuf:"varint,5,opt,name=sensitivity,proto3,enum=kratos.credential.v1.Sensitivity" json:"sensitivity,omitempty"`
-	Note          string                 `protobuf:"bytes,6,opt,name=note,proto3" json:"note,omitempty"`
-	Secret        string                 `protobuf:"bytes,7,opt,name=secret,proto3" json:"secret,omitempty"` // 非空 = 轮换 secret
+	Name          *string                `protobuf:"bytes,2,opt,name=name,proto3,oneof" json:"name,omitempty"`
+	Url           *string                `protobuf:"bytes,3,opt,name=url,proto3,oneof" json:"url,omitempty"`
+	Username      *string                `protobuf:"bytes,4,opt,name=username,proto3,oneof" json:"username,omitempty"`
+	Sensitivity   *Sensitivity           `protobuf:"varint,5,opt,name=sensitivity,proto3,enum=kratos.credential.v1.Sensitivity,oneof" json:"sensitivity,omitempty"`
+	Note          *string                `protobuf:"bytes,6,opt,name=note,proto3,oneof" json:"note,omitempty"`
+	Secret        *string                `protobuf:"bytes,7,opt,name=secret,proto3,oneof" json:"secret,omitempty"` // 非空 = 轮换 secret
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -558,43 +560,43 @@ func (x *UpdateCredentialRequest) GetId() string {
 }
 
 func (x *UpdateCredentialRequest) GetName() string {
-	if x != nil {
-		return x.Name
+	if x != nil && x.Name != nil {
+		return *x.Name
 	}
 	return ""
 }
 
 func (x *UpdateCredentialRequest) GetUrl() string {
-	if x != nil {
-		return x.Url
+	if x != nil && x.Url != nil {
+		return *x.Url
 	}
 	return ""
 }
 
 func (x *UpdateCredentialRequest) GetUsername() string {
-	if x != nil {
-		return x.Username
+	if x != nil && x.Username != nil {
+		return *x.Username
 	}
 	return ""
 }
 
 func (x *UpdateCredentialRequest) GetSensitivity() Sensitivity {
-	if x != nil {
-		return x.Sensitivity
+	if x != nil && x.Sensitivity != nil {
+		return *x.Sensitivity
 	}
 	return Sensitivity_SENSITIVITY_UNSPECIFIED
 }
 
 func (x *UpdateCredentialRequest) GetNote() string {
-	if x != nil {
-		return x.Note
+	if x != nil && x.Note != nil {
+		return *x.Note
 	}
 	return ""
 }
 
 func (x *UpdateCredentialRequest) GetSecret() string {
-	if x != nil {
-		return x.Secret
+	if x != nil && x.Secret != nil {
+		return *x.Secret
 	}
 	return ""
 }
@@ -1026,15 +1028,21 @@ const file_kratos_credential_v1_credential_proto_rawDesc = "" +
 	"\x04note\x18\a \x01(\tR\x04note\x12\x1c\n" +
 	"\x06secret\x18\b \x01(\tB\x04\xe2A\x01\x02R\x06secret\",\n" +
 	"\x14GetCredentialRequest\x12\x14\n" +
-	"\x02id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\x02id\"\xe2\x01\n" +
+	"\x02id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\x02id\"\xc2\x02\n" +
 	"\x17UpdateCredentialRequest\x12\x14\n" +
-	"\x02id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\x02id\x12\x12\n" +
-	"\x04name\x18\x02 \x01(\tR\x04name\x12\x10\n" +
-	"\x03url\x18\x03 \x01(\tR\x03url\x12\x1a\n" +
-	"\busername\x18\x04 \x01(\tR\busername\x12C\n" +
-	"\vsensitivity\x18\x05 \x01(\x0e2!.kratos.credential.v1.SensitivityR\vsensitivity\x12\x12\n" +
-	"\x04note\x18\x06 \x01(\tR\x04note\x12\x16\n" +
-	"\x06secret\x18\a \x01(\tR\x06secret\"/\n" +
+	"\x02id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\x02id\x12\x17\n" +
+	"\x04name\x18\x02 \x01(\tH\x00R\x04name\x88\x01\x01\x12\x15\n" +
+	"\x03url\x18\x03 \x01(\tH\x01R\x03url\x88\x01\x01\x12\x1f\n" +
+	"\busername\x18\x04 \x01(\tH\x02R\busername\x88\x01\x01\x12H\n" +
+	"\vsensitivity\x18\x05 \x01(\x0e2!.kratos.credential.v1.SensitivityH\x03R\vsensitivity\x88\x01\x01\x12\x17\n" +
+	"\x04note\x18\x06 \x01(\tH\x04R\x04note\x88\x01\x01\x12\x1b\n" +
+	"\x06secret\x18\a \x01(\tH\x05R\x06secret\x88\x01\x01B\a\n" +
+	"\x05_nameB\x06\n" +
+	"\x04_urlB\v\n" +
+	"\t_usernameB\x0e\n" +
+	"\f_sensitivityB\a\n" +
+	"\x05_noteB\t\n" +
+	"\a_secret\"/\n" +
 	"\x17DeleteCredentialRequest\x12\x14\n" +
 	"\x02id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\x02id\"=\n" +
 	"\x16ImportBitwardenRequest\x12#\n" +
@@ -1164,6 +1172,7 @@ func file_kratos_credential_v1_credential_proto_init() {
 	if File_kratos_credential_v1_credential_proto != nil {
 		return
 	}
+	file_kratos_credential_v1_credential_proto_msgTypes[5].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{

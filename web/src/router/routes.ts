@@ -27,6 +27,7 @@ import PluginRunsPage from '../pages/PluginRunsPage.vue';
 import HooksPage from '../pages/HooksPage.vue';
 import HookDeliveriesPage from '../pages/HookDeliveriesPage.vue';
 import WebhooksPage from '../pages/WebhooksPage.vue';
+import CredentialsPage from '../pages/CredentialsPage.vue';
 import KnowledgePage from '../pages/KnowledgePage.vue';
 import ArtifactsPage from '../pages/ArtifactsPage.vue';
 import EvaluationPage from '../pages/EvaluationPage.vue';
@@ -250,6 +251,12 @@ export const routes: RouteRecordRaw[] = [
         path: 'webhooks',
         name: 'webhooks',
         component: WebhooksPage,
+      },
+      {
+        path: 'credentials',
+        name: 'credentials',
+        component: CredentialsPage,
+        meta: { titleKey: 'menu.credentials' },
       },
       {
         path: 'knowledge',

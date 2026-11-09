@@ -45,6 +45,7 @@ var ProviderSet = wire.NewSet(
 	NewLlmProviderModelRepo,
 	NewHookRepo,
 	NewCronRepo,
+	NewCredentialRepo,
 	NewPluginRepo,
 	NewPluginRunRepo,
 	NewHookDeliveryRepo,

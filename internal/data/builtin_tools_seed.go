@@ -173,6 +173,12 @@ var builtinPlatformToolSeeds = []platformToolSeed{
 	{key: "officecli_read", displayName: "Office 文档读取", description: "读取/检查 Office 文档（docx/xlsx/pptx）：view 大纲/文本/issues、get/query 结构查询、validate 规范校验、help 属性查询。文件限定在 Agent 工作区内。需本机安装 officecli（ARANEA_OFFICECLI_BIN 指定路径）。", category: "office", riskLevel: "low", enabled: false, readonly: true, paramsSchema: `{"type":"object","properties":{"args":{"type":"array","items":{"type":"string"},"description":"officecli 参数数组：首元素动词（view/get/query/validate/dump/help），第二元素工作区相对文件路径"}},"required":["args"]}`},
 	{key: "officecli_write", displayName: "Office 文档写入", description: "创建/编辑 Office 文档：create/add/set/remove/save/close/open。写操作，需人工确认。文件限定在 Agent 工作区内。", category: "office", riskLevel: "high", enabled: false, reqConfirm: true, paramsSchema: `{"type":"object","properties":{"args":{"type":"array","items":{"type":"string"},"description":"officecli 参数数组：首元素动词（create/add/set/remove/save/close/open），第二元素工作区相对文件路径"}},"required":["args"]}`},
 	{key: "officecli_render", displayName: "Office 文档渲染", description: "把 Office 文档渲染为 HTML/PNG/SVG/PDF 预览（排版视觉校验），产物自动落盘为会话制品供下载。", category: "office", riskLevel: "low", enabled: false, readonly: true, paramsSchema: `{"type":"object","properties":{"file":{"type":"string","description":"工作区相对文件路径"},"mode":{"type":"string","enum":["html","screenshot","svg","pdf"]},"extra_args":{"type":"array","items":{"type":"string"},"description":"可选附加标志（禁止 -o/--browser）"}},"required":["file","mode"]}`},
+	// E 阶段凭据托管执行动词（需求文档 §3，拍板 V-1）：agent 经策略裁决后在
+	// 目的站点执行登录（credential_login_execute）或签发一次性临时令牌
+	// （credential_token_issue）；secret 明文对 agent 永不可见（服务端解密
+	// 直送 executor），高敏站点默认拒绝（清单配置化）。双闸：本种子
+	// enabled=false + ARANEA_CREDENTIAL_TOOLS=1 环境闸。
+	{key: "credential", displayName: "凭据执行", description: "凭据托管执行动词（credential_login_execute / credential_token_issue）：经策略引擎裁决（高敏站点默认拒绝）后，agent 在目的站点执行登录或签发一次性临时令牌；secret 明文对 agent 永不可见。全量审计落 credential_executions。", category: "integration", riskLevel: "high", enabled: false, reqConfirm: true, paramsSchema: `{"type":"object","properties":{"site":{"type":"string","description":"目标站点，如 github.com"}},"required":["site"]}`},
 }
 
 func ensureBuiltinPlatformTools(ctx context.Context, client *ent.Client, d Dialect, lg loggateway.Logger) error {

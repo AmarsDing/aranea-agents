@@ -15,6 +15,16 @@ message Bootstrap {
   SelfImprovement self_improvement = 7;
   Sandbox sandbox = 8;
   Ceoboard ceoboard = 9;
+  Credential credential = 10;
+}
+
+// Credential configures the E-phase credential vault policy（需求文档 §3，
+// 拍板 V-3：高敏清单配置化）。空清单 = 仅用内置默认高敏清单。
+message Credential {
+  // 高敏站点清单：命中即默认拒绝执行（verdict=denied_sensitivity，不经
+  // approval-policy 四档流转）。匹配规则见 biz.DefaultHighSensitivitySites
+  // 注释（规范化 host 精确或后缀匹配）。与内置清单取并集。
+  repeated string high_sensitivity_sites = 1;
 }
 
 // Sandbox configures the M82 agent sandbox infrastructure (pooled,

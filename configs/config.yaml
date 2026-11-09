@@ -187,3 +187,12 @@ self_improvement:
 #       label: "内容审核"                  # 展示名
 #       path: "GET http://127.0.0.1:18080/api/v1/approvals"    # 拉取路径，形如 "METHOD URL"
 
+
+# E 阶段 W1a 凭据托管（2026-11-09）。整段省略 = 仅用内置高敏默认清单
+# （金融/支付/交易所/政务，见 internal/biz/credential.go DefaultHighSensitivitySites）。
+# 配置侧与内置清单取并集——只能加、不能减（安全向单调）。命中清单的站点：
+# 创建凭据自动标 sensitivity=high；agent 执行动词一律 denied_sensitivity 拒绝。
+# credential:
+#   high_sensitivity_sites:           # 附加高敏站点清单（规范化 host，后缀匹配子域）
+#     - "intranet.example.com"
+#     - "erp.internal"

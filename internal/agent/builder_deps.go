@@ -16,6 +16,7 @@ import (
 	"aranea-agents/internal/tools/cache"
 	"aranea-agents/internal/tools/clientbridge"
 	"aranea-agents/internal/tools/codingbridge"
+	credentialpkg "aranea-agents/internal/tools/credential"
 	"aranea-agents/internal/tools/deferred"
 	kanbanpkg "aranea-agents/internal/tools/kanban"
 	"aranea-agents/internal/tools/skillrecommend"
@@ -54,6 +55,13 @@ type TRPCToolAssemblyDeps struct {
 	AwaitHook    tooltrpc.ReplyFunc
 	CustomTools  []trpctool.Tool
 	KanbanBridge kanbanpkg.Bridge
+	// CredentialVault enables the credential_login_execute / credential_token_issue
+	// tools（E 阶段凭据托管；需求文档 §3 V-1）. Optional: when nil, credential
+	// tools are pruned from assembly even if enabled in effective tool keys.
+	CredentialVault credentialpkg.Vault
+	// CredentialExecutor 是凭据执行面（computer-use 接线前恒 nil——工具裁决/
+	// 审计完整执行，执行步诚实返回 unavailable）。
+	CredentialExecutor credentialpkg.Executor
 	// MediaProviders resolves media generation provider configs for the
 	// generate_image / generate_video / image_to_video tools. Optional: when
 	// nil, media tools are skipped even if enabled in effective tool keys.

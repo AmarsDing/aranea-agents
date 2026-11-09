@@ -14,6 +14,7 @@ import (
 	plugintrpc "aranea-agents/internal/plugin/trpc"
 	rt "aranea-agents/internal/runtime"
 	"aranea-agents/internal/sandbox"
+	credentialpkg "aranea-agents/internal/tools/credential"
 	kanbanpkg "aranea-agents/internal/tools/kanban"
 	subagenttool "aranea-agents/internal/tools/subagent"
 	tooltrpc "aranea-agents/internal/tools/trpc"
@@ -68,9 +69,12 @@ type RunnerConfig struct {
 	// DecisionCollector 是 M80 系统闸决策双写口（token_budget / no_progress
 	// 跳闸，设计 §3.2 row 3）。可选：nil 时闸事件仅走日志/事件总线。
 	DecisionCollector decision.Collector
-	OutboundRouter *outbound.Router
-	SubAgentService *subagenttool.Service
-	KanbanBridge    kanbanpkg.Bridge
+	OutboundRouter    *outbound.Router
+	SubAgentService   *subagenttool.Service
+	KanbanBridge      kanbanpkg.Bridge
+	// CredentialVault enables the credential verbs in team member builds
+	//（E 阶段凭据托管）。Optional; nil prunes the toolset.
+	CredentialVault credentialpkg.Vault
 	// ComputerUseUC enables the computer_use_* toolset in team member builds
 	// (75-computer-use). Optional; nil prunes the toolset.
 	ComputerUseUC *bizcu.ComputerUseUsecase

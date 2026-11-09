@@ -14,6 +14,7 @@ import (
 	"aranea-agents/internal/tools/clientbridge"
 	"aranea-agents/internal/tools/codingbridge"
 	computerusepkg "aranea-agents/internal/tools/computeruse"
+	credentialpkg "aranea-agents/internal/tools/credential"
 	kanbanpkg "aranea-agents/internal/tools/kanban"
 	knowledgepkg "aranea-agents/internal/tools/knowledge"
 	sandboxfspkg "aranea-agents/internal/tools/sandboxfs"
@@ -64,23 +65,30 @@ type ToolsetConfig struct {
 	CallAgent         bool
 	Kanban            bool
 	KanbanBridge      kanbanpkg.Bridge
-	MemoryEnabled     bool
-	MemoryTools       []trpctool.Tool
-	DeferredTools     []string
-	BlobReader        biz.ToolResultBlobReader
+	// Credential enables the vault credential verbs (credential_login_execute /
+	// credential_token_issue, E 阶段凭据托管). Requires CredentialVault; when nil
+	// the flag is pruned. CredentialExecutor nil = 执行面未接线，工具诚实返回
+	// unavailable（裁决与审计仍完整执行）。
+	Credential         bool
+	CredentialVault    credentialpkg.Vault
+	CredentialExecutor credentialpkg.Executor
+	MemoryEnabled      bool
+	MemoryTools        []trpctool.Tool
+	DeferredTools      []string
+	BlobReader         biz.ToolResultBlobReader
 	// SpillStore 是 P0-2 locator 回读消费口（批 B）；nil → read_tool_result 走
 	// blob repo 直接取回（老行为）。
-	SpillStore        toolspill.Store
-	ReadDocument      bool
-	ReadSpreadsheet   bool
-	ReadLints         bool
-	DeleteFile        bool
-	WorkingMemory     bool
-	Datetime          bool
-	Message           bool
-	OutboundRouter    *outbound.Router
-	SubAgent          bool
-	SubAgentService   *subagenttool.Service
+	SpillStore      toolspill.Store
+	ReadDocument    bool
+	ReadSpreadsheet bool
+	ReadLints       bool
+	DeleteFile      bool
+	WorkingMemory   bool
+	Datetime        bool
+	Message         bool
+	OutboundRouter  *outbound.Router
+	SubAgent        bool
+	SubAgentService *subagenttool.Service
 	// ClientBridge enables the client tool bridge ToolSet (client_open_app /
 	// client_open_url). Requires ClientBridgeSvc; when nil the flag is pruned
 	// so agents never see a tool that would always fail offline.
@@ -263,6 +271,11 @@ func BuildToolsets(ctx context.Context, cfg ToolsetConfig, lg loggateway.Logger)
 	}
 	if cfg.Kanban {
 		for _, t := range kanbanpkg.NewToolset(cfg.KanbanBridge) {
+			customTools = append(customTools, t)
+		}
+	}
+	if cfg.Credential {
+		for _, t := range credentialpkg.NewToolset(cfg.CredentialVault, cfg.CredentialExecutor) {
 			customTools = append(customTools, t)
 		}
 	}

@@ -37,6 +37,8 @@ import (
 	"aranea-agents/internal/data/ent/compiledteam"
 	"aranea-agents/internal/data/ent/computeruseaudit"
 	"aranea-agents/internal/data/ent/contentitem"
+	"aranea-agents/internal/data/ent/credential"
+	"aranea-agents/internal/data/ent/credentialexecution"
 	"aranea-agents/internal/data/ent/crontask"
 	"aranea-agents/internal/data/ent/crontaskrun"
 	"aranea-agents/internal/data/ent/decisionrecord"
@@ -203,6 +205,10 @@ type Client struct {
 	ComputerUseAudit *ComputerUseAuditClient
 	// ContentItem is the client for interacting with the ContentItem builders.
 	ContentItem *ContentItemClient
+	// Credential is the client for interacting with the Credential builders.
+	Credential *CredentialClient
+	// CredentialExecution is the client for interacting with the CredentialExecution builders.
+	CredentialExecution *CredentialExecutionClient
 	// CronTask is the client for interacting with the CronTask builders.
 	CronTask *CronTaskClient
 	// CronTaskRun is the client for interacting with the CronTaskRun builders.
@@ -440,6 +446,8 @@ func (c *Client) init() {
 	c.CompiledTeam = NewCompiledTeamClient(c.config)
 	c.ComputerUseAudit = NewComputerUseAuditClient(c.config)
 	c.ContentItem = NewContentItemClient(c.config)
+	c.Credential = NewCredentialClient(c.config)
+	c.CredentialExecution = NewCredentialExecutionClient(c.config)
 	c.CronTask = NewCronTaskClient(c.config)
 	c.CronTaskRun = NewCronTaskRunClient(c.config)
 	c.DecisionRecord = NewDecisionRecordClient(c.config)
@@ -658,6 +666,8 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		CompiledTeam:               NewCompiledTeamClient(cfg),
 		ComputerUseAudit:           NewComputerUseAuditClient(cfg),
 		ContentItem:                NewContentItemClient(cfg),
+		Credential:                 NewCredentialClient(cfg),
+		CredentialExecution:        NewCredentialExecutionClient(cfg),
 		CronTask:                   NewCronTaskClient(cfg),
 		CronTaskRun:                NewCronTaskRunClient(cfg),
 		DecisionRecord:             NewDecisionRecordClient(cfg),
@@ -803,6 +813,8 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		CompiledTeam:               NewCompiledTeamClient(cfg),
 		ComputerUseAudit:           NewComputerUseAuditClient(cfg),
 		ContentItem:                NewContentItemClient(cfg),
+		Credential:                 NewCredentialClient(cfg),
+		CredentialExecution:        NewCredentialExecutionClient(cfg),
 		CronTask:                   NewCronTaskClient(cfg),
 		CronTaskRun:                NewCronTaskRunClient(cfg),
 		DecisionRecord:             NewDecisionRecordClient(cfg),
@@ -938,32 +950,33 @@ func (c *Client) Use(hooks ...Hook) {
 		c.CeoboardEvent, c.CeoboardLatencySample, c.CeoboardWebhookDelivery,
 		c.ChannelInboundReceipt, c.ChannelRuntimeLease, c.ChannelTurnJob,
 		c.CircuitBreakerState, c.CodingAgent, c.CodingProject, c.CodingTask,
-		c.CompiledTeam, c.ComputerUseAudit, c.ContentItem, c.CronTask, c.CronTaskRun,
-		c.DecisionRecord, c.DecisionRecordOutbox, c.DeptLeadMessage, c.EvalCase,
-		c.EvalCaseResult, c.EvalDataset, c.EvalGateConfig, c.EvalRun,
-		c.EvalRunPreference, c.EventDeliveryOutbox, c.ExperienceReport,
-		c.FailurePattern, c.FederationAuditLog, c.FederationOrg, c.FederationPolicy,
-		c.FlowLogEvent, c.GatewayWebhook, c.GraphDefinition, c.GraphExecution,
-		c.GraphNodeV2, c.GraphStageV2, c.GraphTask, c.GraphTaskComment,
-		c.GraphTaskEvent, c.GraphTaskLink, c.GraphTaskLog, c.GraphTaskRun,
-		c.HealRecord, c.KnowledgeAccessLog, c.KnowledgeLinkUsed,
-		c.KnowledgeWriteBackOutbox, c.LlmProviderModel, c.MediaProvider,
-		c.MemberSessionV2, c.MemoryFactAllowRule, c.MemoryFactPending,
-		c.ModelPricingRule, c.ModelTokenUsageHourly, c.Opportunity, c.Orchestration,
-		c.OrchestrationStep, c.Organization, c.PatchOutcome, c.Permission,
-		c.PlanBoardV2, c.PlanStepV2, c.PlatformChannel, c.PlatformChannelCredential,
-		c.PlatformChannelDelivery, c.PlatformChannelPeerSession, c.PlatformHook,
-		c.PlatformMCPServer, c.PlatformMCPUserCredential, c.PlatformPlugin,
-		c.PlatformSkill, c.PlatformTool, c.PublishJob, c.ResourceAccessAudit,
-		c.ReviewTask, c.Role, c.RolePermission, c.SchemaMigration, c.SelfCheckReport,
-		c.SelfImprovementRun, c.Session, c.SessionMetrics, c.SessionParticipant,
-		c.SessionRun, c.SessionRunCheckpoint, c.SessionRuntime, c.SessionTurn,
-		c.SessionV2, c.SkillImportJob, c.SkillInvocation, c.SkillTag, c.SkillVersion,
-		c.StepV2, c.SupplierCandidate, c.SystemSetting, c.TaskDeadLetter, c.TaskPlan,
-		c.TaskV2, c.Team, c.TeamRun, c.TeamRunStep, c.TeamRunV2, c.TeamStageV2,
-		c.ToolAgentOverride, c.ToolGrant, c.ToolInvocation, c.ToolInvocationAudit,
-		c.ToolInvocationParam, c.ToolResultBlob, c.ToolResultReplacement, c.TurnV2,
-		c.UsageQuota, c.UserEmbeddingSetting, c.UserRole,
+		c.CompiledTeam, c.ComputerUseAudit, c.ContentItem, c.Credential,
+		c.CredentialExecution, c.CronTask, c.CronTaskRun, c.DecisionRecord,
+		c.DecisionRecordOutbox, c.DeptLeadMessage, c.EvalCase, c.EvalCaseResult,
+		c.EvalDataset, c.EvalGateConfig, c.EvalRun, c.EvalRunPreference,
+		c.EventDeliveryOutbox, c.ExperienceReport, c.FailurePattern,
+		c.FederationAuditLog, c.FederationOrg, c.FederationPolicy, c.FlowLogEvent,
+		c.GatewayWebhook, c.GraphDefinition, c.GraphExecution, c.GraphNodeV2,
+		c.GraphStageV2, c.GraphTask, c.GraphTaskComment, c.GraphTaskEvent,
+		c.GraphTaskLink, c.GraphTaskLog, c.GraphTaskRun, c.HealRecord,
+		c.KnowledgeAccessLog, c.KnowledgeLinkUsed, c.KnowledgeWriteBackOutbox,
+		c.LlmProviderModel, c.MediaProvider, c.MemberSessionV2, c.MemoryFactAllowRule,
+		c.MemoryFactPending, c.ModelPricingRule, c.ModelTokenUsageHourly,
+		c.Opportunity, c.Orchestration, c.OrchestrationStep, c.Organization,
+		c.PatchOutcome, c.Permission, c.PlanBoardV2, c.PlanStepV2, c.PlatformChannel,
+		c.PlatformChannelCredential, c.PlatformChannelDelivery,
+		c.PlatformChannelPeerSession, c.PlatformHook, c.PlatformMCPServer,
+		c.PlatformMCPUserCredential, c.PlatformPlugin, c.PlatformSkill, c.PlatformTool,
+		c.PublishJob, c.ResourceAccessAudit, c.ReviewTask, c.Role, c.RolePermission,
+		c.SchemaMigration, c.SelfCheckReport, c.SelfImprovementRun, c.Session,
+		c.SessionMetrics, c.SessionParticipant, c.SessionRun, c.SessionRunCheckpoint,
+		c.SessionRuntime, c.SessionTurn, c.SessionV2, c.SkillImportJob,
+		c.SkillInvocation, c.SkillTag, c.SkillVersion, c.StepV2, c.SupplierCandidate,
+		c.SystemSetting, c.TaskDeadLetter, c.TaskPlan, c.TaskV2, c.Team, c.TeamRun,
+		c.TeamRunStep, c.TeamRunV2, c.TeamStageV2, c.ToolAgentOverride, c.ToolGrant,
+		c.ToolInvocation, c.ToolInvocationAudit, c.ToolInvocationParam,
+		c.ToolResultBlob, c.ToolResultReplacement, c.TurnV2, c.UsageQuota,
+		c.UserEmbeddingSetting, c.UserRole,
 	} {
 		n.Use(hooks...)
 	}
@@ -979,32 +992,33 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 		c.CeoboardEvent, c.CeoboardLatencySample, c.CeoboardWebhookDelivery,
 		c.ChannelInboundReceipt, c.ChannelRuntimeLease, c.ChannelTurnJob,
 		c.CircuitBreakerState, c.CodingAgent, c.CodingProject, c.CodingTask,
-		c.CompiledTeam, c.ComputerUseAudit, c.ContentItem, c.CronTask, c.CronTaskRun,
-		c.DecisionRecord, c.DecisionRecordOutbox, c.DeptLeadMessage, c.EvalCase,
-		c.EvalCaseResult, c.EvalDataset, c.EvalGateConfig, c.EvalRun,
-		c.EvalRunPreference, c.EventDeliveryOutbox, c.ExperienceReport,
-		c.FailurePattern, c.FederationAuditLog, c.FederationOrg, c.FederationPolicy,
-		c.FlowLogEvent, c.GatewayWebhook, c.GraphDefinition, c.GraphExecution,
-		c.GraphNodeV2, c.GraphStageV2, c.GraphTask, c.GraphTaskComment,
-		c.GraphTaskEvent, c.GraphTaskLink, c.GraphTaskLog, c.GraphTaskRun,
-		c.HealRecord, c.KnowledgeAccessLog, c.KnowledgeLinkUsed,
-		c.KnowledgeWriteBackOutbox, c.LlmProviderModel, c.MediaProvider,
-		c.MemberSessionV2, c.MemoryFactAllowRule, c.MemoryFactPending,
-		c.ModelPricingRule, c.ModelTokenUsageHourly, c.Opportunity, c.Orchestration,
-		c.OrchestrationStep, c.Organization, c.PatchOutcome, c.Permission,
-		c.PlanBoardV2, c.PlanStepV2, c.PlatformChannel, c.PlatformChannelCredential,
-		c.PlatformChannelDelivery, c.PlatformChannelPeerSession, c.PlatformHook,
-		c.PlatformMCPServer, c.PlatformMCPUserCredential, c.PlatformPlugin,
-		c.PlatformSkill, c.PlatformTool, c.PublishJob, c.ResourceAccessAudit,
-		c.ReviewTask, c.Role, c.RolePermission, c.SchemaMigration, c.SelfCheckReport,
-		c.SelfImprovementRun, c.Session, c.SessionMetrics, c.SessionParticipant,
-		c.SessionRun, c.SessionRunCheckpoint, c.SessionRuntime, c.SessionTurn,
-		c.SessionV2, c.SkillImportJob, c.SkillInvocation, c.SkillTag, c.SkillVersion,
-		c.StepV2, c.SupplierCandidate, c.SystemSetting, c.TaskDeadLetter, c.TaskPlan,
-		c.TaskV2, c.Team, c.TeamRun, c.TeamRunStep, c.TeamRunV2, c.TeamStageV2,
-		c.ToolAgentOverride, c.ToolGrant, c.ToolInvocation, c.ToolInvocationAudit,
-		c.ToolInvocationParam, c.ToolResultBlob, c.ToolResultReplacement, c.TurnV2,
-		c.UsageQuota, c.UserEmbeddingSetting, c.UserRole,
+		c.CompiledTeam, c.ComputerUseAudit, c.ContentItem, c.Credential,
+		c.CredentialExecution, c.CronTask, c.CronTaskRun, c.DecisionRecord,
+		c.DecisionRecordOutbox, c.DeptLeadMessage, c.EvalCase, c.EvalCaseResult,
+		c.EvalDataset, c.EvalGateConfig, c.EvalRun, c.EvalRunPreference,
+		c.EventDeliveryOutbox, c.ExperienceReport, c.FailurePattern,
+		c.FederationAuditLog, c.FederationOrg, c.FederationPolicy, c.FlowLogEvent,
+		c.GatewayWebhook, c.GraphDefinition, c.GraphExecution, c.GraphNodeV2,
+		c.GraphStageV2, c.GraphTask, c.GraphTaskComment, c.GraphTaskEvent,
+		c.GraphTaskLink, c.GraphTaskLog, c.GraphTaskRun, c.HealRecord,
+		c.KnowledgeAccessLog, c.KnowledgeLinkUsed, c.KnowledgeWriteBackOutbox,
+		c.LlmProviderModel, c.MediaProvider, c.MemberSessionV2, c.MemoryFactAllowRule,
+		c.MemoryFactPending, c.ModelPricingRule, c.ModelTokenUsageHourly,
+		c.Opportunity, c.Orchestration, c.OrchestrationStep, c.Organization,
+		c.PatchOutcome, c.Permission, c.PlanBoardV2, c.PlanStepV2, c.PlatformChannel,
+		c.PlatformChannelCredential, c.PlatformChannelDelivery,
+		c.PlatformChannelPeerSession, c.PlatformHook, c.PlatformMCPServer,
+		c.PlatformMCPUserCredential, c.PlatformPlugin, c.PlatformSkill, c.PlatformTool,
+		c.PublishJob, c.ResourceAccessAudit, c.ReviewTask, c.Role, c.RolePermission,
+		c.SchemaMigration, c.SelfCheckReport, c.SelfImprovementRun, c.Session,
+		c.SessionMetrics, c.SessionParticipant, c.SessionRun, c.SessionRunCheckpoint,
+		c.SessionRuntime, c.SessionTurn, c.SessionV2, c.SkillImportJob,
+		c.SkillInvocation, c.SkillTag, c.SkillVersion, c.StepV2, c.SupplierCandidate,
+		c.SystemSetting, c.TaskDeadLetter, c.TaskPlan, c.TaskV2, c.Team, c.TeamRun,
+		c.TeamRunStep, c.TeamRunV2, c.TeamStageV2, c.ToolAgentOverride, c.ToolGrant,
+		c.ToolInvocation, c.ToolInvocationAudit, c.ToolInvocationParam,
+		c.ToolResultBlob, c.ToolResultReplacement, c.TurnV2, c.UsageQuota,
+		c.UserEmbeddingSetting, c.UserRole,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -1065,6 +1079,10 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.ComputerUseAudit.mutate(ctx, m)
 	case *ContentItemMutation:
 		return c.ContentItem.mutate(ctx, m)
+	case *CredentialMutation:
+		return c.Credential.mutate(ctx, m)
+	case *CredentialExecutionMutation:
+		return c.CredentialExecution.mutate(ctx, m)
 	case *CronTaskMutation:
 		return c.CronTask.mutate(ctx, m)
 	case *CronTaskRunMutation:
@@ -4725,6 +4743,272 @@ func (c *ContentItemClient) mutate(ctx context.Context, m *ContentItemMutation) 
 		return (&ContentItemDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown ContentItem mutation op: %q", m.Op())
+	}
+}
+
+// CredentialClient is a client for the Credential schema.
+type CredentialClient struct {
+	config
+}
+
+// NewCredentialClient returns a client for the Credential from the given config.
+func NewCredentialClient(c config) *CredentialClient {
+	return &CredentialClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `credential.Hooks(f(g(h())))`.
+func (c *CredentialClient) Use(hooks ...Hook) {
+	c.hooks.Credential = append(c.hooks.Credential, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `credential.Intercept(f(g(h())))`.
+func (c *CredentialClient) Intercept(interceptors ...Interceptor) {
+	c.inters.Credential = append(c.inters.Credential, interceptors...)
+}
+
+// Create returns a builder for creating a Credential entity.
+func (c *CredentialClient) Create() *CredentialCreate {
+	mutation := newCredentialMutation(c.config, OpCreate)
+	return &CredentialCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of Credential entities.
+func (c *CredentialClient) CreateBulk(builders ...*CredentialCreate) *CredentialCreateBulk {
+	return &CredentialCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *CredentialClient) MapCreateBulk(slice any, setFunc func(*CredentialCreate, int)) *CredentialCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &CredentialCreateBulk{err: fmt.Errorf("calling to CredentialClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*CredentialCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &CredentialCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for Credential.
+func (c *CredentialClient) Update() *CredentialUpdate {
+	mutation := newCredentialMutation(c.config, OpUpdate)
+	return &CredentialUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *CredentialClient) UpdateOne(_m *Credential) *CredentialUpdateOne {
+	mutation := newCredentialMutation(c.config, OpUpdateOne, withCredential(_m))
+	return &CredentialUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *CredentialClient) UpdateOneID(id int64) *CredentialUpdateOne {
+	mutation := newCredentialMutation(c.config, OpUpdateOne, withCredentialID(id))
+	return &CredentialUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for Credential.
+func (c *CredentialClient) Delete() *CredentialDelete {
+	mutation := newCredentialMutation(c.config, OpDelete)
+	return &CredentialDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *CredentialClient) DeleteOne(_m *Credential) *CredentialDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *CredentialClient) DeleteOneID(id int64) *CredentialDeleteOne {
+	builder := c.Delete().Where(credential.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &CredentialDeleteOne{builder}
+}
+
+// Query returns a query builder for Credential.
+func (c *CredentialClient) Query() *CredentialQuery {
+	return &CredentialQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeCredential},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a Credential entity by its id.
+func (c *CredentialClient) Get(ctx context.Context, id int64) (*Credential, error) {
+	return c.Query().Where(credential.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *CredentialClient) GetX(ctx context.Context, id int64) *Credential {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *CredentialClient) Hooks() []Hook {
+	return c.hooks.Credential
+}
+
+// Interceptors returns the client interceptors.
+func (c *CredentialClient) Interceptors() []Interceptor {
+	return c.inters.Credential
+}
+
+func (c *CredentialClient) mutate(ctx context.Context, m *CredentialMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&CredentialCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&CredentialUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&CredentialUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&CredentialDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown Credential mutation op: %q", m.Op())
+	}
+}
+
+// CredentialExecutionClient is a client for the CredentialExecution schema.
+type CredentialExecutionClient struct {
+	config
+}
+
+// NewCredentialExecutionClient returns a client for the CredentialExecution from the given config.
+func NewCredentialExecutionClient(c config) *CredentialExecutionClient {
+	return &CredentialExecutionClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `credentialexecution.Hooks(f(g(h())))`.
+func (c *CredentialExecutionClient) Use(hooks ...Hook) {
+	c.hooks.CredentialExecution = append(c.hooks.CredentialExecution, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `credentialexecution.Intercept(f(g(h())))`.
+func (c *CredentialExecutionClient) Intercept(interceptors ...Interceptor) {
+	c.inters.CredentialExecution = append(c.inters.CredentialExecution, interceptors...)
+}
+
+// Create returns a builder for creating a CredentialExecution entity.
+func (c *CredentialExecutionClient) Create() *CredentialExecutionCreate {
+	mutation := newCredentialExecutionMutation(c.config, OpCreate)
+	return &CredentialExecutionCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of CredentialExecution entities.
+func (c *CredentialExecutionClient) CreateBulk(builders ...*CredentialExecutionCreate) *CredentialExecutionCreateBulk {
+	return &CredentialExecutionCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *CredentialExecutionClient) MapCreateBulk(slice any, setFunc func(*CredentialExecutionCreate, int)) *CredentialExecutionCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &CredentialExecutionCreateBulk{err: fmt.Errorf("calling to CredentialExecutionClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*CredentialExecutionCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &CredentialExecutionCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for CredentialExecution.
+func (c *CredentialExecutionClient) Update() *CredentialExecutionUpdate {
+	mutation := newCredentialExecutionMutation(c.config, OpUpdate)
+	return &CredentialExecutionUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *CredentialExecutionClient) UpdateOne(_m *CredentialExecution) *CredentialExecutionUpdateOne {
+	mutation := newCredentialExecutionMutation(c.config, OpUpdateOne, withCredentialExecution(_m))
+	return &CredentialExecutionUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *CredentialExecutionClient) UpdateOneID(id int64) *CredentialExecutionUpdateOne {
+	mutation := newCredentialExecutionMutation(c.config, OpUpdateOne, withCredentialExecutionID(id))
+	return &CredentialExecutionUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for CredentialExecution.
+func (c *CredentialExecutionClient) Delete() *CredentialExecutionDelete {
+	mutation := newCredentialExecutionMutation(c.config, OpDelete)
+	return &CredentialExecutionDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *CredentialExecutionClient) DeleteOne(_m *CredentialExecution) *CredentialExecutionDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *CredentialExecutionClient) DeleteOneID(id int64) *CredentialExecutionDeleteOne {
+	builder := c.Delete().Where(credentialexecution.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &CredentialExecutionDeleteOne{builder}
+}
+
+// Query returns a query builder for CredentialExecution.
+func (c *CredentialExecutionClient) Query() *CredentialExecutionQuery {
+	return &CredentialExecutionQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeCredentialExecution},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a CredentialExecution entity by its id.
+func (c *CredentialExecutionClient) Get(ctx context.Context, id int64) (*CredentialExecution, error) {
+	return c.Query().Where(credentialexecution.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *CredentialExecutionClient) GetX(ctx context.Context, id int64) *CredentialExecution {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *CredentialExecutionClient) Hooks() []Hook {
+	return c.hooks.CredentialExecution
+}
+
+// Interceptors returns the client interceptors.
+func (c *CredentialExecutionClient) Interceptors() []Interceptor {
+	return c.inters.CredentialExecution
+}
+
+func (c *CredentialExecutionClient) mutate(ctx context.Context, m *CredentialExecutionMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&CredentialExecutionCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&CredentialExecutionUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&CredentialExecutionUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&CredentialExecutionDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown CredentialExecution mutation op: %q", m.Op())
 	}
 }
 
@@ -18165,27 +18449,27 @@ type (
 		CeoboardLatencySample, CeoboardWebhookDelivery, ChannelInboundReceipt,
 		ChannelRuntimeLease, ChannelTurnJob, CircuitBreakerState, CodingAgent,
 		CodingProject, CodingTask, CompiledTeam, ComputerUseAudit, ContentItem,
-		CronTask, CronTaskRun, DecisionRecord, DecisionRecordOutbox, DeptLeadMessage,
-		EvalCase, EvalCaseResult, EvalDataset, EvalGateConfig, EvalRun,
-		EvalRunPreference, EventDeliveryOutbox, ExperienceReport, FailurePattern,
-		FederationAuditLog, FederationOrg, FederationPolicy, FlowLogEvent,
-		GatewayWebhook, GraphDefinition, GraphExecution, GraphNodeV2, GraphStageV2,
-		GraphTask, GraphTaskComment, GraphTaskEvent, GraphTaskLink, GraphTaskLog,
-		GraphTaskRun, HealRecord, KnowledgeAccessLog, KnowledgeLinkUsed,
-		KnowledgeWriteBackOutbox, LlmProviderModel, MediaProvider, MemberSessionV2,
-		MemoryFactAllowRule, MemoryFactPending, ModelPricingRule,
-		ModelTokenUsageHourly, Opportunity, Orchestration, OrchestrationStep,
-		Organization, PatchOutcome, Permission, PlanBoardV2, PlanStepV2,
-		PlatformChannel, PlatformChannelCredential, PlatformChannelDelivery,
-		PlatformChannelPeerSession, PlatformHook, PlatformMCPServer,
-		PlatformMCPUserCredential, PlatformPlugin, PlatformSkill, PlatformTool,
-		PublishJob, ResourceAccessAudit, ReviewTask, Role, RolePermission,
-		SchemaMigration, SelfCheckReport, SelfImprovementRun, Session, SessionMetrics,
-		SessionParticipant, SessionRun, SessionRunCheckpoint, SessionRuntime,
-		SessionTurn, SessionV2, SkillImportJob, SkillInvocation, SkillTag,
-		SkillVersion, StepV2, SupplierCandidate, SystemSetting, TaskDeadLetter,
-		TaskPlan, TaskV2, Team, TeamRun, TeamRunStep, TeamRunV2, TeamStageV2,
-		ToolAgentOverride, ToolGrant, ToolInvocation, ToolInvocationAudit,
+		Credential, CredentialExecution, CronTask, CronTaskRun, DecisionRecord,
+		DecisionRecordOutbox, DeptLeadMessage, EvalCase, EvalCaseResult, EvalDataset,
+		EvalGateConfig, EvalRun, EvalRunPreference, EventDeliveryOutbox,
+		ExperienceReport, FailurePattern, FederationAuditLog, FederationOrg,
+		FederationPolicy, FlowLogEvent, GatewayWebhook, GraphDefinition,
+		GraphExecution, GraphNodeV2, GraphStageV2, GraphTask, GraphTaskComment,
+		GraphTaskEvent, GraphTaskLink, GraphTaskLog, GraphTaskRun, HealRecord,
+		KnowledgeAccessLog, KnowledgeLinkUsed, KnowledgeWriteBackOutbox,
+		LlmProviderModel, MediaProvider, MemberSessionV2, MemoryFactAllowRule,
+		MemoryFactPending, ModelPricingRule, ModelTokenUsageHourly, Opportunity,
+		Orchestration, OrchestrationStep, Organization, PatchOutcome, Permission,
+		PlanBoardV2, PlanStepV2, PlatformChannel, PlatformChannelCredential,
+		PlatformChannelDelivery, PlatformChannelPeerSession, PlatformHook,
+		PlatformMCPServer, PlatformMCPUserCredential, PlatformPlugin, PlatformSkill,
+		PlatformTool, PublishJob, ResourceAccessAudit, ReviewTask, Role,
+		RolePermission, SchemaMigration, SelfCheckReport, SelfImprovementRun, Session,
+		SessionMetrics, SessionParticipant, SessionRun, SessionRunCheckpoint,
+		SessionRuntime, SessionTurn, SessionV2, SkillImportJob, SkillInvocation,
+		SkillTag, SkillVersion, StepV2, SupplierCandidate, SystemSetting,
+		TaskDeadLetter, TaskPlan, TaskV2, Team, TeamRun, TeamRunStep, TeamRunV2,
+		TeamStageV2, ToolAgentOverride, ToolGrant, ToolInvocation, ToolInvocationAudit,
 		ToolInvocationParam, ToolResultBlob, ToolResultReplacement, TurnV2, UsageQuota,
 		UserEmbeddingSetting, UserRole []ent.Hook
 	}
@@ -18196,27 +18480,27 @@ type (
 		CeoboardLatencySample, CeoboardWebhookDelivery, ChannelInboundReceipt,
 		ChannelRuntimeLease, ChannelTurnJob, CircuitBreakerState, CodingAgent,
 		CodingProject, CodingTask, CompiledTeam, ComputerUseAudit, ContentItem,
-		CronTask, CronTaskRun, DecisionRecord, DecisionRecordOutbox, DeptLeadMessage,
-		EvalCase, EvalCaseResult, EvalDataset, EvalGateConfig, EvalRun,
-		EvalRunPreference, EventDeliveryOutbox, ExperienceReport, FailurePattern,
-		FederationAuditLog, FederationOrg, FederationPolicy, FlowLogEvent,
-		GatewayWebhook, GraphDefinition, GraphExecution, GraphNodeV2, GraphStageV2,
-		GraphTask, GraphTaskComment, GraphTaskEvent, GraphTaskLink, GraphTaskLog,
-		GraphTaskRun, HealRecord, KnowledgeAccessLog, KnowledgeLinkUsed,
-		KnowledgeWriteBackOutbox, LlmProviderModel, MediaProvider, MemberSessionV2,
-		MemoryFactAllowRule, MemoryFactPending, ModelPricingRule,
-		ModelTokenUsageHourly, Opportunity, Orchestration, OrchestrationStep,
-		Organization, PatchOutcome, Permission, PlanBoardV2, PlanStepV2,
-		PlatformChannel, PlatformChannelCredential, PlatformChannelDelivery,
-		PlatformChannelPeerSession, PlatformHook, PlatformMCPServer,
-		PlatformMCPUserCredential, PlatformPlugin, PlatformSkill, PlatformTool,
-		PublishJob, ResourceAccessAudit, ReviewTask, Role, RolePermission,
-		SchemaMigration, SelfCheckReport, SelfImprovementRun, Session, SessionMetrics,
-		SessionParticipant, SessionRun, SessionRunCheckpoint, SessionRuntime,
-		SessionTurn, SessionV2, SkillImportJob, SkillInvocation, SkillTag,
-		SkillVersion, StepV2, SupplierCandidate, SystemSetting, TaskDeadLetter,
-		TaskPlan, TaskV2, Team, TeamRun, TeamRunStep, TeamRunV2, TeamStageV2,
-		ToolAgentOverride, ToolGrant, ToolInvocation, ToolInvocationAudit,
+		Credential, CredentialExecution, CronTask, CronTaskRun, DecisionRecord,
+		DecisionRecordOutbox, DeptLeadMessage, EvalCase, EvalCaseResult, EvalDataset,
+		EvalGateConfig, EvalRun, EvalRunPreference, EventDeliveryOutbox,
+		ExperienceReport, FailurePattern, FederationAuditLog, FederationOrg,
+		FederationPolicy, FlowLogEvent, GatewayWebhook, GraphDefinition,
+		GraphExecution, GraphNodeV2, GraphStageV2, GraphTask, GraphTaskComment,
+		GraphTaskEvent, GraphTaskLink, GraphTaskLog, GraphTaskRun, HealRecord,
+		KnowledgeAccessLog, KnowledgeLinkUsed, KnowledgeWriteBackOutbox,
+		LlmProviderModel, MediaProvider, MemberSessionV2, MemoryFactAllowRule,
+		MemoryFactPending, ModelPricingRule, ModelTokenUsageHourly, Opportunity,
+		Orchestration, OrchestrationStep, Organization, PatchOutcome, Permission,
+		PlanBoardV2, PlanStepV2, PlatformChannel, PlatformChannelCredential,
+		PlatformChannelDelivery, PlatformChannelPeerSession, PlatformHook,
+		PlatformMCPServer, PlatformMCPUserCredential, PlatformPlugin, PlatformSkill,
+		PlatformTool, PublishJob, ResourceAccessAudit, ReviewTask, Role,
+		RolePermission, SchemaMigration, SelfCheckReport, SelfImprovementRun, Session,
+		SessionMetrics, SessionParticipant, SessionRun, SessionRunCheckpoint,
+		SessionRuntime, SessionTurn, SessionV2, SkillImportJob, SkillInvocation,
+		SkillTag, SkillVersion, StepV2, SupplierCandidate, SystemSetting,
+		TaskDeadLetter, TaskPlan, TaskV2, Team, TeamRun, TeamRunStep, TeamRunV2,
+		TeamStageV2, ToolAgentOverride, ToolGrant, ToolInvocation, ToolInvocationAudit,
 		ToolInvocationParam, ToolResultBlob, ToolResultReplacement, TurnV2, UsageQuota,
 		UserEmbeddingSetting, UserRole []ent.Interceptor
 	}

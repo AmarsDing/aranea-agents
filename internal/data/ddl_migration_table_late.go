@@ -641,4 +641,11 @@ var ddlMigrationsLate = []ddlMigration{
 	// 索引（无 WithDropIndex），本迁移 DROP INDEX IF EXISTS 收敛存量库；DEV 模式
 	// auto-migrate 先删则本迁移 no-op。不改数据，幂等，重跑安全。
 	{Version: 20261312, Name: "ceoboard_events_drop_redundant_idx", SQL: "sql/migrations/20261312_ceoboard_events_drop_redundant_idx.sql"},
+	// 20261320 builtin_platform_tools_credential_reseed（E 阶段 W1a 凭据托管，
+	// 2026-11-09）：credential 工具种子（高风险/默认关/需确认 + ARANEA_CREDENTIAL_TOOLS
+	// 环境闸）在存量库中从未插入 → effective keys 查无工具行，credential_*
+	// 动词永不装配。种子函数幂等（ON CONFLICT DO NOTHING），重跑安全。
+	// 注：credentials / credential_executions 两表为 ent 管理表，生产由
+	// Schema.Create 自动建表（ceoboard 先例），无需 CREATE TABLE 迁移。
+	{Version: 20261320, Name: "builtin_platform_tools_credential_reseed", Func: ddlBuiltinPlatformTools},
 }

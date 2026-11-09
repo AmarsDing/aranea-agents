@@ -117,7 +117,7 @@ import (
 // Injectors from wire.go:
 
 // wireApp init kratos application.
-func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime, selfImprovement *conf.SelfImprovement, sandbox *conf.Sandbox, ceoboard *conf.Ceoboard, debugRecorder *conf.DebugRecorder, logger log.Logger, loggatewayLogger loggateway.Logger, pipeline logpipeline.Pipeline, arg []*conf.LoggingSink) (wireOut, func(), error) {
+func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime, selfImprovement *conf.SelfImprovement, sandbox *conf.Sandbox, ceoboard *conf.Ceoboard, credential *conf.Credential, debugRecorder *conf.DebugRecorder, logger log.Logger, loggatewayLogger loggateway.Logger, pipeline logpipeline.Pipeline, arg []*conf.LoggingSink) (wireOut, func(), error) {
 	reranker := knowledge.NewMemoryReranker(loggatewayLogger)
 	dataData, cleanup, err := data.NewData(confData, loggatewayLogger, reranker)
 	if err != nil {
@@ -138,6 +138,11 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	llmProviderModelRepo := data.NewLlmProviderModelRepo(dataData)
 	llmInspector := provideLLMInspector(loggatewayLogger)
 	credentialCrypto := provideCredentialCrypto(systemSettingRepo, loggatewayLogger)
+	// E 阶段凭据托管（手工镜像 wire.go provideCredentialUsecase——wire_gen
+	// 手工合并约定）。conf.Credential 为 nil 时仅内置高敏清单。
+	credentialRepo := data.NewCredentialRepo(dataData)
+	credentialUsecase := provideCredentialUsecase(credentialRepo, credentialCrypto, credential, loggatewayLogger)
+	credentialService := service.NewCredentialService(credentialUsecase)
 	usageRepo := data.NewUsageRepo(dataData)
 	modelStatsInjector := provideModelStatsInjector(usageRepo, loggatewayLogger)
 	llmProviderModelUsecase := provideLlmProviderModelUsecaseWithDeps(llmProviderModelRepo, llmInspector, credentialCrypto, agentRepository, modelStatsInjector, loggatewayLogger)
@@ -388,7 +393,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	agentbridgeTaskEventRepo := data.NewCodingTaskEventRepo(dataData)
 	sessionFactory := service.NewACPSessionFactory()
 	agentBridgeService := service.ProvideAgentBridgeService(agentRepo, projectRepo, agentbridgeTaskRepo, agentbridgeTaskEventRepo, sessionFactory, v2Bus, infra, loggatewayLogger)
-	runtimeTooling := provideRuntimeTooling(plugintrpcRuntime, manager, repository, skillHealthMetricsAdapter, retriever, adaptiveRouter, federatedRetriever, retrievalEvaluator, knowledgeUsecase, factory, kanbanToolBridge, recorderFactory, organizationUsecase, toolResultGate, router, subagentService, parallelToolExecutor, resourceAccessUsecase, deptMailboxUsecase, sessionSearchUsecase, bridge, computerUseUsecase, agentBridgeService, sessionLeases, runtime)
+	runtimeTooling := provideRuntimeTooling(plugintrpcRuntime, manager, repository, skillHealthMetricsAdapter, retriever, adaptiveRouter, federatedRetriever, retrievalEvaluator, knowledgeUsecase, factory, kanbanToolBridge, credentialUsecase, recorderFactory, organizationUsecase, toolResultGate, router, subagentService, parallelToolExecutor, resourceAccessUsecase, deptMailboxUsecase, sessionSearchUsecase, bridge, computerUseUsecase, agentBridgeService, sessionLeases, runtime)
 	observationReadWriter := data.NewObservationRepo(dataData)
 	patternReadWriter := data.NewPatternRepo(dataData)
 	proposalReadWriter := data.NewProposalRepo(dataData)
@@ -407,7 +412,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	learningLoopUsecase := provideLearningLoopUsecase(observationReadWriter, patternReadWriter, proposalReadWriter, agentRepository, skillEvolutionOrchestrator, loggatewayLogger)
 	turnDeps := provideTeamTurnDeps(sessionUsecase, agentRepository, agentUsecase, toolRepo, toolUsecase, llmProviderModelUsecase, skillUsecase, systemSettingRepo, providerReader, persistenceSet, sessionCompressor, v2Bus, monitorBus, sequencer, learningLoopUsecase, loggatewayLogger, finishObserverHooks)
 	projectorFactory := provideV2ProjectorFactory(sequencer, taskV2Repo, loggatewayLogger)
-	runnerConfig := provideRunnerConfig(plugintrpcRuntime, manager, retriever, adaptiveRouter, federatedRetriever, retrievalEvaluator, knowledgeUsecase, graphUsecase, graphBuilderFactory, taskUsecase, runRegistry, toolUsecase, agentRepository, organizationUsecase, toolResultGate, router, subagentService, kanbanToolBridge, computerUseUsecase, sessionLeases, sandboxManager, a2aUsecase, sessionUsecase, skillUsecase, agentUsecase, systemSettingRepo, projectorFactory, teamUsecase, runtimeReplanner, lifecycle, runtime, loggatewayLogger)
+	runnerConfig := provideRunnerConfig(plugintrpcRuntime, manager, retriever, adaptiveRouter, federatedRetriever, retrievalEvaluator, knowledgeUsecase, graphUsecase, graphBuilderFactory, taskUsecase, runRegistry, toolUsecase, agentRepository, organizationUsecase, toolResultGate, router, subagentService, kanbanToolBridge, credentialUsecase, computerUseUsecase, sessionLeases, sandboxManager, a2aUsecase, sessionUsecase, skillUsecase, agentUsecase, systemSettingRepo, projectorFactory, teamUsecase, runtimeReplanner, lifecycle, runtime, loggatewayLogger)
 	teamRunHeartbeatWriter := data.NewTeamRunHeartbeatWriter(dataData, loggatewayLogger)
 	runner := team.ProvideRunner(teamRepo, teamRepo, teamRepo, teamUsecase, teamRepo, teamRepo, usageUsecase, monitorUsecase, turnDeps, repository, factory, loggatewayLogger, runnerConfig, teamRunHeartbeatWriter)
 	teamRunnerWirePort := service.ProvideTeamRunnerWirePort(runner)
@@ -684,7 +689,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 		return wireOut{}, nil, err
 	}
 	ceoboardService := provideCeoboardService(ceoboardRuntime, loggatewayLogger)
-	serviceRegistry := server.NewServiceRegistry(adminService, avatarService, agentService, llmProviderModelService, hookService, cronService, pluginService, mcpServerService, skillService, toolService, serviceSessionService, sessionV2Service, channelService, usageService, monitorService, serviceMemoryService, systemSettingService, modelCatalogService, teamService, chatService, graphService, serviceArtifactService, knowledgeService, evaluationService, a2AService, endpointRegistry, federationService, ecosystemService, gatewayService, channelIngress, aiRefineService, taxonomyService, organizationService, skillIntelligenceService, skillDedupService, packService, skillEvolutionSuggestionService, serviceEvolutionService, selfImprovementService, ecosystemPresetService, aguiCompatService, openAISessionCompatService, a2AExtensionCompatService, twinOpenAPICompatService, runtimeProfileService, learningLoopService, computerUseService, agentBridgeAPI, sandboxService, decisionRecordService, configGraphService, diagnosticsService, ceoboardService)
+	serviceRegistry := server.NewServiceRegistry(adminService, avatarService, agentService, llmProviderModelService, hookService, cronService, credentialService, pluginService, mcpServerService, skillService, toolService, serviceSessionService, sessionV2Service, channelService, usageService, monitorService, serviceMemoryService, systemSettingService, modelCatalogService, teamService, chatService, graphService, serviceArtifactService, knowledgeService, evaluationService, a2AService, endpointRegistry, federationService, ecosystemService, gatewayService, channelIngress, aiRefineService, taxonomyService, organizationService, skillIntelligenceService, skillDedupService, packService, skillEvolutionSuggestionService, serviceEvolutionService, selfImprovementService, ecosystemPresetService, aguiCompatService, openAISessionCompatService, a2AExtensionCompatService, twinOpenAPICompatService, runtimeProfileService, learningLoopService, computerUseService, agentBridgeAPI, sandboxService, decisionRecordService, configGraphService, diagnosticsService, ceoboardService)
 	grpcServer := server.NewGRPCServer(confServer, serviceRegistry, loggatewayLogger)
 	speechRegistry := provideSpeechRegistry()
 	speechConfigReader := provideSpeechConfigReader(systemSettingRepo, loggatewayLogger)
@@ -931,6 +936,16 @@ func provideCredentialCrypto(sys biz.SystemSettingRepo, lg loggateway.Logger) *b
 		lg.Warn("凭据加密密钥未配置，API 密钥将以明文存储。请设置 ARANEA_CREDENTIAL_KEY 环境变量或在系统设置中初始化加密密钥。", loggateway.Str("reason", "credential.encryption"))
 	}
 	return cc
+}
+
+// provideCredentialUsecase 装配 E 阶段凭据托管用例（需求文档 §3，V-1/V-2/V-3）。
+// 手工镜像 wire.go 同名 provider（wire_gen 手工合并约定）。
+func provideCredentialUsecase(repo biz.CredentialRepo, crypto *biz.CredentialCrypto, cfg *conf.Credential, lg loggateway.Logger) *biz.CredentialUsecase {
+	var highSites []string
+	if cfg != nil {
+		highSites = cfg.HighSensitivitySites
+	}
+	return biz.NewCredentialUsecase(repo, crypto, highSites, lg)
 }
 
 func provideLlmProviderModelUsecaseWithDeps(repo biz.LlmProviderModelRepo, inspector biz.LLMInspector, crypto *biz.CredentialCrypto, agentRefs biz.AgentReferenceChecker, statsInjector *biz.ModelStatsInjector, lg loggateway.Logger) *biz.LlmProviderModelUsecase {
@@ -1446,6 +1461,7 @@ func provideRuntimeTooling(
 	knowledgeUC *biz.KnowledgeUsecase,
 	codeExecFactory *codeexecutor.Factory,
 	kanbanBridge kanban.Bridge,
+	credentialUC *biz.CredentialUsecase,
 	debugRecorder *debug.RecorderFactory,
 	orgUC *biz.OrganizationUsecase,
 	toolResultGate *biz.ToolResultGate,
@@ -1480,6 +1496,7 @@ func provideRuntimeTooling(
 		},
 		Bridges: service.ToolBridges{
 			Kanban:      kanbanBridge,
+			Credential:  credentialUC,
 			ComputerUse: computerUseUC,
 			Coding:      codingBridgeSvc,
 			Client:      clientBridge,
@@ -1612,6 +1629,7 @@ func provideRunnerConfig(
 	outboundRouter *outbound.Router,
 	subAgentSvc *subagent.Service,
 	kanbanBridge kanban.Bridge,
+	credentialUC *biz.CredentialUsecase,
 	computerUseUC *computeruse.ComputerUseUsecase,
 	sandboxLeases *sandbox.SessionLeases,
 	sandboxMgr *sandbox.Manager,
@@ -1653,6 +1671,7 @@ func provideRunnerConfig(
 		OutboundRouter:    outboundRouter,
 		SubAgentService:   subAgentSvc,
 		KanbanBridge:      kanbanBridge,
+		CredentialVault:   credentialUC,
 		ComputerUseUC:     computerUseUC,
 		SandboxFSStore:    sandboxLeases,
 		SandboxManager:    sandboxMgr,

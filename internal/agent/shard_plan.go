@@ -14,6 +14,7 @@ import (
 	bizmedia "aranea-agents/internal/biz/media"
 	"aranea-agents/internal/tools"
 	"aranea-agents/internal/tools/browser"
+	credentialpkg "aranea-agents/internal/tools/credential"
 	kanbanpkg "aranea-agents/internal/tools/kanban"
 	knowledgetool "aranea-agents/internal/tools/knowledge"
 	"aranea-agents/internal/tools/memory"
@@ -142,6 +143,8 @@ type coreShardFP struct {
 	CallAgent          bool
 	Kanban             bool
 	HasKanbanBridge    bool
+	Credential         bool
+	HasCredentialVault bool
 	ReadDocument       bool
 	ReadSpreadsheet    bool
 	Datetime           bool
@@ -302,6 +305,22 @@ func computeShardPlan(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps, p
 		}
 	}
 
+	// E 阶段凭据执行工具（需求文档 §3 V-1）：双闸——环境闸
+	// ARANEA_CREDENTIAL_TOOLS（credentialpkg.Enabled）+ tools 表种子
+	// enabled=false 按 Agent 授予。Executor 恒 nil（computeruse 接线前置），
+	// 工具裁决/审计完整、执行步诚实 unavailable。
+	if credentialpkg.Enabled() {
+		if deps.CredentialVault != nil {
+			cfg.Credential = true
+			cfg.CredentialVault = deps.CredentialVault
+			cfg.CredentialExecutor = deps.CredentialExecutor
+		} else {
+			lg.Warn("credential 工具已启用但 CredentialVault 未注入，跳过凭据工具",
+				loggateway.StepID("agent.tool_build"),
+				loggateway.Str("agent_id", ag.ID))
+		}
+	}
+
 	memoryMaster := deps.HasMemory && biz.ResolveMemoryRuntimePolicy(ag.Settings).MasterEnabled
 	if memoryMaster {
 		cfg.MemoryEnabled = true
@@ -427,6 +446,8 @@ func computeShardPlan(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps, p
 			CallAgent:          coreCfg.CallAgent,
 			Kanban:             coreCfg.Kanban,
 			HasKanbanBridge:    coreCfg.KanbanBridge != nil,
+			Credential:         coreCfg.Credential,
+			HasCredentialVault: coreCfg.CredentialVault != nil,
 			ReadDocument:       coreCfg.ReadDocument,
 			ReadSpreadsheet:    coreCfg.ReadSpreadsheet,
 			Datetime:           coreCfg.Datetime,

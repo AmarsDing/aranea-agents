@@ -66,6 +66,10 @@ type Tx struct {
 	ComputerUseAudit *ComputerUseAuditClient
 	// ContentItem is the client for interacting with the ContentItem builders.
 	ContentItem *ContentItemClient
+	// Credential is the client for interacting with the Credential builders.
+	Credential *CredentialClient
+	// CredentialExecution is the client for interacting with the CredentialExecution builders.
+	CredentialExecution *CredentialExecutionClient
 	// CronTask is the client for interacting with the CronTask builders.
 	CronTask *CronTaskClient
 	// CronTaskRun is the client for interacting with the CronTaskRun builders.
@@ -423,6 +427,8 @@ func (tx *Tx) init() {
 	tx.CompiledTeam = NewCompiledTeamClient(tx.config)
 	tx.ComputerUseAudit = NewComputerUseAuditClient(tx.config)
 	tx.ContentItem = NewContentItemClient(tx.config)
+	tx.Credential = NewCredentialClient(tx.config)
+	tx.CredentialExecution = NewCredentialExecutionClient(tx.config)
 	tx.CronTask = NewCronTaskClient(tx.config)
 	tx.CronTaskRun = NewCronTaskRunClient(tx.config)
 	tx.DecisionRecord = NewDecisionRecordClient(tx.config)

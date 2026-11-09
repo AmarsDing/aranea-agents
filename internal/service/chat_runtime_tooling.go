@@ -76,6 +76,9 @@ type ToolBridges struct {
 	ComputerUse *bizcu.ComputerUseUsecase
 	Coding      codingbridge.BridgeService
 	Client      *clientbridge.Bridge
+	// Credential 是 E 阶段凭据托管用例（credential_login_execute /
+	// credential_token_issue 的 vault 裁决/解密封口）。nil 时凭据工具被裁剪。
+	Credential *biz.CredentialUsecase
 	// SandboxFS is the process-wide shared session-lease store backing
 	// sandbox_fs_write/read (M82 P1-2); the same instance is bound to the
 	// codeexecutor sandbox backend so code_exec and sandbox_fs share one
