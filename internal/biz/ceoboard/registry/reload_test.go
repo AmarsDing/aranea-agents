@@ -4,6 +4,7 @@ package registry
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -73,5 +74,51 @@ nodes:
 	}
 	if len(rep3.Loaded) != 2 {
 		t.Fatalf("报告应含 2 条 loaded,实得 %v", rep3.Loaded)
+	}
+}
+
+// 评审 2026-11-09 L4:Reload 报错必须携带文件/记录级细节(热加载调用点只拿到
+// err——细节丢失会让"哪条声明改坏了"无从定位);既有契约(回退 + 报告返回)不变。
+func TestReload_ErrorCarriesFileAndFieldDetails(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "a.yaml"), []byte(okWf), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	reg, _, err := LoadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bad1 := `api_version: ceoboard/v1
+kind: Workflow
+id: wf.bad1
+`
+	bad2 := `api_version: ceoboard/v1
+kind: Workflow
+id: wf.bad2
+name: [未闭合
+`
+	os.WriteFile(filepath.Join(dir, "bad1.yaml"), []byte(bad1), 0o644)
+	os.WriteFile(filepath.Join(dir, "bad2.yaml"), []byte(bad2), 0o644)
+
+	rep, err := reg.Reload(dir)
+	if err == nil {
+		t.Fatal("有坏声明时 Reload 应报错回退")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "bad1.yaml") || !strings.Contains(msg, "bad2.yaml") {
+		t.Fatalf("错误必须点名失败文件: %q", msg)
+	}
+	if !strings.Contains(msg, "name") {
+		t.Fatalf("错误必须携带字段/校验级细节: %q", msg)
+	}
+	if !strings.Contains(msg, "回退") {
+		t.Fatalf("错误必须保留整体回退语义: %q", msg)
+	}
+	// 完整明细仍在报告中(错误只带前 8 条摘要)。
+	if rep == nil || len(rep.Failed) != 2 {
+		t.Fatalf("报告应含 2 条失败明细,实得 %+v", rep)
+	}
+	if reg.Get("wf.a") == nil {
+		t.Fatal("回退后旧工作流不应丢失")
 	}
 }

@@ -225,6 +225,11 @@ func registerProtoServices(srv *kratoshttp.Server, s *ServiceRegistry) {
 //     「原始 body 字节 → sha256 digest → 幂等键链」的保真语义要求绕过
 //     proto Struct 解码，故不走 proto 注册（P2-1 已裁定 webhook 入站
 //     不进契约）。no-auth 前缀注册使 auth filter 放行，密钥是唯一闸门。
+//   - /v1/ceoboard/event?uid=: ceoboard 事件详情查询参数出口（评审 2026-11-09
+//     D2）。proto 路由 GetEvent 的 {uid} 是路径段，event_uid 含 '/'、'?' 等
+//     保留字符时无法经 HTTP 网关寻址；permission 注册表键必须存在于 proto
+//     （arch 测试硬约束），故 ceoboard.view 在 handler 内硬判。不在 no-auth
+//     前缀内，JWT 过滤器照常被验。
 //
 // All custom routes are explicitly documented here for auditability. New bypass routes
 // MUST be added to this centralized block with justification comments.
@@ -257,6 +262,14 @@ func registerCustomRoutes(
 		auth.RegisterNoAuthPathPrefix("/v1/ceoboard/webhooks/")
 		srv.Route("/").POST("/v1/ceoboard/webhooks/{source}", func(ctx kratoshttp.Context) error {
 			ceoboardSvc.WebhookHandler(ctx.Vars().Get("source")).ServeHTTP(ctx.Response(), ctx.Request())
+			return nil
+		})
+		// 评审 2026-11-09 D2：GET /v1/ceoboard/event?uid=<event_uid>——proto 路由
+		// GetEvent 的 {uid} 为路径段，event_uid 含 '/'、'?' 等保留字符时无法经
+		// HTTP 网关寻址，故提供查询参数出口（鉴权在 handler 内硬判 ceoboard.view，
+		// 理由见 GetEventByUIDHTTP 注释；本路由不在 no-auth 前缀内，JWT 过滤器照常被验）。
+		srv.Route("/").GET("/v1/ceoboard/event", func(ctx kratoshttp.Context) error {
+			ceoboardSvc.GetEventByUIDHTTP(ctx.Response(), ctx.Request())
 			return nil
 		})
 	}

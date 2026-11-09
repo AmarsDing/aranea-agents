@@ -31,6 +31,7 @@ import (
 	"sync"
 	"time"
 
+	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -638,8 +639,10 @@ func (s *CeoboardService) ListEvents(ctx context.Context, req *v1.ListEventsRequ
 }
 
 // GetEvent 事件详情(payload 脱敏)。
-func (s *CeoboardService) GetEvent(ctx context.Context, req *v1.GetEventRequest) (*v1.EventDetail, error) {
-	ev, err := s.rt.Store.GetEvent(ctx, req.GetUid())
+// getEventDetail 是 GetEvent 的共享实现(gRPC GetEvent 与 D2 自定义查询参数
+// 路由 GetEventByUIDHTTP 同体;uid 为完整 event_uid,不受路径段字符约束)。
+func (s *CeoboardService) getEventDetail(ctx context.Context, uid string) (*v1.EventDetail, error) {
+	ev, err := s.rt.Store.GetEvent(ctx, uid)
 	if ent.IsNotFound(err) {
 		return nil, apierror.NotFound(ceoboardDomain, "event not found")
 	}
@@ -673,6 +676,64 @@ func (s *CeoboardService) GetEvent(ctx context.Context, req *v1.GetEventRequest)
 		return nil, apierror.Internal(ceoboardDomain, "payload 转换失败")
 	}
 	return &v1.EventDetail{Summary: mapEventSummary(*ev), Payload: pv, RedactedFields: redactedFields}, nil
+}
+
+func (s *CeoboardService) GetEvent(ctx context.Context, req *v1.GetEventRequest) (*v1.EventDetail, error) {
+	return s.getEventDetail(ctx, req.GetUid())
+}
+
+// GetEventByUIDHTTP 是 GET /v1/ceoboard/event?uid=<event_uid> 的自定义路由
+// 处理函数(评审 2026-11-09 D2):proto 路由 GetEvent 的 {uid} 是路径段,event_uid
+// 含 '/'、'?' 等保留字符时无法经 HTTP 网关寻址,故提供查询参数出口。响应体与
+// proto EventDetail 的 protojson 形态一致(前端可按同一契约解析)。
+//
+// 鉴权:本路由不在 permission 注册表(注册表键必须存在于 proto,arch 测试
+// TestRegisteredKeysExistInProto 硬约束),故 ceoboard.view 在 handler 内硬判,
+// 语义对齐中间件顺序——有主体必须持 ceoboard.view;无主体仅 dev/test 放行
+// (与 Permission 中间件的 carve-out 对齐,生产无凭据请求在认证过滤器已被拒)。
+func (s *CeoboardService) GetEventByUIDHTTP(w http.ResponseWriter, r *http.Request) {
+	uid := r.URL.Query().Get("uid")
+	if uid == "" {
+		writeCeoboardHTTPError(w, http.StatusBadRequest, "uid query parameter is required")
+		return
+	}
+	if a, ok := auth.FromContext(r.Context()); ok && a != nil {
+		if !a.HasPermission("ceoboard.view") {
+			writeCeoboardHTTPError(w, http.StatusForbidden, "ceoboard.view required")
+			return
+		}
+	} else if !auth.DevOrTestEnv() {
+		writeCeoboardHTTPError(w, http.StatusForbidden, "ceoboard.view required")
+		return
+	}
+	detail, err := s.getEventDetail(r.Context(), uid)
+	if err != nil {
+		switch {
+		case apierror.IsCode(err, apierror.CodeNotFound):
+			writeCeoboardHTTPError(w, http.StatusNotFound, "event not found")
+		case apierror.IsCode(err, apierror.CodeForbidden):
+			writeCeoboardHTTPError(w, http.StatusForbidden, "无权访问该事件")
+		case apierror.IsCode(err, apierror.CodeBadRequest):
+			writeCeoboardHTTPError(w, http.StatusBadRequest, "事件 payload 非 JSON,无法安全脱敏")
+		default:
+			writeCeoboardHTTPError(w, http.StatusInternalServerError, "internal error")
+		}
+		return
+	}
+	raw, err := protojson.Marshal(detail)
+	if err != nil {
+		writeCeoboardHTTPError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(raw)
+}
+
+func writeCeoboardHTTPError(w http.ResponseWriter, status int, msg string) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(map[string]string{"error": msg})
 }
 
 func sensitivePayloadKey(key string) bool {
@@ -711,6 +772,11 @@ func redactPayload(value any, path string, fields *[]string) any {
 // ---------- ops 面 rpc(permission 中间件 ceoboard.ops 硬判;审计口径不变) ----------
 
 // ListDeadLetters 死信列表。
+// 评审 2026-11-09 D3:列表端不回传 payload 原文——死信原文是未脱敏的消息字节
+// (可能含密钥/个人信息),列表是批量面,逐条原文既放大泄漏面也无浏览价值;
+// 列表只保留定位要素(kind/source/ref_key/reason/failed_at)。原文仅两条合规
+// 出口:① 重放(ReplayDeadLetter 经 store.GetDeadLetter 取原文重投,不回传);
+// ② 直查数据库(库层权限)。proto 字段保留(契约兼容),列表侧恒置空。
 func (s *CeoboardService) ListDeadLetters(ctx context.Context, req *v1.ListDeadLettersRequest) (*v1.ListDeadLettersResponse, error) {
 	limit := int(req.GetLimit())
 	if limit == 0 {
@@ -727,7 +793,9 @@ func (s *CeoboardService) ListDeadLetters(ctx context.Context, req *v1.ListDeadL
 	pending, _ := s.rt.Store.PendingDeadLetters(ctx)
 	items := make([]*v1.DeadLetter, 0, len(dls))
 	for _, dl := range dls {
-		items = append(items, mapDeadLetter(dl))
+		item := mapDeadLetter(dl)
+		item.Payload = "" // D3:列表端省略原文,见上注释
+		items = append(items, item)
 	}
 	return &v1.ListDeadLettersResponse{Pending: int32(pending), Items: items}, nil
 }
@@ -831,12 +899,14 @@ func (s *CeoboardService) ExportAudit(ctx context.Context, req *v1.ExportAuditRe
 	defer cancel()
 	actor, action := actorOf(ctx), req.GetAction()
 	var sb strings.Builder
-	rows, err := s.rt.Store.ExportAudit(ectx, &sb, store.AuditExportFilter{From: from, To: to, Action: action, Limit: limit})
+	rows, truncated, err := s.rt.Store.ExportAudit(ectx, &sb, store.AuditExportFilter{From: from, To: to, Action: action, Limit: limit})
 	if err != nil {
 		s.audit(ctx, actor, "audit-export", action, false, err.Error())
 		return nil, apierror.Unavailable(ceoboardDomain, "审计导出失败")
 	}
-	s.audit(ctx, actor, "audit-export", action, true, fmt.Sprintf("rows=%d", rows))
+	// D4:触字节预算的导出以截断标记收尾(CSV 尾部 # truncated 行),
+	// 审计 detail 留痕,调用方据此收窄窗口重试。
+	s.audit(ctx, actor, "audit-export", action, true, fmt.Sprintf("rows=%d truncated=%v", rows, truncated))
 	return &v1.ExportAuditResponse{Csv: sb.String()}, nil
 }
 

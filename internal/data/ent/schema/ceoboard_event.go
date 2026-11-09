@@ -47,7 +47,9 @@ func (CeoboardEvent) Fields() []ent.Field {
 func (CeoboardEvent) Indexes() []ent.Index {
 	return []ent.Index{
 		index.Fields("subject_key", "received_at"),
-		index.Fields("platform", "received_at"),
+		// 评审 2026-11-09 D1：原 (platform, received_at) 两列索引是下方三列
+		// 索引的左前缀（PG/SQLite btree 左前缀规则同服务），冗余——写入放大
+		// 且占存储，删除收敛；存量库由迁移 20261312 DROP INDEX 收敛。
 		// 游标分页主查询 ORDER BY received_at DESC, event_uid DESC
 		// （PG btree 反向扫描即可，无需显式 DESC 索引）。
 		index.Fields("platform", "received_at", "id"),

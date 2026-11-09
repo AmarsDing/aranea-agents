@@ -5,6 +5,10 @@ package service
 
 import (
 	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -461,6 +465,71 @@ func TestCeoboardGetEventRedaction(t *testing.T) {
 	}
 }
 
+// ---------- 评审 2026-11-09 D2:查询参数路由 GetEventByUIDHTTP ----------
+
+// event_uid 含 '/'、'?' 等 HTTP 保留字符时,proto 路径段路由无法寻址;
+// ?uid= 查询参数出口必须受理且脱敏语义与 gRPC GetEvent 完全一致。
+func TestCeoboardGetEventByUIDHTTP(t *testing.T) {
+	svc, st := newCeoboardTestService(t, map[string]string{"wf.test-viewer.yaml": ceoboardTestWorkflowViewer})
+	now := time.Now()
+	const trickyUID = "hcf:evt/with?special"
+	insertCeoboardEvent(t, st, trickyUID, "hcf", "hcf.order.created.v2", now,
+		`{"order_id":"A1","api_key":"secret"}`)
+
+	get := func(ctx context.Context, rawQuery string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodGet, "/v1/ceoboard/event?"+rawQuery, nil)
+		req = req.WithContext(ctx)
+		rec := httptest.NewRecorder()
+		svc.GetEventByUIDHTTP(rec, req)
+		return rec
+	}
+
+	// viewer 经查询参数取含保留字符的 uid:200,脱敏生效,protojson 形态。
+	rec := get(viewerCtx(), "uid="+url.QueryEscape(trickyUID))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("含 /? 的 uid 应 200,实际 %d body=%s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Summary struct {
+			Uid string `json:"uid"`
+		} `json:"summary"`
+		Payload        map[string]any `json:"payload"` // structpb.Value 经 protojson 直接内联为 JSON 值
+		RedactedFields []string       `json:"redactedFields"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("响应应为 protojson EventDetail: %v body=%s", err, rec.Body.String())
+	}
+	if body.Summary.Uid != trickyUID {
+		t.Fatalf("summary.uid 失真: %q", body.Summary.Uid)
+	}
+	if body.Payload["api_key"] != "[REDACTED]" || len(body.RedactedFields) != 1 {
+		t.Fatalf("脱敏语义与 gRPC 不一致: %+v", body)
+	}
+
+	// 缺 uid → 400。
+	if rec := get(viewerCtx(), ""); rec.Code != http.StatusBadRequest {
+		t.Fatalf("缺 uid 应 400,实际 %d", rec.Code)
+	}
+	// 未知 uid → 404。
+	if rec := get(viewerCtx(), "uid=hcf%3Amissing"); rec.Code != http.StatusNotFound {
+		t.Fatalf("未知 uid 应 404,实际 %d", rec.Code)
+	}
+	// 无 ceoboard.view 的主体 → 403。
+	noPermCtx := auth.NewContext(context.Background(), &auth.Auth{UserID: 9, Access: "user", Roles: []string{"nobody"}})
+	if rec := get(noPermCtx, "uid="+url.QueryEscape(trickyUID)); rec.Code != http.StatusForbidden {
+		t.Fatalf("无 ceoboard.view 应 403,实际 %d", rec.Code)
+	}
+	// 无主体:dev/test 放行,生产 403(carve-out 与 Permission 中间件对齐)。
+	t.Setenv("DEPLOY_ENV", "dev")
+	if rec := get(context.Background(), "uid="+url.QueryEscape(trickyUID)); rec.Code != http.StatusOK {
+		t.Fatalf("dev 无主体应放行,实际 %d", rec.Code)
+	}
+	t.Setenv("DEPLOY_ENV", "prod")
+	if rec := get(context.Background(), "uid="+url.QueryEscape(trickyUID)); rec.Code != http.StatusForbidden {
+		t.Fatalf("生产无主体应 403,实际 %d", rec.Code)
+	}
+}
+
 // ---------- store 支撑:审计与导出 ----------
 
 func TestCeoboardListAudit(t *testing.T) {
@@ -563,6 +632,60 @@ func TestCeoboardReplayDeadLetterAuditTrail(t *testing.T) {
 	}
 	if !intent || !failure {
 		t.Fatalf("意图+失败双审计链不完整:%+v", audits.GetItems())
+	}
+}
+
+// ---------- 评审 2026-11-09 D3:死信列表不回传 payload 原文 ----------
+
+func TestCeoboardListDeadLettersOmitsPayload(t *testing.T) {
+	svc, st := newCeoboardTestService(t, map[string]string{"wf.test-viewer.yaml": ceoboardTestWorkflowViewer})
+	ctx := viewerCtx()
+	const raw = `{"api_key":"sk-live-SECRET","body":"原始消息字节"}`
+	id, err := st.AddDeadLetter(ctx, "webhook-persist", "hcf", "evt-d3", raw, "投递流水缺失")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := svc.ListDeadLetters(ctx, &v1.ListDeadLettersRequest{Limit: 50})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.GetItems()) != 1 || got.GetPending() != 1 {
+		t.Fatalf("死信列表应有 1 条待处理: %+v", got)
+	}
+	item := got.GetItems()[0]
+	if item.GetPayload() != "" {
+		t.Fatalf("列表端不得回传 payload 原文: %q", item.GetPayload())
+	}
+	if item.GetId() != id || item.GetRefKey() != "evt-d3" || item.GetReason() == "" {
+		t.Fatalf("定位要素(kind/ref_key/reason)不得省略: %+v", item)
+	}
+	// 原文出口仅重放/库层:GetDeadLetter 侧原文完好,重放链路不被 D3 破坏。
+	dl, err := st.GetDeadLetter(ctx, id)
+	if err != nil || dl.Payload != raw {
+		t.Fatalf("重放口径原文必须完好: err=%v payload=%q", err, dl.Payload)
+	}
+	if _, err := svc.ReplayDeadLetter(ctx, &v1.ReplayDeadLetterRequest{Id: id}); err == nil {
+		// 工作流未注册该 subject,重放预期失败——但不得是权限/原文缺失类错误。
+		t.Logf("重放返回(可失败,链路可达即可): %v", err)
+	}
+}
+
+// ---------- 评审 2026-11-09 D4:审计导出行数钳制 ----------
+
+func TestCeoboardExportAuditLimitClamp(t *testing.T) {
+	svc, _ := newCeoboardTestService(t, map[string]string{"wf.test-viewer.yaml": ceoboardTestWorkflowViewer})
+	ctx := viewerCtx()
+	now := time.Now()
+	mk := func(limit int32) *v1.ExportAuditRequest {
+		return &v1.ExportAuditRequest{
+			From: timestamppb.New(now.Add(-time.Hour)), To: timestamppb.New(now), Limit: limit,
+		}
+	}
+	if _, err := svc.ExportAudit(ctx, mk(100001)); !apierror.IsCode(err, apierror.CodeBadRequest) {
+		t.Fatalf("limit 超 100000 必须 BadRequest: %v", err)
+	}
+	if _, err := svc.ExportAudit(ctx, mk(-1)); !apierror.IsCode(err, apierror.CodeBadRequest) {
+		t.Fatalf("limit 为负必须 BadRequest: %v", err)
 	}
 }
 

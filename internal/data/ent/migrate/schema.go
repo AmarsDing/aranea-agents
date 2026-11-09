@@ -608,11 +608,6 @@ var (
 				Columns: []*schema.Column{CeoboardEventsColumns[3], CeoboardEventsColumns[7]},
 			},
 			{
-				Name:    "ceoboardevent_platform_received_at",
-				Unique:  false,
-				Columns: []*schema.Column{CeoboardEventsColumns[1], CeoboardEventsColumns[7]},
-			},
-			{
 				Name:    "ceoboardevent_platform_received_at_event_uid",
 				Unique:  false,
 				Columns: []*schema.Column{CeoboardEventsColumns[1], CeoboardEventsColumns[7], CeoboardEventsColumns[0]},

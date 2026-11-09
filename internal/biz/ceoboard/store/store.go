@@ -31,6 +31,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -58,6 +59,7 @@ type Store struct {
 	archiveDir       string
 	retentionDays    int
 	dbCapacityBytes  int64
+	archDedup        *archiveDedupIndex // 归档后重投查重的惰性闭日索引(L6,见 archive.go)
 	spoolWriteFailed atomic.Uint64
 	auditWriteFailed atomic.Uint64
 }
@@ -65,7 +67,7 @@ type Store struct {
 // New 构造存储;client 由装配层注入(共享 Ent 客户端,本包不负责关闭)。
 // 默认:retention 90 天,容量告警基线 10GiB(ConfigureArchive 可改)。
 func New(client *ent.Client, rawDB *sql.DB) *Store {
-	return &Store{client: client, rawDB: rawDB, retentionDays: 90, dbCapacityBytes: 10 * 1024 * 1024 * 1024}
+	return &Store{client: client, rawDB: rawDB, retentionDays: 90, dbCapacityBytes: 10 * 1024 * 1024 * 1024, archDedup: newArchiveDedupIndex()}
 }
 
 // eventToDTO 把 Ent 实体映射为 biz DTO(occurred_at NULL → 零值)。
@@ -94,6 +96,12 @@ func (s *Store) InsertEvent(ctx context.Context, ev *Event) (bool, error) {
 }
 
 func (s *Store) insertEvent(ctx context.Context, ev *Event, fromSpool bool) (bool, error) {
+	// 评审 2026-11-09 L6:热库按 event_uid 主键去重,归档硬删除会关闭该窗口;
+	// 老信封事件先查归档,命中即判重(走与主键冲突相同的"非新插入"出口),
+	// 重放不再重复计数。RestoreArchive 直调 insertEventWithFlags,天然旁路。
+	if s.archivedEventExists(ev) {
+		return false, nil
+	}
 	return s.insertEventWithFlags(ctx, ev, fromSpool, true)
 }
 
@@ -229,13 +237,36 @@ func (s *Store) TotalEvents(ctx context.Context) (int, error) {
 
 // ---------- webhook 投递 ----------
 
+// deliveryStorageKeyMaxLen 投递流水存储主键(复合串)的长度上限,与 ent schema
+// ceoboard_webhook_deliveries.key 列 MaxLen(512) 一致(schema 改值须同步)。
+const deliveryStorageKeyMaxLen = 512
+
+// deliverySourceMaxLen source 列长度上限,与 ent schema MaxLen(64) 一致。
+const deliverySourceMaxLen = 64
+
+// deliveryEventIDMaxLen 幂等键在 ceoboard_events.event_id 列的长度上限,与
+// ent schema ceoboard_event.go 的 event_id MaxLen(256) 一致(schema 改值须同步)。
+// adapter 落事件时 event_id 直接取幂等键(insertWebhookEvent),故这是键预算的
+// 最紧下游约束。
+const deliveryEventIDMaxLen = 256
+
+// MaxIdempotencyKeyLen 幂等键长度预算(评审 2026-11-09 R1):取下游各列约束的
+// 最小值——复合存储主键 512 − ':' − source 上限 64 = 447;event_id 列 256。
+// 故预算 256:不超预算的键对任意合法 source(≤64)可全程落库(投递流水 + 事件)。
+// webhook 入口(adapter)对超预算键显式 4xx 拒收——不再落到 ent 校验走"投递流水
+// 缺失必须 503"的既定路径让源无限重试(毒消息);幂等键不静默替换/截断(dedup
+// 语义不破)。提升上限须同步 bump ent schema 的 event_id/复合键 MaxLen 并随迁移
+// 重跑回填(PG 侧待办)。
+const MaxIdempotencyKeyLen = min(deliveryStorageKeyMaxLen-1-deliverySourceMaxLen, deliveryEventIDMaxLen) // 256
+
+// ErrIdempotencyKeyTooLong 幂等键超长度预算。adapter HTTP 层据此映射 4xx;
+// 其他调用方按普通持久化错误处理(既定 503 语义不变)。
+var ErrIdempotencyKeyTooLong = errors.New("幂等键超过长度预算")
+
 // deliveryStorageID 投递流水的存储主键:source + ":" + 幂等键 复合串(评审
 // 2026-11-09 MEDIUM-7)。幂等维度 (source,key):不同源同名键互不冲突。构造收口
 // 于此,包外一律透明。source/键自身可能含 ':'(如摘要回退键 "sha256:…"),不影响
 // 正确性——剥前缀总是按行上的 source 列精确还原。
-// 注意:key 列定长 MaxLen(512);source≤64,故幂等键实际预算 512-1-len(source)
-// (≥447)。超出预算的键在 ent 校验处失败——走"投递流水缺失必须 503"既定路径,
-// 绝不静默存储;提升上限需 bump ent schema MaxLen 并随迁移重跑回填(PG 侧待办)。
 func deliveryStorageID(source, key string) string {
 	return source + ":" + key
 }
@@ -249,9 +280,15 @@ func deliveryKeyFromStorageID(source, storageID string) string {
 
 // InsertDelivery 幂等记录一条 webhook 投递;返回 true 表示新插入。
 // 幂等维度 (source,key):同一源同键去重;不同源同键各自成单(MEDIUM-7)。
+// 复合主键超 512 直接报 ErrIdempotencyKeyTooLong(R1;正常路径已被 adapter
+// 入口 256 预算拦截,此为非 adapter 调用方的防御兜底,绝不静默存储)。
 func (s *Store) InsertDelivery(ctx context.Context, d *Delivery) (bool, error) {
+	storageID := deliveryStorageID(d.Source, d.Key)
+	if len(storageID) > deliveryStorageKeyMaxLen {
+		return false, fmt.Errorf("%w: 复合键 %d 字节(上限 %d)", ErrIdempotencyKeyTooLong, len(storageID), deliveryStorageKeyMaxLen)
+	}
 	err := s.client.CeoboardWebhookDelivery.Create().
-		SetID(deliveryStorageID(d.Source, d.Key)).
+		SetID(storageID).
 		SetSource(d.Source).
 		SetEvent(d.Event).
 		SetEntityID(d.EntityID).
@@ -272,7 +309,11 @@ func (s *Store) InsertDelivery(ctx context.Context, d *Delivery) (bool, error) {
 
 // MarkDelivery 更新投递状态(处理失败时标 failed);行定位同样按 (source,key)。
 func (s *Store) MarkDelivery(ctx context.Context, source, key, status, errStr string) error {
-	return s.client.CeoboardWebhookDelivery.UpdateOneID(deliveryStorageID(source, key)).
+	storageID := deliveryStorageID(source, key)
+	if len(storageID) > deliveryStorageKeyMaxLen {
+		return fmt.Errorf("%w: 复合键 %d 字节(上限 %d)", ErrIdempotencyKeyTooLong, len(storageID), deliveryStorageKeyMaxLen)
+	}
+	return s.client.CeoboardWebhookDelivery.UpdateOneID(storageID).
 		SetStatus(status).
 		SetError(errStr).
 		Exec(ctx)

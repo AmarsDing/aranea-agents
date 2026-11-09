@@ -1,6 +1,7 @@
 package registry
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -53,7 +54,23 @@ func (r *Registry) Reload(dir string) (*Report, error) {
 		return nil, err
 	}
 	if len(rep.Failed) > 0 {
-		return rep, fmt.Errorf("%d 条声明加载失败,热加载整体回退", len(rep.Failed))
+		// 评审 2026-11-09 L4:错误必须携带文件/记录级细节(哪个文件、哪条
+		// 校验错误)——热加载调用点(runtime reload 循环)只拿到 err,细节丢失
+		// 会让"哪条声明改坏了"无从定位。细节上限 8 条防多文件全坏时刷爆
+		// 总览顶条;完整明细始终在返回的 Report.Failed 中。
+		var b strings.Builder
+		fmt.Fprintf(&b, "%d 条声明加载失败,热加载整体回退", len(rep.Failed))
+		shown := rep.Failed
+		if len(shown) > 8 {
+			shown = shown[:8]
+		}
+		for _, f := range shown {
+			fmt.Fprintf(&b, "; %s: %s", f.File, strings.Join(f.Errors, "; "))
+		}
+		if rest := len(rep.Failed) - len(shown); rest > 0 {
+			fmt.Fprintf(&b, "; …另有 %d 条(见加载报告)", rest)
+		}
+		return rep, errors.New(b.String())
 	}
 	r.Swap(newReg)
 	return rep, nil

@@ -1061,12 +1061,13 @@ func (a *Aggregator) nodeVolume1h(ctx context.Context, wf *registry.Workflow, n 
 	return 0
 }
 
-// webhookSourceOf 由 enter 表达式 webhook(event='x') 推源名;缺省 aranea。
+// webhookSourceOf 返回节点 webhook 投递的归账源名。
+// 评审 2026-11-09 L5:原实现「按 enter 表达式 event 前缀推源名」两个分支
+// 恒返回 "aranea"(死分支,自 ceo-dashboard 移植前即如此)——当前部署只有
+// 一个 webhook 生产源(aranea 进程内 outbox 直投;HTTP 入口
+// /v1/ceoboard/webhooks/{source} 联调外也只有 aranea 在投),归账恒为该源,
+// 收敛为常量。将来接入第二个生产源时须在 Source 声明补源名字段并恢复映射。
 func webhookSourceOf(n *registry.Node) string {
-	re := regexp.MustCompile(`webhook\(event='([^']+)'\)`)
-	if m := re.FindStringSubmatch(n.Enter); len(m) == 2 && strings.HasPrefix(m[1], "opportunity.") {
-		return "aranea"
-	}
 	return "aranea"
 }
 

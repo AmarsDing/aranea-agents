@@ -128,6 +128,10 @@ func hostOf(rawURL string) string {
 }
 
 // PollOnce 对某目标执行一次轮询并更新状态。断路器断开期间直接跳过(不消耗源)。
+// 返回值是锁内快照(评审 2026-11-09 L3):此前返回内部共享指针——断路判定
+// 无锁读 OpenUntil,且调用方持活指针可与 record 的写并发交错(读脏/改写
+// 串话);多协程同 key 轮询时该面被并发放大。快照保证各节点/各调用方互不
+// 串话,内部状态只能经 record 在锁内推进。
 func (p *Poller) PollOnce(ctx context.Context, key, method, rawURL string) *PollState {
 	p.mu.Lock()
 	st, ok := p.states[key]
@@ -135,19 +139,19 @@ func (p *Poller) PollOnce(ctx context.Context, key, method, rawURL string) *Poll
 		st = &PollState{Key: key, URL: rawURL}
 		p.states[key] = st
 	}
-	p.mu.Unlock()
-
-	now := time.Now()
-	if st.CircuitOpen(now) {
-		return st // 断路中:不打扰源,保持陈旧标记
+	if st.CircuitOpen(time.Now()) {
+		cp := *st
+		p.mu.Unlock()
+		return &cp // 断路中:不打扰源,保持陈旧标记
 	}
+	p.mu.Unlock()
 
 	p.waitTurn(rawURL)
 	start := time.Now()
 	body, status, err := p.doRequest(ctx, method, rawURL)
 	if err != nil {
 		p.record(key, st, false, start, err, nil, "")
-		return st
+		return p.Lookup(key)
 	}
 	// 401 且挂了 token 源:作废缓存 token,重登后重试一次(仍失败按普通失败记账)
 	if status == http.StatusUnauthorized {
@@ -158,15 +162,15 @@ func (p *Poller) PollOnce(ctx context.Context, key, method, rawURL string) *Poll
 	}
 	if err != nil {
 		p.record(key, st, false, start, err, nil, "")
-		return st
+		return p.Lookup(key)
 	}
 	if status >= 400 {
 		p.record(key, st, false, start, fmt.Errorf("HTTP %d", status), nil, snippet(body))
-		return st
+		return p.Lookup(key)
 	}
 	items := extractItems(body)
 	p.record(key, st, true, start, nil, items, snippet(body))
-	return st
+	return p.Lookup(key)
 }
 
 // doRequest 发一次请求(命中 auth 规则时带 Bearer),返回 (body, status, err)。

@@ -13,6 +13,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -61,6 +62,13 @@ func (r *WebhookReceiver) Handler(source string) http.HandlerFunc {
 		ev := r.Ingest(req.Context(), source, req.Header, body)
 		w.Header().Set("Content-Type", "application/json")
 		if ev.PersistErr != nil {
+			// R1:幂等键超预算是客户端错误(源必须换键,重试无意义)→ 4xx;
+			// 其余持久化失败维持既定 503(让源重试,绝不 202 吞消息)。
+			if errors.Is(ev.PersistErr, store.ErrIdempotencyKeyTooLong) {
+				w.WriteHeader(http.StatusBadRequest)
+				_ = json.NewEncoder(w).Encode(map[string]any{"accepted": false, "error": ev.ErrMsg})
+				return
+			}
 			w.WriteHeader(http.StatusServiceUnavailable)
 			_ = json.NewEncoder(w).Encode(map[string]any{"accepted": false, "error": "事件持久化失败,请重试"})
 			return
@@ -115,6 +123,17 @@ func (r *WebhookReceiver) ingest(ctx context.Context, source string, header http
 		header.Get("Idempotency-Key"), header.Get("X-Idempotency-Key"),
 		strOf(doc["idempotency_key"]), strOf(doc["event_id"]), ev.EntityID, "sha256:"+ev.Digest,
 	)
+
+	// 评审 2026-11-09 R1:幂等键长度预算显式校验——超预算键在入口即拒(HTTP 层
+	// 映射 4xx),不落库任何足迹(投递/事件/死信都不写:复合存储键塞不下,写了
+	// 也只在 ent 校验处失败,源会把 503 当瞬态故障无限重试=毒消息)。幂等键不
+	// 静默替换/截断:换键即换 dedup 身份,重复投递会漏判。
+	if len(ev.Key) > store.MaxIdempotencyKeyLen {
+		ev.Status = "failed"
+		ev.ErrMsg = fmt.Sprintf("幂等键长度 %d 超预算 %d", len(ev.Key), store.MaxIdempotencyKeyLen)
+		ev.PersistErr = fmt.Errorf("%w: 长度 %d 超预算 %d", store.ErrIdempotencyKeyTooLong, len(ev.Key), store.MaxIdempotencyKeyLen)
+		return ev
+	}
 
 	fieldsJSON, _ := json.Marshal(ev.Fields)
 	d := &store.Delivery{

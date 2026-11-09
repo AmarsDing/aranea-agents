@@ -38,8 +38,9 @@ func (w *gatedWriter) Write(p []byte) (int, error) {
 }
 
 type exportResult struct {
-	rows int
-	err  error
+	rows      int
+	truncated bool
+	err       error
 }
 
 func openExportTestStore(t *testing.T) (*Store, string) {
@@ -62,10 +63,10 @@ func TestAuditExportSnapshotExcludesLaterCommit(t *testing.T) {
 	out := newGatedWriter()
 	done := make(chan exportResult, 1)
 	go func() {
-		rows, err := s.ExportAudit(ctx, out, AuditExportFilter{
+		rows, truncated, err := s.ExportAudit(ctx, out, AuditExportFilter{
 			From: time.Now().Add(-time.Hour), To: time.Now().Add(time.Hour), Limit: 100000,
 		})
-		done <- exportResult{rows: rows, err: err}
+		done <- exportResult{rows: rows, truncated: truncated, err: err}
 	}()
 	<-out.started
 	if err := s.AddAudit(ctx, "after", "replay", "dl-2", true, "must-not-appear"); err != nil {
@@ -101,10 +102,10 @@ func TestAuditExportReadOnlyDoesNotBlockWriter(t *testing.T) {
 	out := newGatedWriter()
 	done := make(chan exportResult, 1)
 	go func() {
-		rows, err := s.ExportAudit(ctx, out, AuditExportFilter{
+		rows, truncated, err := s.ExportAudit(ctx, out, AuditExportFilter{
 			From: time.Now().Add(-time.Hour), To: time.Now().Add(time.Hour), Limit: 100000,
 		})
-		done <- exportResult{rows: rows, err: err}
+		done <- exportResult{rows: rows, truncated: truncated, err: err}
 	}()
 	<-out.started
 	writeDone := make(chan error, 1)
@@ -141,7 +142,7 @@ func TestAuditExportEscapesSpreadsheetFormulas(t *testing.T) {
 		t.Fatal(err)
 	}
 	var out bytes.Buffer
-	_, err := s.ExportAudit(ctx, &out, AuditExportFilter{
+	_, _, err := s.ExportAudit(ctx, &out, AuditExportFilter{
 		From: time.Now().Add(-time.Hour), To: time.Now().Add(time.Hour), Limit: 100000,
 	})
 	if err != nil {
@@ -156,6 +157,68 @@ func TestAuditExportEscapesSpreadsheetFormulas(t *testing.T) {
 		if len(cell) == 0 || cell[0] != '\'' {
 			t.Fatalf("公式前缀必须转义, column=%d cell=%q", column, cell)
 		}
+	}
+}
+
+// 评审 2026-11-09 D4:字节预算钳制——触预算即截断(标记行收尾),不超预算上限;
+// 预算充足时全量导出且不截断。10 万行 × 长 detail 必超 gRPC 4MiB 默认上限,
+// 行数钳制管不住字节,故独立字节预算(生产常量 3MiB,此处小预算加速)。
+func TestAuditExportByteBudgetTruncates(t *testing.T) {
+	s, _ := openExportTestStore(t)
+	ctx := context.Background()
+	base := time.Now().Add(-time.Minute).UTC() // 与 AddAudit 写入口径一致(UTC);sqlite 字典序比较要求两侧同形
+	// 40 行 × ~1KB detail:小预算 4KB 必然中途截断。
+	bulk := make([]*ent.CeoboardAuditCreate, 0, 40)
+	for i := 0; i < 40; i++ {
+		bulk = append(bulk, s.client.CeoboardAudit.Create().
+			SetAt(base.Add(time.Duration(i)*time.Nanosecond)).
+			SetActor("budget").
+			SetAction("replay").
+			SetTarget(fmt.Sprintf("dl-%d", i)).
+			SetOk(true).
+			SetDetail(strings.Repeat("d", 1024)))
+	}
+	if err := s.client.CeoboardAudit.CreateBulk(bulk...).Exec(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	const budget = 4096
+	var out bytes.Buffer
+	rows, truncated, err := s.exportAudit(ctx, &out, AuditExportFilter{
+		From: base.Add(-time.Second), To: base.Add(time.Minute), Limit: 100000,
+	}, budget)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !truncated {
+		t.Fatal("超预算必须报告截断")
+	}
+	if rows <= 0 || rows >= 40 {
+		t.Fatalf("截断导出行数应落在 (0,40),实际 %d", rows)
+	}
+	if out.Len() > budget {
+		t.Fatalf("输出 %d 字节超预算 %d(估算上界判定失真)", out.Len(), budget)
+	}
+	if !strings.Contains(out.String(), "# truncated:") {
+		t.Fatal("截断导出必须带 # truncated 标记行")
+	}
+	// 截断标记之后不得再有数据行。
+	tail := out.String()
+	markAt := strings.Index(tail, "# truncated:")
+	if strings.Count(tail[markAt:], "\n") > 1 {
+		t.Fatalf("截断标记后不得再有内容: %q", tail[markAt:])
+	}
+
+	// 预算充足:全量 40 行,不截断、无标记。
+	var full bytes.Buffer
+	rows, truncated, err = s.exportAudit(ctx, &full, AuditExportFilter{
+		From: base.Add(-time.Second), To: base.Add(time.Minute), Limit: 100000,
+	}, 1<<20)
+	if err != nil || truncated || rows != 40 {
+		t.Fatalf("预算充足应全量不截断: rows=%d truncated=%v err=%v", rows, truncated, err)
+	}
+	if strings.Contains(full.String(), "# truncated:") {
+		t.Fatal("未截断的导出不得含截断标记")
 	}
 }
 
@@ -194,10 +257,10 @@ func TestAuditExport100kWriteP95(t *testing.T) {
 	exportCtx, cancel := context.WithTimeout(ctx, 120*time.Second)
 	defer cancel()
 	go func() {
-		rows, err := s.ExportAudit(exportCtx, out, AuditExportFilter{
+		rows, truncated, err := s.ExportAudit(exportCtx, out, AuditExportFilter{
 			From: base.Add(-time.Second), To: base.Add(2 * time.Minute), Limit: auditRows,
 		})
-		exportDone <- exportResult{rows: rows, err: err}
+		exportDone <- exportResult{rows: rows, truncated: truncated, err: err}
 	}()
 	<-out.started
 

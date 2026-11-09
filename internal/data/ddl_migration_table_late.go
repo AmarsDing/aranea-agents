@@ -635,4 +635,10 @@ var ddlMigrationsLate = []ddlMigration{
 	// MEDIUM-7）：存储主键改 source:幂等键 复合串（store 层收口拼接），存量裸键行
 	// 先复制再删回填；复制失败/超长残留在读侧恒等兼容。DDL/数据均可重入，重跑安全。
 	{Version: 20261311, Name: "ceoboard_webhook_deliveries_source_key", SQL: "sql/migrations/20261311_ceoboard_webhook_deliveries_source_key.sql"},
+	// 20261312 ceoboard_events_drop_redundant_idx（评审 2026-11-09 D1）：
+	// (platform, received_at) 两列索引是 (platform, received_at, event_uid) 的
+	// 左前缀冗余，ent schema 已删声明（on-model 收敛）；生产 Schema.Create 不删
+	// 索引（无 WithDropIndex），本迁移 DROP INDEX IF EXISTS 收敛存量库；DEV 模式
+	// auto-migrate 先删则本迁移 no-op。不改数据，幂等，重跑安全。
+	{Version: 20261312, Name: "ceoboard_events_drop_redundant_idx", SQL: "sql/migrations/20261312_ceoboard_events_drop_redundant_idx.sql"},
 }

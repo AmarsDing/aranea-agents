@@ -24,6 +24,16 @@ import (
 
 const maxAuditExportRows = 100000
 
+// maxAuditExportBytes 导出响应字节预算(评审 2026-11-09 D4):gRPC 默认单消息
+// 上限 4MiB,100k 行 CSV(含 ≤1024 字符 detail 列)轻松超限——行数上限管查询
+// 成本,字节预算管响应可送达,两者独立钳制。取 3MiB 为 proto 帧与其他字段留
+// 余量。触预算即停止并写截断标记行(调用方经 truncated 返回值得知)。
+const maxAuditExportBytes = 3 << 20
+
+// auditExportTruncatedMark 是 CSV 尾部的截断标记(单格 # 前缀行;消费方据此
+// 识别不完整快照,按提示收窄窗口/动作过滤重试)。
+const auditExportTruncatedMark = "# truncated: export byte budget reached; narrow the time window or action filter and retry"
+
 // auditExportPageSize 是导出分页大小(快照由只读事务保证,与分页无关)。
 const auditExportPageSize = 2000
 
@@ -61,18 +71,26 @@ func auditPage(ctx context.Context, tx *ent.Tx, action string, from, to time.Tim
 }
 
 // ExportAudit 在单个只读事务中分页导出 CSV;导出开始后提交的数据不进入本次快照。
-func (s *Store) ExportAudit(ctx context.Context, w io.Writer, filter AuditExportFilter) (int, error) {
+// 双钳制(D4):行数 ≤ maxAuditExportRows(查询成本),字节 ≤ maxAuditExportBytes
+// (响应可送达,gRPC 4MiB 默认上限内);触字节预算提前停止,尾部写截断标记行,
+// 并返回 truncated=true(行数不满 limit 也成立)。
+func (s *Store) ExportAudit(ctx context.Context, w io.Writer, filter AuditExportFilter) (rows int, truncated bool, err error) {
+	return s.exportAudit(ctx, w, filter, maxAuditExportBytes)
+}
+
+// exportAudit 是 ExportAudit 的可参数化实现(maxBytes 供测试用小预算)。
+func (s *Store) exportAudit(ctx context.Context, w io.Writer, filter AuditExportFilter, maxBytes int) (int, bool, error) {
 	limit := filter.Limit
 	if limit <= 0 {
 		limit = maxAuditExportRows
 	}
 	if limit > maxAuditExportRows {
-		return 0, fmt.Errorf("审计导出最多 %d 行", maxAuditExportRows)
+		return 0, false, fmt.Errorf("审计导出最多 %d 行", maxAuditExportRows)
 	}
 	from, to := filter.From.UTC(), filter.To.UTC()
 	tx, err := s.client.BeginTx(ctx, &sql.TxOptions{ReadOnly: true, Isolation: sql.LevelRepeatableRead})
 	if err != nil {
-		return 0, fmt.Errorf("开启只读快照: %w", err)
+		return 0, false, fmt.Errorf("开启只读快照: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
@@ -84,14 +102,18 @@ func (s *Store) ExportAudit(ctx context.Context, w io.Writer, filter AuditExport
 	}
 	rows, err := auditPage(ctx, tx, filter.Action, from, to, nil, pageSize)
 	if err != nil {
-		return 0, fmt.Errorf("查询审计快照: %w", err)
+		return 0, false, fmt.Errorf("查询审计快照: %w", err)
 	}
 
 	cw := csv.NewWriter(w)
-	if err := cw.Write([]string{"id", "at", "actor", "action", "target", "ok", "detail"}); err != nil {
-		return 0, fmt.Errorf("写 CSV 表头: %w", err)
+	header := []string{"id", "at", "actor", "action", "target", "ok", "detail"}
+	if err := cw.Write(header); err != nil {
+		return 0, false, fmt.Errorf("写 CSV 表头: %w", err)
 	}
+	written := estimateCSVRowBytes(header)
 	count := 0
+	truncated := false
+loop:
 	for {
 		for _, e := range rows {
 			record := []string{
@@ -99,14 +121,28 @@ func (s *Store) ExportAudit(ctx context.Context, w io.Writer, filter AuditExport
 				safeCSVCell(e.Actor), safeCSVCell(e.Action), safeCSVCell(e.Target),
 				strconv.FormatBool(e.Ok), safeCSVCell(e.Detail),
 			}
-			if err := cw.Write(record); err != nil {
-				return count, fmt.Errorf("写 CSV 行: %w", err)
+			est := estimateCSVRowBytes(record)
+			if maxBytes > 0 && written+est > maxBytes {
+				// D4:触字节预算——写截断标记(装得下才写)后收工;
+				// 不硬撑超限行,否则 gRPC 层整体失败、一行都拿不到。
+				marker := []string{auditExportTruncatedMark}
+				if written+estimateCSVRowBytes(marker) <= maxBytes {
+					if err := cw.Write(marker); err != nil {
+						return count, true, fmt.Errorf("写截断标记: %w", err)
+					}
+				}
+				truncated = true
+				break loop
 			}
+			if err := cw.Write(record); err != nil {
+				return count, false, fmt.Errorf("写 CSV 行: %w", err)
+			}
+			written += est
 			count++
 			if count%500 == 0 {
 				cw.Flush()
 				if err := cw.Error(); err != nil {
-					return count, fmt.Errorf("刷新 CSV: %w", err)
+					return count, false, fmt.Errorf("刷新 CSV: %w", err)
 				}
 			}
 		}
@@ -120,14 +156,24 @@ func (s *Store) ExportAudit(ctx context.Context, w io.Writer, filter AuditExport
 		}
 		rows, err = auditPage(ctx, tx, filter.Action, from, to, &auditCursor{at: last.At, id: last.ID}, pageSize)
 		if err != nil {
-			return count, fmt.Errorf("查询审计快照: %w", err)
+			return count, false, fmt.Errorf("查询审计快照: %w", err)
 		}
 	}
 	cw.Flush()
 	if err := cw.Error(); err != nil {
-		return count, fmt.Errorf("完成 CSV: %w", err)
+		return count, truncated, fmt.Errorf("完成 CSV: %w", err)
 	}
-	return count, nil
+	return count, truncated, nil
+}
+
+// estimateCSVRowBytes 估算一行的序列化字节上界:逗号+换行 + 每字段强制
+// 引号(2B)且内容全为需转义引号(2x)。上界估法保证预算判定永不失真超限。
+func estimateCSVRowBytes(fields []string) int {
+	n := len(fields) + 1
+	for _, f := range fields {
+		n += 2*len(f) + 2
+	}
+	return n
 }
 
 // safeCSVCell 防止表格软件把审计文本当成公式执行。

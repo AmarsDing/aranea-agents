@@ -1,0 +1,14 @@
+-- Version 20261312: ceoboard_events 删除冗余索引 ceoboardevent_platform_received_at
+-- (评审 2026-11-09 D1)。
+--
+-- 背景:ent schema 原同时声明 (platform, received_at) 与
+-- (platform, received_at, event_uid) 两个索引——前者是后者的左前缀,
+-- PG/SQLite btree 左前缀规则下两列能服务的查询三列同服务
+-- (RecentEvents/CountEvents/游标分页谓词与排序全部走三列索引),冗余索引
+-- 纯写入放大与存储占用。schema 侧已删除声明(on-model 收敛),本迁移负责
+-- 存量库收敛:生产 Schema.Create 不删索引(无 WithDropIndex),须显式 DROP;
+-- DEV 模式 auto-migrate 会先一步删掉,IF EXISTS 兜底 no-op。
+--
+-- 不改表数据、不动其他索引;幂等(IF EXISTS),双方言(pg/sqlite)语法一致,
+-- 重跑安全。
+DROP INDEX IF EXISTS ceoboardevent_platform_received_at;

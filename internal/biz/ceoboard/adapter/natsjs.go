@@ -115,6 +115,9 @@ type NATSManager struct {
 	states    map[string]*NATSNodeState // key = wfID/nodeID
 	consumers map[string]*ConsumerState // key = nodeKey/durable
 	conns     []*nats.Conn
+	// durableOwners 登记 durable 名归属(nodeKey\x00subject_key),跨节点
+	// 同名碰撞检测用(评审 2026-11-09 L1,见 claimDurable)。
+	durableOwners map[string]string
 }
 
 // NewNATSManager 构造管理器;platformOf 形如 {"192.168.4.44:14222":"hcf"}。log 可传 nil(单测静默)。
@@ -122,6 +125,7 @@ func NewNATSManager(st *store.Store, platformOf map[string]string, log loggatewa
 	m := &NATSManager{
 		st: st, platformOf: platformOf, log: log,
 		states: map[string]*NATSNodeState{}, consumers: map[string]*ConsumerState{},
+		durableOwners:          map[string]string{},
 		ConsumerSampleInterval: 15 * time.Second,
 		DurablePrefix:          "ceoboard",
 	}
@@ -380,31 +384,116 @@ func (m *NATSManager) wireOnce(ctx context.Context, wfID string, n *registry.Nod
 		entityPath = src.FieldMap["entity_id"]
 	}
 
-	anyConsuming := false
 	prefix := m.DurablePrefix
 	if prefix == "" { // 零值兜底(手工构造的 manager)
 		prefix = "ceoboard"
 	}
-	for _, subject := range src.Subjects {
-		durable := prefix + "-" + sanitizeDurable(nodeKey) + "-" + sanitizeDurable(SubjectKey(subject))
-		if err := m.consumeSubject(ctx, js, stream, durable, subject, platform, entityPath, st); err != nil {
-			// 单 subject 失败隔离:记录并继续其余 subject
-			m.setErr(st, subject+": "+err.Error())
-			continue
+	// durable 名按完整 subject 清单一次性算出(纯函数):重试轮次间名字稳定,
+	// 不因已成功项退出 pending 而漂移(L1 后缀归属才确定)。
+	durableOf := durableNames(prefix, nodeKey, src.Subjects)
+
+	// 评审 2026-11-09 L2:单 subject 失败纳入主题级重试循环(成功的不重建),
+	// 直到全部接线或 ctx 取消——此前任一成功即返回,失败 subject 永不重试,
+	// 消费缺口随进程存续。首轮全灭维持原语义(返回错误由 WatchNode 连接级
+	// 退避重拨,系统性原因重拨比重试主题更省)。
+	anyConsuming := false
+	pending := append([]string(nil), src.Subjects...)
+	subjectAttempt := 0
+	for {
+		var failed []string
+		for _, subject := range pending {
+			durable := durableOf[subject]
+			if err := m.claimDurable(durable, nodeKey, SubjectKey(subject)); err != nil {
+				m.setErr(st, subject+": "+err.Error())
+				failed = append(failed, subject)
+				continue
+			}
+			if err := m.consumeSubject(ctx, js, stream, durable, subject, platform, entityPath, st); err != nil {
+				// 单 subject 失败隔离:记录并继续其余 subject
+				m.setErr(st, subject+": "+err.Error())
+				failed = append(failed, subject)
+				continue
+			}
+			anyConsuming = true
+			m.logInfo("[nats] 建立消费",
+				loggateway.Str("node", nodeKey), loggateway.Str("stream", stream),
+				loggateway.Str("subject", subject), loggateway.Str("durable", durable),
+				loggateway.Str("platform", platform))
 		}
-		anyConsuming = true
-		m.logInfo("[nats] 建立消费",
-			loggateway.Str("node", nodeKey), loggateway.Str("stream", stream),
-			loggateway.Str("subject", subject), loggateway.Str("durable", durable),
-			loggateway.Str("platform", platform))
+		m.mu.Lock()
+		st.Consuming = anyConsuming
+		if len(failed) == 0 && subjectAttempt > 0 {
+			st.LastErr = "" // 缺口已收敛:清除重试期留下的错误钉
+		}
+		m.mu.Unlock()
+		if len(failed) == 0 {
+			wired = true
+			return nil
+		}
+		if !anyConsuming && subjectAttempt == 0 {
+			return errors.New("全部 subject 消费建立失败")
+		}
+		pending = failed
+		subjectAttempt++
+		wait := m.RetryWait(subjectAttempt)
+		m.logWarn("[nats] 部分 subject 接线失败,退避后仅重试失败项",
+			loggateway.Str("node", nodeKey),
+			loggateway.Str("subjects", strings.Join(failed, ",")),
+			loggateway.Str("wait", wait.String()), loggateway.Int("attempt", subjectAttempt))
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(wait):
+		}
 	}
+}
+
+// durableNames 为本节点全部 subject 计算 durable 名(纯函数:同输入恒同输出,
+// 与接线顺序/重试轮次无关)。基础名 = prefix-nodeKey-subjectKey(含稳定
+// subject_key 锚,风险点⑩;subject 版本演进锚定同名,走 MEDIUM-3 漂移重建)。
+//
+// 评审 2026-11-09 L1(同前缀陷阱):sanitizeDurable 把非法字符归一为 '-',是
+// 有损映射——同节点两个不同 subject(如 "mm.intel.normalized.v1" 与
+// "mm-intel-normalized")会算出同一基础名。同名 durable 配不同 FilterSubject
+// 互相判不可变漂移、轮流删旧重建(互相覆盖消费);DeliverAll 下每次重建都从
+// 最早 offset 重放,放大为重复摄入风暴。碰撞按声明序消解:首个继承基础名
+// (存量部署无碰撞,既有 durable 名字节级不变),后续者追加内容哈希后缀
+// (仅碰撞者更名,一次性新建 durable,DeliverAll 重放一次后收敛)。
+func durableNames(prefix, nodeKey string, subjects []string) map[string]string {
+	names := make(map[string]string, len(subjects))
+	used := make(map[string]bool, len(subjects))
+	for _, subject := range subjects {
+		base := prefix + "-" + sanitizeDurable(nodeKey) + "-" + sanitizeDurable(SubjectKey(subject))
+		name := base
+		if used[name] {
+			sum := sha256.Sum256([]byte(nodeKey + "\x00" + subject))
+			name = base + "-x" + hex.EncodeToString(sum[:4])
+			for i := 1; used[name]; i++ { // 病态再碰撞:计数器兜底(确定性仍在)
+				name = fmt.Sprintf("%s-x%s-%d", base, hex.EncodeToString(sum[:4]), i)
+			}
+		}
+		used[name] = true
+		names[subject] = name
+	}
+	return names
+}
+
+// claimDurable 登记 durable 名归属(节点×稳定 subject_key);同名不同主 =
+// 跨节点 durable 碰撞(L1 同前缀陷阱的另一面:sanitizeDurable 有损,不同
+// nodeKey/subject 可能算出同名)——报错拒绝,绝不静默共享:共享同一 durable
+// 会让两条拉取循环分流消息,事件靠 UID 去重不丢但双节点统计互相串话。
+// 同一归属重复登记幂等(断线重接线;subject 版本升级但 subject_key 不变,
+// 配 MEDIUM-3 漂移重建)。登记随进程生命周期(consumer 比 WatchNode 活得久);
+// 节点从注册表摘除后其登记残留至重启——同名新节点需换名或重启,宁可误拒
+// 不可静默共享。
+func (m *NATSManager) claimDurable(durable, nodeKey, subjectKey string) error {
 	m.mu.Lock()
-	st.Consuming = anyConsuming
-	m.mu.Unlock()
-	if !anyConsuming {
-		return errors.New("全部 subject 消费建立失败")
+	defer m.mu.Unlock()
+	owner := nodeKey + "\x00" + subjectKey
+	if cur, ok := m.durableOwners[durable]; ok && cur != owner {
+		return fmt.Errorf("durable 名 %q 碰撞:已被 %s 占用", durable, strings.ReplaceAll(cur, "\x00", "/"))
 	}
-	wired = true
+	m.durableOwners[durable] = owner
 	return nil
 }
 
