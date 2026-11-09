@@ -6,6 +6,10 @@
 // stylelint-disable color-no-hex -- --ceo-ink/--ceo-ink-white 为 color-mix 洗色唯一出处
 //   （与 _css-vars-dark.sass 的 --ink 口径一致；除此之外本文件无裸色值）。
 
+// --nt-* 令牌自包含引入（2026-11-09 BLOCKER 修复）：本文件是当前唯一引用
+// --nt-* 的已提交样式，令牌必须随本文件进包，不依赖 _css-vars-*.sass 的引入。
+@import "./_nt-tokens.css"
+
 \:root
   --ceo-ink: #000000
   --ceo-ink-white: #ffffff
