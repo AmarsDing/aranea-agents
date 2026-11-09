@@ -105,9 +105,7 @@ func newApp(
 	// consumerCtx 上拉起）。注入进程级解析器后,Permission 中间件/菜单下发/
 	// HasPermission 全链路即走 DB。
 	if permResolver != nil {
-		if err := permResolver.Refresh(context.Background()); err != nil {
-			lg.Warn("permission resolver initial refresh failed; builtin fallback until first success", loggateway.StepID("auth.perm_resolver_init"), loggateway.Err(err))
-		}
+		initialPermRefresh(permResolver, lg, initialPermRefreshTimeout)
 		auth.SetPermissionResolver(permResolver)
 	}
 
@@ -326,6 +324,22 @@ func newApp(
 		}),
 	)
 	return app
+}
+
+// initialPermRefreshTimeout 启动首刷预算（评审 2026-11-09 D-LOW）：首刷位于
+// 启动关键路径，无超时的 DB 挂起会把进程就绪无限拖死。10s 与探针/健康档同量级。
+const initialPermRefreshTimeout = 10 * time.Second
+
+// initialPermRefresh 执行权限解析器启动首刷，带超时预算。失败（含超时）按既有
+// 语义降级：仅 Warn 不阻断启动——空缓存 = 纯内置兜底（fail-usable 而非
+// fail-open，DB 收窄的授权不会因此放大），DB 就绪后由周期刷新接管。与后续
+// 周期刷新失败路径（Refresh 内保旧缓存 + Warn）一致。
+func initialPermRefresh(r *data.RolePermissionResolver, lg loggateway.Logger, timeout time.Duration) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	if err := r.Refresh(ctx); err != nil {
+		lg.Warn("permission resolver initial refresh failed; builtin fallback until first success", loggateway.StepID("auth.perm_resolver_init"), loggateway.Err(err))
+	}
 }
 
 // startReadinessDependentServices starts all services that require the data layer

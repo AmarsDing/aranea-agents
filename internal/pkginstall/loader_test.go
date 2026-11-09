@@ -1,6 +1,8 @@
 package pkginstall
 
 import (
+	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -59,7 +61,7 @@ func TestFetchFromURLReportsStderrTail(t *testing.T) {
 		t.Skip("git not available")
 	}
 	missing := filepath.Join(t.TempDir(), "no-such-repo")
-	_, _, err := FetchFromURL(missing, "", true)
+	_, _, err := FetchFromURL(context.Background(), missing, "", true)
 	if err == nil {
 		t.Fatal("FetchFromURL() error = nil, want clone failure")
 	}
@@ -193,7 +195,7 @@ func readAttemptCount(t *testing.T, counter string) string {
 
 func TestFetchFromURLRetriesTransientCloneFailure(t *testing.T) {
 	counter := installFakeGit(t, 1) // fail once, succeed on 2nd attempt
-	dir, cleanup, err := FetchFromURL("https://example.invalid/repo.git", "", true)
+	dir, cleanup, err := FetchFromURL(context.Background(), "https://example.invalid/repo.git", "", true)
 	if err != nil {
 		t.Fatalf("FetchFromURL() error = %v, want success after retry", err)
 	}
@@ -208,7 +210,7 @@ func TestFetchFromURLRetriesTransientCloneFailure(t *testing.T) {
 
 func TestFetchFromURLGivesUpAfterMaxAttempts(t *testing.T) {
 	counter := installFakeGit(t, 99) // always fail
-	_, _, err := FetchFromURL("https://example.invalid/repo.git", "", true)
+	_, _, err := FetchFromURL(context.Background(), "https://example.invalid/repo.git", "", true)
 	if err == nil {
 		t.Fatal("FetchFromURL() error = nil, want persistent failure")
 	}
@@ -217,6 +219,31 @@ func TestFetchFromURLGivesUpAfterMaxAttempts(t *testing.T) {
 	}
 	if got := readAttemptCount(t, counter); got != "3" {
 		t.Fatalf("attempt count = %s, want 3 (max attempts)", got)
+	}
+}
+
+// 评审 2026-11-09 D-LOW：重试退避必须可经 ctx 取消——原 time.Sleep 退避在
+// 取消后仍干等满 2s/4s。预取消的 ctx 使首次失败后的退避立即返回 ctx.Err()，
+// 不再跑满 maxAttempts。
+func TestFetchFromURLBackoffCancelReturnsCtxErr(t *testing.T) {
+	counter := installFakeGit(t, 99) // 恒失败，保证进入退避分支
+	// installFakeGit 已把 backoff 归零并注册恢复；此处改超长退避——若 select
+	// 不监听 ctx.Done，本用例会真的等住（其 cleanup 仍负责最终复原）。
+	cloneBackoff = func(int) time.Duration { return time.Hour }
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // 预取消：首次 clone 失败进入退避时 Done 已闭
+
+	start := time.Now()
+	_, _, err := FetchFromURL(ctx, "https://example.invalid/repo.git", "", true)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("FetchFromURL() error = %v, want context.Canceled", err)
+	}
+	if elapsed := time.Since(start); elapsed > 5*time.Second {
+		t.Fatalf("FetchFromURL() took %s on cancelled ctx, want prompt return", elapsed)
+	}
+	if got := readAttemptCount(t, counter); got != "1" {
+		t.Fatalf("attempt count = %s, want 1 (cancel must short-circuit remaining retries)", got)
 	}
 }
 

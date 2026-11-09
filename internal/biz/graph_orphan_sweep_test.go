@@ -41,9 +41,26 @@ func (r *fakeOrphanRunRepo) ListRunsByGraph(context.Context, string, int, string
 func (r *fakeOrphanRunRepo) UpdateRun(_ context.Context, exec *GraphExecution) error {
 	r.updateRuns++
 	if stored, ok := r.runs[exec.ID]; ok && stored != exec {
-		*stored = *exec
+		copyGraphExecutionRow(stored, exec)
 	}
 	return nil
+}
+
+// copyGraphExecutionRow 把 UpdateRun 的落库列从 src 拷入 dst（镜像真实 repo
+// internal/data graphRunRepo.UpdateRun 的列集）。GraphExecution 内含
+// execMu/interruptMu 锁，整 struct 赋值触发 go vet copylocks；逐列拷贝既过
+// vet 也明确"哪些字段会被持久化"。测试单线程，直接读字段与
+// ListOrphanedStandaloneRuns 既有写法一致。
+func copyGraphExecutionRow(dst, src *GraphExecution) {
+	dst.Status = src.Status
+	dst.CurrentNode = src.CurrentNode
+	dst.LineageID = src.LineageID
+	dst.ErrorMessage = src.ErrorMessage
+	dst.SpiritSessionID = src.SpiritSessionID
+	dst.DefinitionHash = src.DefinitionHash
+	dst.CurrentState = src.CurrentState
+	dst.Steps = src.Steps
+	dst.FinishedAt = src.FinishedAt
 }
 
 func (r *fakeOrphanRunRepo) ListOrphanedStandaloneRuns(_ context.Context, status string, limit int) ([]*GraphExecution, error) {

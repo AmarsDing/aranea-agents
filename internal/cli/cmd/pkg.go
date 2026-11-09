@@ -58,7 +58,7 @@ func pkgInstallCmd() *cobra.Command {
 			if !cc.Quiet && !jsonOutput {
 				fmt.Fprintf(os.Stdout, "正在克隆 %s ...\n", url)
 			}
-			pkgDir, cleanup, err := pkginstall.FetchFromURL(url, ref, cc.Quiet)
+			pkgDir, cleanup, err := pkginstall.FetchFromURL(cmd.Context(), url, ref, cc.Quiet)
 			if err != nil {
 				return &cli.CLIError{Code: "PKG_FETCH_ERROR", Message: err.Error()}
 			}
@@ -108,7 +108,7 @@ func pkgInstallCmd() *cobra.Command {
 				},
 			}
 
-			result, err := ins.Install(pkgDir, manifest)
+			result, err := ins.Install(cmd.Context(), pkgDir, manifest)
 			if result == nil && err != nil {
 				return &cli.CLIError{Code: "PKG_INSTALL_ERROR", Message: err.Error()}
 			}
@@ -152,7 +152,7 @@ func pkgValidateCmd() *cobra.Command {
 			cc := cli.CLIFrom(cmd.Context())
 			url := args[0]
 
-			pkgDir, cleanup, err := pkginstall.FetchFromURL(url, ref, cc.Quiet)
+			pkgDir, cleanup, err := pkginstall.FetchFromURL(cmd.Context(), url, ref, cc.Quiet)
 			if err != nil {
 				return &cli.CLIError{Code: "PKG_FETCH_ERROR", Message: err.Error()}
 			}

@@ -64,7 +64,7 @@ func newSkillInstallFromURLTool(deps Deps) trpctool.Tool {
 				stepLog = append(stepLog, fmt.Sprintf("[%d/%d] %s: %s", step, total, name, status))
 			},
 		}
-		result, err := ins.Install("", manifest)
+		result, err := ins.Install(ctx, "", manifest)
 		if err != nil {
 			return skillInstallOutput{}, apierror.Internal(apierror.DomainTool, "install skill: %v", err)
 		}

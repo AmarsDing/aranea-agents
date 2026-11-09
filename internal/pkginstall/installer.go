@@ -2,6 +2,7 @@ package pkginstall
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -52,7 +53,10 @@ const totalSteps = 6
 // Install executes the package installation in dependency order:
 // 1. MCP Servers → 2. Skills → 3. Org (industry/dept/pos) →
 // 4. Agents → 5. Teams → 6. Graphs
-func (ins *Installer) Install(pkgDir string, manifest *Manifest) (*Result, error) {
+//
+// ctx 目前只穿透到 Skill URL 克隆（FetchFromURL 退避可取消，评审 2026-11-09
+// D-LOW）；HTTP 步骤仍由 ins.Timeout 控制。
+func (ins *Installer) Install(ctx context.Context, pkgDir string, manifest *Manifest) (*Result, error) {
 	result := &Result{}
 	timeout := ins.Timeout
 	if timeout <= 0 {
@@ -72,7 +76,7 @@ func (ins *Installer) Install(pkgDir string, manifest *Manifest) (*Result, error
 	// Step 2: Skills.
 	ins.report(2, totalSteps, "Skills", "installing")
 	for _, spec := range manifest.Spec.Skills {
-		sr := ins.installSkill(client, pkgDir, spec)
+		sr := ins.installSkill(ctx, client, pkgDir, spec)
 		result.Steps = append(result.Steps, sr)
 		ins.countStep(result, sr)
 	}
@@ -240,7 +244,7 @@ func (ins *Installer) installMCPServer(client *http.Client, spec MCPServerSpec) 
 
 // installSkill uploads a skill zip via POST /v1/skills/import (proto JSON),
 // then drives the two-phase import (poll job → apply decisions) to completion.
-func (ins *Installer) installSkill(client *http.Client, pkgDir string, spec SkillSpec) StepResult {
+func (ins *Installer) installSkill(ctx context.Context, client *http.Client, pkgDir string, spec SkillSpec) StepResult {
 	resource := "skill:" + spec.URL
 	if spec.Path != "" {
 		resource = "skill:" + spec.Path
@@ -259,7 +263,7 @@ func (ins *Installer) installSkill(client *http.Client, pkgDir string, spec Skil
 		zipPath = filepath.Join(pkgDir, spec.Path)
 	} else if spec.URL != "" {
 		// Clone the skill from URL to a temp dir, zip the subpath.
-		tmpDir, cleanup, err := FetchFromURL(spec.URL, spec.Ref, ins.Quiet)
+		tmpDir, cleanup, err := FetchFromURL(ctx, spec.URL, spec.Ref, ins.Quiet)
 		if err != nil {
 			return StepResult{Resource: resource, Action: "error", Message: err.Error()}
 		}

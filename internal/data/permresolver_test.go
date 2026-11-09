@@ -5,6 +5,7 @@ import (
 	"errors"
 	"sync"
 	"testing"
+	"time"
 )
 
 // fakePermLoader 可编程的 RolePermissionLoader:按调用序返回快照/错误。
@@ -175,6 +176,38 @@ func TestPermResolver_CacheIsolatedFromLoaderSnapshot(t *testing.T) {
 	loader.setSnap(map[string][]string{"r1": {"x.y"}}) // 不 Refresh
 	if got := permSet(r, "r1"); !hasCode(got, "a.b") || hasCode(got, "x.y") {
 		t.Fatalf("未刷新的快照变化不得影响缓存: %v", got)
+	}
+}
+
+// ctxBlockingPermLoader 模拟 DB 挂起:阻塞至 ctx 取消并返回其错误。
+type ctxBlockingPermLoader struct{}
+
+func (ctxBlockingPermLoader) LoadRolePermissions(ctx context.Context) (map[string][]string, error) {
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+
+// ctx 传播契约(评审 2026-11-09 D-LOW):启动首刷的 10s 超时
+// (cmd/admin initialPermRefresh)依赖 Refresh 把 ctx 透传加载器并在预算内
+// 返回其错误;超时失败与任何刷新失败同语义——保旧缓存(last-good)。
+func TestPermResolver_RefreshCtxTimeoutKeepsLastGood(t *testing.T) {
+	loader := &fakePermLoader{snap: map[string][]string{"custom": {"a.b"}}}
+	r := NewRolePermissionResolver(loader, nil)
+	refreshOrDie(t, r)
+
+	r.loader = ctxBlockingPermLoader{}
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	err := r.Refresh(ctx)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("挂起加载器 + 超时 ctx 应回 DeadlineExceeded, got %v", err)
+	}
+	if elapsed := time.Since(start); elapsed > 5*time.Second {
+		t.Fatalf("Refresh 未在 ctx 预算内返回: %s", elapsed)
+	}
+	if got := permSet(r, "custom"); !hasCode(got, "a.b") {
+		t.Fatalf("超时失败须保留 last-good 缓存: %v", got)
 	}
 }
 

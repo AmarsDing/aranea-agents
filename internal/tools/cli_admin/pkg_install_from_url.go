@@ -88,7 +88,7 @@ func newPkgInstallFromURLTool(deps Deps) trpctool.Tool {
 			return pkgInstallOutput{}, err
 		}
 
-		pkgDir, cleanup, err := pkginstall.FetchFromURL(input.URL, input.Ref, true)
+		pkgDir, cleanup, err := pkginstall.FetchFromURL(ctx, input.URL, input.Ref, true)
 		if err != nil {
 			return pkgInstallOutput{}, apierror.Internal(apierror.DomainTool, "fetch package: %v", err)
 		}
@@ -123,7 +123,7 @@ func newPkgInstallFromURLTool(deps Deps) trpctool.Tool {
 			},
 		}
 
-		result, err := ins.Install(pkgDir, manifest)
+		result, err := ins.Install(ctx, pkgDir, manifest)
 		if err != nil {
 			return pkgInstallOutput{}, apierror.Internal(apierror.DomainTool, "install package: %v", err)
 		}
