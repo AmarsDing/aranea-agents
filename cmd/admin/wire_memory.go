@@ -279,6 +279,10 @@ func provideLinkEvolutionService(
 func provideMemoryAdminUsecase(admin biz.MemoryAdminDeps, vec *biz.MemoryUsecase, factSync biz.MemoryFactIndexSyncer, d *data.Data, lg loggateway.Logger) *biz.MemoryAdminUsecase {
 	uc := biz.NewMemoryAdminUsecase(admin, vec, factSync, data.NewL3FactWriterAdapter(d, d.VectorStore()), lg)
 	uc.SetMemoryCenterReaders(data.NewL2EpisodeAdminReader(d, d.VectorStore()), data.NewL4RelationAdminReader(d))
+	// W2a D3 跨域复制审计：memory.fact.copy 落 audit_logs（构造签名不变，后置注入）。
+	if d != nil {
+		uc.SetMemoryFactCopyAuditRecorder(data.NewMonitorAuditRepo(d))
+	}
 	// MEM-01: resolve session.user_id via data (avoids Wire cycle with SessionUsecase).
 	if d != nil {
 		uc.SetSessionUserIDResolver(func(ctx context.Context, sessionID string) (string, error) {

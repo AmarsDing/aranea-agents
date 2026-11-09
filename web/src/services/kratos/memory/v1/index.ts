@@ -426,6 +426,31 @@ export type UpsertMemoryFactResponse = {
   fact: MemoryFact | undefined;
 };
 
+// CopyMemoryFactRequest 跨域复制一条 L3 事实（D3 拍板 acceptance #3：
+// copyMemory 等价物——note 从 user 域复制到 workspace）。目标域写权限由
+// 本 rpc 的 memory.write 权限码 + service 层 authorizeMemoryScope(target,
+// write=true) 校验；源域可读性由 service 层 authorizeMemoryScope(source,
+// write=false) 双侧再判。statement/details_markdown/fact_kind 为空时
+// 继承源行（信封解密后的权威全文）。
+export type CopyMemoryFactRequest = {
+  //
+  // Behaviors: REQUIRED
+  sourceFactId: string | undefined;
+  // 目标 scope：agent | team | session | user | global | workspace（复制必须显式目标）
+  //
+  // Behaviors: REQUIRED
+  targetScopeType: string | undefined;
+  targetScopeId: string | undefined;
+  // 可选覆写；空 = 继承源行
+  statement: string | undefined;
+  detailsMarkdown: string | undefined;
+  factKind: string | undefined;
+};
+
+export type CopyMemoryFactResponse = {
+  fact: MemoryFact | undefined;
+};
+
 // ReviewMemoryFact applies a single-fact user governance action with a precise
 // column-targeted UPDATE (memory.md §9.4). Unlike UpsertMemoryFact it never
 // touches links/keywords/metadata/quality_score, so feedback actions cannot
@@ -937,6 +962,7 @@ export interface MemoryService {
   ListEvolutionEvents(request: ListEvolutionEventsRequest): Promise<ListEvolutionEventsResponse>;
   GetEvolutionMetrics(request: GetEvolutionMetricsRequest): Promise<EvolutionMetricsReport>;
   UpsertMemoryFact(request: UpsertMemoryFactRequest): Promise<UpsertMemoryFactResponse>;
+  CopyMemoryFact(request: CopyMemoryFactRequest): Promise<CopyMemoryFactResponse>;
   ReviewMemoryFact(request: ReviewMemoryFactRequest): Promise<ReviewMemoryFactResponse>;
   AppendEvolutionEvent(request: AppendEvolutionEventRequest): Promise<AppendEvolutionEventResponse>;
   ListCascadeProposals(request: ListCascadeProposalsRequest): Promise<ListCascadeProposalsResponse>;
@@ -1358,6 +1384,26 @@ export function createMemoryServiceClient(
         service: "MemoryService",
         method: "UpsertMemoryFact",
       }) as Promise<UpsertMemoryFactResponse>;
+    },
+    CopyMemoryFact(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      if (!request.sourceFactId) {
+        throw new Error("missing required field request.source_fact_id");
+      }
+      const path = `v1/memory/l3/facts/${request.sourceFactId}/copy`; // eslint-disable-line quotes
+      const body = JSON.stringify(request);
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "MemoryService",
+        method: "CopyMemoryFact",
+      }) as Promise<CopyMemoryFactResponse>;
     },
     ReviewMemoryFact(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.factId) {

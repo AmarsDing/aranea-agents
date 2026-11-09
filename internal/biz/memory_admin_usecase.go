@@ -50,6 +50,7 @@ type MemoryAdminUsecase struct {
 	l2AdminReader  L2EpisodeAdminReader
 	l4RelReader    L4RelationAdminReader
 	resolveUserID  SessionUserIDResolver
+	copyAudit      MemoryFactCopyAuditRecorder // D3：跨域复制审计（SetMemoryFactCopyAuditRecorder 注入）
 	lg             loggateway.Logger
 }
 
