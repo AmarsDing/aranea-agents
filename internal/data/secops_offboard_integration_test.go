@@ -2,6 +2,9 @@ package data
 
 import (
 	"context"
+	"crypto/rand"
+	"database/sql"
+	"encoding/binary"
 	"encoding/json"
 	"strconv"
 	"strings"
@@ -61,6 +64,46 @@ func (f *offboardFakeRevoker) RevokeSessions(_ context.Context, userID int64) (i
 
 func offboardUIDStr(uid int64) string { return strconv.FormatInt(uid, 10) }
 
+// offboardTestUID 生成每次运行唯一的离职目标 uid。测试 PG 为共享库，
+// 审计表不受 schema 隔离保护（见 ensureOffboardAuditTable 注释），
+// 固定 uid 会让跨运行的残留审计行混入断言。
+func offboardTestUID() int64 {
+	var b [8]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return 885001
+	}
+	return 885000001 + int64(binary.BigEndian.Uint64(b[:])%900000)
+}
+
+// ensureOffboardAuditTable 在测试 schema 内强制重建 12 列审计表。
+// 背景（2026-11-10 复跑现形）：EnsureSessionMemorySchema 的 audit_logs
+// 是 7 列精简 DDL 且带 IF NOT EXISTS——共享库 public.audit_logs（12 列）
+// 已存在时 PG 按 search_path 判定"已存在"而跳过，导致全部测试的审计写
+// 落到 public、跨运行互相可见。这里 DROP+CREATE 把 12 列表钉进私有
+// schema（search_path 首位），恢复隔离。
+func ensureOffboardAuditTable(t *testing.T, ctx context.Context, db *sql.DB) {
+	t.Helper()
+	if _, err := db.ExecContext(ctx, `DROP TABLE IF EXISTS audit_logs`); err != nil {
+		t.Fatalf("drop audit_logs: %v", err)
+	}
+	if _, err := db.ExecContext(ctx, `CREATE TABLE audit_logs (
+		id TEXT PRIMARY KEY,
+		action TEXT NOT NULL DEFAULT '',
+		resource TEXT NOT NULL DEFAULT '',
+		resource_id TEXT NOT NULL DEFAULT '',
+		request_id TEXT NOT NULL DEFAULT '',
+		detail TEXT NOT NULL DEFAULT '',
+		created_at TEXT NOT NULL DEFAULT '',
+		actor TEXT NOT NULL DEFAULT '',
+		ip TEXT NOT NULL DEFAULT '',
+		user_agent TEXT NOT NULL DEFAULT '',
+		severity TEXT NOT NULL DEFAULT '',
+		metadata_json TEXT NOT NULL DEFAULT ''
+	)`); err != nil {
+		t.Fatalf("create audit_logs: %v", err)
+	}
+}
+
 // TestSecopsOffboardFiveStepChain 是 acceptance #4（离职五步全链路）的端到端
 // 钉死：freeze→request→approve(不可自批)→export→delete(前置已导出)，
 // 外加负路径（未审批导出 / 未导出先删 / 重复申请 / 自批）。全程走真实
@@ -69,13 +112,14 @@ func TestSecopsOffboardFiveStepChain(t *testing.T) {
 	d, r, db := setupEnvelopeTestRepo(t, 0x2a)
 	ctx := context.Background()
 	ensureOffboardTable(t, ctx, db)
+	ensureOffboardAuditTable(t, ctx, db)
 
+	uid := offboardTestUID() // 离职目标（每次运行唯一，防共享库残留行干扰）
 	const (
-		uid       = int64(885001) // 离职目标
-		uidEarly  = int64(885002) // 未导出先删负路径
-		sysadminA = int64(71)     // 申请人
-		sysadminB = int64(72)     // 审批人
+		sysadminA = int64(71) // 申请人
+		sysadminB = int64(72) // 审批人
 	)
+	uidEarly := uid + 1 // 未导出先删负路径
 	admins := map[int64]*biz.Admin{
 		uid:       {ID: uid, Name: "off-target", Status: biz.AdminStatusActive},
 		uidEarly:  {ID: uidEarly, Name: "off-early", Status: biz.AdminStatusActive},

@@ -2,14 +2,15 @@ package data
 
 import (
 	"context"
+	"crypto/rand"
 	"database/sql"
+	"encoding/binary"
 	"encoding/json"
+	"sync"
 	"time"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/apierror"
-
-	"github.com/google/uuid"
 )
 
 // ============================================================================
@@ -72,7 +73,7 @@ func (r *secopsOffboardRepo) Insert(ctx context.Context, req *biz.SecopsOffboard
 	}
 	id := req.ID
 	if id == "" {
-		id = "obr-" + uuid.NewString()
+		id = newOffboardID()
 	}
 	now := nowRFC3339()
 	if _, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
@@ -227,6 +228,62 @@ func scanOffboardRow(rows *sql.Rows) (*biz.SecopsOffboardRequest, error) {
 
 func offboardStepsJSON(note, approvedAt string) string {
 	return offboardStepsMustJSON(offboardSteps{Note: note, ApprovedAt: approvedAt})
+}
+
+// ── 时间有序 id ──────────────────────────────────────────────────────
+//
+// created_at 为秒级 TEXT（与迁移 20261325 同粒度），同秒插入两单时
+// ORDER BY created_at DESC 并列，须靠 id 决胜——纯随机 uuid 会使同秒
+// 第二单约 50% 概率排不到首位（同链路复跑现形）。newOffboardID 生成
+// obr- + 26 位 Crockford base32，载荷 = ms(48) ‖ 同毫秒序号(16) ‖
+// rand(64)：字典序恒等于生成序，同毫秒由序号段严格递增。
+
+const offboardIDCrockford = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
+
+var (
+	offboardIDMu   sync.Mutex
+	offboardIDLast int64 // 最近分配的毫秒
+	offboardIDSeq  uint32
+)
+
+func newOffboardID() string {
+	offboardIDMu.Lock()
+	ms := time.Now().UnixMilli() & 0xFFFFFFFFFFFF
+	if ms == offboardIDLast {
+		offboardIDSeq++
+	} else {
+		offboardIDLast = ms
+		offboardIDSeq = 0
+	}
+	seq := offboardIDSeq
+	offboardIDMu.Unlock()
+
+	var rnd [8]byte
+	if _, err := rand.Read(rnd[:]); err != nil {
+		// crypto/rand 失败不可恢复性近似为零；退化用时间纳秒低 64 位。
+		binary.BigEndian.PutUint64(rnd[:], uint64(time.Now().UnixNano()))
+	}
+	hi := (ms << 16) | int64(seq&0xFFFF)
+	lo := binary.BigEndian.Uint64(rnd[:])
+
+	var out [26]byte
+	for i := 0; i < 26; i++ {
+		var v uint32
+		base := 128 - 5*(i+1) // 位窗起点（<0 的位视为 0，顶字符只含 3 有效位）
+		for j := 0; j < 5; j++ {
+			v <<= 1
+			k := base + j
+			switch {
+			case k < 0:
+			case k < 64:
+				v |= uint32((lo >> k) & 1)
+			default:
+				v |= uint32((hi >> (k - 64)) & 1)
+			}
+		}
+		out[i] = offboardIDCrockford[v]
+	}
+	return "obr-" + string(out[:])
 }
 
 func offboardStepsMustJSON(steps offboardSteps) string {
