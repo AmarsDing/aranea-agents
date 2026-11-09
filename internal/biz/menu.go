@@ -60,6 +60,9 @@ const (
 	permCeoboardView = "ceoboard.view" // /ceo/overview、/ceo/oncall
 	// E 阶段 W1a：凭据管理（高敏收窄仅 sysadmin，矩阵见 pkg/auth/permissions.go）。
 	permCredentialManage = "credential.manage" // /credentials
+	// E 阶段 W1b：统一审批中心（页面/聚合读走 approval.review；风险矩阵写走
+	// approval.policy，菜单不接——矩阵编辑嵌在 /approvals 页内按rpc硬判显隐）。
+	permApprovalReview = "approval.review" // /approvals
 )
 
 // NavigationCatalog 返回侧栏菜单目录（显示顺序即数组顺序）。
@@ -71,6 +74,7 @@ func NavigationCatalog() []MenuGroup {
 			Items: []MenuEntry{
 				{Key: "overview", Path: "/overview", Icon: "dashboard", LabelKey: "menu.overview"},
 				{Key: "cockpit", Path: "/workbench", Icon: "track_changes", LabelKey: "menu.cockpit"},
+				{Key: "approvals", Path: "/approvals", Icon: "approval", LabelKey: "menu.approvals", Permission: permApprovalReview},
 				{Key: "ceoOverview", Path: "/ceo/overview", Icon: "monitoring", LabelKey: "menu.ceoOverview", Permission: permCeoboardView},
 				{Key: "ceoOncall", Path: "/ceo/oncall", Icon: "engineering", LabelKey: "menu.ceoOncall", Permission: permCeoboardView},
 				{Key: "taskWorkspace", Path: "/task-workspace", Icon: "view_quilt", LabelKey: "menu.taskWorkspace"},

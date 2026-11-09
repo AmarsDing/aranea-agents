@@ -39,6 +39,8 @@ import { createChatServiceClient } from './kratos/chat/v1/index';
 import { createComputerUseServiceClient } from './kratos/computeruse/v1/index';
 import { createAgentBridgeServiceClient } from './kratos/agentbridge/v1/index';
 import { createCeoboardServiceClient } from './kratos/ceoboard/v1/index';
+import { createApprovalCenterServiceClient } from './kratos/approval/v1/index';
+import { createReviewServiceClient } from './kratos/review/v1/index';
 import { requestHandler, kratosApi } from './axiosHandler';
 
 // 每个功能模块的 service（proto 生成客户端 + requestHandler → kratosApi）。
@@ -80,6 +82,15 @@ export function createCronService() {
 
 export function createCredentialService() {
   return createCredentialServiceClient(requestHandler);
+}
+
+// E 阶段 W1b：统一审批中心（/v1/approvals*）+ 发文审批收编（/v1/review/*）。
+export function createApprovalCenterService() {
+  return createApprovalCenterServiceClient(requestHandler);
+}
+
+export function createReviewService() {
+  return createReviewServiceClient(requestHandler);
 }
 
 export function createDecisionService() {

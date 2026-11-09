@@ -1097,11 +1097,14 @@ func (a *Aggregator) evalApprovals(now time.Time) ApprovalsView {
 			}
 			allFailed = false
 			for _, it := range st.Items {
+				// E 阶段 W1b（A-2）：兼容 review.v1 camelCase（/v1/review/*）与
+				// 旧 MVP 裸路由 PascalCase 两种 wire 形状——收编切换期数据源
+				// 指向哪侧由部署配置决定，看板映射不挑边。
 				av.Items = append(av.Items, ApprovalItem{
 					Lane:  src.Lane,
-					ID:    strOfAny(it["ID"]),
-					Title: firstNonEmptyStr(strOfAny(it["DraftTitle"]), strOfAny(it["Title"])),
-					Extra: strOfAny(it["Status"]),
+					ID:    firstNonEmptyStr(strOfAny(it["ID"]), strOfAny(it["id"])),
+					Title: firstNonEmptyStr(strOfAny(it["DraftTitle"]), strOfAny(it["draftTitle"]), strOfAny(it["Title"]), strOfAny(it["title"])),
+					Extra: firstNonEmptyStr(strOfAny(it["Status"]), strOfAny(it["status"])),
 				})
 			}
 		}

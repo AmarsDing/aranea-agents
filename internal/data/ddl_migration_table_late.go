@@ -648,4 +648,9 @@ var ddlMigrationsLate = []ddlMigration{
 	// 注：credentials / credential_executions 两表为 ent 管理表，生产由
 	// Schema.Create 自动建表（ceoboard 先例），无需 CREATE TABLE 迁移。
 	{Version: 20261320, Name: "builtin_platform_tools_credential_reseed", Func: ddlBuiltinPlatformTools},
+	// 20261323 approval_risk_matrix（E 阶段 W1b 审批中心，拍板 A-4）：三级风险 ×
+	// approval-policy 四档默认档映射配置表（matcher_key 主键），配置存库可审计
+	// 变更（PutRiskMatrix 走 audit）。消费点=approval-policy 求值默认档建议
+	// （W3 接线）。幂等 IF NOT EXISTS，双方言一致。
+	{Version: 20261323, Name: "approval_risk_matrix", SQL: "sql/migrations/20261323_approval_risk_matrix.sql"},
 }

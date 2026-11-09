@@ -92893,6 +92893,7 @@ type ReviewTaskMutation struct {
 	status                *string
 	decision_note         *string
 	reviewer_id           *string
+	creator_id            *string
 	decided_at            *string
 	created_at            *string
 	updated_at            *string
@@ -93438,6 +93439,42 @@ func (m *ReviewTaskMutation) ResetReviewerID() {
 	m.reviewer_id = nil
 }
 
+// SetCreatorID sets the "creator_id" field.
+func (m *ReviewTaskMutation) SetCreatorID(s string) {
+	m.creator_id = &s
+}
+
+// CreatorID returns the value of the "creator_id" field in the mutation.
+func (m *ReviewTaskMutation) CreatorID() (r string, exists bool) {
+	v := m.creator_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatorID returns the old "creator_id" field's value of the ReviewTask entity.
+// If the ReviewTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ReviewTaskMutation) OldCreatorID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatorID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatorID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatorID: %w", err)
+	}
+	return oldValue.CreatorID, nil
+}
+
+// ResetCreatorID resets all changes to the "creator_id" field.
+func (m *ReviewTaskMutation) ResetCreatorID() {
+	m.creator_id = nil
+}
+
 // SetDecidedAt sets the "decided_at" field.
 func (m *ReviewTaskMutation) SetDecidedAt(s string) {
 	m.decided_at = &s
@@ -93580,7 +93617,7 @@ func (m *ReviewTaskMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *ReviewTaskMutation) Fields() []string {
-	fields := make([]string, 0, 15)
+	fields := make([]string, 0, 16)
 	if m.content_item_id != nil {
 		fields = append(fields, reviewtask.FieldContentItemID)
 	}
@@ -93616,6 +93653,9 @@ func (m *ReviewTaskMutation) Fields() []string {
 	}
 	if m.reviewer_id != nil {
 		fields = append(fields, reviewtask.FieldReviewerID)
+	}
+	if m.creator_id != nil {
+		fields = append(fields, reviewtask.FieldCreatorID)
 	}
 	if m.decided_at != nil {
 		fields = append(fields, reviewtask.FieldDecidedAt)
@@ -93658,6 +93698,8 @@ func (m *ReviewTaskMutation) Field(name string) (ent.Value, bool) {
 		return m.DecisionNote()
 	case reviewtask.FieldReviewerID:
 		return m.ReviewerID()
+	case reviewtask.FieldCreatorID:
+		return m.CreatorID()
 	case reviewtask.FieldDecidedAt:
 		return m.DecidedAt()
 	case reviewtask.FieldCreatedAt:
@@ -93697,6 +93739,8 @@ func (m *ReviewTaskMutation) OldField(ctx context.Context, name string) (ent.Val
 		return m.OldDecisionNote(ctx)
 	case reviewtask.FieldReviewerID:
 		return m.OldReviewerID(ctx)
+	case reviewtask.FieldCreatorID:
+		return m.OldCreatorID(ctx)
 	case reviewtask.FieldDecidedAt:
 		return m.OldDecidedAt(ctx)
 	case reviewtask.FieldCreatedAt:
@@ -93795,6 +93839,13 @@ func (m *ReviewTaskMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetReviewerID(v)
+		return nil
+	case reviewtask.FieldCreatorID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatorID(v)
 		return nil
 	case reviewtask.FieldDecidedAt:
 		v, ok := value.(string)
@@ -93901,6 +93952,9 @@ func (m *ReviewTaskMutation) ResetField(name string) error {
 		return nil
 	case reviewtask.FieldReviewerID:
 		m.ResetReviewerID()
+		return nil
+	case reviewtask.FieldCreatorID:
+		m.ResetCreatorID()
 		return nil
 	case reviewtask.FieldDecidedAt:
 		m.ResetDecidedAt()

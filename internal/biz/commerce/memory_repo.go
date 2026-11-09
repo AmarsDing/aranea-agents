@@ -25,7 +25,7 @@ func (r *MemoryOpportunityRepo) Get(id string) (Opportunity, error) {
 	defer r.mu.RUnlock()
 	o, ok := r.byID[id]
 	if !ok {
-		return Opportunity{}, fmt.Errorf("commerce: opportunity not found %s", id)
+		return Opportunity{}, fmt.Errorf("%w: %s", ErrOpportunityNotFound, id)
 	}
 	return o, nil
 }

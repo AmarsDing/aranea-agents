@@ -109,7 +109,10 @@ nodes:
     exit:  "opportunity(status in ('acknowledged','dismissed','converted'))"  # types.go:10-13
     source:
       adapter: webhook-recv                         # 主通道:看板接收端 /api/v1/webhooks/aranea
-      rest_path: "GET http://192.168.4.44:8800/api/v1/mvp/opportunities"  # 对账轮询, mvp/api.ts:93
+      # E 阶段 W1b(A-2):原对账轮询 GET /api/v1/mvp/opportunities 已收编下线;
+      # 新端点 /v1/review/opportunities 带 RBAC(review.view),而轮询器 token
+      # provider 仅支持 nt/hcf 登录协议、暂无 aranea 自身凭据——对账轨暂缺
+      # (事件轨为主,节点不因对账缺失误红),待补 aranea token provider 后恢复。
       dedupe_key: idempotency_key                   # hook_deliveries.sql:3-24
       field_map: { entity_id: id, score: score, audience: audience, status: status }  # types.go:23-34
     metrics:

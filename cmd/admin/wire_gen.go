@@ -689,7 +689,15 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 		return wireOut{}, nil, err
 	}
 	ceoboardService := provideCeoboardService(ceoboardRuntime, loggatewayLogger)
-	serviceRegistry := server.NewServiceRegistry(adminService, avatarService, agentService, llmProviderModelService, hookService, cronService, credentialService, pluginService, mcpServerService, skillService, toolService, serviceSessionService, sessionV2Service, channelService, usageService, monitorService, serviceMemoryService, systemSettingService, modelCatalogService, teamService, chatService, graphService, serviceArtifactService, knowledgeService, evaluationService, a2AService, endpointRegistry, federationService, ecosystemService, gatewayService, channelIngress, aiRefineService, taxonomyService, organizationService, skillIntelligenceService, skillDedupService, packService, skillEvolutionSuggestionService, serviceEvolutionService, selfImprovementService, ecosystemPresetService, aguiCompatService, openAISessionCompatService, a2AExtensionCompatService, twinOpenAPICompatService, runtimeProfileService, learningLoopService, computerUseService, agentBridgeAPI, sandboxService, decisionRecordService, configGraphService, diagnosticsService, ceoboardService)
+	// E 阶段 W1b 统一审批中心 + review.v1 收编（wire-gen-hand-merge-convention：
+	// 与 wire_part2.go Build 列表同步镜像；拍板 A-1/A-2/A-4）。
+	approvalTaskReviewReader := provideApprovalTaskReviewReader(agentbridgeTaskRepo)
+	approvalEvolutionReader := provideApprovalEvolutionReader(unifiedEvolutionRepo)
+	approvalAggregator := provideApprovalAggregator(approvalTaskReviewReader, approvalEvolutionReader)
+	approvalMatrix := provideApprovalMatrix(dataData, monitorUsecase)
+	approvalCenterService := provideApprovalCenterService(approvalAggregator, approvalMatrix)
+	reviewService := provideReviewService()
+	serviceRegistry := server.NewServiceRegistry(adminService, avatarService, agentService, llmProviderModelService, hookService, cronService, credentialService, pluginService, mcpServerService, skillService, toolService, serviceSessionService, sessionV2Service, channelService, usageService, monitorService, serviceMemoryService, systemSettingService, modelCatalogService, teamService, chatService, graphService, serviceArtifactService, knowledgeService, evaluationService, a2AService, endpointRegistry, federationService, ecosystemService, gatewayService, channelIngress, aiRefineService, taxonomyService, organizationService, skillIntelligenceService, skillDedupService, packService, skillEvolutionSuggestionService, serviceEvolutionService, selfImprovementService, ecosystemPresetService, aguiCompatService, openAISessionCompatService, a2AExtensionCompatService, twinOpenAPICompatService, runtimeProfileService, learningLoopService, computerUseService, agentBridgeAPI, sandboxService, decisionRecordService, configGraphService, diagnosticsService, ceoboardService, approvalCenterService, reviewService)
 	grpcServer := server.NewGRPCServer(confServer, serviceRegistry, loggatewayLogger)
 	speechRegistry := provideSpeechRegistry()
 	speechConfigReader := provideSpeechConfigReader(systemSettingRepo, loggatewayLogger)

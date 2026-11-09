@@ -77,6 +77,10 @@ type ServiceRegistry struct {
 	Diagnostics *service.DiagnosticsService
 	// Ceoboard exposes the CEO 驾驶舱 BFF(整合 P2-7;/v1/ceoboard/*)。
 	Ceoboard *service.CeoboardService
+	// ApprovalCenter 是 E 阶段 W1b 统一审批中心（/v1/approvals*，拍板 A-1/A-4）。
+	ApprovalCenter *service.ApprovalCenterService
+	// Review 是 E 阶段 W1b MVP 发文审批/商机签收的 proto 收编（/v1/review/*）。
+	Review *service.ReviewService
 }
 
 // NewServiceRegistry assembles all services into a single registry for Wire injection.
@@ -136,6 +140,8 @@ func NewServiceRegistry(
 	configGraph *service.ConfigGraphService,
 	diagnostics *service.DiagnosticsService,
 	ceoboard *service.CeoboardService,
+	approvalCenter *service.ApprovalCenterService,
+	reviewSvc *service.ReviewService,
 ) *ServiceRegistry {
 	return &ServiceRegistry{
 		Admin:              admin,
@@ -192,5 +198,7 @@ func NewServiceRegistry(
 		ConfigGraph:        configGraph,
 		Diagnostics:        diagnostics,
 		Ceoboard:           ceoboard,
+		ApprovalCenter:     approvalCenter,
+		Review:             reviewSvc,
 	}
 }

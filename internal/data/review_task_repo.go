@@ -3,6 +3,7 @@ package data
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"aranea-agents/internal/biz/review"
 	"aranea-agents/internal/data/ent"
@@ -47,6 +48,7 @@ func (r *reviewTaskRepo) Create(t review.Task) (review.Task, error) {
 		SetStatus(t.Status).
 		SetDecisionNote(t.DecisionNote).
 		SetReviewerID(t.ReviewerID).
+		SetCreatorID(t.CreatorID).
 		SetDecidedAt(decided).
 		SetCreatedAt(mvpTimeString(t.CreatedAt)).
 		SetUpdatedAt(mvpTimeString(t.UpdatedAt)).
@@ -62,7 +64,7 @@ func (r *reviewTaskRepo) Get(id string) (review.Task, error) {
 	row, err := r.client(ctx).ReviewTask.Get(ctx, id)
 	if err != nil {
 		if ent.IsNotFound(err) {
-			return review.Task{}, fmt.Errorf("review: not found %s", id)
+			return review.Task{}, fmt.Errorf("%w: %s", review.ErrNotFound, id)
 		}
 		return review.Task{}, fmt.Errorf("review: get: %w", err)
 	}
@@ -88,12 +90,13 @@ func (r *reviewTaskRepo) Update(t review.Task) (review.Task, error) {
 		SetStatus(t.Status).
 		SetDecisionNote(t.DecisionNote).
 		SetReviewerID(t.ReviewerID).
+		SetCreatorID(t.CreatorID).
 		SetDecidedAt(decided).
 		SetUpdatedAt(mvpTimeString(t.UpdatedAt)).
 		Save(ctx)
 	if err != nil {
 		if ent.IsNotFound(err) {
-			return review.Task{}, fmt.Errorf("review: not found %s", t.ID)
+			return review.Task{}, fmt.Errorf("%w: %s", review.ErrNotFound, t.ID)
 		}
 		return review.Task{}, fmt.Errorf("review: update: %w", err)
 	}
@@ -121,8 +124,32 @@ func (r *reviewTaskRepo) ListPending(limit, offset int) ([]review.Task, int, err
 	return out, total, nil
 }
 
-func (r *reviewTaskRepo) GetByGraphExecution(executionID, nodeID string) (review.Task, bool, error) {
+// Decide 以 CAS 方式落决议（E 阶段 W1b，需求文档 §5.3 验收 3）：仅当当前
+// 状态等于 from 时更新——并发决议恰一个成功，0 行命中时区分 not found 与
+// review.ErrConflict（状态已被并发推进）。
+func (r *reviewTaskRepo) Decide(id, from, to, reviewerID, note string, decidedAt time.Time) (review.Task, error) {
 	ctx := context.Background()
+	n, err := r.client(ctx).ReviewTask.Update().
+		Where(entrt.ID(id), entrt.StatusEQ(from)).
+		SetStatus(to).
+		SetReviewerID(reviewerID).
+		SetDecisionNote(note).
+		SetDecidedAt(mvpTimeString(decidedAt)).
+		SetUpdatedAt(mvpTimeString(decidedAt)).
+		Save(ctx)
+	if err != nil {
+		return review.Task{}, fmt.Errorf("review: decide: %w", err)
+	}
+	if n == 0 {
+		if _, getErr := r.Get(id); getErr != nil {
+			return review.Task{}, getErr
+		}
+		return review.Task{}, review.ErrConflict
+	}
+	return r.Get(id)
+}
+
+func (r *reviewTaskRepo) GetByGraphExecution(executionID, nodeID string) (review.Task, bool, error) {	ctx := context.Background()
 	q := r.client(ctx).ReviewTask.Query().Where(entrt.GraphExecutionIDEQ(executionID))
 	if nodeID != "" {
 		q = q.Where(entrt.GraphNodeIDEQ(nodeID))
@@ -152,6 +179,7 @@ func entToReviewTask(row *ent.ReviewTask) review.Task {
 		Status:           row.Status,
 		DecisionNote:     row.DecisionNote,
 		ReviewerID:       row.ReviewerID,
+		CreatorID:        row.CreatorID,
 		DecidedAt:        mvpParseTimePtr(row.DecidedAt),
 		CreatedAt:        mvpParseTime(row.CreatedAt),
 		UpdatedAt:        mvpParseTime(row.UpdatedAt),

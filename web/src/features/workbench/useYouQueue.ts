@@ -2,14 +2,18 @@
  * YOU 金门四 lane 聚合 composable（设计方案 §5.1 / §5.2）。
  *
  * 数据源（现有 API 直读快照，30s 轮询 + 审批动作局部直刷 + WS confirm 直刷）：
- *   ① 交易确认 → decision/v1 ListDecisionRecords(category=hitl_approval，outcome 客户端过滤)
- *      —— 决策记录无写路径（写在 team run 域），行内只下钻，诚实口径见设计 §5.1
- *   ② 发文审批 → mvp listReview / approve / reject
- *   ③ 上架确认 → mvp listOpp / ackOpp
+ *   ① 交易确认 → decision/v1 ListDecisionRecords(category=hitl_approval，
+ *      outcome 过滤词已对齐真实词表：asked=待决 —— W1b 修复恒空 bug，
+ *      见需求文档 §5.2 关键缺口②）
+ *   ② 发文审批 → review.v1 ListPendingReviews（W1b A-2 收编，经 mvpApi 适配层；
+ *      reviewer 服务端取 JWT，前端不再自报）
+ *   ③ 上架确认 → review.v1 ListOpportunities（同上收编）
  *   ④ 告警与凭据 → listTaskDeadLetters(pending) + cron-task-runs failure
  *
- * TECH-DEBT: direct API call; move to store — 跨域直读未过 Store，
- * 待后端 GET /v1/monitor/attention-summary 聚合端点上线后切换（先例：useAttentionBoard）。
+ * TECH-DEBT: direct API call; move to store — 跨域直读未过 Store。
+ * /v1/approvals 聚合端点（W1b A-1）一期只覆盖 task_review/evolution/
+ * skill 三类，与本队列四 lane 域不同集；hitl 工具确认（trade）待 A-3 落库、
+ * 发文/上架待聚合器扩类后，本 composable 再切 /v1/approvals 单源（W3）。
  */
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { listDecisionRecords } from '../decision/api';

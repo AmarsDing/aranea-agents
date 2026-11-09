@@ -182,6 +182,20 @@ func (_c *ReviewTaskCreate) SetNillableReviewerID(v *string) *ReviewTaskCreate {
 	return _c
 }
 
+// SetCreatorID sets the "creator_id" field.
+func (_c *ReviewTaskCreate) SetCreatorID(v string) *ReviewTaskCreate {
+	_c.mutation.SetCreatorID(v)
+	return _c
+}
+
+// SetNillableCreatorID sets the "creator_id" field if the given value is not nil.
+func (_c *ReviewTaskCreate) SetNillableCreatorID(v *string) *ReviewTaskCreate {
+	if v != nil {
+		_c.SetCreatorID(*v)
+	}
+	return _c
+}
+
 // SetDecidedAt sets the "decided_at" field.
 func (_c *ReviewTaskCreate) SetDecidedAt(v string) *ReviewTaskCreate {
 	_c.mutation.SetDecidedAt(v)
@@ -309,6 +323,10 @@ func (_c *ReviewTaskCreate) defaults() {
 		v := reviewtask.DefaultReviewerID
 		_c.mutation.SetReviewerID(v)
 	}
+	if _, ok := _c.mutation.CreatorID(); !ok {
+		v := reviewtask.DefaultCreatorID
+		_c.mutation.SetCreatorID(v)
+	}
 	if _, ok := _c.mutation.DecidedAt(); !ok {
 		v := reviewtask.DefaultDecidedAt
 		_c.mutation.SetDecidedAt(v)
@@ -399,6 +417,14 @@ func (_c *ReviewTaskCreate) check() error {
 	if v, ok := _c.mutation.ReviewerID(); ok {
 		if err := reviewtask.ReviewerIDValidator(v); err != nil {
 			return &ValidationError{Name: "reviewer_id", err: fmt.Errorf(`ent: validator failed for field "ReviewTask.reviewer_id": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.CreatorID(); !ok {
+		return &ValidationError{Name: "creator_id", err: errors.New(`ent: missing required field "ReviewTask.creator_id"`)}
+	}
+	if v, ok := _c.mutation.CreatorID(); ok {
+		if err := reviewtask.CreatorIDValidator(v); err != nil {
+			return &ValidationError{Name: "creator_id", err: fmt.Errorf(`ent: validator failed for field "ReviewTask.creator_id": %w`, err)}
 		}
 	}
 	if _, ok := _c.mutation.DecidedAt(); !ok {
@@ -498,6 +524,10 @@ func (_c *ReviewTaskCreate) createSpec() (*ReviewTask, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.ReviewerID(); ok {
 		_spec.SetField(reviewtask.FieldReviewerID, field.TypeString, value)
 		_node.ReviewerID = value
+	}
+	if value, ok := _c.mutation.CreatorID(); ok {
+		_spec.SetField(reviewtask.FieldCreatorID, field.TypeString, value)
+		_node.CreatorID = value
 	}
 	if value, ok := _c.mutation.DecidedAt(); ok {
 		_spec.SetField(reviewtask.FieldDecidedAt, field.TypeString, value)
@@ -704,6 +734,18 @@ func (u *ReviewTaskUpsert) SetReviewerID(v string) *ReviewTaskUpsert {
 // UpdateReviewerID sets the "reviewer_id" field to the value that was provided on create.
 func (u *ReviewTaskUpsert) UpdateReviewerID() *ReviewTaskUpsert {
 	u.SetExcluded(reviewtask.FieldReviewerID)
+	return u
+}
+
+// SetCreatorID sets the "creator_id" field.
+func (u *ReviewTaskUpsert) SetCreatorID(v string) *ReviewTaskUpsert {
+	u.Set(reviewtask.FieldCreatorID, v)
+	return u
+}
+
+// UpdateCreatorID sets the "creator_id" field to the value that was provided on create.
+func (u *ReviewTaskUpsert) UpdateCreatorID() *ReviewTaskUpsert {
+	u.SetExcluded(reviewtask.FieldCreatorID)
 	return u
 }
 
@@ -956,6 +998,20 @@ func (u *ReviewTaskUpsertOne) SetReviewerID(v string) *ReviewTaskUpsertOne {
 func (u *ReviewTaskUpsertOne) UpdateReviewerID() *ReviewTaskUpsertOne {
 	return u.Update(func(s *ReviewTaskUpsert) {
 		s.UpdateReviewerID()
+	})
+}
+
+// SetCreatorID sets the "creator_id" field.
+func (u *ReviewTaskUpsertOne) SetCreatorID(v string) *ReviewTaskUpsertOne {
+	return u.Update(func(s *ReviewTaskUpsert) {
+		s.SetCreatorID(v)
+	})
+}
+
+// UpdateCreatorID sets the "creator_id" field to the value that was provided on create.
+func (u *ReviewTaskUpsertOne) UpdateCreatorID() *ReviewTaskUpsertOne {
+	return u.Update(func(s *ReviewTaskUpsert) {
+		s.UpdateCreatorID()
 	})
 }
 
@@ -1381,6 +1437,20 @@ func (u *ReviewTaskUpsertBulk) SetReviewerID(v string) *ReviewTaskUpsertBulk {
 func (u *ReviewTaskUpsertBulk) UpdateReviewerID() *ReviewTaskUpsertBulk {
 	return u.Update(func(s *ReviewTaskUpsert) {
 		s.UpdateReviewerID()
+	})
+}
+
+// SetCreatorID sets the "creator_id" field.
+func (u *ReviewTaskUpsertBulk) SetCreatorID(v string) *ReviewTaskUpsertBulk {
+	return u.Update(func(s *ReviewTaskUpsert) {
+		s.SetCreatorID(v)
+	})
+}
+
+// UpdateCreatorID sets the "creator_id" field to the value that was provided on create.
+func (u *ReviewTaskUpsertBulk) UpdateCreatorID() *ReviewTaskUpsertBulk {
+	return u.Update(func(s *ReviewTaskUpsert) {
+		s.UpdateCreatorID()
 	})
 }
 

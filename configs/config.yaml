@@ -186,6 +186,10 @@ self_improvement:
 #     - lane: "content"                   # 泳道 id
 #       label: "内容审核"                  # 展示名
 #       path: "GET http://127.0.0.1:18080/api/v1/approvals"    # 拉取路径，形如 "METHOD URL"
+#   # E 阶段 W1b：aranea 自身发文/商机队列已收编进 review.v1（/v1/review/pending、
+#   # /v1/review/opportunities，RBAC review.view）；agg 字段映射 PascalCase/
+#   # camelCase 双兼容。指向 aranea 自身新端点时需为轮询器挂接凭据（当前
+#   # auth_providers 仅 nt/hcf 登录协议，aranea token provider 待补）。
 
 
 # E 阶段 W1a 凭据托管（2026-11-09）。整段省略 = 仅用内置高敏默认清单

@@ -3084,6 +3084,7 @@ var (
 		{Name: "status", Type: field.TypeString, Size: 64, Default: "pending"},
 		{Name: "decision_note", Type: field.TypeString, Size: 2147483647, Default: ""},
 		{Name: "reviewer_id", Type: field.TypeString, Size: 256, Default: ""},
+		{Name: "creator_id", Type: field.TypeString, Size: 256, Default: ""},
 		{Name: "decided_at", Type: field.TypeString, Default: ""},
 		{Name: "created_at", Type: field.TypeString, Default: ""},
 		{Name: "updated_at", Type: field.TypeString, Default: ""},

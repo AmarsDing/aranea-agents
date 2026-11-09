@@ -271,7 +271,7 @@ func (f *abFakeTasks) ListRecent(_ context.Context, limit int, _ string) ([]*age
 	return out, nil
 }
 
-// UpdateReview 03 P0：验收落库。
+// UpdateReview 03 P0：验收落库。W1b CAS 防线：已被决议的任务返回冲突。
 func (f *abFakeTasks) UpdateReview(_ context.Context, id, status, comment, reviewedAt string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -279,10 +279,31 @@ func (f *abFakeTasks) UpdateReview(_ context.Context, id, status, comment, revie
 	if !ok {
 		return apierror.NotFound(apierror.DomainAgentBridge, "task not found")
 	}
+	if t.ReviewStatus != "" {
+		return apierror.Conflict(apierror.DomainAgentBridge, "task already reviewed")
+	}
 	t.ReviewStatus = status
 	t.ReviewComment = comment
 	t.ReviewedAt = reviewedAt
 	return nil
+}
+
+// ListPendingReview W1b：待验收终态任务（fake 无租户过滤需求）。
+func (f *abFakeTasks) ListPendingReview(_ context.Context, _ string, limit int) ([]*agentbridge.CodingTask, int, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make([]*agentbridge.CodingTask, 0)
+	for _, t := range f.byID {
+		if t.ReviewStatus == "" && t.Status.IsTerminal() {
+			cp := *t
+			out = append(out, &cp)
+		}
+	}
+	total := len(out)
+	if limit > 0 && len(out) > limit {
+		out = out[:limit]
+	}
+	return out, total, nil
 }
 
 type abFakeFactory struct {

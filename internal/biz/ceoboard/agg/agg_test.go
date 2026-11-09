@@ -217,3 +217,46 @@ nodes:
 		t.Fatalf("NATS 节点未接线应标红: %+v", nodes[1])
 	}
 }
+
+// TestEvalApprovalsWireShapeCompat E 阶段 W1b（A-2）：review/opportunity 收编进
+// review.v1 后 wire 形状从 PascalCase（旧 MVP 裸路由）变 camelCase——切换期
+// 部署配置指向哪侧不定，evalApprovals 字段映射须两种形状都正确解析。
+func TestEvalApprovalsWireShapeCompat(t *testing.T) {
+	now := time.Now()
+	poller := &fakePoller{states: map[string]*adapter.PollState{
+		"approval/content": {
+			Key:      "approval/content",
+			LastOKAt: now,
+			Items: []map[string]any{
+				// 旧 MVP 裸路由形状（PascalCase）。
+				{"ID": "r1", "DraftTitle": "旧形状发文", "Status": "pending"},
+				// review.v1 ReviewTaskView 形状（camelCase）。
+				{"id": "r2", "draftTitle": "新形状发文", "status": "pending"},
+				// 商机类：Title/title 兜底链。
+				{"id": "o1", "title": "新形状商机", "status": "open"},
+			},
+		},
+	}}
+	a := &Aggregator{
+		Cfg:      &Config{Approvals: []Approval{{Lane: "content", Label: "内容审核", Path: "GET http://x/v1/review/pending"}}},
+		Poller:   poller,
+		StaleDef: 90 * time.Second,
+	}
+	av := a.evalApprovals(now)
+	if av.Count != 3 || len(av.Items) != 3 {
+		t.Fatalf("count = %d items = %d, want 3/3", av.Count, len(av.Items))
+	}
+	want := []ApprovalItem{
+		{Lane: "content", ID: "r1", Title: "旧形状发文", Extra: "pending"},
+		{Lane: "content", ID: "r2", Title: "新形状发文", Extra: "pending"},
+		{Lane: "content", ID: "o1", Title: "新形状商机", Extra: "open"},
+	}
+	for i, w := range want {
+		if av.Items[i] != w {
+			t.Fatalf("item %d = %+v, want %+v", i, av.Items[i], w)
+		}
+	}
+	if av.Health != HealthGreen {
+		t.Fatalf("fresh source must be green, got %q", av.Health)
+	}
+}

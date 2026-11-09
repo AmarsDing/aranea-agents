@@ -33,10 +33,10 @@ func RegisterMVPMediaRoutes(srv *kratoshttp.Server) {
 	r.POST("/api/v1/mvp/ingest/rss", handleMVPIngestRSS)
 	r.POST("/api/v1/mvp/ingest/search", handleMVPIngestSearch)
 
-	r.GET("/api/v1/mvp/review/pending", handleMVPReviewPending)
+	// E 阶段 W1b（需求文档 §5.3 拍板 A-2）：review pending/approve/reject 与
+	// opportunities list/ack 五路由已收编进 review.v1 proto 服务
+	// （/v1/review/*，见 internal/service/review.go），此处仅保留 enqueue。
 	r.POST("/api/v1/mvp/review", handleMVPReviewEnqueue)
-	r.POST("/api/v1/mvp/review/{id}/approve", handleMVPReviewApprove)
-	r.POST("/api/v1/mvp/review/{id}/reject", handleMVPReviewReject)
 
 	r.GET("/api/v1/mvp/publish/jobs", handleMVPPublishList)
 	r.POST("/api/v1/mvp/publish/from-review/{id}", handleMVPPublishFromReview)
@@ -44,9 +44,8 @@ func RegisterMVPMediaRoutes(srv *kratoshttp.Server) {
 	r.GET("/api/v1/mvp/publish/jobs/{id}", handleMVPPublishGet)
 	r.GET("/api/v1/mvp/publish/jobs/{id}/files/{name}", handleMVPPublishFile)
 
-	r.GET("/api/v1/mvp/opportunities", handleMVPOppList)
+	// opportunities 的 list/ack 已收编进 review.v1（见上）；create 保留。
 	r.POST("/api/v1/mvp/opportunities", handleMVPOppCreate)
-	r.POST("/api/v1/mvp/opportunities/{id}/ack", handleMVPOppAck)
 
 	r.GET("/api/v1/mvp/sourcing", handleMVPSourcingList)
 	r.POST("/api/v1/mvp/sourcing", handleMVPSourcingCreate)
@@ -153,14 +152,6 @@ func handleMVPIngestSearch(ctx kratoshttp.Context) error {
 	return writeJSON(ctx, nethttp.StatusOK, res)
 }
 
-func handleMVPReviewPending(ctx kratoshttp.Context) error {
-	items, total, err := mvp.Ensure().Review.ListPending(50, 0)
-	if err != nil {
-		return writeJSON(ctx, nethttp.StatusInternalServerError, map[string]string{"error": err.Error()})
-	}
-	return writeJSON(ctx, nethttp.StatusOK, map[string]any{"items": items, "total": total})
-}
-
 func handleMVPReviewEnqueue(ctx kratoshttp.Context) error {
 	var in review.Task
 	if err := readJSON(ctx, &in); err != nil {
@@ -175,56 +166,6 @@ func handleMVPReviewEnqueue(ctx kratoshttp.Context) error {
 		_, _ = mvp.Ensure().Content.MarkInReview(in.ContentItemID)
 	}
 	return writeJSON(ctx, nethttp.StatusOK, out)
-}
-
-type reviewDecideBody struct {
-	ReviewerID string `json:"reviewer_id"`
-	Note       string `json:"note"`
-	Platform   string `json:"platform"`
-}
-
-func handleMVPReviewApprove(ctx kratoshttp.Context) error {
-	var body reviewDecideBody
-	_ = readJSON(ctx, &body)
-	id := ctx.Vars().Get("id")
-	rt := mvp.Ensure()
-	task, err := rt.Review.Approve(id, body.ReviewerID, body.Note)
-	if err != nil {
-		return writeJSON(ctx, nethttp.StatusBadRequest, map[string]string{"error": err.Error()})
-	}
-	if task.ContentItemID != "" {
-		_, _ = rt.Content.MarkApproved(task.ContentItemID)
-	}
-	platform := body.Platform
-	if platform == "" {
-		platform = "generic"
-	}
-	job, err := rt.Publish.CreateFromApprovedReview(task, platform)
-	if err != nil {
-		return writeJSON(ctx, nethttp.StatusBadRequest, map[string]string{"error": err.Error()})
-	}
-	_, _ = rt.Publish.ProcessNext(1)
-	job, _ = rt.Publish.Get(job.ID)
-	_ = mvp.AfterReviewDecision(task)
-	return writeJSON(ctx, nethttp.StatusOK, map[string]any{
-		"review":      task,
-		"publish_job": job,
-		"note":        "packaged ≠ posted_to_platform; download manifest.json/body.md and paste manually",
-	})
-}
-
-func handleMVPReviewReject(ctx kratoshttp.Context) error {
-	var body reviewDecideBody
-	_ = readJSON(ctx, &body)
-	task, err := mvp.Ensure().Review.Reject(ctx.Vars().Get("id"), body.ReviewerID, body.Note)
-	if err != nil {
-		return writeJSON(ctx, nethttp.StatusBadRequest, map[string]string{"error": err.Error()})
-	}
-	if task.ContentItemID != "" {
-		_, _ = mvp.Ensure().Content.MarkRejected(task.ContentItemID)
-	}
-	_ = mvp.AfterReviewDecision(task)
-	return writeJSON(ctx, nethttp.StatusOK, task)
 }
 
 func handleMVPPublishList(ctx kratoshttp.Context) error {
@@ -300,29 +241,12 @@ func handleMVPPublishFile(ctx kratoshttp.Context) error {
 	return copyErr
 }
 
-func handleMVPOppList(ctx kratoshttp.Context) error {
-	q := ctx.Request().URL.Query()
-	items, total, err := mvp.Ensure().Opportunity.List(q.Get("audience"), q.Get("status"), 50, 0)
-	if err != nil {
-		return writeJSON(ctx, nethttp.StatusInternalServerError, map[string]string{"error": err.Error()})
-	}
-	return writeJSON(ctx, nethttp.StatusOK, map[string]any{"items": items, "total": total})
-}
-
 func handleMVPOppCreate(ctx kratoshttp.Context) error {
 	var in commerce.Opportunity
 	if err := readJSON(ctx, &in); err != nil {
 		return writeJSON(ctx, nethttp.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
 	out, err := mvp.Ensure().Opportunity.Create(in)
-	if err != nil {
-		return writeJSON(ctx, nethttp.StatusBadRequest, map[string]string{"error": err.Error()})
-	}
-	return writeJSON(ctx, nethttp.StatusOK, out)
-}
-
-func handleMVPOppAck(ctx kratoshttp.Context) error {
-	out, err := mvp.Ensure().Opportunity.Acknowledge(ctx.Vars().Get("id"))
 	if err != nil {
 		return writeJSON(ctx, nethttp.StatusBadRequest, map[string]string{"error": err.Error()})
 	}

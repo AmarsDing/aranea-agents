@@ -5549,16 +5549,22 @@ func init() {
 	reviewtask.DefaultReviewerID = reviewtaskDescReviewerID.Default.(string)
 	// reviewtask.ReviewerIDValidator is a validator for the "reviewer_id" field. It is called by the builders before save.
 	reviewtask.ReviewerIDValidator = reviewtaskDescReviewerID.Validators[0].(func(string) error)
+	// reviewtaskDescCreatorID is the schema descriptor for creator_id field.
+	reviewtaskDescCreatorID := reviewtaskFields[13].Descriptor()
+	// reviewtask.DefaultCreatorID holds the default value on creation for the creator_id field.
+	reviewtask.DefaultCreatorID = reviewtaskDescCreatorID.Default.(string)
+	// reviewtask.CreatorIDValidator is a validator for the "creator_id" field. It is called by the builders before save.
+	reviewtask.CreatorIDValidator = reviewtaskDescCreatorID.Validators[0].(func(string) error)
 	// reviewtaskDescDecidedAt is the schema descriptor for decided_at field.
-	reviewtaskDescDecidedAt := reviewtaskFields[13].Descriptor()
+	reviewtaskDescDecidedAt := reviewtaskFields[14].Descriptor()
 	// reviewtask.DefaultDecidedAt holds the default value on creation for the decided_at field.
 	reviewtask.DefaultDecidedAt = reviewtaskDescDecidedAt.Default.(string)
 	// reviewtaskDescCreatedAt is the schema descriptor for created_at field.
-	reviewtaskDescCreatedAt := reviewtaskFields[14].Descriptor()
+	reviewtaskDescCreatedAt := reviewtaskFields[15].Descriptor()
 	// reviewtask.DefaultCreatedAt holds the default value on creation for the created_at field.
 	reviewtask.DefaultCreatedAt = reviewtaskDescCreatedAt.Default.(string)
 	// reviewtaskDescUpdatedAt is the schema descriptor for updated_at field.
-	reviewtaskDescUpdatedAt := reviewtaskFields[15].Descriptor()
+	reviewtaskDescUpdatedAt := reviewtaskFields[16].Descriptor()
 	// reviewtask.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	reviewtask.DefaultUpdatedAt = reviewtaskDescUpdatedAt.Default.(string)
 	// reviewtaskDescID is the schema descriptor for id field.

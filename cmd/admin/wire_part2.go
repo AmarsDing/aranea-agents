@@ -61,6 +61,13 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.SelfImprovement, *co
 		provideCeoboardStore,
 		provideCeoboardRuntime,
 		provideCeoboardService,
+		// E 阶段 W1b 统一审批中心 + review.v1 收编（拍板 A-1/A-2/A-4）。
+		provideApprovalTaskReviewReader,
+		provideApprovalEvolutionReader,
+		provideApprovalAggregator,
+		provideApprovalMatrix,
+		provideApprovalCenterService,
+		provideReviewService,
 		provideCronRunnerDeps,
 		provideCronRunner,
 		wire.Bind(new(biz.CronTaskTrigger), new(*cronrunner.Runner)),

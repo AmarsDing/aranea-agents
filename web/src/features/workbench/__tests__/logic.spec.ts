@@ -14,17 +14,24 @@ import {
 } from '../logic';
 
 describe('isPendingDecision', () => {
-  it('treats empty / pending / awaiting as pending (case-insensitive)', () => {
-    expect(isPendingDecision('')).toBe(true);
-    expect(isPendingDecision('pending')).toBe(true);
-    expect(isPendingDecision('PENDING')).toBe(true);
-    expect(isPendingDecision('Awaiting')).toBe(true);
+  // E 阶段 W1b：对齐 decision_records 真实 outcome 词表
+  // （asked/approved/rejected/timeout/resumed）——仅 asked 为待决。
+  it('treats asked as pending (case-insensitive)', () => {
+    expect(isPendingDecision('asked')).toBe(true);
+    expect(isPendingDecision('Asked')).toBe(true);
+    expect(isPendingDecision('ASKED')).toBe(true);
   });
 
-  it('treats resolved outcomes as done', () => {
+  it('treats resolved/legacy outcomes as not pending', () => {
     expect(isPendingDecision('approved')).toBe(false);
     expect(isPendingDecision('rejected')).toBe(false);
+    expect(isPendingDecision('timeout')).toBe(false);
+    expect(isPendingDecision('resumed')).toBe(false);
     expect(isPendingDecision('executed')).toBe(false);
+    // 旧过滤词与真实词表零交集（恒空 bug 根因），修复后不再判待决。
+    expect(isPendingDecision('')).toBe(false);
+    expect(isPendingDecision('pending')).toBe(false);
+    expect(isPendingDecision('awaiting')).toBe(false);
   });
 });
 
@@ -161,7 +168,7 @@ describe('buildTradeLane', () => {
     category: 'hitl_approval',
     scenario: 'buy',
     reasoning: 'r',
-    outcome: 'pending',
+    outcome: 'asked',
     actor_type: 'agent',
     actor_key: 'q1',
     created_at: '2026-10-24T01:00:00Z',

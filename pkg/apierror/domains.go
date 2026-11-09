@@ -56,4 +56,7 @@ const (
 	DomainAgentBridge         = "AGENT_BRIDGE"
 	DomainComputerUse         = "COMPUTER_USE"
 	DomainSandbox             = "SANDBOX"
+	// E 阶段 W1b：统一审批中心 + 发文审批收编（approval.v1 / review.v1）。
+	DomainApproval = "APPROVAL"
+	DomainReview   = "REVIEW"
 )

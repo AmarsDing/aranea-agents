@@ -35,6 +35,9 @@ func (ReviewTask) Fields() []ent.Field {
 		field.String("status").Default("pending").MaxLen(64),
 		field.Text("decision_note").Default(""),
 		field.String("reviewer_id").Default("").MaxLen(256),
+		// creator_id（E 阶段 W1b 收编）：内容创建者 JWT 主体 id，供「不可自批」
+		// 服务端强制校验；图执行机器入队任务为空串。存量行默认 ''。
+		field.String("creator_id").Default("").MaxLen(256),
 		field.String("decided_at").Default(""),
 
 		field.String("created_at").Default(""),

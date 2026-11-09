@@ -73,17 +73,18 @@ func (uc *Usecase) decide(id, to, reviewerID, note string) (Task, error) {
 	if err != nil {
 		return Task{}, err
 	}
+	// 不可自批（A-2 安全红线）：创建者与决议者均非空且相同即拒绝。
+	// 图执行机器入队任务 CreatorID 为空，不受影响。
+	if cur.CreatorID != "" && reviewerID != "" && cur.CreatorID == reviewerID {
+		return Task{}, ErrSelfApproval
+	}
 	next, err := Transition(cur.Status, to)
 	if err != nil {
 		return Task{}, err
 	}
-	now := time.Now().UTC()
-	cur.Status = next
-	cur.ReviewerID = reviewerID
-	cur.DecisionNote = note
-	cur.DecidedAt = &now
-	cur.UpdatedAt = now
-	return uc.repo.Update(cur)
+	// CAS 落库（并发决议恰一个成功，其余 ErrConflict）；Get→Decide 之间
+	// 状态被推进时由仓储层防线兜住。
+	return uc.repo.Decide(id, cur.Status, next, reviewerID, note, time.Now().UTC())
 }
 
 // MustBeApproved is the publish gate: returns error unless status=approved.

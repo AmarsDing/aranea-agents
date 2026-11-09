@@ -12,8 +12,9 @@ permissions: [ceo, oncall, viewer]
 changelog:
   - { version: 1, date: "2026-11-03", note: "P0 新增:承载 aranea/digital-human 健康与 dh 场次态" }
 
-probe: { type: rest, path: "GET http://192.168.4.44:8800/api/v1/mvp/opportunities?limit=1", interval: 30s, stale_after: 90s }
+probe: { type: rest, path: "GET http://192.168.4.44:8800/api/v1/mvp/content?limit=1", interval: 30s, stale_after: 90s }
   # aranea 无健康端点(方案 §17.1 R3-Q4)→ 连通性探测代替,健康端点由 aranea 侧后补(开放问题 Q10)
+  # E 阶段 W1b:原探测点 /api/v1/mvp/opportunities 已随 A-2 收编下线,改用仍存活的内容列表(裸读)
 
 nodes:
   - id: base-aranea
@@ -23,15 +24,17 @@ nodes:
     exit:  "poll(ok)"
     source:
       adapter: rest-poll
-      rest_path: "GET http://192.168.4.44:8800/api/v1/mvp/opportunities?limit=1"  # mvp/api.ts:93,只读
-      field_map: { entity_id: id, status: status }   # Opportunity 字段 types.go:23-34
+      rest_path: "GET http://192.168.4.44:8800/api/v1/mvp/content?limit=1"  # mvp/api.ts listContent,只读
+      field_map: { entity_id: id, status: status }   # 内容项字段(types.go ContentItem)
     metrics:
       - { id: m.base.aranea.rtt, unit: ms, window: realtime, expr: "gauge(rtt)" }
     drill:
-      - { label: 发文审批队列, type: rest, path: "GET http://192.168.4.44:8800/api/v1/mvp/review/pending",
-          empty_state: "无待审批发文" }              # mvp/api.ts:78
-      - { label: 上架确认队列, type: rest, path: "GET http://192.168.4.44:8800/api/v1/mvp/opportunities",
-          empty_state: "无待确认商机" }              # mvp/api.ts:93
+      # E 阶段 W1b(A-2):发文/商机队列收编进 review.v1(带鉴权 review.view;
+      # 操作入口为 /approvals 与 /review-queue 页,此处路径为展示声明)
+      - { label: 发文审批队列, type: rest, path: "GET http://192.168.4.44:8800/v1/review/pending",
+          empty_state: "无待审批发文" }              # review.v1 ListPendingReviews
+      - { label: 上架确认队列, type: rest, path: "GET http://192.168.4.44:8800/v1/review/opportunities",
+          empty_state: "无待确认商机" }              # review.v1 ListOpportunities
 
   - id: base-dh
     name: digital-human 直播场次

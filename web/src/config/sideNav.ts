@@ -26,6 +26,7 @@ export const sideNavGroups: NavGroup[] = [
     items: [
       { to: '/overview', icon: 'dashboard', labelKey: 'menu.overview' },
       { to: '/workbench', icon: 'track_changes', labelKey: 'menu.cockpit' },
+      { to: '/approvals', icon: 'approval', labelKey: 'menu.approvals', permission: 'approval.review' },
       { to: '/ceo/overview', icon: 'monitoring', labelKey: 'menu.ceoOverview', permission: 'ceoboard.view' },
       { to: '/ceo/oncall', icon: 'engineering', labelKey: 'menu.ceoOncall', permission: 'ceoboard.view' },
       { to: '/task-workspace', icon: 'view_quilt', labelKey: 'menu.taskWorkspace' },

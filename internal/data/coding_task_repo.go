@@ -243,21 +243,108 @@ func (r *codingTaskRepo) mergeTaskExtras(ctx context.Context, tasks []*bridge.Co
 	return tasks, rows.Err()
 }
 
+// ListPendingReview E 阶段 W1b：统一审批中心任务验收源。review_status 是
+// raw SQL 列（迁移 20261308），故过滤走 raw SQL 取 id，再经 ent 水合并
+// mergeTaskExtras 回填 extras。
+func (r *codingTaskRepo) ListPendingReview(ctx context.Context, workspaceID string, limit int) ([]*bridge.CodingTask, int, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 1000 {
+		limit = 1000
+	}
+	db := r.data.RWDB().ReadDB(ctx)
+	if db == nil {
+		return nil, 0, apierror.Internal(apierror.DomainAgentBridge, "repository unavailable")
+	}
+	where := `review_status='' AND status IN ('done','failed','cancelled')`
+	args := make([]any, 0, 2)
+	if workspaceID != "" {
+		where += ` AND workspace=?`
+		args = append(args, workspaceID)
+	}
+	var total int
+	// execer 面只有 QueryContext（无 QueryRowContext）——行存否由 rows.Next() 判。
+	crows, err := db.QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(
+		`SELECT COUNT(1) FROM coding_tasks WHERE `+where), args...)
+	if err != nil {
+		return nil, 0, err
+	}
+	if crows.Next() {
+		if err := crows.Scan(&total); err != nil {
+			crows.Close()
+			return nil, 0, err
+		}
+	}
+	crows.Close()
+	if err := crows.Err(); err != nil {
+		return nil, 0, err
+	}
+	if total == 0 {
+		return []*bridge.CodingTask{}, 0, nil
+	}
+	rows, err := db.QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(
+		`SELECT id FROM coding_tasks WHERE `+where+` ORDER BY created_at DESC, id DESC LIMIT ?`),
+		append(args, limit)...)
+	if err != nil {
+		return nil, 0, err
+	}
+	ids := make([]string, 0, limit)
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return nil, 0, err
+		}
+		ids = append(ids, id)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, 0, err
+	}
+	entRows, err := r.data.RW().Read(ctx).CodingTask.Query().
+		Where(codingtask.IDIn(ids...)).All(ctx)
+	if err != nil {
+		return nil, 0, entErrToBizErr(err, apierror.DomainAgentBridge)
+	}
+	byID := make(map[string]*bridge.CodingTask, len(entRows))
+	for _, row := range entRows {
+		byID[row.ID] = entCodingTaskToBiz(row)
+	}
+	out := make([]*bridge.CodingTask, 0, len(ids))
+	for _, id := range ids {
+		if t := byID[id]; t != nil {
+			out = append(out, t)
+		}
+	}
+	merged, err := r.mergeTaskExtras(ctx, out)
+	if err != nil {
+		return nil, 0, err
+	}
+	return merged, total, nil
+}
+
 // UpdateReview 验收三动作落库（status: approved/rejected/archived）。
+// W1b CAS 防线：WHERE review_status='' ——并发/重复决议 0 行命中时区分
+// NotFound（任务不存在）与 Conflict（已被决议）。
 func (r *codingTaskRepo) UpdateReview(ctx context.Context, id, status, comment, reviewedAt string) error {
 	db := r.data.RWDB().WriteDB(ctx)
 	if db == nil {
 		return apierror.Internal(apierror.DomainAgentBridge, "repository unavailable")
 	}
 	res, err := db.ExecContext(ctx, r.data.Dialect().RenumberPlaceholders(
-		`UPDATE coding_tasks SET review_status=?, review_comment=?, reviewed_at=?, updated_at=? WHERE id=?`),
+		`UPDATE coding_tasks SET review_status=?, review_comment=?, reviewed_at=?, updated_at=? WHERE id=? AND review_status=''`),
 		status, comment, reviewedAt, nowRFC3339(), id)
 	if err != nil {
 		return err
 	}
 	n, _ := res.RowsAffected()
 	if n == 0 {
-		return apierror.NotFound(apierror.DomainAgentBridge, "coding task %s not found", id)
+		if _, getErr := r.data.RW().Read(ctx).CodingTask.Get(ctx, id); getErr != nil {
+			return entErrToBizErr(getErr, apierror.DomainAgentBridge)
+		}
+		return apierror.Conflict(apierror.DomainAgentBridge,
+			"coding task %s already reviewed (lost-update guard)", id)
 	}
 	return nil
 }

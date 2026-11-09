@@ -19,9 +19,13 @@ import type {
 } from './types';
 
 // ——— outcome 判定（与 useAttentionBoard 同形态）———
+// E 阶段 W1b 顺手修复（需求文档 §5.2 关键缺口②）：decision_records 实际
+// outcome 词表为 asked/approved/rejected/timeout/resumed
+// （tool_confirmation_part2.go 待决写 asked），旧过滤词 ''/pending/awaiting
+// 与真实数据零交集导致 trade lane 恒空——对齐为 asked。
 export function isPendingDecision(outcome: string): boolean {
   const o = (outcome ?? '').toLowerCase();
-  return o === '' || o === 'pending' || o === 'awaiting';
+  return o === 'asked';
 }
 
 // ——— 业务线归因（M67/M78：按既有组织树关键词绑定，不发明新组织模型）———

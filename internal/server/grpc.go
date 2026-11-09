@@ -10,6 +10,7 @@ import (
 	agentv1 "aranea-agents/api/kratos/agent/v1"
 	agentbridgev1 "aranea-agents/api/kratos/agentbridge/v1"
 	airefinev1 "aranea-agents/api/kratos/ai_refine/v1"
+	approvalv1 "aranea-agents/api/kratos/approval/v1"
 	artifactv1 "aranea-agents/api/kratos/artifact/v1"
 	avatarv1 "aranea-agents/api/kratos/avatar/v1"
 	ceoboardv1 "aranea-agents/api/kratos/ceoboard/v1"
@@ -35,6 +36,7 @@ import (
 	organizationv1 "aranea-agents/api/kratos/organization/v1"
 	packv1 "aranea-agents/api/kratos/pack/v1"
 	pluginv1 "aranea-agents/api/kratos/plugin/v1"
+	reviewv1 "aranea-agents/api/kratos/review/v1"
 	runtimeprofilev1 "aranea-agents/api/kratos/runtime_profile/v1"
 	sandboxv1 "aranea-agents/api/kratos/sandbox/v1"
 	selfimprovementv1 "aranea-agents/api/kratos/self_improvement/v1"
@@ -142,6 +144,12 @@ func NewGRPCServer(c *conf.Server, s *ServiceRegistry, lg loggateway.Logger) *gr
 	}
 	if s.Ceoboard != nil {
 		ceoboardv1.RegisterCeoboardServiceServer(srv, s.Ceoboard)
+	}
+	if s.ApprovalCenter != nil {
+		approvalv1.RegisterApprovalCenterServiceServer(srv, s.ApprovalCenter)
+	}
+	if s.Review != nil {
+		reviewv1.RegisterReviewServiceServer(srv, s.Review)
 	}
 	return srv
 }
