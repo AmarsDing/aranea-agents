@@ -275,8 +275,62 @@ func (uc *AdminUsecase) CreateAdmin(ctx context.Context, admin *Admin) (*Admin, 
 }
 
 // UpdateAdmin updates an existing admin user.
+//
+// 角色信号变更即先吊销后写入（评审 2026-11-09 A4，镜像 DeleteAdmin 的 H1
+// 模式）：管理员改角色（access/roles）后，旧 token 里仍是旧角色 claim，
+// 不递增 tv 吊销即「改角色不生效」的安全缺口——旧会话最长可凭旧 claim
+// 活到自然过期。故与 DeleteAdmin 同理：检测到角色信号变化时先吊销全部会话
+// 再落库；吊销失败（含 revoker 未接线）则整个操作不动任何数据并如实报错，
+// 绝不留下「角色已改但旧会话仍活」的窗口。纯资料更新（姓名/头像/口令等）
+// 不触碰角色信号，不触发吊销。
 func (uc *AdminUsecase) UpdateAdmin(ctx context.Context, admin *Admin) (*Admin, error) {
+	changed, err := uc.roleSignalChanged(ctx, admin)
+	if err != nil {
+		return nil, err
+	}
+	if changed {
+		if err := uc.RevokeSessions(ctx, admin.ID, "role_change"); err != nil {
+			return nil, err
+		}
+	}
 	return uc.writer.UpdateAdmin(ctx, admin)
+}
+
+// roleSignalChanged 判定本次更新是否改变角色信号（access 或 roles）：
+// Access 始终比对（角色变更入口必带 access）；Roles 仅当入参非 nil 时比对
+// （service 层字段掩码更新不带 roles——此时 roles 未变，不得误吊销），
+// 且按无序集合比对（顺序不敏感）。旧记录读不到（FindByID 失败）时如实
+// 上抛，由调用方决定——不猜测、不默认无变更。
+func (uc *AdminUsecase) roleSignalChanged(ctx context.Context, admin *Admin) (bool, error) {
+	if admin == nil {
+		return false, nil
+	}
+	old, err := uc.reader.FindByID(ctx, admin.ID)
+	if err != nil {
+		return false, err
+	}
+	if old == nil {
+		return false, nil
+	}
+	if old.Access != admin.Access {
+		return true, nil
+	}
+	if admin.Roles == nil {
+		return false, nil
+	}
+	if len(old.Roles) != len(admin.Roles) {
+		return true, nil
+	}
+	set := make(map[string]struct{}, len(old.Roles))
+	for _, r := range old.Roles {
+		set[r] = struct{}{}
+	}
+	for _, r := range admin.Roles {
+		if _, ok := set[r]; !ok {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // DeleteAdmin deletes an admin user by ID.

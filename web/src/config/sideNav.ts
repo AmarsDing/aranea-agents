@@ -92,7 +92,7 @@ export const sideNavGroups: NavGroup[] = [
     items: [
       { to: '/cron', icon: 'schedule', labelKey: 'menu.cron', permission: 'system.cron' },
       { to: '/monitor/logs', icon: 'monitor_heart', labelKey: 'menu.monitor', exact: false, permission: 'system.monitor' },
-      { to: '/self-improvement', icon: 'precision_manufacturing', labelKey: 'menu.selfImprovement' },
+      { to: '/self-improvement', icon: 'precision_manufacturing', labelKey: 'menu.selfImprovement', permission: 'system.self_improve' },
       { to: '/settings', icon: 'settings', labelKey: 'menu.settings', permission: 'system.setting' },
     ],
   },

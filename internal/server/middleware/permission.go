@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/auth"
 	"aranea-agents/pkg/loggateway"
 
@@ -104,6 +105,12 @@ func (r *PermissionRegistry) CoverageSnapshot() map[string]string {
 	return out
 }
 
+// PermissionDeniedMessage 是权限硬判拒绝的稳定文案（评审 2026-11-09 A1）：
+// 本中间件与 ForceResetGate 共用同一 apierror.Forbidden("AUTH") 形状——
+// 经 APIToKratos 翻译后 reason 均为 AUTH_FORBIDDEN、HTTP 403，前端按
+// 「AUTH_FORBIDDEN + 文案」区分拒绝来源（越权 vs 强制改密）。
+const PermissionDeniedMessage = "permission denied"
+
 // permissionDeniedThrottle 节流 403 Warn（越权探测扫描会刷屏）：10s 窗口。
 type windowThrottle struct {
 	mu         sync.Mutex
@@ -169,7 +176,7 @@ func Permission(registry *PermissionRegistry, lg loggateway.Logger) middleware.M
 					loggateway.StepID("auth.permission_denied"),
 					loggateway.Str("operation", key),
 					loggateway.Str("code", code))
-				return nil, auth.ErrForbidden
+				return nil, apierror.Forbidden("AUTH", PermissionDeniedMessage)
 			}
 			if a.HasPermission(code) {
 				return handler(ctx, req)
@@ -186,7 +193,7 @@ func Permission(registry *PermissionRegistry, lg loggateway.Logger) middleware.M
 				}
 				lg.Warn("permission denied", fields...)
 			}
-			return nil, auth.ErrForbidden
+			return nil, apierror.Forbidden("AUTH", PermissionDeniedMessage)
 		}
 	}
 }

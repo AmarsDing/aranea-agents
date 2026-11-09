@@ -7,6 +7,8 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"aranea-agents/pkg/auth"
 )
 
 // TestFilterMenuGroups 覆盖 P1-7 的可见性裁剪语义：
@@ -35,22 +37,29 @@ func TestFilterMenuGroups(t *testing.T) {
 	}
 
 	// 无任何授权时：带码条目全部消失，仅剩「仅需登录」条目。
-	// knowledge 组只剩 evaluation（无码），ops 组只剩 selfImprovement（无码）。
+	// knowledge 组只剩 evaluation（无码）；ops 组四个条目全部带码（A3 起
+	// selfImprovement 接码 system.self_improve），整组裁空即省略。
 	if items := groupByKey(none, "knowledge"); len(items) != 1 || items[0].Key != "evaluation" {
 		t.Fatalf("deny-all knowledge group = %+v, want only evaluation", items)
 	}
-	if items := groupByKey(none, "ops"); len(items) != 1 || items[0].Key != "selfImprovement" {
-		t.Fatalf("deny-all ops group = %+v, want only selfImprovement", items)
+	if items := groupByKey(none, "ops"); len(items) != 0 {
+		t.Fatalf("deny-all ops group = %+v, want omitted (all four items gated)", items)
 	}
 
-	// 只授予 knowledge.read：knowledge/artifacts 回归，其余仍被裁掉。
+	// 只授予 knowledge.read：knowledge/artifacts 回归，ops 组仍整组裁掉。
 	granted := map[string]bool{"knowledge.read": true}
 	partial := FilterMenuGroups(catalog, func(code string) bool { return granted[code] })
 	if items := groupByKey(partial, "knowledge"); len(items) != 3 {
 		t.Fatalf("knowledge group items = %d, want 3 (two gated + evaluation)", len(items))
 	}
-	if items := groupByKey(partial, "ops"); len(items) != 1 || items[0].Key != "selfImprovement" {
-		t.Fatalf("ops group = %+v, want only selfImprovement", items)
+	if items := groupByKey(partial, "ops"); len(items) != 0 {
+		t.Fatalf("ops group = %+v, want omitted under knowledge-only grant", items)
+	}
+	// 只授予 system.self_improve：ops 组仅剩 selfImprovement 回归（A3）。
+	grantedSI := map[string]bool{"system.self_improve": true}
+	partialSI := FilterMenuGroups(catalog, func(code string) bool { return grantedSI[code] })
+	if items := groupByKey(partialSI, "ops"); len(items) != 1 || items[0].Key != "selfImprovement" {
+		t.Fatalf("ops group under self_improve grant = %+v, want only selfImprovement", items)
 	}
 	if got := groupByKey(partial, "workspace"); len(got) != len(groupByKey(none, "workspace")) {
 		t.Fatalf("workspace group changed under knowledge-only grant: %d", len(got))
@@ -113,6 +122,48 @@ func TestNavigationCatalogIntegrity(t *testing.T) {
 			}
 			seenKey[it.Key], seenPath[it.Path] = true, true
 		}
+	}
+}
+
+// TestSelfImprovementMenuAlignedWithPermissionCode 评审 2026-11-09 A3：
+// /self-improvement 菜单接码 system.self_improve（与 permission_registry_gen.go
+// 硬判同码）——可见性与 rpc 判定必须对齐：sysadmin/superadmin 可见，普通用户
+// 不可见（否则「可见但全 403」）。
+func TestSelfImprovementMenuAlignedWithPermissionCode(t *testing.T) {
+	find := func(groups []MenuGroup) *MenuEntry {
+		for _, g := range groups {
+			for i := range g.Items {
+				if g.Items[i].Key == "selfImprovement" {
+					return &g.Items[i]
+				}
+			}
+		}
+		return nil
+	}
+	catalog := NavigationCatalog()
+	entry := find(catalog)
+	if entry == nil {
+		t.Fatal("selfImprovement entry missing from catalog")
+	}
+	if entry.Permission != "system.self_improve" {
+		t.Fatalf("selfImprovement permission = %q, want system.self_improve", entry.Permission)
+	}
+
+	visible := func(roles ...string) bool {
+		a := &auth.Auth{UserID: 1, Access: "user", Roles: roles}
+		return find(FilterMenuGroups(catalog, a.HasPermission)) != nil
+	}
+	if !visible("sysadmin") {
+		t.Fatal("sysadmin must see self-improvement menu (matrix grants system.self_improve)")
+	}
+	if !visible("superadmin") {
+		t.Fatal("superadmin must see self-improvement menu via wildcard")
+	}
+	if visible("user") {
+		t.Fatal("plain user must NOT see self-improvement menu (rpc would 403)")
+	}
+	if visible("viewer") {
+		t.Fatal("viewer must NOT see self-improvement menu")
 	}
 }
 

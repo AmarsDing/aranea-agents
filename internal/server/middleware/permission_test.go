@@ -2,15 +2,16 @@ package middleware_test
 
 import (
 	"context"
-	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	servermw "aranea-agents/internal/server/middleware"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/auth"
 	"aranea-agents/pkg/loggateway"
 
+	kerrors "github.com/go-kratos/kratos/v2/errors"
 	"github.com/go-kratos/kratos/v2/transport"
 )
 
@@ -47,6 +48,16 @@ var (
 	_ transport.Transporter = fakeTransport{}
 	_ transport.Transporter = fakeHTTPTransport{}
 )
+
+// assertAuthForbidden 断言 err 为 apierror AUTH/FORBIDDEN 形状（评审
+// 2026-11-09 A1：Permission 中间件与 ForceResetGate 共用同一 403 形状）。
+func assertAuthForbidden(t *testing.T, err error) {
+	t.Helper()
+	ae, ok := apierror.From(err)
+	if !ok || ae.Code != apierror.CodeForbidden || ae.Domain != "AUTH" {
+		t.Fatalf("expect AUTH/FORBIDDEN apierror, got %v", err)
+	}
+}
 
 // grpcCtxWithOperation 构造带 operation 的 gRPC 服务器上下文。
 func grpcCtxWithOperation(op string) context.Context {
@@ -118,27 +129,30 @@ func TestPermissionMiddleware(t *testing.T) {
 		t.Setenv("DEPLOY_ENV", "production")
 		ctx := auth.NewContext(grpcCtxWithOperation("/kratos.admin.v1.AdminService/UpdateAdmin"), userRole)
 		err, called := run(ctx)
-		if called || !errors.Is(err, auth.ErrForbidden) {
-			t.Fatalf("denied must return ErrForbidden without calling handler: err=%v called=%v", err, called)
+		if called {
+			t.Fatal("denied must not call handler")
 		}
+		assertAuthForbidden(t, err)
 	})
 
 	t.Run("HTTP键_登记但无权_403", func(t *testing.T) {
 		t.Setenv("DEPLOY_ENV", "production")
 		ctx := auth.NewContext(httpCtxWithRoute(http.MethodPut, "/v1/admins/update"), userRole)
 		err, called := run(ctx)
-		if called || !errors.Is(err, auth.ErrForbidden) {
-			t.Fatalf("denied http must return ErrForbidden: err=%v called=%v", err, called)
+		if called {
+			t.Fatal("denied http must not call handler")
 		}
+		assertAuthForbidden(t, err)
 	})
 
 	t.Run("生产环境无主体_fail-closed", func(t *testing.T) {
 		t.Setenv("DEPLOY_ENV", "production")
 		ctx := grpcCtxWithOperation("/kratos.admin.v1.AdminService/UpdateAdmin")
 		err, called := run(ctx)
-		if called || !errors.Is(err, auth.ErrForbidden) {
-			t.Fatalf("no principal in prod must fail-closed: err=%v called=%v", err, called)
+		if called {
+			t.Fatal("no principal in prod must fail-closed without calling handler")
 		}
+		assertAuthForbidden(t, err)
 	})
 
 	t.Run("dev环境无主体_gRPC内网直通放行", func(t *testing.T) {
@@ -154,9 +168,10 @@ func TestPermissionMiddleware(t *testing.T) {
 		t.Setenv("DEPLOY_ENV", "dev")
 		ctx := auth.NewContext(grpcCtxWithOperation("/kratos.admin.v1.AdminService/UpdateAdmin"), userRole)
 		err, called := run(ctx)
-		if called || !errors.Is(err, auth.ErrForbidden) {
-			t.Fatalf("dev with principal still enforces code: err=%v called=%v", err, called)
+		if called {
+			t.Fatal("dev with principal still enforces code")
 		}
+		assertAuthForbidden(t, err)
 	})
 
 	t.Run("无transport上下文_放行", func(t *testing.T) {
@@ -195,4 +210,31 @@ func TestPermissionRegistryHTTPKeyWithoutMethodPanics(t *testing.T) {
 		}
 	}()
 	r.RequireRPC("/kratos.x.v1.S/M", "", "/v1/x", "user.read")
+}
+
+// TestPermissionDeniedShapeMatchesForceResetGate 评审 2026-11-09 A1：
+// Permission 中间件与 ForceResetGate 的 403 必须同形状——同为 apierror
+// AUTH/FORBIDDEN，经 APIToKratos 同一翻译路径（apierror.ToKratos）后
+// reason 均为 AUTH_FORBIDDEN、HTTP 403。
+func TestPermissionDeniedShapeMatchesForceResetGate(t *testing.T) {
+	registry := servermw.NewPermissionRegistry()
+	registry.RequireRPC("/kratos.admin.v1.AdminService/UpdateAdmin", "PUT", "/v1/admins/update", "user.write")
+	permMW := servermw.Permission(registry, loggateway.NewNoop())
+	frMW := servermw.ForceResetGate(loggateway.NewNoop())
+	noop := func(context.Context, interface{}) (interface{}, error) { return "ok", nil }
+
+	t.Setenv("DEPLOY_ENV", "production")
+	viewer := &auth.Auth{UserID: 2, Access: "user", Roles: []string{"viewer"}, Clearance: 1}
+	frUser := &auth.Auth{UserID: 9, Access: "user", Roles: []string{"user"}, ForceReset: true}
+
+	_, permErr := permMW(noop)(auth.NewContext(grpcCtxWithOperation("/kratos.admin.v1.AdminService/UpdateAdmin"), viewer), nil)
+	_, frErr := frMW(noop)(auth.NewContext(grpcCtxWithOperation("/kratos.admin.v1.AdminService/ListAdmins"), frUser), nil)
+
+	for name, err := range map[string]error{"permission": permErr, "force_reset": frErr} {
+		assertAuthForbidden(t, err)
+		ke := kerrors.FromError(apierror.ToKratos(err))
+		if ke.Code != int32(http.StatusForbidden) || ke.Reason != "AUTH_FORBIDDEN" {
+			t.Fatalf("%s: translated = %d/%s, want 403/AUTH_FORBIDDEN", name, ke.Code, ke.Reason)
+		}
+	}
 }

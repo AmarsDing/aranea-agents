@@ -892,6 +892,7 @@ export default {
     voiceNoSession: '会话尚未就绪，请稍后再试',
     voiceButlerSession: '语音助手',
     voiceChannelClosed: '语音通道已断开',
+    voiceSessionRevoked: '语音会话已失效（登录状态变更），请重新进入语音模式',
     micUnavailable: '麦克风不可用，请检查权限设置',
     voiceUnavailable: '语音服务未配置，请联系管理员在「系统设置 → 语音服务」中配置 ASR/TTS',
     webglUnsupported: '当前环境不支持 WebGL，无法渲染 HUD',
@@ -2059,7 +2060,7 @@ export default {
       updatedAt: '数据更新于 {at}',
       autoRefresh: '每 15s 自动刷新',
       registryLine: '注册表: {dir} · 加载 {loaded} 条 / 失败隔离 {failed} 条 / 待补跳过 {skipped} 项',
-      currentAccount: '当前账号 {name}({roles})',
+      currentAccount: '当前账号 {name}',
     },
     common: {
       neverOk: '从未成功',

@@ -458,3 +458,104 @@ func TestVoiceConnUnregisteredOnNaturalClose(t *testing.T) {
 	_ = voiceClient.Close()
 	waitExtraConnCount(t, srv, "1", 0)
 }
+
+// ---- 评审 2026-11-09 A4：角色变更递增 tv → 旧会话凭旧角色 claim 不再存活 ----
+
+// roleChangeAdminStore 是 biz.AdminReader + biz.AdminWriter 的最小内存实现，
+// 仅支撑 A4 链路测试（管理员经 biz.UpdateAdmin 改角色）。
+type roleChangeAdminStore struct {
+	byID     map[int64]*biz.Admin
+	updateNo int
+}
+
+var (
+	_ biz.AdminReader = (*roleChangeAdminStore)(nil)
+	_ biz.AdminWriter = (*roleChangeAdminStore)(nil)
+)
+
+func (s *roleChangeAdminStore) FindByID(_ context.Context, id int64) (*biz.Admin, error) {
+	a, ok := s.byID[id]
+	if !ok {
+		return nil, biz.ErrAdminNotFound
+	}
+	return a, nil
+}
+
+func (s *roleChangeAdminStore) FindByName(context.Context, string) (*biz.Admin, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (s *roleChangeAdminStore) FindByEmail(context.Context, string) (*biz.Admin, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (s *roleChangeAdminStore) ListAdmins(context.Context, ...biz.ListOption) ([]*biz.Admin, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (s *roleChangeAdminStore) CreateAdmin(context.Context, *biz.Admin) (*biz.Admin, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (s *roleChangeAdminStore) UpdateAdmin(_ context.Context, a *biz.Admin) (*biz.Admin, error) {
+	s.updateNo++
+	s.byID[a.ID] = a
+	return a, nil
+}
+
+func (s *roleChangeAdminStore) DeleteAdmin(context.Context, int64) error {
+	return errors.New("not implemented")
+}
+
+// bumpingRevoker 把吊销动作落到共享版本表（模拟 data 层 TokenVersionStore 的
+// DB 递增）：biz 层角色变更 → 版本表 +1 → 服务端扫描据此关闭旧 tv 连接。
+type bumpingRevoker struct {
+	versions map[int64]int64
+}
+
+func (b *bumpingRevoker) RevokeSessions(_ context.Context, userID int64) (int64, error) {
+	b.versions[userID]++
+	return b.versions[userID], nil
+}
+
+// TestRoleChangeRevokesOldTokenVersion A4 链路测试（镜像 TestSweepClosesOnAccountDeleted
+// 的判定模式）：管理员经 biz.UpdateAdmin 变更角色（access user→admin）→ tv 递增 →
+// WS 兜底扫描发现旧 tv（角色变更前签发）连接过期并以 4401 关闭。旧会话凭旧角色
+// claim 不再存活到自然过期。tv 已对齐的新连接不受影响。
+func TestRoleChangeRevokesOldTokenVersion(t *testing.T) {
+	srv := newRevocationTestWSServer(t)
+	_, staleClient := newRevocationTestWSConn(t, srv, "s1", "7", 0) // 变更前签发，tv=0
+
+	versions := map[int64]int64{7: 0}
+	auth.SetTokenVersionChecker(fakeTvChecker{versions: versions})
+	defer auth.SetTokenVersionChecker(nil)
+
+	store := &roleChangeAdminStore{byID: map[int64]*biz.Admin{
+		7: {ID: 7, Name: "u", Access: "user", Roles: []string{"user"}, Status: biz.AdminStatusActive},
+	}}
+	uc := biz.NewAdminUsecase(store, store, loggateway.NewNoop())
+	uc.SetSessionRevoker(&bumpingRevoker{versions: versions})
+
+	if _, err := uc.UpdateAdmin(context.Background(), &biz.Admin{ID: 7, Name: "u", Access: "admin"}); err != nil {
+		t.Fatalf("UpdateAdmin role change: %v", err)
+	}
+	if store.updateNo != 1 {
+		t.Fatalf("update calls = %d, want 1", store.updateNo)
+	}
+	if versions[7] != 1 {
+		t.Fatalf("token version = %d, want 1 after role change", versions[7])
+	}
+
+	// 角色变更后新登录的连接（tv=1）不应被误杀。
+	newRevocationTestWSConn(t, srv, "s2", "7", 1)
+
+	srv.sweepRevokedConnections(context.Background())
+
+	expectCloseCode(t, staleClient, wsCloseCodeSessionRevoked)
+	if n := srv.store.count("s1"); n != 0 {
+		t.Fatalf("stale session still has %d conns", n)
+	}
+	if n := srv.store.count("s2"); n != 1 {
+		t.Fatalf("fresh session conns = %d, want 1 (tv-aligned conn must survive)", n)
+	}
+}

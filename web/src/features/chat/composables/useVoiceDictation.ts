@@ -19,6 +19,7 @@ import {
 import { VOICE_TARGET_SAMPLE_RATE } from '../../companion/voice/pcm';
 import {
   createVoiceSessionClient,
+  VOICE_CLOSE_CODE_SESSION_REVOKED,
   type VoiceSessionClient,
   type VoiceSessionClientOptions,
 } from '../../companion/voice/useVoiceSession';
@@ -111,9 +112,15 @@ export function useVoiceDictation(deps: VoiceDictationDeps): UseVoiceDictationRe
           // 同会话第二连接替换：本地静默停止（对方继续）
           teardown();
         },
-        onClose: () => {
+        onClose: (info) => {
           if (!dictating.value) return; // 主动停止后的迟到 close 不报错
           teardown();
+          // 评审 2026-11-09 V3：4401 = 会话被吊销（终态，与 useVoiceSession
+          // 同分支语义）：非可重试错误，不触发重连策略。
+          if (info?.code === VOICE_CLOSE_CODE_SESSION_REVOKED) {
+            deps.onError({ code: 'VOICE_SESSION_REVOKED', message: '', retryable: false });
+            return;
+          }
           deps.onError({ code: 'VOICE_CHANNEL_CLOSED', message: '', retryable: true });
         },
       },

@@ -75,7 +75,23 @@ func NewVoiceWSServer(
 	probe VoiceStatusProbe,
 ) *VoiceWSServer {
 	return &VoiceWSServer{
-		upgrader:    websocket.Upgrader{CheckOrigin: func(*http.Request) bool { return true }},
+		// 评审 2026-11-09 V2：CheckOrigin 原先恒真——任何网页均可跨站建立
+		// 语音 WS（配合用户登录态实施跨站语音指令/旁听）。与 /v1/ws 对齐为
+		// 同一 OriginAllowed 策略：空 Origin（非浏览器客户端）放行，其余按
+		// CORS 白名单（dev localhost 前缀 + KRATOS_HTTP_EXTRA_CORS_ORIGINS
+		// 精确匹配）同语义判定，不放宽。
+		upgrader: websocket.Upgrader{
+			CheckOrigin: func(r *http.Request) bool {
+				if WSOriginAllowed(r) {
+					return true
+				}
+				lg.Warn("voice WS origin rejected",
+					loggateway.StepID("voice.ws.origin_rejected"),
+					loggateway.Str("origin", strings.TrimSpace(r.Header.Get("Origin"))),
+					loggateway.Str("remote_addr", r.RemoteAddr))
+				return false
+			},
+		},
 		sessionAuth: sessionAuth,
 		executor:    executor,
 		canceller:   canceller,
@@ -367,10 +383,12 @@ func (c *voiceRevocableConn) RevokeClose(code int, reason string) {
 	})
 }
 
-// voiceWSDownlink 实现 voice.Downlink；gorilla 写并发需写锁。
+// voiceWSDownlink 实现 voice.Downlink + voice.DownlinkCloser；gorilla 写并发
+// 需写锁。
 type voiceWSDownlink struct {
-	conn *websocket.Conn
-	mu   sync.Mutex
+	conn      *websocket.Conn
+	mu        sync.Mutex
+	closeOnce sync.Once // 替换关闭与吊销/自然拆除可能并发触发
 }
 
 func (d *voiceWSDownlink) SendJSON(v any) error {
@@ -387,6 +405,24 @@ func (d *voiceWSDownlink) SendAudio(pcm []byte) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	return d.conn.WriteMessage(websocket.BinaryMessage, pcm)
+}
+
+// CloseWithCode 以业务关闭码优雅关闭底层连接（评审 2026-11-09 V1，实现
+// voice.DownlinkCloser，供 ReplaceNoticeAndClose 关闭被替换的旧连接）：
+// 先写 close frame（对端读到有序的最后一帧 voice.replaced 后收到明确关闭码），
+// 再 Close。幂等；gorilla 保证 WriteControl/Close 可与其它写并发，故与
+// TTS 下行音频帧（本结构写锁内）及吊销路径（voiceRevocableConn.RevokeClose）
+// 并发安全。readPump 的 ReadMessage 随 Close 出错返回，其 defer 完成
+// 单一拆除路径（摘吊销登记/会话索引/sess.Close），无需此处代劳。
+func (d *voiceWSDownlink) CloseWithCode(code int, text string) {
+	d.closeOnce.Do(func() {
+		_ = d.conn.WriteControl(
+			websocket.CloseMessage,
+			websocket.FormatCloseMessage(code, text),
+			time.Now().Add(time.Second),
+		)
+		_ = d.conn.Close()
+	})
 }
 
 // ---- server 既有端口 → voice 窄端口适配器 ----

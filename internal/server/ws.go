@@ -195,16 +195,13 @@ func NewWSServerFromInfra(c *conf.Server, infra *event.Infra, canceller RunCance
 		maxSessionConns:       envInt("WS_MAX_SESSION_CONNS", int(wsCfg.MaxSessionConns)),
 		maxGlobalMonitorConns: envInt("WS_MAX_GLOBAL_MONITOR_CONNS", int(wsCfg.MaxGlobalMonitorConns)),
 		lg:                    lg,
+		// 评审 2026-11-09 V2：统一走 WSOriginAllowed（与 /v1/voice 同一策略）。
 		upgrader: websocket.Upgrader{
 			CheckOrigin: func(r *http.Request) bool {
-				o := strings.TrimSpace(r.Header.Get("Origin"))
-				if o == "" {
+				if WSOriginAllowed(r) {
 					return true
 				}
-				if OriginAllowed(o) {
-					return true
-				}
-				lg.Warn("WS origin rejected", loggateway.Str("origin", o), loggateway.Str("remote_addr", r.RemoteAddr))
+				lg.Warn("WS origin rejected", loggateway.Str("origin", strings.TrimSpace(r.Header.Get("Origin"))), loggateway.Str("remote_addr", r.RemoteAddr))
 				return false
 			},
 		},

@@ -894,6 +894,7 @@ export default {
     voiceNoSession: 'Session not ready yet, please retry shortly',
     voiceButlerSession: 'Voice Assistant',
     voiceChannelClosed: 'Voice channel disconnected',
+    voiceSessionRevoked: 'Voice session expired (sign-in state changed) — re-enter voice mode',
     micUnavailable: 'Microphone unavailable — check permission settings',
     voiceUnavailable:
       'Voice service is not configured — ask an admin to set up ASR/TTS in System Settings → Voice Service',
@@ -2047,7 +2048,7 @@ export default {
       updatedAt: 'Data updated at {at}',
       autoRefresh: 'Auto-refresh every 15s',
       registryLine: 'Registry: {dir} · loaded {loaded} / isolated failures {failed} / pending skips {skipped}',
-      currentAccount: 'Signed in as {name}({roles})',
+      currentAccount: 'Signed in as {name}',
     },
     common: {
       neverOk: 'Never succeeded',

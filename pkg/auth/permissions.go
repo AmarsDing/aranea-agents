@@ -29,6 +29,10 @@ var builtinRolePermissions = map[string][]string{
 		"user.read", "user.write", "user.offboard",
 		"space.*",
 		"system.setting", "system.cron",
+		// system.self_improve：自我改进控制台（评审 2026-11-09 A3 补录）——
+		// 运维向进化管线（运行审批/风险规则/回滚），与 system.setting/cron 同档；
+		// 授予后菜单 /self-improvement 接码可见性与 rpc 判定对齐。
+		"system.self_improve",
 		"office.*",
 		// coding.*：agentbridge 编码桥管理/派发（评审 2026-11-09 H4 补录；
 		// 主机命令执行面，默认只给运维总管，工作台用户经 DB 角色按需授予）。

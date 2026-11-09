@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/auth"
 	"aranea-agents/pkg/loggateway"
 
 	"github.com/gorilla/websocket"
@@ -177,6 +178,65 @@ func TestVoiceWSSecondConnectionReplacesFirst(t *testing.T) {
 	_ = conn2
 	msg := readVoiceJSON(t, conn1)
 	require.Equal(t, "voice.replaced", msg["type"])
+	// 评审 2026-11-09 V1：通知之后旧连接必须以业务关闭码 4401 优雅关闭
+	// （CloseWithCode：close frame + Close）——旧实现只拆会话不碰连接，
+	// 旧 conn 两端残留。
+	expectCloseCode(t, conn1, wsCloseCodeSessionRevoked)
+}
+
+// TestVoiceWSOriginPolicy 评审 2026-11-09 V2：/v1/voice 的 CheckOrigin 与
+// /v1/ws 同一 WSOriginAllowed 策略——空 Origin（非浏览器）放行；浏览器
+// Origin 必须命中白名单（生产仅 KRATOS_HTTP_EXTRA_CORS_ORIGINS 精确匹配；
+// dev/test 另放行 localhost/127.0.0.1/[::1] 前缀）。禁止回到恒真。
+// 生产语义下 auth bypass 关闭，故携带真实 token 拨号（鉴权先于升级，
+// Origin 判定是握手阶段的门）。
+func TestVoiceWSOriginPolicy(t *testing.T) {
+	t.Setenv("KRATOS_HTTP_AUTH_DISABLED", "") // 禁 bypass：生产语义
+	t.Setenv("DEPLOY_ENV", "production")
+	prev := auth.SetSecretForTesting(testSecret)
+	defer auth.SetSecretForTesting(prev)
+	token, err := auth.GenerateToken(1, "admin", testSecret, time.Now().Add(time.Hour))
+	require.NoError(t, err)
+
+	asr := &voiceTestASRSession{events: make(chan biz.ASREvent, 1)}
+	s := newVoiceTestServer(asr)
+	srv := httptest.NewServer(http.HandlerFunc(s.handleVoiceWS))
+	defer srv.Close()
+	url := "ws" + strings.TrimPrefix(srv.URL, "http") + "/v1/voice?session_id=s1"
+	authHeader := func(origin string) http.Header {
+		h := http.Header{"Authorization": []string{"Bearer " + token}}
+		if origin != "" {
+			h.Set("Origin", origin)
+		}
+		return h
+	}
+
+	t.Run("生产环境_恶意Origin_拒绝握手", func(t *testing.T) {
+		_, resp, err := websocket.DefaultDialer.Dial(url, authHeader("https://evil.example.com"))
+		require.Error(t, err)
+		require.NotNil(t, resp)
+		require.Equal(t, http.StatusForbidden, resp.StatusCode)
+	})
+
+	t.Run("生产环境_空Origin_非浏览器放行", func(t *testing.T) {
+		conn, _, err := websocket.DefaultDialer.Dial(url, authHeader(""))
+		require.NoError(t, err)
+		_ = conn.Close()
+	})
+
+	t.Run("生产环境_白名单Origin_放行", func(t *testing.T) {
+		t.Setenv("KRATOS_HTTP_EXTRA_CORS_ORIGINS", "https://app.example.com")
+		conn, _, err := websocket.DefaultDialer.Dial(url, authHeader("https://app.example.com"))
+		require.NoError(t, err)
+		_ = conn.Close()
+	})
+
+	t.Run("dev环境_localhostOrigin_放行", func(t *testing.T) {
+		t.Setenv("DEPLOY_ENV", "dev")
+		conn, _, err := websocket.DefaultDialer.Dial(url, authHeader("http://localhost:9301"))
+		require.NoError(t, err)
+		_ = conn.Close()
+	})
 }
 
 // V10：voice.wake 路由 —— companion 进 dormant 后，wake 帧驱动唤醒

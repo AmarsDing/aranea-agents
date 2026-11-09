@@ -37,10 +37,15 @@ type MenuGroup struct {
 
 // 权限码：本阶段只对**内置角色矩阵已授予**的域打码（pkg/auth/permissions.go
 // builtinRolePermissions）。未列入矩阵的域（agent.*/tool.*/graph.*/mcp.*/
-// skill.*/plugin.*/hook.*/a2a.*/channel.*/evaluation.*/system.self_improve）
+// skill.*/plugin.*/hook.*/a2a.*/channel.*/evaluation.*）
 // 暂按「仅需登录」下发——打码会让除 superadmin 外的全部角色看不到该菜单
 // （矩阵未授予 = 恒不可见），属于开放项而非收严项。待 P5 域授权矩阵落地后
 // 逐条补码，届时仅需改动本文件常量与 sideNav.ts。
+//
+// system.self_improve 已出清单（评审 2026-11-09 A3）：/self-improvement 的
+// 全部 rpc 在 permission_registry_gen.go 硬判 system.self_improve，菜单不
+// 接码即「可见但全 403」；矩阵已授予 sysadmin（superadmin 经 * 覆盖），
+// 打码后菜单可见性与 rpc 判定对齐。
 const (
 	permKnowledgeRead = "knowledge.read" // /knowledge、/artifacts
 	permMemoryRead    = "memory.read"    // /memory
@@ -48,6 +53,8 @@ const (
 	permSystemCron    = "system.cron"    // /cron
 	permSystemMonitor = "system.monitor" // /monitor/logs
 	permSystemSetting = "system.setting" // /settings
+	// permSystemSelfImprove 自我改进控制台（评审 2026-11-09 A3 接码）。
+	permSystemSelfImprove = "system.self_improve" // /self-improvement
 	// P2-8：经营驾驶舱两页。ceoboard.view 已在内置角色矩阵（pkg/auth/permissions.go：
 	// ceo 经 ceoboard.* 通配授予，oncall/viewer 显式授予），打码不收紧可见性。
 	permCeoboardView = "ceoboard.view" // /ceo/overview、/ceo/oncall
@@ -134,7 +141,7 @@ func NavigationCatalog() []MenuGroup {
 			Items: []MenuEntry{
 				{Key: "cron", Path: "/cron", Icon: "schedule", LabelKey: "menu.cron", Permission: permSystemCron},
 				{Key: "monitor", Path: "/monitor/logs", Icon: "monitor_heart", LabelKey: "menu.monitor", Exact: false, Permission: permSystemMonitor},
-				{Key: "selfImprovement", Path: "/self-improvement", Icon: "precision_manufacturing", LabelKey: "menu.selfImprovement"},
+				{Key: "selfImprovement", Path: "/self-improvement", Icon: "precision_manufacturing", LabelKey: "menu.selfImprovement", Permission: permSystemSelfImprove},
 				{Key: "settings", Path: "/settings", Icon: "settings", LabelKey: "menu.settings", Permission: permSystemSetting},
 			},
 		},
