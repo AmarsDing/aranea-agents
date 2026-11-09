@@ -285,3 +285,176 @@ func TestCloseWithCodeIdempotent(t *testing.T) {
 
 	expectCloseCode(t, client, wsCloseCodeSessionRevoked)
 }
+
+// ---- 评审 2026-11-09 MEDIUM-2：/v1/voice 纳入会话吊销覆盖 ----
+
+// dialRevocationTestVoice 装配「VoiceWSServer + 吊销登记注入 WSServer」并拨号
+// 一条真实语音连接（bypass 鉴权：DevBypassPrincipal → userID=1, tv=0）。
+// WS 握手 101 返回即放行，服务端登记发生在 Upgrade 之后，故轮询等待登记完成。
+func dialRevocationTestVoice(t *testing.T, wsSrv *WSServer, sessionID string) (*websocket.Conn, *VoiceWSServer) {
+	t.Helper()
+	t.Setenv("KRATOS_HTTP_AUTH_DISABLED", "1")
+	t.Setenv("DEPLOY_ENV", "test")
+	voiceSrv := newVoiceTestServer(&voiceTestASRSession{events: make(chan biz.ASREvent, 1)})
+	voiceSrv.SetRevocationRegistrar(wsSrv)
+	httpSrv := httptest.NewServer(http.HandlerFunc(voiceSrv.handleVoiceWS))
+	t.Cleanup(httpSrv.Close)
+	before := extraConnCountForUser(wsSrv, "1")
+	conn := voiceDial(t, httpSrv, sessionID)
+	waitExtraConnCount(t, wsSrv, "1", before+1)
+	return conn, voiceSrv
+}
+
+// waitExtraConnCount 轮询等待某用户的吊销登记连接数达到 want（以及 dial 后
+// 服务端登记竞态的稳定判定辅助）。
+func waitExtraConnCount(t *testing.T, srv *WSServer, userID string, want int) {
+	t.Helper()
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if extraConnCountForUser(srv, userID) == want {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatalf("extra conns for user %s = %d, want %d", userID, extraConnCountForUser(srv, userID), want)
+}
+
+// extraConnCountForUser 统计吊销登记表中某用户的连接数（测试断言辅助）。
+func extraConnCountForUser(srv *WSServer, userID string) int {
+	n := 0
+	srv.revocation.forEachExtraForUser(userID, func(RevocableConn) { n++ })
+	return n
+}
+
+// TestRevocationExtraRegistryIndex 校验外部登记索引的增删、幂等与 nil 安全。
+func TestRevocationExtraRegistryIndex(t *testing.T) {
+	srv := newRevocationTestWSServer(t)
+	a := &voiceRevocableConn{userID: "7", sessionID: "s1"}
+	b := &voiceRevocableConn{userID: "7", sessionID: "s2"}
+	c := &voiceRevocableConn{userID: "8", sessionID: "s3"}
+
+	srv.RegisterRevocableConn(a)
+	srv.RegisterRevocableConn(b)
+	srv.RegisterRevocableConn(c)
+	srv.RegisterRevocableConn(a) // 重复登记幂等
+	srv.RegisterRevocableConn(nil)
+	srv.RegisterRevocableConn(&voiceRevocableConn{sessionID: "nouid"}) // 空 userID 拒绝
+
+	if ids := srv.revocation.extraUserIDs(); len(ids) != 2 {
+		t.Fatalf("extraUserIDs = %v, want 2 users", ids)
+	}
+	if n := extraConnCountForUser(srv, "7"); n != 2 {
+		t.Fatalf("user 7 extra conns = %d, want 2", n)
+	}
+
+	srv.UnregisterRevocableConn(a)
+	srv.UnregisterRevocableConn(a) // 幂等
+	if n := extraConnCountForUser(srv, "7"); n != 1 {
+		t.Fatalf("after unregister, user 7 conns = %d, want 1", n)
+	}
+	srv.UnregisterRevocableConn(b)
+	srv.UnregisterRevocableConn(c)
+	if ids := srv.revocation.extraUserIDs(); len(ids) != 0 {
+		t.Fatalf("extraUserIDs after drain = %v, want empty", ids)
+	}
+
+	// nil 接收者安全（WS 未启用时组合根仍可注入）。
+	var nilSrv *WSServer
+	nilSrv.RegisterRevocableConn(a)
+	nilSrv.UnregisterRevocableConn(a)
+}
+
+// TestSweepClosesVoiceConnection 兜底扫描同时覆盖聊天与语音连接：同一用户的
+// /v1/ws 与 /v1/voice 连接 tv 均落后时应一并收到 4401。
+func TestSweepClosesVoiceConnection(t *testing.T) {
+	srv := newRevocationTestWSServer(t)
+	_, chatClient := newRevocationTestWSConn(t, srv, "sc", "1", 0)
+	voiceClient, _ := dialRevocationTestVoice(t, srv, "sv")
+
+	if n := extraConnCountForUser(srv, "1"); n != 1 {
+		t.Fatalf("voice conn not registered for revocation, got %d", n)
+	}
+
+	auth.SetTokenVersionChecker(fakeTvChecker{versions: map[int64]int64{1: 3}})
+	defer auth.SetTokenVersionChecker(nil)
+
+	srv.sweepRevokedConnections(context.Background())
+
+	expectCloseCode(t, voiceClient, wsCloseCodeSessionRevoked)
+	expectCloseCode(t, chatClient, wsCloseCodeSessionRevoked)
+	if n := extraConnCountForUser(srv, "1"); n != 0 {
+		t.Fatalf("revoked voice conn still registered, got %d", n)
+	}
+}
+
+// TestSweepClosesVoiceConnectionOnAccountDeleted 评审 H1 同语义覆盖语音链路：
+// 版本查询命中 ErrAdminNotFound（销户）时语音连接必须主动关闭。
+func TestSweepClosesVoiceConnectionOnAccountDeleted(t *testing.T) {
+	srv := newRevocationTestWSServer(t)
+	voiceClient, _ := dialRevocationTestVoice(t, srv, "sv")
+
+	auth.SetTokenVersionChecker(fakeTvChecker{err: biz.ErrAdminNotFound})
+	defer auth.SetTokenVersionChecker(nil)
+
+	srv.sweepRevokedConnections(context.Background())
+
+	expectCloseCode(t, voiceClient, wsCloseCodeSessionRevoked)
+	if n := extraConnCountForUser(srv, "1"); n != 0 {
+		t.Fatalf("deleted account's voice conn still registered, got %d", n)
+	}
+}
+
+// TestSweepSkipsVoiceOnCheckerError 版本源故障时语音连接同样守 fail-open 边界
+// （与 TestSweepSkipsOnCheckerError 同语义，不放大存储抖动为全站断连）。
+func TestSweepSkipsVoiceOnCheckerError(t *testing.T) {
+	srv := newRevocationTestWSServer(t)
+	voiceClient, _ := dialRevocationTestVoice(t, srv, "sv")
+
+	auth.SetTokenVersionChecker(fakeTvChecker{err: errors.New("redis+db down")})
+	defer auth.SetTokenVersionChecker(nil)
+
+	srv.sweepRevokedConnections(context.Background())
+
+	if n := extraConnCountForUser(srv, "1"); n != 1 {
+		t.Fatalf("voice conn must stay registered on checker error, got %d", n)
+	}
+	// 连接未被关闭：短读期限应超时而非收到关闭帧。
+	_ = voiceClient.SetReadDeadline(time.Now().Add(200 * time.Millisecond))
+	_, _, err := voiceClient.ReadMessage()
+	var ce *websocket.CloseError
+	if errors.As(err, &ce) {
+		t.Fatalf("voice connection must stay open on checker error, got close %v", ce)
+	}
+	if n := extraConnCountForUser(srv, "1"); n != 1 {
+		t.Fatalf("voice conn wrongly revoked, registry count = %d", n)
+	}
+}
+
+// TestRevokeUserConnectionsClosesVoice pub/sub 主路径：bump 到达时语音连接与
+// 聊天连接一并以 4401 关闭；幂等。
+func TestRevokeUserConnectionsClosesVoice(t *testing.T) {
+	srv := newRevocationTestWSServer(t)
+	voiceClient, _ := dialRevocationTestVoice(t, srv, "sv")
+	_, otherVoice := dialRevocationTestVoice(t, srv, "sv2")
+	_ = otherVoice // 同一 bypass 主体（userID=1），一并被踢
+
+	srv.revokeUserConnections(1, "session_revoked")
+
+	expectCloseCode(t, voiceClient, wsCloseCodeSessionRevoked)
+	if n := extraConnCountForUser(srv, "1"); n != 0 {
+		t.Fatalf("revoked user's voice conns still registered, got %d", n)
+	}
+
+	// 幂等：再次吊销不得 panic。
+	srv.revokeUserConnections(1, "session_revoked")
+}
+
+// TestVoiceConnUnregisteredOnNaturalClose 语音连接自然断开时吊销登记被摘除
+// （不残留 → 后续 bump/扫描不再触及已死连接）。
+func TestVoiceConnUnregisteredOnNaturalClose(t *testing.T) {
+	srv := newRevocationTestWSServer(t)
+	voiceClient, _ := dialRevocationTestVoice(t, srv, "sv")
+
+	_ = voiceClient.Close()
+	waitExtraConnCount(t, srv, "1", 0)
+}

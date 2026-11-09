@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strconv"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -36,6 +37,12 @@ import (
 // （ErrAdminNotFound）时，扫描主动关闭连接——删号后不会再有任何 bump 事件，
 // 不主动关闭则连接会在 token 自然过期前（最长 7 天）一直存活。这与故障
 // fail-open 不矛盾：删除是确定终态，不是抖动。
+//
+// 覆盖范围（评审 2026-11-09 MEDIUM-2）：除聊天 /v1/ws 的 connStore 外，
+// 非 connStore 托管的长连接（/v1/voice 语音链路）经 RevocableConn 抽象 +
+// RegisterRevocableConn 登记进本机制，共用同一订阅循环与同一兜底扫描——
+// 不得复制第二套清扫循环。登记方在连接自然断开时必须配对调用
+// UnregisterRevocableConn（见 VoiceWSServer.readPump defer）。
 
 const (
 	// wsCloseCodeSessionRevoked 是自定义关闭码（4000–4999 为应用保留段）：
@@ -57,11 +64,96 @@ type TokenBumpSubscriber interface {
 	SubscribeSessionRevocations(ctx context.Context, onBump func(userID int64, newVersion int64)) error
 }
 
+// RevocableConn 是"非 connStore 托管、但须随会话吊销关闭"的长连接最小抽象
+// （评审 2026-11-09 MEDIUM-2：/v1/voice 语音链路）。实现方必须保证
+// RevokeClose 幂等——pub/sub 主路径与兜底扫描可能并发触发同一条连接。
+type RevocableConn interface {
+	// RevokeUserID 返回属主 userID（十进制字符串，与 JWT sub 一致）。
+	RevokeUserID() string
+	// RevokeTokenVersion 返回握手期 JWT 的 tv claim（兜底扫描比对用）。
+	RevokeTokenVersion() int64
+	// RevokeSessionID 返回会话 ID（仅日志观测用）。
+	RevokeSessionID() string
+	// RevokeClose 以给定关闭码发送 close frame 并拆除连接（幂等）。
+	RevokeClose(code int, reason string)
+}
+
 // revocationRuntime 收纳 P1-4 的依赖与生命周期守卫，保持 WSServer 字段数平稳
 // （AS-COG-01；与 outboxSweepRuntime 同一模式）。
 type revocationRuntime struct {
 	sub     TokenBumpSubscriber
 	started atomic.Bool
+	// extra 是 connStore 之外、需随会话吊销关闭的长连接次级索引
+	// （MEDIUM-2：/v1/voice）：userID → 连接集合。与 connStore.byUser 同构，
+	// 清扫/pub/sub 双路径一并遍历，不另起循环。
+	extraMu sync.RWMutex
+	extra   map[string]map[RevocableConn]struct{}
+}
+
+// RegisterRevocableConn 把一条非 connStore 托管的长连接（如 /v1/voice）纳入
+// 会话吊销覆盖（MEDIUM-2）。连接自然断开时登记方必须配对调用
+// UnregisterRevocableConn；重复登记同一实例为幂等（map set 语义）。
+func (s *WSServer) RegisterRevocableConn(c RevocableConn) {
+	if s == nil || c == nil || c.RevokeUserID() == "" {
+		return
+	}
+	s.revocation.extraMu.Lock()
+	defer s.revocation.extraMu.Unlock()
+	if s.revocation.extra == nil {
+		s.revocation.extra = make(map[string]map[RevocableConn]struct{})
+	}
+	set := s.revocation.extra[c.RevokeUserID()]
+	if set == nil {
+		set = make(map[RevocableConn]struct{})
+		s.revocation.extra[c.RevokeUserID()] = set
+	}
+	set[c] = struct{}{}
+}
+
+// UnregisterRevocableConn 从会话吊销覆盖中摘除连接（幂等）。
+func (s *WSServer) UnregisterRevocableConn(c RevocableConn) {
+	if s == nil || c == nil {
+		return
+	}
+	s.revocation.extraMu.Lock()
+	defer s.revocation.extraMu.Unlock()
+	set := s.revocation.extra[c.RevokeUserID()]
+	if set == nil {
+		return
+	}
+	delete(set, c)
+	if len(set) == 0 {
+		delete(s.revocation.extra, c.RevokeUserID())
+	}
+}
+
+// extraUserIDs 返回 extra 索引中全部 userID 快照（兜底扫描用）。
+func (rt *revocationRuntime) extraUserIDs() []string {
+	rt.extraMu.RLock()
+	defer rt.extraMu.RUnlock()
+	out := make([]string, 0, len(rt.extra))
+	for uid := range rt.extra {
+		out = append(out, uid)
+	}
+	return out
+}
+
+// forEachExtraForUser 遍历某用户的全部外部登记连接（快照后在锁外回调，
+// 与 connStore.forEachConnForUser 同一自死锁防护：回调会关闭连接，进而触发
+// 对端 readPump → UnregisterRevocableConn → extraMu 写锁）。
+func (rt *revocationRuntime) forEachExtraForUser(userID string, fn func(RevocableConn)) {
+	if userID == "" {
+		return
+	}
+	rt.extraMu.RLock()
+	snapshot := make([]RevocableConn, 0, len(rt.extra[userID]))
+	for c := range rt.extra[userID] {
+		snapshot = append(snapshot, c)
+	}
+	rt.extraMu.RUnlock()
+	for _, c := range snapshot {
+		fn(c)
+	}
 }
 
 // SetTokenBumpSubscriber 注入会话吊销事件订阅者（组合根调用）。
@@ -148,36 +240,72 @@ func (s *WSServer) runRevocationSweep(ctx context.Context) {
 	}
 }
 
-// sweepRevokedConnections 扫描在线连接，关闭 tv 已过期的连接。
-func (s *WSServer) sweepRevokedConnections(ctx context.Context) {
-	closed, checkErrors := 0, 0
+// revocationSweepTarget 统一聊天 connStore 与外部登记连接（MEDIUM-2 voice）
+// 的兜底扫描目标：判定逻辑（tv 比对/销户/故障边界）共享一份，不随连接
+// 类型分叉。
+type revocationSweepTarget struct {
+	userID       int64
+	tokenVersion int64
+	close        func(reason string)
+}
+
+// collectRevocationTargets 汇总 connStore（/v1/ws）与 extra 索引（/v1/voice）
+// 的在线连接为统一扫描目标。
+func (s *WSServer) collectRevocationTargets() []revocationSweepTarget {
+	var out []revocationSweepTarget
 	for _, uid := range s.store.userIDs() {
 		userID, err := strconv.ParseInt(uid, 10, 64)
 		if err != nil {
 			continue
 		}
 		s.store.forEachConnForUser(uid, func(wc *wsConn) {
-			current, enforced, err := auth.TokenVersionIsCurrent(ctx, userID, wc.tokenVersion)
-			if !enforced {
-				return
-			}
-			if err != nil {
-				// 账号已删（评审 H1）：确定终态，主动关闭——删号后不会再有
-				// bump 事件，skip 会让连接存活至 token 自然过期（最长 7 天）。
-				// 其他错误（版本源故障）保持 fail-open 边界（见文件头 R11）。
-				if errors.Is(err, biz.ErrAdminNotFound) {
-					s.revokeConn(wc, "account_deleted")
-					closed++
-					return
-				}
-				checkErrors++
-				return
-			}
-			if !current {
-				s.revokeConn(wc, "session_revoked_sweep")
-				closed++
-			}
+			out = append(out, revocationSweepTarget{
+				userID:       userID,
+				tokenVersion: wc.tokenVersion,
+				close:        func(reason string) { s.revokeConn(wc, reason) },
+			})
 		})
+	}
+	for _, uid := range s.revocation.extraUserIDs() {
+		userID, err := strconv.ParseInt(uid, 10, 64)
+		if err != nil {
+			continue
+		}
+		s.revocation.forEachExtraForUser(uid, func(c RevocableConn) {
+			out = append(out, revocationSweepTarget{
+				userID:       userID,
+				tokenVersion: c.RevokeTokenVersion(),
+				close:        func(reason string) { s.revokeExtraConn(c, reason) },
+			})
+		})
+	}
+	return out
+}
+
+// sweepRevokedConnections 扫描在线连接，关闭 tv 已过期的连接。
+func (s *WSServer) sweepRevokedConnections(ctx context.Context) {
+	closed, checkErrors := 0, 0
+	for _, t := range s.collectRevocationTargets() {
+		current, enforced, err := auth.TokenVersionIsCurrent(ctx, t.userID, t.tokenVersion)
+		if !enforced {
+			continue
+		}
+		if err != nil {
+			// 账号已删（评审 H1）：确定终态，主动关闭——删号后不会再有
+			// bump 事件，skip 会让连接存活至 token 自然过期（最长 7 天）。
+			// 其他错误（版本源故障）保持 fail-open 边界（见文件头 R11）。
+			if errors.Is(err, biz.ErrAdminNotFound) {
+				t.close("account_deleted")
+				closed++
+				continue
+			}
+			checkErrors++
+			continue
+		}
+		if !current {
+			t.close("session_revoked_sweep")
+			closed++
+		}
 	}
 	if closed > 0 || checkErrors > 0 {
 		s.lg.Warn("WS 会话吊销兜底扫描完成",
@@ -187,11 +315,15 @@ func (s *WSServer) sweepRevokedConnections(ctx context.Context) {
 	}
 }
 
-// revokeUserConnections 关闭某用户的全部在线连接（pub/sub 主路径）。
+// revokeUserConnections 关闭某用户的全部在线连接（pub/sub 主路径）：
+// connStore（/v1/ws）与外部登记的 /v1/voice 连接一并关闭（MEDIUM-2）。
 func (s *WSServer) revokeUserConnections(userID int64, reason string) {
 	uid := strconv.FormatInt(userID, 10)
 	s.store.forEachConnForUser(uid, func(wc *wsConn) {
 		s.revokeConn(wc, reason)
+	})
+	s.revocation.forEachExtraForUser(uid, func(c RevocableConn) {
+		s.revokeExtraConn(c, reason)
 	})
 }
 
@@ -207,5 +339,21 @@ func (s *WSServer) revokeConn(wc *wsConn, reason string) {
 		loggateway.StepID("ws.session_revoked"),
 		loggateway.SessionID(wc.sessionID),
 		loggateway.Str("user_id", wc.userID),
+		loggateway.Str("reason", reason))
+}
+
+// revokeExtraConn 摘除并关闭一条外部登记连接（MEDIUM-2：/v1/voice），与
+// revokeConn 同语义：先摘索引再关闭——RevokeClose 触发的对端 readPump 清理
+// 会再次 UnregisterRevocableConn，map 删除幂等。
+func (s *WSServer) revokeExtraConn(c RevocableConn, reason string) {
+	if c == nil {
+		return
+	}
+	s.UnregisterRevocableConn(c)
+	c.RevokeClose(wsCloseCodeSessionRevoked, reason)
+	s.lg.Warn("WS 连接因会话吊销被主动关闭",
+		loggateway.StepID("ws.session_revoked"),
+		loggateway.SessionID(c.RevokeSessionID()),
+		loggateway.Str("user_id", c.RevokeUserID()),
 		loggateway.Str("reason", reason))
 }

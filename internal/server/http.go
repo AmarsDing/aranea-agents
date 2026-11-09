@@ -133,6 +133,10 @@ func NewHTTPServer(c *conf.Server, s *ServiceRegistry, wsSrv *WSServer, voiceSrv
 	registerInfrastructureRoutes(srv, readiness)
 	wsSrv.RegisterOnKratos(srv)
 	if voiceSrv != nil {
+		// MEDIUM-2（评审 2026-11-09）：voice WS 纳入 WSServer 会话吊销覆盖
+		// （同一 pub/sub 推送 + 周期兜底扫描，不复制第二套循环）。wsSrv 为
+		// nil（WS 未启用）时 WSServer 方法 nil-safe 短路，语音侧退化为不登记。
+		voiceSrv.SetRevocationRegistrar(wsSrv)
 		voiceSrv.RegisterOnKratos(srv)
 	}
 
