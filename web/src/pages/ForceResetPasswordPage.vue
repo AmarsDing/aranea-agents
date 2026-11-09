@@ -25,6 +25,7 @@
                   flat
                   round
                   dense
+                  class="pwd-vis-toggle"
                   :icon="showOld ? 'visibility_off' : 'visibility'"
                   tabindex="-1"
                   @click.stop="showOld = !showOld"
@@ -47,6 +48,7 @@
                   flat
                   round
                   dense
+                  class="pwd-vis-toggle"
                   :icon="showNew ? 'visibility_off' : 'visibility'"
                   tabindex="-1"
                   @click.stop="showNew = !showNew"
@@ -108,6 +110,9 @@ const submitting = ref(false);
 const localError = ref('');
 
 async function submit() {
+  // 重入守卫:点击与 Enter 键(keyup.enter)均走此函数,必须在入口处统一拦截,
+  // 避免提交中将 changeAdminPassword 并发重发。
+  if (submitting.value) return;
   localError.value = '';
   if (newPassword.value.length < 8) {
     localError.value = t('auth.passwordTooShort');

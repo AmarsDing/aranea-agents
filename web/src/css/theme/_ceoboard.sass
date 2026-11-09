@@ -61,6 +61,11 @@
   padding: 2px
 
 .ceo-viewswitch button
+  // 触屏目标 ≥44px(AGENTS.md §6.10):原高约 25px,撑高并居中,视觉样式不变
+  display: inline-flex
+  align-items: center
+  justify-content: center
+  min-height: 44px
   background: none
   border: none
   color: var(--nt-text-3)
@@ -716,7 +721,13 @@ pre.ceo-snip
   word-break: break-all
 
 .ceo-close-btn
+  // 触屏目标 ≥44px(AGENTS.md §6.10):原高约 24px,撑高撑宽并居中,视觉样式不变
   float: right
+  display: inline-flex
+  align-items: center
+  justify-content: center
+  min-width: 44px
+  min-height: 44px
   background: none
   border: 1px solid var(--nt-border-1)
   color: var(--nt-text-1)
