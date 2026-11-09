@@ -7,6 +7,7 @@
 package v1
 
 import (
+	_ "aranea-agents/api/aranea/auth/v1"
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
@@ -1531,7 +1532,7 @@ var File_kratos_agentbridge_v1_agentbridge_proto protoreflect.FileDescriptor
 
 const file_kratos_agentbridge_v1_agentbridge_proto_rawDesc = "" +
 	"\n" +
-	"'kratos/agentbridge/v1/agentbridge.proto\x12\x15kratos.agentbridge.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x1bgoogle/protobuf/empty.proto\"\xc8\x04\n" +
+	"'kratos/agentbridge/v1/agentbridge.proto\x12\x15kratos.agentbridge.v1\x1a aranea/auth/v1/requirement.proto\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x1bgoogle/protobuf/empty.proto\"\xc8\x04\n" +
 	"\vCodingAgent\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1b\n" +
 	"\tagent_key\x18\x02 \x01(\tR\bagentKey\x12!\n" +
@@ -1665,24 +1666,31 @@ const file_kratos_agentbridge_v1_agentbridge_proto_rawDesc = "" +
 	"\x11ReviewTaskRequest\x12\x14\n" +
 	"\x02id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\x02id\x12\x1c\n" +
 	"\x06action\x18\x02 \x01(\tB\x04\xe2A\x01\x02R\x06action\x12\x18\n" +
-	"\acomment\x18\x03 \x01(\tR\acomment2\xc9\f\n" +
-	"\x12AgentBridgeService\x12\x7f\n" +
-	"\vUpsertAgent\x12).kratos.agentbridge.v1.UpsertAgentRequest\x1a\".kratos.agentbridge.v1.CodingAgent\"!\x82\xd3\xe4\x93\x02\x1b:\x01*\"\x16/v1/agentbridge/agents\x12o\n" +
+	"\acomment\x18\x03 \x01(\tR\acomment2\xf5\r\n" +
+	"\x12AgentBridgeService\x12\x92\x01\n" +
+	"\vUpsertAgent\x12).kratos.agentbridge.v1.UpsertAgentRequest\x1a\".kratos.agentbridge.v1.CodingAgent\"4\xca\xf3\x18\x0f\n" +
+	"\rcoding.manage\x82\xd3\xe4\x93\x02\x1b:\x01*\"\x16/v1/agentbridge/agents\x12u\n" +
 	"\n" +
-	"ListAgents\x12\x16.google.protobuf.Empty\x1a).kratos.agentbridge.v1.ListAgentsResponse\"\x1e\x82\xd3\xe4\x93\x02\x18\x12\x16/v1/agentbridge/agents\x12\x8a\x01\n" +
+	"ListAgents\x12\x16.google.protobuf.Empty\x1a).kratos.agentbridge.v1.ListAgentsResponse\"$\xca\xf3\x18\x02\x10\x01\x82\xd3\xe4\x93\x02\x18\x12\x16/v1/agentbridge/agents\x12\x9d\x01\n" +
 	"\n" +
-	"ProbeAgent\x12(.kratos.agentbridge.v1.ProbeAgentRequest\x1a).kratos.agentbridge.v1.ProbeAgentResponse\"'\x82\xd3\xe4\x93\x02!:\x01*\"\x1c/v1/agentbridge/agents/probe\x12\x87\x01\n" +
-	"\rUpsertProject\x12+.kratos.agentbridge.v1.UpsertProjectRequest\x1a$.kratos.agentbridge.v1.CodingProject\"#\x82\xd3\xe4\x93\x02\x1d:\x01*\"\x18/v1/agentbridge/projects\x12u\n" +
-	"\fListProjects\x12\x16.google.protobuf.Empty\x1a+.kratos.agentbridge.v1.ListProjectsResponse\" \x82\xd3\xe4\x93\x02\x1a\x12\x18/v1/agentbridge/projects\x12{\n" +
-	"\rDeleteProject\x12+.kratos.agentbridge.v1.DeleteProjectRequest\x1a\x16.google.protobuf.Empty\"%\x82\xd3\xe4\x93\x02\x1f*\x1d/v1/agentbridge/projects/{id}\x12}\n" +
-	"\tListTasks\x12'.kratos.agentbridge.v1.ListTasksRequest\x1a(.kratos.agentbridge.v1.ListTasksResponse\"\x1d\x82\xd3\xe4\x93\x02\x17\x12\x15/v1/agentbridge/tasks\x12w\n" +
-	"\aGetTask\x12%.kratos.agentbridge.v1.GetTaskRequest\x1a!.kratos.agentbridge.v1.CodingTask\"\"\x82\xd3\xe4\x93\x02\x1c\x12\x1a/v1/agentbridge/tasks/{id}\x12\x87\x01\n" +
+	"ProbeAgent\x12(.kratos.agentbridge.v1.ProbeAgentRequest\x1a).kratos.agentbridge.v1.ProbeAgentResponse\":\xca\xf3\x18\x0f\n" +
+	"\rcoding.manage\x82\xd3\xe4\x93\x02!:\x01*\"\x1c/v1/agentbridge/agents/probe\x12\x9a\x01\n" +
+	"\rUpsertProject\x12+.kratos.agentbridge.v1.UpsertProjectRequest\x1a$.kratos.agentbridge.v1.CodingProject\"6\xca\xf3\x18\x0f\n" +
+	"\rcoding.manage\x82\xd3\xe4\x93\x02\x1d:\x01*\"\x18/v1/agentbridge/projects\x12{\n" +
+	"\fListProjects\x12\x16.google.protobuf.Empty\x1a+.kratos.agentbridge.v1.ListProjectsResponse\"&\xca\xf3\x18\x02\x10\x01\x82\xd3\xe4\x93\x02\x1a\x12\x18/v1/agentbridge/projects\x12\x8e\x01\n" +
+	"\rDeleteProject\x12+.kratos.agentbridge.v1.DeleteProjectRequest\x1a\x16.google.protobuf.Empty\"8\xca\xf3\x18\x0f\n" +
+	"\rcoding.manage\x82\xd3\xe4\x93\x02\x1f*\x1d/v1/agentbridge/projects/{id}\x12\x83\x01\n" +
+	"\tListTasks\x12'.kratos.agentbridge.v1.ListTasksRequest\x1a(.kratos.agentbridge.v1.ListTasksResponse\"#\xca\xf3\x18\x02\x10\x01\x82\xd3\xe4\x93\x02\x17\x12\x15/v1/agentbridge/tasks\x12}\n" +
+	"\aGetTask\x12%.kratos.agentbridge.v1.GetTaskRequest\x1a!.kratos.agentbridge.v1.CodingTask\"(\xca\xf3\x18\x02\x10\x01\x82\xd3\xe4\x93\x02\x1c\x12\x1a/v1/agentbridge/tasks/{id}\x12\x9c\x01\n" +
 	"\n" +
-	"CancelTask\x12(.kratos.agentbridge.v1.CancelTaskRequest\x1a!.kratos.agentbridge.v1.CodingTask\",\x82\xd3\xe4\x93\x02&:\x01*\"!/v1/agentbridge/tasks/{id}/cancel\x12\x89\x01\n" +
-	"\fDispatchTask\x12*.kratos.agentbridge.v1.DispatchTaskRequest\x1a+.kratos.agentbridge.v1.DispatchTaskResponse\" \x82\xd3\xe4\x93\x02\x1a:\x01*\"\x15/v1/agentbridge/tasks\x12\x9d\x01\n" +
-	"\x0eListTaskEvents\x12,.kratos.agentbridge.v1.ListTaskEventsRequest\x1a-.kratos.agentbridge.v1.ListTaskEventsResponse\".\x82\xd3\xe4\x93\x02(\x12&/v1/agentbridge/tasks/{task_id}/events\x12\x87\x01\n" +
+	"CancelTask\x12(.kratos.agentbridge.v1.CancelTaskRequest\x1a!.kratos.agentbridge.v1.CodingTask\"A\xca\xf3\x18\x11\n" +
+	"\x0fcoding.dispatch\x82\xd3\xe4\x93\x02&:\x01*\"!/v1/agentbridge/tasks/{id}/cancel\x12\x9e\x01\n" +
+	"\fDispatchTask\x12*.kratos.agentbridge.v1.DispatchTaskRequest\x1a+.kratos.agentbridge.v1.DispatchTaskResponse\"5\xca\xf3\x18\x11\n" +
+	"\x0fcoding.dispatch\x82\xd3\xe4\x93\x02\x1a:\x01*\"\x15/v1/agentbridge/tasks\x12\xa3\x01\n" +
+	"\x0eListTaskEvents\x12,.kratos.agentbridge.v1.ListTaskEventsRequest\x1a-.kratos.agentbridge.v1.ListTaskEventsResponse\"4\xca\xf3\x18\x02\x10\x01\x82\xd3\xe4\x93\x02(\x12&/v1/agentbridge/tasks/{task_id}/events\x12\x9c\x01\n" +
 	"\n" +
-	"ReviewTask\x12(.kratos.agentbridge.v1.ReviewTaskRequest\x1a!.kratos.agentbridge.v1.CodingTask\",\x82\xd3\xe4\x93\x02&:\x01*\"!/v1/agentbridge/tasks/{id}/reviewBI\n" +
+	"ReviewTask\x12(.kratos.agentbridge.v1.ReviewTaskRequest\x1a!.kratos.agentbridge.v1.CodingTask\"A\xca\xf3\x18\x11\n" +
+	"\x0fcoding.dispatch\x82\xd3\xe4\x93\x02&:\x01*\"!/v1/agentbridge/tasks/{id}/reviewBI\n" +
 	"\x19api.kratos.agentbridge.v1P\x01Z*aranea-agents/api/kratos/agentbridge/v1;v1b\x06proto3"
 
 var (

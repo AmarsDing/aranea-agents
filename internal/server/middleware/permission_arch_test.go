@@ -13,8 +13,11 @@ import (
 
 // P1-6 敏感域清单（P0 详设 02 §2），与其 proto 目录名一致。
 // P2 并入 ceoboard（整合方案 §5.1：经营驾驶舱域全量收严 view/ops 两档）。
+// 评审 2026-11-09 H4 补录 agentbridge（原在普查范围外；管理/派发是主机
+// 命令执行面，manage/dispatch 收严、读面 authenticated）。
 var sensitiveDomains = []string{
 	"admin",
+	"agentbridge",
 	"ceoboard",
 	"computeruse",
 	"cron",

@@ -30,6 +30,9 @@ var builtinRolePermissions = map[string][]string{
 		"space.*",
 		"system.setting", "system.cron",
 		"office.*",
+		// coding.*：agentbridge 编码桥管理/派发（评审 2026-11-09 H4 补录；
+		// 主机命令执行面，默认只给运维总管，工作台用户经 DB 角色按需授予）。
+		"coding.*",
 	},
 	"secadmin": {
 		"knowledge.classify",

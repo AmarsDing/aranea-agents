@@ -23,6 +23,20 @@ func registerGeneratedPermissions(r *PermissionRegistry) {
 	// public 豁免(不登记,留痕;架构测试断言与 exemptRPC 一致): /kratos.admin.v1.AdminService/Logout
 	requireRPC(r, "admin", "AdminService", "UpdateAdmin", "PUT", "/v1/admins/update", "user.write")
 
+	// ── agentbridge ──
+	requireRPC(r, "agentbridge", "AgentBridgeService", "CancelTask", "POST", "/v1/agentbridge/tasks/{id}/cancel", "coding.dispatch")
+	requireRPC(r, "agentbridge", "AgentBridgeService", "DeleteProject", "DELETE", "/v1/agentbridge/projects/{id}", "coding.manage")
+	requireRPC(r, "agentbridge", "AgentBridgeService", "DispatchTask", "POST", "/v1/agentbridge/tasks", "coding.dispatch")
+	requireAuthenticatedRPC(r, "agentbridge", "AgentBridgeService", "GetTask", "GET", "/v1/agentbridge/tasks/{id}")
+	requireAuthenticatedRPC(r, "agentbridge", "AgentBridgeService", "ListAgents", "GET", "/v1/agentbridge/agents")
+	requireAuthenticatedRPC(r, "agentbridge", "AgentBridgeService", "ListProjects", "GET", "/v1/agentbridge/projects")
+	requireAuthenticatedRPC(r, "agentbridge", "AgentBridgeService", "ListTaskEvents", "GET", "/v1/agentbridge/tasks/{task_id}/events")
+	requireAuthenticatedRPC(r, "agentbridge", "AgentBridgeService", "ListTasks", "GET", "/v1/agentbridge/tasks")
+	requireRPC(r, "agentbridge", "AgentBridgeService", "ProbeAgent", "POST", "/v1/agentbridge/agents/probe", "coding.manage")
+	requireRPC(r, "agentbridge", "AgentBridgeService", "ReviewTask", "POST", "/v1/agentbridge/tasks/{id}/review", "coding.dispatch")
+	requireRPC(r, "agentbridge", "AgentBridgeService", "UpsertAgent", "POST", "/v1/agentbridge/agents", "coding.manage")
+	requireRPC(r, "agentbridge", "AgentBridgeService", "UpsertProject", "POST", "/v1/agentbridge/projects", "coding.manage")
+
 	// ── ceoboard ──
 	requireRPC(r, "ceoboard", "CeoboardService", "ExportAudit", "GET", "/v1/ceoboard/audit/export", "ceoboard.ops")
 	requireRPC(r, "ceoboard", "CeoboardService", "GetEvent", "GET", "/v1/ceoboard/events/{uid}", "ceoboard.view")
@@ -163,4 +177,4 @@ var generatedPublicRPCs = []string{
 	"/kratos.admin.v1.AdminService/Logout",
 }
 
-// 统计:permission=91 authenticated=27 public=3
+// 统计:permission=98 authenticated=32 public=3

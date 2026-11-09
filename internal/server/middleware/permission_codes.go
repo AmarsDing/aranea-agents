@@ -18,6 +18,9 @@ package middleware
 //   - llm_provider_model：管理面 model.route；密钥揭示 → secops.policy（secadmin 专有）。
 //   - ceoboard：view 面（查询）= ceoboard.view；ops 面（死信/审计）= ceoboard.ops；
 //     入站 webhook 不走本域 rpc：共享密钥入口直接挂 HTTP server（基础设施层）。
+//   - agentbridge（评审 2026-11-09 H4 补录，原在 P1-6 普查范围外）：agent/项目
+//     注册管理 = coding.manage；任务派发/取消/验收 = coding.dispatch；
+//     读面（List*/Get*）= authenticated。
 //
 // 登记键：gRPC 全方法 `/kratos.<域>.v1.<Svc>/<Method>` +
 // HTTP 键 `<大写方法> <pathTemplate>`（同 pathTemplate 多方法，必须带方法区分）。
