@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"aranea-agents/internal/biz"
 	"aranea-agents/internal/conf"
 	"aranea-agents/internal/event"
 	"aranea-agents/pkg/auth"
@@ -238,6 +239,25 @@ func TestSweepSkipsOnCheckerError(t *testing.T) {
 	var ce *websocket.CloseError
 	if errors.As(err, &ce) {
 		t.Fatalf("connection must stay open on checker error, got close %v", ce)
+	}
+}
+
+// TestSweepClosesOnAccountDeleted 评审 H1（2026-11-09）：版本查询命中
+// ErrAdminNotFound（账号已删）时扫描必须主动关闭连接——删号后不会再有任何
+// bump 事件，skip 会让连接存活至 token 自然过期。与故障 fail-open
+// （TestSweepSkipsOnCheckerError）互补：删除是终态，不是抖动。
+func TestSweepClosesOnAccountDeleted(t *testing.T) {
+	srv := newRevocationTestWSServer(t)
+	_, client := newRevocationTestWSConn(t, srv, "s1", "7", 3)
+
+	auth.SetTokenVersionChecker(fakeTvChecker{err: biz.ErrAdminNotFound})
+	defer auth.SetTokenVersionChecker(nil)
+
+	srv.sweepRevokedConnections(context.Background())
+
+	expectCloseCode(t, client, wsCloseCodeSessionRevoked)
+	if n := srv.store.count("s1"); n != 0 {
+		t.Fatalf("deleted account's session still has %d conns", n)
 	}
 }
 

@@ -158,7 +158,7 @@ func PermissionsFor(a *Auth) []string {
 	if a == nil {
 		return nil
 	}
-	granted := resolvePermissions(a.Roles)
+	granted := resolvePermissions(a.effectiveRoles())
 	out := make([]string, 0, len(granted))
 	for code := range granted {
 		out = append(out, code)

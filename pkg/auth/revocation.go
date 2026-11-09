@@ -27,8 +27,8 @@ var ErrRevocationSubscriptionUnavailable = errors.New("auth: revocation subscrip
 // 实现必须并发安全；实现侧负责 Redis 不可用时的 DB 回源。
 type TokenVersionChecker interface {
 	// CurrentVersion returns admins.token_version for userID.
-	// 用户不存在视同版本 0（旧 token 仍可被判 tv=0 通过一次，
-	// 但任何真实 bump 后旧 token 立即失效）。
+	// 用户不存在返回 biz.ErrAdminNotFound（而非视同版本 0）：HTTP/gRPC 面
+	// fail-closed 401，WS 兜底扫描据此主动关闭被删账号的连接（评审 H1）。
 	CurrentVersion(ctx context.Context, userID int64) (int64, error)
 }
 

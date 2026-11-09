@@ -14,11 +14,14 @@ import (
 // fakeAdminStore 是 AdminReader + AdminWriter 的最小内存实现（仅覆盖本组用例
 // 触达的方法；未实现的方法被调用即 Fail，避免静默放行）。
 type fakeAdminStore struct {
-	byID     map[int64]*Admin
-	created  *Admin
-	updated  *Admin
-	updateNo int
-	listNo   int
+	byID       map[int64]*Admin
+	created    *Admin
+	updated    *Admin
+	updateNo   int
+	listNo     int
+	deleteNo   int
+	deleteErr  error
+	deleteHook func(id int64)
 }
 
 var _ AdminReader = (*fakeAdminStore)(nil)
@@ -56,8 +59,16 @@ func (f *fakeAdminStore) UpdateAdmin(_ context.Context, a *Admin) (*Admin, error
 	return a, nil
 }
 
-func (f *fakeAdminStore) DeleteAdmin(context.Context, int64) error {
-	return errors.New("not implemented")
+func (f *fakeAdminStore) DeleteAdmin(_ context.Context, id int64) error {
+	f.deleteNo++
+	if f.deleteHook != nil {
+		f.deleteHook(id)
+	}
+	if f.deleteErr != nil {
+		return f.deleteErr
+	}
+	delete(f.byID, id)
+	return nil
 }
 
 // fakeRevoker 记录吊销调用，可注入错误。

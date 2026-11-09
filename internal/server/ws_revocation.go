@@ -7,6 +7,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/auth"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
@@ -30,6 +31,11 @@ import (
 // **不关闭连接**——此时 HTTP/gRPC 面已 fail-closed 拒绝该用户的全部请求，
 // 会话实际已不可用；误杀全部在线连接会把存储抖动放大成全站断连。故障持续
 // 时按节流告警，且不改变"任何真实 bump 最终都会踢掉连接"的收敛性。
+//
+// 例外（评审 2026-11-09 H1）：版本查询命中的不是故障而是**账号已删**
+// （ErrAdminNotFound）时，扫描主动关闭连接——删号后不会再有任何 bump 事件，
+// 不主动关闭则连接会在 token 自然过期前（最长 7 天）一直存活。这与故障
+// fail-open 不矛盾：删除是确定终态，不是抖动。
 
 const (
 	// wsCloseCodeSessionRevoked 是自定义关闭码（4000–4999 为应用保留段）：
@@ -156,6 +162,14 @@ func (s *WSServer) sweepRevokedConnections(ctx context.Context) {
 				return
 			}
 			if err != nil {
+				// 账号已删（评审 H1）：确定终态，主动关闭——删号后不会再有
+				// bump 事件，skip 会让连接存活至 token 自然过期（最长 7 天）。
+				// 其他错误（版本源故障）保持 fail-open 边界（见文件头 R11）。
+				if errors.Is(err, biz.ErrAdminNotFound) {
+					s.revokeConn(wc, "account_deleted")
+					closed++
+					return
+				}
 				checkErrors++
 				return
 			}

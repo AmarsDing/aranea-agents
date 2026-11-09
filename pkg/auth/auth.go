@@ -78,14 +78,32 @@ func (a *Auth) HasClearance(level int) bool {
 	return a.ClearanceLevel() >= level
 }
 
+// effectiveRoles 返回权限判定用角色集（评审 2026-11-09 H5）。
+//
+// 升级前签发的 token 无 roles claim（json omitempty），灰度窗口内按遗留
+// access 列回落映射（与 Login 的 LegacyRolesForAccess 行为一致），避免老
+// 会话对全部已登记 rpc 意外 403。P1-9 迁移回填 roles、老 token 到期后，
+// 本回落自然失效。
+//
+// 无复活风险：登录后签发的 token 恒带 roles（Login 已回落），故运行时
+// len(Roles)==0 ⟺ 老 token；角色被清零用户的旧 token 在 tv 递增后期满
+// 失效，与本回落无关（角色变更不递增 tv 是已登记 LOW-4，迁移脚本负责 bump）。
+func (a *Auth) effectiveRoles() []string {
+	if len(a.Roles) > 0 {
+		return a.Roles
+	}
+	return LegacyRolesForAccess(a.Access)
+}
+
 // HasPermission reports whether the principal's roles grant the permission code,
 // honouring `*` and `<域>.*` wildcards (P0 详设 01 §3)。角色→权限解析走
-// 当前 PermissionResolver（默认内置静态表，P1-5/6 注入 DB 缓存版）。
+// 当前 PermissionResolver（默认内置静态表，P1-5/6 注入 DB 缓存版）；
+// 老 token（无 roles claim）经 effectiveRoles 回落遗留 access 映射。
 func (a *Auth) HasPermission(code string) bool {
 	if a == nil {
 		return false
 	}
-	return permissionSetContains(resolvePermissions(a.Roles), code)
+	return permissionSetContains(resolvePermissions(a.effectiveRoles()), code)
 }
 
 // EffectiveWorkspaceID returns the principal's bound workspace, or DefaultWorkspaceID.

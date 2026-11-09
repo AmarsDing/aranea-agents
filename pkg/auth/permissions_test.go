@@ -48,6 +48,41 @@ func TestHasPermissionUnknownRole(t *testing.T) {
 	}
 }
 
+// 评审 H5（2026-11-09）：升级前签发的 token 无 roles claim，灰度窗口内经
+// effectiveRoles 回落遗留 access 映射——与 Login 的 LegacyRolesForAccess
+// 行为一致，避免老会话对全部已登记 rpc 意外 403。
+func TestEffectiveRolesLegacyTokenFallback(t *testing.T) {
+	// 老 token：access=admin、无 roles → 回落 superadmin。
+	legacy := &Auth{Access: "admin"}
+	if !legacy.HasPermission("user.write") {
+		t.Fatal("legacy admin token should hold user.write via access fallback")
+	}
+	if got := PermissionsFor(legacy); len(got) != 1 || got[0] != "*" {
+		t.Fatalf("legacy admin PermissionsFor = %v, want [*]", got)
+	}
+
+	// 老 token：access 非 admin（含空串）→ 回落 user 基线角色。
+	legacyUser := &Auth{Access: ""}
+	if !legacyUser.HasPermission("knowledge.read") {
+		t.Fatal("legacy user token should hold knowledge.read (user baseline)")
+	}
+	if legacyUser.HasPermission("user.write") {
+		t.Fatal("legacy user token must NOT hold user.write")
+	}
+}
+
+// 显式 roles 优先于 access：角色被收窄的账号不得借残留 access=admin 复活
+// 超管权限（防回落路径被滥用）。
+func TestEffectiveRolesExplicitRolesWin(t *testing.T) {
+	a := &Auth{Access: "admin", Roles: []string{"viewer"}}
+	if a.HasPermission("user.write") {
+		t.Fatal("explicit viewer roles must NOT regain admin perms via access")
+	}
+	if !a.HasPermission("ceoboard.view") {
+		t.Fatal("viewer should hold ceoboard.view")
+	}
+}
+
 func TestSetPermissionResolverNilRestoresBuiltin(t *testing.T) {
 	SetPermissionResolver(testResolver{grants: map[string]struct{}{"custom.code": {}}})
 	a := &Auth{Roles: []string{"whatever"}}

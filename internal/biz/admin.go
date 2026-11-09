@@ -280,7 +280,18 @@ func (uc *AdminUsecase) UpdateAdmin(ctx context.Context, admin *Admin) (*Admin, 
 }
 
 // DeleteAdmin deletes an admin user by ID.
+//
+// 顺序刻意为「先吊销后删除」（评审 2026-11-09 H1，与 ChangePassword 同理）：
+// 删除后 HTTP/gRPC 面因 ErrAdminNotFound fail-closed 立即 401；WS 面双保险：
+// ①本函数先递增 tv 广播 bump，在线连接即时被关（主路径）；②若有连接错过
+// 事件，兜底扫描在下一个周期把 ErrAdminNotFound 视为已吊销主动关闭
+// （ws_revocation.go，最终一致）。
+// 吊销失败则不删并如实报错（绝不留下「账号已删但会话仍活」的窗口）；
+// revoker 未接线时整个操作不动任何数据。
 func (uc *AdminUsecase) DeleteAdmin(ctx context.Context, id int64) error {
+	if err := uc.RevokeSessions(ctx, id, "admin_deleted"); err != nil {
+		return err
+	}
 	return uc.writer.DeleteAdmin(ctx, id)
 }
 
