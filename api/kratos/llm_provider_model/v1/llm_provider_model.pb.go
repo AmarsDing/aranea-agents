@@ -43,8 +43,12 @@ type ProviderModel struct {
 	DeletedAt         string                 `protobuf:"bytes,14,opt,name=deleted_at,json=deletedAt,proto3" json:"deleted_at,omitempty"`
 	Capabilities      *ModelCapabilities     `protobuf:"bytes,15,opt,name=capabilities,proto3" json:"capabilities,omitempty"`
 	PricingConfigured bool                   `protobuf:"varint,16,opt,name=pricing_configured,json=pricingConfigured,proto3" json:"pricing_configured,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	// channel_class 密级路由通道分组（D6/L-1）：local | cloud，空 = cloud。
+	// ClassificationAwareModelSelector 在水位线 >= model_policy.local_threshold
+	// 时把候选集裁到 local 组。
+	ChannelClass  string `protobuf:"bytes,17,opt,name=channel_class,json=channelClass,proto3" json:"channel_class,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ProviderModel) Reset() {
@@ -187,6 +191,13 @@ func (x *ProviderModel) GetPricingConfigured() bool {
 		return x.PricingConfigured
 	}
 	return false
+}
+
+func (x *ProviderModel) GetChannelClass() string {
+	if x != nil {
+		return x.ChannelClass
+	}
+	return ""
 }
 
 type ModelCapabilities struct {
@@ -421,18 +432,20 @@ func (x *ListProviderModelsResponse) GetPageSize() int32 {
 }
 
 type CreateProviderModelRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Key           string                 `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
-	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
-	Description   string                 `protobuf:"bytes,3,opt,name=description,proto3" json:"description,omitempty"`
-	Status        string                 `protobuf:"bytes,4,opt,name=status,proto3" json:"status,omitempty"`
-	Enabled       bool                   `protobuf:"varint,5,opt,name=enabled,proto3" json:"enabled,omitempty"`
-	SortOrder     int32                  `protobuf:"varint,6,opt,name=sort_order,json=sortOrder,proto3" json:"sort_order,omitempty"`
-	Provider      string                 `protobuf:"bytes,7,opt,name=provider,proto3" json:"provider,omitempty"`
-	Model         string                 `protobuf:"bytes,8,opt,name=model,proto3" json:"model,omitempty"`
-	ConfigJson    string                 `protobuf:"bytes,9,opt,name=config_json,json=configJson,proto3" json:"config_json,omitempty"`
-	MetadataJson  string                 `protobuf:"bytes,10,opt,name=metadata_json,json=metadataJson,proto3" json:"metadata_json,omitempty"`
-	Capabilities  *ModelCapabilities     `protobuf:"bytes,11,opt,name=capabilities,proto3" json:"capabilities,omitempty"`
+	state        protoimpl.MessageState `protogen:"open.v1"`
+	Key          string                 `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
+	Name         string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	Description  string                 `protobuf:"bytes,3,opt,name=description,proto3" json:"description,omitempty"`
+	Status       string                 `protobuf:"bytes,4,opt,name=status,proto3" json:"status,omitempty"`
+	Enabled      bool                   `protobuf:"varint,5,opt,name=enabled,proto3" json:"enabled,omitempty"`
+	SortOrder    int32                  `protobuf:"varint,6,opt,name=sort_order,json=sortOrder,proto3" json:"sort_order,omitempty"`
+	Provider     string                 `protobuf:"bytes,7,opt,name=provider,proto3" json:"provider,omitempty"`
+	Model        string                 `protobuf:"bytes,8,opt,name=model,proto3" json:"model,omitempty"`
+	ConfigJson   string                 `protobuf:"bytes,9,opt,name=config_json,json=configJson,proto3" json:"config_json,omitempty"`
+	MetadataJson string                 `protobuf:"bytes,10,opt,name=metadata_json,json=metadataJson,proto3" json:"metadata_json,omitempty"`
+	Capabilities *ModelCapabilities     `protobuf:"bytes,11,opt,name=capabilities,proto3" json:"capabilities,omitempty"`
+	// channel_class 密级路由通道分组（D6/L-1）：local | cloud，空 = cloud。
+	ChannelClass  string `protobuf:"bytes,12,opt,name=channel_class,json=channelClass,proto3" json:"channel_class,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -542,6 +555,13 @@ func (x *CreateProviderModelRequest) GetCapabilities() *ModelCapabilities {
 		return x.Capabilities
 	}
 	return nil
+}
+
+func (x *CreateProviderModelRequest) GetChannelClass() string {
+	if x != nil {
+		return x.ChannelClass
+	}
+	return ""
 }
 
 type GetProviderModelRequest struct {
@@ -1277,7 +1297,7 @@ var File_kratos_llm_provider_model_v1_llm_provider_model_proto protoreflect.File
 
 const file_kratos_llm_provider_model_v1_llm_provider_model_proto_rawDesc = "" +
 	"\n" +
-	"5kratos/llm_provider_model/v1/llm_provider_model.proto\x12\x1ckratos.llm_provider_model.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x1bgoogle/protobuf/empty.proto\x1a aranea/auth/v1/requirement.proto\"\x91\x04\n" +
+	"5kratos/llm_provider_model/v1/llm_provider_model.proto\x12\x1ckratos.llm_provider_model.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x1bgoogle/protobuf/empty.proto\x1a aranea/auth/v1/requirement.proto\"\xb6\x04\n" +
 	"\rProviderModel\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x10\n" +
 	"\x03key\x18\x02 \x01(\tR\x03key\x12\x12\n" +
@@ -1300,7 +1320,8 @@ const file_kratos_llm_provider_model_v1_llm_provider_model_proto_rawDesc = "" +
 	"\n" +
 	"deleted_at\x18\x0e \x01(\tR\tdeletedAt\x12S\n" +
 	"\fcapabilities\x18\x0f \x01(\v2/.kratos.llm_provider_model.v1.ModelCapabilitiesR\fcapabilities\x12-\n" +
-	"\x12pricing_configured\x18\x10 \x01(\bR\x11pricingConfigured\"\xd5\x01\n" +
+	"\x12pricing_configured\x18\x10 \x01(\bR\x11pricingConfigured\x12#\n" +
+	"\rchannel_class\x18\x11 \x01(\tR\fchannelClass\"\xd5\x01\n" +
 	"\x11ModelCapabilities\x12\x12\n" +
 	"\x04text\x18\x01 \x01(\bR\x04text\x12\x16\n" +
 	"\x06vision\x18\x02 \x01(\bR\x06vision\x12\x14\n" +
@@ -1318,7 +1339,7 @@ const file_kratos_llm_provider_model_v1_llm_provider_model_proto_rawDesc = "" +
 	"\x05items\x18\x01 \x03(\v2+.kratos.llm_provider_model.v1.ProviderModelR\x05items\x12\x14\n" +
 	"\x05total\x18\x02 \x01(\x05R\x05total\x12\x12\n" +
 	"\x04page\x18\x03 \x01(\x05R\x04page\x12\x1b\n" +
-	"\tpage_size\x18\x04 \x01(\x05R\bpageSize\"\x8e\x03\n" +
+	"\tpage_size\x18\x04 \x01(\x05R\bpageSize\"\xb3\x03\n" +
 	"\x1aCreateProviderModelRequest\x12\x16\n" +
 	"\x03key\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\x03key\x12\x18\n" +
 	"\x04name\x18\x02 \x01(\tB\x04\xe2A\x01\x02R\x04name\x12 \n" +
@@ -1333,7 +1354,8 @@ const file_kratos_llm_provider_model_v1_llm_provider_model_proto_rawDesc = "" +
 	"configJson\x12#\n" +
 	"\rmetadata_json\x18\n" +
 	" \x01(\tR\fmetadataJson\x12S\n" +
-	"\fcapabilities\x18\v \x01(\v2/.kratos.llm_provider_model.v1.ModelCapabilitiesR\fcapabilities\"/\n" +
+	"\fcapabilities\x18\v \x01(\v2/.kratos.llm_provider_model.v1.ModelCapabilitiesR\fcapabilities\x12#\n" +
+	"\rchannel_class\x18\f \x01(\tR\fchannelClass\"/\n" +
 	"\x17GetProviderModelRequest\x12\x14\n" +
 	"\x02id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\x02id\"\x86\x01\n" +
 	"\x1aUpdateProviderModelRequest\x12\x14\n" +

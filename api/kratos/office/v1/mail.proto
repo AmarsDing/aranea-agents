@@ -1,0 +1,299 @@
+syntax = "proto3";
+
+package kratos.office.v1;
+
+import "google/api/annotations.proto";
+import "google/api/field_behavior.proto";
+import "google/api/httpbody.proto";
+import "google/protobuf/empty.proto";
+import "google/protobuf/timestamp.proto";
+import "aranea/auth/v1/requirement.proto";
+
+option go_package = "aranea-agents/api/kratos/office/v1;v1";
+option java_multiple_files = true;
+option java_package = "api.kratos.office.v1";
+
+// ============================================================================
+// OfficeMailService —— 邮件（自 workbench imap.go/misc.go 平移 + E-1..E-5）
+//
+// 平移语义（验收用例随 verify-imap.ps1 九节平移）：
+//   - IMAP tls/starttls/none 三模式；IDLE 推送 + 轮询兜底（E-5）；
+//   - (account_id,uid) 部分唯一索引幂等去重；每封邮件一个事务（邮件+附件
+//     同生共死，失败可重试）；
+//   - 附件 BYTEA 入库，16MB 上限（对齐 IMAP 字面量上限，E-4）。
+// 变更（拍板）：
+//   - E-1 账号密码迁入即加密（password 写后即弃，存储 password_enc，复用
+//     biz/credential_crypto 设施）；本服务无任何明文回显 RPC；
+//   - 补齐现状缺口：账号更新/删除、邮件删除、.eml 导出；
+//   - mailToTask 契约修正：workbench 前端未带 space_id 必 400，新版
+//     workspace 由服务端从调用者上下文解析（统一任务中心落位后接线）；
+//   - E-2 发信（SMTP）为 F2 项：proto 先占位，实现随高风险闸同批；
+//   - E-3 四象限分拣为 F2 项：quadrant 字段先占位。
+// ============================================================================
+
+enum TlsMode {
+  TLS_MODE_UNSPECIFIED = 0;
+  TLS_MODE_TLS = 1;       // 993 直连 TLS
+  TLS_MODE_STARTTLS = 2;  // 明文起跳后 STARTTLS 升级
+  TLS_MODE_NONE = 3;      // 明文（仅测试/mock）
+}
+
+// MailAccount 邮箱账号（永不含密码）。
+message MailAccount {
+  string id = 1;
+  string workspace_id = 2;
+  string name = 3; // 展示名
+  string host = 4;
+  int32 port = 5;
+  TlsMode tls_mode = 6;
+  string username = 7;
+  int64 last_uid = 8;
+  google.protobuf.Timestamp last_sync_at = 9; // 从未同步留空
+  google.protobuf.Timestamp created_at = 10;
+}
+
+message CreateAccountRequest {
+  string name = 1;
+  string host = 2 [(google.api.field_behavior) = REQUIRED];
+  int32 port = 3; // 0=按 tls_mode 默认（993/143）
+  TlsMode tls_mode = 4 [(google.api.field_behavior) = REQUIRED];
+  string username = 5 [(google.api.field_behavior) = REQUIRED];
+  string password = 6 [(google.api.field_behavior) = REQUIRED]; // 写后即弃
+}
+
+message UpdateAccountRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+  string name = 2;
+  string host = 3;
+  int32 port = 4;
+  TlsMode tls_mode = 5;
+  string username = 6;
+  string password = 7; // 非空 = 轮换
+}
+
+message GetAccountRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message DeleteAccountRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message ListAccountsResponse {
+  repeated MailAccount items = 1;
+}
+
+message SyncAccountRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message SyncAccountResponse {
+  int32 imported_count = 1;
+  int32 skipped_count = 2; // 幂等命中
+}
+
+message MailMessage {
+  string id = 1;
+  string account_id = 2; // .eml 导入为空串
+  int64 uid = 3;
+  string subject = 4;
+  string sender = 5;
+  string snippet = 6; // 列表用摘要（正文前 200 字符）
+  string received_at = 7; // RFC3339（邮件头原样时间，多格式兼容解析后归一）
+  string task_ref = 8;    // 转任务回链
+  string quadrant = 9;    // F2 四象限：urgent-important 等，未分拣为空
+  bool has_attachments = 10;
+  google.protobuf.Timestamp created_at = 11;
+}
+
+message ListMessagesRequest {
+  string account_id = 1; // 空 = 全部账号聚合
+  string quadrant = 2;   // 可选过滤（F2）
+  int32 page = 3;
+  int32 page_size = 4; // <=0 默认 50，>200 截 200
+}
+
+message ListMessagesResponse {
+  repeated MailMessage items = 1;
+  int64 total = 2;
+}
+
+message GetMessageRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+// MailMessageDetail 阅读窗全文。
+message MailMessageDetail {
+  MailMessage message = 1;
+  string body = 2; // text/plain 优先（平移 parseMailRaw 语义）
+}
+
+message DeleteMessageRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message MailAttachment {
+  string id = 1;
+  string message_id = 2;
+  string filename = 3;
+  string content_type = 4;
+  int64 size = 5;
+  string knowledge_doc_id = 6; // 入知识库后回链
+}
+
+message ListAttachmentsRequest {
+  string message_id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message ListAttachmentsResponse {
+  repeated MailAttachment items = 1;
+}
+
+message GetAttachmentRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+// ImportEmlRequest .eml 导入（account_id 为空串语义平移）。
+message ImportEmlRequest {
+  bytes eml = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message ExportEmlRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+// MailToTaskRequest 邮件转任务（契约修正：space 由服务端上下文解析）。
+message MailToTaskRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+  string title_override = 2;
+}
+
+message MailToTaskResponse {
+  string task_ref = 1;
+}
+
+// AttachmentToKnowledgeRequest 附件入知识库（密级随行）。
+message AttachmentToKnowledgeRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+  int32 classification = 2; // L1-L5，缺省沿用调用者默认
+}
+
+message AttachmentToKnowledgeResponse {
+  string knowledge_doc_id = 1;
+}
+
+// SendMailRequest F2：SMTP 发信（高风险闸+确认卡，E-2）。proto 先占位。
+message SendMailRequest {
+  string account_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string to = 2 [(google.api.field_behavior) = REQUIRED];
+  string subject = 3 [(google.api.field_behavior) = REQUIRED];
+  string body = 4;
+  string in_reply_to = 5; // 回复场景
+}
+
+message SendMailResponse {
+  string send_id = 1; // 发送审计锚
+}
+
+message TriggerDigestRequest {
+  google.protobuf.Timestamp since = 1; // 空 = 默认昨夜今晨窗口
+}
+
+message TriggerDigestResponse {
+  int32 message_count = 1;
+  string summary = 2;
+}
+
+service OfficeMailService {
+  rpc ListAccounts(google.protobuf.Empty) returns (ListAccountsResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "office.mail"};
+    option (google.api.http) = {get: "/v1/office/mail/accounts"};
+  }
+  rpc CreateAccount(CreateAccountRequest) returns (MailAccount) {
+    option (aranea.auth.v1.requirement) = {permission: "office.mail"};
+    option (google.api.http) = {
+      post: "/v1/office/mail/accounts"
+      body: "*"
+    };
+  }
+  rpc UpdateAccount(UpdateAccountRequest) returns (MailAccount) {
+    option (aranea.auth.v1.requirement) = {permission: "office.mail"};
+    option (google.api.http) = {
+      patch: "/v1/office/mail/accounts/{id}"
+      body: "*"
+    };
+  }
+  rpc DeleteAccount(DeleteAccountRequest) returns (google.protobuf.Empty) {
+    option (aranea.auth.v1.requirement) = {permission: "office.mail"};
+    option (google.api.http) = {delete: "/v1/office/mail/accounts/{id}"};
+  }
+  rpc SyncAccount(SyncAccountRequest) returns (SyncAccountResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "office.mail"};
+    option (google.api.http) = {
+      post: "/v1/office/mail/accounts/{id}/sync"
+      body: "*"
+    };
+  }
+  rpc ListMessages(ListMessagesRequest) returns (ListMessagesResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "office.mail"};
+    option (google.api.http) = {get: "/v1/office/mail/messages"};
+  }
+  rpc GetMessage(GetMessageRequest) returns (MailMessageDetail) {
+    option (aranea.auth.v1.requirement) = {permission: "office.mail"};
+    option (google.api.http) = {get: "/v1/office/mail/messages/{id}"};
+  }
+  rpc DeleteMessage(DeleteMessageRequest) returns (google.protobuf.Empty) {
+    option (aranea.auth.v1.requirement) = {permission: "office.mail"};
+    option (google.api.http) = {delete: "/v1/office/mail/messages/{id}"};
+  }
+  rpc ListAttachments(ListAttachmentsRequest) returns (ListAttachmentsResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "office.mail"};
+    option (google.api.http) = {get: "/v1/office/mail/attachments"};
+  }
+  // GetAttachment 附件下载（application/octet-stream + Content-Disposition）。
+  rpc GetAttachment(GetAttachmentRequest) returns (google.api.HttpBody) {
+    option (aranea.auth.v1.requirement) = {permission: "office.mail"};
+    option (google.api.http) = {get: "/v1/office/mail/attachments/{id}/download"};
+  }
+  rpc ImportEml(ImportEmlRequest) returns (MailMessage) {
+    option (aranea.auth.v1.requirement) = {permission: "office.mail"};
+    option (google.api.http) = {
+      post: "/v1/office/mail:importEml"
+      body: "*"
+    };
+  }
+  // ExportEml 补齐现状缺口（workbench 只有导入）。
+  rpc ExportEml(ExportEmlRequest) returns (google.api.HttpBody) {
+    option (aranea.auth.v1.requirement) = {permission: "office.mail"};
+    option (google.api.http) = {get: "/v1/office/mail/messages/{id}:exportEml"};
+  }
+  rpc MailToTask(MailToTaskRequest) returns (MailToTaskResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "office.mail"};
+    option (google.api.http) = {
+      post: "/v1/office/mail/messages/{id}:toTask"
+      body: "*"
+    };
+  }
+  rpc AttachmentToKnowledge(AttachmentToKnowledgeRequest) returns (AttachmentToKnowledgeResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "office.mail"};
+    option (google.api.http) = {
+      post: "/v1/office/mail/attachments/{id}:toKnowledge"
+      body: "*"
+    };
+  }
+  // SendMail F2 占位：实现随高风险闸同批（E-2）。
+  rpc SendMail(SendMailRequest) returns (SendMailResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "office.mail"};
+    option (google.api.http) = {
+      post: "/v1/office/mail:send"
+      body: "*"
+    };
+  }
+  rpc TriggerDigest(TriggerDigestRequest) returns (TriggerDigestResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "office.mail"};
+    option (google.api.http) = {
+      post: "/v1/office/mail/digest:trigger"
+      body: "*"
+    };
+  }
+}

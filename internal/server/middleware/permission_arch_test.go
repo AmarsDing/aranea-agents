@@ -18,12 +18,18 @@ import (
 var sensitiveDomains = []string{
 	"admin",
 	"agentbridge",
+	"approval",
 	"ceoboard",
 	"computeruse",
+	"credential",
 	"cron",
+	"github",
 	"llm_provider_model",
 	"monitor",
+	"office",
+	"review",
 	"sandbox",
+	"secops",
 	"self_improvement",
 	"system_setting",
 	"tool",
@@ -33,11 +39,14 @@ var sensitiveDomains = []string{
 // 显式豁免：这些 rpc 按设计"默认登录可见"，不要求登记权限码。
 //
 //	admin：Login/Logout/Current 属登录前或自助路径；
-//	tool：仅 TestTool/List*Audit/Get*Params 收严，其余为工具自服务面。
+//	tool：仅 TestTool/List*Audit/Get*Params 收严，其余为工具自服务面；
+//	office：GetICalFeed 为 token-in-path 公开订阅端点（日历客户端无法带
+//	  Bearer，令牌即凭据；吊销即 401）——E 阶段 K-3 拍板。
 var exemptRPC = map[string]bool{
-	"/kratos.admin.v1.AdminService/Login":   true,
-	"/kratos.admin.v1.AdminService/Logout":  true,
-	"/kratos.admin.v1.AdminService/Current": true,
+	"/kratos.admin.v1.AdminService/Login":                 true,
+	"/kratos.admin.v1.AdminService/Logout":                true,
+	"/kratos.admin.v1.AdminService/Current":               true,
+	"/kratos.office.v1.OfficeScheduleService/GetICalFeed": true,
 }
 
 var (

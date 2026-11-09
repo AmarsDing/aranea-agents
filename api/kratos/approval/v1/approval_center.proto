@@ -1,0 +1,118 @@
+syntax = "proto3";
+
+package kratos.approval.v1;
+
+import "google/api/annotations.proto";
+import "google/api/field_behavior.proto";
+import "google/protobuf/empty.proto";
+import "google/protobuf/timestamp.proto";
+import "aranea/auth/v1/requirement.proto";
+
+option go_package = "aranea-agents/api/kratos/approval/v1;v1";
+option java_multiple_files = true;
+option java_package = "api.kratos.approval.v1";
+
+// ============================================================================
+// ApprovalCenterService —— 统一审批中心（D2，A-1/A-4 拍板）
+//
+// 聚合语义（v5 §5.5 拍板，照抄 workbench approvals.go「不返回无权对象」）：
+//   - 只读聚合，决议出口仍走各领域 RPC（任务 review、脱敏 approve…），
+//     本服务不开写旁路；
+//   - 逐类按角色/密级/reviewer 规则在 SQL 内过滤，无权对象零泄漏；
+//   - 五类（v5）+ 扩展类：schedule_draft（日程草案）、memory_fact（记忆
+//     高风险写扣留，收编 twinmonitor 桥为库内直读）。
+// 分级审批矩阵（A-4，F2）：三级风险 × approval-policy 四档的默认档映射，
+// 配置存库可审计；GetRiskMatrix/PutRiskMatrix 本期随端点一并落地。
+// ============================================================================
+
+enum ApprovalKind {
+  APPROVAL_KIND_UNSPECIFIED = 0;
+  APPROVAL_KIND_TASK_REVIEW = 1;         // 任务验收（agentbridge 编码任务 + 统一任务中心业务任务预留）
+  APPROVAL_KIND_MASK_PROPOSAL = 2;       // 脱敏提案（secops 五闸，D6 落位后接入）
+  APPROVAL_KIND_OFFBOARD_EXPORT = 3;     // 离职导出（D3 落位后接入）
+  APPROVAL_KIND_EVOLUTION_SUGGESTION = 4; // 自改进建议（补决议回写闭环）
+  APPROVAL_KIND_SKILL_APPROVAL = 5;      // 技能审批
+  APPROVAL_KIND_SCHEDULE_DRAFT = 6;      // agent 日程草案（office.schedule）
+  APPROVAL_KIND_MEMORY_FACT = 7;         // 记忆高风险写扣留
+}
+
+enum RiskLevel {
+  RISK_LEVEL_UNSPECIFIED = 0;
+  RISK_LEVEL_LOW = 1;    // 自动留痕
+  RISK_LEVEL_MEDIUM = 2; // 可批量/同类自动批准 N 次（矩阵配置）
+  RISK_LEVEL_HIGH = 3;   // 逐项 + 移动端二次确认（F3）
+}
+
+// ApprovalItem 统一审批条目形状。
+message ApprovalItem {
+  ApprovalKind kind = 1;
+  string id = 2;          // 领域内条目 id（决议时回传各领域 RPC）
+  string title = 3;
+  string summary = 4;
+  string context_json = 5; // 类别特定上下文（任务=密级/创建者/reviewer；脱敏=样本召回率…）
+  RiskLevel risk_level = 6;
+  string requester = 7;    // 申请人/来源 agent（不可自批判定展示用）
+  google.protobuf.Timestamp created_at = 8;
+}
+
+message ListApprovalsRequest {
+  ApprovalKind kind = 1; // UNSPECIFIED = 全部
+  int32 page = 2;
+  int32 page_size = 3; // <=0 默认 50，>200 截 200
+}
+
+message ListApprovalsResponse {
+  repeated ApprovalItem items = 1;
+  int64 total = 2;
+}
+
+message ApprovalKindCount {
+  ApprovalKind kind = 1;
+  int64 count = 2;
+}
+
+// ApprovalSummary 铃铛/金门徽标用计数。
+message ApprovalSummary {
+  repeated ApprovalKindCount counts = 1;
+  int64 total = 2;
+}
+
+// RiskMatrixRow 三级风险 → approval-policy 默认档映射（A-4）。
+message RiskMatrixRow {
+  string matcher_key = 1;  // 匹配键（tool_pattern/动作类名，见 approval-policy 三维匹配）
+  RiskLevel risk = 2;
+  string default_mode = 3; // never | auto | ask | trusted
+  int32 auto_approve_times = 4; // 中风险同类自动批准次数上限（0=不启用）
+  string updated_by = 5;
+  google.protobuf.Timestamp updated_at = 6;
+}
+
+message GetRiskMatrixResponse {
+  repeated RiskMatrixRow rows = 1;
+}
+
+message PutRiskMatrixRequest {
+  repeated RiskMatrixRow rows = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+service ApprovalCenterService {
+  rpc ListApprovals(ListApprovalsRequest) returns (ListApprovalsResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "approval.review"};
+    option (google.api.http) = {get: "/v1/approvals"};
+  }
+  rpc GetApprovalSummary(google.protobuf.Empty) returns (ApprovalSummary) {
+    option (aranea.auth.v1.requirement) = {permission: "approval.review"};
+    option (google.api.http) = {get: "/v1/approvals/summary"};
+  }
+  rpc GetRiskMatrix(google.protobuf.Empty) returns (GetRiskMatrixResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "approval.review"};
+    option (google.api.http) = {get: "/v1/approvals/risk-matrix"};
+  }
+  rpc PutRiskMatrix(PutRiskMatrixRequest) returns (GetRiskMatrixResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "approval.policy"};
+    option (google.api.http) = {
+      put: "/v1/approvals/risk-matrix"
+      body: "*"
+    };
+  }
+}

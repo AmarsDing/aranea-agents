@@ -37,6 +37,10 @@ var builtinRolePermissions = map[string][]string{
 		// coding.*：agentbridge 编码桥管理/派发（评审 2026-11-09 H4 补录；
 		// 主机命令执行面，默认只给运维总管，工作台用户经 DB 角色按需授予）。
 		"coding.*",
+		// E 阶段（2026-11-09 需求文档）：凭据管理高敏收窄仅 sysadmin；
+		// 审批矩阵写、GitHub watch 管理、发文审批决议同档。
+		"credential.manage", "approval.policy", "github.manage",
+		"review.view", "review.decide",
 	},
 	"secadmin": {
 		"knowledge.classify",
@@ -58,6 +62,8 @@ var builtinRolePermissions = map[string][]string{
 		"audit.read",
 		"usage.read",
 		"approval.review",
+		// E 阶段：CEO 总览面延伸——GitHub 情报面板读、发文审批读+决议。
+		"github.view", "review.view", "review.decide",
 	},
 	"oncall": {
 		"ceoboard.view", "ceoboard.ops",
@@ -66,6 +72,7 @@ var builtinRolePermissions = map[string][]string{
 	"viewer": {
 		"ceoboard.view",
 		"system.monitor",
+		"github.view",
 	},
 	"user": {
 		"knowledge.read", "knowledge.write",
@@ -73,6 +80,9 @@ var builtinRolePermissions = map[string][]string{
 		"approval.submit",
 		"office.schedule", "office.mail", "office.apps",
 		"session.*",
+		// E 阶段：统一审批中心按身份过滤（reviewer 可裁决自己名下的）；
+		// 发文审批与 GitHub 面板是个人工作台日常面。
+		"approval.review", "review.view", "review.decide", "github.view",
 	},
 }
 

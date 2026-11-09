@@ -48,13 +48,16 @@ type registration struct {
 
 // defaultSensitiveDomains 是默认敏感域清单(P0 详设 02 §2 的 11 域 +
 // 评审 2026-11-09 H4 补录 agentbridge——该域在 P1-6 普查范围外,管理/派发
-// 是主机命令执行面;与 permission_arch_test.go sensitiveDomains 同源两份:
+// 是主机命令执行面;E 阶段(2026-11-09 需求文档)补录 approval/credential/
+// github/office/review/secops 六域——凭据/审批/安全运营均为收严面;
+// 与 permission_arch_test.go sensitiveDomains 同源两份:
 // 插件漏配→架构测试红;架构测试漏配→生成期不报但测试也不查——改动域清单
 // 时两处同步)。
 // protoc 参数以逗号分隔键值对,故 domains 覆盖参数用分号分隔,默认清单免参。
 var defaultSensitiveDomains = []string{
-	"admin", "agentbridge", "ceoboard", "computeruse", "cron", "llm_provider_model",
-	"monitor", "sandbox", "self_improvement", "system_setting", "tool", "usage",
+	"admin", "agentbridge", "approval", "ceoboard", "computeruse", "credential",
+	"cron", "github", "llm_provider_model", "monitor", "office", "review",
+	"sandbox", "secops", "self_improvement", "system_setting", "tool", "usage",
 }
 
 func main() {

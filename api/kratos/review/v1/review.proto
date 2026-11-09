@@ -1,0 +1,122 @@
+syntax = "proto3";
+
+package kratos.review.v1;
+
+import "google/api/annotations.proto";
+import "google/api/field_behavior.proto";
+import "google/protobuf/timestamp.proto";
+import "aranea/auth/v1/requirement.proto";
+
+option go_package = "aranea-agents/api/kratos/review/v1;v1";
+option java_multiple_files = true;
+option java_package = "api.kratos.review.v1";
+
+// ============================================================================
+// ReviewService —— MVP 发文审批/商机签收的 proto 收编（D2，A-2 安全红线）
+//
+// 收编内容（原 internal/service/mvp_media_http.go 裸 HTTP 五路由，收编后下线）：
+//   GET  /api/v1/mvp/review/pending            → ListPendingReviews
+//   POST /api/v1/mvp/review/{id}/approve       → ApproveReview
+//   POST /api/v1/mvp/review/{id}/reject        → RejectReview
+//   GET  /api/v1/mvp/opportunities             → ListOpportunities
+//   POST /api/v1/mvp/opportunities/{id}/ack    → AckOpportunity
+//
+// 行为修正（相对裸路由）：
+//   - reviewer 一律取 JWT 主体，请求体自报字段废除（原前端硬编码 'ops'）；
+//   - 不可自批：内容创建者 != reviewer 服务端强制（400）；
+//   - Reject 强制 note（原语义保留）；
+//   - approve 后的联动（MarkApproved→PublishJob→ProcessNext→图执行恢复）
+//     原样保留在 biz/review 用例层；
+//   - 并发决议 CAS：恰一个成功，其余 409。
+// ============================================================================
+
+// ReviewTaskView 发文审批条目（对应 biz/review.Task）。
+message ReviewTaskView {
+  string id = 1;
+  string content_item_id = 2;
+  string draft_title = 3;
+  string draft_body = 4;
+  string machine_flags_json = 5;
+  repeated string platform_targets = 6;
+  string status = 7; // pending | approved | rejected | cancelled
+  string decision_note = 8;
+  string reviewer_id = 9;
+  google.protobuf.Timestamp decided_at = 10;
+  google.protobuf.Timestamp created_at = 11;
+}
+
+message ListPendingReviewsRequest {
+  int32 page = 1;
+  int32 page_size = 2;
+}
+
+message ListPendingReviewsResponse {
+  repeated ReviewTaskView items = 1;
+  int64 total = 2;
+}
+
+message ApproveReviewRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+  string note = 2;
+}
+
+message RejectReviewRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+  string note = 2 [(google.api.field_behavior) = REQUIRED]; // 拒绝必填理由
+}
+
+// OpportunityView 商机条目（上架确认）。
+message OpportunityView {
+  string id = 1;
+  string title = 2;
+  string summary = 3;
+  string source = 4;
+  string status = 5;
+  google.protobuf.Timestamp created_at = 6;
+}
+
+message ListOpportunitiesRequest {
+  int32 page = 1;
+  int32 page_size = 2;
+}
+
+message ListOpportunitiesResponse {
+  repeated OpportunityView items = 1;
+  int64 total = 2;
+}
+
+message AckOpportunityRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+service ReviewService {
+  rpc ListPendingReviews(ListPendingReviewsRequest) returns (ListPendingReviewsResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "review.view"};
+    option (google.api.http) = {get: "/v1/review/pending"};
+  }
+  rpc ApproveReview(ApproveReviewRequest) returns (ReviewTaskView) {
+    option (aranea.auth.v1.requirement) = {permission: "review.decide"};
+    option (google.api.http) = {
+      post: "/v1/review/{id}/approve"
+      body: "*"
+    };
+  }
+  rpc RejectReview(RejectReviewRequest) returns (ReviewTaskView) {
+    option (aranea.auth.v1.requirement) = {permission: "review.decide"};
+    option (google.api.http) = {
+      post: "/v1/review/{id}/reject"
+      body: "*"
+    };
+  }
+  rpc ListOpportunities(ListOpportunitiesRequest) returns (ListOpportunitiesResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "review.view"};
+    option (google.api.http) = {get: "/v1/review/opportunities"};
+  }
+  rpc AckOpportunity(AckOpportunityRequest) returns (OpportunityView) {
+    option (aranea.auth.v1.requirement) = {permission: "review.decide"};
+    option (google.api.http) = {
+      post: "/v1/review/opportunities/{id}/ack"
+      body: "*"
+    };
+  }
+}

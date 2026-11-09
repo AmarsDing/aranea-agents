@@ -29,6 +29,10 @@ message ProviderModel {
   string deleted_at = 14;
   ModelCapabilities capabilities = 15;
   bool pricing_configured = 16;
+  // channel_class 密级路由通道分组（D6/L-1）：local | cloud，空 = cloud。
+  // ClassificationAwareModelSelector 在水位线 >= model_policy.local_threshold
+  // 时把候选集裁到 local 组。
+  string channel_class = 17;
 }
 
 message ModelCapabilities {
@@ -70,6 +74,8 @@ message CreateProviderModelRequest {
   string config_json = 9;
   string metadata_json = 10;
   ModelCapabilities capabilities = 11;
+  // channel_class 密级路由通道分组（D6/L-1）：local | cloud，空 = cloud。
+  string channel_class = 12;
 }
 
 message GetProviderModelRequest {

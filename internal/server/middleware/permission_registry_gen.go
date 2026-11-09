@@ -37,6 +37,12 @@ func registerGeneratedPermissions(r *PermissionRegistry) {
 	requireRPC(r, "agentbridge", "AgentBridgeService", "UpsertAgent", "POST", "/v1/agentbridge/agents", "coding.manage")
 	requireRPC(r, "agentbridge", "AgentBridgeService", "UpsertProject", "POST", "/v1/agentbridge/projects", "coding.manage")
 
+	// ── approval ──
+	requireRPC(r, "approval", "ApprovalCenterService", "GetApprovalSummary", "GET", "/v1/approvals/summary", "approval.review")
+	requireRPC(r, "approval", "ApprovalCenterService", "GetRiskMatrix", "GET", "/v1/approvals/risk-matrix", "approval.review")
+	requireRPC(r, "approval", "ApprovalCenterService", "ListApprovals", "GET", "/v1/approvals", "approval.review")
+	requireRPC(r, "approval", "ApprovalCenterService", "PutRiskMatrix", "PUT", "/v1/approvals/risk-matrix", "approval.policy")
+
 	// ── ceoboard ──
 	requireRPC(r, "ceoboard", "CeoboardService", "ExportAudit", "GET", "/v1/ceoboard/audit/export", "ceoboard.ops")
 	requireRPC(r, "ceoboard", "CeoboardService", "GetEvent", "GET", "/v1/ceoboard/events/{uid}", "ceoboard.view")
@@ -56,6 +62,15 @@ func registerGeneratedPermissions(r *PermissionRegistry) {
 	requireRPC(r, "computeruse", "ComputerUseService", "KillComputerUseSession", "POST", "/v1/computeruse/sessions/{id}/kill", "tool.exec")
 	requireRPC(r, "computeruse", "ComputerUseService", "ListComputerUseSteps", "GET", "/v1/computeruse/sessions/{id}/steps", "tool.exec")
 
+	// ── credential ──
+	requireRPC(r, "credential", "CredentialService", "CreateCredential", "POST", "/v1/credentials", "credential.manage")
+	requireRPC(r, "credential", "CredentialService", "DeleteCredential", "DELETE", "/v1/credentials/{id}", "credential.manage")
+	requireRPC(r, "credential", "CredentialService", "GetCredential", "GET", "/v1/credentials/{id}", "credential.manage")
+	requireRPC(r, "credential", "CredentialService", "ImportBitwarden", "POST", "/v1/credentials:importBitwarden", "credential.manage")
+	requireRPC(r, "credential", "CredentialService", "ListCredentials", "GET", "/v1/credentials", "credential.manage")
+	requireRPC(r, "credential", "CredentialService", "ListExecutions", "GET", "/v1/credential-executions", "audit.read")
+	requireRPC(r, "credential", "CredentialService", "UpdateCredential", "PATCH", "/v1/credentials/{id}", "credential.manage")
+
 	// ── cron ──
 	requireRPC(r, "cron", "CronService", "CreateCronTask", "POST", "/v1/cron-tasks", "system.cron")
 	requireRPC(r, "cron", "CronService", "DeleteCronTask", "DELETE", "/v1/cron-tasks/{id}", "system.cron")
@@ -65,6 +80,15 @@ func registerGeneratedPermissions(r *PermissionRegistry) {
 	requireRPC(r, "cron", "CronService", "ResetCronTaskFailures", "POST", "/v1/cron-tasks/{id}/reset-failures", "system.cron")
 	requireRPC(r, "cron", "CronService", "TriggerCronTask", "POST", "/v1/cron-tasks/{id}/trigger", "system.cron")
 	requireRPC(r, "cron", "CronService", "UpdateCronTask", "PATCH", "/v1/cron-tasks/{id}", "system.cron")
+
+	// ── github ──
+	requireRPC(r, "github", "GitHubPanelService", "GetRepoHealth", "GET", "/v1/github/health", "github.view")
+	requireRPC(r, "github", "GitHubPanelService", "GetSlaReport", "GET", "/v1/github/sla", "github.view")
+	requireRPC(r, "github", "GitHubPanelService", "ListTrendingReports", "GET", "/v1/github/trending", "github.view")
+	requireRPC(r, "github", "GitHubPanelService", "ListWatchedRepos", "GET", "/v1/github/repos", "github.view")
+	requireRPC(r, "github", "GitHubPanelService", "TriggerPoll", "POST", "/v1/github/poll", "github.manage")
+	requireRPC(r, "github", "GitHubPanelService", "UnwatchRepo", "DELETE", "/v1/github/repos/{id}", "github.manage")
+	requireRPC(r, "github", "GitHubPanelService", "WatchRepo", "POST", "/v1/github/repos", "github.manage")
 
 	// ── llm_provider_model ──
 	requireRPC(r, "llm_provider_model", "LlmProviderModelService", "CreateProviderModel", "POST", "/v1/llm-provider-models", "model.route")
@@ -97,10 +121,72 @@ func registerGeneratedPermissions(r *PermissionRegistry) {
 	requireRPC(r, "monitor", "MonitorService", "PutMonitorAlertRules", "PUT", "/v1/monitor/alert-rules", "system.monitor")
 	requireRPC(r, "monitor", "MonitorService", "TriggerSelfCheck", "POST", "/v1/monitor/self-check", "system.monitor")
 
+	// ── office ──
+	requireRPC(r, "office", "OfficeAppsService", "DeleteApp", "DELETE", "/v1/office/apps/{id}", "office.apps")
+	requireRPC(r, "office", "OfficeAppsService", "ListApps", "GET", "/v1/office/apps", "office.apps")
+	requireRPC(r, "office", "OfficeAppsService", "UpsertApp", "POST", "/v1/office/apps", "office.apps")
+	requireRPC(r, "office", "OfficeMailService", "AttachmentToKnowledge", "POST", "/v1/office/mail/attachments/{id}:toKnowledge", "office.mail")
+	requireRPC(r, "office", "OfficeMailService", "CreateAccount", "POST", "/v1/office/mail/accounts", "office.mail")
+	requireRPC(r, "office", "OfficeMailService", "DeleteAccount", "DELETE", "/v1/office/mail/accounts/{id}", "office.mail")
+	requireRPC(r, "office", "OfficeMailService", "DeleteMessage", "DELETE", "/v1/office/mail/messages/{id}", "office.mail")
+	requireRPC(r, "office", "OfficeMailService", "ExportEml", "GET", "/v1/office/mail/messages/{id}:exportEml", "office.mail")
+	requireRPC(r, "office", "OfficeMailService", "GetAttachment", "GET", "/v1/office/mail/attachments/{id}/download", "office.mail")
+	requireRPC(r, "office", "OfficeMailService", "GetMessage", "GET", "/v1/office/mail/messages/{id}", "office.mail")
+	requireRPC(r, "office", "OfficeMailService", "ImportEml", "POST", "/v1/office/mail:importEml", "office.mail")
+	requireRPC(r, "office", "OfficeMailService", "ListAccounts", "GET", "/v1/office/mail/accounts", "office.mail")
+	requireRPC(r, "office", "OfficeMailService", "ListAttachments", "GET", "/v1/office/mail/attachments", "office.mail")
+	requireRPC(r, "office", "OfficeMailService", "ListMessages", "GET", "/v1/office/mail/messages", "office.mail")
+	requireRPC(r, "office", "OfficeMailService", "MailToTask", "POST", "/v1/office/mail/messages/{id}:toTask", "office.mail")
+	requireRPC(r, "office", "OfficeMailService", "SendMail", "POST", "/v1/office/mail:send", "office.mail")
+	requireRPC(r, "office", "OfficeMailService", "SyncAccount", "POST", "/v1/office/mail/accounts/{id}/sync", "office.mail")
+	requireRPC(r, "office", "OfficeMailService", "TriggerDigest", "POST", "/v1/office/mail/digest:trigger", "office.mail")
+	requireRPC(r, "office", "OfficeMailService", "UpdateAccount", "PATCH", "/v1/office/mail/accounts/{id}", "office.mail")
+	requireAuthenticatedRPC(r, "office", "OfficeNotifyService", "DismissNotification", "POST", "/v1/office/notifications/{id}/dismiss")
+	requireAuthenticatedRPC(r, "office", "OfficeNotifyService", "ListNotifications", "GET", "/v1/office/notifications")
+	requireAuthenticatedRPC(r, "office", "OfficeNotifyService", "MarkAllNotificationsRead", "POST", "/v1/office/notifications:markAllRead")
+	requireRPC(r, "office", "OfficeScheduleService", "CreateEvent", "POST", "/v1/office/events", "office.schedule")
+	requireRPC(r, "office", "OfficeScheduleService", "CreateICalToken", "POST", "/v1/office/calendar/tokens", "office.schedule")
+	requireRPC(r, "office", "OfficeScheduleService", "DeleteEvent", "DELETE", "/v1/office/events/{id}", "office.schedule")
+	requireRPC(r, "office", "OfficeScheduleService", "GetEvent", "GET", "/v1/office/events/{id}", "office.schedule")
+	// public 豁免(不登记,留痕;架构测试断言与 exemptRPC 一致): /kratos.office.v1.OfficeScheduleService/GetICalFeed
+	requireRPC(r, "office", "OfficeScheduleService", "ListEventsRange", "GET", "/v1/office/events", "office.schedule")
+	requireRPC(r, "office", "OfficeScheduleService", "ListICalTokens", "GET", "/v1/office/calendar/tokens", "office.schedule")
+	requireRPC(r, "office", "OfficeScheduleService", "ListTaskEvents", "GET", "/v1/office/events:byTask", "office.schedule")
+	requireRPC(r, "office", "OfficeScheduleService", "RevokeICalToken", "DELETE", "/v1/office/calendar/tokens/{id}", "office.schedule")
+	requireRPC(r, "office", "OfficeScheduleService", "ScheduleTask", "POST", "/v1/office/events:scheduleTask", "office.schedule")
+	requireRPC(r, "office", "OfficeScheduleService", "SubmitScheduleDraft", "POST", "/v1/office/schedule-drafts", "office.schedule")
+	requireRPC(r, "office", "OfficeScheduleService", "UpdateEvent", "PATCH", "/v1/office/events/{id}", "office.schedule")
+
+	// ── review ──
+	requireRPC(r, "review", "ReviewService", "AckOpportunity", "POST", "/v1/review/opportunities/{id}/ack", "review.decide")
+	requireRPC(r, "review", "ReviewService", "ApproveReview", "POST", "/v1/review/{id}/approve", "review.decide")
+	requireRPC(r, "review", "ReviewService", "ListOpportunities", "GET", "/v1/review/opportunities", "review.view")
+	requireRPC(r, "review", "ReviewService", "ListPendingReviews", "GET", "/v1/review/pending", "review.view")
+	requireRPC(r, "review", "ReviewService", "RejectReview", "POST", "/v1/review/{id}/reject", "review.decide")
+
 	// ── sandbox ──
 	requireRPC(r, "sandbox", "SandboxService", "ForceKillSandbox", "DELETE", "/v1/sandboxes/{id}", "tool.exec")
 	requireRPC(r, "sandbox", "SandboxService", "GetSandboxMetrics", "GET", "/v1/sandboxes/metrics", "tool.exec")
 	requireRPC(r, "sandbox", "SandboxService", "ListSandboxes", "GET", "/v1/sandboxes", "tool.exec")
+
+	// ── secops ──
+	requireRPC(r, "secops", "SecopsService", "ActivateMaskProposal", "POST", "/v1/secops/mask-proposals/{id}/activate", "secops.policy")
+	requireRPC(r, "secops", "SecopsService", "ApproveMaskProposal", "POST", "/v1/secops/mask-proposals/{id}/approve", "secops.policy")
+	requireRPC(r, "secops", "SecopsService", "ApproveOffboardExport", "POST", "/v1/secops/offboard/export-approve", "secops.policy")
+	requireRPC(r, "secops", "SecopsService", "CreateMaskProposal", "POST", "/v1/secops/mask-proposals", "secops.policy")
+	requireRPC(r, "secops", "SecopsService", "DeleteOffboardedUser", "POST", "/v1/secops/offboard/delete", "secops.policy")
+	requireRPC(r, "secops", "SecopsService", "FreezeUser", "POST", "/v1/secops/offboard/freeze", "secops.policy")
+	requireRPC(r, "secops", "SecopsService", "GetModelPolicy", "GET", "/v1/secops/model-policy", "secops.policy")
+	requireRPC(r, "secops", "SecopsService", "GetOffboardExport", "GET", "/v1/secops/offboard/export/{user_id}", "secops.policy")
+	requireAuthenticatedRPC(r, "secops", "SecopsService", "ListClassificationLabels", "GET", "/v1/secops/labels")
+	requireRPC(r, "secops", "SecopsService", "ListMaskProposals", "GET", "/v1/secops/mask-proposals", "secops.policy")
+	requireRPC(r, "secops", "SecopsService", "ListMaskRules", "GET", "/v1/secops/mask-rules", "secops.policy")
+	requireRPC(r, "secops", "SecopsService", "ListOffboardRequests", "GET", "/v1/secops/offboard", "secops.policy")
+	requireRPC(r, "secops", "SecopsService", "PutClassificationLabel", "PUT", "/v1/secops/labels/{level}", "secops.policy")
+	requireRPC(r, "secops", "SecopsService", "RejectMaskProposal", "POST", "/v1/secops/mask-proposals/{id}/reject", "secops.policy")
+	requireRPC(r, "secops", "SecopsService", "RequestOffboardExport", "POST", "/v1/secops/offboard/export-request", "secops.policy")
+	requireRPC(r, "secops", "SecopsService", "RunMaskGates", "POST", "/v1/secops/mask-proposals/{id}/run-gates", "secops.policy")
+	requireRPC(r, "secops", "SecopsService", "SetModelPolicy", "PUT", "/v1/secops/model-policy", "secops.policy")
 
 	// ── self_improvement ──
 	requireRPC(r, "self_improvement", "SelfImprovementService", "ApproveRun", "POST", "/v1/self-improvement/runs/{id}/approve", "system.self_improve")
@@ -175,6 +261,7 @@ var generatedPublicRPCs = []string{
 	"/kratos.admin.v1.AdminService/Current",
 	"/kratos.admin.v1.AdminService/Login",
 	"/kratos.admin.v1.AdminService/Logout",
+	"/kratos.office.v1.OfficeScheduleService/GetICalFeed",
 }
 
-// 统计:permission=98 authenticated=32 public=3
+// 统计:permission=167 authenticated=36 public=4
