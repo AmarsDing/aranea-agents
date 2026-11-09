@@ -46,7 +46,7 @@ const sqlFactSelect = `SELECT id, scope_type, scope_id, workspace_id, user_id, t
  ttl_days, decay_factor, next_decay_at, last_used_at, expires_at,
  metadata_json, quality_score, pii_types, created_at, updated_at, archived_at, deleted_at,
  valid_from, valid_until, links, keywords, tags,
- decay_score, context_note, index_attempts
+ decay_score, context_note, index_attempts, content_enc
  FROM memory_facts`
 
 // sqlFactSelectSQL returns the fact row projection. Lexical recall paths omit
@@ -58,6 +58,12 @@ func sqlFactSelectSQL(includeBlob bool) string {
 	}
 	return strings.Replace(sqlFactSelect, " embedding_blob,", " NULL AS embedding_blob,", 1)
 }
+
+// factPIIGateClause 是 D3 记忆分域的 user 域 PII 门：user scope 且被打 PII 标
+// 的事实处于管理员复核隔离态，不可被任何自动召回/消费路径读到；其余 scope
+// 的 PII 行不受限（团队/工作区事实的 PII 标仅作审计提示）。所有 memory_facts
+// 召回候选查询（含 FTS/trgm/向量回填的 ID 再取）必须挂本 clause。
+const factPIIGateClause = "(pii_flag = 0 OR scope_type <> 'user')"
 
 const sqlEpisodeSelect = `SELECT id, session_id, agent_id, episode_kind, title, outcome_summary, importance,
  consolidation_status, consolidated_l3_count, metadata_json, ended_at, created_at FROM memory_episodes`

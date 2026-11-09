@@ -190,7 +190,7 @@ func (r *l3FactRepo) ListFactRows(ctx context.Context, scopeType, scopeID, kind,
 	defer rows.Close()
 	var out [][]byte
 	for rows.Next() {
-		b, err := scanFactRowJSON(rows)
+		b, err := scanFactRowJSON(ctx, rows, r.data.factCipher)
 		if err != nil {
 			return nil, 0, 0, 0, entErrToBizErr(err, "MEMORY_L3")
 		}
@@ -263,7 +263,7 @@ func (r *l3FactRepo) listFactOverviewRows(ctx context.Context, agentID, extra, o
 	defer rows.Close()
 	var out [][]byte
 	for rows.Next() {
-		b, err := scanFactRowJSON(rows)
+		b, err := scanFactRowJSON(ctx, rows, r.data.factCipher)
 		if err != nil {
 			return nil, entErrToBizErr(err, "MEMORY_L3")
 		}
@@ -363,7 +363,7 @@ func (r *l3FactRepo) ListFactRowsForUser(ctx context.Context, scopeType, scopeID
 	defer rows.Close()
 	var out [][]byte
 	for rows.Next() {
-		b, err := scanFactRowJSON(rows)
+		b, err := scanFactRowJSON(ctx, rows, r.data.factCipher)
 		if err != nil {
 			return nil, entErrToBizErr(err, "MEMORY_L3")
 		}
@@ -412,7 +412,7 @@ func (r *l3FactRepo) ListFactRowsForUserAll(ctx context.Context, scopeType, scop
 	defer rows.Close()
 	var out [][]byte
 	for rows.Next() {
-		b, err := scanFactRowJSON(rows)
+		b, err := scanFactRowJSON(ctx, rows, r.data.factCipher)
 		if err != nil {
 			return nil, entErrToBizErr(err, "MEMORY_L3")
 		}
@@ -440,7 +440,7 @@ func (r *l3FactRepo) GetFactRowsByIDs(ctx context.Context, factIDs []string) ([]
 	defer rows.Close()
 	var out [][]byte
 	for rows.Next() {
-		b, err := scanFactRowJSON(rows)
+		b, err := scanFactRowJSON(ctx, rows, r.data.factCipher)
 		if err != nil {
 			return nil, entErrToBizErr(err, "MEMORY_L3")
 		}

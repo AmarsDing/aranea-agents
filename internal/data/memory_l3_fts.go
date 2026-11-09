@@ -61,7 +61,7 @@ func (r *l3FactRepo) searchL3FTS(ctx context.Context, scopeType, scopeID, userID
 	tsv := `to_tsvector('simple', statement || ' ' || COALESCE(details_markdown, ''))`
 	tsq := buildL3FTSQuery(query)
 	clauses := []string{
-		"status = 'active'", "deleted_at = ''", "valid_until = ''",
+		"status = 'active'", "deleted_at = ''", "valid_until = ''", factPIIGateClause,
 		tsv + ` @@ to_tsquery('simple', ?)`,
 	}
 	args := []any{tsq}
@@ -188,7 +188,7 @@ func (r *l3FactRepo) searchL3FTSCJK(ctx context.Context, scopeType, scopeID, use
 	// 中间空格归一由 PG 解析器规整），否则 planner 无法匹配索引。
 	cjkFTSExpr := `to_tsvector('simple', bigram_text(statement))`
 	clauses := []string{
-		"status = 'active'", "deleted_at = ''", "valid_until = ''",
+		"status = 'active'", "deleted_at = ''", "valid_until = ''", factPIIGateClause,
 		`(? = '' OR scope_type = ?)`,
 		`(? = '' OR scope_id = ?)`,
 		`(? = '' OR user_id = ?)`,
@@ -312,8 +312,10 @@ func rrfFuseRanked(k int, lists ...[]string) (map[string]float64, []string) {
 
 // queryFactRowsByIDs fetches active fact rows by ID with scope filters
 // re-applied in SQL (defense-in-depth; the candidate queries already filter).
+// factPIIGateClause 无条件生效：user 域 PII 行对自动消费（召回回填、评测
+// 冲突检测）一律不可见，仅管理员复核路径（ListPIIFlaggedFacts）可读。
 func (r *l3FactRepo) queryFactRowsByIDs(ctx context.Context, ids []string, scopeType, scopeID, userID string, includeBlob bool) (*sql.Rows, error) {
-	clauses := []string{"status = 'active'", "deleted_at = ''", "valid_until = ''"}
+	clauses := []string{"status = 'active'", "deleted_at = ''", "valid_until = ''", factPIIGateClause}
 	args := make([]any, 0, len(ids)+3)
 	if scopeType != "" {
 		clauses = append(clauses, "scope_type = ?")
@@ -369,7 +371,7 @@ func (r *l3FactRepo) ftsExtraCandidatesAt(ctx context.Context, scopeType, scopeI
 		return nil, entErrToBizErr(err, "MEMORY_L3")
 	}
 	defer rows.Close()
-	scored := scoreFactRows(rows, tokenizeQuery(query), queryEmbedding, nil, minScore, now)
+	scored := scoreFactRows(ctx, r.data.factCipher, rows, tokenizeQuery(query), queryEmbedding, nil, minScore, now)
 	if err := rows.Err(); err != nil {
 		return nil, entErrToBizErr(err, "MEMORY_L3")
 	}

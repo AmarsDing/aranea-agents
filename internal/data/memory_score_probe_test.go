@@ -69,7 +69,7 @@ func TestScoreDistributionProbe(t *testing.T) {
 		if err != nil {
 			t.Fatalf("query candidates: %v", err)
 		}
-		scored := scoreFactRows(rows, tokenizeQuery(q), emb, nil, 0, now)
+		scored := scoreFactRows(ctx, nil, rows, tokenizeQuery(q), emb, nil, 0, now)
 		rows.Close()
 		if err := rows.Err(); err != nil {
 			t.Fatalf("iterate candidates: %v", err)

@@ -47,6 +47,7 @@ func (r *l3FactRepo) searchL3Trigram(ctx context.Context, scopeType, scopeID, us
 	q := `WITH scoped AS MATERIALIZED (
   SELECT id, statement, valid_from, created_at FROM memory_facts
   WHERE status = 'active' AND deleted_at = '' AND valid_until = ''
+    AND ` + factPIIGateClause + `
     AND (? = '' OR scope_type = ?)
     AND (? = '' OR scope_id = ?)
     AND (? = '' OR user_id = ?)
@@ -127,7 +128,7 @@ func (r *l3FactRepo) trgmExtraCandidatesAt(ctx context.Context, scopeType, scope
 		return nil, entErrToBizErr(err, "MEMORY_L3")
 	}
 	defer rows.Close()
-	scored := scoreFactRows(rows, tokenizeQuery(query), queryEmbedding, nil, minScore, now)
+	scored := scoreFactRows(ctx, r.data.factCipher, rows, tokenizeQuery(query), queryEmbedding, nil, minScore, now)
 	if err := rows.Err(); err != nil {
 		return nil, entErrToBizErr(err, "MEMORY_L3")
 	}

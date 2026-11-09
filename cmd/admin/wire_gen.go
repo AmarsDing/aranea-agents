@@ -141,6 +141,9 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	llmProviderModelRepo := data.NewLlmProviderModelRepo(dataData)
 	llmInspector := provideLLMInspector(loggatewayLogger)
 	credentialCrypto := provideCredentialCrypto(systemSettingRepo, loggatewayLogger)
+	// W2a D3 记忆信封：CredentialCrypto 依赖 systemSettingRepo←Data，无法前置
+	// 为 NewData 参数，装配态后置注入一次（wire_gen 自包含快照，仅此处需要）。
+	dataData.SetFactContentCipher(biz.NewCredentialFactCipher(credentialCrypto))
 	// E 阶段凭据托管（手工镜像 wire.go provideCredentialUsecase——wire_gen
 	// 手工合并约定）。conf.Credential 为 nil 时仅内置高敏清单。
 	credentialRepo := data.NewCredentialRepo(dataData)

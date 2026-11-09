@@ -175,7 +175,7 @@ func (s *MemoryFactIndexSweeper) pickDueStaleFactRows(ctx context.Context) ([][]
 	defer rows.Close()
 	var out [][]byte
 	for rows.Next() {
-		raw, serr := scanFactRowJSON(rows)
+		raw, serr := scanFactRowJSON(ctx, rows, s.data.factCipher)
 		if serr != nil {
 			return nil, entErrToBizErr(serr, "MEMORY_L3")
 		}
