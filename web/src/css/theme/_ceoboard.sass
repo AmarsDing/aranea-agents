@@ -3,16 +3,11 @@
 //   - 圆角四档 6/8/12/999（§6.6：原版 4px 徽标 → 6px，10px 标签 → 8px）；
 //   - 阴影只用 --nt-shadow-depth 与语义 glow（健康点光晕 → --nt-glow-danger/warn）；
 //   - 数字/时间/ID 一律等宽 + tabular-nums（.ceo-mono）。
-// stylelint-disable color-no-hex -- --ceo-ink/--ceo-ink-white 为 color-mix 洗色唯一出处
-//   （与 _css-vars-dark.sass 的 --ink 口径一致；除此之外本文件无裸色值）。
+//   - color-mix 洗色一律以 --nt-ink / --nt-ink-inverse 为基底（令牌见 _nt-tokens.css）。
 
 // --nt-* 令牌自包含引入（2026-11-09 BLOCKER 修复）：本文件是当前唯一引用
 // --nt-* 的已提交样式，令牌必须随本文件进包，不依赖 _css-vars-*.sass 的引入。
 @import "./_nt-tokens.css"
-
-\:root
-  --ceo-ink: #000000
-  --ceo-ink-white: #ffffff
 
 // ---------- 页面骨架 ----------
 .ceo-page
@@ -51,6 +46,8 @@
 
 .ceo-freshness
   font-size: 12px
+  font-family: var(--nt-font-mono)
+  font-variant-numeric: tabular-nums
 
 // ---------- 视图切换 ----------
 .ceo-viewswitch
@@ -104,7 +101,7 @@
 .ceo-dot
   width: 10px
   height: 10px
-  border-radius: 50%
+  border-radius: var(--nt-radius-pill)
   display: inline-block
   flex: none
 
@@ -172,7 +169,7 @@
   min-width: 128px
   padding: 14px 18px
   border-radius: var(--nt-radius-l)
-  background: color-mix(in srgb, var(--ceo-ink-white) 3%, transparent)
+  background: color-mix(in srgb, var(--nt-ink-inverse) 3%, transparent)
   border: 1px solid var(--nt-border-1)
   display: flex
   flex-direction: column
@@ -279,6 +276,8 @@
   font-size: 12px
   color: var(--nt-text-3)
   white-space: nowrap
+  font-family: var(--nt-font-mono)
+  font-variant-numeric: tabular-nums
 
 .ceo-decide-ok
   display: flex
@@ -408,7 +407,7 @@
 
 .ceo-biz-nodes
   border-top: 1px dashed var(--nt-border-1)
-  background: color-mix(in srgb, var(--ceo-ink) 18%, transparent)
+  background: color-mix(in srgb, var(--nt-ink) 18%, transparent)
   padding: 4px 0
 
 .ceo-biz-node
@@ -442,7 +441,7 @@
   font-family: var(--nt-font-mono)
   font-variant-numeric: tabular-nums
   font-size: 12px
-  background: color-mix(in srgb, var(--ceo-ink-white) 4%, transparent)
+  background: color-mix(in srgb, var(--nt-ink-inverse) 4%, transparent)
   border: 1px solid var(--nt-border-1)
   border-radius: var(--nt-radius-s)
   padding: 1px 8px
@@ -507,6 +506,8 @@
 
 .ceo-approvals-asof
   font-size: 12px
+  font-family: var(--nt-font-mono)
+  font-variant-numeric: tabular-nums
 
 .ceo-approval-item
   display: flex
@@ -645,6 +646,8 @@ table.ceo-nodes th
 
 .ceo-subline
   font-size: 11px
+  font-family: var(--nt-font-mono)
+  font-variant-numeric: tabular-nums
 
 .ceo-src-cell
   font-size: 11px
@@ -667,7 +670,7 @@ table.ceo-nodes th
 .ceo-drawer-mask
   position: fixed
   inset: 0
-  background: color-mix(in srgb, var(--ceo-ink) 55%, transparent)
+  background: color-mix(in srgb, var(--nt-ink) 55%, transparent)
   z-index: 3000
 
 .ceo-drawer
@@ -749,6 +752,8 @@ pre.ceo-snip
   margin: 24px
   color: var(--nt-text-3)
   font-size: 12px
+  font-family: var(--nt-font-mono)
+  font-variant-numeric: tabular-nums
 
 // ---------- 键盘可达与焦点环（AGENTS.md §6.11） ----------
 .ceo-viewswitch button:focus-visible,

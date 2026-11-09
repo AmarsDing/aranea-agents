@@ -62,7 +62,9 @@ const meRoles = computed(() => nav.roles.join('/'));
             skipped: ov.registry.skipped.length,
           })
         }}
-        <span v-if="meName"> · {{ t('ceoboard.page.currentAccount', { name: meName, roles: meRoles }) }}</span>
+        <span v-if="meName">
+          · {{ t('ceoboard.page.currentAccount', { name: meName }) }}<span v-if="meRoles">({{ meRoles }})</span>
+        </span>
       </div>
     </template>
 

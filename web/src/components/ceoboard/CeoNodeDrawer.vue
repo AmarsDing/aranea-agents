@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // 节点明细抽屉（整合 P2-8，自 ceo-dashboard NodeDrawer.vue 移植）。
 // 无障碍加固（AGENTS.md §6.11）：role=dialog + aria-modal、Esc 关闭、
-// 打开时聚焦关闭按钮、关闭后焦点归还触发元素。
+// 打开时聚焦关闭按钮、关闭后焦点归还触发元素、Tab/Shift+Tab 焦点圈禁在抽屉内。
 import { onMounted, onUnmounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { NodeDetail } from '../../features/ceoboard/types';
@@ -11,12 +11,39 @@ const emit = defineEmits<{ close: [] }>();
 const { t } = useI18n();
 
 const closeBtn = ref<HTMLButtonElement | null>(null);
+const drawerEl = ref<HTMLElement | null>(null);
 let previouslyFocused: Element | null = null;
 
 function onKeydown(e: KeyboardEvent) {
   if (e.key === 'Escape') {
     e.stopPropagation();
     emit('close');
+    return;
+  }
+  if (e.key === 'Tab') trapFocus(e);
+}
+
+// 焦点圈禁（focus trap）：模态抽屉打开期间 Tab 只在抽屉内可聚焦元素间循环；
+// 焦点意外落到抽屉外（如点击遮罩残留态）时拉回首个元素。
+function trapFocus(e: KeyboardEvent) {
+  const root = drawerEl.value;
+  if (!root) return;
+  const focusables = Array.from(
+    root.querySelectorAll<HTMLElement>('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'),
+  ).filter((el) => !el.hasAttribute('disabled'));
+  if (!focusables.length) return;
+  const first = focusables[0];
+  const last = focusables[focusables.length - 1];
+  const active = document.activeElement;
+  if (!root.contains(active)) {
+    e.preventDefault();
+    first.focus();
+  } else if (e.shiftKey && active === first) {
+    e.preventDefault();
+    last.focus();
+  } else if (!e.shiftKey && active === last) {
+    e.preventDefault();
+    first.focus();
   }
 }
 
@@ -45,7 +72,7 @@ function originLabel(origin: string): string {
 
 <template>
   <div class="ceo-drawer-mask" @click="emit('close')"></div>
-  <aside class="ceo-drawer" role="dialog" aria-modal="true" :aria-label="t('ceoboard.drawer.ariaLabel')">
+  <aside ref="drawerEl" class="ceo-drawer" role="dialog" aria-modal="true" :aria-label="t('ceoboard.drawer.ariaLabel')">
     <button ref="closeBtn" class="ceo-close-btn" @click="emit('close')">{{ t('ceoboard.drawer.close') }}</button>
     <h2>
       <span class="ceo-dot" :class="detail.health"></span> {{ detail.workflow_name }} / {{ detail.name }}
@@ -132,7 +159,7 @@ function originLabel(origin: string): string {
         <span class="ceo-tag ceo-mono">{{ e.event || t('ceoboard.drawer.webhookNoEvent') }}</span>
         <span v-if="e.status === 'failed'" class="ceo-tag ceo-text-red">{{ t('ceoboard.drawer.webhookFailed') }}</span>
         <span class="ceo-mono">{{ e.entity_id || e.key }}</span>
-        <span class="ceo-dim">{{ fmt(e.at) }}</span>
+        <span class="ceo-dim ceo-mono">{{ fmt(e.at) }}</span>
       </div>
     </section>
 
@@ -142,7 +169,7 @@ function originLabel(origin: string): string {
       <div v-for="e in detail.nats_events" :key="e.event_uid" class="ceo-approval-item">
         <span class="ceo-tag ceo-mono">{{ e.subject }}</span>
         <span class="ceo-mono">{{ e.event_id }}</span>
-        <span class="ceo-dim">{{ fmt(e.received_at) }}</span>
+        <span class="ceo-dim ceo-mono">{{ fmt(e.received_at) }}</span>
       </div>
     </section>
 

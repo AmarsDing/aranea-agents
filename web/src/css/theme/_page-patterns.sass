@@ -323,20 +323,22 @@ body.body--dark
 .login-card .text-grey-7
   color: var(--color-text-secondary) !important
 
-// 密码明文/密文切换按钮:触屏目标 ≥44px(AGENTS.md §6.10)。
+// 密码/密钥明文密文切换按钮:触屏目标 ≥44px(AGENTS.md §6.10)。
 // dense round q-btn 仅约 34–36px,撑大按钮会把 dense 输入框顶高,
 // 故用伪元素外扩点击热区 5px 一圈(≥44px),图标视觉尺寸与表单布局保持原样。
-.login-card .pwd-vis-toggle
+// 2026-11-09 起泛化为通用规则(原 .login-card 限定):登录/强改密与
+// Providers/A2A/Federation 各面板的 API key reveal 钮共用同一热区口径。
+.pwd-vis-toggle
   position: relative
 
-.login-card .pwd-vis-toggle::after
+.pwd-vis-toggle::after
   content: ''
   position: absolute
   top: -5px
   right: -5px
   bottom: -5px
   left: -5px
-  border-radius: 50%
+  border-radius: 999px
 
 // --- 通用工具 class ---
 .min-width-0

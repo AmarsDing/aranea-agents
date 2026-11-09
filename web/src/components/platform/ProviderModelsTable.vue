@@ -137,7 +137,7 @@
               dense
               round
               size="xs"
-              class="provider-secret-toggle"
+              class="provider-secret-toggle pwd-vis-toggle"
               :icon="listKeyState(props.row.id).visible ? 'visibility_off' : 'visibility'"
               :loading="listKeyState(props.row.id).revealing"
               :aria-label="listKeyState(props.row.id).visible ? '隐藏 API 密钥' : '查看 API 密钥'"

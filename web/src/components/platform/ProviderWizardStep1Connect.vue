@@ -118,6 +118,7 @@
             flat
             dense
             round
+            class="pwd-vis-toggle"
             :icon="showApiKey ? 'visibility_off' : 'visibility'"
             :aria-label="showApiKey ? '隐藏密钥' : '显示密钥'"
             :disable="revealingCredentials"
@@ -231,6 +232,7 @@
               flat
               dense
               round
+              class="pwd-vis-toggle"
               :icon="showSecretKey ? 'visibility_off' : 'visibility'"
               :aria-label="showSecretKey ? 'Hide Secret Key' : 'Show Secret Key'"
               :disable="revealingCredentials"

@@ -54,6 +54,10 @@
   --nt-glow-danger: 0 0 14px rgba(255, 92, 124, 0.35);
   --nt-glow-warn: 0 0 14px rgba(255, 232, 82, 0.28);
 
+  /* 洗色基底（仅 color-mix 调和用——压暗/提亮/遮罩，不直接作前景或背景色） */
+  --nt-ink: #000000;
+  --nt-ink-inverse: #ffffff;
+
   /* 圆角四档 */
   --nt-radius-s: 6px;
   --nt-radius-m: 8px;
