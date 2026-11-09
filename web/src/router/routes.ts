@@ -1,78 +1,29 @@
 import type { RouteRecordRaw } from 'vue-router';
-import BlankLayout from '../layouts/BlankLayout.vue';
-import LoginPage from '../pages/LoginPage.vue';
-import MainLayout from '../layouts/MainLayout.vue';
-import ChatPage from '../pages/ChatPage.vue';
-import AgentsPage from '../pages/AgentsPage.vue';
-import AgentSettingsPage from '../pages/AgentSettingsPage.vue';
-import MonitorPage from '../pages/MonitorPage.vue';
-import OverviewPage from '../pages/OverviewPage.vue';
-import WorkbenchCockpitPage from '../pages/WorkbenchCockpitPage.vue';
-import UsageEventsPage from '../pages/UsageEventsPage.vue';
-import ResourceManagerPage from '../pages/ResourceManagerPage.vue';
-import OrganizationPage from '../pages/OrganizationPage.vue';
-import TeamsPage from '../pages/TeamsPage.vue';
-import SkillsPage from '../pages/SkillsPage.vue';
-import SkillTagsPage from '../pages/SkillTagsPage.vue';
-import SkillDetailPage from '../pages/SkillDetailPage.vue';
-import SkillRunsPage from '../pages/SkillRunsPage.vue';
-import EvolutionSuggestionListPage from '../pages/EvolutionSuggestionListPage.vue';
-import SelfImprovementPage from '../pages/SelfImprovementPage.vue';
-import ExperienceReportListPage from '../pages/ExperienceReportListPage.vue';
-import PluginsPage from '../pages/PluginsPage.vue';
-import PluginRunsPage from '../pages/PluginRunsPage.vue';
-import HooksPage from '../pages/HooksPage.vue';
-import HookDeliveriesPage from '../pages/HookDeliveriesPage.vue';
-import WebhooksPage from '../pages/WebhooksPage.vue';
-import KnowledgePage from '../pages/KnowledgePage.vue';
-import ArtifactsPage from '../pages/ArtifactsPage.vue';
-import EvaluationPage from '../pages/EvaluationPage.vue';
-import A2APage from '../pages/A2APage.vue';
-import ToolsPage from '../pages/ToolsPage.vue';
-import ToolRunsPage from '../pages/ToolRunsPage.vue';
-import ToolAuditsPage from '../pages/ToolAuditsPage.vue';
-import SessionsPage from '../pages/SessionsPage.vue';
-import SessionDetailPage from '../pages/SessionDetailPage.vue';
-import ChannelsPage from '../pages/ChannelsPage.vue';
-import McpServersPage from '../pages/McpServersPage.vue';
-import CodingToolsPage from '../pages/CodingToolsPage.vue';
-import CodingTasksPage from '../pages/CodingTasksPage.vue';
-import CronTasksPage from '../pages/CronTasksPage.vue';
-import MemoryCenterPage from '../pages/MemoryCenterPage.vue';
-import SystemSettingsPage from '../pages/SystemSettingsPage.vue';
-import GraphsPage from '../pages/GraphsPage.vue';
-import GraphEditorPage from '../pages/GraphEditorPage.vue';
-import GraphRunPage from '../pages/GraphRunPage.vue';
-import GraphExecutionsPage from '../pages/GraphExecutionsPage.vue';
-import TeamRunObservatoryPage from '../pages/TeamRunObservatoryPage.vue';
-import TeamOrchestratePage from '../pages/TeamOrchestratePage.vue';
-import ThemePreviewPage from '../pages/ThemePreviewPage.vue';
-import CompanionPage from '../pages/CompanionPage.vue';
-import ContentInboxPage from '../pages/ContentInboxPage.vue';
-import ReviewQueuePage from '../pages/ReviewQueuePage.vue';
-import OpportunityBoardPage from '../pages/OpportunityBoardPage.vue';
-import SourcingPage from '../pages/SourcingPage.vue';
-import ServerSetupPage from '../pages/mobile/ServerSetupPage.vue';
-import MobilePlaceholderPage from '../pages/mobile/MobilePlaceholderPage.vue';
-import MobileSessionsPage from '../pages/mobile/MobileSessionsPage.vue';
-import MobileChatPage from '../pages/mobile/MobileChatPage.vue';
-import MobileTasksPage from '../pages/mobile/MobileTasksPage.vue';
-import MobileLayout from '../layouts/MobileLayout.vue';
+
+// 全部路由组件懒加载（() => import(...)）。
+// 背景（2026-11-09 P0-1）：此前 55+ 页面全部静态 import，入口 chunk 与路由 chunk
+// 在 rolldown 分包下形成跨 chunk 循环初始化——入口 chunk 静态引用路由 chunk，
+// 路由 chunk 又经共享模块（registryTableColumns 的 REGISTRY_COL_W）静态引用入口 chunk。
+// 模块顶层求值读到未初始化的绑定，生产构建整页白屏
+// （TypeError: Cannot read properties of undefined (reading 'category')）。
+// 路由懒加载后入口不再静态依赖任何页面 chunk，从模块图层面消除该循环；
+// 同时获得路由级代码分割，显著降低首屏加载体积。
+// 注意：新增页面务必保持懒加载写法，不得改回静态 import。
 
 export const routes: RouteRecordRaw[] = [
   {
     path: '/login',
-    component: BlankLayout,
+    component: () => import('../layouts/BlankLayout.vue'),
     meta: { public: true },
-    children: [{ path: '', name: 'login', component: LoginPage }],
+    children: [{ path: '', name: 'login', component: () => import('../pages/LoginPage.vue') }],
   },
   {
     // Mobile (Android shell) first-run backend address setup. Public: the
     // session cookie lives on the upstream that is not configured yet.
     path: '/mobile/server-setup',
-    component: BlankLayout,
+    component: () => import('../layouts/BlankLayout.vue'),
     meta: { public: true },
-    children: [{ path: '', name: 'mobile-server-setup', component: ServerSetupPage }],
+    children: [{ path: '', name: 'mobile-server-setup', component: () => import('../pages/mobile/ServerSetupPage.vue') }],
   },
   {
     // Mobile layout. Sessions/chat/tasks are real views (P1); me remains a
@@ -80,73 +31,73 @@ export const routes: RouteRecordRaw[] = [
     // router/index.ts redirects narrow screens here and wide screens back
     // to the desktop routes.
     path: '/mobile',
-    component: MobileLayout,
+    component: () => import('../layouts/MobileLayout.vue'),
     meta: { requiresAuth: true },
     children: [
       { path: '', redirect: '/mobile/sessions' },
-      { path: 'sessions', name: 'mobile-sessions', component: MobileSessionsPage },
-      { path: 'chat', name: 'mobile-chat', component: MobileChatPage },
+      { path: 'sessions', name: 'mobile-sessions', component: () => import('../pages/mobile/MobileSessionsPage.vue') },
+      { path: 'chat', name: 'mobile-chat', component: () => import('../pages/mobile/MobileChatPage.vue') },
       {
         path: 'task-workspace',
         name: 'mobile-task-workspace',
         component: () => import('../pages/TaskWorkspacePage.vue'),
       },
-      { path: 'tasks', name: 'mobile-tasks', component: MobileTasksPage },
-      { path: 'me', name: 'mobile-me', component: MobilePlaceholderPage },
+      { path: 'tasks', name: 'mobile-tasks', component: () => import('../pages/mobile/MobileTasksPage.vue') },
+      { path: 'me', name: 'mobile-me', component: () => import('../pages/mobile/MobilePlaceholderPage.vue') },
     ],
   },
   {
     // 语音伴侣 HUD（M74）：独立全屏形态，无主导航侧栏；桌面端手动访问，
     // Tauri 默认入口页可配置为此路由（设计 §7.1）。窄屏被断点守卫重定向到 /mobile。
     path: '/companion',
-    component: BlankLayout,
+    component: () => import('../layouts/BlankLayout.vue'),
     meta: { requiresAuth: true },
-    children: [{ path: '', name: 'companion', component: CompanionPage }],
+    children: [{ path: '', name: 'companion', component: () => import('../pages/CompanionPage.vue') }],
   },
   {
     path: '/',
-    component: MainLayout,
+    component: () => import('../layouts/MainLayout.vue'),
     meta: { requiresAuth: true },
     children: [
       { path: '', redirect: '/overview' },
-      { path: 'overview', name: 'overview', component: OverviewPage },
-      { path: 'workbench', name: 'workbench', component: WorkbenchCockpitPage },
+      { path: 'overview', name: 'overview', component: () => import('../pages/OverviewPage.vue') },
+      { path: 'workbench', name: 'workbench', component: () => import('../pages/WorkbenchCockpitPage.vue') },
       { path: 'ecommerce-loop', name: 'ecommerce-loop', component: () => import('../pages/EcommerceLoopPage.vue') },
-      { path: 'content-inbox', name: 'content-inbox', component: ContentInboxPage },
-      { path: 'review-queue', name: 'review-queue', component: ReviewQueuePage },
-      { path: 'opportunity-board', name: 'opportunity-board', component: OpportunityBoardPage },
-      { path: 'sourcing', name: 'sourcing', component: SourcingPage },
-      { path: 'usage/events', name: 'usage-events', component: UsageEventsPage },
+      { path: 'content-inbox', name: 'content-inbox', component: () => import('../pages/ContentInboxPage.vue') },
+      { path: 'review-queue', name: 'review-queue', component: () => import('../pages/ReviewQueuePage.vue') },
+      { path: 'opportunity-board', name: 'opportunity-board', component: () => import('../pages/OpportunityBoardPage.vue') },
+      { path: 'sourcing', name: 'sourcing', component: () => import('../pages/SourcingPage.vue') },
+      { path: 'usage/events', name: 'usage-events', component: () => import('../pages/UsageEventsPage.vue') },
       { path: 'usage/quotas', redirect: { name: 'agents' } },
-      { path: 'chat', name: 'chat', component: ChatPage },
+      { path: 'chat', name: 'chat', component: () => import('../pages/ChatPage.vue') },
       {
         path: 'task-workspace',
         name: 'task-workspace',
         component: () => import('../pages/TaskWorkspacePage.vue'),
       },
-      { path: 'sessions', name: 'sessions', component: SessionsPage },
-      { path: 'sessions/:sessionId', name: 'session-detail', component: SessionDetailPage },
-      { path: 'memory', name: 'memory', component: MemoryCenterPage },
-      { path: 'agents', name: 'agents', component: AgentsPage },
+      { path: 'sessions', name: 'sessions', component: () => import('../pages/SessionsPage.vue') },
+      { path: 'sessions/:sessionId', name: 'session-detail', component: () => import('../pages/SessionDetailPage.vue') },
+      { path: 'memory', name: 'memory', component: () => import('../pages/MemoryCenterPage.vue') },
+      { path: 'agents', name: 'agents', component: () => import('../pages/AgentsPage.vue') },
       { path: 'settings/taxonomy', redirect: '/settings/organization' },
-      { path: 'settings/organization', name: 'organization', component: OrganizationPage },
-      { path: 'agents/:id/settings', name: 'agent-settings', component: AgentSettingsPage },
-      { path: 'team', name: 'team', component: TeamsPage },
+      { path: 'settings/organization', name: 'organization', component: () => import('../pages/OrganizationPage.vue') },
+      { path: 'agents/:id/settings', name: 'agent-settings', component: () => import('../pages/AgentSettingsPage.vue') },
+      { path: 'team', name: 'team', component: () => import('../pages/TeamsPage.vue') },
       {
         path: 'teams/:teamId/runs/:runId/observatory',
         name: 'team-run-observatory',
-        component: TeamRunObservatoryPage,
+        component: () => import('../pages/TeamRunObservatoryPage.vue'),
       },
-      { path: 'teams/:teamId/orchestrate', name: 'team-orchestrate', component: TeamOrchestratePage },
-      { path: 'graphs', name: 'graphs', component: GraphsPage },
-      { path: 'graphs/new', name: 'graph-editor-new', component: GraphEditorPage },
-      { path: 'graphs/:id', name: 'graph-editor', component: GraphEditorPage },
-      { path: 'graphs/:id/run/:execId', name: 'graph-run', component: GraphRunPage },
-      { path: 'graphs/:id/executions', name: 'graph-executions', component: GraphExecutionsPage },
+      { path: 'teams/:teamId/orchestrate', name: 'team-orchestrate', component: () => import('../pages/TeamOrchestratePage.vue') },
+      { path: 'graphs', name: 'graphs', component: () => import('../pages/GraphsPage.vue') },
+      { path: 'graphs/new', name: 'graph-editor-new', component: () => import('../pages/GraphEditorPage.vue') },
+      { path: 'graphs/:id', name: 'graph-editor', component: () => import('../pages/GraphEditorPage.vue') },
+      { path: 'graphs/:id/run/:execId', name: 'graph-run', component: () => import('../pages/GraphRunPage.vue') },
+      { path: 'graphs/:id/executions', name: 'graph-executions', component: () => import('../pages/GraphExecutionsPage.vue') },
       {
         path: 'models',
         name: 'models',
-        component: ResourceManagerPage,
+        component: () => import('../pages/ResourceManagerPage.vue'),
         meta: {
           resource: 'llm-provider-models',
           title: '模型管理',
@@ -156,7 +107,7 @@ export const routes: RouteRecordRaw[] = [
       {
         path: 'channels',
         name: 'channels',
-        component: ChannelsPage,
+        component: () => import('../pages/ChannelsPage.vue'),
         meta: {
           resource: 'channels',
           title: 'Channel 管理',
@@ -171,118 +122,118 @@ export const routes: RouteRecordRaw[] = [
       {
         path: 'mcp-servers',
         name: 'mcp-servers',
-        component: McpServersPage,
+        component: () => import('../pages/McpServersPage.vue'),
       },
       {
         path: 'settings/coding-tools',
         name: 'coding-tools',
-        component: CodingToolsPage,
+        component: () => import('../pages/CodingToolsPage.vue'),
       },
       {
         path: 'coding-tasks',
         name: 'coding-tasks',
-        component: CodingTasksPage,
+        component: () => import('../pages/CodingTasksPage.vue'),
       },
       {
         path: 'skills',
         name: 'skills',
-        component: SkillsPage,
+        component: () => import('../pages/SkillsPage.vue'),
       },
       {
         path: 'skills/runs',
         name: 'skill-runs',
-        component: SkillRunsPage,
+        component: () => import('../pages/SkillRunsPage.vue'),
       },
       {
         path: 'skills/evolution-suggestions',
         name: 'evolution-suggestions',
-        component: EvolutionSuggestionListPage,
+        component: () => import('../pages/EvolutionSuggestionListPage.vue'),
       },
       {
         path: 'skills/experience-reports',
         name: 'experience-reports',
-        component: ExperienceReportListPage,
+        component: () => import('../pages/ExperienceReportListPage.vue'),
       },
       {
         path: 'skills/tags',
         name: 'skill-tags',
-        component: SkillTagsPage,
+        component: () => import('../pages/SkillTagsPage.vue'),
       },
       {
         path: 'skills/:skillId',
         name: 'skill-detail',
-        component: SkillDetailPage,
+        component: () => import('../pages/SkillDetailPage.vue'),
       },
       {
         path: 'plugins',
         name: 'plugins',
-        component: PluginsPage,
+        component: () => import('../pages/PluginsPage.vue'),
       },
       {
         path: 'plugins/runs',
         name: 'plugin-runs',
-        component: PluginRunsPage,
+        component: () => import('../pages/PluginRunsPage.vue'),
       },
       {
         path: 'hooks',
         name: 'hooks',
-        component: HooksPage,
+        component: () => import('../pages/HooksPage.vue'),
       },
       {
         path: 'hooks/deliveries',
         name: 'hook-deliveries',
-        component: HookDeliveriesPage,
+        component: () => import('../pages/HookDeliveriesPage.vue'),
       },
       {
         path: 'webhooks',
         name: 'webhooks',
-        component: WebhooksPage,
+        component: () => import('../pages/WebhooksPage.vue'),
       },
       {
         path: 'knowledge',
         name: 'knowledge',
-        component: KnowledgePage,
+        component: () => import('../pages/KnowledgePage.vue'),
       },
       {
         path: 'artifacts',
         name: 'artifacts',
-        component: ArtifactsPage,
+        component: () => import('../pages/ArtifactsPage.vue'),
       },
       {
         path: 'evaluation',
         name: 'evaluation',
-        component: EvaluationPage,
+        component: () => import('../pages/EvaluationPage.vue'),
       },
       {
         path: 'a2a',
         name: 'a2a',
-        component: A2APage,
+        component: () => import('../pages/A2APage.vue'),
       },
       {
         path: 'tools/audits',
         name: 'tool-audits',
-        component: ToolAuditsPage,
+        component: () => import('../pages/ToolAuditsPage.vue'),
       },
       {
         path: 'tools/runs',
         name: 'tool-runs',
-        component: ToolRunsPage,
+        component: () => import('../pages/ToolRunsPage.vue'),
       },
       {
         path: 'tools',
         name: 'tools',
-        component: ToolsPage,
+        component: () => import('../pages/ToolsPage.vue'),
       },
       {
         path: 'cron',
         name: 'cron',
-        component: CronTasksPage,
+        component: () => import('../pages/CronTasksPage.vue'),
       },
-      { path: 'monitor/logs', name: 'monitor-logs', component: MonitorPage },
-      { path: 'self-improvement', name: 'self-improvement', component: SelfImprovementPage },
-      { path: 'settings', name: 'settings', component: SystemSettingsPage, meta: { titleKey: 'menu.settings' } },
+      { path: 'monitor/logs', name: 'monitor-logs', component: () => import('../pages/MonitorPage.vue') },
+      { path: 'self-improvement', name: 'self-improvement', component: () => import('../pages/SelfImprovementPage.vue') },
+      { path: 'settings', name: 'settings', component: () => import('../pages/SystemSettingsPage.vue'), meta: { titleKey: 'menu.settings' } },
       ...(import.meta.env.DEV
-        ? [{ path: 'dev/theme-preview', name: 'theme-preview', component: ThemePreviewPage }]
+        ? [{ path: 'dev/theme-preview', name: 'theme-preview', component: () => import('../pages/ThemePreviewPage.vue') }]
         : []),
     ],
   },

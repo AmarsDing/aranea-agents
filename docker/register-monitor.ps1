@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
   Register Dockerized Aranea into TwinMonitor monitoring (idempotent).
@@ -19,7 +19,10 @@ param(
   [int]$GrpcPort = 9910,
   [int]$WsPort = 8812,
   [string]$AssetCode = "ARANEA-DOCKER-01",
-  [string]$AssetName = "Aranea-Docker-Host"
+  [string]$AssetName = "Aranea-Docker-Host",
+  # 设备分类（新版网关强制要求）。默认 1 = 服务器/DC-SRV（IT设备 下）；
+  # 可用 GET /api/v1/monitor/device-categories?noPaging=true 查询全量分类。
+  [int]$DeviceCategoryId = 1
 )
 
 $ErrorActionPreference = "Stop"
@@ -61,13 +64,14 @@ if ($assets.items -and $assets.items.Count -gt 0) {
   Write-Host "[skip] asset exists id=$assetId code=$AssetCode"
 } else {
   $created = Invoke-Api -Method Post -Path "/api/v1/monitor/monitor-assets" -Body @{ data = @{
-    assetCode    = $AssetCode
-    name         = $AssetName
-    isDevice     = 1
-    needsMonitor = 1
-    status       = 1
-    location     = "local-docker"
-    remark       = "Aranea docker compose node (admin 8810/9910/8812)"
+    assetCode        = $AssetCode
+    name             = $AssetName
+    isDevice         = 1
+    needsMonitor     = 1
+    status           = 1
+    deviceCategoryId = $DeviceCategoryId
+    location         = "local-docker"
+    remark           = "Aranea docker compose node (admin 8810 http/ws, 9910 grpc)"
   } }
   $assetId = $created.id
   Write-Host "[ok] asset created id=$assetId code=$AssetCode"
@@ -135,20 +139,28 @@ if ($tasks.items) { foreach ($t in $tasks.items) { if ($t.deviceId -eq $deviceId
 if ($taskExists) {
   Write-Host "[skip] collection task exists (device=$deviceId proto=icmp)"
 } else {
-  Invoke-Api -Method Post -Path "/api/v1/monitor/collector/tasks" -Body @{ data = @{
-    deviceId           = $deviceId
-    protocolType       = "icmp"
-    protocolBindingId  = $bindingId
-    taskName           = "Aranea-Docker-ICMP"
-    priority           = 2
-    collectionInterval = 30
-    timeout            = 10
-    retryCount         = 1
-    retryInterval      = 5
-    status             = 1
-    offlineThreshold   = 3
-  } } | Out-Null
-  Write-Host "[ok] collection task created (device=$deviceId binding=$bindingId)"
+  # 网关在资产建档时可能已自动建好采集任务（列表查询偶发漏返回），
+  # 命中 collectiontask_device_id_protocol_type 唯一约束即视为已存在。
+  try {
+    Invoke-Api -Method Post -Path "/api/v1/monitor/collector/tasks" -Body @{ data = @{
+      deviceId           = $deviceId
+      protocolType       = "icmp"
+      protocolBindingId  = $bindingId
+      taskName           = "Aranea-Docker-ICMP"
+      priority           = 2
+      collectionInterval = 30
+      timeout            = 10
+      retryCount         = 1
+      retryInterval      = 5
+      status             = 1
+      offlineThreshold   = 3
+    } } | Out-Null
+    Write-Host "[ok] collection task created (device=$deviceId binding=$bindingId)"
+  } catch {
+    if ("$_" -match "collectiontask_device_id_protocol_type|duplicate key") {
+      Write-Host "[skip] collection task already exists (db unique constraint)"
+    } else { throw }
+  }
 }
 
 # ---------- 5. collector hot reload ----------
@@ -208,8 +220,11 @@ $l1 = Ensure-Line -Name "ARANEA-HTTP-HEALTH" -ProbeProtocol "HTTP" -ProbeParams 
 $tcpGrpc = (@{ tcp = @{ port = $GrpcPort; connect_timeout = 3000 } } | ConvertTo-Json -Compress)
 $l2 = Ensure-Line -Name "ARANEA-TCP-GRPC" -ProbeProtocol "TCP" -ProbeParams $tcpGrpc -TargetIp $AraneaHost -Desc "Aranea gRPC 9910 port (docker)"
 
-$tcpWs = (@{ tcp = @{ port = $WsPort; connect_timeout = 3000 } } | ConvertTo-Json -Compress)
-$l3 = Ensure-Line -Name "ARANEA-TCP-WS" -ProbeProtocol "TCP" -ProbeParams $tcpWs -TargetIp $AraneaHost -Desc "Aranea WS 8812 port (docker)"
+# WS 现状（2026-11-09 实测）：/v1/ws 已复用在 HTTP 端口 8810 上，独立 8812 端口不再监听
+# （compose 里 8812 映射为历史遗留）。WS 探活改为 HTTP 探测 /v1/ws：未带凭据时
+# 鉴权中间件返回 401，恰好证明"端点存活且鉴权生效"；expected_status=401 是故意的。
+$wsParams = (@{ http = @{ url = "http://${AraneaHost}:$HttpPort/v1/ws"; method = "GET"; expected_status = 401 } } | ConvertTo-Json -Depth 5 -Compress)
+$l3 = Ensure-Line -Name "ARANEA-WS-ENDPOINT" -ProbeProtocol "HTTP" -ProbeParams $wsParams -TargetIp $AraneaHost -Desc "Aranea WS /v1/ws on $HttpPort, expect 401 auth-on (docker)"
 
 # ---------- 7. summary ----------
 $dash = Invoke-Api -Method Get -Path "/api/v1/monitor/linemonitor/dashboard"
