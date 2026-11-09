@@ -68,7 +68,7 @@ func TestDeliveryAndDeadLetter(t *testing.T) {
 	if ok {
 		t.Fatal("重复投递应去重")
 	}
-	if err := s.MarkDelivery(ctx, "k1", "failed", "处理失败"); err != nil {
+	if err := s.MarkDelivery(ctx, "aranea", "k1", "failed", "处理失败"); err != nil {
 		t.Fatal(err)
 	}
 	n, _ := s.CountDeliveries(ctx, "aranea", "", time.Now().Add(-time.Hour))

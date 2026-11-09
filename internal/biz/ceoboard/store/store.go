@@ -2,8 +2,8 @@
 // 表设计(Ent schema 见 internal/data/ent/schema/ceoboard_*.go):
 //
 //	ceoboard_events             — 归一化事件(NATS/webhook 统一落库);event_uid 主键幂等
-//	ceoboard_webhook_deliveries — webhook 投递流水(幂等键主键,重启后去重语义不丢)
-//	ceoboard_dead_letters       — 死信(接收失败/处理失败),支持重放
+//	ceoboard_webhook_deliveries — webhook 投递流水(存储主键 = source:幂等键 复合串,(source,key) 维度幂等,重启后去重语义不丢)
+//	ceoboard_dead_letters       — 死信(接收失败/处理失败),支持重放;同键未重放幂等由库层部分唯一索引兜底
 //	ceoboard_audit              — 高危操作审计(前门语义由 biz 层执行,fail-closed)
 //	ceoboard_latency_samples    — latency 物化样本((metric_id,b_uid) 唯一,B 侧幂等)
 //
@@ -13,8 +13,14 @@
 //	③ UTC+8 闭日归档 + 迟到保护 + 热数据删除 RowsAffected==1 守卫(archive.go);
 //	④ spool 崩溃恢复(.importing 认领、撕裂尾隔离、逐行 sha256)(spool.go);
 //	⑦ AllowedSubjects 字面值白名单(不解释 NATS 通配符)(events.go);
-//	⑨ 死信同 (kind,source,ref_key) 未重放幂等返回已有 id;
+//	⑨ 死信同 (kind,source,ref_key) 未重放幂等返回已有 id(进程内 dlMu + 库层部分唯一索引双保险,评审 2026-11-09 M2);
 //	⑪ payload TEXT 保真 + 审计截断口径 128/64/256/1024。
+//
+// 评审 2026-11-09 MEDIUM-7:投递幂等维度化为 (source,key)——原全局幂等键主键在
+// 不同源产生相同键(同 event_id / 同实体 id / 同 body 摘要回退)时跨源冲突,后到的
+// 投递被静默去重(事件丢失)。存储主键改为 source:幂等键 复合串(拼接收口在本包
+// deliveryStorageID,与 ceoboard_events 的 event_uid = 平台:键 同构;读侧剥前缀还原,
+// 外部一律只见裸幂等键);存量裸键行由迁移 20261311 回填,未回填残留读取恒等兼容。
 //
 // 时钟口径:occurred_at 取自事件信封(NULL=未带,读侧退 received_at),received_at 取本机;
 // PG timestamptz 取代原 unix 纳秒 int64(同一瞬间,语义不变)。
@@ -223,10 +229,29 @@ func (s *Store) TotalEvents(ctx context.Context) (int, error) {
 
 // ---------- webhook 投递 ----------
 
+// deliveryStorageID 投递流水的存储主键:source + ":" + 幂等键 复合串(评审
+// 2026-11-09 MEDIUM-7)。幂等维度 (source,key):不同源同名键互不冲突。构造收口
+// 于此,包外一律透明。source/键自身可能含 ':'(如摘要回退键 "sha256:…"),不影响
+// 正确性——剥前缀总是按行上的 source 列精确还原。
+// 注意:key 列定长 MaxLen(512);source≤64,故幂等键实际预算 512-1-len(source)
+// (≥447)。超出预算的键在 ent 校验处失败——走"投递流水缺失必须 503"既定路径,
+// 绝不静默存储;提升上限需 bump ent schema MaxLen 并随迁移重跑回填(PG 侧待办)。
+func deliveryStorageID(source, key string) string {
+	return source + ":" + key
+}
+
+// deliveryKeyFromStorageID 由存储主键还原裸幂等键(剥掉 source: 前缀)。
+// 无前缀的存量裸键行(未经迁移 20261311 回填,或超长键被回填 guard 跳过的行)
+// 恒等返回——读取兼容不破。
+func deliveryKeyFromStorageID(source, storageID string) string {
+	return strings.TrimPrefix(storageID, source+":")
+}
+
 // InsertDelivery 幂等记录一条 webhook 投递;返回 true 表示新插入。
+// 幂等维度 (source,key):同一源同键去重;不同源同键各自成单(MEDIUM-7)。
 func (s *Store) InsertDelivery(ctx context.Context, d *Delivery) (bool, error) {
 	err := s.client.CeoboardWebhookDelivery.Create().
-		SetID(d.Key).
+		SetID(deliveryStorageID(d.Source, d.Key)).
 		SetSource(d.Source).
 		SetEvent(d.Event).
 		SetEntityID(d.EntityID).
@@ -245,9 +270,9 @@ func (s *Store) InsertDelivery(ctx context.Context, d *Delivery) (bool, error) {
 	return false, nil
 }
 
-// MarkDelivery 更新投递状态(处理失败时标 failed)。
-func (s *Store) MarkDelivery(ctx context.Context, key, status, errStr string) error {
-	return s.client.CeoboardWebhookDelivery.UpdateOneID(key).
+// MarkDelivery 更新投递状态(处理失败时标 failed);行定位同样按 (source,key)。
+func (s *Store) MarkDelivery(ctx context.Context, source, key, status, errStr string) error {
+	return s.client.CeoboardWebhookDelivery.UpdateOneID(deliveryStorageID(source, key)).
 		SetStatus(status).
 		SetError(errStr).
 		Exec(ctx)
@@ -283,7 +308,9 @@ func (s *Store) RecentDeliveries(ctx context.Context, source string, limit int) 
 	out := make([]Delivery, 0, len(rows))
 	for _, d := range rows {
 		out = append(out, Delivery{
-			Key: d.ID, Source: d.Source, Event: d.Event, EntityID: d.EntityID,
+			// 剥 source: 前缀还原裸幂等键(复合存储主键对包外透明);存量未回填
+			// 裸键行恒等返回。
+			Key: deliveryKeyFromStorageID(d.Source, d.ID), Source: d.Source, Event: d.Event, EntityID: d.EntityID,
 			At: d.At.UTC(), Digest: d.Digest, Fields: d.Fields, Status: d.Status, Error: d.Error,
 		})
 	}
@@ -293,8 +320,12 @@ func (s *Store) RecentDeliveries(ctx context.Context, source string, limit int) 
 // ---------- 死信 ----------
 
 // AddDeadLetter 写入一条死信;同一来源的未重放业务键重试时幂等(返回已有 id)。
-// 原为单条 INSERT...WHERE NOT EXISTS 原子语句;Ent 版以 dlMu 进程内串行化"查重+插入"
-// (ceoboard 单实例写入者,语义等价)。
+// 原为单条 INSERT...WHERE NOT EXISTS 原子语句;Ent 版双保险(评审 2026-11-09 M2):
+// ① dlMu 进程内串行化"查重+插入"(ceoboard 单实例写入者快路径);
+// ② 库层部分唯一索引 ceoboard_dead_letters_unreplayed_ref_uidx(迁移 20261310)
+//
+//	兜底跨实例/双跑并发——查重窗口被另一写者抢插时 Create 撞唯一冲突,重查返回
+//	已有 id,与"先查后插"等幂。
 func (s *Store) AddDeadLetter(ctx context.Context, kind, source, refKey, payload, reason string) (int64, error) {
 	s.dlMu.Lock()
 	defer s.dlMu.Unlock()
@@ -303,8 +334,10 @@ func (s *Store) AddDeadLetter(ctx context.Context, kind, source, refKey, payload
 	refKey = sanitizeText(refKey)
 	payload = sanitizeText(payload)
 	reason = sanitizeText(reason)
-	if refKey != "" {
-		existing, err := s.client.CeoboardDeadLetter.Query().
+	// findUnreplayed 查同 (kind,source,refKey) 的未重放行(最新优先);查重与
+	// 冲突兜底共用同一谓词,防止两路漂移。
+	findUnreplayed := func() (*ent.CeoboardDeadLetter, error) {
+		return s.client.CeoboardDeadLetter.Query().
 			Where(
 				ceoboarddeadletter.KindEQ(kind),
 				ceoboarddeadletter.SourceEQ(source),
@@ -313,6 +346,9 @@ func (s *Store) AddDeadLetter(ctx context.Context, kind, source, refKey, payload
 			).
 			Order(ent.Desc(ceoboarddeadletter.FieldID)).
 			First(ctx)
+	}
+	if refKey != "" {
+		existing, err := findUnreplayed()
 		if err == nil {
 			return existing.ID, nil
 		}
@@ -329,6 +365,12 @@ func (s *Store) AddDeadLetter(ctx context.Context, kind, source, refKey, payload
 		SetFailedAt(time.Now().UTC()).
 		Save(ctx)
 	if err != nil {
+		// 唯一冲突 = 查重窗口内被另一实例抢先插入同键(未重放);重查返回其 id。
+		if refKey != "" && ent.IsConstraintError(err) {
+			if existing, qerr := findUnreplayed(); qerr == nil {
+				return existing.ID, nil
+			}
+		}
 		return 0, fmt.Errorf("死信落库: %w", err)
 	}
 	return d.ID, nil

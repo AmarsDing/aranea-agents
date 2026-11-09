@@ -45,6 +45,16 @@ func ceoboardOnly(next sqlschema.Creator) sqlschema.Creator {
 	})
 }
 
+// ceoboardDeadLetterIdemIndexDDL 与生产迁移
+// sql/migrations/20261310_ceoboard_dead_letters_unreplayed_ref_uidx.sql 同语法
+// (评审 2026-11-09 M2:同 (kind,source,ref_key) 未重放死信库层唯一兜底)。
+// 部分索引无法经 ent schema 表达(ent 迁移会按 model 收敛),故在 Schema.Create
+// 后裸 DDL 补建;语法双方言(pg/sqlite)一致。store 测试拿不到该索引时
+// AddDeadLetter 的约束兜底分支不可触发——漂移即红。
+const ceoboardDeadLetterIdemIndexDDL = `CREATE UNIQUE INDEX IF NOT EXISTS ceoboard_dead_letters_unreplayed_ref_uidx
+  ON ceoboard_dead_letters ("kind", "source", "ref_key")
+  WHERE "ref_key" <> '' AND "replayed_at" IS NULL`
+
 // newEntOnDB 在给定 *sql.DB 上建 Ent 客户端并迁移 ceoboard schema。
 func newEntOnDB(t testing.TB, db *sql.DB) *ent.Client {
 	t.Helper()
@@ -52,6 +62,11 @@ func newEntOnDB(t testing.TB, db *sql.DB) *ent.Client {
 	if err := client.Schema.Create(context.Background(), sqlschema.WithHooks(ceoboardOnly)); err != nil {
 		db.Close()
 		t.Fatalf("建测试 schema: %v", err)
+	}
+	if _, err := db.ExecContext(context.Background(), ceoboardDeadLetterIdemIndexDDL); err != nil {
+		client.Close()
+		db.Close()
+		t.Fatalf("建死信幂等部分唯一索引(对齐迁移 20261310): %v", err)
 	}
 	return client
 }

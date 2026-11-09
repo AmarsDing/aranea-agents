@@ -144,6 +144,9 @@ func reconcileVersionedEnsureSchemas(ctx context.Context, rawDB *sql.DB, entClie
 			{"channel_turn_job_schema", func() error { return EnsureChannelTurnJobSchema(ctx, rawDB) }},
 			{"channel_runtime_lease_schema", func() error { return EnsureChannelRuntimeLeaseSchema(ctx, rawDB) }},
 			{"source_sync_schema", func() error { return EnsureSourceSyncSchema(ctx, rawDB) }},
+			// 评审 2026-11-09 M2:死信幂等部分唯一索引(ent model 外,DEV 模式
+			// WithDropIndex 会抹掉)——每次启动幂等重建(与迁移 20261310 同体)。
+			{"ceoboard_dead_letter_idem_schema", func() error { return EnsureCeoboardDeadLetterIdemSchema(ctx, rawDB, d) }},
 		}
 		for _, e := range rawEnsures {
 			if err := e.fn(); err != nil {

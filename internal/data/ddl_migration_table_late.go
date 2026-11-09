@@ -624,4 +624,15 @@ var ddlMigrationsLate = []ddlMigration{
 	// 注册记录（真实图标 + 能力声明 + 默认自治级别），默认 enabled=false，探测后再启用。
 	// 幂等：按 (workspace, agent_key) 存在即跳过；不覆盖用户已改配置。
 	{Version: 20261309, Name: "coding_agents_seed", Func: ddlCodingAgentsSeed},
+	// 20261310 ceoboard_dead_letters 库层幂等兜底部分唯一索引（评审 2026-11-09 M2）：
+	// 先清理存量同 (kind,source,ref_key) 未重放重复（保留 id 最大者，与查重
+	// "最新优先"语义一致），再建部分唯一索引 ref_key<>'' AND replayed_at IS NULL。
+	// DEV 模式 auto-migrate WithDropIndex 会抹掉 schema 外索引——启动期 reconcile
+	// （EnsureCeoboardDeadLetterIdemSchema，本表同体 SQL）每次幂等重建。
+	// ent schema 不动（部分索引无法经 model 表达）；旧二进制无感知。幂等，重跑安全。
+	{Version: 20261310, Name: "ceoboard_dead_letters_unreplayed_ref_uidx", SQL: "sql/migrations/20261310_ceoboard_dead_letters_unreplayed_ref_uidx.sql"},
+	// 20261311 ceoboard_webhook_deliveries 幂等维度化 (source,key)（评审 2026-11-09
+	// MEDIUM-7）：存储主键改 source:幂等键 复合串（store 层收口拼接），存量裸键行
+	// 先复制再删回填；复制失败/超长残留在读侧恒等兼容。DDL/数据均可重入，重跑安全。
+	{Version: 20261311, Name: "ceoboard_webhook_deliveries_source_key", SQL: "sql/migrations/20261311_ceoboard_webhook_deliveries_source_key.sql"},
 }

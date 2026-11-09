@@ -31,6 +31,8 @@ type Event struct {
 
 // Delivery 是一条 webhook 投递记录。
 type Delivery struct {
+	// Key 是裸幂等键(包外契约);存储主键为 source:Key 复合串,拼接/剥前缀
+	// 收口在 store 层,包外透明(评审 2026-11-09 MEDIUM-7)。
 	Key      string    // 幂等键
 	Source   string    // aranea | ...
 	Event    string    // 事件名
