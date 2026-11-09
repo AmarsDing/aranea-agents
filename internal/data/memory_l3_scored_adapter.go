@@ -3,12 +3,29 @@ package data
 import (
 	"context"
 	"encoding/json"
+	"strings"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/loggateway"
 )
 
 var _ biz.SessionL3ScoredRecallStore = (*L3ScoredRecallAdapter)(nil)
+
+// skipUserScopePIIHit 判定 user 域召回命中是否因 PII 门被丢弃：仅
+// scope_type="user" 且 raw JSON 的 pii_flag 为 true 时跳过。其它域
+//（agent/team/workspace/global）不受影响——PII 门是 user 域召回的前置门
+//（spec §6.3 召回接线，过渡期按 pii_flag 保守处理）。
+func skipUserScopePIIHit(scopeType string, raw []byte) bool {
+	if !strings.EqualFold(strings.TrimSpace(scopeType), "user") {
+		return false
+	}
+	var m map[string]any
+	if err := json.Unmarshal(raw, &m); err != nil {
+		return false
+	}
+	flag, _ := m["pii_flag"].(bool)
+	return flag
+}
 
 // L3ScoredRecallAdapter exposes scored L3 recall as biz.RecallHit rows.
 type L3ScoredRecallAdapter struct {
@@ -39,6 +56,13 @@ func (a *L3ScoredRecallAdapter) RecallL3Hits(ctx context.Context, scopeType, sco
 	out := make([]biz.RecallHit, 0, len(raw))
 	recalledIDs := make([]string, 0, len(raw))
 	for _, b := range raw {
+		// D3 user 域召回 PII 门（过渡期保守口径，spec §6.3）：user 域召回
+		// 命中 pii_flag=1 的行不进 prompt——写路径 PII 门已把 statement 裁成
+		// 脱敏载体，但召回侧在 L-4 密级列落位前一律保守丢弃（也不计
+		// recalled_count，避免污染艾宾浩斯访问信号）。
+		if skipUserScopePIIHit(scopeType, b) {
+			continue
+		}
 		hit := biz.RecallHit{
 			Layer: "L3",
 			Raw:   b,
