@@ -86,6 +86,8 @@ func NewHTTPServer(c *conf.Server, s *ServiceRegistry, wsSrv *WSServer, voiceSrv
 			validate.Middleware(),
 			// P1-5: 敏感域权限码硬判（认证由 Filter 链 auth.Middleware 先行保证）。
 			servermw.Permission(servermw.DefaultPermissionRegistry(), lg),
+			// P1 补漏: force_reset 强制改密门（豁免组外一律 403）。
+			servermw.ForceResetGate(lg),
 		),
 		// Skill ZIP import accepts JSON bytes or legacy multipart/form-data.
 		kratoshttp.RequestDecoder(service.DecodeSkillImportRequest),

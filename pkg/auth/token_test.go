@@ -106,6 +106,34 @@ func TestGenerateTokenForPrincipalRoundTrip(t *testing.T) {
 	}
 }
 
+// fr claim(P1 补漏·强制改密门)必须随签发烙入并随解析还原;默认零值不带出。
+func TestGenerateTokenForceResetRoundTrip(t *testing.T) {
+	secret := "test-secret-key-32bytes-minimum!!"
+	token, err := GenerateTokenForPrincipal(Principal{UserID: 9, Access: "user", ForceReset: true}, secret, time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	claims, err := ParseToken(token, secret)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !claims.ForceReset {
+		t.Fatal("fr claim 丢失:强制改密门会失效")
+	}
+
+	plain, err := GenerateTokenForPrincipal(Principal{UserID: 9, Access: "user"}, secret, time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	plainClaims, err := ParseToken(plain, secret)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plainClaims.ForceReset {
+		t.Fatal("零值 fr 应解析为 false")
+	}
+}
+
 // TestGenerateTokenForPrincipalDefaults：空 workspace 归一 default；零值
 // roles/clearance/tv 兼容旧 token 语义（L1 / tv=0）。
 func TestGenerateTokenForPrincipalDefaults(t *testing.T) {

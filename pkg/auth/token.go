@@ -32,6 +32,8 @@ type Principal struct {
 	Roles        []string
 	Clearance    int
 	TokenVersion int64
+	// ForceReset 随签发烙入 fr claim（P1 补漏·强制改密门）。
+	ForceReset bool
 }
 
 // GenerateTokenForPrincipal generates a JWT carrying the full P1 claim set.
@@ -50,6 +52,7 @@ func GenerateTokenForPrincipal(p Principal, secret string, expiresAt time.Time) 
 		Roles:        p.Roles,
 		Clearance:    p.Clearance,
 		TokenVersion: p.TokenVersion,
+		ForceReset:   p.ForceReset,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ID:        uuid.NewString(),
 			Issuer:    "kratos",

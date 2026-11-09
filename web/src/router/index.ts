@@ -31,14 +31,25 @@ router.beforeEach(async (to) => {
 
   // Breakpoint guard (<600px): narrow screens use the mobile layout, wide
   // screens use the desktop one. Evaluated per navigation (no live switching
-  // on resize, per design §3.1). The public setup page is exempt.
-  const breakpointTarget = chatBreakpointTarget(to.path, to.query, Screen.lt.sm);
-  if (breakpointTarget) return breakpointTarget;
+  // on resize, per design §3.1). The public setup page is exempt, as is the
+  // force-reset page (must stay reachable on every form factor).
+  if (to.path !== '/force-reset-password') {
+    const breakpointTarget = chatBreakpointTarget(to.path, to.query, Screen.lt.sm);
+    if (breakpointTarget) return breakpointTarget;
+  }
 
   const auth = useAuthStore();
   await auth.ensureSession();
   if (!auth.user) {
     return { path: '/login', query: { redirect: to.fullPath } };
+  }
+  // P1 补漏·强制改密门:置位账号钉在改密页(后端同步只放行豁免组 rpc);
+  // 未置位账号访问改密页则送回总览。
+  if (auth.user.forceReset && to.path !== '/force-reset-password') {
+    return { path: '/force-reset-password' };
+  }
+  if (!auth.user.forceReset && to.path === '/force-reset-password') {
+    return { path: '/' };
   }
   return true;
 });

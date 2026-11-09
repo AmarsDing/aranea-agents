@@ -23,6 +23,10 @@ type Auth struct {
 	Roles        []string `json:"roles,omitempty"`
 	Clearance    int      `json:"clearance,omitempty"`
 	TokenVersion int64    `json:"tv,omitempty"`
+	// ForceReset（P1 补漏·强制改密门）：签发时刻 admins.force_reset 的快照。
+	// 改密成功即递增 tv 吊销全部会话，旧 token（含本 claim）随之失效，
+	// 不存在「claim 已清但会话未吊销」的漂移窗口——claim 快照因此可信。
+	ForceReset bool `json:"fr,omitempty"`
 	jwt.RegisteredClaims
 }
 

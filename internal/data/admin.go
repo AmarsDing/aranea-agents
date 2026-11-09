@@ -157,6 +157,11 @@ func (r *adminRepo) UpdateAdmin(ctx context.Context, admin *biz.Admin) (*biz.Adm
 	if admin.Password != "" {
 		update.SetPassword(admin.Password)
 	}
+	// force_reset 必须持久化:ChangePassword 的清标记与 UpdateAdmin 的置位都
+	// 经此路径(此前只更新内存字段不落库,改密后标记永不清除——强制改密门
+	// 会把用户钉死在改密页)。调用方必须传入期望的全量值(service 层从已加载
+	// 记录构造,未被 fieldmask 触及即保持原值)。
+	update.SetForceReset(admin.ForceReset)
 	po, err := update.Save(ctx)
 	if err != nil {
 		return nil, entErrToBizErr(err, "ADMIN")

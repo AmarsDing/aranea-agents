@@ -32,6 +32,11 @@ export type Admin = {
   // or WS `?token=` when the HttpOnly cookie is unavailable. Identical to
   // the cookie value issued in the same login call; empty on all other RPCs.
   token: string | undefined;
+  // force_reset（P1 补漏·强制改密门）:true 表示账号须先改密才能使用系统
+  // （wb 迁移一次性口令、管理员重置后置位）。置位期间后端只放行
+  // Current/Logout/ChangePassword 三个 rpc,前端路由守卫强制改密页;
+  // 改密成功即吊销全部会话并清标记,须重新登录。Login/Current 响应携带。
+  forceReset: boolean | undefined;
 };
 
 // Encoded using RFC 3339, where generated output will always be Z-normalized

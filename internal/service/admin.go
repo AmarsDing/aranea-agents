@@ -49,6 +49,7 @@ func convertAdmin(m *biz.Admin) *v1.Admin {
 		WorkspaceId: m.WorkspaceID,
 		CreateTime:  timestamppb.New(m.CreateTime),
 		UpdateTime:  timestamppb.New(m.UpdateTime),
+		ForceReset:  m.ForceReset,
 	}
 }
 
@@ -122,6 +123,8 @@ func (s *AdminService) Login(ctx context.Context, req *v1.LoginRequest) (*v1.Adm
 		Roles:        roles,
 		Clearance:    admin.Clearance,
 		TokenVersion: admin.TokenVersion,
+		// 强制改密门：置位账号的会话被限制在豁免组（改密/登出/查自身）。
+		ForceReset: admin.ForceReset,
 	}, expiresAt)
 	if err != nil {
 		s.lg.Warn("admin login: issue token failed",
@@ -213,6 +216,15 @@ func (s *AdminService) UpdateAdmin(ctx context.Context, req *v1.UpdateAdminReque
 	}
 	admin := convertAdmin(bizAdmin)
 	fieldmask.Update(req.UpdateMask, admin, req.Admin)
+	// 强制改密门:fieldmask 显式把 force_reset 置 true(管理员重置一次性口令)
+	// 时,先吊销目标全部会话再落库——顺序与 ChangePassword 一致(先吊销后变更):
+	// 置位失败用户只是被登出,不会出现"标记已置位但旧会话(fr=false claim)
+	// 继续活着"的安全窗口。吊销不可用时不落库(fail-closed,安全场景不许静默)。
+	if admin.ForceReset && !bizAdmin.ForceReset {
+		if err := s.uc.RevokeSessions(ctx, bizAdmin.ID, "force_reset_set"); err != nil {
+			return nil, err
+		}
+	}
 	updated, err := s.uc.UpdateAdmin(ctx, &biz.Admin{
 		ID:       admin.Id,
 		Name:     admin.Name,
@@ -220,6 +232,9 @@ func (s *AdminService) UpdateAdmin(ctx context.Context, req *v1.UpdateAdminReque
 		Password: admin.Password,
 		Avatar:   admin.Avatar,
 		Access:   admin.Access,
+		// fieldmask 未触及 force_reset 时保持已加载原值(管理台编辑不清标记);
+		// 触及即按请求值(置位路径已在上方先吊销会话)。
+		ForceReset: admin.ForceReset,
 	})
 	if err != nil {
 		return nil, err

@@ -19,6 +19,7 @@ function mapAdmin(raw: unknown): AdminSession {
     access: String(r.access ?? ''),
     avatar: String(r.avatar ?? ''),
     ...(token ? { token } : {}),
+    forceReset: r.forceReset === true,
   };
 }
 
@@ -41,6 +42,14 @@ export async function logoutAdmin(): Promise<void> {
 export async function getCurrentAdmin(): Promise<AdminSession> {
   const data = await adminSvc.Current({});
   return mapAdmin(data as Admin);
+}
+
+/**
+ * P1 补漏·强制改密门:自助改密。成功即吊销全部会话(含当前),调用方须清理
+ * 本地会话并回登录页。这是 force_reset 账号唯一可用的写操作。
+ */
+export async function changeAdminPassword(oldPassword: string, newPassword: string): Promise<void> {
+  await adminSvc.ChangePassword({ oldPassword, newPassword });
 }
 
 /**

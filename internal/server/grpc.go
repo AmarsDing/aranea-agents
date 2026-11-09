@@ -73,6 +73,8 @@ func NewGRPCServer(c *conf.Server, s *ServiceRegistry, lg loggateway.Logger) *gr
 			validate.Middleware(),
 			// P1-5: 敏感域权限码硬判（必须在 auth.GRPCMiddleware 之后）。
 			servermw.Permission(servermw.DefaultPermissionRegistry(), lg),
+			// P1 补漏: force_reset 强制改密门（豁免组外一律 403）。
+			servermw.ForceResetGate(lg),
 		),
 	}
 	if c.Grpc.Network != "" {

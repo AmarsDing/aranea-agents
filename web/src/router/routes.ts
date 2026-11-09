@@ -1,6 +1,7 @@
 import type { RouteRecordRaw } from 'vue-router';
 import BlankLayout from '../layouts/BlankLayout.vue';
 import LoginPage from '../pages/LoginPage.vue';
+import ForceResetPasswordPage from '../pages/ForceResetPasswordPage.vue';
 import MainLayout from '../layouts/MainLayout.vue';
 import ChatPage from '../pages/ChatPage.vue';
 import AgentsPage from '../pages/AgentsPage.vue';
@@ -67,6 +68,14 @@ export const routes: RouteRecordRaw[] = [
     component: BlankLayout,
     meta: { public: true },
     children: [{ path: '', name: 'login', component: LoginPage }],
+  },
+  {
+    // P1 补漏·强制改密门:force_reset 账号登录后唯一可达页(守卫钉住;
+    // 改密成功即吊销全部会话,须用新密码重新登录)。断点守卫豁免此路径。
+    path: '/force-reset-password',
+    component: BlankLayout,
+    meta: { requiresAuth: true },
+    children: [{ path: '', name: 'force-reset-password', component: ForceResetPasswordPage }],
   },
   {
     // Mobile (Android shell) first-run backend address setup. Public: the

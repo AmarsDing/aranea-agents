@@ -55,7 +55,12 @@ type Admin struct {
 	// Cross-origin clients (WebView / frp) use it as `Authorization: Bearer`
 	// or WS `?token=` when the HttpOnly cookie is unavailable. Identical to
 	// the cookie value issued in the same login call; empty on all other RPCs.
-	Token         string `protobuf:"bytes,11,opt,name=token,proto3" json:"token,omitempty"`
+	Token string `protobuf:"bytes,11,opt,name=token,proto3" json:"token,omitempty"`
+	// force_reset（P1 补漏·强制改密门）:true 表示账号须先改密才能使用系统
+	// （wb 迁移一次性口令、管理员重置后置位）。置位期间后端只放行
+	// Current/Logout/ChangePassword 三个 rpc,前端路由守卫强制改密页;
+	// 改密成功即吊销全部会话并清标记,须重新登录。Login/Current 响应携带。
+	ForceReset    bool `protobuf:"varint,12,opt,name=force_reset,json=forceReset,proto3" json:"force_reset,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -165,6 +170,13 @@ func (x *Admin) GetToken() string {
 		return x.Token
 	}
 	return ""
+}
+
+func (x *Admin) GetForceReset() bool {
+	if x != nil {
+		return x.ForceReset
+	}
+	return false
 }
 
 // AdminSet is the set of admins.
@@ -883,7 +895,7 @@ var File_kratos_admin_v1_admin_proto protoreflect.FileDescriptor
 
 const file_kratos_admin_v1_admin_proto_rawDesc = "" +
 	"\n" +
-	"\x1bkratos/admin/v1/admin.proto\x12\x0fkratos.admin.v1\x1a\x1bgoogle/protobuf/empty.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a google/protobuf/field_mask.proto\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/api/field_behavior.proto\"\xd6\x02\n" +
+	"\x1bkratos/admin/v1/admin.proto\x12\x0fkratos.admin.v1\x1a\x1bgoogle/protobuf/empty.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a google/protobuf/field_mask.proto\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/api/field_behavior.proto\"\xf7\x02\n" +
 	"\x05Admin\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x03R\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x14\n" +
@@ -898,7 +910,9 @@ const file_kratos_admin_v1_admin_proto_rawDesc = "" +
 	"updateTime\x12!\n" +
 	"\fworkspace_id\x18\n" +
 	" \x01(\tR\vworkspaceId\x12\x14\n" +
-	"\x05token\x18\v \x01(\tR\x05token\"b\n" +
+	"\x05token\x18\v \x01(\tR\x05token\x12\x1f\n" +
+	"\vforce_reset\x18\f \x01(\bR\n" +
+	"forceReset\"b\n" +
 	"\bAdminSet\x12.\n" +
 	"\x06admins\x18\x01 \x03(\v2\x16.kratos.admin.v1.AdminR\x06admins\x12&\n" +
 	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"r\n" +

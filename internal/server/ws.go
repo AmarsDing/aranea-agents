@@ -439,6 +439,11 @@ func wsAuthenticate(r *http.Request) (*auth.Auth, error) {
 	if err != nil {
 		return nil, errors.New("invalid token")
 	}
+	// P1 补漏·强制改密门:置位账号不允许持有 WS 长连接(改密页无 WS 需求,
+	// 防止绕过 rpc 门直接 WS 操作)。
+	if claims.ForceReset {
+		return nil, errors.New("password reset required")
+	}
 	return claims, nil
 }
 
