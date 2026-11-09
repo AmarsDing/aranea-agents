@@ -7,6 +7,7 @@
 package v1
 
 import (
+	_ "aranea-agents/api/aranea/auth/v1"
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
@@ -3082,7 +3083,7 @@ var File_kratos_ceoboard_v1_ceoboard_proto protoreflect.FileDescriptor
 
 const file_kratos_ceoboard_v1_ceoboard_proto_rawDesc = "" +
 	"\n" +
-	"!kratos/ceoboard/v1/ceoboard.proto\x12\x12kratos.ceoboard.v1\x1a\x1bgoogle/protobuf/empty.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1cgoogle/protobuf/struct.proto\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/api/field_behavior.proto\"\xf0\x01\n" +
+	"!kratos/ceoboard/v1/ceoboard.proto\x12\x12kratos.ceoboard.v1\x1a\x1bgoogle/protobuf/empty.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1cgoogle/protobuf/struct.proto\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a aranea/auth/v1/requirement.proto\"\xf0\x01\n" +
 	"\fPlatformView\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x122\n" +
@@ -3359,21 +3360,33 @@ const file_kratos_ceoboard_v1_ceoboard_proto_rawDesc = "" +
 	"HEALTH_RED\x10\x01\x12\x11\n" +
 	"\rHEALTH_YELLOW\x10\x02\x12\x10\n" +
 	"\fHEALTH_GREEN\x10\x03\x12\x0f\n" +
-	"\vHEALTH_GRAY\x10\x042\x98\f\n" +
-	"\x0fCeoboardService\x12b\n" +
-	"\vGetOverview\x12\x16.google.protobuf.Empty\x1a\x1c.kratos.ceoboard.v1.Overview\"\x1d\x82\xd3\xe4\x93\x02\x17\x12\x15/v1/ceoboard/overview\x12|\n" +
-	"\vGetWorkflow\x12&.kratos.ceoboard.v1.GetWorkflowRequest\x1a .kratos.ceoboard.v1.WorkflowView\"#\x82\xd3\xe4\x93\x02\x1d\x12\x1b/v1/ceoboard/workflows/{id}\x12\x8b\x01\n" +
-	"\aGetNode\x12\".kratos.ceoboard.v1.GetNodeRequest\x1a\x1e.kratos.ceoboard.v1.NodeDetail\"<\x82\xd3\xe4\x93\x026\x124/v1/ceoboard/workflows/{workflow_id}/nodes/{node_id}\x12~\n" +
-	"\vGetPlatform\x12&.kratos.ceoboard.v1.GetPlatformRequest\x1a\".kratos.ceoboard.v1.PlatformDetail\"#\x82\xd3\xe4\x93\x02\x1d\x12\x1b/v1/ceoboard/platforms/{id}\x12\x84\x01\n" +
-	"\rListConsumers\x12(.kratos.ceoboard.v1.ListConsumersRequest\x1a).kratos.ceoboard.v1.ListConsumersResponse\"\x1e\x82\xd3\xe4\x93\x02\x18\x12\x16/v1/ceoboard/consumers\x12x\n" +
+	"\vHEALTH_GRAY\x10\x042\xfe\r\n" +
+	"\x0fCeoboardService\x12u\n" +
+	"\vGetOverview\x12\x16.google.protobuf.Empty\x1a\x1c.kratos.ceoboard.v1.Overview\"0\xca\xf3\x18\x0f\n" +
+	"\rceoboard.view\x82\xd3\xe4\x93\x02\x17\x12\x15/v1/ceoboard/overview\x12\x8f\x01\n" +
+	"\vGetWorkflow\x12&.kratos.ceoboard.v1.GetWorkflowRequest\x1a .kratos.ceoboard.v1.WorkflowView\"6\xca\xf3\x18\x0f\n" +
+	"\rceoboard.view\x82\xd3\xe4\x93\x02\x1d\x12\x1b/v1/ceoboard/workflows/{id}\x12\x9e\x01\n" +
+	"\aGetNode\x12\".kratos.ceoboard.v1.GetNodeRequest\x1a\x1e.kratos.ceoboard.v1.NodeDetail\"O\xca\xf3\x18\x0f\n" +
+	"\rceoboard.view\x82\xd3\xe4\x93\x026\x124/v1/ceoboard/workflows/{workflow_id}/nodes/{node_id}\x12\x91\x01\n" +
+	"\vGetPlatform\x12&.kratos.ceoboard.v1.GetPlatformRequest\x1a\".kratos.ceoboard.v1.PlatformDetail\"6\xca\xf3\x18\x0f\n" +
+	"\rceoboard.view\x82\xd3\xe4\x93\x02\x1d\x12\x1b/v1/ceoboard/platforms/{id}\x12\x97\x01\n" +
+	"\rListConsumers\x12(.kratos.ceoboard.v1.ListConsumersRequest\x1a).kratos.ceoboard.v1.ListConsumersResponse\"1\xca\xf3\x18\x0f\n" +
+	"\rceoboard.view\x82\xd3\xe4\x93\x02\x18\x12\x16/v1/ceoboard/consumers\x12\x8b\x01\n" +
 	"\n" +
-	"ListEvents\x12%.kratos.ceoboard.v1.ListEventsRequest\x1a&.kratos.ceoboard.v1.ListEventsResponse\"\x1b\x82\xd3\xe4\x93\x02\x15\x12\x13/v1/ceoboard/events\x12s\n" +
-	"\bGetEvent\x12#.kratos.ceoboard.v1.GetEventRequest\x1a\x1f.kratos.ceoboard.v1.EventDetail\"!\x82\xd3\xe4\x93\x02\x1b\x12\x19/v1/ceoboard/events/{uid}\x12u\n" +
-	"\x11GetRegistryReport\x12\x16.google.protobuf.Empty\x1a\".kratos.ceoboard.v1.RegistryReport\"$\x82\xd3\xe4\x93\x02\x1e\x12\x1c/v1/ceoboard/registry/report\x12\x8c\x01\n" +
-	"\x0fListDeadLetters\x12*.kratos.ceoboard.v1.ListDeadLettersRequest\x1a+.kratos.ceoboard.v1.ListDeadLettersResponse\" \x82\xd3\xe4\x93\x02\x1a\x12\x18/v1/ceoboard/deadletters\x12\x9e\x01\n" +
-	"\x10ReplayDeadLetter\x12+.kratos.ceoboard.v1.ReplayDeadLetterRequest\x1a,.kratos.ceoboard.v1.ReplayDeadLetterResponse\"/\x82\xd3\xe4\x93\x02):\x01*\"$/v1/ceoboard/deadletters/{id}/replay\x12t\n" +
-	"\tListAudit\x12$.kratos.ceoboard.v1.ListAuditRequest\x1a%.kratos.ceoboard.v1.ListAuditResponse\"\x1a\x82\xd3\xe4\x93\x02\x14\x12\x12/v1/ceoboard/audit\x12\x81\x01\n" +
-	"\vExportAudit\x12&.kratos.ceoboard.v1.ExportAuditRequest\x1a'.kratos.ceoboard.v1.ExportAuditResponse\"!\x82\xd3\xe4\x93\x02\x1b\x12\x19/v1/ceoboard/audit/exportBC\n" +
+	"ListEvents\x12%.kratos.ceoboard.v1.ListEventsRequest\x1a&.kratos.ceoboard.v1.ListEventsResponse\".\xca\xf3\x18\x0f\n" +
+	"\rceoboard.view\x82\xd3\xe4\x93\x02\x15\x12\x13/v1/ceoboard/events\x12\x86\x01\n" +
+	"\bGetEvent\x12#.kratos.ceoboard.v1.GetEventRequest\x1a\x1f.kratos.ceoboard.v1.EventDetail\"4\xca\xf3\x18\x0f\n" +
+	"\rceoboard.view\x82\xd3\xe4\x93\x02\x1b\x12\x19/v1/ceoboard/events/{uid}\x12\x88\x01\n" +
+	"\x11GetRegistryReport\x12\x16.google.protobuf.Empty\x1a\".kratos.ceoboard.v1.RegistryReport\"7\xca\xf3\x18\x0f\n" +
+	"\rceoboard.view\x82\xd3\xe4\x93\x02\x1e\x12\x1c/v1/ceoboard/registry/report\x12\x9e\x01\n" +
+	"\x0fListDeadLetters\x12*.kratos.ceoboard.v1.ListDeadLettersRequest\x1a+.kratos.ceoboard.v1.ListDeadLettersResponse\"2\xca\xf3\x18\x0e\n" +
+	"\fceoboard.ops\x82\xd3\xe4\x93\x02\x1a\x12\x18/v1/ceoboard/deadletters\x12\xb0\x01\n" +
+	"\x10ReplayDeadLetter\x12+.kratos.ceoboard.v1.ReplayDeadLetterRequest\x1a,.kratos.ceoboard.v1.ReplayDeadLetterResponse\"A\xca\xf3\x18\x0e\n" +
+	"\fceoboard.ops\x82\xd3\xe4\x93\x02):\x01*\"$/v1/ceoboard/deadletters/{id}/replay\x12\x86\x01\n" +
+	"\tListAudit\x12$.kratos.ceoboard.v1.ListAuditRequest\x1a%.kratos.ceoboard.v1.ListAuditResponse\",\xca\xf3\x18\x0e\n" +
+	"\fceoboard.ops\x82\xd3\xe4\x93\x02\x14\x12\x12/v1/ceoboard/audit\x12\x93\x01\n" +
+	"\vExportAudit\x12&.kratos.ceoboard.v1.ExportAuditRequest\x1a'.kratos.ceoboard.v1.ExportAuditResponse\"3\xca\xf3\x18\x0e\n" +
+	"\fceoboard.ops\x82\xd3\xe4\x93\x02\x1b\x12\x19/v1/ceoboard/audit/exportBC\n" +
 	"\x16api.kratos.ceoboard.v1P\x01Z'aranea-agents/api/kratos/ceoboard/v1;v1b\x06proto3"
 
 var (

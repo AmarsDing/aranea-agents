@@ -72,7 +72,7 @@ func RegisterCeoboardServiceHTTPServer(s *http.Server, srv CeoboardServiceHTTPSe
 	r.GET("/v1/ceoboard/registry/report", _CeoboardService_GetRegistryReport0_HTTP_Handler(srv))
 	r.GET("/v1/ceoboard/deadletters", _CeoboardService_ListDeadLetters0_HTTP_Handler(srv))
 	r.POST("/v1/ceoboard/deadletters/{id}/replay", _CeoboardService_ReplayDeadLetter0_HTTP_Handler(srv))
-	r.GET("/v1/ceoboard/audit", _CeoboardService_ListAudit0_HTTP_Handler(srv))
+	r.GET("/v1/ceoboard/audit", _CeoboardService_ListAudit1_HTTP_Handler(srv))
 	r.GET("/v1/ceoboard/audit/export", _CeoboardService_ExportAudit0_HTTP_Handler(srv))
 }
 
@@ -284,7 +284,7 @@ func _CeoboardService_ReplayDeadLetter0_HTTP_Handler(srv CeoboardServiceHTTPServ
 	}
 }
 
-func _CeoboardService_ListAudit0_HTTP_Handler(srv CeoboardServiceHTTPServer) func(ctx http.Context) error {
+func _CeoboardService_ListAudit1_HTTP_Handler(srv CeoboardServiceHTTPServer) func(ctx http.Context) error {
 	return func(ctx http.Context) error {
 		var in ListAuditRequest
 		if err := ctx.BindQuery(&in); err != nil {

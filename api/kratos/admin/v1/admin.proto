@@ -7,6 +7,7 @@ import "google/protobuf/timestamp.proto";
 import "google/protobuf/field_mask.proto";
 import "google/api/annotations.proto";
 import "google/api/field_behavior.proto";
+import "aranea/auth/v1/requirement.proto";
 
 option go_package = "aranea-agents/api/kratos/admin/v1;v1";
 option java_multiple_files = true;
@@ -61,6 +62,7 @@ message AdminSet {
 service AdminService {
   // Login a user and return the username.
   rpc Login (LoginRequest) returns (Admin) {
+    option (aranea.auth.v1.requirement) = {public: true};
     option (google.api.http) = {
       post: "/v1/admins/login"
       body: "*"
@@ -68,6 +70,7 @@ service AdminService {
   }
   // Logout the currently logged-in user.
   rpc Logout (google.protobuf.Empty) returns (google.protobuf.Empty) {
+    option (aranea.auth.v1.requirement) = {public: true};
     option (google.api.http) = {
       post: "/v1/admins/logout"
       body: "*"
@@ -75,18 +78,21 @@ service AdminService {
   }
   // Current returns the currently logged-in user.
   rpc Current (google.protobuf.Empty) returns (Admin) {
+    option (aranea.auth.v1.requirement) = {public: true};
     option (google.api.http) = {
       get: "/v1/admins/current"
     };
   }
   // ListAdmins returns a list of admins.
   rpc ListAdmins(ListAdminsRequest) returns (AdminSet) {
+    option (aranea.auth.v1.requirement) = {permission: "user.read"};
     option (google.api.http) = {
       get: "/v1/admins/list"
     };
   }
   // CreateAdmin creates a new admin.
   rpc CreateAdmin(CreateAdminRequest) returns (Admin) {
+    option (aranea.auth.v1.requirement) = {permission: "user.write"};
     option (google.api.http) = {
       post: "/v1/admins/create"
       body: "admin"
@@ -94,6 +100,7 @@ service AdminService {
   }
   // UpdateAdmin updates an existing admin.
   rpc UpdateAdmin(UpdateAdminRequest) returns (Admin) {
+    option (aranea.auth.v1.requirement) = {permission: "user.write"};
     option (google.api.http) = {
       put: "/v1/admins/update"
       body: "admin"
@@ -101,12 +108,14 @@ service AdminService {
   }
   // DeleteAdmin deletes an admin by ID.
   rpc DeleteAdmin(DeleteAdminRequest) returns (google.protobuf.Empty) {
+    option (aranea.auth.v1.requirement) = {permission: "user.offboard"};
     option (google.api.http) = {
       delete: "/v1/admins/{id}"
     };
   }
   // GetAdmin retrieves an admin by ID.
   rpc GetAdmin(GetAdminRequest) returns (Admin) {
+    option (aranea.auth.v1.requirement) = {permission: "user.read"};
     option (google.api.http) = {
       get: "/v1/admins/{id}"
     };
@@ -116,6 +125,7 @@ service AdminService {
   // frontend hides what it is not given, while every API call is still
   // hard-checked server-side by the permission middleware.
   rpc GetMenus (google.protobuf.Empty) returns (MenusReply) {
+    option (aranea.auth.v1.requirement) = {authenticated: true};
     option (google.api.http) = {
       get: "/v1/auth/menus"
     };
@@ -124,6 +134,7 @@ service AdminService {
   // caller's token_version, so every previously issued session (including the
   // one that made this call) is revoked and must re-authenticate.
   rpc ChangePassword (ChangePasswordRequest) returns (google.protobuf.Empty) {
+    option (aranea.auth.v1.requirement) = {authenticated: true};
     option (google.api.http) = {
       post: "/v1/users/change-password"
       body: "*"

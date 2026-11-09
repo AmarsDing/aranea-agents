@@ -361,6 +361,116 @@ export type DeleteToolParamRuleRequest = {
   id: string | undefined;
 };
 
+// ApprovalPolicy is a session/agent-scoped deterministic approval posture
+// row (P0-5; phase 2 D5 管理面 API). The runtime approval policy gate
+// (BeforeTool p3) evaluates enabled rows with precedence never > auto > ask
+// > trusted (rank-then-priority-then-id).
+export type ApprovalPolicy = {
+  id: string | undefined;
+  // scope: session | agent.
+  scope: string | undefined;
+  // scope_key is the session id (scope=session) or agent id (scope=agent).
+  scopeKey: string | undefined;
+  // tool_pattern is required ("*" for explicit wildcard); glob or "re:" regex.
+  toolPattern: string | undefined;
+  // command_prefix (optional): glob/"re:" against the extracted command text.
+  commandPrefix: string | undefined;
+  // args_pattern (optional): glob/"re:" against flattened arguments text.
+  argsPattern: string | undefined;
+  // mode: never | auto | ask | trusted. auto consumes identically to ask
+  // (session/persisted grants still satisfy it) but projects
+  // source_mode=auto on verdict records (auto_review_verdict audit).
+  mode: string | undefined;
+  priority: number | undefined;
+  enabled: boolean | undefined;
+  // shadow_only: matched rows only audit (no enforcement).
+  shadowOnly: boolean | undefined;
+  // expires_at is unix seconds; 0 = no expiry.
+  expiresAt: number | undefined;
+  // created_at / created_by are server-authoritative (ignored on write).
+  createdAt: number | undefined;
+  createdBy: string | undefined;
+};
+
+export type ListApprovalPoliciesRequest = {
+  //
+  // Behaviors: REQUIRED
+  scope: string | undefined;
+  //
+  // Behaviors: REQUIRED
+  scopeKey: string | undefined;
+};
+
+export type ListApprovalPoliciesResponse = {
+  items: ApprovalPolicy[] | undefined;
+};
+
+export type GetApprovalPolicyRequest = {
+  //
+  // Behaviors: REQUIRED
+  id: string | undefined;
+};
+
+export type UpsertApprovalPolicyRequest = {
+  //
+  // Behaviors: REQUIRED
+  id: string | undefined;
+  //
+  // Behaviors: REQUIRED
+  scope: string | undefined;
+  //
+  // Behaviors: REQUIRED
+  scopeKey: string | undefined;
+  //
+  // Behaviors: REQUIRED
+  toolPattern: string | undefined;
+  commandPrefix: string | undefined;
+  argsPattern: string | undefined;
+  //
+  // Behaviors: REQUIRED
+  mode: string | undefined;
+  priority: number | undefined;
+  enabled: boolean | undefined;
+  shadowOnly: boolean | undefined;
+  expiresAt: number | undefined;
+};
+
+export type DeleteApprovalPolicyRequest = {
+  //
+  // Behaviors: REQUIRED
+  id: string | undefined;
+};
+
+// ImportApprovalPoliciesTOMLRequest carries the whole TOML document.
+// Import is per-row tolerant: valid rows upsert (id-keyed, idempotent),
+// invalid rows are reported in per-row errors without aborting the batch.
+// Rows are capped server-side (oversized documents rejected wholesale).
+export type ImportApprovalPoliciesTOMLRequest = {
+  //
+  // Behaviors: REQUIRED
+  content: string | undefined;
+};
+
+export type ImportApprovalPoliciesTOMLResponse = {
+  importedCount: number | undefined;
+  // per-row errors in "policies[i]: <reason>" form (sanitized, no payload echo).
+  errors: string[] | undefined;
+};
+
+export type ExportApprovalPoliciesTOMLRequest = {
+  // scope filter mirrors List: export rows under (scope, scope_key).
+  //
+  // Behaviors: REQUIRED
+  scope: string | undefined;
+  //
+  // Behaviors: REQUIRED
+  scopeKey: string | undefined;
+};
+
+export type ExportApprovalPoliciesTOMLResponse = {
+  content: string | undefined;
+};
+
 export type UpsertToolAgentOverrideRequest = {
   //
   // Behaviors: REQUIRED
@@ -481,6 +591,15 @@ export interface ToolService {
   DeleteToolAgentOverride(request: DeleteToolAgentOverrideRequest): Promise<wellKnownEmpty>;
   UpdateToolConfig(request: UpdateToolConfigRequest): Promise<Tool>;
   TestTool(request: TestToolRequest): Promise<TestToolResponse>;
+  // Static colon-suffixed paths MUST be registered before
+  // /v1/approval-policies/{id} to avoid gorilla/mux matching "exportToml"
+  // as {id} (same discipline as /v1/tools/runs above).
+  ExportApprovalPoliciesTOML(request: ExportApprovalPoliciesTOMLRequest): Promise<ExportApprovalPoliciesTOMLResponse>;
+  ImportApprovalPoliciesTOML(request: ImportApprovalPoliciesTOMLRequest): Promise<ImportApprovalPoliciesTOMLResponse>;
+  ListApprovalPolicies(request: ListApprovalPoliciesRequest): Promise<ListApprovalPoliciesResponse>;
+  GetApprovalPolicy(request: GetApprovalPolicyRequest): Promise<ApprovalPolicy>;
+  UpsertApprovalPolicy(request: UpsertApprovalPolicyRequest): Promise<ApprovalPolicy>;
+  DeleteApprovalPolicy(request: DeleteApprovalPolicyRequest): Promise<wellKnownEmpty>;
 }
 
 type RequestType = {
@@ -1033,6 +1152,129 @@ export function createToolServiceClient(
         service: "ToolService",
         method: "TestTool",
       }) as Promise<TestToolResponse>;
+    },
+    ExportApprovalPoliciesTOML(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      const path = `v1/approval-policies:exportToml`; // eslint-disable-line quotes
+      const body = null;
+      const queryParams: string[] = [];
+      if (request.scope) {
+        queryParams.push(`scope=${encodeURIComponent(request.scope.toString())}`)
+      }
+      if (request.scopeKey) {
+        queryParams.push(`scopeKey=${encodeURIComponent(request.scopeKey.toString())}`)
+      }
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "ToolService",
+        method: "ExportApprovalPoliciesTOML",
+      }) as Promise<ExportApprovalPoliciesTOMLResponse>;
+    },
+    ImportApprovalPoliciesTOML(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      const path = `v1/approval-policies:importToml`; // eslint-disable-line quotes
+      const body = JSON.stringify(request);
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "ToolService",
+        method: "ImportApprovalPoliciesTOML",
+      }) as Promise<ImportApprovalPoliciesTOMLResponse>;
+    },
+    ListApprovalPolicies(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      const path = `v1/approval-policies`; // eslint-disable-line quotes
+      const body = null;
+      const queryParams: string[] = [];
+      if (request.scope) {
+        queryParams.push(`scope=${encodeURIComponent(request.scope.toString())}`)
+      }
+      if (request.scopeKey) {
+        queryParams.push(`scopeKey=${encodeURIComponent(request.scopeKey.toString())}`)
+      }
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "ToolService",
+        method: "ListApprovalPolicies",
+      }) as Promise<ListApprovalPoliciesResponse>;
+    },
+    GetApprovalPolicy(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      if (!request.id) {
+        throw new Error("missing required field request.id");
+      }
+      const path = `v1/approval-policies/${request.id}`; // eslint-disable-line quotes
+      const body = null;
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "ToolService",
+        method: "GetApprovalPolicy",
+      }) as Promise<ApprovalPolicy>;
+    },
+    UpsertApprovalPolicy(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      if (!request.id) {
+        throw new Error("missing required field request.id");
+      }
+      const path = `v1/approval-policies/${request.id}`; // eslint-disable-line quotes
+      const body = JSON.stringify(request);
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "PUT",
+        body,
+      }, {
+        service: "ToolService",
+        method: "UpsertApprovalPolicy",
+      }) as Promise<ApprovalPolicy>;
+    },
+    DeleteApprovalPolicy(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      if (!request.id) {
+        throw new Error("missing required field request.id");
+      }
+      const path = `v1/approval-policies/${request.id}`; // eslint-disable-line quotes
+      const body = null;
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "DELETE",
+        body,
+      }, {
+        service: "ToolService",
+        method: "DeleteApprovalPolicy",
+      }) as Promise<wellKnownEmpty>;
     },
   };
 }

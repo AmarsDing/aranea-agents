@@ -5,6 +5,7 @@ package kratos.system_setting.v1;
 import "google/protobuf/empty.proto";
 import "google/protobuf/timestamp.proto";
 import "google/api/annotations.proto";
+import "aranea/auth/v1/requirement.proto";
 
 option go_package = "aranea-agents/api/kratos/system_setting/v1;v1";
 option java_multiple_files = true;
@@ -180,17 +181,20 @@ message TestWebResearchResponse {
 
 service SystemSettingService {
   rpc GetSystemSettings(google.protobuf.Empty) returns (SystemSettings) {
+    option (aranea.auth.v1.requirement) = {permission: "system.setting"};
     option (google.api.http) = {
       get: "/v1/system-settings"
     };
   }
   rpc UpdateSystemSettings(UpdateSystemSettingsRequest) returns (SystemSettings) {
+    option (aranea.auth.v1.requirement) = {permission: "system.setting"};
     option (google.api.http) = {
       put: "/v1/system-settings"
       body: "*"
     };
   }
   rpc TestWebResearch(TestWebResearchRequest) returns (TestWebResearchResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "system.setting"};
     option (google.api.http) = {
       post: "/v1/system-settings/web-research/test"
       body: "*"

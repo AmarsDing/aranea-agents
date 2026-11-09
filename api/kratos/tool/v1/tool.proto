@@ -5,6 +5,7 @@ package kratos.tool.v1;
 import "google/api/annotations.proto";
 import "google/api/field_behavior.proto";
 import "google/protobuf/empty.proto";
+import "aranea/auth/v1/requirement.proto";
 
 option go_package = "aranea-agents/api/kratos/tool/v1;v1";
 option java_multiple_files = true;
@@ -494,89 +495,111 @@ message ListToolInvocationAuditsResponse {
 
 service ToolService {
   rpc ListTools(ListToolsRequest) returns (ListToolsResponse) {
+    option (aranea.auth.v1.requirement) = {authenticated: true};
     option (google.api.http) = {get: "/v1/tools"};
   }
   // Static GET paths MUST be registered before /v1/tools/{id} to avoid
   // gorilla/mux matching the variable segment first (e.g. "runs" as {id}).
   rpc ListToolRuns(ListToolRunsRequest) returns (ListToolRunsResponse) {
+    option (aranea.auth.v1.requirement) = {authenticated: true};
     option (google.api.http) = {get: "/v1/tools/runs"};
   }
   rpc ListToolInvocationAudits(ListToolInvocationAuditsRequest) returns (ListToolInvocationAuditsResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "audit.read"};
     option (google.api.http) = {get: "/v1/tools/audits"};
   }
   rpc GetToolInvocationParams(GetToolInvocationParamsRequest) returns (ToolInvocationParam) {
+    option (aranea.auth.v1.requirement) = {permission: "audit.read"};
     option (google.api.http) = {get: "/v1/tools/runs/{invocation_id}/params"};
   }
   rpc GetTool(GetToolRequest) returns (Tool) {
+    option (aranea.auth.v1.requirement) = {authenticated: true};
     option (google.api.http) = {get: "/v1/tools/{id}"};
   }
   rpc CreateTool(CreateToolRequest) returns (Tool) {
+    option (aranea.auth.v1.requirement) = {authenticated: true};
     option (google.api.http) = {
       post: "/v1/tools"
       body: "*"
     };
   }
   rpc UpdateTool(UpdateToolRequest) returns (Tool) {
+    option (aranea.auth.v1.requirement) = {authenticated: true};
     option (google.api.http) = {
       put: "/v1/tools/{id}"
       body: "*"
     };
   }
   rpc DeleteTool(DeleteToolRequest) returns (google.protobuf.Empty) {
+    option (aranea.auth.v1.requirement) = {authenticated: true};
     option (google.api.http) = {delete: "/v1/tools/{id}"};
   }
   rpc ToggleToolEnabled(ToggleToolEnabledRequest) returns (Tool) {
+    option (aranea.auth.v1.requirement) = {authenticated: true};
     option (google.api.http) = {
       patch: "/v1/tools/{id}/enabled"
       body: "*"
     };
   }
   rpc ListToolRunsForTool(ListToolRunsForToolRequest) returns (ListToolRunsResponse) {
+    option (aranea.auth.v1.requirement) = {authenticated: true};
     option (google.api.http) = {get: "/v1/tools/{tool_id}/runs"};
   }
   rpc ListToolAgentOverrides(ListToolAgentOverridesRequest) returns (ListToolAgentOverridesResponse) {
+    option (aranea.auth.v1.requirement) = {authenticated: true};
     option (google.api.http) = {get: "/v1/tools/{tool_id}/agent-overrides"};
   }
   rpc GetToolAgentBindings(GetToolAgentBindingsRequest) returns (ToolAgentBindingsView) {
+    option (aranea.auth.v1.requirement) = {authenticated: true};
     option (google.api.http) = {get: "/v1/tools/{tool_id}/agent-bindings"};
   }
   rpc ListToolAgentOverridesByAgent(ListToolAgentOverridesByAgentRequest) returns (ListToolAgentOverridesByAgentResponse) {
+    option (aranea.auth.v1.requirement) = {authenticated: true};
     option (google.api.http) = {get: "/v1/agents/{agent_id}/tool-overrides"};
   }
   rpc ListToolGrants(ListToolGrantsRequest) returns (ListToolGrantsResponse) {
+    option (aranea.auth.v1.requirement) = {authenticated: true};
     option (google.api.http) = {get: "/v1/agents/{agent_id}/tool-grants"};
   }
   rpc DeleteToolGrant(DeleteToolGrantRequest) returns (google.protobuf.Empty) {
+    option (aranea.auth.v1.requirement) = {authenticated: true};
     option (google.api.http) = {delete: "/v1/agents/{agent_id}/tool-grants/{tool_key}"};
   }
   rpc ListToolParamRules(ListToolParamRulesRequest) returns (ListToolParamRulesResponse) {
+    option (aranea.auth.v1.requirement) = {authenticated: true};
     option (google.api.http) = {get: "/v1/tool-param-rules"};
   }
   rpc UpsertToolParamRule(UpsertToolParamRuleRequest) returns (ToolParamRule) {
+    option (aranea.auth.v1.requirement) = {authenticated: true};
     option (google.api.http) = {
       put: "/v1/tool-param-rules/{id}"
       body: "*"
     };
   }
   rpc DeleteToolParamRule(DeleteToolParamRuleRequest) returns (google.protobuf.Empty) {
+    option (aranea.auth.v1.requirement) = {authenticated: true};
     option (google.api.http) = {delete: "/v1/tool-param-rules/{id}"};
   }
   rpc UpsertToolAgentOverride(UpsertToolAgentOverrideRequest) returns (ToolAgentOverride) {
+    option (aranea.auth.v1.requirement) = {authenticated: true};
     option (google.api.http) = {
       put: "/v1/tools/{tool_id}/agent-overrides/{agent_id}"
       body: "*"
     };
   }
   rpc DeleteToolAgentOverride(DeleteToolAgentOverrideRequest) returns (google.protobuf.Empty) {
+    option (aranea.auth.v1.requirement) = {authenticated: true};
     option (google.api.http) = {delete: "/v1/tools/{tool_id}/agent-overrides/{agent_id}"};
   }
   rpc UpdateToolConfig(UpdateToolConfigRequest) returns (Tool) {
+    option (aranea.auth.v1.requirement) = {authenticated: true};
     option (google.api.http) = {
       put: "/v1/tools/{id}/config"
       body: "*"
     };
   }
   rpc TestTool(TestToolRequest) returns (TestToolResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "tool.exec"};
     option (google.api.http) = {
       post: "/v1/tools/{id}/test"
       body: "*"
@@ -586,27 +609,33 @@ service ToolService {
   // /v1/approval-policies/{id} to avoid gorilla/mux matching "exportToml"
   // as {id} (same discipline as /v1/tools/runs above).
   rpc ExportApprovalPoliciesTOML(ExportApprovalPoliciesTOMLRequest) returns (ExportApprovalPoliciesTOMLResponse) {
+    option (aranea.auth.v1.requirement) = {authenticated: true};
     option (google.api.http) = {get: "/v1/approval-policies:exportToml"};
   }
   rpc ImportApprovalPoliciesTOML(ImportApprovalPoliciesTOMLRequest) returns (ImportApprovalPoliciesTOMLResponse) {
+    option (aranea.auth.v1.requirement) = {authenticated: true};
     option (google.api.http) = {
       post: "/v1/approval-policies:importToml"
       body: "*"
     };
   }
   rpc ListApprovalPolicies(ListApprovalPoliciesRequest) returns (ListApprovalPoliciesResponse) {
+    option (aranea.auth.v1.requirement) = {authenticated: true};
     option (google.api.http) = {get: "/v1/approval-policies"};
   }
   rpc GetApprovalPolicy(GetApprovalPolicyRequest) returns (ApprovalPolicy) {
+    option (aranea.auth.v1.requirement) = {authenticated: true};
     option (google.api.http) = {get: "/v1/approval-policies/{id}"};
   }
   rpc UpsertApprovalPolicy(UpsertApprovalPolicyRequest) returns (ApprovalPolicy) {
+    option (aranea.auth.v1.requirement) = {authenticated: true};
     option (google.api.http) = {
       put: "/v1/approval-policies/{id}"
       body: "*"
     };
   }
   rpc DeleteApprovalPolicy(DeleteApprovalPolicyRequest) returns (google.protobuf.Empty) {
+    option (aranea.auth.v1.requirement) = {authenticated: true};
     option (google.api.http) = {delete: "/v1/approval-policies/{id}"};
   }
 }

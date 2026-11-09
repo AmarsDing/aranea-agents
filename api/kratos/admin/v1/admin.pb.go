@@ -7,6 +7,7 @@
 package v1
 
 import (
+	_ "aranea-agents/api/aranea/auth/v1"
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
@@ -895,7 +896,7 @@ var File_kratos_admin_v1_admin_proto protoreflect.FileDescriptor
 
 const file_kratos_admin_v1_admin_proto_rawDesc = "" +
 	"\n" +
-	"\x1bkratos/admin/v1/admin.proto\x12\x0fkratos.admin.v1\x1a\x1bgoogle/protobuf/empty.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a google/protobuf/field_mask.proto\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/api/field_behavior.proto\"\xf7\x02\n" +
+	"\x1bkratos/admin/v1/admin.proto\x12\x0fkratos.admin.v1\x1a\x1bgoogle/protobuf/empty.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a google/protobuf/field_mask.proto\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a aranea/auth/v1/requirement.proto\"\xf7\x02\n" +
 	"\x05Admin\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x03R\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x14\n" +
@@ -959,19 +960,26 @@ const file_kratos_admin_v1_admin_proto_rawDesc = "" +
 	"\x05roles\x18\x03 \x03(\tR\x05roles\"i\n" +
 	"\x15ChangePasswordRequest\x12'\n" +
 	"\fold_password\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\voldPassword\x12'\n" +
-	"\fnew_password\x18\x02 \x01(\tB\x04\xe2A\x01\x02R\vnewPassword2\xf1\a\n" +
-	"\fAdminService\x12[\n" +
-	"\x05Login\x12\x1d.kratos.admin.v1.LoginRequest\x1a\x16.kratos.admin.v1.Admin\"\x1b\x82\xd3\xe4\x93\x02\x15:\x01*\"\x10/v1/admins/login\x12V\n" +
-	"\x06Logout\x12\x16.google.protobuf.Empty\x1a\x16.google.protobuf.Empty\"\x1c\x82\xd3\xe4\x93\x02\x16:\x01*\"\x11/v1/admins/logout\x12U\n" +
-	"\aCurrent\x12\x16.google.protobuf.Empty\x1a\x16.kratos.admin.v1.Admin\"\x1a\x82\xd3\xe4\x93\x02\x14\x12\x12/v1/admins/current\x12d\n" +
+	"\fnew_password\x18\x02 \x01(\tB\x04\xe2A\x01\x02R\vnewPassword2\xe0\b\n" +
+	"\fAdminService\x12a\n" +
+	"\x05Login\x12\x1d.kratos.admin.v1.LoginRequest\x1a\x16.kratos.admin.v1.Admin\"!\xca\xf3\x18\x02\x18\x01\x82\xd3\xe4\x93\x02\x15:\x01*\"\x10/v1/admins/login\x12\\\n" +
+	"\x06Logout\x12\x16.google.protobuf.Empty\x1a\x16.google.protobuf.Empty\"\"\xca\xf3\x18\x02\x18\x01\x82\xd3\xe4\x93\x02\x16:\x01*\"\x11/v1/admins/logout\x12[\n" +
+	"\aCurrent\x12\x16.google.protobuf.Empty\x1a\x16.kratos.admin.v1.Admin\" \xca\xf3\x18\x02\x18\x01\x82\xd3\xe4\x93\x02\x14\x12\x12/v1/admins/current\x12s\n" +
 	"\n" +
-	"ListAdmins\x12\".kratos.admin.v1.ListAdminsRequest\x1a\x19.kratos.admin.v1.AdminSet\"\x17\x82\xd3\xe4\x93\x02\x11\x12\x0f/v1/admins/list\x12l\n" +
-	"\vCreateAdmin\x12#.kratos.admin.v1.CreateAdminRequest\x1a\x16.kratos.admin.v1.Admin\" \x82\xd3\xe4\x93\x02\x1a:\x05admin\"\x11/v1/admins/create\x12l\n" +
-	"\vUpdateAdmin\x12#.kratos.admin.v1.UpdateAdminRequest\x1a\x16.kratos.admin.v1.Admin\" \x82\xd3\xe4\x93\x02\x1a:\x05admin\x1a\x11/v1/admins/update\x12c\n" +
-	"\vDeleteAdmin\x12#.kratos.admin.v1.DeleteAdminRequest\x1a\x16.google.protobuf.Empty\"\x17\x82\xd3\xe4\x93\x02\x11*\x0f/v1/admins/{id}\x12]\n" +
-	"\bGetAdmin\x12 .kratos.admin.v1.GetAdminRequest\x1a\x16.kratos.admin.v1.Admin\"\x17\x82\xd3\xe4\x93\x02\x11\x12\x0f/v1/admins/{id}\x12W\n" +
-	"\bGetMenus\x12\x16.google.protobuf.Empty\x1a\x1b.kratos.admin.v1.MenusReply\"\x16\x82\xd3\xe4\x93\x02\x10\x12\x0e/v1/auth/menus\x12v\n" +
-	"\x0eChangePassword\x12&.kratos.admin.v1.ChangePasswordRequest\x1a\x16.google.protobuf.Empty\"$\x82\xd3\xe4\x93\x02\x1e:\x01*\"\x19/v1/users/change-passwordB=\n" +
+	"ListAdmins\x12\".kratos.admin.v1.ListAdminsRequest\x1a\x19.kratos.admin.v1.AdminSet\"&\xca\xf3\x18\v\n" +
+	"\tuser.read\x82\xd3\xe4\x93\x02\x11\x12\x0f/v1/admins/list\x12|\n" +
+	"\vCreateAdmin\x12#.kratos.admin.v1.CreateAdminRequest\x1a\x16.kratos.admin.v1.Admin\"0\xca\xf3\x18\f\n" +
+	"\n" +
+	"user.write\x82\xd3\xe4\x93\x02\x1a:\x05admin\"\x11/v1/admins/create\x12|\n" +
+	"\vUpdateAdmin\x12#.kratos.admin.v1.UpdateAdminRequest\x1a\x16.kratos.admin.v1.Admin\"0\xca\xf3\x18\f\n" +
+	"\n" +
+	"user.write\x82\xd3\xe4\x93\x02\x1a:\x05admin\x1a\x11/v1/admins/update\x12v\n" +
+	"\vDeleteAdmin\x12#.kratos.admin.v1.DeleteAdminRequest\x1a\x16.google.protobuf.Empty\"*\xca\xf3\x18\x0f\n" +
+	"\ruser.offboard\x82\xd3\xe4\x93\x02\x11*\x0f/v1/admins/{id}\x12l\n" +
+	"\bGetAdmin\x12 .kratos.admin.v1.GetAdminRequest\x1a\x16.kratos.admin.v1.Admin\"&\xca\xf3\x18\v\n" +
+	"\tuser.read\x82\xd3\xe4\x93\x02\x11\x12\x0f/v1/admins/{id}\x12]\n" +
+	"\bGetMenus\x12\x16.google.protobuf.Empty\x1a\x1b.kratos.admin.v1.MenusReply\"\x1c\xca\xf3\x18\x02\x10\x01\x82\xd3\xe4\x93\x02\x10\x12\x0e/v1/auth/menus\x12|\n" +
+	"\x0eChangePassword\x12&.kratos.admin.v1.ChangePasswordRequest\x1a\x16.google.protobuf.Empty\"*\xca\xf3\x18\x02\x10\x01\x82\xd3\xe4\x93\x02\x1e:\x01*\"\x19/v1/users/change-passwordB=\n" +
 	"\x13api.kratos.admin.v1P\x01Z$aranea-agents/api/kratos/admin/v1;v1b\x06proto3"
 
 var (

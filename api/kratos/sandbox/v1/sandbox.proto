@@ -3,6 +3,7 @@ syntax = "proto3";
 package kratos.sandbox.v1;
 
 import "google/api/annotations.proto";
+import "aranea/auth/v1/requirement.proto";
 
 option go_package = "aranea-agents/api/kratos/sandbox/v1;v1";
 option java_multiple_files = true;
@@ -69,16 +70,19 @@ message ForceKillSandboxResponse {
 service SandboxService {
   // ListSandboxes returns all live sandboxes (warm-pool ready + leased).
   rpc ListSandboxes(ListSandboxesRequest) returns (ListSandboxesResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "tool.exec"};
     option (google.api.http) = {get: "/v1/sandboxes"};
   }
   // GetSandboxMetrics returns pool water levels and the counter snapshot.
   rpc GetSandboxMetrics(GetSandboxMetricsRequest) returns (SandboxMetrics) {
+    option (aranea.auth.v1.requirement) = {permission: "tool.exec"};
     option (google.api.http) = {get: "/v1/sandboxes/metrics"};
   }
   // ForceKillSandbox destroys one sandbox immediately (FR-31). The operator
   // is taken from the JWT principal; reason is mandatory and both are
   // written to the audit log (FR-33).
   rpc ForceKillSandbox(ForceKillSandboxRequest) returns (ForceKillSandboxResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "tool.exec"};
     option (google.api.http) = {delete: "/v1/sandboxes/{id}"};
   }
 }

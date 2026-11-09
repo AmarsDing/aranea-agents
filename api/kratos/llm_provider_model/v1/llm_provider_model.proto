@@ -5,6 +5,7 @@ package kratos.llm_provider_model.v1;
 import "google/api/annotations.proto";
 import "google/api/field_behavior.proto";
 import "google/protobuf/empty.proto";
+import "aranea/auth/v1/requirement.proto";
 
 option go_package = "aranea-agents/api/kratos/llm_provider_model/v1;v1";
 option java_multiple_files = true;
@@ -150,38 +151,46 @@ message InspectProviderModelResponse {
 
 service LlmProviderModelService {
   rpc ListProviderModels(ListProviderModelsRequest) returns (ListProviderModelsResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "model.route"};
     option (google.api.http) = {get: "/v1/llm-provider-models"};
   }
   rpc CreateProviderModel(CreateProviderModelRequest) returns (ProviderModel) {
+    option (aranea.auth.v1.requirement) = {permission: "model.route"};
     option (google.api.http) = {
       post: "/v1/llm-provider-models"
       body: "*"
     };
   }
   rpc GetProviderModel(GetProviderModelRequest) returns (ProviderModel) {
+    option (aranea.auth.v1.requirement) = {permission: "model.route"};
     option (google.api.http) = {get: "/v1/llm-provider-models/{id}"};
   }
   // RevealProviderModelCredentials returns decrypted API secrets for admin console edit UI only.
   // Requires the same authentication as other admin APIs; access is audit-logged (no secret values in logs).
   rpc RevealProviderModelCredentials(RevealProviderModelCredentialsRequest) returns (RevealProviderModelCredentialsResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "secops.policy"};
     option (google.api.http) = {get: "/v1/llm-provider-models/{id}/credentials"};
   }
   rpc UpdateProviderModel(UpdateProviderModelRequest) returns (ProviderModel) {
+    option (aranea.auth.v1.requirement) = {permission: "model.route"};
     option (google.api.http) = {
       patch: "/v1/llm-provider-models/{id}"
       body: "provider_model"
     };
   }
   rpc DeleteProviderModel(DeleteProviderModelRequest) returns (google.protobuf.Empty) {
+    option (aranea.auth.v1.requirement) = {permission: "model.route"};
     option (google.api.http) = {delete: "/v1/llm-provider-models/{id}"};
   }
   rpc InspectProviderModel(InspectProviderModelRequest) returns (InspectProviderModelResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "model.route"};
     option (google.api.http) = {
       post: "/v1/llm-provider-models/inspect"
       body: "*"
     };
   }
   rpc ValidateProviderPair(ValidateProviderPairRequest) returns (ValidateProviderPairResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "model.route"};
     option (google.api.http) = {
       post: "/v1/agents/validate-model"
       body: "*"

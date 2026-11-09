@@ -5,6 +5,7 @@ package kratos.cron.v1;
 import "google/api/annotations.proto";
 import "google/api/field_behavior.proto";
 import "google/protobuf/empty.proto";
+import "aranea/auth/v1/requirement.proto";
 
 option go_package = "aranea-agents/api/kratos/cron/v1;v1";
 option java_multiple_files = true;
@@ -93,36 +94,44 @@ message ResetCronTaskFailuresRequest {
 
 service CronService {
   rpc ListCronTasks(google.protobuf.Empty) returns (ListCronTasksResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "system.cron"};
     option (google.api.http) = {get: "/v1/cron-tasks"};
   }
   rpc CreateCronTask(CreateCronTaskRequest) returns (CronTask) {
+    option (aranea.auth.v1.requirement) = {permission: "system.cron"};
     option (google.api.http) = {
       post: "/v1/cron-tasks"
       body: "*"
     };
   }
   rpc GetCronTask(GetCronTaskRequest) returns (CronTask) {
+    option (aranea.auth.v1.requirement) = {permission: "system.cron"};
     option (google.api.http) = {get: "/v1/cron-tasks/{id}"};
   }
   rpc UpdateCronTask(UpdateCronTaskRequest) returns (CronTask) {
+    option (aranea.auth.v1.requirement) = {permission: "system.cron"};
     option (google.api.http) = {
       patch: "/v1/cron-tasks/{id}"
       body: "task"
     };
   }
   rpc DeleteCronTask(DeleteCronTaskRequest) returns (google.protobuf.Empty) {
+    option (aranea.auth.v1.requirement) = {permission: "system.cron"};
     option (google.api.http) = {delete: "/v1/cron-tasks/{id}"};
   }
   rpc ListCronTaskRuns(ListCronTaskRunsRequest) returns (ListCronTaskRunsResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "system.cron"};
     option (google.api.http) = {get: "/v1/cron-task-runs"};
   }
   rpc TriggerCronTask(TriggerCronTaskRequest) returns (CronTaskRun) {
+    option (aranea.auth.v1.requirement) = {permission: "system.cron"};
     option (google.api.http) = {
       post: "/v1/cron-tasks/{id}/trigger"
       body: "*"
     };
   }
   rpc ResetCronTaskFailures(ResetCronTaskFailuresRequest) returns (CronTask) {
+    option (aranea.auth.v1.requirement) = {permission: "system.cron"};
     option (google.api.http) = {
       post: "/v1/cron-tasks/{id}/reset-failures"
       body: "*"

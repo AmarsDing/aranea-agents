@@ -139,6 +139,23 @@ func TestSensitiveDomainsFullyRegistered(t *testing.T) {
 	t.Logf("sensitive-domain coverage: %d/%d non-exempt rpc registered", covered, total)
 }
 
+// TestExemptionsMatchProto 双向钉住 public 豁免集:架构测试的 exemptRPC(运行期
+// 豁免判定依据)必须等于 proto 中显式标注 public 的 rpc 集(生成器产出
+// generatedPublicRPCs)。防两类静默漂移:proto 标了 public 但测试未豁免
+// (覆盖测试误报缺失);测试豁免但 proto 标了权限码(如误给 Login 加码,
+// 登记了却被覆盖测试跳过,登录页被权限门锁死)。
+func TestExemptionsMatchProto(t *testing.T) {
+	gen := servermw.GeneratedPublicRPCs()
+	if len(gen) != len(exemptRPC) {
+		t.Fatalf("public 豁免集漂移: proto 标注 %d 条 vs exemptRPC %d 条\nproto: %v", len(gen), len(exemptRPC), gen)
+	}
+	for _, full := range gen {
+		if !exemptRPC[full] {
+			t.Fatalf("proto 标注 public 但 exemptRPC 未豁免: %s", full)
+		}
+	}
+}
+
 // TestRegisteredKeysExistInProto 反向校验：登记表的每个键（gRPC 全方法 + HTTP
 // 方法/路径）都必须在对应 proto 中真实存在，防止 proto 改名/删除后残留死键。
 func TestRegisteredKeysExistInProto(t *testing.T) {

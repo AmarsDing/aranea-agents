@@ -8,6 +8,7 @@ option java_package = "api.kratos.self_improvement.v1";
 import "google/api/annotations.proto";
 import "google/api/field_behavior.proto";
 import "google/protobuf/timestamp.proto";
+import "aranea/auth/v1/requirement.proto";
 
 // SelfImprovementService exposes the platform self-improvement console API
 // (73-self-iteration-v3, design §七). All endpoints require admin auth.
@@ -15,26 +16,32 @@ service SelfImprovementService {
   // ListRuns returns runs filtered by status / risk_level / trigger_source
   // with pagination. Heavy fields (diff/diagnosis/report) are omitted.
   rpc ListRuns (ListRunsRequest) returns (ListRunsResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "system.self_improve"};
     option (google.api.http) = { get: "/v1/self-improvement/runs" };
   }
   // GetRun returns the full run detail including diff/diagnosis/reports.
   rpc GetRun (GetRunRequest) returns (GetRunResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "system.self_improve"};
     option (google.api.http) = { get: "/v1/self-improvement/runs/{id}" };
   }
   // ApproveRun approves a high-risk run (awaiting_governance → applying).
   rpc ApproveRun (ApproveRunRequest) returns (ApproveRunResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "system.self_improve"};
     option (google.api.http) = { post: "/v1/self-improvement/runs/{id}/approve" body: "*" };
   }
   // RejectRun rejects an awaiting_governance run (reason required).
   rpc RejectRun (RejectRunRequest) returns (RejectRunResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "system.self_improve"};
     option (google.api.http) = { post: "/v1/self-improvement/runs/{id}/reject" body: "*" };
   }
   // RollbackRun manually rolls back an applied/observing run.
   rpc RollbackRun (RollbackRunRequest) returns (RollbackRunResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "system.self_improve"};
     option (google.api.http) = { post: "/v1/self-improvement/runs/{id}/rollback" body: "*" };
   }
   // CloseRun closes an observing run early (confirmed effective).
   rpc CloseRun (CloseRunRequest) returns (CloseRunResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "system.self_improve"};
     option (google.api.http) = { post: "/v1/self-improvement/runs/{id}/close" body: "*" };
   }
   // ControlRun issues a user-intervention command to an in-flight run
@@ -42,11 +49,13 @@ service SelfImprovementService {
   // by the pipeline at stage boundaries; only runs in
   // detected/diagnosing/patching/verifying accept commands.
   rpc ControlRun (ControlRunRequest) returns (ControlRunResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "system.self_improve"};
     option (google.api.http) = { post: "/v1/self-improvement/runs/{id}/control" body: "*" };
   }
   // GetOutcomeStats returns Learn-stage attribution statistics
   // (verdict distribution + per-trigger breakdown).
   rpc GetOutcomeStats (GetOutcomeStatsRequest) returns (GetOutcomeStatsResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "system.self_improve"};
     option (google.api.http) = { get: "/v1/self-improvement/outcome-stats" };
   }
   // GetStatus returns the feature availability + prerequisite preflight view
@@ -55,17 +64,20 @@ service SelfImprovementService {
   // it answers even when the feature is disabled — the console uses it to
   // render the disabled empty state / missing-prerequisite guidance.
   rpc GetStatus (GetStatusRequest) returns (GetStatusResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "system.self_improve"};
     option (google.api.http) = { get: "/v1/self-improvement/status" };
   }
   // GetRiskRules returns the configured risk-classification rules
   // (0/empty fields inherit the code defaults; effective carries the
   // normalized values actually consumed by the pipeline/router).
   rpc GetRiskRules (GetRiskRulesRequest) returns (GetRiskRulesResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "system.self_improve"};
     option (google.api.http) = { get: "/v1/self-improvement/risk-rules" };
   }
   // UpdateRiskRules persists a new risk-classification rule set
   // (design §七; takes effect for newly-classified runs).
   rpc UpdateRiskRules (UpdateRiskRulesRequest) returns (UpdateRiskRulesResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "system.self_improve"};
     option (google.api.http) = { put: "/v1/self-improvement/risk-rules" body: "*" };
   }
 }

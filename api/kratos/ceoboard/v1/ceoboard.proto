@@ -7,6 +7,7 @@ import "google/protobuf/timestamp.proto";
 import "google/protobuf/struct.proto";
 import "google/api/annotations.proto";
 import "google/api/field_behavior.proto";
+import "aranea/auth/v1/requirement.proto";
 
 option go_package = "aranea-agents/api/kratos/ceoboard/v1;v1";
 option java_multiple_files = true;
@@ -422,42 +423,52 @@ message ExportAuditResponse {
 service CeoboardService {
   // GetOverview 整屏数据（按主体角色做工作流可见性裁剪）。
   rpc GetOverview(google.protobuf.Empty) returns (Overview) {
+    option (aranea.auth.v1.requirement) = {permission: "ceoboard.view"};
     option (google.api.http) = {get: "/v1/ceoboard/overview"};
   }
   // GetWorkflow 单工作流（含裁剪后的 drill）。
   rpc GetWorkflow(GetWorkflowRequest) returns (WorkflowView) {
+    option (aranea.auth.v1.requirement) = {permission: "ceoboard.view"};
     option (google.api.http) = {get: "/v1/ceoboard/workflows/{id}"};
   }
   // GetNode 节点抽屉明细。
   rpc GetNode(GetNodeRequest) returns (NodeDetail) {
+    option (aranea.auth.v1.requirement) = {permission: "ceoboard.view"};
     option (google.api.http) = {get: "/v1/ceoboard/workflows/{workflow_id}/nodes/{node_id}"};
   }
   // GetPlatform 平台详情。
   rpc GetPlatform(GetPlatformRequest) returns (PlatformDetail) {
+    option (aranea.auth.v1.requirement) = {permission: "ceoboard.view"};
     option (google.api.http) = {get: "/v1/ceoboard/platforms/{id}"};
   }
   // ListConsumers NATS consumer 状态（按可见工作流过滤）。
   rpc ListConsumers(ListConsumersRequest) returns (ListConsumersResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "ceoboard.view"};
     option (google.api.http) = {get: "/v1/ceoboard/consumers"};
   }
   // ListEvents 事件流水（subject 白名单由可见工作流动态生成）。
   rpc ListEvents(ListEventsRequest) returns (ListEventsResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "ceoboard.view"};
     option (google.api.http) = {get: "/v1/ceoboard/events"};
   }
   // GetEvent 事件详情（payload 脱敏）。
   rpc GetEvent(GetEventRequest) returns (EventDetail) {
+    option (aranea.auth.v1.requirement) = {permission: "ceoboard.view"};
     option (google.api.http) = {get: "/v1/ceoboard/events/{uid}"};
   }
   // GetRegistryReport 注册表加载报告（裁剪后）。
   rpc GetRegistryReport(google.protobuf.Empty) returns (RegistryReport) {
+    option (aranea.auth.v1.requirement) = {permission: "ceoboard.view"};
     option (google.api.http) = {get: "/v1/ceoboard/registry/report"};
   }
   // ListDeadLetters 死信列表。
   rpc ListDeadLetters(ListDeadLettersRequest) returns (ListDeadLettersResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "ceoboard.ops"};
     option (google.api.http) = {get: "/v1/ceoboard/deadletters"};
   }
   // ReplayDeadLetter 死信重放（审计前门 fail-closed）。
   rpc ReplayDeadLetter(ReplayDeadLetterRequest) returns (ReplayDeadLetterResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "ceoboard.ops"};
     option (google.api.http) = {
       post: "/v1/ceoboard/deadletters/{id}/replay"
       body: "*"
@@ -465,10 +476,12 @@ service CeoboardService {
   }
   // ListAudit 审计查询。
   rpc ListAudit(ListAuditRequest) returns (ListAuditResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "ceoboard.ops"};
     option (google.api.http) = {get: "/v1/ceoboard/audit"};
   }
   // ExportAudit 审计导出 CSV。
   rpc ExportAudit(ExportAuditRequest) returns (ExportAuditResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "ceoboard.ops"};
     option (google.api.http) = {get: "/v1/ceoboard/audit/export"};
   }
 }
