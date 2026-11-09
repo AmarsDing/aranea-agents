@@ -26,6 +26,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -90,19 +91,38 @@ func (s *Store) insertEvent(ctx context.Context, ev *Event, fromSpool bool) (boo
 	return s.insertEventWithFlags(ctx, ev, fromSpool, true)
 }
 
+// sanitizeText 消毒写入 PG TEXT 列的自由文本(评审 2026-11-09 H3):非法
+// UTF-8 序列与 NUL 一律替换为 U+FFFD——PG 对二者直接拒收(SQLSTATE 22021),
+// 消毒前一条毒消息即可让死信/事件写入永久失败并引发无限重投。其余内容
+// 原样保留(可检索、可定位)。合法输入零分配直返。
+func sanitizeText(s string) string {
+	s = strings.ToValidUTF8(s, "�")
+	if strings.IndexByte(s, 0) >= 0 {
+		s = strings.ReplaceAll(s, "\x00", "�")
+	}
+	return s
+}
+
 func (s *Store) insertEventWithFlags(ctx context.Context, ev *Event, fromSpool, complete bool) (bool, error) {
 	s.eventWriteMu.Lock()
 	defer s.eventWriteMu.Unlock()
 
+	// 消毒一切源自消息字节的自由文本列(H3;PG TEXT 拒收非法 UTF-8/NUL)——含
+	// 主键:同一原始 uid 恒映射到同一消毒 uid,幂等语义不变。
+	uid := sanitizeText(ev.UID)
+	payload := sanitizeText(ev.Payload)
+	eventID := sanitizeText(ev.EventID)
+	entityID := sanitizeText(ev.EntityID)
+
 	c := s.client.CeoboardEvent.Create().
-		SetID(ev.UID).
+		SetID(uid).
 		SetPlatform(ev.Platform).
 		SetSubject(ev.Subject).
 		SetSubjectKey(ev.SubjectKey).
-		SetEventID(ev.EventID).
-		SetEntityID(ev.EntityID).
+		SetEventID(eventID).
+		SetEntityID(entityID).
 		SetReceivedAt(ev.ReceivedAt.UTC()).
-		SetPayload(ev.Payload).
+		SetPayload(payload).
 		SetImportedFromSpool(fromSpool).
 		SetPayloadComplete(complete)
 	if !ev.OccurredAt.IsZero() {
@@ -126,13 +146,13 @@ func (s *Store) insertEventWithFlags(ctx context.Context, ev *Event, fromSpool, 
 	// imported_from_spool 取 MAX(原值, 新值):任一侧经 spool 即保留标记。
 	// (原为单条 UPDATE ... WHERE payload_complete=0;Ent 版先读后条件更新,
 	// 由 eventWriteMu 串行化,单写入者语义等价。)
-	existing, err := s.client.CeoboardEvent.Get(ctx, ev.UID)
+	existing, err := s.client.CeoboardEvent.Get(ctx, uid)
 	if err != nil {
 		return false, fmt.Errorf("补齐前读取历史事件: %w", err)
 	}
 	if err := s.client.CeoboardEvent.Update().
-		Where(ceoboardevent.ID(ev.UID), ceoboardevent.PayloadCompleteEQ(false)).
-		SetPayload(ev.Payload).
+		Where(ceoboardevent.ID(uid), ceoboardevent.PayloadCompleteEQ(false)).
+		SetPayload(payload).
 		SetPayloadComplete(true).
 		SetImportedFromSpool(existing.ImportedFromSpool || fromSpool).
 		Exec(ctx); err != nil {
@@ -278,6 +298,11 @@ func (s *Store) RecentDeliveries(ctx context.Context, source string, limit int) 
 func (s *Store) AddDeadLetter(ctx context.Context, kind, source, refKey, payload, reason string) (int64, error) {
 	s.dlMu.Lock()
 	defer s.dlMu.Unlock()
+	// 消毒(H3):payload/refKey 源自消息字节,PG TEXT 拒收非法 UTF-8/NUL;
+	// 先消毒再查重,保证查重键与写入键一致。
+	refKey = sanitizeText(refKey)
+	payload = sanitizeText(payload)
+	reason = sanitizeText(reason)
 	if refKey != "" {
 		existing, err := s.client.CeoboardDeadLetter.Query().
 			Where(

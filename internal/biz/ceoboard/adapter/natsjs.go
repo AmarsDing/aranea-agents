@@ -33,6 +33,7 @@ import (
 	"aranea-agents/internal/biz/ceoboard/registry"
 	"aranea-agents/internal/biz/ceoboard/store"
 	"aranea-agents/pkg/loggateway"
+	"aranea-agents/pkg/safego"
 )
 
 // ---- 可注入窄接口(演练:fake 脚本化失败/恢复) ----
@@ -150,6 +151,34 @@ func (m *NATSManager) logError(msg string, fields ...loggateway.Field) {
 	}
 }
 
+// untrackConn 从纳管清单摘除连接(接线失败回滚用)。
+func (m *NATSManager) untrackConn(nc *nats.Conn) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for i, c := range m.conns {
+		if c == nc {
+			m.conns = append(m.conns[:i], m.conns[i+1:]...)
+			return
+		}
+	}
+}
+
+// Close 关闭全部纳管连接(评审 2026-11-09 H2,Runtime.Stop 调用,幂等)。
+// 此前 conns 只进不出:接线重试失败与进程关停都泄漏 nats.Conn——其内部
+// 读写/ping 协程与 socket 不随 ctx 取消退出,且 MaxReconnects(-1) 使断线
+// 旧连接永远自我重连,重试风暴即放大为 FD 耗尽。
+func (m *NATSManager) Close() {
+	m.mu.Lock()
+	conns := m.conns
+	m.conns = nil
+	m.mu.Unlock()
+	for _, nc := range conns {
+		if nc != nil {
+			nc.Close()
+		}
+	}
+}
+
 // Lookup 取节点事件侧运行态(未接线返回 nil)。
 func (m *NATSManager) Lookup(nodeKey string) *NATSNodeState {
 	m.mu.Lock()
@@ -262,6 +291,17 @@ func (m *NATSManager) wireOnce(ctx context.Context, wfID string, n *registry.Nod
 	if err != nil {
 		return errors.New("连接失败: " + err.Error())
 	}
+	// 评审 2026-11-09 H2:dial 后的任一失败路径必须摘除并关闭连接(wired 仅在
+	// 正常接线完成后置位)——此前直接返回让该连接(含重连循环)永久泄漏。
+	wired := false
+	defer func() {
+		if !wired {
+			m.untrackConn(nc)
+			if nc != nil {
+				nc.Close()
+			}
+		}
+	}()
 	m.mu.Lock()
 	m.conns = append(m.conns, nc)
 	st.Connected = true
@@ -296,6 +336,7 @@ func (m *NATSManager) wireOnce(ctx context.Context, wfID string, n *registry.Nod
 				// 条件创建流(如 HCF MM_PUB 仅 MAP worker 启用时建):缺失=未启用,非漂移,不阻断重试
 				m.logInfo("[nats] 声明流未创建(声明显式可选,平台方未启用)",
 					loggateway.Str("node", nodeKey), loggateway.Str("stream", stream))
+				wired = true // 空探测连接按设计保留(Stop 统一关闭)
 				return nil
 			}
 			return errors.New("声明漂移: stream " + stream + " 在 JetStream 不存在(" + err.Error() + ")")
@@ -335,6 +376,7 @@ func (m *NATSManager) wireOnce(ctx context.Context, wfID string, n *registry.Nod
 	if !anyConsuming {
 		return errors.New("全部 subject 消费建立失败")
 	}
+	wired = true
 	return nil
 }
 
@@ -382,7 +424,7 @@ func (m *NATSManager) consumeSubject(ctx context.Context, js jetAPI,
 		Subject: subject, NumPending: int(info.NumPending), Connected: st.Connected, AsOf: time.Now(),
 	}
 	m.mu.Unlock()
-	go func() {
+	safego.Go(ctx, "ceoboard.nats_consumer_sample", func() {
 		m.sampleConsumer(consumerKey, sub, st)
 		ticker := time.NewTicker(m.ConsumerSampleInterval)
 		defer ticker.Stop()
@@ -394,9 +436,9 @@ func (m *NATSManager) consumeSubject(ctx context.Context, js jetAPI,
 				m.sampleConsumer(consumerKey, sub, st)
 			}
 		}
-	}()
+	})
 
-	go func() {
+	safego.Go(ctx, "ceoboard.nats_fetch", func() {
 		for {
 			select {
 			case <-ctx.Done():
@@ -414,8 +456,12 @@ func (m *NATSManager) consumeSubject(ctx context.Context, js jetAPI,
 				if ctx.Err() != nil {
 					return
 				}
-				// 连接中断等:短暂退避,重连由 nats.go 层负责
-				time.Sleep(m.FetchRetryWait)
+				// 连接中断等:短暂退避(可被 ctx 取消),重连由 nats.go 层负责
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(m.FetchRetryWait):
+				}
 				continue
 			}
 			// 满批 = 可能有积压(下一批立即还有);供看板提示"消费积压中"
@@ -426,7 +472,7 @@ func (m *NATSManager) consumeSubject(ctx context.Context, js jetAPI,
 				m.handleMsg(ctx, msg, platform, entityPath, st)
 			}
 		}
-	}()
+	})
 	return nil
 }
 
@@ -476,9 +522,13 @@ func (m *NATSManager) persistEventResult(ctx context.Context, msg ackNakMessage,
 		return store.IngestResult{}, nil
 	}
 	if decodeErr != nil {
+		// 死信落库失败不再 Nak(评审 2026-11-09 H3):死信是标注轨,事件本体的
+		// 持久化在下方 IngestEvent(含 spool 兜底)——「仅死信写不进」时 Nak 会
+		// 让该消息无限重投(原 PG 22021 毒消息死循环,现写入侧已消毒,此分支
+		// 只剩瞬态 DB 故障,由 IngestEvent 的 spool 路径正确承接)。
 		if _, err := m.st.AddDeadLetter(ctx, "nats-decode", ev.Platform, ev.UID, ev.Payload, decodeErr.Error()); err != nil {
-			_ = msg.NakWithDelay(2 * time.Second)
-			return store.IngestResult{}, err
+			m.logError("[nats] 死信落库失败(事件本体仍走摄入/spool 兜底)",
+				loggateway.Str("uid", ev.UID), loggateway.Err(err))
 		}
 	}
 	result, err := m.st.IngestEvent(ctx, ev, nil)

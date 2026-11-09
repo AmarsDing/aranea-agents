@@ -300,8 +300,12 @@ func TestIngestEventDBAndSpoolFailureReturnsError(t *testing.T) {
 	}
 }
 
-// 非法 UTF-8 原文经 spool 往返保真(base64 扩展编码,风险点⑪)。
-func TestSpoolPreservesInvalidUTF8Payload(t *testing.T) {
+// 非法 UTF-8 事件的 spool 双边合同(评审 2026-11-09 H3):
+// ① spool 文件内逐字节保真(base64 扩展编码,风险点⑪,恢复前审计可见原文);
+// ② 导入落库时消毒为 PG 合法形态(U+FFFD 替换)——PG TEXT 本来就拒收原文
+//
+//	(22021),消毒前该记录即 H3 的毒消息(死信/事件写入永久失败、无限重投)。
+func TestSpoolFileFidelityPlusImportSanitizes(t *testing.T) {
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "events.db")
 	s, db := openFileStore(t, path)
@@ -313,6 +317,18 @@ func TestSpoolPreservesInvalidUTF8Payload(t *testing.T) {
 	if result, err := s.IngestEvent(ctx, ev, nil); err != nil || !result.Spooled {
 		t.Fatalf("写入 spool 失败: %+v err=%v", result, err)
 	}
+	// ① spool 文件内原文逐字节保真(base64 通道)。
+	files := spoolFiles(t, dir)
+	if len(files) != 1 {
+		t.Fatalf("应恰好 1 个 spool 段,实际 %d", len(files))
+	}
+	records, _, err := readSpoolSegment(files[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(records) != 1 || records[0].Event.Payload != ev.Payload {
+		t.Fatalf("spool 内原文未保真: got=%v want=%v", []byte(records[0].Event.Payload), []byte(ev.Payload))
+	}
 	recovered, rdb := openFileStore(t, path)
 	t.Cleanup(func() { recovered.client.Close(); rdb.Close() })
 	attachTestSpool(t, recovered, dir, 4096, 4096)
@@ -323,8 +339,9 @@ func TestSpoolPreservesInvalidUTF8Payload(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Payload != ev.Payload {
-		t.Fatalf("非法 UTF-8 原文未保真: got=%v want=%v", []byte(got.Payload), []byte(ev.Payload))
+	// ② 落库为消毒形态(消毒 uid/键一致:本例 uid 干净,键不变)。
+	if got.Payload != sanitizeText(ev.Payload) {
+		t.Fatalf("落库应为消毒形态: got=%v want=%v", []byte(got.Payload), []byte(sanitizeText(ev.Payload)))
 	}
 }
 

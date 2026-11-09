@@ -212,7 +212,9 @@ func (rt *Runtime) Start(parent context.Context) {
 			rt.lg.Warn("ceoboard 非法平台探针声明", loggateway.Str("probe", p.Probe))
 			continue
 		}
-		go rt.Poller.RunLoop(ctx, "platform/"+p.ID, method, url, rt.pollInterval)
+		safego.Go(ctx, "ceoboard.platform_probe", func() {
+			rt.Poller.RunLoop(ctx, "platform/"+p.ID, method, url, rt.pollInterval)
+		})
 	}
 	for _, ap := range rt.Agg.Cfg.Approvals {
 		method, url := agg.SplitREST(ap.Path)
@@ -220,7 +222,9 @@ func (rt *Runtime) Start(parent context.Context) {
 			rt.lg.Warn("ceoboard 非法待拍板路径声明", loggateway.Str("path", ap.Path))
 			continue
 		}
-		go rt.Poller.RunLoop(ctx, "approval/"+ap.Lane, method, url, rt.pollInterval)
+		safego.Go(ctx, "ceoboard.approval_poll", func() {
+			rt.Poller.RunLoop(ctx, "approval/"+ap.Lane, method, url, rt.pollInterval)
+		})
 	}
 	rt.wire()
 
@@ -263,10 +267,15 @@ func (rt *Runtime) Start(parent context.Context) {
 	safego.Go(ctx, "ceoboard.latency", func() { lat.RunLoop(ctx, latencyInterval) })
 }
 
-// Stop 停止全部循环(幂等)。
+// Stop 停止全部循环(幂等)。评审 2026-11-09 H2:同时关闭 NATS 连接——ctx
+// 取消只退出消费/采样协程,nats.Conn 自身的读写/ping 协程与 socket 须显式
+// Close(其 MaxReconnects(-1) 重连循环不随 ctx 退出)。
 func (rt *Runtime) Stop() {
 	if rt.cancel != nil {
 		rt.cancel()
+	}
+	if rt.NATS != nil {
+		rt.NATS.Close()
 	}
 }
 
@@ -287,7 +296,9 @@ func (rt *Runtime) wire() {
 					key := "watch/" + wf.ID + "/" + n.ID
 					if !rt.wired[key] {
 						rt.wired[key] = true
-						go rt.NATS.WatchNode(rt.ctx, wf.ID, n)
+						safego.Go(rt.ctx, "ceoboard.nats_watch", func() {
+							rt.NATS.WatchNode(rt.ctx, wf.ID, n)
+						})
 					}
 				}
 			}
@@ -305,7 +316,9 @@ func (rt *Runtime) wire() {
 				interval = wf.Probe.Interval.D()
 			}
 			method, url := agg.SplitREST(n.Source.RestPath)
-			go rt.Poller.RunLoop(rt.ctx, agg.PollKey(wf.ID, n.ID), method, url, interval)
+			safego.Go(rt.ctx, "ceoboard.rest_poll", func() {
+				rt.Poller.RunLoop(rt.ctx, agg.PollKey(wf.ID, n.ID), method, url, interval)
+			})
 		}
 	}
 }

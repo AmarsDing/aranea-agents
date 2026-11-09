@@ -279,8 +279,9 @@ func TestArchiveLateEventDoesNotBlockLaterDays(t *testing.T) {
 	}
 }
 
-// 非法 UTF-8 原文归档往返保真。
-func TestArchivePreservesInvalidUTF8Payload(t *testing.T) {
+// 含非法 UTF-8 原文的事件:写入即消毒(H3,PG TEXT 拒收原文),归档往返保真的
+// 是「库内存量形态」(消毒形态)——归档/恢复不二次变形。
+func TestArchivePreservesSanitizedPayload(t *testing.T) {
 	s := openTest(t)
 	ctx := context.Background()
 	dir := filepath.Join(t.TempDir(), "archive")
@@ -291,6 +292,13 @@ func TestArchivePreservesInvalidUTF8Payload(t *testing.T) {
 	ev.Payload = string([]byte{0xff, 0xfe, 0x00, 'x'})
 	ev.ReceivedAt = time.Date(2026, 11, 3, 8, 0, 0, 0, time.FixedZone("CST", 8*3600))
 	_, _ = s.InsertEvent(ctx, ev)
+	stored, err := s.GetEvent(ctx, ev.UID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.Payload != sanitizeText(ev.Payload) {
+		t.Fatalf("入库应为消毒形态: got=%v want=%v", []byte(stored.Payload), []byte(sanitizeText(ev.Payload)))
+	}
 	now := time.Date(2026, 11, 4, 12, 0, 0, 0, time.FixedZone("CST", 8*3600))
 	if _, err := s.ArchiveClosedDays(ctx, now); err != nil {
 		t.Fatal(err)
@@ -303,8 +311,8 @@ func TestArchivePreservesInvalidUTF8Payload(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Payload != ev.Payload {
-		t.Fatalf("归档恢复后原文未保真: got=%v want=%v", []byte(got.Payload), []byte(ev.Payload))
+	if got.Payload != stored.Payload {
+		t.Fatalf("归档恢复后存量形态未保真: got=%v want=%v", []byte(got.Payload), []byte(stored.Payload))
 	}
 }
 

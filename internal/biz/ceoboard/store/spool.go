@@ -21,8 +21,11 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 	"time"
+
+	"github.com/lib/pq"
 )
 
 const (
@@ -255,6 +258,7 @@ func (s *Store) ImportSpool(ctx context.Context) (int, error) {
 	sort.Strings(claimed)
 
 	imported := 0
+	var poisonPaths []string
 	for _, path := range claimed {
 		records, torn, err := readSpoolSegment(path)
 		if err != nil {
@@ -263,17 +267,34 @@ func (s *Store) ImportSpool(ctx context.Context) (int, error) {
 			}
 			return imported, fmt.Errorf("损坏段已隔离 %s: %w", path, err)
 		}
+		var poisoned []SpoolRecord
 		for i := range records {
 			if err := ctx.Err(); err != nil {
 				return imported, err
 			}
 			inserted, err := s.insertEvent(ctx, &records[i].Event, true)
 			if err != nil {
+				// 数据类异常(SQLSTATE class 22,评审 2026-11-09 H3):该记录对
+				// 当前 schema/编码是永久拒收,重试永无意义——单条隔离进
+				// <段>.poison 后继续;否则它让整段 import 永久头阻塞
+				// (pending 永不收敛,后续正常事件全部堵死)。
+				if isPoisonDataErr(err) {
+					poisoned = append(poisoned, records[i])
+					continue
+				}
+				// 其他错误按瞬态(DB 故障)处理:整体中止,下个周期重试。
 				return imported, err
 			}
 			if inserted {
 				imported++
 			}
+		}
+		if len(poisoned) > 0 {
+			ppath, perr := appendPoisonRecords(path, poisoned)
+			if perr != nil {
+				return imported, fmt.Errorf("毒记录隔离 %s: %w", path, perr)
+			}
+			poisonPaths = append(poisonPaths, ppath)
 		}
 		if len(torn) > 0 {
 			if err := writeTornQuarantine(path, torn); err != nil {
@@ -284,7 +305,42 @@ func (s *Store) ImportSpool(ctx context.Context) (int, error) {
 			return imported, err
 		}
 	}
+	if len(poisonPaths) > 0 {
+		return imported, fmt.Errorf("spool 毒记录已隔离(不重试,需人工核查): %s", strings.Join(poisonPaths, ", "))
+	}
 	return imported, nil
+}
+
+// isPoisonDataErr 判定 SQLSTATE class 22(data exception)——持久性数据错误
+// (非法 UTF-8/NUL 22021、值超长 22001 等),重投无意义。消毒(store.go
+// sanitizeText)已消除 22021 主类,本判定拦截残余类。lib/pq 驱动。
+func isPoisonDataErr(err error) bool {
+	var pqErr *pq.Error
+	if errors.As(err, &pqErr) {
+		return string(pqErr.Code.Class()) == "22"
+	}
+	return false
+}
+
+// appendPoisonRecords 把永久拒收的记录追加为 <段>.poison(JSONL,0600),
+// 返回文件路径。与 .quarantine(撕裂尾)分名:poison=语义拒收,需人工核查。
+func appendPoisonRecords(claimPath string, recs []SpoolRecord) (string, error) {
+	path := claimPath + ".poison"
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = f.Close() }()
+	for i := range recs {
+		raw, err := json.Marshal(recs[i])
+		if err != nil {
+			return "", err
+		}
+		if _, err := f.Write(append(raw, '\n')); err != nil {
+			return "", err
+		}
+	}
+	return path, f.Sync()
 }
 
 func readSpoolSegment(path string) ([]SpoolRecord, []byte, error) {

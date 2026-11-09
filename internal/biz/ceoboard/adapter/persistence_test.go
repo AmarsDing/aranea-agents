@@ -118,7 +118,10 @@ func TestNATSEmptyPayloadHandleMsgOnlyCountsEmptyDrop(t *testing.T) {
 	}
 }
 
-func TestNATSDecodeDeadLetterFailureNaksAndRetriesIdempotently(t *testing.T) {
+// 评审 2026-11-09 H3 语义变更:死信是标注轨,「仅死信写不进」不得 Nak 消息本体
+// (否则 PG 22021 类毒消息无限重投);事件本体经的 IngestEvent(含 spool
+// 兜底)持久化即 Ack,死信标注失败仅记日志。恢复后重投补写死信且事件不重复。
+func TestNATSDecodeDeadLetterFailureFallsThroughAndReplays(t *testing.T) {
 	ctx := context.Background()
 	st, db := openFileStore(t, filepath.Join(t.TempDir(), "events.db"))
 	if _, err := db.Exec(`CREATE TRIGGER reject_dead_letter BEFORE INSERT ON ceoboard_dead_letters BEGIN SELECT RAISE(FAIL,'dead letter unavailable'); END`); err != nil {
@@ -127,26 +130,34 @@ func TestNATSDecodeDeadLetterFailureNaksAndRetriesIdempotently(t *testing.T) {
 	mgr := NewNATSManager(st, nil, nil)
 	ack := &recordingAck{}
 	ev := &store.Event{UID: "hcf:poison", Platform: "hcf", Subject: "a", SubjectKey: "a", Payload: "{bad"}
-	if _, err := mgr.persistEventResult(ctx, ack, ev, errors.New("bad json")); err == nil {
-		t.Fatal("decode 死信写失败必须返回错误并 Nak")
+	// 死信写失败:事件本体落库成功 → Ack(不 Nak、不报错),死信缺一条标注。
+	if _, err := mgr.persistEventResult(ctx, ack, ev, errors.New("bad json")); err != nil {
+		t.Fatalf("死信写失败不得阻断事件本体摄入: %v", err)
 	}
-	if ack.acks.Load() != 0 || ack.naks.Load() != 1 {
-		t.Fatalf("死信未持久化不得 Ack: ack=%d nak=%d", ack.acks.Load(), ack.naks.Load())
+	if ack.acks.Load() != 1 || ack.naks.Load() != 0 {
+		t.Fatalf("事件本体已落库应 Ack 而非 Nak: ack=%d nak=%d", ack.acks.Load(), ack.naks.Load())
+	}
+	if n, _ := st.PendingDeadLetters(ctx); n != 0 {
+		t.Fatalf("死信被拒期不应有标注,实际 %d", n)
+	}
+	if n, _ := st.TotalEvents(ctx); n != 1 {
+		t.Fatalf("事件本体必须落库(不丢),实际 %d", n)
 	}
 	if _, err := db.Exec(`DROP TRIGGER reject_dead_letter`); err != nil {
 		t.Fatal(err)
 	}
+	// 恢复后重投(JetStream redelivery):补写死信,事件幂等去重不重复。
 	if _, err := mgr.persistEventResult(ctx, ack, ev, errors.New("bad json")); err != nil {
 		t.Fatalf("恢复后重试应成功: %v", err)
 	}
-	if ack.acks.Load() != 1 || ack.naks.Load() != 1 {
+	if ack.acks.Load() != 2 || ack.naks.Load() != 0 {
 		t.Fatalf("恢复后应只补一次 Ack: ack=%d nak=%d", ack.acks.Load(), ack.naks.Load())
 	}
 	if n, _ := st.PendingDeadLetters(ctx); n != 1 {
-		t.Fatalf("decode 重试不得重复死信,实际 %d", n)
+		t.Fatalf("恢复后应补写一条死信,实际 %d", n)
 	}
 	if n, _ := st.TotalEvents(ctx); n != 1 {
-		t.Fatalf("decode 重试不得重复事件,实际 %d", n)
+		t.Fatalf("重投不得重复事件,实际 %d", n)
 	}
 }
 
