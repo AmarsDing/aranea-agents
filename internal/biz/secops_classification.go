@@ -204,24 +204,37 @@ func (uc *SecopsClassificationUsecase) recordClassificationAudit(ctx context.Con
 }
 
 // insertSecopsAudit 是密级面共享审计写口（secops_classification/
-// secops_model_policy 共用；与 insertOffboardAudit 同列契约）。
+// secops_model_policy/secops_mask_proposal 共用；与 insertOffboardAudit
+// 同列契约）。
 func insertSecopsAudit(ctx context.Context, rec SecopsOffboardAuditRecorder, action, resourceID string, detail map[string]any, severity string) error {
 	if rec == nil {
 		return nil
 	}
-	payload, err := json.Marshal(detail)
+	entry, err := buildSecopsAuditEntry(ctx, action, resourceID, detail, severity)
 	if err != nil {
 		return err
+	}
+	return rec.InsertAuditLog(ctx, entry)
+}
+
+// buildSecopsAuditEntry 构造 secops 面审计条目（actor 由入参 ctx 的 JWT
+// 主体决定；detail 只允许 id/级别/计数/类别，绝不携带明文）。事务内审计
+// 闭包须在事务外先构造条目——ExecInTx 的 txCtx 派生自 Background，
+// auth 主体值在 tx 内不可得。
+func buildSecopsAuditEntry(ctx context.Context, action, resourceID string, detail map[string]any, severity string) (AuditLog, error) {
+	payload, err := json.Marshal(detail)
+	if err != nil {
+		return AuditLog{}, err
 	}
 	if severity == "" {
 		severity = "info"
 	}
-	return rec.InsertAuditLog(ctx, AuditLog{
+	return AuditLog{
 		Action:     action,
 		Resource:   "secops",
 		ResourceID: resourceID,
 		Detail:     string(payload),
 		Actor:      offboardActorFromContext(ctx),
 		Severity:   severity,
-	})
+	}, nil
 }

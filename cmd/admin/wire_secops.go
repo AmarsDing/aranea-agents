@@ -51,12 +51,26 @@ func provideSecopsOffboardUsecase(adminReader biz.AdminReader, adminWriter biz.A
 }
 
 // provideSecopsService 装配 secops.v1 服务（离职五步 + D6 密级标签/模型
-// 策略四 RPC；脱敏五闸随 D6 后续纵列接入）。
-func provideSecopsService(uc *biz.SecopsOffboardUsecase, classification *biz.SecopsClassificationUsecase, policy *biz.SecopsModelPolicyUsecase, lg loggateway.Logger) *service.SecopsService {
-	return service.NewSecopsService(uc, classification, policy, lg)
+// 策略四 RPC + 脱敏五闸七 RPC）。
+func provideSecopsService(uc *biz.SecopsOffboardUsecase, classification *biz.SecopsClassificationUsecase, policy *biz.SecopsModelPolicyUsecase, mask *biz.SecopsMaskProposalUsecase, lg loggateway.Logger) *service.SecopsService {
+	return service.NewSecopsService(uc, classification, policy, mask, lg)
 }
 
 // ── D6 W2b 密级面（L-1/L-4：标签/水位线/模型策略，DDL 迁移 20261327）────
+
+// provideSecopsMaskProposalUsecase 装配脱敏提案五闸用例（D6 V4；nil Data →
+// nil，service 侧 requireMaskWired 报 Internal；审计后置 setter 注入）。
+func provideSecopsMaskProposalUsecase(d *data.Data, lg loggateway.Logger) *biz.SecopsMaskProposalUsecase {
+	if d == nil {
+		return nil
+	}
+	uc := biz.NewSecopsMaskProposalUsecase(data.NewSecopsMaskProposalRepo(d), data.NewSecopsMaskRuleAdminRepo(d), lg)
+	if uc == nil {
+		return nil
+	}
+	uc.SetAuditRecorder(data.NewMonitorAuditRepo(d))
+	return uc
+}
 
 // provideSecopsClassificationRepo 装配密级标签台账（nil Data → nil）。
 func provideSecopsClassificationRepo(d *data.Data) biz.SecopsClassificationRepo {

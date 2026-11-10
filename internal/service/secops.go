@@ -45,15 +45,16 @@ type SecopsService struct {
 	offboard       *biz.SecopsOffboardUsecase
 	classification *biz.SecopsClassificationUsecase
 	policy         *biz.SecopsModelPolicyUsecase
+	mask           *biz.SecopsMaskProposalUsecase
 	lg             loggateway.Logger
 }
 
 // NewSecopsService 装配 secops 服务。
-func NewSecopsService(offboard *biz.SecopsOffboardUsecase, classification *biz.SecopsClassificationUsecase, policy *biz.SecopsModelPolicyUsecase, lg loggateway.Logger) *SecopsService {
+func NewSecopsService(offboard *biz.SecopsOffboardUsecase, classification *biz.SecopsClassificationUsecase, policy *biz.SecopsModelPolicyUsecase, mask *biz.SecopsMaskProposalUsecase, lg loggateway.Logger) *SecopsService {
 	if lg == nil {
 		lg = loggateway.NewNoop()
 	}
-	return &SecopsService{offboard: offboard, classification: classification, policy: policy, lg: lg}
+	return &SecopsService{offboard: offboard, classification: classification, policy: policy, mask: mask, lg: lg}
 }
 
 func (s *SecopsService) requireWired() error {
@@ -361,7 +362,199 @@ func (s *SecopsService) SetModelPolicy(ctx context.Context, req *v1.SetModelPoli
 	}, nil
 }
 
+// ── 脱敏五闸（D6 V4：提案/样本试跑/静态检查/审批/激活）────────────────
+// 权限：全组 secops.policy（secadmin 域）；提案永不自动生效——审批不可自批
+// 由 biz 用例硬校验（approve/reject 同一校验），批准只生成 shadow 规则。
+
+func (s *SecopsService) requireMaskWired() error {
+	if s.mask == nil {
+		return apierror.Internal(apierror.DomainAdmin, "secops mask proposal usecase not wired")
+	}
+	return nil
+}
+
+// ListMaskRules 列脱敏规则（含 shadow/灰度/禁用；安全管理员维护视图）。
+func (s *SecopsService) ListMaskRules(ctx context.Context, _ *emptypb.Empty) (*v1.ListMaskRulesResponse, error) {
+	caller, err := secopsCaller(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if err := requireSecopsPolicyPermission(caller); err != nil {
+		return nil, err
+	}
+	if err := s.requireMaskWired(); err != nil {
+		return nil, err
+	}
+	rules, err := s.mask.ListRules(ctx)
+	if err != nil {
+		return nil, err
+	}
+	items := make([]*v1.MaskRule, 0, len(rules))
+	for _, r := range rules {
+		items = append(items, &v1.MaskRule{
+			Id:         r.ID,
+			Entity:     r.Entity,
+			Pattern:    r.Pattern,
+			Operator:   r.Operator,
+			Enabled:    r.Enabled,
+			Shadow:     r.Shadow,
+			RolloutPct: int32(r.RolloutPct),
+			Version:    int64(r.Version),
+		})
+	}
+	return &v1.ListMaskRulesResponse{Items: items}, nil
+}
+
+// ListMaskProposals 分页列提案（status 空 = 全部）。
+func (s *SecopsService) ListMaskProposals(ctx context.Context, req *v1.ListMaskProposalsRequest) (*v1.ListMaskProposalsResponse, error) {
+	caller, err := secopsCaller(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if err := requireSecopsPolicyPermission(caller); err != nil {
+		return nil, err
+	}
+	if err := s.requireMaskWired(); err != nil {
+		return nil, err
+	}
+	items, total, err := s.mask.ListProposals(ctx, req.GetStatus(), int(req.GetPage()), int(req.GetPageSize()))
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*v1.MaskProposal, 0, len(items))
+	for i := range items {
+		out = append(out, pbMaskProposal(&items[i]))
+	}
+	return &v1.ListMaskProposalsResponse{Items: out, Total: total}, nil
+}
+
+// CreateMaskProposal 闸门1：提案入库（恒 proposed，AI/手工同等待遇）。
+func (s *SecopsService) CreateMaskProposal(ctx context.Context, req *v1.CreateMaskProposalRequest) (*v1.MaskProposal, error) {
+	caller, err := secopsCaller(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if err := requireSecopsPolicyPermission(caller); err != nil {
+		return nil, err
+	}
+	if err := s.requireMaskWired(); err != nil {
+		return nil, err
+	}
+	out, err := s.mask.CreateProposal(ctx, biz.MaskProposalInput{
+		Entity:       req.GetEntity(),
+		Pattern:      req.GetPattern(),
+		WordlistJSON: req.GetWordlistJson(),
+		Operator:     req.GetOperator(),
+	}, strconv.FormatInt(caller.UserID, 10))
+	if err != nil {
+		return nil, err
+	}
+	return pbMaskProposal(out), nil
+}
+
+// RunMaskGates 闸门2+3：样本试跑 → 静态检查（任一不过落终态，不进审批）。
+func (s *SecopsService) RunMaskGates(ctx context.Context, req *v1.MaskProposalActionRequest) (*v1.MaskProposal, error) {
+	caller, err := secopsCaller(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if err := requireSecopsPolicyPermission(caller); err != nil {
+		return nil, err
+	}
+	if err := s.requireMaskWired(); err != nil {
+		return nil, err
+	}
+	out, err := s.mask.RunMaskGates(ctx, req.GetId())
+	if err != nil {
+		return nil, err
+	}
+	return pbMaskProposal(out), nil
+}
+
+// ApproveMaskProposal 闸门4：人工审批（不可自批；批准只生成 shadow 规则）。
+func (s *SecopsService) ApproveMaskProposal(ctx context.Context, req *v1.MaskProposalActionRequest) (*v1.MaskProposal, error) {
+	caller, err := secopsCaller(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if err := requireSecopsPolicyPermission(caller); err != nil {
+		return nil, err
+	}
+	if err := s.requireMaskWired(); err != nil {
+		return nil, err
+	}
+	out, err := s.mask.Approve(ctx, req.GetId(), strconv.FormatInt(caller.UserID, 10))
+	if err != nil {
+		return nil, err
+	}
+	return pbMaskProposal(out), nil
+}
+
+// RejectMaskProposal 闸门4（拒绝分支）：仅 pending_approval 可拒。
+func (s *SecopsService) RejectMaskProposal(ctx context.Context, req *v1.MaskProposalActionRequest) (*v1.MaskProposal, error) {
+	caller, err := secopsCaller(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if err := requireSecopsPolicyPermission(caller); err != nil {
+		return nil, err
+	}
+	if err := s.requireMaskWired(); err != nil {
+		return nil, err
+	}
+	out, err := s.mask.Reject(ctx, req.GetId(), strconv.FormatInt(caller.UserID, 10))
+	if err != nil {
+		return nil, err
+	}
+	return pbMaskProposal(out), nil
+}
+
+// ActivateMaskProposal 闸门5→生效：影子规则转正并按 rollout_pct 灰度。
+func (s *SecopsService) ActivateMaskProposal(ctx context.Context, req *v1.ActivateMaskProposalRequest) (*v1.MaskProposal, error) {
+	caller, err := secopsCaller(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if err := requireSecopsPolicyPermission(caller); err != nil {
+		return nil, err
+	}
+	if err := s.requireMaskWired(); err != nil {
+		return nil, err
+	}
+	out, err := s.mask.Activate(ctx, req.GetId(), int(req.GetRolloutPct()))
+	if err != nil {
+		return nil, err
+	}
+	return pbMaskProposal(out), nil
+}
+
 // ── 转换 ────────────────────────────────────────────────────────────
+
+// pbMaskProposal 提案 → proto（sample_recall 为 proto double：nil → 0，
+// 未跑闸与召回 0 在协议层不可区分，终态靠 status 判定）。
+func pbMaskProposal(p *biz.MaskProposal) *v1.MaskProposal {
+	if p == nil {
+		return nil
+	}
+	out := &v1.MaskProposal{
+		Id:                 p.ID,
+		Entity:             p.Entity,
+		Pattern:            p.Pattern,
+		WordlistJson:       p.WordlistJSON,
+		Operator:           p.Operator,
+		Status:             p.Status,
+		SampleDetailJson:   p.SampleDetailJSON,
+		StaticFindingsJson: p.StaticFindingsJSON,
+		CreatedBy:          p.CreatedBy,
+		ReviewedBy:         p.ReviewedBy,
+		ReviewedAt:         pbTimestampOrNil(p.ReviewedAt),
+		CreatedAt:          pbTimestampOrNil(p.CreatedAt),
+	}
+	if p.SampleRecall != nil {
+		out.SampleRecall = *p.SampleRecall
+	}
+	return out
+}
 
 func pbOffboardRequest(r *biz.SecopsOffboardRequest) *v1.OffboardRequest {
 	if r == nil {

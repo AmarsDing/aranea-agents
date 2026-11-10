@@ -77,6 +77,8 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.SelfImprovement, *co
 		provideSecopsModelPolicyRepo,
 		provideSecopsClassificationUsecase,
 		provideSecopsModelPolicyUsecase,
+		// E 阶段 W2b D6 V4 脱敏五闸（提案/审批/激活，§7.3 验收 #4）。
+		provideSecopsMaskProposalUsecase,
 		provideSecopsService,
 		provideReviewService,
 		// E 阶段 W1c office 套件（日程/通知/apps/ical/提醒，拍板 K-1..K-5）。

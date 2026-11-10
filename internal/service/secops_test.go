@@ -19,7 +19,7 @@ func newGateProbeService() *SecopsService {
 	uc := biz.NewSecopsOffboardUsecase(nil, nil, nil, nil, nil, loggateway.NewNoop())
 	classification := biz.NewSecopsClassificationUsecase(nil, nil, loggateway.NewNoop())
 	policy := biz.NewSecopsModelPolicyUsecase(nil, loggateway.NewNoop())
-	return NewSecopsService(uc, classification, policy, loggateway.NewNoop())
+	return NewSecopsService(uc, classification, policy, nil, loggateway.NewNoop())
 }
 
 func offboardCtx(uid int64, roles ...string) context.Context {
@@ -189,6 +189,80 @@ func TestSecopsService_D6PolicyGates(t *testing.T) {
 		// §7.3「仅 sysadmin 可改」与 W0 proto 登记的语义差异登记 W4 评审项 (u)）。
 		{"set policy secadmin passes permission gate", offboardCtx(81, "secadmin"), func(c context.Context) error {
 			_, err := svc.SetModelPolicy(c, &v1.SetModelPolicyRequest{LocalThreshold: 3})
+			return err
+		}, apierror.CodeInternal},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := tc.call(tc.ctx)
+			if !apierror.IsCode(err, tc.code) {
+				t.Fatalf("want code %s, got %v", tc.code, err)
+			}
+		})
+	}
+}
+
+// TestSecopsService_D6MaskGates 钉死脱敏五闸七 RPC 的兜底闸门序（D6 V4）：
+//   - 未认证 → Unauthorized；
+//   - 全组要求 secops.policy：auditor/viewer → Forbidden；
+//   - secadmin 持 secops.policy → 过权限门后以 Internal（nil usecase）证明
+//     门已通过。
+func TestSecopsService_D6MaskGates(t *testing.T) {
+	svc := newGateProbeService()
+	noAuth := context.Background()
+
+	cases := []struct {
+		name string
+		ctx  context.Context
+		call func(context.Context) error
+		code apierror.Code
+	}{
+		{"rules list no auth", noAuth, func(c context.Context) error {
+			_, err := svc.ListMaskRules(c, nil)
+			return err
+		}, apierror.CodeUnauthorized},
+		{"rules list viewer forbidden", offboardCtx(52, "viewer"), func(c context.Context) error {
+			_, err := svc.ListMaskRules(c, nil)
+			return err
+		}, apierror.CodeForbidden},
+		{"rules list secadmin passes gate", offboardCtx(81, "secadmin"), func(c context.Context) error {
+			_, err := svc.ListMaskRules(c, nil)
+			return err
+		}, apierror.CodeInternal},
+		{"proposals list auditor forbidden", offboardCtx(91, "auditor"), func(c context.Context) error {
+			_, err := svc.ListMaskProposals(c, &v1.ListMaskProposalsRequest{})
+			return err
+		}, apierror.CodeForbidden},
+		{"create proposal no auth", noAuth, func(c context.Context) error {
+			_, err := svc.CreateMaskProposal(c, &v1.CreateMaskProposalRequest{Entity: "手机号"})
+			return err
+		}, apierror.CodeUnauthorized},
+		{"create proposal viewer forbidden", offboardCtx(52, "viewer"), func(c context.Context) error {
+			_, err := svc.CreateMaskProposal(c, &v1.CreateMaskProposalRequest{Entity: "手机号"})
+			return err
+		}, apierror.CodeForbidden},
+		{"create proposal secadmin passes gate", offboardCtx(81, "secadmin"), func(c context.Context) error {
+			_, err := svc.CreateMaskProposal(c, &v1.CreateMaskProposalRequest{Entity: "手机号"})
+			return err
+		}, apierror.CodeInternal},
+		{"run gates auditor forbidden", offboardCtx(91, "auditor"), func(c context.Context) error {
+			_, err := svc.RunMaskGates(c, &v1.MaskProposalActionRequest{Id: "mp_1"})
+			return err
+		}, apierror.CodeForbidden},
+		{"approve auditor forbidden", offboardCtx(91, "auditor"), func(c context.Context) error {
+			_, err := svc.ApproveMaskProposal(c, &v1.MaskProposalActionRequest{Id: "mp_1"})
+			return err
+		}, apierror.CodeForbidden},
+		{"reject viewer forbidden", offboardCtx(52, "viewer"), func(c context.Context) error {
+			_, err := svc.RejectMaskProposal(c, &v1.MaskProposalActionRequest{Id: "mp_1"})
+			return err
+		}, apierror.CodeForbidden},
+		{"activate no auth", noAuth, func(c context.Context) error {
+			_, err := svc.ActivateMaskProposal(c, &v1.ActivateMaskProposalRequest{Id: "mp_1", RolloutPct: 10})
+			return err
+		}, apierror.CodeUnauthorized},
+		{"activate secadmin passes gate", offboardCtx(81, "secadmin"), func(c context.Context) error {
+			_, err := svc.ActivateMaskProposal(c, &v1.ActivateMaskProposalRequest{Id: "mp_1", RolloutPct: 10})
 			return err
 		}, apierror.CodeInternal},
 	}

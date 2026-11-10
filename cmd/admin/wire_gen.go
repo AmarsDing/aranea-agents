@@ -735,7 +735,9 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	secopsModelPolicyRepo := provideSecopsModelPolicyRepo(dataData)
 	secopsClassificationUsecase := provideSecopsClassificationUsecase(secopsClassificationRepo, secopsSessionWaterlineRepo, dataData, loggatewayLogger)
 	secopsModelPolicyUsecase := provideSecopsModelPolicyUsecase(secopsModelPolicyRepo, dataData, loggatewayLogger)
-	secopsService := provideSecopsService(secopsOffboardUsecase, secopsClassificationUsecase, secopsModelPolicyUsecase, loggatewayLogger)
+	// E 阶段 W2b D6 V4 脱敏五闸（提案/审批/激活，§7.3 验收 #4）。
+	secopsMaskProposalUsecase := provideSecopsMaskProposalUsecase(dataData, loggatewayLogger)
+	secopsService := provideSecopsService(secopsOffboardUsecase, secopsClassificationUsecase, secopsModelPolicyUsecase, secopsMaskProposalUsecase, loggatewayLogger)
 	officeNotifyUsecase := provideOfficeNotifyUsecase(officeRepo)
 	officeICalUsecase := provideOfficeICalUsecase(officeRepo)
 	officeAppsUsecase := provideOfficeAppsUsecase(officeRepo)
