@@ -66,6 +66,12 @@ func (m *memCronRepo) UpdateCronTaskRun(_ context.Context, id, status, finishedA
 	return nil
 }
 
+// ResolveCronTaskFailures 空实现：service 级 mem repo 不演练核销路径
+//（cron 包内 mockRepo 覆盖该语义）；方法存在仅为满足 cron.Repo 接口。
+func (m *memCronRepo) ResolveCronTaskFailures(_ context.Context, runID, actor string) (biz.CronTaskRun, int, error) {
+	return biz.CronTaskRun{}, 0, nil
+}
+
 func newCronService() *service.CronService {
 	return service.NewCronService(biz.NewCronUsecase(newMemCronRepo(), nil))
 }
