@@ -178,6 +178,13 @@ func productCallbackChainWithRegistry(ctx context.Context, ag biz.Agent, deps TR
 	// prompt-cache prefix every turn. This hook (priority 100, runs after all
 	// other message-mutating hooks) moves it to the END of the message list.
 	entries = append(entries, newIntentReorderBeforeHook())
+	// D6 L-2 脱敏闸（E 阶段 W2b，需求 §7.2/§7.3）：云通道必经——全量注入与
+	// 重排之后、模型调用之前的最后一道消息改写（priority 100 与
+	// intentReorder 同带且追加在后，稳定排序保证它看到行将发出的最终消息）。
+	// 进程级脱敏门未装配（wire 未注册）时 hook 为 nil 不注册。
+	if hook := newMaskGateBeforeHook(deps); hook != nil {
+		entries = append(entries, hook)
+	}
 	if hook := newL0SnapshotAfterModelHook(deps); hook != nil {
 		entries = append(entries, hook)
 	}

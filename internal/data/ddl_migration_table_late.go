@@ -671,6 +671,10 @@ var ddlMigrationsLate = []ddlMigration{
 	// 召回透明解密）+ secops_offboard_requests 离职处置五步台账。content_enc 对历
 	// 史行为零影响：列默认空串、写路径补信封、读路径按存在性透明解密。
 	{Version: 20261325, Name: "memory_content_offboard", SQL: "sql/migrations/20261325_memory_content_offboard.sql"},
+	// 20261326 cron_run_resolved（个人工作台告警 lane 核销）：cron_task_run 增
+	// resolved_at/resolved_by（空 = 未核销）与 (status,resolved_at) 索引。Ent
+	// Schema.Create 不为存量表补列，故走 ALTER TABLE；幂等 IF NOT EXISTS。
+	{Version: 20261326, Name: "cron_run_resolved", SQL: "sql/migrations/20261326_cron_run_resolved.sql"},
 	// 20261327 secops_classification_mask（E 阶段 W2b D6，拍板 L-1/L-2/L-4）：
 	// 密级体系 + 脱敏五闸数据面，自 workbench schema.sql 语义平移——
 	// classification_labels（L1-L5 种子，L3=强制本地）/ model_policy（单行
@@ -680,4 +684,10 @@ var ddlMigrationsLate = []ddlMigration{
 	// wb 词表列 TEXT[] 收敛为 wordlist_json；布尔统一 INTEGER 0/1。幂等
 	// （IF NOT EXISTS / ON CONFLICT DO NOTHING），双方言一致。
 	{Version: 20261327, Name: "secops_classification_mask", SQL: "sql/migrations/20261327_secops_classification_mask.sql"},
+	// 20261328 secops_mask_rules_seed（E 阶段 W2b D6 L-2）：脱敏闸四类高频
+	// PII 出厂基线规则（身份证/手机号/银行卡/邮箱，占位符算子，全量灰度）。
+	// 理由：V3 BeforeModel 钩子的 secondCheck 命中即 fail-closed，规则全空
+	// 会让云通道路由对常见 PII 硬失败——基线种子保证开箱可用；后续变更走
+	// 五闸流程（V4）。id ASC 顺序保证身份证先于银行卡匹配。幂等 DO NOTHING。
+	{Version: 20261328, Name: "secops_mask_rules_seed", SQL: "sql/migrations/20261328_secops_mask_rules_seed.sql"},
 }

@@ -55,9 +55,49 @@ func DefaultClassificationGate() ClassificationGate {
 }
 
 // enabled 门装配判定：两个依赖都到位才算启用，缺一即整体停用
-//（半个门无法做出可信的强制本地判定）。
+// （半个门无法做出可信的强制本地判定）。
 func (g ClassificationGate) enabled() bool {
 	return g.CeilingFor != nil && g.Policy != nil
+}
+
+// secopsRouteStateKey 是 selector → 脱敏闸（mask_gate.go BeforeModel 钩子）
+// 的每步路由裁决通道（框架 invocation.SetState/GetState，键名循 "model:xxx"
+// 约定）。框架 llmflow.runOneStep 先 selectModelForStep、再重建消息、再跑
+// BeforeModel 回调（v1.11.2 已核实），故钩子读到的恒为本步裁决；selector
+// 每次运行都先清零再按路径覆写，不会跨步陈旧。
+const secopsRouteStateKey = "model:secops:route"
+
+// SecopsRouteState 是单步密级路由裁决快照（L-1 → L-2 的通道契约）。
+type SecopsRouteState struct {
+	// Channel 已裁决通道：ProviderChannelClassLocal / ProviderChannelClassCloud；
+	// 空 = 未裁决（水位线低于阈值等保守 nil 路径——钩子按模型目录自解析）。
+	Channel string
+	// Forced 水位线触发强制本地（route_local_forced 审计事件依据）。
+	Forced bool
+	// Ceiling / Threshold 是决策时的水位线/阈值快照（审计 metadata，非敏感）。
+	Ceiling   int
+	Threshold int
+}
+
+// setSecopsRouteState 写单步路由裁决（nil invocation 静默跳过）。
+func setSecopsRouteState(inv *trpcagent.Invocation, st SecopsRouteState) {
+	if inv == nil {
+		return
+	}
+	inv.SetState(secopsRouteStateKey, st)
+}
+
+// SecopsRouteStateFromInvocation 读单步路由裁决；无/类型不符 → 零值（未裁决）。
+func SecopsRouteStateFromInvocation(inv *trpcagent.Invocation) SecopsRouteState {
+	if inv == nil {
+		return SecopsRouteState{}
+	}
+	if v, ok := inv.GetState(secopsRouteStateKey); ok {
+		if st, ok := v.(SecopsRouteState); ok {
+			return st
+		}
+	}
+	return SecopsRouteState{}
 }
 
 // sessionIDFromInvocation 取 invocation 的会话 ID（trpc-agent-go v1.11.2
@@ -82,7 +122,7 @@ func sessionIDFromInvocation(inv *trpcagent.Invocation) string {
 //
 // 唯一 fail-closed：已确认「水位线 >= 阈值」但目录里没有任何可用的
 // local 候选 —— 此时回 cloud 是密级违规，返回 error 让运行响亮失败
-//（宁可任务失败，不可 L3+ 内容落云通道）。
+// （宁可任务失败，不可 L3+ 内容落云通道）。
 func ClassificationAwareModelSelector(
 	baseProv, baseMod string,
 	catalog biz.TeamModelCatalog,
@@ -95,6 +135,9 @@ func ClassificationAwareModelSelector(
 		lg = loggateway.NewNoop()
 	}
 	return func(ctx context.Context, inv *trpcagent.Invocation) (trpcmodel.Model, error) {
+		// 每步先清零路由裁决：所有保守 nil 路径（返回 base）都对应「未裁决」，
+		// 脱敏闸钩子据此自行解析通道；decide 路径随后覆写。
+		setSecopsRouteState(inv, SecopsRouteState{})
 		gate := DefaultClassificationGate()
 		if !gate.enabled() || catalog == nil {
 			return nil, nil
@@ -143,6 +186,14 @@ func ClassificationAwareModelSelector(
 			}
 		}
 		if baseAlreadyLocal {
+			// base 已是本地通道：无需重建模型，但本步确为水位线强制本地
+			//（route_local_forced 审计由脱敏闸钩子按本状态产出）。
+			setSecopsRouteState(inv, SecopsRouteState{
+				Channel:   biz.ProviderChannelClassLocal,
+				Forced:    true,
+				Ceiling:   ceiling,
+				Threshold: policy.LocalThreshold,
+			})
 			return nil, nil
 		}
 		picked, ok := CheapestCapableModel(localCandidates, baseMod)
@@ -176,6 +227,12 @@ func ClassificationAwareModelSelector(
 				loggateway.Str("model", picked.Model), loggateway.Err(err))
 			return nil, fmt.Errorf("classification local model build %s/%s: %w", picked.Provider, picked.Model, err)
 		}
+		setSecopsRouteState(inv, SecopsRouteState{
+			Channel:   biz.ProviderChannelClassLocal,
+			Forced:    true,
+			Ceiling:   ceiling,
+			Threshold: policy.LocalThreshold,
+		})
 		metrics.ClassificationRouteTotal.WithLabelValues("forced_local").Inc()
 		lg.Info("密级路由：强制本地通道",
 			loggateway.StepID("agent.classification.forced_local"), loggateway.Phase("done"),

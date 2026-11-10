@@ -114,6 +114,22 @@ const (
 	// origin/dedupe_key。AS-EVT-01=Important（silent 净关/overflow/stall
 	// 耗尽各有专属语义路径，排除在本事件面外——同 agent 分类器判序）。
 	TriggerLLMAbnormalFinish = "llm_abnormal_finish"
+	// D6 L-2 脱敏四事件（E 阶段 W2b，需求 §7.2/§7.3 验收 #3/#4；trigger_rule
+	// 取值自 workbench server/llm.go 原名平移）。GuardName 统一
+	// "secops_mask"；outcome 约定：route_local_forced/cloud_send=proceeded
+	//（路由/放行决策已执行），mask_engine_unavailable/mask_reject=blocked
+	//（拒绝上云）。metadata.Extra 只带计数/类别/水位线，绝不携带原文、
+	// findings 原文或占位符映射（明文三不进）。
+	//   - route_local_forced：会话水位线 >= 本地阈值，本步走本地通道；
+	//   - mask_engine_unavailable：脱敏引擎不可用（冷缓存 + 规则读/编译失败），
+	//     fail-closed 拒绝上云；
+	//   - mask_reject：secondCheck 二级检测命中未被规则覆盖的 PII，fail-closed
+	//     拒绝上云；
+	//   - cloud_send：脱敏通过，放行上云（masked_entities=一级脱敏命中数）。
+	TriggerRouteLocalForced      = "route_local_forced"
+	TriggerMaskEngineUnavailable = "mask_engine_unavailable"
+	TriggerMaskReject            = "mask_reject"
+	TriggerCloudSend             = "cloud_send"
 )
 
 // GateDecision 是 S2 统一闸决策事件结构（设计 §3.2 row 3）：各闸点只填

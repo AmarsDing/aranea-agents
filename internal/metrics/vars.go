@@ -239,6 +239,13 @@ var (
 		Help: "D6 L-1 classification routing decisions by outcome.",
 	}, []string{"outcome"})
 
+	// SecopsMaskEventTotal counts D6 L-2 mask-gate events
+	// (route_local_forced / mask_engine_unavailable / mask_reject / cloud_send).
+	SecopsMaskEventTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "aranea_secops_mask_event_total",
+		Help: "D6 L-2 mask gate events by kind.",
+	}, []string{"event"})
+
 	// ChannelDeliveryTotal counts outbound channel delivery attempts by platform and status.
 	ChannelDeliveryTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "aranea_channel_delivery_total",

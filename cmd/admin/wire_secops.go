@@ -7,6 +7,8 @@ package main
 
 import (
 	"context"
+	"os"
+	"strings"
 
 	"aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
@@ -93,16 +95,23 @@ func provideSecopsClassificationUsecase(labels biz.SecopsClassificationRepo, wat
 
 // provideSecopsModelPolicyUsecase 装配模型策略用例（热副本：selector
 // 每 turn 判定打缓存，Set 写即失效；审计后置 setter 注入）。
-// 装配副作用：注册 D6 L-1 进程级密级路由门（agent.SetDefaultClassificationGate，
-// 先例 app.go BeforeStart 的 SetTeamCompletionChecker——provider 即装配点，
-// 无需再把句柄透出 wire 结果）。d==nil 或 repo 缺失时注册零值门（门停用，
-// selector 恒 nil 保持 base 路由）。
+// 装配副作用（provider 即装配点，无需把句柄透出 wire 结果）：
+//  1. 注册 D6 L-1 进程级密级路由门（agent.SetDefaultClassificationGate，
+//     先例 app.go BeforeStart 的 SetTeamCompletionChecker）。d==nil 或 repo
+//     缺失时注册零值门（门停用，selector 恒 nil 保持 base 路由）。
+//  2. 装配并注册 D6 L-2 进程级脱敏门（agent.SetDefaultSecopsMaskGate，
+//     BeforeModel 脱敏钩子的唯一消费口）。与 L-1 同坐标装配：
+//     d==nil 或规则台账缺失 → 注册 nil 门（钩子不注册，行为同 V2）。
+//     运维急停：环境变量 ARANEA_SECOPS_MASK_GATE=off（钩子不注册）。
 func provideSecopsModelPolicyUsecase(repo biz.SecopsModelPolicyRepo, d *data.Data, lg loggateway.Logger) *biz.SecopsModelPolicyUsecase {
 	uc := biz.NewSecopsModelPolicyUsecase(repo, lg)
 	if d != nil {
 		uc.SetSecopsModelPolicyAuditRecorder(data.NewMonitorAuditRepo(d))
 	}
 	gate := agent.ClassificationGate{}
+	// L-2 与 L-1 同坐标装配但互不依赖：脱敏不依赖密级路由（L-1 停用时
+	// 云通道仍必经脱敏闸）。
+	assembleSecopsMaskGate(d, lg)
 	if d != nil && repo != nil {
 		waterline := data.NewSecopsSessionWaterlineRepo(d)
 		gate.CeilingFor = func(ctx context.Context, sessionID string) (int, error) {
@@ -112,4 +121,32 @@ func provideSecopsModelPolicyUsecase(repo biz.SecopsModelPolicyRepo, d *data.Dat
 	}
 	agent.SetDefaultClassificationGate(gate)
 	return uc
+}
+
+// assembleSecopsMaskGate 装配 D6 L-2 脱敏用例并注册进程级门。
+// 返回 nil = 门停用（Data/规则台账缺失或运维急停开关关闭）。
+func assembleSecopsMaskGate(d *data.Data, lg loggateway.Logger) *biz.SecopsMaskUsecase {
+	if d == nil || secopsMaskGateDisabled() {
+		agent.SetDefaultSecopsMaskGate(nil)
+		return nil
+	}
+	uc := biz.NewSecopsMaskUsecase(data.NewSecopsMaskRuleRepo(d), lg)
+	if uc == nil {
+		agent.SetDefaultSecopsMaskGate(nil)
+		return nil
+	}
+	uc.SetAuditRecorder(data.NewMonitorAuditRepo(d))
+	agent.SetDefaultSecopsMaskGate(uc)
+	return uc
+}
+
+// secopsMaskGateDisabled 是 D6 L-2 脱敏闸的运维急停开关
+// （ARANEA_SECOPS_MASK_GATE=off|false|0|disabled → 停用；缺省/其它值启用）。
+// 急停只摘钩子，不影响 L-1 密级路由与其它 secops 能力。
+func secopsMaskGateDisabled() bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("ARANEA_SECOPS_MASK_GATE"))) {
+	case "off", "false", "0", "disabled":
+		return true
+	}
+	return false
 }

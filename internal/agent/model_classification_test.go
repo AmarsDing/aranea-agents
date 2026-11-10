@@ -206,3 +206,53 @@ func TestClassificationAwareModelSelector_UnclassifiedKeepsBase(t *testing.T) {
 		t.Fatalf("未定级会话必须保持 base，got (%v, %v)", m, err)
 	}
 }
+
+// ─── L-2 通道契约：selector 每步写入路由裁决（SecopsRouteState）──────────────
+
+func TestClassificationAwareModelSelector_WritesRouteStateForcedLocal(t *testing.T) {
+	classificationTestGate(t, 3, nil, 3, nil)
+	sel := classificationSelector(classificationTestCatalog())
+
+	inv := classificationInv("sess-l3")
+	if _, err := sel(context.Background(), inv); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	st := SecopsRouteStateFromInvocation(inv)
+	if st.Channel != biz.ProviderChannelClassLocal || !st.Forced {
+		t.Fatalf("route state = %+v, want local+forced", st)
+	}
+	if st.Ceiling != 3 || st.Threshold != 3 {
+		t.Fatalf("route state 水位线快照 = %+v", st)
+	}
+}
+
+func TestClassificationAwareModelSelector_RouteStateBaseAlreadyLocal(t *testing.T) {
+	classificationTestGate(t, 4, nil, 3, nil)
+	cat := classificationTestCatalog()
+	// base 本身即本地通道：selector 保持 base（nil），但状态须标记 forced local。
+	sel := ClassificationAwareModelSelector("ollama", "qwen3-32b", cat, cascadeTestRT(), loggateway.NewNoop())
+	inv := classificationInv("sess-l4")
+	m, err := sel(context.Background(), inv)
+	if err != nil || m != nil {
+		t.Fatalf("base 已 local 必须保持 base，got (%v, %v)", m, err)
+	}
+	st := SecopsRouteStateFromInvocation(inv)
+	if st.Channel != biz.ProviderChannelClassLocal || !st.Forced {
+		t.Fatalf("route state = %+v, want local+forced (route_local_forced 审计依据)", st)
+	}
+}
+
+func TestClassificationAwareModelSelector_RouteStateClearedOnKeepBase(t *testing.T) {
+	classificationTestGate(t, 2, nil, 3, nil) // 低于阈值 → 保守 nil
+	sel := classificationSelector(classificationTestCatalog())
+
+	inv := classificationInv("sess-l2")
+	// 预置上一步的脏状态：本步 selector 必须清零（钩子据此自解析通道）。
+	inv.SetState(secopsRouteStateKey, SecopsRouteState{Channel: biz.ProviderChannelClassLocal, Forced: true, Ceiling: 5})
+	if _, err := sel(context.Background(), inv); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if st := SecopsRouteStateFromInvocation(inv); st != (SecopsRouteState{}) {
+		t.Fatalf("keep-base 路径必须清零路由状态，got %+v", st)
+	}
+}
