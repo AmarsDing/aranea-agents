@@ -181,6 +181,7 @@ function llmProviderWireToPlatform(raw: unknown): PlatformResource {
     is_system: false,
     config_json: pickStr(r, 'config_json', 'configJson') || '{}',
     metadata_json: pickStr(r, 'metadata_json', 'metadataJson') || '{}',
+    channel_class: pickStr(r, 'channel_class', 'channelClass'),
     dept_lead_agent_id: '',
     dept_lead_config_json: '{}',
     capabilities: {
@@ -436,6 +437,7 @@ function providerInputToCreateBody(payload: PlatformResourceInput): CreateProvid
     model: payload.model ?? '',
     configJson: payload.config_json ?? '{}',
     metadataJson: payload.metadata_json ?? '{}',
+    channelClass: payload.channel_class ?? '',
     capabilities: payload.capabilities
       ? {
           text: payload.capabilities.text ?? false,
@@ -491,6 +493,7 @@ function mergeProviderModel(base: ProviderModel, patch: Partial<PlatformResource
     model: patch.model ?? base.model,
     configJson: patch.config_json ?? baseConfig ?? base.configJson ?? '{}',
     metadataJson: patch.metadata_json ?? baseMeta ?? base.metadataJson ?? '{}',
+    channelClass: patch.channel_class ?? base.channelClass ?? '',
     capabilities: patch.capabilities
       ? {
           text: patch.capabilities.text ?? false,

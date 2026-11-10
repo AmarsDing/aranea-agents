@@ -9,10 +9,19 @@ export const PROVIDER_MODEL_TABLE_COLUMNS: QTableColumn<PlatformResource>[] = [
   registryCol<PlatformResource>('size', '大小', 'model', 'center', REGISTRY_COL_W.narrow),
   registryCol<PlatformResource>('ctx', '上下文', 'model', 'center', REGISTRY_COL_W.metric),
   registryCol<PlatformResource>('tps', 'TPS', 'model', 'center', REGISTRY_COL_W.metric),
+  registryCol<PlatformResource>('channel', '通道', 'model', 'center', REGISTRY_COL_W.narrow),
   registryCol<PlatformResource>('usage', '热度 / 用量', 'model', 'left', '18%'),
   registryCol<PlatformResource>('secret', '密钥', 'model', 'left', '12%'),
   registryColActions<PlatformResource>(REGISTRY_COL_W.actionsWide),
 ];
+
+/**
+ * D6 L-1 通道类别标识（空/未标注 = cloud 保守兜底，与后端
+ * biz.ProviderChannelForcesLocal 同口径）。
+ */
+export function isLocalChannelModel(row: PlatformResource): boolean {
+  return (row.channel_class || '').trim().toLowerCase() === 'local';
+}
 
 /** 非 models 资源的 ResourceManager 通用表 */
 export const PLATFORM_RESOURCE_TABLE_COLUMNS: QTableColumn<PlatformResource>[] = [

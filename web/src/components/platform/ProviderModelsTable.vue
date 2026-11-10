@@ -91,6 +91,20 @@
       </q-td>
     </template>
 
+    <template #body-cell-channel="props">
+      <q-td :props="props">
+        <span v-if="isLocalChannelModel(props.row)" class="provider-tag provider-tag--category">本地</span>
+        <span v-else class="provider-tag">云端</span>
+        <q-tooltip>
+          {{
+            isLocalChannelModel(props.row)
+              ? 'D6 密级路由：通道类别=local，会话水位线达到本地阈值时强制路由到该模型'
+              : 'D6 密级路由：默认云通道（未标注 channel_class=local）'
+          }}
+        </q-tooltip>
+      </q-td>
+    </template>
+
     <template #body-cell-usage="props">
       <q-td :props="props">
         <div class="provider-usage">
@@ -218,6 +232,7 @@ import {
   hotnessLabel,
   hotnessScore,
   hotnessTone,
+  isLocalChannelModel,
   listSecretDisplay,
   modelDisplayName,
   providerCapabilityChips,
