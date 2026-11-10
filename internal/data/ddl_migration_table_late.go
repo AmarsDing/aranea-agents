@@ -696,4 +696,10 @@ var ddlMigrationsLate = []ddlMigration{
 	// cloud/local 通道；首个写入方为 office 附件 sink 透传。幂等 ALTER，
 	// 默认 0 对存量行零影响。
 	{Version: 20261329, Name: "knowledge_doc_classification", SQL: "sql/migrations/20261329_knowledge_doc_classification.sql"},
+	// 20261330 github_panel（E 阶段 W2c G，需求 §4）：GitHub 研发情报面板
+	// 四表——github_repos（watch 清单+健康快照列随行）、github_events
+	//（webhook 落库，delivery_id 唯一幂等）、github_sla_snapshots（PR/issue
+	// 生命周期一对象一行）、github_trending_reports（热榜结构化分析回链
+	// 知识库 L1）。幂等 IF NOT EXISTS。
+	{Version: 20261330, Name: "github_panel", SQL: "sql/migrations/20261330_github_panel.sql"},
 }
