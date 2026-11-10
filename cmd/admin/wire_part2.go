@@ -71,6 +71,12 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.SelfImprovement, *co
 		provideSecopsOffboardRepo,
 		provideApprovalOffboardReader,
 		provideSecopsOffboardUsecase,
+		// E 阶段 W2b D6 密级面（L-1/L-4：标签/水位线/模型策略，§7.3）。
+		provideSecopsClassificationRepo,
+		provideSecopsSessionWaterlineRepo,
+		provideSecopsModelPolicyRepo,
+		provideSecopsClassificationUsecase,
+		provideSecopsModelPolicyUsecase,
 		provideSecopsService,
 		provideReviewService,
 		// E 阶段 W1c office 套件（日程/通知/apps/ical/提醒，拍板 K-1..K-5）。

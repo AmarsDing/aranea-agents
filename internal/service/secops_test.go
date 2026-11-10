@@ -11,12 +11,15 @@ import (
 	"aranea-agents/pkg/loggateway"
 )
 
-// newGateProbeService 装配一个「零依赖」offboard service：闸门测试只关心
-// 到达 usecase 之前的判定（Unauthorized/Forbidden/BadRequest），闸门命中
-// 即返回，不会触到 nil 依赖；正路径由 data 层五步链路测试覆盖。
+// newGateProbeService 装配一个「零业务依赖」secops service：闸门测试只关心
+// 到达 usecase 之后的判定（Unauthorized/Forbidden/BadRequest/输入校验），
+// biz 层对 nil repo 有守卫（Internal），不会触到空指针；offboard 正路径
+// 由 data 层五步链路测试覆盖，D6 正路径由 biz/data 测试覆盖。
 func newGateProbeService() *SecopsService {
 	uc := biz.NewSecopsOffboardUsecase(nil, nil, nil, nil, nil, loggateway.NewNoop())
-	return NewSecopsService(uc, loggateway.NewNoop())
+	classification := biz.NewSecopsClassificationUsecase(nil, nil, loggateway.NewNoop())
+	policy := biz.NewSecopsModelPolicyUsecase(nil, loggateway.NewNoop())
+	return NewSecopsService(uc, classification, policy, loggateway.NewNoop())
 }
 
 func offboardCtx(uid int64, roles ...string) context.Context {
@@ -130,5 +133,71 @@ func TestSecopsService_Unwired(t *testing.T) {
 	}
 	if _, err := svc.ListOffboardRequests(ctx, nil); !apierror.IsCode(err, apierror.CodeInternal) {
 		t.Fatalf("unwired list: %v", err)
+	}
+}
+
+// TestSecopsService_D6PolicyGates 钉死 D6 密级/策略四 RPC 的兜底闸门序：
+//   - 未认证 → Unauthorized（任何 RPC）；
+//   - 标签列表仅要求认证态：认证 + nil usecase → Internal（证明过闸门）；
+//   - 标签写/策略读写要求 secops.policy：auditor/viewer → Forbidden；
+//     secadmin 持 secops.policy → 过权限门后以 Internal（nil usecase）
+//     证明门已通过——sysadmin 同样过门（两角色均映射该码位）。
+func TestSecopsService_D6PolicyGates(t *testing.T) {
+	svc := newGateProbeService()
+	noAuth := context.Background()
+
+	cases := []struct {
+		name string
+		ctx  context.Context
+		call func(context.Context) error
+		code apierror.Code
+	}{
+		{"labels list no auth", noAuth, func(c context.Context) error {
+			_, err := svc.ListClassificationLabels(c, nil)
+			return err
+		}, apierror.CodeUnauthorized},
+		{"labels list authenticated passes gate", offboardCtx(55, "viewer"), func(c context.Context) error {
+			_, err := svc.ListClassificationLabels(c, nil)
+			return err
+		}, apierror.CodeInternal},
+		{"put label auditor forbidden", offboardCtx(91, "auditor"), func(c context.Context) error {
+			_, err := svc.PutClassificationLabel(c, &v1.PutClassificationLabelRequest{Level: 3, Name: "x"})
+			return err
+		}, apierror.CodeForbidden},
+		{"put label viewer forbidden", offboardCtx(52, "viewer"), func(c context.Context) error {
+			_, err := svc.PutClassificationLabel(c, &v1.PutClassificationLabelRequest{Level: 3, Name: "x"})
+			return err
+		}, apierror.CodeForbidden},
+		{"put label secadmin passes permission gate", offboardCtx(81, "secadmin"), func(c context.Context) error {
+			// level 9 越界：过权限门后由 biz 输入校验给出 BadRequest（证明门已过）。
+			_, err := svc.PutClassificationLabel(c, &v1.PutClassificationLabelRequest{Level: 9, Name: "x"})
+			return err
+		}, apierror.CodeBadRequest},
+		{"get policy auditor forbidden", offboardCtx(91, "auditor"), func(c context.Context) error {
+			_, err := svc.GetModelPolicy(c, nil)
+			return err
+		}, apierror.CodeForbidden},
+		{"get policy secadmin passes permission gate", offboardCtx(81, "secadmin"), func(c context.Context) error {
+			_, err := svc.GetModelPolicy(c, nil)
+			return err
+		}, apierror.CodeInternal},
+		{"set policy viewer forbidden", offboardCtx(52, "viewer"), func(c context.Context) error {
+			_, err := svc.SetModelPolicy(c, &v1.SetModelPolicyRequest{LocalThreshold: 3})
+			return err
+		}, apierror.CodeForbidden},
+		// 实锚：secops.policy 码位由 secadmin 持有（sysadmin 不持有——需求
+		// §7.3「仅 sysadmin 可改」与 W0 proto 登记的语义差异登记 W4 评审项 (u)）。
+		{"set policy secadmin passes permission gate", offboardCtx(81, "secadmin"), func(c context.Context) error {
+			_, err := svc.SetModelPolicy(c, &v1.SetModelPolicyRequest{LocalThreshold: 3})
+			return err
+		}, apierror.CodeInternal},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := tc.call(tc.ctx)
+			if !apierror.IsCode(err, tc.code) {
+				t.Fatalf("want code %s, got %v", tc.code, err)
+			}
+		})
 	}
 }
