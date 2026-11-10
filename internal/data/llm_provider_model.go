@@ -27,6 +27,56 @@ func NewLlmProviderModelRepo(d *Data) biz.LlmProviderModelRepo {
 	return &llmProviderModelRepo{data: d}
 }
 
+// channelClassMetadataKey 是 D6 L-1 通道类别在 metadata_json 里的载体键。
+// 拍板（2026-11-10，W4 登记）：Ent schema 实列迁移被 peer 在制品
+// （internal/data/ent 未提交改动）阻断——V2 先以 metadata_json 键承载，
+// peer 收口后走 Ent 实列替换本载体（迁移沿用 20260613 capability 同款补丁）。
+const channelClassMetadataKey = "channel_class"
+
+// providerModelChannelClass 从 metadata_json 提取通道类别；空/缺失/脏 JSON
+// 一律返回 cloud（保守：密级路由只认显式 local）。
+func providerModelChannelClass(metadataJSON string) string {
+	var m map[string]any
+	if json.Unmarshal([]byte(metadataJSON), &m) != nil {
+		return biz.ProviderChannelClassCloud
+	}
+	if v, ok := m[channelClassMetadataKey].(string); ok {
+		if biz.ProviderChannelForcesLocal(v) {
+			return biz.ProviderChannelClassLocal
+		}
+	}
+	return biz.ProviderChannelClassCloud
+}
+
+// withChannelClassMetadata 把 biz 层的 ChannelClass 合并进 metadata_json 载体，
+// 保留既有键。非 local 值不写入键（空键=cloud 的规范形态）。脏 JSON：写
+// local 键时重建合法对象（原内容本就不可解析，重建是可接受损失）；仅删
+// 键（cloud）时无法安全改写 → 原样回退。
+func withChannelClassMetadata(metadataJSON, channelClass string) string {
+	var m map[string]any
+	parsed := json.Unmarshal([]byte(metadataJSON), &m) == nil
+	if biz.ProviderChannelForcesLocal(channelClass) {
+		if !parsed || m == nil {
+			m = map[string]any{}
+		}
+		m[channelClassMetadataKey] = biz.ProviderChannelClassLocal
+		out, err := json.Marshal(m)
+		if err != nil {
+			return metadataJSON
+		}
+		return string(out)
+	}
+	if !parsed {
+		return metadataJSON
+	}
+	delete(m, channelClassMetadataKey)
+	out, err := json.Marshal(m)
+	if err != nil {
+		return metadataJSON
+	}
+	return string(out)
+}
+
 func entToBizPM(lg loggateway.Logger, e *ent.LlmProviderModel) biz.ProviderModel {
 	if e == nil {
 		return biz.ProviderModel{}
@@ -43,6 +93,7 @@ func entToBizPM(lg loggateway.Logger, e *ent.LlmProviderModel) biz.ProviderModel
 		Model:        e.Model,
 		ConfigJSON:   e.ConfigJSON,
 		MetadataJSON: e.MetadataJSON,
+		ChannelClass: providerModelChannelClass(e.MetadataJSON),
 		Capabilities: biz.ModelCapabilities{
 			Text:     e.CapabilityText,
 			Vision:   e.CapabilityVision,
@@ -168,6 +219,7 @@ func (r *llmProviderModelRepo) CreateProviderModel(ctx context.Context, m biz.Pr
 		m.CreatedAt = now
 	}
 	m.UpdatedAt = now
+	m.MetadataJSON = withChannelClassMetadata(m.MetadataJSON, m.ChannelClass)
 	saved, err := r.data.RW().Write(ctx).LlmProviderModel.Create().
 		SetID(m.ID).
 		SetModelKey(m.Key).
@@ -201,6 +253,7 @@ func (r *llmProviderModelRepo) CreateProviderModel(ctx context.Context, m biz.Pr
 
 func (r *llmProviderModelRepo) UpdateProviderModel(ctx context.Context, m biz.ProviderModel) (biz.ProviderModel, error) {
 	m.UpdatedAt = nowRFC3339()
+	m.MetadataJSON = withChannelClassMetadata(m.MetadataJSON, m.ChannelClass)
 	err := r.data.RW().Write(ctx).LlmProviderModel.UpdateOneID(m.ID).
 		SetModelKey(m.Key).
 		SetName(m.Name).

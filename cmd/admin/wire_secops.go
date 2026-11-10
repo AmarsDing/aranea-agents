@@ -6,6 +6,9 @@ package main
 // 改动同步维护 wire_gen.go 的装配调用。
 
 import (
+	"context"
+
+	"aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/biz/approval"
 	"aranea-agents/internal/data"
@@ -90,10 +93,23 @@ func provideSecopsClassificationUsecase(labels biz.SecopsClassificationRepo, wat
 
 // provideSecopsModelPolicyUsecase 装配模型策略用例（热副本：selector
 // 每 turn 判定打缓存，Set 写即失效；审计后置 setter 注入）。
+// 装配副作用：注册 D6 L-1 进程级密级路由门（agent.SetDefaultClassificationGate，
+// 先例 app.go BeforeStart 的 SetTeamCompletionChecker——provider 即装配点，
+// 无需再把句柄透出 wire 结果）。d==nil 或 repo 缺失时注册零值门（门停用，
+// selector 恒 nil 保持 base 路由）。
 func provideSecopsModelPolicyUsecase(repo biz.SecopsModelPolicyRepo, d *data.Data, lg loggateway.Logger) *biz.SecopsModelPolicyUsecase {
 	uc := biz.NewSecopsModelPolicyUsecase(repo, lg)
 	if d != nil {
 		uc.SetSecopsModelPolicyAuditRecorder(data.NewMonitorAuditRepo(d))
 	}
+	gate := agent.ClassificationGate{}
+	if d != nil && repo != nil {
+		waterline := data.NewSecopsSessionWaterlineRepo(d)
+		gate.CeilingFor = func(ctx context.Context, sessionID string) (int, error) {
+			return waterline.GetSessionCeiling(ctx, sessionID)
+		}
+		gate.Policy = uc
+	}
+	agent.SetDefaultClassificationGate(gate)
 	return uc
 }

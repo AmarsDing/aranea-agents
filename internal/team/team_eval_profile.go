@@ -29,9 +29,12 @@ func (r *Runner) evalProfileRunOptions(ctx context.Context, def Definition, sess
 	}
 	var opts []trpcagent.RunOption
 	if prov, mod := strings.TrimSpace(ep.Provider), strings.TrimSpace(ep.Model); prov != "" && mod != "" {
-		opts = append(opts, trpcagent.WithModelSelector(
+		// D6 L-1：密级路由包链首——评测会话命中水位线时强制 local 优先于钉住
+		// 模型（密级是硬约束）；未命中返回 nil 走原 pin。
+		opts = append(opts, trpcagent.WithModelSelector(agent.ChainedModelSelector(
+			agent.ClassificationAwareModelSelector("", "", r.td.ReadDeps.LLM, r.td.RoundTripForSession(sessID), r.lg),
 			agent.PinnedModelSelector(prov, mod, r.td.ReadDeps.LLM, r.td.RoundTripForSession(sessID), r.lg),
-		))
+		)))
 	}
 	if len(ep.ExtraModelFields) > 0 {
 		opts = append(opts, trpcagent.WithModelRequestExtraFields(ep.ExtraModelFields))

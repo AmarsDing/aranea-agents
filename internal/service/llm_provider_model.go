@@ -41,6 +41,7 @@ func toProtoPM(m biz.ProviderModel) *v1.ProviderModel {
 		Model:        m.Model,
 		ConfigJson:   m.ConfigJSON,
 		MetadataJson: m.MetadataJSON,
+		ChannelClass: m.ChannelClass,
 		CreatedAt:    m.CreatedAt,
 		UpdatedAt:    m.UpdatedAt,
 		DeletedAt:    m.DeletedAt,
@@ -73,6 +74,7 @@ func patchFromProto(pb *v1.ProviderModel) biz.ProviderModel {
 		Model:        pb.GetModel(),
 		ConfigJSON:   pb.GetConfigJson(),
 		MetadataJSON: pb.GetMetadataJson(),
+		ChannelClass: pb.GetChannelClass(),
 	}
 	if caps := pb.GetCapabilities(); caps != nil {
 		out.Capabilities = capabilitiesFromProto(caps)
@@ -155,6 +157,7 @@ func (s *LlmProviderModelService) CreateProviderModel(ctx context.Context, req *
 		Model:        req.GetModel(),
 		ConfigJSON:   req.GetConfigJson(),
 		MetadataJSON: req.GetMetadataJson(),
+		ChannelClass: req.GetChannelClass(),
 	}
 	if caps := req.GetCapabilities(); caps != nil {
 		in.Capabilities = capabilitiesFromProto(caps)

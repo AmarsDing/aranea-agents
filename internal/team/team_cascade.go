@@ -68,5 +68,10 @@ func (r *Runner) cascadeRunOption(ctx context.Context, def Definition, sessID st
 		r.td.RoundTripForSession(sessID),
 		r.lg,
 	)
-	return trpcagent.WithModelSelector(sel)
+	// D6 L-1：密级路由包链首——成员 invocation 命中会话水位线时强制 local，
+	// 优先级高于 cascade 分档；未命中返回 nil 走原 cascade。
+	return trpcagent.WithModelSelector(agent.ChainedModelSelector(
+		agent.ClassificationAwareModelSelector("", "", r.td.ReadDeps.LLM, r.td.RoundTripForSession(sessID), r.lg),
+		sel,
+	))
 }

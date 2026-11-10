@@ -232,6 +232,13 @@ var (
 		Help: "Model router fallbacks to base model by reason.",
 	}, []string{"reason"})
 
+	// ClassificationRouteTotal counts D6 L-1 classification-aware routing
+	// decisions (session ceiling vs local threshold).
+	ClassificationRouteTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "aranea_classification_route_total",
+		Help: "D6 L-1 classification routing decisions by outcome.",
+	}, []string{"outcome"})
+
 	// ChannelDeliveryTotal counts outbound channel delivery attempts by platform and status.
 	ChannelDeliveryTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "aranea_channel_delivery_total",
