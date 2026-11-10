@@ -666,4 +666,18 @@ var ddlMigrationsLate = []ddlMigration{
 	// 变更（PutRiskMatrix 走 audit）。消费点=approval-policy 求值默认档建议
 	// （W3 接线）。幂等 IF NOT EXISTS，双方言一致。
 	{Version: 20261323, Name: "approval_risk_matrix", SQL: "sql/migrations/20261323_approval_risk_matrix.sql"},
+	// 20261325 memory_content_offboard（E 阶段 W2a D3，拍板 N-1/N-2/N-3）：
+	// memory_facts 增 content_enc 信封列（字段级 AES-GCM，CredentialCrypto 密钥，
+	// 召回透明解密）+ secops_offboard_requests 离职处置五步台账。content_enc 对历
+	// 史行为零影响：列默认空串、写路径补信封、读路径按存在性透明解密。
+	{Version: 20261325, Name: "memory_content_offboard", SQL: "sql/migrations/20261325_memory_content_offboard.sql"},
+	// 20261327 secops_classification_mask（E 阶段 W2b D6，拍板 L-1/L-2/L-4）：
+	// 密级体系 + 脱敏五闸数据面，自 workbench schema.sql 语义平移——
+	// classification_labels（L1-L5 种子，L3=强制本地）/ model_policy（单行
+	// local_threshold 默认 3）/ mask_rules / mask_samples（7 条种子）/
+	// mask_proposals（五闸状态机）；sessions + session_runs 增 ceiling 水位线
+	// 列（0=未定级；GREATEST 只升不降由写路径保证，Dialect.Greatest）。
+	// wb 词表列 TEXT[] 收敛为 wordlist_json；布尔统一 INTEGER 0/1。幂等
+	// （IF NOT EXISTS / ON CONFLICT DO NOTHING），双方言一致。
+	{Version: 20261327, Name: "secops_classification_mask", SQL: "sql/migrations/20261327_secops_classification_mask.sql"},
 }
