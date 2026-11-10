@@ -130,6 +130,8 @@ func EnsureKnowledgeSchema(ctx context.Context, db *sql.DB, dim int, lg ...logga
 		`ALTER TABLE knowledge_documents ADD COLUMN IF NOT EXISTS content_text TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE knowledge_documents ADD COLUMN IF NOT EXISTS organized BOOLEAN NOT NULL DEFAULT FALSE`,
 		`ALTER TABLE knowledge_documents ADD COLUMN IF NOT EXISTS asset_uri TEXT NOT NULL DEFAULT ''`,
+		// D6 L-3（20261329 同构）：文档密级列，embedding 闸按此判定通道。
+		`ALTER TABLE knowledge_documents ADD COLUMN IF NOT EXISTS classification INTEGER NOT NULL DEFAULT 0`,
 		fmt.Sprintf(`CREATE TABLE IF NOT EXISTS knowledge_chunks (
 			id            TEXT PRIMARY KEY,
 			doc_id        TEXT NOT NULL REFERENCES knowledge_documents(id) ON DELETE CASCADE,

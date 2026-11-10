@@ -14,6 +14,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/biz/approval"
 	"aranea-agents/internal/data"
+	"aranea-agents/internal/knowledge"
 	"aranea-agents/internal/service"
 	"aranea-agents/pkg/loggateway"
 )
@@ -117,6 +118,11 @@ func provideSecopsClassificationUsecase(labels biz.SecopsClassificationRepo, wat
 //     BeforeModel 脱敏钩子的唯一消费口）。与 L-1 同坐标装配：
 //     d==nil 或规则台账缺失 → 注册 nil 门（钩子不注册，行为同 V2）。
 //     运维急停：环境变量 ARANEA_SECOPS_MASK_GATE=off（钩子不注册）。
+//  3. 装配并注册 D6 L-3 进程级 embedding 密级门
+//    （knowledge.SetDefaultEmbedClassificationGate，embedBatchInternal
+//     漏斗的唯一消费口——memory/knowledge 全部 embedding 流量同受约束）。
+//     d==nil → 注册 nil 门（全放行，行为同闸引入前）。
+//     运维急停：环境变量 ARANEA_SECOPS_EMBED_GATE=off。
 func provideSecopsModelPolicyUsecase(repo biz.SecopsModelPolicyRepo, d *data.Data, lg loggateway.Logger) *biz.SecopsModelPolicyUsecase {
 	uc := biz.NewSecopsModelPolicyUsecase(repo, lg)
 	if d != nil {
@@ -126,6 +132,8 @@ func provideSecopsModelPolicyUsecase(repo biz.SecopsModelPolicyRepo, d *data.Dat
 	// L-2 与 L-1 同坐标装配但互不依赖：脱敏不依赖密级路由（L-1 停用时
 	// 云通道仍必经脱敏闸）。
 	assembleSecopsMaskGate(d, lg)
+	// L-3 与 L-1/L-2 同坐标装配：embedding 闸只依赖模型策略阈值。
+	assembleSecopsEmbedGate(d, uc, lg)
 	if d != nil && repo != nil {
 		waterline := data.NewSecopsSessionWaterlineRepo(d)
 		gate.CeilingFor = func(ctx context.Context, sessionID string) (int, error) {
@@ -159,6 +167,28 @@ func assembleSecopsMaskGate(d *data.Data, lg loggateway.Logger) *biz.SecopsMaskU
 // 急停只摘钩子，不影响 L-1 密级路由与其它 secops 能力。
 func secopsMaskGateDisabled() bool {
 	switch strings.ToLower(strings.TrimSpace(os.Getenv("ARANEA_SECOPS_MASK_GATE"))) {
+	case "off", "false", "0", "disabled":
+		return true
+	}
+	return false
+}
+
+// assembleSecopsEmbedGate 装配 D6 L-3 embedding 密级门并注册进程级默认门
+//（knowledge 漏斗的消费口）。d==nil 或运维急停 → 注册 nil 门（全放行）。
+func assembleSecopsEmbedGate(d *data.Data, policy *biz.SecopsModelPolicyUsecase, lg loggateway.Logger) {
+	if d == nil || secopsEmbedGateDisabled() {
+		knowledge.SetDefaultEmbedClassificationGate(nil)
+		return
+	}
+	gate := biz.NewSecopsEmbeddingGate(policy, lg)
+	gate.SetAuditRecorder(data.NewMonitorAuditRepo(d))
+	knowledge.SetDefaultEmbedClassificationGate(gate)
+}
+
+// secopsEmbedGateDisabled 是 D6 L-3 embedding 密级闸的运维急停开关
+// （ARANEA_SECOPS_EMBED_GATE=off|false|0|disabled → 停用；缺省/其它值启用）。
+func secopsEmbedGateDisabled() bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("ARANEA_SECOPS_EMBED_GATE"))) {
 	case "off", "false", "0", "disabled":
 		return true
 	}

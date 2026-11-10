@@ -36,7 +36,7 @@ func (r *knowledgeRepo) ListEmbedDegradedDocuments(ctx context.Context, collecti
 		         to_char(updated_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
 		         COALESCE(NULLIF(visibility,''),'collection'), COALESCE(owner_user_id,''),
 		         COALESCE(shared_with, '{}'::text[]),
-		         chunk_strategy, chunk_size, chunk_overlap
+		         chunk_strategy, chunk_size, chunk_overlap, classification
 		  FROM knowledge_documents
 		  WHERE collection_id = $1 AND embed_fail_count > 0
 		  ORDER BY embed_last_tried ASC NULLS FIRST
@@ -124,7 +124,7 @@ func (r *knowledgeRepo) ListDocumentsPendingReembed(ctx context.Context, collect
 		         to_char(updated_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
 		         COALESCE(NULLIF(visibility,''),'collection'), COALESCE(owner_user_id,''),
 		         COALESCE(shared_with, '{}'::text[]),
-		         chunk_strategy, chunk_size, chunk_overlap
+		         chunk_strategy, chunk_size, chunk_overlap, classification
 		  FROM knowledge_documents d
 		  WHERE collection_id = $1
 		    AND (content_text <> '' OR status = 'pending')

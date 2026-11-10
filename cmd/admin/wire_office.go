@@ -286,12 +286,13 @@ func (s officeMailKnowledgeSink) IngestAttachment(ctx context.Context, in office
 		contentText = string(content)
 	}
 	doc, err := s.knowledge.CreateDocument(ctx, biz.KnowledgeDocument{
-		CollectionID: colID,
-		Source:       in.Filename,
-		MimeType:     in.ContentType,
-		SizeBytes:    int64(len(in.Content)),
-		ContentText:  contentText,
-		Status:       "pending",
+		CollectionID:   colID,
+		Source:         in.Filename,
+		MimeType:       in.ContentType,
+		SizeBytes:      int64(len(in.Content)),
+		ContentText:    contentText,
+		Status:         "pending",
+		Classification: in.Classification, // D6 L-3 密级随行（落库 + embedding 闸载体）
 	})
 	if err != nil {
 		return "", err

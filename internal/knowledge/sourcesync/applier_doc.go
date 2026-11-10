@@ -164,7 +164,7 @@ func (a *DocApplier) updateDoc(ctx context.Context, conn bizsync.Connector, doc 
 		// 只随成功提交写入——非空⇒此前已计数（含 error 残态重试，彼时 status 信号
 		// 会双倍计数）；空⇒首次成功提交=计 1。
 	}
-	if err := a.indexCommit(ctx, conn, doc.ID, body, docHash, docDelta, doc.ChunkCount); err != nil {
+	if err := a.indexCommit(ctx, conn, doc.ID, body, docHash, docDelta, doc.ChunkCount, doc.Classification); err != nil {
 		return ApplyOutcome{}, err
 	}
 	return ApplyOutcome{DocumentID: doc.ID, OwnLifecycle: own, ContentHash: docHash}, nil
@@ -184,7 +184,7 @@ func (a *DocApplier) createDoc(ctx context.Context, conn bizsync.Connector, snap
 	if err != nil {
 		return ApplyOutcome{}, err
 	}
-	if err := a.indexCommit(ctx, conn, doc.ID, body, docHash, 1, 0); err != nil {
+	if err := a.indexCommit(ctx, conn, doc.ID, body, docHash, 1, 0, doc.Classification); err != nil {
 		// 孤儿补偿（评审修 #D4/W3-F1）：建档后提交失败——无 hash 的 error 残档对
 		// adopt 不可见、W7 反扫无锚，重试每轮重复建档必泄。best-effort 回滚；
 		// 失败仅告警（error 残档不进文档计数，W7 tombstone 保洁面可见）。
@@ -202,13 +202,14 @@ func (a *DocApplier) createDoc(ctx context.Context, conn bizsync.Connector, snap
 // prevChunkCount 镜像 vault 口径（评审修 #D2）：PG UpdateDocumentStatus 无条件
 // 写 chunk_count——CAS 传 0 会在再摄取窗清零旧计数，窗内删除按 0 减账永久漂移；
 // 新建传 0（本身无账）。
-func (a *DocApplier) indexCommit(ctx context.Context, conn bizsync.Connector, docID, body, docHash string, docDelta, prevChunkCount int) error {
+func (a *DocApplier) indexCommit(ctx context.Context, conn bizsync.Connector, docID, body, docHash string, docDelta, prevChunkCount, classification int) error {
 	lg := a.lg.With(loggateway.Str("doc_id", docID), loggateway.Str("connector_id", conn.ID))
 	if err := a.d.UC.UpdateDocumentStatus(ctx, docID, "indexing", "", prevChunkCount); err != nil {
 		return err
 	}
 	chunks, err := knowledge.BuildIndexedChunks(ctx, a.d.Embedder, knowledge.IngestParams{
 		DocID: docID, CollectionID: conn.CollectionID, Text: body, MetadataJSON: "{}",
+		Classification: classification, // D6 L-3：连接器文档重放同受密级闸约束
 	}, nil)
 	if err != nil {
 		a.markError(ctx, docID, prevChunkCount, err)

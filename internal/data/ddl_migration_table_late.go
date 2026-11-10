@@ -690,4 +690,10 @@ var ddlMigrationsLate = []ddlMigration{
 	// 会让云通道路由对常见 PII 硬失败——基线种子保证开箱可用；后续变更走
 	// 五闸流程（V4）。id ASC 顺序保证身份证先于银行卡匹配。幂等 DO NOTHING。
 	{Version: 20261328, Name: "secops_mask_rules_seed", SQL: "sql/migrations/20261328_secops_mask_rules_seed.sql"},
+	// 20261329 knowledge_doc_classification（E 阶段 W2b D6 L-3 embedding 闸）：
+	// knowledge_documents 增 classification 密级列（0=未标，L1-L5 语义随
+	// 20261327 标签体系）。embedding 密级闸（验收 #7）按文档密级判定
+	// cloud/local 通道；首个写入方为 office 附件 sink 透传。幂等 ALTER，
+	// 默认 0 对存量行零影响。
+	{Version: 20261329, Name: "knowledge_doc_classification", SQL: "sql/migrations/20261329_knowledge_doc_classification.sql"},
 }

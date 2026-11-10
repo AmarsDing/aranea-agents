@@ -246,6 +246,13 @@ var (
 		Help: "D6 L-2 mask gate events by kind.",
 	}, []string{"event"})
 
+	// SecopsEmbedGateTotal counts D6 L-3 embedding classification gate
+	// decisions (allow / allow_local / blocked).
+	SecopsEmbedGateTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "aranea_secops_embed_gate_total",
+		Help: "D6 L-3 embedding classification gate decisions by outcome.",
+	}, []string{"outcome"})
+
 	// ChannelDeliveryTotal counts outbound channel delivery attempts by platform and status.
 	ChannelDeliveryTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "aranea_channel_delivery_total",
