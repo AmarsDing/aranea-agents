@@ -81,6 +81,7 @@ func NavigationCatalog() []MenuGroup {
 				{Key: "approvals", Path: "/approvals", Icon: "approval", LabelKey: "menu.approvals", Permission: permApprovalReview},
 				{Key: "schedule", Path: "/schedule", Icon: "event", LabelKey: "menu.schedule", Permission: permOfficeSchedule},
 				{Key: "apps", Path: "/apps", Icon: "apps", LabelKey: "menu.apps", Permission: permOfficeApps},
+				{Key: "ceoCompany", Path: "/ceo/company", Icon: "account_tree", LabelKey: "menu.ceoCompany", Permission: permCeoboardView},
 				{Key: "ceoOverview", Path: "/ceo/overview", Icon: "monitoring", LabelKey: "menu.ceoOverview", Permission: permCeoboardView},
 				{Key: "ceoOncall", Path: "/ceo/oncall", Icon: "engineering", LabelKey: "menu.ceoOncall", Permission: permCeoboardView},
 				{Key: "taskWorkspace", Path: "/task-workspace", Icon: "view_quilt", LabelKey: "menu.taskWorkspace"},
