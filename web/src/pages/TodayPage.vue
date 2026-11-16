@@ -16,7 +16,19 @@
       </div>
     </header>
 
-    <p class="today-live" :role="feedback.error ? 'alert' : 'status'" aria-live="polite">{{ feedback.text }}</p>
+    <TodayCommandBar
+      ref="commandEl"
+      :recipients="recipients.recipients.value"
+      :recipients-status="recipients.status.value"
+      :run="runCommand"
+    />
+
+    <p class="today-live" :role="feedback.error ? 'alert' : 'status'" aria-live="polite">
+      {{ feedback.text }}
+      <router-link v-if="feedback.link" class="today-link" :to="feedback.link">{{
+        t('today.command.openSession')
+      }}</router-link>
+    </p>
 
     <div class="today-grid">
       <TodayInbox
@@ -47,11 +59,14 @@
           :tasks-status="side.tasksStatus.value"
           :task-busy="side.taskBusy.value"
           :last-done="lastDone"
+          :notes="side.notes.value"
           :delegated="side.delegated.value"
           :delegated-status="side.delegatedStatus.value"
           :add="side.addTask"
           @complete="onComplete"
           @undo="onUndo"
+          @dismiss-note="side.dismissNote($event.id)"
+          @accept="onAccept"
         />
       </div>
     </div>
@@ -61,23 +76,27 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
+import TodayCommandBar, { type CommandFailure, type CommandRequest } from '../components/today/TodayCommandBar.vue';
 import TodayInbox from '../components/today/TodayInbox.vue';
 import TodayTasks from '../components/today/TodayTasks.vue';
 import TodayTimeline from '../components/today/TodayTimeline.vue';
 import type { InboxAction, InboxItemRow } from '../features/approval/api';
 import type { OfficeTaskRow } from '../features/office/types';
-import { batchableLowRisk, buildTimeline, clock, inboxHeadline } from '../features/today/logic';
+import { batchableLowRisk, buildTimeline, clock, inboxHeadline, type DelegatedRow } from '../features/today/logic';
+import { delegate, useRecipients } from '../features/today/useDelegation';
 import { useInbox } from '../features/today/useInbox';
 import { useTodaySide } from '../features/today/useTodaySide';
 
 const { t, locale } = useI18n();
 const inbox = useInbox();
 const side = useTodaySide();
+const recipients = useRecipients();
 
 const inboxEl = ref<{ focusList: () => void } | null>(null);
+const commandEl = ref<{ focus: () => void } | null>(null);
 const selectedId = ref('');
 const refreshing = ref(false);
-const feedback = reactive({ text: '', error: false });
+const feedback = reactive({ text: '', error: false, link: '' });
 const lastDone = ref<OfficeTaskRow | null>(null);
 
 // 每分钟推进一次「现在」，驱动问候语、时间线分隔线与逾期判断。
@@ -85,10 +104,22 @@ const nowIso = ref(new Date().toISOString());
 let clockTimer: ReturnType<typeof setInterval> | null = null;
 onMounted(() => {
   clockTimer = setInterval(() => (nowIso.value = new Date().toISOString()), 60_000);
+  void recipients.load();
+  document.addEventListener('keydown', onPageKey);
 });
 onUnmounted(() => {
   if (clockTimer) clearInterval(clockTimer);
+  document.removeEventListener('keydown', onPageKey);
 });
+
+/** 「/」把焦点送进指令栏（正在别处输入、或带修饰键时不抢）。 */
+function onPageKey(event: KeyboardEvent) {
+  if (event.key !== '/' || event.ctrlKey || event.metaKey || event.altKey) return;
+  const target = event.target as HTMLElement | null;
+  if (target?.closest('input, textarea, select, [contenteditable="true"]')) return;
+  event.preventDefault();
+  commandEl.value?.focus();
+}
 const now = computed(() => new Date(nowIso.value));
 
 const dateLabel = computed(() =>
@@ -126,9 +157,37 @@ watch(
   { immediate: true },
 );
 
-function say(text: string, error = false) {
+function say(text: string, error = false, link = '') {
   feedback.text = text;
   feedback.error = error;
+  feedback.link = link;
+}
+
+/** 指令栏的三种指令；失败时把原因交回指令栏（输入保留），成功时在页面播报。 */
+async function runCommand(request: CommandRequest): Promise<CommandFailure | null> {
+  if (request.intent === 'delegate') {
+    const outcome = await delegate(request.recipient, request.text);
+    if (!outcome.ok) return { message: outcome.message, link: outcome.link };
+    if (outcome.task) side.trackDelegation(outcome.task);
+    say(
+      t(outcome.task ? 'today.command.done.delegate' : 'today.command.done.delegateUntracked', {
+        name: request.recipient.name,
+      }),
+      !outcome.task,
+      outcome.link,
+    );
+    return null;
+  }
+  const error = request.intent === 'note' ? await side.addNote(request.text) : await side.addTask(request.text);
+  if (error) return { message: error };
+  say(t(`today.command.done.${request.intent}`, { title: request.text }));
+  return null;
+}
+
+async function onAccept(row: DelegatedRow) {
+  const error = await side.acceptDelegated(row.officeTaskId);
+  if (error) say(t('today.tasks.saveFailed', { message: error }), true);
+  else say(t(row.state === 'review' ? 'today.delegated.accepted' : 'today.delegated.dropped', { title: row.title }));
 }
 
 async function onDecide(row: InboxItemRow, action: InboxAction, note: string) {

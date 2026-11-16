@@ -200,16 +200,22 @@ message OfficeTask {
   string id = 1;
   string title = 2;
   string body = 3;
-  string source = 4; // manual | mail
-  string source_ref = 5; // 邮件转任务：邮件 id
+  string source = 4; // manual | mail | delegate | note
+  string source_ref = 5; // 邮件转任务：邮件 id；交办：承载会话 id
   string status = 6; // open | done
   google.protobuf.Timestamp created_at = 7;
   google.protobuf.Timestamp updated_at = 8;
+  // 负责人：assignee_kind 为空 = 本人；agent / team = 交办对象。
+  string assignee_kind = 9;
+  string assignee_id = 10;
+  string assignee_name = 11; // 交办当时的显示名
 }
 
 message ListOfficeTasksRequest {
   string status = 1; // 空 = open
   int32 limit = 2; // 缺省 50，上限 200
+  // 空 = 我的任务（manual + mail）；delegate = 交办中；note = 随手记录
+  string source = 3;
 }
 
 message ListOfficeTasksResponse {
@@ -219,6 +225,13 @@ message ListOfficeTasksResponse {
 message CreateOfficeTaskRequest {
   string title = 1 [(google.api.field_behavior) = REQUIRED];
   string body = 2;
+  // 空 = manual；delegate 须带 source_ref（会话 id）与 assignee_*；note = 随手记录。
+  // mail 只能由邮件转任务产生，此处拒绝。
+  string source = 3;
+  string source_ref = 4;
+  string assignee_kind = 5; // agent | team
+  string assignee_id = 6;
+  string assignee_name = 7;
 }
 
 message SetOfficeTaskStatusRequest {

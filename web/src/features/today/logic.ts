@@ -153,6 +153,12 @@ export type DelegatedRow = {
   state: DelegatedState;
   /** 状态对应的时间：卡住/待验收取完成时间，进行中取最近活跃时间 */
   at: string;
+  /** 点开后去哪里看进度：编程任务去任务看板，指令栏交办去承载会话 */
+  to: string;
+  /** 指令栏交办登记的任务 id（可在工作台直接验收）；编程任务为空串 */
+  officeTaskId: string;
+  /** 当前进展的一句话（有则显示） */
+  detail: string;
 };
 
 /** 交办任务的最小字段（与 agentbridge CodingTask 同名，便于直接传入）。 */
@@ -209,7 +215,77 @@ export function classifyDelegated(tasks: readonly DelegatedTaskInput[], now: Dat
       agentKey: task.agentKey ?? '',
       state,
       at,
+      to: `/coding-tasks?focus=${encodeURIComponent(id)}`,
+      officeTaskId: '',
+      detail: '',
     });
   }
-  return out.sort((a, b) => STATE_ORDER[a.state] - STATE_ORDER[b.state] || (parseMs(b.at) || 0) - (parseMs(a.at) || 0));
+  return sortDelegated(out);
+}
+
+/** 卡住的最前，其次待验收，再进行中；同态按时间新到旧。 */
+export function sortDelegated(rows: DelegatedRow[]): DelegatedRow[] {
+  return [...rows].sort(
+    (a, b) => STATE_ORDER[a.state] - STATE_ORDER[b.state] || (parseMs(b.at) || 0) - (parseMs(a.at) || 0),
+  );
+}
+
+/** 指令栏交办登记的任务（office_tasks，source = delegate）的最小字段。 */
+export type OfficeDelegatedInput = {
+  id: string;
+  title: string;
+  /** 承载这次交办的会话 id */
+  source_ref: string;
+  assignee_kind: string;
+  assignee_id: string;
+  assignee_name: string;
+  created_at: string;
+};
+
+/** 会话任务态势的最小字段（与 /v2/task-situations 同名）。 */
+export type SituationInput = {
+  session_id: string;
+  status: string;
+  updated_at?: string;
+  current_step_summary?: string;
+};
+
+// 等人介入、失败、被取消都需要我回去看一眼，归到「卡住了」。
+const SITUATION_STUCK = new Set(['waiting', 'failed', 'cancelled']);
+
+/**
+ * 指令栏交办的任务按承载会话的最新任务态势归成三态；查不到态势（刚发出、
+ * 或态势读取失败）时按进行中处理。验收由用户在工作台勾掉，不看时间窗口。
+ */
+export function classifyOfficeDelegated(
+  tasks: readonly OfficeDelegatedInput[],
+  situations: readonly SituationInput[],
+): DelegatedRow[] {
+  const latest = new Map<string, SituationInput>();
+  for (const row of situations) {
+    const seen = latest.get(row.session_id);
+    if (!seen || (parseMs(row.updated_at) || 0) > (parseMs(seen.updated_at) || 0)) latest.set(row.session_id, row);
+  }
+  const out: DelegatedRow[] = [];
+  for (const task of tasks) {
+    if (!task.id) continue;
+    const situation = latest.get(task.source_ref);
+    let state: DelegatedState = 'running';
+    if (situation && SITUATION_STUCK.has(situation.status)) state = 'stuck';
+    else if (situation?.status === 'completed') state = 'review';
+    const owner = task.assignee_kind === 'team' ? 'team' : 'agent';
+    out.push({
+      id: `office:${task.id}`,
+      title: firstLine(task.title) || task.id,
+      agentKey: task.assignee_name || task.assignee_id,
+      state,
+      at: situation?.updated_at || task.created_at,
+      to: task.source_ref
+        ? `/chat?session=${encodeURIComponent(task.source_ref)}&${owner}=${encodeURIComponent(task.assignee_id)}`
+        : '/chat',
+      officeTaskId: task.id,
+      detail: state === 'review' ? '' : firstLine(situation?.current_step_summary),
+    });
+  }
+  return sortDelegated(out);
 }

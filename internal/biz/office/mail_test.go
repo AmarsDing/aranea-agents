@@ -390,12 +390,16 @@ func (f *mailFakeRepos) GetOfficeTask(_ context.Context, id, userID string) (*Of
 	return &c, nil
 }
 
-func (f *mailFakeRepos) ListOfficeTasks(_ context.Context, userID, status string, limit int) ([]*OfficeTask, error) {
+func (f *mailFakeRepos) ListOfficeTasks(_ context.Context, userID, status string, sources []string, limit int) ([]*OfficeTask, error) {
+	wanted := make(map[string]bool, len(sources))
+	for _, s := range sources {
+		wanted[s] = true
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	out := make([]*OfficeTask, 0)
 	for _, t := range f.tasks {
-		if t.UserID == userID && t.Status == status {
+		if t.UserID == userID && t.Status == status && wanted[t.Source] {
 			c := *t
 			out = append(out, &c)
 		}

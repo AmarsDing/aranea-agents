@@ -9,23 +9,71 @@ import (
 	"github.com/google/uuid"
 )
 
-// 个人任务读写（工作台「我的任务」）。任务与邮件转任务同表同仓储，
-// 属主隔离在 SQL 内完成（id + user_id）。
+// 个人任务读写（工作台「我的任务」「交办中」与随手记录）。任务与邮件转
+// 任务同表同仓储，属主隔离在 SQL 内完成（id + user_id）。
+//
+// 来源（source）决定一行任务出现在哪里：
+//
+//	manual / mail  我的任务（负责人是本人）
+//	delegate       交办中（负责人是 Agent 或团队，source_ref = 承载会话 id）
+//	note           随手记录
 
 const (
 	OfficeTaskOpen = "open"
 	OfficeTaskDone = "done"
 
+	OfficeTaskSourceManual   = "manual"
+	OfficeTaskSourceMail     = "mail"
+	OfficeTaskSourceDelegate = "delegate"
+	OfficeTaskSourceNote     = "note"
+
+	OfficeAssigneeAgent = "agent"
+	OfficeAssigneeTeam  = "team"
+
 	officeTaskTitleMax     = 200
+	officeTaskBodyMax      = 8000
+	officeTaskNameMax      = 80
 	officeTaskDefaultLimit = 50
 	officeTaskMaxLimit     = 200
 )
 
 var (
-	ErrOfficeTaskNotFound      = apierror.NotFound(DomainOffice, "task not found")
-	ErrOfficeTaskTitleRequired = apierror.BadRequest(DomainOffice, "task title is required")
-	ErrOfficeTaskStatusInvalid = apierror.BadRequest(DomainOffice, "task status must be open or done")
+	ErrOfficeTaskNotFound       = apierror.NotFound(DomainOffice, "task not found")
+	ErrOfficeTaskTitleRequired  = apierror.BadRequest(DomainOffice, "task title is required")
+	ErrOfficeTaskStatusInvalid  = apierror.BadRequest(DomainOffice, "task status must be open or done")
+	ErrOfficeTaskSourceInvalid  = apierror.BadRequest(DomainOffice, "task source must be manual, delegate or note")
+	ErrOfficeTaskAssigneeNeeded = apierror.BadRequest(DomainOffice, "delegated task needs an agent or team assignee and its session")
 )
+
+// NewOfficeTaskInput 新建任务的入参。Source 为空按 manual。
+type NewOfficeTaskInput struct {
+	Title        string
+	Body         string
+	Source       string
+	SourceRef    string
+	AssigneeKind string
+	AssigneeID   string
+	AssigneeName string
+}
+
+func clipRunes(s string, max int) string {
+	if r := []rune(s); len(r) > max {
+		return string(r[:max])
+	}
+	return s
+}
+
+// officeTaskListSources 把列表请求的来源翻成 SQL 过滤集：空 = 我的任务。
+func officeTaskListSources(source string) ([]string, error) {
+	switch s := strings.ToLower(strings.TrimSpace(source)); s {
+	case "":
+		return []string{OfficeTaskSourceManual, OfficeTaskSourceMail}, nil
+	case OfficeTaskSourceManual, OfficeTaskSourceMail, OfficeTaskSourceDelegate, OfficeTaskSourceNote:
+		return []string{s}, nil
+	default:
+		return nil, ErrOfficeTaskSourceInvalid
+	}
+}
 
 func normalizeOfficeTaskStatus(status string) (string, error) {
 	switch s := strings.ToLower(strings.TrimSpace(status)); s {
@@ -36,8 +84,13 @@ func normalizeOfficeTaskStatus(status string) (string, error) {
 	}
 }
 
-// ListTasks 返回本人任务；status 为空按 open。
-func (u *MailMessageUsecase) ListTasks(ctx context.Context, userID, status string, limit int) ([]*OfficeTask, error) {
+// ListTasks 返回本人任务；status 为空按 open，source 为空按「我的任务」
+// （manual + mail），delegate / note 需显式指定。
+func (u *MailMessageUsecase) ListTasks(ctx context.Context, userID, status, source string, limit int) ([]*OfficeTask, error) {
+	sources, err := officeTaskListSources(source)
+	if err != nil {
+		return nil, err
+	}
 	if strings.TrimSpace(status) == "" {
 		status = OfficeTaskOpen
 	}
@@ -51,17 +104,19 @@ func (u *MailMessageUsecase) ListTasks(ctx context.Context, userID, status strin
 	if limit > officeTaskMaxLimit {
 		limit = officeTaskMaxLimit
 	}
-	return u.tasks.ListOfficeTasks(ctx, userID, st, limit)
+	return u.tasks.ListOfficeTasks(ctx, userID, st, sources, limit)
 }
 
-// CreateTask 手工新建一条本人任务。
-func (u *MailMessageUsecase) CreateTask(ctx context.Context, userID, workspaceID, title, body string) (*OfficeTask, error) {
-	title = strings.TrimSpace(title)
+// CreateTask 新建一条本人名下的任务：手工任务、交办登记或随手记录。
+// mail 来源只能由邮件转任务路径产生，这里不接受。
+func (u *MailMessageUsecase) CreateTask(ctx context.Context, userID, workspaceID string, in NewOfficeTaskInput) (*OfficeTask, error) {
+	title := clipRunes(strings.TrimSpace(in.Title), officeTaskTitleMax)
 	if title == "" {
 		return nil, ErrOfficeTaskTitleRequired
 	}
-	if r := []rune(title); len(r) > officeTaskTitleMax {
-		title = string(r[:officeTaskTitleMax])
+	source := strings.ToLower(strings.TrimSpace(in.Source))
+	if source == "" {
+		source = OfficeTaskSourceManual
 	}
 	now := u.now()
 	task := &OfficeTask{
@@ -69,11 +124,26 @@ func (u *MailMessageUsecase) CreateTask(ctx context.Context, userID, workspaceID
 		WorkspaceID: workspaceID,
 		UserID:      userID,
 		Title:       title,
-		Body:        strings.TrimSpace(body),
-		Source:      "manual",
+		Body:        clipRunes(strings.TrimSpace(in.Body), officeTaskBodyMax),
+		Source:      source,
 		Status:      OfficeTaskOpen,
 		CreatedAt:   now,
 		UpdatedAt:   now,
+	}
+	switch source {
+	case OfficeTaskSourceManual, OfficeTaskSourceNote:
+		// 负责人是本人，不记来源引用与交办对象。
+	case OfficeTaskSourceDelegate:
+		kind := strings.ToLower(strings.TrimSpace(in.AssigneeKind))
+		task.SourceRef = strings.TrimSpace(in.SourceRef)
+		task.AssigneeID = strings.TrimSpace(in.AssigneeID)
+		if (kind != OfficeAssigneeAgent && kind != OfficeAssigneeTeam) || task.AssigneeID == "" || task.SourceRef == "" {
+			return nil, ErrOfficeTaskAssigneeNeeded
+		}
+		task.AssigneeKind = kind
+		task.AssigneeName = clipRunes(strings.TrimSpace(in.AssigneeName), officeTaskNameMax)
+	default:
+		return nil, ErrOfficeTaskSourceInvalid
 	}
 	if err := u.tasks.CreateOfficeTask(ctx, task); err != nil {
 		return nil, err

@@ -79,6 +79,9 @@ CREATE TABLE IF NOT EXISTS office_tasks (
   "source"       TEXT NOT NULL DEFAULT 'manual',
   "source_ref"   TEXT NOT NULL DEFAULT '',
   "status"       TEXT NOT NULL DEFAULT 'open',
+  "assignee_kind" TEXT NOT NULL DEFAULT '',
+  "assignee_id"   TEXT NOT NULL DEFAULT '',
+  "assignee_name" TEXT NOT NULL DEFAULT '',
   "created_at"   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   "updated_at"   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

@@ -457,3 +457,83 @@
   font-variant-numeric: tabular-nums
   line-height: 1.5
   text-align: center
+
+// ——— 指令栏（交办 / 建任务 / 记录） ———
+.today-command
+  display: flex
+  flex-direction: column
+  gap: var(--nt-space-2)
+
+.today-command__row
+  display: grid
+  grid-template-columns: minmax(0, 1fr) auto
+  gap: var(--nt-space-2)
+  align-items: start
+
+.today-command__key
+  padding: 0 var(--nt-space-2)
+  border: 1px solid var(--nt-border-2)
+  border-radius: var(--nt-radius-s)
+  color: var(--nt-text-3)
+  font-size: var(--nt-fs-caption)
+  line-height: 1.6
+
+.today-command__preview
+  display: flex
+  align-items: center
+  gap: var(--nt-space-3)
+  flex-wrap: wrap
+
+.today-command__intent
+  flex: none
+
+.today-command__to
+  flex: none
+  width: 220px
+  max-width: 100%
+
+.today-command__hint
+  flex: 1
+  min-width: 200px
+  margin: 0
+  color: var(--nt-text-3)
+  font-size: var(--nt-fs-caption)
+
+.today-command__hint--confirm
+  color: var(--nt-text-1)
+
+// ——— 最近记录 / 交办验收 ———
+.today-notes
+  margin-top: var(--nt-space-2)
+
+.today-notes__summary
+  min-height: 36px
+  border-radius: var(--nt-radius-s)
+  color: var(--nt-text-3)
+  font-size: var(--nt-fs-caption)
+  line-height: 36px
+  cursor: pointer
+
+  &:focus-visible
+    outline: 2px solid var(--nt-accent)
+    outline-offset: 4px
+
+.today-delegated__item
+  display: flex
+  align-items: center
+  gap: var(--nt-space-2)
+
+  .today-delegated__row
+    flex: 1
+    min-width: 0
+
+@media (max-width: 559px)
+  .today-command__row
+    grid-template-columns: minmax(0, 1fr)
+
+  .today-command__to
+    width: 100%
+
+  .today-notes__summary
+    min-height: 44px
+    line-height: 44px

@@ -702,4 +702,9 @@ var ddlMigrationsLate = []ddlMigration{
 	// 生命周期一对象一行）、github_trending_reports（热榜结构化分析回链
 	// 知识库 L1）。幂等 IF NOT EXISTS。
 	{Version: 20261330, Name: "github_panel", SQL: "sql/migrations/20261330_github_panel.sql"},
+	// 20261331 office_task_assignee（工作台重新设计第 3 步）：office_tasks 增
+	// assignee_kind/assignee_id/assignee_name 三列，任务可指派给 Agent 或团队
+	//（source='delegate'，source_ref=承载会话 id）；随手记录 source='note'。
+	// 存量行默认空串零影响。幂等 IF NOT EXISTS。
+	{Version: 20261331, Name: "office_task_assignee", SQL: "sql/migrations/20261331_office_task_assignee.sql"},
 }

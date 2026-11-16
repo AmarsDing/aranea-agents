@@ -565,9 +565,10 @@ func (r *OfficeMailRepo) SetMailAttachmentKnowledgeDoc(ctx context.Context, id, 
 
 func (r *OfficeMailRepo) insertOfficeTaskOn(ctx context.Context, db execer, t *office.OfficeTask) error {
 	_, err := db.ExecContext(ctx, r.data.Dialect().RenumberPlaceholders(
-		`INSERT INTO office_tasks (id, workspace_id, user_id, title, body, source, source_ref, status, created_at, updated_at)
-		 VALUES (?,?,?,?,?,?,?,?,?,?)`),
-		t.ID, t.WorkspaceID, t.UserID, t.Title, t.Body, t.Source, t.SourceRef, t.Status, t.CreatedAt, t.UpdatedAt)
+		`INSERT INTO office_tasks (`+officeTaskColumns+`)
+		 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`),
+		t.ID, t.WorkspaceID, t.UserID, t.Title, t.Body, t.Source, t.SourceRef, t.Status,
+		t.AssigneeKind, t.AssigneeID, t.AssigneeName, t.CreatedAt, t.UpdatedAt)
 	return err
 }
 
@@ -585,7 +586,7 @@ func (r *OfficeMailRepo) GetOfficeTask(ctx context.Context, id, userID string) (
 		return nil, err
 	}
 	rows, err := db.QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(
-		`SELECT id, workspace_id, user_id, title, body, source, source_ref, status, created_at, updated_at
+		`SELECT `+officeTaskColumns+`
 		 FROM office_tasks WHERE id=? AND user_id=?`), id, userID)
 	if err != nil {
 		return nil, err
@@ -598,7 +599,7 @@ func (r *OfficeMailRepo) GetOfficeTask(ctx context.Context, id, userID string) (
 		return nil, office.ErrMailMessageNotFound // 任务 404 同族语义（F1 不另开哨兵）
 	}
 	var t office.OfficeTask
-	if err := rows.Scan(&t.ID, &t.WorkspaceID, &t.UserID, &t.Title, &t.Body, &t.Source, &t.SourceRef, &t.Status, &t.CreatedAt, &t.UpdatedAt); err != nil {
+	if err := scanOfficeTask(rows, &t); err != nil {
 		return nil, err
 	}
 	return &t, nil

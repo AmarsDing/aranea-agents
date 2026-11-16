@@ -5,6 +5,7 @@ import {
   batchableLowRisk,
   buildTimeline,
   classifyDelegated,
+  classifyOfficeDelegated,
   clock,
   DELEGATED_WINDOW_MS,
   inboxHeadline,
@@ -188,5 +189,57 @@ describe('classifyDelegated', () => {
     expect(long?.title).toBe(`${'长'.repeat(60)}…`);
     const [bare] = classifyDelegated([{ id: 'c', status: 'running', projectName: 'proj' }], NOW);
     expect(bare?.title).toBe('proj');
+  });
+});
+
+describe('classifyOfficeDelegated', () => {
+  const task = (id: string, session: string, kind = 'agent') => ({
+    id,
+    title: `任务 ${id}`,
+    source_ref: session,
+    assignee_kind: kind,
+    assignee_id: `${kind}-1`,
+    assignee_name: '内容组',
+    created_at: '2026-11-16T01:00:00Z',
+  });
+
+  it('maps the latest situation of the carrying session to a state', () => {
+    const rows = classifyOfficeDelegated(
+      [task('run', 's-run'), task('done', 's-done'), task('wait', 's-wait'), task('fresh', 's-none')],
+      [
+        {
+          session_id: 's-run',
+          status: 'running',
+          updated_at: '2026-11-16T02:00:00Z',
+          current_step_summary: '检索资料',
+        },
+        { session_id: 's-done', status: 'failed', updated_at: '2026-11-16T02:00:00Z' },
+        { session_id: 's-done', status: 'completed', updated_at: '2026-11-16T03:00:00Z' },
+        {
+          session_id: 's-wait',
+          status: 'waiting',
+          updated_at: '2026-11-16T02:30:00Z',
+          current_step_summary: '等待确认',
+        },
+      ],
+    );
+    expect(rows.map((r) => `${r.officeTaskId}:${r.state}`)).toEqual([
+      'wait:stuck',
+      'done:review',
+      'run:running',
+      'fresh:running',
+    ]);
+    expect(rows.find((r) => r.officeTaskId === 'run')?.detail).toBe('检索资料');
+    expect(rows.find((r) => r.officeTaskId === 'done')?.detail).toBe('');
+    expect(rows.find((r) => r.officeTaskId === 'fresh')?.at).toBe('2026-11-16T01:00:00Z');
+  });
+
+  it('links each row to its session and keeps ids distinct from coding tasks', () => {
+    const [agent] = classifyOfficeDelegated([task('a', 's 1')], []);
+    expect(agent).toMatchObject({ id: 'office:a', agentKey: '内容组', to: '/chat?session=s%201&agent=agent-1' });
+    const [team] = classifyOfficeDelegated([task('b', 's2', 'team')], []);
+    expect(team?.to).toBe('/chat?session=s2&team=team-1');
+    const [coding] = classifyDelegated([{ id: 'a', status: 'running', prompt: 'x' }], NOW);
+    expect(coding).toMatchObject({ id: 'a', officeTaskId: '', to: '/coding-tasks?focus=a' });
   });
 });

@@ -47,6 +47,18 @@
       <button type="button" class="today-link" @click="emit('undo', lastDone)">{{ t('today.tasks.undo') }}</button>
     </p>
 
+    <details v-if="notes.length > 0" class="today-notes">
+      <summary class="today-notes__summary">{{ t('today.notes.title', { n: notes.length }) }}</summary>
+      <ul class="today-tasks__list">
+        <li v-for="note in notes" :key="note.id" class="today-tasks__row">
+          <span class="today-tasks__title">{{ note.title }}</span>
+          <button type="button" class="today-link" @click="emit('dismissNote', note)">
+            {{ t('today.notes.dismiss') }}
+          </button>
+        </li>
+      </ul>
+    </details>
+
     <header class="today-panel__head today-panel__head--sub">
       <h2 class="today-panel__title">
         {{ t('today.delegated.title') }}
@@ -61,14 +73,28 @@
       {{ t('today.delegated.empty') }}
     </p>
     <ul v-else class="today-tasks__list">
-      <li v-for="row in visibleDelegated" :key="row.id">
-        <router-link class="today-delegated__row" to="/coding-tasks">
+      <li v-for="row in visibleDelegated" :key="row.id" class="today-delegated__item">
+        <router-link class="today-delegated__row" :to="row.to" :title="row.detail || undefined">
           <span class="today-delegated__title">{{ row.title }}</span>
-          <span v-if="row.agentKey" class="today-mono today-delegated__agent">{{ row.agentKey }}</span>
+          <span v-if="row.agentKey" class="today-delegated__agent">{{ row.agentKey }}</span>
           <span class="today-state" :class="`today-state--${row.state}`">
             {{ t(`today.delegated.state.${row.state}`) }}
           </span>
         </router-link>
+        <button
+          v-if="row.officeTaskId && row.state !== 'running'"
+          type="button"
+          class="today-link"
+          :disabled="taskBusy.has(row.officeTaskId)"
+          :aria-label="
+            t(row.state === 'review' ? 'today.delegated.acceptLabel' : 'today.delegated.dropLabel', {
+              title: row.title,
+            })
+          "
+          @click="emit('accept', row)"
+        >
+          {{ t(row.state === 'review' ? 'today.delegated.accept' : 'today.delegated.drop') }}
+        </button>
       </li>
     </ul>
   </section>
@@ -89,6 +115,8 @@ const props = defineProps<{
   taskBusy: Set<string>;
   /** 最近一次勾选完成的任务（提供撤销）；没有时为 null */
   lastDone: OfficeTaskRow | null;
+  /** 最近几条随手记录 */
+  notes: OfficeTaskRow[];
   delegated: DelegatedRow[];
   delegatedStatus: BlockStatus;
   /** 新建任务：返回错误文案，成功返回空串 */
@@ -98,6 +126,9 @@ const props = defineProps<{
 const emit = defineEmits<{
   complete: [task: OfficeTaskRow];
   undo: [task: OfficeTaskRow];
+  dismissNote: [note: OfficeTaskRow];
+  /** 结掉一条指令栏交办的任务：待验收的是验收通过，卡住的是不再跟进 */
+  accept: [row: DelegatedRow];
 }>();
 
 const { t } = useI18n();

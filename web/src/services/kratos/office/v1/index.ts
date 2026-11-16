@@ -328,11 +328,17 @@ export type OfficeTask = {
   status: string | undefined;
   createdAt: wellKnownTimestamp | undefined;
   updatedAt: wellKnownTimestamp | undefined;
+  // 负责人：assignee_kind 为空 = 本人；agent / team = 交办对象。
+  assigneeKind: string | undefined;
+  assigneeId: string | undefined;
+  assigneeName: string | undefined;
 };
 
 export type ListOfficeTasksRequest = {
   status: string | undefined;
   limit: number | undefined;
+  // 空 = 我的任务（manual + mail）；delegate = 交办中；note = 随手记录
+  source: string | undefined;
 };
 
 export type ListOfficeTasksResponse = {
@@ -344,6 +350,13 @@ export type CreateOfficeTaskRequest = {
   // Behaviors: REQUIRED
   title: string | undefined;
   body: string | undefined;
+  // 空 = manual；delegate 须带 source_ref（会话 id）与 assignee_*；note = 随手记录。
+  // mail 只能由邮件转任务产生，此处拒绝。
+  source: string | undefined;
+  sourceRef: string | undefined;
+  assigneeKind: string | undefined;
+  assigneeId: string | undefined;
+  assigneeName: string | undefined;
 };
 
 export type SetOfficeTaskStatusRequest = {
@@ -717,6 +730,9 @@ export function createOfficeMailServiceClient(
       }
       if (request.limit) {
         queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`)
+      }
+      if (request.source) {
+        queryParams.push(`source=${encodeURIComponent(request.source.toString())}`)
       }
       let uri = path;
       if (queryParams.length > 0) {

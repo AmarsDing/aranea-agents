@@ -1606,15 +1606,19 @@ func (x *SendMailResponse) GetSendId() string {
 
 // OfficeTask 个人任务（负责人是调用者本人；邮件转任务与手工新建同表）。
 type OfficeTask struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	Title         string                 `protobuf:"bytes,2,opt,name=title,proto3" json:"title,omitempty"`
-	Body          string                 `protobuf:"bytes,3,opt,name=body,proto3" json:"body,omitempty"`
-	Source        string                 `protobuf:"bytes,4,opt,name=source,proto3" json:"source,omitempty"`                        // manual | mail
-	SourceRef     string                 `protobuf:"bytes,5,opt,name=source_ref,json=sourceRef,proto3" json:"source_ref,omitempty"` // 邮件转任务：邮件 id
-	Status        string                 `protobuf:"bytes,6,opt,name=status,proto3" json:"status,omitempty"`                        // open | done
-	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
-	UpdatedAt     *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	Id        string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Title     string                 `protobuf:"bytes,2,opt,name=title,proto3" json:"title,omitempty"`
+	Body      string                 `protobuf:"bytes,3,opt,name=body,proto3" json:"body,omitempty"`
+	Source    string                 `protobuf:"bytes,4,opt,name=source,proto3" json:"source,omitempty"`                        // manual | mail | delegate | note
+	SourceRef string                 `protobuf:"bytes,5,opt,name=source_ref,json=sourceRef,proto3" json:"source_ref,omitempty"` // 邮件转任务：邮件 id；交办：承载会话 id
+	Status    string                 `protobuf:"bytes,6,opt,name=status,proto3" json:"status,omitempty"`                        // open | done
+	CreatedAt *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	UpdatedAt *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	// 负责人：assignee_kind 为空 = 本人；agent / team = 交办对象。
+	AssigneeKind  string `protobuf:"bytes,9,opt,name=assignee_kind,json=assigneeKind,proto3" json:"assignee_kind,omitempty"`
+	AssigneeId    string `protobuf:"bytes,10,opt,name=assignee_id,json=assigneeId,proto3" json:"assignee_id,omitempty"`
+	AssigneeName  string `protobuf:"bytes,11,opt,name=assignee_name,json=assigneeName,proto3" json:"assignee_name,omitempty"` // 交办当时的显示名
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1705,10 +1709,33 @@ func (x *OfficeTask) GetUpdatedAt() *timestamppb.Timestamp {
 	return nil
 }
 
+func (x *OfficeTask) GetAssigneeKind() string {
+	if x != nil {
+		return x.AssigneeKind
+	}
+	return ""
+}
+
+func (x *OfficeTask) GetAssigneeId() string {
+	if x != nil {
+		return x.AssigneeId
+	}
+	return ""
+}
+
+func (x *OfficeTask) GetAssigneeName() string {
+	if x != nil {
+		return x.AssigneeName
+	}
+	return ""
+}
+
 type ListOfficeTasksRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Status        string                 `protobuf:"bytes,1,opt,name=status,proto3" json:"status,omitempty"` // 空 = open
-	Limit         int32                  `protobuf:"varint,2,opt,name=limit,proto3" json:"limit,omitempty"`  // 缺省 50，上限 200
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	Status string                 `protobuf:"bytes,1,opt,name=status,proto3" json:"status,omitempty"` // 空 = open
+	Limit  int32                  `protobuf:"varint,2,opt,name=limit,proto3" json:"limit,omitempty"`  // 缺省 50，上限 200
+	// 空 = 我的任务（manual + mail）；delegate = 交办中；note = 随手记录
+	Source        string `protobuf:"bytes,3,opt,name=source,proto3" json:"source,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1757,6 +1784,13 @@ func (x *ListOfficeTasksRequest) GetLimit() int32 {
 	return 0
 }
 
+func (x *ListOfficeTasksRequest) GetSource() string {
+	if x != nil {
+		return x.Source
+	}
+	return ""
+}
+
 type ListOfficeTasksResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Items         []*OfficeTask          `protobuf:"bytes,1,rep,name=items,proto3" json:"items,omitempty"`
@@ -1802,9 +1836,16 @@ func (x *ListOfficeTasksResponse) GetItems() []*OfficeTask {
 }
 
 type CreateOfficeTaskRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Title         string                 `protobuf:"bytes,1,opt,name=title,proto3" json:"title,omitempty"`
-	Body          string                 `protobuf:"bytes,2,opt,name=body,proto3" json:"body,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Title string                 `protobuf:"bytes,1,opt,name=title,proto3" json:"title,omitempty"`
+	Body  string                 `protobuf:"bytes,2,opt,name=body,proto3" json:"body,omitempty"`
+	// 空 = manual；delegate 须带 source_ref（会话 id）与 assignee_*；note = 随手记录。
+	// mail 只能由邮件转任务产生，此处拒绝。
+	Source        string `protobuf:"bytes,3,opt,name=source,proto3" json:"source,omitempty"`
+	SourceRef     string `protobuf:"bytes,4,opt,name=source_ref,json=sourceRef,proto3" json:"source_ref,omitempty"`
+	AssigneeKind  string `protobuf:"bytes,5,opt,name=assignee_kind,json=assigneeKind,proto3" json:"assignee_kind,omitempty"` // agent | team
+	AssigneeId    string `protobuf:"bytes,6,opt,name=assignee_id,json=assigneeId,proto3" json:"assignee_id,omitempty"`
+	AssigneeName  string `protobuf:"bytes,7,opt,name=assignee_name,json=assigneeName,proto3" json:"assignee_name,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1849,6 +1890,41 @@ func (x *CreateOfficeTaskRequest) GetTitle() string {
 func (x *CreateOfficeTaskRequest) GetBody() string {
 	if x != nil {
 		return x.Body
+	}
+	return ""
+}
+
+func (x *CreateOfficeTaskRequest) GetSource() string {
+	if x != nil {
+		return x.Source
+	}
+	return ""
+}
+
+func (x *CreateOfficeTaskRequest) GetSourceRef() string {
+	if x != nil {
+		return x.SourceRef
+	}
+	return ""
+}
+
+func (x *CreateOfficeTaskRequest) GetAssigneeKind() string {
+	if x != nil {
+		return x.AssigneeKind
+	}
+	return ""
+}
+
+func (x *CreateOfficeTaskRequest) GetAssigneeId() string {
+	if x != nil {
+		return x.AssigneeId
+	}
+	return ""
+}
+
+func (x *CreateOfficeTaskRequest) GetAssigneeName() string {
+	if x != nil {
+		return x.AssigneeName
 	}
 	return ""
 }
@@ -2115,7 +2191,7 @@ const file_kratos_office_v1_mail_proto_rawDesc = "" +
 	"\x04body\x18\x04 \x01(\tR\x04body\x12\x1e\n" +
 	"\vin_reply_to\x18\x05 \x01(\tR\tinReplyTo\"+\n" +
 	"\x10SendMailResponse\x12\x17\n" +
-	"\asend_id\x18\x01 \x01(\tR\x06sendId\"\x8b\x02\n" +
+	"\asend_id\x18\x01 \x01(\tR\x06sendId\"\xf6\x02\n" +
 	"\n" +
 	"OfficeTask\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x14\n" +
@@ -2128,15 +2204,28 @@ const file_kratos_office_v1_mail_proto_rawDesc = "" +
 	"\n" +
 	"created_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
 	"\n" +
-	"updated_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"F\n" +
+	"updated_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x12#\n" +
+	"\rassignee_kind\x18\t \x01(\tR\fassigneeKind\x12\x1f\n" +
+	"\vassignee_id\x18\n" +
+	" \x01(\tR\n" +
+	"assigneeId\x12#\n" +
+	"\rassignee_name\x18\v \x01(\tR\fassigneeName\"^\n" +
 	"\x16ListOfficeTasksRequest\x12\x16\n" +
 	"\x06status\x18\x01 \x01(\tR\x06status\x12\x14\n" +
-	"\x05limit\x18\x02 \x01(\x05R\x05limit\"M\n" +
+	"\x05limit\x18\x02 \x01(\x05R\x05limit\x12\x16\n" +
+	"\x06source\x18\x03 \x01(\tR\x06source\"M\n" +
 	"\x17ListOfficeTasksResponse\x122\n" +
-	"\x05items\x18\x01 \x03(\v2\x1c.kratos.office.v1.OfficeTaskR\x05items\"I\n" +
+	"\x05items\x18\x01 \x03(\v2\x1c.kratos.office.v1.OfficeTaskR\x05items\"\xeb\x01\n" +
 	"\x17CreateOfficeTaskRequest\x12\x1a\n" +
 	"\x05title\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\x05title\x12\x12\n" +
-	"\x04body\x18\x02 \x01(\tR\x04body\"P\n" +
+	"\x04body\x18\x02 \x01(\tR\x04body\x12\x16\n" +
+	"\x06source\x18\x03 \x01(\tR\x06source\x12\x1d\n" +
+	"\n" +
+	"source_ref\x18\x04 \x01(\tR\tsourceRef\x12#\n" +
+	"\rassignee_kind\x18\x05 \x01(\tR\fassigneeKind\x12\x1f\n" +
+	"\vassignee_id\x18\x06 \x01(\tR\n" +
+	"assigneeId\x12#\n" +
+	"\rassignee_name\x18\a \x01(\tR\fassigneeName\"P\n" +
 	"\x1aSetOfficeTaskStatusRequest\x12\x14\n" +
 	"\x02id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\x02id\x12\x1c\n" +
 	"\x06status\x18\x02 \x01(\tB\x04\xe2A\x01\x02R\x06status\"H\n" +

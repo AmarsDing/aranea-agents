@@ -87,9 +87,14 @@ export type OfficeTaskRow = {
   id: string;
   title: string;
   body: string;
-  source: 'manual' | 'mail' | string;
+  source: 'manual' | 'mail' | 'delegate' | 'note' | string;
+  /** 邮件转任务：邮件 id；交办：承载会话 id */
   source_ref: string;
   status: 'open' | 'done' | string;
+  /** 空 = 负责人是本人；agent / team = 交办对象 */
+  assignee_kind: string;
+  assignee_id: string;
+  assignee_name: string;
   created_at: string;
   updated_at: string;
 };

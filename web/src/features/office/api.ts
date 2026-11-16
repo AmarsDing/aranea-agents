@@ -386,18 +386,47 @@ function wireToTask(raw: Record<string, unknown>): OfficeTaskRow {
     source: String(raw.source ?? ''),
     source_ref: String(raw.sourceRef ?? raw.source_ref ?? ''),
     status: String(raw.status ?? ''),
+    assignee_kind: String(raw.assigneeKind ?? raw.assignee_kind ?? ''),
+    assignee_id: String(raw.assigneeId ?? raw.assignee_id ?? ''),
+    assignee_name: String(raw.assigneeName ?? raw.assignee_name ?? ''),
     created_at: String(raw.createdAt ?? raw.created_at ?? ''),
     updated_at: String(raw.updatedAt ?? raw.updated_at ?? ''),
   };
 }
 
-export async function listOfficeTasks(status: 'open' | 'done' = 'open', limit = 50): Promise<OfficeTaskRow[]> {
-  const res = await createOfficeMailService().ListOfficeTasks({ status, limit });
+/** source 缺省 = 我的任务（手工 + 邮件转）；delegate = 交办中；note = 随手记录。 */
+export async function listOfficeTasks(
+  status: 'open' | 'done' = 'open',
+  limit = 50,
+  source: '' | 'delegate' | 'note' = '',
+): Promise<OfficeTaskRow[]> {
+  const res = await createOfficeMailService().ListOfficeTasks({ status, limit, source: source || undefined });
   return (res.items ?? []).map((row) => wireToTask(row as Record<string, unknown>));
 }
 
-export async function createOfficeTask(title: string, body = ''): Promise<OfficeTaskRow> {
-  const res = await createOfficeMailService().CreateOfficeTask({ title, body: body || undefined });
+/** 交办登记：记下这件事派给了谁、在哪个会话里跟进。 */
+export type OfficeTaskDelegation = {
+  sessionId: string;
+  assigneeKind: 'agent' | 'team';
+  assigneeId: string;
+  assigneeName: string;
+};
+
+export async function createOfficeTask(
+  title: string,
+  body = '',
+  kind: 'manual' | 'note' | OfficeTaskDelegation = 'manual',
+): Promise<OfficeTaskRow> {
+  const delegation = typeof kind === 'object' ? kind : null;
+  const res = await createOfficeMailService().CreateOfficeTask({
+    title,
+    body: body || undefined,
+    source: delegation ? 'delegate' : kind === 'note' ? 'note' : undefined,
+    sourceRef: delegation?.sessionId,
+    assigneeKind: delegation?.assigneeKind,
+    assigneeId: delegation?.assigneeId,
+    assigneeName: delegation?.assigneeName,
+  });
   return wireToTask(res as Record<string, unknown>);
 }
 

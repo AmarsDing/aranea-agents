@@ -125,11 +125,15 @@ type OfficeTask struct {
 	UserID      string
 	Title       string
 	Body        string
-	Source      string // manual | mail
-	SourceRef   string // 邮件转任务：office_mail_messages.id
+	Source      string // manual | mail | delegate | note
+	SourceRef   string // 邮件转任务：office_mail_messages.id；交办：承载会话 id
 	Status      string // open | done
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	// 负责人：AssigneeKind 为空 = 属主本人；agent / team = 交办对象。
+	AssigneeKind string
+	AssigneeID   string
+	AssigneeName string // 交办当时的显示名快照
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
 }
 
 // ============================================================================
@@ -197,8 +201,8 @@ type OfficeTaskRepo interface {
 	// CreateTaskFromMailTx 单事务：插入任务 + 回写邮件 task_ref（幂等前置
 	// 由 usecase 判空保证；同事务防「任务建而回写丢」的孤儿态）。
 	CreateTaskFromMailTx(ctx context.Context, t *OfficeTask, mailID, userID string) error
-	// ListOfficeTasks 本人任务按状态过滤，created_at 倒序限量。
-	ListOfficeTasks(ctx context.Context, userID, status string, limit int) ([]*OfficeTask, error)
+	// ListOfficeTasks 本人任务按状态与来源过滤（sources 非空），created_at 倒序限量。
+	ListOfficeTasks(ctx context.Context, userID, status string, sources []string, limit int) ([]*OfficeTask, error)
 	// SetOfficeTaskStatus 按 id+user_id 改状态；行不存在返回 ErrOfficeTaskNotFound。
 	SetOfficeTaskStatus(ctx context.Context, id, userID, status string, at time.Time) error
 }

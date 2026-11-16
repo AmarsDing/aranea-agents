@@ -9,19 +9,22 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-// 个人任务 RPC（工作台「我的任务」）。只读写调用者本人的任务，属主来自
+// 个人任务 RPC（工作台「我的任务」「交办中」与随手记录）。只读写调用者本人的任务，属主来自
 // 登录上下文，请求体不接受 user_id。
 
 func officeTaskToProto(t *office.OfficeTask) *v1.OfficeTask {
 	return &v1.OfficeTask{
-		Id:        t.ID,
-		Title:     t.Title,
-		Body:      t.Body,
-		Source:    t.Source,
-		SourceRef: t.SourceRef,
-		Status:    t.Status,
-		CreatedAt: timestamppb.New(t.CreatedAt),
-		UpdatedAt: timestamppb.New(t.UpdatedAt),
+		Id:           t.ID,
+		Title:        t.Title,
+		Body:         t.Body,
+		Source:       t.Source,
+		SourceRef:    t.SourceRef,
+		Status:       t.Status,
+		AssigneeKind: t.AssigneeKind,
+		AssigneeId:   t.AssigneeID,
+		AssigneeName: t.AssigneeName,
+		CreatedAt:    timestamppb.New(t.CreatedAt),
+		UpdatedAt:    timestamppb.New(t.UpdatedAt),
 	}
 }
 
@@ -30,7 +33,7 @@ func (s *OfficeMailService) ListOfficeTasks(ctx context.Context, req *v1.ListOff
 	if err != nil {
 		return nil, mailErr(err)
 	}
-	rows, err := s.messages.ListTasks(ctx, userID, req.GetStatus(), int(req.GetLimit()))
+	rows, err := s.messages.ListTasks(ctx, userID, req.GetStatus(), req.GetSource(), int(req.GetLimit()))
 	if err != nil {
 		return nil, mailErr(err)
 	}
@@ -46,7 +49,15 @@ func (s *OfficeMailService) CreateOfficeTask(ctx context.Context, req *v1.Create
 	if err != nil {
 		return nil, mailErr(err)
 	}
-	task, err := s.messages.CreateTask(ctx, userID, workspaceID, req.GetTitle(), req.GetBody())
+	task, err := s.messages.CreateTask(ctx, userID, workspaceID, office.NewOfficeTaskInput{
+		Title:        req.GetTitle(),
+		Body:         req.GetBody(),
+		Source:       req.GetSource(),
+		SourceRef:    req.GetSourceRef(),
+		AssigneeKind: req.GetAssigneeKind(),
+		AssigneeID:   req.GetAssigneeId(),
+		AssigneeName: req.GetAssigneeName(),
+	})
 	if err != nil {
 		return nil, mailErr(err)
 	}
