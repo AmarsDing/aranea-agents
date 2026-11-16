@@ -20,24 +20,94 @@ var _ = binding.EncodeURL
 
 const _ = http.SupportPackageIsVersion1
 
+const OperationApprovalCenterServiceDecideInboxItem = "/kratos.approval.v1.ApprovalCenterService/DecideInboxItem"
 const OperationApprovalCenterServiceGetApprovalSummary = "/kratos.approval.v1.ApprovalCenterService/GetApprovalSummary"
+const OperationApprovalCenterServiceGetInboxSummary = "/kratos.approval.v1.ApprovalCenterService/GetInboxSummary"
 const OperationApprovalCenterServiceGetRiskMatrix = "/kratos.approval.v1.ApprovalCenterService/GetRiskMatrix"
 const OperationApprovalCenterServiceListApprovals = "/kratos.approval.v1.ApprovalCenterService/ListApprovals"
+const OperationApprovalCenterServiceListInbox = "/kratos.approval.v1.ApprovalCenterService/ListInbox"
 const OperationApprovalCenterServicePutRiskMatrix = "/kratos.approval.v1.ApprovalCenterService/PutRiskMatrix"
 
 type ApprovalCenterServiceHTTPServer interface {
+	DecideInboxItem(context.Context, *DecideInboxItemRequest) (*DecideInboxItemResponse, error)
 	GetApprovalSummary(context.Context, *emptypb.Empty) (*ApprovalSummary, error)
+	GetInboxSummary(context.Context, *emptypb.Empty) (*InboxSummary, error)
 	GetRiskMatrix(context.Context, *emptypb.Empty) (*GetRiskMatrixResponse, error)
 	ListApprovals(context.Context, *ListApprovalsRequest) (*ListApprovalsResponse, error)
+	// ListInbox ---- 统一收件箱：仅需登录，可见性由各来源按权限码自行过滤 ----
+	ListInbox(context.Context, *ListInboxRequest) (*ListInboxResponse, error)
 	PutRiskMatrix(context.Context, *PutRiskMatrixRequest) (*GetRiskMatrixResponse, error)
 }
 
 func RegisterApprovalCenterServiceHTTPServer(s *http.Server, srv ApprovalCenterServiceHTTPServer) {
 	r := s.Route("/")
+	r.GET("/v1/inbox", _ApprovalCenterService_ListInbox0_HTTP_Handler(srv))
+	r.GET("/v1/inbox/summary", _ApprovalCenterService_GetInboxSummary0_HTTP_Handler(srv))
+	r.POST("/v1/inbox/decide", _ApprovalCenterService_DecideInboxItem0_HTTP_Handler(srv))
 	r.GET("/v1/approvals", _ApprovalCenterService_ListApprovals0_HTTP_Handler(srv))
 	r.GET("/v1/approvals/summary", _ApprovalCenterService_GetApprovalSummary0_HTTP_Handler(srv))
 	r.GET("/v1/approvals/risk-matrix", _ApprovalCenterService_GetRiskMatrix0_HTTP_Handler(srv))
 	r.PUT("/v1/approvals/risk-matrix", _ApprovalCenterService_PutRiskMatrix0_HTTP_Handler(srv))
+}
+
+func _ApprovalCenterService_ListInbox0_HTTP_Handler(srv ApprovalCenterServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in ListInboxRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationApprovalCenterServiceListInbox)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.ListInbox(ctx, req.(*ListInboxRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*ListInboxResponse)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _ApprovalCenterService_GetInboxSummary0_HTTP_Handler(srv ApprovalCenterServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in emptypb.Empty
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationApprovalCenterServiceGetInboxSummary)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.GetInboxSummary(ctx, req.(*emptypb.Empty))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*InboxSummary)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _ApprovalCenterService_DecideInboxItem0_HTTP_Handler(srv ApprovalCenterServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in DecideInboxItemRequest
+		if err := ctx.Bind(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationApprovalCenterServiceDecideInboxItem)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.DecideInboxItem(ctx, req.(*DecideInboxItemRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*DecideInboxItemResponse)
+		return ctx.Result(200, reply)
+	}
 }
 
 func _ApprovalCenterService_ListApprovals0_HTTP_Handler(srv ApprovalCenterServiceHTTPServer) func(ctx http.Context) error {
@@ -120,9 +190,13 @@ func _ApprovalCenterService_PutRiskMatrix0_HTTP_Handler(srv ApprovalCenterServic
 }
 
 type ApprovalCenterServiceHTTPClient interface {
+	DecideInboxItem(ctx context.Context, req *DecideInboxItemRequest, opts ...http.CallOption) (rsp *DecideInboxItemResponse, err error)
 	GetApprovalSummary(ctx context.Context, req *emptypb.Empty, opts ...http.CallOption) (rsp *ApprovalSummary, err error)
+	GetInboxSummary(ctx context.Context, req *emptypb.Empty, opts ...http.CallOption) (rsp *InboxSummary, err error)
 	GetRiskMatrix(ctx context.Context, req *emptypb.Empty, opts ...http.CallOption) (rsp *GetRiskMatrixResponse, err error)
 	ListApprovals(ctx context.Context, req *ListApprovalsRequest, opts ...http.CallOption) (rsp *ListApprovalsResponse, err error)
+	// ListInbox ---- 统一收件箱：仅需登录，可见性由各来源按权限码自行过滤 ----
+	ListInbox(ctx context.Context, req *ListInboxRequest, opts ...http.CallOption) (rsp *ListInboxResponse, err error)
 	PutRiskMatrix(ctx context.Context, req *PutRiskMatrixRequest, opts ...http.CallOption) (rsp *GetRiskMatrixResponse, err error)
 }
 
@@ -134,11 +208,37 @@ func NewApprovalCenterServiceHTTPClient(client *http.Client) ApprovalCenterServi
 	return &ApprovalCenterServiceHTTPClientImpl{client}
 }
 
+func (c *ApprovalCenterServiceHTTPClientImpl) DecideInboxItem(ctx context.Context, in *DecideInboxItemRequest, opts ...http.CallOption) (*DecideInboxItemResponse, error) {
+	var out DecideInboxItemResponse
+	pattern := "/v1/inbox/decide"
+	path := binding.EncodeURL(pattern, in, false)
+	opts = append(opts, http.Operation(OperationApprovalCenterServiceDecideInboxItem))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 func (c *ApprovalCenterServiceHTTPClientImpl) GetApprovalSummary(ctx context.Context, in *emptypb.Empty, opts ...http.CallOption) (*ApprovalSummary, error) {
 	var out ApprovalSummary
 	pattern := "/v1/approvals/summary"
 	path := binding.EncodeURL(pattern, in, true)
 	opts = append(opts, http.Operation(OperationApprovalCenterServiceGetApprovalSummary))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *ApprovalCenterServiceHTTPClientImpl) GetInboxSummary(ctx context.Context, in *emptypb.Empty, opts ...http.CallOption) (*InboxSummary, error) {
+	var out InboxSummary
+	pattern := "/v1/inbox/summary"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationApprovalCenterServiceGetInboxSummary))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
 	if err != nil {
@@ -165,6 +265,20 @@ func (c *ApprovalCenterServiceHTTPClientImpl) ListApprovals(ctx context.Context,
 	pattern := "/v1/approvals"
 	path := binding.EncodeURL(pattern, in, true)
 	opts = append(opts, http.Operation(OperationApprovalCenterServiceListApprovals))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// ListInbox ---- 统一收件箱：仅需登录，可见性由各来源按权限码自行过滤 ----
+func (c *ApprovalCenterServiceHTTPClientImpl) ListInbox(ctx context.Context, in *ListInboxRequest, opts ...http.CallOption) (*ListInboxResponse, error) {
+	var out ListInboxResponse
+	pattern := "/v1/inbox"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationApprovalCenterServiceListInbox))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
 	if err != nil {

@@ -143,15 +143,18 @@ func (RiskLevel) EnumDescriptor() ([]byte, []int) {
 
 // ApprovalItem 统一审批条目形状。
 type ApprovalItem struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Kind          ApprovalKind           `protobuf:"varint,1,opt,name=kind,proto3,enum=kratos.approval.v1.ApprovalKind" json:"kind,omitempty"`
-	Id            string                 `protobuf:"bytes,2,opt,name=id,proto3" json:"id,omitempty"` // 领域内条目 id（决议时回传各领域 RPC）
-	Title         string                 `protobuf:"bytes,3,opt,name=title,proto3" json:"title,omitempty"`
-	Summary       string                 `protobuf:"bytes,4,opt,name=summary,proto3" json:"summary,omitempty"`
-	ContextJson   string                 `protobuf:"bytes,5,opt,name=context_json,json=contextJson,proto3" json:"context_json,omitempty"` // 类别特定上下文（任务=密级/创建者/reviewer；脱敏=样本召回率…）
-	RiskLevel     RiskLevel              `protobuf:"varint,6,opt,name=risk_level,json=riskLevel,proto3,enum=kratos.approval.v1.RiskLevel" json:"risk_level,omitempty"`
-	Requester     string                 `protobuf:"bytes,7,opt,name=requester,proto3" json:"requester,omitempty"` // 申请人/来源 agent（不可自批判定展示用）
-	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	Kind        ApprovalKind           `protobuf:"varint,1,opt,name=kind,proto3,enum=kratos.approval.v1.ApprovalKind" json:"kind,omitempty"`
+	Id          string                 `protobuf:"bytes,2,opt,name=id,proto3" json:"id,omitempty"` // 领域内条目 id（决议时回传各领域 RPC）
+	Title       string                 `protobuf:"bytes,3,opt,name=title,proto3" json:"title,omitempty"`
+	Summary     string                 `protobuf:"bytes,4,opt,name=summary,proto3" json:"summary,omitempty"`
+	ContextJson string                 `protobuf:"bytes,5,opt,name=context_json,json=contextJson,proto3" json:"context_json,omitempty"` // 类别特定上下文（任务=密级/创建者/reviewer；脱敏=样本召回率…）
+	RiskLevel   RiskLevel              `protobuf:"varint,6,opt,name=risk_level,json=riskLevel,proto3,enum=kratos.approval.v1.RiskLevel" json:"risk_level,omitempty"`
+	Requester   string                 `protobuf:"bytes,7,opt,name=requester,proto3" json:"requester,omitempty"` // 申请人/来源 agent（不可自批判定展示用）
+	CreatedAt   *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	// 归因：由来源带出的 agent key（任务验收=AgentID、日程草案=AgentID、
+	// 自改进建议目标 agent=TargetID），供业务线看板聚合；空 = 无法归因。
+	AgentKey      string `protobuf:"bytes,9,opt,name=agent_key,json=agentKey,proto3" json:"agent_key,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -242,11 +245,20 @@ func (x *ApprovalItem) GetCreatedAt() *timestamppb.Timestamp {
 	return nil
 }
 
+func (x *ApprovalItem) GetAgentKey() string {
+	if x != nil {
+		return x.AgentKey
+	}
+	return ""
+}
+
 type ListApprovalsRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Kind          ApprovalKind           `protobuf:"varint,1,opt,name=kind,proto3,enum=kratos.approval.v1.ApprovalKind" json:"kind,omitempty"` // UNSPECIFIED = 全部
-	Page          int32                  `protobuf:"varint,2,opt,name=page,proto3" json:"page,omitempty"`
-	PageSize      int32                  `protobuf:"varint,3,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"` // <=0 默认 50，>200 截 200
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	Kind     ApprovalKind           `protobuf:"varint,1,opt,name=kind,proto3,enum=kratos.approval.v1.ApprovalKind" json:"kind,omitempty"` // UNSPECIFIED = 全部
+	Page     int32                  `protobuf:"varint,2,opt,name=page,proto3" json:"page,omitempty"`
+	PageSize int32                  `protobuf:"varint,3,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"` // <=0 默认 50，>200 截 200
+	// 按请求人筛选（精确匹配）；空 = 不筛选。
+	Requester     string `protobuf:"bytes,4,opt,name=requester,proto3" json:"requester,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -300,6 +312,13 @@ func (x *ListApprovalsRequest) GetPageSize() int32 {
 		return x.PageSize
 	}
 	return 0
+}
+
+func (x *ListApprovalsRequest) GetRequester() string {
+	if x != nil {
+		return x.Requester
+	}
+	return ""
 }
 
 type ListApprovalsResponse struct {
@@ -632,11 +651,529 @@ func (x *PutRiskMatrixRequest) GetRows() []*RiskMatrixRow {
 	return nil
 }
 
+// InboxItem 统一收件箱条目。
+type InboxItem struct {
+	state              protoimpl.MessageState `protogen:"open.v1"`
+	Id                 string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`         // `<source>:<领域内 id>`，决议时原样回传
+	Source             string                 `protobuf:"bytes,2,opt,name=source,proto3" json:"source,omitempty"` // 见上方来源清单
+	Kind               string                 `protobuf:"bytes,3,opt,name=kind,proto3" json:"kind,omitempty"`     // decide（审批）| confirm（确认执行）| review（验收）| exception（异常）
+	Title              string                 `protobuf:"bytes,4,opt,name=title,proto3" json:"title,omitempty"`
+	Summary            string                 `protobuf:"bytes,5,opt,name=summary,proto3" json:"summary,omitempty"`
+	RiskLevel          RiskLevel              `protobuf:"varint,6,opt,name=risk_level,json=riskLevel,proto3,enum=kratos.approval.v1.RiskLevel" json:"risk_level,omitempty"`
+	Requester          string                 `protobuf:"bytes,7,opt,name=requester,proto3" json:"requester,omitempty"`               // 提出者（agent / 触发源）
+	AgentKey           string                 `protobuf:"bytes,8,opt,name=agent_key,json=agentKey,proto3" json:"agent_key,omitempty"` // 归因 agent；空 = 无法归因
+	CreatedAt          *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	DueAt              *timestamppb.Timestamp `protobuf:"bytes,10,opt,name=due_at,json=dueAt,proto3" json:"due_at,omitempty"`                                           // 处理截止（如工具确认的可签窗口）；空 = 无截止
+	Actions            []string               `protobuf:"bytes,11,rep,name=actions,proto3" json:"actions,omitempty"`                                                    // 可执行动作：approve | reject | ack | resolve
+	RejectRequiresNote bool                   `protobuf:"varint,12,opt,name=reject_requires_note,json=rejectRequiresNote,proto3" json:"reject_requires_note,omitempty"` // 驳回是否必须填写理由
+	Link               string                 `protobuf:"bytes,13,opt,name=link,proto3" json:"link,omitempty"`                                                          // 前端深链（查看详情）
+	ContextJson        string                 `protobuf:"bytes,14,opt,name=context_json,json=contextJson,proto3" json:"context_json,omitempty"`                         // 来源特定上下文（仅展示用）
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
+}
+
+func (x *InboxItem) Reset() {
+	*x = InboxItem{}
+	mi := &file_kratos_approval_v1_approval_center_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *InboxItem) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*InboxItem) ProtoMessage() {}
+
+func (x *InboxItem) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_approval_v1_approval_center_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use InboxItem.ProtoReflect.Descriptor instead.
+func (*InboxItem) Descriptor() ([]byte, []int) {
+	return file_kratos_approval_v1_approval_center_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *InboxItem) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *InboxItem) GetSource() string {
+	if x != nil {
+		return x.Source
+	}
+	return ""
+}
+
+func (x *InboxItem) GetKind() string {
+	if x != nil {
+		return x.Kind
+	}
+	return ""
+}
+
+func (x *InboxItem) GetTitle() string {
+	if x != nil {
+		return x.Title
+	}
+	return ""
+}
+
+func (x *InboxItem) GetSummary() string {
+	if x != nil {
+		return x.Summary
+	}
+	return ""
+}
+
+func (x *InboxItem) GetRiskLevel() RiskLevel {
+	if x != nil {
+		return x.RiskLevel
+	}
+	return RiskLevel_RISK_LEVEL_UNSPECIFIED
+}
+
+func (x *InboxItem) GetRequester() string {
+	if x != nil {
+		return x.Requester
+	}
+	return ""
+}
+
+func (x *InboxItem) GetAgentKey() string {
+	if x != nil {
+		return x.AgentKey
+	}
+	return ""
+}
+
+func (x *InboxItem) GetCreatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return nil
+}
+
+func (x *InboxItem) GetDueAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.DueAt
+	}
+	return nil
+}
+
+func (x *InboxItem) GetActions() []string {
+	if x != nil {
+		return x.Actions
+	}
+	return nil
+}
+
+func (x *InboxItem) GetRejectRequiresNote() bool {
+	if x != nil {
+		return x.RejectRequiresNote
+	}
+	return false
+}
+
+func (x *InboxItem) GetLink() string {
+	if x != nil {
+		return x.Link
+	}
+	return ""
+}
+
+func (x *InboxItem) GetContextJson() string {
+	if x != nil {
+		return x.ContextJson
+	}
+	return ""
+}
+
+type InboxSourceCount struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Source        string                 `protobuf:"bytes,1,opt,name=source,proto3" json:"source,omitempty"`
+	Count         int64                  `protobuf:"varint,2,opt,name=count,proto3" json:"count,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *InboxSourceCount) Reset() {
+	*x = InboxSourceCount{}
+	mi := &file_kratos_approval_v1_approval_center_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *InboxSourceCount) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*InboxSourceCount) ProtoMessage() {}
+
+func (x *InboxSourceCount) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_approval_v1_approval_center_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use InboxSourceCount.ProtoReflect.Descriptor instead.
+func (*InboxSourceCount) Descriptor() ([]byte, []int) {
+	return file_kratos_approval_v1_approval_center_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *InboxSourceCount) GetSource() string {
+	if x != nil {
+		return x.Source
+	}
+	return ""
+}
+
+func (x *InboxSourceCount) GetCount() int64 {
+	if x != nil {
+		return x.Count
+	}
+	return 0
+}
+
+type ListInboxRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Sources       []string               `protobuf:"bytes,1,rep,name=sources,proto3" json:"sources,omitempty"` // 空 = 全部来源
+	Page          int32                  `protobuf:"varint,2,opt,name=page,proto3" json:"page,omitempty"`
+	PageSize      int32                  `protobuf:"varint,3,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"` // <=0 默认 50，>200 截 200
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListInboxRequest) Reset() {
+	*x = ListInboxRequest{}
+	mi := &file_kratos_approval_v1_approval_center_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListInboxRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListInboxRequest) ProtoMessage() {}
+
+func (x *ListInboxRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_approval_v1_approval_center_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListInboxRequest.ProtoReflect.Descriptor instead.
+func (*ListInboxRequest) Descriptor() ([]byte, []int) {
+	return file_kratos_approval_v1_approval_center_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *ListInboxRequest) GetSources() []string {
+	if x != nil {
+		return x.Sources
+	}
+	return nil
+}
+
+func (x *ListInboxRequest) GetPage() int32 {
+	if x != nil {
+		return x.Page
+	}
+	return 0
+}
+
+func (x *ListInboxRequest) GetPageSize() int32 {
+	if x != nil {
+		return x.PageSize
+	}
+	return 0
+}
+
+type ListInboxResponse struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	Items           []*InboxItem           `protobuf:"bytes,1,rep,name=items,proto3" json:"items,omitempty"` // 排序：风险高→低，有截止的按截止近→远，其余按创建新→旧
+	Total           int64                  `protobuf:"varint,2,opt,name=total,proto3" json:"total,omitempty"`
+	Counts          []*InboxSourceCount    `protobuf:"bytes,3,rep,name=counts,proto3" json:"counts,omitempty"`                                          // 各来源待办数（已注册来源全量输出，含 0）
+	DegradedSources []string               `protobuf:"bytes,4,rep,name=degraded_sources,json=degradedSources,proto3" json:"degraded_sources,omitempty"` // 本次读取失败的来源（其计数不可信）
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *ListInboxResponse) Reset() {
+	*x = ListInboxResponse{}
+	mi := &file_kratos_approval_v1_approval_center_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListInboxResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListInboxResponse) ProtoMessage() {}
+
+func (x *ListInboxResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_approval_v1_approval_center_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListInboxResponse.ProtoReflect.Descriptor instead.
+func (*ListInboxResponse) Descriptor() ([]byte, []int) {
+	return file_kratos_approval_v1_approval_center_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *ListInboxResponse) GetItems() []*InboxItem {
+	if x != nil {
+		return x.Items
+	}
+	return nil
+}
+
+func (x *ListInboxResponse) GetTotal() int64 {
+	if x != nil {
+		return x.Total
+	}
+	return 0
+}
+
+func (x *ListInboxResponse) GetCounts() []*InboxSourceCount {
+	if x != nil {
+		return x.Counts
+	}
+	return nil
+}
+
+func (x *ListInboxResponse) GetDegradedSources() []string {
+	if x != nil {
+		return x.DegradedSources
+	}
+	return nil
+}
+
+// InboxSummary 全站唯一待办数口径（侧栏角标/工作台/经营看板/移动端）。
+type InboxSummary struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	Total           int64                  `protobuf:"varint,1,opt,name=total,proto3" json:"total,omitempty"`
+	HighRisk        int64                  `protobuf:"varint,2,opt,name=high_risk,json=highRisk,proto3" json:"high_risk,omitempty"`
+	Counts          []*InboxSourceCount    `protobuf:"bytes,3,rep,name=counts,proto3" json:"counts,omitempty"`
+	DegradedSources []string               `protobuf:"bytes,4,rep,name=degraded_sources,json=degradedSources,proto3" json:"degraded_sources,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *InboxSummary) Reset() {
+	*x = InboxSummary{}
+	mi := &file_kratos_approval_v1_approval_center_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *InboxSummary) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*InboxSummary) ProtoMessage() {}
+
+func (x *InboxSummary) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_approval_v1_approval_center_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use InboxSummary.ProtoReflect.Descriptor instead.
+func (*InboxSummary) Descriptor() ([]byte, []int) {
+	return file_kratos_approval_v1_approval_center_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *InboxSummary) GetTotal() int64 {
+	if x != nil {
+		return x.Total
+	}
+	return 0
+}
+
+func (x *InboxSummary) GetHighRisk() int64 {
+	if x != nil {
+		return x.HighRisk
+	}
+	return 0
+}
+
+func (x *InboxSummary) GetCounts() []*InboxSourceCount {
+	if x != nil {
+		return x.Counts
+	}
+	return nil
+}
+
+func (x *InboxSummary) GetDegradedSources() []string {
+	if x != nil {
+		return x.DegradedSources
+	}
+	return nil
+}
+
+type DecideInboxItemRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Action        string                 `protobuf:"bytes,2,opt,name=action,proto3" json:"action,omitempty"` // approve | reject | ack | resolve
+	Note          string                 `protobuf:"bytes,3,opt,name=note,proto3" json:"note,omitempty"`     // 驳回理由 / 批注
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DecideInboxItemRequest) Reset() {
+	*x = DecideInboxItemRequest{}
+	mi := &file_kratos_approval_v1_approval_center_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DecideInboxItemRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DecideInboxItemRequest) ProtoMessage() {}
+
+func (x *DecideInboxItemRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_approval_v1_approval_center_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DecideInboxItemRequest.ProtoReflect.Descriptor instead.
+func (*DecideInboxItemRequest) Descriptor() ([]byte, []int) {
+	return file_kratos_approval_v1_approval_center_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *DecideInboxItemRequest) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *DecideInboxItemRequest) GetAction() string {
+	if x != nil {
+		return x.Action
+	}
+	return ""
+}
+
+func (x *DecideInboxItemRequest) GetNote() string {
+	if x != nil {
+		return x.Note
+	}
+	return ""
+}
+
+type DecideInboxItemResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Action        string                 `protobuf:"bytes,2,opt,name=action,proto3" json:"action,omitempty"`
+	DecidedAt     *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=decided_at,json=decidedAt,proto3" json:"decided_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DecideInboxItemResponse) Reset() {
+	*x = DecideInboxItemResponse{}
+	mi := &file_kratos_approval_v1_approval_center_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DecideInboxItemResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DecideInboxItemResponse) ProtoMessage() {}
+
+func (x *DecideInboxItemResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_approval_v1_approval_center_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DecideInboxItemResponse.ProtoReflect.Descriptor instead.
+func (*DecideInboxItemResponse) Descriptor() ([]byte, []int) {
+	return file_kratos_approval_v1_approval_center_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *DecideInboxItemResponse) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *DecideInboxItemResponse) GetAction() string {
+	if x != nil {
+		return x.Action
+	}
+	return ""
+}
+
+func (x *DecideInboxItemResponse) GetDecidedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.DecidedAt
+	}
+	return nil
+}
+
 var File_kratos_approval_v1_approval_center_proto protoreflect.FileDescriptor
 
 const file_kratos_approval_v1_approval_center_proto_rawDesc = "" +
 	"\n" +
-	"(kratos/approval/v1/approval_center.proto\x12\x12kratos.approval.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x1bgoogle/protobuf/empty.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a aranea/auth/v1/requirement.proto\"\xbe\x02\n" +
+	"(kratos/approval/v1/approval_center.proto\x12\x12kratos.approval.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x1bgoogle/protobuf/empty.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a aranea/auth/v1/requirement.proto\"\xdb\x02\n" +
 	"\fApprovalItem\x124\n" +
 	"\x04kind\x18\x01 \x01(\x0e2 .kratos.approval.v1.ApprovalKindR\x04kind\x12\x0e\n" +
 	"\x02id\x18\x02 \x01(\tR\x02id\x12\x14\n" +
@@ -647,11 +1184,13 @@ const file_kratos_approval_v1_approval_center_proto_rawDesc = "" +
 	"risk_level\x18\x06 \x01(\x0e2\x1d.kratos.approval.v1.RiskLevelR\triskLevel\x12\x1c\n" +
 	"\trequester\x18\a \x01(\tR\trequester\x129\n" +
 	"\n" +
-	"created_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\"}\n" +
+	"created_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12\x1b\n" +
+	"\tagent_key\x18\t \x01(\tR\bagentKey\"\x9b\x01\n" +
 	"\x14ListApprovalsRequest\x124\n" +
 	"\x04kind\x18\x01 \x01(\x0e2 .kratos.approval.v1.ApprovalKindR\x04kind\x12\x12\n" +
 	"\x04page\x18\x02 \x01(\x05R\x04page\x12\x1b\n" +
-	"\tpage_size\x18\x03 \x01(\x05R\bpageSize\"e\n" +
+	"\tpage_size\x18\x03 \x01(\x05R\bpageSize\x12\x1c\n" +
+	"\trequester\x18\x04 \x01(\tR\trequester\"e\n" +
 	"\x15ListApprovalsResponse\x126\n" +
 	"\x05items\x18\x01 \x03(\v2 .kratos.approval.v1.ApprovalItemR\x05items\x12\x14\n" +
 	"\x05total\x18\x02 \x01(\x03R\x05total\"_\n" +
@@ -674,7 +1213,51 @@ const file_kratos_approval_v1_approval_center_proto_rawDesc = "" +
 	"\x15GetRiskMatrixResponse\x125\n" +
 	"\x04rows\x18\x01 \x03(\v2!.kratos.approval.v1.RiskMatrixRowR\x04rows\"S\n" +
 	"\x14PutRiskMatrixRequest\x12;\n" +
-	"\x04rows\x18\x01 \x03(\v2!.kratos.approval.v1.RiskMatrixRowB\x04\xe2A\x01\x02R\x04rows*\x9b\x02\n" +
+	"\x04rows\x18\x01 \x03(\v2!.kratos.approval.v1.RiskMatrixRowB\x04\xe2A\x01\x02R\x04rows\"\xe1\x03\n" +
+	"\tInboxItem\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x16\n" +
+	"\x06source\x18\x02 \x01(\tR\x06source\x12\x12\n" +
+	"\x04kind\x18\x03 \x01(\tR\x04kind\x12\x14\n" +
+	"\x05title\x18\x04 \x01(\tR\x05title\x12\x18\n" +
+	"\asummary\x18\x05 \x01(\tR\asummary\x12<\n" +
+	"\n" +
+	"risk_level\x18\x06 \x01(\x0e2\x1d.kratos.approval.v1.RiskLevelR\triskLevel\x12\x1c\n" +
+	"\trequester\x18\a \x01(\tR\trequester\x12\x1b\n" +
+	"\tagent_key\x18\b \x01(\tR\bagentKey\x129\n" +
+	"\n" +
+	"created_at\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x121\n" +
+	"\x06due_at\x18\n" +
+	" \x01(\v2\x1a.google.protobuf.TimestampR\x05dueAt\x12\x18\n" +
+	"\aactions\x18\v \x03(\tR\aactions\x120\n" +
+	"\x14reject_requires_note\x18\f \x01(\bR\x12rejectRequiresNote\x12\x12\n" +
+	"\x04link\x18\r \x01(\tR\x04link\x12!\n" +
+	"\fcontext_json\x18\x0e \x01(\tR\vcontextJson\"@\n" +
+	"\x10InboxSourceCount\x12\x16\n" +
+	"\x06source\x18\x01 \x01(\tR\x06source\x12\x14\n" +
+	"\x05count\x18\x02 \x01(\x03R\x05count\"]\n" +
+	"\x10ListInboxRequest\x12\x18\n" +
+	"\asources\x18\x01 \x03(\tR\asources\x12\x12\n" +
+	"\x04page\x18\x02 \x01(\x05R\x04page\x12\x1b\n" +
+	"\tpage_size\x18\x03 \x01(\x05R\bpageSize\"\xc7\x01\n" +
+	"\x11ListInboxResponse\x123\n" +
+	"\x05items\x18\x01 \x03(\v2\x1d.kratos.approval.v1.InboxItemR\x05items\x12\x14\n" +
+	"\x05total\x18\x02 \x01(\x03R\x05total\x12<\n" +
+	"\x06counts\x18\x03 \x03(\v2$.kratos.approval.v1.InboxSourceCountR\x06counts\x12)\n" +
+	"\x10degraded_sources\x18\x04 \x03(\tR\x0fdegradedSources\"\xaa\x01\n" +
+	"\fInboxSummary\x12\x14\n" +
+	"\x05total\x18\x01 \x01(\x03R\x05total\x12\x1b\n" +
+	"\thigh_risk\x18\x02 \x01(\x03R\bhighRisk\x12<\n" +
+	"\x06counts\x18\x03 \x03(\v2$.kratos.approval.v1.InboxSourceCountR\x06counts\x12)\n" +
+	"\x10degraded_sources\x18\x04 \x03(\tR\x0fdegradedSources\"`\n" +
+	"\x16DecideInboxItemRequest\x12\x14\n" +
+	"\x02id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\x02id\x12\x1c\n" +
+	"\x06action\x18\x02 \x01(\tB\x04\xe2A\x01\x02R\x06action\x12\x12\n" +
+	"\x04note\x18\x03 \x01(\tR\x04note\"|\n" +
+	"\x17DecideInboxItemResponse\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x16\n" +
+	"\x06action\x18\x02 \x01(\tR\x06action\x129\n" +
+	"\n" +
+	"decided_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\tdecidedAt*\x9b\x02\n" +
 	"\fApprovalKind\x12\x1d\n" +
 	"\x19APPROVAL_KIND_UNSPECIFIED\x10\x00\x12\x1d\n" +
 	"\x19APPROVAL_KIND_TASK_REVIEW\x10\x01\x12\x1f\n" +
@@ -688,8 +1271,11 @@ const file_kratos_approval_v1_approval_center_proto_rawDesc = "" +
 	"\x16RISK_LEVEL_UNSPECIFIED\x10\x00\x12\x12\n" +
 	"\x0eRISK_LEVEL_LOW\x10\x01\x12\x15\n" +
 	"\x11RISK_LEVEL_MEDIUM\x10\x02\x12\x13\n" +
-	"\x0fRISK_LEVEL_HIGH\x10\x032\xe1\x04\n" +
-	"\x15ApprovalCenterService\x12\x90\x01\n" +
+	"\x0fRISK_LEVEL_HIGH\x10\x032\xd2\a\n" +
+	"\x15ApprovalCenterService\x12q\n" +
+	"\tListInbox\x12$.kratos.approval.v1.ListInboxRequest\x1a%.kratos.approval.v1.ListInboxResponse\"\x17\xca\xf3\x18\x02\x10\x01\x82\xd3\xe4\x93\x02\v\x12\t/v1/inbox\x12l\n" +
+	"\x0fGetInboxSummary\x12\x16.google.protobuf.Empty\x1a .kratos.approval.v1.InboxSummary\"\x1f\xca\xf3\x18\x02\x10\x01\x82\xd3\xe4\x93\x02\x13\x12\x11/v1/inbox/summary\x12\x8d\x01\n" +
+	"\x0fDecideInboxItem\x12*.kratos.approval.v1.DecideInboxItemRequest\x1a+.kratos.approval.v1.DecideInboxItemResponse\"!\xca\xf3\x18\x02\x10\x01\x82\xd3\xe4\x93\x02\x15:\x01*\"\x10/v1/inbox/decide\x12\x90\x01\n" +
 	"\rListApprovals\x12(.kratos.approval.v1.ListApprovalsRequest\x1a).kratos.approval.v1.ListApprovalsResponse\"*\xca\xf3\x18\x11\n" +
 	"\x0fapproval.review\x82\xd3\xe4\x93\x02\x0f\x12\r/v1/approvals\x12\x85\x01\n" +
 	"\x12GetApprovalSummary\x12\x16.google.protobuf.Empty\x1a#.kratos.approval.v1.ApprovalSummary\"2\xca\xf3\x18\x11\n" +
@@ -713,46 +1299,66 @@ func file_kratos_approval_v1_approval_center_proto_rawDescGZIP() []byte {
 }
 
 var file_kratos_approval_v1_approval_center_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_kratos_approval_v1_approval_center_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
+var file_kratos_approval_v1_approval_center_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
 var file_kratos_approval_v1_approval_center_proto_goTypes = []any{
-	(ApprovalKind)(0),             // 0: kratos.approval.v1.ApprovalKind
-	(RiskLevel)(0),                // 1: kratos.approval.v1.RiskLevel
-	(*ApprovalItem)(nil),          // 2: kratos.approval.v1.ApprovalItem
-	(*ListApprovalsRequest)(nil),  // 3: kratos.approval.v1.ListApprovalsRequest
-	(*ListApprovalsResponse)(nil), // 4: kratos.approval.v1.ListApprovalsResponse
-	(*ApprovalKindCount)(nil),     // 5: kratos.approval.v1.ApprovalKindCount
-	(*ApprovalSummary)(nil),       // 6: kratos.approval.v1.ApprovalSummary
-	(*RiskMatrixRow)(nil),         // 7: kratos.approval.v1.RiskMatrixRow
-	(*GetRiskMatrixResponse)(nil), // 8: kratos.approval.v1.GetRiskMatrixResponse
-	(*PutRiskMatrixRequest)(nil),  // 9: kratos.approval.v1.PutRiskMatrixRequest
-	(*timestamppb.Timestamp)(nil), // 10: google.protobuf.Timestamp
-	(*emptypb.Empty)(nil),         // 11: google.protobuf.Empty
+	(ApprovalKind)(0),               // 0: kratos.approval.v1.ApprovalKind
+	(RiskLevel)(0),                  // 1: kratos.approval.v1.RiskLevel
+	(*ApprovalItem)(nil),            // 2: kratos.approval.v1.ApprovalItem
+	(*ListApprovalsRequest)(nil),    // 3: kratos.approval.v1.ListApprovalsRequest
+	(*ListApprovalsResponse)(nil),   // 4: kratos.approval.v1.ListApprovalsResponse
+	(*ApprovalKindCount)(nil),       // 5: kratos.approval.v1.ApprovalKindCount
+	(*ApprovalSummary)(nil),         // 6: kratos.approval.v1.ApprovalSummary
+	(*RiskMatrixRow)(nil),           // 7: kratos.approval.v1.RiskMatrixRow
+	(*GetRiskMatrixResponse)(nil),   // 8: kratos.approval.v1.GetRiskMatrixResponse
+	(*PutRiskMatrixRequest)(nil),    // 9: kratos.approval.v1.PutRiskMatrixRequest
+	(*InboxItem)(nil),               // 10: kratos.approval.v1.InboxItem
+	(*InboxSourceCount)(nil),        // 11: kratos.approval.v1.InboxSourceCount
+	(*ListInboxRequest)(nil),        // 12: kratos.approval.v1.ListInboxRequest
+	(*ListInboxResponse)(nil),       // 13: kratos.approval.v1.ListInboxResponse
+	(*InboxSummary)(nil),            // 14: kratos.approval.v1.InboxSummary
+	(*DecideInboxItemRequest)(nil),  // 15: kratos.approval.v1.DecideInboxItemRequest
+	(*DecideInboxItemResponse)(nil), // 16: kratos.approval.v1.DecideInboxItemResponse
+	(*timestamppb.Timestamp)(nil),   // 17: google.protobuf.Timestamp
+	(*emptypb.Empty)(nil),           // 18: google.protobuf.Empty
 }
 var file_kratos_approval_v1_approval_center_proto_depIdxs = []int32{
 	0,  // 0: kratos.approval.v1.ApprovalItem.kind:type_name -> kratos.approval.v1.ApprovalKind
 	1,  // 1: kratos.approval.v1.ApprovalItem.risk_level:type_name -> kratos.approval.v1.RiskLevel
-	10, // 2: kratos.approval.v1.ApprovalItem.created_at:type_name -> google.protobuf.Timestamp
+	17, // 2: kratos.approval.v1.ApprovalItem.created_at:type_name -> google.protobuf.Timestamp
 	0,  // 3: kratos.approval.v1.ListApprovalsRequest.kind:type_name -> kratos.approval.v1.ApprovalKind
 	2,  // 4: kratos.approval.v1.ListApprovalsResponse.items:type_name -> kratos.approval.v1.ApprovalItem
 	0,  // 5: kratos.approval.v1.ApprovalKindCount.kind:type_name -> kratos.approval.v1.ApprovalKind
 	5,  // 6: kratos.approval.v1.ApprovalSummary.counts:type_name -> kratos.approval.v1.ApprovalKindCount
 	1,  // 7: kratos.approval.v1.RiskMatrixRow.risk:type_name -> kratos.approval.v1.RiskLevel
-	10, // 8: kratos.approval.v1.RiskMatrixRow.updated_at:type_name -> google.protobuf.Timestamp
+	17, // 8: kratos.approval.v1.RiskMatrixRow.updated_at:type_name -> google.protobuf.Timestamp
 	7,  // 9: kratos.approval.v1.GetRiskMatrixResponse.rows:type_name -> kratos.approval.v1.RiskMatrixRow
 	7,  // 10: kratos.approval.v1.PutRiskMatrixRequest.rows:type_name -> kratos.approval.v1.RiskMatrixRow
-	3,  // 11: kratos.approval.v1.ApprovalCenterService.ListApprovals:input_type -> kratos.approval.v1.ListApprovalsRequest
-	11, // 12: kratos.approval.v1.ApprovalCenterService.GetApprovalSummary:input_type -> google.protobuf.Empty
-	11, // 13: kratos.approval.v1.ApprovalCenterService.GetRiskMatrix:input_type -> google.protobuf.Empty
-	9,  // 14: kratos.approval.v1.ApprovalCenterService.PutRiskMatrix:input_type -> kratos.approval.v1.PutRiskMatrixRequest
-	4,  // 15: kratos.approval.v1.ApprovalCenterService.ListApprovals:output_type -> kratos.approval.v1.ListApprovalsResponse
-	6,  // 16: kratos.approval.v1.ApprovalCenterService.GetApprovalSummary:output_type -> kratos.approval.v1.ApprovalSummary
-	8,  // 17: kratos.approval.v1.ApprovalCenterService.GetRiskMatrix:output_type -> kratos.approval.v1.GetRiskMatrixResponse
-	8,  // 18: kratos.approval.v1.ApprovalCenterService.PutRiskMatrix:output_type -> kratos.approval.v1.GetRiskMatrixResponse
-	15, // [15:19] is the sub-list for method output_type
-	11, // [11:15] is the sub-list for method input_type
-	11, // [11:11] is the sub-list for extension type_name
-	11, // [11:11] is the sub-list for extension extendee
-	0,  // [0:11] is the sub-list for field type_name
+	1,  // 11: kratos.approval.v1.InboxItem.risk_level:type_name -> kratos.approval.v1.RiskLevel
+	17, // 12: kratos.approval.v1.InboxItem.created_at:type_name -> google.protobuf.Timestamp
+	17, // 13: kratos.approval.v1.InboxItem.due_at:type_name -> google.protobuf.Timestamp
+	10, // 14: kratos.approval.v1.ListInboxResponse.items:type_name -> kratos.approval.v1.InboxItem
+	11, // 15: kratos.approval.v1.ListInboxResponse.counts:type_name -> kratos.approval.v1.InboxSourceCount
+	11, // 16: kratos.approval.v1.InboxSummary.counts:type_name -> kratos.approval.v1.InboxSourceCount
+	17, // 17: kratos.approval.v1.DecideInboxItemResponse.decided_at:type_name -> google.protobuf.Timestamp
+	12, // 18: kratos.approval.v1.ApprovalCenterService.ListInbox:input_type -> kratos.approval.v1.ListInboxRequest
+	18, // 19: kratos.approval.v1.ApprovalCenterService.GetInboxSummary:input_type -> google.protobuf.Empty
+	15, // 20: kratos.approval.v1.ApprovalCenterService.DecideInboxItem:input_type -> kratos.approval.v1.DecideInboxItemRequest
+	3,  // 21: kratos.approval.v1.ApprovalCenterService.ListApprovals:input_type -> kratos.approval.v1.ListApprovalsRequest
+	18, // 22: kratos.approval.v1.ApprovalCenterService.GetApprovalSummary:input_type -> google.protobuf.Empty
+	18, // 23: kratos.approval.v1.ApprovalCenterService.GetRiskMatrix:input_type -> google.protobuf.Empty
+	9,  // 24: kratos.approval.v1.ApprovalCenterService.PutRiskMatrix:input_type -> kratos.approval.v1.PutRiskMatrixRequest
+	13, // 25: kratos.approval.v1.ApprovalCenterService.ListInbox:output_type -> kratos.approval.v1.ListInboxResponse
+	14, // 26: kratos.approval.v1.ApprovalCenterService.GetInboxSummary:output_type -> kratos.approval.v1.InboxSummary
+	16, // 27: kratos.approval.v1.ApprovalCenterService.DecideInboxItem:output_type -> kratos.approval.v1.DecideInboxItemResponse
+	4,  // 28: kratos.approval.v1.ApprovalCenterService.ListApprovals:output_type -> kratos.approval.v1.ListApprovalsResponse
+	6,  // 29: kratos.approval.v1.ApprovalCenterService.GetApprovalSummary:output_type -> kratos.approval.v1.ApprovalSummary
+	8,  // 30: kratos.approval.v1.ApprovalCenterService.GetRiskMatrix:output_type -> kratos.approval.v1.GetRiskMatrixResponse
+	8,  // 31: kratos.approval.v1.ApprovalCenterService.PutRiskMatrix:output_type -> kratos.approval.v1.GetRiskMatrixResponse
+	25, // [25:32] is the sub-list for method output_type
+	18, // [18:25] is the sub-list for method input_type
+	18, // [18:18] is the sub-list for extension type_name
+	18, // [18:18] is the sub-list for extension extendee
+	0,  // [0:18] is the sub-list for field type_name
 }
 
 func init() { file_kratos_approval_v1_approval_center_proto_init() }
@@ -766,7 +1372,7 @@ func file_kratos_approval_v1_approval_center_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kratos_approval_v1_approval_center_proto_rawDesc), len(file_kratos_approval_v1_approval_center_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   8,
+			NumMessages:   15,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

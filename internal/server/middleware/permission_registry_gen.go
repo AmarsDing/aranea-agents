@@ -38,9 +38,12 @@ func registerGeneratedPermissions(r *PermissionRegistry) {
 	requireRPC(r, "agentbridge", "AgentBridgeService", "UpsertProject", "POST", "/v1/agentbridge/projects", "coding.manage")
 
 	// ── approval ──
+	requireAuthenticatedRPC(r, "approval", "ApprovalCenterService", "DecideInboxItem", "POST", "/v1/inbox/decide")
 	requireRPC(r, "approval", "ApprovalCenterService", "GetApprovalSummary", "GET", "/v1/approvals/summary", "approval.review")
+	requireAuthenticatedRPC(r, "approval", "ApprovalCenterService", "GetInboxSummary", "GET", "/v1/inbox/summary")
 	requireRPC(r, "approval", "ApprovalCenterService", "GetRiskMatrix", "GET", "/v1/approvals/risk-matrix", "approval.review")
 	requireRPC(r, "approval", "ApprovalCenterService", "ListApprovals", "GET", "/v1/approvals", "approval.review")
+	requireAuthenticatedRPC(r, "approval", "ApprovalCenterService", "ListInbox", "GET", "/v1/inbox")
 	requireRPC(r, "approval", "ApprovalCenterService", "PutRiskMatrix", "PUT", "/v1/approvals/risk-matrix", "approval.policy")
 
 	// ── ceoboard ──
@@ -78,6 +81,7 @@ func registerGeneratedPermissions(r *PermissionRegistry) {
 	requireRPC(r, "cron", "CronService", "ListCronTaskRuns", "GET", "/v1/cron-task-runs", "system.cron")
 	requireRPC(r, "cron", "CronService", "ListCronTasks", "GET", "/v1/cron-tasks", "system.cron")
 	requireRPC(r, "cron", "CronService", "ResetCronTaskFailures", "POST", "/v1/cron-tasks/{id}/reset-failures", "system.cron")
+	requireRPC(r, "cron", "CronService", "ResolveCronTaskRun", "POST", "/v1/cron-task-runs/{id}/resolve", "system.cron")
 	requireRPC(r, "cron", "CronService", "TriggerCronTask", "POST", "/v1/cron-tasks/{id}/trigger", "system.cron")
 	requireRPC(r, "cron", "CronService", "UpdateCronTask", "PATCH", "/v1/cron-tasks/{id}", "system.cron")
 
@@ -266,4 +270,4 @@ var generatedPublicRPCs = []string{
 	"/kratos.office.v1.OfficeScheduleService/GetICalFeed",
 }
 
-// 统计:permission=169 authenticated=36 public=4
+// 统计:permission=170 authenticated=39 public=4

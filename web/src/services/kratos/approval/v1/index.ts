@@ -26,6 +26,9 @@ export type ApprovalItem = {
   riskLevel: RiskLevel | undefined;
   requester: string | undefined;
   createdAt: wellKnownTimestamp | undefined;
+  // 归因：由来源带出的 agent key（任务验收=AgentID、日程草案=AgentID、
+  // 自改进建议目标 agent=TargetID），供业务线看板聚合；空 = 无法归因。
+  agentKey: string | undefined;
 };
 
 // Encoded using RFC 3339, where generated output will always be Z-normalized
@@ -37,6 +40,8 @@ export type ListApprovalsRequest = {
   kind: ApprovalKind | undefined;
   page: number | undefined;
   pageSize: number | undefined;
+  // 按请求人筛选（精确匹配）；空 = 不筛选。
+  requester: string | undefined;
 };
 
 export type ListApprovalsResponse = {
@@ -75,7 +80,71 @@ export type PutRiskMatrixRequest = {
   rows: RiskMatrixRow[] | undefined;
 };
 
+// InboxItem 统一收件箱条目。
+export type InboxItem = {
+  id: string | undefined;
+  source: string | undefined;
+  kind: string | undefined;
+  title: string | undefined;
+  summary: string | undefined;
+  riskLevel: RiskLevel | undefined;
+  requester: string | undefined;
+  agentKey: string | undefined;
+  createdAt: wellKnownTimestamp | undefined;
+  dueAt: wellKnownTimestamp | undefined;
+  actions: string[] | undefined;
+  rejectRequiresNote: boolean | undefined;
+  link: string | undefined;
+  contextJson: string | undefined;
+};
+
+export type InboxSourceCount = {
+  source: string | undefined;
+  count: number | undefined;
+};
+
+export type ListInboxRequest = {
+  sources: string[] | undefined;
+  page: number | undefined;
+  pageSize: number | undefined;
+};
+
+export type ListInboxResponse = {
+  items: InboxItem[] | undefined;
+  total: number | undefined;
+  counts: InboxSourceCount[] | undefined;
+  degradedSources: string[] | undefined;
+};
+
+// InboxSummary 全站唯一待办数口径（侧栏角标/工作台/经营看板/移动端）。
+export type InboxSummary = {
+  total: number | undefined;
+  highRisk: number | undefined;
+  counts: InboxSourceCount[] | undefined;
+  degradedSources: string[] | undefined;
+};
+
+export type DecideInboxItemRequest = {
+  //
+  // Behaviors: REQUIRED
+  id: string | undefined;
+  //
+  // Behaviors: REQUIRED
+  action: string | undefined;
+  note: string | undefined;
+};
+
+export type DecideInboxItemResponse = {
+  id: string | undefined;
+  action: string | undefined;
+  decidedAt: wellKnownTimestamp | undefined;
+};
+
 export interface ApprovalCenterService {
+  // ---- 统一收件箱：仅需登录，可见性由各来源按权限码自行过滤 ----
+  ListInbox(request: ListInboxRequest): Promise<ListInboxResponse>;
+  GetInboxSummary(request: wellKnownEmpty): Promise<InboxSummary>;
+  DecideInboxItem(request: DecideInboxItemRequest): Promise<DecideInboxItemResponse>;
   ListApprovals(request: ListApprovalsRequest): Promise<ListApprovalsResponse>;
   GetApprovalSummary(request: wellKnownEmpty): Promise<ApprovalSummary>;
   GetRiskMatrix(request: wellKnownEmpty): Promise<GetRiskMatrixResponse>;
@@ -94,6 +163,68 @@ export function createApprovalCenterServiceClient(
   handler: RequestHandler
 ): ApprovalCenterService {
   return {
+    ListInbox(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      const path = `v1/inbox`; // eslint-disable-line quotes
+      const body = null;
+      const queryParams: string[] = [];
+      if (request.sources) {
+        request.sources.forEach((x) => {
+          queryParams.push(`sources=${encodeURIComponent(x.toString())}`)
+        })
+      }
+      if (request.page) {
+        queryParams.push(`page=${encodeURIComponent(request.page.toString())}`)
+      }
+      if (request.pageSize) {
+        queryParams.push(`pageSize=${encodeURIComponent(request.pageSize.toString())}`)
+      }
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "ApprovalCenterService",
+        method: "ListInbox",
+      }) as Promise<ListInboxResponse>;
+    },
+    GetInboxSummary(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      const path = `v1/inbox/summary`; // eslint-disable-line quotes
+      const body = null;
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "ApprovalCenterService",
+        method: "GetInboxSummary",
+      }) as Promise<InboxSummary>;
+    },
+    DecideInboxItem(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      const path = `v1/inbox/decide`; // eslint-disable-line quotes
+      const body = JSON.stringify(request);
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "ApprovalCenterService",
+        method: "DecideInboxItem",
+      }) as Promise<DecideInboxItemResponse>;
+    },
     ListApprovals(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/approvals`; // eslint-disable-line quotes
       const body = null;
@@ -106,6 +237,9 @@ export function createApprovalCenterServiceClient(
       }
       if (request.pageSize) {
         queryParams.push(`pageSize=${encodeURIComponent(request.pageSize.toString())}`)
+      }
+      if (request.requester) {
+        queryParams.push(`requester=${encodeURIComponent(request.requester.toString())}`)
       }
       let uri = path;
       if (queryParams.length > 0) {

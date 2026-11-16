@@ -727,7 +727,6 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	secopsOffboardRepo := provideSecopsOffboardRepo(dataData)
 	approvalOffboardReader := provideApprovalOffboardReader(secopsOffboardRepo)
 	approvalAggregator := provideApprovalAggregator(approvalTaskReviewReader, approvalEvolutionReader, scheduleDraftReader, approvalOffboardReader)
-	approvalCenterService := provideApprovalCenterService(approvalAggregator, approvalMatrix)
 	secopsOffboardUsecase := provideSecopsOffboardUsecase(adminReader, adminWriter, secopsOffboardRepo, dataData, tokenVersionStore, loggatewayLogger)
 	// E 阶段 W2b D6 密级面（L-1/L-4：标签/水位线/模型策略四 RPC，§7.3）。
 	secopsClassificationRepo := provideSecopsClassificationRepo(dataData)
@@ -746,6 +745,9 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	officeNotifyService := provideOfficeNotifyService(officeNotifyUsecase)
 	officeAppsService := provideOfficeAppsService(officeAppsUsecase)
 	// E 阶段 W1d 邮件（wire-gen-hand-merge-convention：与 wire_part2.go Build
+	// 统一收件箱：依赖日程服务，故审批中心服务在其后装配（手工镜像 wire_approval.go）。
+	inboxDeps := provideInboxDeps(agentBridgeService, agentService, skillEvolutionSuggestionService, officeScheduleService, chatService, decisionRecordService, reviewService, teamService, cronService)
+	approvalCenterService := provideApprovalCenterService(approvalAggregator, approvalMatrix, inboxDeps)
 	// 列表同步镜像；拍板 E-1..E-5）。账号/同步/阅读/摘要/IDLE。
 	// officeMailRepo / officeMailKnowledgeSink / officeMailMessageUsecase 已在
 	// 上方 provideRuntimeTooling 前装配（邮件工具注入），此处复用同一实例。

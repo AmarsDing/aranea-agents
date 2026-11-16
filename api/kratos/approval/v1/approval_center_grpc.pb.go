@@ -20,6 +20,9 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
+	ApprovalCenterService_ListInbox_FullMethodName          = "/kratos.approval.v1.ApprovalCenterService/ListInbox"
+	ApprovalCenterService_GetInboxSummary_FullMethodName    = "/kratos.approval.v1.ApprovalCenterService/GetInboxSummary"
+	ApprovalCenterService_DecideInboxItem_FullMethodName    = "/kratos.approval.v1.ApprovalCenterService/DecideInboxItem"
 	ApprovalCenterService_ListApprovals_FullMethodName      = "/kratos.approval.v1.ApprovalCenterService/ListApprovals"
 	ApprovalCenterService_GetApprovalSummary_FullMethodName = "/kratos.approval.v1.ApprovalCenterService/GetApprovalSummary"
 	ApprovalCenterService_GetRiskMatrix_FullMethodName      = "/kratos.approval.v1.ApprovalCenterService/GetRiskMatrix"
@@ -30,6 +33,10 @@ const (
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type ApprovalCenterServiceClient interface {
+	// ---- 统一收件箱：仅需登录，可见性由各来源按权限码自行过滤 ----
+	ListInbox(ctx context.Context, in *ListInboxRequest, opts ...grpc.CallOption) (*ListInboxResponse, error)
+	GetInboxSummary(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*InboxSummary, error)
+	DecideInboxItem(ctx context.Context, in *DecideInboxItemRequest, opts ...grpc.CallOption) (*DecideInboxItemResponse, error)
 	ListApprovals(ctx context.Context, in *ListApprovalsRequest, opts ...grpc.CallOption) (*ListApprovalsResponse, error)
 	GetApprovalSummary(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ApprovalSummary, error)
 	GetRiskMatrix(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*GetRiskMatrixResponse, error)
@@ -42,6 +49,36 @@ type approvalCenterServiceClient struct {
 
 func NewApprovalCenterServiceClient(cc grpc.ClientConnInterface) ApprovalCenterServiceClient {
 	return &approvalCenterServiceClient{cc}
+}
+
+func (c *approvalCenterServiceClient) ListInbox(ctx context.Context, in *ListInboxRequest, opts ...grpc.CallOption) (*ListInboxResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListInboxResponse)
+	err := c.cc.Invoke(ctx, ApprovalCenterService_ListInbox_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *approvalCenterServiceClient) GetInboxSummary(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*InboxSummary, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(InboxSummary)
+	err := c.cc.Invoke(ctx, ApprovalCenterService_GetInboxSummary_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *approvalCenterServiceClient) DecideInboxItem(ctx context.Context, in *DecideInboxItemRequest, opts ...grpc.CallOption) (*DecideInboxItemResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DecideInboxItemResponse)
+	err := c.cc.Invoke(ctx, ApprovalCenterService_DecideInboxItem_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func (c *approvalCenterServiceClient) ListApprovals(ctx context.Context, in *ListApprovalsRequest, opts ...grpc.CallOption) (*ListApprovalsResponse, error) {
@@ -88,6 +125,10 @@ func (c *approvalCenterServiceClient) PutRiskMatrix(ctx context.Context, in *Put
 // All implementations must embed UnimplementedApprovalCenterServiceServer
 // for forward compatibility.
 type ApprovalCenterServiceServer interface {
+	// ---- 统一收件箱：仅需登录，可见性由各来源按权限码自行过滤 ----
+	ListInbox(context.Context, *ListInboxRequest) (*ListInboxResponse, error)
+	GetInboxSummary(context.Context, *emptypb.Empty) (*InboxSummary, error)
+	DecideInboxItem(context.Context, *DecideInboxItemRequest) (*DecideInboxItemResponse, error)
 	ListApprovals(context.Context, *ListApprovalsRequest) (*ListApprovalsResponse, error)
 	GetApprovalSummary(context.Context, *emptypb.Empty) (*ApprovalSummary, error)
 	GetRiskMatrix(context.Context, *emptypb.Empty) (*GetRiskMatrixResponse, error)
@@ -102,6 +143,15 @@ type ApprovalCenterServiceServer interface {
 // pointer dereference when methods are called.
 type UnimplementedApprovalCenterServiceServer struct{}
 
+func (UnimplementedApprovalCenterServiceServer) ListInbox(context.Context, *ListInboxRequest) (*ListInboxResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListInbox not implemented")
+}
+func (UnimplementedApprovalCenterServiceServer) GetInboxSummary(context.Context, *emptypb.Empty) (*InboxSummary, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetInboxSummary not implemented")
+}
+func (UnimplementedApprovalCenterServiceServer) DecideInboxItem(context.Context, *DecideInboxItemRequest) (*DecideInboxItemResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method DecideInboxItem not implemented")
+}
 func (UnimplementedApprovalCenterServiceServer) ListApprovals(context.Context, *ListApprovalsRequest) (*ListApprovalsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListApprovals not implemented")
 }
@@ -133,6 +183,60 @@ func RegisterApprovalCenterServiceServer(s grpc.ServiceRegistrar, srv ApprovalCe
 		t.testEmbeddedByValue()
 	}
 	s.RegisterService(&ApprovalCenterService_ServiceDesc, srv)
+}
+
+func _ApprovalCenterService_ListInbox_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListInboxRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ApprovalCenterServiceServer).ListInbox(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ApprovalCenterService_ListInbox_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ApprovalCenterServiceServer).ListInbox(ctx, req.(*ListInboxRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ApprovalCenterService_GetInboxSummary_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(emptypb.Empty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ApprovalCenterServiceServer).GetInboxSummary(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ApprovalCenterService_GetInboxSummary_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ApprovalCenterServiceServer).GetInboxSummary(ctx, req.(*emptypb.Empty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ApprovalCenterService_DecideInboxItem_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DecideInboxItemRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ApprovalCenterServiceServer).DecideInboxItem(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ApprovalCenterService_DecideInboxItem_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ApprovalCenterServiceServer).DecideInboxItem(ctx, req.(*DecideInboxItemRequest))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
 func _ApprovalCenterService_ListApprovals_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
@@ -214,6 +318,18 @@ var ApprovalCenterService_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "kratos.approval.v1.ApprovalCenterService",
 	HandlerType: (*ApprovalCenterServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "ListInbox",
+			Handler:    _ApprovalCenterService_ListInbox_Handler,
+		},
+		{
+			MethodName: "GetInboxSummary",
+			Handler:    _ApprovalCenterService_GetInboxSummary_Handler,
+		},
+		{
+			MethodName: "DecideInboxItem",
+			Handler:    _ApprovalCenterService_DecideInboxItem_Handler,
+		},
 		{
 			MethodName: "ListApprovals",
 			Handler:    _ApprovalCenterService_ListApprovals_Handler,

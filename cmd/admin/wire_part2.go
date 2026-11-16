@@ -66,6 +66,7 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.SelfImprovement, *co
 		provideApprovalEvolutionReader,
 		provideApprovalAggregator,
 		provideApprovalMatrix,
+		provideInboxDeps,
 		provideApprovalCenterService,
 		// E 阶段 W2a D3 secops 离职处置五步（拍板 §6.3；审批中心第三类数据源）。
 		provideSecopsOffboardRepo,

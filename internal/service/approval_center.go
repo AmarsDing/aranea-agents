@@ -2,10 +2,13 @@ package service
 
 import (
 	"context"
+	"errors"
 	"strconv"
+	"strings"
 
 	approvalv1 "aranea-agents/api/kratos/approval/v1"
 	"aranea-agents/internal/biz/approval"
+	"aranea-agents/internal/biz/inbox"
 	"aranea-agents/internal/biz/monitor"
 	"aranea-agents/pkg/apierror"
 
@@ -17,8 +20,10 @@ import (
 // 中心，需求文档 §5.3 拍板 A-1/A-4）。
 //
 // 红线：
-//   - 只读聚合：决议出口仍走各领域 RPC（agentbridge ReviewTask、进化建议
-//     Apply/Reject…），本服务不开写旁路；唯一的写口是 PutRiskMatrix
+//   - 审批聚合（ListApprovals/GetApprovalSummary）只读；统一收件箱的
+//     DecideInboxItem 是统一决议入口，只做分发——按 id 回源重新解析后
+//     调用各领域既有写路径（agentbridge ReviewTask、进化建议
+//     Apply/Reject…），不绕过领域校验；另一个写口是 PutRiskMatrix
 //     （approval.policy 权限码，配置类而非决议类）。
 //   - 不返回无权对象：可见性过滤在 biz 聚合器逐源完成（照抄 workbench
 //     approvals.go 模式），本层只做 proto 映射，不做二次放行。
@@ -29,6 +34,7 @@ type ApprovalCenterService struct {
 
 	agg    *approval.Aggregator
 	matrix *approval.Matrix
+	inbox  *inbox.Aggregator // 统一收件箱（WithInbox 挂接，可为 nil）
 }
 
 func NewApprovalCenterService(agg *approval.Aggregator, matrix *approval.Matrix) *ApprovalCenterService {
@@ -119,6 +125,7 @@ func toProtoApprovalItem(it approval.Item) *approvalv1.ApprovalItem {
 		ContextJson: it.ContextJSON,
 		RiskLevel:   approvalRiskToProto(it.RiskLevel),
 		Requester:   it.Requester,
+		AgentKey:    it.AgentKey,
 	}
 	if !it.CreatedAt.IsZero() {
 		out.CreatedAt = timestamppb.New(it.CreatedAt)
@@ -147,7 +154,7 @@ func (s *ApprovalCenterService) ListApprovals(ctx context.Context, req *approval
 	if !ok {
 		return nil, apierror.BadRequest(apierror.DomainApproval, "unknown approval kind: %s", req.GetKind().String())
 	}
-	items, total, err := s.agg.List(ctx, approval.ViewerFromContext(ctx), kind, int(req.GetPage()), int(req.GetPageSize()))
+	items, total, err := s.agg.List(ctx, approval.ViewerFromContext(ctx), kind, req.GetRequester(), int(req.GetPage()), int(req.GetPageSize()))
 	if err != nil {
 		if approval.IsUnknownKind(err) {
 			return nil, apierror.BadRequest(apierror.DomainApproval, "%s", err.Error())
@@ -243,4 +250,117 @@ func (s *matrixAuditSink) RecordMatrixChange(ctx context.Context, actor string, 
 		After:    after,
 	})
 	return nil
+}
+
+// ---- 统一收件箱（工作台与经营看板重新设计 §4.1）----
+
+// WithInbox 挂接统一收件箱聚合器；未挂接时三个收件箱 RPC 返回 503。
+func (s *ApprovalCenterService) WithInbox(agg *inbox.Aggregator) *ApprovalCenterService {
+	s.inbox = agg
+	return s
+}
+
+func (s *ApprovalCenterService) inboxOrErr() (*inbox.Aggregator, error) {
+	if s == nil || s.inbox == nil {
+		return nil, apierror.Unavailable(apierror.DomainApproval, "inbox is not configured")
+	}
+	return s.inbox, nil
+}
+
+// mapInboxError 把聚合器哨兵错误映射为 400/404/409；领域错误原样透传。
+func mapInboxError(err error) error {
+	switch {
+	case err == nil:
+		return nil
+	case errors.Is(err, inbox.ErrInvalidID), errors.Is(err, inbox.ErrActionNotAllowed), errors.Is(err, inbox.ErrNoteRequired):
+		return apierror.BadRequest(apierror.DomainApproval, "%s", err.Error())
+	case errors.Is(err, inbox.ErrUnknownSource):
+		return apierror.BadRequest(apierror.DomainApproval, "%s", err.Error())
+	case errors.Is(err, inbox.ErrGone):
+		return apierror.Conflict(apierror.DomainApproval, "%s", err.Error())
+	default:
+		return err
+	}
+}
+
+func toProtoInboxItem(it inbox.Item) *approvalv1.InboxItem {
+	out := &approvalv1.InboxItem{
+		Id:                 it.ID,
+		Source:             it.Source,
+		Kind:               it.Kind,
+		Title:              it.Title,
+		Summary:            it.Summary,
+		RiskLevel:          approvalRiskToProto(it.Risk),
+		Requester:          it.Requester,
+		AgentKey:           it.AgentKey,
+		Actions:            append([]string{}, it.Actions...),
+		RejectRequiresNote: it.RejectRequiresNote,
+		Link:               it.Link,
+		ContextJson:        it.ContextJSON,
+	}
+	if !it.CreatedAt.IsZero() {
+		out.CreatedAt = timestamppb.New(it.CreatedAt)
+	}
+	if !it.DueAt.IsZero() {
+		out.DueAt = timestamppb.New(it.DueAt)
+	}
+	return out
+}
+
+func toProtoInboxCounts(res inbox.Result) []*approvalv1.InboxSourceCount {
+	out := make([]*approvalv1.InboxSourceCount, 0, len(res.Order))
+	for _, name := range res.Order {
+		out = append(out, &approvalv1.InboxSourceCount{Source: name, Count: res.Counts[name]})
+	}
+	return out
+}
+
+func (s *ApprovalCenterService) ListInbox(ctx context.Context, req *approvalv1.ListInboxRequest) (*approvalv1.ListInboxResponse, error) {
+	agg, err := s.inboxOrErr()
+	if err != nil {
+		return nil, err
+	}
+	res, err := agg.List(ctx, req.GetSources(), int(req.GetPage()), int(req.GetPageSize()))
+	if err != nil {
+		return nil, mapInboxError(err)
+	}
+	out := &approvalv1.ListInboxResponse{
+		Total:           res.Total,
+		Counts:          toProtoInboxCounts(res),
+		DegradedSources: res.Degraded,
+	}
+	for _, it := range res.Items {
+		out.Items = append(out.Items, toProtoInboxItem(it))
+	}
+	return out, nil
+}
+
+func (s *ApprovalCenterService) GetInboxSummary(ctx context.Context, _ *emptypb.Empty) (*approvalv1.InboxSummary, error) {
+	agg, err := s.inboxOrErr()
+	if err != nil {
+		return nil, err
+	}
+	res := agg.Summary(ctx)
+	return &approvalv1.InboxSummary{
+		Total:           res.Total,
+		HighRisk:        res.HighRisk,
+		Counts:          toProtoInboxCounts(res),
+		DegradedSources: res.Degraded,
+	}, nil
+}
+
+func (s *ApprovalCenterService) DecideInboxItem(ctx context.Context, req *approvalv1.DecideInboxItemRequest) (*approvalv1.DecideInboxItemResponse, error) {
+	agg, err := s.inboxOrErr()
+	if err != nil {
+		return nil, err
+	}
+	item, err := agg.Decide(ctx, req.GetId(), req.GetAction(), req.GetNote())
+	if err != nil {
+		return nil, mapInboxError(err)
+	}
+	return &approvalv1.DecideInboxItemResponse{
+		Id:        item.ID,
+		Action:    strings.ToLower(strings.TrimSpace(req.GetAction())),
+		DecidedAt: timestamppb.Now(),
+	}, nil
 }

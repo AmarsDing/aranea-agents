@@ -58,6 +58,7 @@ function wireToItem(raw: Record<string, unknown>): ApprovalItemRow {
     context_raw: context ? '' : contextRaw,
     risk_level: RISK_FROM_PROTO[String(raw.riskLevel ?? raw.risk_level ?? '')] ?? '',
     requester: String(raw.requester ?? ''),
+    agent_key: String(raw.agentKey ?? raw.agent_key ?? ''),
     created_at: String(raw.createdAt ?? raw.created_at ?? ''),
   };
 }
@@ -82,12 +83,15 @@ export type ApprovalListResult = {
 
 export async function listApprovals(query: {
   kind?: ApprovalKindKey | '';
+  /** 精确请求人筛选（服务端按 requester 过滤后再分页/计数）；空 = 不筛选 */
+  requester?: string;
   page?: number;
   pageSize?: number;
 }): Promise<ApprovalListResult> {
   const svc = createApprovalCenterService();
   const res = await svc.ListApprovals({
     kind: query.kind ? (KIND_TO_PROTO[query.kind] as never) : undefined,
+    requester: query.requester?.trim() || undefined,
     page: query.page ?? 1,
     pageSize: query.pageSize ?? 20,
   });
@@ -197,4 +201,102 @@ export async function putRiskMatrix(rows: RiskMatrixRowModel[]): Promise<RiskMat
     })),
   });
   return (res.rows ?? []).map((row) => wireToMatrixRow(row as Record<string, unknown>));
+}
+
+// ---------- 统一收件箱（服务端聚合；全站唯一待办口径） ----------
+
+export type InboxAction = 'approve' | 'reject' | 'ack' | 'resolve';
+
+export type InboxItemRow = {
+  id: string;
+  source: string;
+  kind: string;
+  title: string;
+  summary: string;
+  risk_level: RiskLevelKey | '';
+  requester: string;
+  agent_key: string;
+  created_at: string;
+  due_at: string;
+  actions: InboxAction[];
+  reject_requires_note: boolean;
+  link: string;
+};
+
+export type InboxListResult = {
+  items: InboxItemRow[];
+  total: number;
+  /** 来源 → 待办数（已注册来源全量，含 0） */
+  counts: Record<string, number>;
+  /** 本次读取失败的来源（计数不可信） */
+  degraded: string[];
+};
+
+const INBOX_ACTIONS: ReadonlySet<string> = new Set(['approve', 'reject', 'ack', 'resolve']);
+
+function wireToInboxItem(raw: Record<string, unknown>): InboxItemRow {
+  const actions = Array.isArray(raw.actions) ? raw.actions : [];
+  return {
+    id: String(raw.id ?? ''),
+    source: String(raw.source ?? ''),
+    kind: String(raw.kind ?? ''),
+    title: String(raw.title ?? ''),
+    summary: String(raw.summary ?? ''),
+    risk_level: RISK_FROM_PROTO[String(raw.riskLevel ?? raw.risk_level ?? '')] ?? '',
+    requester: String(raw.requester ?? ''),
+    agent_key: String(raw.agentKey ?? raw.agent_key ?? ''),
+    created_at: String(raw.createdAt ?? raw.created_at ?? ''),
+    due_at: String(raw.dueAt ?? raw.due_at ?? ''),
+    actions: actions.map(String).filter((a): a is InboxAction => INBOX_ACTIONS.has(a)),
+    reject_requires_note: Boolean(raw.rejectRequiresNote ?? raw.reject_requires_note ?? false),
+    link: String(raw.link ?? ''),
+  };
+}
+
+function wireToInboxCounts(raw: unknown): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const c of Array.isArray(raw) ? raw : []) {
+    const rec = c as Record<string, unknown>;
+    const source = String(rec.source ?? '');
+    if (source) out[source] = Number(rec.count ?? 0);
+  }
+  return out;
+}
+
+export async function listInbox(
+  query: { sources?: string[]; page?: number; pageSize?: number } = {},
+): Promise<InboxListResult> {
+  const res = (await createApprovalCenterService().ListInbox({
+    sources: query.sources?.length ? query.sources : undefined,
+    page: query.page ?? 1,
+    pageSize: query.pageSize ?? 50,
+  })) as unknown as Record<string, unknown>;
+  const items = Array.isArray(res.items) ? res.items : [];
+  return {
+    items: items.map((row) => wireToInboxItem(row as Record<string, unknown>)),
+    total: Number(res.total ?? 0),
+    counts: wireToInboxCounts(res.counts),
+    degraded: (Array.isArray(res.degradedSources) ? res.degradedSources : []).map(String),
+  };
+}
+
+/** 全站待办数（侧栏角标 / 工作台 / 经营看板同源）。 */
+export async function getInboxSummary(): Promise<{
+  total: number;
+  highRisk: number;
+  counts: Record<string, number>;
+  degraded: string[];
+}> {
+  const res = (await createApprovalCenterService().GetInboxSummary({})) as unknown as Record<string, unknown>;
+  return {
+    total: Number(res.total ?? 0),
+    highRisk: Number(res.highRisk ?? 0),
+    counts: wireToInboxCounts(res.counts),
+    degraded: (Array.isArray(res.degradedSources) ? res.degradedSources : []).map(String),
+  };
+}
+
+/** 统一决议：服务端按 id 回源解析后分发到各领域写路径；条目已被处理时 409。 */
+export async function decideInboxItem(id: string, action: InboxAction, note = ''): Promise<void> {
+  await createApprovalCenterService().DecideInboxItem({ id, action, note: note.trim() || undefined });
 }

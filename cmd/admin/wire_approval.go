@@ -52,12 +52,40 @@ func provideApprovalMatrix(d *data.Data, mon *monitor.Usecase) *approval.Matrix 
 }
 
 // provideApprovalCenterService 装配统一审批中心服务（/v1/approvals*）。
-func provideApprovalCenterService(agg *approval.Aggregator, matrix *approval.Matrix) *service.ApprovalCenterService {
-	return service.NewApprovalCenterService(agg, matrix)
+func provideApprovalCenterService(agg *approval.Aggregator, matrix *approval.Matrix, inboxDeps service.InboxDeps) *service.ApprovalCenterService {
+	inboxDeps.Approvals = agg
+	return service.NewApprovalCenterService(agg, matrix).WithInbox(service.NewInboxAggregator(inboxDeps))
 }
 
 // provideReviewService 装配 review.v1 收编服务（/v1/review/*；无依赖——
 // 运行时走 mvp.Ensure() 单例，与旧裸路由同源）。
 func provideReviewService() *service.ReviewService {
 	return service.NewReviewService()
+}
+
+// provideInboxDeps 汇集统一收件箱各来源所需的领域服务（工作台与经营看板
+// 重新设计 §4.1）。读写都复用这些服务的既有方法，收件箱不另开数据通道；
+// Approvals 由 provideApprovalCenterService 填入。
+func provideInboxDeps(
+	bridge *service.AgentBridgeService,
+	agents *service.AgentService,
+	skillEvo *service.SkillEvolutionSuggestionService,
+	schedule *service.OfficeScheduleService,
+	chat *service.ChatService,
+	decisions *service.DecisionRecordService,
+	review *service.ReviewService,
+	teams *service.TeamService,
+	cron *service.CronService,
+) service.InboxDeps {
+	return service.InboxDeps{
+		Bridge:    bridge,
+		Agents:    agents,
+		SkillEvo:  skillEvo,
+		Schedule:  schedule,
+		Chat:      chat,
+		Decisions: decisions,
+		Review:    review,
+		Teams:     teams,
+		Cron:      cron,
+	}
 }
