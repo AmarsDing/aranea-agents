@@ -9,6 +9,7 @@ import AgentSettingsPage from '../pages/AgentSettingsPage.vue';
 import MonitorPage from '../pages/MonitorPage.vue';
 import OverviewPage from '../pages/OverviewPage.vue';
 import WorkbenchCockpitPage from '../pages/WorkbenchCockpitPage.vue';
+import TodayPage from '../pages/TodayPage.vue';
 import ApprovalsPage from '../pages/ApprovalsPage.vue';
 import SchedulePage from '../pages/SchedulePage.vue';
 import AppsPage from '../pages/AppsPage.vue';
@@ -124,9 +125,9 @@ export const routes: RouteRecordRaw[] = [
     component: MainLayout,
     meta: { requiresAuth: true },
     children: [
-      { path: '', redirect: '/overview' },
+      { path: '', redirect: '/workbench' },
       { path: 'overview', name: 'overview', component: OverviewPage },
-      { path: 'workbench', name: 'workbench', component: WorkbenchCockpitPage },
+      { path: 'workbench', name: 'workbench', component: TodayPage },
       { path: 'approvals', name: 'approvals', component: ApprovalsPage, meta: { titleKey: 'menu.approvals' } },
       { path: 'schedule', name: 'schedule', component: SchedulePage, meta: { titleKey: 'menu.schedule' } },
       { path: 'apps', name: 'apps', component: AppsPage, meta: { titleKey: 'menu.apps' } },
@@ -306,6 +307,7 @@ export const routes: RouteRecordRaw[] = [
         name: 'cron',
         component: CronTasksPage,
       },
+      { path: 'monitor/live', name: 'monitor-live', component: WorkbenchCockpitPage },
       { path: 'monitor/logs', name: 'monitor-logs', component: MonitorPage },
       { path: 'self-improvement', name: 'self-improvement', component: SelfImprovementPage },
       { path: 'settings', name: 'settings', component: SystemSettingsPage, meta: { titleKey: 'menu.settings' } },
@@ -314,7 +316,7 @@ export const routes: RouteRecordRaw[] = [
         : []),
     ],
   },
-  // Catch-all：未匹配路径（如 /teams 笔误或过期书签）重定向到 overview，
+  // Catch-all：未匹配路径（如 /teams 笔误或过期书签）重定向到工作台，
   // 避免 RouterView 渲染 null vnode 导致整页空白崩溃。
-  { path: '/:pathMatch(.*)*', redirect: '/overview' },
+  { path: '/:pathMatch(.*)*', redirect: '/workbench' },
 ];

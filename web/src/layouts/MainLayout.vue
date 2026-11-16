@@ -135,7 +135,17 @@
                   <q-item-section avatar>
                     <q-icon :name="item.icon" />
                   </q-item-section>
-                  <q-item-section v-show="!drawerMini">{{ t(item.labelKey) }}</q-item-section>
+                  <q-item-section v-show="!drawerMini">
+                    <span>
+                      {{ t(item.labelKey) }}
+                      <span
+                        v-if="item.to === '/workbench' && inboxBadge > 0"
+                        class="app-sidebar-badge"
+                        :aria-label="t('today.inbox.title') + ' ' + inboxBadge"
+                        >{{ inboxBadge > 99 ? '99+' : inboxBadge }}</span
+                      >
+                    </span>
+                  </q-item-section>
                 </q-item>
               </div>
               <q-separator v-if="gi < navGroups.length - 1" v-show="!drawerMini" class="app-sidebar-divider" />
@@ -173,6 +183,7 @@ import { useInboundNotificationStore } from '../stores/inboundNotifications';
 import InboundNotificationBell from '../components/layout/InboundNotificationBell.vue';
 import OfficeNotificationBell from '../components/layout/OfficeNotificationBell.vue';
 import { useOfficeNotifications } from '../features/office/useOfficeNotifications';
+import { useInboxBadge } from '../features/today/useInboxBadge';
 import PairingQrDialog from '../components/mobile/PairingQrDialog.vue';
 import ArtifactPreviewDialog from '../components/artifact/ArtifactPreviewDialog.vue';
 import { useArtifactStore } from '../stores/artifact';
@@ -184,6 +195,13 @@ const { t, locale } = useI18n();
 const $q = useQuasar();
 const route = useRoute();
 const router = useRouter();
+// 侧栏「工作台」角标：与工作台列表同一个服务端口径（/v1/inbox/summary）。
+const { count: inboxBadge, refresh: refreshInboxBadge } = useInboxBadge();
+// 换页时顺手对一次账：在工作台处理完事项后，角标不用等下一轮轮询。
+watch(
+  () => route.path,
+  () => void refreshInboxBadge(),
+);
 const auth = useAuthStore();
 const inboundStore = useInboundNotificationStore();
 const artifactStore = useArtifactStore();

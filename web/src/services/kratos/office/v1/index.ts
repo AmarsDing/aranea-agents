@@ -318,6 +318,43 @@ export type SendMailResponse = {
   sendId: string | undefined;
 };
 
+// OfficeTask 个人任务（负责人是调用者本人；邮件转任务与手工新建同表）。
+export type OfficeTask = {
+  id: string | undefined;
+  title: string | undefined;
+  body: string | undefined;
+  source: string | undefined;
+  sourceRef: string | undefined;
+  status: string | undefined;
+  createdAt: wellKnownTimestamp | undefined;
+  updatedAt: wellKnownTimestamp | undefined;
+};
+
+export type ListOfficeTasksRequest = {
+  status: string | undefined;
+  limit: number | undefined;
+};
+
+export type ListOfficeTasksResponse = {
+  items: OfficeTask[] | undefined;
+};
+
+export type CreateOfficeTaskRequest = {
+  //
+  // Behaviors: REQUIRED
+  title: string | undefined;
+  body: string | undefined;
+};
+
+export type SetOfficeTaskStatusRequest = {
+  //
+  // Behaviors: REQUIRED
+  id: string | undefined;
+  //
+  // Behaviors: REQUIRED
+  status: string | undefined;
+};
+
 export type TriggerDigestRequest = {
   since: wellKnownTimestamp | undefined;
 };
@@ -347,6 +384,10 @@ export interface OfficeMailService {
   // SendMail F2 占位：实现随高风险闸同批（E-2）。
   SendMail(request: SendMailRequest): Promise<SendMailResponse>;
   TriggerDigest(request: TriggerDigestRequest): Promise<TriggerDigestResponse>;
+  // 个人任务（工作台「我的任务」）：只读写调用者本人的任务，仅需登录。
+  ListOfficeTasks(request: ListOfficeTasksRequest): Promise<ListOfficeTasksResponse>;
+  CreateOfficeTask(request: CreateOfficeTaskRequest): Promise<OfficeTask>;
+  SetOfficeTaskStatus(request: SetOfficeTaskStatusRequest): Promise<OfficeTask>;
 }
 
 export function createOfficeMailServiceClient(
@@ -666,6 +707,66 @@ export function createOfficeMailServiceClient(
         service: "OfficeMailService",
         method: "TriggerDigest",
       }) as Promise<TriggerDigestResponse>;
+    },
+    ListOfficeTasks(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      const path = `v1/office/tasks`; // eslint-disable-line quotes
+      const body = null;
+      const queryParams: string[] = [];
+      if (request.status) {
+        queryParams.push(`status=${encodeURIComponent(request.status.toString())}`)
+      }
+      if (request.limit) {
+        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`)
+      }
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "OfficeMailService",
+        method: "ListOfficeTasks",
+      }) as Promise<ListOfficeTasksResponse>;
+    },
+    CreateOfficeTask(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      const path = `v1/office/tasks`; // eslint-disable-line quotes
+      const body = JSON.stringify(request);
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "OfficeMailService",
+        method: "CreateOfficeTask",
+      }) as Promise<OfficeTask>;
+    },
+    SetOfficeTaskStatus(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      if (!request.id) {
+        throw new Error("missing required field request.id");
+      }
+      const path = `v1/office/tasks/${request.id}:setStatus`; // eslint-disable-line quotes
+      const body = JSON.stringify(request);
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "OfficeMailService",
+        method: "SetOfficeTaskStatus",
+      }) as Promise<OfficeTask>;
     },
   };
 }

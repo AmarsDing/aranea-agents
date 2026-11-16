@@ -197,6 +197,10 @@ type OfficeTaskRepo interface {
 	// CreateTaskFromMailTx 单事务：插入任务 + 回写邮件 task_ref（幂等前置
 	// 由 usecase 判空保证；同事务防「任务建而回写丢」的孤儿态）。
 	CreateTaskFromMailTx(ctx context.Context, t *OfficeTask, mailID, userID string) error
+	// ListOfficeTasks 本人任务按状态过滤，created_at 倒序限量。
+	ListOfficeTasks(ctx context.Context, userID, status string, limit int) ([]*OfficeTask, error)
+	// SetOfficeTaskStatus 按 id+user_id 改状态；行不存在返回 ErrOfficeTaskNotFound。
+	SetOfficeTaskStatus(ctx context.Context, id, userID, status string, at time.Time) error
 }
 
 // ============================================================================

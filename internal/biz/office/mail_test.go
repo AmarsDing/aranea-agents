@@ -390,6 +390,34 @@ func (f *mailFakeRepos) GetOfficeTask(_ context.Context, id, userID string) (*Of
 	return &c, nil
 }
 
+func (f *mailFakeRepos) ListOfficeTasks(_ context.Context, userID, status string, limit int) ([]*OfficeTask, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make([]*OfficeTask, 0)
+	for _, t := range f.tasks {
+		if t.UserID == userID && t.Status == status {
+			c := *t
+			out = append(out, &c)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].CreatedAt.After(out[j].CreatedAt) })
+	if len(out) > limit {
+		out = out[:limit]
+	}
+	return out, nil
+}
+
+func (f *mailFakeRepos) SetOfficeTaskStatus(_ context.Context, id, userID, status string, at time.Time) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	cur, ok := f.tasks[id]
+	if !ok || cur.UserID != userID {
+		return ErrOfficeTaskNotFound
+	}
+	cur.Status, cur.UpdatedAt = status, at
+	return nil
+}
+
 // CreateTaskFromMailTx 同事务语义：建任务 + 回写 task_ref（邮件不存在整体失败）。
 func (f *mailFakeRepos) CreateTaskFromMailTx(_ context.Context, t *OfficeTask, mailID, userID string) error {
 	f.mu.Lock()

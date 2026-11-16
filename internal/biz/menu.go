@@ -51,7 +51,7 @@ const (
 	permMemoryRead    = "memory.read"    // /memory
 	permUsageRead     = "usage.read"     // /usage/events
 	permSystemCron    = "system.cron"    // /cron
-	permSystemMonitor = "system.monitor" // /monitor/logs
+	permSystemMonitor = "system.monitor" // /monitor/live、/monitor/logs
 	permSystemSetting = "system.setting" // /settings
 	// permSystemSelfImprove 自我改进控制台（评审 2026-11-09 A3 接码）。
 	permSystemSelfImprove = "system.self_improve" // /self-improvement
@@ -153,6 +153,7 @@ func NavigationCatalog() []MenuGroup {
 			LabelKey: "menu.groupOps",
 			Items: []MenuEntry{
 				{Key: "cron", Path: "/cron", Icon: "schedule", LabelKey: "menu.cron", Permission: permSystemCron},
+				{Key: "monitorLive", Path: "/monitor/live", Icon: "hub", LabelKey: "menu.monitorLive", Permission: permSystemMonitor},
 				{Key: "monitor", Path: "/monitor/logs", Icon: "monitor_heart", LabelKey: "menu.monitor", Exact: false, Permission: permSystemMonitor},
 				{Key: "selfImprovement", Path: "/self-improvement", Icon: "precision_manufacturing", LabelKey: "menu.selfImprovement", Permission: permSystemSelfImprove},
 				{Key: "settings", Path: "/settings", Icon: "settings", LabelKey: "menu.settings", Permission: permSystemSetting},

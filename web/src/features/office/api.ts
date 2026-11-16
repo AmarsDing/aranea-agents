@@ -15,6 +15,7 @@ import type {
   OfficeEventRow,
   OfficeEventSource,
   OfficeNotificationRow,
+  OfficeTaskRow,
 } from './types';
 
 // office 套件 API 适配（E 阶段 W1c）：proto 生成客户端 → 页内行模型。
@@ -373,4 +374,34 @@ export async function exportMailEml(msg: MailMessageRow): Promise<void> {
 export async function mailToTask(id: string, titleOverride: string): Promise<string> {
   const res = await createOfficeMailService().MailToTask({ id, titleOverride });
   return String(res.taskRef ?? res.task_ref ?? '');
+}
+
+// ---------- 个人任务（工作台「我的任务」） ----------
+
+function wireToTask(raw: Record<string, unknown>): OfficeTaskRow {
+  return {
+    id: String(raw.id ?? ''),
+    title: String(raw.title ?? ''),
+    body: String(raw.body ?? ''),
+    source: String(raw.source ?? ''),
+    source_ref: String(raw.sourceRef ?? raw.source_ref ?? ''),
+    status: String(raw.status ?? ''),
+    created_at: String(raw.createdAt ?? raw.created_at ?? ''),
+    updated_at: String(raw.updatedAt ?? raw.updated_at ?? ''),
+  };
+}
+
+export async function listOfficeTasks(status: 'open' | 'done' = 'open', limit = 50): Promise<OfficeTaskRow[]> {
+  const res = await createOfficeMailService().ListOfficeTasks({ status, limit });
+  return (res.items ?? []).map((row) => wireToTask(row as Record<string, unknown>));
+}
+
+export async function createOfficeTask(title: string, body = ''): Promise<OfficeTaskRow> {
+  const res = await createOfficeMailService().CreateOfficeTask({ title, body: body || undefined });
+  return wireToTask(res as Record<string, unknown>);
+}
+
+export async function setOfficeTaskStatus(id: string, status: 'open' | 'done'): Promise<OfficeTaskRow> {
+  const res = await createOfficeMailService().SetOfficeTaskStatus({ id, status });
+  return wireToTask(res as Record<string, unknown>);
 }

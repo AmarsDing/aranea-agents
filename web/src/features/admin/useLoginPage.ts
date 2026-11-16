@@ -128,7 +128,7 @@ export function useLoginPage() {
     if (!backendHealthy.value) return;
     await auth.ensureSession();
     if (auth.user) {
-      await router.replace(typeof route.query.redirect === 'string' ? route.query.redirect : '/overview');
+      await router.replace(typeof route.query.redirect === 'string' ? route.query.redirect : '/workbench');
     }
   }
 
@@ -136,8 +136,8 @@ export function useLoginPage() {
     const redirect =
       typeof route.query.redirect === 'string' && route.query.redirect.startsWith('/')
         ? route.query.redirect
-        : '/overview';
-    await router.replace(redirect || '/overview');
+        : '/workbench';
+    await router.replace(redirect || '/workbench');
   }
 
   async function submit() {
@@ -148,8 +148,8 @@ export function useLoginPage() {
       const redirect =
         typeof route.query.redirect === 'string' && route.query.redirect.startsWith('/')
           ? route.query.redirect
-          : '/overview';
-      await router.replace(redirect || '/overview');
+          : '/workbench';
+      await router.replace(redirect || '/workbench');
     } catch (err) {
       const info = formatLoginError(err, t);
       localError.value = info.message;

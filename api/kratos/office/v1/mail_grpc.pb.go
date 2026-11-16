@@ -37,6 +37,9 @@ const (
 	OfficeMailService_AttachmentToKnowledge_FullMethodName = "/kratos.office.v1.OfficeMailService/AttachmentToKnowledge"
 	OfficeMailService_SendMail_FullMethodName              = "/kratos.office.v1.OfficeMailService/SendMail"
 	OfficeMailService_TriggerDigest_FullMethodName         = "/kratos.office.v1.OfficeMailService/TriggerDigest"
+	OfficeMailService_ListOfficeTasks_FullMethodName       = "/kratos.office.v1.OfficeMailService/ListOfficeTasks"
+	OfficeMailService_CreateOfficeTask_FullMethodName      = "/kratos.office.v1.OfficeMailService/CreateOfficeTask"
+	OfficeMailService_SetOfficeTaskStatus_FullMethodName   = "/kratos.office.v1.OfficeMailService/SetOfficeTaskStatus"
 )
 
 // OfficeMailServiceClient is the client API for OfficeMailService service.
@@ -62,6 +65,10 @@ type OfficeMailServiceClient interface {
 	// SendMail F2 占位：实现随高风险闸同批（E-2）。
 	SendMail(ctx context.Context, in *SendMailRequest, opts ...grpc.CallOption) (*SendMailResponse, error)
 	TriggerDigest(ctx context.Context, in *TriggerDigestRequest, opts ...grpc.CallOption) (*TriggerDigestResponse, error)
+	// 个人任务（工作台「我的任务」）：只读写调用者本人的任务，仅需登录。
+	ListOfficeTasks(ctx context.Context, in *ListOfficeTasksRequest, opts ...grpc.CallOption) (*ListOfficeTasksResponse, error)
+	CreateOfficeTask(ctx context.Context, in *CreateOfficeTaskRequest, opts ...grpc.CallOption) (*OfficeTask, error)
+	SetOfficeTaskStatus(ctx context.Context, in *SetOfficeTaskStatusRequest, opts ...grpc.CallOption) (*OfficeTask, error)
 }
 
 type officeMailServiceClient struct {
@@ -232,6 +239,36 @@ func (c *officeMailServiceClient) TriggerDigest(ctx context.Context, in *Trigger
 	return out, nil
 }
 
+func (c *officeMailServiceClient) ListOfficeTasks(ctx context.Context, in *ListOfficeTasksRequest, opts ...grpc.CallOption) (*ListOfficeTasksResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListOfficeTasksResponse)
+	err := c.cc.Invoke(ctx, OfficeMailService_ListOfficeTasks_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *officeMailServiceClient) CreateOfficeTask(ctx context.Context, in *CreateOfficeTaskRequest, opts ...grpc.CallOption) (*OfficeTask, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(OfficeTask)
+	err := c.cc.Invoke(ctx, OfficeMailService_CreateOfficeTask_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *officeMailServiceClient) SetOfficeTaskStatus(ctx context.Context, in *SetOfficeTaskStatusRequest, opts ...grpc.CallOption) (*OfficeTask, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(OfficeTask)
+	err := c.cc.Invoke(ctx, OfficeMailService_SetOfficeTaskStatus_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // OfficeMailServiceServer is the server API for OfficeMailService service.
 // All implementations must embed UnimplementedOfficeMailServiceServer
 // for forward compatibility.
@@ -255,6 +292,10 @@ type OfficeMailServiceServer interface {
 	// SendMail F2 占位：实现随高风险闸同批（E-2）。
 	SendMail(context.Context, *SendMailRequest) (*SendMailResponse, error)
 	TriggerDigest(context.Context, *TriggerDigestRequest) (*TriggerDigestResponse, error)
+	// 个人任务（工作台「我的任务」）：只读写调用者本人的任务，仅需登录。
+	ListOfficeTasks(context.Context, *ListOfficeTasksRequest) (*ListOfficeTasksResponse, error)
+	CreateOfficeTask(context.Context, *CreateOfficeTaskRequest) (*OfficeTask, error)
+	SetOfficeTaskStatus(context.Context, *SetOfficeTaskStatusRequest) (*OfficeTask, error)
 	mustEmbedUnimplementedOfficeMailServiceServer()
 }
 
@@ -312,6 +353,15 @@ func (UnimplementedOfficeMailServiceServer) SendMail(context.Context, *SendMailR
 }
 func (UnimplementedOfficeMailServiceServer) TriggerDigest(context.Context, *TriggerDigestRequest) (*TriggerDigestResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method TriggerDigest not implemented")
+}
+func (UnimplementedOfficeMailServiceServer) ListOfficeTasks(context.Context, *ListOfficeTasksRequest) (*ListOfficeTasksResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListOfficeTasks not implemented")
+}
+func (UnimplementedOfficeMailServiceServer) CreateOfficeTask(context.Context, *CreateOfficeTaskRequest) (*OfficeTask, error) {
+	return nil, status.Error(codes.Unimplemented, "method CreateOfficeTask not implemented")
+}
+func (UnimplementedOfficeMailServiceServer) SetOfficeTaskStatus(context.Context, *SetOfficeTaskStatusRequest) (*OfficeTask, error) {
+	return nil, status.Error(codes.Unimplemented, "method SetOfficeTaskStatus not implemented")
 }
 func (UnimplementedOfficeMailServiceServer) mustEmbedUnimplementedOfficeMailServiceServer() {}
 func (UnimplementedOfficeMailServiceServer) testEmbeddedByValue()                           {}
@@ -622,6 +672,60 @@ func _OfficeMailService_TriggerDigest_Handler(srv interface{}, ctx context.Conte
 	return interceptor(ctx, in, info, handler)
 }
 
+func _OfficeMailService_ListOfficeTasks_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListOfficeTasksRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OfficeMailServiceServer).ListOfficeTasks(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: OfficeMailService_ListOfficeTasks_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OfficeMailServiceServer).ListOfficeTasks(ctx, req.(*ListOfficeTasksRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _OfficeMailService_CreateOfficeTask_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateOfficeTaskRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OfficeMailServiceServer).CreateOfficeTask(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: OfficeMailService_CreateOfficeTask_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OfficeMailServiceServer).CreateOfficeTask(ctx, req.(*CreateOfficeTaskRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _OfficeMailService_SetOfficeTaskStatus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SetOfficeTaskStatusRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OfficeMailServiceServer).SetOfficeTaskStatus(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: OfficeMailService_SetOfficeTaskStatus_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OfficeMailServiceServer).SetOfficeTaskStatus(ctx, req.(*SetOfficeTaskStatusRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // OfficeMailService_ServiceDesc is the grpc.ServiceDesc for OfficeMailService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -692,6 +796,18 @@ var OfficeMailService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "TriggerDigest",
 			Handler:    _OfficeMailService_TriggerDigest_Handler,
+		},
+		{
+			MethodName: "ListOfficeTasks",
+			Handler:    _OfficeMailService_ListOfficeTasks_Handler,
+		},
+		{
+			MethodName: "CreateOfficeTask",
+			Handler:    _OfficeMailService_CreateOfficeTask_Handler,
+		},
+		{
+			MethodName: "SetOfficeTaskStatus",
+			Handler:    _OfficeMailService_SetOfficeTaskStatus_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

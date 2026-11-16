@@ -195,6 +195,37 @@ message SendMailResponse {
   string send_id = 1; // 发送审计锚
 }
 
+// OfficeTask 个人任务（负责人是调用者本人；邮件转任务与手工新建同表）。
+message OfficeTask {
+  string id = 1;
+  string title = 2;
+  string body = 3;
+  string source = 4; // manual | mail
+  string source_ref = 5; // 邮件转任务：邮件 id
+  string status = 6; // open | done
+  google.protobuf.Timestamp created_at = 7;
+  google.protobuf.Timestamp updated_at = 8;
+}
+
+message ListOfficeTasksRequest {
+  string status = 1; // 空 = open
+  int32 limit = 2; // 缺省 50，上限 200
+}
+
+message ListOfficeTasksResponse {
+  repeated OfficeTask items = 1;
+}
+
+message CreateOfficeTaskRequest {
+  string title = 1 [(google.api.field_behavior) = REQUIRED];
+  string body = 2;
+}
+
+message SetOfficeTaskStatusRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+  string status = 2 [(google.api.field_behavior) = REQUIRED]; // open | done
+}
+
 message TriggerDigestRequest {
   google.protobuf.Timestamp since = 1; // 空 = 默认昨夜今晨窗口
 }
@@ -293,6 +324,25 @@ service OfficeMailService {
     option (aranea.auth.v1.requirement) = {permission: "office.mail"};
     option (google.api.http) = {
       post: "/v1/office/mail/digest:trigger"
+      body: "*"
+    };
+  }
+  // 个人任务（工作台「我的任务」）：只读写调用者本人的任务，仅需登录。
+  rpc ListOfficeTasks(ListOfficeTasksRequest) returns (ListOfficeTasksResponse) {
+    option (aranea.auth.v1.requirement) = {authenticated: true};
+    option (google.api.http) = {get: "/v1/office/tasks"};
+  }
+  rpc CreateOfficeTask(CreateOfficeTaskRequest) returns (OfficeTask) {
+    option (aranea.auth.v1.requirement) = {authenticated: true};
+    option (google.api.http) = {
+      post: "/v1/office/tasks"
+      body: "*"
+    };
+  }
+  rpc SetOfficeTaskStatus(SetOfficeTaskStatusRequest) returns (OfficeTask) {
+    option (aranea.auth.v1.requirement) = {authenticated: true};
+    option (google.api.http) = {
+      post: "/v1/office/tasks/{id}:setStatus"
       body: "*"
     };
   }

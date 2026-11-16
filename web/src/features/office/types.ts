@@ -81,3 +81,15 @@ export type MailAttachmentRow = {
   size: number;
   knowledge_doc_id: string;
 };
+
+/** 个人任务（负责人是当前用户；邮件转任务与手工新建同表）。 */
+export type OfficeTaskRow = {
+  id: string;
+  title: string;
+  body: string;
+  source: 'manual' | 'mail' | string;
+  source_ref: string;
+  status: 'open' | 'done' | string;
+  created_at: string;
+  updated_at: string;
+};

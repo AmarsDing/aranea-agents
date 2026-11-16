@@ -131,6 +131,7 @@ func registerGeneratedPermissions(r *PermissionRegistry) {
 	requireRPC(r, "office", "OfficeAppsService", "UpsertApp", "POST", "/v1/office/apps", "office.apps")
 	requireRPC(r, "office", "OfficeMailService", "AttachmentToKnowledge", "POST", "/v1/office/mail/attachments/{id}:toKnowledge", "office.mail")
 	requireRPC(r, "office", "OfficeMailService", "CreateAccount", "POST", "/v1/office/mail/accounts", "office.mail")
+	requireAuthenticatedRPC(r, "office", "OfficeMailService", "CreateOfficeTask", "POST", "/v1/office/tasks")
 	requireRPC(r, "office", "OfficeMailService", "DeleteAccount", "DELETE", "/v1/office/mail/accounts/{id}", "office.mail")
 	requireRPC(r, "office", "OfficeMailService", "DeleteMessage", "DELETE", "/v1/office/mail/messages/{id}", "office.mail")
 	requireRPC(r, "office", "OfficeMailService", "ExportEml", "GET", "/v1/office/mail/messages/{id}:exportEml", "office.mail")
@@ -140,8 +141,10 @@ func registerGeneratedPermissions(r *PermissionRegistry) {
 	requireRPC(r, "office", "OfficeMailService", "ListAccounts", "GET", "/v1/office/mail/accounts", "office.mail")
 	requireRPC(r, "office", "OfficeMailService", "ListAttachments", "GET", "/v1/office/mail/attachments", "office.mail")
 	requireRPC(r, "office", "OfficeMailService", "ListMessages", "GET", "/v1/office/mail/messages", "office.mail")
+	requireAuthenticatedRPC(r, "office", "OfficeMailService", "ListOfficeTasks", "GET", "/v1/office/tasks")
 	requireRPC(r, "office", "OfficeMailService", "MailToTask", "POST", "/v1/office/mail/messages/{id}:toTask", "office.mail")
 	requireRPC(r, "office", "OfficeMailService", "SendMail", "POST", "/v1/office/mail:send", "office.mail")
+	requireAuthenticatedRPC(r, "office", "OfficeMailService", "SetOfficeTaskStatus", "POST", "/v1/office/tasks/{id}:setStatus")
 	requireRPC(r, "office", "OfficeMailService", "SyncAccount", "POST", "/v1/office/mail/accounts/{id}/sync", "office.mail")
 	requireRPC(r, "office", "OfficeMailService", "TriggerDigest", "POST", "/v1/office/mail/digest:trigger", "office.mail")
 	requireRPC(r, "office", "OfficeMailService", "UpdateAccount", "PATCH", "/v1/office/mail/accounts/{id}", "office.mail")
@@ -270,4 +273,4 @@ var generatedPublicRPCs = []string{
 	"/kratos.office.v1.OfficeScheduleService/GetICalFeed",
 }
 
-// 统计:permission=170 authenticated=39 public=4
+// 统计:permission=170 authenticated=42 public=4
