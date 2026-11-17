@@ -2589,6 +2589,16 @@ export default {
       earliestDue: '最早到期',
     },
   },
+  registryView: {
+    quickLabel: '即时筛选当前列表',
+    quickPlaceholder: '打字即筛，空格分隔多个词',
+    total: '共 {total} 条',
+    matched: '命中 {shown} / {total}',
+    switchLabel: '列表视图',
+    cards: '卡片',
+    table: '表格',
+    select: '选中这一条',
+  },
   today: {
     title: '今日',
     greeting: { morning: '早上好', afternoon: '下午好', evening: '晚上好' },

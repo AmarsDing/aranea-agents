@@ -28,10 +28,15 @@ export function recipientRef(r: Pick<Recipient, 'kind' | 'id'>): string {
 }
 
 // 「记：…」「记 …」需要分隔符（否则「记得买票」会被吞掉）；「记一下…」等不需要。
-const NOTE_LOOSE = /^(记一下|记一笔|记录一下|备忘)\s*[:：,，]?\s*/;
-const NOTE_STRICT = /^(记录|记|note)\s*[:：\s]\s*/i;
-const DELEGATE_VERB = /^(让|请|叫|交给|派给|安排|转给)\s*/;
-const LEADING_SEPARATOR = /^[\s:：,，、]+/;
+// 原文：/^(记一下|记一笔|记录一下|备忘)\s*[:：,，]?\s*/
+const NOTE_LOOSE =
+  /^(\u8bb0\u4e00\u4e0b|\u8bb0\u4e00\u7b14|\u8bb0\u5f55\u4e00\u4e0b|\u5907\u5fd8)\s*[:\uff1a,\uff0c]?\s*/;
+// 原文：/^(记录|记|note)\s*[:：\s]\s*/i
+const NOTE_STRICT = /^(\u8bb0\u5f55|\u8bb0|note)\s*[:\uff1a\s]\s*/i;
+// 原文：/^(让|请|叫|交给|派给|安排|转给)\s*/
+const DELEGATE_VERB = /^(\u8ba9|\u8bf7|\u53eb|\u4ea4\u7ed9|\u6d3e\u7ed9|\u5b89\u6392|\u8f6c\u7ed9)\s*/;
+// 原文：/^[\s:：,，、]+/
+const LEADING_SEPARATOR = /^[\s:\uff1a,\uff0c\u3001]+/;
 
 /** 在 text 开头找名字最长的对象（显示名或 key，不分大小写）。 */
 function matchRecipientAtStart(

@@ -2601,6 +2601,16 @@ export default {
       earliestDue: 'Earliest due',
     },
   },
+  registryView: {
+    quickLabel: 'Filter this list as you type',
+    quickPlaceholder: 'Type to filter; separate terms with spaces',
+    total: '{total} items',
+    matched: '{shown} of {total} match',
+    switchLabel: 'List view',
+    cards: 'Cards',
+    table: 'Table',
+    select: 'Select this item',
+  },
   today: {
     title: 'Today',
     greeting: { morning: 'Good morning', afternoon: 'Good afternoon', evening: 'Good evening' },
