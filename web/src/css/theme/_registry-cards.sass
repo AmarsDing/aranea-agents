@@ -266,3 +266,13 @@
 
   &::before
     animation: none !important
+
+// 单元格里的标签组在卡片里换行显示，不被卡片边缘截断
+.app-registry-card__cell
+  [class*='chip-wrap'],
+  [class*='tag-list'],
+  [class*='__tags']
+    flex-wrap: wrap
+    max-width: 100%
+    overflow: visible
+    white-space: normal
