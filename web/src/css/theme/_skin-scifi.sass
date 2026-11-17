@@ -453,3 +453,35 @@ html[data-motion='reduced'] body .q-card,
 html[data-motion='reduced'] body .q-btn
   transition: none
   transform: none !important
+
+// ——— 8. 指标条与批量操作坞（各登记页共用类） ———
+// 指标卡铺满整行，不再靠左挤成半行
+html body .app-metrics-grid:not(.app-metrics-grid--4):not(.app-metrics-grid--5)
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr))
+
+html body .app-metrics-card__label
+  color: var(--nt-text-3)
+  font-family: var(--nt-font-mono)
+  font-size: var(--nt-fs-micro)
+  letter-spacing: 0.1em
+  text-transform: uppercase
+
+html body .app-metrics-card__value
+  color: var(--nt-text-0)
+  font-family: var(--nt-font-mono)
+  font-size: var(--nt-fs-hero)
+  font-variant-numeric: tabular-nums
+  line-height: 1.2
+
+// 勾选后浮在视口底部的操作坞：滚到哪儿都够得着
+html body .tools-batch-bar
+  position: sticky
+  bottom: var(--nt-space-3)
+  z-index: 6
+  width: fit-content
+  max-width: 100%
+  margin: var(--nt-space-3) auto 0
+  background: var(--nt-bg-2)
+  border: 1px solid var(--nt-accent-border)
+  border-radius: var(--nt-radius-l)
+  box-shadow: var(--nt-shadow-depth), var(--nt-glow-soft)
