@@ -239,15 +239,19 @@ const split = computed(() => splitColumns(cardColumns.value));
 // 页面级登记表才出视图条；嵌在面板 / 弹层里的小表、自绘整行的表保持原样。
 // 很多页面自己提供外壳（shell=false），所以不看 shell；弹层、菜单、侧向抽屉里的表按小表处理。
 const embedded = ref(false);
+// 页面工具条里已经有搜索框时，不再叠一条即时筛选（同一页两个搜索框，用户不知道用哪个）。
+const pageHasSearch = ref(false);
 onMounted(() => {
   const root = instance?.proxy?.$el as HTMLElement | undefined;
   embedded.value = Boolean(root?.closest?.('.q-dialog, .q-menu, .q-drawer--right'));
+  const page = root?.closest?.('.q-page');
+  pageHasSearch.value = Boolean(page?.querySelector('.app-page-toolbar input, .app-page-toolbar__search'));
 });
 const pageLevel = computed(() => props.view === 'auto' && !props.dataShell && !embedded.value);
 const cardsAvailable = computed(() => pageLevel.value && !slots.body && cardColumns.value.length > 0);
 // 父级自己管筛选或走服务端分页时不叠加即时筛选（否则每敲一个字都会触发一次请求）。
 const quickEnabled = computed(
-  () => pageLevel.value && bindAttrs.value.filter === undefined && !bindAttrs.value.onRequest,
+  () => pageLevel.value && !pageHasSearch.value && bindAttrs.value.filter === undefined && !bindAttrs.value.onRequest,
 );
 const showBar = computed(() => (cardsAvailable.value || quickEnabled.value) && rows.value.length > 0);
 

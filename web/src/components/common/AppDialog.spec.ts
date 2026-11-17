@@ -58,8 +58,22 @@ describe('AppDialog', () => {
     expect(wrapper.find('.app-dialog__actions').text()).toContain('执行');
   });
 
-  it('默认 standard 不向 QDialog 传 position', () => {
+  it('默认 md 尺寸从右侧滑出成检视面板', () => {
     const wrapper = dialog();
+
+    expect(wrapper.getComponent(DialogStub).props('position')).toBe('right');
+    expect(wrapper.find('.app-dialog--drawer-right').exists()).toBe(true);
+  });
+
+  it.each(['sm', 'xl'])('默认 %s 尺寸保持居中', (size) => {
+    const wrapper = dialog({ size });
+
+    expect(wrapper.getComponent(DialogStub).props('position')).toBeUndefined();
+    expect(wrapper.find('.app-dialog--drawer').exists()).toBe(false);
+  });
+
+  it('显式 standard 不向 QDialog 传 position', () => {
+    const wrapper = dialog({ position: 'standard' });
 
     expect(wrapper.getComponent(DialogStub).props('position')).toBeUndefined();
     expect(wrapper.find('.app-dialog--drawer').exists()).toBe(false);

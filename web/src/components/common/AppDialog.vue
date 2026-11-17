@@ -8,12 +8,7 @@
     @escape-key="requestClose"
     @hide="restoreFocus"
   >
-    <q-card
-      class="app-dialog"
-      :class="cardClasses"
-      :aria-labelledby="titleId"
-      :aria-busy="loading"
-    >
+    <q-card class="app-dialog" :class="cardClasses" :aria-labelledby="titleId" :aria-busy="loading">
       <q-card-section class="app-dialog__header">
         <div class="app-dialog__header-main">
           <slot name="header-prefix" />
@@ -58,8 +53,12 @@ const props = withDefaults(
     icon?: string;
     loading?: boolean;
     persistent?: boolean;
-    /** 抽屉定位；非 standard 时卡片撑满视口高度并去圆角（右侧/左侧抽屉）。 */
-    position?: 'standard' | 'top' | 'right' | 'bottom' | 'left';
+    /**
+     * 抽屉定位；非 standard 时卡片撑满视口高度并去圆角（右侧/左侧抽屉）。
+     * auto（默认）：md / lg 的详情与编辑从右侧滑出成检视面板，列表不被遮住；
+     * sm（确认、小提示）与 xl（宽表格、向导）保持居中。
+     */
+    position?: 'auto' | 'standard' | 'top' | 'right' | 'bottom' | 'left';
     /** 全屏弹层：铺满视口，忽略 size 宽度与常规最大高度。 */
     maximized?: boolean;
     /** 追加到卡片的领域类名，仅用于迁移期承接既有作用域样式。 */
@@ -71,7 +70,7 @@ const props = withDefaults(
     subtitle: '',
     loading: false,
     persistent: false,
-    position: 'standard',
+    position: 'auto',
     maximized: false,
     cardClass: '',
   },
@@ -90,13 +89,18 @@ const open = computed({
   },
 });
 
-const isDrawer = computed(() => props.position === 'right' || props.position === 'left');
-const dialogPosition = computed(() => (props.position === 'standard' ? undefined : props.position));
+const resolvedPosition = computed(() => {
+  if (props.position !== 'auto') return props.position;
+  if (props.maximized) return 'standard';
+  return props.size === 'md' || props.size === 'lg' ? 'right' : 'standard';
+});
+const isDrawer = computed(() => resolvedPosition.value === 'right' || resolvedPosition.value === 'left');
+const dialogPosition = computed(() => (resolvedPosition.value === 'standard' ? undefined : resolvedPosition.value));
 const cardClasses = computed(() => [
   `app-dialog--${props.size}`,
   {
     'app-dialog--drawer': isDrawer.value,
-    [`app-dialog--drawer-${props.position}`]: isDrawer.value,
+    [`app-dialog--drawer-${resolvedPosition.value}`]: isDrawer.value,
     'app-dialog--maximized': props.maximized,
   },
   props.cardClass,
