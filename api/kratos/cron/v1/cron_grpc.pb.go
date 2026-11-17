@@ -28,6 +28,7 @@ const (
 	CronService_ListCronTaskRuns_FullMethodName      = "/kratos.cron.v1.CronService/ListCronTaskRuns"
 	CronService_TriggerCronTask_FullMethodName       = "/kratos.cron.v1.CronService/TriggerCronTask"
 	CronService_ResetCronTaskFailures_FullMethodName = "/kratos.cron.v1.CronService/ResetCronTaskFailures"
+	CronService_ResolveCronTaskRun_FullMethodName    = "/kratos.cron.v1.CronService/ResolveCronTaskRun"
 )
 
 // CronServiceClient is the client API for CronService service.
@@ -42,6 +43,7 @@ type CronServiceClient interface {
 	ListCronTaskRuns(ctx context.Context, in *ListCronTaskRunsRequest, opts ...grpc.CallOption) (*ListCronTaskRunsResponse, error)
 	TriggerCronTask(ctx context.Context, in *TriggerCronTaskRequest, opts ...grpc.CallOption) (*CronTaskRun, error)
 	ResetCronTaskFailures(ctx context.Context, in *ResetCronTaskFailuresRequest, opts ...grpc.CallOption) (*CronTask, error)
+	ResolveCronTaskRun(ctx context.Context, in *ResolveCronTaskRunRequest, opts ...grpc.CallOption) (*ResolveCronTaskRunResponse, error)
 }
 
 type cronServiceClient struct {
@@ -132,6 +134,16 @@ func (c *cronServiceClient) ResetCronTaskFailures(ctx context.Context, in *Reset
 	return out, nil
 }
 
+func (c *cronServiceClient) ResolveCronTaskRun(ctx context.Context, in *ResolveCronTaskRunRequest, opts ...grpc.CallOption) (*ResolveCronTaskRunResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ResolveCronTaskRunResponse)
+	err := c.cc.Invoke(ctx, CronService_ResolveCronTaskRun_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // CronServiceServer is the server API for CronService service.
 // All implementations must embed UnimplementedCronServiceServer
 // for forward compatibility.
@@ -144,6 +156,7 @@ type CronServiceServer interface {
 	ListCronTaskRuns(context.Context, *ListCronTaskRunsRequest) (*ListCronTaskRunsResponse, error)
 	TriggerCronTask(context.Context, *TriggerCronTaskRequest) (*CronTaskRun, error)
 	ResetCronTaskFailures(context.Context, *ResetCronTaskFailuresRequest) (*CronTask, error)
+	ResolveCronTaskRun(context.Context, *ResolveCronTaskRunRequest) (*ResolveCronTaskRunResponse, error)
 	mustEmbedUnimplementedCronServiceServer()
 }
 
@@ -177,6 +190,9 @@ func (UnimplementedCronServiceServer) TriggerCronTask(context.Context, *TriggerC
 }
 func (UnimplementedCronServiceServer) ResetCronTaskFailures(context.Context, *ResetCronTaskFailuresRequest) (*CronTask, error) {
 	return nil, status.Error(codes.Unimplemented, "method ResetCronTaskFailures not implemented")
+}
+func (UnimplementedCronServiceServer) ResolveCronTaskRun(context.Context, *ResolveCronTaskRunRequest) (*ResolveCronTaskRunResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ResolveCronTaskRun not implemented")
 }
 func (UnimplementedCronServiceServer) mustEmbedUnimplementedCronServiceServer() {}
 func (UnimplementedCronServiceServer) testEmbeddedByValue()                     {}
@@ -343,6 +359,24 @@ func _CronService_ResetCronTaskFailures_Handler(srv interface{}, ctx context.Con
 	return interceptor(ctx, in, info, handler)
 }
 
+func _CronService_ResolveCronTaskRun_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ResolveCronTaskRunRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CronServiceServer).ResolveCronTaskRun(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: CronService_ResolveCronTaskRun_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CronServiceServer).ResolveCronTaskRun(ctx, req.(*ResolveCronTaskRunRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // CronService_ServiceDesc is the grpc.ServiceDesc for CronService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -381,6 +415,10 @@ var CronService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ResetCronTaskFailures",
 			Handler:    _CronService_ResetCronTaskFailures_Handler,
+		},
+		{
+			MethodName: "ResolveCronTaskRun",
+			Handler:    _CronService_ResolveCronTaskRun_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

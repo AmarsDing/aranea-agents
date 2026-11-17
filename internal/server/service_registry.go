@@ -93,6 +93,9 @@ type ServiceRegistry struct {
 	// Secops 是 E 阶段 W2a D3 离职处置五步（/v1/secops/offboard/*，需求 §6.3；
 	// 脱敏五闸/模型策略等 RPC 随 D6 接入，当前嵌入 Unimplemented 桩）。
 	Secops *service.SecopsService
+	// GitHubPanel 是 E 阶段 W2c G GitHub 研发情报面板（/v1/github/*，需求 §4；
+	// SLA/热榜/手动轮询 RPC 随 V3-V5 纵列接入）。
+	GitHubPanel *service.GitHubPanelService
 }
 
 // NewServiceRegistry assembles all services into a single registry for Wire injection.
@@ -159,6 +162,7 @@ func NewServiceRegistry(
 	officeApps *service.OfficeAppsService,
 	officeMail *service.OfficeMailService,
 	secops *service.SecopsService,
+	gitHubPanel *service.GitHubPanelService,
 ) *ServiceRegistry {
 	return &ServiceRegistry{
 		Admin:              admin,
@@ -222,5 +226,6 @@ func NewServiceRegistry(
 		OfficeApps:         officeApps,
 		OfficeMail:         officeMail,
 		Secops:             secops,
+		GitHubPanel:        gitHubPanel,
 	}
 }

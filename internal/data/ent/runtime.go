@@ -2145,6 +2145,14 @@ func init() {
 	crontaskrunDescCreatedAt := crontaskrunFields[7].Descriptor()
 	// crontaskrun.DefaultCreatedAt holds the default value on creation for the created_at field.
 	crontaskrun.DefaultCreatedAt = crontaskrunDescCreatedAt.Default.(string)
+	// crontaskrunDescResolvedAt is the schema descriptor for resolved_at field.
+	crontaskrunDescResolvedAt := crontaskrunFields[8].Descriptor()
+	// crontaskrun.DefaultResolvedAt holds the default value on creation for the resolved_at field.
+	crontaskrun.DefaultResolvedAt = crontaskrunDescResolvedAt.Default.(string)
+	// crontaskrunDescResolvedBy is the schema descriptor for resolved_by field.
+	crontaskrunDescResolvedBy := crontaskrunFields[9].Descriptor()
+	// crontaskrun.DefaultResolvedBy holds the default value on creation for the resolved_by field.
+	crontaskrun.DefaultResolvedBy = crontaskrunDescResolvedBy.Default.(string)
 	// crontaskrunDescID is the schema descriptor for id field.
 	crontaskrunDescID := crontaskrunFields[0].Descriptor()
 	// crontaskrun.IDValidator is a validator for the "id" field. It is called by the builders before save.

@@ -67,6 +67,11 @@ const (
 	// office.apps；两码已在内置角色矩阵 pkg/auth/permissions.go）。
 	permOfficeSchedule = "office.schedule" // /schedule
 	permOfficeApps     = "office.apps"     // /apps
+	// E 阶段 W1d：办公邮箱。rpc 在 permission_registry_gen.go 硬判 office.mail，
+	// 内置矩阵已授予 user（显式）与 sysadmin（office.*）；目录缺此项会让
+	// /mail 不出现在 GET /v1/auth/menus，前端按白名单过滤后整项隐藏、直达也被
+	// routeAccess 判为 menu 拒绝（页面与路由实际存在）。
+	permOfficeMail = "office.mail" // /mail
 )
 
 // NavigationCatalog 返回侧栏菜单目录（显示顺序即数组顺序）。
@@ -81,6 +86,7 @@ func NavigationCatalog() []MenuGroup {
 				{Key: "approvals", Path: "/approvals", Icon: "approval", LabelKey: "menu.approvals", Permission: permApprovalReview},
 				{Key: "schedule", Path: "/schedule", Icon: "event", LabelKey: "menu.schedule", Permission: permOfficeSchedule},
 				{Key: "apps", Path: "/apps", Icon: "apps", LabelKey: "menu.apps", Permission: permOfficeApps},
+				{Key: "mail", Path: "/mail", Icon: "mail", LabelKey: "menu.mail", Permission: permOfficeMail},
 				{Key: "ceoCompany", Path: "/ceo/company", Icon: "account_tree", LabelKey: "menu.ceoCompany", Permission: permCeoboardView},
 				{Key: "ceoOverview", Path: "/ceo/overview", Icon: "monitoring", LabelKey: "menu.ceoOverview", Permission: permCeoboardView},
 				{Key: "ceoOncall", Path: "/ceo/oncall", Icon: "engineering", LabelKey: "menu.ceoOncall", Permission: permCeoboardView},

@@ -300,6 +300,13 @@ func registerCustomRoutes(
 			ceoboardSvc.GetEventByUIDHTTP(ctx.Response(), ctx.Request())
 			return nil
 		})
+		// GET /v1/ceoboard/company：电商经营业务快照（只读 JSON BFF）。
+		// 既有 12 个 ceoboard RPC 不动；该路由的 ceoboard.view 在 handler 内硬判，
+		// 与 GetEventByUIDHTTP 同一套鉴权语义。
+		srv.Route("/").GET("/v1/ceoboard/company", func(ctx kratoshttp.Context) error {
+			ceoboardSvc.CompanyViewHTTP(ctx.Response(), ctx.Request())
+			return nil
+		})
 	}
 	if artifactSvc != nil {
 		auth.RegisterNoAuthPath("/v1/artifacts/download")

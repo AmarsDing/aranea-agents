@@ -64,7 +64,10 @@ type Item struct {
 	ContextJSON string // 类别特定上下文（JSON object 字符串）
 	RiskLevel   string
 	Requester   string // 申请人/来源 agent（不可自批判定展示用）
-	CreatedAt   time.Time
+	// AgentKey 归因用 agent key（任务验收/日程草案=AgentID，进化建议=TargetID）；
+	// 空 = 无法归因（业务线看板显示 —，不做摊派）。
+	AgentKey  string
+	CreatedAt time.Time
 }
 
 // Viewer 是聚合视角的调用方主体（由 JWT 主体派生，禁止请求体自报）。
@@ -140,10 +143,11 @@ func (a *Aggregator) Kinds() []string {
 	return out
 }
 
-// List 聚合待批条目：kind 为空串=全部类别；分页跨源合并（按 CreatedAt
-// 倒序、同刻按 Kind/ID 字典序稳定排）。total 为可见条目总数（各源过闸后
-// 的 Count 之和）。
-func (a *Aggregator) List(ctx context.Context, v Viewer, kind string, page, pageSize int) ([]Item, int64, error) {
+// List 聚合待批条目：kind 为空串=全部类别；requester 非空=按请求人精确筛选；
+// 分页跨源合并（按 CreatedAt 倒序、同刻按 Kind/ID 字典序稳定排）。total 为
+// 可见条目总数（各源过闸后的 Count 之和；requester 筛选时取合并后条数，
+// 单源上限 maxSourceFetch）。
+func (a *Aggregator) List(ctx context.Context, v Viewer, kind, requester string, page, pageSize int) ([]Item, int64, error) {
 	if page <= 0 {
 		page = 1
 	}
@@ -153,13 +157,15 @@ func (a *Aggregator) List(ctx context.Context, v Viewer, kind string, page, page
 	if pageSize > 200 {
 		pageSize = 200
 	}
+	requester = strings.TrimSpace(requester)
 	kinds := a.selectKinds(kind)
 	if kinds == nil {
 		return nil, 0, errUnknownKind(kind)
 	}
 
 	fetch := page * pageSize
-	if fetch > maxSourceFetch {
+	// requester 筛选需要在合并后过滤，取满单源上限才能保证 total 准确。
+	if requester != "" || fetch > maxSourceFetch {
 		fetch = maxSourceFetch
 	}
 	var merged []Item
@@ -170,12 +176,23 @@ func (a *Aggregator) List(ctx context.Context, v Viewer, kind string, page, page
 		if err != nil {
 			return nil, 0, err
 		}
+		if requester != "" {
+			for _, it := range items {
+				if it.Requester == requester {
+					merged = append(merged, it)
+				}
+			}
+			continue
+		}
 		n, err := src.Count(ctx, v)
 		if err != nil {
 			return nil, 0, err
 		}
 		merged = append(merged, items...)
 		total += n
+	}
+	if requester != "" {
+		total = int64(len(merged))
 	}
 	sort.SliceStable(merged, func(i, j int) bool {
 		if !merged[i].CreatedAt.Equal(merged[j].CreatedAt) {

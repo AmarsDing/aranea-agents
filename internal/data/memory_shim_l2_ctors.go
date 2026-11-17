@@ -23,4 +23,3 @@ var (
 	_ biz.L2RecallStore        = (*l2EpisodeRepo)(nil)
 	_ biz.L2EpisodeAdminReader = (*l2EpisodeRepo)(nil)
 )
-

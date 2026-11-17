@@ -108,7 +108,7 @@ func TestAggregatorFivePersonas(t *testing.T) {
 
 	// sysadmin：coding.dispatch + system.self_improve → 三类全见。
 	sysadmin := permViewer(1, "default", PermCodingDispatch, PermSelfImprovement)
-	items, total, err := agg.List(ctx, sysadmin, "", 1, 50)
+	items, total, err := agg.List(ctx, sysadmin, "", "", 1, 50)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,7 +135,7 @@ func TestAggregatorFivePersonas(t *testing.T) {
 		"ceo":  permViewer(2, "default", "approval.review", "review.view", "review.decide"),
 		"user": permViewer(3, "default", "approval.review", "review.view", "review.decide", "approval.submit"),
 	} {
-		items, total, err := agg.List(ctx, v, "", 1, 50)
+		items, total, err := agg.List(ctx, v, "", "", 1, 50)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -161,7 +161,7 @@ func TestAggregatorFivePersonas(t *testing.T) {
 		"viewer-role": permViewer(4, "default", "ceoboard.view", "system.monitor"),
 		"anonymous":   {},
 	} {
-		_, total, err := agg.List(ctx, v, "", 1, 50)
+		_, total, err := agg.List(ctx, v, "", "", 1, 50)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -172,7 +172,7 @@ func TestAggregatorFivePersonas(t *testing.T) {
 
 	// 部分持有：只有 coding.dispatch → 只见任务验收。
 	dispatcher := permViewer(5, "default", PermCodingDispatch)
-	items, total, err = agg.List(ctx, dispatcher, "", 1, 50)
+	items, total, err = agg.List(ctx, dispatcher, "", "", 1, 50)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -188,7 +188,7 @@ func TestAggregatorFivePersonas(t *testing.T) {
 func TestAggregatorWorkspaceScoping(t *testing.T) {
 	agg, tasks, _ := newTestAggregator(t)
 	v := permViewer(1, "ws-42", PermCodingDispatch, PermSelfImprovement)
-	if _, _, err := agg.List(context.Background(), v, KindTaskReview, 1, 50); err != nil {
+	if _, _, err := agg.List(context.Background(), v, KindTaskReview, "", 1, 50); err != nil {
 		t.Fatal(err)
 	}
 	if len(tasks.gotWorkspce) == 0 || tasks.gotWorkspce[0] != "ws-42" {
@@ -199,7 +199,7 @@ func TestAggregatorWorkspaceScoping(t *testing.T) {
 // TestAggregatorUnknownKind 未知类别 → IsUnknownKind（service 映 400）。
 func TestAggregatorUnknownKind(t *testing.T) {
 	agg, _, _ := newTestAggregator(t)
-	_, _, err := agg.List(context.Background(), permViewer(1, "default", PermCodingDispatch), "nope", 1, 50)
+	_, _, err := agg.List(context.Background(), permViewer(1, "default", PermCodingDispatch), "nope", "", 1, 50)
 	if !IsUnknownKind(err) {
 		t.Fatalf("expected unknown-kind error, got %v", err)
 	}
@@ -229,7 +229,7 @@ func TestAggregatorMergePagination(t *testing.T) {
 	agg := NewAggregator(NewTaskReviewSource(tasks), NewEvolutionSuggestionSource(evo))
 	v := permViewer(1, "default", PermCodingDispatch, PermSelfImprovement)
 
-	page1, total, err := agg.List(context.Background(), v, "", 1, 2)
+	page1, total, err := agg.List(context.Background(), v, "", "", 1, 2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -240,14 +240,14 @@ func TestAggregatorMergePagination(t *testing.T) {
 		// evo-new(12:00) > evo-tie(10:00, kind=evolution_suggestion) > ct-tie(10:00, kind=task_review)
 		t.Fatalf("page1 order wrong: %v", idsOf(page1))
 	}
-	page2, _, err := agg.List(context.Background(), v, "", 2, 2)
+	page2, _, err := agg.List(context.Background(), v, "", "", 2, 2)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(page2) != 2 || page2[0].ID != "ct-tie" || page2[1].ID != "ct-old" {
 		t.Fatalf("page2 order wrong: %v", idsOf(page2))
 	}
-	page3, _, err := agg.List(context.Background(), v, "", 3, 2)
+	page3, _, err := agg.List(context.Background(), v, "", "", 3, 2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -269,7 +269,7 @@ func TestEvolutionSourceFilters(t *testing.T) {
 	_, _, evo := newTestAggregator(t)
 	agg := NewAggregator(NewEvolutionSuggestionSource(evo), NewSkillApprovalSource(evo))
 	v := permViewer(1, "default", PermSelfImprovement)
-	if _, _, err := agg.List(context.Background(), v, "", 1, 50); err != nil {
+	if _, _, err := agg.List(context.Background(), v, "", "", 1, 50); err != nil {
 		t.Fatal(err)
 	}
 	// List+Count 各触发一次查询 → 每 target 出现两次，断言去重集合。

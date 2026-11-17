@@ -7,6 +7,7 @@ import (
 	v1 "aranea-agents/api/kratos/team/v1"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/team"
+	"aranea-agents/internal/workspace"
 
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
@@ -39,24 +40,40 @@ func (s *TeamService) ListTaskDeadLetters(ctx context.Context, req *v1.ListTaskD
 	}
 	sessionID := strings.TrimSpace(req.GetSessionId())
 	teamID := strings.TrimSpace(req.GetTeamId())
-	if sessionID == "" && teamID == "" {
-		return nil, apierror.BadRequest("TEAM", "session_id or team_id is required")
-	}
-	if teamID != "" {
-		if err := s.assertTeamAccess(ctx, teamID); err != nil { // N5: IDOR
-			return nil, err
-		}
-	} else if sessionID != "" {
-		if err := s.assertSpiritSessionAccess(ctx, sessionID); err != nil { // N5: IDOR
-			return nil, err
-		}
-	}
-	items, err := s.uc.ListTaskDeadLetters(ctx, biz.TaskDeadLetterListFilter{
+	filter := biz.TaskDeadLetterListFilter{
 		SessionID: sessionID,
 		TeamID:    teamID,
 		Status:    strings.TrimSpace(req.GetStatus()),
 		Limit:     int(req.GetLimit()),
-	})
+	}
+	switch {
+	case sessionID == "" && teamID == "" && req.GetWorkspaceScope():
+		// 个人工作台告警 lane：无具体 team/session 上下文，按调用方 workspace
+		// 可见团队收敛（ListByWorkspace 空 workspaceID = 系统 caller 全见）。
+		teams, err := s.uc.ListByWorkspace(ctx, workspace.IDFromContext(ctx))
+		if err != nil {
+			return nil, err
+		}
+		ids := make([]string, 0, len(teams))
+		for _, t := range teams {
+			ids = append(ids, t.ID)
+		}
+		if len(ids) == 0 {
+			return &v1.ListTaskDeadLettersResponse{}, nil
+		}
+		filter.TeamIDs = ids
+	case sessionID == "" && teamID == "":
+		return nil, apierror.BadRequest("TEAM", "session_id or team_id is required")
+	case teamID != "":
+		if err := s.assertTeamAccess(ctx, teamID); err != nil { // N5: IDOR
+			return nil, err
+		}
+	default:
+		if err := s.assertSpiritSessionAccess(ctx, sessionID); err != nil { // N5: IDOR
+			return nil, err
+		}
+	}
+	items, err := s.uc.ListTaskDeadLetters(ctx, filter)
 	if err != nil {
 		return nil, err
 	}

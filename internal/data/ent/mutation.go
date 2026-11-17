@@ -36608,6 +36608,8 @@ type CronTaskRunMutation struct {
 	output_json   *string
 	error_message *string
 	created_at    *string
+	resolved_at   *string
+	resolved_by   *string
 	clearedFields map[string]struct{}
 	done          bool
 	oldValue      func(context.Context) (*CronTaskRun, error)
@@ -36970,6 +36972,78 @@ func (m *CronTaskRunMutation) ResetCreatedAt() {
 	m.created_at = nil
 }
 
+// SetResolvedAt sets the "resolved_at" field.
+func (m *CronTaskRunMutation) SetResolvedAt(s string) {
+	m.resolved_at = &s
+}
+
+// ResolvedAt returns the value of the "resolved_at" field in the mutation.
+func (m *CronTaskRunMutation) ResolvedAt() (r string, exists bool) {
+	v := m.resolved_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldResolvedAt returns the old "resolved_at" field's value of the CronTaskRun entity.
+// If the CronTaskRun object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CronTaskRunMutation) OldResolvedAt(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldResolvedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldResolvedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldResolvedAt: %w", err)
+	}
+	return oldValue.ResolvedAt, nil
+}
+
+// ResetResolvedAt resets all changes to the "resolved_at" field.
+func (m *CronTaskRunMutation) ResetResolvedAt() {
+	m.resolved_at = nil
+}
+
+// SetResolvedBy sets the "resolved_by" field.
+func (m *CronTaskRunMutation) SetResolvedBy(s string) {
+	m.resolved_by = &s
+}
+
+// ResolvedBy returns the value of the "resolved_by" field in the mutation.
+func (m *CronTaskRunMutation) ResolvedBy() (r string, exists bool) {
+	v := m.resolved_by
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldResolvedBy returns the old "resolved_by" field's value of the CronTaskRun entity.
+// If the CronTaskRun object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CronTaskRunMutation) OldResolvedBy(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldResolvedBy is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldResolvedBy requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldResolvedBy: %w", err)
+	}
+	return oldValue.ResolvedBy, nil
+}
+
+// ResetResolvedBy resets all changes to the "resolved_by" field.
+func (m *CronTaskRunMutation) ResetResolvedBy() {
+	m.resolved_by = nil
+}
+
 // Where appends a list predicates to the CronTaskRunMutation builder.
 func (m *CronTaskRunMutation) Where(ps ...predicate.CronTaskRun) {
 	m.predicates = append(m.predicates, ps...)
@@ -37004,7 +37078,7 @@ func (m *CronTaskRunMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *CronTaskRunMutation) Fields() []string {
-	fields := make([]string, 0, 7)
+	fields := make([]string, 0, 9)
 	if m.task_id != nil {
 		fields = append(fields, crontaskrun.FieldTaskID)
 	}
@@ -37025,6 +37099,12 @@ func (m *CronTaskRunMutation) Fields() []string {
 	}
 	if m.created_at != nil {
 		fields = append(fields, crontaskrun.FieldCreatedAt)
+	}
+	if m.resolved_at != nil {
+		fields = append(fields, crontaskrun.FieldResolvedAt)
+	}
+	if m.resolved_by != nil {
+		fields = append(fields, crontaskrun.FieldResolvedBy)
 	}
 	return fields
 }
@@ -37048,6 +37128,10 @@ func (m *CronTaskRunMutation) Field(name string) (ent.Value, bool) {
 		return m.ErrorMessage()
 	case crontaskrun.FieldCreatedAt:
 		return m.CreatedAt()
+	case crontaskrun.FieldResolvedAt:
+		return m.ResolvedAt()
+	case crontaskrun.FieldResolvedBy:
+		return m.ResolvedBy()
 	}
 	return nil, false
 }
@@ -37071,6 +37155,10 @@ func (m *CronTaskRunMutation) OldField(ctx context.Context, name string) (ent.Va
 		return m.OldErrorMessage(ctx)
 	case crontaskrun.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
+	case crontaskrun.FieldResolvedAt:
+		return m.OldResolvedAt(ctx)
+	case crontaskrun.FieldResolvedBy:
+		return m.OldResolvedBy(ctx)
 	}
 	return nil, fmt.Errorf("unknown CronTaskRun field %s", name)
 }
@@ -37128,6 +37216,20 @@ func (m *CronTaskRunMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetCreatedAt(v)
+		return nil
+	case crontaskrun.FieldResolvedAt:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetResolvedAt(v)
+		return nil
+	case crontaskrun.FieldResolvedBy:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetResolvedBy(v)
 		return nil
 	}
 	return fmt.Errorf("unknown CronTaskRun field %s", name)
@@ -37198,6 +37300,12 @@ func (m *CronTaskRunMutation) ResetField(name string) error {
 		return nil
 	case crontaskrun.FieldCreatedAt:
 		m.ResetCreatedAt()
+		return nil
+	case crontaskrun.FieldResolvedAt:
+		m.ResetResolvedAt()
+		return nil
+	case crontaskrun.FieldResolvedBy:
+		m.ResetResolvedBy()
 		return nil
 	}
 	return fmt.Errorf("unknown CronTaskRun field %s", name)

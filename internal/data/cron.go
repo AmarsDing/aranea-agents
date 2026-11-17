@@ -83,6 +83,8 @@ func entToBizCronTaskRun(e *ent.CronTaskRun, taskName string) biz.CronTaskRun {
 		CreatedAt:    e.CreatedAt,
 		Trigger:      trigger,
 		RunID:        runID,
+		ResolvedAt:   e.ResolvedAt,
+		ResolvedBy:   e.ResolvedBy,
 	}
 }
 
@@ -220,6 +222,10 @@ func (r *cronRepo) ListCronTaskRuns(ctx context.Context, q biz.CronTaskRunQuery)
 	if st := strings.TrimSpace(q.Status); st != "" {
 		filtered = filtered.Where(crontaskrun.StatusEQ(st))
 	}
+	// 未核销口径（默认）：workbench 告警 lane 只应看到仍需处理的失败。
+	if !q.IncludeResolved {
+		filtered = filtered.Where(crontaskrun.ResolvedAtEQ(""))
+	}
 	total, err := filtered.Clone().Count(ctx)
 	if err != nil {
 		return nil, 0, err
@@ -283,4 +289,35 @@ func (r *cronRepo) UpdateCronTaskRun(ctx context.Context, id, status, finishedAt
 		SetOutputJSON(outputJSON).
 		SetErrorMessage(errorMessage).
 		Exec(ctx)
+}
+
+// ResolveCronTaskFailures 核销该运行所属任务的全部未核销失败。
+func (r *cronRepo) ResolveCronTaskFailures(ctx context.Context, runID, actor string) (biz.CronTaskRun, int, error) {
+	run, err := r.data.RW().Read(ctx).CronTaskRun.Query().
+		Where(crontaskrun.IDEQ(runID)).
+		Only(ctx)
+	if err != nil {
+		if ent.IsNotFound(err) {
+			return biz.CronTaskRun{}, 0, biz.ErrCronNotFound
+		}
+		return biz.CronTaskRun{}, 0, err
+	}
+	now := nowRFC3339()
+	n, err := r.data.RW().Write(ctx).CronTaskRun.Update().
+		Where(
+			crontaskrun.TaskIDEQ(run.TaskID),
+			crontaskrun.StatusEQ("failure"),
+			crontaskrun.ResolvedAtEQ(""),
+		).
+		SetResolvedAt(now).
+		SetResolvedBy(actor).
+		Save(ctx)
+	if err != nil {
+		return biz.CronTaskRun{}, 0, err
+	}
+	updated, err := r.GetCronTaskRun(ctx, runID)
+	if err != nil {
+		return biz.CronTaskRun{}, n, err
+	}
+	return updated, n, nil
 }

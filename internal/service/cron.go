@@ -97,6 +97,8 @@ func toProtoCronTaskRun(r biz.CronTaskRun) *v1.CronTaskRun {
 		OutputJson:   r.OutputJSON,
 		ErrorMessage: r.ErrorMessage,
 		CreatedAt:    r.CreatedAt,
+		ResolvedAt:   r.ResolvedAt,
+		ResolvedBy:   r.ResolvedBy,
 	}
 }
 
@@ -169,8 +171,9 @@ func (s *CronService) DeleteCronTask(ctx context.Context, req *v1.DeleteCronTask
 
 func (s *CronService) ListCronTaskRuns(ctx context.Context, req *v1.ListCronTaskRunsRequest) (*v1.ListCronTaskRunsResponse, error) {
 	q := biz.CronTaskRunQuery{
-		TaskID: req.GetCronTaskId(),
-		Status: req.GetStatus(),
+		TaskID:          req.GetCronTaskId(),
+		Status:          req.GetStatus(),
+		IncludeResolved: req.GetIncludeResolved(),
 	}
 	if ps := int(req.GetPageSize()); ps > 0 {
 		page := int(req.GetPage())
@@ -221,4 +224,20 @@ func (s *CronService) ResetCronTaskFailures(ctx context.Context, req *v1.ResetCr
 		return nil, err
 	}
 	return toProtoCronTask(out), nil
+}
+
+// ResolveCronTaskRun 核销一次失败（同任务未核销失败一并核销），供工作台告警 lane 消账。
+func (s *CronService) ResolveCronTaskRun(ctx context.Context, req *v1.ResolveCronTaskRunRequest) (*v1.ResolveCronTaskRunResponse, error) {
+	run, err := s.uc.GetTaskRun(ctx, req.GetId())
+	if err != nil {
+		return nil, err
+	}
+	if err := s.assertCronTaskAccess(ctx, run.TaskID); err != nil {
+		return nil, err
+	}
+	updated, n, err := s.uc.ResolveTaskRun(ctx, req.GetId(), approvalPolicyActor(ctx))
+	if err != nil {
+		return nil, err
+	}
+	return &v1.ResolveCronTaskRunResponse{Run: toProtoCronTaskRun(updated), Resolved: int32(n)}, nil
 }

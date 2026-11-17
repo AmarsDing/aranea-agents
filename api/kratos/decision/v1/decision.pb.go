@@ -43,9 +43,12 @@ type ListDecisionRecordsRequest struct {
 	TimeTo   *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=time_to,json=timeTo,proto3" json:"time_to,omitempty"`
 	Page     int32                  `protobuf:"varint,8,opt,name=page,proto3" json:"page,omitempty"`
 	// page_size ≤ 100，0/越界由服务端收敛为默认值。
-	PageSize      int32 `protobuf:"varint,9,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	PageSize int32 `protobuf:"varint,9,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	// HITL 配对兜底：按 metadata.correlation_id 批量取回 asked/decided 全量记录，
+	// 绕过时间窗/分页，避免 48h、100 条上限把 asked 挤出。
+	CorrelationIds []string `protobuf:"bytes,11,rep,name=correlation_ids,json=correlationIds,proto3" json:"correlation_ids,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *ListDecisionRecordsRequest) Reset() {
@@ -146,6 +149,13 @@ func (x *ListDecisionRecordsRequest) GetPageSize() int32 {
 		return x.PageSize
 	}
 	return 0
+}
+
+func (x *ListDecisionRecordsRequest) GetCorrelationIds() []string {
+	if x != nil {
+		return x.CorrelationIds
+	}
+	return nil
 }
 
 type ListDecisionRecordsResponse struct {
@@ -834,7 +844,7 @@ var File_kratos_decision_v1_decision_proto protoreflect.FileDescriptor
 
 const file_kratos_decision_v1_decision_proto_rawDesc = "" +
 	"\n" +
-	"!kratos/decision/v1/decision.proto\x12\x12kratos.decision.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x1cgoogle/protobuf/struct.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\x84\x03\n" +
+	"!kratos/decision/v1/decision.proto\x12\x12kratos.decision.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x1cgoogle/protobuf/struct.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xad\x03\n" +
 	"\x1aListDecisionRecordsRequest\x12\x1a\n" +
 	"\bcategory\x18\x01 \x01(\tR\bcategory\x12\x1b\n" +
 	"\tactor_key\x18\x02 \x01(\tR\bactorKey\x12\x1f\n" +
@@ -848,7 +858,8 @@ const file_kratos_decision_v1_decision_proto_rawDesc = "" +
 	"\ttime_from\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\btimeFrom\x123\n" +
 	"\atime_to\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\x06timeTo\x12\x12\n" +
 	"\x04page\x18\b \x01(\x05R\x04page\x12\x1b\n" +
-	"\tpage_size\x18\t \x01(\x05R\bpageSize\"\x9e\x01\n" +
+	"\tpage_size\x18\t \x01(\x05R\bpageSize\x12'\n" +
+	"\x0fcorrelation_ids\x18\v \x03(\tR\x0ecorrelationIds\"\x9e\x01\n" +
 	"\x1bListDecisionRecordsResponse\x128\n" +
 	"\x05items\x18\x01 \x03(\v2\".kratos.decision.v1.DecisionRecordR\x05items\x12\x14\n" +
 	"\x05total\x18\x02 \x01(\x03R\x05total\x12\x12\n" +

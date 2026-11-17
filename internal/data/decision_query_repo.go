@@ -81,6 +81,23 @@ func buildDecisionListWhere(d Dialect, f decision.ListFilter) (string, []any) {
 		conds = append(conds, gateSessionExpr(d)+" = ?")
 		args = append(args, s)
 	}
+	// correlation_id 批量过滤（HITL 配对兜底）：metadata.correlation_id IN (...)。
+	// 调用方按 ≤50 个 id 分批，避免 IN 列表过长；category=hitl_approval 同时
+	// 下推可把扫描面收敛到该类别。
+	if len(f.CorrelationIDs) > 0 {
+		marks := make([]string, 0, len(f.CorrelationIDs))
+		for _, cid := range f.CorrelationIDs {
+			cid = strings.TrimSpace(cid)
+			if cid == "" {
+				continue
+			}
+			marks = append(marks, "?")
+			args = append(args, cid)
+		}
+		if len(marks) > 0 {
+			conds = append(conds, d.JSONExtract("metadata", "correlation_id")+" IN ("+strings.Join(marks, ",")+")")
+		}
+	}
 	// workspace 隔离（t-dr-3）：非 nil 时 workspace_id IN (...)。service 层
 	// 约定非系统 caller 传 [callerWS, ""]（共享记录可读）；系统 caller 传
 	// nil 不过滤。空非 nil 切片 = 可见集为空，fail-closed 恒不命中。

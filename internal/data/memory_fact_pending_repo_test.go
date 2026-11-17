@@ -38,7 +38,7 @@ func TestMemoryFactPendingRepo_Roundtrip(t *testing.T) {
 
 	rec := biz.MemoryFactPendingRecord{
 		ID: "mfp-rt-1", AgentID: "agent-1", FactKey: "fact-old",
-		Verdict: biz.MemoryFactPendingVerdictUpdate,
+		Verdict:      biz.MemoryFactPendingVerdictUpdate,
 		ProposedBody: "用户偏好编辑器为 Neovim", PriorBody: "用户偏好编辑器为 VS Code",
 		AdjudicatorReason: "adjudicated_update",
 		PayloadJSON:       `{"candidate":{"Statement":"用户偏好编辑器为 Neovim","FactKind":"preference"},"target_fact_id":"fact-old"}`,
@@ -111,12 +111,12 @@ func TestMemoryFactPendingRepo_CountPendingByAge(t *testing.T) {
 	}
 
 	const (
-		now      = int64(1_800_000_000)
-		warnAge  = int64(86_400)  // 24h
-		failAge  = int64(259_200) // 72h
+		now     = int64(1_800_000_000)
+		warnAge = int64(86_400)  // 24h
+		failAge = int64(259_200) // 72h
 	)
 	rows := []biz.MemoryFactPendingRecord{
-		{ID: "mfp-c-fresh", AgentID: "a", FactKey: "k1", Verdict: "ADD", Status: "pending", CreatedAt: now - 3_600},       // age 1h: total only
+		{ID: "mfp-c-fresh", AgentID: "a", FactKey: "k1", Verdict: "ADD", Status: "pending", CreatedAt: now - 3_600},      // age 1h: total only
 		{ID: "mfp-c-warnedge", AgentID: "a", FactKey: "k2", Verdict: "ADD", Status: "pending", CreatedAt: now - warnAge}, // age == 24h: NOT warn (strict >)
 		{ID: "mfp-c-warn", AgentID: "a", FactKey: "k3", Verdict: "ADD", Status: "pending", CreatedAt: now - 90_000},      // age 25h: warn
 		{ID: "mfp-c-failedge", AgentID: "a", FactKey: "k4", Verdict: "ADD", Status: "pending", CreatedAt: now - failAge}, // age == 72h: warn (age <= fail)

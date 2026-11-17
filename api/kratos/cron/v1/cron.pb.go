@@ -457,18 +457,21 @@ func (x *DeleteCronTaskRequest) GetId() string {
 }
 
 type CronTaskRun struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	TaskId        string                 `protobuf:"bytes,2,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
-	TaskName      string                 `protobuf:"bytes,3,opt,name=task_name,json=taskName,proto3" json:"task_name,omitempty"`
-	Status        string                 `protobuf:"bytes,4,opt,name=status,proto3" json:"status,omitempty"`
-	StartedAt     string                 `protobuf:"bytes,5,opt,name=started_at,json=startedAt,proto3" json:"started_at,omitempty"`
-	FinishedAt    string                 `protobuf:"bytes,6,opt,name=finished_at,json=finishedAt,proto3" json:"finished_at,omitempty"`
-	Trigger       string                 `protobuf:"bytes,7,opt,name=trigger,proto3" json:"trigger,omitempty"`
-	RunId         string                 `protobuf:"bytes,8,opt,name=run_id,json=runId,proto3" json:"run_id,omitempty"`
-	OutputJson    string                 `protobuf:"bytes,9,opt,name=output_json,json=outputJson,proto3" json:"output_json,omitempty"`
-	ErrorMessage  string                 `protobuf:"bytes,10,opt,name=error_message,json=errorMessage,proto3" json:"error_message,omitempty"`
-	CreatedAt     string                 `protobuf:"bytes,11,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	state        protoimpl.MessageState `protogen:"open.v1"`
+	Id           string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	TaskId       string                 `protobuf:"bytes,2,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
+	TaskName     string                 `protobuf:"bytes,3,opt,name=task_name,json=taskName,proto3" json:"task_name,omitempty"`
+	Status       string                 `protobuf:"bytes,4,opt,name=status,proto3" json:"status,omitempty"`
+	StartedAt    string                 `protobuf:"bytes,5,opt,name=started_at,json=startedAt,proto3" json:"started_at,omitempty"`
+	FinishedAt   string                 `protobuf:"bytes,6,opt,name=finished_at,json=finishedAt,proto3" json:"finished_at,omitempty"`
+	Trigger      string                 `protobuf:"bytes,7,opt,name=trigger,proto3" json:"trigger,omitempty"`
+	RunId        string                 `protobuf:"bytes,8,opt,name=run_id,json=runId,proto3" json:"run_id,omitempty"`
+	OutputJson   string                 `protobuf:"bytes,9,opt,name=output_json,json=outputJson,proto3" json:"output_json,omitempty"`
+	ErrorMessage string                 `protobuf:"bytes,10,opt,name=error_message,json=errorMessage,proto3" json:"error_message,omitempty"`
+	CreatedAt    string                 `protobuf:"bytes,11,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	// 失败核销（workbench 告警 lane 用）：非空 = 该次失败已被人工忽略/核销。
+	ResolvedAt    string `protobuf:"bytes,12,opt,name=resolved_at,json=resolvedAt,proto3" json:"resolved_at,omitempty"`
+	ResolvedBy    string `protobuf:"bytes,13,opt,name=resolved_by,json=resolvedBy,proto3" json:"resolved_by,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -580,16 +583,32 @@ func (x *CronTaskRun) GetCreatedAt() string {
 	return ""
 }
 
+func (x *CronTaskRun) GetResolvedAt() string {
+	if x != nil {
+		return x.ResolvedAt
+	}
+	return ""
+}
+
+func (x *CronTaskRun) GetResolvedBy() string {
+	if x != nil {
+		return x.ResolvedBy
+	}
+	return ""
+}
+
 type ListCronTaskRunsRequest struct {
 	state      protoimpl.MessageState `protogen:"open.v1"`
 	CronTaskId string                 `protobuf:"bytes,1,opt,name=cron_task_id,json=cronTaskId,proto3" json:"cron_task_id,omitempty"`
 	Status     string                 `protobuf:"bytes,2,opt,name=status,proto3" json:"status,omitempty"`
 	// Deprecated: kept for CLI compatibility; ignored when page_size > 0.
-	Limit         int32 `protobuf:"varint,3,opt,name=limit,proto3" json:"limit,omitempty"`
-	Page          int32 `protobuf:"varint,4,opt,name=page,proto3" json:"page,omitempty"`                         // 1-based; <=0 treated as 1
-	PageSize      int32 `protobuf:"varint,5,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"` // <=0 falls back to limit/100; >500 capped at 500
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Limit    int32 `protobuf:"varint,3,opt,name=limit,proto3" json:"limit,omitempty"`
+	Page     int32 `protobuf:"varint,4,opt,name=page,proto3" json:"page,omitempty"`                         // 1-based; <=0 treated as 1
+	PageSize int32 `protobuf:"varint,5,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"` // <=0 falls back to limit/100; >500 capped at 500
+	// 默认 false：过滤掉已核销的失败（未核销口径）。
+	IncludeResolved bool `protobuf:"varint,6,opt,name=include_resolved,json=includeResolved,proto3" json:"include_resolved,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *ListCronTaskRunsRequest) Reset() {
@@ -657,6 +676,13 @@ func (x *ListCronTaskRunsRequest) GetPageSize() int32 {
 	return 0
 }
 
+func (x *ListCronTaskRunsRequest) GetIncludeResolved() bool {
+	if x != nil {
+		return x.IncludeResolved
+	}
+	return false
+}
+
 type ListCronTaskRunsResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Items         []*CronTaskRun         `protobuf:"bytes,1,rep,name=items,proto3" json:"items,omitempty"`
@@ -709,6 +735,104 @@ func (x *ListCronTaskRunsResponse) GetTotal() int64 {
 	return 0
 }
 
+// ResolveCronTaskRunRequest 以一次运行 id 定位任务，核销该任务当前全部
+// 未核销失败（避免同一任务历史失败逐条复现）。
+type ResolveCronTaskRunRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ResolveCronTaskRunRequest) Reset() {
+	*x = ResolveCronTaskRunRequest{}
+	mi := &file_kratos_cron_v1_cron_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ResolveCronTaskRunRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ResolveCronTaskRunRequest) ProtoMessage() {}
+
+func (x *ResolveCronTaskRunRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_cron_v1_cron_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ResolveCronTaskRunRequest.ProtoReflect.Descriptor instead.
+func (*ResolveCronTaskRunRequest) Descriptor() ([]byte, []int) {
+	return file_kratos_cron_v1_cron_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *ResolveCronTaskRunRequest) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+type ResolveCronTaskRunResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Run           *CronTaskRun           `protobuf:"bytes,1,opt,name=run,proto3" json:"run,omitempty"`
+	Resolved      int32                  `protobuf:"varint,2,opt,name=resolved,proto3" json:"resolved,omitempty"` // 本次核销的未决失败条数
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ResolveCronTaskRunResponse) Reset() {
+	*x = ResolveCronTaskRunResponse{}
+	mi := &file_kratos_cron_v1_cron_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ResolveCronTaskRunResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ResolveCronTaskRunResponse) ProtoMessage() {}
+
+func (x *ResolveCronTaskRunResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_cron_v1_cron_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ResolveCronTaskRunResponse.ProtoReflect.Descriptor instead.
+func (*ResolveCronTaskRunResponse) Descriptor() ([]byte, []int) {
+	return file_kratos_cron_v1_cron_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *ResolveCronTaskRunResponse) GetRun() *CronTaskRun {
+	if x != nil {
+		return x.Run
+	}
+	return nil
+}
+
+func (x *ResolveCronTaskRunResponse) GetResolved() int32 {
+	if x != nil {
+		return x.Resolved
+	}
+	return 0
+}
+
 type TriggerCronTaskRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
@@ -718,7 +842,7 @@ type TriggerCronTaskRequest struct {
 
 func (x *TriggerCronTaskRequest) Reset() {
 	*x = TriggerCronTaskRequest{}
-	mi := &file_kratos_cron_v1_cron_proto_msgTypes[9]
+	mi := &file_kratos_cron_v1_cron_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -730,7 +854,7 @@ func (x *TriggerCronTaskRequest) String() string {
 func (*TriggerCronTaskRequest) ProtoMessage() {}
 
 func (x *TriggerCronTaskRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_cron_v1_cron_proto_msgTypes[9]
+	mi := &file_kratos_cron_v1_cron_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -743,7 +867,7 @@ func (x *TriggerCronTaskRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TriggerCronTaskRequest.ProtoReflect.Descriptor instead.
 func (*TriggerCronTaskRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_cron_v1_cron_proto_rawDescGZIP(), []int{9}
+	return file_kratos_cron_v1_cron_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *TriggerCronTaskRequest) GetId() string {
@@ -762,7 +886,7 @@ type ResetCronTaskFailuresRequest struct {
 
 func (x *ResetCronTaskFailuresRequest) Reset() {
 	*x = ResetCronTaskFailuresRequest{}
-	mi := &file_kratos_cron_v1_cron_proto_msgTypes[10]
+	mi := &file_kratos_cron_v1_cron_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -774,7 +898,7 @@ func (x *ResetCronTaskFailuresRequest) String() string {
 func (*ResetCronTaskFailuresRequest) ProtoMessage() {}
 
 func (x *ResetCronTaskFailuresRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_cron_v1_cron_proto_msgTypes[10]
+	mi := &file_kratos_cron_v1_cron_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -787,7 +911,7 @@ func (x *ResetCronTaskFailuresRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResetCronTaskFailuresRequest.ProtoReflect.Descriptor instead.
 func (*ResetCronTaskFailuresRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_cron_v1_cron_proto_rawDescGZIP(), []int{10}
+	return file_kratos_cron_v1_cron_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *ResetCronTaskFailuresRequest) GetId() string {
@@ -842,7 +966,7 @@ const file_kratos_cron_v1_cron_proto_rawDesc = "" +
 	"\x02id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\x02id\x12,\n" +
 	"\x04task\x18\x02 \x01(\v2\x18.kratos.cron.v1.CronTaskR\x04task\"-\n" +
 	"\x15DeleteCronTaskRequest\x12\x14\n" +
-	"\x02id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\x02id\"\xc1\x02\n" +
+	"\x02id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\x02id\"\x83\x03\n" +
 	"\vCronTaskRun\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x17\n" +
 	"\atask_id\x18\x02 \x01(\tR\x06taskId\x12\x1b\n" +
@@ -859,21 +983,31 @@ const file_kratos_cron_v1_cron_proto_rawDesc = "" +
 	"\rerror_message\x18\n" +
 	" \x01(\tR\ferrorMessage\x12\x1d\n" +
 	"\n" +
-	"created_at\x18\v \x01(\tR\tcreatedAt\"\x9a\x01\n" +
+	"created_at\x18\v \x01(\tR\tcreatedAt\x12\x1f\n" +
+	"\vresolved_at\x18\f \x01(\tR\n" +
+	"resolvedAt\x12\x1f\n" +
+	"\vresolved_by\x18\r \x01(\tR\n" +
+	"resolvedBy\"\xc5\x01\n" +
 	"\x17ListCronTaskRunsRequest\x12 \n" +
 	"\fcron_task_id\x18\x01 \x01(\tR\n" +
 	"cronTaskId\x12\x16\n" +
 	"\x06status\x18\x02 \x01(\tR\x06status\x12\x14\n" +
 	"\x05limit\x18\x03 \x01(\x05R\x05limit\x12\x12\n" +
 	"\x04page\x18\x04 \x01(\x05R\x04page\x12\x1b\n" +
-	"\tpage_size\x18\x05 \x01(\x05R\bpageSize\"c\n" +
+	"\tpage_size\x18\x05 \x01(\x05R\bpageSize\x12)\n" +
+	"\x10include_resolved\x18\x06 \x01(\bR\x0fincludeResolved\"c\n" +
 	"\x18ListCronTaskRunsResponse\x121\n" +
 	"\x05items\x18\x01 \x03(\v2\x1b.kratos.cron.v1.CronTaskRunR\x05items\x12\x14\n" +
-	"\x05total\x18\x02 \x01(\x03R\x05total\".\n" +
+	"\x05total\x18\x02 \x01(\x03R\x05total\"1\n" +
+	"\x19ResolveCronTaskRunRequest\x12\x14\n" +
+	"\x02id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\x02id\"g\n" +
+	"\x1aResolveCronTaskRunResponse\x12-\n" +
+	"\x03run\x18\x01 \x01(\v2\x1b.kratos.cron.v1.CronTaskRunR\x03run\x12\x1a\n" +
+	"\bresolved\x18\x02 \x01(\x05R\bresolved\".\n" +
 	"\x16TriggerCronTaskRequest\x12\x14\n" +
 	"\x02id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\x02id\"4\n" +
 	"\x1cResetCronTaskFailuresRequest\x12\x14\n" +
-	"\x02id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\x02id2\xd0\b\n" +
+	"\x02id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\x02id2\xfb\t\n" +
 	"\vCronService\x12w\n" +
 	"\rListCronTasks\x12\x16.google.protobuf.Empty\x1a%.kratos.cron.v1.ListCronTasksResponse\"'\xca\xf3\x18\r\n" +
 	"\vsystem.cron\x82\xd3\xe4\x93\x02\x10\x12\x0e/v1/cron-tasks\x12}\n" +
@@ -890,7 +1024,9 @@ const file_kratos_cron_v1_cron_proto_rawDesc = "" +
 	"\x0fTriggerCronTask\x12&.kratos.cron.v1.TriggerCronTaskRequest\x1a\x1b.kratos.cron.v1.CronTaskRun\"7\xca\xf3\x18\r\n" +
 	"\vsystem.cron\x82\xd3\xe4\x93\x02 :\x01*\"\x1b/v1/cron-tasks/{id}/trigger\x12\x9f\x01\n" +
 	"\x15ResetCronTaskFailures\x12,.kratos.cron.v1.ResetCronTaskFailuresRequest\x1a\x18.kratos.cron.v1.CronTask\">\xca\xf3\x18\r\n" +
-	"\vsystem.cron\x82\xd3\xe4\x93\x02':\x01*\"\"/v1/cron-tasks/{id}/reset-failuresB;\n" +
+	"\vsystem.cron\x82\xd3\xe4\x93\x02':\x01*\"\"/v1/cron-tasks/{id}/reset-failures\x12\xa8\x01\n" +
+	"\x12ResolveCronTaskRun\x12).kratos.cron.v1.ResolveCronTaskRunRequest\x1a*.kratos.cron.v1.ResolveCronTaskRunResponse\";\xca\xf3\x18\r\n" +
+	"\vsystem.cron\x82\xd3\xe4\x93\x02$:\x01*\"\x1f/v1/cron-task-runs/{id}/resolveB;\n" +
 	"\x12api.kratos.cron.v1P\x01Z#aranea-agents/api/kratos/cron/v1;v1b\x06proto3"
 
 var (
@@ -905,7 +1041,7 @@ func file_kratos_cron_v1_cron_proto_rawDescGZIP() []byte {
 	return file_kratos_cron_v1_cron_proto_rawDescData
 }
 
-var file_kratos_cron_v1_cron_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
+var file_kratos_cron_v1_cron_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
 var file_kratos_cron_v1_cron_proto_goTypes = []any{
 	(*CronTask)(nil),                     // 0: kratos.cron.v1.CronTask
 	(*ListCronTasksResponse)(nil),        // 1: kratos.cron.v1.ListCronTasksResponse
@@ -916,35 +1052,40 @@ var file_kratos_cron_v1_cron_proto_goTypes = []any{
 	(*CronTaskRun)(nil),                  // 6: kratos.cron.v1.CronTaskRun
 	(*ListCronTaskRunsRequest)(nil),      // 7: kratos.cron.v1.ListCronTaskRunsRequest
 	(*ListCronTaskRunsResponse)(nil),     // 8: kratos.cron.v1.ListCronTaskRunsResponse
-	(*TriggerCronTaskRequest)(nil),       // 9: kratos.cron.v1.TriggerCronTaskRequest
-	(*ResetCronTaskFailuresRequest)(nil), // 10: kratos.cron.v1.ResetCronTaskFailuresRequest
-	(*emptypb.Empty)(nil),                // 11: google.protobuf.Empty
+	(*ResolveCronTaskRunRequest)(nil),    // 9: kratos.cron.v1.ResolveCronTaskRunRequest
+	(*ResolveCronTaskRunResponse)(nil),   // 10: kratos.cron.v1.ResolveCronTaskRunResponse
+	(*TriggerCronTaskRequest)(nil),       // 11: kratos.cron.v1.TriggerCronTaskRequest
+	(*ResetCronTaskFailuresRequest)(nil), // 12: kratos.cron.v1.ResetCronTaskFailuresRequest
+	(*emptypb.Empty)(nil),                // 13: google.protobuf.Empty
 }
 var file_kratos_cron_v1_cron_proto_depIdxs = []int32{
 	0,  // 0: kratos.cron.v1.ListCronTasksResponse.items:type_name -> kratos.cron.v1.CronTask
 	0,  // 1: kratos.cron.v1.UpdateCronTaskRequest.task:type_name -> kratos.cron.v1.CronTask
 	6,  // 2: kratos.cron.v1.ListCronTaskRunsResponse.items:type_name -> kratos.cron.v1.CronTaskRun
-	11, // 3: kratos.cron.v1.CronService.ListCronTasks:input_type -> google.protobuf.Empty
-	2,  // 4: kratos.cron.v1.CronService.CreateCronTask:input_type -> kratos.cron.v1.CreateCronTaskRequest
-	3,  // 5: kratos.cron.v1.CronService.GetCronTask:input_type -> kratos.cron.v1.GetCronTaskRequest
-	4,  // 6: kratos.cron.v1.CronService.UpdateCronTask:input_type -> kratos.cron.v1.UpdateCronTaskRequest
-	5,  // 7: kratos.cron.v1.CronService.DeleteCronTask:input_type -> kratos.cron.v1.DeleteCronTaskRequest
-	7,  // 8: kratos.cron.v1.CronService.ListCronTaskRuns:input_type -> kratos.cron.v1.ListCronTaskRunsRequest
-	9,  // 9: kratos.cron.v1.CronService.TriggerCronTask:input_type -> kratos.cron.v1.TriggerCronTaskRequest
-	10, // 10: kratos.cron.v1.CronService.ResetCronTaskFailures:input_type -> kratos.cron.v1.ResetCronTaskFailuresRequest
-	1,  // 11: kratos.cron.v1.CronService.ListCronTasks:output_type -> kratos.cron.v1.ListCronTasksResponse
-	0,  // 12: kratos.cron.v1.CronService.CreateCronTask:output_type -> kratos.cron.v1.CronTask
-	0,  // 13: kratos.cron.v1.CronService.GetCronTask:output_type -> kratos.cron.v1.CronTask
-	0,  // 14: kratos.cron.v1.CronService.UpdateCronTask:output_type -> kratos.cron.v1.CronTask
-	11, // 15: kratos.cron.v1.CronService.DeleteCronTask:output_type -> google.protobuf.Empty
-	8,  // 16: kratos.cron.v1.CronService.ListCronTaskRuns:output_type -> kratos.cron.v1.ListCronTaskRunsResponse
-	6,  // 17: kratos.cron.v1.CronService.TriggerCronTask:output_type -> kratos.cron.v1.CronTaskRun
-	0,  // 18: kratos.cron.v1.CronService.ResetCronTaskFailures:output_type -> kratos.cron.v1.CronTask
-	11, // [11:19] is the sub-list for method output_type
-	3,  // [3:11] is the sub-list for method input_type
-	3,  // [3:3] is the sub-list for extension type_name
-	3,  // [3:3] is the sub-list for extension extendee
-	0,  // [0:3] is the sub-list for field type_name
+	6,  // 3: kratos.cron.v1.ResolveCronTaskRunResponse.run:type_name -> kratos.cron.v1.CronTaskRun
+	13, // 4: kratos.cron.v1.CronService.ListCronTasks:input_type -> google.protobuf.Empty
+	2,  // 5: kratos.cron.v1.CronService.CreateCronTask:input_type -> kratos.cron.v1.CreateCronTaskRequest
+	3,  // 6: kratos.cron.v1.CronService.GetCronTask:input_type -> kratos.cron.v1.GetCronTaskRequest
+	4,  // 7: kratos.cron.v1.CronService.UpdateCronTask:input_type -> kratos.cron.v1.UpdateCronTaskRequest
+	5,  // 8: kratos.cron.v1.CronService.DeleteCronTask:input_type -> kratos.cron.v1.DeleteCronTaskRequest
+	7,  // 9: kratos.cron.v1.CronService.ListCronTaskRuns:input_type -> kratos.cron.v1.ListCronTaskRunsRequest
+	11, // 10: kratos.cron.v1.CronService.TriggerCronTask:input_type -> kratos.cron.v1.TriggerCronTaskRequest
+	12, // 11: kratos.cron.v1.CronService.ResetCronTaskFailures:input_type -> kratos.cron.v1.ResetCronTaskFailuresRequest
+	9,  // 12: kratos.cron.v1.CronService.ResolveCronTaskRun:input_type -> kratos.cron.v1.ResolveCronTaskRunRequest
+	1,  // 13: kratos.cron.v1.CronService.ListCronTasks:output_type -> kratos.cron.v1.ListCronTasksResponse
+	0,  // 14: kratos.cron.v1.CronService.CreateCronTask:output_type -> kratos.cron.v1.CronTask
+	0,  // 15: kratos.cron.v1.CronService.GetCronTask:output_type -> kratos.cron.v1.CronTask
+	0,  // 16: kratos.cron.v1.CronService.UpdateCronTask:output_type -> kratos.cron.v1.CronTask
+	13, // 17: kratos.cron.v1.CronService.DeleteCronTask:output_type -> google.protobuf.Empty
+	8,  // 18: kratos.cron.v1.CronService.ListCronTaskRuns:output_type -> kratos.cron.v1.ListCronTaskRunsResponse
+	6,  // 19: kratos.cron.v1.CronService.TriggerCronTask:output_type -> kratos.cron.v1.CronTaskRun
+	0,  // 20: kratos.cron.v1.CronService.ResetCronTaskFailures:output_type -> kratos.cron.v1.CronTask
+	10, // 21: kratos.cron.v1.CronService.ResolveCronTaskRun:output_type -> kratos.cron.v1.ResolveCronTaskRunResponse
+	13, // [13:22] is the sub-list for method output_type
+	4,  // [4:13] is the sub-list for method input_type
+	4,  // [4:4] is the sub-list for extension type_name
+	4,  // [4:4] is the sub-list for extension extendee
+	0,  // [0:4] is the sub-list for field type_name
 }
 
 func init() { file_kratos_cron_v1_cron_proto_init() }
@@ -958,7 +1099,7 @@ func file_kratos_cron_v1_cron_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kratos_cron_v1_cron_proto_rawDesc), len(file_kratos_cron_v1_cron_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   11,
+			NumMessages:   13,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

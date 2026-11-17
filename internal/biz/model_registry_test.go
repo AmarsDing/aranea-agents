@@ -60,6 +60,10 @@ func (m *seedCronRepo) UpdateCronTaskRun(_ context.Context, _, _, _, _, _ string
 	return nil
 }
 
+func (m *seedCronRepo) ResolveCronTaskFailures(_ context.Context, _, _ string) (CronTaskRun, int, error) {
+	return CronTaskRun{}, 0, nil
+}
+
 func TestSeedModelRegistryCronTask_CreatesNew(t *testing.T) {
 	repo := newSeedCronRepo()
 	if err := SeedModelRegistryCronTask(context.Background(), repo); err != nil {

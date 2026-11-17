@@ -68,6 +68,9 @@ message CronTaskRun {
   string output_json = 9;
   string error_message = 10;
   string created_at = 11;
+  // 失败核销（workbench 告警 lane 用）：非空 = 该次失败已被人工忽略/核销。
+  string resolved_at = 12;
+  string resolved_by = 13;
 }
 
 message ListCronTaskRunsRequest {
@@ -77,11 +80,24 @@ message ListCronTaskRunsRequest {
   int32 limit = 3;
   int32 page = 4;      // 1-based; <=0 treated as 1
   int32 page_size = 5; // <=0 falls back to limit/100; >500 capped at 500
+  // 默认 false：过滤掉已核销的失败（未核销口径）。
+  bool include_resolved = 6;
 }
 
 message ListCronTaskRunsResponse {
   repeated CronTaskRun items = 1;
   int64 total = 2;
+}
+
+// ResolveCronTaskRunRequest 以一次运行 id 定位任务，核销该任务当前全部
+// 未核销失败（避免同一任务历史失败逐条复现）。
+message ResolveCronTaskRunRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message ResolveCronTaskRunResponse {
+  CronTaskRun run = 1;
+  int32 resolved = 2; // 本次核销的未决失败条数
 }
 
 message TriggerCronTaskRequest {
@@ -134,6 +150,13 @@ service CronService {
     option (aranea.auth.v1.requirement) = {permission: "system.cron"};
     option (google.api.http) = {
       post: "/v1/cron-tasks/{id}/reset-failures"
+      body: "*"
+    };
+  }
+  rpc ResolveCronTaskRun(ResolveCronTaskRunRequest) returns (ResolveCronTaskRunResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "system.cron"};
+    option (google.api.http) = {
+      post: "/v1/cron-task-runs/{id}/resolve"
       body: "*"
     };
   }

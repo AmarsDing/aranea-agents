@@ -3,7 +3,9 @@ package auth
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -13,6 +15,10 @@ import (
 	"github.com/go-kratos/kratos/v2/transport"
 	httpm "github.com/go-kratos/kratos/v2/transport/http"
 )
+
+// defaultWebConsolePort 是宿主机上前端静态站（nginx）的发布端口，与
+// docker-compose.yaml 的 web 服务保持一致。
+const defaultWebConsolePort = "9402"
 
 var (
 	// noAuthPaths defines the paths that do not require authentication.
@@ -70,6 +76,35 @@ func isNoAuthPath(path string) bool {
 	return false
 }
 
+// webConsoleURL 判定「浏览器文档导航打到了 API 端口根路径」并给出前端站点地址。
+//
+// 背景（2026-11-12）：宿主机同时发布 8810（本服务）与 9402（前端 nginx）。用户把
+// 地址栏指到 8810 时，`GET /` 会落到本中间件，返回裸文本 "Unauthorized"，看起来
+// 像整站不可用。这里只对**文档导航**（Accept 含 text/html）的根路径 302 到前端
+// 站点，不放宽任何接口鉴权：`/v1/**` 一律仍需令牌，API 客户端（无 text/html
+// Accept）拿到的仍是原来的 401。
+func webConsoleURL(r *http.Request) string {
+	if !strings.Contains(r.Header.Get("Accept"), "text/html") {
+		return ""
+	}
+	switch r.URL.Path {
+	case "/", "/index.html", "/login":
+	default:
+		return ""
+	}
+	if v := strings.TrimSpace(os.Getenv("ARANEA_WEB_URL")); v != "" {
+		return strings.TrimRight(v, "/") + "/"
+	}
+	host := strings.TrimSpace(r.Host)
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		host = h
+	}
+	if host == "" {
+		return ""
+	}
+	return "http://" + net.JoinHostPort(host, defaultWebConsolePort) + "/"
+}
+
 // Middleware is an authentication middleware for HTTP servers.
 func Middleware(lg loggateway.Logger) httpm.FilterFunc {
 	if lg == nil {
@@ -85,6 +120,13 @@ func Middleware(lg loggateway.Logger) httpm.FilterFunc {
 			}
 			if r.Method == http.MethodOptions {
 				next.ServeHTTP(w, r)
+				return
+			}
+			// 浏览器误把 API 端口当站点入口：送到前端 nginx，而不是裸 401 文本。
+			if target := webConsoleURL(r); target != "" {
+				lg.Info("auth redirect: browser hit api root",
+					loggateway.StepID("auth.web_redirect"), loggateway.Str("path", r.URL.Path))
+				http.Redirect(w, r, target, http.StatusFound)
 				return
 			}
 			if isNoAuthPath(r.URL.Path) {

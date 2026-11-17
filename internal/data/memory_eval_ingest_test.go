@@ -14,11 +14,11 @@ import (
 func TestSplitEvalMessagesByAtomBudget(t *testing.T) {
 	// Newlines are atom breakers: each message yields a known atom count.
 	msgs := []biz.EvalMessage{
-		{Content: "A one\nA two\nA three"},                    // 3 atoms
-		{Content: "B one\nB two"},                             // 2 atoms
-		{Content: "C one\nC two\nC three\nC four"},            // 4 atoms
-		{Content: "D one"},                                    // 1 atom
-		{Content: "E one\nE two\nE three\nE four\nE five"},    // 5 atoms
+		{Content: "A one\nA two\nA three"},                 // 3 atoms
+		{Content: "B one\nB two"},                          // 2 atoms
+		{Content: "C one\nC two\nC three\nC four"},         // 4 atoms
+		{Content: "D one"},                                 // 1 atom
+		{Content: "E one\nE two\nE three\nE four\nE five"}, // 5 atoms
 	}
 	t.Run("budget zero keeps single chunk", func(t *testing.T) {
 		chunks := splitEvalMessagesByAtomBudget(msgs, 0)

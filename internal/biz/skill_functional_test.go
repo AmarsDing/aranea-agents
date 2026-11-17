@@ -226,6 +226,18 @@ func TestSkillAutoCreate_FromConversation(t *testing.T) {
 	if err := intelUC.ApproveSuggestion(ctx, sug.ID, "tester"); err != nil {
 		t.Fatalf("ApproveSuggestion: %v", err)
 	}
+	// 4b) 沙箱门禁（E2E-E1）：生产链路在 approve 之后由 service 层
+	// runPostApproveAsync 先跑 ValidateSuggestion（写 sandbox_passed 与
+	// lifecycle=ready）再调 ApplyApprovedSuggestion
+	// （internal/service/skill_evolution_suggestion.go:232-251）。本用例直接驱动
+	// usecase，必须显式补这一步；否则 apply 门禁按「沙箱未过 / lifecycle=draft」
+	// 静默拦下，建议停在 approved。
+	if err := unified.UpdateSandboxResult(ctx, sug.ID, true, nil); err != nil {
+		t.Fatalf("UpdateSandboxResult: %v", err)
+	}
+	if err := unified.UpdateLifecycleStatus(ctx, sug.ID, string(biz.EvoLifecycleReady)); err != nil {
+		t.Fatalf("UpdateLifecycleStatus: %v", err)
+	}
 	if err := intelUC.ApplyApprovedSuggestion(ctx, sug.ID); err != nil {
 		t.Fatalf("ApplyApprovedSuggestion: %v", err)
 	}

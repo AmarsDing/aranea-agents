@@ -1096,6 +1096,8 @@ var (
 		{Name: "output_json", Type: field.TypeString, Size: 2147483647, Default: ""},
 		{Name: "error_message", Type: field.TypeString, Size: 2147483647, Default: ""},
 		{Name: "created_at", Type: field.TypeString, Default: ""},
+		{Name: "resolved_at", Type: field.TypeString, Default: ""},
+		{Name: "resolved_by", Type: field.TypeString, Default: ""},
 	}
 	// CronTaskRunTable holds the schema information for the "cron_task_run" table.
 	CronTaskRunTable = &schema.Table{
@@ -1107,6 +1109,11 @@ var (
 				Name:    "idx_cron_run_task",
 				Unique:  false,
 				Columns: []*schema.Column{CronTaskRunColumns[1], CronTaskRunColumns[7]},
+			},
+			{
+				Name:    "idx_cron_run_status",
+				Unique:  false,
+				Columns: []*schema.Column{CronTaskRunColumns[2], CronTaskRunColumns[8]},
 			},
 		},
 	}

@@ -578,6 +578,10 @@ message ListTaskDeadLettersRequest {
   string team_id = 2;
   string status = 3;
   int32 limit = 4;
+  // workspace_scope：session_id/team_id 均为空时按调用方 workspace 的可见团队
+  // 收敛（个人工作台告警 lane 无具体团队上下文）。两者都为空且未置位时仍按
+  // 原契约返回 400，保持向后兼容。
+  bool workspace_scope = 5;
 }
 
 message ListTaskDeadLettersResponse {

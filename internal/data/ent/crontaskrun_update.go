@@ -125,6 +125,34 @@ func (_u *CronTaskRunUpdate) SetNillableCreatedAt(v *string) *CronTaskRunUpdate 
 	return _u
 }
 
+// SetResolvedAt sets the "resolved_at" field.
+func (_u *CronTaskRunUpdate) SetResolvedAt(v string) *CronTaskRunUpdate {
+	_u.mutation.SetResolvedAt(v)
+	return _u
+}
+
+// SetNillableResolvedAt sets the "resolved_at" field if the given value is not nil.
+func (_u *CronTaskRunUpdate) SetNillableResolvedAt(v *string) *CronTaskRunUpdate {
+	if v != nil {
+		_u.SetResolvedAt(*v)
+	}
+	return _u
+}
+
+// SetResolvedBy sets the "resolved_by" field.
+func (_u *CronTaskRunUpdate) SetResolvedBy(v string) *CronTaskRunUpdate {
+	_u.mutation.SetResolvedBy(v)
+	return _u
+}
+
+// SetNillableResolvedBy sets the "resolved_by" field if the given value is not nil.
+func (_u *CronTaskRunUpdate) SetNillableResolvedBy(v *string) *CronTaskRunUpdate {
+	if v != nil {
+		_u.SetResolvedBy(*v)
+	}
+	return _u
+}
+
 // Mutation returns the CronTaskRunMutation object of the builder.
 func (_u *CronTaskRunUpdate) Mutation() *CronTaskRunMutation {
 	return _u.mutation
@@ -199,6 +227,12 @@ func (_u *CronTaskRunUpdate) sqlSave(ctx context.Context) (_node int, err error)
 	}
 	if value, ok := _u.mutation.CreatedAt(); ok {
 		_spec.SetField(crontaskrun.FieldCreatedAt, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.ResolvedAt(); ok {
+		_spec.SetField(crontaskrun.FieldResolvedAt, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.ResolvedBy(); ok {
+		_spec.SetField(crontaskrun.FieldResolvedBy, field.TypeString, value)
 	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
@@ -318,6 +352,34 @@ func (_u *CronTaskRunUpdateOne) SetNillableCreatedAt(v *string) *CronTaskRunUpda
 	return _u
 }
 
+// SetResolvedAt sets the "resolved_at" field.
+func (_u *CronTaskRunUpdateOne) SetResolvedAt(v string) *CronTaskRunUpdateOne {
+	_u.mutation.SetResolvedAt(v)
+	return _u
+}
+
+// SetNillableResolvedAt sets the "resolved_at" field if the given value is not nil.
+func (_u *CronTaskRunUpdateOne) SetNillableResolvedAt(v *string) *CronTaskRunUpdateOne {
+	if v != nil {
+		_u.SetResolvedAt(*v)
+	}
+	return _u
+}
+
+// SetResolvedBy sets the "resolved_by" field.
+func (_u *CronTaskRunUpdateOne) SetResolvedBy(v string) *CronTaskRunUpdateOne {
+	_u.mutation.SetResolvedBy(v)
+	return _u
+}
+
+// SetNillableResolvedBy sets the "resolved_by" field if the given value is not nil.
+func (_u *CronTaskRunUpdateOne) SetNillableResolvedBy(v *string) *CronTaskRunUpdateOne {
+	if v != nil {
+		_u.SetResolvedBy(*v)
+	}
+	return _u
+}
+
 // Mutation returns the CronTaskRunMutation object of the builder.
 func (_u *CronTaskRunUpdateOne) Mutation() *CronTaskRunMutation {
 	return _u.mutation
@@ -422,6 +484,12 @@ func (_u *CronTaskRunUpdateOne) sqlSave(ctx context.Context) (_node *CronTaskRun
 	}
 	if value, ok := _u.mutation.CreatedAt(); ok {
 		_spec.SetField(crontaskrun.FieldCreatedAt, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.ResolvedAt(); ok {
+		_spec.SetField(crontaskrun.FieldResolvedAt, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.ResolvedBy(); ok {
+		_spec.SetField(crontaskrun.FieldResolvedBy, field.TypeString, value)
 	}
 	_node = &CronTaskRun{config: _u.config}
 	_spec.Assign = _node.assignValues

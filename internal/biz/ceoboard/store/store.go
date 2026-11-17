@@ -70,6 +70,14 @@ func New(client *ent.Client, rawDB *sql.DB) *Store {
 	return &Store{client: client, rawDB: rawDB, retentionDays: 90, dbCapacityBytes: 10 * 1024 * 1024 * 1024, archDedup: newArchiveDedupIndex()}
 }
 
+// Client 返回共享 Ent 客户端，供只读经营聚合使用；调用方不得关闭。
+func (s *Store) Client() *ent.Client {
+	if s == nil {
+		return nil
+	}
+	return s.client
+}
+
 // eventToDTO 把 Ent 实体映射为 biz DTO(occurred_at NULL → 零值)。
 func eventToDTO(e *ent.CeoboardEvent) Event {
 	ev := Event{

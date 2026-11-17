@@ -89,6 +89,7 @@ func scheduleDraftToItem(d *office.ScheduleDraft) Item {
 		// agent 草案=中风险（需求文档 §2.3 风险分级；A-4 矩阵生效后可覆盖）。
 		RiskLevel: RiskMedium,
 		Requester: d.AgentID,
+		AgentKey:  d.AgentID,
 		CreatedAt: d.CreatedAt,
 	}
 }

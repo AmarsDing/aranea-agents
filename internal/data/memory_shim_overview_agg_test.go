@@ -209,12 +209,12 @@ func TestAggregateL1Overview_TaskAndFieldSemantics(t *testing.T) {
 	insertAggL1Task(t, db, "t4", "sess-other", "ag-a", "active", today)
 	insertAggL1Task(t, db, "t5", "sess-agg", "ag-b", "active", today)
 
-	insertAggL1Field(t, db, "f1", "t1", "sess-agg", "prompt", "")                      // 计
-	insertAggL1Field(t, db, "f2", "t1", "sess-agg", "internal", "")                    // internal → 弃
-	insertAggL1Field(t, db, "f3", "t1", "sess-agg", "prompt", "2020-01-01T00:00:00Z")  // 已过期 → 弃
-	insertAggL1Field(t, db, "f4", "t1", "sess-agg", "prompt", "2999-01-01T00:00:00Z")  // 未过期 → 计
-	insertAggL1Field(t, db, "f5", "t2", "sess-agg", "prompt", "")                      // 计
-	insertAggL1Field(t, db, "f6", "t3", "sess-agg", "prompt", "")                      // 宿主非 active → 弃
+	insertAggL1Field(t, db, "f1", "t1", "sess-agg", "prompt", "")                     // 计
+	insertAggL1Field(t, db, "f2", "t1", "sess-agg", "internal", "")                   // internal → 弃
+	insertAggL1Field(t, db, "f3", "t1", "sess-agg", "prompt", "2020-01-01T00:00:00Z") // 已过期 → 弃
+	insertAggL1Field(t, db, "f4", "t1", "sess-agg", "prompt", "2999-01-01T00:00:00Z") // 未过期 → 计
+	insertAggL1Field(t, db, "f5", "t2", "sess-agg", "prompt", "")                     // 计
+	insertAggL1Field(t, db, "f6", "t3", "sess-agg", "prompt", "")                     // 宿主非 active → 弃
 
 	t.Run("active only with field semantics", func(t *testing.T) {
 		agg, err := repo.AggregateL1Overview(context.Background(), "sess-agg", "ag-a", todayStart)

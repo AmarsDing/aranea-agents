@@ -91,6 +91,7 @@ func codingTaskToItem(t *bridge.CodingTask) Item {
 		// 编码任务涉及主机命令执行面，默认中风险（矩阵生效后由 A-4 覆盖）。
 		RiskLevel: RiskMedium,
 		Requester: t.AgentID,
+		AgentKey:  t.AgentID,
 		CreatedAt: parseRFC3339(t.CreatedAt),
 	}
 }
@@ -166,7 +167,7 @@ func evolutionToItem(kind string, s *biz.UnifiedEvolutionSuggestion) Item {
 		"merge_target_id":  s.MergeTargetID,
 		"workspace_id":     s.WorkspaceID,
 	})
-	return Item{
+	item := Item{
 		Kind:        kind,
 		ID:          s.ID,
 		Title:       firstLine(title, 80),
@@ -176,6 +177,12 @@ func evolutionToItem(kind string, s *biz.UnifiedEvolutionSuggestion) Item {
 		Requester:   s.TriggerSource,
 		CreatedAt:   s.CreatedAt,
 	}
+	// 仅进化建议（target=agent）可归因到 agent；技能审批 target 是技能 key，
+	// 归因到 agent 会摊派，故留空。
+	if kind == KindEvolutionSuggestion {
+		item.AgentKey = s.TargetID
+	}
+	return item
 }
 
 // evolutionRisk 由 priority（0=低 1=中 2=高 3=紧急）映射三级风险。

@@ -23,8 +23,8 @@ const boardRunLeaseModule = "BOARD_RUN_LEASE"
 
 // boardRunLeaseTimeLayout 定宽布局：纳秒恒定 9 位小数，保证 TEXT 时间列
 // 字典序 == 时序。RFC3339Nano 是变宽小数，整秒无小数的行会字典序倒置
-//（"…:05Z" > "…:05.9Z" 但时序更早）→ 活跃租约被误收养 / HasActive 漏判
-//（对抗评审 #0/#11）。阶段 1a 刚落地且 flag 缺省 off，无存量行需迁移。
+// （"…:05Z" > "…:05.9Z" 但时序更早）→ 活跃租约被误收养 / HasActive 漏判
+// （对抗评审 #0/#11）。阶段 1a 刚落地且 flag 缺省 off，无存量行需迁移。
 const boardRunLeaseTimeLayout = "2006-01-02T15:04:05.000000000Z07:00"
 
 func formatBoardRunLeaseTime(t time.Time) string {

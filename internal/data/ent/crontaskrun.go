@@ -29,7 +29,11 @@ type CronTaskRun struct {
 	// ErrorMessage holds the value of the "error_message" field.
 	ErrorMessage string `json:"error_message,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
-	CreatedAt    string `json:"created_at,omitempty"`
+	CreatedAt string `json:"created_at,omitempty"`
+	// ResolvedAt holds the value of the "resolved_at" field.
+	ResolvedAt string `json:"resolved_at,omitempty"`
+	// ResolvedBy holds the value of the "resolved_by" field.
+	ResolvedBy   string `json:"resolved_by,omitempty"`
 	selectValues sql.SelectValues
 }
 
@@ -38,7 +42,7 @@ func (*CronTaskRun) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case crontaskrun.FieldID, crontaskrun.FieldTaskID, crontaskrun.FieldStatus, crontaskrun.FieldStartedAt, crontaskrun.FieldFinishedAt, crontaskrun.FieldOutputJSON, crontaskrun.FieldErrorMessage, crontaskrun.FieldCreatedAt:
+		case crontaskrun.FieldID, crontaskrun.FieldTaskID, crontaskrun.FieldStatus, crontaskrun.FieldStartedAt, crontaskrun.FieldFinishedAt, crontaskrun.FieldOutputJSON, crontaskrun.FieldErrorMessage, crontaskrun.FieldCreatedAt, crontaskrun.FieldResolvedAt, crontaskrun.FieldResolvedBy:
 			values[i] = new(sql.NullString)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -103,6 +107,18 @@ func (_m *CronTaskRun) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.CreatedAt = value.String
 			}
+		case crontaskrun.FieldResolvedAt:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field resolved_at", values[i])
+			} else if value.Valid {
+				_m.ResolvedAt = value.String
+			}
+		case crontaskrun.FieldResolvedBy:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field resolved_by", values[i])
+			} else if value.Valid {
+				_m.ResolvedBy = value.String
+			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
 		}
@@ -159,6 +175,12 @@ func (_m *CronTaskRun) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")
 	builder.WriteString(_m.CreatedAt)
+	builder.WriteString(", ")
+	builder.WriteString("resolved_at=")
+	builder.WriteString(_m.ResolvedAt)
+	builder.WriteString(", ")
+	builder.WriteString("resolved_by=")
+	builder.WriteString(_m.ResolvedBy)
 	builder.WriteByte(')')
 	return builder.String()
 }
