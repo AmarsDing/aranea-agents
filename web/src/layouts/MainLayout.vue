@@ -220,112 +220,142 @@
               <q-item-section class="text-caption text-grey">{{ t('shell.nav.noMatch') }}</q-item-section>
             </q-item>
           </q-list>
-          <q-list v-else class="app-sidebar-nav" :dense="drawerMini">
-            <template v-for="section in personalNavSections" :key="section.key">
-              <q-item-label v-if="!drawerMini && section.items.length" header class="app-sidebar-section-label">
-                <span>{{ t(section.labelKey) }}</span>
-                <span class="app-sidebar-section-count">{{ section.items.length }}</span>
+          <!--
+            八个一级去处（docs/aranea-agents/design/2026-11-17-导航重组方案.md）。
+            展开：手风琴，同时只展开一个领域；收起：图标栏，悬停或点击浮出本领域的页面。
+          -->
+          <q-list
+            v-else
+            class="app-sidebar-nav app-sidebar-domains"
+            :class="{ 'app-sidebar-domains--rail': drawerMini }"
+          >
+            <template v-if="!drawerMini && favoriteLeaves.length">
+              <q-item-label header class="app-sidebar-section-label">
+                <span>{{ t('shell.nav.favorites') }}</span>
+                <span class="app-sidebar-section-count">{{ favoriteLeaves.length }}</span>
               </q-item-label>
               <q-item
-                v-for="item in section.items"
-                v-show="!drawerMini"
-                :key="`${section.key}-${item.to}`"
-                v-ripple
+                v-for="item in favoriteLeaves"
+                :key="`fav-${item.to}`"
                 clickable
                 class="app-sidebar-nav-item"
                 :active="isNavItemActive(item)"
                 active-class="app-sidebar-item--active"
                 @click="navigateTo(item.to)"
               >
-                <q-item-section avatar
-                  ><q-icon :name="section.key === 'favorites' ? 'star' : 'history'"
-                /></q-item-section>
+                <q-item-section avatar><q-icon :name="item.icon" /></q-item-section>
                 <q-item-section>{{ t(item.labelKey) }}</q-item-section>
-                <q-item-section side>
-                  <q-btn
-                    flat
-                    round
-                    dense
-                    class="app-sidebar-favorite"
-                    :class="{ 'app-sidebar-favorite--active': isFavorite(item.to) }"
-                    :icon="isFavorite(item.to) ? 'star' : 'star_border'"
-                    :aria-label="t(isFavorite(item.to) ? 'shell.nav.removeFavorite' : 'shell.nav.addFavorite')"
-                    @click.stop="toggleFavorite(item.to)"
-                  />
-                </q-item-section>
               </q-item>
+              <q-separator class="app-sidebar-divider" />
             </template>
-            <template v-for="(group, gi) in visibleNavGroups" :key="`g-${gi}`">
-              <q-item-label v-show="!drawerMini" header class="app-sidebar-section-label">
-                <span>{{ t(group.labelKey) }}</span>
-                <span class="app-sidebar-section-count">
-                  {{ group.sections.reduce((total, section) => total + section.items.length, 0) }}
-                </span>
-              </q-item-label>
-              <template v-for="section in group.sections" :key="section.key">
-                <button
-                  v-if="!drawerMini && section.labelKey"
-                  type="button"
-                  class="app-sidebar-subsection"
-                  :aria-expanded="!isSectionCollapsed(section.key)"
-                  @click="toggleSection(section.key)"
-                >
-                  <q-icon
-                    :name="isSectionCollapsed(section.key) ? 'expand_more' : 'expand_less'"
-                    size="14px"
+
+            <div
+              v-for="domain in navDomains"
+              :key="domain.key"
+              class="app-sidebar-domain"
+              :class="{
+                'app-sidebar-domain--active': activeDomainKey === domain.key,
+                'app-sidebar-domain--open': !drawerMini && openDomain === domain.key,
+              }"
+              @mouseenter="drawerMini && openFlyout(domain.key)"
+              @mouseleave="drawerMini && scheduleFlyoutClose()"
+            >
+              <button
+                type="button"
+                class="app-sidebar-domain__head"
+                :aria-expanded="drawerMini ? flyout === domain.key : openDomain === domain.key"
+                :aria-current="activeDomainKey === domain.key ? 'true' : undefined"
+                :aria-label="t(domain.labelKey)"
+                @click="onDomainClick(domain.key)"
+              >
+                <span class="app-sidebar-domain__icon">
+                  <q-icon :name="domain.icon" size="20px" aria-hidden="true" />
+                  <span
+                    v-if="domain.key === 'workbench' && inboxBadge > 0"
+                    class="app-sidebar-badge app-sidebar-badge--corner"
                     aria-hidden="true"
-                  />
-                  <span>{{ t(section.labelKey) }}</span>
-                  <span class="app-sidebar-section-count">{{ section.items.length }}</span>
-                </button>
-                <div
-                  v-show="drawerMini || !section.labelKey || !isSectionCollapsed(section.key)"
-                  class="app-sidebar-group__items app-sidebar-group__items--nested"
-                >
+                    >{{ inboxBadge > 99 ? '99+' : inboxBadge }}</span
+                  >
+                </span>
+                <span class="app-sidebar-domain__label">{{
+                  t(drawerMini ? domain.shortLabelKey : domain.labelKey)
+                }}</span>
+                <q-icon
+                  v-if="!drawerMini"
+                  class="app-sidebar-domain__chevron"
+                  :name="openDomain === domain.key ? 'expand_less' : 'expand_more'"
+                  size="18px"
+                  aria-hidden="true"
+                />
+              </button>
+
+              <q-menu
+                v-if="drawerMini"
+                :model-value="flyout === domain.key"
+                no-parent-event
+                anchor="top right"
+                self="top left"
+                :offset="[18, 0]"
+                class="app-sidebar-flyout"
+                @update:model-value="(open: boolean) => !open && flyout === domain.key && closeFlyout()"
+                @mouseenter="cancelFlyoutClose"
+                @mouseleave="scheduleFlyoutClose"
+              >
+                <div class="app-sidebar-flyout__title">{{ t(domain.labelKey) }}</div>
+                <q-list dense>
                   <q-item
-                    v-for="(item, ii) in section.items"
-                    :key="`g-${gi}-s-${section.key}-i-${ii}`"
-                    v-ripple
+                    v-for="item in domain.primaries"
+                    :key="item.to"
+                    v-close-popup
                     clickable
-                    class="app-sidebar-nav-item"
-                    :active="isNavItemActive(item)"
+                    class="app-sidebar-flyout__item"
+                    :active="activePrimaryPath === item.to"
                     active-class="app-sidebar-item--active"
                     @click="navigateTo(item.to)"
                   >
-                    <q-tooltip v-if="drawerMini" anchor="center right" self="center left" :offset="[8, 0]">
-                      {{ t(item.labelKey) }}
-                    </q-tooltip>
-                    <q-item-section avatar>
-                      <q-icon :name="item.icon" />
-                    </q-item-section>
-                    <q-item-section v-show="!drawerMini">
-                      <span>
-                        {{ t(item.labelKey) }}
-                        <span
-                          v-if="item.to === '/workbench' && inboxBadge > 0"
-                          class="app-sidebar-badge"
-                          :aria-label="t('today.inbox.title') + ' ' + inboxBadge"
-                          >{{ inboxBadge > 99 ? '99+' : inboxBadge }}</span
-                        >
-                      </span>
-                    </q-item-section>
-                    <q-item-section v-if="!drawerMini" side>
-                      <q-btn
-                        flat
-                        round
-                        dense
-                        class="app-sidebar-favorite"
-                        :class="{ 'app-sidebar-favorite--active': isFavorite(item.to) }"
-                        :icon="isFavorite(item.to) ? 'star' : 'star_border'"
-                        :aria-label="t(isFavorite(item.to) ? 'shell.nav.removeFavorite' : 'shell.nav.addFavorite')"
-                        @click.stop="toggleFavorite(item.to)"
-                      />
-                    </q-item-section>
+                    <q-item-section avatar><q-icon :name="item.icon" size="18px" /></q-item-section>
+                    <q-item-section>{{ t(item.tabLabelKey) }}</q-item-section>
                   </q-item>
-                </div>
-              </template>
-              <q-separator v-if="gi < visibleNavGroups.length - 1" v-show="!drawerMini" class="app-sidebar-divider" />
-            </template>
+                </q-list>
+              </q-menu>
+
+              <div v-if="!drawerMini" v-show="openDomain === domain.key" class="app-sidebar-domain__items">
+                <q-item
+                  v-for="item in domain.primaries"
+                  :key="item.to"
+                  clickable
+                  class="app-sidebar-nav-item"
+                  :active="activePrimaryPath === item.to"
+                  active-class="app-sidebar-item--active"
+                  @click="navigateTo(item.to)"
+                >
+                  <q-item-section avatar><q-icon :name="item.icon" /></q-item-section>
+                  <q-item-section>
+                    <span>
+                      {{ t(item.tabLabelKey) }}
+                      <span
+                        v-if="item.to === '/workbench' && inboxBadge > 0"
+                        class="app-sidebar-badge"
+                        :aria-label="t('today.inbox.title') + ' ' + inboxBadge"
+                        >{{ inboxBadge > 99 ? '99+' : inboxBadge }}</span
+                      >
+                    </span>
+                  </q-item-section>
+                  <q-item-section side>
+                    <q-btn
+                      flat
+                      round
+                      dense
+                      class="app-sidebar-favorite"
+                      :class="{ 'app-sidebar-favorite--active': isFavorite(item.to) }"
+                      :icon="isFavorite(item.to) ? 'star' : 'star_border'"
+                      :aria-label="t(isFavorite(item.to) ? 'shell.nav.removeFavorite' : 'shell.nav.addFavorite')"
+                      @click.stop="toggleFavorite(item.to)"
+                    />
+                  </q-item-section>
+                </q-item>
+              </div>
+            </div>
           </q-list>
         </div>
       </nav>
@@ -338,7 +368,8 @@
       :data-visual="pageVisual"
       tabindex="-1"
     >
-      <div v-if="showBreadcrumbs" class="app-breadcrumb-bar">
+      <AppDomainTabs v-if="showDomainTabs" :trail="domainTrail" />
+      <div v-else-if="showBreadcrumbs" class="app-breadcrumb-bar">
         <AppBreadcrumbs />
       </div>
       <router-view />
@@ -366,7 +397,9 @@ import { useRoute, useRouter } from 'vue-router';
 import { useI18n } from 'vue-i18n';
 import { useQuasar } from 'quasar';
 import { setQuasarLangFor } from '../i18n/quasar-lang';
-import { findNavTrail, flatNavLeaves, navGroupsView, navLeafVisible } from '../config/navView';
+import { findNavTrail, flatNavLeaves, navLeafVisible } from '../config/navView';
+import { buildNavDomains, findDomainTrail, type NavDomainKey } from '../config/navDomains';
+import AppDomainTabs from '../components/layout/AppDomainTabs.vue';
 import { useAuthStore } from '../stores/auth';
 import { useNavStore } from '../stores/nav';
 import { useInboundNotificationStore } from '../stores/inboundNotifications';
@@ -396,7 +429,23 @@ const auth = useAuthStore();
 const inboundStore = useInboundNotificationStore();
 const artifactStore = useArtifactStore();
 const drawerOpen = ref($q.screen.gt.sm);
-const drawerMini = ref(false);
+// 侧栏收起（图标栏）/ 展开（手风琴）两种形态，按人记住
+const MINI_KEY = 'nav:mini';
+function readMini(): boolean {
+  try {
+    return localStorage.getItem(MINI_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+const drawerMini = ref(readMini());
+watch(drawerMini, (mini) => {
+  try {
+    localStorage.setItem(MINI_KEY, mini ? '1' : '0');
+  } catch {
+    // 存不了不影响本次会话
+  }
+});
 const pairingOpen = ref(false);
 const paletteOpen = ref(false);
 const navFilter = ref('');
@@ -469,19 +518,48 @@ watch(
   () => void refreshInboxBadge(),
 );
 
-const visibleNavGroups = computed(() =>
-  navGroupsView
-    .map((group) => ({
-      ...group,
-      sections: group.sections
-        .map((section) => ({
-          ...section,
-          items: section.items.filter((item) => navLeafVisible(item, nav.isPathVisible)),
-        }))
-        .filter((section) => section.items.length > 0),
-    }))
-    .filter((group) => group.sections.length > 0),
+const navDomains = computed(() => buildNavDomains(nav.isPathVisible));
+const domainTrail = computed(() => findDomainTrail(route.path, navDomains.value));
+const activeDomainKey = computed(() => domainTrail.value?.domain.key ?? '');
+const activePrimaryPath = computed(() => domainTrail.value?.primary.to ?? '');
+
+// 手风琴：同时只展开一个领域；换页时跟着展开当前领域
+const openDomain = ref<NavDomainKey | ''>('');
+watch(
+  activeDomainKey,
+  (key) => {
+    if (key) openDomain.value = key;
+  },
+  { immediate: true },
 );
+
+// 图标栏：悬停或点击浮出本领域页面；移出后稍等再收，避免从图标移到浮层时闪断
+const flyout = ref<NavDomainKey | ''>('');
+let flyoutTimer: ReturnType<typeof setTimeout> | null = null;
+function cancelFlyoutClose() {
+  if (flyoutTimer) clearTimeout(flyoutTimer);
+  flyoutTimer = null;
+}
+function openFlyout(key: NavDomainKey) {
+  cancelFlyoutClose();
+  flyout.value = key;
+}
+function closeFlyout() {
+  cancelFlyoutClose();
+  flyout.value = '';
+}
+function scheduleFlyoutClose() {
+  cancelFlyoutClose();
+  flyoutTimer = setTimeout(closeFlyout, 180);
+}
+function onDomainClick(key: NavDomainKey) {
+  if (drawerMini.value) {
+    if (flyout.value === key) closeFlyout();
+    else openFlyout(key);
+    return;
+  }
+  openDomain.value = openDomain.value === key ? '' : key;
+}
 
 const filterResults = computed(() => {
   const keyword = navFilter.value.trim().toLowerCase();
@@ -504,21 +582,20 @@ function isNavItemActive(item: { to: string }) {
 }
 
 const showBreadcrumbs = computed(() => route.meta.breadcrumb !== false);
+// 全屏类页面（聊天、实时运转、经营看板等）自己占满视口，不插页签条，靠侧栏切换
+const showDomainTabs = computed(
+  () => Boolean(domainTrail.value) && pageLayout.value !== 'immersive' && pageLayout.value !== 'canvas',
+);
 const pageLayout = computed(() => resolveUiLayout(route.meta.uiLayout));
 // 视觉档位：指挥舱（deck）保留光效与网格底，其余为安静的工作区
 const pageVisual = computed(() => resolveUiVisual(route.meta.uiVisual));
-const { favorites, recent, toggleFavorite, recordVisit, isFavorite } = useNavPreferences();
+const { favorites, toggleFavorite, recordVisit, isFavorite } = useNavPreferences();
 
-const personalNavSections = computed(() =>
-  [
-    { key: 'favorites', labelKey: 'shell.nav.favorites', paths: favorites.value },
-    { key: 'recent', labelKey: 'shell.nav.recent', paths: recent.value },
-  ].map((section) => ({
-    ...section,
-    items: section.paths
-      .map((path) => flatNavLeaves().find((leaf) => leaf.to === path && navLeafVisible(leaf, nav.isPathVisible)))
-      .filter((leaf): leaf is NonNullable<typeof leaf> => Boolean(leaf)),
-  })),
+// 收藏留在展开形态的侧栏顶部；「最近访问」改由 Ctrl+K 指令面板提供
+const favoriteLeaves = computed(() =>
+  favorites.value
+    .map((path) => flatNavLeaves().find((leaf) => leaf.to === path && navLeafVisible(leaf, nav.isPathVisible)))
+    .filter((leaf): leaf is NonNullable<typeof leaf> => Boolean(leaf)),
 );
 
 watch(
@@ -529,63 +606,13 @@ watch(
   { immediate: true },
 );
 
-// 分组折叠：默认只展开当前路由所在段，用户手动展开/收起后持久化。
-const COLLAPSE_KEY = 'nav:collapsed';
-const collapsedSections = ref<Set<string>>(new Set());
-
-function readCollapsed(): Set<string> | null {
-  try {
-    const raw = localStorage.getItem(COLLAPSE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) return null;
-    return new Set(parsed.filter((item): item is string => typeof item === 'string'));
-  } catch {
-    return null;
-  }
-}
-
-function persistCollapsed() {
-  try {
-    localStorage.setItem(COLLAPSE_KEY, JSON.stringify([...collapsedSections.value]));
-  } catch {
-    // 存储不可用时忽略：本次会话内仍然有效
-  }
-}
-
-function isSectionCollapsed(key: string) {
-  return collapsedSections.value.has(key);
-}
-
-function toggleSection(key: string) {
-  const next = new Set(collapsedSections.value);
-  if (next.has(key)) next.delete(key);
-  else next.add(key);
-  collapsedSections.value = next;
-  persistCollapsed();
-}
-
-function ensureActiveSectionOpen() {
-  const key = navTrail.value?.section.key;
-  if (!key || !collapsedSections.value.has(key)) return;
-  const next = new Set(collapsedSections.value);
-  next.delete(key);
-  collapsedSections.value = next;
-}
-
 onMounted(() => {
-  const stored = readCollapsed();
-  const activeKey = navTrail.value?.section.key ?? '';
-  collapsedSections.value =
-    stored ??
-    new Set(
-      navGroupsView.flatMap((group) => group.sections.map((section) => section.key)).filter((key) => key !== activeKey),
-    );
   window.addEventListener('keydown', onGlobalKeydown);
 });
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onGlobalKeydown);
+  cancelFlyoutClose();
 });
 
 function onGlobalKeydown(event: KeyboardEvent) {
@@ -597,7 +624,7 @@ function onGlobalKeydown(event: KeyboardEvent) {
 watch(
   () => route.path,
   () => {
-    ensureActiveSectionOpen();
+    closeFlyout();
     if ($q.screen.lt.md) drawerOpen.value = false;
   },
 );
