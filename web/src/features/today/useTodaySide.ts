@@ -156,6 +156,18 @@ export function useTodaySide() {
   }
 
   /** 指令栏刚交办成功：先把这条放进「交办中」，再向服务端对一次账。 */
+  /** 别处（指令栏、Ctrl+K 指令面板）刚建好的任务 / 记录 / 交办，就地放进对应列表。 */
+  function ingest(intent: 'task' | 'note' | 'delegate', task: OfficeTaskRow | null): void {
+    if (!task) {
+      if (intent === 'delegate') void loadDelegated();
+      return;
+    }
+    if (intent === 'delegate') trackDelegation(task);
+    else if (intent === 'note')
+      notes.value = [task, ...notes.value.filter((n) => n.id !== task.id)].slice(0, NOTES_SHOWN);
+    else tasks.value = [task, ...tasks.value.filter((x) => x.id !== task.id)];
+  }
+
   function trackDelegation(task: OfficeTaskRow): void {
     const [row] = classifyOfficeDelegated([task], []);
     if (row) delegated.value = sortDelegated([row, ...delegated.value.filter((d) => d.id !== row.id)]);
@@ -249,6 +261,7 @@ export function useTodaySide() {
   });
 
   return {
+    ingest,
     events,
     eventsStatus,
     cron,

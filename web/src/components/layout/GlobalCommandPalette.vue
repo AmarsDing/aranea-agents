@@ -1,4 +1,8 @@
 <template>
+  <!--
+    全局指令面板（Ctrl+K）：既能跳到任何页面，也能直接办事——交办、建任务、记一笔。
+    与工作台指令栏共用同一套判断（features/today/command）与执行（useCommandRunner）。
+  -->
   <q-dialog
     v-model="open"
     position="top"
@@ -15,6 +19,7 @@
         borderless
         dense
         autofocus
+        :disable="busy"
         :placeholder="t('shell.command.placeholder')"
         :aria-label="t('shell.command.placeholder')"
         role="combobox"
@@ -25,45 +30,53 @@
         @keydown.enter.prevent="selectActive"
       >
         <template #prepend>
-          <q-icon name="search" size="20px" />
+          <q-icon :name="busy ? 'hourglass_top' : 'bolt'" size="20px" />
         </template>
         <template #append>
           <kbd class="app-command__kbd">ESC</kbd>
         </template>
       </q-input>
       <q-separator />
+      <p v-if="error" class="app-command__error" role="alert">
+        {{ t('today.command.failed', { message: error }) }}
+        <router-link v-if="errorLink" :to="errorLink" @click="open = false">{{
+          t('today.command.openSession')
+        }}</router-link>
+      </p>
       <q-list v-if="results.length > 0" class="app-command__list" role="listbox">
-        <q-item
-          v-for="(entry, index) in results"
-          :key="entry.to"
-          clickable
-          :active="index === activeIndex"
-          active-class="app-command__item--active"
-          class="app-command__item"
-          role="option"
-          :aria-selected="index === activeIndex"
-          @mouseenter="activeIndex = index"
-          @click="select(entry)"
-        >
-          <q-item-section avatar>
-            <q-icon :name="entry.icon" size="18px" />
-          </q-item-section>
-          <q-item-section>
-            <q-item-label>{{ entry.label }}</q-item-label>
-            <q-item-label caption>
-              {{ entry.groupLabel }}<template v-if="entry.sectionLabel"> · {{ entry.sectionLabel }}</template>
-            </q-item-label>
-          </q-item-section>
-          <q-item-section side>
-            <span v-if="entry.recent" class="app-command__badge">{{ t('shell.command.recent') }}</span>
-            <span v-else class="app-command__path">{{ entry.to }}</span>
-          </q-item-section>
-        </q-item>
+        <template v-for="(entry, index) in results" :key="entry.key">
+          <q-item-label v-if="entry.heading" header class="app-command__heading">{{ entry.heading }}</q-item-label>
+          <q-item
+            clickable
+            :active="index === activeIndex"
+            active-class="app-command__item--active"
+            class="app-command__item"
+            :class="{ 'app-command__item--action': entry.kind === 'action' }"
+            role="option"
+            :aria-selected="index === activeIndex"
+            :disable="busy"
+            @mouseenter="activeIndex = index"
+            @click="select(entry)"
+          >
+            <q-item-section avatar>
+              <q-icon :name="entry.icon" size="18px" />
+            </q-item-section>
+            <q-item-section>
+              <q-item-label>{{ entry.label }}</q-item-label>
+              <q-item-label caption class="app-command__caption">{{ entry.caption }}</q-item-label>
+            </q-item-section>
+            <q-item-section side>
+              <span v-if="entry.badge" class="app-command__badge">{{ entry.badge }}</span>
+              <span v-else-if="entry.path" class="app-command__path">{{ entry.path }}</span>
+            </q-item-section>
+          </q-item>
+        </template>
       </q-list>
       <div v-else class="app-command__empty">{{ t('shell.command.empty') }}</div>
       <div class="app-command__footer">
-        <span class="app-command__hint">↑ ↓ {{ t('shell.common.search') }}</span>
-        <span class="app-command__hint">↵ {{ t('shell.common.confirm') }}</span>
+        <span class="app-command__hint">↑ ↓ {{ t('shell.command.hintMove') }}</span>
+        <span class="app-command__hint">↵ {{ t('shell.command.hintRun') }}</span>
+        <span class="app-command__hint">{{ t('shell.command.hintSyntax') }}</span>
       </div>
     </q-card>
   </q-dialog>
@@ -73,41 +86,83 @@
 import { computed, nextTick, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { useI18n } from 'vue-i18n';
+import { useQuasar } from 'quasar';
+import { buildNavDomains } from '../../config/navDomains';
 import { flatNavLeaves } from '../../config/navView';
+import { planPaletteActions, type PaletteAction } from '../../features/today/command';
+import { runCommand } from '../../features/today/useCommandRunner';
+import { useRecipients } from '../../features/today/useDelegation';
 
 const props = defineProps<{ modelValue: boolean }>();
 const emit = defineEmits<{ 'update:modelValue': [value: boolean] }>();
 
 const { t } = useI18n();
+const $q = useQuasar();
 const router = useRouter();
 const query = ref('');
 const activeIndex = ref(0);
 const inputRef = ref<{ focus: () => void } | null>(null);
+const busy = ref(false);
+const error = ref('');
+const errorLink = ref('');
+const recipients = useRecipients();
 
 const RECENT_KEY = 'nav:recent';
 const MAX_RECENT = 5;
+const MAX_PAGES = 40;
 
 const open = computed({
   get: () => props.modelValue,
   set: (value: boolean) => emit('update:modelValue', value),
 });
 
-type Entry = {
+type NavEntry = {
+  kind: 'nav';
+  key: string;
   to: string;
   icon: string;
   label: string;
-  groupLabel: string;
-  sectionLabel: string;
-  recent?: boolean;
+  caption: string;
+  path: string;
+  badge: string;
+  heading: string;
 };
+type ActionEntry = {
+  kind: 'action';
+  key: string;
+  action: PaletteAction;
+  icon: string;
+  label: string;
+  caption: string;
+  path: string;
+  badge: string;
+  heading: string;
+};
+type Entry = NavEntry | ActionEntry;
 
-const entries = computed<Entry[]>(() =>
+// 说明文字用新的一级去处名（与侧栏一致）；子页带上父页面名，例如「能力 · Tools 管理」
+const domainCaption = computed(() => {
+  const out = new Map<string, string>();
+  for (const domain of buildNavDomains(() => true)) {
+    for (const primary of domain.primaries) {
+      out.set(primary.to, t(domain.labelKey));
+      for (const child of primary.children) out.set(child.to, `${t(domain.labelKey)} · ${t(primary.tabLabelKey)}`);
+    }
+  }
+  return out;
+});
+
+const pages = computed<NavEntry[]>(() =>
   flatNavLeaves().map((leaf) => ({
+    kind: 'nav',
+    key: `nav:${leaf.to}`,
     to: leaf.to,
     icon: leaf.icon,
     label: t(leaf.labelKey),
-    groupLabel: t(leaf.groupKey),
-    sectionLabel: leaf.sectionLabelKey ? t(leaf.sectionLabelKey) : '',
+    caption: domainCaption.value.get(leaf.to) ?? '',
+    path: leaf.to,
+    badge: '',
+    heading: '',
   })),
 );
 
@@ -130,28 +185,55 @@ function remember(path: string) {
   }
 }
 
+function actionEntry(action: PaletteAction, index: number): ActionEntry {
+  const base = {
+    kind: 'action' as const,
+    key: `act:${action.kind}:${index}`,
+    action,
+    caption: action.text,
+    path: '',
+    badge: '↵',
+    heading: '',
+  };
+  if (action.kind === 'delegate') {
+    return {
+      ...base,
+      icon: 'assignment_ind',
+      label: t('shell.command.action.delegate', { name: action.recipient.name }),
+    };
+  }
+  if (action.kind === 'note') return { ...base, icon: 'edit_note', label: t('shell.command.action.note') };
+  return { ...base, icon: 'add_task', label: t('shell.command.action.task') };
+}
+
+function withHeading<T extends Entry>(list: T[], heading: string): T[] {
+  return list.map((entry, i) => (i === 0 ? { ...entry, heading } : entry));
+}
+
 const results = computed<Entry[]>(() => {
   const keyword = query.value.trim().toLowerCase();
   if (!keyword) {
     const recents = loadRecent();
     const recentEntries = recents
-      .map((path) => entries.value.find((entry) => entry.to === path))
-      .filter((entry): entry is Entry => Boolean(entry))
-      .map((entry) => ({ ...entry, recent: true }));
-    const rest = entries.value.filter((entry) => !recents.includes(entry.to));
-    return [...recentEntries, ...rest].slice(0, 40);
+      .map((path) => pages.value.find((entry) => entry.to === path))
+      .filter((entry): entry is NavEntry => Boolean(entry))
+      .map((entry) => ({ ...entry, badge: t('shell.command.recent') }));
+    const rest = pages.value.filter((entry) => !recents.includes(entry.to));
+    return [...recentEntries, ...rest].slice(0, MAX_PAGES);
   }
-  return entries.value
-    .filter((entry) =>
-      [entry.label, entry.groupLabel, entry.sectionLabel, entry.to].some((field) =>
-        field.toLowerCase().includes(keyword),
-      ),
-    )
-    .slice(0, 40);
+  const navHits = pages.value
+    .filter((entry) => [entry.label, entry.caption, entry.to].some((field) => field.toLowerCase().includes(keyword)))
+    .slice(0, MAX_PAGES);
+  const plan = planPaletteActions(query.value, recipients.recipients.value);
+  const actions = withHeading(plan.actions.map(actionEntry), t('shell.command.sectionDo'));
+  const navs = withHeading(navHits, t('shell.command.sectionGo'));
+  return plan.actionsFirst ? [...actions, ...navs] : [...navs, ...actions];
 });
 
 watch(query, () => {
   activeIndex.value = 0;
+  error.value = '';
+  errorLink.value = '';
 });
 
 watch(results, () => {
@@ -161,6 +243,10 @@ watch(results, () => {
 function onShow() {
   query.value = '';
   activeIndex.value = 0;
+  error.value = '';
+  errorLink.value = '';
+  // 交办对象每次打开都刷新一次（读不到时只是少了交办选项，跳转照常）
+  void recipients.load();
   void nextTick(() => inputRef.value?.focus());
 }
 
@@ -172,12 +258,47 @@ function move(delta: number) {
 
 function selectActive() {
   const entry = results.value[activeIndex.value];
-  if (entry) select(entry);
+  if (entry) void select(entry);
 }
 
 async function select(entry: Entry) {
-  remember(entry.to);
+  if (busy.value) return;
+  if (entry.kind === 'nav') {
+    remember(entry.to);
+    open.value = false;
+    await router.push(entry.to);
+    return;
+  }
+  await execute(entry.action);
+}
+
+async function execute(action: PaletteAction) {
+  busy.value = true;
+  const result = await runCommand(
+    action.kind === 'delegate'
+      ? { intent: 'delegate', text: action.text, recipient: action.recipient }
+      : { intent: action.kind, text: action.text },
+  );
+  busy.value = false;
+  if (!result.ok) {
+    error.value = result.message;
+    errorLink.value = result.link;
+    void nextTick(() => inputRef.value?.focus());
+    return;
+  }
   open.value = false;
-  await router.push(entry.to);
+  const message =
+    action.kind === 'delegate'
+      ? t(result.untracked ? 'today.command.done.delegateUntracked' : 'today.command.done.delegate', {
+          name: action.recipient.name,
+        })
+      : t(`today.command.done.${action.kind}`, { title: action.text });
+  $q.notify({
+    type: result.untracked ? 'warning' : 'positive',
+    message,
+    actions: result.link
+      ? [{ label: t('today.command.openSession'), color: 'white', handler: () => void router.push(result.link) }]
+      : [],
+  });
 }
 </script>

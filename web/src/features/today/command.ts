@@ -91,3 +91,71 @@ export function sessionLink(recipient: Pick<Recipient, 'kind' | 'id'>, sessionId
   const owner = recipient.kind === 'team' ? 'team' : 'agent';
   return `/chat?session=${encodeURIComponent(sessionId)}&${owner}=${encodeURIComponent(recipient.id)}`;
 }
+
+// ——— Ctrl+K 指令面板里的「直接办」选项 ———
+
+export type PaletteAction =
+  | { kind: 'delegate'; text: string; recipient: Recipient }
+  | { kind: 'task'; text: string }
+  | { kind: 'note'; text: string };
+
+export type PalettePlan = {
+  actions: PaletteAction[];
+  /** 这句话明显是要「办事」（交办 / 记录）：动作排在页面跳转结果之前 */
+  actionsFirst: boolean;
+};
+
+const MAX_DELEGATE_CANDIDATES = 3;
+
+/**
+ * 根据面板里输入的一句话给出可直接执行的动作。
+ * 判断规则与工作台指令栏一致（parseCommand）；认不出对象的 @ 交办，按名字前缀给几个候选。
+ */
+export function planPaletteActions(raw: string, recipients: readonly Recipient[]): PalettePlan {
+  const input = raw.trim();
+  if (!input) return { actions: [], actionsFirst: false };
+  const parsed = parseCommand(input, recipients);
+
+  if (parsed.intent === 'delegate') {
+    const target = recipients.find((r) => recipientRef(r) === parsed.recipientRef);
+    if (target && parsed.text) {
+      return {
+        actions: [
+          { kind: 'delegate', text: parsed.text, recipient: target },
+          { kind: 'task', text: input },
+        ],
+        actionsFirst: true,
+      };
+    }
+    // @ 后面的名字还没打全：用开头的词去匹配对象
+    const word = input.replace(/^@/, '').split(/\s+/)[0]?.toLowerCase() ?? '';
+    const rest = input.replace(/^@\S*\s*/, '').trim();
+    const candidates = word
+      ? recipients
+          .filter((r) => r.name.toLowerCase().startsWith(word) || r.key.toLowerCase().startsWith(word))
+          .slice(0, MAX_DELEGATE_CANDIDATES)
+      : [];
+    return {
+      actions: rest ? candidates.map((recipient) => ({ kind: 'delegate' as const, text: rest, recipient })) : [],
+      actionsFirst: true,
+    };
+  }
+  if (parsed.intent === 'note') {
+    return parsed.text
+      ? {
+          actions: [
+            { kind: 'note', text: parsed.text },
+            { kind: 'task', text: input },
+          ],
+          actionsFirst: true,
+        }
+      : { actions: [], actionsFirst: false };
+  }
+  return {
+    actions: [
+      { kind: 'task', text: input },
+      { kind: 'note', text: input },
+    ],
+    actionsFirst: false,
+  };
+}

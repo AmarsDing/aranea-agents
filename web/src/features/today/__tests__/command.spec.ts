@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { commandTitle, parseCommand, sessionLink, type Recipient } from '../command';
+import { commandTitle, parseCommand, planPaletteActions, sessionLink, type Recipient } from '../command';
 
 const recipients: Recipient[] = [
   { kind: 'agent', id: 'ag-1', key: 'content', name: '内容组' },
@@ -80,5 +80,42 @@ describe('sessionLink', () => {
   it('points at the chat session of the recipient', () => {
     expect(sessionLink({ kind: 'agent', id: 'ag 1' }, 's/1')).toBe('/chat?session=s%2F1&agent=ag%201');
     expect(sessionLink({ kind: 'team', id: 'tm-1' }, 's1')).toBe('/chat?session=s1&team=tm-1');
+  });
+});
+
+describe('planPaletteActions', () => {
+  it('offers nothing for an empty query', () => {
+    expect(planPaletteActions('  ', recipients)).toEqual({ actions: [], actionsFirst: false });
+  });
+
+  it('puts delegation first when the sentence names a recipient', () => {
+    const plan = planPaletteActions('让内容组出一份竞品周报', recipients);
+    expect(plan.actionsFirst).toBe(true);
+    expect(plan.actions[0]).toMatchObject({ kind: 'delegate', text: '出一份竞品周报', recipient: { id: 'ag-1' } });
+    expect(plan.actions[1]).toEqual({ kind: 'task', text: '让内容组出一份竞品周报' });
+  });
+
+  it('suggests recipients for a half-typed @ name', () => {
+    const plan = planPaletteActions('@内容 看一下这篇稿子', recipients);
+    expect(plan.actions.map((a) => (a.kind === 'delegate' ? a.recipient.id : a.kind))).toEqual(['ag-1', 'ag-2']);
+    expect(plan.actions[0]).toMatchObject({ text: '看一下这篇稿子' });
+    expect(planPaletteActions('@内容', recipients).actions).toEqual([]);
+  });
+
+  it('puts notes first for a note prefix', () => {
+    const plan = planPaletteActions('记：王总说合同月底前签', recipients);
+    expect(plan).toEqual({
+      actions: [
+        { kind: 'note', text: '王总说合同月底前签' },
+        { kind: 'task', text: '记：王总说合同月底前签' },
+      ],
+      actionsFirst: true,
+    });
+  });
+
+  it('keeps page jumps first for ordinary text, with task and note offered after', () => {
+    const plan = planPaletteActions('工具', recipients);
+    expect(plan.actionsFirst).toBe(false);
+    expect(plan.actions.map((a) => a.kind)).toEqual(['task', 'note']);
   });
 });

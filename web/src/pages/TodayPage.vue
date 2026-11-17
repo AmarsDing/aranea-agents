@@ -83,7 +83,12 @@ import TodayTimeline from '../components/today/TodayTimeline.vue';
 import type { InboxAction, InboxItemRow } from '../features/approval/api';
 import type { OfficeTaskRow } from '../features/office/types';
 import { batchableLowRisk, buildTimeline, clock, inboxHeadline, type DelegatedRow } from '../features/today/logic';
-import { delegate, useRecipients } from '../features/today/useDelegation';
+import { useRecipients } from '../features/today/useDelegation';
+import {
+  COMMAND_DONE_EVENT,
+  runCommand as executeCommand,
+  type CommandDoneDetail,
+} from '../features/today/useCommandRunner';
 import { useInbox } from '../features/today/useInbox';
 import { useTodaySide } from '../features/today/useTodaySide';
 
@@ -106,10 +111,12 @@ onMounted(() => {
   clockTimer = setInterval(() => (nowIso.value = new Date().toISOString()), 60_000);
   void recipients.load();
   document.addEventListener('keydown', onPageKey);
+  window.addEventListener(COMMAND_DONE_EVENT, onCommandDone);
 });
 onUnmounted(() => {
   if (clockTimer) clearInterval(clockTimer);
   document.removeEventListener('keydown', onPageKey);
+  window.removeEventListener(COMMAND_DONE_EVENT, onCommandDone);
 });
 
 /** 「/」把焦点送进指令栏（正在别处输入、或带修饰键时不抢）。 */
@@ -165,23 +172,26 @@ function say(text: string, error = false, link = '') {
 
 /** 指令栏的三种指令；失败时把原因交回指令栏（输入保留），成功时在页面播报。 */
 async function runCommand(request: CommandRequest): Promise<CommandFailure | null> {
+  const result = await executeCommand(request);
+  if (!result.ok) return { message: result.message, link: result.link };
   if (request.intent === 'delegate') {
-    const outcome = await delegate(request.recipient, request.text);
-    if (!outcome.ok) return { message: outcome.message, link: outcome.link };
-    if (outcome.task) side.trackDelegation(outcome.task);
     say(
-      t(outcome.task ? 'today.command.done.delegate' : 'today.command.done.delegateUntracked', {
+      t(result.untracked ? 'today.command.done.delegateUntracked' : 'today.command.done.delegate', {
         name: request.recipient.name,
       }),
-      !outcome.task,
-      outcome.link,
+      result.untracked,
+      result.link,
     );
-    return null;
+  } else {
+    say(t(`today.command.done.${request.intent}`, { title: request.text }));
   }
-  const error = request.intent === 'note' ? await side.addNote(request.text) : await side.addTask(request.text);
-  if (error) return { message: error };
-  say(t(`today.command.done.${request.intent}`, { title: request.text }));
   return null;
+}
+
+// 任何入口执行完指令（本页指令栏或 Ctrl+K 指令面板）都会广播，这里统一更新列表
+function onCommandDone(event: Event) {
+  const detail = (event as CustomEvent<CommandDoneDetail>).detail;
+  if (detail) side.ingest(detail.intent, detail.task);
 }
 
 async function onAccept(row: DelegatedRow) {

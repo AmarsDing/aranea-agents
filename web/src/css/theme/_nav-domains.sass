@@ -255,3 +255,33 @@ html body .app-domain-tabs__subtab--active
 
   html body .app-domain-tabs__subtab
     min-height: 44px
+
+// ——— Ctrl+K 指令面板：跳转与「直接办」两组 ———
+html body .app-command__heading
+  padding: var(--nt-space-2) var(--nt-space-3) var(--nt-space-1)
+  color: var(--nt-text-3)
+  font-size: var(--nt-fs-caption)
+  font-weight: 600
+
+html body .app-command__item--action .q-item__section--avatar
+  color: var(--nt-accent)
+
+html body .app-command__caption
+  overflow: hidden
+  text-overflow: ellipsis
+  white-space: nowrap
+
+html body .app-command__error
+  margin: 0
+  padding: var(--nt-space-2) var(--nt-space-4)
+  border-bottom: 1px solid var(--nt-border-1)
+  color: var(--nt-danger)
+  font-size: var(--nt-fs-caption)
+
+  a
+    margin-left: var(--nt-space-2)
+    color: var(--nt-accent)
+
+html body .app-command__footer
+  flex-wrap: wrap
+  gap: var(--nt-space-1) var(--nt-space-3)

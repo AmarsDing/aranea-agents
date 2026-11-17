@@ -75,10 +75,10 @@ import { useI18n } from 'vue-i18n';
 import { parseCommand, recipientRef, type CommandIntent, type Recipient } from '../../features/today/command';
 import type { RecipientsStatus } from '../../features/today/useDelegation';
 
-/** 执行一条指令；失败时返回错误文案（可带会话入口），成功返回空串。 */
-export type CommandRequest =
-  | { intent: 'task' | 'note'; text: string }
-  | { intent: 'delegate'; text: string; recipient: Recipient };
+import type { CommandRequest } from '../../features/today/useCommandRunner';
+
+/** 执行一条指令；失败时返回错误文案（可带会话入口），成功返回 null。 */
+export type { CommandRequest };
 export type CommandFailure = { message: string; link?: string };
 
 const props = defineProps<{
