@@ -1,0 +1,455 @@
+// 科幻层（深空皮肤之上，2026-11-16）。全站生效，只写共用壳层与 Quasar 控件，不碰单页私有类。
+// 依据：docs/NovaTrader/design/05-卡片特色显示.md（玻璃卡壳、沿圆角的发光描边、图标座、
+// 域色只作点缀）与 02-组件规范.md §3 动效 / §6 Quasar 映射。
+// 约束：取值只走 --nt-*；圆角 6/8/12/999；装饰光只在 hover / 选中 / 聚焦出现，不做常驻呼吸；
+//       数据区（表格、代码、日志）保持近不透明背板；减少动效档位下装饰全停。
+// 回退：在 app-theme.sass 里去掉本文件的 @import。
+
+// ——— 1. 空间底：低对比网格 + 顶部光场 ———
+// 选择器带上昼夜类：存量变量定义在 body.body--dark / body:not(.body--dark) 上，权重要压过它
+html body.body--dark,
+html body:not(.body--dark)
+  --scifi-grid: color-mix(in srgb, var(--nt-accent) 5%, transparent)
+  --scifi-edge: linear-gradient(90deg, transparent, var(--nt-accent-border) 30%, var(--nt-accent-border) 70%, transparent)
+  // 壳层玻璃恢复一点通透（深空皮肤里压平了），数据背板仍不透明
+  --glass-surface: color-mix(in srgb, var(--nt-bg-1) 82%, transparent)
+  --glass-surface-hover: color-mix(in srgb, var(--nt-bg-2) 90%, transparent)
+  --glass-blur-default: 10px
+  --glass-blur-hover: 10px
+  --glass-blur-medium: 12px
+  // 侧栏密度与形态（_sidebar.sass 全部读这些变量）
+  --sidebar-radius: var(--nt-radius-l)
+  --sidebar-bg: color-mix(in srgb, var(--nt-bg-1) 78%, transparent)
+  --sidebar-border: var(--nt-border-1)
+  --sidebar-overlay: linear-gradient(180deg, var(--nt-accent-soft), transparent 22%)
+  --sidebar-padding-x: 8px
+  --sidebar-item-indent: 10px
+  --sidebar-section-padding: 14px 8px 6px
+  --sidebar-section-font-size: 11px
+  --sidebar-item-padding-x: 8px
+  --sidebar-item-padding-y: 4px
+  --sidebar-item-gap: 2px
+  --sidebar-item-radius: var(--nt-radius-m)
+  --sidebar-item-min-height: 36px
+  --sidebar-item-font-size: var(--nt-fs-body)
+  --sidebar-item-color: var(--nt-text-2)
+  --sidebar-item-hover-bg: var(--nt-accent-soft)
+  --sidebar-item-hover-color: var(--nt-text-0)
+  --sidebar-item-active-bg: linear-gradient(90deg, var(--nt-accent-hover), transparent 85%)
+  --sidebar-item-active-color: var(--nt-text-0)
+  --sidebar-item-active-shadow: inset 2px 0 0 var(--nt-accent), var(--nt-glow-soft)
+  --sidebar-icon-size: 18px
+  --sidebar-icon-gap: 10px
+  --sidebar-icon-color: var(--nt-text-3)
+  --sidebar-icon-active-color: var(--nt-accent)
+
+html body.body--dark .app-page-container
+  background-color: var(--nt-bg-0)
+  background-image: radial-gradient(ellipse 1100px 360px at 50% -80px, var(--nt-accent-soft), transparent 70%), linear-gradient(var(--scifi-grid) 1px, transparent 1px), linear-gradient(90deg, var(--scifi-grid) 1px, transparent 1px)
+  background-size: auto, 48px 48px, 48px 48px
+  background-attachment: fixed
+
+// 页面自己的整页底色让位给空间底（否则网格被盖住）
+html body.body--dark .app-standard-page
+  background: transparent
+
+// 充分利用宽度：标准页不再限宽，留白用页面级令牌
+html body .app-standard-page
+  max-width: none
+  padding: var(--nt-space-page)
+
+// ——— 2. 顶栏：玻璃条 + 底部发光发丝线 ———
+html body .q-header.dark-header,
+html body .q-header.cream-header
+  background: color-mix(in srgb, var(--nt-bg-0) 80%, transparent)
+  backdrop-filter: var(--nt-glass-filter)
+  border-bottom: 1px solid var(--nt-border-1)
+
+  &::after
+    content: ''
+    position: absolute
+    right: 0
+    bottom: -1px
+    left: 0
+    height: 1px
+    background: var(--scifi-edge)
+    opacity: 0.6
+    pointer-events: none
+
+// ——— 3. 左侧菜单 ———
+html body .app-sidebar-card
+  backdrop-filter: var(--nt-glass-filter)
+
+  // 右缘一条自上而下的发光轨，暗示「这是一条舱壁」
+  &::after
+    content: ''
+    position: absolute
+    top: var(--nt-space-6)
+    right: 0
+    bottom: var(--nt-space-6)
+    width: 1px
+    background: linear-gradient(180deg, transparent, var(--nt-accent-border), transparent)
+    opacity: 0.5
+    pointer-events: none
+    z-index: 2
+
+// 筛选框：胶囊形 HUD 输入
+html body .app-sidebar-search
+  margin: var(--nt-space-2)
+  padding: 0 var(--nt-space-3)
+  background: var(--nt-data-inset)
+  border: 1px solid var(--nt-border-1)
+  border-radius: var(--nt-radius-pill)
+  transition: border-color var(--nt-transition), box-shadow var(--nt-transition)
+
+  &:focus-within
+    border-color: var(--nt-accent-border)
+    box-shadow: var(--nt-glow-soft)
+
+html body .app-sidebar-nav
+  // 分组标题：小号等宽大写 + 拖尾发丝线 + 计数
+  .q-item__label--header,
+  .app-sidebar-section-label
+    display: flex
+    align-items: center
+    gap: var(--nt-space-2)
+    font-family: var(--nt-font-mono)
+    font-weight: 600
+    letter-spacing: 0.14em
+
+    &::after
+      content: ''
+      flex: 1
+      height: 1px
+      background: linear-gradient(90deg, var(--nt-border-2), transparent)
+      order: 1
+
+  .app-sidebar-section-count
+    order: 2
+    color: var(--nt-text-3)
+    font-family: var(--nt-font-mono)
+    font-variant-numeric: tabular-nums
+    letter-spacing: 0
+
+  // 图标座：圆角小方块，选中时点亮
+  .q-item__section--avatar
+    flex: 0 0 28px
+    min-width: 28px
+    max-width: 28px
+    height: 28px
+    background: var(--nt-bg-2)
+    border: 1px solid var(--nt-border-1)
+    border-radius: var(--nt-radius-m)
+    transition: border-color var(--nt-transition), background var(--nt-transition), box-shadow var(--nt-transition)
+
+  .q-item:hover .q-item__section--avatar
+    border-color: var(--nt-border-2)
+
+  .q-item.app-sidebar-item--active .q-item__section--avatar
+    background: var(--nt-accent-soft)
+    border-color: var(--nt-accent-border)
+    box-shadow: var(--nt-glow-accent)
+
+  // 子分组：一条竖向导轨把同组入口串起来
+  .app-sidebar-group__items--nested
+    margin-left: var(--nt-space-3)
+    padding-left: var(--nt-space-2)
+    border-left: 1px solid var(--nt-border-1)
+
+  // 入口名称不折行，放不下就省略
+  .q-item__section--main
+    overflow: hidden
+    text-overflow: ellipsis
+    white-space: nowrap
+    word-break: normal
+
+  .q-item__section--side:last-child
+    padding-left: 0
+
+  // 收藏星标平时隐去，悬停、聚焦或已收藏时出现
+  .app-sidebar-favorite
+    width: 28px
+    min-width: 28px
+    height: 28px
+    min-height: 28px
+    opacity: 0
+    transition: opacity var(--nt-transition)
+
+  .q-item:hover .app-sidebar-favorite,
+  .app-sidebar-favorite:focus-visible,
+  .app-sidebar-favorite--active
+    opacity: 1
+
+html body .app-sidebar-subsection
+  min-height: 32px
+  color: var(--nt-text-3)
+  font-size: var(--nt-fs-caption)
+  letter-spacing: 0.04em
+
+  &:hover
+    color: var(--nt-text-1)
+
+html body .app-sidebar-divider
+  background: linear-gradient(90deg, transparent, var(--nt-border-2), transparent) !important
+
+// 触屏下恢复 44px 可点高度
+@media (max-width: 799px)
+  html body.body--dark,
+  html body:not(.body--dark)
+    --sidebar-item-min-height: 44px
+
+  html body .app-sidebar-nav .app-sidebar-favorite
+    width: 44px
+    min-width: 44px
+    height: 44px
+    min-height: 44px
+
+// ——— 4. 卡片：玻璃壳 + 沿圆角的发光描边（仅悬停 / 聚焦） ———
+html body .q-card,
+html body .app-pane-card,
+html body .app-page-toolbar
+  position: relative
+  background: var(--glass-surface)
+  border: 1px solid var(--nt-border-1)
+  border-radius: var(--nt-radius-l)
+  box-shadow: inset 0 1px 0 var(--nt-glass-highlight)
+  backdrop-filter: blur(var(--glass-blur-default))
+  transition: border-color var(--nt-transition), box-shadow var(--nt-transition), transform var(--nt-transition)
+
+html body .q-card:hover,
+html body .q-card:focus-within,
+html body .app-pane-card:hover
+  border-color: var(--nt-border-2)
+
+// 可点击的整卡：悬停点亮轮廓并微抬，顶缘掠过一道光（单次，不循环）
+html body .q-card.cursor-pointer,
+html body a.q-card,
+html body .q-card[role='button']
+  overflow: hidden
+
+  &::before
+    content: ''
+    position: absolute
+    top: 0
+    left: -40%
+    width: 40%
+    height: 1px
+    background: linear-gradient(90deg, transparent, var(--nt-accent), transparent)
+    opacity: 0
+    pointer-events: none
+
+  &:hover,
+  &:focus-visible
+    border-color: var(--nt-accent-border)
+    box-shadow: inset 0 1px 0 var(--nt-glass-highlight), var(--nt-glow-soft)
+    transform: translateY(-1px)
+
+    &::before
+      opacity: 1
+      animation: scifi-sweep 0.7s ease-out 1 forwards
+
+@keyframes scifi-sweep
+  to
+    left: 100%
+
+// 弹层里的卡片是对话框本体：更实、带景深
+html body .q-dialog .q-card
+  background: color-mix(in srgb, var(--nt-bg-1) 96%, transparent)
+  border-color: var(--nt-border-2)
+  box-shadow: var(--nt-shadow-depth), var(--nt-glow-soft)
+
+html body .q-dialog__backdrop
+  background: var(--nt-scrim)
+  backdrop-filter: blur(4px)
+
+// ——— 5. 控件 ———
+// 主按钮：悬停发光、按下回落；次要与文字按钮只变底色
+html body .q-btn
+  border-radius: var(--nt-radius-m)
+  font-weight: 600
+  letter-spacing: 0.01em
+  transition: box-shadow var(--nt-transition), transform var(--nt-transition), background-color var(--nt-transition)
+
+  &.q-btn--round,
+  &.q-btn--fab
+    border-radius: var(--nt-radius-pill)
+
+  &:active:not(.disabled)
+    transform: translateY(1px)
+
+html body .q-btn.bg-primary:not(.q-btn--outline):not(.q-btn--flat):not(.disabled):hover
+  box-shadow: var(--nt-glow-accent)
+
+html body .q-btn.bg-negative:not(.q-btn--outline):not(.q-btn--flat):not(.disabled):hover
+  box-shadow: var(--nt-glow-danger)
+
+// 输入：暗底内嵌，聚焦时描边点亮并外发一圈柔光
+html body .q-field--outlined .q-field__control,
+html body .q-field--filled .q-field__control
+  background: var(--nt-data-inset)
+  border-radius: var(--nt-radius-m)
+
+html body .q-field--outlined.q-field--focused .q-field__control,
+html body .q-field--filled.q-field--focused .q-field__control
+  box-shadow: 0 0 0 3px var(--nt-focus-ring)
+
+// 页签：选中项下方一条发光轨
+html body .q-tabs
+  color: var(--nt-text-2)
+
+  .q-tab
+    min-height: 40px
+    border-radius: var(--nt-radius-m) var(--nt-radius-m) 0 0
+    transition: color var(--nt-transition), background-color var(--nt-transition)
+
+    &:hover
+      color: var(--nt-text-0)
+
+  .q-tab--active
+    color: var(--nt-text-0)
+    background: linear-gradient(180deg, transparent, var(--nt-accent-soft))
+
+  .q-tab__indicator
+    height: 2px
+    background: var(--nt-accent)
+    box-shadow: var(--nt-glow-accent)
+
+// 分段切换：一条暗槽，选中块点亮
+html body .q-btn-toggle
+  padding: 2px
+  background: var(--nt-data-inset)
+  border: 1px solid var(--nt-border-1)
+  border-radius: var(--nt-radius-m)
+  box-shadow: none
+
+  .q-btn
+    border-radius: var(--nt-radius-s)
+
+// 表格：数据区不透明，表头小号等宽，悬停整行点亮
+html body .q-table__container
+  background: var(--nt-data-bg)
+  border: 1px solid var(--nt-border-1)
+  border-radius: var(--nt-radius-l)
+  box-shadow: none
+
+html body .q-table
+  thead th
+    color: var(--nt-text-3)
+    font-family: var(--nt-font-mono)
+    font-size: var(--nt-fs-micro)
+    font-weight: 600
+    letter-spacing: 0.1em
+    text-transform: uppercase
+    border-color: var(--nt-border-2)
+
+  tbody td
+    height: var(--nt-row-h)
+    border-color: var(--nt-border-1)
+    font-size: var(--nt-fs-body)
+
+  tbody tr
+    transition: background-color var(--nt-transition)
+
+    &:hover
+      background: var(--nt-accent-soft)
+
+// 胶囊标签
+html body .q-chip
+  border-radius: var(--nt-radius-pill)
+
+html body .q-badge
+  border-radius: var(--nt-radius-pill)
+  font-family: var(--nt-font-mono)
+  font-variant-numeric: tabular-nums
+
+// 菜单与提示：抬起的小面板
+html body .q-menu
+  background: var(--nt-bg-2)
+  border: 1px solid var(--nt-border-2)
+  border-radius: var(--nt-radius-m)
+  box-shadow: var(--nt-shadow-depth)
+
+  .q-item
+    min-height: 36px
+    border-radius: var(--nt-radius-s)
+
+    &:hover,
+    &.q-manual-focusable--focused
+      background: var(--nt-accent-soft)
+
+html body .q-tooltip
+  background: var(--nt-bg-3)
+  border: 1px solid var(--nt-border-2)
+  border-radius: var(--nt-radius-s)
+  color: var(--nt-text-0)
+  font-size: var(--nt-fs-caption)
+
+// 折叠项：细框，展开时描边加亮
+html body .q-expansion-item
+  border-radius: var(--nt-radius-m)
+
+  &.q-expansion-item--expanded > .q-expansion-item__container > .q-item
+    color: var(--nt-text-0)
+
+html body .q-linear-progress
+  border-radius: var(--nt-radius-pill)
+  color: var(--nt-accent)
+
+html body .q-separator
+  background: var(--nt-border-1)
+
+// 侧向详情抽屉（非主菜单）：左缘一条发光轨
+html body .q-drawer--right
+  background: color-mix(in srgb, var(--nt-bg-1) 94%, transparent)
+  backdrop-filter: var(--nt-glass-filter)
+  border-left: 1px solid var(--nt-accent-border)
+  box-shadow: var(--nt-shadow-depth)
+
+// ——— 6. 页面版式的共用部件 ———
+html body .app-page-kicker
+  color: var(--nt-accent)
+  font-family: var(--nt-font-mono)
+  font-size: var(--nt-fs-micro)
+  font-weight: 600
+  letter-spacing: 0.18em
+  text-transform: uppercase
+
+html body .app-page-title
+  color: var(--nt-text-0)
+  letter-spacing: 0.01em
+
+// 工具条贴顶，滚动时始终够得着筛选与主操作
+html body .app-page-toolbar
+  position: sticky
+  top: var(--nt-space-2)
+  z-index: 5
+
+// 空态：虚线取景框，而不是一块空白
+html body .app-empty-state-center,
+html body .app-registry-empty--compact
+  border: 1px dashed var(--nt-border-2)
+  border-radius: var(--nt-radius-l)
+  background: color-mix(in srgb, var(--nt-bg-1) 60%, transparent)
+
+// 细滚动条
+html body *
+  scrollbar-width: thin
+  scrollbar-color: var(--nt-border-2) transparent
+
+// ——— 7. 减少动效：装饰全停 ———
+@media (prefers-reduced-motion: reduce)
+  html body .q-card::before
+    animation: none !important
+
+  html body .q-card,
+  html body .q-btn
+    transition: none
+    transform: none !important
+
+html[data-motion='reduced'] body .q-card::before
+  animation: none !important
+
+html[data-motion='reduced'] body .q-card,
+html[data-motion='reduced'] body .q-btn
+  transition: none
+  transform: none !important
