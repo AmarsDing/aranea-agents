@@ -1,0 +1,74 @@
+// 两种视觉档位（2026-11-17）。排在所有皮肤层之后。
+//   指挥舱 deck：工作台、公司树、经营看板、实时运转、概览——保留网格底、玻璃、光效与掠光。
+//   工作区 workspace（缺省）：登记页、设置、编辑器——实色背板、不发光、不位移，信息密度优先。
+// 档位由路由 meta.uiVisual 决定，外壳写到 .app-page-container[data-visual]。
+// 科幻感在工作区靠结构（发丝线、等宽数字、焦点环）体现，不靠装饰。
+@import "./_nt-tokens.css"
+
+// ——— 工作区档 ———
+html body .app-page-container[data-visual='workspace']
+  // 去网格与光场，只留纯底色
+  background-image: none
+
+  // 卡片与面板：实色背板，不透光、不模糊、无内高光
+  .q-card,
+  .app-pane-card,
+  .app-page-toolbar,
+  .app-registry-table-shell,
+  .app-data-table-shell,
+  .app-registry-card
+    background: var(--nt-bg-1)
+    backdrop-filter: none
+    box-shadow: none
+
+  // 悬停只换描边颜色：不发光、不上浮、不掠光
+  .q-card::before,
+  .app-registry-card::before
+    display: none
+
+  .q-card.cursor-pointer:hover,
+  a.q-card:hover,
+  .q-card[role='button']:hover,
+  .app-registry-card--clickable:hover
+    box-shadow: none
+    transform: none
+
+  .q-btn.bg-primary:not(.disabled):hover,
+  .q-btn.bg-negative:not(.disabled):hover
+    box-shadow: none
+
+  .q-tabs .q-tab__indicator
+    box-shadow: none
+
+  .q-tabs .q-tab--active
+    background: none
+
+  // 选中卡片：只描边，不铺渐变
+  .app-registry-card--selected
+    background: var(--nt-bg-1)
+
+// ——— 指挥舱档：在科幻层之上再提一点存在感 ———
+html body.body--dark .app-page-container[data-visual='deck']
+  background-image: radial-gradient(ellipse 1200px 420px at 50% -120px, var(--nt-accent-hover), transparent 70%), linear-gradient(var(--scifi-grid) 1px, transparent 1px), linear-gradient(90deg, var(--scifi-grid) 1px, transparent 1px)
+
+// ——— 中文标签：不用全大写、不拉宽字距、不用等宽字体 ———
+// 等宽只留给数字、编号与时间；这些标签里大多是中文，拉宽字距只会显得松散。
+html body .app-sidebar-nav .q-item__label--header,
+html body .app-sidebar-nav .app-sidebar-section-label,
+html body .q-table thead th,
+html body .app-registry-card__field dt,
+html body .app-metrics-card__label,
+html body .app-page-kicker
+  font-family: var(--nt-font-sans)
+  letter-spacing: 0.02em
+  text-transform: none
+
+html body .app-sidebar-nav .q-item__label--header,
+html body .app-sidebar-nav .app-sidebar-section-label
+  font-size: var(--nt-fs-caption)
+  font-weight: 600
+
+html body .q-table thead th,
+html body .app-registry-card__field dt,
+html body .app-metrics-card__label
+  font-size: var(--nt-fs-caption)

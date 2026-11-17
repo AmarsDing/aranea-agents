@@ -111,7 +111,7 @@ export const routes: RouteRecordRaw[] = [
         path: 'overview',
         name: 'overview',
         component: () => import('../pages/OverviewPage.vue'),
-        meta: { titleKey: 'menu.overview', breadcrumb: false, uiLayout: 'immersive' },
+        meta: { titleKey: 'menu.overview', breadcrumb: false, uiLayout: 'immersive', uiVisual: 'deck' },
       },
       {
         // 路由级无权限兜底：菜单白名单不含目标入口（或缺少 meta.permission 声明的权限码）时落到这里。
@@ -125,7 +125,7 @@ export const routes: RouteRecordRaw[] = [
         path: 'workbench',
         name: 'workbench',
         component: () => import('../pages/TodayPage.vue'),
-        meta: { titleKey: 'menu.cockpit', breadcrumb: false },
+        meta: { titleKey: 'menu.cockpit', breadcrumb: false, uiVisual: 'deck' },
       },
       {
         path: 'approvals',
@@ -145,19 +145,19 @@ export const routes: RouteRecordRaw[] = [
         path: 'ceo/company',
         name: 'ceo-company',
         component: () => import('../pages/CompanyTreePage.vue'),
-        meta: { titleKey: 'menu.ceoCompany', breadcrumb: false },
+        meta: { titleKey: 'menu.ceoCompany', breadcrumb: false, uiVisual: 'deck' },
       },
       {
         path: 'ceo/overview',
         name: 'ceo-overview',
         component: () => import('../pages/CeoOverviewPage.vue'),
-        meta: { titleKey: 'menu.ceoOverview', breadcrumb: false, uiLayout: 'immersive' },
+        meta: { titleKey: 'menu.ceoOverview', breadcrumb: false, uiLayout: 'immersive', uiVisual: 'deck' },
       },
       {
         path: 'ceo/oncall',
         name: 'ceo-oncall',
         component: () => import('../pages/CeoOncallPage.vue'),
-        meta: { titleKey: 'menu.ceoOncall', breadcrumb: false, uiLayout: 'immersive' },
+        meta: { titleKey: 'menu.ceoOncall', breadcrumb: false, uiLayout: 'immersive', uiVisual: 'deck' },
       },
       {
         path: 'ecommerce-loop',
@@ -463,7 +463,7 @@ export const routes: RouteRecordRaw[] = [
         path: 'monitor/live',
         name: 'monitor-live',
         component: () => import('../pages/WorkbenchCockpitPage.vue'),
-        meta: { titleKey: 'menu.monitorLive', breadcrumb: false, uiLayout: 'immersive' },
+        meta: { titleKey: 'menu.monitorLive', breadcrumb: false, uiLayout: 'immersive', uiVisual: 'deck' },
       },
       {
         path: 'monitor/logs',

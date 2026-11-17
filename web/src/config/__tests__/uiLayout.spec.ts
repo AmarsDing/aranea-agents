@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { resolveUiLayout } from '../uiLayout';
+import { resolveUiLayout, resolveUiVisual } from '../uiLayout';
 import { routes } from '../../router/routes';
 
 function routeByName(name: string) {
@@ -16,6 +16,18 @@ describe('整站布局属主', () => {
     expect(resolveUiLayout('canvas')).toBe('canvas');
     expect(resolveUiLayout('immersive')).toBe('immersive');
     expect(resolveUiLayout('unknown')).toBe('fluid');
+  });
+
+  it('视觉档位：指挥舱页面显式声明，其余缺省为工作区', () => {
+    expect(resolveUiVisual(undefined)).toBe('workspace');
+    expect(resolveUiVisual('deck')).toBe('deck');
+    expect(resolveUiVisual('other')).toBe('workspace');
+    for (const name of ['workbench', 'overview', 'ceo-company', 'ceo-overview', 'ceo-oncall', 'monitor-live']) {
+      expect(routeByName(name)?.meta?.uiVisual, name).toBe('deck');
+    }
+    for (const name of ['agents', 'tools', 'plugins', 'settings', 'chat']) {
+      expect(resolveUiVisual(routeByName(name)?.meta?.uiVisual), name).toBe('workspace');
+    }
   });
 
   it('并行面板和编排画布不会被标准页壳改形', () => {

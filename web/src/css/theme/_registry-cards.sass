@@ -274,5 +274,12 @@
   [class*='__tags']
     flex-wrap: wrap
     max-width: 100%
+    height: auto
+    max-height: none
     overflow: visible
     white-space: normal
+
+  // 表格里为单行裁切设的固定高度，在卡片里解除，换行后才不会压到下一栏
+  .app-registry-hover-tip
+    height: auto
+    max-height: none

@@ -331,7 +331,13 @@
       </nav>
     </q-drawer>
 
-    <q-page-container id="app-main-content" class="app-page-container" :data-layout="pageLayout" tabindex="-1">
+    <q-page-container
+      id="app-main-content"
+      class="app-page-container"
+      :data-layout="pageLayout"
+      :data-visual="pageVisual"
+      tabindex="-1"
+    >
       <div v-if="showBreadcrumbs" class="app-breadcrumb-bar">
         <AppBreadcrumbs />
       </div>
@@ -380,7 +386,7 @@ import { useGlobalInboundNotifications } from '../composables/useGlobalInboundNo
 import { useTheme } from '../composables/useTheme';
 import { useA11yPrefs } from '../composables/useA11yPrefs';
 import { useNavPreferences } from '../composables/useNavPreferences';
-import { resolveUiLayout } from '../config/uiLayout';
+import { resolveUiLayout, resolveUiVisual } from '../config/uiLayout';
 
 const { t, locale } = useI18n();
 const $q = useQuasar();
@@ -499,6 +505,8 @@ function isNavItemActive(item: { to: string }) {
 
 const showBreadcrumbs = computed(() => route.meta.breadcrumb !== false);
 const pageLayout = computed(() => resolveUiLayout(route.meta.uiLayout));
+// 视觉档位：指挥舱（deck）保留光效与网格底，其余为安静的工作区
+const pageVisual = computed(() => resolveUiVisual(route.meta.uiVisual));
 const { favorites, recent, toggleFavorite, recordVisit, isFavorite } = useNavPreferences();
 
 const personalNavSections = computed(() =>
