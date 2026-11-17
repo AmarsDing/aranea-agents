@@ -1,63 +1,24 @@
 # Aranea 后端全量 Docker 编排（参照 TwinMonitor 全量 Docker 化设计 §1）
 # 形态：单 runtime 镜像（aranea-runtime:local）+ compose 编排 + 生成式 overlay 配置
-# 中间件：PG(pgvector)/Redis 自带容器，不映射宿主机端口（仅 araneanet 内容器互访）
+# 中间件：PostgreSQL/Redis 已上收为工作区共享栈（E:\teamwork\infra，网络 teamwork），
+#         本项目不再自带中间件容器；库/角色 aranea / aranea_app 见 AGENTS.md §8。
 # 服务端口：8810(HTTP)/9910(gRPC)/8812(WS) 按 PORT-PLAN 部署版 1:1 映射宿主机
 # 使用：
 #   构建+启动：powershell -ExecutionPolicy Bypass -File docker/dev-up.ps1
-#   仅启动：  docker compose up -d
-#   停止：    docker compose down（加 -v 清空数据卷）
+#   仅启动：  docker compose up -d（需仓库根 .env 提供 ARANEA_PG_PASSWORD）
+#   停止：    docker compose down（共享中间件数据不在本项目卷内，不受影响）
 
 name: aranea
 
 services:
-  postgres:
-    # 与本地 app\env\postgresql 主版本对齐（PG 18），保证 pg_dump/pg_restore 同大版本兼容
-    image: pgvector/pgvector:pg18
-    container_name: aranea-postgres
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: "123456"
-      POSTGRES_DB: aranea
-    # G2 观测面（agent-eval-20260818）：慢查询归因依赖 pg_stat_statements；
-    # 首次启用后需执行一次 CREATE EXTENSION（见 docs/testing/agent-eval-20260818/00-master-plan.md §2）
-    command:
-      - "postgres"
-      - "-c"
-      - "shared_preload_libraries=pg_stat_statements"
-      - "-c"
-      - "pg_stat_statements.track=all"
-      - "-c"
-      - "log_min_duration_statement=200"
-    volumes:
-      # PG18+ 镜像数据路径改为 pg_ctlcluster 风格：挂载点须在 /var/lib/postgresql，
-      # 实际数据落入其下 data/docker 子目录（docker-library/postgres#1259）
-      - postgres-data:/var/lib/postgresql
-    networks:
-      - araneanet
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d aranea"]
-      interval: 10s
-      timeout: 5s
-      retries: 12
-
-  redis:
-    image: redis:7-alpine
-    container_name: aranea-redis
-    command: redis-server --appendonly yes
-    volumes:
-      - redis-data:/data
-    networks:
-      - araneanet
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 12
-
   admin:
     image: aranea-runtime:local
     container_name: aranea-admin
     environment:
+      # 共享中间件连接串（库 aranea / 角色 aranea_app）：由 docker/gen-config.ps1 从
+      # configs/config.yaml 生成 docker/config/config.yaml 后挂载到 /app/conf；
+      # 本 kratos 版本的 env source 不会覆盖嵌套键（DATA__POSTGRES__SOURCE 实测无效，2026-11-10），
+      # 因此口令只在 configs/config.yaml 单点维护，不在此重复声明。
       # 与 app 便携部署版 start-all.ps1 保持一致：DB 中已签发的 JWT/PAT 均由该密钥签名，
       # 更换会导致既有会话全部失效；生产部署必须改为随机 ≥32 字节密钥
       KRATOS_AUTH_SECRET: "aranea-portable-dev-secret-32chars!!"
@@ -104,11 +65,6 @@ services:
       # 上），非容器套容器；沙箱自身 --network none 隔离，互不影响。
       CODE_EXECUTOR_BACKEND: "docker"
       CODE_EXECUTOR_DOCKER_IMAGE: "python:3.11-slim"
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
     ports:
       - "8810:8810"   # HTTP（TwinMonitor voice / 前端 dev 代理 / 监控探测入口）
       - "127.0.0.1:9910:9910"   # gRPC（仅回环发布，S-2；gRPC 面长期需 mTLS/服务账号）
@@ -130,7 +86,40 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - araneanet
+      - teamwork
     restart: unless-stopped
+    # AGENTS.md §8.11-5：容器日志必须有轮转上限，避免 docker logs 写满工作盘
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "3"
+
+  # 前端静态站（nginx）：镜像由 web/Dockerfile 构建（quasar build → dist/spa）。
+  # 前端 API/WS 全部同源相对路径（/v1 /v2 /api /healthz），由 web/nginx.conf 反代到
+  # aranea-admin:8810，因此浏览器侧不产生跨站 Cookie 问题，也无需在 admin 上放开 CORS。
+  # 端口按 AGENTS.md §8.11-1 只绑回环；如需局域网访问须先在 §8.11 登记例外。
+  web:
+    image: aranea-web:local
+    container_name: aranea-web
+    depends_on:
+      - admin
+    ports:
+      - "127.0.0.1:9402:80"
+    networks:
+      - araneanet
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "2"
 
   # M82 P2-1 sandbox egress 代理：沙箱唯一受控出口。仅接 araneanet（外网
   # 上行）——沙箱侧不再有共享桥（r2 #9）：引擎为每个 egress 沙箱创建专属
@@ -172,10 +161,13 @@ services:
 networks:
   araneanet:
     driver: bridge
+  # 工作区共享中间件网络（E:\teamwork\infra），提供 postgres / redis / nats
+  teamwork:
+    external: true
+    name: teamwork
   # 注：M82 P2 起不再有共享 aranea-egress 桥（r2 #9）——egress 沙箱的
   # internal 车道由引擎按 aranea-egress-<sandboxID> 逐沙箱创建/回收，
   # 代理容器按需动态接入，compose 不预建。
-
-volumes:
-  postgres-data:
-  redis-data:
+  #
+  # 数据卷：原 postgres-data / redis-data 已随中间件上收移除声明；
+  # 历史卷 aranea_postgres-data / aranea_redis-data 保留不删，仅不再挂载。
