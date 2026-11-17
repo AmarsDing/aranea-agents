@@ -72,3 +72,49 @@ html body .q-table thead th,
 html body .app-registry-card__field dt,
 html body .app-metrics-card__label
   font-size: var(--nt-fs-caption)
+
+// ——— 冰青色收敛：只留给「可操作」与「焦点 / 选中」 ———
+// 按钮、链接、开关、复选、页签指示条、进度条、侧栏选中项、焦点环保持冰青色。
+// 分类与说明性质的标签、徽章、头像底色、装饰图标改为中性色；
+// 状态（成功 / 注意 / 出错 / AI）继续走各自的语义色，不在这里处理。
+// Quasar 的 bg-primary / text-primary 工具类自带 !important，所以这里也要带。
+
+// 页面里不可点的 Quasar 标签、徽章、头像
+html body .q-page .q-chip.bg-primary:not(.q-chip--clickable),
+html body .q-page .q-badge.bg-primary,
+html body .q-page .q-avatar.bg-primary
+  background: var(--nt-bg-3) !important
+  color: var(--nt-text-1) !important
+
+html body .q-page .q-chip.text-primary:not(.q-chip--clickable)
+  color: var(--nt-text-2) !important
+
+html body .q-page .q-chip--outline.text-primary:not(.q-chip--clickable)
+  border-color: var(--nt-border-2)
+
+// 装饰性图标（分组标题、说明行前的小图标）；按钮和链接里的图标不受影响
+html body .q-page :not(.q-btn):not(a):not(.q-btn__content) > .q-icon.text-primary
+  color: var(--nt-text-2) !important
+
+// 各页自带的分类标签：类型、分类、回调点、工具名、只读 / 系统标记。
+// 类名写两遍是为了压过各页 body.body--dark 前缀与组件 scoped 选择器的权重。
+html body .plugin-tag--category.plugin-tag--category,
+html body .plugin-tag--callback.plugin-tag--callback,
+html body .provider-tag--category.provider-tag--category,
+html body .channel-tag--type.channel-tag--type,
+html body .hook-tag--point.hook-tag--point,
+html body .system-chip.system-chip,
+html body .agent-card__readonly-chip.agent-card__readonly-chip,
+html body .agent-card .agent-card__chip.is-system.is-system,
+html body .kind-badge--builtin.kind-badge--builtin,
+html body .graph-detail-panel__type-chip.graph-detail-panel__type-chip,
+html body .graph-flow-node__tool-chip.graph-flow-node__tool-chip,
+html body .team-orchestrate-node-panel__chip.team-orchestrate-node-panel__chip
+  background: var(--nt-bg-2)
+  border-color: var(--nt-border-2)
+  color: var(--nt-text-1)
+
+// 空态插图图标：说明性质，不是操作入口
+html body .app-state-panel--empty .app-state-panel__icon,
+html body .app-state-panel--empty .app-state-panel__icon .q-icon
+  color: var(--nt-text-3)
