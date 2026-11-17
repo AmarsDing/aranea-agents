@@ -3,18 +3,34 @@
     <header class="ov-section-head">
       <q-icon name="notification_important" size="18px" class="ov-section-head__icon" />
       <h2 class="ov-section-head__title">{{ t('overviewPage.v2.attentionTitle') }}</h2>
+      <span class="ov-section-head__cap">{{ t('overviewPage.v2.attentionCap') }}</span>
     </header>
     <div class="ov-attention__grid">
       <div v-for="lane in lanes" :key="lane.lane" class="ov-lane" :class="laneTone(lane)">
         <div class="ov-lane__head">
-          <q-icon :name="LANE_META[lane.lane].icon" size="15px" />
+          <span class="ov-lane__seat" aria-hidden="true">
+            <q-icon :name="LANE_META[lane.lane].icon" size="15px" />
+          </span>
           <span class="ov-lane__name">{{ t(LANE_META[lane.lane].labelKey) }}</span>
-          <span class="ov-lane__count">{{ lane.status === 'ready' ? lane.count : lane.count ? `${lane.count}+` : '—' }}</span>
+          <span class="ov-lane__count">{{
+            lane.status === 'ready' ? lane.count : lane.count ? `${lane.count}+` : '—'
+          }}</span>
         </div>
         <div v-if="lane.status !== 'ready'" class="ov-lane__availability" role="status">
           <q-icon :name="lane.status === 'loading' ? 'hourglass_empty' : 'cloud_off'" size="16px" aria-hidden="true" />
-          <span>{{ t(`uiSystem.overview.lane${lane.status === 'loading' ? 'Loading' : lane.status === 'partial' ? 'Partial' : 'Unavailable'}`) }}</span>
-          <q-btn v-if="lane.status !== 'loading'" flat dense :label="t('overviewPage.v2.refresh')" :loading="loading" @click="$emit('refresh')" />
+          <span>{{
+            t(
+              `uiSystem.overview.lane${lane.status === 'loading' ? 'Loading' : lane.status === 'partial' ? 'Partial' : 'Unavailable'}`,
+            )
+          }}</span>
+          <q-btn
+            v-if="lane.status !== 'loading'"
+            flat
+            dense
+            :label="t('overviewPage.v2.refresh')"
+            :loading="loading"
+            @click="$emit('refresh')"
+          />
         </div>
         <div v-if="!lane.items.length && lane.status === 'ready'" class="ov-lane__empty">
           <q-icon name="check_circle_outline" size="14px" />
@@ -53,7 +69,11 @@
           class="ov-lane__toggle"
           :data-testid="`attention-toggle-${lane.lane}`"
           :aria-expanded="String(!!expanded[lane.lane])"
-          :label="expanded[lane.lane] ? t('overviewPage.v2.collapse') : t('overviewPage.v2.showAll', { count: lane.items.length })"
+          :label="
+            expanded[lane.lane]
+              ? t('overviewPage.v2.collapse')
+              : t('overviewPage.v2.showAll', { count: lane.items.length })
+          "
           @click="expanded[lane.lane] = !expanded[lane.lane]"
         />
         <div v-if="lane.count > lane.items.length" class="ov-lane__more">

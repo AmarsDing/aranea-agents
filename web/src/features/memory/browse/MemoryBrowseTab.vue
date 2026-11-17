@@ -23,7 +23,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { MEMORY_LAYER_META } from '../panorama/layerMeta';
+import { memoryLayerColor } from '../panorama/layerMeta';
 
 /** 浏览 Tab 层级过滤：all 显示全部段；单选层级仅显示对应段。 */
 export type BrowseLayer = 'all' | 'L0' | 'L1' | 'L2' | 'L3';
@@ -39,7 +39,7 @@ const layerOptions = computed<LayerChip[]>(() => [
   ...(['L0', 'L1', 'L2', 'L3'] as const).map((key) => ({
     value: key as BrowseLayer,
     label: `${key} · ${t(`memory.panorama.layers.${key}.name`)}`,
-    color: MEMORY_LAYER_META[key].color,
+    color: memoryLayerColor(key),
   })),
 ]);
 

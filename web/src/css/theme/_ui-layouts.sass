@@ -58,7 +58,7 @@ body:not(.body--dark)
     width: 100%
     min-width: 0
     max-width: var(--layout-max-width)
-    margin-inline: auto
+    margin-inline: 0
 
   .app-page-hero,
   .app-entity-workspace-hero
@@ -224,81 +224,99 @@ body:not(.body--dark)
 .ui-bento-grid
   display: grid
   grid-template-columns: 1.35fr 1fr 1fr
-  gap: var(--space-4)
+  gap: 14px
   min-width: 0
 .ui-bento-card
-  --card-accent: var(--color-accent)
+  --card-accent: var(--nt-accent)
   position: relative
   display: flex
   flex-direction: column
   align-items: flex-start
-  gap: var(--space-4)
+  gap: 14px
   min-width: 0
-  padding: var(--space-6)
-  border: 1px solid var(--glass-border)
-  border-radius: var(--radius-card)
-  color: var(--color-text-primary)
-  background: radial-gradient(ellipse at 0% 0%, color-mix(in srgb, var(--card-accent) 9%, transparent), transparent 72%), var(--gradient-card)
-  box-shadow: var(--glass-inner-highlight)
+  padding: 18px
+  border: 1px solid var(--nt-border-1)
+  border-radius: var(--nt-radius-l)
+  color: var(--nt-text-1)
+  background: radial-gradient(120% 90% at 0% 0%, color-mix(in srgb, var(--card-accent) 10%, transparent), transparent 62%), var(--nt-bg-1)
+  box-shadow: inset 0 1px 0 var(--nt-glass-highlight)
   text-decoration: none
   text-align: start
+  overflow: hidden
+  transition: border-color var(--nt-transition), transform var(--nt-transition), box-shadow var(--nt-transition)
+  // 边光沿卡片真实圆角轮廓绘制
+  &::after
+    content: ''
+    position: absolute
+    inset: 0
+    border-radius: inherit
+    pointer-events: none
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--card-accent) 20%, transparent)
   &--hero
     grid-row: span 2
     min-height: 290px
-    border-color: var(--color-accent-border)
-    border-radius: var(--radius-hero)
-    box-shadow: var(--glass-inner-highlight), var(--shadow-glow)
+    border-color: var(--nt-accent-border)
+    box-shadow: inset 0 1px 0 var(--nt-glass-highlight), var(--nt-glow-accent)
+    background: radial-gradient(120% 100% at 0% 0%, color-mix(in srgb, var(--nt-accent) 14%, transparent), transparent 60%), radial-gradient(90% 80% at 100% 100%, color-mix(in srgb, var(--nt-accent-2) 12%, transparent), transparent 65%), var(--nt-bg-1)
+  &--blue
+    --card-accent: var(--nt-accent-2)
   &--violet
-    --card-accent: var(--color-violet)
-  &--green
-    --card-accent: var(--color-success)
-  &--amber
-    --card-accent: var(--color-warning)
-  &--pink
-    --card-accent: var(--color-pink)
+    --card-accent: var(--nt-ai)
   &:is(a, button):hover
-    border-color: var(--card-accent)
-    background-color: var(--glass-surface-hover)
+    border-color: color-mix(in srgb, var(--card-accent) 65%, transparent)
+    transform: translateY(-2px)
+    box-shadow: inset 0 1px 0 var(--nt-glass-highlight), 0 0 18px color-mix(in srgb, var(--card-accent) 22%, transparent)
+  &:is(a, button):focus-visible
+    outline: 2px solid var(--nt-accent)
+    outline-offset: 4px
 .ui-card-icon
   display: grid
   place-items: center
-  width: 44px
-  height: 44px
-  border: 1px solid color-mix(in srgb, var(--card-accent, var(--color-accent)) 35%, transparent)
-  border-radius: var(--radius-control)
-  color: var(--card-accent, var(--color-accent))
-  background: color-mix(in srgb, var(--card-accent, var(--color-accent)) 10%, transparent)
+  width: 40px
+  height: 40px
+  border: 1px solid color-mix(in srgb, var(--card-accent, var(--nt-accent)) 35%, transparent)
+  border-radius: var(--nt-radius-m)
+  color: var(--card-accent, var(--nt-accent))
+  background: color-mix(in srgb, var(--card-accent, var(--nt-accent)) 12%, transparent)
   font-size: 24px
 .ui-card-title
   margin: 0
-  font-size: var(--text-lg)
+  font-size: var(--nt-fs-title)
   font-weight: 700
   line-height: 1.4
+  color: var(--nt-text-1)
+.ui-bento-card--hero .ui-card-title
+  font-size: var(--nt-fs-hero)
+  color: var(--nt-text-0)
 .ui-card-description
   margin: 0
-  color: var(--color-text-secondary)
-  font-size: var(--text-sm)
+  color: var(--nt-text-2)
+  font-size: var(--nt-fs-body)
   line-height: 1.7
 .ui-card-content
   margin-top: auto
   display: grid
-  gap: var(--space-2)
+  gap: 6px
 .ui-card-cta
   display: inline-flex
   align-items: center
-  gap: var(--space-2)
-  padding: var(--space-2) var(--space-4)
-  color: var(--button-primary-text)
-  background: var(--button-primary-bg)
-  border-radius: var(--radius-control)
-  font-size: var(--text-sm)
-  font-weight: 600
+  gap: 8px
+  padding: 8px 14px
+  color: var(--nt-on-accent)
+  background: linear-gradient(90deg, var(--nt-accent), var(--nt-accent-2))
+  border-radius: var(--nt-radius-m)
+  font-size: var(--nt-fs-panel)
+  font-weight: 700
 .ui-card-arrow
   position: absolute
-  top: var(--space-6)
-  right: var(--space-6)
-  color: var(--color-text-tertiary)
+  top: 16px
+  right: 16px
+  color: var(--nt-text-3)
   font-size: 18px
+  transition: color var(--nt-transition), transform var(--nt-transition)
+.ui-bento-card:hover .ui-card-arrow
+  color: var(--card-accent)
+  transform: translate(2px, -2px)
 
 .ui-preview-page
   padding-bottom: var(--space-12) !important
@@ -343,29 +361,6 @@ body:not(.body--dark)
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr))
   gap: var(--space-6)
 
-// A failed or incomplete read must not inherit the green empty-state treatment.
-.ov-verdict--unknown,
-.ov-lane--unknown
-  border-color: var(--glass-border)
-.ov-verdict--unknown .ov-verdict__beacon,
-.ov-verdict__chip--unknown
-  color: var(--color-text-secondary)
-  background: var(--surface-muted)
-.ov-lane__availability
-  display: flex
-  flex-wrap: wrap
-  align-items: center
-  gap: var(--space-2)
-  padding: var(--space-3)
-  color: var(--color-text-secondary)
-  font-size: var(--text-xs)
-  line-height: 1.6
-.ov-item
-  width: 100%
-  border: 0
-  font: inherit
-  text-align: left
-  color: inherit
 .ui-operations-form,
 .ui-review-meta
   display: flex

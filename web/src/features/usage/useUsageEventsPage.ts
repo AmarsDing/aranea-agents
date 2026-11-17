@@ -9,8 +9,10 @@ import { useTeamsStore } from '../../stores/teams';
 import type { ModelUsageQuery } from './types';
 import { formatUsdFromMicro } from './moneyFormat';
 import { downloadBlob } from '../../composables/useFileDownload';
+import { prompt } from '../../composables/useAppPrompt';
 import { USAGE_EVENTS_PAGE_SIZE_DEFAULT } from '../constants/queryLimits';
 import { appStatusMeta } from '../ui/appStatusMeta';
+import { isForbiddenApiError } from '../../utils/kratosError';
 
 /** Default retention when purging; independent of the view filter range. */
 export const DEFAULT_PURGE_RETAIN_DAYS = 30;
@@ -30,6 +32,8 @@ export function useUsageEventsPage() {
   const agentsCatalog = useAgentsCatalogStore();
   const teamsStore = useTeamsStore();
   const { events, eventsTotal, eventsLoading, eventsError, exporting } = storeToRefs(usageStore);
+  /** 事件列表 403：页面据此渲染 forbidden 态（无重试）。 */
+  const eventsForbidden = ref(false);
   const page = ref(1);
   const pageSize = ref(USAGE_EVENTS_PAGE_SIZE_DEFAULT);
   const pageMax = computed(() => Math.max(1, Math.ceil(Math.max(0, eventsTotal.value) / pageSize.value)));
@@ -174,6 +178,7 @@ export function useUsageEventsPage() {
   }
 
   async function load() {
+    eventsForbidden.value = false;
     try {
       const result = await usageStore.loadEvents(buildQuery());
       if (page.value > pageMax.value) {
@@ -182,6 +187,7 @@ export function useUsageEventsPage() {
       }
       return result;
     } catch (reason) {
+      eventsForbidden.value = isForbiddenApiError(reason);
       eventsError.value = reason instanceof Error ? reason.message : t('uiSystem.operations.loadFailed');
       return undefined;
     }
@@ -242,22 +248,20 @@ export function useUsageEventsPage() {
 
   /** 保留天数选择收进确认 Dialog（radio），不再占用工具栏坑位 */
   function onPurgeConfirm() {
-    $q.dialog({
-      class: 'app-dialog-card app-dialog-card--sm',
-      title: t('usageEventsPage.purgeTitle'),
-      message: t('usageEventsPage.purgeMessage'),
-      options: {
+    void (async () => {
+      const days = await prompt({
+        title: t('usageEventsPage.purgeTitle'),
+        message: t('usageEventsPage.purgeMessage'),
         type: 'radio',
-        model: String(retainDays.value),
+        defaultValue: String(retainDays.value),
+        confirmLabel: t('usageEventsPage.purgeConfirm'),
+        tone: 'danger',
         items: PURGE_RETAIN_DAYS.map((days) => ({
           label: t('usageEventsPage.keepDays', { days }),
           value: String(days),
         })),
-      },
-      cancel: { label: t('common.cancel'), flat: true, rounded: true, noCaps: true },
-      ok: { label: t('usageEventsPage.purgeConfirm'), color: 'negative', flat: true, rounded: true, noCaps: true },
-      persistent: true,
-    }).onOk(async (days) => {
+      });
+      if (days === null) return;
       if (purging.value || !PURGE_RETAIN_DAYS.includes(Number(days))) return;
       retainDays.value = Number(days);
       purging.value = true;
@@ -270,7 +274,7 @@ export function useUsageEventsPage() {
       } finally {
         purging.value = false;
       }
-    });
+    })();
   }
 
   function resetFilters() {
@@ -289,6 +293,7 @@ export function useUsageEventsPage() {
     onPageSize,
     loading: eventsLoading,
     error: eventsError,
+    forbidden: eventsForbidden,
     exporting,
     filters,
     rangeOptions,

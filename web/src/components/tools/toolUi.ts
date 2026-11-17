@@ -17,10 +17,28 @@ export function toolTableColumns(): QTableColumn<Tool>[] {
     registryCol<Tool>('category', t('toolsPage.columns.categorySource'), 'category', 'left', REGISTRY_COL_W.category),
     registryCol<Tool>('runtime', t('toolsPage.columns.runtime'), 'runtime_status', 'left', REGISTRY_COL_W.status),
     registryColEnabled<Tool>(t('toolsPage.columns.enabled')),
-    registryCol<Tool>('overrides', t('toolsPage.columns.overrides'), 'agent_override_count', 'center', REGISTRY_COL_W.narrow),
+    registryCol<Tool>(
+      'overrides',
+      t('toolsPage.columns.overrides'),
+      'agent_override_count',
+      'center',
+      REGISTRY_COL_W.narrow,
+    ),
     registryCol<Tool>('stats', t('toolsPage.columns.stats'), 'invoke_count', 'left', REGISTRY_COL_W.status),
-    registryCol<Tool>('success_rate', t('toolsPage.columns.successRate'), (row) => row.success_count, 'left', REGISTRY_COL_W.status),
-    registryCol<Tool>('duration', t('toolsPage.columns.duration'), (row) => row.p95_duration_ms, 'left', REGISTRY_COL_W.status),
+    registryCol<Tool>(
+      'success_rate',
+      t('toolsPage.columns.successRate'),
+      (row) => row.success_count,
+      'left',
+      REGISTRY_COL_W.status,
+    ),
+    registryCol<Tool>(
+      'duration',
+      t('toolsPage.columns.duration'),
+      (row) => row.p95_duration_ms,
+      'left',
+      REGISTRY_COL_W.status,
+    ),
     registryCol<Tool>('last', t('toolsPage.columns.last'), 'last_invoked_at', 'left', REGISTRY_COL_W.timeWide),
     registryCol<Tool>('risk', t('toolsPage.columns.risk'), 'risk_level', 'left', REGISTRY_COL_W.status),
     registryColActions<Tool>(REGISTRY_COL_W.actions, t('toolsPage.columns.actions')),
@@ -33,9 +51,26 @@ export function toolRunsTableColumns(): QTableColumn<ToolInvocation>[] {
   return [
     registryCol<ToolInvocation>('tool', t('toolsPage.columns.tool'), 'tool_key', 'left', REGISTRY_COL_W.nameWide),
     registryCol<ToolInvocation>('agent', t('toolsPage.columns.agent'), 'agent_id', 'left', REGISTRY_COL_W.agent),
-    registryCol<ToolInvocation>('status', t('toolsPage.columns.status'), 'status', 'left', REGISTRY_COL_W.status),
-    registryCol<ToolInvocation>('session_id', t('toolsPage.columns.session'), 'session_id', 'left', REGISTRY_COL_W.session),
-    registryCol<ToolInvocation>('time', t('toolsPage.columns.timeDuration'), 'started_at', 'left', REGISTRY_COL_W.time),
+    registryCol<ToolInvocation>('status', t('toolsPage.columns.status'), 'status', 'left', REGISTRY_COL_W.status, {
+      sortable: true,
+    }),
+    registryCol<ToolInvocation>(
+      'session_id',
+      t('toolsPage.columns.session'),
+      'session_id',
+      'left',
+      REGISTRY_COL_W.session,
+    ),
+    registryCol<ToolInvocation>(
+      'time',
+      t('toolsPage.columns.timeDuration'),
+      'started_at',
+      'left',
+      REGISTRY_COL_W.time,
+      {
+        sortable: true,
+      },
+    ),
     registryColActions<ToolInvocation>(REGISTRY_COL_W.narrow, t('toolsPage.columns.actions')),
   ];
 }
@@ -44,10 +79,27 @@ export function toolRunsTableColumns(): QTableColumn<ToolInvocation>[] {
 export function toolAuditsTableColumns(): QTableColumn<ToolInvocationAudit>[] {
   const t = i18n.global.t;
   return [
-    registryCol<ToolInvocationAudit>('tool', t('toolsPage.columns.toolAction'), 'tool_key', 'left', REGISTRY_COL_W.name),
+    registryCol<ToolInvocationAudit>(
+      'tool',
+      t('toolsPage.columns.toolAction'),
+      'tool_key',
+      'left',
+      REGISTRY_COL_W.name,
+    ),
     registryCol<ToolInvocationAudit>('actor', t('toolsPage.columns.actor'), 'agent_id', 'left', REGISTRY_COL_W.agent),
-    registryCol<ToolInvocationAudit>('status', t('toolsPage.columns.status'), 'status', 'left', REGISTRY_COL_W.status),
-    registryCol<ToolInvocationAudit>('time', t('toolsPage.columns.time'), 'created_at', 'left', REGISTRY_COL_W.timeWide),
+    registryCol<ToolInvocationAudit>('status', t('toolsPage.columns.status'), 'status', 'left', REGISTRY_COL_W.status, {
+      sortable: true,
+    }),
+    registryCol<ToolInvocationAudit>(
+      'time',
+      t('toolsPage.columns.time'),
+      'created_at',
+      'left',
+      REGISTRY_COL_W.timeWide,
+      {
+        sortable: true,
+      },
+    ),
   ];
 }
 
@@ -193,8 +245,16 @@ export function buildToolSummaryCards(summary: ToolSummary) {
   const t = i18n.global.t;
   return [
     { label: t('toolsPage.summary.total'), value: String(summary.total_tools), hint: t('toolsPage.summary.totalHint') },
-    { label: t('toolsPage.summary.enabled'), value: String(summary.enabled_tools), hint: t('toolsPage.summary.enabledHint') },
-    { label: t('toolsPage.summary.highRisk'), value: String(summary.high_risk_enabled), hint: t('toolsPage.summary.highRiskHint') },
+    {
+      label: t('toolsPage.summary.enabled'),
+      value: String(summary.enabled_tools),
+      hint: t('toolsPage.summary.enabledHint'),
+    },
+    {
+      label: t('toolsPage.summary.highRisk'),
+      value: String(summary.high_risk_enabled),
+      hint: t('toolsPage.summary.highRiskHint'),
+    },
     {
       label: t('toolsPage.summary.calls24h'),
       value: String(summary.calls_24h),
@@ -353,10 +413,7 @@ export function firstInvalidToolJsonKey(errors: Record<string, string>): ToolEdi
  * 编辑器「变更预览」：当前 form 与打开时快照（originalForm）的浅比较。
  * 与 store dirty 判定同口径（原始值 !==），长值截断展示。
  */
-export function diffToolFormLines(
-  form: Record<string, unknown>,
-  original: Record<string, unknown>,
-): string[] {
+export function diffToolFormLines(form: Record<string, unknown>, original: Record<string, unknown>): string[] {
   const lines: string[] = [];
   for (const key of Object.keys(form)) {
     const cur = form[key];
@@ -376,10 +433,34 @@ export function invocationAgentLine(row: ToolInvocation): string {
 export function agentBindingColumns(): QTableColumn<ToolAgentBindingRow>[] {
   const t = i18n.global.t;
   return [
-    registryCol<ToolAgentBindingRow>('agent_name', t('toolsPage.agentBinding.colAgent'), 'agent_name', 'left', REGISTRY_COL_W.name),
-    registryCol<ToolAgentBindingRow>('profile', t('toolsPage.agentBinding.colProfile'), 'profile', 'left', REGISTRY_COL_W.status),
-    registryCol<ToolAgentBindingRow>('state', t('toolsPage.agentBinding.colState'), 'effective_state', 'left', REGISTRY_COL_W.status),
-    registryCol<ToolAgentBindingRow>('reason', t('toolsPage.agentBinding.colReason'), 'reason', 'left', REGISTRY_COL_W.desc),
+    registryCol<ToolAgentBindingRow>(
+      'agent_name',
+      t('toolsPage.agentBinding.colAgent'),
+      'agent_name',
+      'left',
+      REGISTRY_COL_W.name,
+    ),
+    registryCol<ToolAgentBindingRow>(
+      'profile',
+      t('toolsPage.agentBinding.colProfile'),
+      'profile',
+      'left',
+      REGISTRY_COL_W.status,
+    ),
+    registryCol<ToolAgentBindingRow>(
+      'state',
+      t('toolsPage.agentBinding.colState'),
+      'effective_state',
+      'left',
+      REGISTRY_COL_W.status,
+    ),
+    registryCol<ToolAgentBindingRow>(
+      'reason',
+      t('toolsPage.agentBinding.colReason'),
+      'reason',
+      'left',
+      REGISTRY_COL_W.desc,
+    ),
   ];
 }
 

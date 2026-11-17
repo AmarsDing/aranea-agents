@@ -3,11 +3,13 @@
  * 展示组件只允许从这里 import 类型（数据流铁律：组件不碰 api/store）。
  */
 
-// ——— YOU 金门四 lane ———
-export type YouLaneId = 'trade' | 'publish' | 'listing' | 'alerts';
+// ——— YOU 金门 lane ———
+export type YouLaneId = 'approval' | 'trade' | 'publish' | 'listing' | 'alerts';
 
-/** 行内可执行动作：approve/reject/ack = 写路径；goto = 只下钻导航（无写路径的 lane） */
-export type YouActionKind = 'approve' | 'reject' | 'ack' | 'goto';
+/** 行内可执行动作：approve/reject/ack/resolve = 写路径；goto = 只下钻导航（无写路径的 lane） */
+export type YouActionKind = 'approve' | 'reject' | 'ack' | 'resolve' | 'goto';
+
+export type YouSeverity = 'high' | 'medium' | 'low';
 
 export type YouItem = {
   id: string;
@@ -18,11 +20,26 @@ export type YouItem = {
   /** ISO 时间戳；无证据时为空串，展示层渲染 — */
   when: string;
   summary: string;
+  /** 补充说明（浮层展示；可为空串） */
+  detail: string;
   action: YouActionKind;
   /** goto 动作的路由目标 */
   to?: string;
   /** 资金/高危类：移动端二次确认 */
   danger?: boolean;
+  /** 风险级（排序用；无证据归 low） */
+  severity: YouSeverity;
+  /** 来源标签（告警 lane 用于筛选：dead/cron） */
+  source: string;
+  /** 行内写路径所需上下文（HITL 会话/确认卡；审批中心 kind；cron 运行 id） */
+  ref?: {
+    sessionId?: string;
+    activityId?: string;
+    approvalKind?: string;
+    runId?: string;
+  };
+  /** 已过可签窗口/缺配对键：不可行内签批，只可下钻 */
+  stale?: boolean;
 };
 
 export type YouLaneState = {
@@ -33,13 +50,19 @@ export type YouLaneState = {
   updatedAt: string;
   /** 该 lane 任一子源拉取失败 → 降级注记（不打正常高分） */
   degraded: boolean;
+  /** 无权限读取（不发请求，非故障） */
+  denied?: boolean;
+  /** 按 agent_key 的待办计数（工具确认 lane 用于业务线归因，含未展示的条目） */
+  agentCounts?: Record<string, number>;
+  /** 明细拉取失败但汇总成功：不展示可能已过期的旧行，提示刷新后重取 */
+  detailFailed?: boolean;
 };
 
 /** 签收回执（真实写路径成功后产生；驱动落款戳 + 日志绿动词行） */
 export type SignReceipt = {
   itemId: string;
   lane: YouLaneId;
-  verb: 'approved' | 'rejected' | 'acked';
+  verb: 'approved' | 'rejected' | 'acked' | 'resolved';
   title: string;
   at: string; // ISO
 };

@@ -121,7 +121,7 @@ const detailText = computed(() => {
   display: flex
   align-items: center
   gap: 10px
-  margin: 8px 12px 0
+  margin: var(--nt-space-2) var(--nt-space-3) 0
   padding: 10px 14px
   border-radius: 12px
   background: var(--glass-surface)

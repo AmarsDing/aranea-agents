@@ -102,12 +102,27 @@
           {{ formatToolSuccessRate(props.row) }}
         </div>
         <div class="text-caption app-registry-muted-caption">
-          {{ $t('toolsPage.table.successFailLine', { success: props.row.success_count, failure: props.row.failure_count + props.row.blocked_count }) }}
+          {{
+            $t('toolsPage.table.successFailLine', {
+              success: props.row.success_count,
+              failure: props.row.failure_count + props.row.blocked_count,
+            })
+          }}
         </div>
-        <div v-if="props.row.invoke_count > 0" class="text-caption" :class="`text-${toolArgsFirstPassRateColor(props.row)}`">
+        <div
+          v-if="props.row.invoke_count > 0"
+          class="text-caption"
+          :class="`text-${toolArgsFirstPassRateColor(props.row)}`"
+        >
           {{ $t('toolsPage.argsQuality.firstPassShort', { rate: formatToolArgsFirstPassRate(props.row) }) }}
           <q-tooltip>
-            {{ $t('toolsPage.argsQuality.firstPassTip', { repaired: props.row.repaired_count, invalid: props.row.invalid_count, invoke: props.row.invoke_count }) }}
+            {{
+              $t('toolsPage.argsQuality.firstPassTip', {
+                repaired: props.row.repaired_count,
+                invalid: props.row.invalid_count,
+                invoke: props.row.invoke_count,
+              })
+            }}
           </q-tooltip>
         </div>
       </q-td>
@@ -175,7 +190,9 @@
             :loading="busyId === props.row.id"
             @click="$emit('remove', props.row)"
           >
-            <q-tooltip>{{ props.row.readonly ? $t('toolsPage.table.readonlyNoRemove') : $t('toolsPage.table.remove') }}</q-tooltip>
+            <q-tooltip>{{
+              props.row.readonly ? $t('toolsPage.table.readonlyNoRemove') : $t('toolsPage.table.remove')
+            }}</q-tooltip>
           </q-btn>
         </div>
       </q-td>

@@ -29,14 +29,45 @@
       </template>
     </AppPageHero>
 
-    <q-banner v-if="error" rounded class="bg-negative text-white q-mb-md">
-      {{ error }}
-      <template #action>
-        <q-btn flat color="white" label="重试" @click="loadDatasets" />
-      </template>
-    </q-banner>
+    <AppStatePanel
+      v-if="pageState === 'loading'"
+      variant="loading"
+      :rows="4"
+    />
+    <AppStatePanel
+      v-else-if="pageState === 'error'"
+      variant="error"
+      :title="error"
+      action-label="重试"
+      action-icon="refresh"
+      @action="loadDatasets"
+    />
+    <AppStatePanel
+      v-else-if="pageState === 'forbidden'"
+      variant="forbidden"
+    />
+    <AppStatePanel
+      v-else-if="pageState === 'empty'"
+      variant="empty"
+      title="暂无评估数据集"
+      description="新建一个 EvalSet 后即可补充用例、启动评估。"
+      :action-label="$t('evaluationPage.createDataset')"
+      action-icon="add"
+      @action="createOpen = true"
+    />
 
-    <div class="evaluation-layout">
+    <AppStatePanel
+      v-if="pageState === 'partial'"
+      class="q-mb-md"
+      variant="partial"
+      dense
+      :description="error"
+      action-label="重试"
+      action-icon="refresh"
+      @action="loadDatasets"
+    />
+
+    <div v-if="pageState === null || pageState === 'partial'" class="evaluation-layout">
       <evaluation-dataset-list
         :datasets="datasets"
         :selected-id="selectedDatasetId"
@@ -179,6 +210,7 @@
           :trend-loading="trendLoading"
           :compare-loading="compareLoading"
           :divergence-loading="divergenceLoading"
+          :divergence-error="divergenceError"
           :failure-groups="failureGroups"
           :failure-groups-total="failureGroupsTotal"
           :failure-groups-loading="failureGroupsLoading"
@@ -196,7 +228,7 @@
       </div>
     </div>
 
-    <evaluation-feedback-panel class="q-mt-md" />
+    <evaluation-feedback-panel v-if="pageState === null || pageState === 'partial'" class="q-mt-md" />
 
     <evaluation-create-dialog
       v-model:open="createOpen"
@@ -303,6 +335,7 @@
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import AppPageHero from '../components/layout/AppPageHero.vue';
+import AppStatePanel from '../components/common/AppStatePanel.vue';
 import AppRegistryTable from '../components/layout/AppRegistryTable.vue';
 import AppRegistryPagination from '../components/layout/AppRegistryPagination.vue';
 import EvaluationAnalyticsPanel from '../components/evaluation/EvaluationAnalyticsPanel.vue';
@@ -316,6 +349,7 @@ import EvaluationUploadCasesDialog from '../components/evaluation/EvaluationUplo
 import EvaluationGateDialog from '../components/evaluation/EvaluationGateDialog.vue';
 import EvaluationVersionsDialog from '../components/evaluation/EvaluationVersionsDialog.vue';
 import { useEvaluationPage } from '../features/evaluation/useEvaluationPage';
+import { resolvePageState } from './pageState';
 
 const { t } = useI18n();
 
@@ -333,6 +367,7 @@ const {
   onRunsPageSize,
   runsLoading,
   error,
+  forbidden,
   createOpen,
   createLoading,
   runOpen,
@@ -401,6 +436,7 @@ const {
   submitCompare,
   divergence,
   divergenceLoading,
+  divergenceError,
   loadDivergence,
   failureGroups,
   failureGroupsTotal,
@@ -419,6 +455,16 @@ const {
   saveGate,
   openResultTrace,
 } = useEvaluationPage();
+
+// 五态契约：错误优先于空态（error 与 empty 互斥，见 pages/pageState.ts）。
+const pageState = computed(() =>
+  resolvePageState({
+    loading: loading.value,
+    error: error.value,
+    count: datasets.value.length,
+    forbidden: forbidden.value,
+  }),
+);
 
 // Gate dialog needs all datasets as options (gate config is a global singleton,
 // not bound to the currently selected dataset).

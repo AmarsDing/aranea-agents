@@ -1,6 +1,7 @@
 import { computed, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useQuasar } from 'quasar';
+import { confirm } from '../../composables/useAppConfirm';
 import {
   createCredential,
   deleteCredential,
@@ -15,6 +16,7 @@ import {
   type CredentialFormModel,
   type CredentialRow,
 } from './types';
+import { isForbiddenApiError } from '../../utils/kratosError';
 
 export function useCredentialsPage() {
   const { t } = useI18n();
@@ -27,6 +29,8 @@ export function useCredentialsPage() {
   const total = ref(0);
   const loading = ref(false);
   const error = ref('');
+  /** 列表接口 403：页面据此渲染 forbidden 态（无重试）。 */
+  const forbidden = ref(false);
   const siteFilter = ref('');
   const page = ref(1);
   const pageSize = ref(20);
@@ -34,6 +38,7 @@ export function useCredentialsPage() {
 
   async function loadRows() {
     error.value = '';
+    forbidden.value = false;
     loading.value = true;
     try {
       const res = await listCredentials({ site: siteFilter.value, page: page.value, pageSize: pageSize.value });
@@ -41,6 +46,7 @@ export function useCredentialsPage() {
       total.value = res.total;
       if (page.value > pageMax.value) page.value = pageMax.value;
     } catch (e) {
+      forbidden.value = isForbiddenApiError(e);
       error.value = e instanceof Error ? e.message : String(e);
     } finally {
       loading.value = false;
@@ -133,21 +139,20 @@ export function useCredentialsPage() {
     }
   }
 
-  function confirmDelete(row: CredentialRow) {
-    $q.dialog({
+  async function confirmDelete(row: CredentialRow) {
+    const ok = await confirm({
       title: t('credentialsPage.confirmDeleteTitle'),
       message: t('credentialsPage.confirmDeleteMessage', { name: row.name, site: row.site }),
-      cancel: true,
-      persistent: true,
-    }).onOk(async () => {
-      try {
-        await deleteCredential(row.id);
-        $q.notify({ type: 'positive', message: t('credentialsPage.notifyDeleted') });
-        await loadRows();
-      } catch (e) {
-        $q.notify({ type: 'negative', message: e instanceof Error ? e.message : String(e) });
-      }
+      tone: 'danger',
     });
+    if (!ok) return;
+    try {
+      await deleteCredential(row.id);
+      $q.notify({ type: 'positive', message: t('credentialsPage.notifyDeleted') });
+      await loadRows();
+    } catch (e) {
+      $q.notify({ type: 'negative', message: e instanceof Error ? e.message : String(e) });
+    }
   }
 
   // ---- Bitwarden 导入 ----
@@ -186,6 +191,8 @@ export function useCredentialsPage() {
   const execTotal = ref(0);
   const execLoading = ref(false);
   const execError = ref('');
+  /** 执行审计接口 403：页面据此渲染 forbidden 态（无重试）。 */
+  const execForbidden = ref(false);
   const execSiteFilter = ref('');
   const execPage = ref(1);
   const execPageSize = ref(20);
@@ -193,6 +200,7 @@ export function useCredentialsPage() {
 
   async function loadExecutions() {
     execError.value = '';
+    execForbidden.value = false;
     execLoading.value = true;
     try {
       const res = await listCredentialExecutions({
@@ -204,6 +212,7 @@ export function useCredentialsPage() {
       execTotal.value = res.total;
       if (execPage.value > execPageMax.value) execPage.value = execPageMax.value;
     } catch (e) {
+      execForbidden.value = isForbiddenApiError(e);
       execError.value = e instanceof Error ? e.message : String(e);
     } finally {
       execLoading.value = false;
@@ -238,6 +247,7 @@ export function useCredentialsPage() {
     total,
     loading,
     error,
+    forbidden,
     siteFilter,
     page,
     pageSize,
@@ -260,6 +270,7 @@ export function useCredentialsPage() {
     execTotal,
     execLoading,
     execError,
+    execForbidden,
     execSiteFilter,
     execPage,
     execPageSize,

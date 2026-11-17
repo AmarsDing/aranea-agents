@@ -2,6 +2,7 @@ import { computed, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { storeToRefs } from 'pinia';
 import { useQuasar } from 'quasar';
+import { confirm } from '../../composables/useAppConfirm';
 
 import { parseCronConfig, parseCronMetadata } from './api';
 import type { PlatformResourceInput } from '../platform/types';
@@ -9,6 +10,7 @@ import type { CronFailureSummary, CronTaskConfig, CronTaskMetadata, CronTaskRow 
 import { CRON_TASK_TABLE_COLUMNS, CRON_RUN_TABLE_COLUMNS } from './cronTableUi';
 import { useCronStore } from '../../stores/cron';
 import { formatCronDate } from '../../components/cron/cronTaskUtils';
+import { isForbiddenApiError } from '../../utils/kratosError';
 
 export function useCronTasksPage() {
   const $q = useQuasar();
@@ -18,6 +20,8 @@ export function useCronTasksPage() {
 
   const loading = ref(false);
   const error = ref('');
+  /** 403 / PERMISSION_DENIED：页面渲染 forbidden 态，不提供重试。 */
+  const forbidden = ref(false);
   const search = ref('');
   const statusFilter = ref('');
   const editorOpen = ref(false);
@@ -98,10 +102,12 @@ export function useCronTasksPage() {
   async function loadAll() {
     loading.value = true;
     error.value = '';
+    forbidden.value = false;
     try {
       await cronStore.loadAll();
     } catch (err) {
       error.value = err instanceof Error ? err.message : '加载定时任务失败';
+      forbidden.value = isForbiddenApiError(err);
     } finally {
       loading.value = false;
     }
@@ -129,20 +135,19 @@ export function useCronTasksPage() {
     }
   }
 
-  function confirmDelete(row: CronTaskRow) {
-    $q.dialog({
+  async function confirmDelete(row: CronTaskRow) {
+    const ok = await confirm({
       title: '删除定时任务',
       message: `确定删除「${row.name}」？此操作不可撤销。`,
-      cancel: true,
-      persistent: true,
-    }).onOk(async () => {
-      try {
-        await cronStore.removeTask(row.id);
-        $q.notify({ type: 'positive', message: '任务已删除' });
-      } catch (err) {
-        $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '删除失败' });
-      }
+      tone: 'danger',
     });
+    if (!ok) return;
+    try {
+      await cronStore.removeTask(row.id);
+      $q.notify({ type: 'positive', message: '任务已删除' });
+    } catch (err) {
+      $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '删除失败' });
+    }
   }
 
   const runsOpen = ref(false);
@@ -298,6 +303,7 @@ export function useCronTasksPage() {
     teams,
     loading,
     error,
+    forbidden,
     search,
     statusFilter,
     editorOpen,

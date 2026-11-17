@@ -3,6 +3,7 @@
 // 确认框/全局 toast/知识库 store 刷新，全部走既有 store 出口（本地缓存与树监听联动）。
 import { computed, type ComputedRef } from 'vue';
 import { useQuasar } from 'quasar';
+import { confirm } from '../../composables/useAppConfirm';
 import { useI18n } from 'vue-i18n';
 import { useKnowledgeStore } from '../../stores/knowledge';
 import { parseKratosApiError } from '../../utils/kratosError';
@@ -94,14 +95,9 @@ export function useBulkDocActions(input: {
     return parseKratosApiError(e).message || t('knowledgePage.workbench.bulk.opFailed');
   }
 
-  /** 统一确认框 → Promise<boolean>（QDialog 回调式转 promise，取消/关闭同窗）。 */
+  /** 统一确认框 → Promise<boolean>（取消/Esc/关闭一律 false）。 */
   function confirmDialog(title: string, message: string): Promise<boolean> {
-    return new Promise((resolve) => {
-      $q.dialog({ title, message, cancel: true, persistent: true })
-        .onOk(() => resolve(true))
-        .onCancel(() => resolve(false))
-        .onDismiss(() => resolve(false));
-    });
+    return confirm({ title, message, tone: 'danger' });
   }
 
   /** 汇总 toast：全成功 positive；部分失败 negative 列计数。 */

@@ -40,7 +40,7 @@ const statusIconColor = computed(() => {
 .todo-card
   display: flex
   align-items: center
-  gap: 8px
+  gap: var(--nt-space-2)
   padding: 5px 10px
   border-radius: 6px
   background: transparent

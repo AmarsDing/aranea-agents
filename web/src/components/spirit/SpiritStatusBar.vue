@@ -3,7 +3,7 @@
     <div class="row items-center no-wrap q-gutter-sm spirit-status-bar__inner">
       <span class="spirit-status-bar__dot" />
       <div v-if="complexityLevel" class="spirit-status-bar__item">
-        <q-icon :name="complexityIcon" size="14px" :style="{ color: complexityColor }" />
+        <q-icon :name="complexityIcon" size="14px" :class="`spirit-status-bar__tone--${complexityTone}`" />
         <span>{{ complexityLabel }}</span>
         <q-tooltip v-if="complexityReason" :delay="300">{{ complexityReason }}</q-tooltip>
       </div>
@@ -12,7 +12,7 @@
         class="spirit-status-bar__item spirit-status-bar__item--clickable"
         @click="emit('click-running')"
       >
-        <q-icon name="bolt" size="14px" :style="{ color: 'var(--color-accent)' }" />
+        <q-icon name="bolt" size="14px" class="spirit-status-bar__tone--accent" />
         <span>{{ t('spirit.runningCount', { count: runningTeamCount }) }}</span>
       </div>
       <div
@@ -20,14 +20,14 @@
         class="spirit-status-bar__item spirit-status-bar__item--clickable"
         @click="emit('click-interrupted')"
       >
-        <q-icon name="pause_circle" size="14px" :style="{ color: 'var(--color-warning)' }" />
+        <q-icon name="pause_circle" size="14px" class="spirit-status-bar__tone--warning" />
         <span>{{ t('spirit.interruptedCount', { count: interruptedTeamCount }) }}</span>
       </div>
       <div
         v-if="checkpointStep"
         class="spirit-status-bar__item spirit-status-bar__item--hide-sm spirit-status-bar__item--shift-md"
       >
-        <q-icon name="flag" size="14px" :style="{ color: 'var(--color-text-tertiary)' }" />
+        <q-icon name="flag" size="14px" class="spirit-status-bar__tone--muted" />
         <span class="ellipsis">{{ checkpointStep }}</span>
       </div>
       <div
@@ -37,7 +37,7 @@
         <q-icon
           :name="allCompleted ? 'task_alt' : 'bar_chart'"
           size="14px"
-          :style="{ color: allCompleted ? 'var(--color-success)' : 'var(--color-text-tertiary)' }"
+          :class="allCompleted ? 'spirit-status-bar__tone--success' : 'spirit-status-bar__tone--muted'"
         />
         <span>{{ t('spirit.teamProgressLabel', { done: completedTeamCount, total: totalTeamCount }) }}</span>
         <q-linear-progress
@@ -52,7 +52,7 @@
         v-if="hasContextInfo"
         class="spirit-status-bar__item spirit-status-bar__item--hide-sm spirit-status-bar__item--shift-md spirit-status-bar__item--clickable"
       >
-        <q-icon name="data_usage" size="14px" :style="{ color: 'var(--color-text-tertiary)' }" />
+        <q-icon name="data_usage" size="14px" class="spirit-status-bar__tone--muted" />
         <span>{{ contextLabel }}</span>
         <span v-if="inOutLabel" class="spirit-status-bar__inout"> · {{ inOutLabel }}</span>
         <q-menu
@@ -85,8 +85,8 @@
         </q-menu>
       </div>
       <div v-if="dqScore != null" class="spirit-status-bar__item spirit-status-bar__item--hide-sm">
-        <q-icon name="verified" size="14px" :style="{ color: dqScoreColor }" />
-        <span :style="{ color: dqScoreColor }">DQ: {{ dqScore.toFixed(2) }}</span>
+        <q-icon name="verified" size="14px" :class="`spirit-status-bar__tone--${dqTone}`" />
+        <span :class="`spirit-status-bar__tone--${dqTone}`">DQ: {{ dqScore.toFixed(2) }}</span>
         <q-tooltip :delay="300">{{ t('spirit.dqScoreTooltip') }}</q-tooltip>
       </div>
       <!-- View toggle button -->
@@ -94,7 +94,7 @@
         <q-icon
           :name="viewMode === 'observe' ? 'chat' : 'visibility'"
           size="14px"
-          :style="{ color: viewMode === 'observe' ? 'var(--color-primary)' : 'var(--color-text-tertiary)' }"
+          :class="viewMode === 'observe' ? 'spirit-status-bar__tone--primary' : 'spirit-status-bar__tone--muted'"
         />
         <span>{{ viewMode === 'observe' ? t('spirit.backToChat') : t('spirit.observeView') }}</span>
       </div>
@@ -108,7 +108,7 @@
         <q-icon
           :name="composerVisible ? 'keyboard' : 'keyboard_hide'"
           size="14px"
-          :style="{ color: 'var(--color-text-tertiary)' }"
+          class="spirit-status-bar__tone--muted"
         />
       </div>
     </div>
@@ -118,7 +118,7 @@
 <script setup lang="ts">
 import { computed, ref, toRef, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { COMPLEXITY_CONFIG, dqScoreColor as getDqScoreColor } from '../../features/spirit/spiritUi';
+import { COMPLEXITY_CONFIG } from '../../features/spirit/spiritUi';
 import { formatTokenCount as formatCtxTokens } from '../../features/chat/composerUsageMetrics';
 import { CHAT_CONTEXT_WINDOW_TOKENS, chatContextRatio } from '../../features/session/contextMetrics';
 import { useSessionModelTokens } from '../../features/chat/useSessionModelTokens';
@@ -244,12 +244,28 @@ const complexityIcon = computed(() => {
   return COMPLEXITY_CONFIG[props.complexityLevel]?.icon ?? 'tune';
 });
 
-const complexityColor = computed(() => {
-  if (!props.complexityLevel) return 'var(--color-text-tertiary)';
-  return COMPLEXITY_CONFIG[props.complexityLevel]?.color ?? 'var(--color-text-tertiary)';
+/** 复杂度色档：与 COMPLEXITY_CONFIG 的 color 一一对应（未知等级 → 弱化）。 */
+const complexityTone = computed(() => {
+  switch (props.complexityLevel) {
+    case 'simple':
+      return 'success';
+    case 'moderate':
+      return 'warning';
+    case 'complex':
+      return 'accent';
+    default:
+      return 'muted';
+  }
 });
 
-const dqScoreColor = computed(() => getDqScoreColor(props.dqScore));
+/** DQ 分档色：与 dqScoreColor() 完全同源（>0.7 成功 / >=0.5 警告 / 其余危险）。 */
+const dqTone = computed(() => {
+  const score = props.dqScore;
+  if (score == null) return 'muted';
+  if (score > 0.7) return 'success';
+  if (score >= 0.5) return 'warning';
+  return 'danger';
+});
 
 const allCompleted = computed(() => props.totalTeamCount > 0 && props.completedTeamCount >= props.totalTeamCount);
 
@@ -287,6 +303,25 @@ const progressColor = computed(() => (allCompleted.value ? 'positive' : 'accent'
   gap: 3px
   white-space: nowrap
   flex-shrink: 0
+
+// 状态色修饰符：仅设 color，供条形内的图标/文本按语义着色
+.spirit-status-bar__tone--accent
+  color: var(--color-accent)
+
+.spirit-status-bar__tone--primary
+  color: var(--color-primary)
+
+.spirit-status-bar__tone--success
+  color: var(--color-success)
+
+.spirit-status-bar__tone--warning
+  color: var(--color-warning)
+
+.spirit-status-bar__tone--danger
+  color: var(--color-danger)
+
+.spirit-status-bar__tone--muted
+  color: var(--color-text-tertiary)
 
 .spirit-status-bar__item--clickable
   cursor: pointer
@@ -327,8 +362,8 @@ const progressColor = computed(() => (allCompleted.value ? 'positive' : 'accent'
   .spirit-context-popup__header
     display: flex
     flex-direction: column
-    gap: 4px
-    margin-bottom: 8px
+    gap: var(--nt-space-1)
+    margin-bottom: var(--nt-space-2)
 
   .spirit-context-popup__header-row
     display: flex
@@ -357,7 +392,7 @@ const progressColor = computed(() => (allCompleted.value ? 'positive' : 'accent'
 
   .spirit-context-popup__sep
     background: var(--glass-border)
-    margin: 8px 0
+    margin: var(--nt-space-2) 0
 
   .spirit-context-popup__title
     font-size: 12px

@@ -1,92 +1,85 @@
 <template>
-  <q-dialog :model-value="modelValue" @update:model-value="$emit('update:modelValue', $event)">
-    <q-card class="provider-trend-dialog app-dialog-card app-dialog-card--lg app-glass-dialog">
-      <q-card-section class="app-glass-dialog__head row items-start justify-between">
-        <div class="col min-width-0">
-          <div class="app-glass-dialog__title">模型历史趋势</div>
-          <div v-if="row" class="app-glass-dialog__subtitle">{{ providerDisplayName }} / {{ modelDisplayName }}</div>
+  <AppDialog
+    :model-value="modelValue"
+    title="模型历史趋势"
+    :subtitle="row ? `${providerDisplayName} / ${modelDisplayName}` : ''"
+    size="lg"
+    @update:model-value="$emit('update:modelValue', $event)"
+  >
+    <div v-if="row" class="provider-trend-dialog__body">
+      <q-inner-loading :showing="loading">
+        <q-spinner color="primary" size="32px" />
+      </q-inner-loading>
+
+      <div class="app-trend-kpi-grid">
+        <div class="app-trend-kpi-card">
+          <span class="app-trend-kpi-label">热度</span>
+          <span class="app-trend-kpi-value">{{ hotnessScore }}</span>
+          <div class="app-trend-kpi-bar" role="presentation">
+            <div class="app-trend-kpi-bar__fill" :style="{ width: `${hotnessScore}%` }" />
+          </div>
         </div>
-        <q-btn v-close-popup flat round dense icon="close" aria-label="关闭" />
-      </q-card-section>
-
-      <q-separator />
-
-      <div class="app-glass-dialog__scroll">
-        <q-card-section v-if="row" class="app-glass-dialog__body provider-trend-dialog__body">
-          <q-inner-loading :showing="loading">
-            <q-spinner color="primary" size="32px" />
-          </q-inner-loading>
-
-          <div class="app-trend-kpi-grid">
-            <div class="app-trend-kpi-card">
-              <span class="app-trend-kpi-label">热度</span>
-              <span class="app-trend-kpi-value">{{ hotnessScore }}</span>
-              <div class="app-trend-kpi-bar" role="presentation">
-                <div class="app-trend-kpi-bar__fill" :style="{ width: `${hotnessScore}%` }" />
-              </div>
-            </div>
-            <div class="app-trend-kpi-card">
-              <span class="app-trend-kpi-label">{{ rangeLabel }}调用</span>
-              <span class="app-trend-kpi-value">{{ formatCount(overview?.range.call_count) }}</span>
-            </div>
-            <div class="app-trend-kpi-card">
-              <span class="app-trend-kpi-label">{{ rangeLabel }} Token</span>
-              <span class="app-trend-kpi-value">{{ formatCount(overview?.range.total_tokens) }}</span>
-            </div>
-            <div class="app-trend-kpi-card">
-              <span class="app-trend-kpi-label">{{ rangeLabel }}费用</span>
-              <span class="app-trend-kpi-value">{{ formatMicroUsd(overview?.range.total_cost_micro_usd) }}</span>
-            </div>
-          </div>
-
-          <div class="app-trend-chart-panel">
-            <div class="app-trend-chart-toolbar row items-center justify-between q-col-gutter-sm">
-              <div>
-                <div class="app-trend-chart-title">用量趋势</div>
-                <div class="app-trend-chart-caption">{{ rangeLabel }} · {{ metricCaption }}</div>
-              </div>
-              <div class="row items-center q-gutter-sm">
-                <q-select
-                  :model-value="range"
-                  dense
-                  outlined
-                  emit-value
-                  map-options
-                  :options="rangeOptions"
-                  class="provider-trend-range-select"
-                  @update:model-value="emit('update:range', String($event))"
-                />
-                <q-btn-toggle
-                  :model-value="metric"
-                  dense
-                  no-caps
-                  unelevated
-                  toggle-color="primary"
-                  :options="metricOptions"
-                  class="app-metric-toggle"
-                  @update:model-value="emit('update:metric', $event)"
-                />
-              </div>
-            </div>
-            <div v-if="!trends.length && !loading" class="app-trend-chart-empty">暂无历史趋势数据</div>
-            <div v-show="trends.length || loading" ref="chartEl" class="app-trend-chart" />
-          </div>
-
-          <div class="app-trend-detail-grid">
-            <div v-for="item in detailItems" :key="item.label" class="app-trend-detail-item">
-              <span class="app-trend-detail-label">{{ item.label }}</span>
-              <span class="app-trend-detail-value">{{ item.value }}</span>
-            </div>
-          </div>
-        </q-card-section>
+        <div class="app-trend-kpi-card">
+          <span class="app-trend-kpi-label">{{ rangeLabel }}调用</span>
+          <span class="app-trend-kpi-value">{{ formatCount(overview?.range.call_count) }}</span>
+        </div>
+        <div class="app-trend-kpi-card">
+          <span class="app-trend-kpi-label">{{ rangeLabel }} Token</span>
+          <span class="app-trend-kpi-value">{{ formatCount(overview?.range.total_tokens) }}</span>
+        </div>
+        <div class="app-trend-kpi-card">
+          <span class="app-trend-kpi-label">{{ rangeLabel }}费用</span>
+          <span class="app-trend-kpi-value">{{ formatMicroUsd(overview?.range.total_cost_micro_usd) }}</span>
+        </div>
       </div>
-    </q-card>
-  </q-dialog>
+
+      <div class="app-trend-chart-panel">
+        <div class="app-trend-chart-toolbar row items-center justify-between q-col-gutter-sm">
+          <div>
+            <div class="app-trend-chart-title">用量趋势</div>
+            <div class="app-trend-chart-caption">{{ rangeLabel }} · {{ metricCaption }}</div>
+          </div>
+          <div class="row items-center q-gutter-sm">
+            <q-select
+              :model-value="range"
+              dense
+              outlined
+              emit-value
+              map-options
+              :options="rangeOptions"
+              class="provider-trend-range-select"
+              @update:model-value="emit('update:range', String($event))"
+            />
+            <q-btn-toggle
+              :model-value="metric"
+              dense
+              no-caps
+              unelevated
+              toggle-color="primary"
+              :options="metricOptions"
+              class="app-metric-toggle"
+              @update:model-value="emit('update:metric', $event)"
+            />
+          </div>
+        </div>
+        <div v-if="!trends.length && !loading" class="app-trend-chart-empty">暂无历史趋势数据</div>
+        <div v-show="trends.length || loading" ref="chartEl" class="app-trend-chart" />
+      </div>
+
+      <div class="app-trend-detail-grid">
+        <div v-for="item in detailItems" :key="item.label" class="app-trend-detail-item">
+          <span class="app-trend-detail-label">{{ item.label }}</span>
+          <span class="app-trend-detail-value">{{ item.value }}</span>
+        </div>
+      </div>
+    </div>
+  </AppDialog>
 </template>
 
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import { graphic, type EChartsCoreOption } from 'echarts/core';
+import AppDialog from '../common/AppDialog.vue';
 import type { ModelUsageOverview } from '../../features/usage/types';
 import type { PlatformResource } from '../../features/platform/types';
 import { toNullableNumber } from '../../features/platform/providerUtils';

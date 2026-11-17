@@ -4,9 +4,11 @@ import { useQuasar } from 'quasar';
 import { formatBatchNotifyMessage } from './batchNotify';
 import type { BatchPreviewResult, BulkProgress, RetentionDialogMode, SessionBatchScope } from './types';
 import type { Session } from './types';
+import { useSessionsBulk } from './useSessionsBulk';
 import { useSessionStore } from '../../stores/session/index';
 import { sortSessionsForDisplay } from './sessionSort';
 import { downloadTextFile } from './downloadExport';
+import { isForbiddenApiError } from '../../utils/kratosError';
 
 export function useSessionsPage() {
   const $q = useQuasar();
@@ -18,6 +20,8 @@ export function useSessionsPage() {
   const total = ref(0);
   const loading = ref(false);
   const error = ref('');
+  /** 列表接口 403：页面据此渲染 forbidden 态（无重试）。 */
+  const forbidden = ref(false);
 
   const keyword = ref('');
   const ownerType = ref<string | null>(null);
@@ -26,12 +30,12 @@ export function useSessionsPage() {
   const page = ref(1);
   const pageSize = ref(20);
 
-  const selectionMode = ref(false);
-  const selectedIds = ref<Set<string>>(new Set());
+  // 选择列默认展示：批量操作条依赖每行可选；工具栏按钮可临时收起以收窄表格。
+  const selectionMode = ref(true);
+  /** 选择状态与逐项批量执行（归档/取消归档/删除）内聚在 useSessionsBulk。 */
+  const bulk = useSessionsBulk(rows, loadRows);
 
   const bulkProgress = ref<BulkProgress>({ active: false, label: '', indeterminate: true });
-  const bulkArchiving = ref(false);
-  const bulkDeleting = ref(false);
 
   const deleteDialogOpen = ref(false);
   const deleteTargetIds = ref<string[]>([]);
@@ -44,7 +48,7 @@ export function useSessionsPage() {
   const retentionLoading = ref(false);
 
   const pageMax = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)));
-  const selectedCount = computed(() => selectedIds.value.size);
+  const selectedCount = bulk.count;
 
   const batchScope = computed<SessionBatchScope>(() => ({
     owner_type: ownerType.value || undefined,
@@ -54,16 +58,19 @@ export function useSessionsPage() {
   }));
 
   function clearSelection() {
-    selectedIds.value = new Set();
+    bulk.clear();
   }
 
+  // 筛选条件变化必须清空选择（并回到第 1 页）：否则批量动作会作用到用户已看不见的行。
   watch([keyword, ownerType, status, contextStatus], () => {
     page.value = 1;
     clearSelection();
     void loadRows();
   });
 
+  // 分页/页大小变化同样清空选择：「本页全选」只在当前页生效，跨页残留会造成误操作。
   watch([page, pageSize], () => {
+    clearSelection();
     void loadRows();
   });
 
@@ -94,33 +101,18 @@ export function useSessionsPage() {
     }
   }
 
-  function toggleRowSelection(id: string, checked: boolean) {
-    const next = new Set(selectedIds.value);
-    if (checked) next.add(id);
-    else next.delete(id);
-    selectedIds.value = next;
-  }
-
-  function togglePageSelection(checked: boolean) {
-    const next = new Set(selectedIds.value);
-    for (const row of rows.value) {
-      if (checked) next.add(row.id);
-      else next.delete(row.id);
-    }
-    selectedIds.value = next;
-  }
-
-  function isRowSelected(id: string) {
-    return selectedIds.value.has(id);
-  }
+  const toggleRowSelection = bulk.toggleRow;
+  const togglePageSelection = bulk.toggleAll;
+  const isRowSelected = bulk.isSelected;
 
   function isPageFullySelected() {
-    return rows.value.length > 0 && rows.value.every((r) => selectedIds.value.has(r.id));
+    return bulk.pageAllSelected.value;
   }
 
   async function loadRows() {
     loading.value = true;
     error.value = '';
+    forbidden.value = false;
     try {
       const result = await sessionStore.searchPage({
         keyword: keyword.value || undefined,
@@ -137,16 +129,22 @@ export function useSessionsPage() {
       total.value = result.total;
       await loadSelected();
     } catch (err) {
+      forbidden.value = isForbiddenApiError(err);
       error.value = err instanceof Error ? err.message : '加载 Session 失败';
     } finally {
       loading.value = false;
     }
   }
 
+  function selectSession(session: Session) {
+    selected.value = session;
+  }
+
   async function loadSelected() {
     const id = String(route.params.sessionId || '');
     if (!id) {
-      selected.value = null;
+      const selectedId = selected.value?.id;
+      selected.value = selectedId ? (rows.value.find((item) => item.id === selectedId) ?? null) : null;
       return;
     }
     selected.value = rows.value.find((item) => item.id === id) ?? (await sessionStore.fetchSession(id));
@@ -169,26 +167,8 @@ export function useSessionsPage() {
     $q.notify({ type, message: formatBatchNotifyMessage(action, result, requested) });
   }
 
-  async function runBatchArchive(ids: string[]) {
-    if (!ids.length) return;
-    bulkArchiving.value = true;
-    startBulk('正在归档…');
-    try {
-      const result = await sessionStore.batchArchive({ ids });
-      notifyBatchResult('archive', result, ids.length);
-      clearSelection();
-      await loadRows();
-    } catch (err) {
-      $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '归档失败' });
-    } finally {
-      bulkArchiving.value = false;
-      endBulk();
-    }
-  }
-
   async function runBatchDelete(ids: string[]) {
     if (!ids.length) return;
-    bulkDeleting.value = true;
     startBulk('正在删除…');
     try {
       const result = await sessionStore.batchDelete({ ids });
@@ -198,7 +178,6 @@ export function useSessionsPage() {
     } catch (err) {
       $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '删除失败' });
     } finally {
-      bulkDeleting.value = false;
       endBulk();
     }
   }
@@ -324,6 +303,7 @@ export function useSessionsPage() {
     total,
     loading,
     error,
+    forbidden,
     keyword,
     ownerType,
     status,
@@ -334,8 +314,11 @@ export function useSessionsPage() {
     selectionMode,
     selectedCount,
     bulkProgress,
-    bulkArchiving,
-    bulkDeleting,
+    bulkActions: bulk.actions,
+    bulkBusy: bulk.busy,
+    bulkError: bulk.error,
+    runBulkAction: bulk.run,
+    clearSelection,
     deleteDialogOpen,
     deleteTargetIds,
     deleteLoading,
@@ -348,6 +331,7 @@ export function useSessionsPage() {
     onKeywordUpdate,
     resetFilters,
     loadRows,
+    selectSession,
     toggleSelectionMode,
     toggleRowSelection,
     togglePageSelection,
@@ -360,8 +344,6 @@ export function useSessionsPage() {
     confirmRetention,
     archiveRow,
     togglePinRow,
-    promptDeleteSelected: () => promptDelete([...selectedIds.value]),
-    archiveSelected: () => runBatchArchive([...selectedIds.value]),
     exportSession: sessionStore.exportSession,
     exportSelectedDetail,
   };

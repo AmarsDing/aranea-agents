@@ -151,20 +151,22 @@
       @remove="onEditorRemove()"
     />
 
-    <q-dialog :model-value="confirmRemoveOpen" persistent @update:model-value="cancelRemoveOverride()">
-      <q-card class="app-dialog-card app-dialog-card--sm">
-        <q-card-section>
-          <div class="text-h6">{{ $t('toolsPage.agentTools.removeTitle') }}</div>
-          <div class="text-body2 text-grey-7 q-mt-sm">
-            {{ $t('toolsPage.agentTools.removeMessage', { key: pendingRemoveRow?.tool_key }) }}
-          </div>
-        </q-card-section>
-        <q-card-actions align="right" class="app-actions-bar">
-          <q-btn flat rounded no-caps :label="$t('common.cancel')" @click="cancelRemoveOverride()" />
-          <q-btn color="negative" rounded unelevated no-caps :label="$t('common.delete')" @click="confirmRemoveOverride()" />
-        </q-card-actions>
-      </q-card>
-    </q-dialog>
+    <app-dialog
+      :model-value="confirmRemoveOpen"
+      :title="$t('toolsPage.agentTools.removeTitle')"
+      icon="delete_outline"
+      size="sm"
+      persistent
+      @update:model-value="cancelRemoveOverride()"
+    >
+      <p class="text-body2 q-mb-none">
+        {{ $t('toolsPage.agentTools.removeMessage', { key: pendingRemoveRow?.tool_key }) }}
+      </p>
+      <template #actions>
+        <q-btn flat rounded no-caps :label="$t('common.cancel')" @click="cancelRemoveOverride()" />
+        <q-btn color="negative" rounded unelevated no-caps :label="$t('common.delete')" @click="confirmRemoveOverride()" />
+      </template>
+    </app-dialog>
   </div>
 </template>
 
@@ -173,6 +175,7 @@
 import { computed, ref, toRef } from 'vue';
 import { useI18n } from 'vue-i18n';
 import AgentToolOverrideEditorDialog from './AgentToolOverrideEditorDialog.vue';
+import AppDialog from '../common/AppDialog.vue';
 import { useAgentToolOverrides } from '../../features/agents/useAgentToolOverrides';
 
 const props = defineProps<{

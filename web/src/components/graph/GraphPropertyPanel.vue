@@ -1,7 +1,13 @@
 <template>
   <div
-    :class="['graph-property-panel', { 'is-dark': isDark, 'graph-property-panel--collapsed': collapsed }]"
-    :style="panelAccentStyle"
+    :class="[
+      'graph-property-panel',
+      {
+        'is-dark': isDark,
+        'graph-property-panel--collapsed': collapsed,
+      },
+      selectedNode ? `graph-property-panel--node-${selectedNode.type}` : null,
+    ]"
   >
     <!-- 折叠态：仅显示展开按钮 -->
     <div v-if="collapsed" class="graph-property-panel__collapsed-bar" @click="collapsed = false">
@@ -664,12 +670,6 @@ function updateStateField<K extends keyof StateFieldDef>(idx: number, field: K, 
     }
   }
 }
-
-const panelAccentStyle = computed(() => {
-  if (!selectedNode.value) return {};
-  const style = NODE_TYPE_STYLES[selectedNode.value.type as NodeType];
-  return style ? { '--node-accent': style.borderColor } : {};
-});
 
 const nodeTypeOptions = computed(() =>
   Object.entries(NODE_TYPE_STYLES).map(([key, val]) => ({ label: t(val.labelKey), value: key })),

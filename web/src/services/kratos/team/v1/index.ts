@@ -606,6 +606,10 @@ export type ListTaskDeadLettersRequest = {
   teamId: string | undefined;
   status: string | undefined;
   limit: number | undefined;
+  // workspace_scope：session_id/team_id 均为空时按调用方 workspace 的可见团队
+  // 收敛（个人工作台告警 lane 无具体团队上下文）。两者都为空且未置位时仍按
+  // 原契约返回 400，保持向后兼容。
+  workspaceScope: boolean | undefined;
 };
 
 export type ListTaskDeadLettersResponse = {
@@ -1194,6 +1198,9 @@ export function createTeamServiceClient(
       }
       if (request.limit) {
         queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`)
+      }
+      if (request.workspaceScope) {
+        queryParams.push(`workspaceScope=${encodeURIComponent(request.workspaceScope.toString())}`)
       }
       let uri = path;
       if (queryParams.length > 0) {

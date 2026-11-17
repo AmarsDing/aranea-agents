@@ -1,5 +1,7 @@
 import { computed, ref, type ComputedRef, type Ref } from 'vue';
 import { useQuasar } from 'quasar';
+import { confirm } from '../../composables/useAppConfirm';
+import { prompt } from '../../composables/useAppPrompt';
 import { useI18n } from 'vue-i18n';
 import { promoteTargetOptions } from './knowledgeUi';
 import { fetchDocumentAsset, reindexVault } from './api';
@@ -129,15 +131,16 @@ export function useKnowledgeVaultOps(deps: KnowledgeVaultOpsDeps) {
     }
   }
 
-  function confirmDeleteCollection(id?: string) {
+  async function confirmDeleteCollection(id?: string) {
     const col = id ? deps.collections.value.find((c) => c.id === id) : deps.selectedCollection.value;
     if (!col) return;
-    $q.dialog({
+    const ok = await confirm({
       title: t('knowledgePage.deleteVaultTitle'),
       message: t('knowledgePage.deleteVaultMessage', { name: col.name }),
-      cancel: true,
-      persistent: true,
-    }).onOk(() => void deleteCollectionConfirmed(col.id));
+      tone: 'danger',
+    });
+    if (!ok) return;
+    await deleteCollectionConfirmed(col.id);
   }
 
   async function deleteCollectionConfirmed(id: string) {
@@ -156,43 +159,42 @@ export function useKnowledgeVaultOps(deps: KnowledgeVaultOpsDeps) {
     }
   }
 
-  function confirmReembed(docIds: string[]) {
+  async function confirmReembed(docIds: string[]) {
     if (!deps.selectedId.value || !docIds.length) return;
-    $q.dialog({
+    const ok = await confirm({
       title: t('knowledgePage.reembedConfirmTitle'),
       message: t('knowledgePage.reembedConfirmBody', { n: docIds.length }),
-      cancel: true,
-      persistent: true,
-    }).onOk(() => {
-      void knowledgeStore
-        .reembedDocuments(deps.selectedId.value, docIds)
-        .then((r) => {
-          $q.notify({ type: 'positive', message: t('knowledgePage.reembedAccepted', { n: r.accepted_count }) });
-          void deps.loadDocuments();
-        })
-        .catch((e) => $q.notify({ type: 'negative', message: deps.friendlyError(e) }));
+      tone: 'danger',
     });
+    if (!ok) return;
+    try {
+      const r = await knowledgeStore.reembedDocuments(deps.selectedId.value, docIds);
+      $q.notify({ type: 'positive', message: t('knowledgePage.reembedAccepted', { n: r.accepted_count }) });
+      void deps.loadDocuments();
+    } catch (e) {
+      $q.notify({ type: 'negative', message: deps.friendlyError(e) });
+    }
   }
 
-  function confirmDeleteDocument(doc: KnowledgeDocument) {
-    $q.dialog({
+  async function confirmDeleteDocument(doc: KnowledgeDocument) {
+    const ok = await confirm({
       title: t('knowledgePage.deleteDocTitle', 'Delete document'),
       message: t('knowledgePage.deleteDocMessage', { name: doc.source }, 'Delete "{name}"?'),
-      cancel: true,
-    }).onOk(async () => {
-      try {
-        await knowledgeStore.removeDocument(doc.id, deps.selectedId.value);
-        await deps.loadDocuments();
-        await deps.loadCollections();
-        removedDocId.value = doc.id;
-        $q.notify({ type: 'positive', message: t('knowledgePage.deleted', 'Deleted') });
-      } catch (e) {
-        $q.notify({
-          type: 'negative',
-          message: deps.friendlyError(e) || t('knowledgePage.deleteFailed', 'Delete failed'),
-        });
-      }
+      tone: 'danger',
     });
+    if (!ok) return;
+    try {
+      await knowledgeStore.removeDocument(doc.id, deps.selectedId.value);
+      await deps.loadDocuments();
+      await deps.loadCollections();
+      removedDocId.value = doc.id;
+      $q.notify({ type: 'positive', message: t('knowledgePage.deleted', 'Deleted') });
+    } catch (e) {
+      $q.notify({
+        type: 'negative',
+        message: deps.friendlyError(e) || t('knowledgePage.deleteFailed', 'Delete failed'),
+      });
+    }
   }
 
   async function downloadDocument(doc: Pick<KnowledgeDocument, 'id' | 'source'>) {
@@ -269,119 +271,104 @@ export function useKnowledgeVaultOps(deps: KnowledgeVaultOpsDeps) {
     }
   }
 
-  function promptCreateVaultDir(target: { collectionId: string; prefix: string }, preset = '') {
+  async function promptCreateVaultDir(target: { collectionId: string; prefix: string }, preset = '') {
     if (deps.collections.value.find((c) => c.id === target.collectionId)?.vault_backend === 'team') {
       $q.notify({ type: 'info', message: t('knowledgeWorkflow.teamFolderHint') });
       return;
     }
-    $q.dialog({
+    const name = await prompt({
       title: t('knowledgePage.newDirTitle'),
-      prompt: {
-        model: preset,
-        type: 'text',
-        label: t('knowledgePage.newDirLabel'),
-        isValid: (v: string) => !!v.trim(),
-      },
-      cancel: true,
-      persistent: true,
-    }).onOk((name: string) => {
-      void (async () => {
-        const dirName = name.trim().replace(/^\/+|\/+$/g, '');
-        if (!dirName) return;
-        try {
-          await knowledgeStore.addVaultDir(target.collectionId, `${target.prefix}${dirName}`);
-          await deps.explorer.selectTreeNode(
-            target.prefix ? dirNodeKey(target.collectionId, target.prefix) : vaultNodeKey(target.collectionId),
-          );
-          await deps.explorer.refreshTree();
-          $q.notify({ type: 'positive', message: t('knowledgePage.newDirSuccess') });
-        } catch (e) {
-          if (parseKratosApiError(e).status === 409) {
-            $q.notify({ type: 'negative', message: t('knowledgePage.dirAlreadyExists', { name: dirName }) });
-            promptCreateVaultDir(target, name);
-          } else {
-            $q.notify({ type: 'negative', message: deps.friendlyError(e) || t('knowledgePage.newDirFailed') });
-          }
-        }
-      })();
+      defaultValue: preset,
+      label: t('knowledgePage.newDirLabel'),
+      required: true,
     });
+    if (!name) return;
+    const dirName = name.replace(/^\/+|\/+$/g, '');
+    if (!dirName) return;
+    try {
+      await knowledgeStore.addVaultDir(target.collectionId, `${target.prefix}${dirName}`);
+      await deps.explorer.selectTreeNode(
+        target.prefix ? dirNodeKey(target.collectionId, target.prefix) : vaultNodeKey(target.collectionId),
+      );
+      await deps.explorer.refreshTree();
+      $q.notify({ type: 'positive', message: t('knowledgePage.newDirSuccess') });
+    } catch (e) {
+      if (parseKratosApiError(e).status === 409) {
+        $q.notify({ type: 'negative', message: t('knowledgePage.dirAlreadyExists', { name: dirName }) });
+        await promptCreateVaultDir(target, name);
+      } else {
+        $q.notify({ type: 'negative', message: deps.friendlyError(e) || t('knowledgePage.newDirFailed') });
+      }
+    }
   }
 
-  function promptCreateVaultDoc(target: { collectionId: string; prefix: string }, preset = '') {
-    $q.dialog({
+  async function promptCreateVaultDoc(target: { collectionId: string; prefix: string }, preset = '') {
+    const name = await prompt({
       title: t('knowledgePage.newDocTitle'),
-      prompt: {
-        model: preset,
-        type: 'text',
-        label: t('knowledgePage.newDocLabel'),
-        isValid: (v: string) => !!v.trim(),
-      },
-      cancel: true,
-      persistent: true,
-    }).onOk((name: string) => {
-      void (async () => {
-        let docName = name.trim().replace(/^\/+|\/+$/g, '');
-        if (!docName) return;
-        if (!docName.toLowerCase().endsWith('.md')) docName += '.md';
-        try {
-          const doc = await knowledgeStore.addVaultDocument(target.collectionId, `${target.prefix}${docName}`);
-          await deps.explorer.selectTreeNode(
-            target.prefix ? dirNodeKey(target.collectionId, target.prefix) : vaultNodeKey(target.collectionId),
-          );
-          await deps.explorer.refreshTree();
-          deps.explorer.selectDocument(doc.id);
-          $q.notify({ type: 'positive', message: t('knowledgePage.newDocSuccess') });
-        } catch (e) {
-          if (parseKratosApiError(e).status === 409) {
-            $q.notify({ type: 'negative', message: t('knowledgePage.docAlreadyExists', { name: docName }) });
-            promptCreateVaultDoc(target, name);
-          } else {
-            $q.notify({ type: 'negative', message: deps.friendlyError(e) || t('knowledgePage.newDocFailed') });
-          }
-        }
-      })();
+      defaultValue: preset,
+      label: t('knowledgePage.newDocLabel'),
+      required: true,
     });
+    if (!name) return;
+    let docName = name.replace(/^\/+|\/+$/g, '');
+    if (!docName) return;
+    if (!docName.toLowerCase().endsWith('.md')) docName += '.md';
+    try {
+      const doc = await knowledgeStore.addVaultDocument(target.collectionId, `${target.prefix}${docName}`);
+      await deps.explorer.selectTreeNode(
+        target.prefix ? dirNodeKey(target.collectionId, target.prefix) : vaultNodeKey(target.collectionId),
+      );
+      await deps.explorer.refreshTree();
+      deps.explorer.selectDocument(doc.id);
+      $q.notify({ type: 'positive', message: t('knowledgePage.newDocSuccess') });
+    } catch (e) {
+      if (parseKratosApiError(e).status === 409) {
+        $q.notify({ type: 'negative', message: t('knowledgePage.docAlreadyExists', { name: docName }) });
+        await promptCreateVaultDoc(target, name);
+      } else {
+        $q.notify({ type: 'negative', message: deps.friendlyError(e) || t('knowledgePage.newDocFailed') });
+      }
+    }
   }
 
   /** G-11：local vault 全量重索引（文件系统真相源强制重建派生索引）；确认后
    *  异步受理（在途返回 409），进度经 knowledge_vault_reindex WS 通知。 */
-  function confirmReindexVault(node: VaultQTreeNode) {
-    $q.dialog({
+  async function confirmReindexVault(node: VaultQTreeNode) {
+    const ok = await confirm({
       title: lt('reindexTitle'),
       message: lt('reindexMessage', { name: node.label ?? '' }),
-      cancel: true,
-      persistent: true,
-    }).onOk(() => {
-      void reindexVault(node.vaultId)
-        .then(async () => {
-          $q.notify({ type: 'positive', message: lt('reindexAccepted') });
-          await deps.loadCollections();
-          if (node.vaultId === deps.selectedId.value) await deps.loadDocuments();
-        })
-        .catch((e) => $q.notify({ type: 'negative', message: deps.friendlyError(e) }));
+      tone: 'danger',
     });
+    if (!ok) return;
+    try {
+      await reindexVault(node.vaultId);
+      $q.notify({ type: 'positive', message: lt('reindexAccepted') });
+      await deps.loadCollections();
+      if (node.vaultId === deps.selectedId.value) await deps.loadDocuments();
+    } catch (e) {
+      $q.notify({ type: 'negative', message: deps.friendlyError(e) });
+    }
   }
 
-  function confirmEnableSemantic(collectionId: string) {
+  async function confirmEnableSemantic(collectionId: string) {
     const col = deps.collections.value.find((c) => c.id === collectionId);
     if (!col || col.embedding_model) return;
-    $q.dialog({
+    const ok = await confirm({
       title: t('knowledgePage.enableSemanticTitle'),
       message: t('knowledgePage.enableSemanticBody', {
         model: deps.embedderConfig.value?.model ?? '',
         dim: deps.embedderConfig.value?.dim ?? 0,
       }),
-      cancel: true,
-      persistent: true,
-    }).onOk(() => {
-      void knowledgeStore
-        .enableCollectionSemantic(collectionId)
-        .then((r) => {
-          $q.notify({ type: 'positive', message: t('knowledgePage.enableSemanticAccepted', { n: r.enqueued_docs }) });
-          return deps.loadCollections();
-        })
-        .catch((e) => $q.notify({ type: 'negative', message: deps.friendlyError(e) }));
+      tone: 'danger',
     });
+    if (!ok) return;
+    try {
+      const r = await knowledgeStore.enableCollectionSemantic(collectionId);
+      $q.notify({ type: 'positive', message: t('knowledgePage.enableSemanticAccepted', { n: r.enqueued_docs }) });
+      await deps.loadCollections();
+    } catch (e) {
+      $q.notify({ type: 'negative', message: deps.friendlyError(e) });
+    }
   }
 
   function onTreeNodeAction(
@@ -392,10 +379,10 @@ export function useKnowledgeVaultOps(deps: KnowledgeVaultOpsDeps) {
     const target = { collectionId: node.vaultId, prefix: node.prefix };
     switch (action) {
       case 'new-dir':
-        promptCreateVaultDir(target);
+        void promptCreateVaultDir(target);
         break;
       case 'new-doc':
-        promptCreateVaultDoc(target);
+        void promptCreateVaultDoc(target);
         break;
       case 'upload':
         upload.pendingUploadTarget.value = target;

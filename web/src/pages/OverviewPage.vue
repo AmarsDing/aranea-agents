@@ -49,25 +49,33 @@
         </template>
       </OverviewVerdictBanner>
 
-      <OverviewTaskBoard
-        :items="taskSituations.items.value"
-        :total="taskSituations.total.value"
-        :limit="taskSituations.limit.value"
-        :offset="taskSituations.offset.value"
-        :loading="taskSituations.loading.value"
-        :error="taskSituations.error.value"
-        :query="taskSituations.query.value"
-        @refresh="taskSituations.refresh"
-        @filter="taskSituations.setQuery"
-        @page="(offset) => taskSituations.setQuery({ offset })"
-        @page-size="(limit) => taskSituations.setQuery({ limit, offset: 0 })"
-        @drill="onTaskDrill"
-        @create="onTaskCreate"
+      <OverviewAttentionQueue
+        :lanes="board.lanes"
+        :loading="loading || attentionLoading"
+        @drill="onDrillItem"
+        @refresh="onRefresh"
       />
 
-      <AppWorkspaceLaunchpad :label="t('uiSystem.launchpad.label')" :items="launchpadItems" />
-
-      <OverviewAttentionQueue :lanes="board.lanes" :loading="loading || attentionLoading" @drill="onDrillItem" @refresh="onRefresh" />
+      <div class="ov-workrow">
+        <OverviewTaskBoard
+          :items="taskSituations.items.value"
+          :total="taskSituations.total.value"
+          :limit="taskSituations.limit.value"
+          :offset="taskSituations.offset.value"
+          :loading="taskSituations.loading.value"
+          :error="taskSituations.error.value"
+          :query="taskSituations.query.value"
+          @refresh="taskSituations.refresh"
+          @filter="taskSituations.setQuery"
+          @page="(offset) => taskSituations.setQuery({ offset })"
+          @page-size="(limit) => taskSituations.setQuery({ limit, offset: 0 })"
+          @drill="onTaskDrill"
+          @create="onTaskCreate"
+        />
+        <div class="ov-workrow__rail">
+          <AppWorkspaceLaunchpad :label="t('uiSystem.launchpad.label')" :items="launchpadItems" />
+        </div>
+      </div>
 
       <OverviewRedStrip
         :model-tiles="modelTiles"
@@ -157,12 +165,14 @@ const {
   refreshAll,
 } = page;
 
-const launchpadItems = computed(() => workspaceShortcuts.map((item) => ({
-  ...item,
-  title: t(`uiSystem.launchpad.${item.key}.title`),
-  description: t(`uiSystem.launchpad.${item.key}.description`),
-  action: t('uiSystem.launchpad.start'),
-})));
+const launchpadItems = computed(() =>
+  workspaceShortcuts.map((item) => ({
+    ...item,
+    title: t(`uiSystem.launchpad.${item.key}.title`),
+    description: t(`uiSystem.launchpad.${item.key}.description`),
+    action: t('uiSystem.launchpad.start'),
+  })),
+);
 
 const { board, loading: attentionLoading, refresh: refreshAttention } = useAttentionBoard();
 const taskSituations = useTaskSituations();

@@ -3,12 +3,6 @@
     <q-banner v-if="unavailable" rounded class="app-banner-warning q-ma-sm flex-none">
       知识库服务不可用：{{ unavailable }}。请确认 Postgres / pgvector 已配置。
     </q-banner>
-    <q-banner v-if="error" rounded class="bg-negative text-white q-ma-sm flex-none">
-      {{ error }}
-      <template #action>
-        <q-btn flat color="white" label="重试" @click="loadCollections" />
-      </template>
-    </q-banner>
     <q-banner v-if="workbench.draftError.value" dense class="app-banner-warning q-ma-sm">{{
       t('knowledgeWorkflow.draftFailed')
     }}</q-banner>
@@ -27,57 +21,103 @@
       </template>
     </q-banner>
 
-    <!-- SP2-8：深空液态玻璃工作台（薄壳页面唯一的常驻主体） -->
-    <KnowledgeWorkbench
-      ref="workbenchRef"
-      class="knowledge-page-wb__main"
-      :workbench="workbench"
-      :collections="collections"
-      :documents="documents"
-      :viewer-id="String(auth.user?.id || '')"
-      :is-admin="auth.isPlatformAdmin"
-      :current-vault-id="selectedId"
-      :nodes="explorerRootNodes"
-      :selected-key="explorerSelectedKey"
-      :expanded-keys="explorerExpandedKeys"
-      :tree-loading="explorerTreeLoading"
-      :tree-error="explorerTreeError"
-      :drag-file="explorerDragFile"
-      :files="explorerFiles"
-      :current-prefix="explorerPrefix"
-      :panels-refresh-nonce="panelsRefreshNonce"
-      :documents-truncated="documentsTruncated"
-      @switch-vault="onSwitchVault"
-      @select-node="selectExplorerTreeNode"
-      @update:expanded-keys="(v: string[]) => (explorerExpandedKeys = v)"
-      @lazy-load="onExplorerLazyLoad"
-      @node-action="onTreeNodeAction"
-      @create-vault="openCreateCollection"
-      @drop-node="onExplorerDropNode"
-      @retry="refreshExplorerTree"
-      @refresh-tree="refreshExplorerTree"
-      @open-graph="onOpenGraph"
-      @open-settings="settingsOpen = true"
-      @upload="openFileUpload"
-      @open-hit-test="hitTestOpen = true"
-      @promote-active="openPromoteDialog"
-      @ingest-text="ingestOpen = true"
-      @file-action="onFileAction"
-      @file-drag-start="explorerDragStart"
-      @file-drag-end="explorerDragEnd"
-      @drop-current-dir="onDropCurrentDir"
-    >
-      <!-- 上传队列收纳进左栏底部（SP2-8 插槽） -->
-      <template #left-footer>
-        <knowledge-upload-queue
-          v-if="uploadTasks.length"
-          :tasks="uploadTasks"
-          @clear-finished="clearFinishedUploadTasks"
-          @remove-task="removeUploadTask"
-          @retry-task="retryUploadTask"
-        />
-      </template>
-    </KnowledgeWorkbench>
+    <!-- 五态：加载失败优先于空态——error 分支只渲染错误面板，绝不出现「暂无」 -->
+    <AppStatePanel
+      v-if="pageState === 'loading'"
+      class="q-ma-sm flex-none"
+      variant="loading"
+      :rows="5"
+    />
+    <AppStatePanel
+      v-else-if="pageState === 'error'"
+      class="q-ma-sm flex-none"
+      variant="error"
+      :title="error"
+      :action-label="t('shell.common.retry')"
+      action-icon="refresh"
+      @action="loadCollections"
+    />
+    <AppStatePanel
+      v-else-if="pageState === 'forbidden'"
+      class="q-ma-sm flex-none"
+      variant="forbidden"
+    />
+    <AppStatePanel
+      v-else-if="pageState === 'empty'"
+      class="q-ma-sm flex-none"
+      variant="empty"
+      title="暂无知识库"
+      description="新建一个知识库后即可上传文档与建设图谱。"
+      action-label="新建知识库"
+      action-icon="add"
+      @action="openCreateCollection"
+    />
+
+    <template v-else>
+      <AppStatePanel
+        v-if="pageState === 'partial'"
+        class="q-ma-sm flex-none"
+        variant="partial"
+        dense
+        :description="error"
+        :action-label="t('shell.common.retry')"
+        action-icon="refresh"
+        @action="loadCollections"
+      />
+
+      <!-- SP2-8：深空液态玻璃工作台（薄壳页面唯一的常驻主体） -->
+      <KnowledgeWorkbench
+        ref="workbenchRef"
+        class="knowledge-page-wb__main"
+        :workbench="workbench"
+        :collections="collections"
+        :documents="documents"
+        :viewer-id="String(auth.user?.id || '')"
+        :is-admin="auth.isPlatformAdmin"
+        :current-vault-id="selectedId"
+        :nodes="explorerRootNodes"
+        :selected-key="explorerSelectedKey"
+        :expanded-keys="explorerExpandedKeys"
+        :tree-loading="explorerTreeLoading"
+        :tree-error="explorerTreeError"
+        :load-error="error"
+        :drag-file="explorerDragFile"
+        :files="explorerFiles"
+        :current-prefix="explorerPrefix"
+        :panels-refresh-nonce="panelsRefreshNonce"
+        :documents-truncated="documentsTruncated"
+        @switch-vault="onSwitchVault"
+        @select-node="selectExplorerTreeNode"
+        @update:expanded-keys="(v: string[]) => (explorerExpandedKeys = v)"
+        @lazy-load="onExplorerLazyLoad"
+        @node-action="onTreeNodeAction"
+        @create-vault="openCreateCollection"
+        @drop-node="onExplorerDropNode"
+        @retry="refreshExplorerTree"
+        @refresh-tree="refreshExplorerTree"
+        @open-graph="onOpenGraph"
+        @open-settings="settingsOpen = true"
+        @upload="openFileUpload"
+        @open-hit-test="hitTestOpen = true"
+        @promote-active="openPromoteDialog"
+        @ingest-text="ingestOpen = true"
+        @file-action="onFileAction"
+        @file-drag-start="explorerDragStart"
+        @file-drag-end="explorerDragEnd"
+        @drop-current-dir="onDropCurrentDir"
+      >
+        <!-- 上传队列收纳进左栏底部（SP2-8 插槽） -->
+        <template #left-footer>
+          <knowledge-upload-queue
+            v-if="uploadTasks.length"
+            :tasks="uploadTasks"
+            @clear-finished="clearFinishedUploadTasks"
+            @remove-task="removeUploadTask"
+            @retry-task="retryUploadTask"
+          />
+        </template>
+      </KnowledgeWorkbench>
+    </template>
 
     <!-- G5 图谱全屏覆盖（SP2-8）：顶栏 / ⌘K / 局部图谱「展开全屏」进入，ESC 或关闭按钮退出 -->
     <knowledge-graph-3-d
@@ -131,34 +171,16 @@
     />
 
     <!-- 设置浮层（SP3）：Embedder 配置，全站标准玻璃对话框 -->
-    <q-dialog v-model="settingsOpen">
-      <q-card class="app-dialog-card app-dialog-card--sm app-glass-dialog knowledge-page-wb__settings">
-        <q-card-section class="app-glass-dialog__head row items-center justify-between">
-          <div class="app-glass-dialog__title">{{ t('knowledgePage.tabSettings') }}</div>
-        </q-card-section>
-        <div class="app-glass-dialog__scroll">
-          <q-card-section class="app-dialog-body app-glass-dialog__body">
-            <knowledge-embedder-panel :config="embedderConfig" :saving="embedderSaving" @save="saveEmbedderConfig" />
-            <!-- G-38 W8：外部源同步连接器（明线设置区先例——禁命令面板暗线） -->
-            <knowledge-connectors-panel class="q-mt-lg" />
-          </q-card-section>
-        </div>
-      </q-card>
-    </q-dialog>
+    <AppDialog v-model="settingsOpen" size="sm" :title="t('knowledgePage.tabSettings')">
+      <knowledge-embedder-panel :config="embedderConfig" :saving="embedderSaving" @save="saveEmbedderConfig" />
+      <!-- G-38 W8：外部源同步连接器（明线设置区先例——禁命令面板暗线） -->
+      <knowledge-connectors-panel class="q-mt-lg" />
+    </AppDialog>
 
     <!-- G-19 hit-test：检索排查面板（同 query 的 dense/sparse/RRF 三策略对比；不落 access_log） -->
-    <q-dialog v-model="hitTestOpen">
-      <q-card class="app-dialog-card app-glass-dialog knowledge-page-wb__hit-test">
-        <q-card-section class="app-glass-dialog__head row items-center justify-between">
-          <div class="app-glass-dialog__title">{{ hitTestTitle }}</div>
-        </q-card-section>
-        <div class="app-glass-dialog__scroll">
-          <q-card-section class="app-dialog-body app-glass-dialog__body">
-            <knowledge-hit-test-panel v-if="selectedId" :collection-id="selectedId" />
-          </q-card-section>
-        </div>
-      </q-card>
-    </q-dialog>
+    <AppDialog v-model="hitTestOpen" size="md" :title="hitTestTitle">
+      <knowledge-hit-test-panel v-if="selectedId" :collection-id="selectedId" />
+    </AppDialog>
 
     <knowledge-create-dialog
       v-model:open="createOpen"
@@ -232,6 +254,8 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { useQuasar } from 'quasar';
 import { useI18n } from 'vue-i18n';
+import AppDialog from '../components/common/AppDialog.vue';
+import AppStatePanel from '../components/common/AppStatePanel.vue';
 import KnowledgeEmbedderPanel from '../components/knowledge/KnowledgeEmbedderPanel.vue';
 import KnowledgeConnectorsPanel from '../components/knowledge/KnowledgeConnectorsPanel.vue';
 import KnowledgeHitTestPanel from '../components/knowledge/KnowledgeHitTestPanel.vue';
@@ -257,6 +281,7 @@ import { useKnowledgeGraphDeltaWs } from '../features/knowledge/useKnowledgeGrap
 import { createKnowledgeWorkbench } from '../features/knowledge/useKnowledgeWorkbench';
 import type { MoveDropResult, VaultQTreeNode } from '../features/knowledge/useVaultExplorer';
 import type { KnowledgeDocument, VaultTreeNode } from '../features/knowledge/types';
+import { resolvePageState } from './pageState';
 
 const {
   collections,
@@ -264,8 +289,10 @@ const {
   documents,
   documentsTruncated,
   docsLoading,
+  loading,
   DOCUMENTS_PAGE_LIMIT,
   error,
+  forbidden,
   unavailable,
   removedDocId,
   createOpen,
@@ -333,6 +360,16 @@ const {
 
 const $q = useQuasar();
 const { t } = useI18n();
+
+// 五态契约：错误优先于空态（error 与 empty 互斥，见 pages/pageState.ts）。
+const pageState = computed(() =>
+  resolvePageState({
+    loading: loading.value,
+    error: error.value,
+    count: collections.value.length,
+    forbidden: forbidden.value,
+  }),
+);
 
 // ---------- SP2-8：工作台状态机（tabs/脏标记/CAS 保存） ----------
 

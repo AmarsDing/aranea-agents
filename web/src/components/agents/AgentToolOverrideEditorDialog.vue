@@ -1,57 +1,57 @@
 <template>
-  <q-dialog :model-value="open" persistent @update:model-value="$emit('update:open', $event)">
-    <q-card class="app-dialog-card app-dialog-card--sm">
-      <q-card-section class="text-h6">{{ editing ? '编辑工具覆盖' : '添加工具覆盖' }}</q-card-section>
-      <q-separator />
-      <q-card-section class="app-dialog-body q-gutter-sm q-pt-none">
-        <div class="text-body2 text-weight-medium">{{ row?.display_name }} ({{ row?.tool_key }})</div>
-        <q-select
-          :model-value="form.mode"
-          label="模式"
-          dense
-          outlined
-          :options="modeOptions"
-          emit-value
-          map-options
-          @update:model-value="emitFormPatch({ mode: String($event ?? 'inherit') })"
-        />
-        <q-toggle
-          :model-value="form.requires_confirmation"
-          label="需要确认"
-          @update:model-value="emitFormPatch({ requires_confirmation: Boolean($event) })"
-        />
-        <div class="text-caption text-grey-7">{{ $t('agentSettings.toolOverrideConfirmHint') }}</div>
-        <q-input
-          :model-value="form.config_override_json"
-          label="配置覆盖 JSON"
-          type="textarea"
-          dense
-          outlined
-          autogrow
-          :rules="[(val) => isValidJson(String(val ?? '')) || $t('agentSettings.toolOverrideInvalidJson')]"
-          @update:model-value="emitFormPatch({ config_override_json: String($event ?? '{}') })"
-        />
-      </q-card-section>
-      <q-card-actions align="right" class="app-actions-bar">
+  <app-dialog
+    :model-value="open"
+    :title="editing ? '编辑工具覆盖' : '添加工具覆盖'"
+    :subtitle="row ? `${row.display_name} (${row.tool_key})` : ''"
+    icon="tune"
+    size="sm"
+    persistent
+    :loading="saving"
+    @update:model-value="$emit('update:open', $event)"
+  >
+    <div class="q-gutter-sm">
+      <q-select
+        :model-value="form.mode"
+        label="模式"
+        dense
+        outlined
+        :options="modeOptions"
+        emit-value
+        map-options
+        @update:model-value="emitFormPatch({ mode: String($event ?? 'inherit') })"
+      />
+      <q-toggle
+        :model-value="form.requires_confirmation"
+        label="需要确认"
+        @update:model-value="emitFormPatch({ requires_confirmation: Boolean($event) })"
+      />
+      <div class="text-caption text-grey-7">{{ $t('agentSettings.toolOverrideConfirmHint') }}</div>
+      <q-input
+        :model-value="form.config_override_json"
+        label="配置覆盖 JSON"
+        type="textarea"
+        dense
+        outlined
+        autogrow
+        :rules="[(val) => isValidJson(String(val ?? '')) || $t('agentSettings.toolOverrideInvalidJson')]"
+        @update:model-value="emitFormPatch({ config_override_json: String($event ?? '{}') })"
+      />
+    </div>
+    <template #actions>
+      <div class="row full-width items-center">
         <!-- G2 修复：恢复编辑态删除入口（父组件 @remove → 删除确认流，此前
              emit 缺失致整条删除链路不可达）。 -->
-        <q-btn
-          v-if="editing"
-          flat
-          no-caps
-          color="negative"
-          :label="$t('common.delete')"
-          @click="$emit('remove')"
-        />
+        <q-btn v-if="editing" flat no-caps color="negative" :label="$t('common.delete')" @click="$emit('remove')" />
         <q-space />
         <q-btn flat no-caps label="取消" @click="$emit('update:open', false)" />
         <q-btn no-caps unelevated color="primary" label="保存" :loading="saving" @click="$emit('save')" />
-      </q-card-actions>
-    </q-card>
-  </q-dialog>
+      </div>
+    </template>
+  </app-dialog>
 </template>
 
 <script setup lang="ts">
+import AppDialog from '../common/AppDialog.vue';
 import type { AgentToolOverrideForm, AgentToolOverrideRow } from '../../features/agents/useAgentToolOverrides';
 
 const props = defineProps<{

@@ -25,7 +25,12 @@
           {{ t('chat.toolLongRunning', '长任务') }}
         </q-chip>
         <q-space />
-        <span v-if="showElapsed" class="text-caption" :style="{ color: elapsedColor }">{{ elapsedLabel }}</span>
+        <span
+          v-if="showElapsed"
+          class="text-caption"
+          :class="elapsedSeconds >= 60 ? 'chat-execution-card__elapsed--long' : 'chat-execution-card__elapsed'"
+          >{{ elapsedLabel }}</span
+        >
         <span v-else-if="durationLabel" class="text-caption text-grey">{{ durationLabel }}</span>
         <q-icon v-if="status === 'running'" name="hourglass_top" color="warning" size="18px" aria-hidden="true" />
         <span v-if="status === 'running'" class="chat-execution-card__pulse" aria-hidden="true" />
@@ -178,11 +183,6 @@ const elapsedLabel = computed(() => {
   const rem = s % 60;
   return `${m}m ${rem}s${isRunning ? '...' : ''}`;
 });
-
-/** Elapsed color: <60s → tertiary, ≥60s → warning */
-const elapsedColor = computed(() =>
-  elapsedSeconds.value >= 60 ? 'var(--color-warning)' : 'var(--color-text-tertiary)',
-);
 
 // ── SP-FE-30: Provide/Inject global control ──
 const collapseControl = inject(EXECUTION_COLLAPSE_CONTROL_KEY, null);
@@ -354,12 +354,19 @@ const hasMetadata = computed(() => Boolean(props.event.run_id?.trim() || props.e
 
 <style scoped lang="sass">
 .chat-execution-card
-  border-radius: 10px
+  border-radius: 8px
   border: 1px solid color-mix(in srgb, var(--glass-border) 65%, transparent)
   background: color-mix(in srgb, var(--glass-surface) 55%, transparent)
   backdrop-filter: blur(var(--glass-blur-default))
   overflow: hidden
   transition: border-color 0.2s ease
+
+// 耗时着色：<60s 弱化，≥60s 警示
+.chat-execution-card__elapsed
+  color: var(--color-text-tertiary)
+
+.chat-execution-card__elapsed--long
+  color: var(--color-warning)
 
 .chat-execution-card--running
   border-color: color-mix(in srgb, var(--color-warning) 30%, transparent)
@@ -420,7 +427,7 @@ body.body--dark .chat-execution-card__pre
   border-radius: 50%
   background: var(--color-accent)
   vertical-align: middle
-  margin-left: 4px
+  margin-left: var(--nt-space-1)
   animation: exec-pulse 1s ease-in-out infinite
 
 @keyframes exec-pulse

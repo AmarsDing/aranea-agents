@@ -46,9 +46,9 @@ const statusLabel = computed(() => {
 .context-indicator {
   display: inline-flex;
   align-items: center;
-  padding: 2px 8px;
+  padding: var(--nt-space-1) var(--nt-space-2);
   border-radius: 4px;
-  margin: 4px 0;
+  margin: var(--nt-space-1) 0;
 
   backdrop-filter: blur(var(--glass-blur-default));
 

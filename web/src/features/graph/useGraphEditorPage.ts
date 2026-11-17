@@ -13,6 +13,7 @@ import { useGraphUndoRedo } from './useGraphUndoRedo';
 import { useGraphLocalValidation } from './useGraphLocalValidation';
 import { buildValidationIssues } from './validationIssues';
 import { useGraphValidationDock } from './useGraphValidationDock';
+import { confirm } from '../../composables/useAppConfirm';
 
 export function useGraphEditorPage() {
   const $q = useQuasar();
@@ -192,13 +193,13 @@ export function useGraphEditorPage() {
       void save();
       return;
     }
-    void ownerTeamLabel().then((label) => {
-      $q.dialog({
+    void ownerTeamLabel().then(async (label) => {
+      const ok = await confirm({
         title: '保存 Team 拓扑',
         message: `此图属于 Team「${label}」，保存将把自定义拓扑同步为该 Team 的执行拓扑，并按图节点回写成员。继续？`,
-        cancel: true,
-        persistent: true,
-      }).onOk(() => void save());
+        tone: 'danger',
+      });
+      if (ok) await save();
     });
   }
 
@@ -335,19 +336,18 @@ export function useGraphEditorPage() {
     document.removeEventListener('keydown', onGlobalKeydown);
   });
 
-  onBeforeRouteLeave((_to, _from, next) => {
-    if (dirty.value) {
-      $q.dialog({
-        title: t('graphs.editorUnsavedTitle'),
-        message: t('graphs.editorUnsavedMessage'),
-        cancel: true,
-        persistent: true,
-      })
-        .onOk(() => next())
-        .onCancel(() => next(false));
-    } else {
+  onBeforeRouteLeave(async (_to, _from, next) => {
+    if (!dirty.value) {
       next();
+      return;
     }
+    const ok = await confirm({
+      title: t('graphs.editorUnsavedTitle'),
+      message: t('graphs.editorUnsavedMessage'),
+      tone: 'danger',
+    });
+    if (ok) next();
+    else next(false);
   });
 
   return {

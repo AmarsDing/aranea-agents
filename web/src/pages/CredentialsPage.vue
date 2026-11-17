@@ -60,14 +60,40 @@
           </template>
         </AppPageToolbar>
 
-        <q-banner v-if="error" rounded class="app-page-error-banner q-mb-md" role="alert">
-          {{ error }}
-          <template #action>
-            <q-btn flat dense :label="t('credentialsPage.retry')" @click="loadRows" />
-          </template>
-        </q-banner>
+        <AppStatePanel
+          v-if="credentialState === 'loading'"
+          variant="loading"
+          :rows="5"
+        />
+        <AppStatePanel
+          v-else-if="credentialState === 'error'"
+          variant="error"
+          :title="error"
+          :action-label="t('credentialsPage.retry')"
+          action-icon="refresh"
+          @action="loadRows"
+        />
+        <AppStatePanel
+          v-else-if="credentialState === 'forbidden'"
+          variant="forbidden"
+        />
+        <AppStatePanel
+          v-else-if="credentialState === 'empty'"
+          variant="empty"
+          :title="t('credentialsPage.empty')"
+        />
 
-        <div class="app-registry-table-shell">
+        <div v-else class="app-registry-table-shell">
+          <AppStatePanel
+            v-if="credentialState === 'partial'"
+            class="q-mb-md"
+            variant="partial"
+            dense
+            :description="error"
+            :action-label="t('credentialsPage.retry')"
+            action-icon="refresh"
+            @action="loadRows"
+          />
           <q-table
             :rows="rows"
             :columns="credentialColumns"
@@ -159,14 +185,40 @@
           </template>
         </AppPageToolbar>
 
-        <q-banner v-if="execError" rounded class="app-page-error-banner q-mb-md" role="alert">
-          {{ execError }}
-          <template #action>
-            <q-btn flat dense :label="t('credentialsPage.retry')" @click="loadExecutions" />
-          </template>
-        </q-banner>
+        <AppStatePanel
+          v-if="execState === 'loading'"
+          variant="loading"
+          :rows="5"
+        />
+        <AppStatePanel
+          v-else-if="execState === 'error'"
+          variant="error"
+          :title="execError"
+          :action-label="t('credentialsPage.retry')"
+          action-icon="refresh"
+          @action="loadExecutions"
+        />
+        <AppStatePanel
+          v-else-if="execState === 'forbidden'"
+          variant="forbidden"
+        />
+        <AppStatePanel
+          v-else-if="execState === 'empty'"
+          variant="empty"
+          :title="t('credentialsPage.emptyExecutions')"
+        />
 
-        <div class="app-registry-table-shell">
+        <div v-else class="app-registry-table-shell">
+          <AppStatePanel
+            v-if="execState === 'partial'"
+            class="q-mb-md"
+            variant="partial"
+            dense
+            :description="execError"
+            :action-label="t('credentialsPage.retry')"
+            action-icon="refresh"
+            @action="loadExecutions"
+          />
           <q-table
             :rows="execRows"
             :columns="executionColumns"
@@ -211,146 +263,132 @@
     </q-tab-panels>
 
     <!-- 新建 / 编辑对话框 -->
-    <q-dialog v-model="editorOpen" persistent>
-      <q-card class="credentials-page__dialog">
-        <q-card-section class="text-h6">
-          {{ editingId ? t('credentialsPage.dialogEditTitle') : t('credentialsPage.dialogCreateTitle') }}
-        </q-card-section>
-        <q-card-section class="q-gutter-md">
-          <q-input v-model="form.name" dense outlined :label="t('credentialsPage.fieldName')" :disable="saving" />
-          <q-input
-            v-model="form.site"
-            dense
-            outlined
-            :label="t('credentialsPage.fieldSite')"
-            :hint="t('credentialsPage.fieldSiteHint')"
-            :disable="saving || !!editingId"
-            class="mono"
-          />
-          <q-input
-            v-model="form.url"
-            dense
-            outlined
-            :label="t('credentialsPage.fieldUrl')"
-            :disable="saving"
-            class="mono"
-          />
-          <q-input
-            v-model="form.username"
-            dense
-            outlined
-            :label="t('credentialsPage.fieldUsername')"
-            :disable="saving"
-          />
-          <div class="row q-col-gutter-md">
-            <div class="col-6">
-              <q-select
-                v-model="form.secret_kind"
-                dense
-                outlined
-                :options="secretKindOptions"
-                :label="t('credentialsPage.fieldKind')"
-                :disable="saving || !!editingId"
-                emit-value
-                map-options
-              />
-            </div>
-            <div class="col-6">
-              <q-select
-                v-model="form.sensitivity"
-                dense
-                outlined
-                :options="sensitivityOptions"
-                :label="t('credentialsPage.fieldSensitivity')"
-                :hint="t('credentialsPage.fieldSensitivityHint')"
-                :disable="saving"
-                emit-value
-                map-options
-                clearable
-              />
-            </div>
+    <AppDialog
+      v-model="editorOpen"
+      persistent
+      size="md"
+      :title="editingId ? t('credentialsPage.dialogEditTitle') : t('credentialsPage.dialogCreateTitle')"
+    >
+      <div class="q-gutter-md">
+        <q-input v-model="form.name" dense outlined :label="t('credentialsPage.fieldName')" :disable="saving" />
+        <q-input
+          v-model="form.site"
+          dense
+          outlined
+          :label="t('credentialsPage.fieldSite')"
+          :hint="t('credentialsPage.fieldSiteHint')"
+          :disable="saving || !!editingId"
+          class="mono"
+        />
+        <q-input
+          v-model="form.url"
+          dense
+          outlined
+          :label="t('credentialsPage.fieldUrl')"
+          :disable="saving"
+          class="mono"
+        />
+        <q-input v-model="form.username" dense outlined :label="t('credentialsPage.fieldUsername')" :disable="saving" />
+        <div class="row q-col-gutter-md">
+          <div class="col-6">
+            <q-select
+              v-model="form.secret_kind"
+              dense
+              outlined
+              :options="secretKindOptions"
+              :label="t('credentialsPage.fieldKind')"
+              :disable="saving || !!editingId"
+              emit-value
+              map-options
+            />
           </div>
-          <q-input
-            v-model="form.secret"
-            dense
-            outlined
-            type="password"
-            :label="editingId ? t('credentialsPage.fieldSecretRotate') : t('credentialsPage.fieldSecret')"
-            :hint="t('credentialsPage.fieldSecretHint')"
-            :disable="saving"
-            autocomplete="new-password"
-            class="mono"
-          />
-          <q-input
-            v-model="form.note"
-            dense
-            outlined
-            type="textarea"
-            autogrow
-            :label="t('credentialsPage.fieldNote')"
-            :disable="saving"
-          />
-        </q-card-section>
-        <q-card-actions align="right">
-          <q-btn flat no-caps :label="t('credentialsPage.btnCancel')" :disable="saving" @click="editorOpen = false" />
-          <q-btn
-            color="primary"
-            unelevated
-            no-caps
-            :label="t('credentialsPage.btnSave')"
-            :loading="saving"
-            @click="saveCredential"
-          />
-        </q-card-actions>
-      </q-card>
-    </q-dialog>
+          <div class="col-6">
+            <q-select
+              v-model="form.sensitivity"
+              dense
+              outlined
+              :options="sensitivityOptions"
+              :label="t('credentialsPage.fieldSensitivity')"
+              :hint="t('credentialsPage.fieldSensitivityHint')"
+              :disable="saving"
+              emit-value
+              map-options
+              clearable
+            />
+          </div>
+        </div>
+        <q-input
+          v-model="form.secret"
+          dense
+          outlined
+          type="password"
+          :label="editingId ? t('credentialsPage.fieldSecretRotate') : t('credentialsPage.fieldSecret')"
+          :hint="t('credentialsPage.fieldSecretHint')"
+          :disable="saving"
+          autocomplete="new-password"
+          class="mono"
+        />
+        <q-input
+          v-model="form.note"
+          dense
+          outlined
+          type="textarea"
+          autogrow
+          :label="t('credentialsPage.fieldNote')"
+          :disable="saving"
+        />
+      </div>
+      <template #actions>
+        <q-btn flat no-caps :label="t('credentialsPage.btnCancel')" :disable="saving" @click="editorOpen = false" />
+        <q-btn
+          color="primary"
+          unelevated
+          no-caps
+          :label="t('credentialsPage.btnSave')"
+          :loading="saving"
+          @click="saveCredential"
+        />
+      </template>
+    </AppDialog>
 
     <!-- Bitwarden 导入对话框 -->
-    <q-dialog v-model="importOpen" persistent>
-      <q-card class="credentials-page__dialog">
-        <q-card-section class="text-h6">{{ t('credentialsPage.importTitle') }}</q-card-section>
-        <q-card-section>
-          <div class="q-mb-sm text-body2">{{ t('credentialsPage.importHint') }}</div>
-          <q-input
-            v-model="importJson"
-            dense
-            outlined
-            type="textarea"
-            autogrow
-            :label="t('credentialsPage.importJsonLabel')"
-            :disable="importing"
-            class="mono"
-          />
-        </q-card-section>
-        <q-card-actions align="right">
-          <q-btn
-            flat
-            no-caps
-            :label="t('credentialsPage.btnCancel')"
-            :disable="importing"
-            @click="importOpen = false"
-          />
-          <q-btn
-            color="primary"
-            unelevated
-            no-caps
-            :label="t('credentialsPage.btnImportRun')"
-            :loading="importing"
-            @click="runImport"
-          />
-        </q-card-actions>
-      </q-card>
-    </q-dialog>
+    <AppDialog v-model="importOpen" persistent size="md" :title="t('credentialsPage.importTitle')">
+      <div class="q-mb-sm text-body2">{{ t('credentialsPage.importHint') }}</div>
+      <q-input
+        v-model="importJson"
+        dense
+        outlined
+        type="textarea"
+        autogrow
+        :label="t('credentialsPage.importJsonLabel')"
+        :disable="importing"
+        class="mono"
+      />
+      <template #actions>
+        <q-btn flat no-caps :label="t('credentialsPage.btnCancel')" :disable="importing" @click="importOpen = false" />
+        <q-btn
+          color="primary"
+          unelevated
+          no-caps
+          :label="t('credentialsPage.btnImportRun')"
+          :loading="importing"
+          @click="runImport"
+        />
+      </template>
+    </AppDialog>
   </q-page>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue';
+import AppDialog from '../components/common/AppDialog.vue';
+import AppStatePanel from '../components/common/AppStatePanel.vue';
 import AppPageHero from '../components/layout/AppPageHero.vue';
 import AppPageToolbar from '../components/layout/AppPageToolbar.vue';
 import AppRegistryPagination from '../components/layout/AppRegistryPagination.vue';
 import { useCredentialsPage } from '../features/credentials/useCredentialsPage';
 import { CREDENTIAL_SECRET_KIND_OPTIONS } from '../features/credentials/types';
+import { resolvePageState } from './pageState';
 
 const {
   t,
@@ -359,6 +397,7 @@ const {
   total,
   loading,
   error,
+  forbidden,
   siteFilter,
   page,
   pageSize,
@@ -381,12 +420,31 @@ const {
   execTotal,
   execLoading,
   execError,
+  execForbidden,
   execSiteFilter,
   execPage,
   execPageSize,
   execPageMax,
   loadExecutions,
 } = useCredentialsPage();
+
+const credentialState = computed(() =>
+  resolvePageState({
+    loading: loading.value,
+    error: error.value,
+    count: rows.value.length,
+    forbidden: forbidden.value,
+  }),
+);
+
+const execState = computed(() =>
+  resolvePageState({
+    loading: execLoading.value,
+    error: execError.value,
+    count: execRows.value.length,
+    forbidden: execForbidden.value,
+  }),
+);
 
 const secretKindOptions = computed(() =>
   CREDENTIAL_SECRET_KIND_OPTIONS.map((v) => ({ value: v, label: t(`credentialsPage.kind_${v}`) })),

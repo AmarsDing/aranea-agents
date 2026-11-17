@@ -5,6 +5,8 @@ import { useQuasar } from 'quasar';
 import { WEBHOOK_SECRET_MASK, type WebhookRow } from './types';
 import { testWebhook } from './api';
 import { useWebhooksStore } from '../../stores/webhooks';
+import { isForbiddenApiError } from '../../utils/kratosError';
+import { confirm } from '../../composables/useAppConfirm';
 
 interface WebhookDialogExposed {
   reset: () => void;
@@ -20,6 +22,8 @@ export function useWebhooksPage() {
   const loading = storeLoading;
   const saving = ref(false);
   const error = ref('');
+  /** 列表接口 403：页面据此渲染 forbidden 态（无重试）。 */
+  const forbidden = ref(false);
   const search = ref('');
   const page = ref(1);
   const pageSize = ref(20);
@@ -46,6 +50,7 @@ export function useWebhooksPage() {
 
   async function loadRows() {
     error.value = '';
+    forbidden.value = false;
     try {
       await webhooksStore.loadWebhooks({
         page: page.value,
@@ -54,6 +59,7 @@ export function useWebhooksPage() {
       });
       if (page.value > pageMax.value) page.value = pageMax.value;
     } catch (e) {
+      forbidden.value = isForbiddenApiError(e);
       error.value = e instanceof Error ? e.message : String(e);
     }
   }
@@ -172,35 +178,36 @@ export function useWebhooksPage() {
     }
   }
 
-  function confirmDelete(row: WebhookRow) {
-    $q.dialog({
+  async function confirmDelete(row: WebhookRow) {
+    const ok = await confirm({
       title: t('webhooksPage.confirmDeleteTitle'),
       message: t('webhooksPage.confirmDeleteMessage', { name: row.name }),
-      cancel: true,
-      persistent: true,
-    }).onOk(async () => {
-      try {
-        await webhooksStore.removeWebhook(row.id);
-        $q.notify({ type: 'positive', message: t('webhooksPage.notifyDeleted') });
-        await loadRows();
-      } catch (e) {
-        $q.notify({ type: 'negative', message: e instanceof Error ? e.message : String(e) });
-      }
+      tone: 'danger',
     });
+    if (!ok) return;
+    try {
+      await webhooksStore.removeWebhook(row.id);
+      $q.notify({ type: 'positive', message: t('webhooksPage.notifyDeleted') });
+      await loadRows();
+    } catch (e) {
+      $q.notify({ type: 'negative', message: e instanceof Error ? e.message : String(e) });
+    }
   }
 
   function showSecretReveal(secret: string) {
-    $q.dialog({
-      title: t('webhooksPage.secretRevealTitle'),
-      message: t('webhooksPage.secretRevealMessage') + '\n\n' + secret,
-      ok: { label: t('webhooksPage.secretCopy'), color: 'primary' },
-      cancel: { label: t('webhooksPage.btnCancel'), flat: true },
-      persistent: true,
-    }).onOk(() => {
-      navigator.clipboard.writeText(secret).then(() => {
+    void (async () => {
+      const copy = await confirm({
+        title: t('webhooksPage.secretRevealTitle'),
+        message: `${t('webhooksPage.secretRevealMessage')}\n\n${secret}`,
+        confirmLabel: t('webhooksPage.secretCopy'),
+        cancelLabel: t('webhooksPage.btnCancel'),
+        tone: 'primary',
+      });
+      if (!copy) return;
+      await navigator.clipboard.writeText(secret).then(() => {
         $q.notify({ type: 'positive', message: t('webhooksPage.secretCopied') });
       });
-    });
+    })();
   }
 
   onMounted(loadRows);
@@ -210,6 +217,7 @@ export function useWebhooksPage() {
     loading,
     saving,
     error,
+    forbidden,
     search,
     editorOpen,
     editingId,

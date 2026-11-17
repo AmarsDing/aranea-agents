@@ -1,5 +1,6 @@
 import { computed, ref, watch } from 'vue';
 import { useQuasar } from 'quasar';
+import { confirm } from '../../composables/useAppConfirm';
 import { useI18n } from 'vue-i18n';
 
 import type { EvolutionMetrics, EvolutionSuggestion } from './types';
@@ -50,25 +51,24 @@ export function useAgentEvolutionPanel(agentId: () => string, range: () => strin
   async function onApply(id: string) {
     const aid = agentId();
     if (!aid) return;
-    $q.dialog({
+    const ok = await confirm({
       title: '应用进化建议',
       message: '确定应用此进化建议？将修改 Agent 的相关配置。',
-      cancel: true,
-      persistent: true,
-    }).onOk(async () => {
-      applyingId.value = id;
-      try {
-        await agentDetailStore.applyEvolution(aid, id);
-        await fetchSuggestions();
-        await fetchMetrics();
-      } catch (e: unknown) {
-        // 后端会拒绝通知类建议（无可应用内容）——把原因告知用户。
-        const msg = e instanceof Error ? e.message : String(e);
-        $q.notify({ type: 'warning', message: msg || '应用失败' });
-      } finally {
-        applyingId.value = null;
-      }
+      tone: 'danger',
     });
+    if (!ok) return;
+    applyingId.value = id;
+    try {
+      await agentDetailStore.applyEvolution(aid, id);
+      await fetchSuggestions();
+      await fetchMetrics();
+    } catch (e: unknown) {
+      // 后端会拒绝通知类建议（无可应用内容）——把原因告知用户。
+      const msg = e instanceof Error ? e.message : String(e);
+      $q.notify({ type: 'warning', message: msg || '应用失败' });
+    } finally {
+      applyingId.value = null;
+    }
   }
 
   function onReject(id: string) {
@@ -103,24 +103,23 @@ export function useAgentEvolutionPanel(agentId: () => string, range: () => strin
   async function onRollback(id: string) {
     const aid = agentId();
     if (!aid) return;
-    $q.dialog({
+    const ok = await confirm({
       title: t('agentSettings.evolution.rollbackConfirmTitle'),
       message: t('agentSettings.evolution.rollbackConfirmMessage'),
-      cancel: true,
-      persistent: true,
-    }).onOk(async () => {
-      rollbackingId.value = id;
-      try {
-        await agentDetailStore.rollbackEvolution(aid, id);
-        await fetchSuggestions();
-        await fetchMetrics();
-      } catch (e: unknown) {
-        const msg = e instanceof Error ? e.message : String(e);
-        $q.notify({ type: 'warning', message: msg || t('agentSettings.evolution.operationFailed') });
-      } finally {
-        rollbackingId.value = null;
-      }
+      tone: 'danger',
     });
+    if (!ok) return;
+    rollbackingId.value = id;
+    try {
+      await agentDetailStore.rollbackEvolution(aid, id);
+      await fetchSuggestions();
+      await fetchMetrics();
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      $q.notify({ type: 'warning', message: msg || t('agentSettings.evolution.operationFailed') });
+    } finally {
+      rollbackingId.value = null;
+    }
   }
 
   watch(

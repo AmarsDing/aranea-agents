@@ -19,7 +19,10 @@
         </q-item-section>
       </q-item>
     </q-list>
-    <q-card-section v-if="!loading && !datasets.length" class="text-grey-7 text-center">暂无数据集</q-card-section>
+    <q-card-section v-if="error" class="evaluation-dataset-list__error text-caption" role="alert">
+      {{ error }}
+    </q-card-section>
+    <q-card-section v-else-if="!loading && !datasets.length" class="text-grey-7 text-center">暂无数据集</q-card-section>
   </q-card>
 </template>
 
@@ -30,6 +33,8 @@ defineProps<{
   datasets: EvalDataset[];
   selectedId: string;
   loading?: boolean;
+  /** 数据集列表加载失败：置位后不得再渲染空态（五态契约：失败与空数据互斥）。 */
+  error?: string;
 }>();
 
 defineEmits<{

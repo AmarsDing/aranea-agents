@@ -1,7 +1,7 @@
 <template>
   <div class="todo-column" :class="{ 'todo-column--pulse': pulsing }">
     <div class="todo-column__header">
-      <span v-if="color" class="todo-column__dot" :style="{ background: color }" />
+      <span class="todo-column__dot" :class="`todo-column__dot--${columnKey}`" />
       <span class="todo-column__title">{{ title }}</span>
       <span class="todo-column__count">{{ items.length }}</span>
     </div>
@@ -14,7 +14,7 @@
 
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import type { TodoItem } from '../../features/chat/agentTreeTypes';
+import type { TodoColumnKey, TodoItem } from '../../features/chat/agentTreeTypes';
 import {
   computeTodoFingerprint,
   readLastFingerprint,
@@ -22,17 +22,11 @@ import {
 } from '../../features/chat/composables/todoColumnFingerprint';
 import TodoCard from './TodoCard.vue';
 
-const props = withDefaults(
-  defineProps<{
-    title: string;
-    items: TodoItem[];
-    color?: string;
-    columnKey: string;
-  }>(),
-  {
-    color: undefined,
-  },
-);
+const props = defineProps<{
+  title: string;
+  items: TodoItem[];
+  columnKey: TodoColumnKey;
+}>();
 
 const pulsing = ref(false);
 let pulseTimer: ReturnType<typeof setTimeout> | null = null;
@@ -97,6 +91,16 @@ onBeforeUnmount(() => {
   border-radius: 50%
   flex-shrink: 0
 
+// 列色：pending 弱化、进行中强调、已完成成功色
+.todo-column__dot--pending
+  background: var(--color-text-secondary)
+
+.todo-column__dot--in_progress
+  background: var(--color-accent)
+
+.todo-column__dot--completed
+  background: var(--color-success)
+
 .todo-column__title
   font-size: 11px
   font-weight: 600
@@ -121,6 +125,6 @@ onBeforeUnmount(() => {
   text-align: center
   color: var(--color-text-secondary)
   font-size: 12px
-  padding: 12px 0
+  padding: var(--nt-space-3) 0
   opacity: 0.5
 </style>

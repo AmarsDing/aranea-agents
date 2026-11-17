@@ -339,10 +339,10 @@ const formattedTime = computed(() => {
 .member-header
   display: flex
   align-items: center
-  padding: 4px 8px
+  padding: var(--nt-space-1) var(--nt-space-2)
   cursor: pointer
   user-select: none
-  gap: 8px
+  gap: var(--nt-space-2)
 
   &:hover
     background: var(--glass-surface-hover)
@@ -364,7 +364,7 @@ const formattedTime = computed(() => {
   &__center
     display: flex
     align-items: center
-    gap: 4px
+    gap: var(--nt-space-1)
     flex: 1 1 auto
     min-width: 0
     overflow: hidden
@@ -416,7 +416,7 @@ const formattedTime = computed(() => {
   padding: 6px 8px
 
 .member-activities
-  margin-bottom: 8px
+  margin-bottom: var(--nt-space-2)
   // 2026-07-05: 限制活动列表最大高度 300px，超出显示滚动条
   max-height: 300px
   overflow-y: auto
@@ -437,7 +437,7 @@ const formattedTime = computed(() => {
   font-size: 12px
   color: var(--color-icon-muted)
   text-align: center
-  padding: 8px
+  padding: var(--nt-space-2)
 
 .member-error
   font-size: 11px
@@ -449,7 +449,7 @@ const formattedTime = computed(() => {
 
 // 任务指令区块（成员收到的输入内容，2026-07-27）
 .member-instruction
-  margin-bottom: 8px
+  margin-bottom: var(--nt-space-2)
   padding: 6px 8px
   background: var(--glass-surface-hover)
   border-radius: 6px
@@ -458,7 +458,7 @@ const formattedTime = computed(() => {
   &__header
     display: flex
     align-items: center
-    gap: 4px
+    gap: var(--nt-space-1)
     font-size: 11px
     font-weight: 500
     color: var(--color-text-tertiary)
@@ -485,13 +485,13 @@ const formattedTime = computed(() => {
 
 // 底部输入栏：发送/停止双功能按钮
 .member-input-bar
-  margin-top: 8px
-  padding-top: 8px
+  margin-top: var(--nt-space-2)
+  padding-top: var(--nt-space-2)
   border-top: 1px dashed var(--glass-border)
 
   &__input
     :deep(.q-field__append)
-      padding: 0 4px
+      padding: 0 var(--nt-space-1)
 
 // 移动端（<600px，与 $q.screen.lt.sm 一致，72 §3.2 触控化）
 @media (max-width: 599px)

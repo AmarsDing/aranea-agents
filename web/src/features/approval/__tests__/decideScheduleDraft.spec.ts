@@ -33,6 +33,7 @@ function scheduleItem(overrides: Partial<ApprovalItemRow> = {}): ApprovalItemRow
     context_raw: '',
     risk_level: 'medium',
     requester: 'ag-1',
+    agent_key: 'ag-1',
     created_at: '2026-11-09T10:00:00Z',
     ...overrides,
   };

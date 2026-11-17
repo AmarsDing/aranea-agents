@@ -1,59 +1,55 @@
 <template>
-  <q-dialog :model-value="open" persistent @update:model-value="$emit('update:open', $event)">
-    <q-card class="app-dialog-card app-dialog-card--md app-glass-dialog">
-      <q-card-section class="app-glass-dialog__head row items-center justify-between">
-        <div class="col min-width-0">
-          <div class="app-glass-dialog__title">{{ $t('agentSettings.evolution.detailTitle') }}</div>
-          <div v-if="suggestion" class="app-glass-dialog__subtitle ellipsis">{{ suggestion.title }}</div>
+  <app-dialog
+    :model-value="open"
+    :title="$t('agentSettings.evolution.detailTitle')"
+    :subtitle="suggestion?.title"
+    icon="auto_awesome"
+    size="md"
+    persistent
+    @update:model-value="$emit('update:open', $event)"
+  >
+    <template v-if="suggestion">
+      <div class="row q-col-gutter-sm text-body2 q-mb-md">
+        <div class="col-6">
+          <span class="text-grey-7">{{ $t('agentSettings.evolution.detailType') }}：</span>
+          {{ typeLabel }}
         </div>
-        <q-btn v-close-popup flat round dense icon="close" />
-      </q-card-section>
-      <q-separator />
-      <div class="app-glass-dialog__scroll">
-        <q-card-section v-if="suggestion" class="app-dialog-body app-glass-dialog__body q-gutter-md">
-          <div class="row q-col-gutter-sm text-body2">
-            <div class="col-6">
-              <span class="text-grey-7">{{ $t('agentSettings.evolution.detailType') }}：</span>
-              {{ typeLabel }}
-            </div>
-            <div class="col-6">
-              <span class="text-grey-7">{{ $t('agentSettings.evolution.detailStatus') }}：</span>
-              {{ statusLabel }}
-            </div>
-            <div class="col-6">
-              <span class="text-grey-7">{{ $t('agentSettings.evolution.detailCreatedAt') }}：</span>
-              {{ formatDate(suggestion.created_at) }}
-            </div>
-            <div v-if="suggestion.applied_at" class="col-6">
-              <span class="text-grey-7">{{ $t('agentSettings.evolution.detailAppliedAt') }}：</span>
-              {{ formatDate(suggestion.applied_at) }}
-            </div>
-          </div>
-
-          <div>
-            <div class="text-weight-medium q-mb-xs">{{ $t('agentSettings.evolution.detailContent') }}</div>
-            <div class="text-body2 evolution-suggestion-detail__content">{{ suggestion.content }}</div>
-          </div>
-
-          <div>
-            <div class="text-weight-medium q-mb-xs">{{ $t('agentSettings.evolution.detailDiffPreview') }}</div>
-            <pre v-if="suggestion.diff_preview" class="evolution-suggestion-detail__pre">{{
-              suggestion.diff_preview
-            }}</pre>
-            <div v-else class="text-body2 text-grey-6">{{ $t('agentSettings.evolution.detailNoDiff') }}</div>
-          </div>
-        </q-card-section>
+        <div class="col-6">
+          <span class="text-grey-7">{{ $t('agentSettings.evolution.detailStatus') }}：</span>
+          {{ statusLabel }}
+        </div>
+        <div class="col-6">
+          <span class="text-grey-7">{{ $t('agentSettings.evolution.detailCreatedAt') }}：</span>
+          {{ formatDate(suggestion.created_at) }}
+        </div>
+        <div v-if="suggestion.applied_at" class="col-6">
+          <span class="text-grey-7">{{ $t('agentSettings.evolution.detailAppliedAt') }}：</span>
+          {{ formatDate(suggestion.applied_at) }}
+        </div>
       </div>
-      <q-separator />
-      <q-card-actions align="right" class="app-actions-bar app-glass-dialog__actions">
-        <q-btn v-close-popup flat no-caps :label="$t('agentSettings.evolution.close')" />
-      </q-card-actions>
-    </q-card>
-  </q-dialog>
+
+      <div class="q-mb-md">
+        <div class="text-weight-medium q-mb-xs">{{ $t('agentSettings.evolution.detailContent') }}</div>
+        <div class="text-body2 evolution-suggestion-detail__content">{{ suggestion.content }}</div>
+      </div>
+
+      <div>
+        <div class="text-weight-medium q-mb-xs">{{ $t('agentSettings.evolution.detailDiffPreview') }}</div>
+        <pre v-if="suggestion.diff_preview" class="evolution-suggestion-detail__pre">{{
+          suggestion.diff_preview
+        }}</pre>
+        <div v-else class="text-body2 text-grey-6">{{ $t('agentSettings.evolution.detailNoDiff') }}</div>
+      </div>
+    </template>
+    <template #actions>
+      <q-btn flat no-caps :label="$t('agentSettings.evolution.close')" @click="$emit('update:open', false)" />
+    </template>
+  </app-dialog>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue';
+import AppDialog from '../common/AppDialog.vue';
 import type { EvolutionSuggestion } from '../../features/agents/types';
 
 const props = defineProps<{

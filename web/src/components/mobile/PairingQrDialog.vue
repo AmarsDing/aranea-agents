@@ -1,43 +1,32 @@
 <template>
-  <q-dialog v-model="open">
-    <q-card class="app-dialog-card app-dialog-card--sm app-glass-dialog">
-      <q-card-section class="app-glass-dialog__head row items-start justify-between no-wrap">
-        <div class="col min-width-0">
-          <div class="app-glass-dialog__title">{{ t('mobile.pairingTitle') }}</div>
-          <div class="app-glass-dialog__subtitle">{{ t('mobile.pairingSubtitle') }}</div>
+  <AppDialog v-model="open" :title="t('mobile.pairingTitle')" :subtitle="t('mobile.pairingSubtitle')" size="sm">
+    <div class="q-gutter-md">
+      <q-input
+        v-model="url"
+        outlined
+        :label="t('mobile.pairingUrlLabel')"
+        :placeholder="t('mobileServer.urlPlaceholder')"
+        :error="showError"
+        :error-message="t('mobileServer.urlInvalid')"
+        autocomplete="url"
+        inputmode="url"
+        @update:model-value="showError = false"
+      />
+      <div class="pairing-qr-frame flex flex-center">
+        <img v-if="qrDataUrl" :src="qrDataUrl" :alt="t('mobile.pairingTitle')" class="pairing-qr-image" />
+        <div v-else class="text-body2 text-grey-7 text-center q-pa-md">
+          {{ t('mobile.pairingQrHint') }}
         </div>
-        <q-btn v-close-popup flat dense round icon="close" />
-      </q-card-section>
-      <q-separator />
-      <div class="app-glass-dialog__scroll">
-        <q-card-section class="app-dialog-body app-glass-dialog__body q-gutter-md">
-          <q-input
-            v-model="url"
-            outlined
-            :label="t('mobile.pairingUrlLabel')"
-            :placeholder="t('mobileServer.urlPlaceholder')"
-            :error="showError"
-            :error-message="t('mobileServer.urlInvalid')"
-            autocomplete="url"
-            inputmode="url"
-            @update:model-value="showError = false"
-          />
-          <div class="pairing-qr-frame flex flex-center">
-            <img v-if="qrDataUrl" :src="qrDataUrl" :alt="t('mobile.pairingTitle')" class="pairing-qr-image" />
-            <div v-else class="text-body2 text-grey-7 text-center q-pa-md">
-              {{ t('mobile.pairingQrHint') }}
-            </div>
-          </div>
-        </q-card-section>
       </div>
-    </q-card>
-  </q-dialog>
+    </div>
+  </AppDialog>
 </template>
 
 <script setup lang="ts">
 import { ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import QRCode from 'qrcode';
+import AppDialog from '../common/AppDialog.vue';
 import { buildPairingQrPayload, isPlausibleServerUrl } from '../../features/mobile/pairingQr';
 
 const STORAGE_KEY = 'aranea.mobilePairingUrl';
@@ -77,7 +66,7 @@ watch(
 <style lang="sass" scoped>
 .pairing-qr-frame
   min-height: 240px
-  border-radius: 16px
+  border-radius: 12px
   border: 1px solid var(--glass-border)
 
 .pairing-qr-image

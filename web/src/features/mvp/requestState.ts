@@ -1,5 +1,6 @@
 import { i18n } from '../../i18n';
 import { ref } from 'vue';
+import { isForbiddenApiError } from '../../utils/kratosError';
 
 // Four legacy operations pages share the same request-state contract.
 // A late response must not overwrite a newer filter, and a second submit is ignored while saving.
@@ -7,18 +8,23 @@ export function createMvpRequestState() {
   const loading = ref(false);
   const saving = ref(false);
   const error = ref('');
+  /** 列表 403：页面据此渲染 forbidden 态（无重试入口）。 */
+  const forbidden = ref(false);
   let generation = 0;
 
   async function load<T>(request: () => Promise<T>, apply: (value: T) => void) {
     const current = ++generation;
     loading.value = true;
     error.value = '';
+    forbidden.value = false;
     try {
       const result = await request();
       if (current === generation) apply(result);
     } catch (reason) {
-      if (current === generation)
+      if (current === generation) {
         error.value = reason instanceof Error ? reason.message : i18n.global.t('uiSystem.operations.loadFailed');
+        forbidden.value = isForbiddenApiError(reason);
+      }
     } finally {
       if (current === generation) loading.value = false;
     }
@@ -38,5 +44,5 @@ export function createMvpRequestState() {
     }
   }
 
-  return { loading, saving, error, load, change };
+  return { loading, saving, error, forbidden, load, change };
 }

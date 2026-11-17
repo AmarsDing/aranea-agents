@@ -187,156 +187,146 @@
     </div>
 
     <!-- ============ 账号管理 ============ -->
-    <q-dialog v-model="accountsOpen">
-      <q-card class="mail-accounts">
-        <q-card-section class="row items-center justify-between no-wrap">
-          <div class="text-h6">{{ t('mailPage.accountsTitle') }}</div>
-          <q-btn
-            unelevated
-            dense
-            rounded
-            no-caps
-            color="primary"
-            icon="add"
-            :label="t('mailPage.btnNewAccount')"
-            @click="openAccountCreate"
-          />
-        </q-card-section>
-        <q-card-section v-if="!accounts.length" class="text-caption mail-empty">
-          {{ t('mailPage.accountsEmpty') }}
-        </q-card-section>
-        <q-list v-else separator>
-          <q-item v-for="acc in accounts" :key="acc.id">
-            <q-item-section>
-              <q-item-label>{{ acc.name || acc.username }}</q-item-label>
-              <q-item-label caption class="mono"
-                >{{ acc.username }}@{{ acc.host }}:{{ acc.port }} · {{ acc.tls_mode }}</q-item-label
-              >
-              <q-item-label caption>
-                {{ t('mailPage.lastSync') }}:
-                <span class="mono">{{ acc.last_sync_at ? fmtTime(acc.last_sync_at) : t('mailPage.neverSynced') }}</span>
-              </q-item-label>
-            </q-item-section>
-            <q-item-section side>
-              <div class="row no-wrap items-center">
-                <q-btn
-                  flat
-                  dense
-                  no-caps
-                  icon="sync"
-                  :label="t('mailPage.syncNow')"
-                  :loading="syncingId === acc.id"
-                  @click="syncAccount(acc)"
-                />
-                <q-btn flat dense round icon="edit" :aria-label="t('mailPage.edit')" @click="openAccountEdit(acc)" />
-                <q-btn
-                  flat
-                  dense
-                  round
-                  icon="delete_outline"
-                  :aria-label="t('mailPage.delete')"
-                  @click="confirmDeleteAccount(acc)"
-                />
-              </div>
-            </q-item-section>
-          </q-item>
-        </q-list>
-        <q-card-actions align="right">
-          <q-btn flat no-caps :label="t('mailPage.close')" @click="accountsOpen = false" />
-        </q-card-actions>
-      </q-card>
-    </q-dialog>
+    <AppDialog v-model="accountsOpen" size="md" :title="t('mailPage.accountsTitle')">
+      <div v-if="!accounts.length" class="text-caption mail-empty">
+        {{ t('mailPage.accountsEmpty') }}
+      </div>
+      <q-list v-else separator>
+        <q-item v-for="acc in accounts" :key="acc.id">
+          <q-item-section>
+            <q-item-label>{{ acc.name || acc.username }}</q-item-label>
+            <q-item-label caption class="mono"
+              >{{ acc.username }}@{{ acc.host }}:{{ acc.port }} · {{ acc.tls_mode }}</q-item-label
+            >
+            <q-item-label caption>
+              {{ t('mailPage.lastSync') }}:
+              <span class="mono">{{ acc.last_sync_at ? fmtTime(acc.last_sync_at) : t('mailPage.neverSynced') }}</span>
+            </q-item-label>
+          </q-item-section>
+          <q-item-section side>
+            <div class="row no-wrap items-center">
+              <q-btn
+                flat
+                dense
+                no-caps
+                icon="sync"
+                :label="t('mailPage.syncNow')"
+                :loading="syncingId === acc.id"
+                @click="syncAccount(acc)"
+              />
+              <q-btn flat dense round icon="edit" :aria-label="t('mailPage.edit')" @click="openAccountEdit(acc)" />
+              <q-btn
+                flat
+                dense
+                round
+                icon="delete_outline"
+                :aria-label="t('mailPage.delete')"
+                @click="confirmDeleteAccount(acc)"
+              />
+            </div>
+          </q-item-section>
+        </q-item>
+      </q-list>
+      <template #actions>
+        <q-btn
+          unelevated
+          dense
+          rounded
+          no-caps
+          color="primary"
+          icon="add"
+          :label="t('mailPage.btnNewAccount')"
+          @click="openAccountCreate"
+        />
+        <q-btn flat no-caps :label="t('mailPage.close')" @click="accountsOpen = false" />
+      </template>
+    </AppDialog>
 
     <!-- ============ 账号新建/编辑 ============ -->
-    <q-dialog v-model="accountEditorOpen" persistent>
-      <q-card class="mail-account-editor">
-        <q-card-section class="text-h6">
-          {{ editingAccountId ? t('mailPage.accountEditTitle') : t('mailPage.accountCreateTitle') }}
-        </q-card-section>
-        <q-card-section class="q-gutter-md">
-          <q-banner v-if="accountEditorError" rounded class="app-page-error-banner" role="alert">
-            {{ accountEditorError }}
-          </q-banner>
-          <q-input v-model="accountForm.name" outlined dense :label="t('mailPage.fieldName')" autofocus />
-          <div class="row q-gutter-md">
-            <q-input
-              v-model="accountForm.host"
-              class="col"
-              outlined
-              dense
-              :label="t('mailPage.fieldHost')"
-              hint="imap.example.com"
-            />
-            <q-input
-              v-model.number="accountForm.port"
-              class="col-4"
-              outlined
-              dense
-              type="number"
-              :label="t('mailPage.fieldPort')"
-            />
-          </div>
-          <q-select
-            v-model="accountForm.tls_mode"
+    <AppDialog
+      v-model="accountEditorOpen"
+      persistent
+      size="sm"
+      :title="editingAccountId ? t('mailPage.accountEditTitle') : t('mailPage.accountCreateTitle')"
+    >
+      <div class="q-gutter-md">
+        <q-banner v-if="accountEditorError" rounded class="app-page-error-banner" role="alert">
+          {{ accountEditorError }}
+        </q-banner>
+        <q-input v-model="accountForm.name" outlined dense :label="t('mailPage.fieldName')" autofocus />
+        <div class="row q-gutter-md">
+          <q-input
+            v-model="accountForm.host"
+            class="col"
             outlined
             dense
-            :options="tlsOptions"
-            :label="t('mailPage.fieldTls')"
-            emit-value
-            map-options
+            :label="t('mailPage.fieldHost')"
+            hint="imap.example.com"
           />
           <q-input
-            v-model="accountForm.username"
+            v-model.number="accountForm.port"
+            class="col-4"
             outlined
             dense
-            :label="t('mailPage.fieldUsername')"
-            autocomplete="off"
+            type="number"
+            :label="t('mailPage.fieldPort')"
           />
-          <q-input
-            v-model="accountForm.password"
-            outlined
-            dense
-            type="password"
-            :label="t('mailPage.fieldPassword')"
-            :hint="editingAccountId ? t('mailPage.fieldPasswordEditHint') : t('mailPage.fieldPasswordHint')"
-            autocomplete="new-password"
-          />
-        </q-card-section>
-        <q-card-actions align="right">
-          <q-btn flat no-caps :label="t('mailPage.cancel')" @click="accountEditorOpen = false" />
-          <q-btn
-            unelevated
-            no-caps
-            color="primary"
-            :label="t('mailPage.save')"
-            :loading="savingAccount"
-            :disable="!accountFormValid"
-            @click="saveAccount"
-          />
-        </q-card-actions>
-      </q-card>
-    </q-dialog>
+        </div>
+        <q-select
+          v-model="accountForm.tls_mode"
+          outlined
+          dense
+          :options="tlsOptions"
+          :label="t('mailPage.fieldTls')"
+          emit-value
+          map-options
+        />
+        <q-input
+          v-model="accountForm.username"
+          outlined
+          dense
+          :label="t('mailPage.fieldUsername')"
+          autocomplete="off"
+        />
+        <q-input
+          v-model="accountForm.password"
+          outlined
+          dense
+          type="password"
+          :label="t('mailPage.fieldPassword')"
+          :hint="editingAccountId ? t('mailPage.fieldPasswordEditHint') : t('mailPage.fieldPasswordHint')"
+          autocomplete="new-password"
+        />
+      </div>
+      <template #actions>
+        <q-btn flat no-caps :label="t('mailPage.cancel')" @click="accountEditorOpen = false" />
+        <q-btn
+          unelevated
+          no-caps
+          color="primary"
+          :label="t('mailPage.save')"
+          :loading="savingAccount"
+          :disable="!accountFormValid"
+          @click="saveAccount"
+        />
+      </template>
+    </AppDialog>
 
     <!-- ============ 附件入知识库（密级选择） ============ -->
-    <q-dialog v-model="classificationOpen" persistent>
-      <q-card class="mail-account-editor">
-        <q-card-section class="text-h6">{{ t('mailPage.classifyTitle') }}</q-card-section>
-        <q-card-section>
-          <q-option-group v-model="classification" :options="classificationOptions" color="primary" type="radio" />
-        </q-card-section>
-        <q-card-actions align="right">
-          <q-btn flat no-caps :label="t('mailPage.cancel')" @click="classificationOpen = false" />
-          <q-btn
-            unelevated
-            no-caps
-            color="primary"
-            :label="t('mailPage.classifyConfirm')"
-            :loading="acting"
-            @click="doToKnowledge"
-          />
-        </q-card-actions>
-      </q-card>
-    </q-dialog>
+    <AppDialog v-model="classificationOpen" persistent size="sm" :title="t('mailPage.classifyTitle')">
+      <q-option-group v-model="classification" :options="classificationOptions" color="primary" type="radio" />
+      <template #actions>
+        <q-btn flat no-caps :label="t('mailPage.cancel')" @click="classificationOpen = false" />
+        <q-btn
+          unelevated
+          no-caps
+          color="primary"
+          :label="t('mailPage.classifyConfirm')"
+          :loading="acting"
+          @click="doToKnowledge"
+        />
+      </template>
+    </AppDialog>
 
     <input ref="emlInput" type="file" accept=".eml,message/rfc822" class="mail-hidden-input" @change="onEmlPicked" />
   </q-page>
@@ -346,6 +336,8 @@
 import { computed, onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useQuasar } from 'quasar';
+import { confirm } from '../composables/useAppConfirm';
+import AppDialog from '../components/common/AppDialog.vue';
 import AppPageHero from '../components/layout/AppPageHero.vue';
 import {
   attachmentToKnowledge,
@@ -468,26 +460,23 @@ async function exportEml() {
   }
 }
 
-function confirmDeleteMessage() {
+async function confirmDeleteMessage() {
   if (!detail.value) return;
   const id = detail.value.message.id;
-  $q.dialog({
+  const ok = await confirm({
     title: t('mailPage.deleteMessageTitle'),
     message: t('mailPage.deleteMessageBody'),
-    cancel: true,
-    persistent: true,
-  }).onOk(() => {
-    void (async () => {
-      try {
-        await deleteMailMessage(id);
-        detail.value = null;
-        attachments.value = [];
-        await loadMessages();
-      } catch (e) {
-        pageError.value = e instanceof Error ? e.message : String(e);
-      }
-    })();
+    tone: 'danger',
   });
+  if (!ok) return;
+  try {
+    await deleteMailMessage(id);
+    detail.value = null;
+    attachments.value = [];
+    await loadMessages();
+  } catch (e) {
+    pageError.value = e instanceof Error ? e.message : String(e);
+  }
 }
 
 // ---------- 附件 ----------
@@ -625,28 +614,25 @@ async function syncAccount(acc: MailAccountRow) {
   }
 }
 
-function confirmDeleteAccount(acc: MailAccountRow) {
-  $q.dialog({
+async function confirmDeleteAccount(acc: MailAccountRow) {
+  const ok = await confirm({
     title: t('mailPage.deleteAccountTitle'),
     message: t('mailPage.deleteAccountBody', { name: acc.name || acc.username }),
-    cancel: true,
-    persistent: true,
-  }).onOk(() => {
-    void (async () => {
-      try {
-        await deleteMailAccount(acc.id);
-        if (filterAccount.value === acc.id) {
-          filterAccount.value = '';
-          page.value = 1;
-        }
-        if (detail.value?.message.account_id === acc.id) detail.value = null;
-        await loadAccounts();
-        await loadMessages();
-      } catch (e) {
-        pageError.value = e instanceof Error ? e.message : String(e);
-      }
-    })();
+    tone: 'danger',
   });
+  if (!ok) return;
+  try {
+    await deleteMailAccount(acc.id);
+    if (filterAccount.value === acc.id) {
+      filterAccount.value = '';
+      page.value = 1;
+    }
+    if (detail.value?.message.account_id === acc.id) detail.value = null;
+    await loadAccounts();
+    await loadMessages();
+  } catch (e) {
+    pageError.value = e instanceof Error ? e.message : String(e);
+  }
 }
 
 // ---------- .eml 导入 ----------
@@ -835,9 +821,6 @@ function fmtSize(n: number): string {
 
 .mail-att__btn
   flex-shrink: 0
-
-.mail-accounts
-  min-width: min(640px, 94vw)
 
 .mail-account-editor
   min-width: min(520px, 94vw)

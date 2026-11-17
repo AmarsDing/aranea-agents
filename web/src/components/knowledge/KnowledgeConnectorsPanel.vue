@@ -128,53 +128,55 @@
       </q-expansion-item>
     </div>
 
-    <!-- 编辑抽屉 -->
-    <q-dialog v-model="dialogOpen" persistent>
-      <q-card class="knowledge-connectors-panel__dialog">
-        <q-card-section>
-          <div class="text-h6">{{ editing?.id ? t('sourceSync.edit') : t('sourceSync.add') }}</div>
-        </q-card-section>
-        <q-card-section class="q-gutter-md">
-          <q-select
-            v-if="!editing?.id"
-            v-model="form.kind"
-            :options="[
-              { label: t('sourceSync.kindSharedDir'), value: 'shared_dir' },
-              { label: t('sourceSync.kindNotion'), value: 'notion' },
-            ]"
-            emit-value
-            map-options
-            outlined
-            dense
-            :label="t('sourceSync.formKind')"
-          />
-          <q-input v-model="form.name" outlined dense :label="t('sourceSync.formName')" />
-          <q-input v-if="form.kind === 'shared_dir'" v-model="form.root" outlined dense :label="t('sourceSync.formRoot')" />
-          <template v-else>
-            <q-input v-model="form.credential_key" outlined dense :label="t('sourceSync.formCredentialKey')" />
-            <q-input v-model="form.query" outlined dense :label="t('sourceSync.formQuery')" />
-          </template>
-          <q-input v-model.number="form.interval_seconds" type="number" outlined dense :label="t('sourceSync.formInterval')" />
-          <q-toggle v-model="form.enabled" :label="t('sourceSync.formEnabled')" />
-          <div class="row q-gutter-sm">
-            <q-input v-model.number="form.max_items_per_run" type="number" outlined dense class="col" :label="t('sourceSync.formMaxItems')" />
-            <q-input v-model.number="form.max_deletes_per_run" type="number" outlined dense class="col" :label="t('sourceSync.formMaxDeletes')" />
-            <q-input v-model.number="form.max_fetch_bytes_per_run" type="number" outlined dense class="col" :label="t('sourceSync.formMaxBytes')" />
-          </div>
-          <p class="app-settings-section__hint q-mb-none">{{ t('sourceSync.visibilityHint') }}</p>
-        </q-card-section>
-        <q-card-actions align="right">
-          <q-btn flat no-caps :label="t('sourceSync.cancel')" @click="dialogOpen = false" />
-          <q-btn color="primary" unelevated no-caps :label="t('sourceSync.save')" :loading="saving" @click="save" />
-        </q-card-actions>
-      </q-card>
-    </q-dialog>
+    <!-- 编辑弹框 -->
+    <AppDialog
+      v-model="dialogOpen"
+      :title="editing?.id ? t('sourceSync.edit') : t('sourceSync.add')"
+      size="md"
+      persistent
+      :loading="saving"
+    >
+      <div class="q-gutter-md">
+        <q-select
+          v-if="!editing?.id"
+          v-model="form.kind"
+          :options="[
+            { label: t('sourceSync.kindSharedDir'), value: 'shared_dir' },
+            { label: t('sourceSync.kindNotion'), value: 'notion' },
+          ]"
+          emit-value
+          map-options
+          outlined
+          dense
+          :label="t('sourceSync.formKind')"
+        />
+        <q-input v-model="form.name" outlined dense :label="t('sourceSync.formName')" />
+        <q-input v-if="form.kind === 'shared_dir'" v-model="form.root" outlined dense :label="t('sourceSync.formRoot')" />
+        <template v-else>
+          <q-input v-model="form.credential_key" outlined dense :label="t('sourceSync.formCredentialKey')" />
+          <q-input v-model="form.query" outlined dense :label="t('sourceSync.formQuery')" />
+        </template>
+        <q-input v-model.number="form.interval_seconds" type="number" outlined dense :label="t('sourceSync.formInterval')" />
+        <q-toggle v-model="form.enabled" :label="t('sourceSync.formEnabled')" />
+        <div class="row q-gutter-sm">
+          <q-input v-model.number="form.max_items_per_run" type="number" outlined dense class="col" :label="t('sourceSync.formMaxItems')" />
+          <q-input v-model.number="form.max_deletes_per_run" type="number" outlined dense class="col" :label="t('sourceSync.formMaxDeletes')" />
+          <q-input v-model.number="form.max_fetch_bytes_per_run" type="number" outlined dense class="col" :label="t('sourceSync.formMaxBytes')" />
+        </div>
+        <p class="app-settings-section__hint q-mb-none">{{ t('sourceSync.visibilityHint') }}</p>
+      </div>
+      <template #actions>
+        <q-btn flat no-caps :label="t('sourceSync.cancel')" @click="dialogOpen = false" />
+        <q-btn color="primary" unelevated no-caps :label="t('sourceSync.save')" :loading="saving" @click="save" />
+      </template>
+    </AppDialog>
   </section>
 </template>
 
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
+import AppDialog from '../common/AppDialog.vue';
 import type { SourceConnector, SourceCredentialView, SourceSyncItem, SourceSyncRun } from '../../features/knowledge/types';
 import {
   createSourceConnector,
@@ -418,11 +420,6 @@ onMounted(refresh);
     justify-content: space-between;
     gap: 12px;
     margin-bottom: 16px;
-  }
-
-  &__dialog {
-    min-width: 520px;
-    max-width: 720px;
   }
 }
 

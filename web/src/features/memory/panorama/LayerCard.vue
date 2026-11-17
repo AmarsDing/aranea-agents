@@ -1,8 +1,8 @@
 // Container: approved — 层级全景单层卡片；数据来自 MemoryPanoramaTab via props。
 <template>
-  <div class="layer-card" :style="cardStyle" @click="emit('drill', stat.layer)">
+  <div class="layer-card" @click="emit('drill', stat.layer)">
     <div class="layer-card__header">
-      <q-avatar size="32px" :style="{ background: meta.color }" text-color="white" :icon="meta.icon" />
+      <q-avatar size="32px" text-color="white" :icon="meta.icon" />
       <div class="col">
         <div class="text-subtitle2 text-weight-bold">
           {{ t(`memory.panorama.layers.${stat.layer}.name`) }}
@@ -57,7 +57,6 @@ const emit = defineEmits<{ (e: 'drill', layer: string): void }>();
 const { t } = useI18n();
 
 const meta = computed(() => MEMORY_LAYER_META[props.stat.layer as MemoryLayerKey] ?? MEMORY_LAYER_META.L0);
-const cardStyle = computed(() => ({ borderTopColor: meta.value.color }));
 
 const headline = computed<Record<string, unknown>>(() => {
   try {
@@ -99,7 +98,7 @@ const headlineChips = computed(() => {
   background: var(--glass-surface);
   border: 1px solid var(--glass-border);
   border-top: 3px solid transparent;
-  border-radius: 14px;
+  border-radius: 12px;
   cursor: pointer;
   display: flex;
   flex-direction: column;

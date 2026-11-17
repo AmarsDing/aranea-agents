@@ -50,6 +50,8 @@
 
     <!-- 对话转评估用例对话框（P1-1）：workspace 在布局层共享，对话框需在布局层渲染，
          否则移动任务页 @add-to-eval 只改状态无 UI。绑定与桌面 ChatPage 一致。 -->
+    <AppConfirmHost />
+    <AppPromptHost />
     <ArtifactPreviewDialog
       :model-value="artifactStore.dialogPreviewTarget"
       @update:model-value="artifactStore.closeArtifactPreview()"
@@ -89,6 +91,8 @@ import { useTheme } from '../composables/useTheme';
 import { useChatWorkspace } from '../features/chat/composables/useChatWorkspace';
 import { CHAT_WORKSPACE_KEY } from '../features/chat/composables/chatWorkspaceInjection';
 import AddEvalCaseDialog from '../components/evaluation/AddEvalCaseDialog.vue';
+import AppConfirmHost from '../components/common/AppConfirmHost.vue';
+import AppPromptHost from '../components/common/AppPromptHost.vue';
 import ArtifactPreviewDialog from '../components/artifact/ArtifactPreviewDialog.vue';
 import { useBlockingStepNotifications } from '../features/chat/composables/useBlockingStepNotifications';
 import { initLocalNotifications } from '../services/localNotification';

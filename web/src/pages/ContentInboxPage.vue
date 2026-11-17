@@ -1,11 +1,29 @@
 <template>
   <q-page class="app-standard-page app-registry-page">
     <AppPageHero :title="t('uiSystem.operations.contentTitle')" :subtitle="t('uiSystem.operations.contentSubtitle')" />
-    <q-banner v-if="error" class="bg-negative q-mb-md" role="alert"
-      >{{ error
-      }}<template #action
-        ><q-btn flat :label="t('uiSystem.operations.retry')" :disable="loading" @click="refresh" /></template
-    ></q-banner>
+    <!-- 五态：已有内容但刷新失败 → 局部失败横幅，列表照常渲染 -->
+    <AppStatePanel
+      v-if="(error || forbidden) && rows.length > 0"
+      variant="partial"
+      dense
+      class="q-mb-md"
+      :description="error"
+      :action-label="t('uiSystem.operations.retry')"
+      action-icon="refresh"
+      @action="refresh"
+    />
+    <!-- 五态：无权限 → 只渲染 forbidden 面板，不提供重试 -->
+    <AppStatePanel v-else-if="forbidden" variant="forbidden" class="q-mb-md" />
+    <!-- 五态：加载失败且无内容 → 只渲染可重试错误面板，不与空态并存。 -->
+    <AppStatePanel
+      v-else-if="error"
+      variant="error"
+      class="q-mb-md"
+      :description="error"
+      :action-label="t('uiSystem.operations.retry')"
+      action-icon="refresh"
+      @action="refresh"
+    />
     <q-banner v-if="feedback" class="app-info-banner" role="status">{{ feedback }}</q-banner>
     <q-card flat class="app-registry-panel"
       ><q-card-section>
@@ -108,7 +126,17 @@
           @click="refresh"
         /> </q-card-section
     ></q-card>
+    <!-- 五态：首屏加载无内容 → 骨架面板 -->
+    <AppStatePanel v-if="loading && rows.length === 0 && !error && !forbidden" variant="loading" :rows="5" />
+    <!-- 五态：成功但无内容 → 空态 -->
+    <AppStatePanel
+      v-else-if="!loading && !error && !forbidden && rows.length === 0"
+      variant="empty"
+      :title="t('uiSystem.operations.noContent')"
+      icon="inbox"
+    />
     <AppRegistryTable
+      v-else-if="rows.length > 0"
       :rows="rows"
       :columns="ui.contentColumns"
       :loading="loading"
@@ -125,12 +153,13 @@ import { storeToRefs } from 'pinia';
 import { useI18n } from 'vue-i18n';
 import { useContentInboxStore } from '../stores/mvp';
 import AppPageHero from '../components/layout/AppPageHero.vue';
+import AppStatePanel from '../components/common/AppStatePanel.vue';
 import AppRegistryTable from '../components/layout/AppRegistryTable.vue';
 import { createMvpUi } from '../features/mvp/mvpUi';
 const { t } = useI18n();
 const ui = computed(() => createMvpUi(t));
 const store = useContentInboxStore();
-const { rows, loading, saving, error, feedback } = storeToRefs(store);
+const { rows, loading, saving, error, forbidden, feedback } = storeToRefs(store);
 const title = ref('');
 const body = ref('');
 const url = ref('');

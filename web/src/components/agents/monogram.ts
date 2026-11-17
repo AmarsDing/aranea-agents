@@ -8,13 +8,18 @@
 
 const PALETTES = ['indigo', 'rose', 'sky', 'emerald', 'amber', 'violet'] as const;
 
-/** 根据 key hash 选择渐变色板，从 CSS 变量读取颜色值 */
-export function monoBgForKey(key: string): string {
+/** 根据 key hash 选择色板索引（0..5），供类名修饰符复用 */
+export function monoPaletteIndexForKey(key: string): number {
   let h = 0;
   for (let i = 0; i < key.length; i++) {
     h = (h * 31 + key.charCodeAt(i)) | 0;
   }
-  const idx = Math.abs(h) % PALETTES.length;
+  return Math.abs(h) % PALETTES.length;
+}
+
+/** 根据 key hash 选择渐变色板，从 CSS 变量读取颜色值 */
+export function monoBgForKey(key: string): string {
+  const idx = monoPaletteIndexForKey(key);
   const s = getComputedStyle(document.documentElement).getPropertyValue(`--palette-industry-${idx}-start`).trim();
   const e = getComputedStyle(document.documentElement).getPropertyValue(`--palette-industry-${idx}-end`).trim();
   return `linear-gradient(135deg, ${s} 0%, ${e} 100%)`;

@@ -1,9 +1,14 @@
 <template>
-  <q-dialog :model-value="open" persistent @update:model-value="$emit('update:open', $event)">
-    <q-card class="app-dialog-card app-dialog-card--sm app-glass-dialog">
-      <q-card-section class="text-h6">{{ title }}</q-card-section>
-      <q-card-section class="app-dialog-body q-gutter-md q-pt-none">
-        <q-input
+  <AppDialog
+    :model-value="open"
+    :title="title"
+    size="sm"
+    persistent
+    :loading="loading"
+    @update:model-value="$emit('update:open', $event)"
+  >
+    <div class="q-gutter-md">
+      <q-input
           :model-value="name"
           class="app-field-md"
           dense
@@ -12,7 +17,7 @@
           :rules="[(val) => !!val?.trim() || '名称不能为空']"
           @update:model-value="$emit('update:name', String($event ?? ''))"
         />
-        <q-input
+      <q-input
           :model-value="description"
           class="app-field-long"
           dense
@@ -22,24 +27,25 @@
           autogrow
           @update:model-value="$emit('update:description', String($event ?? ''))"
         />
-      </q-card-section>
-      <q-card-actions align="right" class="app-actions-bar">
-        <q-btn flat no-caps label="取消" @click="$emit('update:open', false)" />
-        <q-btn
-          color="primary"
-          unelevated
-          no-caps
-          :label="submitLabel"
-          :loading="loading"
-          :disable="!name?.trim()"
-          @click="$emit('submit')"
-        />
-      </q-card-actions>
-    </q-card>
-  </q-dialog>
+    </div>
+    <template #actions>
+      <q-btn flat no-caps label="取消" @click="$emit('update:open', false)" />
+      <q-btn
+        color="primary"
+        unelevated
+        no-caps
+        :label="submitLabel"
+        :loading="loading"
+        :disable="!name?.trim()"
+        @click="$emit('submit')"
+      />
+    </template>
+  </AppDialog>
 </template>
 
 <script setup lang="ts">
+import AppDialog from '../../components/common/AppDialog.vue';
+
 withDefaults(
   defineProps<{
     open: boolean;

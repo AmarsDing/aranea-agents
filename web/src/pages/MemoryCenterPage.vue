@@ -7,12 +7,31 @@
       @refresh="loadAll"
     />
 
-    <q-banner v-if="error" rounded class="bg-negative text-white q-mb-md">
-      {{ error }}
-      <template #action>
-        <q-btn flat color="white" :label="t('memory.error.retry')" @click="loadAll" />
-      </template>
-    </q-banner>
+    <AppStatePanel
+      v-if="pageState === 'error'"
+      class="q-mb-md"
+      variant="error"
+      :description="error"
+      :action-label="t('memory.error.retry')"
+      action-icon="refresh"
+      @action="loadAll"
+    />
+    <AppStatePanel v-else-if="pageState === 'forbidden'" class="q-mb-md" variant="forbidden" />
+    <AppStatePanel v-else-if="pageState === 'loading'" variant="loading" :rows="5" />
+
+    <template v-else>
+      <AppStatePanel
+        v-if="pageState === 'partial'"
+        class="q-mb-md"
+        variant="partial"
+        dense
+        :description="error"
+        :action-label="t('memory.error.retry')"
+        action-icon="refresh"
+        @action="loadAll"
+      />
+      <!-- 空态不遮面板：治理/运维 Tab 不依赖会话与事实列表。 -->
+      <AppStatePanel v-else-if="pageState === 'empty'" class="q-mb-md" variant="empty" dense />
 
     <q-card flat class="memory-tabs-card">
       <q-tabs
@@ -168,6 +187,7 @@
         </div>
       </q-tab-panel>
     </q-tab-panels>
+    </template>
 
     <memory-snapshot-drawer v-model="snapshotDrawer" :snapshot="selectedSnapshot" />
     <memory-fact-drawer
@@ -189,8 +209,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
+import AppStatePanel from '../components/common/AppStatePanel.vue';
+import { resolvePageState } from './pageState';
 import MemoryDeadLetterPanel from '../features/memory/MemoryDeadLetterPanel.vue';
 import MemoryPlatformSettingsPanel from '../features/memory/MemoryPlatformSettingsPanel.vue';
 import MemoryRecallTesterPanel from '../features/memory/MemoryRecallTesterPanel.vue';
@@ -255,6 +277,7 @@ const {
   reviewEvolutionProposal,
   revertEvolutionEvent,
   error,
+  forbidden,
   loading,
   loadingFacts,
   loadingSessions,
@@ -315,6 +338,19 @@ const {
   loadingWorkerStatus,
   loadWorkerStatus,
 } = useMemoryCenterPage();
+
+/**
+ * 五态判定：记忆中心是多子面板容器，`count` 取首屏两个主列表（会话/事实）的行数，
+ * 用于区分「首屏全空 → loading/error/空态占位」与「已有数据 → partial 横幅不遮面板」。
+ */
+const pageState = computed(() =>
+  resolvePageState({
+    loading: loading.value,
+    error: error.value,
+    count: sessionRows.value.length + factRows.value.length,
+    forbidden: forbidden.value,
+  }),
+);
 
 watch(
   deepLinkLayer,
@@ -413,7 +449,7 @@ function parseNodeMetaStatement(node: UnifiedGraphNode): string {
 .memory-flow-node {
   align-items: center;
   border: 1px solid var(--glass-border);
-  border-radius: 16px;
+  border-radius: 12px;
   display: flex;
   gap: var(--space-3);
   padding: var(--space-3);
@@ -432,7 +468,7 @@ function parseNodeMetaStatement(node: UnifiedGraphNode): string {
 .memory-pre {
   background: var(--color-surface-soft);
   border: 1px solid var(--glass-border);
-  border-radius: 14px;
+  border-radius: 12px;
   color: var(--color-text-heading);
   line-height: 1.55;
   margin: var(--space-3) 0 0;

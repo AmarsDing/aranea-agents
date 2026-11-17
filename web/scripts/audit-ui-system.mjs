@@ -63,12 +63,24 @@ if (process.argv.includes('--check')) {
   const entryHTML = await readFile(path.join(webRoot, 'index.html'), 'utf8');
   if (/fonts\.(?:googleapis|gstatic)\.com/i.test(entryHTML)) failures.push('Entry fonts must use the shared local font stack; remove the blocking external font stylesheet.');
   if (totals.localColors) failures.push(`${totals.localColors} literal colors in Vue styles; use theme tokens.`);
+  // --nt-* 跨项目令牌：dark 档在 :root 块、light 档在 body:not(.body--dark) 块（2026-11-08 接入）
+  const ntSource = await readFile(path.join(srcRoot, 'css/theme/_nt-tokens.css'), 'utf8');
+  const parseEntries = (block) => [...block.matchAll(/--([\w-]+)\s*:\s*([^;]+);/g)].map((m) => [m[1], m[2].trim()]);
+  const ntBlocks = {
+    dark: parseEntries(ntSource.match(/:root\s*\{([\s\S]*?)\}/)?.[1] ?? ''),
+    light: parseEntries(ntSource.match(/body:not\(\.body--dark\)\s*\{([\s\S]*?)\}/)?.[1] ?? ''),
+  };
   const required = ['canvas-base', 'surface-base', 'surface-raised', 'surface-muted', 'color-text-primary', 'color-text-secondary', 'color-text-tertiary', 'color-accent', 'q-primary', 'button-primary-bg', 'button-primary-text', 'radius-control', 'radius-card', 'focus-ring', 'font-body'];
   for (const theme of ['light', 'dark']) {
     const source = await readFile(path.join(srcRoot, `css/theme/_css-vars-${theme}.sass`), 'utf8');
     const entries = [...source.matchAll(/^  --([\w-]+): (.+)$/gm)].map((m) => [m[1], m[2]]);
-    const tokens = new Map(entries);
-    if (tokens.size !== entries.length) failures.push(`${theme}: duplicate token declarations`);
+    // nt 令牌垫底，主题册覆盖/扩展；解析器沿 var() 链可直达最终 hex
+    const tokens = new Map([...ntBlocks[theme], ...entries]);
+    const seen = new Set();
+    for (const [key] of entries) {
+      if (seen.has(key)) failures.push(`${theme}: duplicate token declaration --${key}`);
+      seen.add(key);
+    }
     for (const key of required) if (!tokens.has(key)) failures.push(`${theme}: missing --${key}`);
     const resolve = (key, chain = []) => {
       if (chain.includes(key)) throw new Error(`${theme}: token cycle ${[...chain, key].join(' -> ')}`);

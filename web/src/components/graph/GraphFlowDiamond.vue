@@ -14,9 +14,8 @@
           'graph-flow-diamond--issue-warning': data.issue?.level === 'warning',
         },
       ]"
-      :style="diamondStyle"
     >
-      <Handle type="target" :position="Position.Top" :style="{ left: '50%', top: '0' }" />
+      <Handle type="target" :position="Position.Top" class="graph-flow-diamond__handle--top" />
       <div class="graph-flow-diamond__inner">
         <q-icon :name="styleConfig.icon" size="14px" />
         <span class="graph-flow-diamond__label">{{ data.label || data.nodeId }}</span>
@@ -30,20 +29,20 @@
           {{ statusLabel }}
         </q-badge>
       </div>
-      <Handle type="source" :position="Position.Bottom" :style="{ left: '50%', bottom: '0' }" />
+      <Handle type="source" :position="Position.Bottom" class="graph-flow-diamond__handle--bottom" />
       <Handle
         v-if="data.nodeType === 'router'"
         id="branch-yes"
         type="source"
         :position="Position.Right"
-        :style="{ right: '0', top: '50%' }"
+        class="graph-flow-diamond__handle--right"
       />
       <Handle
         v-if="data.nodeType === 'router'"
         id="branch-no"
         type="source"
         :position="Position.Left"
-        :style="{ left: '0', top: '50%' }"
+        class="graph-flow-diamond__handle--left"
       />
       <span
         v-if="data.nodeType === 'router'"
@@ -90,11 +89,6 @@ const props = defineProps<{
 }>();
 
 const styleConfig = computed(() => NODE_TYPE_STYLES[props.data.nodeType] ?? NODE_TYPE_STYLES.router);
-
-const diamondStyle = computed(() => ({
-  '--node-fill': styleConfig.value.fillColor,
-  '--node-border': styleConfig.value.borderColor,
-}));
 
 const statusLabel = computed(() => {
   const status = props.data.execStatus ?? 'idle';

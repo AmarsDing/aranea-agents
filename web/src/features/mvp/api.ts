@@ -100,7 +100,16 @@ async function j<T>(url: string, init?: RequestInit): Promise<T> {
     ...init,
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error((data as any).error || res.statusText);
+  if (!res.ok) {
+    // 保留 HTTP 状态与响应体，供 isForbiddenApiError 判定 403（message 文案保持不变）。
+    const err = new Error((data as any).error || res.statusText) as Error & {
+      status?: number;
+      response?: { status: number; data: unknown };
+    };
+    err.status = res.status;
+    err.response = { status: res.status, data };
+    throw err;
+  }
   return data as T;
 }
 

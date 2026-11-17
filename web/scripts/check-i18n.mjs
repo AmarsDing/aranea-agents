@@ -55,8 +55,24 @@ const SKIP_FILE_SUFFIXES = ['.spec.ts', '.test.ts', '.spec.vue', '.test.vue'];
 const EXEMPT_MARKER = 'i18n-exempt';
 
 const LOCALES = [
-  { name: 'zh-CN', path: path.resolve(SRC_DIR, 'i18n/locales/zh-CN.ts') },
-  { name: 'en-US', path: path.resolve(SRC_DIR, 'i18n/locales/en-US.ts') },
+  {
+    name: 'zh-CN',
+    path: path.resolve(SRC_DIR, 'i18n/locales/zh-CN.ts'),
+    // 应用壳层新增文案独立成文件（避免与并行改造会话的 locale 编辑冲突），
+    // 在 i18n/index.ts 里以 shell 命名空间合并，这里同样合并进来做键存在性校验。
+    extras: [
+      { path: path.resolve(SRC_DIR, 'i18n/locales/ui-shell.ts'), prefix: 'shell' },
+      { path: path.resolve(SRC_DIR, 'i18n/locales/ui-domains.ts'), prefix: 'domains' },
+    ],
+  },
+  {
+    name: 'en-US',
+    path: path.resolve(SRC_DIR, 'i18n/locales/en-US.ts'),
+    extras: [
+      { path: path.resolve(SRC_DIR, 'i18n/locales/ui-shell.ts'), prefix: 'shell' },
+      { path: path.resolve(SRC_DIR, 'i18n/locales/ui-domains.ts'), prefix: 'domains' },
+    ],
+  },
 ];
 
 // ─── Locale key extraction ────────────────────────────────────────────────
@@ -69,14 +85,20 @@ function skipStringLiteral(text, i) {
   i++;
   while (i < text.length) {
     const ch = text[i];
-    if (ch === '\\') { i += 2; continue; }
+    if (ch === '\\') {
+      i += 2;
+      continue;
+    }
     if (quote === '`' && ch === '$' && text[i + 1] === '{') {
       // Skip ${...} expression with balanced braces (may contain strings).
       let depth = 1;
       i += 2;
       while (i < text.length && depth > 0) {
         const c = text[i];
-        if (c === "'" || c === '"' || c === '`') { i = skipStringLiteral(text, i); continue; }
+        if (c === "'" || c === '"' || c === '`') {
+          i = skipStringLiteral(text, i);
+          continue;
+        }
         if (c === '{') depth++;
         else if (c === '}') depth--;
         i++;
@@ -115,9 +137,19 @@ function extractLocaleKeys(filePath) {
     i = skipWsAndComments(text, i);
     if (i >= text.length) break;
     const ch = text[i];
-    if (ch === '}') { stack.pop(); i++; continue; }
-    if (ch === ',' || ch === '{' || ch === ';') { i++; continue; }
-    if (ch === '.' && text[i + 1] === '.' && text[i + 2] === '.') { i += 3; continue; }
+    if (ch === '}') {
+      stack.pop();
+      i++;
+      continue;
+    }
+    if (ch === ',' || ch === '{' || ch === ';') {
+      i++;
+      continue;
+    }
+    if (ch === '.' && text[i + 1] === '.' && text[i + 2] === '.') {
+      i += 3;
+      continue;
+    }
     let key = null;
     if (ch === "'" || ch === '"') {
       const end = skipStringLiteral(text, i);
@@ -181,10 +213,12 @@ function collectUsedKeys(filePath) {
     if (content[k] === '\n') lineStarts.push(k + 1);
   }
   const lineOf = (idx) => {
-    let lo = 0, hi = lineStarts.length - 1;
+    let lo = 0,
+      hi = lineStarts.length - 1;
     while (lo < hi) {
       const mid = (lo + hi + 1) >> 1;
-      if (lineStarts[mid] <= idx) lo = mid; else hi = mid - 1;
+      if (lineStarts[mid] <= idx) lo = mid;
+      else hi = mid - 1;
     }
     return lo + 1;
   };
@@ -227,11 +261,16 @@ function stripBlockComments(text) {
 }
 
 function stripLineComment(line) {
-  let inSingle = false, inDouble = false, inBacktick = false;
+  let inSingle = false,
+    inDouble = false,
+    inBacktick = false;
   let i = 0;
   while (i < line.length) {
     const ch = line[i];
-    if (ch === '\\' && i + 1 < line.length) { i += 2; continue; }
+    if (ch === '\\' && i + 1 < line.length) {
+      i += 2;
+      continue;
+    }
     if (!inDouble && !inBacktick && ch === "'") inSingle = !inSingle;
     else if (!inSingle && !inBacktick && ch === '"') inDouble = !inDouble;
     else if (!inSingle && !inDouble && ch === '`') inBacktick = !inBacktick;
@@ -246,16 +285,29 @@ function stripConsoleLine(line) {
   if (/^console\.(warn|info|error|log|debug)\s*\(/.test(trimmed)) {
     const start = line.indexOf('console.');
     if (start === -1) return line;
-    let depth = 0, inSingle = false, inDouble = false, inBacktick = false, end = -1;
+    let depth = 0,
+      inSingle = false,
+      inDouble = false,
+      inBacktick = false,
+      end = -1;
     for (let i = start; i < line.length; i++) {
       const ch = line[i];
-      if (ch === '\\' && i + 1 < line.length) { i++; continue; }
+      if (ch === '\\' && i + 1 < line.length) {
+        i++;
+        continue;
+      }
       if (!inDouble && !inBacktick && ch === "'") inSingle = !inSingle;
       else if (!inSingle && !inBacktick && ch === '"') inDouble = !inDouble;
       else if (!inSingle && !inDouble && ch === '`') inBacktick = !inBacktick;
       else if (!inSingle && !inDouble && !inBacktick) {
         if (ch === '(') depth++;
-        else if (ch === ')') { depth--; if (depth === 0) { end = i; break; } }
+        else if (ch === ')') {
+          depth--;
+          if (depth === 0) {
+            end = i;
+            break;
+          }
+        }
       }
     }
     if (end !== -1) return line.slice(0, start) + ' '.repeat(end - start + 1) + line.slice(end + 1);
@@ -350,6 +402,13 @@ function checkKeys(files) {
       process.exit(2);
     }
     localeKeys.set(loc.name, extractLocaleKeys(loc.path));
+    const merged = localeKeys.get(loc.name);
+    for (const extra of loc.extras ?? []) {
+      if (!fs.existsSync(extra.path)) continue;
+      for (const key of extractLocaleKeys(extra.path)) {
+        merged.add(`${extra.prefix}.${key}`);
+      }
+    }
   }
   const [zhKeys, enKeys] = [localeKeys.get('zh-CN'), localeKeys.get('en-US')];
 
@@ -383,7 +442,9 @@ function checkKeys(files) {
   const onlyEn = [...usedKeys].filter((k) => !zhKeys.has(k) && enKeys.has(k));
 
   if (missing.length > 0) {
-    console.error(`FAIL: ${missing.length} used i18n key(s) missing from locale files (no inline default at call site):`);
+    console.error(
+      `FAIL: ${missing.length} used i18n key(s) missing from locale files (no inline default at call site):`,
+    );
     for (const m of missing.slice(0, 30)) {
       const site = m.sites[0];
       console.error(`  '${m.key}' missing in ${m.absent.join(', ')}  (e.g. ${site.file}:${site.line})`);
@@ -393,9 +454,13 @@ function checkKeys(files) {
     return false;
   }
 
-  console.log(`OK: i18n keys consistent (${zhKeys.size} zh-CN / ${enKeys.size} en-US keys; ${required.size} required keys all resolve).`);
+  console.log(
+    `OK: i18n keys consistent (${zhKeys.size} zh-CN / ${enKeys.size} en-US keys; ${required.size} required keys all resolve).`,
+  );
   if (onlyZh.length > 0 || onlyEn.length > 0) {
-    console.log(`  Note: ${onlyZh.length} used key(s) defined only in zh-CN, ${onlyEn.length} only in en-US (call sites use inline defaults).`);
+    console.log(
+      `  Note: ${onlyZh.length} used key(s) defined only in zh-CN, ${onlyEn.length} only in en-US (call sites use inline defaults).`,
+    );
   }
   return true;
 }
@@ -458,7 +523,9 @@ function main() {
     const totalCurrent = Object.values(current).reduce((a, b) => a + b, 0);
     const totalBase = Object.values(baseline).reduce((a, b) => a + b, 0);
     console.log(`OK: no new hardcoded Chinese violations.`);
-    console.log(`  Current tech debt: ${totalCurrent} violation(s) in ${Object.keys(current).length} file(s) (baseline: ${totalBase}).`);
+    console.log(
+      `  Current tech debt: ${totalCurrent} violation(s) in ${Object.keys(current).length} file(s) (baseline: ${totalBase}).`,
+    );
     if (fixedFiles.length > 0) console.log(`  Files fully fixed since baseline: ${fixedFiles.length}`);
     if (reducedFiles.length > 0) console.log(`  Files with reduced violations: ${reducedFiles.length}`);
     process.exit(keysOk ? 0 : 1);

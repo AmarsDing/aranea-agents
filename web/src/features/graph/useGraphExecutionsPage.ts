@@ -18,6 +18,8 @@ export function useGraphExecutionsPage() {
   const graphName = ref('');
   const statusFilter = ref('');
   const timeRangeFilter = ref('');
+  /** 列表加载失败信息（五态：错误态/局部失败横幅据此渲染）。 */
+  const error = ref('');
 
   const serverFilters = computed(() => ({
     status: statusFilter.value || undefined,
@@ -40,7 +42,12 @@ export function useGraphExecutionsPage() {
   });
 
   async function reload() {
-    await loadExecutionHistory(graphId.value, 30, false, serverFilters.value);
+    error.value = '';
+    try {
+      await loadExecutionHistory(graphId.value, 30, false, serverFilters.value);
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : String(e);
+    }
   }
 
   onMounted(async () => {
@@ -69,7 +76,9 @@ export function useGraphExecutionsPage() {
 
   function loadMore() {
     if (executionHistoryNextToken.value) {
-      loadExecutionHistory(graphId.value, 30, true, serverFilters.value);
+      loadExecutionHistory(graphId.value, 30, true, serverFilters.value).catch((e: unknown) => {
+        error.value = e instanceof Error ? e.message : String(e);
+      });
     }
   }
 
@@ -88,9 +97,11 @@ export function useGraphExecutionsPage() {
     executionHistory,
     filteredHistory,
     loading: executionHistoryLoading,
+    error,
     hasNextPage: executionHistoryNextToken,
     statusFilter,
     timeRangeFilter,
+    reload,
     loadMore,
     goToRun,
     goBack,

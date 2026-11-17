@@ -1,7 +1,9 @@
 import { computed, onMounted, ref } from 'vue';
 import { useQuasar } from 'quasar';
+import { confirm } from '../../composables/useAppConfirm';
 import { useI18n } from 'vue-i18n';
 import { useSkillsStore } from '../../stores/skills';
+import { isForbiddenApiError } from '../../utils/kratosError';
 import type { SkillTagInfo } from './types';
 
 /**
@@ -26,6 +28,10 @@ export function useSkillTagsPage() {
   const renaming = ref(false);
 
   const tagsLoading = computed(() => skillsStore.tagsLoading);
+  /** 标签列表加载失败信息（五态：错误态/局部失败横幅据此渲染）。 */
+  const loadError = ref('');
+  /** 标签列表 403：页面据此渲染 forbidden 态（无重试）。 */
+  const forbidden = ref(false);
 
   const sourceOptions = computed(() => [
     { label: t('skillTags.sourceDict'), value: 'dict' },
@@ -77,10 +83,14 @@ export function useSkillTagsPage() {
   }
 
   async function reload() {
+    loadError.value = '';
+    forbidden.value = false;
     try {
       await skillsStore.loadSkillTags(true);
     } catch (err) {
-      $q.notify({ type: 'negative', message: errMessage(err, t('skillTags.loadFailed')) });
+      forbidden.value = isForbiddenApiError(err);
+      loadError.value = errMessage(err, t('skillTags.loadFailed'));
+      $q.notify({ type: 'negative', message: loadError.value });
     }
   }
 
@@ -155,28 +165,28 @@ export function useSkillTagsPage() {
     }
   }
 
-  function onDelete(tag: SkillTagInfo) {
+  async function onDelete(tag: SkillTagInfo) {
     const message =
       tag.used_count > 0
         ? t('skillTags.deleteConfirmUsed', { name: tag.name, count: tag.used_count })
         : t('skillTags.deleteConfirmUnused', { name: tag.name });
-    $q.dialog({
+    const ok = await confirm({
       title: t('skillTags.deleteTitle'),
       message,
-      cancel: { label: t('common.cancel'), flat: true, noCaps: true },
-      ok: { label: t('common.delete'), noCaps: true, color: 'negative' },
-      persistent: true,
-    }).onOk(async () => {
-      try {
-        const rewritten = await skillsStore.deleteTag(tag.name);
-        $q.notify({
-          type: 'positive',
-          message: rewritten > 0 ? t('skillTags.deletedWithRewrite', { count: rewritten }) : t('skillTags.deleted'),
-        });
-      } catch (err) {
-        $q.notify({ type: 'negative', message: errMessage(err, t('skillTags.deleteFailed')) });
-      }
+      cancelLabel: t('common.cancel'),
+      confirmLabel: t('common.delete'),
+      tone: 'danger',
     });
+    if (!ok) return;
+    try {
+      const rewritten = await skillsStore.deleteTag(tag.name);
+      $q.notify({
+        type: 'positive',
+        message: rewritten > 0 ? t('skillTags.deletedWithRewrite', { count: rewritten }) : t('skillTags.deleted'),
+      });
+    } catch (err) {
+      $q.notify({ type: 'negative', message: errMessage(err, t('skillTags.deleteFailed')) });
+    }
   }
 
   onMounted(reload);
@@ -186,6 +196,8 @@ export function useSkillTagsPage() {
     sourceFilter,
     sourceOptions,
     tagsLoading,
+    loadError,
+    forbidden,
     filteredTags,
     orphanCount,
     filteredGroups,

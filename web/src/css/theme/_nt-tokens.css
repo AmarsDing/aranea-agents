@@ -58,6 +58,28 @@
   --nt-ink: #000000;
   --nt-ink-inverse: #ffffff;
 
+  /* 间距档位（4px 基准，节奏见 08-重设计方案 §2.4）
+     1=4 2=8 3=12 4=16 5=20 6=24 8=32 10=40 12=48 16=64
+     5(20) / 10(40) 为存量档位，仅为兼容既有 --space-5/--space-10 引用保留，
+     新代码禁止使用，改用 4/6/8/12。 */
+  --nt-space-1: 4px;
+  --nt-space-2: 8px;
+  --nt-space-3: 12px;
+  --nt-space-4: 16px;
+  --nt-space-5: 20px;
+  --nt-space-6: 24px;
+  --nt-space-8: 32px;
+  --nt-space-10: 40px;
+  --nt-space-12: 48px;
+  --nt-space-16: 64px;
+
+  /* 语义间距别名：页面留白 / 区块纵向 / 面板内 / 单元格
+     新代码优先使用语义别名，避免到处写数字档位。 */
+  --nt-space-page: clamp(16px, 2.2vw, 32px);
+  --nt-space-section: var(--nt-space-6);
+  --nt-space-panel: var(--nt-space-4);
+  --nt-space-cell: var(--nt-space-2);
+
   /* 圆角四档 */
   --nt-radius-s: 6px;
   --nt-radius-m: 8px;
@@ -82,6 +104,57 @@
 
   /* 动效 */
   --nt-transition: 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* 图谱 / 画布（three.js、Canvas2D、Sprite 取色源）
+     纯函数禁止再写字面量，统一经 src/utils/canvasPalette.ts 读取；
+     本组 token 为该读数的唯一真源，代码内 fallback 与之一致。 */
+  --nt-graph-link-explicit: #4c8dff;
+  --nt-graph-link-entity: #a066d3;
+  --nt-graph-link-semantic: #3bbdbd;
+  --nt-graph-link-unknown: #8a93a6;
+  --nt-graph-node-1: #4c8dff;
+  --nt-graph-node-2: #3bbdbd;
+  --nt-graph-node-3: #a066d3;
+  --nt-graph-node-4: #d3864a;
+  --nt-graph-node-5: #c45b8a;
+  --nt-graph-node-6: #7fb069;
+  --nt-graph-node-7: #d3b04a;
+  --nt-graph-node-8: #5bc4e5;
+  --nt-graph-node-fallback: #8a93a6;
+  --nt-graph-structure-ultra: #f472b6;
+  --nt-graph-structure-super: #f5c542;
+  --nt-graph-structure-regular: #35c8d0;
+  --nt-graph-structure-leaf: #16434f;
+  --nt-graph-structure-fallback: #8a93a6;
+  --nt-graph-edge-unified: #4f6b7d;
+  --nt-graph-edge-highlight: #39e6ff;
+  --nt-graph-reticle-hover: #54e6ff;
+  --nt-graph-reticle-selected: #a855f7;
+  --nt-graph-label: #8fb9d9;
+  --nt-graph-label-group: #9fdcff;
+  --nt-graph-label-group-text: #d8ecff;
+  --nt-graph-label-focus: #e8f7ff;
+  --nt-graph-label-focus-selected: #ffffff;
+  --nt-graph-label-bg: rgba(5, 8, 16, 0.55);
+  --nt-graph-label-focus-bg: rgba(5, 8, 16, 0.78);
+  --nt-graph-label-group-bg: rgba(5, 8, 16, 0.72);
+  --nt-graph-focus-ring-hover: rgba(84, 230, 255, 0.9);
+  --nt-graph-focus-ring-selected: rgba(168, 85, 247, 0.95);
+  --nt-graph-conflict: #ef5350;
+
+  /* 记忆全景分层（L0 信号 → L4 洞察） */
+  --nt-memory-layer-0: #90a4ae;
+  --nt-memory-layer-1: #7986cb;
+  --nt-memory-layer-2: #4db6ac;
+  --nt-memory-layer-3: #ba68c8;
+  --nt-memory-layer-4: #ff8a65;
+  --nt-memory-layer-fallback: #9e9e9e;
+
+  /* 陪伴 HUD 粒子环 */
+  --nt-hud-orb-a: #123a6e;
+  --nt-hud-orb-b: #4dd8e8;
+  --nt-hud-alert-a: #4c0519;
+  --nt-hud-alert-b: #f87171;
 }
 
 /* 浅色档（覆盖核心色，让 --nt-* 在浅色下也可用） */

@@ -10,30 +10,38 @@
       <div class="section-heading">
         <div class="section-heading__main">
           <div class="section-title">
-            <span class="section-title__text">Agent 个性</span>
+            <span class="section-title__text">{{ $t('domains.agentSettings.personality') }}</span>
           </div>
-          <p class="settings-section__hint">身份、状态、分类与对外描述。</p>
+          <p class="settings-section__hint">{{ $t('domains.agentSettings.personalityHint') }}</p>
         </div>
         <div class="settings-section__actions">
-          <q-toggle v-model="form.is_default" dense label="默认 Agent" />
+          <q-toggle v-model="form.is_default" dense :label="$t('domains.agentSettings.defaultAgent')" />
         </div>
       </div>
       <div class="app-form-field-grid app-form-field-grid--2col">
-        <q-input v-model="form.display_name" dense outlined label="显示名称" />
-        <q-input v-model="form.agent_key" dense outlined readonly label="Agent 标识">
+        <q-input v-model="form.display_name" dense outlined :label="$t('domains.agentSettings.displayName')" />
+        <q-input v-model="form.agent_key" dense outlined readonly :label="$t('domains.agentSettings.agentKey')">
           <template #append><q-btn flat round dense icon="content_copy" @click="$emit('copy-key')" /></template>
         </q-input>
-        <q-select v-model="form.status" dense outlined emit-value map-options label="状态" :options="statusOptions" />
+        <q-select
+          v-model="form.status"
+          dense
+          outlined
+          emit-value
+          map-options
+          :label="$t('domains.agentSettings.status')"
+          :options="statusOptions"
+        />
         <taxonomy-picker
           :model-value="form.taxonomy_position_id || null"
           :tree="taxonomyTree"
           :label="$t('agentsPage.taxonomy.labelOptional')"
-          placeholder="选择组织 / 部门 / 职位"
+          :placeholder="$t('domains.agentSettings.taxonomyPlaceholder')"
           @update:model-value="form.taxonomy_position_id = $event ?? ''"
         />
         <div class="app-grid-span-full">
           <div class="desc-field-head">
-            <span class="desc-field-head__label">专业摘要 / 能力描述</span>
+            <span class="desc-field-head__label">{{ $t('domains.agentSettings.summaryLabel') }}</span>
             <!-- PGO-3-WEB-03: AI Refine button for agent description -->
             <AiRefineButton
               scope="agent.description"
@@ -43,7 +51,7 @@
               flat
               dense
               size="sm"
-              label="AI 优化描述"
+              :label="$t('domains.agentSettings.refineDescription')"
               @apply="
                 (v: string) => {
                   form.agent_description = v;
@@ -58,7 +66,7 @@
             outlined
             autogrow
             type="textarea"
-            placeholder="描述 Agent 的专业能力、适用场景与限制…"
+            :placeholder="$t('domains.agentSettings.descriptionPlaceholder')"
           />
         </div>
       </div>
@@ -68,9 +76,9 @@
       <div class="section-heading">
         <div class="section-heading__main">
           <div class="section-title">
-            <span class="section-title__text">模型</span>
+            <span class="section-title__text">{{ $t('domains.agentSettings.model') }}</span>
           </div>
-          <p class="settings-section__hint">选择 Provider 管理中已录入的模型；单价在 Provider 管理中维护。</p>
+          <p class="settings-section__hint">{{ $t('domains.agentSettings.modelSectionHint') }}</p>
         </div>
       </div>
       <div class="model-field-row">
@@ -83,8 +91,8 @@
           use-input
           clearable
           input-debounce="0"
-          label="模型"
-          hint="留空则使用聊天界面选择的模型；选择已录入且启用的模型可固定使用。"
+          :label="$t('domains.agentSettings.model')"
+          :hint="$t('domains.agentSettings.modelHint')"
           :options="filteredProviderModelOptions"
           :loading="loadingProviderModels || checkingAgentModel"
           @filter="(val, update) => $emit('filter-provider-models', val, update)"
@@ -107,7 +115,7 @@
             color="blue-grey-2"
             text-color="blue-grey-9"
             icon="hourglass_empty"
-            label="校验中…"
+            :label="$t('domains.agentSettings.modelChecking')"
           />
           <q-chip
             v-else-if="agentModelCheckOk === true"
@@ -116,7 +124,7 @@
             color="positive"
             text-color="white"
             icon="check_circle"
-            label="模型可用"
+            :label="$t('domains.agentSettings.modelAvailable')"
           />
           <q-chip
             v-else-if="agentModelCheckOk === false"
@@ -125,27 +133,48 @@
             color="negative"
             text-color="white"
             icon="error"
-            :label="agentModelCheckMessage || '模型不可用'"
+            :label="agentModelCheckMessage || $t('domains.agentSettings.modelUnavailable')"
           />
         </div>
       </div>
       <q-banner v-if="orphanProviderModel" rounded class="q-mt-sm settings-warning-banner" dense>
-        当前指向 <code>{{ form.provider }} / {{ form.model }}</code
-        >，但 Provider 目录中无匹配的已启用条目。 Web、飞书等渠道的消息将无法调用模型。
+        {{ $t('domains.agentSettings.orphanProviderPrefix') }}
+        <code>{{ form.provider }} / {{ form.model }}</code
+        >{{ $t('domains.agentSettings.orphanProviderSuffix') }}
         <template #action>
-          <q-btn flat no-caps color="primary" label="打开模型管理" @click="$emit('open-provider-manager')" />
+          <q-btn
+            flat
+            no-caps
+            color="primary"
+            :label="$t('domains.agentSettings.openModelManager')"
+            @click="$emit('open-provider-manager')"
+          />
         </template>
       </q-banner>
       <q-banner v-else-if="disabledCatalogMatch" rounded class="q-mt-sm settings-warning-banner" dense>
-        目录中存在该模型但已禁用，请启用或更换其他模型。
+        {{ $t('domains.agentSettings.disabledModelBanner') }}
         <template #action>
-          <q-btn flat no-caps color="primary" label="打开模型管理" @click="$emit('open-provider-manager')" />
+          <q-btn
+            flat
+            no-caps
+            color="primary"
+            :label="$t('domains.agentSettings.openModelManager')"
+            @click="$emit('open-provider-manager')"
+          />
         </template>
       </q-banner>
       <p class="settings-section__hint q-mt-sm">
-        月度费用上限请在
-        <q-btn flat dense size="sm" color="primary" no-caps label="「用量配额」" @click="$emit('open-permissions-tab')" />
-        Tab 配置（Chat Turn 前生效）。
+        {{ $t('domains.agentSettings.costCapPrefix') }}
+        <q-btn
+          flat
+          dense
+          size="sm"
+          color="primary"
+          no-caps
+          :label="$t('domains.agentSettings.costCapTab')"
+          @click="$emit('open-permissions-tab')"
+        />
+        {{ $t('domains.agentSettings.costCapSuffix') }}
       </p>
     </section>
 
@@ -156,9 +185,9 @@
       <div class="section-heading">
         <div class="section-heading__main">
           <div class="section-title">
-            <span class="section-title__text">协作能力</span>
+            <span class="section-title__text">{{ $t('domains.agentSettings.collaboration') }}</span>
           </div>
-          <p class="settings-section__hint">子 Agent 编排与意图预处理。Skill / 工具策略请见「Skill / 工具」Tab。</p>
+          <p class="settings-section__hint">{{ $t('domains.agentSettings.collaborationHint') }}</p>
         </div>
       </div>
 
@@ -166,8 +195,8 @@
         <div class="settings-subsection">
           <div class="settings-subsection__head row items-center justify-between">
             <div>
-              <div class="settings-subsection__title">子 Agent</div>
-              <p class="settings-subsection__hint">控制生成限制和归档策略。</p>
+              <div class="settings-subsection__title">{{ $t('domains.agentSettings.subagents') }}</div>
+              <p class="settings-subsection__hint">{{ $t('domains.agentSettings.subagentsHint') }}</p>
             </div>
             <q-toggle v-model="config.subagents.enabled" />
           </div>
@@ -177,38 +206,44 @@
               dense
               outlined
               type="number"
-              label="最大并发数"
+              :label="$t('domains.agentSettings.maxConcurrency')"
             />
             <q-input
               v-model.number="config.subagents.max_generation_depth"
               dense
               outlined
               type="number"
-              label="最大生成深度"
+              :label="$t('domains.agentSettings.maxGenerationDepth')"
             />
             <q-input
               v-model.number="config.subagents.max_children_per_agent"
               dense
               outlined
               type="number"
-              label="每 Agent 最大子数"
+              :label="$t('domains.agentSettings.maxChildrenPerAgent')"
             />
             <q-input
               v-model.number="config.subagents.archive_after_minutes"
               dense
               outlined
               type="number"
-              label="归档时间 (分钟)"
+              :label="$t('domains.agentSettings.archiveAfterMinutes')"
             />
-            <q-input v-model.number="config.subagents.max_retries" dense outlined type="number" label="最大重试次数" />
+            <q-input
+              v-model.number="config.subagents.max_retries"
+              dense
+              outlined
+              type="number"
+              :label="$t('domains.agentSettings.maxRetries')"
+            />
             <q-input
               v-model.number="config.subagents.stored_result_runes"
               dense
               outlined
               type="number"
               min="100"
-              label="结果存储上限 (字符)"
-              hint="子 Agent 结果保存的最大字符数"
+              :label="$t('domains.agentSettings.storedResultRunes')"
+              :hint="$t('domains.agentSettings.storedResultRunesHint')"
             />
             <q-input
               v-model.number="config.subagents.stored_summary_runes"
@@ -216,15 +251,15 @@
               outlined
               type="number"
               min="50"
-              label="摘要存储上限 (字符)"
-              hint="子 Agent 摘要保存的最大字符数"
+              :label="$t('domains.agentSettings.storedSummaryRunes')"
+              :hint="$t('domains.agentSettings.storedSummaryRunesHint')"
             />
             <q-input
               v-model="config.subagents.model_override"
               dense
               outlined
-              label="模型覆盖"
-              placeholder="继承自 Agent"
+              :label="$t('domains.agentSettings.modelOverride')"
+              :placeholder="$t('domains.agentSettings.modelOverridePlaceholder')"
             />
           </div>
         </div>
@@ -232,10 +267,11 @@
         <div class="settings-subsection">
           <div class="settings-subsection__head row items-center justify-between">
             <div>
-              <div class="settings-subsection__title">意图 Pass</div>
+              <div class="settings-subsection__title">{{ $t('domains.agentSettings.intentPass') }}</div>
               <p class="settings-subsection__hint">
-                开启后每轮用户消息进入主模型前先做轻量意图梳理（默认开启，与后端一致）。全局可用
-                <code>ARANEA_INTENT_PASS=0</code> 强制关闭。
+                {{ $t('domains.agentSettings.intentPassHintPrefix') }}
+                <code>ARANEA_INTENT_PASS=0</code>
+                {{ $t('domains.agentSettings.intentPassHintSuffix') }}
               </p>
             </div>
             <q-toggle v-model="config.intent_pass.enabled" />
@@ -245,8 +281,8 @@
         <div v-if="form.agent_key === SPIRIT_AGENT_KEY" class="settings-subsection settings-subsection--span">
           <div class="settings-subsection__head">
             <div>
-              <div class="settings-subsection__title">精灵并行配置</div>
-              <p class="settings-subsection__hint">控制精灵模式下多团队并行编排的配额与超时。</p>
+              <div class="settings-subsection__title">{{ $t('domains.agentSettings.spiritConfig') }}</div>
+              <p class="settings-subsection__hint">{{ $t('domains.agentSettings.spiritConfigHint') }}</p>
             </div>
           </div>
           <div class="app-form-field-grid app-form-field-grid--3col">
@@ -256,8 +292,8 @@
               outlined
               type="number"
               min="1"
-              label="最大并行团队数"
-              hint="同时运行的最大团队数量"
+              :label="$t('domains.agentSettings.maxConcurrentTeams')"
+              :hint="$t('domains.agentSettings.maxConcurrentTeamsHint')"
             />
             <q-input
               v-model.number="config.spirit.max_team_concurrency"
@@ -265,8 +301,8 @@
               outlined
               type="number"
               min="1"
-              label="单团队最大并发"
-              hint="单个团队内 Agent 的最大并发数"
+              :label="$t('domains.agentSettings.maxTeamConcurrency')"
+              :hint="$t('domains.agentSettings.maxTeamConcurrencyHint')"
             />
             <q-input
               v-model.number="config.spirit.team_timeout_seconds"
@@ -274,8 +310,8 @@
               outlined
               type="number"
               min="60"
-              label="团队超时 (秒)"
-              hint="团队运行的最大时长"
+              :label="$t('domains.agentSettings.teamTimeout')"
+              :hint="$t('domains.agentSettings.teamTimeoutHint')"
             />
             <q-input
               v-model.number="config.spirit.auto_archive_seconds"
@@ -283,8 +319,8 @@
               outlined
               type="number"
               min="0"
-              label="自动归档 (秒)"
-              hint="完成后自动归档的等待时间，0 表示不归档"
+              :label="$t('domains.agentSettings.autoArchive')"
+              :hint="$t('domains.agentSettings.autoArchiveHint')"
             />
             <q-input
               v-model.number="config.spirit.max_session_depth"
@@ -292,8 +328,8 @@
               outlined
               type="number"
               min="1"
-              label="最大会话深度"
-              hint="精灵会话的最大嵌套深度"
+              :label="$t('domains.agentSettings.maxSessionDepth')"
+              :hint="$t('domains.agentSettings.maxSessionDepthHint')"
             />
             <q-input
               v-model.number="config.spirit.verification_truncate_chars"
@@ -301,8 +337,8 @@
               outlined
               type="number"
               min="500"
-              label="验证截断长度 (字符)"
-              hint="验证门 LLM 调用中截断团队输出的最大长度"
+              :label="$t('domains.agentSettings.verificationTruncate')"
+              :hint="$t('domains.agentSettings.verificationTruncateHint')"
             />
             <q-input
               v-model.number="config.spirit.timeout_handler_db_timeout_seconds"
@@ -310,16 +346,24 @@
               outlined
               type="number"
               min="5"
-              label="超时回调 DB 超时 (秒)"
-              hint="团队超时回调中 DB 操作的最大持续时间"
+              :label="$t('domains.agentSettings.timeoutHandlerDbTimeout')"
+              :hint="$t('domains.agentSettings.timeoutHandlerDbTimeoutHint')"
             />
           </div>
         </div>
       </div>
 
       <p class="settings-section__hint q-mt-md">
-        记忆分层、心跳与语义检索请前往
-        <q-btn flat dense size="sm" color="primary" no-caps label="「记忆」" @click="$emit('open-memory-tab')" />
+        {{ $t('domains.agentSettings.memoryHintPrefix') }}
+        <q-btn
+          flat
+          dense
+          size="sm"
+          color="primary"
+          no-caps
+          :label="$t('domains.agentSettings.memoryTab')"
+          @click="$emit('open-memory-tab')"
+        />
         {{ $t('agentSettings.memoryTabGotoSuffix') }}
       </p>
     </section>

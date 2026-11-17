@@ -12,15 +12,29 @@
           @click="store.load"
       /></template>
     </AppPageHero>
-    <q-banner v-if="error" class="bg-negative q-mb-md" role="alert"
-      >{{ error
-      }}<template #action
-        ><q-btn
-          flat
-          :label="t('uiSystem.operations.retry')"
-          :disable="loading || saving"
-          @click="store.load" /></template
-    ></q-banner>
+    <!-- 五态：已有待审数据但刷新失败 → 局部失败横幅，队列照常渲染 -->
+    <AppStatePanel
+      v-if="(error || forbidden) && rows.length > 0"
+      variant="partial"
+      dense
+      class="q-mb-md"
+      :description="error"
+      :action-label="t('uiSystem.operations.retry')"
+      action-icon="refresh"
+      @action="store.load"
+    />
+    <!-- 五态：无权限 → 只渲染 forbidden 面板，不提供重试 -->
+    <AppStatePanel v-else-if="forbidden" variant="forbidden" class="q-mb-md" />
+    <!-- 五态：加载失败且无待审数据 → 只渲染可重试错误面板，不与空态并存。 -->
+    <AppStatePanel
+      v-else-if="error"
+      variant="error"
+      class="q-mb-md"
+      :description="error"
+      :action-label="t('uiSystem.operations.retry')"
+      action-icon="refresh"
+      @action="store.load"
+    />
     <q-card v-if="current" flat class="app-registry-panel">
       <q-card-section
         ><div class="ui-review-meta">
@@ -71,13 +85,16 @@
           /></div
       ></q-card-section>
     </q-card>
-    <q-card v-else flat class="app-entity-empty q-pa-lg"
-      ><q-spinner v-if="loading" color="primary" />
-      <div v-else class="ui-card-description">
-        {{ t('uiSystem.operations.noReview')
-        }}{{ error ? t('uiSystem.operations.reviewRetry') : t('uiSystem.operations.reviewEmpty') }}
-      </div></q-card
-    >
+    <!-- 五态：首屏加载无待审数据 → 骨架面板 -->
+    <AppStatePanel v-else-if="loading && !error" variant="loading" :rows="4" />
+    <!-- 五态：成功但无待审数据 → 空态 -->
+    <AppStatePanel
+      v-else-if="!error"
+      variant="empty"
+      :title="t('uiSystem.operations.noReview')"
+      :description="t('uiSystem.operations.reviewEmpty')"
+      icon="fact_check"
+    />
     <q-card v-if="lastJob" flat class="q-mt-lg"
       ><q-card-section
         ><h2 class="ui-card-title">{{ t('uiSystem.operations.packageTitle') }}</h2>
@@ -107,15 +124,16 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useI18n } from 'vue-i18n';
-import { useQuasar, type QInput } from 'quasar';
+import type { QInput } from 'quasar';
+import { confirm } from '../composables/useAppConfirm';
 import { useReviewQueueStore } from '../stores/mvp';
 import { packageFileURL } from '../features/mvp/links';
 import { reviewShortcut } from '../features/mvp/reviewShortcuts';
 import AppPageHero from '../components/layout/AppPageHero.vue';
+import AppStatePanel from '../components/common/AppStatePanel.vue';
 const { t } = useI18n();
 const store = useReviewQueueStore();
-const { rows, lastJob, loading, saving, error } = storeToRefs(store);
-const $q = useQuasar();
+const { rows, lastJob, loading, saving, error, forbidden } = storeToRefs(store);
 const currentId = ref('');
 const rejectNote = ref('');
 const rejectInput = ref<QInput>();
@@ -134,19 +152,18 @@ function next() {
   currentId.value = rows.value[(index + 1) % rows.value.length].ID;
   rejectNote.value = '';
 }
-function requestApprove() {
+async function requestApprove() {
   if (!current.value || saving.value || loading.value) return;
   const item = current.value;
-  $q.dialog({
+  const ok = await confirm({
     title: t('uiSystem.operations.approveTitle'),
     message: t('uiSystem.operations.approveMessage', { title: item.DraftTitle }),
-    cancel: true,
-    persistent: true,
-  }).onOk(() => {
-    if (current.value?.ID === item.ID && !saving.value && !loading.value) void store.approve(item.ID);
+    tone: 'primary',
   });
+  if (!ok) return;
+  if (current.value?.ID === item.ID && !saving.value && !loading.value) void store.approve(item.ID);
 }
-function requestReject() {
+async function requestReject() {
   if (!current.value || saving.value || loading.value) return;
   if (!rejectNote.value.trim()) {
     rejectInput.value?.focus();
@@ -154,12 +171,14 @@ function requestReject() {
   }
   const id = current.value.ID;
   const note = rejectNote.value.trim();
-  $q.dialog({ title: t('uiSystem.operations.rejectTitle'), message: note, cancel: true, persistent: true }).onOk(
-    async () => {
-      if (current.value?.ID === id && !saving.value && !loading.value && (await store.reject(id, note)))
-        rejectNote.value = '';
-    },
-  );
+  const ok = await confirm({
+    title: t('uiSystem.operations.rejectTitle'),
+    message: note,
+    tone: 'danger',
+  });
+  if (!ok) return;
+  if (current.value?.ID === id && !saving.value && !loading.value && (await store.reject(id, note)))
+    rejectNote.value = '';
 }
 function onKey(event: KeyboardEvent) {
   if (loading.value || saving.value || !current.value) return;

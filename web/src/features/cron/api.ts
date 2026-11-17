@@ -51,6 +51,8 @@ function wireCronTaskRun(r: WireCronTaskRun | null | undefined): CronTaskRun {
     output_json: r?.outputJson ?? '',
     error_message: r?.errorMessage ?? '',
     created_at: r?.createdAt ?? '',
+    resolved_at: r?.resolvedAt ?? '',
+    resolved_by: r?.resolvedBy ?? '',
   };
 }
 
@@ -110,8 +112,18 @@ export async function listCronTaskRuns(query: CronTaskRunQuery = {}): Promise<Cr
     limit: query.limit,
     page: query.page,
     pageSize: query.page_size,
+    includeResolved: query.include_resolved ?? false,
   });
   return { items: (res.items ?? []).map(wireCronTaskRun), total: res.total ?? 0 };
+}
+
+/**
+ * 核销一次定时任务失败（该任务当前全部未核销失败一并核销，避免历史失败逐条
+ * 复现）。返回被核销的条数，供页面提示「已忽略 N 次失败」。
+ */
+export async function resolveCronTaskRun(runId: string): Promise<number> {
+  const res = await cron.ResolveCronTaskRun({ id: runId });
+  return Number(res.resolved ?? 0);
 }
 
 export async function listCronAgents(): Promise<Agent[]> {

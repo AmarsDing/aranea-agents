@@ -196,76 +196,62 @@
     </div>
 
     <!-- ── 结构化详情 ── -->
-    <q-dialog v-model="detailOpen">
-      <q-card class="app-dialog-card app-dialog-card--lg app-glass-dialog">
-        <q-card-section class="app-glass-dialog__head row items-start justify-between no-wrap">
-          <div class="event-detail-head">
-            <span
-              class="apm-status-dot event-detail-head__dot"
-              :class="`apm-status-dot--${severityTone(detailEvent?.severity || '')}`"
-            />
-            <div class="event-detail-head__text">
-              <div class="app-glass-dialog__title">{{ t('monitorPage.events.dialogTitle') }}</div>
-              <div class="app-glass-dialog__subtitle ellipsis">{{ detailEvent?.title }}</div>
+    <AppDialog
+      v-model="detailOpen"
+      :title="t('monitorPage.events.dialogTitle')"
+      :subtitle="detailEvent?.title"
+      size="lg"
+    >
+      <div v-if="detailEvent">
+        <div class="row items-center q-gutter-sm q-mb-md">
+          <span class="event-detail-pill" :class="`event-detail-pill--${severityTone(detailEvent.severity)}`">
+            <span class="apm-status-dot" :class="`apm-status-dot--${severityTone(detailEvent.severity)}`" />
+            {{ t(`monitorPage.events.severity.${detailEvent.severity}`) }}
+          </span>
+          <q-chip dense square :color="categoryChipColor(detailEvent.category)" text-color="white">
+            {{ t(`monitorPage.events.category.${detailEvent.category}`) }}
+          </q-chip>
+          <span class="text-caption event-detail-type">{{ detailEvent.type }}</span>
+        </div>
+        <div v-if="detailEvent.subtitle" class="text-body2 q-mb-md">{{ detailEvent.subtitle }}</div>
+        <div class="apm-meta-grid q-mb-md">
+          <div v-if="detailEvent.actor" class="apm-meta-item">
+            <div class="apm-meta-item__label">{{ t('monitorPage.events.detail.actor') }}</div>
+            <div class="apm-meta-item__value ellipsis">{{ detailEvent.actor }}</div>
+          </div>
+          <div class="apm-meta-item">
+            <div class="apm-meta-item__label">{{ t('monitorPage.events.detail.time') }}</div>
+            <div class="apm-meta-item__value">{{ detailEvent.time }}</div>
+          </div>
+          <div v-if="detailEvent.completionSessionId || detailEvent.sessionId" class="apm-meta-item">
+            <div class="apm-meta-item__label">{{ t('monitorPage.events.detail.session') }}</div>
+            <div class="apm-meta-item__value row items-center no-wrap q-gutter-xs">
+              <span class="ellipsis">{{ detailEvent.completionSessionId || detailEvent.sessionId }}</span>
+              <q-btn
+                flat
+                dense
+                size="sm"
+                icon="chat"
+                :label="t('monitorPage.events.openSession')"
+                @click="emit('open-session', detailEvent)"
+              />
             </div>
           </div>
-          <q-btn v-close-popup flat round dense icon="close" />
-        </q-card-section>
-        <q-separator />
-        <div class="app-glass-dialog__scroll">
-          <q-card-section v-if="detailEvent" class="app-glass-dialog__body">
-            <div class="row items-center q-gutter-sm q-mb-md">
-              <span class="event-detail-pill" :class="`event-detail-pill--${severityTone(detailEvent.severity)}`">
-                <span class="apm-status-dot" :class="`apm-status-dot--${severityTone(detailEvent.severity)}`" />
-                {{ t(`monitorPage.events.severity.${detailEvent.severity}`) }}
-              </span>
-              <q-chip dense square :color="categoryChipColor(detailEvent.category)" text-color="white">
-                {{ t(`monitorPage.events.category.${detailEvent.category}`) }}
-              </q-chip>
-              <span class="text-caption event-detail-type">{{ detailEvent.type }}</span>
-            </div>
-            <div v-if="detailEvent.subtitle" class="text-body2 q-mb-md">{{ detailEvent.subtitle }}</div>
-            <div class="apm-meta-grid q-mb-md">
-              <div v-if="detailEvent.actor" class="apm-meta-item">
-                <div class="apm-meta-item__label">{{ t('monitorPage.events.detail.actor') }}</div>
-                <div class="apm-meta-item__value ellipsis">{{ detailEvent.actor }}</div>
-              </div>
-              <div class="apm-meta-item">
-                <div class="apm-meta-item__label">{{ t('monitorPage.events.detail.time') }}</div>
-                <div class="apm-meta-item__value">{{ detailEvent.time }}</div>
-              </div>
-              <div v-if="detailEvent.completionSessionId || detailEvent.sessionId" class="apm-meta-item">
-                <div class="apm-meta-item__label">{{ t('monitorPage.events.detail.session') }}</div>
-                <div class="apm-meta-item__value row items-center no-wrap q-gutter-xs">
-                  <span class="ellipsis">{{ detailEvent.completionSessionId || detailEvent.sessionId }}</span>
-                  <q-btn
-                    flat
-                    dense
-                    size="sm"
-                    icon="chat"
-                    :label="t('monitorPage.events.openSession')"
-                    @click="emit('open-session', detailEvent)"
-                  />
-                </div>
-              </div>
-            </div>
-            <q-expansion-item dense :label="t('monitorPage.events.detail.rawJson')" class="event-detail-raw">
-              <JsonCodeViewer :text="detailJson" />
-            </q-expansion-item>
-          </q-card-section>
         </div>
-        <q-separator />
-        <q-card-actions align="right" class="app-actions-bar app-glass-dialog__actions">
-          <q-btn
-            flat
-            no-caps
-            icon="content_copy"
-            :label="t('monitorPage.events.detail.copyJson')"
-            @click="copyDetailJson"
-          />
-        </q-card-actions>
-      </q-card>
-    </q-dialog>
+        <q-expansion-item dense :label="t('monitorPage.events.detail.rawJson')" class="event-detail-raw">
+          <JsonCodeViewer :text="detailJson" />
+        </q-expansion-item>
+      </div>
+      <template #actions>
+        <q-btn
+          flat
+          no-caps
+          icon="content_copy"
+          :label="t('monitorPage.events.detail.copyJson')"
+          @click="copyDetailJson"
+        />
+      </template>
+    </AppDialog>
   </div>
 </template>
 
@@ -273,6 +259,7 @@
 import { computed, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { copyToClipboard } from 'quasar';
+import AppDialog from '../common/AppDialog.vue';
 import AppRegistryPagination from '../layout/AppRegistryPagination.vue';
 import JsonCodeViewer from '../common/JsonCodeViewer.vue';
 import AppRegistryTable from '../layout/AppRegistryTable.vue';
@@ -410,11 +397,11 @@ function categoryChipColor(category: string): string {
 <style scoped>
 .pulse-strip__scroll {
   overflow-x: auto;
-  padding-bottom: 4px;
+  padding-bottom: var(--nt-space-1);
 }
 
 .pulse-strip__empty {
-  padding: 8px 0;
+  padding: var(--nt-space-2) 0;
 }
 
 /* 脉冲事件 chip：玻璃底 + hover 抬升 */
@@ -435,7 +422,7 @@ function categoryChipColor(category: string): string {
 .pulse-chip__dot {
   width: 8px;
   height: 8px;
-  margin-right: 6px;
+  margin-right: var(--nt-space-2);
 }
 
 .pulse-chip__title {
@@ -455,14 +442,14 @@ function categoryChipColor(category: string): string {
 .event-detail-head {
   display: flex;
   align-items: flex-start;
-  gap: 12px;
+  gap: var(--nt-space-3);
   min-width: 0;
 }
 
 .event-detail-head__dot {
   width: 12px;
   height: 12px;
-  margin-top: 6px;
+  margin-top: var(--nt-space-2);
 }
 
 .event-detail-head__text {
@@ -472,8 +459,8 @@ function categoryChipColor(category: string): string {
 .event-detail-pill {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 3px 10px;
+  gap: var(--nt-space-2);
+  padding: var(--nt-space-1) var(--nt-space-3);
   border-radius: 999px;
   font-size: 11px;
   font-weight: 600;

@@ -1,22 +1,14 @@
 <template>
-  <q-dialog
+  <app-dialog
     :model-value="open"
+    title="高级设置"
+    icon="settings"
+    size="md"
     persistent
-    transition-show="slide-up"
-    transition-hide="slide-down"
+    :loading="saving"
     @update:model-value="$emit('update:open', $event)"
   >
-    <q-card class="advanced-dialog app-dialog-card app-dialog-card--md app-glass-dialog">
-      <q-card-section class="app-glass-dialog__head row items-center justify-between">
-        <div class="row items-center q-gutter-sm">
-          <q-icon name="settings" size="22px" color="primary" />
-          <div class="text-h6">高级设置</div>
-        </div>
-        <q-btn v-close-popup flat round icon="close" />
-      </q-card-section>
-
-      <div class="app-glass-dialog__scroll">
-        <div class="q-pa-md q-gutter-md">
+    <div class="q-gutter-md">
           <q-banner rounded dense class="settings-info-banner">
             Ralph Loop（迭代验证）在
             <strong>Agent</strong>
@@ -132,19 +124,17 @@
               沙箱配置（镜像、超时、资源限额等）将在后续版本中支持。
             </q-banner>
           </section>
-        </div>
-      </div>
-
-      <q-card-actions align="right" class="app-actions-bar app-glass-dialog__actions">
-        <q-btn v-close-popup flat rounded no-caps label="取消" />
-        <q-btn color="primary" rounded unelevated no-caps label="保存" :loading="saving" @click="onSave" />
-      </q-card-actions>
-    </q-card>
-  </q-dialog>
+    </div>
+    <template #actions>
+      <q-btn flat rounded no-caps label="取消" @click="$emit('update:open', false)" />
+      <q-btn color="primary" rounded unelevated no-caps label="保存" :loading="saving" @click="onSave" />
+    </template>
+  </app-dialog>
 </template>
 
 <script setup lang="ts">
 import { ref, watch } from 'vue';
+import AppDialog from '../common/AppDialog.vue';
 
 type ChannelOption = { label: string; value: string; caption?: string };
 

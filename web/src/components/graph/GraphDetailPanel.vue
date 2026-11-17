@@ -92,8 +92,11 @@
                 :key="type"
                 type="button"
                 :data-type="type"
-                :class="['graph-detail-panel__type-chip', { 'is-active': selectedTypes.has(type) }]"
-                :style="chipStyle(type)"
+                :class="[
+                  'graph-detail-panel__type-chip',
+                  { 'is-active': selectedTypes.has(type) },
+                  `graph-detail-panel__type-chip--${type}`,
+                ]"
                 @click="toggleType(type)"
               >
                 {{ nodeTypeLabel(type) }} {{ nodeCounts[type] }}
@@ -112,7 +115,9 @@
                   class="graph-detail-panel__node-row"
                   :style="{ top: `${vr.top}px` }"
                 >
-                  <span class="graph-detail-panel__node-dot" :style="{ background: nodeTypeBorderColor(vr.item.type) }" />
+                  <span
+                    :class="['graph-detail-panel__node-dot', `graph-detail-panel__node-dot--${vr.item.type}`]"
+                  />
                   <span class="graph-detail-panel__node-id" :title="vr.item.id">{{ vr.item.id }}</span>
                   <span class="graph-detail-panel__node-type">{{ nodeTypeLabel(vr.item.type) }}</span>
                   <button
@@ -210,7 +215,6 @@ const props = defineProps<{
   graph: GraphDefinition | null;
   isDark: boolean;
   nodeCounts: Partial<Record<NodeType, number>>;
-  nodeTypeBorderColor: (type: string) => string;
   executions?: GraphExecutionSummary[];
   executionsHasMore?: boolean;
 }>();
@@ -267,11 +271,6 @@ function toggleType(type: string) {
     next.add(type);
   }
   selectedTypes.value = next;
-}
-
-function chipStyle(type: string) {
-  const color = props.nodeTypeBorderColor(type);
-  return { borderColor: color, color };
 }
 
 const { containerRef, visibleRows, totalHeight, onScroll } = useVirtualRows({

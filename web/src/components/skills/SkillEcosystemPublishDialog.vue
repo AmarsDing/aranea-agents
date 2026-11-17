@@ -1,44 +1,51 @@
 <template>
-  <q-dialog :model-value="modelValue" persistent @update:model-value="emit('update:modelValue', $event)">
-    <q-card class="app-dialog-card app-glass-dialog app-dialog-card--sm">
-      <q-card-section class="app-glass-dialog__head row items-center justify-between">
-        <div class="app-glass-dialog__title">{{ t('skillsPage.ecosystemPublishTitle') }}</div>
-        <q-btn v-close-popup flat round dense icon="close" :disable="loading" />
-      </q-card-section>
-      <q-card-section class="app-glass-dialog__scroll skill-ecosystem-publish__body">
-        <div class="skill-ecosystem-publish__skill">
-          <q-avatar size="40px" color="primary" text-color="white" icon="psychology" />
-          <div class="skill-ecosystem-publish__skill-meta">
-            <div class="skill-ecosystem-publish__skill-name">{{ skill?.name }}</div>
-            <div class="skill-ecosystem-publish__skill-slug">{{ skill?.slug }}</div>
-          </div>
-        </div>
-        <div v-if="skill?.description" class="skill-ecosystem-publish__desc">{{ skill.description }}</div>
-        <div class="skill-ecosystem-publish__note">
-          <q-icon name="storefront" size="16px" />
-          <span>{{ t('skillsPage.ecosystemPublishMessage') }}</span>
-        </div>
-      </q-card-section>
-      <q-card-actions align="right">
-        <q-btn v-close-popup flat rounded no-caps :label="t('common.cancel')" :disable="loading" />
-        <q-btn
-          color="primary"
-          rounded
-          unelevated
-          no-caps
-          icon="storefront"
-          :label="t('skillsPage.ecosystemPublishAction')"
-          :loading="loading"
-          @click="emit('confirm')"
-        />
-      </q-card-actions>
-    </q-card>
-  </q-dialog>
+  <AppDialog
+    :model-value="modelValue"
+    :title="t('skillsPage.ecosystemPublishTitle')"
+    size="sm"
+    persistent
+    :loading="Boolean(loading)"
+    @update:model-value="emit('update:modelValue', $event)"
+  >
+    <div class="skill-ecosystem-publish__skill">
+      <q-avatar size="40px" color="primary" text-color="white" icon="psychology" />
+      <div class="skill-ecosystem-publish__skill-meta">
+        <div class="skill-ecosystem-publish__skill-name">{{ skill?.name }}</div>
+        <div class="skill-ecosystem-publish__skill-slug">{{ skill?.slug }}</div>
+      </div>
+    </div>
+    <div v-if="skill?.description" class="skill-ecosystem-publish__desc">{{ skill.description }}</div>
+    <div class="skill-ecosystem-publish__note">
+      <q-icon name="storefront" size="16px" />
+      <span>{{ t('skillsPage.ecosystemPublishMessage') }}</span>
+    </div>
+    <template #actions>
+      <q-btn
+        flat
+        rounded
+        no-caps
+        :label="t('common.cancel')"
+        :disable="loading"
+        @click="emit('update:modelValue', false)"
+      />
+      <q-btn
+        color="primary"
+        rounded
+        unelevated
+        no-caps
+        icon="storefront"
+        :label="t('skillsPage.ecosystemPublishAction')"
+        :loading="loading"
+        @click="emit('confirm')"
+      />
+    </template>
+  </AppDialog>
 </template>
 
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n';
 import type { Skill } from '../../features/skills/types';
+import AppDialog from '../common/AppDialog.vue';
 
 defineProps<{
   modelValue: boolean;
@@ -55,9 +62,6 @@ const { t } = useI18n();
 </script>
 
 <style scoped lang="sass">
-.skill-ecosystem-publish__body
-  padding: 16px 18px
-
 .skill-ecosystem-publish__skill
   display: flex
   align-items: center
@@ -85,7 +89,7 @@ const { t } = useI18n();
   margin-top: 10px
   padding: 10px 12px
   border: 1px solid var(--glass-border)
-  border-radius: 10px
+  border-radius: 8px
   background: color-mix(in srgb, var(--glass-elevated) 72%, transparent)
   font-size: 12px
   line-height: 1.6

@@ -13,8 +13,14 @@
       <i />{{ wsConnected ? t('workbench.statusbar.live') : t('workbench.offline') }}
     </span>
     <span class="wb-topbar__clock">{{ clockText }}</span>
-    <span v-if="todayAwait > 0" class="wb-await-badge" :title="t('workbench.awaitTip')">
-      {{ todayAwait > 99 ? '99+' : todayAwait }}
+    <span
+      v-if="awaitTotal > 0"
+      class="wb-await-badge"
+      :title="t('workbench.awaitTip')"
+      aria-live="polite"
+      aria-atomic="true"
+    >
+      {{ awaitTotal > 99 ? '99+' : awaitTotal }}
     </span>
     <span v-else class="wb-topbar__clear">{{ t('workbench.allClear') }}</span>
     <TrustIndicator :state="trustState" :stale-seconds="staleSeconds" />
@@ -29,7 +35,8 @@ import type { TrustState } from '../../features/workbench/types';
 import TrustIndicator from './TrustIndicator.vue';
 
 const props = defineProps<{
-  todayAwait: number;
+  /** 当前未核销待签合计（非"今日"累计口径） */
+  awaitTotal: number;
   wsConnected: boolean;
   clockIso: string;
   trustState: TrustState;
@@ -60,13 +67,13 @@ const clockText = computed(() => {
   align-items: center
   gap: 10px
   height: 42px
-  padding: 0 12px
+  padding: 0 var(--nt-space-3)
   border-bottom: 1px solid var(--wb-line-hairline)
   flex: none
 .wb-topbar__cmdk
   display: inline-flex
   align-items: center
-  gap: 4px
+  gap: var(--nt-space-1)
   border: 1px solid var(--wb-line-hairline)
   border-radius: var(--wb-radius)
   background: transparent

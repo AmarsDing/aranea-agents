@@ -13,6 +13,7 @@
 import * as THREE from 'three';
 import SpriteText from 'three-spritetext';
 import { TIER_LABEL_WEIGHT } from '../../../../features/knowledge/graph3d/tiering';
+import { canvasPalette } from '../../../../utils/canvasPalette';
 
 export interface LabelLayerOpts {
   names: string[];
@@ -126,9 +127,10 @@ export interface GroupLabelEntry {
 
 /** 组标签 sprite 工厂：中等醒目度（介于候选与焦点之间），屏幕恒尺寸。 */
 function makeGroupSprite(borderColor: string): SpriteText {
-  const s = new SpriteText(' ', 3.8, '#d8ecff');
-  // hud-abyss 底色：SpriteText 绘制到 WebGL 纹理，CSS var() 不可解析，硬编码豁免（值同 --hud-abyss-rgb）
-  s.backgroundColor = 'rgba(5, 8, 16, 0.72)';
+  const palette = canvasPalette().label;
+  const s = new SpriteText(' ', 3.8, palette.groupText);
+  // hud-abyss 底色：SpriteText 绘制到 WebGL 纹理，取 getComputedStyle 解析后的令牌值
+  s.backgroundColor = palette.groupBg;
   s.borderColor = borderColor;
   s.borderWidth = 0.25;
   s.borderRadius = 1.0;
@@ -143,7 +145,7 @@ function makeGroupSprite(borderColor: string): SpriteText {
  *  UX 优化：字高 6.5→4.2、底牌 padding 同步收敛（近景 ~76px 盒偏大 → ~45px 内）。 */
 function makeFocusSprite(color: string, borderColor: string): SpriteText {
   const s = new SpriteText(' ', 4.2, color);
-  s.backgroundColor = 'rgba(5, 8, 16, 0.78)';
+  s.backgroundColor = canvasPalette().label.focusBg;
   s.borderColor = borderColor;
   s.borderWidth = 0.3;
   s.borderRadius = 1.2;
@@ -203,11 +205,12 @@ export class LabelLayer {
 
   constructor(opts: LabelLayerOpts) {
     const { names, degree } = opts;
+    const palette = canvasPalette().label;
     this.degree = degree;
     this.names = names;
     const maxLabels = opts.maxLabels ?? 80;
-    // v3 可读性：#9fdcff→#8fb9d9（原色亮度≈0.8 易冒辉光，压暗配合 bloom 提阈 0.85）
-    const color = opts.color ?? '#8fb9d9';
+    // v3 可读性：标签色压暗配合 bloom 提阈 0.85（见 --nt-graph-label）
+    const color = opts.color ?? palette.text;
     // UX 优化：字高 4→3.2（zoomToFit 鲁棒化后相机更近，原字高同屏叠字）
     const textHeight = opts.textHeight ?? 3.2;
     this.baseTextHeight = textHeight;
@@ -217,7 +220,7 @@ export class LabelLayer {
     for (const i of this.candidates) {
       const sprite = new SpriteText(names[i], textHeight, color);
       // UX 可读性：深色底牌（无描边）——近景边线穿过文字时仍可辨读
-      sprite.backgroundColor = 'rgba(5, 8, 16, 0.55)';
+      sprite.backgroundColor = palette.bg;
       sprite.padding = 0.7;
       sprite.borderRadius = 0.6;
       sprite.visible = false;
@@ -227,8 +230,8 @@ export class LabelLayer {
     }
 
     this.focusSprites = {
-      hover: makeFocusSprite('#e8f7ff', 'rgba(84, 230, 255, 0.9)'),
-      selected: makeFocusSprite('#ffffff', 'rgba(168, 85, 247, 0.95)'),
+      hover: makeFocusSprite(palette.focus, palette.ringHover),
+      selected: makeFocusSprite(palette.focusSelected, palette.ringSelected),
     };
     this.group.add(this.focusSprites.hover, this.focusSprites.selected);
   }
@@ -243,7 +246,7 @@ export class LabelLayer {
     this.groupLabels = labels;
     // 按需扩容 sprite 池（只增不缩，复用 GPU 纹理）
     while (this.groupSprites.length < labels.length) {
-      const s = makeGroupSprite('#9fdcff');
+      const s = makeGroupSprite(canvasPalette().label.group);
       this.groupSprites.push(s);
       this.group.add(s);
     }

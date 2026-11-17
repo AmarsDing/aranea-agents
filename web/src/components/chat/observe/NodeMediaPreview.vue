@@ -36,7 +36,7 @@ const displayArtifacts = computed(() => props.artifacts.slice(0, 3));
 <style scoped lang="sass">
 .node-media-preview
   display: flex
-  gap: 4px
+  gap: var(--nt-space-1)
   align-items: center
   margin-top: 6px
 
@@ -60,5 +60,5 @@ const displayArtifacts = computed(() => props.artifacts.slice(0, 3));
 .node-media-preview__more
   font-size: 11px
   color: var(--color-text-tertiary)
-  margin-left: 4px
+  margin-left: var(--nt-space-1)
 </style>

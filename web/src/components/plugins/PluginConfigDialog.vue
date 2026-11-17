@@ -1,76 +1,74 @@
 <template>
-  <q-dialog :model-value="open" persistent @update:model-value="$emit('update:open', $event)">
-    <q-card class="app-dialog-card app-dialog-card--md app-glass-dialog">
-      <q-card-section class="app-glass-dialog__head row items-center justify-between">
-        <div class="min-width-0">
-          <div class="app-glass-dialog__title">{{ t('pluginsPage.config.title', { name: target?.name }) }}</div>
-          <div class="app-glass-dialog__subtitle">{{ t('pluginsPage.config.subtitle') }}</div>
-        </div>
-        <q-btn v-close-popup flat round dense icon="close" />
-      </q-card-section>
-      <q-separator />
-      <q-card-section class="app-dialog-body q-gutter-md">
-        <q-tabs :model-value="mode" dense align="left" class="text-primary" @update:model-value="onModeUpdate">
-          <q-tab name="form" :label="t('pluginsPage.config.tabForm')" />
-          <q-tab name="json" :label="t('pluginsPage.config.tabJson')" />
-        </q-tabs>
-        <q-tab-panels :model-value="mode" animated @update:model-value="onModeUpdate">
-          <q-tab-panel name="form" class="q-pa-none">
-            <PluginSchemaForm
-              ref="schemaFormRef"
-              :model-value="configText"
-              :schema-json="target?.config_schema_json || '{}'"
-              @update:model-value="$emit('update:configText', $event)"
-            />
-          </q-tab-panel>
-          <q-tab-panel name="json" class="q-pa-none">
-            <q-input
-              :model-value="configText"
-              type="textarea"
-              autogrow
-              outlined
-              label="config_json"
-              :error="Boolean(configError)"
-              :error-message="configError"
-              @update:model-value="$emit('update:configText', String($event ?? ''))"
-            />
-          </q-tab-panel>
-        </q-tab-panels>
-        <q-expansion-item icon="schema" :label="t('pluginsPage.config.defaultRef')">
-          <JsonCodeViewer
-            :text="prettyJSON(target?.default_config_json || '{}', t('pluginsPage.detail.noDefaultConfig'))"
-            :show-toolbar="false"
-            scroll-height="200px"
+  <AppDialog
+    :model-value="open"
+    :title="t('pluginsPage.config.title', { name: target?.name })"
+    :subtitle="t('pluginsPage.config.subtitle')"
+    persistent
+    :loading="saving"
+    @update:model-value="$emit('update:open', $event)"
+  >
+    <div class="q-gutter-md">
+      <q-tabs :model-value="mode" dense align="left" class="text-primary" @update:model-value="onModeUpdate">
+        <q-tab name="form" :label="t('pluginsPage.config.tabForm')" />
+        <q-tab name="json" :label="t('pluginsPage.config.tabJson')" />
+      </q-tabs>
+      <q-tab-panels :model-value="mode" animated @update:model-value="onModeUpdate">
+        <q-tab-panel name="form" class="q-pa-none">
+          <PluginSchemaForm
+            ref="schemaFormRef"
+            :model-value="configText"
+            :schema-json="target?.config_schema_json || '{}'"
+            @update:model-value="$emit('update:configText', $event)"
           />
-          <JsonCodeViewer
-            class="q-mt-sm"
-            :text="prettyJSON(target?.config_schema_json || '{}', t('pluginsPage.detail.noSchema'))"
-            :show-toolbar="false"
-            scroll-height="200px"
+        </q-tab-panel>
+        <q-tab-panel name="json" class="q-pa-none">
+          <q-input
+            :model-value="configText"
+            type="textarea"
+            autogrow
+            outlined
+            label="config_json"
+            :error="Boolean(configError)"
+            :error-message="configError"
+            @update:model-value="$emit('update:configText', String($event ?? ''))"
           />
-        </q-expansion-item>
-      </q-card-section>
-      <q-card-actions align="right" class="app-actions-bar app-glass-dialog__actions">
-        <q-btn v-close-popup flat rounded no-caps :label="t('pluginsPage.config.cancel')" />
-        <q-btn
-          color="primary"
-          rounded
-          unelevated
-          no-caps
-          :label="t('pluginsPage.config.save')"
-          :loading="saving"
-          :disable="Boolean(configError)"
-          @click="onSaveClick"
+        </q-tab-panel>
+      </q-tab-panels>
+      <q-expansion-item icon="schema" :label="t('pluginsPage.config.defaultRef')">
+        <JsonCodeViewer
+          :text="prettyJSON(target?.default_config_json || '{}', t('pluginsPage.detail.noDefaultConfig'))"
+          :show-toolbar="false"
+          scroll-height="200px"
         />
-      </q-card-actions>
-    </q-card>
-  </q-dialog>
+        <JsonCodeViewer
+          class="q-mt-sm"
+          :text="prettyJSON(target?.config_schema_json || '{}', t('pluginsPage.detail.noSchema'))"
+          :show-toolbar="false"
+          scroll-height="200px"
+        />
+      </q-expansion-item>
+    </div>
+    <template #actions>
+      <q-btn flat rounded no-caps :label="t('pluginsPage.config.cancel')" @click="$emit('update:open', false)" />
+      <q-btn
+        color="primary"
+        rounded
+        unelevated
+        no-caps
+        :label="t('pluginsPage.config.save')"
+        :loading="saving"
+        :disable="Boolean(configError)"
+        @click="onSaveClick"
+      />
+    </template>
+  </AppDialog>
 </template>
 
 <script setup lang="ts">
 import { ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import PluginSchemaForm from './PluginSchemaForm.vue';
+import AppDialog from '../common/AppDialog.vue';
 import JsonCodeViewer from '../common/JsonCodeViewer.vue';
 import type { Plugin } from '../../features/plugins/types';
 import { prettyJSON } from './pluginUi';

@@ -18,7 +18,7 @@
     </div>
     <div class="ctx-budget-breakdown__rows">
       <div v-for="row in rows" :key="row.key" class="ctx-budget-breakdown__row">
-        <span class="ctx-budget-breakdown__dot" :style="{ background: row.color }" />
+        <span class="ctx-budget-breakdown__dot" :class="`ctx-budget-breakdown__dot--${row.key}`" />
         <span class="ctx-budget-breakdown__row-label">
           {{ t(`chat.${row.labelKey}`) }}
           <span v-if="row.key === toolsSchemaKey && toolsCount > 0" class="ctx-budget-breakdown__sub">
@@ -78,7 +78,7 @@ function segWidth(row: ContextBudgetRow): string {
   align-items: center
   justify-content: space-between
   font-size: 11px
-  margin-bottom: 4px
+  margin-bottom: var(--nt-space-1)
 
 .ctx-budget-breakdown__head-label
   color: var(--color-text-secondary)
@@ -120,6 +120,40 @@ function segWidth(row: ContextBudgetRow): string {
   height: 8px
   border-radius: 2px
   flex-shrink: 0
+
+// 分项色：与 features/chat/contextBudget.ts ROW_DEFS 的 --chart-color-* 一一对应
+.ctx-budget-breakdown__dot--static_prefix
+  background: var(--chart-color-system-prompt)
+
+.ctx-budget-breakdown__dot--tools_schema
+  background: var(--chart-color-tools-schema)
+
+.ctx-budget-breakdown__dot--skill_overview
+  background: var(--chart-color-skills)
+
+.ctx-budget-breakdown__dot--skill_guidance
+  background: var(--chart-color-intent-pass)
+
+.ctx-budget-breakdown__dot--memory_l1
+  background: var(--chart-color-memory)
+
+.ctx-budget-breakdown__dot--memory_l4
+  background: var(--chart-color-session-summary)
+
+.ctx-budget-breakdown__dot--memory_composite
+  background: var(--chart-color-user-message)
+
+.ctx-budget-breakdown__dot--knowledge_cue
+  background: var(--chart-color-knowledge-cue)
+
+.ctx-budget-breakdown__dot--tool_catalog_cue
+  background: var(--chart-color-tool-results)
+
+.ctx-budget-breakdown__dot--history
+  background: var(--chart-color-history)
+
+.ctx-budget-breakdown__dot--other_dynamic
+  background: var(--chart-color-other-dynamic)
 
 .ctx-budget-breakdown__row-label
   flex: 1

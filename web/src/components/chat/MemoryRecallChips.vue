@@ -123,7 +123,7 @@ function onOpen(hit: MemoryRecallHit) {
 .memory-recall-chips
   margin: 2px 0 6px
   padding: 6px 10px
-  border-radius: 10px
+  border-radius: 8px
   background: var(--glass-surface)
   border: 1px solid var(--glass-border)
 
@@ -131,7 +131,7 @@ function onOpen(hit: MemoryRecallHit) {
     display: flex
     align-items: center
     gap: 6px
-    margin-bottom: 4px
+    margin-bottom: var(--nt-space-1)
 
   &__icon
     color: var(--color-accent)
@@ -170,7 +170,7 @@ function onOpen(hit: MemoryRecallHit) {
     font-size: 10px
     font-weight: 700
     letter-spacing: 0.4px
-    padding: 0 4px
+    padding: 0 var(--nt-space-1)
     border-radius: 4px
 
     &--l1
@@ -210,7 +210,7 @@ function onOpen(hit: MemoryRecallHit) {
     margin-bottom: 2px
 
   &__tip-meta
-    margin-top: 4px
+    margin-top: var(--nt-space-1)
     display: flex
     gap: 10px
     opacity: 0.8

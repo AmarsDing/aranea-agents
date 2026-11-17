@@ -21,12 +21,18 @@ export const SKILL_TABLE_COLUMNS: QTableColumn<Skill>[] = [
 ];
 
 /** SkillRunsTable 列定义 */
-export const SKILL_RUNS_TABLE_COLUMNS: QTableColumn<SkillInvocation>[] = [
-  registryCol<SkillInvocation>('time', '时间 / 耗时', 'started_at', 'left', REGISTRY_COL_W.time),
-  registryCol<SkillInvocation>('skill', 'Skill', 'skill_name', 'left', REGISTRY_COL_W.name),
-  registryCol<SkillInvocation>('agent', 'Agent', 'agent_display_name', 'left', REGISTRY_COL_W.agent),
-  registryCol<SkillInvocation>('status', '结果', 'status', 'left', REGISTRY_COL_W.status),
-];
+export function createSkillRunsTableColumns(t: (key: string) => string): QTableColumn<SkillInvocation>[] {
+  return [
+    registryCol<SkillInvocation>('time', t('shell.runs.colTime'), 'started_at', 'left', REGISTRY_COL_W.time, {
+      sortable: true,
+    }),
+    registryCol<SkillInvocation>('skill', t('shell.runs.colSkill'), 'skill_name', 'left', REGISTRY_COL_W.name),
+    registryCol<SkillInvocation>('agent', t('shell.runs.colAgent'), 'agent_display_name', 'left', REGISTRY_COL_W.agent),
+    registryCol<SkillInvocation>('status', t('shell.runs.colStatus'), 'status', 'left', REGISTRY_COL_W.status, {
+      sortable: true,
+    }),
+  ];
+}
 
 /** Skill 状态标签 */
 export function skillStatusLabel(status: string) {

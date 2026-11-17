@@ -227,7 +227,7 @@ watch(
     overflow-y: visible
 
 .model-token-chart__hint
-  margin-top: 4px
+  margin-top: var(--nt-space-1)
   font-size: 10px
   color: var(--color-text-tertiary)
   padding: 2px 4px
@@ -238,7 +238,7 @@ watch(
   justify-content: space-between
   font-size: 11px
   color: var(--color-text-secondary)
-  margin-bottom: 4px
+  margin-bottom: var(--nt-space-1)
 
 .model-token-chart__hover-title
   font-weight: 500

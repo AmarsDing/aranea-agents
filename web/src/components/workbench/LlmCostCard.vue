@@ -147,7 +147,7 @@ const budgetTip = computed(() =>
 .wb-cost__budget
   display: inline-flex
   align-items: center
-  gap: 4px
+  gap: var(--nt-space-1)
   font-size: var(--wb-micro-label)
   letter-spacing: 0.08em
 .wb-cost__budget-dot
@@ -169,7 +169,7 @@ const budgetTip = computed(() =>
 .wb-cost__nums
   display: grid
   grid-template-columns: 1fr 1fr
-  gap: 8px
+  gap: var(--nt-space-2)
 .wb-cost__cell
   display: flex
   flex-direction: column
@@ -188,11 +188,11 @@ const budgetTip = computed(() =>
   flex-direction: column
   gap: 2px
   border-top: 1px solid var(--wb-line-hairline)
-  padding-top: 4px
+  padding-top: var(--nt-space-1)
 .wb-cost__agent
   display: flex
   justify-content: space-between
-  gap: 8px
+  gap: var(--nt-space-2)
   font-size: var(--wb-caption)
   color: var(--color-text-secondary)
 .wb-cost__agent-key
@@ -208,9 +208,9 @@ const budgetTip = computed(() =>
 .wb-cost__error
   display: flex
   align-items: center
-  gap: 8px
+  gap: var(--nt-space-2)
   border-top: 1px solid var(--wb-line-hairline)
-  padding-top: 4px
+  padding-top: var(--nt-space-1)
 .wb-cost__error-text
   flex: 1
   min-width: 0

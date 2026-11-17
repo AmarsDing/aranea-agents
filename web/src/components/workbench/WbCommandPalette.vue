@@ -110,11 +110,11 @@ function runFirst(): void {
 .wb-palette__list
   max-height: 300px
   overflow-y: auto
-  padding: 4px
+  padding: var(--nt-space-1)
 .wb-palette__item
   display: flex
   align-items: center
-  gap: 8px
+  gap: var(--nt-space-2)
   width: 100%
   padding: 7px 10px
   border: none
@@ -134,7 +134,7 @@ function runFirst(): void {
   color: var(--color-text-secondary)
   font-size: 10px
 .wb-palette__empty
-  padding: 12px
+  padding: var(--nt-space-3)
   font-size: var(--wb-caption)
   color: var(--color-text-secondary)
   text-align: center

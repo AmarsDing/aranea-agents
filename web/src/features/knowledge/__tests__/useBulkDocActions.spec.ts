@@ -3,25 +3,17 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import type { KnowledgeCollection, VaultTreeNode } from '../types';
 
 const notifyMock = vi.fn();
-let dialogOutcome: boolean | null = true;
-const dialogMock = vi.fn(() => ({
-  onOk(cb: () => void) {
-    if (dialogOutcome === true) cb();
-    return {
-      onCancel(cb2: () => void) {
-        if (dialogOutcome === false) cb2();
-        return {
-          onDismiss(cb3: () => void) {
-            if (dialogOutcome === null) cb3();
-          },
-        };
-      },
-    };
-  },
-}));
+// 确认框走 useAppConfirm 单例：outcome=null 表示关闭（等价取消）。
+const confirmCall = vi.hoisted(() => ({ outcome: true as boolean | null, calls: [] as unknown[] }));
 
 vi.mock('quasar', () => ({
-  useQuasar: () => ({ notify: notifyMock, dialog: dialogMock }),
+  useQuasar: () => ({ notify: notifyMock }),
+}));
+vi.mock('../../../composables/useAppConfirm', () => ({
+  confirm: (opts: unknown) => {
+    confirmCall.calls.push(opts);
+    return Promise.resolve(confirmCall.outcome === true);
+  },
 }));
 
 // 仅覆盖 useI18n；createI18n 等保持真实（src/i18n/index.ts 在 axiosHandler 链上会真实初始化）。
@@ -105,7 +97,8 @@ describe('runSequential（顺序批量、失败不中断）', () => {
 describe('useBulkDocActions（composable 胶水）', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    dialogOutcome = true;
+    confirmCall.outcome = true;
+    confirmCall.calls = [];
     mockStore.removeDocument.mockResolvedValue(undefined);
     mockStore.moveDoc.mockResolvedValue({});
     mockStore.reembedDocuments.mockResolvedValue({ accepted_count: 2, skipped_count: 0 });
@@ -120,7 +113,7 @@ describe('useBulkDocActions（composable 胶水）', () => {
   it('deleteSelected：确认框列计数 → 逐个删除 → positive 汇总 → 刷新库计数', async () => {
     const b = setup();
     const out = await b.deleteSelected([node('d1'), node('d2')]);
-    expect(dialogMock).toHaveBeenCalledTimes(1);
+    expect(confirmCall.calls).toHaveLength(1);
     expect(mockStore.removeDocument.mock.calls.map((c) => c[0])).toEqual(['d1', 'd2']);
     expect(out).toEqual({ okCount: 2, failedIds: [] });
     expect(notifyMock.mock.calls[0][0].type).toBe('positive');
@@ -129,7 +122,7 @@ describe('useBulkDocActions（composable 胶水）', () => {
   });
 
   it('deleteSelected：用户取消 → 不调用任何接口、不发通知', async () => {
-    dialogOutcome = false;
+    confirmCall.outcome = false;
     const b = setup();
     const out = await b.deleteSelected([node('d1')]);
     expect(out).toBeNull();
@@ -186,7 +179,7 @@ describe('useBulkDocActions（composable 胶水）', () => {
   });
 
   it('reembedSelected：确认框取消 → 不提交', async () => {
-    dialogOutcome = false;
+    confirmCall.outcome = false;
     const b = setup();
     b.reembedSelected([node('d1')]);
     await Promise.resolve();

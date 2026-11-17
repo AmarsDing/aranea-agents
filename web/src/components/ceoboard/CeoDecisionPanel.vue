@@ -4,13 +4,44 @@
 // 左列：异常（翻译成业务语言的告警）；右列：等你拍板（审批）。
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
-import type { Overview } from '../../features/ceoboard/types';
+import type { OpsAnomaly, Overview } from '../../features/ceoboard/types';
 import { friendlyAlert } from '../../features/ceoboard/friendly';
 
-const props = defineProps<{ ov: Overview }>();
+const props = defineProps<{ ov: Overview; businessAlerts?: OpsAnomaly[]; businessEmpty?: boolean }>();
+const emit = defineEmits<{ drill: [path: string] }>();
 const { t } = useI18n();
 
-const alerts = computed(() => props.ov.alerts.map((a) => ({ ...a, friendly: friendlyAlert(a) })));
+interface AttentionItem {
+  id: string;
+  level: string;
+  title: string;
+  detail: string;
+  since?: string;
+  path?: string;
+}
+
+function anomalyText(a: OpsAnomaly): string {
+  const key = `ceoboard.ops.anomalies.${a.code}`;
+  const translated = t(key, a.params ?? {});
+  return translated === key ? a.text : translated;
+}
+
+const attention = computed<AttentionItem[]>(() => {
+  const biz = (props.businessAlerts ?? []).map((a) => ({
+    id: `ops:${a.id}`,
+    level: a.level,
+    title: t(`ceoboard.ops.moduleNames.${a.module}`),
+    detail: anomalyText(a),
+    since: a.since,
+    path: a.drill?.path,
+  }));
+  const infra = props.ov.alerts.map((a) => {
+    const f = friendlyAlert(a);
+    return { id: `infra:${a.id}`, level: a.level, title: f.title, detail: f.detail, since: a.since, path: undefined };
+  });
+  return [...biz, ...infra];
+});
+
 const approvals = computed(() => props.ov.approvals);
 
 function fmtSince(at?: string): string {
@@ -34,20 +65,31 @@ function freshness(): string {
 
 <template>
   <section class="ceo-decide">
-    <div class="ceo-decide-col" :class="{ attention: alerts.length > 0 }">
+    <div class="ceo-decide-col" :class="{ attention: attention.length > 0 }">
       <div class="ceo-decide-head">
         <h2>{{ t('ceoboard.decide.attention') }}</h2>
-        <span class="ceo-decide-count" :class="alerts.length ? '' : 'ok'">{{ alerts.length }}</span>
+        <span class="ceo-decide-count" :class="attention.length ? '' : 'ok'">{{ attention.length }}</span>
       </div>
-      <div v-if="!alerts.length" class="ceo-decide-ok">✓ {{ t('ceoboard.decide.allOk') }}</div>
-      <div v-for="a in alerts" :key="a.id" class="ceo-decide-item" :title="a.text">
+      <div v-if="!attention.length" class="ceo-decide-ok" :class="{ idle: businessEmpty }">
+        {{ businessEmpty ? t('ceoboard.ops.decisionIdle') : `✓ ${t('ceoboard.decide.allOk')}` }}
+      </div>
+      <component
+        :is="a.path ? 'button' : 'div'"
+        v-for="a in attention"
+        :key="a.id"
+        class="ceo-decide-item"
+        :class="{ 'is-link': !!a.path }"
+        :type="a.path ? 'button' : undefined"
+        :title="a.path ? `${a.detail} · ${t('ceoboard.ops.openDrill')}` : a.detail"
+        @click="a.path ? emit('drill', a.path) : undefined"
+      >
         <span class="ceo-dot ceo-dot--inline" :class="a.level"></span>
         <div class="body">
-          <div class="t">{{ a.friendly.title }}</div>
-          <div class="d">{{ a.friendly.detail }}</div>
+          <div class="t">{{ a.title }}</div>
+          <div class="d">{{ a.detail }}</div>
         </div>
         <span class="when">{{ fmtSince(a.since) }}</span>
-      </div>
+      </component>
     </div>
 
     <div class="ceo-decide-col">

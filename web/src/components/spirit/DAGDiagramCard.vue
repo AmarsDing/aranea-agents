@@ -112,7 +112,7 @@ const verifyNodeClass = (vn: VerificationNode) => {
 <style scoped lang="sass">
 .dag-diagram-card
   padding: var(--space-4)
-  border-radius: 16px
+  border-radius: 12px
   border: 1px solid var(--glass-border)
   background: color-mix(in srgb, var(--glass-surface) 55%, transparent)
   backdrop-filter: blur(var(--glass-blur-default))

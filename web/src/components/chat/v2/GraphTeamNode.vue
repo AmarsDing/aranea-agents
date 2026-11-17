@@ -335,7 +335,7 @@ function onMemberClick(ms: MemberSession) {
   flex-direction: column
   padding: 10px 12px
   border: 2px solid var(--node-accent, var(--glass-border))
-  border-radius: 10px
+  border-radius: 8px
   background: var(--glass-elevated)
   backdrop-filter: blur(var(--glass-blur-default))
   box-shadow: 0 2px 10px color-mix(in srgb, var(--color-shadow) 8%, transparent)
@@ -381,7 +381,7 @@ function onMemberClick(ms: MemberSession) {
   align-items: center
   gap: 6px
   height: 20px
-  margin-bottom: 8px
+  margin-bottom: var(--nt-space-2)
   cursor: pointer
   user-select: none
 
@@ -422,7 +422,7 @@ function onMemberClick(ms: MemberSession) {
   align-items: center
   gap: 6px
   height: 24px
-  padding: 0 4px
+  padding: 0 var(--nt-space-1)
   border-radius: 6px
   cursor: pointer
   user-select: none
@@ -479,7 +479,7 @@ function onMemberClick(ms: MemberSession) {
 .gtn-progress
   display: flex
   align-items: center
-  gap: 8px
+  gap: var(--nt-space-2)
   height: 6px
 
   &__track
@@ -634,7 +634,7 @@ function onMemberClick(ms: MemberSession) {
 .gtn-error
   display: flex
   align-items: center
-  gap: 4px
+  gap: var(--nt-space-1)
   min-width: 0
   max-width: 100%
   padding: 2px 6px

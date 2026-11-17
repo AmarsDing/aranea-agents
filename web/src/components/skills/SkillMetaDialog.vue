@@ -1,91 +1,91 @@
 <template>
-  <q-dialog :model-value="modelValue" persistent @update:model-value="onDialogUpdate">
-    <q-card class="app-dialog-card app-glass-dialog app-dialog-card--xl">
-      <q-card-section class="app-glass-dialog__head row items-center justify-between">
-        <div class="app-glass-dialog__title">{{ isCreate ? '新建 Skill' : '编辑 Skill' }}</div>
-        <q-btn flat round dense icon="close" :disable="saving" @click="tryClose" />
-      </q-card-section>
-      <!-- 吸顶元数据行：名称 / Slug / 标签 一行；滚动描述/正文时始终可见 -->
-      <q-card-section class="skill-meta-dialog__meta">
-        <div class="skill-meta-dialog__meta-grid">
-          <q-input
-            v-model="name"
-            dense
-            outlined
-            label="名称"
-            :rules="[(v) => (!!String(v || '').trim() && String(v).trim().length <= 80) || '必填，1–80 字符']"
-            :disable="saving"
-          />
-          <q-input
-            v-model="slug"
-            dense
-            outlined
-            label="Slug"
-            hint="小写字母、数字、短横线、下划线"
-            :disable="saving || !isCreate"
-            :rules="isCreate ? [slugRule] : undefined"
-          />
-          <q-select
-            v-model="tags"
-            dense
-            outlined
-            multiple
-            use-chips
-            use-input
-            new-value-mode="add-unique"
-            input-debounce="0"
-            label="标签"
-            :hint="$t('skillTags.selectHint')"
-            :options="filteredTagOptions"
-            :disable="saving"
-            @filter="onTagFilter"
-          />
-        </div>
-      </q-card-section>
-      <q-card-section class="app-glass-dialog__scroll skill-meta-dialog__scroll">
-        <div class="skill-meta-dialog__fields">
-          <q-input
-            v-model="description"
-            dense
-            outlined
-            type="textarea"
-            autogrow
-            label="描述"
-            :disable="saving"
-            :rules="[(v) => (!!String(v || '').trim() && String(v).trim().length <= 500) || '必填，1–500 字符']"
-          />
-          <q-input
-            v-model="body"
-            dense
-            outlined
-            type="textarea"
-            autogrow
-            label="正文（SKILL.md）"
-            input-style="min-height: 220px; font-family: var(--font-mono)"
-            :disable="saving"
-            :rules="[(v) => !!String(v || '').trim() || '发布前正文必填；草稿也建议填写']"
-          />
-        </div>
-      </q-card-section>
-      <q-card-actions align="right" class="q-px-md q-pb-md">
-        <q-btn flat rounded no-caps label="取消" :disable="saving" @click="tryClose" />
-        <q-btn
-          color="primary"
-          unelevated
-          rounded
-          no-caps
-          :label="isCreate ? '创建草稿' : '保存草稿'"
-          :loading="saving"
-          @click="submit"
+  <AppDialog
+    :model-value="modelValue"
+    :title="isCreate ? '新建 Skill' : '编辑 Skill'"
+    size="xl"
+    persistent
+    :loading="Boolean(saving)"
+    @update:model-value="onDialogUpdate"
+  >
+    <!-- 元数据行：名称 / Slug / 标签 一行；滚动描述/正文时不再吸顶（AppDialog 单滚动区） -->
+    <div class="skill-meta-dialog__meta">
+      <div class="skill-meta-dialog__meta-grid">
+        <q-input
+          v-model="name"
+          dense
+          outlined
+          label="名称"
+          :rules="[(v) => (!!String(v || '').trim() && String(v).trim().length <= 80) || '必填，1–80 字符']"
+          :disable="saving"
         />
-      </q-card-actions>
-    </q-card>
-  </q-dialog>
+        <q-input
+          v-model="slug"
+          dense
+          outlined
+          label="Slug"
+          hint="小写字母、数字、短横线、下划线"
+          :disable="saving || !isCreate"
+          :rules="isCreate ? [slugRule] : undefined"
+        />
+        <q-select
+          v-model="tags"
+          dense
+          outlined
+          multiple
+          use-chips
+          use-input
+          new-value-mode="add-unique"
+          input-debounce="0"
+          label="标签"
+          :hint="$t('skillTags.selectHint')"
+          :options="filteredTagOptions"
+          :disable="saving"
+          @filter="onTagFilter"
+        />
+      </div>
+    </div>
+    <div class="skill-meta-dialog__fields">
+      <q-input
+        v-model="description"
+        dense
+        outlined
+        type="textarea"
+        autogrow
+        label="描述"
+        :disable="saving"
+        :rules="[(v) => (!!String(v || '').trim() && String(v).trim().length <= 500) || '必填，1–500 字符']"
+      />
+      <q-input
+        v-model="body"
+        dense
+        outlined
+        type="textarea"
+        autogrow
+        label="正文（SKILL.md）"
+        input-style="min-height: 220px; font-family: var(--font-mono)"
+        :disable="saving"
+        :rules="[(v) => !!String(v || '').trim() || '发布前正文必填；草稿也建议填写']"
+      />
+    </div>
+    <template #actions>
+      <q-btn flat rounded no-caps label="取消" :disable="saving" @click="tryClose" />
+      <q-btn
+        color="primary"
+        unelevated
+        rounded
+        no-caps
+        :label="isCreate ? '创建草稿' : '保存草稿'"
+        :loading="saving"
+        @click="submit"
+      />
+    </template>
+  </AppDialog>
 </template>
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import type { Skill } from '../../features/skills/types';
+import AppDialog from '../common/AppDialog.vue';
 
 const props = defineProps<{
   modelValue: boolean;

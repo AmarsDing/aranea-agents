@@ -136,6 +136,8 @@ export function useResourceManagerPage() {
     isDark,
     rows: list.rows,
     loading: list.loading,
+    loadError: list.loadError,
+    reload: list.loadRows,
     saving,
     checkingModel: wizard.checkingModel,
     keyword: list.keyword,

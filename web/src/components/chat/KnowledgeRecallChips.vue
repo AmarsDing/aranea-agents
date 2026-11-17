@@ -110,7 +110,7 @@ function onOpen(hit: KnowledgeRecallChunk) {
 .knowledge-recall-chips
   margin: 2px 0 6px
   padding: 6px 10px
-  border-radius: 10px
+  border-radius: 8px
   background: var(--glass-surface)
   border: 1px solid var(--glass-border)
 
@@ -118,7 +118,7 @@ function onOpen(hit: KnowledgeRecallChunk) {
     display: flex
     align-items: center
     gap: 6px
-    margin-bottom: 4px
+    margin-bottom: var(--nt-space-1)
 
   &__icon
     color: var(--color-accent)
@@ -171,6 +171,6 @@ function onOpen(hit: KnowledgeRecallChunk) {
     opacity: 0.75
 
   &__tip-meta
-    margin-top: 4px
+    margin-top: var(--nt-space-1)
     opacity: 0.8
 </style>

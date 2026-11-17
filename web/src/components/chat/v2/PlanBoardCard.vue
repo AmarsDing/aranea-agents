@@ -175,14 +175,14 @@ function assigneeTooltip(step: PlanStep): string {
 .plan-board-card
   border: 1px solid var(--glass-border)
   border-radius: 8px
-  margin: 8px 0
+  margin: var(--nt-space-2) 0
   background: var(--glass-surface)
 
 .plan-header
   display: flex
   align-items: center
   justify-content: space-between
-  padding: 8px 12px
+  padding: var(--nt-space-2) var(--nt-space-3)
   cursor: pointer
   user-select: none
   border-bottom: 1px solid var(--glass-border)
@@ -204,7 +204,7 @@ function assigneeTooltip(step: PlanStep): string {
     color: var(--color-text-primary)
 
   &__status
-    margin-left: 4px
+    margin-left: var(--nt-space-1)
 
   &__summary
     font-size: 12px
@@ -214,14 +214,14 @@ function assigneeTooltip(step: PlanStep): string {
   font-variant-numeric: tabular-nums
 
 .plan-body
-  padding: 8px 12px
+  padding: var(--nt-space-2) var(--nt-space-3)
 
 .plan-contract-warning
   display: flex
   align-items: flex-start
-  gap: 8px
+  gap: var(--nt-space-2)
   padding: 8px 10px
-  margin-bottom: 8px
+  margin-bottom: var(--nt-space-2)
   border: 1px solid color-mix(in srgb, var(--color-warning) 40%, var(--glass-border))
   border-left-width: 3px
   border-radius: 6px
@@ -242,8 +242,8 @@ function assigneeTooltip(step: PlanStep): string {
     line-height: 1.4
 
   &__list
-    margin: 4px 0 0
-    padding-left: 16px
+    margin: var(--nt-space-1) 0 0
+    padding-left: var(--nt-space-4)
     font-size: 12px
     color: var(--color-text-secondary)
     line-height: 1.5
@@ -262,7 +262,7 @@ function assigneeTooltip(step: PlanStep): string {
   padding: 0
   display: flex
   flex-direction: column
-  gap: 4px
+  gap: var(--nt-space-1)
 
 .plan-step-item
   display: flex
@@ -317,7 +317,7 @@ function assigneeTooltip(step: PlanStep): string {
     flex-shrink: 0
     display: flex
     align-items: center
-    gap: 4px
+    gap: var(--nt-space-1)
 
   &__icon
     font-size: 14px
@@ -361,5 +361,5 @@ function assigneeTooltip(step: PlanStep): string {
   font-size: 12px
   color: var(--color-text-secondary)
   text-align: center
-  padding: 12px
+  padding: var(--nt-space-3)
 </style>

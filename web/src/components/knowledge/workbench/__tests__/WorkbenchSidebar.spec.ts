@@ -113,3 +113,41 @@ it('does not allow a reader to change visibility of an unowned document', async 
   await w.find('[data-test="file-private"]').trigger('click');
   expect(w.emitted('file-action')).toBeUndefined();
 });
+
+// 五态契约（2026-11-10 标准符合性核对第 3 条）：失败态与空数据互斥。
+describe('WorkbenchSidebar 五态契约', () => {
+  function mountEmpty(overrides: Record<string, unknown> = {}) {
+    return mount(WorkbenchSidebar, {
+      props: {
+        nodes: [],
+        selectedKey: null,
+        expandedKeys: [],
+        loading: false,
+        error: '',
+        dragFile: null,
+        files: [],
+        activeDocId: '',
+        currentVaultId: 'v1',
+        currentPrefix: 'docs/',
+        collections: [semanticVault],
+        ...overrides,
+      },
+      ...globalOpts(),
+    });
+  }
+
+  it('无错误且无文件时才显示文件空态', () => {
+    const w = mountEmpty();
+    expect(w.find('.kb-sidebar__files-empty').exists()).toBe(true);
+  });
+
+  it('树自身 error 时抑制文件空态', () => {
+    const w = mountEmpty({ error: 'collections 500' });
+    expect(w.find('.kb-sidebar__files-empty').exists()).toBe(false);
+  });
+
+  it('页面级 loadError 时同样抑制文件空态（collections 失败不再显示「当前目录暂无文档」）', () => {
+    const w = mountEmpty({ loadError: 'collections 500' });
+    expect(w.find('.kb-sidebar__files-empty').exists()).toBe(false);
+  });
+});

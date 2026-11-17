@@ -5,13 +5,17 @@ import type { GraphDefinition } from '../types';
 import { graphDefinitionFixture } from './graphFixtures';
 
 // Mock Quasar
-const mockDialog = vi.fn();
 const mockNotify = vi.fn();
 vi.mock('quasar', () => ({
   useQuasar: () => ({
-    dialog: mockDialog,
     notify: mockNotify,
   }),
+}));
+
+// 导入落点选择已从 $q.dialog(options: radio) 迁到 useAppPrompt
+const mockPrompt = vi.fn();
+vi.mock('../../../composables/useAppPrompt', () => ({
+  prompt: (options: unknown) => mockPrompt(options),
 }));
 
 // Mock vue-i18n (t returns the key)
@@ -70,13 +74,8 @@ describe('useGraphEditorAssets - R2-3 Import Dialog', () => {
       },
     } as unknown as Event;
 
-    // Mock dialog to return immediately
-    mockDialog.mockReturnValue({
-      onOk: (cb: (choice: string) => void) => {
-        cb('current'); // Simulate user choosing "import to current"
-        return { onCancel: () => {} };
-      },
-    });
+    // Mock user choosing "import to current"
+    mockPrompt.mockResolvedValue('current');
 
     mockImportGraphDefinition.mockResolvedValue({
       id: 'imported-graph',
@@ -87,20 +86,16 @@ describe('useGraphEditorAssets - R2-3 Import Dialog', () => {
     await onImportFile(mockEvent);
 
     // Should show dialog with two options
-    expect(mockDialog).toHaveBeenCalledWith(
+    expect(mockPrompt).toHaveBeenCalledWith(
       expect.objectContaining({
         title: 'graphs.assetImportTitle',
         message: 'graphs.assetImportMessage',
-        options: expect.objectContaining({
-          type: 'radio',
-          model: 'current',
-          items: [
-            { value: 'current', label: 'graphs.assetImportToCurrent' },
-            { value: 'new', label: 'graphs.assetImportCreateNew' },
-          ],
-        }),
-        cancel: true,
-        persistent: true,
+        type: 'radio',
+        defaultValue: 'current',
+        items: [
+          { value: 'current', label: 'graphs.assetImportToCurrent' },
+          { value: 'new', label: 'graphs.assetImportCreateNew' },
+        ],
       }),
     );
   });
@@ -116,12 +111,7 @@ describe('useGraphEditorAssets - R2-3 Import Dialog', () => {
     } as unknown as Event;
 
     // Mock user choosing "current"
-    mockDialog.mockReturnValue({
-      onOk: (cb: (choice: string) => void) => {
-        cb('current');
-        return { onCancel: () => {} };
-      },
-    });
+    mockPrompt.mockResolvedValue('current');
 
     const importedData = {
       id: 'imported-graph',
@@ -157,12 +147,7 @@ describe('useGraphEditorAssets - R2-3 Import Dialog', () => {
     } as unknown as Event;
 
     // Mock user choosing "new"
-    mockDialog.mockReturnValue({
-      onOk: (cb: (choice: string) => void) => {
-        cb('new');
-        return { onCancel: () => {} };
-      },
-    });
+    mockPrompt.mockResolvedValue('new');
 
     const importedData = {
       id: 'imported-graph',
@@ -195,9 +180,7 @@ describe('useGraphEditorAssets - R2-3 Import Dialog', () => {
     } as unknown as Event;
 
     // Mock user canceling
-    mockDialog.mockReturnValue({
-      onOk: () => ({ onCancel: (cb: () => void) => cb() }),
-    });
+    mockPrompt.mockResolvedValue(null);
 
     await onImportFile(mockEvent);
 

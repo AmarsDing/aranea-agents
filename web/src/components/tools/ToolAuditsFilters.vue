@@ -1,54 +1,64 @@
 <template>
-  <tool-glass-panel class="q-mb-md">
-    <q-card-section class="app-form-field-grid items-end q-py-sm">
-      <q-input
-        :model-value="toolKey"
-        dense
-        outlined
-        clearable
-        debounce="350"
-        label="Tool Key"
-        @update:model-value="onToolKey($event)"
+  <AppPageToolbar>
+    <q-input
+      :model-value="toolKey"
+      class="app-page-toolbar__field"
+      dense
+      outlined
+      clearable
+      debounce="350"
+      label="Tool Key"
+      @update:model-value="onToolKey($event)"
+    />
+    <q-input
+      :model-value="agentId"
+      class="app-page-toolbar__field"
+      dense
+      outlined
+      clearable
+      debounce="350"
+      label="Agent ID"
+      @update:model-value="onAgentId($event)"
+    />
+    <q-input
+      :model-value="userId"
+      class="app-page-toolbar__field"
+      dense
+      outlined
+      clearable
+      debounce="350"
+      label="User ID"
+      @update:model-value="onUserId($event)"
+    />
+    <q-select
+      :model-value="status"
+      class="app-page-toolbar__field"
+      dense
+      outlined
+      clearable
+      emit-value
+      map-options
+      :label="$t('toolsPage.filters.status')"
+      :options="statusOptions"
+      @update:model-value="onStatus($event)"
+    />
+    <template #actions>
+      <q-btn flat rounded no-caps icon="restart_alt" :label="$t('shell.runs.reset')" @click="$emit('reset')" />
+      <q-btn
+        flat
+        rounded
+        no-caps
+        icon="refresh"
+        :label="$t('shell.runs.refresh')"
+        :loading="loading"
+        @click="$emit('refresh')"
       />
-      <q-input
-        :model-value="agentId"
-        dense
-        outlined
-        clearable
-        debounce="350"
-        label="Agent ID"
-        @update:model-value="onAgentId($event)"
-      />
-      <q-input
-        :model-value="userId"
-        dense
-        outlined
-        clearable
-        debounce="350"
-        label="User ID"
-        @update:model-value="onUserId($event)"
-      />
-      <q-select
-        :model-value="status"
-        dense
-        outlined
-        clearable
-        emit-value
-        map-options
-        :label="$t('toolsPage.filters.status')"
-        :options="statusOptions"
-        @update:model-value="onStatus($event)"
-      />
-      <div class="app-actions-bar app-actions-bar--start">
-        <q-btn flat rounded no-caps icon="restart_alt" :label="$t('toolsPage.filters.reset')" @click="$emit('reset')" />
-        <q-btn flat rounded no-caps icon="refresh" :label="$t('toolsPage.filters.refresh')" :loading="loading" @click="$emit('refresh')" />
-      </div>
-    </q-card-section>
-  </tool-glass-panel>
+    </template>
+  </AppPageToolbar>
 </template>
 
 <script setup lang="ts">
-import ToolGlassPanel from './ToolGlassPanel.vue';
+import AppPageToolbar from '../layout/AppPageToolbar.vue';
 
 defineProps<{
   toolKey: string | null;
@@ -73,3 +83,12 @@ const onAgentId = (v: string | number | null) => emit('update:agentId', v == nul
 const onUserId = (v: string | number | null) => emit('update:userId', v == null ? null : String(v));
 const onStatus = (v: string | number | null) => emit('update:status', v == null ? null : String(v));
 </script>
+
+<style scoped lang="sass">
+:deep(.app-page-toolbar__body)
+  flex-wrap: wrap
+
+:deep(.app-page-toolbar__field)
+  flex: 0 0 auto
+  min-width: 150px
+</style>

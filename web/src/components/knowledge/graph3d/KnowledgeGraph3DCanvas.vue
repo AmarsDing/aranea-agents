@@ -1302,7 +1302,7 @@ defineExpose({ zoomToFit, clearFocus: clearFocusLock, setLens });
   height: 100%;
   min-height: 420px;
   overflow: hidden;
-  border-radius: 10px;
+  border-radius: 8px;
   background: var(--hud-render-bg); // 不透明深空底（bloom 兼容）
 
   :deep(canvas) {

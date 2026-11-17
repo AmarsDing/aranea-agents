@@ -19,7 +19,11 @@
       </template>
     </AppPageHero>
 
-    <A2ARuntimeConfigBanner :config="runtimeConfig" />
+    <A2ARuntimeConfigBanner
+      :config="runtimeConfig"
+      :error="runtimeConfigError"
+      @retry="reloadRuntimeConfig"
+    />
 
     <div class="app-tab-shell">
       <q-tabs v-model="tab" dense align="left" class="text-primary">
@@ -32,14 +36,36 @@
       </q-tabs>
     </div>
 
-    <q-banner v-if="error" rounded class="bg-negative text-white q-mb-md">
-      {{ error }}
-      <template #action>
-        <q-btn flat color="white" label="重试" @click="reload" />
-      </template>
-    </q-banner>
+    <!-- 五态：已有数据但刷新失败 → 局部失败横幅，各 Tab 面板照常渲染 -->
+    <AppStatePanel
+      v-if="(error || forbidden) && hasAnyData"
+      variant="partial"
+      dense
+      class="q-mb-md"
+      :description="error"
+      action-label="重试"
+      action-icon="refresh"
+      @action="reload"
+    />
 
-    <q-tab-panels v-model="tab" animated>
+    <!-- 五态：无权限且无任何数据 → 只渲染 forbidden 面板，不提供重试 -->
+    <AppStatePanel v-if="forbidden && !hasAnyData" variant="forbidden" class="q-mb-md" />
+
+    <!-- 五态：加载失败且无任何数据 → 只渲染可重试错误面板（工作台型页面不塞空态）。 -->
+    <AppStatePanel
+      v-else-if="error && !hasAnyData"
+      variant="error"
+      class="q-mb-md"
+      :description="error"
+      action-label="重试"
+      action-icon="refresh"
+      @action="reload"
+    />
+
+    <!-- 五态：首屏加载无数据 → 骨架面板，避免与面板内空态叠加 -->
+    <AppStatePanel v-else-if="loading && !hasAnyData" variant="loading" :rows="4" class="q-mb-md" />
+
+    <q-tab-panels v-else v-model="tab" animated>
       <q-tab-panel name="discover" class="q-pa-none">
         <A2ADiscoverPanel
           v-model:workspace="discover.discoverWorkspace"
@@ -244,10 +270,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import AppPageHero from '../components/layout/AppPageHero.vue';
 import AppPageToolbar from '../components/layout/AppPageToolbar.vue';
+import AppStatePanel from '../components/common/AppStatePanel.vue';
 import AppRegistryTable from '../components/layout/AppRegistryTable.vue';
 import AppRegistryHoverTip from '../components/layout/AppRegistryHoverTip.vue';
 import A2ADiscoverPanel from '../components/a2a/A2ADiscoverPanel.vue';
@@ -267,7 +294,7 @@ import type { RegisterRemoteAgentInput } from '../features/a2a/types';
 import type { RegisterFederationOrgInput } from '../features/a2a/federationTypes';
 
 const { t } = useI18n();
-const { tab, error, loading, reload, runtimeConfig, discover, invoke, audit, remote, gateway } = useA2APage();
+const { tab, error, forbidden, loading, reload, runtimeConfig, runtimeConfigError, reloadRuntimeConfig, discover, invoke, audit, remote, gateway } = useA2APage();
 const {
   fedTab,
   reload: reloadFederation,
@@ -279,6 +306,17 @@ const {
 
 const remoteAgentPanelRef = ref<InstanceType<typeof A2ARemoteAgentPanel> | null>(null);
 const federationOrgPanelRef = ref<InstanceType<typeof FederationOrgPanel> | null>(null);
+
+/** 任一 Tab 已有列表数据 → 页面级错误降级为局部失败横幅而非全量失败。 */
+const hasAnyData = computed(
+  () =>
+    discover.agents.length > 0 ||
+    gateway.gatewayEntries.length > 0 ||
+    remote.remoteAgents.length > 0 ||
+    fedOrgs.list.length > 0 ||
+    fedDirectory.entries.length > 0 ||
+    fedAudit.log.items.length > 0,
+);
 
 async function onRemoteRegister(input: RegisterRemoteAgentInput) {
   await remote.submitRemoteRegister(input);

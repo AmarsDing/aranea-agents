@@ -215,20 +215,20 @@ function onSelectMember(ms: MemberSession) {
 
 <style lang="sass" scoped>
 .graph-stage-list
-  padding: 8px 0
-  margin: 8px 0
+  padding: var(--nt-space-2) 0
+  margin: var(--nt-space-2) 0
 
 .graph-stage-header
   display: flex
   align-items: center
-  gap: 8px
-  margin-bottom: 8px
+  gap: var(--nt-space-2)
+  margin-bottom: var(--nt-space-2)
   font-size: 13px
   font-weight: 600
   color: var(--color-text-primary)
 
 .header-icon
-  margin-right: 4px
+  margin-right: var(--nt-space-1)
   color: var(--q-primary)
 
 .header-label
@@ -243,12 +243,12 @@ function onSelectMember(ms: MemberSession) {
 .gsl-nodes
   display: flex
   flex-direction: column
-  gap: 8px
+  gap: var(--nt-space-2)
 
 .gsl-node
   border: 1px solid var(--glass-border)
   border-left: 3px solid var(--node-accent, var(--glass-border))
-  border-radius: 10px
+  border-radius: 8px
   background: var(--glass-surface)
   overflow: hidden
 
@@ -267,9 +267,9 @@ function onSelectMember(ms: MemberSession) {
 .gsl-node__header
   display: flex
   align-items: center
-  gap: 8px
+  gap: var(--nt-space-2)
   min-height: 44px
-  padding: 8px 12px
+  padding: var(--nt-space-2) var(--nt-space-3)
   cursor: pointer
   user-select: none
 
@@ -318,7 +318,7 @@ function onSelectMember(ms: MemberSession) {
 .gsl-member
   display: flex
   align-items: center
-  gap: 8px
+  gap: var(--nt-space-2)
   min-height: 40px
   padding: 4px 6px
   border-radius: 8px
@@ -411,14 +411,14 @@ function onSelectMember(ms: MemberSession) {
 .gsl-node__status-row
   display: flex
   align-items: center
-  margin-top: 4px
+  margin-top: var(--nt-space-1)
   font-size: 11px
 
 .gsl-action,
 .gsl-error
   display: flex
   align-items: center
-  gap: 4px
+  gap: var(--nt-space-1)
   min-width: 0
   max-width: 100%
   padding: 3px 8px

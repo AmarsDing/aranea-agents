@@ -2,6 +2,7 @@
 // composable, so the .vue file only handles template bindings.
 import { computed, reactive, ref, watch, type Ref } from 'vue';
 import { useQuasar } from 'quasar';
+import { confirm } from '../../composables/useAppConfirm';
 import type { McpUserCredential } from './types';
 import { useMcpStore } from '../../stores/mcp';
 
@@ -67,13 +68,14 @@ export function useMcpUserCredentialDialog(
     }
   }
 
-  function confirmRemove(credentialKey: string) {
-    $q.dialog({
+  async function confirmRemove(credentialKey: string) {
+    const ok = await confirm({
       title: '删除凭据',
       message: `确定删除凭据「${credentialKey}」？删除后 Agent 将无法使用该凭据访问 MCP 服务。`,
-      cancel: true,
-      persistent: true,
-    }).onOk(() => void remove(credentialKey));
+      tone: 'danger',
+    });
+    if (!ok) return;
+    await remove(credentialKey);
   }
 
   return { loading, saving, items, form, canSave, reload, save, confirmRemove };

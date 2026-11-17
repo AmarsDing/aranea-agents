@@ -2,15 +2,22 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const notifySpy = vi.fn();
-let onOkCb: (() => void) | null = null;
-const dialogSpy = vi.fn((_opts?: unknown) => ({
-  onOk: (cb: () => void) => {
-    onOkCb = cb;
-  },
+// 确认框走 useAppConfirm 单例：捕获入参 + 手动放行。
+const confirmCall = vi.hoisted(() => ({
+  calls: [] as Record<string, unknown>[],
+  current: null as null | (() => void),
 }));
 
 vi.mock('quasar', () => ({
-  useQuasar: () => ({ notify: notifySpy, dialog: dialogSpy }),
+  useQuasar: () => ({ notify: notifySpy }),
+}));
+vi.mock('../../../composables/useAppConfirm', () => ({
+  confirm: (opts: Record<string, unknown>) => {
+    confirmCall.calls.push(opts);
+    return new Promise<boolean>((resolve) => {
+      confirmCall.current = () => resolve(true);
+    });
+  },
 }));
 
 vi.mock('vue-i18n', async (importOriginal) => {
@@ -71,7 +78,8 @@ function vaultNode(vaultId: string): VaultQTreeNode {
 describe('useKnowledgePage enable-semantic（B2-T2 确认对话框）', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    onOkCb = null;
+    confirmCall.calls = [];
+    confirmCall.current = null;
     mockStore.collections = [lexicalCol];
     mockStore.enableCollectionSemantic.mockResolvedValue({
       enqueued_docs: 7,
@@ -83,19 +91,19 @@ describe('useKnowledgePage enable-semantic（B2-T2 确认对话框）', () => {
   it('先弹确认对话框（标题/正文带 embedder model/dim），未确认不调 store', () => {
     const page = useKnowledgePage();
     page.onTreeNodeAction('enable-semantic', vaultNode('col-lex'));
-    expect(dialogSpy).toHaveBeenCalledTimes(1);
-    const arg = dialogSpy.mock.calls[0][0] as { title: string; message: string; cancel: boolean };
+    expect(confirmCall.calls).toHaveLength(1);
+    const arg = confirmCall.calls[0] as { title: string; message: string; tone: string };
     expect(arg.title).toBe('knowledgePage.enableSemanticTitle');
     expect(arg.message).toBe('knowledgePage.enableSemanticBody');
-    expect(arg.cancel).toBe(true);
+    expect(arg.tone).toBe('danger');
     expect(mockStore.enableCollectionSemantic).not.toHaveBeenCalled();
   });
 
   it('确认后调 store 并刷新集合 + 受理计数 notify', async () => {
     const page = useKnowledgePage();
     page.onTreeNodeAction('enable-semantic', vaultNode('col-lex'));
-    expect(onOkCb).toBeTruthy();
-    onOkCb!();
+    expect(confirmCall.current).toBeTruthy();
+    confirmCall.current!();
     await vi.waitFor(() => expect(mockStore.enableCollectionSemantic).toHaveBeenCalledWith('col-lex'));
     await vi.waitFor(() => expect(mockStore.loadCollections).toHaveBeenCalled());
     await vi.waitFor(() => expect(notifySpy).toHaveBeenCalledWith(expect.objectContaining({ type: 'positive' })));
@@ -106,6 +114,6 @@ describe('useKnowledgePage enable-semantic（B2-T2 确认对话框）', () => {
     page.onTreeNodeAction('enable-semantic', vaultNode('col-unknown'));
     mockStore.collections = [{ id: 'col-sem', name: '语义库', embedding_model: 'm0' }];
     page.onTreeNodeAction('enable-semantic', vaultNode('col-sem'));
-    expect(dialogSpy).not.toHaveBeenCalled();
+    expect(confirmCall.calls).toHaveLength(0);
   });
 });

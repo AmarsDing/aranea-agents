@@ -64,22 +64,44 @@
       @refresh="loadRows"
     />
 
-    <q-banner v-if="error" rounded class="bg-negative text-white q-mb-md">
-      {{ error }}
-      <template #action>
-        <q-btn flat color="white" label="重试" @click="loadRows" />
-      </template>
-    </q-banner>
-
-    <q-card v-if="!loading && rows.length === 0" flat class="app-registry-empty app-empty-state-center">
-      <q-card-section class="column items-center text-center q-pa-xl">
-        <q-avatar size="72px" color="primary" text-color="white" icon="psychology" />
-        <div class="text-h6 q-mt-md">{{ search ? '没有匹配的 Skill' : '暂无 Skill' }}</div>
-        <div class="text-body2 text-grey-7 q-mt-sm">点击「新建 Skill」手写草稿，或「上传」导入 ZIP。</div>
-      </q-card-section>
-    </q-card>
+    <AppStatePanel
+      v-if="pageState === 'loading'"
+      variant="loading"
+      :rows="5"
+    />
+    <AppStatePanel
+      v-else-if="pageState === 'error'"
+      variant="error"
+      :title="error"
+      :action-label="$t('shell.common.retry')"
+      action-icon="refresh"
+      @action="loadRows"
+    />
+    <AppStatePanel
+      v-else-if="pageState === 'forbidden'"
+      variant="forbidden"
+    />
+    <AppStatePanel
+      v-else-if="pageState === 'empty'"
+      variant="empty"
+      :title="search ? '没有匹配的 Skill' : '暂无 Skill'"
+      description="点击「新建 Skill」手写草稿，或「上传」导入 ZIP。"
+      action-label="新建 Skill"
+      action-icon="add"
+      @action="openCreate"
+    />
 
     <template v-else>
+      <AppStatePanel
+        v-if="pageState === 'partial'"
+        class="q-mb-md"
+        variant="partial"
+        dense
+        :description="error"
+        :action-label="$t('shell.common.retry')"
+        action-icon="refresh"
+        @action="loadRows"
+      />
       <skill-table
         :rows="rows"
         :loading="loading"
@@ -137,7 +159,9 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue';
 import AppPageHero from '../components/layout/AppPageHero.vue';
+import AppStatePanel from '../components/common/AppStatePanel.vue';
 import SkillDeleteDialog from '../components/skills/SkillDeleteDialog.vue';
 import SkillEcosystemPublishDialog from '../components/skills/SkillEcosystemPublishDialog.vue';
 import SkillEditorDialog from '../components/skills/SkillEditorDialog.vue';
@@ -148,6 +172,7 @@ import SkillPagination from '../components/skills/SkillPagination.vue';
 import SkillTable from '../components/skills/SkillTable.vue';
 import SkillUploadPlaceholder from '../components/skills/SkillUploadPlaceholder.vue';
 import { useSkillsPage } from '../features/skills/useSkillsPage';
+import { resolvePageState } from './pageState';
 
 const {
   uploadRef,
@@ -169,6 +194,7 @@ const {
   total,
   loading,
   error,
+  forbidden,
   togglingId,
   publishingId,
   publishingEcosystemId,
@@ -211,4 +237,13 @@ const {
   notify,
   confirm,
 } = useSkillsPage();
+
+const pageState = computed(() =>
+  resolvePageState({
+    loading: loading.value,
+    error: error.value,
+    count: rows.value.length,
+    forbidden: forbidden.value,
+  }),
+);
 </script>

@@ -111,7 +111,7 @@ function isSelected(slug: string): boolean {
   overflow: hidden
 
 .skill-picker__header
-  padding: 8px 12px
+  padding: var(--nt-space-2) var(--nt-space-3)
   border-bottom: 1px solid var(--glass-border)
 
 .skill-picker__header-count
@@ -121,7 +121,7 @@ function isSelected(slug: string): boolean {
 .skill-picker__list
   max-height: 320px
   overflow-y: auto
-  padding: 8px
+  padding: var(--nt-space-2)
   display: flex
   flex-direction: column
   gap: 6px
@@ -129,7 +129,7 @@ function isSelected(slug: string): boolean {
 .skill-picker-card
   display: flex
   align-items: flex-start
-  gap: 8px
+  gap: var(--nt-space-2)
   padding: 8px 10px
   border-radius: 8px
   border: 1px solid var(--glass-border)
@@ -175,13 +175,13 @@ function isSelected(slug: string): boolean {
 
 .skill-picker-card__tags
   display: flex
-  gap: 4px
-  margin-top: 4px
+  gap: var(--nt-space-1)
+  margin-top: var(--nt-space-1)
   flex-wrap: wrap
 
 .skill-picker-card__tag
   font-size: 10px
-  padding: 0 4px
+  padding: 0 var(--nt-space-1)
   border-radius: 3px
   background: var(--glass-border)
   color: var(--color-text-secondary)

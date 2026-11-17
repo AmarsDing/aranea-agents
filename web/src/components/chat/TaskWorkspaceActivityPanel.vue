@@ -220,14 +220,14 @@ function selectTurn(value: unknown) {
   border-radius: var(--radius-lg)
   overflow: hidden
 .task-activity__body
-  padding: 8px
+  padding: var(--nt-space-2)
   overflow: auto
   min-height: 0
   h2
     font-size: 14px
     font-weight: 600
     line-height: 1.5
-    margin: 12px 8px
+    margin: var(--nt-space-3) var(--nt-space-2)
 .task-activity__title
   display: -webkit-box
   -webkit-line-clamp: 2
@@ -237,7 +237,7 @@ function selectTurn(value: unknown) {
 .task-activity__locate
   min-width: 0
   width: 100%
-  padding: 8px
+  padding: var(--nt-space-2)
 .task-activity__process
   padding: 0 var(--space-2) var(--space-2)
   :deep(.q-btn)

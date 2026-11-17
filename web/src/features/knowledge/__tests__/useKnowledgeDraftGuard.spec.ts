@@ -4,8 +4,7 @@ import type { KnowledgeWorkbench } from '../useKnowledgeWorkbench';
 
 const control = vi.hoisted(() => ({
   guard: undefined as undefined | (() => Promise<boolean>),
-  ok: undefined as undefined | ((choice: string) => Promise<void>),
-  cancel: undefined as undefined | (() => void),
+  choice: undefined as undefined | { resolve: (value: string | null) => void },
   notify: vi.fn(),
 }));
 vi.mock('vue-router', () => ({
@@ -15,22 +14,14 @@ vi.mock('vue-router', () => ({
 }));
 vi.mock('vue-i18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }));
 vi.mock('quasar', () => ({
-  useQuasar: () => ({
-    notify: control.notify,
-    dialog: () => {
-      const dialog = {
-        onOk(fn: (choice: string) => Promise<void>) {
-          control.ok = fn;
-          return dialog;
-        },
-        onCancel(fn: () => void) {
-          control.cancel = fn;
-          return dialog;
-        },
-      };
-      return dialog;
-    },
-  }),
+  useQuasar: () => ({ notify: control.notify }),
+}));
+// 离开前分支选择已从 $q.dialog 迁到 useAppPrompt：这里只捕获「用户选了什么」
+vi.mock('../../../composables/useAppPrompt', () => ({
+  prompt: () =>
+    new Promise<string | null>((resolve) => {
+      control.choice = { resolve };
+    }),
 }));
 
 import { useKnowledgeDraftGuard } from '../useKnowledgeDraftGuard';
@@ -72,17 +63,23 @@ describe('knowledge unsaved changes guard', () => {
   it('keeps the route when saving conflicts or has newer edits', async () => {
     setup();
     const pending = control.guard!();
-    await control.ok!('save');
+    control.choice!.resolve('save');
     expect(await pending).toBe(false);
   });
   it('allows explicitly keeping drafts but refuses to leave when draft storage fails', async () => {
     const { workbench } = setup();
     let pending = control.guard!();
-    await control.ok!('draft');
+    control.choice!.resolve('draft');
     expect(await pending).toBe(true);
     workbench.draftError.value = true;
     pending = control.guard!();
-    await control.ok!('draft');
+    control.choice!.resolve('draft');
+    expect(await pending).toBe(false);
+  });
+  it('blocks navigation when the choice dialog is dismissed', async () => {
+    setup();
+    const pending = control.guard!();
+    control.choice!.resolve(null);
     expect(await pending).toBe(false);
   });
 });

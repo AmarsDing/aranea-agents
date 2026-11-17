@@ -299,7 +299,7 @@ const formattedDuration = computed(() => formatDuration(props.step.ToolDurationM
     display: flex
     align-items: center
     gap: 6px
-    padding: 4px 0
+    padding: var(--nt-space-1) 0
     cursor: pointer
     user-select: none
 
@@ -314,7 +314,7 @@ const formattedDuration = computed(() => formatDuration(props.step.ToolDurationM
   &__hint
     font-size: 12px
     color: var(--color-text-secondary)
-    margin-left: 4px
+    margin-left: var(--nt-space-1)
     max-width: 280px
     overflow: hidden
     text-overflow: ellipsis
@@ -340,6 +340,6 @@ const formattedDuration = computed(() => formatDuration(props.step.ToolDurationM
     color: var(--color-text-secondary)
 
   &__detail
-    margin-left: 20px
-    margin-bottom: 4px
+    margin-left: var(--nt-space-5)
+    margin-bottom: var(--nt-space-1)
 </style>

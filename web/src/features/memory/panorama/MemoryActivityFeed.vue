@@ -1,4 +1,4 @@
-// Container: approved — 最近记忆动态事件流；数据来自 MemoryPanoramaTab via props。
+﻿// Container: approved — 最近记忆动态事件流；数据来自 MemoryPanoramaTab via props。
 <template>
   <q-card flat class="memory-card">
     <q-card-section>
@@ -10,18 +10,30 @@
         <q-item-section avatar>
           <q-avatar
             size="28px"
-            :style="{ background: layerColor(item.layer_to) }"
+            :class="`memory-activity__layer--${memoryLayerTone(item.layer_to)}`"
             text-color="white"
             :icon="kindIcon[item.kind] ?? 'bolt'"
           />
         </q-item-section>
         <q-item-section>
           <q-item-label>
-            <q-chip dense square size="sm" :style="layerChipStyle(item.layer_from)" text-color="white">
+            <q-chip
+              dense
+              square
+              size="sm"
+              :class="`memory-activity__layer--${memoryLayerTone(item.layer_from)}`"
+              text-color="white"
+            >
               {{ item.layer_from }}
             </q-chip>
             <q-icon name="east" size="12px" class="q-mx-xs" color="grey-6" />
-            <q-chip dense square size="sm" :style="layerChipStyle(item.layer_to)" text-color="white">
+            <q-chip
+              dense
+              square
+              size="sm"
+              :class="`memory-activity__layer--${memoryLayerTone(item.layer_to)}`"
+              text-color="white"
+            >
               {{ item.layer_to }}
             </q-chip>
             <span class="q-ml-sm text-weight-medium">{{ t(`memory.panorama.activity.${item.kind}`) }}</span>
@@ -42,7 +54,7 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n';
 import type { MemoryActivityItem } from '../types';
-import { memoryLayerColor } from './layerMeta';
+import { memoryLayerTone } from './layerMeta';
 
 defineProps<{ items: MemoryActivityItem[] }>();
 
@@ -54,14 +66,6 @@ const kindIcon: Record<string, string> = {
   episode_recorded: 'timeline',
   entity_created: 'hub',
 };
-
-function layerColor(layer: string): string {
-  return memoryLayerColor(layer);
-}
-
-function layerChipStyle(layer: string): { background: string } {
-  return { background: memoryLayerColor(layer) };
-}
 
 function formatTs(value: string): string {
   if (!value) return '—';
@@ -77,5 +81,30 @@ function formatTs(value: string): string {
 .activity-feed {
   max-height: 420px;
   overflow-y: auto;
+}
+
+/* 层色：与 --nt-memory-layer-* 令牌同源（memoryLayerColor 读取同一批令牌） */
+.memory-activity__layer--l0 {
+  background: var(--nt-memory-layer-0);
+}
+
+.memory-activity__layer--l1 {
+  background: var(--nt-memory-layer-1);
+}
+
+.memory-activity__layer--l2 {
+  background: var(--nt-memory-layer-2);
+}
+
+.memory-activity__layer--l3 {
+  background: var(--nt-memory-layer-3);
+}
+
+.memory-activity__layer--l4 {
+  background: var(--nt-memory-layer-4);
+}
+
+.memory-activity__layer--fallback {
+  background: var(--nt-memory-layer-fallback);
 }
 </style>

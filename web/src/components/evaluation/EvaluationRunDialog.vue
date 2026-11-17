@@ -1,9 +1,14 @@
 <template>
-  <q-dialog :model-value="open" persistent @update:model-value="$emit('update:open', $event)">
-    <q-card class="app-dialog-card app-dialog-card--sm app-glass-dialog">
-      <q-card-section class="text-h6">启动评估</q-card-section>
-      <q-card-section class="app-dialog-body q-gutter-md q-pt-none">
-        <q-select
+  <AppDialog
+    :model-value="open"
+    title="启动评估"
+    size="sm"
+    persistent
+    :loading="loading"
+    @update:model-value="$emit('update:open', $event)"
+  >
+    <div class="q-gutter-md">
+      <q-select
           :model-value="agentId"
           class="app-field-md"
           dense
@@ -115,24 +120,25 @@
           :label="$t('evaluationPage.userSimulationLabel')"
           @update:model-value="$emit('update:userSimulation', Boolean($event))"
         />
-      </q-card-section>
-      <q-card-actions align="right" class="app-actions-bar">
-        <q-btn flat no-caps label="取消" @click="$emit('update:open', false)" />
-        <q-btn
-          color="primary"
-          unelevated
-          no-caps
-          label="运行"
-          :loading="loading"
-          :disable="!agentId"
-          @click="$emit('submit')"
-        />
-      </q-card-actions>
-    </q-card>
-  </q-dialog>
+    </div>
+    <template #actions>
+      <q-btn flat no-caps label="取消" @click="$emit('update:open', false)" />
+      <q-btn
+        color="primary"
+        unelevated
+        no-caps
+        label="运行"
+        :loading="loading"
+        :disable="!agentId"
+        @click="$emit('submit')"
+      />
+    </template>
+  </AppDialog>
 </template>
 
 <script setup lang="ts">
+import AppDialog from '../../components/common/AppDialog.vue';
+
 defineProps<{
   open: boolean;
   agentId: string;

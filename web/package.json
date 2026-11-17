@@ -13,6 +13,8 @@
     "check:layer": "node scripts/check-frontend-layer.mjs",
     "check:types": "vue-tsc --noEmit --pretty false",
     "check:ui": "node scripts/audit-ui-system.mjs --check",
+    "check:space": "node scripts/audit-space-tokens.mjs --check",
+    "audit:space": "node scripts/audit-space-tokens.mjs",
     "check:i18n": "node scripts/check-i18n.mjs",
     "check:contract": "node scripts/check-v2-event-contract.mjs",
     "stylelint": "stylelint \"src/**/*.{vue,css,sass,scss}\" --config .stylelintrc.json",

@@ -32,7 +32,7 @@
     </q-tabs>
 
     <q-tab-panels v-model="tab" animated class="approvals-page__panels">
-      <!-- ============ 待办队列（左列表右详情） ============ -->
+      <!-- ============ 待办队列（列表 + 证据轨 + 常驻裁决坞） ============ -->
       <q-tab-panel name="queue" class="q-pa-none">
         <AppPageToolbar>
           <q-select
@@ -47,26 +47,81 @@
           />
         </AppPageToolbar>
 
-        <q-banner v-if="error" rounded class="app-page-error-banner q-mb-md" role="alert">
-          {{ error }}
-          <template #action>
-            <q-btn flat dense :label="t('approvalsPage.retry')" @click="loadList" />
-          </template>
-        </q-banner>
+        <AppStatePanel
+          v-if="pageState === 'error'"
+          class="q-mb-md"
+          variant="error"
+          :description="error"
+          :action-label="t('approvalsPage.retry')"
+          action-icon="refresh"
+          @action="loadList"
+        />
+        <AppStatePanel v-else-if="pageState === 'forbidden'" class="q-mb-md" variant="forbidden" />
+        <AppStatePanel v-else-if="pageState === 'loading'" variant="loading" :rows="4" />
+        <AppStatePanel v-else-if="pageState === 'empty'" variant="empty" :title="t('approvalsPage.emptyQueue')" />
 
-        <div class="approvals-queue">
+        <template v-else>
+          <AppStatePanel
+            v-if="pageState === 'partial'"
+            class="q-mb-md"
+            variant="partial"
+            dense
+            :description="error"
+            :action-label="t('approvalsPage.retry')"
+            action-icon="refresh"
+            @action="loadList"
+          />
+
+        <div
+          class="approvals-workbench"
+          tabindex="0"
+          :aria-keyshortcuts="t('shell.registry.approvalShortcuts')"
+          @keydown="handleQueueKeydown"
+        >
+          <div class="approvals-workbench__hint">{{ t('shell.registry.approvalShortcuts') }}</div>
+
           <section class="approvals-queue__list" :aria-label="t('approvalsPage.tabQueue')">
+            <div class="approvals-list__head">
+              <q-checkbox
+                :model-value="allVisibleChecked"
+                :indeterminate="someVisibleChecked"
+                :disable="checkableCount === 0"
+                dense
+                @update:model-value="onSelectAllToggle"
+              >
+                <span class="approvals-list__head-label">
+                  {{
+                    selectedKeys.length
+                      ? t('shell.approvalDock.selectedCount', { n: selectedKeys.length })
+                      : t('approvalsPage.tabQueue')
+                  }}
+                </span>
+              </q-checkbox>
+              <span class="approvals-list__head-total mono">{{ total }}</span>
+            </div>
+
             <q-list separator class="approvals-list">
               <q-item
                 v-for="it in items"
-                :key="`${it.kind}:${it.id}`"
+                :key="approvalItemKey(it)"
                 v-ripple
                 clickable
                 class="approvals-list__item"
+                :class="{ 'approvals-list__item--checked': isChecked(it) }"
                 :active="isSelected(it)"
                 active-class="approvals-list__item--active"
                 @click="select(it)"
               >
+                <q-item-section side top class="approvals-list__check">
+                  <q-checkbox
+                    :model-value="isChecked(it)"
+                    :disable="!canDecideApproval(it.kind)"
+                    :aria-label="t('shell.approvalDock.selectedCount', { n: 1 })"
+                    dense
+                    @update:model-value="toggleSelect(it)"
+                    @click.stop
+                  />
+                </q-item-section>
                 <q-item-section>
                   <q-item-label class="approvals-list__title">
                     <q-badge
@@ -81,18 +136,20 @@
                   <q-item-label caption class="mono">
                     {{ t(`approvalsPage.kind_${it.kind}`) }} · {{ it.requester || '—' }} · {{ fmtTime(it.created_at) }}
                   </q-item-label>
+                  <q-item-label
+                    v-if="pendingOutcome(it)"
+                    caption
+                    class="approvals-list__outcome mono"
+                    :data-status="pendingOutcome(it)?.status"
+                  >
+                    {{ outcomeLabel(pendingOutcome(it)!) }}
+                  </q-item-label>
                 </q-item-section>
                 <q-item-section side>
-                  <q-icon name="chevron_right" />
+                  <q-icon :name="isChecked(it) ? 'task_alt' : 'chevron_right'" :color="isChecked(it) ? 'primary' : undefined" />
                 </q-item-section>
               </q-item>
             </q-list>
-            <div v-if="!loading && items.length === 0" class="approvals-queue__empty">
-              {{ t('approvalsPage.emptyQueue') }}
-            </div>
-            <div v-if="loading" class="q-pa-md">
-              <q-skeleton v-for="i in 3" :key="i" type="rect" class="q-mb-sm approvals-list__skeleton" />
-            </div>
             <AppRegistryPagination
               v-model:page="page"
               v-model:page-size="pageSize"
@@ -103,112 +160,54 @@
             />
           </section>
 
-          <section class="approvals-queue__detail" :aria-label="t('approvalsPage.detailTitle')">
-            <q-card v-if="selected" flat bordered class="approvals-detail">
-              <q-card-section>
-                <div class="approvals-detail__badges">
-                  <q-badge outline color="primary" :label="t(`approvalsPage.kind_${selected.kind}`)" />
-                  <q-badge
-                    v-if="selected.risk_level"
-                    :color="riskColor(selected.risk_level)"
-                    :label="riskLabel(selected.risk_level)"
-                  />
-                </div>
-                <div class="approvals-detail__title">{{ selected.title || selected.id }}</div>
-              </q-card-section>
-              <q-separator />
-              <q-card-section class="approvals-detail__meta">
-                <div>
-                  <span class="approvals-detail__label">{{ t('approvalsPage.labelRequester') }}</span>
-                  <span>{{ selected.requester || '—' }}</span>
-                </div>
-                <div>
-                  <span class="approvals-detail__label">{{ t('approvalsPage.labelCreated') }}</span>
-                  <span class="mono">{{ fmtTime(selected.created_at) }}</span>
-                </div>
-                <div>
-                  <span class="approvals-detail__label">{{ t('approvalsPage.labelId') }}</span>
-                  <span class="mono">{{ selected.id }}</span>
-                </div>
-              </q-card-section>
-              <q-card-section v-if="selected.summary">
-                <div class="approvals-detail__label">{{ t('approvalsPage.labelSummary') }}</div>
-                <p class="approvals-detail__summary">{{ selected.summary }}</p>
-              </q-card-section>
-              <q-card-section v-if="contextEntries.length">
-                <div class="approvals-detail__label">{{ t('approvalsPage.labelContext') }}</div>
-                <dl class="approvals-detail__ctx">
-                  <template v-for="e in contextEntries" :key="e.key">
-                    <dt class="mono">{{ e.key }}</dt>
-                    <dd class="mono">{{ e.value }}</dd>
-                  </template>
-                </dl>
-              </q-card-section>
-              <q-card-section v-else-if="selected.context_raw">
-                <div class="approvals-detail__label">{{ t('approvalsPage.labelContext') }}</div>
-                <pre class="approvals-detail__raw mono">{{ selected.context_raw }}</pre>
-              </q-card-section>
-              <q-separator />
-              <q-card-section>
-                <q-input
-                  v-model="note"
-                  type="textarea"
-                  autogrow
-                  outlined
-                  dense
-                  :label="t('approvalsPage.notePlaceholder')"
-                />
-              </q-card-section>
-              <q-card-actions align="right" class="q-px-md q-pb-md">
-                <q-btn
-                  v-if="selected.kind === 'task_review'"
-                  flat
-                  no-caps
-                  icon="archive"
-                  :label="t('approvalsPage.btnArchive')"
-                  :disable="deciding"
-                  @click="decide('archive')"
-                />
-                <q-btn
-                  outline
-                  color="negative"
-                  no-caps
-                  icon="close"
-                  :label="t('approvalsPage.btnReject')"
-                  :disable="deciding"
-                  @click="decide('reject')"
-                />
-                <q-btn
-                  unelevated
-                  color="primary"
-                  no-caps
-                  icon="check"
-                  :label="t('approvalsPage.btnApprove')"
-                  :loading="deciding"
-                  @click="decide('approve')"
-                />
-              </q-card-actions>
-            </q-card>
-            <div v-else class="approvals-queue__empty-detail">
-              <q-icon name="approval" size="48px" />
-              <div>{{ t('approvalsPage.emptyDetail') }}</div>
-            </div>
+          <section class="approvals-queue__detail" :aria-label="t('shell.approvalEvidence.detailTitle')">
+            <EvidenceRail :item="selected" :backlog="selectedBacklog" />
           </section>
+
+          <DecisionDock
+            ref="dockRef"
+            class="approvals-workbench__dock"
+            :item="selected"
+            :note="note"
+            :deciding="deciding"
+            :selected-count="selectedKeys.length"
+            :batch-running="batchRunning"
+            :batch-done="batchDone"
+            :batch-total="batchTotal"
+            :outcomes="outcomes"
+            @update:note="note = $event"
+            @decide="onDockDecide"
+            @batch="batchDecide"
+            @clear-selection="clearSelection"
+            @next="selectNext"
+            @retry-failed="retryFailed"
+            @dismiss-results="dismissOutcomes"
+          />
         </div>
+        </template>
       </q-tab-panel>
 
       <!-- ============ 风险矩阵（A-4；approval.policy 门） ============ -->
       <q-tab-panel v-if="canPolicy" name="matrix" class="q-pa-none">
         <p class="approvals-matrix__hint">{{ t('approvalsPage.matrixHint') }}</p>
 
-        <q-banner v-if="matrixError" rounded class="app-page-error-banner q-mb-md" role="alert">
-          {{ matrixError }}
-          <template #action>
-            <q-btn flat dense :label="t('approvalsPage.retry')" @click="loadMatrix" />
-          </template>
-        </q-banner>
+        <AppStatePanel
+          v-if="matrixError"
+          class="q-mb-md"
+          variant="error"
+          :description="matrixError"
+          :action-label="t('approvalsPage.retry')"
+          action-icon="refresh"
+          @action="loadMatrix"
+        />
+        <AppStatePanel v-else-if="matrixLoading && matrixRows.length === 0" variant="loading" :rows="3" />
+        <AppStatePanel
+          v-else-if="matrixRows.length === 0"
+          variant="empty"
+          :title="t('approvalsPage.matrixEmpty')"
+        />
 
-        <div class="app-registry-table-shell">
+        <div v-else class="app-registry-table-shell">
           <q-table
             :rows="matrixRows"
             :columns="matrixColumns"
@@ -288,11 +287,6 @@
                 />
               </q-td>
             </template>
-            <template #no-data>
-              <div class="full-width text-center q-pa-lg approvals-matrix__empty">
-                {{ t('approvalsPage.matrixEmpty') }}
-              </div>
-            </template>
           </q-table>
         </div>
 
@@ -318,23 +312,34 @@
 <script setup lang="ts">
 /**
  * /approvals 统一审批中心（E 阶段 W1b，需求文档 §5.3）。
- * 左列表右详情两栏 + kind 分组 + 风险级标识；决议出口走各领域 RPC
- * （见 features/approval/api.ts decideApproval），并发决议 409 呈现为
- * 「已被处理」提示并刷新。风险矩阵 tab 仅 approval.policy 持有者可见
- * （展示层过滤；后端 PutRiskMatrix 硬判同码）。
+ * 列表 + EvidenceRail（证据与影响面）+ DecisionDock（常驻裁决坞）三区：
+ * 单条连裁、批量勾选裁决、409 冲突与失败逐条呈现；决议出口走各领域 RPC
+ * （见 features/approval/api.ts decideApproval）。风险矩阵 tab 仅
+ * approval.policy 持有者可见（展示层过滤；后端 PutRiskMatrix 硬判同码）。
  */
-import { computed } from 'vue';
+import { computed, nextTick, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import AppPageHero from '../components/layout/AppPageHero.vue';
 import AppPageToolbar from '../components/layout/AppPageToolbar.vue';
 import AppRegistryPagination from '../components/layout/AppRegistryPagination.vue';
-import { useApprovalsPage } from '../features/approval/useApprovalsPage';
+import AppStatePanel from '../components/common/AppStatePanel.vue';
+import { resolvePageState } from './pageState';
+import DecisionDock from '../components/approval/DecisionDock.vue';
+import EvidenceRail from '../components/approval/EvidenceRail.vue';
+import {
+  resolveApprovalShortcut,
+  useApprovalsPage,
+  type DecisionOutcome,
+} from '../features/approval/useApprovalsPage';
 import {
   APPROVAL_KINDS,
   MATRIX_MODES,
   RISK_LEVELS,
+  approvalItemKey,
+  canDecideApproval,
   type ApprovalItemRow,
   type ApprovalKindKey,
+  type DecideAction,
   type RiskLevelKey,
 } from '../features/approval/types';
 
@@ -350,13 +355,30 @@ const {
   pageMax,
   loading,
   error,
+  forbidden,
   summaryCounts,
   summaryTotal,
   selected,
   note,
   deciding,
+  selectedKeys,
+  outcomes,
+  batchRunning,
+  batchDone,
+  batchTotal,
+  allVisibleChecked,
+  someVisibleChecked,
+  isChecked,
+  toggleSelect,
+  selectAllVisible,
+  clearSelection,
+  dismissOutcomes,
+  batchDecide,
+  retryFailed,
   loadList,
   select,
+  selectNext,
+  selectPrevious,
   decide,
   matrixRows,
   matrixLoading,
@@ -372,6 +394,74 @@ const {
 
 function reloadAll() {
   void loadList();
+}
+
+const dockRef = ref<{ focusNote: () => void } | null>(null);
+
+/** 五态判定：错误优先于空态，有数据时失败降级为 partial 横幅。 */
+const pageState = computed(() =>
+  resolvePageState({
+    loading: loading.value,
+    error: error.value,
+    count: items.value.length,
+    forbidden: forbidden.value,
+  }),
+);
+
+const checkableCount = computed(() => items.value.filter((it) => canDecideApproval(it.kind)).length);
+const selectedBacklog = computed(() => (selected.value ? (summaryCounts.value[selected.value.kind] ?? 0) : 0));
+
+function onSelectAllToggle(value: boolean | null) {
+  if (value) selectAllVisible();
+  else clearSelection();
+}
+
+function onDockDecide(action: DecideAction) {
+  if (action === 'reject' && !note.value.trim()) void nextTick(() => dockRef.value?.focusNote());
+  void decide(action);
+}
+
+function pendingOutcome(item: ApprovalItemRow): DecisionOutcome | undefined {
+  return outcomes.value.find(
+    (entry) => entry.key === approvalItemKey(item) && entry.status !== 'done' && entry.status !== 'pending',
+  );
+}
+
+function outcomeLabel(entry: DecisionOutcome): string {
+  if (entry.status === 'processing') return t('shell.approvalDock.submitting');
+  if (entry.status === 'conflict') return t('approvalsPage.notifyConflict');
+  if (entry.status === 'failed') return entry.message || t('shell.approvalDock.failedTitle');
+  return '';
+}
+
+function handleQueueKeydown(event: KeyboardEvent) {
+  const action = resolveApprovalShortcut(event);
+  if (!action) return;
+  if (action === 'selectAll') {
+    event.preventDefault();
+    selectAllVisible();
+    return;
+  }
+  if (action === 'toggleSelect') {
+    if (!selected.value) return;
+    event.preventDefault();
+    toggleSelect(selected.value);
+    return;
+  }
+  if (action === 'clearSelection') {
+    if (!selectedKeys.value.length) return;
+    event.preventDefault();
+    clearSelection();
+    return;
+  }
+  if (!selected.value) return;
+  event.preventDefault();
+  if (action === 'next') selectNext();
+  else if (action === 'previous') selectPrevious();
+  else {
+    if (action === 'reject' && !note.value.trim()) void nextTick(() => dockRef.value?.focusNote());
+    void decide(action);
+  }
 }
 
 const kindOptions = computed(() => [
@@ -427,15 +517,6 @@ function fmtTime(iso: string): string {
   if (Number.isNaN(d.getTime())) return iso;
   return d.toLocaleString();
 }
-
-const contextEntries = computed(() => {
-  const c = selected.value?.context;
-  if (!c) return [];
-  return Object.entries(c).map(([key, v]) => ({
-    key,
-    value: v === null || v === undefined || v === '' ? '—' : typeof v === 'object' ? JSON.stringify(v) : String(v),
-  }));
-});
 </script>
 
 <style scoped lang="sass">
@@ -448,24 +529,72 @@ const contextEntries = computed(() => {
   font-variant-numeric: tabular-nums
 
 .approvals-page__tabs
-  margin-bottom: 12px
+  margin-bottom: var(--nt-space-3)
 
 .approvals-kind-filter
   min-width: 240px
 
-.approvals-queue
+.approvals-workbench
   display: grid
-  grid-template-columns: minmax(320px, 400px) minmax(0, 1fr)
-  gap: 16px
+  grid-template-columns: minmax(320px, 420px) minmax(0, 1fr)
+  gap: var(--nt-space-4)
   align-items: start
+  padding-bottom: var(--nt-space-3)
+
+.approvals-workbench__hint
+  grid-column: 1 / -1
+  color: var(--nt-text-2)
+  font-family: var(--nt-font-mono)
+  font-size: var(--nt-fs-caption)
+
+.approvals-workbench__dock
+  grid-column: 1 / -1
+  position: sticky
+  bottom: 8px
+  z-index: 5
+
+.approvals-queue__list
+  display: flex
+  flex-direction: column
+  gap: var(--nt-space-2)
+  min-width: 0
+  padding: var(--nt-space-3)
+  border: 1px solid var(--nt-border-1)
+  border-radius: var(--nt-radius-l)
+  background: var(--nt-bg-1)
+
+.approvals-queue__detail
+  min-width: 0
+
+.approvals-list__head
+  display: flex
+  align-items: center
+  justify-content: space-between
+  gap: var(--nt-space-2)
+  padding: 0 var(--nt-space-1) var(--nt-space-2)
+  border-bottom: 1px solid var(--nt-border-1)
+
+.approvals-list__head-label
+  font-size: var(--nt-fs-panel)
+  color: var(--nt-text-1)
+
+.approvals-list__head-total
+  color: var(--nt-text-2)
+  font-size: var(--nt-fs-caption)
 
 .approvals-list__item
   min-height: 56px
 
+.approvals-list__item--checked
+  background: color-mix(in srgb, var(--nt-accent) 7%, transparent)
+
+.approvals-list__check
+  padding-right: var(--nt-space-1)
+
 .approvals-list__title
   display: flex
   align-items: center
-  gap: 8px
+  gap: var(--nt-space-2)
 
 .approvals-list__title-text
   overflow: hidden
@@ -475,86 +604,42 @@ const contextEntries = computed(() => {
 .approvals-list__item--active
   background: var(--nt-bg-2)
 
+.approvals-list__outcome[data-status='processing']
+  color: var(--nt-info)
+
+.approvals-list__outcome[data-status='conflict']
+  color: var(--nt-warn)
+
+.approvals-list__outcome[data-status='failed']
+  color: var(--nt-danger)
+
 .approvals-list__skeleton
   height: 56px
   border-radius: 8px
 
-.approvals-queue__empty,
-.approvals-queue__empty-detail
-  padding: 32px 16px
+.approvals-queue__empty
+  padding: var(--nt-space-8) var(--nt-space-4)
   text-align: center
   color: var(--nt-text-2)
 
-.approvals-queue__empty-detail
-  display: flex
-  flex-direction: column
-  align-items: center
-  gap: 12px
-  border: 1px dashed var(--nt-border, currentColor)
-  border-radius: 12px
-  opacity: 0.7
-
-.approvals-detail__badges
-  display: flex
-  gap: 8px
-  margin-bottom: 8px
-
-.approvals-detail__title
-  font-size: 16px
-  font-weight: 600
-  color: var(--nt-text-0)
-  word-break: break-all
-
-.approvals-detail__meta
-  display: flex
-  flex-direction: column
-  gap: 6px
-
-.approvals-detail__label
-  display: inline-block
-  min-width: 72px
-  margin-right: 8px
-  color: var(--nt-text-2)
-  font-size: 12px
-
-.approvals-detail__summary
-  margin: 4px 0 0
-  white-space: pre-wrap
-  word-break: break-word
-
-.approvals-detail__ctx
-  margin: 4px 0 0
-  display: grid
-  grid-template-columns: max-content 1fr
-  gap: 4px 12px
-  dt
-    color: var(--nt-text-2)
-  dd
-    margin: 0
-    word-break: break-all
-
-.approvals-detail__raw
-  margin: 4px 0 0
-  padding: 8px
-  border-radius: 6px
-  background: var(--nt-bg-2)
-  white-space: pre-wrap
-  word-break: break-all
-
 .approvals-matrix__hint
-  margin: 0 0 12px
+  margin: 0 0 var(--nt-space-3)
   color: var(--nt-text-2)
 
 .approvals-matrix__actions
   display: flex
   justify-content: space-between
-  margin-top: 12px
+  margin-top: var(--nt-space-3)
 
 .approvals-matrix__empty
   color: var(--nt-text-2)
 
-// 断点 799：两栏收敛为单栏堆叠（规范断点 1200/1099/799/559/359）。
+// 断点 1099：列表与证据轨收敛为单栏（规范断点 1200/1099/799/559/359）。
+@media (max-width: 1099px)
+  .approvals-workbench
+    grid-template-columns: minmax(0, 1fr)
+
 @media (max-width: 799px)
-  .approvals-queue
-    grid-template-columns: 1fr
+  .approvals-queue__list
+    padding: var(--nt-space-2)
 </style>

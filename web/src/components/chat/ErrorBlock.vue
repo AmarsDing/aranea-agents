@@ -171,7 +171,7 @@ function onRelogin() {
   &__actions
     display: flex
     align-items: center
-    gap: 4px
+    gap: var(--nt-space-1)
     flex-shrink: 0
 
   &__btn

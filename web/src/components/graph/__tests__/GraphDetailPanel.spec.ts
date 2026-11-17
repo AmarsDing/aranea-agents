@@ -104,7 +104,6 @@ function mountPanel(graph: GraphDefinition | null, extra: Record<string, unknown
       graph,
       isDark: true,
       nodeCounts: graph ? Object.fromEntries(graph.nodes.map((n) => [n.type, 1])) : {},
-      nodeTypeBorderColor: () => '#fff',
       ...extra,
     },
     global: { stubs: globalStubs },

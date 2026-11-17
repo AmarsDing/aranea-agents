@@ -15,6 +15,34 @@ function wireOptionalString(row: Record<string, unknown>, camel: string, snake: 
   return typeof value === 'string' && value ? value : undefined;
 }
 
+function wireRecordObject(row: Record<string, unknown>): Record<string, unknown> | undefined {
+  const v = row.metadata;
+  return v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : undefined;
+}
+
+function wireEntities(row: Record<string, unknown>): DecisionRecordItem['related_entities'] {
+  const raw = row.relatedEntities ?? row.related_entities;
+  if (!Array.isArray(raw)) return undefined;
+  return raw
+    .filter((e): e is Record<string, unknown> => !!e && typeof e === 'object')
+    .map((e) => ({
+      // 后端 decision.EntityRef 的 JSON 是 {type,key}（internal/biz/decision/record.go）；
+      // camel/snake 形态仅作兼容兜底。
+      entity_type: String(e.type ?? e.entityType ?? e.entity_type ?? ''),
+      entity_key: String(e.key ?? e.entityKey ?? e.entity_key ?? ''),
+    }));
+}
+
+function wireSourceRef(row: Record<string, unknown>): DecisionRecordItem['source_ref'] {
+  const raw = row.sourceRef ?? row.source_ref;
+  if (!raw || typeof raw !== 'object') return undefined;
+  const rec = raw as Record<string, unknown>;
+  return {
+    session_id: wireOptionalString(rec, 'sessionId', 'session_id'),
+    tool_invocation_id: wireOptionalString(rec, 'toolInvocationId', 'tool_invocation_id'),
+  };
+}
+
 function wireDecision(row: Record<string, unknown>): DecisionRecordItem {
   return {
     decision_key: wireString(row, 'decisionKey', 'decision_key'),
@@ -28,6 +56,9 @@ function wireDecision(row: Record<string, unknown>): DecisionRecordItem {
     session_id: wireOptionalString(row, 'sessionId', 'session_id'),
     task_id: wireOptionalString(row, 'taskId', 'task_id'),
     step_id: wireOptionalString(row, 'stepId', 'step_id'),
+    source_ref: wireSourceRef(row),
+    metadata: wireRecordObject(row),
+    related_entities: wireEntities(row),
   };
 }
 
@@ -43,6 +74,7 @@ export async function listDecisionRecords(query: DecisionRecordQuery = {}): Prom
     timeFrom: query.time_from?.trim() || undefined,
     timeTo: query.time_to?.trim() || undefined,
     category: query.category?.trim() || undefined,
+    correlationIds: query.correlation_ids?.length ? query.correlation_ids : undefined,
     page: query.page ?? 1,
     pageSize: query.pageSize ?? 50,
   });

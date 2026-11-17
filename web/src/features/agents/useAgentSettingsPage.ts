@@ -1,5 +1,6 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { copyToClipboard, useQuasar } from 'quasar';
+import { confirm } from '../../composables/useAppConfirm';
 import { useRoute, useRouter } from 'vue-router';
 import { useI18n } from 'vue-i18n';
 import { storeToRefs } from 'pinia';
@@ -261,22 +262,24 @@ export function useAgentSettingsPage() {
     $q.notify({ type: 'positive', message: 'Agent 标识已复制' });
   }
 
-  function confirmFileReload() {
-    $q.dialog({
+  async function confirmFileReload() {
+    const ok = await confirm({
       title: t('agentSettings.files.reload'),
       message: t('agentSettings.files.reloadConfirmMessage'),
-      cancel: true,
-      persistent: true,
-    }).onOk(() => void reloadActiveFile());
+      tone: 'danger',
+    });
+    if (!ok) return;
+    await reloadActiveFile();
   }
 
-  function confirmRemoveFile(name: string) {
-    $q.dialog({
+  async function confirmRemoveFile(name: string) {
+    const ok = await confirm({
       title: t('agentSettings.files.removeConfirmTitle'),
       message: t('agentSettings.files.removeConfirmMessage', { name }),
-      cancel: true,
-      persistent: true,
-    }).onOk(() => removeFile(name));
+      tone: 'danger',
+    });
+    if (!ok) return;
+    removeFile(name);
   }
 
   const advancedChannelOptions = computed(() =>
@@ -366,13 +369,14 @@ export function useAgentSettingsPage() {
     onRefineError: (message: string) => {
       $q.notify({ type: 'negative', message });
     },
-    confirmResetSkillDefaults: () => {
-      $q.dialog({
+    confirmResetSkillDefaults: async () => {
+      const ok = await confirm({
         title: '恢复默认',
         message: '确定恢复默认 Skill 配置？当前自定义设置将被覆盖。',
-        cancel: true,
-        persistent: true,
-      }).onOk(() => resetSkillRuntimeDefaults(config, (message) => $q.notify({ type: 'info', message })));
+        tone: 'danger',
+      });
+      if (!ok) return;
+      resetSkillRuntimeDefaults(config, (message) => $q.notify({ type: 'info', message }));
     },
     loadingSkillSlugs,
     skillSlugOptions,

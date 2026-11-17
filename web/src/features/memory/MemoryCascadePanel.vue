@@ -138,94 +138,85 @@
       </AppRegistryTable>
     </q-card-section>
 
-    <q-dialog v-model="previewOpen" persistent>
-      <q-card class="app-dialog-card app-dialog-card--lg app-glass-dialog">
-        <q-card-section class="app-glass-dialog__head row items-start justify-between no-wrap">
-          <div class="col min-width-0">
-            <div class="app-glass-dialog__title">{{ t('memory.cascade.preview.title') }}</div>
-            <div class="app-glass-dialog__subtitle">{{ t('memory.cascade.preview.subtitle') }}</div>
+    <AppDialog
+      v-model="previewOpen"
+      :title="t('memory.cascade.preview.title')"
+      :subtitle="t('memory.cascade.preview.subtitle')"
+      size="lg"
+      persistent
+      :loading="actingId === previewProposalId"
+    >
+      <div v-if="previewLoading" class="row justify-center q-py-lg">
+        <q-spinner-dots size="32px" color="primary" />
+      </div>
+      <template v-else-if="preview">
+        <div class="row q-col-gutter-md q-mb-md">
+          <div class="col-6">
+            <div class="text-caption text-grey-7">{{ t('memory.cascade.preview.affectedEntities') }}</div>
+            <div class="text-h6">{{ preview.affected_entities_count }}</div>
           </div>
-          <q-btn v-close-popup flat dense round icon="close" />
-        </q-card-section>
-        <q-separator />
-        <div class="app-glass-dialog__scroll">
-          <q-card-section class="app-dialog-body app-glass-dialog__body">
-            <div v-if="previewLoading" class="row justify-center q-py-lg">
-              <q-spinner-dots size="32px" color="primary" />
-            </div>
-            <template v-else-if="preview">
-              <div class="row q-col-gutter-md q-mb-md">
-                <div class="col-6">
-                  <div class="text-caption text-grey-7">{{ t('memory.cascade.preview.affectedEntities') }}</div>
-                  <div class="text-h6">{{ preview.affected_entities_count }}</div>
-                </div>
-                <div class="col-6">
-                  <div class="text-caption text-grey-7">{{ t('memory.cascade.preview.affectedFacts') }}</div>
-                  <div class="text-h6">{{ preview.affected_facts_count }}</div>
-                </div>
-              </div>
-
-              <div v-if="preview.entity_renames.length" class="q-mb-md">
-                <div class="text-subtitle2 q-mb-sm">{{ t('memory.cascade.preview.entityRenames') }}</div>
-                <q-list dense bordered class="rounded-borders" separator>
-                  <q-item v-for="r in preview.entity_renames" :key="r.entity_id">
-                    <q-item-section>
-                      <q-item-label>
-                        <span class="text-grey-7">{{ r.entity_type }}</span>
-                        <span class="q-mx-xs">·</span>
-                        <span>{{ r.old_name }}</span>
-                        <span class="q-mx-xs text-grey-7">→</span>
-                        <span class="text-weight-medium">{{ r.new_name }}</span>
-                      </q-item-label>
-                    </q-item-section>
-                  </q-item>
-                </q-list>
-              </div>
-
-              <div v-if="preview.fact_diffs.length">
-                <div class="text-subtitle2 q-mb-sm">{{ t('memory.cascade.preview.factDiffs') }}</div>
-                <q-list dense bordered class="rounded-borders" separator>
-                  <q-item v-for="d in preview.fact_diffs" :key="d.fact_id">
-                    <q-item-section>
-                      <q-item-label caption>{{ d.scope }} · {{ d.fact_id.slice(0, 8) }}</q-item-label>
-                      <q-item-label class="text-grey-7 memory-cascade-diff__before">{{
-                        d.before_statement
-                      }}</q-item-label>
-                      <q-item-label class="text-weight-medium">{{ d.after_statement }}</q-item-label>
-                    </q-item-section>
-                  </q-item>
-                </q-list>
-              </div>
-
-              <q-banner
-                v-if="!preview.entity_renames.length && !preview.fact_diffs.length"
-                rounded
-                class="memory-info-banner q-mt-sm"
-              >
-                {{ t('memory.cascade.preview.noChanges') }}
-              </q-banner>
-            </template>
-          </q-card-section>
+          <div class="col-6">
+            <div class="text-caption text-grey-7">{{ t('memory.cascade.preview.affectedFacts') }}</div>
+            <div class="text-h6">{{ preview.affected_facts_count }}</div>
+          </div>
         </div>
-        <q-separator />
-        <q-card-actions align="right" class="app-actions-bar app-glass-dialog__actions">
-          <q-btn v-close-popup flat :label="t('memory.cascade.preview.cancel')" />
-          <q-btn
-            unelevated
-            :label="t('memory.cascade.preview.confirm')"
-            color="primary"
-            :loading="actingId === previewProposalId"
-            @click="onConfirmFromPreview"
-          />
-        </q-card-actions>
-      </q-card>
-    </q-dialog>
+
+        <div v-if="preview.entity_renames.length" class="q-mb-md">
+          <div class="text-subtitle2 q-mb-sm">{{ t('memory.cascade.preview.entityRenames') }}</div>
+          <q-list dense bordered class="rounded-borders" separator>
+            <q-item v-for="r in preview.entity_renames" :key="r.entity_id">
+              <q-item-section>
+                <q-item-label>
+                  <span class="text-grey-7">{{ r.entity_type }}</span>
+                  <span class="q-mx-xs">·</span>
+                  <span>{{ r.old_name }}</span>
+                  <span class="q-mx-xs text-grey-7">→</span>
+                  <span class="text-weight-medium">{{ r.new_name }}</span>
+                </q-item-label>
+              </q-item-section>
+            </q-item>
+          </q-list>
+        </div>
+
+        <div v-if="preview.fact_diffs.length">
+          <div class="text-subtitle2 q-mb-sm">{{ t('memory.cascade.preview.factDiffs') }}</div>
+          <q-list dense bordered class="rounded-borders" separator>
+            <q-item v-for="d in preview.fact_diffs" :key="d.fact_id">
+              <q-item-section>
+                <q-item-label caption>{{ d.scope }} · {{ d.fact_id.slice(0, 8) }}</q-item-label>
+                <q-item-label class="text-grey-7 memory-cascade-diff__before">{{ d.before_statement }}</q-item-label>
+                <q-item-label class="text-weight-medium">{{ d.after_statement }}</q-item-label>
+              </q-item-section>
+            </q-item>
+          </q-list>
+        </div>
+
+        <q-banner
+          v-if="!preview.entity_renames.length && !preview.fact_diffs.length"
+          rounded
+          class="memory-info-banner q-mt-sm"
+        >
+          {{ t('memory.cascade.preview.noChanges') }}
+        </q-banner>
+      </template>
+      <template #actions>
+        <q-btn flat :label="t('memory.cascade.preview.cancel')" @click="previewOpen = false" />
+        <q-btn
+          unelevated
+          :label="t('memory.cascade.preview.confirm')"
+          color="primary"
+          :loading="actingId === previewProposalId"
+          @click="onConfirmFromPreview"
+        />
+      </template>
+    </AppDialog>
   </q-card>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
+import AppDialog from '../../components/common/AppDialog.vue';
 import AppRegistryTable from '../../components/layout/AppRegistryTable.vue';
 import AppRegistryHoverTip from '../../components/layout/AppRegistryHoverTip.vue';
 import AppStatusChip from '../../components/common/AppStatusChip.vue';

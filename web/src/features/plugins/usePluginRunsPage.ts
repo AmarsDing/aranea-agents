@@ -12,6 +12,7 @@ import type { PluginRun } from './types';
 import { createPluginRunsTableColumns } from './pluginRunsTableUi';
 // TECH-DEBT: runs 数据未入 store，与 plugins 列表模式不一致；观测型短数据暂由 composable 直管
 import { listPluginRuns, deleteAllPluginRuns } from './api';
+import { isForbiddenApiError } from '../../utils/kratosError';
 
 const RUN_STATUS_I18N_KEYS: Record<string, string> = {
   success: 'pluginsPage.runs.statusSuccess',
@@ -33,6 +34,8 @@ export function usePluginRunsPage() {
   const rows = ref<PluginRun[]>([]);
   const loading = ref(false);
   const error = ref('');
+  /** 403 / PERMISSION_DENIED：页面渲染 forbidden 态，不提供重试。 */
+  const forbidden = ref(false);
   const total = ref(0);
   const page = ref(1);
   const pageSize = ref(20);
@@ -77,6 +80,7 @@ export function usePluginRunsPage() {
   async function loadRows(nextPage = page.value, nextPageSize = pageSize.value) {
     loading.value = true;
     error.value = '';
+    forbidden.value = false;
     try {
       const data = await listPluginRuns({
         plugin_key: (pluginKey.value ?? '').trim() || undefined,
@@ -92,6 +96,7 @@ export function usePluginRunsPage() {
       total.value = data.total;
     } catch (err) {
       error.value = err instanceof Error ? err.message : t('pluginsPage.runs.loadFailed');
+      forbidden.value = isForbiddenApiError(err);
     } finally {
       loading.value = false;
     }
@@ -187,6 +192,7 @@ export function usePluginRunsPage() {
     rows,
     loading,
     error,
+    forbidden,
     total,
     page,
     pageSize,

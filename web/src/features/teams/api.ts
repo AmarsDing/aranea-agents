@@ -224,6 +224,16 @@ export async function retryTeam(id: string): Promise<{ teamId: string; status: s
   return { teamId: res.teamId ?? id, status: res.status ?? '' };
 }
 
+/**
+ * Archive a completed/failed/cancelled team via the dedicated status-machine RPC.
+ * UpdateTeam 硬拒 status 变更（后端要求走状态机），归档必须用 ArchiveTeam。
+ */
+export async function archiveTeam(id: string): Promise<{ teamId: string; status: string }> {
+  const svc = createTeamService();
+  const res = await svc.ArchiveTeam({ teamId: id });
+  return { teamId: res.teamId ?? id, status: res.status ?? '' };
+}
+
 export async function listTeamRuns(teamID?: string, limit = 50): Promise<TeamRun[]> {
   const svc = createTeamService();
   const res = await svc.ListTeamRuns({ teamId: teamID, limit });
@@ -346,6 +356,8 @@ function wireTaskDeadLetter(
 export async function listTaskDeadLetters(opts: {
   sessionId?: string;
   teamId?: string;
+  /** true：无 team/session 上下文时按调用方 workspace 的可见团队收敛 */
+  workspaceScope?: boolean;
   status?: string;
   limit?: number;
 }): Promise<TaskDeadLetterRow[]> {
@@ -353,6 +365,7 @@ export async function listTaskDeadLetters(opts: {
   const res = await svc.ListTaskDeadLetters({
     sessionId: opts.sessionId?.trim() || undefined,
     teamId: opts.teamId?.trim() || undefined,
+    workspaceScope: opts.workspaceScope ?? false,
     status: opts.status?.trim() || undefined,
     limit: opts.limit ?? 50,
   });

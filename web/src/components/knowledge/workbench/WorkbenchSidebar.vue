@@ -7,7 +7,7 @@
         :selected-key="selectedKey"
         :expanded-keys="expandedKeys"
         :loading="loading"
-        :error="error"
+        :error="combinedError"
         :drag-file="dragFile"
         :lexical-vault-ids="lexicalVaultIds"
         @select-node="$emit('select-node', $event)"
@@ -182,7 +182,7 @@
           </q-btn>
         </div>
       </div>
-      <div v-else class="kb-sidebar__files-empty text-caption">
+      <div v-else-if="!combinedError" class="kb-sidebar__files-empty text-caption">
         {{ emptyHint }}
       </div>
 
@@ -245,8 +245,10 @@ const props = withDefaults(
     documentInfo?: KnowledgeDocument[];
     viewerId?: string;
     isAdmin?: boolean;
+    /** 页面级加载失败（如 collections 拉取失败）：与树自身 error 合并后统一抑制空态。 */
+    loadError?: string;
   }>(),
-  { collections: () => [], documentInfo: () => [], viewerId: '', isAdmin: false },
+  { collections: () => [], documentInfo: () => [], viewerId: '', isAdmin: false, loadError: '' },
 );
 
 const emit = defineEmits<{
@@ -350,6 +352,9 @@ function onBulkReembed() {
 const onlyFailed = ref(false);
 
 const displayFiles = computed(() => (onlyFailed.value ? props.files.filter((f) => f.status === 'error') : props.files));
+
+/** 五态契约：树自身错误或页面级加载失败任一生效时，空态一律不渲染。 */
+const combinedError = computed(() => props.error || props.loadError || '');
 
 const emptyHint = computed(() =>
   onlyFailed.value ? t('knowledgePage.workbench.filesEmptyFiltered') : t('knowledgePage.workbench.filesEmpty'),

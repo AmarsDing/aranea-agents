@@ -4,11 +4,29 @@
       :title="t('uiSystem.operations.opportunityTitle')"
       :subtitle="t('uiSystem.operations.opportunitySubtitle')"
     />
-    <q-banner v-if="error" class="bg-negative q-mb-md" role="alert"
-      >{{ error
-      }}<template #action
-        ><q-btn flat :label="t('uiSystem.operations.retry')" :disable="loading" @click="refresh" /></template
-    ></q-banner>
+    <!-- 五态：已有机会但刷新失败 → 局部失败横幅，列表照常渲染 -->
+    <AppStatePanel
+      v-if="(error || forbidden) && rows.length > 0"
+      variant="partial"
+      dense
+      class="q-mb-md"
+      :description="error"
+      :action-label="t('uiSystem.operations.retry')"
+      action-icon="refresh"
+      @action="refresh"
+    />
+    <!-- 五态：无权限 → 只渲染 forbidden 面板，不提供重试 -->
+    <AppStatePanel v-else-if="forbidden" variant="forbidden" class="q-mb-md" />
+    <!-- 五态：加载失败且无机会 → 只渲染可重试错误面板，不与空态并存。 -->
+    <AppStatePanel
+      v-else-if="error"
+      variant="error"
+      class="q-mb-md"
+      :description="error"
+      :action-label="t('uiSystem.operations.retry')"
+      action-icon="refresh"
+      @action="refresh"
+    />
     <q-card flat class="app-registry-panel"
       ><q-card-section>
         <div class="ui-preview-actions q-mb-md">
@@ -43,7 +61,16 @@
             :disable="!title.trim() || saving || loading"
         /></q-form> </q-card-section
     ></q-card>
-    <q-card flat
+    <!-- 五态：首屏加载无机会 → 骨架面板 -->
+    <AppStatePanel v-if="loading && rows.length === 0 && !error && !forbidden" variant="loading" :rows="4" />
+    <!-- 五态：成功但无机会 → 空态 -->
+    <AppStatePanel
+      v-else-if="!loading && !error && !forbidden && rows.length === 0"
+      variant="empty"
+      :title="t('uiSystem.operations.noOpportunities')"
+      icon="lightbulb"
+    />
+    <q-card v-else-if="rows.length > 0" flat
       ><q-list separator :aria-busy="loading">
         <q-item v-for="item in rows" :key="item.ID" class="ui-operations-row"
           ><q-item-section
@@ -65,13 +92,6 @@
                 :to="{ name: 'sourcing', query: { opportunity_id: item.ID, title: item.Title } }"
               /></div></q-item-section
         ></q-item>
-        <q-item v-if="!rows.length"
-          ><q-item-section class="ui-card-description"
-            ><q-spinner v-if="loading" color="primary" /><span v-else>{{
-              t('uiSystem.operations.noOpportunities')
-            }}</span></q-item-section
-          ></q-item
-        >
       </q-list></q-card
     >
   </q-page>
@@ -83,10 +103,11 @@ import { useI18n } from 'vue-i18n';
 import { useOpportunityBoardStore } from '../stores/mvp';
 import { createMvpUi } from '../features/mvp/mvpUi';
 import AppPageHero from '../components/layout/AppPageHero.vue';
+import AppStatePanel from '../components/common/AppStatePanel.vue';
 const { t } = useI18n();
 const ui = computed(() => createMvpUi(t));
 const store = useOpportunityBoardStore();
-const { rows, loading, saving, error } = storeToRefs(store);
+const { rows, loading, saving, error, forbidden } = storeToRefs(store);
 const audience = ref('');
 const title = ref('');
 const required = (value: string) => !!value.trim() || t('uiSystem.operations.opportunityMissing');

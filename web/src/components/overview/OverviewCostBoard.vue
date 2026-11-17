@@ -103,7 +103,8 @@
         <span class="ov-tile__label">{{ t('overviewPage.v2.topCostTitle') }}</span>
         <span class="ov-tile__caption">{{ t('overviewPage.v2.topCostCap') }}</span>
       </div>
-      <div v-for="bar in topBars" :key="bar.key" class="ov-topbars__row">
+      <div v-for="(bar, i) in topBars" :key="bar.key" class="ov-topbars__row">
+        <span class="ov-topbars__rank" aria-hidden="true">{{ String(i + 1).padStart(2, '0') }}</span>
         <span class="ov-topbars__label" :title="bar.key">{{ bar.label }}</span>
         <div class="ov-topbars__track">
           <div

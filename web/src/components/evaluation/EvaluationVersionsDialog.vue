@@ -1,44 +1,46 @@
 <template>
-  <q-dialog :model-value="open" persistent @update:model-value="$emit('update:open', $event)">
-    <q-card class="app-dialog-card app-dialog-card--md app-glass-dialog">
-      <q-card-section class="text-h6">{{ $t('evaluationPage.versionsTitle') }}</q-card-section>
-      <q-card-section class="app-dialog-body q-pt-none">
-        <AppRegistryTable
-          :shell="false"
-          :resizable="false"
-          flat
-          dense
-          row-key="id"
-          :rows="rows"
-          :columns="columns"
-          :loading="loading"
-          hide-pagination
-          :pagination="{ rowsPerPage: 0 }"
-        >
-          <template #body-cell-actions="slotProps">
-            <q-td :props="slotProps">
-              <q-btn
-                flat
-                dense
-                no-caps
-                color="primary"
-                icon="play_arrow"
-                :label="$t('evaluationPage.versionRun')"
-                @click="$emit('run', slotProps.row)"
-              />
-            </q-td>
-          </template>
-        </AppRegistryTable>
-      </q-card-section>
-      <q-card-actions align="right" class="app-actions-bar">
-        <q-btn flat no-caps :label="$t('common.close')" @click="$emit('update:open', false)" />
-      </q-card-actions>
-    </q-card>
-  </q-dialog>
+  <AppDialog
+    :model-value="open"
+    :title="$t('evaluationPage.versionsTitle')"
+    size="md"
+    persistent
+    @update:model-value="$emit('update:open', $event)"
+  >
+    <AppRegistryTable
+      :shell="false"
+      :resizable="false"
+      flat
+      dense
+      row-key="id"
+      :rows="rows"
+      :columns="columns"
+      :loading="loading"
+      hide-pagination
+      :pagination="{ rowsPerPage: 0 }"
+    >
+      <template #body-cell-actions="slotProps">
+        <q-td :props="slotProps">
+          <q-btn
+            flat
+            dense
+            no-caps
+            color="primary"
+            icon="play_arrow"
+            :label="$t('evaluationPage.versionRun')"
+            @click="$emit('run', slotProps.row)"
+          />
+        </q-td>
+      </template>
+    </AppRegistryTable>
+    <template #actions>
+      <q-btn flat no-caps :label="$t('common.close')" @click="$emit('update:open', false)" />
+    </template>
+  </AppDialog>
 </template>
 
 <script setup lang="ts">
 import type { QTableColumn } from 'quasar';
+import AppDialog from '../common/AppDialog.vue';
 import AppRegistryTable from '../layout/AppRegistryTable.vue';
 import type { EvalDatasetVersion } from '../../features/evaluation/types';
 

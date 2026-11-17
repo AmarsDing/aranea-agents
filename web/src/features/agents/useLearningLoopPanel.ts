@@ -1,5 +1,6 @@
 import { ref, computed, toValue, watch, type MaybeRefOrGetter } from 'vue';
 import { useQuasar } from 'quasar';
+import { confirm } from '../../composables/useAppConfirm';
 import { useLearningLoopStore } from '../../stores/learningLoop';
 import { i18n } from '../../i18n';
 
@@ -94,39 +95,39 @@ export function useLearningLoopPanel(agentIdInput: MaybeRefOrGetter<string>) {
 
   // === Proposal actions ===
   async function onApprove(proposalId: string) {
-    $q.dialog({
+    const ok = await confirm({
       title: t('agents.learning_loop.approve_title'),
       message: t('agents.learning_loop.approve_message'),
-      persistent: true,
-      ok: { label: t('agents.learning_loop.approve'), color: 'positive', flat: true },
-      cancel: { label: t('agents.learning_loop.cancel'), color: 'primary', flat: true },
-    }).onOk(async () => {
-      try {
-        await store.approveProposal(agentId(), proposalId);
-        await fetchAll();
-        $q.notify({ type: 'positive', message: t('agents.learning_loop.approved') });
-      } catch {
-        $q.notify({ type: 'negative', message: t('agents.learning_loop.approve_failed') });
-      }
+      tone: 'primary',
+      confirmLabel: t('agents.learning_loop.approve'),
+      cancelLabel: t('agents.learning_loop.cancel'),
     });
+    if (!ok) return;
+    try {
+      await store.approveProposal(agentId(), proposalId);
+      await fetchAll();
+      $q.notify({ type: 'positive', message: t('agents.learning_loop.approved') });
+    } catch {
+      $q.notify({ type: 'negative', message: t('agents.learning_loop.approve_failed') });
+    }
   }
 
   async function onReject(proposalId: string) {
-    $q.dialog({
+    const ok = await confirm({
       title: t('agents.learning_loop.reject_title'),
       message: t('agents.learning_loop.reject_message'),
-      persistent: true,
-      ok: { label: t('agents.learning_loop.reject'), color: 'negative', flat: true },
-      cancel: { label: t('agents.learning_loop.cancel'), color: 'primary', flat: true },
-    }).onOk(async () => {
-      try {
-        await store.rejectProposal(agentId(), proposalId);
-        await fetchAll();
-        $q.notify({ type: 'positive', message: t('agents.learning_loop.rejected') });
-      } catch {
-        $q.notify({ type: 'negative', message: t('agents.learning_loop.reject_failed') });
-      }
+      tone: 'danger',
+      confirmLabel: t('agents.learning_loop.reject'),
+      cancelLabel: t('agents.learning_loop.cancel'),
     });
+    if (!ok) return;
+    try {
+      await store.rejectProposal(agentId(), proposalId);
+      await fetchAll();
+      $q.notify({ type: 'positive', message: t('agents.learning_loop.rejected') });
+    } catch {
+      $q.notify({ type: 'negative', message: t('agents.learning_loop.reject_failed') });
+    }
   }
 
   async function onApply(proposalId: string) {

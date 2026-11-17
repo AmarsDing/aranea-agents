@@ -41,15 +41,20 @@ export function createHooksReadonlyTableColumns(t: I18nT): QTableColumn<HookRow>
 
 export function createHookDeliveryTableColumns(t: I18nT) {
   return [
-    registryCol('created_at', t('hooksPage.deliveries.colTime'), 'created_at', 'left', REGISTRY_COL_W.time),
+    registryCol('created_at', t('hooksPage.deliveries.colTime'), 'created_at', 'left', REGISTRY_COL_W.time, {
+      sortable: true,
+    }),
     registryCol('hook_key', t('hooksPage.deliveries.colHook'), 'hook_key', 'left', REGISTRY_COL_W.desc),
-    registryCol('status', t('hooksPage.deliveries.colStatus'), 'status', 'left', REGISTRY_COL_W.status),
+    registryCol('status', t('hooksPage.deliveries.colStatus'), 'status', 'left', REGISTRY_COL_W.status, {
+      sortable: true,
+    }),
     registryCol(
       'attempt_count',
       t('hooksPage.deliveries.colAttempts'),
       'attempt_count',
       'right',
       REGISTRY_COL_W.metric,
+      { sortable: true },
     ),
     registryCol(
       'max_attempts',

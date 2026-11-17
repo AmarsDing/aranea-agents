@@ -6,10 +6,11 @@ import { storeToRefs } from 'pinia';
 import { useGraphStore } from '../../stores/graph';
 import { useTeamsStore } from '../../stores/teams';
 import type { GraphDefinition, GraphExecutionSummary, GraphTemplateInfo, NodeType } from './types';
-import { NODE_TYPE_STYLES } from './types';
 import { buildCompositionChips, deriveGraphStatus, relativeTime } from './utils';
 import { listGraphExecutions } from './api';
 import { useGraphExecute } from './useGraphExecute';
+import { isForbiddenApiError } from '../../utils/kratosError';
+import { confirm } from '../../composables/useAppConfirm';
 import type { ContextMenuItem } from '../../components/graph/GraphContextMenu.vue';
 
 export function useGraphsPage() {
@@ -23,6 +24,8 @@ export function useGraphsPage() {
 
   const isDark = computed(() => $q.dark.isActive);
   const error = ref('');
+  /** 列表接口 403：页面据此渲染 forbidden 态（无重试）。 */
+  const forbidden = ref(false);
   const runDialogGraph = ref<GraphDefinition | null>(null);
   const hasNextPage = computed(() => Boolean(graphsNextPageToken.value));
   const loadingMore = ref(false);
@@ -155,10 +158,6 @@ export function useGraphsPage() {
     return counts;
   }
 
-  function nodeTypeBorderColor(type: string): string {
-    return (NODE_TYPE_STYLES as Record<string, { borderColor: string }>)[type]?.borderColor ?? 'var(--color-accent)';
-  }
-
   // --- R2-A 卡片数据派生（状态映射 + 构成 chips；执行次数列表页无数据，避免 N+1） ---
   function cardStatus(graph: GraphDefinition) {
     return deriveGraphStatus(graph);
@@ -176,9 +175,11 @@ export function useGraphsPage() {
 
   async function loadRows() {
     error.value = '';
+    forbidden.value = false;
     try {
       await graphStore.loadGraphs();
     } catch (err) {
+      forbidden.value = isForbiddenApiError(err);
       error.value = err instanceof Error ? err.message : t('graphs.loadFailed');
     }
   }
@@ -186,10 +187,12 @@ export function useGraphsPage() {
   async function loadMore() {
     if (!graphsNextPageToken.value || loadingMore.value) return;
     error.value = '';
+    forbidden.value = false;
     loadingMore.value = true;
     try {
       await graphStore.loadGraphs(undefined, true);
     } catch (err) {
+      forbidden.value = isForbiddenApiError(err);
       error.value = err instanceof Error ? err.message : '加载更多 Graph 失败';
     } finally {
       loadingMore.value = false;
@@ -238,13 +241,14 @@ export function useGraphsPage() {
     }
   }
 
-  function confirmRemoveGraph(graph: GraphDefinition) {
-    $q.dialog({
+  async function confirmRemoveGraph(graph: GraphDefinition) {
+    const ok = await confirm({
       title: t('graphs.deleteTitle'),
       message: t('graphs.deleteConfirm', { name: graph.name }),
-      cancel: true,
-      persistent: true,
-    }).onOk(() => void doRemoveGraph(graph));
+      tone: 'danger',
+    });
+    if (!ok) return;
+    await doRemoveGraph(graph);
   }
 
   async function doRemoveGraph(graph: GraphDefinition) {
@@ -429,6 +433,7 @@ export function useGraphsPage() {
     loadingMore,
     hasNextPage,
     error,
+    forbidden,
     searchQuery,
     engineFilter,
     teamFilter,
@@ -441,7 +446,6 @@ export function useGraphsPage() {
     TEAM_FILTER_OPTIONS,
     isTeamOwned,
     teamDisplayName,
-    nodeTypeBorderColor,
     countNodesByType,
     cardStatus,
     compositionChips,

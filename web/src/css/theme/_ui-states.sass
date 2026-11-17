@@ -1,0 +1,439 @@
+// 全局地基：状态面板 / 面包屑 / 命令面板 / 侧栏分组 / 无障碍兜底
+// 取值只走 token（--color-* / --space-* / --glass-* / --sidebar-*），不新增色值。
+
+// ---------- 状态面板（加载 / 空 / 错误 / 无权） ----------
+.app-state-panel
+  display: flex
+  flex-direction: column
+  align-items: center
+  justify-content: center
+  gap: var(--space-3)
+  min-height: 220px
+  padding: var(--space-12) var(--space-6)
+  text-align: center
+  color: var(--color-text-secondary)
+
+  &--dense
+    min-height: 140px
+    padding: var(--space-6) var(--space-4)
+
+  &__skeleton
+    width: 100%
+    max-width: 520px
+    display: flex
+    flex-direction: column
+    gap: var(--space-2)
+
+  &__skeleton-lead
+    width: 42%
+
+  &__icon
+    display: grid
+    place-items: center
+    width: 56px
+    height: 56px
+    border-radius: var(--nt-radius-l, 12px)
+    border: 1px solid var(--glass-border)
+    background: var(--glass-surface)
+    color: var(--color-text-secondary)
+
+  &--error &__icon
+    color: var(--color-danger)
+    border-color: color-mix(in srgb, var(--color-danger) 36%, var(--glass-border))
+    background: var(--color-danger-soft)
+
+  &--partial &__icon
+    color: var(--color-warning)
+    border-color: color-mix(in srgb, var(--color-warning) 36%, var(--glass-border))
+    background: var(--color-warning-soft)
+
+  &--forbidden &__icon
+    color: var(--color-warning)
+    border-color: color-mix(in srgb, var(--color-warning) 36%, var(--glass-border))
+    background: var(--color-warning-soft)
+
+  &--empty &__icon
+    color: var(--color-accent)
+
+  &__copy
+    display: flex
+    flex-direction: column
+    gap: var(--space-1)
+
+  &__title
+    margin: 0
+    font-size: 15px
+    font-weight: 600
+    color: var(--color-text-primary)
+
+  &__desc
+    margin: 0
+    max-width: 460px
+    font-size: 13px
+    line-height: 1.6
+    color: var(--color-text-secondary)
+
+  &__actions
+    display: flex
+    flex-wrap: wrap
+    align-items: center
+    justify-content: center
+    gap: var(--space-2)
+    margin-top: var(--space-2)
+
+// ---------- 面包屑 ----------
+.app-breadcrumb-bar
+  width: 100%
+  max-width: 100%
+  margin: 0
+  padding: var(--space-3) var(--page-gutter) 0
+
+.app-breadcrumbs
+  min-width: 0
+
+  &__list
+    display: flex
+    align-items: center
+    flex-wrap: wrap
+    gap: var(--space-1)
+    margin: 0
+    padding: 0
+    list-style: none
+    font-size: 12px
+    line-height: 1.5
+    color: var(--color-text-tertiary)
+
+  &__item
+    display: inline-flex
+    align-items: center
+    gap: var(--space-1)
+    min-width: 0
+
+  &__sep
+    color: var(--color-text-tertiary)
+    opacity: 0.6
+
+  &__link
+    color: var(--color-text-secondary)
+    text-decoration: none
+    border-radius: var(--nt-radius-s, 6px)
+    padding: 1px 2px
+    transition: color 0.16s ease
+
+    &:hover
+      color: var(--color-accent)
+
+  &__current
+    color: var(--color-text-primary)
+    font-weight: 600
+    overflow: hidden
+    text-overflow: ellipsis
+    white-space: nowrap
+    max-width: 320px
+
+  &__crumb--context
+    color: var(--color-text-tertiary)
+
+// ---------- 侧栏：段标题与筛选 ----------
+.app-sidebar__filter
+  position: relative
+  z-index: 1
+  padding: var(--space-2) var(--sidebar-padding-x) 0
+
+.app-sidebar-search
+  border: 1px solid var(--sidebar-border)
+  border-radius: var(--nt-radius-m, 8px)
+  background: color-mix(in srgb, var(--glass-surface) 70%, transparent)
+  padding: 0 var(--space-2)
+
+  .q-field__control
+    min-height: 34px
+    font-size: 12px
+
+  .q-field__native
+    color: var(--color-text-primary)
+
+  .q-icon
+    color: var(--color-text-tertiary)
+
+.app-sidebar-subsection
+  display: flex
+  align-items: center
+  gap: 6px
+  width: 100%
+  margin-top: var(--space-2)
+  padding: 4px var(--sidebar-padding-x) 2px
+  border: 0
+  border-radius: var(--nt-radius-s, 6px)
+  background: transparent
+  color: var(--sidebar-idle-section, var(--color-text-tertiary))
+  font-size: 11px
+  font-weight: 700
+  letter-spacing: 0.08em
+  text-transform: uppercase
+  text-align: left
+  cursor: pointer
+  transition: color 0.16s ease
+
+  &:hover
+    color: var(--color-text-primary)
+
+.app-sidebar-group__items--nested
+  padding-left: calc(var(--sidebar-item-indent) + 2px)
+
+.app-sidebar-search-result
+  padding-left: var(--sidebar-padding-x)
+  padding-right: var(--sidebar-padding-x)
+
+// ---------- 命令面板 ----------
+.app-command
+  .q-dialog__inner
+    padding-top: 10vh
+
+.app-command__card
+  width: 560px
+  max-width: 92vw
+  border-radius: var(--nt-radius-l, 12px)
+  border: 1px solid var(--glass-border)
+  background: var(--surface-raised, var(--glass-surface))
+  box-shadow: var(--nt-shadow-depth, 0 16px 48px rgba(0, 5, 13, 0.44))
+  overflow: hidden
+
+.app-command__input
+  padding: var(--space-2) var(--space-4)
+
+  .q-field__native
+    font-size: 14px
+
+.app-command__kbd
+  font-family: var(--nt-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace)
+  font-size: 10px
+  padding: 2px 6px
+  border: 1px solid var(--glass-border)
+  border-radius: var(--nt-radius-s, 6px)
+  color: var(--color-text-tertiary)
+
+.app-command__list
+  max-height: 46vh
+  overflow-y: auto
+  padding: var(--space-1)
+
+.app-command__item
+  border-radius: var(--nt-radius-m, 8px)
+  min-height: 48px
+
+.app-command__item--active
+  background: var(--color-accent-soft) !important
+
+.app-command__path
+  font-family: var(--nt-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace)
+  font-size: 11px
+  color: var(--color-text-tertiary)
+
+.app-command__badge
+  padding: 1px 6px
+  border-radius: var(--nt-radius-pill, 999px)
+  background: var(--color-accent-soft)
+  color: var(--color-accent)
+  font-size: 10px
+
+.app-command__empty
+  padding: var(--space-8) var(--space-4)
+  text-align: center
+  font-size: 13px
+  color: var(--color-text-tertiary)
+
+.app-command__footer
+  display: flex
+  justify-content: flex-end
+  gap: var(--space-4)
+  padding: var(--space-2) var(--space-4)
+  border-top: 1px solid var(--glass-border)
+
+.app-command__hint
+  font-size: 11px
+  color: var(--color-text-tertiary)
+
+// ---------- 确认框 ----------
+.app-confirm-dialog
+  width: 420px
+  max-width: 92vw
+  border-radius: var(--nt-radius-l, 12px)
+
+  &__body
+    display: flex
+    align-items: flex-start
+    gap: var(--space-3)
+
+  &__icon
+    flex: 0 0 auto
+    display: grid
+    place-items: center
+    width: 44px
+    height: 44px
+    border-radius: var(--nt-radius-l, 12px)
+
+    &--danger
+      color: var(--color-danger)
+      background: var(--color-danger-soft)
+
+    &--primary
+      color: var(--color-accent)
+      background: var(--color-accent-soft)
+
+  &__copy
+    min-width: 0
+
+  &__title
+    margin: 0
+    font-size: 15px
+    font-weight: 600
+    color: var(--color-text-primary)
+
+  &__message
+    margin: var(--space-1) 0 0
+    font-size: 13px
+    line-height: 1.6
+    color: var(--color-text-secondary)
+    word-break: break-word
+
+  &__actions
+    padding: 0 var(--space-4) var(--space-3)
+
+// ---------- 输入类弹框（表单 prompt / 单选选择器） ----------
+.app-prompt-dialog
+  display: flex
+  flex-direction: column
+  gap: var(--nt-space-3)
+
+  &__message
+    margin: 0
+    font-size: 13px
+    line-height: 1.6
+    color: var(--color-text-secondary)
+    white-space: pre-line
+    word-break: break-word
+
+  &__field
+    width: 100%
+
+  &__options
+    display: flex
+    flex-direction: column
+    gap: var(--nt-space-2)
+
+  &__option
+    display: flex
+    align-items: flex-start
+    gap: var(--nt-space-2)
+    padding: var(--nt-space-2) var(--nt-space-3)
+    border: 1px solid var(--glass-border)
+    border-radius: var(--nt-radius-m, 8px)
+    cursor: pointer
+
+    &:hover
+      border-color: var(--color-accent)
+
+    &--disabled
+      cursor: not-allowed
+      opacity: 0.55
+
+      &:hover
+        border-color: var(--glass-border)
+
+  &__option-copy
+    display: flex
+    flex-direction: column
+    gap: var(--nt-space-1)
+
+  &__option-label
+    font-size: 13px
+    color: var(--color-text-primary)
+
+  &__option-hint
+    font-size: 12px
+    color: var(--color-text-tertiary)
+
+// ---------- 语义提示条（替代 bg-orange-1 / bg-blue-1 之类的调色板直取） ----------
+.app-notice
+  display: flex
+  align-items: flex-start
+  gap: var(--space-3)
+  padding: var(--space-3) var(--space-4)
+  border: 1px solid var(--glass-border)
+  border-radius: var(--nt-radius-m, 8px)
+  background: var(--glass-surface)
+  color: var(--color-text-secondary)
+  font-size: 13px
+  line-height: 1.6
+
+  &--warning
+    border-color: color-mix(in srgb, var(--color-warning) 34%, var(--glass-border))
+    background: color-mix(in srgb, var(--color-warning) 8%, transparent)
+    color: var(--color-text-primary)
+
+  &--info
+    border-color: color-mix(in srgb, var(--color-accent) 30%, var(--glass-border))
+    background: color-mix(in srgb, var(--color-accent) 8%, transparent)
+    color: var(--color-text-primary)
+
+  &--danger
+    border-color: color-mix(in srgb, var(--color-danger) 34%, var(--glass-border))
+    background: color-mix(in srgb, var(--color-danger) 8%, transparent)
+    color: var(--color-text-primary)
+
+  code
+    font-family: var(--nt-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace)
+    font-size: 12px
+    padding: 0 4px
+    border-radius: 4px
+    background: color-mix(in srgb, var(--color-text-primary) 8%, transparent)
+
+// ---------- 无障碍兜底 ----------
+a:focus-visible,
+button:focus-visible,
+[role='button']:focus-visible,
+[tabindex]:focus-visible,
+.q-btn:focus-visible,
+.q-item:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible
+  outline: 2px solid var(--color-accent)
+  outline-offset: 2px
+
+html[data-motion='reduced'] *,
+html[data-motion='reduced'] *::before,
+html[data-motion='reduced'] *::after
+  animation-duration: 0.001ms !important
+  animation-iteration-count: 1 !important
+  transition-duration: 0.001ms !important
+  scroll-behavior: auto !important
+
+@media (prefers-reduced-motion: reduce)
+  *,
+  *::before,
+  *::after
+    animation-duration: 0.001ms !important
+    animation-iteration-count: 1 !important
+    transition-duration: 0.001ms !important
+    scroll-behavior: auto !important
+
+// ---------- 响应式 ----------
+@media (max-width: 799px)
+  .app-breadcrumb-bar
+    padding: var(--space-2) var(--space-4) 0
+
+  .app-breadcrumbs__crumb--context
+    display: none
+
+  .app-breadcrumbs__current
+    max-width: 200px
+
+@media (max-width: 599px)
+  .app-state-panel
+    padding: var(--space-8) var(--space-4)
+    min-height: 180px
+
+  .app-command__card
+    max-width: 96vw

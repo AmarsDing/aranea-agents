@@ -37,23 +37,51 @@
       @refresh="loadRows"
     />
 
-    <q-banner v-if="error" rounded class="app-page-error-banner q-mb-md">
-      {{ error }}
-      <template #action>
-        <q-btn flat dense :label="$t('common.retry')" class="text-white" @click="loadRows" />
-      </template>
-    </q-banner>
-
-    <tool-runs-table :rows="rows" :loading="loading" @view-detail="openDetail" />
-
-    <app-registry-pagination
-      v-model:page="page"
-      v-model:page-size="pageSize"
-      :page-max="pageMax"
-      :total="total"
-      :loading="loading"
-      :label="$t('toolsPage.runsPage.pageUnit')"
+    <AppStatePanel
+      v-if="pageState === 'error'"
+      class="q-mb-md"
+      variant="error"
+      :description="error"
+      :action-label="$t('common.retry')"
+      action-icon="refresh"
+      @action="loadRows"
     />
+    <AppStatePanel v-else-if="pageState === 'forbidden'" class="q-mb-md" variant="forbidden" />
+    <AppStatePanel v-else-if="pageState === 'loading'" variant="loading" :rows="4" />
+    <AppStatePanel
+      v-else-if="pageState === 'empty'"
+      variant="empty"
+      :title="$t('shell.runs.emptyTitle')"
+      :description="$t('shell.runs.emptyDesc')"
+      icon="outbox"
+      :action-label="$t('shell.runs.emptyAction')"
+      action-icon="restart_alt"
+      @action="resetFilters"
+    />
+
+    <template v-else>
+      <AppStatePanel
+        v-if="pageState === 'partial'"
+        class="q-mb-md"
+        variant="partial"
+        dense
+        :description="$t('shell.runs.staleError', { message: error })"
+        :action-label="$t('common.retry')"
+        action-icon="refresh"
+        @action="loadRows"
+      />
+
+      <tool-runs-table :rows="rows" :loading="loading" @view-detail="openDetail" />
+
+      <app-registry-pagination
+        v-model:page="page"
+        v-model:page-size="pageSize"
+        :page-max="pageMax"
+        :total="total"
+        :loading="loading"
+        :label="$t('toolsPage.runsPage.pageUnit')"
+      />
+    </template>
 
     <tool-run-detail-dialog
       :open="detailOpen"
@@ -67,12 +95,15 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue';
 import AppRegistryPagination from '../components/layout/AppRegistryPagination.vue';
+import AppStatePanel from '../components/common/AppStatePanel.vue';
 import ToolHeroSection from '../components/tools/ToolHeroSection.vue';
 import ToolRunsFilters from '../components/tools/ToolRunsFilters.vue';
 import ToolRunsTable from '../components/tools/ToolRunsTable.vue';
 import ToolRunDetailDialog from '../components/tools/ToolRunDetailDialog.vue';
 import { useToolRunsPage } from '../features/tools/useToolRunsPage';
+import { resolvePageState } from './pageState';
 
 const {
   toolKey,
@@ -87,6 +118,7 @@ const {
   total,
   loading,
   error,
+  forbidden,
   pageMax,
   statusOptions,
   detailOpen,
@@ -98,4 +130,14 @@ const {
   resetFilters,
   loadRows,
 } = useToolRunsPage();
+
+/** 五态判定：错误优先于空态；有数据时刷新失败只加 partial 横幅，不清空已渲染列表。 */
+const pageState = computed(() =>
+  resolvePageState({
+    loading: loading.value,
+    error: error.value,
+    count: rows.value.length,
+    forbidden: forbidden.value,
+  }),
+);
 </script>

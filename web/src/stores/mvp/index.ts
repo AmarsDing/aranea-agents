@@ -53,6 +53,7 @@ export const useContentInboxStore = defineStore('mvp-content-inbox', () => {
     loading: state.loading,
     saving: state.saving,
     error: state.error,
+    forbidden: state.forbidden,
     load,
     create,
     ingestRSS,
@@ -85,7 +86,7 @@ export const useReviewQueueStore = defineStore('mvp-review-queue', () => {
     await load();
     return true;
   }
-  return { rows, lastJob, loading: state.loading, saving: state.saving, error: state.error, load, approve, reject };
+  return { rows, lastJob, loading: state.loading, saving: state.saving, error: state.error, forbidden: state.forbidden, load, approve, reject };
 });
 
 export const useOpportunityBoardStore = defineStore('mvp-opportunities', () => {
@@ -109,7 +110,7 @@ export const useOpportunityBoardStore = defineStore('mvp-opportunities', () => {
   async function acknowledge(id: string) {
     return (await state.change(() => mvpApi.ackOpp(id))) !== null;
   }
-  return { rows, loading: state.loading, saving: state.saving, error: state.error, load, create, acknowledge };
+  return { rows, loading: state.loading, saving: state.saving, error: state.error, forbidden: state.forbidden, load, create, acknowledge };
 });
 
 export const useSourcingBoardStore = defineStore('mvp-sourcing', () => {
@@ -126,5 +127,5 @@ export const useSourcingBoardStore = defineStore('mvp-sourcing', () => {
   async function create(input: Partial<Supplier>) {
     return (await state.change(() => mvpApi.createSupplier(input))) !== null;
   }
-  return { rows, loading: state.loading, saving: state.saving, error: state.error, load, create };
+  return { rows, loading: state.loading, saving: state.saving, error: state.error, forbidden: state.forbidden, load, create };
 });

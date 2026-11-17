@@ -79,7 +79,7 @@ watch(
 .wb-heartbeat
   display: inline-flex
   align-items: center
-  gap: 8px
+  gap: var(--nt-space-2)
 .wb-heartbeat__digit
   display: grid
   grid-template-columns: repeat(5, 3px)

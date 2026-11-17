@@ -19,6 +19,7 @@
  */
 import { computed, ref, watch, onUnmounted } from 'vue';
 import { Dark } from 'quasar';
+import { refreshCanvasPalette } from '../utils/canvasPalette';
 
 export type ThemeMode = 'auto' | 'dark' | 'light';
 
@@ -48,6 +49,8 @@ function applyTheme(mode: ThemeMode): void {
   } else {
     Dark.set(mode === 'dark');
   }
+  // 画布调色板缓存的是令牌读值，昼夜切换后必须重新解析（three.js 材质不会重读 CSS）
+  refreshCanvasPalette();
 }
 
 function ensureMediaListener(): void {

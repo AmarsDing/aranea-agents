@@ -155,3 +155,104 @@ export interface NodeDetail extends NodeView {
     received_at: string;
   }[];
 }
+
+// ——— 电商经营快照（GET /v1/ceoboard/company）———
+// 该接口是只读 JSON BFF，字段与后端 bizview.Snapshot 一一对应；
+// 所有金额单位为 micro USD（1 USD = 1e6），前端按需换算展示。
+
+export interface OpsDrill {
+  label: string;
+  label_key?: string;
+  path: string;
+}
+
+export interface OpsMetric {
+  id: string;
+  name: string;
+  name_key?: string;
+  value: number;
+  display: string;
+  unit: string;
+  window: string;
+  health: string;
+  source: string;
+  rule?: string;
+  note?: string;
+  pending: boolean;
+  drill?: OpsDrill;
+}
+
+export interface OpsEntity {
+  id: string;
+  name: string;
+  name_key?: string;
+  kind: string;
+  count: number;
+  status?: string;
+  health: string;
+  note?: string;
+  drill?: OpsDrill;
+}
+
+export interface OpsModule {
+  id: string;
+  name: string;
+  name_key?: string;
+  tone: string;
+  job: string;
+  job_key?: string;
+  scope: string;
+  scope_key?: string;
+  cadence: string;
+  cadence_key?: string;
+  health: string;
+  working: boolean;
+  metrics: OpsMetric[];
+  entities: OpsEntity[];
+}
+
+export interface OpsAnomaly {
+  id: string;
+  code: string;
+  level: string;
+  module: string;
+  text: string;
+  params?: Record<string, number | string>;
+  since?: string;
+  drill?: OpsDrill;
+}
+
+export interface OpsCoverage {
+  id: string;
+  name: string;
+  name_key?: string;
+  ready: boolean;
+  note: string;
+  note_key?: string;
+}
+
+export interface CompanyFacts {
+  name: string;
+  health: string;
+  departments: number;
+  positions: number;
+  agents: number;
+  teams: number;
+  active_sessions_24h: number;
+  running_runs: number;
+  today_cost_micro_usd: number;
+  today_tokens: number;
+}
+
+export interface CompanySnapshot {
+  as_of: string;
+  window: string;
+  scope_note: string;
+  company: CompanyFacts;
+  kpis: OpsMetric[];
+  modules: OpsModule[];
+  anomalies: OpsAnomaly[];
+  coverage: OpsCoverage[];
+  notice?: string;
+}
+

@@ -6,6 +6,8 @@
 import { computed, getCurrentScope, onScopeDispose, ref, watch, type Ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useQuasar } from 'quasar';
+import { confirm } from '../../composables/useAppConfirm';
+import { prompt } from '../../composables/useAppPrompt';
 import { useKnowledgeStore } from '../../stores/knowledge';
 import {
   applyOutgoingAutolink,
@@ -322,11 +324,13 @@ export function useWorkbenchCommands(deps: WorkbenchCommandsDeps) {
       deps.events.createVault?.();
       return;
     }
-    $q.dialog({
-      title: t('knowledgePage.workbench.commands.new-note'),
-      prompt: { model: '', type: 'text', label: t('knowledgePage.workbench.noteNamePrompt') },
-      cancel: true,
-    }).onOk(async (name: string) => {
+    void (async () => {
+      const name = await prompt({
+        title: t('knowledgePage.workbench.commands.new-note'),
+        label: t('knowledgePage.workbench.noteNamePrompt'),
+        persistent: false,
+      });
+      if (!name) return;
       const base = normalizeTargetName(name);
       if (!base) return;
       try {
@@ -339,7 +343,7 @@ export function useWorkbenchCommands(deps: WorkbenchCommandsDeps) {
       } catch (e) {
         $q.notify({ type: 'negative', message: e instanceof Error ? e.message : String(e) });
       }
-    });
+    })();
   }
 
   function createFolder() {
@@ -348,11 +352,13 @@ export function useWorkbenchCommands(deps: WorkbenchCommandsDeps) {
       $q.notify({ type: 'info', message: t('knowledgeWorkflow.teamFolderHint') });
       return;
     }
-    $q.dialog({
-      title: t('knowledgePage.workbench.commands.new-folder'),
-      prompt: { model: '', type: 'text', label: t('knowledgePage.workbench.folderNamePrompt') },
-      cancel: true,
-    }).onOk(async (name: string) => {
+    void (async () => {
+      const name = await prompt({
+        title: t('knowledgePage.workbench.commands.new-folder'),
+        label: t('knowledgePage.workbench.folderNamePrompt'),
+        persistent: false,
+      });
+      if (!name) return;
       const base = normalizeTargetName(name);
       if (!base) return;
       try {
@@ -361,7 +367,7 @@ export function useWorkbenchCommands(deps: WorkbenchCommandsDeps) {
       } catch (e) {
         $q.notify({ type: 'negative', message: e instanceof Error ? e.message : String(e) });
       }
-    });
+    })();
   }
 
   /** dangling 链接点击：当前目录新建 `target.md` 并打开 + 刷新树（Obsidian 语义）。 */
@@ -401,22 +407,22 @@ export function useWorkbenchCommands(deps: WorkbenchCommandsDeps) {
         $q.notify({ type: 'info', message: t('knowledgePage.workbench.autolinkNone') });
         return;
       }
-      $q.dialog({
+      const confirmed = await confirm({
         title: t('knowledgePage.workbench.commands.apply-autolink'),
         message: t('knowledgePage.workbench.autolinkConfirm', { n: prev.replacements }),
-        cancel: true,
-      }).onOk(async () => {
-        try {
-          const res = await applyOutgoingAutolink(active.docId);
-          $q.notify({
-            type: 'positive',
-            message: t('knowledgePage.workbench.autolinkDone', { n: res.replacements }),
-          });
-          deps.events.refreshTree();
-        } catch (e) {
-          $q.notify({ type: 'negative', message: e instanceof Error ? e.message : String(e) });
-        }
+        tone: 'danger',
       });
+      if (!confirmed) return;
+      try {
+        const res = await applyOutgoingAutolink(active.docId);
+        $q.notify({
+          type: 'positive',
+          message: t('knowledgePage.workbench.autolinkDone', { n: res.replacements }),
+        });
+        deps.events.refreshTree();
+      } catch (e) {
+        $q.notify({ type: 'negative', message: e instanceof Error ? e.message : String(e) });
+      }
     } catch (e) {
       $q.notify({ type: 'negative', message: e instanceof Error ? e.message : String(e) });
     }
@@ -650,20 +656,20 @@ export function useWorkbenchCommands(deps: WorkbenchCommandsDeps) {
     }
   }
 
-  function confirmBackfillAutolink() {
+  async function confirmBackfillAutolink() {
     if (!deps.currentVaultId.value) return;
-    $q.dialog({
+    const ok = await confirm({
       title: t('knowledgePage.workbench.commands.backfill-autolink'),
       message: t('knowledgePage.workbench.backfillAutolinkConfirm'),
-      cancel: true,
-    }).onOk(async () => {
-      try {
-        await backfillAutolinkIndex(deps.currentVaultId.value);
-        $q.notify({ type: 'info', message: t('knowledgePage.workbench.backfillStarted') });
-      } catch (e) {
-        $q.notify({ type: 'negative', message: e instanceof Error ? e.message : String(e) });
-      }
+      tone: 'danger',
     });
+    if (!ok) return;
+    try {
+      await backfillAutolinkIndex(deps.currentVaultId.value);
+      $q.notify({ type: 'info', message: t('knowledgePage.workbench.backfillStarted') });
+    } catch (e) {
+      $q.notify({ type: 'negative', message: e instanceof Error ? e.message : String(e) });
+    }
   }
 
   async function runCommand(id: CommandId) {

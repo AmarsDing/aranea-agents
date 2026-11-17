@@ -32,9 +32,33 @@
       <div class="text-caption text-grey-7">{{ filteredHistory.length }} 条记录</div>
     </div>
 
-    <q-inner-loading :showing="loading && executionHistory.length === 0" />
+    <!-- 五态：已有记录但刷新失败 → 局部失败横幅，列表照常渲染 -->
+    <AppStatePanel
+      v-if="error && executionHistory.length > 0"
+      variant="partial"
+      dense
+      class="q-mt-md"
+      :description="error"
+      action-label="重试"
+      action-icon="refresh"
+      @action="reload"
+    />
 
-    <section v-if="filteredHistory.length > 0" class="graph-executions-page__list q-mt-sm">
+    <!-- 五态：加载失败且无记录 → 只渲染可重试错误面板。
+         403 错误码未透出（useGraphExecutionsPage 仅保留 message），forbidden 分支未接上。 -->
+    <AppStatePanel
+      v-else-if="error"
+      variant="error"
+      class="q-mt-md"
+      :description="error"
+      action-label="重试"
+      action-icon="refresh"
+      @action="reload"
+    />
+
+    <AppStatePanel v-if="loading && executionHistory.length === 0 && !error" variant="loading" :rows="4" class="q-mt-md" />
+
+    <section v-else-if="filteredHistory.length > 0" class="graph-executions-page__list q-mt-sm">
       <q-card
         v-for="exec in filteredHistory"
         :key="exec.executionId"
@@ -65,19 +89,21 @@
       </q-card>
     </section>
 
-    <q-card v-else-if="!loading && executionHistory.length === 0" flat class="graph-executions-page__empty q-mt-md">
-      <q-card-section class="text-center text-grey-7">
-        <q-icon name="history" size="48px" class="q-mb-sm" />
-        <div>暂无执行记录</div>
-      </q-card-section>
-    </q-card>
+    <AppStatePanel
+      v-else-if="!loading && !error && executionHistory.length === 0"
+      variant="empty"
+      title="暂无执行记录"
+      icon="history"
+      class="q-mt-md"
+    />
 
-    <q-card v-else-if="!loading && filteredHistory.length === 0" flat class="graph-executions-page__empty q-mt-md">
-      <q-card-section class="text-center text-grey-7">
-        <q-icon name="filter_list_off" size="48px" class="q-mb-sm" />
-        <div>当前筛选条件下无记录</div>
-      </q-card-section>
-    </q-card>
+    <AppStatePanel
+      v-else-if="!loading && !error && filteredHistory.length === 0"
+      variant="empty"
+      title="当前筛选条件下无记录"
+      icon="filter_list_off"
+      class="q-mt-md"
+    />
 
     <div v-if="hasNextPage" class="row justify-center q-py-lg">
       <q-btn flat rounded label="加载更多" :loading="loading" @click="loadMore" />
@@ -88,6 +114,7 @@
 <script setup lang="ts">
 import AppPageHero from '../components/layout/AppPageHero.vue';
 import AppStatusChip from '../components/common/AppStatusChip.vue';
+import AppStatePanel from '../components/common/AppStatePanel.vue';
 import { useGraphExecutionsPage } from '../features/graph/useGraphExecutionsPage';
 import { formatTime, execDuration } from '../features/graph/utils';
 import { STATUS_FILTER_OPTIONS, TIME_RANGE_OPTIONS } from '../features/graph/graphExecutionsUi';
@@ -98,9 +125,11 @@ const {
   executionHistory,
   filteredHistory,
   loading,
+  error,
   hasNextPage,
   statusFilter,
   timeRangeFilter,
+  reload,
   loadMore,
   goToRun,
   goBack,

@@ -1,4 +1,5 @@
 import dagre from 'dagre';
+import { canvasPalette } from '../../../utils/canvasPalette';
 import type { UnifiedGraphEdge, UnifiedGraphNode } from '../types';
 import { memoryLayerColor } from '../panorama/layerMeta';
 
@@ -7,12 +8,12 @@ export const UNIFIED_NODE_WIDTH = 132;
 export const UNIFIED_NODE_HEIGHT = 96;
 
 /**
- * 边样式（设计 §10.4）：冲突/INHIBIT → 红色虚线 `#ef5350`；事实来源 → 虚线；
+ * 边样式（设计 §10.4）：冲突/INHIBIT → 红色虚线（--nt-graph-conflict）；事实来源 → 虚线；
  * 其余（实体关系/实体-事实/事实链接）→ 实线，颜色随源节点层级色码。
  */
 export function unifiedEdgeStyle(edge: UnifiedGraphEdge, sourceLayer: string): Record<string, string> {
   if (edge.type === 'fact_conflict' || edge.polarity === 'INHIBIT') {
-    return { stroke: '#ef5350', strokeDasharray: '4 3', strokeWidth: '1.8' };
+    return { stroke: canvasPalette().conflict, strokeDasharray: '4 3', strokeWidth: '1.8' };
   }
   if (edge.type === 'fact_source') {
     return { stroke: memoryLayerColor(sourceLayer), strokeDasharray: '5 4', strokeWidth: '1.4' };

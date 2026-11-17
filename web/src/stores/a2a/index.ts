@@ -59,12 +59,16 @@ export const useA2AStore = defineStore('a2a', () => {
   const gatewayEntries = ref<A2AGatewayEntry[]>([]);
   const loading = ref(false);
   const runtimeConfig = ref<A2ARuntimeConfig | null>(null);
+  /** 运行配置探测失败；非空时横幅须显示可重试错误，而不是静默隐藏成「未配置」。 */
+  const runtimeConfigError = ref('');
 
   async function loadRuntimeConfig() {
+    runtimeConfigError.value = '';
     try {
       runtimeConfig.value = await getA2AConfig();
-    } catch {
+    } catch (error) {
       runtimeConfig.value = null;
+      runtimeConfigError.value = error instanceof Error ? error.message : String(error);
     }
     return runtimeConfig.value;
   }
@@ -191,6 +195,7 @@ export const useA2AStore = defineStore('a2a', () => {
     gatewayEntries,
     loading,
     runtimeConfig,
+    runtimeConfigError,
     loadRuntimeConfig,
     discover,
     refreshCard,

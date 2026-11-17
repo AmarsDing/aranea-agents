@@ -5,7 +5,9 @@
       {{ wsConnected ? t('workbench.statusbar.wsOn') : t('workbench.statusbar.wsOff') }}
     </span>
     <span class="wb-statusbar__cell wb-statusbar__clock">{{ clockText }}</span>
-    <span class="wb-statusbar__cell"> {{ t('workbench.statusbar.freshness') }} {{ freshnessText }} </span>
+    <span class="wb-statusbar__cell" :class="{ 'wb-statusbar__cell--stale': freshnessSeconds < 0 }">
+      {{ t('workbench.statusbar.freshness') }} {{ freshnessText }}
+    </span>
     <span class="wb-statusbar__cell"> {{ t('workbench.statusbar.throughput') }} {{ eventRate }}/min </span>
     <span class="wb-statusbar__cell" :class="{ 'wb-statusbar__cell--backlog': backlogCount > 0 }">
       {{ t('workbench.statusbar.backlog') }} {{ backlogCount }}
@@ -26,8 +28,8 @@ const props = defineProps<{
   wsConnected: boolean;
   /** 服务器时钟（ISO 字符串；页面按秒刷） */
   clockIso: string;
-  /** 各 lane 最旧新鲜度（秒；空串则 0） */
-  staleSeconds: number;
+  /** 各 lane 最旧成功刷新（秒）；-1 表示尚无任何成功刷新 */
+  freshnessSeconds: number;
   eventRate: number;
   backlogCount: number;
   trustState: TrustState;
@@ -45,7 +47,11 @@ const clockText = computed(() => {
   return `${hh}:${mm}:${ss}`;
 });
 
-const freshnessText = computed(() => (props.staleSeconds > 0 ? `${props.staleSeconds}s` : '0s'));
+const freshnessText = computed(() => {
+  if (props.freshnessSeconds < 0) return '—';
+  const s = props.freshnessSeconds;
+  return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m`;
+});
 </script>
 
 <style scoped lang="sass">
@@ -66,6 +72,8 @@ const freshnessText = computed(() => (props.staleSeconds > 0 ? `${props.staleSec
   font-variant-numeric: tabular-nums
 .wb-statusbar__cell--backlog
   color: var(--wb-await)
+.wb-statusbar__cell--stale
+  color: var(--wb-skip)
 .wb-statusbar__mode
   margin-left: auto
   text-transform: uppercase

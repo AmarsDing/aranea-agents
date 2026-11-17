@@ -138,7 +138,7 @@ const ariaLabel = computed(() => {
 
 <style lang="sass">
 .chat-header-usage__compact-btn
-  margin-left: 4px
+  margin-left: var(--nt-space-1)
   opacity: 0.5
   transition: opacity 0.2s
   &:hover

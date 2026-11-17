@@ -115,7 +115,7 @@ export async function listNotifications(query: {
       };
     }),
     total: Number(res.total ?? 0),
-    unread_count: Number(res.unreadCount ?? res.unread_count ?? 0),
+    unread_count: Number(res.unreadCount ?? (res as unknown as Record<string, unknown>).unread_count ?? 0),
   };
 }
 
@@ -282,8 +282,8 @@ export async function deleteMailAccount(id: string): Promise<void> {
 export async function syncMailAccount(id: string): Promise<{ imported: number; skipped: number }> {
   const res = await createOfficeMailService().SyncAccount({ id });
   return {
-    imported: Number(res.importedCount ?? res.imported_count ?? 0),
-    skipped: Number(res.skippedCount ?? res.skipped_count ?? 0),
+    imported: Number(res.importedCount ?? (res as unknown as Record<string, unknown>).imported_count ?? 0),
+    skipped: Number(res.skippedCount ?? (res as unknown as Record<string, unknown>).skipped_count ?? 0),
   };
 }
 
@@ -347,7 +347,7 @@ export async function downloadMailAttachment(att: MailAttachmentRow): Promise<vo
 
 export async function attachmentToKnowledge(id: string, classification: number): Promise<string> {
   const res = await createOfficeMailService().AttachmentToKnowledge({ id, classification });
-  return String(res.knowledgeDocId ?? res.knowledge_doc_id ?? '');
+  return String(res.knowledgeDocId ?? (res as unknown as Record<string, unknown>).knowledge_doc_id ?? '');
 }
 
 export async function importMailEml(eml: string): Promise<MailMessageRow> {
@@ -373,7 +373,7 @@ export async function exportMailEml(msg: MailMessageRow): Promise<void> {
 
 export async function mailToTask(id: string, titleOverride: string): Promise<string> {
   const res = await createOfficeMailService().MailToTask({ id, titleOverride });
-  return String(res.taskRef ?? res.task_ref ?? '');
+  return String(res.taskRef ?? (res as unknown as Record<string, unknown>).task_ref ?? '');
 }
 
 // ---------- 个人任务（工作台「我的任务」） ----------

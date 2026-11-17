@@ -3,7 +3,7 @@ import { configure } from "quasar/wrappers";
 export default configure(() => {
   return {
     supportTS: true,
-    boot: ["error-handler", "pinia", "theme", "i18n", "runtime", "heartbeat", "close-menu-on-scroll"],
+    boot: ["error-handler", "pinia", "theme", "a11y", "i18n", "runtime", "heartbeat", "close-menu-on-scroll"],
     css: ["style.sass"],
     extras: ["material-icons"],
     build: {
@@ -24,6 +24,20 @@ export default configure(() => {
         viteConf.server.watch = {
           ...viteConf.server.watch,
           ignored: ["**/dist/**", "**/node_modules/**", "**/.git/**"],
+        };
+
+        // Rolldown(Vite 8) 循环 chunk 启动崩溃修复：把 node_modules vendor 抽到独立 chunk。
+        // 否则 vue-i18n 的 createI18n 及其内部 helper 会与入口 app 代码同处 index chunk，
+        // 被动态 import 拆出的 i18n chunk 顶层反向调用入口尚未初始化的 binding（ll is not a function）而崩溃。
+        // vendor 不含 app 代码，i18n/router 等 chunk 只单向依赖 vendor，入口↔vendor 的 eager 环被切断。
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- rolldownOptions.output.codeSplitting 不在解析到的 Vite 类型里（实际构建走 app-vite 嵌套的 Vite 8/Rolldown）
+        const build = (viteConf.build ??= {}) as Record<string, any>;
+        const rolldownOptions = (build.rolldownOptions ??= {});
+        const output = (rolldownOptions.output ??= {});
+        const existing = typeof output.codeSplitting === 'object' && output.codeSplitting ? output.codeSplitting : {};
+        output.codeSplitting = {
+          ...existing,
+          groups: [{ name: 'vendor', test: /node_modules[\\/]/, priority: 10 }, ...(existing.groups ?? [])],
         };
       }
     },

@@ -8,7 +8,7 @@ import { createOrganizationService } from '../../services';
 import type { OrganizationTreeNode } from '../../services/kratos/organization/v1/index';
 import { listAgents } from '../agents/api';
 import { listDecisionRecords } from '../decision/api';
-import { groupRoster, isPendingDecision } from './logic';
+import { groupRoster, isPendingDecision, decisionAgentKey } from './logic';
 import type { BizLineCard, BizLineId, DrillTarget, RosterModel, TrustState, YouLaneState } from './types';
 
 const BIZ_LINES: BizLineId[] = ['novatrader', 'hotcraft', 'assistant', 'ecmove'];
@@ -36,7 +36,8 @@ function flattenOrgTree(nodes: readonly OrganizationTreeNode[]): {
   return { departments, positions };
 }
 
-/** 信任六态裁决（R1/R5 同源；回放 P2 启用，P0 恒不命中） */
+/** 信任六态裁决（R1/R5 同源；回放 P2 启用，P0 恒不命中）
+ *  失败（degraded）必须优先于积压（backlog）暴露，否则拉取失败会被 backlog 掩盖成"正常"。 */
 export function deriveTrustState(args: {
   wsConnected: boolean;
   staleMs: number;
@@ -48,8 +49,8 @@ export function deriveTrustState(args: {
   if (args.replayMode) return 'replay';
   if (!args.wsConnected) return 'offline';
   if (args.staleMs > (args.wsStaleMs ?? 5 * 60_000)) return 'stale';
-  if (args.backlogCount > 0) return 'backlog';
   if (args.lanesDegraded) return 'degraded';
+  if (args.backlogCount > 0) return 'backlog';
   return 'live';
 }
 
@@ -61,6 +62,8 @@ export function useWorkbenchPage() {
   const backfillDone = ref(false);
   const backfillFailed = ref(false);
   const humanDoneToday = ref(0);
+  /** 今日人签决策按业务线归因（无法归因不计入任何线，不摊派） */
+  const doneByLine = ref<Partial<Record<BizLineId, number>>>({});
 
   async function loadRoster(): Promise<void> {
     try {
@@ -110,10 +113,19 @@ export function useWorkbenchPage() {
       });
       const lines: import('./types').LogLine[] = [];
       let humanDone = 0;
+      const perLine: Partial<Record<BizLineId, number>> = {};
+      const lineOfAgent = new Map<string, BizLineId>();
+      for (const a of allAgents.value) {
+        if (a.bizLine) lineOfAgent.set(a.key, a.bizLine);
+      }
       for (const d of res.items) {
         if (isPendingDecision(d.outcome)) continue;
         const isHuman = (d.actor_type ?? '').toLowerCase() === 'human';
-        if (isHuman) humanDone += 1;
+        if (isHuman) {
+          humanDone += 1;
+          const line = lineOfAgent.get(decisionAgentKey(d));
+          if (line) perLine[line] = (perLine[line] ?? 0) + 1;
+        }
         lines.push({
           id: `dec:${d.decision_key}`,
           at: d.created_at ?? dayStart.toISOString(),
@@ -127,6 +139,7 @@ export function useWorkbenchPage() {
       }
       lines.sort((a, b) => b.at.localeCompare(a.at));
       humanDoneToday.value = humanDone;
+      doneByLine.value = perLine;
       backfillFailed.value = false;
       backfillDone.value = true;
       return { lines: lines.slice(0, 60), humanDoneCount: humanDone };
@@ -146,27 +159,40 @@ export function useWorkbenchPage() {
     drill.value = null;
   }
 
-  /** 四线卡网格 + SOURCE 权限卡共用的证据态（无后端证据整卡『待接入』） */
+  /**
+   * 四线卡网格 + SOURCE 权限卡共用的证据态。
+   * 口径：connected = 该线有在岗 agent 且花名册加载成功；pending 只算可归因来源；
+   * done = 今日人签决策中能归因到该线的条数（无法归因不摊派，无数据显示 —）。
+   */
   function buildBizLineCards(lanes: readonly YouLaneState[]): BizLineCard[] {
     const pendingByLine = new Map<BizLineId, number>();
-    // 归因口径：decision trade lane 项已带 agentKey——但 lane 不区业务线；
-    // P0 诚实口径：卡片 pending 只挂可归因 lane（hotcraft=publish、ecmove=listing），
-    // novatrader 后端证据为零 → 整卡待接入（验收红线 1），assistant=alerts lane 计数。
+    const add = (line: BizLineId | '', n: number) => {
+      if (!line || n <= 0) return;
+      pendingByLine.set(line, (pendingByLine.get(line) ?? 0) + n);
+    };
+    const lineOfAgent = new Map<string, BizLineId>();
+    for (const a of allAgents.value) if (a.bizLine) lineOfAgent.set(a.key, a.bizLine);
+
     const laneOf = (lane: string) => lanes.find((l) => l.lane === lane);
-    pendingByLine.set('hotcraft', laneOf('publish')?.count ?? 0);
-    pendingByLine.set('ecmove', laneOf('listing')?.count ?? 0);
-    pendingByLine.set('assistant', laneOf('alerts')?.count ?? 0);
-    return BIZ_LINES.map((id) => {
-      const hasAgents = allAgents.value.some((a) => a.bizLine === id);
-      const connected = id !== 'novatrader' && hasAgents;
-      return {
-        id,
-        connected,
-        pending: pendingByLine.get(id) ?? 0,
-        done: 0,
-        note: '',
-      } satisfies BizLineCard;
-    });
+    const trade = laneOf('trade');
+    for (const [agentKey, n] of Object.entries(trade?.agentCounts ?? {})) {
+      add(lineOfAgent.get(agentKey) ?? '', Number(n) || 0);
+    }
+    // 审批中心条目按后端 agent_key 归因；无法归因的行不进任何业务线（不摊派）
+    const approval = laneOf('approval');
+    for (const [agentKey, n] of Object.entries(approval?.agentCounts ?? {})) {
+      add(lineOfAgent.get(agentKey) ?? '', Number(n) || 0);
+    }
+    add('hotcraft', laneOf('publish')?.count ?? 0);
+    add('ecmove', laneOf('listing')?.count ?? 0);
+
+    return BIZ_LINES.map((id) => ({
+      id,
+      connected: !rosterFailed.value && allAgents.value.some((a) => a.bizLine === id),
+      pending: pendingByLine.get(id) ?? 0,
+      done: doneByLine.value[id] ?? 0,
+      note: '',
+    }));
   }
 
   return {
@@ -178,6 +204,7 @@ export function useWorkbenchPage() {
     backfillDone,
     backfillFailed,
     humanDoneToday,
+    doneByLine,
     loadRoster,
     fetchDecisionBackfill,
     openDrill,

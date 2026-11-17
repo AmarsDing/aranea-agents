@@ -183,10 +183,7 @@
               :class="{ 'knowledge-graph__chip--off': !linkTypes.includes(lt) }"
               @click="$emit('toggle-link-type', lt)"
             >
-              <span
-                class="knowledge-graph__chip-dot"
-                :style="{ background: graphLinkColor(lt), color: graphLinkColor(lt) }"
-              />
+              <span class="knowledge-graph__chip-dot" :class="`knowledge-graph__chip-dot--${graphLinkTone(lt)}`" />
               {{ t(`knowledgePage.linkType${lt.charAt(0).toUpperCase() + lt.slice(1)}`) }}
             </q-chip>
           </div>
@@ -358,7 +355,7 @@ import FocusCard from './graph3d/FocusCard.vue';
 import GraphLegend, { type LegendGroup } from './graph3d/GraphLegend.vue';
 import HudToolbar from './graph3d/HudToolbar.vue';
 import KnowledgeScopePicker from './KnowledgeScopePicker.vue';
-import { graphDocTypeColor, graphLinkColor, GRAPH_LINK_TYPES } from '../../features/knowledge/graphUi';
+import { graphDocTypeColor, graphLinkTone, GRAPH_LINK_TYPES } from '../../features/knowledge/graphUi';
 import {
   COLOR_MODE_STORAGE_KEY,
   resolveColorMode,
@@ -1063,9 +1060,30 @@ const nodeLegend = computed(() => {
     color: var(--kg-text);
   }
 
-  // 图例发光色块（currentColor = 色板色，见模板 style 绑定）
+  // 图例发光色块（currentColor 由 --nt-graph-link-* 令牌着色，见下方修饰符）
   .knowledge-graph__chip-dot {
     box-shadow: 0 0 6px currentColor;
+  }
+
+  // 边类型色：与 graphLinkColor 的取值域（--nt-graph-link-*）一一对应
+  .knowledge-graph__chip-dot--explicit {
+    background: var(--nt-graph-link-explicit);
+    color: var(--nt-graph-link-explicit);
+  }
+
+  .knowledge-graph__chip-dot--entity {
+    background: var(--nt-graph-link-entity);
+    color: var(--nt-graph-link-entity);
+  }
+
+  .knowledge-graph__chip-dot--semantic {
+    background: var(--nt-graph-link-semantic);
+    color: var(--nt-graph-link-semantic);
+  }
+
+  .knowledge-graph__chip-dot--unknown {
+    background: var(--nt-graph-link-unknown);
+    color: var(--nt-graph-link-unknown);
   }
 
   .knowledge-graph__chip--off {

@@ -28,12 +28,29 @@
       </template>
     </AppPageHero>
 
-    <q-banner v-if="pageError" rounded class="app-page-error-banner q-mb-md" role="alert">
-      {{ pageError }}
-      <template #action>
-        <q-btn flat dense :label="t('schedulePage.retry')" @click="loadEvents" />
-      </template>
-    </q-banner>
+    <AppStatePanel
+      v-if="pageState === 'error'"
+      class="q-mb-md"
+      variant="error"
+      :description="pageError"
+      :action-label="t('schedulePage.retry')"
+      action-icon="refresh"
+      @action="loadEvents"
+    />
+    <AppStatePanel v-else-if="pageState === 'forbidden'" class="q-mb-md" variant="forbidden" />
+    <AppStatePanel v-else-if="pageState === 'loading'" variant="loading" :rows="5" />
+
+    <template v-else>
+      <AppStatePanel
+        v-if="pageState === 'partial'"
+        class="q-mb-md"
+        variant="partial"
+        dense
+        :description="pageError"
+        :action-label="t('schedulePage.retry')"
+        action-icon="refresh"
+        @action="loadEvents"
+      />
 
     <div class="schedule-layout">
       <!-- ============ 月历（一次范围拉取驱动整月渲染） ============ -->
@@ -102,9 +119,14 @@
           <span class="mono">{{ selectedDay }}</span>
           <q-btn flat dense round icon="add" :aria-label="t('schedulePage.btnNew')" @click="openCreate" />
         </div>
-        <div v-if="!dayEvents.length" class="schedule-day__empty text-caption">
-          {{ t('schedulePage.emptyDay') }}
-        </div>
+        <AppStatePanel
+          v-if="!dayEvents.length"
+          class="q-mt-sm"
+          variant="empty"
+          dense
+          :title="t('schedulePage.emptyDay')"
+          icon="event_available"
+        />
         <q-list v-else separator class="schedule-day__list">
           <q-item v-for="ev in dayEvents" :key="ev.id" class="schedule-day__item">
             <q-item-section>
@@ -152,123 +174,121 @@
         </q-list>
       </aside>
     </div>
+    </template>
 
     <!-- ============ 新建/编辑事件 ============ -->
-    <q-dialog v-model="editorOpen" persistent>
-      <q-card class="schedule-editor">
-        <q-card-section class="text-h6">
-          {{ editingId ? t('schedulePage.editTitle') : t('schedulePage.createTitle') }}
-        </q-card-section>
-        <q-card-section class="q-gutter-md">
-          <q-banner v-if="editorError" rounded class="app-page-error-banner" role="alert">
-            {{ editorError }}
-          </q-banner>
-          <q-input v-model="form.title" outlined dense :label="t('schedulePage.fieldTitle')" autofocus />
-          <q-input v-model="form.note" outlined dense type="textarea" autogrow :label="t('schedulePage.fieldNote')" />
-          <div class="row q-gutter-md">
-            <q-input
-              v-model="form.start"
-              class="col"
-              outlined
-              dense
-              type="datetime-local"
-              :label="t('schedulePage.fieldStart')"
-            />
-            <q-input
-              v-model="form.end"
-              class="col"
-              outlined
-              dense
-              type="datetime-local"
-              :label="t('schedulePage.fieldEnd')"
-            />
-          </div>
-          <q-select
-            v-model="form.reminder_minutes"
+    <AppDialog
+      v-model="editorOpen"
+      persistent
+      size="sm"
+      :title="editingId ? t('schedulePage.editTitle') : t('schedulePage.createTitle')"
+    >
+      <div class="q-gutter-md">
+        <q-banner v-if="editorError" rounded class="app-page-error-banner" role="alert">
+          {{ editorError }}
+        </q-banner>
+        <q-input v-model="form.title" outlined dense :label="t('schedulePage.fieldTitle')" autofocus />
+        <q-input v-model="form.note" outlined dense type="textarea" autogrow :label="t('schedulePage.fieldNote')" />
+        <div class="row q-gutter-md">
+          <q-input
+            v-model="form.start"
+            class="col"
             outlined
             dense
-            emit-value
-            map-options
-            :options="reminderOptions"
-            :label="t('schedulePage.fieldReminder')"
+            type="datetime-local"
+            :label="t('schedulePage.fieldStart')"
           />
-        </q-card-section>
-        <q-card-actions align="right">
-          <q-btn flat no-caps :label="t('schedulePage.cancel')" @click="editorOpen = false" />
+          <q-input
+            v-model="form.end"
+            class="col"
+            outlined
+            dense
+            type="datetime-local"
+            :label="t('schedulePage.fieldEnd')"
+          />
+        </div>
+        <q-select
+          v-model="form.reminder_minutes"
+          outlined
+          dense
+          emit-value
+          map-options
+          :options="reminderOptions"
+          :label="t('schedulePage.fieldReminder')"
+        />
+      </div>
+      <template #actions>
+        <q-btn flat no-caps :label="t('schedulePage.cancel')" @click="editorOpen = false" />
+        <q-btn
+          unelevated
+          no-caps
+          color="primary"
+          :label="t('schedulePage.save')"
+          :loading="saving"
+          :disable="!form.title || !form.start || !form.end"
+          @click="saveEvent"
+        />
+      </template>
+    </AppDialog>
+
+    <!-- ============ ics 订阅 ============ -->
+    <AppDialog v-model="icalOpen" size="md" :title="t('schedulePage.icalTitle')">
+      <div class="q-gutter-md">
+        <q-banner v-if="icalError" rounded class="app-page-error-banner" role="alert">{{ icalError }}</q-banner>
+        <div class="row q-gutter-sm items-center">
+          <q-input v-model="icalName" class="col" outlined dense :label="t('schedulePage.icalNameLabel')" />
           <q-btn
             unelevated
             no-caps
             color="primary"
-            :label="t('schedulePage.save')"
-            :loading="saving"
-            :disable="!form.title || !form.start || !form.end"
-            @click="saveEvent"
+            :label="t('schedulePage.icalCreate')"
+            :loading="icalSaving"
+            :disable="!icalName.trim()"
+            @click="createToken"
           />
-        </q-card-actions>
-      </q-card>
-    </q-dialog>
-
-    <!-- ============ ics 订阅 ============ -->
-    <q-dialog v-model="icalOpen">
-      <q-card class="schedule-ical">
-        <q-card-section class="text-h6">{{ t('schedulePage.icalTitle') }}</q-card-section>
-        <q-card-section class="q-gutter-md">
-          <q-banner v-if="icalError" rounded class="app-page-error-banner" role="alert">{{ icalError }}</q-banner>
-          <div class="row q-gutter-sm items-center">
-            <q-input v-model="icalName" class="col" outlined dense :label="t('schedulePage.icalNameLabel')" />
+        </div>
+        <q-banner v-if="newFeedUrl" rounded class="schedule-ical__once">
+          <div class="text-caption">{{ t('schedulePage.icalOnceHint') }}</div>
+          <div class="row items-center no-wrap q-gutter-sm q-mt-xs">
+            <code class="mono schedule-ical__url">{{ icalFeedAbsolute(newFeedUrl) }}</code>
             <q-btn
-              unelevated
-              no-caps
-              color="primary"
-              :label="t('schedulePage.icalCreate')"
-              :loading="icalSaving"
-              :disable="!icalName.trim()"
-              @click="createToken"
+              flat
+              dense
+              round
+              size="sm"
+              icon="content_copy"
+              :aria-label="t('schedulePage.icalCopy')"
+              @click="copyFeedUrl"
             />
           </div>
-          <q-banner v-if="newFeedUrl" rounded class="schedule-ical__once">
-            <div class="text-caption">{{ t('schedulePage.icalOnceHint') }}</div>
-            <div class="row items-center no-wrap q-gutter-sm q-mt-xs">
-              <code class="mono schedule-ical__url">{{ icalFeedAbsolute(newFeedUrl) }}</code>
+        </q-banner>
+        <q-list v-if="icalTokens.length" separator dense>
+          <q-item v-for="tk in icalTokens" :key="tk.id">
+            <q-item-section>
+              <q-item-label>{{ tk.name }}</q-item-label>
+              <q-item-label caption class="mono">{{ fmtDay(tk.created_at) }}</q-item-label>
+            </q-item-section>
+            <q-item-section side>
+              <q-badge v-if="tk.revoked_at" outline color="grey" :label="t('schedulePage.icalRevoked')" />
               <q-btn
+                v-else
                 flat
                 dense
-                round
+                no-caps
                 size="sm"
-                icon="content_copy"
-                :aria-label="t('schedulePage.icalCopy')"
-                @click="copyFeedUrl"
+                color="negative"
+                :label="t('schedulePage.icalRevoke')"
+                @click="revokeToken(tk)"
               />
-            </div>
-          </q-banner>
-          <q-list v-if="icalTokens.length" separator dense>
-            <q-item v-for="tk in icalTokens" :key="tk.id">
-              <q-item-section>
-                <q-item-label>{{ tk.name }}</q-item-label>
-                <q-item-label caption class="mono">{{ fmtDay(tk.created_at) }}</q-item-label>
-              </q-item-section>
-              <q-item-section side>
-                <q-badge v-if="tk.revoked_at" outline color="grey" :label="t('schedulePage.icalRevoked')" />
-                <q-btn
-                  v-else
-                  flat
-                  dense
-                  no-caps
-                  size="sm"
-                  color="negative"
-                  :label="t('schedulePage.icalRevoke')"
-                  @click="revokeToken(tk)"
-                />
-              </q-item-section>
-            </q-item>
-          </q-list>
-          <div v-else class="text-caption text-grey">{{ t('schedulePage.icalEmpty') }}</div>
-        </q-card-section>
-        <q-card-actions align="right">
-          <q-btn flat no-caps :label="t('schedulePage.cancel')" @click="icalOpen = false" />
-        </q-card-actions>
-      </q-card>
-    </q-dialog>
+            </q-item-section>
+          </q-item>
+        </q-list>
+        <div v-else class="text-caption text-grey">{{ t('schedulePage.icalEmpty') }}</div>
+      </div>
+      <template #actions>
+        <q-btn flat no-caps :label="t('schedulePage.cancel')" @click="icalOpen = false" />
+      </template>
+    </AppDialog>
   </q-page>
 </template>
 
@@ -276,8 +296,13 @@
 import { computed, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useQuasar } from 'quasar';
+import { confirm } from '../composables/useAppConfirm';
 import { AxiosError } from 'axios';
+import AppDialog from '../components/common/AppDialog.vue';
 import AppPageHero from '../components/layout/AppPageHero.vue';
+import AppStatePanel from '../components/common/AppStatePanel.vue';
+import { resolvePageState } from './pageState';
+import { isForbiddenApiError } from '../utils/kratosError';
 import {
   createEvent,
   createICalToken,
@@ -299,6 +324,18 @@ const visibleMonth = ref(new Date(now.getFullYear(), now.getMonth(), 1));
 const events = ref<OfficeEventRow[]>([]);
 const loading = ref(false);
 const pageError = ref('');
+/** 403 / PERMISSION_DENIED：页面渲染 forbidden 态，不提供重试。 */
+const pageForbidden = ref(false);
+
+/** 五态判定：错误优先于空态；有数据时失败保留月历并加 partial 横幅。 */
+const pageState = computed(() =>
+  resolvePageState({
+    loading: loading.value,
+    error: pageError.value,
+    count: events.value.length,
+    forbidden: pageForbidden.value,
+  }),
+);
 
 const DAY_MS = 86_400_000;
 
@@ -379,12 +416,14 @@ function goToday() {
 async function loadEvents() {
   loading.value = true;
   pageError.value = '';
+  pageForbidden.value = false;
   try {
     const start = gridStart.value;
     const end = new Date(start.getTime() + 42 * DAY_MS);
     events.value = await listEventsRange(start.toISOString(), end.toISOString());
   } catch (e) {
     pageError.value = e instanceof Error ? e.message : String(e);
+    pageForbidden.value = isForbiddenApiError(e);
   } finally {
     loading.value = false;
   }
@@ -490,22 +529,19 @@ async function saveEvent() {
   }
 }
 
-function confirmDelete(ev: OfficeEventRow) {
-  $q.dialog({
+async function confirmDelete(ev: OfficeEventRow) {
+  const ok = await confirm({
     title: t('schedulePage.deleteConfirmTitle'),
     message: t('schedulePage.deleteConfirmBody', { title: ev.title }),
-    cancel: true,
-    persistent: true,
-  }).onOk(() => {
-    void (async () => {
-      try {
-        await deleteEvent(ev.id);
-        await loadEvents();
-      } catch (e) {
-        pageError.value = e instanceof Error ? e.message : String(e);
-      }
-    })();
+    tone: 'danger',
   });
+  if (!ok) return;
+  try {
+    await deleteEvent(ev.id);
+    await loadEvents();
+  } catch (e) {
+    pageError.value = e instanceof Error ? e.message : String(e);
+  }
 }
 
 // ---------- ics 订阅 ----------
@@ -712,9 +748,6 @@ function fmtDay(iso: string): string {
   display: flex
   align-items: center
   gap: 6px
-
-.schedule-editor
-  min-width: min(520px, 94vw)
 
 .schedule-ical
   min-width: min(560px, 94vw)

@@ -10,7 +10,7 @@
       :class="edgeClass"
       :marker-end="markerEnd"
     />
-    <circle v-if="showDot" r="3" :fill="dotColor" :style="dotStyle" class="graph-edge-dot">
+    <circle v-if="showDot" r="3" :fill="dotColor" class="graph-edge-dot">
       <animateMotion :dur="dotDuration" repeatCount="indefinite">
         <mpath :href="`#${edgeId}`" />
       </animateMotion>
@@ -88,8 +88,4 @@ const dotDuration = computed(() => {
       return '2.5s';
   }
 });
-
-const dotStyle = computed(() => ({
-  filter: `drop-shadow(0 0 4px currentColor)`,
-}));
 </script>

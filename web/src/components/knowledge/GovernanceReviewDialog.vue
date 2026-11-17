@@ -1,12 +1,11 @@
 <template>
-  <q-dialog :model-value="open" @update:model-value="$emit('update:open', !!$event)">
-    <q-card class="app-dialog-card app-dialog-card--md app-glass-dialog kb-gov-review">
-      <q-card-section class="app-glass-dialog__head row items-center justify-between">
-        <div class="app-glass-dialog__title">{{ t('knowledgePage.workbench.commands.review-governance') }}</div>
-      </q-card-section>
-      <div class="app-glass-dialog__scroll">
-        <q-card-section class="app-dialog-body app-glass-dialog__body">
-          <div v-if="!homeIsCurrent" class="kb-gov-review__banner">
+  <AppDialog
+    :model-value="open"
+    :title="t('knowledgePage.workbench.commands.review-governance')"
+    size="md"
+    @update:model-value="$emit('update:open', $event)"
+  >
+    <div v-if="!homeIsCurrent" class="kb-gov-review__banner">
             {{ t('knowledgePage.workbench.writebackHomeHint', { name: homeName }) }}
             <q-btn
               flat
@@ -18,7 +17,7 @@
               @click="$emit('switch-home')"
             />
           </div>
-          <q-list dense class="kb-gov-review__list">
+    <q-list dense class="kb-gov-review__list">
             <q-item v-for="row in rows" :key="row.item.id" class="kb-gov-review__item">
               <q-item-section>
                 <q-item-label class="kb-gov-review__kind">{{ kindLabel(row.item.kind, row.payload) }}</q-item-label>
@@ -44,50 +43,48 @@
               </q-item-section>
             </q-item>
           </q-list>
-        </q-card-section>
+    <template #actions>
+      <div class="kb-gov-review__page">
+        <q-pagination
+          v-if="maxPage > 1"
+          :model-value="page"
+          :max="maxPage"
+          :max-pages="5"
+          boundary-numbers
+          dense
+          @update:model-value="$emit('page', Number($event))"
+        />
+        <span v-if="total" class="kb-gov-review__total">{{
+          t('knowledgePage.workbench.govTotal', { n: total })
+        }}</span>
       </div>
-      <q-card-actions align="right" class="app-glass-dialog__actions kb-gov-review__footer">
-        <div class="kb-gov-review__page">
-          <q-pagination
-            v-if="maxPage > 1"
-            :model-value="page"
-            :max="maxPage"
-            :max-pages="5"
-            boundary-numbers
-            dense
-            @update:model-value="$emit('page', Number($event))"
-          />
-          <span v-if="total" class="kb-gov-review__total">{{
-            t('knowledgePage.workbench.govTotal', { n: total })
-          }}</span>
-        </div>
-        <q-btn
-          flat
-          no-caps
-          color="secondary"
-          :loading="curating"
-          :disable="curating"
-          :label="t('knowledgePage.workbench.govCurateDryRun')"
-          @click="$emit('curate', { dryRun: true })"
-        />
-        <q-btn
-          flat
-          no-caps
-          color="primary"
-          :loading="curating"
-          :disable="curating"
-          :label="t('knowledgePage.workbench.govCurateNow')"
-          @click="$emit('curate', { dryRun: false })"
-        />
-        <q-btn flat no-caps :label="t('common.cancel')" @click="$emit('update:open', false)" />
-      </q-card-actions>
-    </q-card>
-  </q-dialog>
+      <q-btn
+        flat
+        no-caps
+        color="secondary"
+        :loading="curating"
+        :disable="curating"
+        :label="t('knowledgePage.workbench.govCurateDryRun')"
+        @click="$emit('curate', { dryRun: true })"
+      />
+      <q-btn
+        flat
+        no-caps
+        color="primary"
+        :loading="curating"
+        :disable="curating"
+        :label="t('knowledgePage.workbench.govCurateNow')"
+        @click="$emit('curate', { dryRun: false })"
+      />
+      <q-btn flat no-caps :label="t('common.cancel')" @click="$emit('update:open', false)" />
+    </template>
+  </AppDialog>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
+import AppDialog from '../../components/common/AppDialog.vue';
 import type { GovernanceProposalItem } from '../../features/knowledge/types';
 import {
   decisionsForProposal,

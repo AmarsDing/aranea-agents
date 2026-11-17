@@ -21,10 +21,31 @@
       </template>
     </AppPageHero>
 
-    <q-banner v-if="error" rounded class="bg-negative text-white q-mt-md">
-      {{ error }}
-      <template #action><q-btn flat color="white" :label="t('common.retry')" @click="loadRows" /></template>
-    </q-banner>
+    <!-- 五态：已有列表但刷新失败 → 局部失败横幅，列表照常渲染 -->
+    <AppStatePanel
+      v-if="(error || forbidden) && rows.length > 0"
+      variant="partial"
+      dense
+      class="q-mt-md"
+      :description="error"
+      :action-label="t('common.retry')"
+      action-icon="refresh"
+      @action="loadRows"
+    />
+
+    <!-- 五态：无权限 → 只渲染 forbidden 面板，不提供重试 -->
+    <AppStatePanel v-else-if="forbidden" variant="forbidden" class="q-mt-md" />
+
+    <!-- 五态：加载失败且列表为空 → 只渲染可重试错误面板（不与空态并存）。 -->
+    <AppStatePanel
+      v-else-if="error"
+      variant="error"
+      class="q-mt-md"
+      :description="error"
+      :action-label="t('common.retry')"
+      action-icon="refresh"
+      @action="loadRows"
+    />
 
     <div class="graphs-page__body">
       <div class="graphs-page__list">
@@ -107,14 +128,16 @@
           />
         </div>
 
-        <q-inner-loading :showing="loading && rows.length === 0" />
+        <!-- 五态：首屏加载无数据 → 骨架面板（不与空态并存） -->
+        <AppStatePanel v-if="loading && rows.length === 0 && !error" variant="loading" :rows="4" class="q-mt-md" />
 
-        <div v-if="!loading && rows.length === 0" class="graphs-page__empty">
-          <div class="graphs-page__empty-head column items-center q-pb-lg">
-            <q-icon name="hub" size="48px" color="grey-6" class="q-mb-sm" />
-            <div class="text-h6 text-grey-7">{{ t('graphs.emptyTitle') }}</div>
-            <div class="text-body2 text-grey-6 q-mt-xs">{{ t('graphs.emptyHint') }}</div>
-          </div>
+        <div v-else-if="!loading && !error && rows.length === 0" class="graphs-page__empty">
+          <AppStatePanel
+            variant="empty"
+            :title="t('graphs.emptyTitle')"
+            :description="t('graphs.emptyHint')"
+            icon="hub"
+          />
           <q-inner-loading :showing="templatesLoading" />
           <div v-if="!templatesLoading && templates.length > 0" class="graphs-page__templates-grid">
             <q-card
@@ -159,7 +182,7 @@
         </div>
 
         <draggable
-          v-else
+          v-else-if="rows.length > 0"
           v-model="localGraphs"
           item-key="id"
           tag="section"
@@ -170,7 +193,7 @@
           :disabled="!isDefaultSort"
           @end="onDragEnd"
         >
-          <template #item="{ element: graph, index }">
+          <template #item="{ element: graph }">
             <q-card
 
               flat
@@ -179,7 +202,6 @@
                 `graph-card--status-${cardStatus(graph)}`,
                 { 'is-dark': isDark, 'graph-card--selected': selectedGraphId === graph.id },
               ]"
-              :style="{ animationDelay: `${Math.min(index, 12) * 30}ms` }"
               @click="selectGraph(graph.id)"
               @contextmenu="onCardContextMenu($event, graph)"
             >
@@ -197,9 +219,7 @@
                     class="graph-card__chip"
                     :title="t(NODE_TYPE_STYLES[chip.type as NodeType]?.labelKey ?? '')"
                   >
-                    <i class="graph-card__chip-dot" :style="{ background: nodeTypeBorderColor(chip.type) }" />{{
-                      chip.count
-                    }}
+                    <i class="graph-card__chip-dot" :class="`graph-card__chip-dot--${chip.type}`" />{{ chip.count }}
                   </span>
                   <span v-if="compositionChips(graph).overflow > 0" class="graph-card__chip graph-card__chip--overflow"
                     >+{{ compositionChips(graph).overflow }}</span
@@ -258,7 +278,6 @@
         :graph="selectedGraph"
         :is-dark="isDark"
         :node-counts="selectedGraphNodeCounts"
-        :node-type-border-color="nodeTypeBorderColor"
         :executions="selectedExecutions"
         :executions-has-more="selectedExecutionsHasMore"
         @close="selectGraph('')"
@@ -291,58 +310,52 @@
       @submit="executeRun"
     />
 
-    <q-dialog v-model="templateDialogOpen" persistent>
-      <q-card class="app-dialog-card app-dialog-card--md app-glass-dialog">
-        <q-card-section class="app-glass-dialog__head row items-center justify-between no-wrap">
-          <div class="min-width-0">
-            <div class="app-glass-dialog__title">{{ t('graphs.createFromTemplateTitle') }}</div>
-            <div class="app-glass-dialog__subtitle">{{ t('graphs.createFromTemplateSubtitle') }}</div>
-          </div>
-          <q-btn v-close-popup flat round dense icon="close" />
-        </q-card-section>
-        <q-separator />
-        <q-card-section class="app-glass-dialog__body">
-          <q-inner-loading :showing="templatesLoading" />
-          <div v-if="!templatesLoading && templates.length === 0" class="text-center text-grey-7 q-pa-md">
-            {{ t('graphs.noTemplates') }}
-          </div>
-          <div v-else class="q-gutter-sm">
-            <q-card
-              v-for="tpl in templates"
-              :key="tpl.id"
-              flat
-              bordered
-              class="cursor-pointer template-card"
-              :class="{ 'template-card--selected': selectedTemplateId === tpl.id }"
-              @click="selectedTemplateId = tpl.id"
-            >
-              <q-card-section class="row items-center no-wrap">
-                <q-icon name="dashboard" size="24px" color="primary" class="q-mr-md" />
-                <div class="col min-width-0">
-                  <div class="text-subtitle2">{{ tpl.name }}</div>
-                  <div class="text-caption text-grey-7 ellipsis">
-                    {{ tpl.description || t('graphs.noDescription') }}
-                  </div>
-                </div>
-              </q-card-section>
-            </q-card>
-          </div>
-        </q-card-section>
-        <q-card-actions align="right" class="app-actions-bar app-glass-dialog__actions">
-          <q-btn v-close-popup flat rounded no-caps :label="t('common.cancel')" />
-          <q-btn
-            color="primary"
-            rounded
-            unelevated
-            no-caps
-            :label="t('common.create')"
-            :disable="!selectedTemplateId"
-            :loading="templateCreating"
-            @click="createFromTemplate"
-          />
-        </q-card-actions>
-      </q-card>
-    </q-dialog>
+    <AppDialog
+      v-model="templateDialogOpen"
+      persistent
+      size="md"
+      :title="t('graphs.createFromTemplateTitle')"
+      :subtitle="t('graphs.createFromTemplateSubtitle')"
+    >
+      <q-inner-loading :showing="templatesLoading" />
+      <div v-if="!templatesLoading && templates.length === 0" class="text-center text-grey-7 q-pa-md">
+        {{ t('graphs.noTemplates') }}
+      </div>
+      <div v-else class="q-gutter-sm">
+        <q-card
+          v-for="tpl in templates"
+          :key="tpl.id"
+          flat
+          bordered
+          class="cursor-pointer template-card"
+          :class="{ 'template-card--selected': selectedTemplateId === tpl.id }"
+          @click="selectedTemplateId = tpl.id"
+        >
+          <q-card-section class="row items-center no-wrap">
+            <q-icon name="dashboard" size="24px" color="primary" class="q-mr-md" />
+            <div class="col min-width-0">
+              <div class="text-subtitle2">{{ tpl.name }}</div>
+              <div class="text-caption text-grey-7 ellipsis">
+                {{ tpl.description || t('graphs.noDescription') }}
+              </div>
+            </div>
+          </q-card-section>
+        </q-card>
+      </div>
+      <template #actions>
+        <q-btn flat rounded no-caps :label="t('common.cancel')" @click="templateDialogOpen = false" />
+        <q-btn
+          color="primary"
+          rounded
+          unelevated
+          no-caps
+          :label="t('common.create')"
+          :disable="!selectedTemplateId"
+          :loading="templateCreating"
+          @click="createFromTemplate"
+        />
+      </template>
+    </AppDialog>
   </q-page>
 </template>
 
@@ -350,7 +363,9 @@
 import { computed, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import draggable from 'vuedraggable';
+import AppDialog from '../components/common/AppDialog.vue';
 import AppPageHero from '../components/layout/AppPageHero.vue';
+import AppStatePanel from '../components/common/AppStatePanel.vue';
 import GraphRunDialog from '../components/graph/GraphRunDialog.vue';
 import GraphDetailPanel from '../components/graph/GraphDetailPanel.vue';
 import GraphCardContextMenu from '../components/graph/GraphCardContextMenu.vue';
@@ -369,6 +384,7 @@ const {
   loadingMore,
   hasNextPage,
   error,
+  forbidden,
   searchQuery,
   engineFilter,
   teamFilter,
@@ -381,7 +397,6 @@ const {
   TEAM_FILTER_OPTIONS,
   isTeamOwned,
   teamDisplayName,
-  nodeTypeBorderColor,
   countNodesByType,
   cardStatus,
   compositionChips,

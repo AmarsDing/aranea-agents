@@ -2,11 +2,12 @@
 // enable_checkpoint 开关 / custom 覆盖确认。
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { setActivePinia, createPinia } from 'pinia';
-import { mount } from '@vue/test-utils';
+import { flushPromises, mount } from '@vue/test-utils';
 import { createI18n } from 'vue-i18n';
 import { reactive, nextTick } from 'vue';
 import TeamEditorDialog from '../TeamEditorDialog.vue';
 import zhCN from '../../../i18n/locales/zh-CN';
+import { uiDomainsZh } from '../../../i18n/locales/ui-domains';
 import type { TeamDefinition } from '../../../features/teams/types';
 import type { QSelect, QToggle } from 'quasar';
 
@@ -15,21 +16,30 @@ vi.mock('../../../features/orchestration/compileApi', () => ({
   compileTeamGraph: vi.fn().mockResolvedValue({ definition_graph_json: '', graph_json: '' }),
 }));
 
-// $q.dialog 捕获（重置为派生 / 覆盖确认两条链路）
-const dialogOnOk = vi.hoisted(() => ({ current: null as null | (() => void) }));
+// 确认框走 useAppConfirm 单例（重置为派生 / 覆盖确认两条链路）：捕获入参 + 手动放行。
+const confirmCall = vi.hoisted(() => ({
+  opts: null as null | Record<string, unknown>,
+  current: null as null | (() => void),
+}));
 vi.mock('quasar', () => ({
-  useQuasar: () => ({
-    dialog: (opts: { onOk: (cb: () => void) => void }) => ({
-      onOk: (cb: () => void) => {
-        dialogOnOk.current = cb;
-        return opts;
-      },
-    }),
-    dark: { isActive: false },
-  }),
+  useQuasar: () => ({ dark: { isActive: false } }),
+}));
+vi.mock('../../../composables/useAppConfirm', () => ({
+  confirm: (opts: Record<string, unknown>) => {
+    confirmCall.opts = opts;
+    return new Promise<boolean>((resolve) => {
+      confirmCall.current = () => resolve(true);
+    });
+  },
 }));
 
-const i18n = createI18n({ legacy: false, locale: 'zh-CN', messages: { 'zh-CN': zhCN } });
+// 与 i18n/index.ts 一致：页面级文案在独立命名空间合并，测试必须带上 domains，
+// 否则 $t('domains.*') 解析不到标签文案。
+const i18n = createI18n({
+  legacy: false,
+  locale: 'zh-CN',
+  messages: { 'zh-CN': { ...zhCN, domains: uiDomainsZh } },
+});
 
 const quasarStubs = {
   'q-dialog': {
@@ -116,7 +126,8 @@ function mountDialog(definitionOverrides: Partial<TeamDefinition> = {}, props: R
 describe('TeamEditorDialog F2 (M53 Phase 11)', () => {
   beforeEach(() => {
     setActivePinia(createPinia());
-    dialogOnOk.current = null;
+    confirmCall.opts = null;
+    confirmCall.current = null;
   });
 
   it('shows custom source banner only when definition.source is custom', () => {
@@ -132,8 +143,10 @@ describe('TeamEditorDialog F2 (M53 Phase 11)', () => {
     const { wrapper } = mountDialog({ source: 'custom' });
     await wrapper.find('[data-test="reset-to-derived"]').trigger('click');
     expect(wrapper.emitted('resetToDerived')).toBeUndefined();
-    expect(dialogOnOk.current).not.toBeNull();
-    dialogOnOk.current!();
+    expect(confirmCall.current).not.toBeNull();
+    expect(confirmCall.opts?.tone).toBe('danger');
+    confirmCall.current!();
+    await flushPromises();
     expect(wrapper.emitted('resetToDerived')).toHaveLength(1);
   });
 
@@ -174,8 +187,9 @@ describe('TeamEditorDialog F2 (M53 Phase 11)', () => {
     const { wrapper } = mountDialog({ source: 'custom', mode: 'parallel' }, { overwriteBaselineKey: 'stale-baseline' });
     await wrapper.find('[data-test="team-save"]').trigger('click');
     expect(wrapper.emitted('save')).toBeUndefined();
-    expect(dialogOnOk.current).not.toBeNull();
-    dialogOnOk.current!();
+    expect(confirmCall.current).not.toBeNull();
+    confirmCall.current!();
+    await flushPromises();
     expect(wrapper.emitted('save')).toHaveLength(1);
   });
 
@@ -190,14 +204,14 @@ describe('TeamEditorDialog F2 (M53 Phase 11)', () => {
     void baseline;
     await wrapper.find('[data-test="team-save"]').trigger('click');
     expect(wrapper.emitted('save')).toHaveLength(1);
-    expect(dialogOnOk.current).toBeNull();
+    expect(confirmCall.opts).toBeNull();
   });
 
   it('preset source never asks overwrite confirmation even with dirty key', async () => {
     const { wrapper } = mountDialog({}, { overwriteBaselineKey: 'stale-baseline' });
     await wrapper.find('[data-test="team-save"]').trigger('click');
     expect(wrapper.emitted('save')).toHaveLength(1);
-    expect(dialogOnOk.current).toBeNull();
+    expect(confirmCall.opts).toBeNull();
   });
 });
 

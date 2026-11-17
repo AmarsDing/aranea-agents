@@ -208,6 +208,25 @@ function isSelfPresentedChannelWrite(meta?: RequestMeta): boolean {
   return meta?.service === 'ChannelService' && CHANNEL_SELF_PRESENTED_WRITES.has(meta.method);
 }
 
+/**
+ * 审批中心决议出口由 DecisionDock 逐条呈现「成功 / 已被处理 / 失败可重试」，
+ * 批量裁决时全局 toast 会按条数重复弹出（409/5xx 各一条），与结果面板冲突。
+ * 这些方法在其它调用方（Agent 进化建议面板、技能进化列表）也均 catch 后自呈现。
+ */
+const APPROVAL_DECISION_WRITES = new Set([
+  'AgentBridgeService.ReviewTask',
+  'AgentService.ApplyEvolutionSuggestion',
+  'AgentService.RejectEvolutionSuggestion',
+  'SkillEvolutionSuggestionService.ApproveSkillEvolutionSuggestion',
+  'SkillEvolutionSuggestionService.RejectSkillEvolutionSuggestion',
+  'OfficeScheduleService.ApproveScheduleDraft',
+  'OfficeScheduleService.RejectScheduleDraft',
+]);
+
+function isApprovalDecisionWrite(meta?: RequestMeta): boolean {
+  return Boolean(meta && APPROVAL_DECISION_WRITES.has(`${meta.service}.${meta.method}`));
+}
+
 /** 与 proto 生成的 HTTP 客户端（`v1/...`）双参 handler 签名一致；`meta` 可供拦截器或日志使用 */
 export function requestHandler({ path, method, body }: Request, meta?: RequestMeta): Promise<unknown> {
   const headers: Record<string, string> = {};
@@ -224,7 +243,8 @@ export function requestHandler({ path, method, body }: Request, meta?: RequestMe
     meta?.service === 'SelfImprovementService' ||
     meta?.service === 'CeoboardService' ||
     isSelfPresentedToolWrite(meta) ||
-    isSelfPresentedChannelWrite(meta);
+    isSelfPresentedChannelWrite(meta) ||
+    isApprovalDecisionWrite(meta);
   const urlPath = '/' + path.replace(/^\//, '');
   return kratosApi
     .request({

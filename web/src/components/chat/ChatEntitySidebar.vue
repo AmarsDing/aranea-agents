@@ -33,7 +33,12 @@
           <div class="agent-card-list">
             <!-- Orchestration phase progress (shown before teams arrive) -->
             <div v-if="showOrchestrationProgress && phaseDisplay" class="spirit-phase-hint q-px-sm q-py-xs">
-              <q-icon :name="phaseDisplay.icon" size="16px" :style="{ color: phaseDisplay.color }" class="q-mr-xs" />
+              <q-icon
+                :name="phaseDisplay.icon"
+                size="16px"
+                class="q-mr-xs"
+                :class="`spirit-phase-hint__icon--${orchestrationPhase}`"
+              />
               <span class="text-caption">{{ phaseDisplay.label }}</span>
               <q-spinner-dots size="14px" :color="phaseDisplay.color" class="q-ml-xs" />
             </div>
@@ -220,7 +225,7 @@ function getBlockedInfoForAgent(agentKey: string): BlockedResult {
 .agent-card-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--nt-space-2);
   padding: 8px 6px 10px;
 }
 
@@ -232,6 +237,19 @@ function getBlockedInfoForAgent(agentKey: string): BlockedResult {
   display: flex;
   align-items: center;
   opacity: 85%;
+}
+
+/* 阶段色：与 PHASE_DISPLAY 的 color 一一对应（未知阶段继承默认文字色） */
+.spirit-phase-hint__icon--planning {
+  color: var(--color-accent);
+}
+
+.spirit-phase-hint__icon--allocating {
+  color: var(--color-warning);
+}
+
+.spirit-phase-hint__icon--orchestrating {
+  color: var(--color-accent);
 }
 
 .team-card-wrapper--pulse {

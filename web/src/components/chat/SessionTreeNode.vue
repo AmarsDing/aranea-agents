@@ -137,10 +137,10 @@ function containsSession(node: SessionTreeNode, sessionId: string): boolean {
 <style lang="sass" scoped>
 .session-tree-node
   .node-header
-    padding: 4px 8px
+    padding: var(--nt-space-1) var(--nt-space-2)
     border-radius: 6px
     cursor: pointer
-    gap: 4px
+    gap: var(--nt-space-1)
     user-select: none
     &:hover
       background: var(--glass-surface)
@@ -181,7 +181,7 @@ function containsSession(node: SessionTreeNode, sessionId: string): boolean {
     font-size: 10px
 
   .node-children
-    margin-left: 16px
+    margin-left: var(--nt-space-4)
     border-left: 1px solid var(--glass-border)
-    padding-left: 4px
+    padding-left: var(--nt-space-1)
 </style>

@@ -1,83 +1,81 @@
 <template>
-  <q-dialog :model-value="modelValue" maximized persistent @update:model-value="onDialogUpdate">
-    <q-card class="app-dialog-card app-glass-dialog app-maximized-dialog">
-      <q-card-section class="row items-center justify-between q-pb-sm">
-        <div>
-          <div class="text-h6">编辑 Skill 文件</div>
-          <div class="text-caption text-grey-7">{{ skill?.name }}</div>
-        </div>
-        <q-btn flat round dense icon="close" @click="tryClose" />
-      </q-card-section>
-      <q-separator />
-      <q-card-section class="app-dual-column-editor">
-        <q-card flat bordered class="app-dual-column-editor__sidebar app-glass-panel">
-          <q-list separator>
-            <q-item v-if="filesLoading">
-              <q-item-section>正在加载文件...</q-item-section>
-            </q-item>
-            <q-item
-              v-for="file in files"
-              :key="file.path"
-              clickable
-              :active="file.path === selectedFile?.path"
-              @click="selectFile(file.path)"
-            >
-              <q-item-section avatar>
-                <q-icon :name="fileIcon(file.language)" />
-              </q-item-section>
-              <q-item-section>
-                <q-item-label>{{ file.name }}</q-item-label>
-                <q-item-label caption>{{ file.path }}</q-item-label>
-              </q-item-section>
-            </q-item>
-            <q-item v-if="!filesLoading && files.length === 0">
-              <q-item-section>该 Skill 暂无可编辑文件</q-item-section>
-            </q-item>
-          </q-list>
-        </q-card>
-        <q-card flat bordered class="app-dual-column-editor__main app-glass-panel">
-          <q-card-section class="app-dual-column-editor__toolbar row items-center justify-between">
-            <div>
-              <div class="text-subtitle1">{{ selectedFile?.path || '请选择文件' }}</div>
-              <div class="text-caption text-grey-7">
-                {{ selectedFile?.language || 'text' }}
-                <span v-if="hasChanges"> · 有未保存修改</span>
-              </div>
+  <AppDialog
+    :model-value="modelValue"
+    title="编辑 Skill 文件"
+    :subtitle="skill?.name"
+    size="xl"
+    persistent
+    @update:model-value="onDialogUpdate"
+  >
+    <div class="app-dual-column-editor">
+      <q-card flat bordered class="app-dual-column-editor__sidebar app-glass-panel">
+        <q-list separator>
+          <q-item v-if="filesLoading">
+            <q-item-section>正在加载文件...</q-item-section>
+          </q-item>
+          <q-item
+            v-for="file in files"
+            :key="file.path"
+            clickable
+            :active="file.path === selectedFile?.path"
+            @click="selectFile(file.path)"
+          >
+            <q-item-section avatar>
+              <q-icon :name="fileIcon(file.language)" />
+            </q-item-section>
+            <q-item-section>
+              <q-item-label>{{ file.name }}</q-item-label>
+              <q-item-label caption>{{ file.path }}</q-item-label>
+            </q-item-section>
+          </q-item>
+          <q-item v-if="!filesLoading && files.length === 0">
+            <q-item-section>该 Skill 暂无可编辑文件</q-item-section>
+          </q-item>
+        </q-list>
+      </q-card>
+      <q-card flat bordered class="app-dual-column-editor__main app-glass-panel">
+        <q-card-section class="app-dual-column-editor__toolbar row items-center justify-between">
+          <div>
+            <div class="text-subtitle1">{{ selectedFile?.path || '请选择文件' }}</div>
+            <div class="text-caption text-grey-7">
+              {{ selectedFile?.language || 'text' }}
+              <span v-if="hasChanges"> · 有未保存修改</span>
             </div>
-            <div class="row q-gutter-sm">
-              <q-btn flat rounded icon="undo" label="取消" :disable="!hasChanges || savingFile" @click="cancelEdit" />
-              <q-btn
-                color="primary"
-                rounded
-                unelevated
-                icon="save"
-                label="保存"
-                :disable="!selectedFile || !hasChanges || readingFile"
-                :loading="savingFile"
-                @click="saveFile"
-              />
-            </div>
-          </q-card-section>
-          <q-separator />
-          <q-card-section class="q-pa-none">
-            <q-input
-              v-model="content"
-              type="textarea"
-              borderless
-              autogrow
-              class="app-dual-column-editor__textarea"
-              :disable="!selectedFile || readingFile"
-              :placeholder="readingFile ? '正在读取文件...' : '选择左侧文件后编辑内容'"
+          </div>
+          <div class="row q-gutter-sm">
+            <q-btn flat rounded icon="undo" label="取消" :disable="!hasChanges || savingFile" @click="cancelEdit" />
+            <q-btn
+              color="primary"
+              rounded
+              unelevated
+              icon="save"
+              label="保存"
+              :disable="!selectedFile || !hasChanges || readingFile"
+              :loading="savingFile"
+              @click="saveFile"
             />
-          </q-card-section>
-        </q-card>
-      </q-card-section>
-    </q-card>
-  </q-dialog>
+          </div>
+        </q-card-section>
+        <q-separator />
+        <q-card-section class="q-pa-none">
+          <q-input
+            v-model="content"
+            type="textarea"
+            borderless
+            autogrow
+            class="app-dual-column-editor__textarea"
+            :disable="!selectedFile || readingFile"
+            :placeholder="readingFile ? '正在读取文件...' : '选择左侧文件后编辑内容'"
+          />
+        </q-card-section>
+      </q-card>
+    </div>
+  </AppDialog>
 </template>
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
+import AppDialog from '../common/AppDialog.vue';
 import type { Skill, SkillFile, SkillFileContent } from '../../features/skills/types';
 
 const props = defineProps<{
@@ -231,3 +229,10 @@ function onDialogUpdate(val: boolean) {
   }
 }
 </script>
+
+<style scoped>
+/* 全局 .app-dual-column-editor 按全屏（100vh）定高，迁到 AppDialog 后改为撑满 body。 */
+.app-dual-column-editor {
+  height: 100%;
+}
+</style>

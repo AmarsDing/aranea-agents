@@ -2,6 +2,7 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useI18n } from 'vue-i18n';
 import { useQuasar } from 'quasar';
+import { confirm } from '../../composables/useAppConfirm';
 import { useEcommerceLoopStore } from '../../stores/ecommerce-loop';
 import { SHOPS } from './data';
 import { cameraTransform, referenceFocuses, referenceTarget } from './referenceCamera';
@@ -42,22 +43,22 @@ export function useEcommerceLoopPage() {
   let observer: ResizeObserver | undefined;
   let drawerTrigger: HTMLElement | null = null;
 
-  function changeContext(change: () => void) {
+  async function changeContext(change: () => void) {
     if (!dirty.value) {
       change();
       return;
     }
-    $q.dialog({
+    const ok = await confirm({
       title: t('ecommerceLoop.workflow.dirtyTitle'),
       message: t('ecommerceLoop.workflow.dirtyMessage'),
-      cancel: { label: t('ecommerceLoop.workbench.keepEditing') },
-      ok: { label: t('ecommerceLoop.workbench.discard') },
-      persistent: true,
-    }).onOk(() => {
-      dirty.value = false;
-      editing.value = false;
-      change();
+      cancelLabel: t('ecommerceLoop.workbench.keepEditing'),
+      confirmLabel: t('ecommerceLoop.workbench.discard'),
+      tone: 'danger',
     });
+    if (!ok) return;
+    dirty.value = false;
+    editing.value = false;
+    change();
   }
 
   function setScene(next: SceneId) {
@@ -204,18 +205,18 @@ export function useEcommerceLoopPage() {
     else store.decide('traffic', decision, currentCases.value.traffic.version);
   }
   function onReset() {
-    changeContext(() => {
-      $q.dialog({
+    changeContext(async () => {
+      const ok = await confirm({
         title: t('ecommerceLoop.resetTitle'),
         message: t('ecommerceLoop.resetMessage'),
-        cancel: { label: t('ecommerceLoop.cancel') },
-        ok: { label: t('ecommerceLoop.confirm') },
-        persistent: true,
-      }).onOk(() => {
-        editing.value = false;
-        dirty.value = false;
-        store.reset();
+        cancelLabel: t('ecommerceLoop.cancel'),
+        confirmLabel: t('ecommerceLoop.confirm'),
+        tone: 'danger',
       });
+      if (!ok) return;
+      editing.value = false;
+      dirty.value = false;
+      store.reset();
     });
   }
   async function onFullscreen() {

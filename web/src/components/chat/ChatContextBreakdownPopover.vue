@@ -26,7 +26,7 @@
 
     <div class="ctx-breakdown__list">
       <div v-for="cat in breakdown.categories" :key="cat.key" class="ctx-breakdown__row row items-center no-wrap">
-        <span class="ctx-breakdown__dot" :style="{ backgroundColor: cat.color }" />
+        <span class="ctx-breakdown__dot" :class="`ctx-breakdown__dot--${cat.key}`" />
         <span class="ctx-breakdown__label col ellipsis">{{ cat.label }}</span>
         <span class="ctx-breakdown__tokens text-caption">{{ formatTokenCount(cat.estTokens) }}</span>
         <span class="ctx-breakdown__pct text-caption text-weight-medium">{{
@@ -91,8 +91,8 @@ function barWidth(tokens: number): string {
 .ctx-breakdown {
   min-width: 280px;
   max-width: 340px;
-  padding: 12px 16px;
-  border-radius: 14px;
+  padding: var(--nt-space-3) var(--nt-space-4);
+  border-radius: 12px;
   background: var(--glass-surface);
   backdrop-filter: blur(var(--glass-blur-default));
   border: 1px solid var(--glass-border);
@@ -143,7 +143,7 @@ function barWidth(tokens: number): string {
 }
 
 .ctx-breakdown__row {
-  gap: 8px;
+  gap: var(--nt-space-2);
   padding: 2px 0;
 }
 
@@ -152,6 +152,39 @@ function barWidth(tokens: number): string {
   width: 8px;
   height: 8px;
   border-radius: 50%;
+}
+
+/* 分项色：与 features/chat/contextBreakdown.ts BREAKDOWN_COLORS 一一对应 */
+.ctx-breakdown__dot--system_prompt {
+  background: var(--chart-color-system-prompt);
+}
+
+.ctx-breakdown__dot--skills {
+  background: var(--chart-color-skills);
+}
+
+.ctx-breakdown__dot--memory {
+  background: var(--chart-color-memory);
+}
+
+.ctx-breakdown__dot--intent_pass {
+  background: var(--chart-color-intent-pass);
+}
+
+.ctx-breakdown__dot--session_summary {
+  background: var(--chart-color-session-summary);
+}
+
+.ctx-breakdown__dot--tool_results {
+  background: var(--chart-color-tool-results);
+}
+
+.ctx-breakdown__dot--history {
+  background: var(--chart-color-history);
+}
+
+.ctx-breakdown__dot--user_message {
+  background: var(--chart-color-user-message);
 }
 
 .ctx-breakdown__label {

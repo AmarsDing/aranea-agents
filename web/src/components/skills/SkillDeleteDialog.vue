@@ -1,21 +1,34 @@
 <template>
-  <q-dialog :model-value="modelValue" @update:model-value="emit('update:modelValue', $event)">
-    <q-card class="skill-ux-dialog-card app-dialog-card app-dialog-card--sm">
-      <q-card-section>
-        <div class="text-h6">删除 Skill</div>
-        <div class="text-body2 text-grey-7 q-mt-sm">
-          确认删除「{{ skill?.name }}」？此操作不可撤销，将永久删除 Skill 及其磁盘文件。
-        </div>
-      </q-card-section>
-      <q-card-actions align="right" class="app-actions-bar">
-        <q-btn v-close-popup flat rounded no-caps label="取消" />
-        <q-btn color="negative" rounded unelevated no-caps label="删除" :loading="loading" @click="emit('confirm')" />
-      </q-card-actions>
-    </q-card>
-  </q-dialog>
+  <AppDialog
+    :model-value="modelValue"
+    title="删除 Skill"
+    size="sm"
+    icon="delete_outline"
+    :loading="loading"
+    @update:model-value="emit('update:modelValue', $event)"
+  >
+    <p class="text-body2 app-text-secondary">
+      确认删除「{{ skill?.name }}」？此操作不可撤销，将永久删除 Skill 及其磁盘文件。
+    </p>
+    <template #actions>
+      <q-btn flat rounded no-caps :label="t('shell.common.cancel')" @click="emit('update:modelValue', false)" />
+      <q-btn
+        color="negative"
+        rounded
+        unelevated
+        no-caps
+        data-test="skill-delete-confirm"
+        label="删除"
+        :loading="loading"
+        @click="emit('confirm')"
+      />
+    </template>
+  </AppDialog>
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n';
+import AppDialog from '../common/AppDialog.vue';
 import type { Skill } from '../../features/skills/types';
 
 defineProps<{
@@ -28,4 +41,6 @@ const emit = defineEmits<{
   'update:modelValue': [value: boolean];
   confirm: [];
 }>();
+
+const { t } = useI18n();
 </script>

@@ -39,11 +39,41 @@
       <AppStatusChip v-if="observatory" :status="observatory.status" />
     </div>
 
-    <div v-if="loading" class="flex flex-center q-pa-xl">
-      <q-spinner color="primary" size="40px" />
-    </div>
-    <div v-else-if="error" class="q-pa-md text-negative">{{ error }}</div>
-    <div v-else class="team-run-observatory__body">
+    <!-- 五态：已有运行数据但刷新/局部请求失败 → 局部失败横幅，工作台照常渲染 -->
+    <AppStatePanel
+      v-if="error && observatory"
+      variant="partial"
+      dense
+      class="q-mx-md q-mt-md"
+      :description="error"
+      action-label="重试"
+      action-icon="refresh"
+      @action="load"
+    />
+    <!-- 五态：加载失败且无运行数据 → 只渲染可重试错误面板（工作台型页面不塞空态）。
+         403 错误码未透出（useTeamRunObservatoryPage 仅暴露 message），forbidden 分支未接上。 -->
+    <AppStatePanel
+      v-else-if="error"
+      variant="error"
+      class="q-mx-md q-mt-md"
+      :description="error"
+      action-label="重试"
+      action-icon="refresh"
+      @action="load"
+    />
+
+    <!-- 五态：首屏加载无运行数据 → 骨架面板 -->
+    <AppStatePanel v-if="loading && !observatory" variant="loading" :rows="5" class="q-ma-md" />
+    <!-- 五态：成功但无运行数据 → 空态 -->
+    <AppStatePanel
+      v-else-if="!loading && !error && !observatory"
+      variant="empty"
+      title="未找到该运行数据"
+      description="请确认运行 ID 是否正确，或返回 Team Runs 列表重新选择。"
+      icon="timeline"
+      class="q-ma-md"
+    />
+    <div v-else-if="observatory" class="team-run-observatory__body">
       <OrchestrationFailureBanner
         :nodes="nodeList"
         :run-status="observatory?.status"
@@ -244,6 +274,7 @@ import OrchestrationFailureBanner from '../components/orchestration/Orchestratio
 import OrchestrationHitlReviewDialog from '../components/orchestration/OrchestrationHitlReviewDialog.vue';
 import OrchestrationKanban from '../components/orchestration/OrchestrationKanban.vue';
 import AppStatusChip from '../components/common/AppStatusChip.vue';
+import AppStatePanel from '../components/common/AppStatePanel.vue';
 import { useTeamRunObservatoryPage } from '../features/teams/useTeamRunObservatoryPage';
 
 const { t } = useI18n();
@@ -253,6 +284,7 @@ const {
   runId,
   loading,
   error,
+  load,
   observatory,
   observatoryTab,
   selectedNodeId,

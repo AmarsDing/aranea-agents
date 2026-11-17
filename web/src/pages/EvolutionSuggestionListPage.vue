@@ -70,34 +70,53 @@
       </template>
     </AppPageToolbar>
 
-    <q-banner v-if="error" rounded class="app-page-error-banner q-mb-md">
-      {{ error }}
-      <template #action>
-        <q-btn flat dense :label="$t('evolutionSuggestionsPage.retry')" class="text-white" @click="loadRows" />
-      </template>
-    </q-banner>
+    <!-- 五态：已有数据但刷新失败 → 局部失败横幅，列表照常渲染 -->
+    <AppStatePanel
+      v-if="(error || forbidden) && rows.length > 0"
+      variant="partial"
+      dense
+      class="q-mb-md"
+      :description="error"
+      :action-label="$t('evolutionSuggestionsPage.retry')"
+      action-icon="refresh"
+      @action="loadRows"
+    />
 
-    <q-card v-if="!loading && rows.length === 0" flat class="app-registry-empty app-empty-state-center">
-      <q-card-section class="column items-center text-center q-pa-xl">
-        <q-avatar size="72px" color="primary" text-color="white" icon="auto_fix_high" />
-        <div class="text-h6 q-mt-md">
-          {{
-            targetId || status
-              ? $t('evolutionSuggestionsPage.emptyFiltered')
-              : $t('evolutionSuggestionsPage.emptyDefault')
-          }}
-        </div>
-        <div class="text-body2 text-grey-7 q-mt-sm">
-          {{
-            targetId || status
-              ? $t('evolutionSuggestionsPage.emptyFilteredHint')
-              : $t('evolutionSuggestionsPage.emptyDefaultHint')
-          }}
-        </div>
-      </q-card-section>
-    </q-card>
+    <!-- 五态：无权限 → 只渲染 forbidden 面板，不提供重试 -->
+    <AppStatePanel v-else-if="forbidden" variant="forbidden" class="q-mb-md" />
 
-    <template v-else>
+    <!-- 五态：加载失败且无数据 → 只渲染可重试错误面板，不与空态并存。 -->
+    <AppStatePanel
+      v-else-if="error"
+      variant="error"
+      class="q-mb-md"
+      :description="error"
+      :action-label="$t('evolutionSuggestionsPage.retry')"
+      action-icon="refresh"
+      @action="loadRows"
+    />
+
+    <!-- 五态：首屏加载无数据 → 骨架面板 -->
+    <AppStatePanel v-if="loading && rows.length === 0 && !error && !forbidden" variant="loading" :rows="5" />
+
+    <!-- 五态：成功但无数据 → 空态 -->
+    <AppStatePanel
+      v-else-if="!loading && !error && !forbidden && rows.length === 0"
+      variant="empty"
+      :title="
+        targetId || status
+          ? $t('evolutionSuggestionsPage.emptyFiltered')
+          : $t('evolutionSuggestionsPage.emptyDefault')
+      "
+      :description="
+        targetId || status
+          ? $t('evolutionSuggestionsPage.emptyFilteredHint')
+          : $t('evolutionSuggestionsPage.emptyDefaultHint')
+      "
+      icon="auto_fix_high"
+    />
+
+    <template v-else-if="rows.length > 0">
       <AppRegistryTable
         :rows="rows"
         :columns="columns"
@@ -224,42 +243,37 @@
       @confirm="confirmReject"
     />
 
-    <q-dialog v-model="curatorDialogOpen" persistent>
-      <q-card class="app-dialog-card app-glass-dialog">
-        <q-card-section class="app-glass-dialog__head row items-center justify-between">
-          <div class="app-glass-dialog__title">{{ $t('evolutionSuggestionsPage.curatorDialogTitle') }}</div>
-          <q-btn v-close-popup flat round dense icon="close" />
-        </q-card-section>
-        <q-separator />
-        <div class="app-glass-dialog__scroll">
-          <q-card-section class="app-dialog-body app-glass-dialog__body q-gutter-md">
-            <div class="text-body2">
-              {{ $t('evolutionSuggestionsPage.curatorDialogDesc') }}
-            </div>
-            <q-input
-              v-model="curatorSkillId"
-              dense
-              outlined
-              label="Skill ID"
-              :placeholder="$t('evolutionSuggestionsPage.curatorSkillIdPlaceholder')"
-            />
-          </q-card-section>
+    <AppDialog
+      v-model="curatorDialogOpen"
+      persistent
+      size="md"
+      :title="$t('evolutionSuggestionsPage.curatorDialogTitle')"
+    >
+      <div class="q-gutter-md">
+        <div class="text-body2">
+          {{ $t('evolutionSuggestionsPage.curatorDialogDesc') }}
         </div>
-        <q-separator />
-        <q-card-actions align="right" class="app-actions-bar app-glass-dialog__actions">
-          <q-btn v-close-popup flat no-caps :label="$t('evolutionSuggestionsPage.cancel')" />
-          <q-btn
-            color="primary"
-            unelevated
-            no-caps
-            :label="$t('evolutionSuggestionsPage.trigger')"
-            :loading="triggeringCurator"
-            :disable="!curatorSkillId.trim()"
-            @click="confirmTriggerCurator"
-          />
-        </q-card-actions>
-      </q-card>
-    </q-dialog>
+        <q-input
+          v-model="curatorSkillId"
+          dense
+          outlined
+          label="Skill ID"
+          :placeholder="$t('evolutionSuggestionsPage.curatorSkillIdPlaceholder')"
+        />
+      </div>
+      <template #actions>
+        <q-btn flat no-caps :label="$t('evolutionSuggestionsPage.cancel')" @click="curatorDialogOpen = false" />
+        <q-btn
+          color="primary"
+          unelevated
+          no-caps
+          :label="$t('evolutionSuggestionsPage.trigger')"
+          :loading="triggeringCurator"
+          :disable="!curatorSkillId.trim()"
+          @click="confirmTriggerCurator"
+        />
+      </template>
+    </AppDialog>
 
     <EvolutionSuggestionDetailDialog
       :open="detailDialogOpen"
@@ -270,6 +284,8 @@
 </template>
 
 <script setup lang="ts">
+import AppDialog from '../components/common/AppDialog.vue';
+import AppStatePanel from '../components/common/AppStatePanel.vue';
 import AppPageHero from '../components/layout/AppPageHero.vue';
 import AppPageToolbar from '../components/layout/AppPageToolbar.vue';
 import AppRegistryTable from '../components/layout/AppRegistryTable.vue';
@@ -304,6 +320,7 @@ const {
   total,
   loading,
   error,
+  forbidden,
   pageMax,
   approvingId,
   rejectDialogOpen,

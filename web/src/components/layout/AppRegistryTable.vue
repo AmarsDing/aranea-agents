@@ -53,6 +53,21 @@
       <template v-for="name in forwardedSlotNames" :key="name" #[name]="slotData">
         <slot :name="name" v-bind="slotData ?? {}" />
       </template>
+      <!-- 统一空/错态：父级显式提供 #no-data 时以父级为准 -->
+      <template #no-data>
+        <slot name="no-data">
+          <AppStatePanel
+            :variant="error ? 'error' : 'empty'"
+            :title="error ? '' : emptyTitle"
+            :description="error || emptyDescription"
+            :icon="error ? '' : emptyIcon"
+            :action-label="error ? t('shell.common.retry') : emptyActionLabel"
+            :action-icon="error ? 'refresh' : emptyActionIcon"
+            dense
+            @action="error ? emit('retry') : emit('empty-action')"
+          />
+        </slot>
+      </template>
       <template v-for="colName in resizableHeaderColumns" :key="colName" #[headerCellSlot(colName)]="slotData">
         <q-th :props="slotData" class="app-registry-th-resizable">
           {{ slotData.col.label }}
@@ -141,6 +156,7 @@ import {
   type RegistryViewMode,
 } from '../../features/ui/registryView';
 import { useResizableRegistryColumns } from '../../features/ui/useResizableRegistryColumns';
+import AppStatePanel from '../common/AppStatePanel.vue';
 
 defineOptions({ inheritAttrs: false });
 
@@ -164,6 +180,13 @@ const props = withDefaults(
     resizable?: boolean;
     /** localStorage 持久化 key；同页多表时请显式区分 */
     columnPersistKey?: string;
+    /** 数据来源失败信息；非空时表格体渲染错误态并提供重试 */
+    error?: string;
+    emptyTitle?: string;
+    emptyDescription?: string;
+    emptyIcon?: string;
+    emptyActionLabel?: string;
+    emptyActionIcon?: string;
     /**
      * 视图：auto = 页面级登记表按列形态决定默认卡片或表格，用户可切换并被记住；
      * table = 固定表格，不出视图条（明细、日志、嵌在别处的小表）。
@@ -179,9 +202,17 @@ const props = withDefaults(
     flat: true,
     resizable: true,
     columnPersistKey: '',
+    error: '',
+    emptyTitle: '',
+    emptyDescription: '',
+    emptyIcon: 'inbox',
+    emptyActionLabel: '',
+    emptyActionIcon: '',
     view: 'auto',
   },
 );
+
+const emit = defineEmits<{ retry: []; 'empty-action': [] }>();
 
 const attrs = useAttrs();
 const { t } = useI18n();
@@ -319,7 +350,8 @@ const resizableHeaderColumns = computed(() => {
     .filter((name) => name && !slots[`header-cell-${name}`]);
 });
 
-const forwardedSlotNames = computed(() => Object.keys(slots));
+// no-data 由下方显式模板接管，避免同名插槽重复定义
+const forwardedSlotNames = computed(() => Object.keys(slots).filter((name) => name !== 'no-data'));
 
 function headerCellSlot(colName: string) {
   return `header-cell-${colName}`;

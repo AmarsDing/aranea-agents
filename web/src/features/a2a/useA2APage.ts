@@ -1,9 +1,11 @@
 import { onMounted, reactive, ref } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useQuasar } from 'quasar';
+import { confirm } from '../../composables/useAppConfirm';
 import type { A2AAgentCard, A2AInvokeResult, RegisterRemoteAgentInput, DiscoverRemoteInput } from './types';
 import { useA2AStore } from '../../stores/a2a';
 import { A2A_AUDIT_PAGE_SIZE_DEFAULT } from '../constants/queryLimits';
+import { isForbiddenApiError } from '../../utils/kratosError';
 
 import {
   A2A_AUDIT_TABLE_COLUMNS,
@@ -23,6 +25,7 @@ export function useA2APage() {
     gatewayEntries,
     loading,
     runtimeConfig,
+    runtimeConfigError,
   } = storeToRefs(a2aStore);
 
   const tab = ref('discover');
@@ -35,6 +38,8 @@ export function useA2APage() {
   const remoteRegisterLoading = ref(false);
   const gatewayLoading = ref(false);
   const error = ref('');
+  /** 列表接口 403：页面据此渲染 forbidden 态（无重试）。 */
+  const forbidden = ref(false);
   const invokeResult = ref<A2AInvokeResult | null>(null);
   const remotePreview = ref<A2AAgentCard | null>(null);
 
@@ -65,12 +70,14 @@ export function useA2APage() {
 
   async function loadDiscover() {
     error.value = '';
+    forbidden.value = false;
     try {
       await a2aStore.discover({
         workspace: discoverWorkspace.value.trim(),
         capability: discoverCapability.value.trim(),
       });
     } catch (e) {
+      forbidden.value = isForbiddenApiError(e);
       error.value = e instanceof Error ? e.message : '发现失败';
     }
   }
@@ -78,9 +85,11 @@ export function useA2APage() {
   async function loadRemote() {
     remoteLoading.value = true;
     error.value = '';
+    forbidden.value = false;
     try {
       await a2aStore.loadRemoteAgents(remoteWorkspace.value.trim());
     } catch (e) {
+      forbidden.value = isForbiddenApiError(e);
       error.value = e instanceof Error ? e.message : '加载远程注册失败';
     } finally {
       remoteLoading.value = false;
@@ -90,6 +99,7 @@ export function useA2APage() {
   async function loadAudit() {
     auditLoading.value = true;
     error.value = '';
+    forbidden.value = false;
     try {
       const limit = auditPageSize.value;
       let page = auditPage.value;
@@ -105,6 +115,7 @@ export function useA2APage() {
         await a2aStore.loadAudit({ limit, offset: (auditPage.value - 1) * limit });
       }
     } catch (e) {
+      forbidden.value = isForbiddenApiError(e);
       error.value = e instanceof Error ? e.message : '加载审计失败';
     } finally {
       auditLoading.value = false;
@@ -205,20 +216,20 @@ export function useA2APage() {
     }
   }
 
-  function confirmRemoveRemote(id: string, name: string) {
-    $q.dialog({
+  async function confirmRemoveRemote(id: string, name: string) {
+    const ok = await confirm({
       title: '确认删除',
       message: `确定要删除远程 Agent「${name || id}」吗？`,
-      cancel: true,
-      persistent: true,
-    }).onOk(() => {
-      void removeRemote(id);
+      tone: 'danger',
     });
+    if (!ok) return;
+    await removeRemote(id);
   }
 
   async function loadGateway() {
     gatewayLoading.value = true;
     error.value = '';
+    forbidden.value = false;
     try {
       await a2aStore.loadGateway({
         workspace: gatewayWorkspace.value.trim(),
@@ -226,6 +237,7 @@ export function useA2APage() {
         checkHealth: gatewayCheckHealth.value,
       });
     } catch (e) {
+      forbidden.value = isForbiddenApiError(e);
       error.value = e instanceof Error ? e.message : 'Gateway 发现失败';
     } finally {
       gatewayLoading.value = false;
@@ -251,9 +263,12 @@ export function useA2APage() {
     // Shared
     tab,
     error,
+    forbidden,
     loading,
     reload,
     runtimeConfig,
+    runtimeConfigError,
+    reloadRuntimeConfig: a2aStore.loadRuntimeConfig,
 
     // Discover tab
     discover: reactive({

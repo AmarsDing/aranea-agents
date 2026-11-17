@@ -1,12 +1,12 @@
 <template>
-  <q-dialog :model-value="open" @update:model-value="$emit('update:open', !!$event)">
-    <q-card class="app-dialog-card app-dialog-card--md app-glass-dialog kb-writeback-review">
-      <q-card-section class="app-glass-dialog__head row items-center justify-between">
-        <div class="app-glass-dialog__title">{{ t('knowledgePage.workbench.commands.review-writeback') }}</div>
-      </q-card-section>
-      <div class="app-glass-dialog__scroll">
-        <q-card-section class="app-dialog-body app-glass-dialog__body">
-          <div v-if="!homeIsCurrent" class="kb-writeback-review__banner">
+  <AppDialog
+    :model-value="open"
+    :title="t('knowledgePage.workbench.commands.review-writeback')"
+    size="md"
+    :loading="loading"
+    @update:model-value="$emit('update:open', $event)"
+  >
+    <div v-if="!homeIsCurrent" class="kb-writeback-review__banner">
             {{ t('knowledgePage.workbench.writebackHomeHint', { name: homeName }) }}
             <q-btn
               flat
@@ -18,7 +18,7 @@
               @click="$emit('switch-home')"
             />
           </div>
-          <div class="kb-writeback-review__toolbar">
+    <div class="kb-writeback-review__toolbar">
             <q-checkbox
               :model-value="allChecked"
               dense
@@ -27,7 +27,7 @@
             />
             <span class="kb-writeback-review__count">{{ selectedIds.length }}/{{ items.length }}</span>
           </div>
-          <q-list dense class="kb-writeback-review__list">
+    <q-list dense class="kb-writeback-review__list">
             <q-item v-for="it in items" :key="it.fact_id" tag="label" clickable>
               <q-item-section avatar>
                 <q-checkbox
@@ -44,27 +44,25 @@
               </q-item-section>
             </q-item>
           </q-list>
-        </q-card-section>
-      </div>
-      <q-card-actions align="right" class="app-glass-dialog__actions">
-        <q-btn flat no-caps :label="t('common.cancel')" @click="$emit('update:open', false)" />
-        <q-btn
-          unelevated
-          no-caps
-          color="primary"
-          :label="t('knowledgePage.workbench.pendingApplySelected')"
-          :disable="selectedIds.length === 0"
-          :loading="loading"
-          @click="$emit('submit', selectedIds)"
-        />
-      </q-card-actions>
-    </q-card>
-  </q-dialog>
+    <template #actions>
+      <q-btn flat no-caps :label="t('common.cancel')" @click="$emit('update:open', false)" />
+      <q-btn
+        unelevated
+        no-caps
+        color="primary"
+        :label="t('knowledgePage.workbench.pendingApplySelected')"
+        :disable="selectedIds.length === 0"
+        :loading="loading"
+        @click="$emit('submit', selectedIds)"
+      />
+    </template>
+  </AppDialog>
 </template>
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
+import AppDialog from '../../components/common/AppDialog.vue';
 import type { PendingWriteBackItem } from '../../features/knowledge/types';
 
 const props = defineProps<{

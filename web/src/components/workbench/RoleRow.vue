@@ -35,7 +35,7 @@
       <span class="wb-rrow__micro">
         {{ t('workbench.row.activity') }}
         <span class="wb-rrow__chain" :class="{ on: activeNow }">
-          <i v-for="n in 4" :key="n" :style="{ animationDelay: `${(n - 1) * 120}ms` }" />
+          <i v-for="n in 4" :key="n" />
         </span>
       </span>
       <span class="wb-rrow__main ellipsis">{{ activityText }}</span>
@@ -107,8 +107,8 @@ const glyphStyle = computed(() => {
   position: relative
   display: grid
   grid-template-columns: 1.1fr 1fr 1fr 1.4fr
-  gap: 8px
-  padding: 4px 0 4px 8px
+  gap: var(--nt-space-2)
+  padding: var(--nt-space-1) 0 var(--nt-space-1) var(--nt-space-2)
   align-items: stretch
 .wb-rrow__card
   position: relative
@@ -130,7 +130,7 @@ const glyphStyle = computed(() => {
 .wb-rrow__dot
   flex-direction: row
   align-items: center
-  gap: 8px
+  gap: var(--nt-space-2)
 .wb-rrow__glyph
   flex: none
   width: 14px
@@ -190,4 +190,13 @@ const glyphStyle = computed(() => {
     opacity: 0.2
 .wb-rrow__chain.on i
   animation: wb-dot-pulse 1.2s ease-in-out infinite
+  // 点链错峰：0/120/240/360ms（4 个点，与模板 v-for="n in 4" 对应）
+  &:nth-child(1)
+    animation-delay: 0ms
+  &:nth-child(2)
+    animation-delay: 120ms
+  &:nth-child(3)
+    animation-delay: 240ms
+  &:nth-child(4)
+    animation-delay: 360ms
 </style>

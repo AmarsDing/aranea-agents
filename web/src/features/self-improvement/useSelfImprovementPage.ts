@@ -3,6 +3,8 @@ import { useQuasar } from 'quasar';
 import { useI18n } from 'vue-i18n';
 import { storeToRefs } from 'pinia';
 import { useSelfImprovementStore } from '../../stores/selfImprovement';
+import { confirm } from '../../composables/useAppConfirm';
+import { prompt } from '../../composables/useAppPrompt';
 import type { SIControlCommand, SIRiskRules, SIRun, SIRunFilter } from './types';
 import {
   canApprove,
@@ -176,74 +178,70 @@ export function useSelfImprovementPage() {
 
   function approveRunAction(run: SIRun) {
     if (!canApprove(run.status)) return;
-    $q.dialog({
-      title: t('selfImprovementPage.approveTitle'),
-      message: t('selfImprovementPage.approveConfirm', { id: run.id }),
-      prompt: { model: '', type: 'text', label: t('selfImprovementPage.reasonOptional') },
-      cancel: true,
-      persistent: true,
-    }).onOk((reason: string) => {
-      void runAction(
+    void (async () => {
+      const reason = await prompt({
+        title: t('selfImprovementPage.approveTitle'),
+        message: t('selfImprovementPage.approveConfirm', { id: run.id }),
+        label: t('selfImprovementPage.reasonOptional'),
+      });
+      if (reason === null) return;
+      await runAction(
         'approve',
         () => store.approve(run.id, reason || undefined),
         () => refreshAfterAction(run.id),
       );
-    });
+    })();
   }
 
   function rejectRunAction(run: SIRun) {
     if (!canReject(run.status)) return;
-    $q.dialog({
-      title: t('selfImprovementPage.rejectTitle'),
-      message: t('selfImprovementPage.rejectConfirm', { id: run.id }),
-      prompt: {
-        model: '',
-        type: 'textarea',
+    void (async () => {
+      const reason = await prompt({
+        title: t('selfImprovementPage.rejectTitle'),
+        message: t('selfImprovementPage.rejectConfirm', { id: run.id }),
         label: t('selfImprovementPage.reasonRequired'),
-        isValid: (v: string) => v.trim().length > 0,
-      },
-      cancel: true,
-      persistent: true,
-    }).onOk((reason: string) => {
-      void runAction(
+        type: 'textarea',
+        required: true,
+      });
+      if (reason === null) return;
+      await runAction(
         'reject',
-        () => store.reject(run.id, reason.trim()),
+        () => store.reject(run.id, reason),
         () => refreshAfterAction(run.id),
       );
-    });
+    })();
   }
 
   function rollbackRunAction(run: SIRun) {
     if (!canRollback(run.status)) return;
-    $q.dialog({
-      title: t('selfImprovementPage.rollbackTitle'),
-      message: t('selfImprovementPage.rollbackConfirm', { id: run.id }),
-      prompt: { model: '', type: 'text', label: t('selfImprovementPage.reasonOptional') },
-      cancel: true,
-      persistent: true,
-    }).onOk((reason: string) => {
-      void runAction(
+    void (async () => {
+      const reason = await prompt({
+        title: t('selfImprovementPage.rollbackTitle'),
+        message: t('selfImprovementPage.rollbackConfirm', { id: run.id }),
+        label: t('selfImprovementPage.reasonOptional'),
+      });
+      if (reason === null) return;
+      await runAction(
         'rollback',
         () => store.rollback(run.id, reason || undefined),
         () => refreshAfterAction(run.id),
       );
-    });
+    })();
   }
 
-  function closeRunAction(run: SIRun) {
+  async function closeRunAction(run: SIRun) {
     if (!canClose(run.status)) return;
-    $q.dialog({
+    const ok = await confirm({
       title: t('selfImprovementPage.closeTitle'),
       message: t('selfImprovementPage.closeConfirm', { id: run.id }),
-      cancel: true,
-      persistent: true,
-    }).onOk(() => {
-      void runAction(
-        'close',
-        () => store.close(run.id),
-        () => refreshAfterAction(run.id),
-      );
+      tone: 'danger',
     });
+    if (!ok) return;
+    await runAction(
+      'close',
+      () => store.close(run.id),
+      () => refreshAfterAction(run.id),
+    );
   }
 
   // 用户介入指令（R2/S1）：异步消费、不同步改状态，故不复用 runAction 的
@@ -255,26 +253,25 @@ export function useSelfImprovementPage() {
     rollback: { title: 'controlRollbackTitle', confirm: 'controlRollbackConfirm' },
   };
 
-  function controlRunAction(run: SIRun, command: SIControlCommand) {
+  async function controlRunAction(run: SIRun, command: SIControlCommand) {
     if (!canControl(run.status) || actionRunning.value) return;
     const keys = CONTROL_I18N[command];
-    $q.dialog({
+    const ok = await confirm({
       title: t(`selfImprovementPage.${keys.title}`),
       message: t(`selfImprovementPage.${keys.confirm}`, { id: run.id }),
-      cancel: true,
-      persistent: true,
-    }).onOk(() => {
-      actionRunning.value = `control:${command}`;
-      void store
-        .control(run.id, command)
-        .then(() => {
-          $q.notify({ type: 'positive', message: t('selfImprovementPage.controlSent') });
-        })
-        .catch(notifyError)
-        .finally(() => {
-          actionRunning.value = '';
-        });
+      tone: 'danger',
     });
+    if (!ok) return;
+    actionRunning.value = `control:${command}`;
+    void store
+      .control(run.id, command)
+      .then(() => {
+        $q.notify({ type: 'positive', message: t('selfImprovementPage.controlSent') });
+      })
+      .catch(notifyError)
+      .finally(() => {
+        actionRunning.value = '';
+      });
   }
 
   // Risk-rules dialog: configured view is editable, effective view read-only.
@@ -325,6 +322,7 @@ export function useSelfImprovementPage() {
     loading,
     error,
     errorMessage,
+    errorKind,
     errorRetryable,
     pageMax,
     statusOptions,

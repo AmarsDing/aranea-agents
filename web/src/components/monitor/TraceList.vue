@@ -359,7 +359,7 @@ watch(() => props.rows.length, tryOpenHighlightedRun);
 
 <style scoped>
 .trace-list__head {
-  padding-bottom: 12px;
+  padding-bottom: var(--nt-space-3);
 }
 
 .trace-list__subtitle {
@@ -374,8 +374,8 @@ watch(() => props.rows.length, tryOpenHighlightedRun);
 .trace-live-pill {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
+  gap: var(--nt-space-2);
+  padding: var(--nt-space-1) var(--nt-space-3);
   border-radius: 999px;
   font-size: 11px;
   border: 1px solid var(--glass-border);
@@ -424,8 +424,8 @@ watch(() => props.rows.length, tryOpenHighlightedRun);
 .trace-filters {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 0 16px 12px;
+  gap: var(--nt-space-2);
+  padding: 0 var(--nt-space-4) var(--nt-space-3);
 }
 
 .trace-filters__label {
@@ -437,8 +437,8 @@ watch(() => props.rows.length, tryOpenHighlightedRun);
 .trace-filters__group {
   display: inline-flex;
   flex-wrap: wrap;
-  gap: 2px;
-  padding: 3px;
+  gap: var(--nt-space-1);
+  padding: var(--nt-space-1);
   border-radius: 12px;
   border: 1px solid var(--glass-border);
   background: color-mix(in srgb, var(--glass-surface) 55%, transparent);
@@ -451,12 +451,12 @@ watch(() => props.rows.length, tryOpenHighlightedRun);
   color: var(--color-text-secondary);
   font-size: 12px;
   line-height: 1;
-  padding: 6px 10px;
+  padding: var(--nt-space-2) var(--nt-space-3);
   border-radius: 9px;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--nt-space-2);
   transition:
     background 0.15s ease,
     color 0.15s ease;
@@ -494,7 +494,7 @@ watch(() => props.rows.length, tryOpenHighlightedRun);
 .trace-status {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--nt-space-2);
   font-size: 12px;
   white-space: nowrap;
 }

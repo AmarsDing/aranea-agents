@@ -334,14 +334,14 @@ const memberInitials = computed(() => props.team.members.map((m) => nameInitial(
   font-size: 10px
   color: var(--color-text-tertiary)
   flex-shrink: 0
-  margin-left: 4px
+  margin-left: var(--nt-space-1)
 
 .team-task-card__mode-tag
   font-size: 10px
   font-weight: 600
   color: var(--color-text-tertiary)
   background: var(--glass-surface)
-  padding: 0 4px
+  padding: 0 var(--nt-space-1)
   border-radius: 3px
   flex-shrink: 0
   margin-left: 2px

@@ -1,14 +1,15 @@
 <template>
-  <q-dialog :model-value="open" @update:model-value="$emit('update:open', !!$event)">
-    <q-card class="app-dialog-card app-dialog-card--sm">
-      <!-- 阶段一：目标库选择 -->
-      <template v-if="!result">
-        <q-card-section>
-          <div class="text-h6">{{ t('knowledgePage.promoteTitle') }}</div>
-          <div class="text-caption text-grey-7 ellipsis">{{ docName }}</div>
-        </q-card-section>
-        <q-card-section class="q-pt-none">
-          <q-select
+  <AppDialog
+    :model-value="open"
+    :title="result ? t('knowledgePage.promoteResultTitle') : t('knowledgePage.promoteTitle')"
+    :subtitle="docName"
+    size="sm"
+    :loading="loading"
+    @update:model-value="$emit('update:open', $event)"
+  >
+    <!-- 阶段一：目标库选择 -->
+    <template v-if="!result">
+      <q-select
             :model-value="targetId"
             dense
             outlined
@@ -25,33 +26,15 @@
               </q-item>
             </template>
           </q-select>
-          <div class="text-caption text-grey-6 q-mt-sm">{{ t('knowledgePage.promoteHint') }}</div>
-        </q-card-section>
-        <q-card-actions align="right">
-          <q-btn v-close-popup flat no-caps :label="t('knowledgePage.promoteCancel')" />
-          <q-btn
-            color="primary"
-            unelevated
-            no-caps
-            :label="t('knowledgePage.promoteSubmit')"
-            :disable="!targetId"
-            :loading="loading"
-            @click="$emit('submit')"
-          />
-        </q-card-actions>
-      </template>
+      <div class="text-caption text-grey-6 q-mt-sm">{{ t('knowledgePage.promoteHint') }}</div>
+    </template>
 
-      <!-- 阶段二：结果反馈（新建块数 + 级联提示清单） -->
-      <template v-else>
-        <q-card-section>
-          <div class="text-h6">{{ t('knowledgePage.promoteResultTitle') }}</div>
-          <div class="text-caption text-grey-7 ellipsis">{{ docName }}</div>
-        </q-card-section>
-        <q-card-section class="q-pt-none">
-          <q-banner dense rounded class="bg-positive text-white q-mb-sm">
+    <!-- 阶段二：结果反馈（新建块数 + 级联提示清单） -->
+    <template v-else>
+      <q-banner dense rounded class="bg-positive text-white q-mb-sm">
             {{ t('knowledgePage.promoteResultCreated', { count: result.created_blocks.length }) }}
           </q-banner>
-          <template v-if="result.cascade_candidates.length">
+      <template v-if="result.cascade_candidates.length">
             <q-banner dense rounded class="app-banner-warning q-mb-xs">
               {{ t('knowledgePage.promoteCascadeTitle', { count: result.cascade_candidates.length }) }}
             </q-banner>
@@ -67,17 +50,36 @@
             </q-list>
             <div class="text-caption text-grey-6 q-mt-xs">{{ t('knowledgePage.promoteCascadeHint') }}</div>
           </template>
-        </q-card-section>
-        <q-card-actions align="right">
-          <q-btn v-close-popup color="primary" unelevated no-caps :label="t('knowledgePage.promoteClose')" />
-        </q-card-actions>
+    </template>
+
+    <template #actions>
+      <template v-if="!result">
+        <q-btn flat no-caps :label="t('knowledgePage.promoteCancel')" @click="$emit('update:open', false)" />
+        <q-btn
+          color="primary"
+          unelevated
+          no-caps
+          :label="t('knowledgePage.promoteSubmit')"
+          :disable="!targetId"
+          :loading="loading"
+          @click="$emit('submit')"
+        />
       </template>
-    </q-card>
-  </q-dialog>
+      <q-btn
+        v-else
+        color="primary"
+        unelevated
+        no-caps
+        :label="t('knowledgePage.promoteClose')"
+        @click="$emit('update:open', false)"
+      />
+    </template>
+  </AppDialog>
 </template>
 
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n';
+import AppDialog from '../../components/common/AppDialog.vue';
 import type { PromoteResult } from '../../features/knowledge/types';
 
 // SP1-G/I-3 晋升对话框：阶段一选目标团队库；阶段二展示新建块谱系数 + 级联提示

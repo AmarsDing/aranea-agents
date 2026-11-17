@@ -11,7 +11,10 @@
   >
     <div v-if="node" class="column full-height">
       <div class="row items-center q-pa-md graph-detail__header">
-        <q-badge :style="{ background: memoryLayerColor(node.layer) }" rounded class="graph-detail__dot" />
+        <q-badge
+          :class="['graph-detail__dot', `graph-detail__layer--${memoryLayerTone(node.layer)}`]"
+          rounded
+        />
         <div class="text-subtitle1 col ellipsis">{{ t('memory.unifiedGraph.detail.title') }}</div>
         <q-btn flat round dense icon="close" @click="emit('update:modelValue', false)" />
       </div>
@@ -24,7 +27,7 @@
             <div class="row q-gutter-sm q-mt-xs">
               <q-badge
                 outline
-                :style="{ color: memoryLayerColor(node.layer), borderColor: memoryLayerColor(node.layer) }"
+                :class="['graph-detail__layer-text', `graph-detail__layer--${memoryLayerTone(node.layer)}`]"
               >
                 {{ node.layer }} · {{ t(`memory.panorama.layers.${node.layer}.name`) }}
               </q-badge>
@@ -72,9 +75,8 @@
                   <q-item-label class="ellipsis" :title="conn.otherLabel">{{ conn.otherLabel }}</q-item-label>
                   <q-item-label caption>
                     <q-badge
-                      :style="{ background: memoryLayerColor(conn.otherLayer) }"
+                      :class="['graph-detail__mini-dot', `graph-detail__layer--${memoryLayerTone(conn.otherLayer)}`]"
                       rounded
-                      class="graph-detail__mini-dot"
                     />
                     {{ conn.typeLabel }} · {{ conn.weight.toFixed(2) }}
                     <q-badge v-if="conn.polarity === 'INHIBIT'" color="negative" class="q-ml-xs">INHIBIT</q-badge>
@@ -119,7 +121,7 @@
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { UnifiedGraphEdge, UnifiedGraphNode } from '../../../features/memory/types';
-import { memoryLayerColor } from '../../../features/memory/panorama/layerMeta';
+import { memoryLayerTone } from '../../../features/memory/panorama/layerMeta';
 
 const props = defineProps<{
   modelValue: boolean;
@@ -183,6 +185,7 @@ const connections = computed(() => {
   height: 12px;
   margin-right: 8px;
   width: 12px;
+  background: var(--detail-layer-color);
 }
 
 .graph-detail__mini-dot {
@@ -190,6 +193,37 @@ const connections = computed(() => {
   height: 8px;
   margin-right: 4px;
   width: 8px;
+  background: var(--detail-layer-color);
+}
+
+/* 层色：与 --nt-memory-layer-* 令牌同源（memoryLayerColor 读取同一批令牌） */
+.graph-detail__layer--l0 {
+  --detail-layer-color: var(--nt-memory-layer-0);
+}
+
+.graph-detail__layer--l1 {
+  --detail-layer-color: var(--nt-memory-layer-1);
+}
+
+.graph-detail__layer--l2 {
+  --detail-layer-color: var(--nt-memory-layer-2);
+}
+
+.graph-detail__layer--l3 {
+  --detail-layer-color: var(--nt-memory-layer-3);
+}
+
+.graph-detail__layer--l4 {
+  --detail-layer-color: var(--nt-memory-layer-4);
+}
+
+.graph-detail__layer--fallback {
+  --detail-layer-color: var(--nt-memory-layer-fallback);
+}
+
+.graph-detail__layer-text {
+  color: var(--detail-layer-color);
+  border-color: var(--detail-layer-color);
 }
 
 .graph-detail__label {

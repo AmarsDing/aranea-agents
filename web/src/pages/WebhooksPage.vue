@@ -43,14 +43,39 @@
       </template>
     </AppPageToolbar>
 
-    <q-banner v-if="error" rounded class="app-page-error-banner q-mb-md">
-      {{ error }}
-      <template #action>
-        <q-btn flat dense :label="t('webhooksPage.retry')" class="text-white" @click="loadRows" />
-      </template>
-    </q-banner>
+    <AppStatePanel
+      v-if="pageState === 'loading'"
+      variant="loading"
+      :rows="4"
+    />
+    <AppStatePanel
+      v-else-if="pageState === 'error'"
+      variant="error"
+      :title="error"
+      :action-label="t('webhooksPage.retry')"
+      action-icon="refresh"
+      @action="loadRows"
+    />
+    <AppStatePanel
+      v-else-if="pageState === 'forbidden'"
+      variant="forbidden"
+    />
+    <AppStatePanel
+      v-else-if="pageState === 'empty'"
+      variant="empty"
+    />
 
-    <div class="app-registry-table-shell">
+    <div v-else class="app-registry-table-shell">
+      <AppStatePanel
+        v-if="pageState === 'partial'"
+        class="q-mb-md"
+        variant="partial"
+        dense
+        :description="error"
+        :action-label="t('webhooksPage.retry')"
+        action-icon="refresh"
+        @action="loadRows"
+      />
       <WebhooksTable
         :rows="pagedRows"
         :loading="loading"
@@ -83,18 +108,22 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue';
 import AppPageHero from '../components/layout/AppPageHero.vue';
 import AppPageToolbar from '../components/layout/AppPageToolbar.vue';
 import AppRegistryPagination from '../components/layout/AppRegistryPagination.vue';
+import AppStatePanel from '../components/common/AppStatePanel.vue';
 import WebhooksTable from '../components/webhooks/WebhooksTable.vue';
 import WebhookDialog from '../components/webhooks/WebhookDialog.vue';
 import { useWebhooksPage } from '../features/webhooks/useWebhooksPage';
+import { resolvePageState } from './pageState';
 
 const {
   t,
   loading,
   saving,
   error,
+  forbidden,
   search,
   editorOpen,
   editingId,
@@ -114,4 +143,13 @@ const {
   testRow,
   confirmDelete,
 } = useWebhooksPage();
+
+const pageState = computed(() =>
+  resolvePageState({
+    loading: loading.value,
+    error: error.value,
+    count: pagedRows.value.length,
+    forbidden: forbidden.value,
+  }),
+);
 </script>

@@ -64,7 +64,7 @@ const modeLabel = computed(() => spiritModeLabel(props.mode));
 <style scoped lang="sass">
 .team-assembly-card
   padding: var(--space-4)
-  border-radius: 16px
+  border-radius: 12px
   border: 1px solid var(--glass-border)
   background: color-mix(in srgb, var(--glass-surface) 55%, transparent)
   backdrop-filter: blur(var(--glass-blur-default))

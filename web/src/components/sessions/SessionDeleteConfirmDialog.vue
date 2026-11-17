@@ -1,22 +1,34 @@
 <template>
-  <q-dialog :model-value="modelValue" persistent @update:model-value="$emit('update:modelValue', $event)">
-    <q-card class="sessions-dialog-card app-dialog-card app-dialog-card--sm">
-      <q-card-section>
-        <div class="text-h6 text-weight-bold">确认永久删除</div>
-        <div class="text-body2 q-mt-sm app-text-secondary">
-          {{ message }}
-        </div>
-      </q-card-section>
-      <q-card-actions align="right" class="app-actions-bar q-pa-md q-pt-none">
-        <q-btn flat rounded label="取消" class="sessions-btn-ghost" @click="$emit('update:modelValue', false)" />
-        <q-btn unelevated rounded color="negative" label="永久删除" :loading="loading" @click="$emit('confirm')" />
-      </q-card-actions>
-    </q-card>
-  </q-dialog>
+  <AppDialog
+    :model-value="modelValue"
+    title="确认永久删除"
+    size="sm"
+    icon="delete_forever"
+    persistent
+    :loading="loading"
+    @update:model-value="emit('update:modelValue', $event)"
+  >
+    <p class="app-text-secondary">{{ message }}</p>
+    <template #actions>
+      <q-btn flat rounded no-caps :label="t('shell.common.cancel')" @click="emit('update:modelValue', false)" />
+      <q-btn
+        unelevated
+        rounded
+        no-caps
+        color="negative"
+        data-test="session-delete-confirm"
+        label="永久删除"
+        :loading="loading"
+        @click="emit('confirm')"
+      />
+    </template>
+  </AppDialog>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue';
+import { useI18n } from 'vue-i18n';
+import AppDialog from '../common/AppDialog.vue';
 
 const props = defineProps<{
   modelValue: boolean;
@@ -24,10 +36,12 @@ const props = defineProps<{
   loading?: boolean;
 }>();
 
-defineEmits<{
+const emit = defineEmits<{
   'update:modelValue': [v: boolean];
   confirm: [];
 }>();
+
+const { t } = useI18n();
 
 const message = computed(() => {
   const n = props.count ?? 1;

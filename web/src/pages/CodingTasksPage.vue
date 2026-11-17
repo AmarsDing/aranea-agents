@@ -11,7 +11,7 @@
       </template>
     </AppPageHero>
 
-    <q-banner v-if="agents.length === 0 && !loading" rounded class="bg-blue-1 text-grey-9 q-mb-md">
+    <q-banner v-if="agents.length === 0 && !loading && !error" rounded class="app-banner-info q-mb-md">
       <template #avatar><q-icon name="terminal" color="primary" /></template>
       还没有可用的编码工具。请先注册一个外部编程 CLI，再回来派发任务。
       <template #action>
@@ -75,29 +75,56 @@
       </q-card-section>
     </q-card>
 
-    <q-banner v-if="error" rounded class="bg-negative text-white q-mb-md">
-      {{ error }}
-      <template #action>
-        <q-btn flat color="white" label="重试" @click="loadTasks(true)" />
-      </template>
-    </q-banner>
+    <AppStatePanel
+      v-if="pageState === 'error'"
+      class="q-mb-md"
+      variant="error"
+      :description="error"
+      action-label="重试"
+      action-icon="refresh"
+      @action="loadTasks()"
+    />
+    <AppStatePanel v-else-if="pageState === 'forbidden'" class="q-mb-md" variant="forbidden" />
+    <AppStatePanel v-else-if="pageState === 'loading'" variant="loading" :rows="4" />
+    <AppStatePanel
+      v-else-if="pageState === 'empty'"
+      variant="empty"
+      title="还没有编码任务"
+      description="在上方选择项目、输入任务描述，点击「派发」创建第一个编码任务。"
+      icon="task_alt"
+    />
 
-    <div class="row items-center justify-between q-mb-sm">
-      <q-tabs v-model="viewMode" dense no-caps class="text-grey-8">
-        <q-tab name="grouped" label="按工具分组" />
-        <q-tab name="all" label="全部" />
-      </q-tabs>
-      <span class="text-caption text-grey-6">共 {{ tasks.length }} 个任务</span>
-    </div>
+    <template v-else>
+      <AppStatePanel
+        v-if="pageState === 'partial'"
+        class="q-mb-md"
+        variant="partial"
+        dense
+        :description="error"
+        action-label="重试"
+        action-icon="refresh"
+        @action="loadTasks()"
+      />
 
-    <q-card v-if="!loading && tasks.length === 0" flat class="app-registry-empty app-empty-state-center">
-      <q-card-section class="column items-center text-center q-pa-xl">
-        <q-icon name="task_alt" size="48px" color="grey-5" />
-        <div class="text-subtitle1 text-weight-bold">还没有编码任务</div>
-        <div class="text-caption text-grey-7">在上方选择项目、输入任务描述，点击「派发」创建第一个编码任务。</div>
-      </q-card-section>
-    </q-card>
+      <div class="row items-center justify-between q-mb-sm">
+        <q-tabs v-model="viewMode" dense no-caps class="text-grey-8">
+          <q-tab name="grouped" label="按工具分组" />
+          <q-tab name="all" label="全部" />
+        </q-tabs>
+        <div class="row items-center q-gutter-sm">
+          <q-checkbox
+            dense
+            data-test="select-all"
+            :aria-label="t('shell.bulkBar.selectAllPage')"
+            :model-value="codingPageAllSelected"
+            @update:model-value="toggleAllCodingTasks"
+          />
+          <span class="text-caption text-grey-6">共 {{ tasks.length }} 个任务</span>
+        </div>
+      </div>
 
+      <div class="coding-workspace" :class="{ 'coding-workspace--inspecting': inspectorOpen }">
+      <div class="coding-workspace__main">
     <!-- 按工具分组泳道 -->
     <template v-if="viewMode === 'grouped'">
       <section v-for="lane in lanes" :key="lane.key" class="q-mb-md">
@@ -117,7 +144,11 @@
           :agent="lane.agent"
           :expanded="expandedIds.has(task.id ?? '')"
           :now="now"
+          selectable
+          :selected="isCodingTaskSelected(task.id || '')"
+          @inspect="inspectTask"
           @toggle="toggleExpanded"
+          @toggle-select="toggleCodingTaskSelected"
           @updated="loadTasks()"
           @redo="onRedo"
         />
@@ -133,64 +164,119 @@
         :agent="agentByKey(task.agentKey)"
         :expanded="expandedIds.has(task.id ?? '')"
         :now="now"
+        selectable
+        :selected="isCodingTaskSelected(task.id || '')"
+        @inspect="inspectTask"
         @toggle="toggleExpanded"
+        @toggle-select="toggleCodingTaskSelected"
         @updated="loadTasks()"
         @redo="onRedo"
       />
     </template>
+      </div>
+      <AppRegistryInspector
+        v-model="inspectorOpen"
+        :title="inspectedTask?.prompt?.split('\n')[0] || t('shell.registry.inspect')"
+        :eyebrow="inspectedTask ? `TASK / ${inspectedTask.id || '—'}` : undefined"
+      >
+        <div v-if="inspectedTask" class="registry-inspector-stack">
+          <q-badge :color="statusColor(inspectedTask.status)" text-color="white" :label="statusLabel(inspectedTask.status)" />
+          <dl class="registry-facts">
+            <div><dt>{{ t('shell.registry.identifier') }}</dt><dd class="mono">{{ inspectedTask.id || '—' }}</dd></div>
+            <div><dt>{{ t('shell.registry.tool') }}</dt><dd>{{ agentByKey(inspectedTask.agentKey)?.displayName || inspectedTask.agentKey || '—' }}</dd></div>
+            <div><dt>{{ t('shell.registry.project') }}</dt><dd>{{ inspectedTask.projectName || '—' }}</dd></div>
+            <div><dt>{{ t('shell.registry.createdAt') }}</dt><dd class="mono">{{ formatDateTime(inspectedTask.createdAt) }}</dd></div>
+          </dl>
+          <section class="registry-inspector-section">
+            <h3>{{ t('shell.registry.description') }}</h3>
+            <p class="registry-inspector-description registry-inspector-preline">{{ inspectedTask.prompt || '—' }}</p>
+          </section>
+          <section v-if="inspectedTask.lastExcerpt" class="registry-inspector-section">
+            <h3>{{ t('shell.registry.latestStep') }}</h3>
+            <p class="registry-inspector-description">{{ inspectedTask.lastExcerpt }}</p>
+          </section>
+          <section v-if="inspectedTask.summary || inspectedTask.error" class="registry-inspector-section">
+            <h3>{{ t('shell.registry.summary') }}</h3>
+            <p class="registry-inspector-description">{{ inspectedTask.summary || inspectedTask.error }}</p>
+          </section>
+        </div>
+      </AppRegistryInspector>
+    </div>
+
+    <BulkActionBar
+      v-if="codingSelectedCount > 0"
+      :count="codingSelectedCount"
+      :total="tasks.length"
+      :actions="codingBulkActions"
+      :busy="codingBulkBusy"
+      :error="codingBulkError"
+      @run="runCodingBulk"
+      @clear="clearCodingSelection"
+    />
+    </template>
 
     <!-- 候选项目选择 -->
-    <q-dialog v-model="candidatesOpen" persistent>
-      <q-card class="app-dialog-card app-glass-dialog" style="min-width: 480px">
-        <q-card-section class="row items-start justify-between">
-          <div>
-            <div class="text-h6">匹配到多个项目</div>
-            <div class="text-caption text-grey-7">请选择一个项目重新派发。</div>
-          </div>
-          <q-btn flat dense round icon="close" aria-label="关闭" @click="candidatesOpen = false" />
-        </q-card-section>
-        <q-separator />
-        <q-list separator>
-          <q-item v-for="c in candidates" :key="c.id" v-ripple clickable @click="pickCandidate(c)">
-            <q-item-section avatar><q-icon name="folder_open" color="amber-8" /></q-item-section>
-            <q-item-section>
-              <q-item-label class="text-weight-medium">{{ c.name }}</q-item-label>
-              <q-item-label caption class="text-grey-7">{{ c.path }}</q-item-label>
-            </q-item-section>
-            <q-item-section side><q-icon name="chevron_right" /></q-item-section>
-          </q-item>
-        </q-list>
-      </q-card>
-    </q-dialog>
+    <AppDialog
+      v-model="candidatesOpen"
+      persistent
+      size="sm"
+      title="匹配到多个项目"
+      subtitle="请选择一个项目重新派发。"
+    >
+      <q-list separator>
+        <q-item v-for="c in candidates" :key="c.id" v-ripple clickable @click="pickCandidate(c)">
+          <q-item-section avatar><q-icon name="folder_open" color="amber-8" /></q-item-section>
+          <q-item-section>
+            <q-item-label class="text-weight-medium">{{ c.name }}</q-item-label>
+            <q-item-label caption class="text-grey-7">{{ c.path }}</q-item-label>
+          </q-item-section>
+          <q-item-section side><q-icon name="chevron_right" /></q-item-section>
+        </q-item>
+      </q-list>
+    </AppDialog>
   </q-page>
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useQuasar } from 'quasar';
 import { useRoute, useRouter } from 'vue-router';
+import { useI18n } from 'vue-i18n';
+import AppDialog from '../components/common/AppDialog.vue';
+import AppStatePanel from '../components/common/AppStatePanel.vue';
+import BulkActionBar from '../components/common/BulkActionBar.vue';
 import AppPageHero from '../components/layout/AppPageHero.vue';
+import AppRegistryInspector from '../components/layout/AppRegistryInspector.vue';
 import CodingTaskCard from '../features/coding/CodingTaskCard.vue';
+import { resolvePageState } from './pageState';
 import {
   agentInitial,
   autonomyLabel,
   dispatchCodingTask,
+  formatDateTime,
   isActiveStatus,
   listCodingAgents,
   listCodingProjects,
   listCodingTasks,
   parseTime,
+  statusColor,
+  statusLabel,
 } from '../features/coding/api';
 import type { CodingAgent, CodingTask, ProjectCandidate } from '../features/coding/api';
+import { useCodingTasksBulk } from '../features/coding/useCodingTasksBulk';
+import { isForbiddenApiError } from '../utils/kratosError';
 
 const LAST_PROJECT_KEY = 'coding-tasks:last-project';
 
 const $q = useQuasar();
 const route = useRoute();
 const router = useRouter();
+const { t } = useI18n();
 
 const loading = ref(false);
 const error = ref('');
+/** 403 / PERMISSION_DENIED：页面渲染 forbidden 态，不提供重试。 */
+const forbidden = ref(false);
 const agents = ref<CodingAgent[]>([]);
 const tasks = ref<CodingTask[]>([]);
 const viewMode = ref<'grouped' | 'all'>('grouped');
@@ -202,8 +288,20 @@ const dispatchPrompt = ref('');
 const dispatchAgentKey = ref('');
 const dispatching = ref(false);
 
+/** 五态判定：错误优先于空态，有数据时失败降级为 partial 横幅。 */
+const pageState = computed(() =>
+  resolvePageState({
+    loading: loading.value,
+    error: error.value,
+    count: tasks.value.length,
+    forbidden: forbidden.value,
+  }),
+);
+
 const candidatesOpen = ref(false);
 const candidates = ref<ProjectCandidate[]>([]);
+const inspectorOpen = ref(false);
+const inspectedTask = ref<CodingTask | null>(null);
 
 let taskPollTimer: ReturnType<typeof setInterval> | null = null;
 let clockTimer: ReturnType<typeof setInterval> | null = null;
@@ -261,16 +359,39 @@ function agentByKey(key: string | undefined): CodingAgent | undefined {
   return agents.value.find((a) => a.agentKey === key);
 }
 
+const {
+  count: codingSelectedCount,
+  pageAllSelected: codingPageAllSelected,
+  busy: codingBulkBusy,
+  error: codingBulkError,
+  actions: codingBulkActions,
+  isSelected: isCodingTaskSelected,
+  toggleRow: toggleCodingTaskSelected,
+  toggleAll: toggleAllCodingTasks,
+  clear: clearCodingSelection,
+  run: runCodingBulk,
+} = useCodingTasksBulk(sortedTasks, loadTasks);
+
+// 视图切换（按工具分组 / 全部）会改变可见任务集合，必须清空选择，避免误操作不可见任务。
+watch(viewMode, () => clearCodingSelection());
+
+function inspectTask(task: CodingTask) {
+  inspectedTask.value = task;
+  inspectorOpen.value = true;
+}
+
 const hasActiveTasks = computed(() => tasks.value.some((t) => isActiveStatus(t.status)));
 
 async function loadTasks(manual = false) {
   loading.value = true;
   error.value = '';
+  forbidden.value = false;
   try {
     tasks.value = await listCodingTasks(100);
     if (manual) $q.notify({ type: 'positive', message: `已刷新，共 ${tasks.value.length} 个任务`, timeout: 2000 });
   } catch (err) {
     error.value = err instanceof Error ? err.message : '任务加载失败';
+    forbidden.value = isForbiddenApiError(err);
   } finally {
     loading.value = false;
   }

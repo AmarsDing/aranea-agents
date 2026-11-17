@@ -1,96 +1,48 @@
 import type { RouteRecordRaw } from 'vue-router';
-import BlankLayout from '../layouts/BlankLayout.vue';
-import LoginPage from '../pages/LoginPage.vue';
-import ForceResetPasswordPage from '../pages/ForceResetPasswordPage.vue';
-import MainLayout from '../layouts/MainLayout.vue';
-import ChatPage from '../pages/ChatPage.vue';
-import AgentsPage from '../pages/AgentsPage.vue';
-import AgentSettingsPage from '../pages/AgentSettingsPage.vue';
-import MonitorPage from '../pages/MonitorPage.vue';
-import OverviewPage from '../pages/OverviewPage.vue';
-import WorkbenchCockpitPage from '../pages/WorkbenchCockpitPage.vue';
-import TodayPage from '../pages/TodayPage.vue';
-import CompanyTreePage from '../pages/CompanyTreePage.vue';
-import ApprovalsPage from '../pages/ApprovalsPage.vue';
-import SchedulePage from '../pages/SchedulePage.vue';
-import AppsPage from '../pages/AppsPage.vue';
-import MailPage from '../pages/MailPage.vue';
-import CeoOverviewPage from '../pages/CeoOverviewPage.vue';
-import CeoOncallPage from '../pages/CeoOncallPage.vue';
-import UsageEventsPage from '../pages/UsageEventsPage.vue';
-import ResourceManagerPage from '../pages/ResourceManagerPage.vue';
-import OrganizationPage from '../pages/OrganizationPage.vue';
-import TeamsPage from '../pages/TeamsPage.vue';
-import SkillsPage from '../pages/SkillsPage.vue';
-import SkillTagsPage from '../pages/SkillTagsPage.vue';
-import SkillDetailPage from '../pages/SkillDetailPage.vue';
-import SkillRunsPage from '../pages/SkillRunsPage.vue';
-import EvolutionSuggestionListPage from '../pages/EvolutionSuggestionListPage.vue';
-import SelfImprovementPage from '../pages/SelfImprovementPage.vue';
-import ExperienceReportListPage from '../pages/ExperienceReportListPage.vue';
-import PluginsPage from '../pages/PluginsPage.vue';
-import PluginRunsPage from '../pages/PluginRunsPage.vue';
-import HooksPage from '../pages/HooksPage.vue';
-import HookDeliveriesPage from '../pages/HookDeliveriesPage.vue';
-import WebhooksPage from '../pages/WebhooksPage.vue';
-import CredentialsPage from '../pages/CredentialsPage.vue';
-import KnowledgePage from '../pages/KnowledgePage.vue';
-import ArtifactsPage from '../pages/ArtifactsPage.vue';
-import EvaluationPage from '../pages/EvaluationPage.vue';
-import A2APage from '../pages/A2APage.vue';
-import ToolsPage from '../pages/ToolsPage.vue';
-import ToolRunsPage from '../pages/ToolRunsPage.vue';
-import ToolAuditsPage from '../pages/ToolAuditsPage.vue';
-import SessionsPage from '../pages/SessionsPage.vue';
-import SessionDetailPage from '../pages/SessionDetailPage.vue';
-import ChannelsPage from '../pages/ChannelsPage.vue';
-import McpServersPage from '../pages/McpServersPage.vue';
-import CodingToolsPage from '../pages/CodingToolsPage.vue';
-import CodingTasksPage from '../pages/CodingTasksPage.vue';
-import CronTasksPage from '../pages/CronTasksPage.vue';
-import MemoryCenterPage from '../pages/MemoryCenterPage.vue';
-import SystemSettingsPage from '../pages/SystemSettingsPage.vue';
-import GraphsPage from '../pages/GraphsPage.vue';
-import GraphEditorPage from '../pages/GraphEditorPage.vue';
-import GraphRunPage from '../pages/GraphRunPage.vue';
-import GraphExecutionsPage from '../pages/GraphExecutionsPage.vue';
-import TeamRunObservatoryPage from '../pages/TeamRunObservatoryPage.vue';
-import TeamOrchestratePage from '../pages/TeamOrchestratePage.vue';
-import ThemePreviewPage from '../pages/ThemePreviewPage.vue';
-import CompanionPage from '../pages/CompanionPage.vue';
-import ContentInboxPage from '../pages/ContentInboxPage.vue';
-import ReviewQueuePage from '../pages/ReviewQueuePage.vue';
-import OpportunityBoardPage from '../pages/OpportunityBoardPage.vue';
-import SourcingPage from '../pages/SourcingPage.vue';
-import ServerSetupPage from '../pages/mobile/ServerSetupPage.vue';
-import MobilePlaceholderPage from '../pages/mobile/MobilePlaceholderPage.vue';
-import MobileSessionsPage from '../pages/mobile/MobileSessionsPage.vue';
-import MobileChatPage from '../pages/mobile/MobileChatPage.vue';
-import MobileTasksPage from '../pages/mobile/MobileTasksPage.vue';
-import MobileLayout from '../layouts/MobileLayout.vue';
 
 export const routes: RouteRecordRaw[] = [
   {
     path: '/login',
-    component: BlankLayout,
+    component: () => import('../layouts/BlankLayout.vue'),
     meta: { public: true },
-    children: [{ path: '', name: 'login', component: LoginPage }],
+    children: [
+      {
+        path: '',
+        name: 'login',
+        component: () => import('../pages/LoginPage.vue'),
+        meta: { titleKey: 'shell.titles.login' },
+      },
+    ],
   },
   {
     // P1 补漏·强制改密门:force_reset 账号登录后唯一可达页(守卫钉住;
     // 改密成功即吊销全部会话,须用新密码重新登录)。断点守卫豁免此路径。
     path: '/force-reset-password',
-    component: BlankLayout,
+    component: () => import('../layouts/BlankLayout.vue'),
     meta: { requiresAuth: true },
-    children: [{ path: '', name: 'force-reset-password', component: ForceResetPasswordPage }],
+    children: [
+      {
+        path: '',
+        name: 'force-reset-password',
+        component: () => import('../pages/ForceResetPasswordPage.vue'),
+        meta: { titleKey: 'shell.titles.forceReset' },
+      },
+    ],
   },
   {
     // Mobile (Android shell) first-run backend address setup. Public: the
     // session cookie lives on the upstream that is not configured yet.
     path: '/mobile/server-setup',
-    component: BlankLayout,
+    component: () => import('../layouts/BlankLayout.vue'),
     meta: { public: true },
-    children: [{ path: '', name: 'mobile-server-setup', component: ServerSetupPage }],
+    children: [
+      {
+        path: '',
+        name: 'mobile-server-setup',
+        component: () => import('../pages/mobile/ServerSetupPage.vue'),
+        meta: { titleKey: 'shell.titles.mobileSetup' },
+      },
+    ],
   },
   {
     // Mobile layout. Sessions/chat/tasks are real views (P1); me remains a
@@ -98,82 +50,256 @@ export const routes: RouteRecordRaw[] = [
     // router/index.ts redirects narrow screens here and wide screens back
     // to the desktop routes.
     path: '/mobile',
-    component: MobileLayout,
+    component: () => import('../layouts/MobileLayout.vue'),
     meta: { requiresAuth: true },
     children: [
       { path: '', redirect: '/mobile/sessions' },
-      { path: 'sessions', name: 'mobile-sessions', component: MobileSessionsPage },
-      { path: 'chat', name: 'mobile-chat', component: MobileChatPage },
+      {
+        path: 'sessions',
+        name: 'mobile-sessions',
+        component: () => import('../pages/mobile/MobileSessionsPage.vue'),
+        meta: { titleKey: 'shell.titles.mobileSessions' },
+      },
+      {
+        path: 'chat',
+        name: 'mobile-chat',
+        component: () => import('../pages/mobile/MobileChatPage.vue'),
+        meta: { titleKey: 'shell.titles.mobileChat' },
+      },
       {
         path: 'task-workspace',
         name: 'mobile-task-workspace',
         component: () => import('../pages/TaskWorkspacePage.vue'),
+        meta: { titleKey: 'menu.taskWorkspace' },
       },
-      { path: 'tasks', name: 'mobile-tasks', component: MobileTasksPage },
-      { path: 'me', name: 'mobile-me', component: MobilePlaceholderPage },
+      {
+        path: 'tasks',
+        name: 'mobile-tasks',
+        component: () => import('../pages/mobile/MobileTasksPage.vue'),
+        meta: { titleKey: 'shell.titles.mobileTasks' },
+      },
+      {
+        path: 'me',
+        name: 'mobile-me',
+        component: () => import('../pages/mobile/MobilePlaceholderPage.vue'),
+        meta: { titleKey: 'shell.titles.mobileMe' },
+      },
     ],
   },
   {
     // 语音伴侣 HUD（M74）：独立全屏形态，无主导航侧栏；桌面端手动访问，
     // Tauri 默认入口页可配置为此路由（设计 §7.1）。窄屏被断点守卫重定向到 /mobile。
     path: '/companion',
-    component: BlankLayout,
+    component: () => import('../layouts/BlankLayout.vue'),
     meta: { requiresAuth: true },
-    children: [{ path: '', name: 'companion', component: CompanionPage }],
+    children: [
+      {
+        path: '',
+        name: 'companion',
+        component: () => import('../pages/CompanionPage.vue'),
+        meta: { titleKey: 'shell.titles.companion' },
+      },
+    ],
   },
   {
     path: '/',
-    component: MainLayout,
+    component: () => import('../layouts/MainLayout.vue'),
     meta: { requiresAuth: true },
     children: [
       { path: '', redirect: '/workbench' },
-      { path: 'overview', name: 'overview', component: OverviewPage },
-      { path: 'workbench', name: 'workbench', component: TodayPage },
-      { path: 'approvals', name: 'approvals', component: ApprovalsPage, meta: { titleKey: 'menu.approvals' } },
-      { path: 'schedule', name: 'schedule', component: SchedulePage, meta: { titleKey: 'menu.schedule' } },
-      { path: 'apps', name: 'apps', component: AppsPage, meta: { titleKey: 'menu.apps' } },
-      { path: 'mail', name: 'mail', component: MailPage, meta: { titleKey: 'menu.mail' } },
-      { path: 'ceo/company', name: 'ceo-company', component: CompanyTreePage },
-      { path: 'ceo/overview', name: 'ceo-overview', component: CeoOverviewPage },
-      { path: 'ceo/oncall', name: 'ceo-oncall', component: CeoOncallPage },
-      { path: 'ecommerce-loop', name: 'ecommerce-loop', component: () => import('../pages/EcommerceLoopPage.vue') },
-      { path: 'content-inbox', name: 'content-inbox', component: ContentInboxPage },
-      { path: 'review-queue', name: 'review-queue', component: ReviewQueuePage },
-      { path: 'opportunity-board', name: 'opportunity-board', component: OpportunityBoardPage },
-      { path: 'sourcing', name: 'sourcing', component: SourcingPage },
-      { path: 'usage/events', name: 'usage-events', component: UsageEventsPage },
+      {
+        path: 'overview',
+        name: 'overview',
+        component: () => import('../pages/OverviewPage.vue'),
+        meta: { titleKey: 'menu.overview', breadcrumb: false, uiLayout: 'immersive' },
+      },
+      {
+        // 路由级无权限兜底：菜单白名单不含目标入口（或缺少 meta.permission 声明的权限码）时落到这里。
+        // 展示层拦截，后端仍按接口硬判；菜单拉取失败时守卫放行，不会把整站锁死。
+        path: '403',
+        name: 'forbidden',
+        component: () => import('../pages/ForbiddenPage.vue'),
+        meta: { titleKey: 'shell.forbidden.title', breadcrumb: false },
+      },
+      {
+        path: 'workbench',
+        name: 'workbench',
+        component: () => import('../pages/TodayPage.vue'),
+        meta: { titleKey: 'menu.cockpit', breadcrumb: false },
+      },
+      {
+        path: 'approvals',
+        name: 'approvals',
+        component: () => import('../pages/ApprovalsPage.vue'),
+        meta: { titleKey: 'menu.approvals' },
+      },
+      {
+        path: 'schedule',
+        name: 'schedule',
+        component: () => import('../pages/SchedulePage.vue'),
+        meta: { titleKey: 'menu.schedule' },
+      },
+      { path: 'apps', name: 'apps', component: () => import('../pages/AppsPage.vue'), meta: { titleKey: 'menu.apps' } },
+      { path: 'mail', name: 'mail', component: () => import('../pages/MailPage.vue'), meta: { titleKey: 'menu.mail' } },
+      {
+        path: 'ceo/company',
+        name: 'ceo-company',
+        component: () => import('../pages/CompanyTreePage.vue'),
+        meta: { titleKey: 'menu.ceoCompany', breadcrumb: false },
+      },
+      {
+        path: 'ceo/overview',
+        name: 'ceo-overview',
+        component: () => import('../pages/CeoOverviewPage.vue'),
+        meta: { titleKey: 'menu.ceoOverview', breadcrumb: false, uiLayout: 'immersive' },
+      },
+      {
+        path: 'ceo/oncall',
+        name: 'ceo-oncall',
+        component: () => import('../pages/CeoOncallPage.vue'),
+        meta: { titleKey: 'menu.ceoOncall', breadcrumb: false, uiLayout: 'immersive' },
+      },
+      {
+        path: 'ecommerce-loop',
+        name: 'ecommerce-loop',
+        component: () => import('../pages/EcommerceLoopPage.vue'),
+        meta: { titleKey: 'menu.ecommerceLoop' },
+      },
+      {
+        path: 'content-inbox',
+        name: 'content-inbox',
+        component: () => import('../pages/ContentInboxPage.vue'),
+        meta: { titleKey: 'menu.contentInbox' },
+      },
+      {
+        path: 'review-queue',
+        name: 'review-queue',
+        component: () => import('../pages/ReviewQueuePage.vue'),
+        meta: { titleKey: 'menu.reviewQueue' },
+      },
+      {
+        path: 'opportunity-board',
+        name: 'opportunity-board',
+        component: () => import('../pages/OpportunityBoardPage.vue'),
+        meta: { titleKey: 'menu.opportunityBoard' },
+      },
+      {
+        path: 'sourcing',
+        name: 'sourcing',
+        component: () => import('../pages/SourcingPage.vue'),
+        meta: { titleKey: 'menu.sourcing' },
+      },
+      {
+        path: 'usage/events',
+        name: 'usage-events',
+        component: () => import('../pages/UsageEventsPage.vue'),
+        meta: { titleKey: 'menu.usageEvents' },
+      },
       { path: 'usage/quotas', redirect: { name: 'agents' } },
-      { path: 'chat', name: 'chat', component: ChatPage },
+      {
+        path: 'chat',
+        name: 'chat',
+        component: () => import('../pages/ChatPage.vue'),
+        meta: { titleKey: 'menu.chat', breadcrumb: false, uiLayout: 'immersive' },
+      },
       {
         path: 'task-workspace',
         name: 'task-workspace',
         component: () => import('../pages/TaskWorkspacePage.vue'),
+        meta: { titleKey: 'menu.taskWorkspace' },
       },
-      { path: 'sessions', name: 'sessions', component: SessionsPage },
-      { path: 'sessions/:sessionId', name: 'session-detail', component: SessionDetailPage },
-      { path: 'memory', name: 'memory', component: MemoryCenterPage },
-      { path: 'agents', name: 'agents', component: AgentsPage },
+      {
+        path: 'sessions',
+        name: 'sessions',
+        component: () => import('../pages/SessionsPage.vue'),
+        meta: { titleKey: 'menu.sessions' },
+      },
+      {
+        path: 'sessions/:sessionId',
+        name: 'session-detail',
+        component: () => import('../pages/SessionDetailPage.vue'),
+        meta: { titleKey: 'shell.titles.sessionDetail' },
+      },
+      {
+        path: 'memory',
+        name: 'memory',
+        component: () => import('../pages/MemoryCenterPage.vue'),
+        meta: { titleKey: 'menu.memory' },
+      },
+      {
+        path: 'agents',
+        name: 'agents',
+        component: () => import('../pages/AgentsPage.vue'),
+        meta: { titleKey: 'menu.agents' },
+      },
       { path: 'settings/taxonomy', redirect: '/settings/organization' },
-      { path: 'settings/organization', name: 'organization', component: OrganizationPage },
-      { path: 'agents/:id/settings', name: 'agent-settings', component: AgentSettingsPage },
-      { path: 'team', name: 'team', component: TeamsPage },
+      {
+        path: 'settings/organization',
+        name: 'organization',
+        component: () => import('../pages/OrganizationPage.vue'),
+        meta: { titleKey: 'menu.organization' },
+      },
+      {
+        path: 'agents/:id/settings',
+        name: 'agent-settings',
+        component: () => import('../pages/AgentSettingsPage.vue'),
+        meta: { titleKey: 'shell.titles.agentSettings' },
+      },
+      {
+        path: 'team',
+        name: 'team',
+        component: () => import('../pages/TeamsPage.vue'),
+        meta: { titleKey: 'menu.team' },
+      },
       {
         path: 'teams/:teamId/runs/:runId/observatory',
         name: 'team-run-observatory',
-        component: TeamRunObservatoryPage,
+        component: () => import('../pages/TeamRunObservatoryPage.vue'),
+        meta: { titleKey: 'shell.titles.teamObservatory' },
       },
-      { path: 'teams/:teamId/orchestrate', name: 'team-orchestrate', component: TeamOrchestratePage },
-      { path: 'graphs', name: 'graphs', component: GraphsPage },
-      { path: 'graphs/new', name: 'graph-editor-new', component: GraphEditorPage },
-      { path: 'graphs/:id', name: 'graph-editor', component: GraphEditorPage },
-      { path: 'graphs/:id/run/:execId', name: 'graph-run', component: GraphRunPage },
-      { path: 'graphs/:id/executions', name: 'graph-executions', component: GraphExecutionsPage },
+      {
+        path: 'teams/:teamId/orchestrate',
+        name: 'team-orchestrate',
+        component: () => import('../pages/TeamOrchestratePage.vue'),
+        meta: { titleKey: 'shell.titles.teamOrchestrate', uiLayout: 'canvas' },
+      },
+      {
+        path: 'graphs',
+        name: 'graphs',
+        component: () => import('../pages/GraphsPage.vue'),
+        meta: { titleKey: 'menu.graphs' },
+      },
+      {
+        path: 'graphs/new',
+        name: 'graph-editor-new',
+        component: () => import('../pages/GraphEditorPage.vue'),
+        meta: { titleKey: 'shell.titles.graphNew', uiLayout: 'canvas' },
+      },
+      {
+        path: 'graphs/:id',
+        name: 'graph-editor',
+        component: () => import('../pages/GraphEditorPage.vue'),
+        meta: { titleKey: 'shell.titles.graphEdit', uiLayout: 'canvas' },
+      },
+      {
+        path: 'graphs/:id/run/:execId',
+        name: 'graph-run',
+        component: () => import('../pages/GraphRunPage.vue'),
+        meta: { titleKey: 'shell.titles.graphRun' },
+      },
+      {
+        path: 'graphs/:id/executions',
+        name: 'graph-executions',
+        component: () => import('../pages/GraphExecutionsPage.vue'),
+        meta: { titleKey: 'shell.titles.graphExecutions' },
+      },
       {
         path: 'models',
         name: 'models',
-        component: ResourceManagerPage,
+        component: () => import('../pages/ResourceManagerPage.vue'),
         meta: {
           resource: 'llm-provider-models',
+          titleKey: 'menu.models',
           title: '模型管理',
           subtitle: '维护 Provider/Model 可用清单与模型校验来源。',
         },
@@ -181,9 +307,10 @@ export const routes: RouteRecordRaw[] = [
       {
         path: 'channels',
         name: 'channels',
-        component: ChannelsPage,
+        component: () => import('../pages/ChannelsPage.vue'),
         meta: {
           resource: 'channels',
+          titleKey: 'menu.channels',
           title: 'Channel 管理',
           subtitle: '管理外部消息渠道、凭据引用与 Agent 绑定配置。',
         },
@@ -196,129 +323,179 @@ export const routes: RouteRecordRaw[] = [
       {
         path: 'mcp-servers',
         name: 'mcp-servers',
-        component: McpServersPage,
+        component: () => import('../pages/McpServersPage.vue'),
+        meta: { titleKey: 'menu.mcp' },
       },
       {
         path: 'settings/coding-tools',
         name: 'coding-tools',
-        component: CodingToolsPage,
+        component: () => import('../pages/CodingToolsPage.vue'),
+        meta: { titleKey: 'menu.codingTools' },
       },
       {
         path: 'coding-tasks',
         name: 'coding-tasks',
-        component: CodingTasksPage,
+        component: () => import('../pages/CodingTasksPage.vue'),
+        meta: { titleKey: 'menu.codingTasks' },
       },
       {
         path: 'skills',
         name: 'skills',
-        component: SkillsPage,
+        component: () => import('../pages/SkillsPage.vue'),
+        meta: { titleKey: 'menu.skills' },
       },
       {
         path: 'skills/runs',
         name: 'skill-runs',
-        component: SkillRunsPage,
+        component: () => import('../pages/SkillRunsPage.vue'),
+        meta: { titleKey: 'shell.nav.skillRuns' },
       },
       {
         path: 'skills/evolution-suggestions',
         name: 'evolution-suggestions',
-        component: EvolutionSuggestionListPage,
+        component: () => import('../pages/EvolutionSuggestionListPage.vue'),
+        meta: { titleKey: 'menu.evolutionSuggestions' },
       },
       {
         path: 'skills/experience-reports',
         name: 'experience-reports',
-        component: ExperienceReportListPage,
+        component: () => import('../pages/ExperienceReportListPage.vue'),
+        meta: { titleKey: 'menu.experienceReports' },
       },
       {
         path: 'skills/tags',
         name: 'skill-tags',
-        component: SkillTagsPage,
+        component: () => import('../pages/SkillTagsPage.vue'),
+        meta: { titleKey: 'menu.skillTags' },
       },
       {
         path: 'skills/:skillId',
         name: 'skill-detail',
-        component: SkillDetailPage,
+        component: () => import('../pages/SkillDetailPage.vue'),
+        meta: { titleKey: 'shell.titles.skillDetail' },
       },
       {
         path: 'plugins',
         name: 'plugins',
-        component: PluginsPage,
+        component: () => import('../pages/PluginsPage.vue'),
+        meta: { titleKey: 'menu.plugins' },
       },
       {
         path: 'plugins/runs',
         name: 'plugin-runs',
-        component: PluginRunsPage,
+        component: () => import('../pages/PluginRunsPage.vue'),
+        meta: { titleKey: 'shell.nav.pluginRuns' },
       },
       {
         path: 'hooks',
         name: 'hooks',
-        component: HooksPage,
+        component: () => import('../pages/HooksPage.vue'),
+        meta: { titleKey: 'menu.hooks' },
       },
       {
         path: 'hooks/deliveries',
         name: 'hook-deliveries',
-        component: HookDeliveriesPage,
+        component: () => import('../pages/HookDeliveriesPage.vue'),
+        meta: { titleKey: 'shell.nav.hookDeliveries' },
       },
       {
         path: 'webhooks',
         name: 'webhooks',
-        component: WebhooksPage,
+        component: () => import('../pages/WebhooksPage.vue'),
+        meta: { titleKey: 'menu.webhooks' },
       },
       {
         path: 'credentials',
         name: 'credentials',
-        component: CredentialsPage,
+        component: () => import('../pages/CredentialsPage.vue'),
         meta: { titleKey: 'menu.credentials' },
       },
       {
         path: 'knowledge',
         name: 'knowledge',
-        component: KnowledgePage,
+        component: () => import('../pages/KnowledgePage.vue'),
+        meta: { titleKey: 'menu.knowledge' },
       },
       {
         path: 'artifacts',
         name: 'artifacts',
-        component: ArtifactsPage,
+        component: () => import('../pages/ArtifactsPage.vue'),
+        meta: { titleKey: 'menu.artifacts' },
       },
       {
         path: 'evaluation',
         name: 'evaluation',
-        component: EvaluationPage,
+        component: () => import('../pages/EvaluationPage.vue'),
+        meta: { titleKey: 'menu.evaluation' },
       },
       {
         path: 'a2a',
         name: 'a2a',
-        component: A2APage,
+        component: () => import('../pages/A2APage.vue'),
+        meta: { titleKey: 'menu.a2a' },
       },
       {
         path: 'tools/audits',
         name: 'tool-audits',
-        component: ToolAuditsPage,
+        component: () => import('../pages/ToolAuditsPage.vue'),
+        meta: { titleKey: 'shell.nav.toolAudits' },
       },
       {
         path: 'tools/runs',
         name: 'tool-runs',
-        component: ToolRunsPage,
+        component: () => import('../pages/ToolRunsPage.vue'),
+        meta: { titleKey: 'shell.nav.toolRuns' },
       },
       {
         path: 'tools',
         name: 'tools',
-        component: ToolsPage,
+        component: () => import('../pages/ToolsPage.vue'),
+        meta: { titleKey: 'menu.tools' },
       },
       {
         path: 'cron',
         name: 'cron',
-        component: CronTasksPage,
+        component: () => import('../pages/CronTasksPage.vue'),
+        meta: { titleKey: 'menu.cron' },
       },
-      { path: 'monitor/live', name: 'monitor-live', component: WorkbenchCockpitPage },
-      { path: 'monitor/logs', name: 'monitor-logs', component: MonitorPage },
-      { path: 'self-improvement', name: 'self-improvement', component: SelfImprovementPage },
-      { path: 'settings', name: 'settings', component: SystemSettingsPage, meta: { titleKey: 'menu.settings' } },
+      {
+        // 原作战总台（连线图、花名册、日志流）：属于系统运行视图，归运行监控。
+        path: 'monitor/live',
+        name: 'monitor-live',
+        component: () => import('../pages/WorkbenchCockpitPage.vue'),
+        meta: { titleKey: 'menu.monitorLive', breadcrumb: false, uiLayout: 'immersive' },
+      },
+      {
+        path: 'monitor/logs',
+        name: 'monitor-logs',
+        component: () => import('../pages/MonitorPage.vue'),
+        meta: { titleKey: 'menu.monitor' },
+      },
+      {
+        path: 'self-improvement',
+        name: 'self-improvement',
+        component: () => import('../pages/SelfImprovementPage.vue'),
+        meta: { titleKey: 'menu.selfImprovement' },
+      },
+      {
+        path: 'settings',
+        name: 'settings',
+        component: () => import('../pages/SystemSettingsPage.vue'),
+        meta: { titleKey: 'menu.settings' },
+      },
       ...(import.meta.env.DEV
-        ? [{ path: 'dev/theme-preview', name: 'theme-preview', component: ThemePreviewPage }]
+        ? [
+            {
+              path: 'dev/theme-preview',
+              name: 'theme-preview',
+              component: () => import('../pages/ThemePreviewPage.vue'),
+              meta: { titleKey: 'shell.titles.themePreview' },
+            },
+          ]
         : []),
     ],
   },
-  // Catch-all：未匹配路径（如 /teams 笔误或过期书签）重定向到工作台，
+  // Catch-all：未匹配路径（如 /teams 笔误或过期书签）重定向到首页（工作台），
   // 避免 RouterView 渲染 null vnode 导致整页空白崩溃。
   { path: '/:pathMatch(.*)*', redirect: '/workbench' },
 ];

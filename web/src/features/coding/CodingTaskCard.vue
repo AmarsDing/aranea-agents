@@ -2,6 +2,15 @@
   <q-card flat bordered class="coding-task-card q-mb-sm">
     <q-card-section class="cursor-pointer q-py-sm" @click="$emit('toggle', task.id)">
       <div class="row items-center q-gutter-sm no-wrap">
+        <q-checkbox
+          v-if="selectable"
+          dense
+          :data-test="`row-select-${task.id}`"
+          :aria-label="t('shell.bulkBar.selectRow', { name: title })"
+          :model-value="selected"
+          @update:model-value="$emit('toggle-select', task.id || '', $event)"
+          @click.stop
+        />
         <q-avatar size="32px" color="primary" text-color="white" class="text-weight-bold">
           <img v-if="agent?.iconUrl" :src="agent.iconUrl" :alt="agent.displayName || agent.agentKey" />
           <template v-else>{{ agentInitial(agent) }}</template>
@@ -19,6 +28,15 @@
             最近一步：{{ task.lastExcerpt }}
           </div>
         </div>
+        <q-btn
+          flat
+          dense
+          round
+          icon="info"
+          color="primary"
+          :aria-label="$t('shell.registry.inspect')"
+          @click.stop="$emit('inspect', task)"
+        />
         <q-icon :name="expanded ? 'expand_less' : 'expand_more'" color="grey-6" />
       </div>
     </q-card-section>
@@ -108,36 +126,38 @@
       </q-card-section>
     </template>
 
-    <q-dialog v-model="rejectOpen" persistent>
-      <q-card class="app-dialog-card app-glass-dialog" style="min-width: 420px">
-        <q-card-section class="row items-start justify-between">
-          <div class="text-h6">打回任务</div>
-          <q-btn flat dense round icon="close" aria-label="关闭" @click="rejectOpen = false" />
-        </q-card-section>
-        <q-separator />
-        <q-card-section>
-          <q-input
-            v-model="rejectComment"
-            dense
-            outlined
-            type="textarea"
-            autogrow
-            label="打回意见 *"
-            hint="将记录到任务验收结果；可选择按意见重做，把原任务描述与意见预填回发起条。"
-          />
-        </q-card-section>
-        <q-card-actions align="right" class="q-pa-md">
-          <q-btn flat rounded label="取消" @click="rejectOpen = false" />
-          <q-btn color="warning" rounded unelevated label="确认打回" :disable="!rejectComment.trim()" :loading="reviewing === 'reject'" @click="doReview('reject')" />
-        </q-card-actions>
-      </q-card>
-    </q-dialog>
+    <app-dialog v-model="rejectOpen" title="打回任务" icon="undo" size="sm" persistent>
+      <q-input
+        v-model="rejectComment"
+        dense
+        outlined
+        type="textarea"
+        autogrow
+        label="打回意见 *"
+        hint="将记录到任务验收结果；可选择按意见重做，把原任务描述与意见预填回发起条。"
+      />
+      <template #actions>
+        <q-btn flat rounded label="取消" @click="rejectOpen = false" />
+        <q-btn
+          color="warning"
+          rounded
+          unelevated
+          label="确认打回"
+          :disable="!rejectComment.trim()"
+          :loading="reviewing === 'reject'"
+          @click="doReview('reject')"
+        />
+      </template>
+    </app-dialog>
   </q-card>
 </template>
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { useQuasar } from 'quasar';
+import { confirm } from '../../composables/useAppConfirm';
+import { useI18n } from 'vue-i18n';
+import AppDialog from '../../components/common/AppDialog.vue';
 import {
   agentInitial,
   cancelCodingTask,
@@ -160,12 +180,20 @@ const props = defineProps<{
   agent?: CodingAgent | undefined;
   expanded: boolean;
   now: number;
+  /** 是否展示行选择框（批量操作条由页面挂载）。 */
+  selectable?: boolean;
+  /** 当前行是否已选。 */
+  selected?: boolean;
 }>();
 
+const { t } = useI18n();
+
 const emit = defineEmits<{
+  (e: 'inspect', task: CodingTask): void;
   (e: 'toggle', id: string | undefined): void;
   (e: 'updated'): void;
   (e: 'redo', task: CodingTask): void;
+  (e: 'toggle-select', id: string, checked: boolean): void;
 }>();
 
 const $q = useQuasar();
@@ -254,24 +282,23 @@ watch(
 
 onBeforeUnmount(stopPolling);
 
-function confirmCancel() {
-  $q.dialog({
+async function confirmCancel() {
+  const ok = await confirm({
     title: '确认中止该任务？',
     message: '中止后工具进程将被终止，已产生的修改不会自动回滚。',
-    cancel: true,
-    persistent: true,
-  }).onOk(async () => {
-    cancelling.value = true;
-    try {
-      await cancelCodingTask(props.task.id ?? '');
-      $q.notify({ type: 'positive', message: '已请求中止' });
-      emit('updated');
-    } catch (err) {
-      $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '中止失败' });
-    } finally {
-      cancelling.value = false;
-    }
+    tone: 'danger',
   });
+  if (!ok) return;
+  cancelling.value = true;
+  try {
+    await cancelCodingTask(props.task.id ?? '');
+    $q.notify({ type: 'positive', message: '已请求中止' });
+    emit('updated');
+  } catch (err) {
+    $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '中止失败' });
+  } finally {
+    cancelling.value = false;
+  }
 }
 
 async function doReview(action: string) {

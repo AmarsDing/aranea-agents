@@ -9,8 +9,9 @@
 import { onMounted, onUnmounted, ref } from 'vue';
 import { i18n } from '../../i18n';
 import { createCeoboardService } from '../../services';
+import { fetchCompanySnapshot } from './company';
 import { normalizeNodeDetail, normalizeOverview } from './normalize';
-import type { NodeDetail, Overview } from './types';
+import type { CompanySnapshot, NodeDetail, Overview } from './types';
 
 export const CEOBOARD_POLL_INTERVAL_MS = 15_000;
 
@@ -21,16 +22,30 @@ function errMessage(e: unknown): string {
 export function useCeoboard() {
   const svc = createCeoboardService();
   const ov = ref<Overview | null>(null);
+  const snap = ref<CompanySnapshot | null>(null);
   const err = ref('');
+  const snapErr = ref('');
   const drawer = ref<NodeDetail | null>(null);
   let timer: number | undefined;
 
   async function refresh() {
-    try {
-      ov.value = normalizeOverview(await svc.GetOverview({}));
+    // 两个数据源互不阻塞：流程总览失败不影响经营快照展示，反之亦然。
+    const [ovRes, snapRes] = await Promise.allSettled([
+      svc.GetOverview({}),
+      fetchCompanySnapshot(),
+    ]);
+    if (ovRes.status === 'fulfilled') {
+      ov.value = normalizeOverview(ovRes.value);
       err.value = '';
-    } catch (e: unknown) {
-      err.value = i18n.global.t('ceoboard.page.backendUnreachable', { msg: errMessage(e) });
+    } else {
+      err.value = i18n.global.t('ceoboard.page.backendUnreachable', { msg: errMessage(ovRes.reason) });
+    }
+    if (snapRes.status === 'fulfilled') {
+      snap.value = snapRes.value;
+      snapErr.value = '';
+    } else {
+      // 保留上一次快照；仅提示经营数据暂不可用。
+      snapErr.value = i18n.global.t('ceoboard.ops.unavailable', { msg: errMessage(snapRes.reason) });
     }
   }
 
@@ -69,5 +84,5 @@ export function useCeoboard() {
     if (timer !== undefined) window.clearInterval(timer);
   });
 
-  return { ov, err, drawer, refresh, openNode, closeDrawer };
+  return { ov, snap, err, snapErr, drawer, refresh, openNode, closeDrawer };
 }

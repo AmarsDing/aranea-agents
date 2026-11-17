@@ -163,14 +163,14 @@ function memberStatusLabel(status: string): string {
   background: var(--color-surface-soft)
   border-left: 1px solid var(--color-border-soft)
   overflow-y: auto
-  padding: 12px
+  padding: var(--nt-space-3)
   z-index: 10
 
 .observe-node-detail__header
   display: flex
   align-items: flex-start
-  gap: 8px
-  margin-bottom: 12px
+  gap: var(--nt-space-2)
+  margin-bottom: var(--nt-space-3)
 
 .observe-node-detail__avatar
   width: 32px
@@ -191,22 +191,22 @@ function memberStatusLabel(status: string): string {
 .observe-node-detail__name
   font-size: 14px
   font-weight: 600
-  margin: 0 0 4px
+  margin: 0 0 var(--nt-space-1)
 
 .observe-node-detail__section
-  margin-bottom: 16px
+  margin-bottom: var(--nt-space-4)
 
 .observe-node-detail__section-title
   font-size: 12px
   font-weight: 600
   color: var(--color-text-secondary)
-  margin: 0 0 8px
+  margin: 0 0 var(--nt-space-2)
 
 .observe-node-detail__error
   display: flex
   align-items: flex-start
   gap: 6px
-  padding: 8px
+  padding: var(--nt-space-2)
   border-radius: 6px
   background: color-mix(in srgb, var(--color-danger) 8%, transparent)
   color: var(--color-danger)
@@ -223,7 +223,7 @@ function memberStatusLabel(status: string): string {
   display: flex
   align-items: flex-start
   gap: 6px
-  padding: 8px
+  padding: var(--nt-space-2)
   border-radius: 6px
   background: color-mix(in srgb, var(--color-success) 8%, transparent)
   color: var(--color-text-secondary)
@@ -233,12 +233,12 @@ function memberStatusLabel(status: string): string {
 .observe-node-detail__member-list
   display: flex
   flex-direction: column
-  gap: 8px
+  gap: var(--nt-space-2)
 
 .observe-node-detail__member
   display: flex
   align-items: center
-  gap: 8px
+  gap: var(--nt-space-2)
 
 .observe-node-detail__member-avatar
   position: relative
@@ -353,7 +353,7 @@ function memberStatusLabel(status: string): string {
 .observe-node-detail__meta-row
   display: flex
   gap: 6px
-  margin-bottom: 4px
+  margin-bottom: var(--nt-space-1)
 
 .observe-node-detail__meta-label
   color: var(--color-text-tertiary)

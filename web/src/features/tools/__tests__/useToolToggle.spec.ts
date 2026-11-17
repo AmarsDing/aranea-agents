@@ -4,21 +4,23 @@ import { useToolToggle } from '../useToolToggle';
 import type { Tool } from '../types';
 
 const notify = vi.fn();
-let lastDialogOpts: Record<string, unknown> | null = null;
-let pendingOnOk: (() => void | Promise<void>) | null = null;
+const confirmCalls = vi.hoisted(() => ({
+  opts: null as Record<string, unknown> | null,
+  resolve: null as null | ((value: boolean) => void),
+}));
 
 vi.mock('quasar', () => ({
-  useQuasar: () => ({
-    notify,
-    dialog: (opts: Record<string, unknown>) => {
-      lastDialogOpts = opts;
-      return {
-        onOk: (cb: () => void | Promise<void>) => {
-          pendingOnOk = cb;
-        },
-      };
-    },
-  }),
+  useQuasar: () => ({ notify }),
+}));
+
+// 确认框改走 useAppConfirm 单例：这里捕获入参并手动 resolve。
+vi.mock('../../../composables/useAppConfirm', () => ({
+  confirm: (opts: Record<string, unknown>) => {
+    confirmCalls.opts = opts;
+    return new Promise<boolean>((resolve) => {
+      confirmCalls.resolve = resolve;
+    });
+  },
 }));
 
 vi.mock('vue-i18n', async (importOriginal) => {
@@ -49,8 +51,8 @@ describe('useToolToggle', () => {
   beforeEach(() => {
     setActivePinia(createPinia());
     vi.clearAllMocks();
-    lastDialogOpts = null;
-    pendingOnOk = null;
+    confirmCalls.opts = null;
+    confirmCalls.resolve = null;
   });
 
   it('低风险工具直接切换，不弹确认框，不带确认意图', async () => {
@@ -58,7 +60,7 @@ describe('useToolToggle', () => {
     const { toggleEnabled } = useToolToggle(onChanged);
     await toggleEnabled(makeTool(), true);
 
-    expect(lastDialogOpts).toBeNull();
+    expect(confirmCalls.opts).toBeNull();
     expect(toggle).toHaveBeenCalledWith('t1', true);
     expect(onChanged).toHaveBeenCalled();
   });
@@ -72,10 +74,11 @@ describe('useToolToggle', () => {
   it('高风险工具启用先弹确认框，确认前不调用 store', async () => {
     const onChanged = vi.fn();
     const { toggleEnabled } = useToolToggle(onChanged);
-    await toggleEnabled(makeTool({ risk_level: 'high' }), true);
+    void toggleEnabled(makeTool({ risk_level: 'high' }), true);
+    await Promise.resolve();
 
-    expect(lastDialogOpts).not.toBeNull();
-    expect(lastDialogOpts?.persistent).toBe(true);
+    expect(confirmCalls.opts).not.toBeNull();
+    expect(confirmCalls.opts?.tone).toBe('danger');
     expect(toggle).not.toHaveBeenCalled();
     expect(onChanged).not.toHaveBeenCalled();
   });
@@ -83,28 +86,40 @@ describe('useToolToggle', () => {
   it('高风险确认后携带 I_UNDERSTAND_RISK 调用 toggle', async () => {
     const onChanged = vi.fn();
     const { toggleEnabled, busyId } = useToolToggle(onChanged);
-    await toggleEnabled(makeTool({ risk_level: 'high' }), true);
-    await pendingOnOk!();
+    void toggleEnabled(makeTool({ risk_level: 'high' }), true);
+    await Promise.resolve();
+    confirmCalls.resolve!(true);
 
-    expect(toggle).toHaveBeenCalledWith('t1', true, 'I_UNDERSTAND_RISK');
+    await vi.waitFor(() => expect(toggle).toHaveBeenCalledWith('t1', true, 'I_UNDERSTAND_RISK'));
     expect(onChanged).toHaveBeenCalled();
     expect(busyId.value).toBe('');
   });
 
   it('critical 风险等级同样走确认流程', async () => {
     const { toggleEnabled } = useToolToggle(vi.fn());
-    await toggleEnabled(makeTool({ risk_level: 'critical' }), true);
+    void toggleEnabled(makeTool({ risk_level: 'critical' }), true);
+    await Promise.resolve();
 
-    expect(lastDialogOpts).not.toBeNull();
-    await pendingOnOk!();
-    expect(toggle).toHaveBeenCalledWith('t1', true, 'I_UNDERSTAND_RISK');
+    expect(confirmCalls.opts).not.toBeNull();
+    confirmCalls.resolve!(true);
+    await vi.waitFor(() => expect(toggle).toHaveBeenCalledWith('t1', true, 'I_UNDERSTAND_RISK'));
+  });
+
+  it('高风险确认框取消则不切换', async () => {
+    const { toggleEnabled } = useToolToggle(vi.fn());
+    void toggleEnabled(makeTool({ risk_level: 'high' }), true);
+    await Promise.resolve();
+    confirmCalls.resolve!(false);
+
+    await Promise.resolve();
+    expect(toggle).not.toHaveBeenCalled();
   });
 
   it('禁用高风险工具不弹确认框（仅启用需要确认）', async () => {
     const { toggleEnabled } = useToolToggle(vi.fn());
     await toggleEnabled(makeTool({ risk_level: 'high', enabled: true }), false);
 
-    expect(lastDialogOpts).toBeNull();
+    expect(confirmCalls.opts).toBeNull();
     expect(toggle).toHaveBeenCalledWith('t1', false);
   });
 
@@ -119,23 +134,25 @@ describe('useToolToggle', () => {
 
   it('readonly 工具删除被拦截：仅警告、不弹框、不执行', () => {
     const { removeTool } = useToolToggle(vi.fn());
-    removeTool(makeTool({ readonly: true }));
+    void removeTool(makeTool({ readonly: true }));
 
     expect(notify).toHaveBeenCalledWith(expect.objectContaining({ type: 'warning' }));
-    expect(lastDialogOpts).toBeNull();
+    expect(confirmCalls.opts).toBeNull();
     expect(remove).not.toHaveBeenCalled();
   });
 
   it('非 readonly 删除需确认后执行 remove', async () => {
     const onChanged = vi.fn();
     const { removeTool, busyId } = useToolToggle(onChanged);
-    removeTool(makeTool());
+    void removeTool(makeTool());
+    await Promise.resolve();
 
-    expect(lastDialogOpts).not.toBeNull();
+    expect(confirmCalls.opts).not.toBeNull();
+    expect(confirmCalls.opts?.tone).toBe('danger');
     expect(remove).not.toHaveBeenCalled();
 
-    await pendingOnOk!();
-    expect(remove).toHaveBeenCalledWith('t1');
+    confirmCalls.resolve!(true);
+    await vi.waitFor(() => expect(remove).toHaveBeenCalledWith('t1'));
     expect(onChanged).toHaveBeenCalled();
     expect(busyId.value).toBe('');
   });

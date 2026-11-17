@@ -1,14 +1,14 @@
 <template>
-  <q-dialog :model-value="open" persistent @update:model-value="$emit('update:open', $event)">
-    <q-card class="app-dialog-card app-dialog-card--sm app-glass-dialog">
-      <q-card-section class="app-glass-dialog__head row items-center justify-between">
-        <div class="app-glass-dialog__title">{{ t('knowledgePage.createDialogTitle') }}</div>
-        <q-btn v-close-popup flat round dense icon="close" />
-      </q-card-section>
-      <q-separator />
-      <div class="app-glass-dialog__scroll">
-        <q-card-section class="app-dialog-body app-glass-dialog__body q-gutter-md">
-          <q-select
+  <AppDialog
+    :model-value="open"
+    :title="t('knowledgePage.createDialogTitle')"
+    size="sm"
+    persistent
+    :loading="loading"
+    @update:model-value="$emit('update:open', $event)"
+  >
+    <div class="q-gutter-md">
+      <q-select
             :model-value="vaultBackend || 'team'"
             emit-value
             map-options
@@ -66,26 +66,24 @@
               @update:model-value="$emit('update:embeddingModel', String($event ?? ''))"
             />
           </q-expansion-item>
-        </q-card-section>
-      </div>
-      <q-separator />
-      <q-card-actions align="right" class="app-actions-bar app-glass-dialog__actions">
-        <q-btn v-close-popup flat no-caps :label="t('common.cancel')" />
-        <q-btn
-          color="primary"
-          unelevated
-          no-caps
-          :label="t('common.create')"
-          :loading="loading"
-          @click="$emit('submit')"
-        />
-      </q-card-actions>
-    </q-card>
-  </q-dialog>
+    </div>
+    <template #actions>
+      <q-btn flat no-caps :label="t('common.cancel')" @click="$emit('update:open', false)" />
+      <q-btn
+        color="primary"
+        unelevated
+        no-caps
+        :label="t('common.create')"
+        :loading="loading"
+        @click="$emit('submit')"
+      />
+    </template>
+  </AppDialog>
 </template>
 
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n';
+import AppDialog from '../../components/common/AppDialog.vue';
 
 defineProps<{
   open: boolean;

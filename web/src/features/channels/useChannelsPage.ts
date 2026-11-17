@@ -5,7 +5,9 @@ import { storeToRefs } from 'pinia';
 import { copyChannelWebhookURL } from '../../components/channels/channelUi';
 import { useChannelsStore } from '../../stores/channels';
 import { useListPage } from '../../composables/useListPage';
+import { confirm } from '../../composables/useAppConfirm';
 import type { ChannelCredential, ChannelRow } from './types';
+import { isForbiddenApiError } from '../../utils/kratosError';
 
 export function useChannelsPage() {
   const { t } = useI18n();
@@ -14,6 +16,8 @@ export function useChannelsPage() {
   const { channels: rows, total, catalog, loading } = storeToRefs(channelsStore);
 
   const error = ref('');
+  /** 列表接口 403：页面据此渲染 forbidden 态（无重试）。 */
+  const forbidden = ref(false);
   const search = ref('');
   const typeFilter = ref('');
   const statusFilter = ref('');
@@ -44,6 +48,7 @@ export function useChannelsPage() {
 
   async function loadAll() {
     error.value = '';
+    forbidden.value = false;
     try {
       await channelsStore.loadAll({
         page: page.value,
@@ -54,6 +59,7 @@ export function useChannelsPage() {
       });
       if (page.value > pageMax.value) page.value = pageMax.value;
     } catch (err) {
+      forbidden.value = isForbiddenApiError(err);
       error.value = err instanceof Error ? err.message : t('channelsPage.loadFailed');
     }
   }
@@ -136,24 +142,23 @@ export function useChannelsPage() {
     }
   }
 
-  function confirmDelete(row: ChannelRow) {
-    $q.dialog({
+  async function confirmDelete(row: ChannelRow) {
+    const ok = await confirm({
       title: t('channelsPage.deleteTitle'),
       message: t('channelsPage.deleteMessage'),
-      cancel: true,
-      persistent: true,
-    }).onOk(async () => {
-      try {
-        await channelsStore.removeChannel(row.id);
-        if (opsChannelId.value === row.id) {
-          closeOps();
-        }
-        $q.notify({ type: 'positive', message: t('channelsPage.deleteOk') });
-        await loadAll();
-      } catch (err) {
-        $q.notify({ type: 'negative', message: err instanceof Error ? err.message : t('channelsPage.deleteFailed') });
-      }
+      tone: 'danger',
     });
+    if (!ok) return;
+    try {
+      await channelsStore.removeChannel(row.id);
+      if (opsChannelId.value === row.id) {
+        closeOps();
+      }
+      $q.notify({ type: 'positive', message: t('channelsPage.deleteOk') });
+      await loadAll();
+    } catch (err) {
+      $q.notify({ type: 'negative', message: err instanceof Error ? err.message : t('channelsPage.deleteFailed') });
+    }
   }
 
   return {
@@ -166,6 +171,7 @@ export function useChannelsPage() {
     total,
     loading,
     error,
+    forbidden,
     search,
     typeFilter,
     statusFilter,

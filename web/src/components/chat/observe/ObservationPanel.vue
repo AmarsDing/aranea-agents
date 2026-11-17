@@ -89,7 +89,7 @@ function refresh() {
 .observation-panel__toolbar
   display: flex
   align-items: center
-  padding: 4px 8px
+  padding: var(--nt-space-1) var(--nt-space-2)
   border-bottom: 1px solid var(--color-border-soft)
   flex-shrink: 0
 
@@ -104,5 +104,5 @@ function refresh() {
   align-items: center
   justify-content: center
   height: 100%
-  gap: 8px
+  gap: var(--nt-space-2)
 </style>

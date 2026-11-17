@@ -115,6 +115,11 @@ export const useMonitorStore = defineStore('monitor', () => {
     }
   }
 
+  /** 指标矩阵按窗口取数（不动全局 runnerMetrics，避免与明细面板抢同一份状态）。 */
+  async function fetchRunnerMetrics(windowMinutes: number): Promise<RunnerMetricsSummary> {
+    return getRunnerMetrics(windowMinutes);
+  }
+
   function startRuntimeEventsStream(
     sessionId: string,
     onEvent: (event: TeamRunEvent) => void,
@@ -245,6 +250,7 @@ export const useMonitorStore = defineStore('monitor', () => {
     fetchTraceDetail,
     loadLogs,
     loadRunnerMetrics,
+    fetchRunnerMetrics,
     startRuntimeEventsStream,
     startLogsStream,
     fetchFlowLogs,

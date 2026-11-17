@@ -75,9 +75,9 @@ function onPreview(art: MediaArtifact) {
 <style scoped lang="sass">
 .media-tool-detail__grid
   display: flex
-  gap: 8px
+  gap: var(--nt-space-2)
   flex-wrap: wrap
-  margin-top: 4px
+  margin-top: var(--nt-space-1)
 
 .media-tool-detail__item
   width: 120px

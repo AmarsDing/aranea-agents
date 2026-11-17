@@ -1,26 +1,13 @@
 <template>
-  <q-dialog :model-value="modelValue" persistent @update:model-value="$emit('update:modelValue', $event)">
-    <q-card class="app-dialog-card app-dialog-card--900 app-glass-dialog channel-editor-dialog">
-      <q-card-section class="app-glass-dialog__head row items-start justify-between no-wrap">
-        <div class="col min-width-0">
-          <div class="app-glass-dialog__title">
-            {{ row ? t('channelEditor.editTitle') : t('channelEditor.createTitle') }}
-          </div>
-        </div>
-        <q-btn
-          flat
-          dense
-          round
-          icon="close"
-          :aria-label="t('channelEditor.close')"
-          @click="$emit('update:modelValue', false)"
-        />
-      </q-card-section>
-      <q-separator />
-
-      <div class="app-glass-dialog__scroll">
-        <q-card-section class="app-dialog-body app-glass-dialog__body">
-          <section v-if="!row" class="app-dialog-section channel-editor-platform-pick">
+  <AppDialog
+    :model-value="modelValue"
+    persistent
+    size="lg"
+    card-class="channel-editor-dialog"
+    :title="row ? t('channelEditor.editTitle') : t('channelEditor.createTitle')"
+    @update:model-value="$emit('update:modelValue', $event)"
+  >
+    <section v-if="!row" class="app-dialog-section channel-editor-platform-pick">
             <h3 class="channel-editor-platform-pick__title">{{ t('channelEditor.pickPlatformTitle') }}</h3>
             <p class="channel-editor-platform-pick__hint">{{ t('channelEditor.pickPlatformHint') }}</p>
             <div class="channel-catalog-shell">
@@ -320,40 +307,36 @@
               <ChannelTurnJobsPanel :channel-id="row.id" />
             </section>
           </div>
-        </q-card-section>
-      </div>
 
-      <q-separator />
-      <q-card-actions align="right" class="app-actions-bar app-glass-dialog__actions">
-        <q-btn flat no-caps :label="t('channelEditor.cancel')" @click="$emit('update:modelValue', false)" />
-        <q-space />
-        <q-btn
-          flat
-          no-caps
-          class="channel-dialog-test"
-          icon="science"
-          :label="t('channelEditor.saveAndTest')"
-          :loading="testing"
-          :disable="!canSave || saving"
-          @click="saveAndTest"
-        />
-        <q-btn
-          unelevated
-          no-caps
-          class="channel-dialog-save"
-          :label="t('channelEditor.save')"
-          :loading="saving"
-          :disable="!canSave"
-          @click="save"
-        />
-      </q-card-actions>
-    </q-card>
-  </q-dialog>
+          <template #actions>
+            <q-btn flat no-caps :label="t('channelEditor.cancel')" @click="$emit('update:modelValue', false)" />
+            <q-btn
+              flat
+              no-caps
+              class="channel-dialog-test"
+              icon="science"
+              :label="t('channelEditor.saveAndTest')"
+              :loading="testing"
+              :disable="!canSave || saving"
+              @click="saveAndTest"
+            />
+            <q-btn
+              unelevated
+              no-caps
+              class="channel-dialog-save"
+              :label="t('channelEditor.save')"
+              :loading="saving"
+              :disable="!canSave"
+              @click="save"
+            />
+          </template>
+  </AppDialog>
 </template>
 
 <script setup lang="ts">
 import { toRef, computed } from 'vue';
 import { useI18n } from 'vue-i18n';
+import AppDialog from '../../components/common/AppDialog.vue';
 import ChannelCatalogPicker from '../../components/channels/ChannelCatalogPicker.vue';
 import ChannelConfigRow from '../../components/channels/ChannelConfigRow.vue';
 import ChannelRoutingFields from '../../components/channels/ChannelRoutingFields.vue';

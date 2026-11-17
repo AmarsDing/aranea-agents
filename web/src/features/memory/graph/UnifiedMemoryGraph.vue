@@ -77,9 +77,8 @@
             <q-item v-for="item in replay.topKRanking.value" :key="item.node_id" dense class="graph-replay-item">
               <q-item-section side>
                 <q-badge
-                  :style="{ background: memoryLayerColor(nodeLayerOf(item.node_id)) }"
+                  :class="['graph-replay__dot', `graph-replay__dot--${memoryLayerTone(nodeLayerOf(item.node_id))}`]"
                   rounded
-                  class="graph-replay__dot"
                 />
               </q-item-section>
               <q-item-section>
@@ -142,7 +141,7 @@ import {
 } from './memoryGraphLayout';
 import { useUnifiedMemoryGraph } from './composables/useUnifiedMemoryGraph';
 import { useActivationReplay } from './composables/useActivationReplay';
-import { memoryLayerColor } from '../panorama/layerMeta';
+import { memoryLayerTone } from '../panorama/layerMeta';
 import UnifiedGraphNode from '../../../components/memory/graph/UnifiedGraphNode.vue';
 import GraphFilterRail from './GraphFilterRail.vue';
 import GraphNodeDetailDrawer from '../../../components/memory/graph/GraphNodeDetailDrawer.vue';
@@ -368,5 +367,30 @@ onUnmounted(() => {
   display: inline-block;
   height: 8px;
   width: 8px;
+}
+
+/* 层色：与 --nt-memory-layer-* 令牌同源（memoryLayerColor 读取同一批令牌） */
+.graph-replay__dot--l0 {
+  background: var(--nt-memory-layer-0);
+}
+
+.graph-replay__dot--l1 {
+  background: var(--nt-memory-layer-1);
+}
+
+.graph-replay__dot--l2 {
+  background: var(--nt-memory-layer-2);
+}
+
+.graph-replay__dot--l3 {
+  background: var(--nt-memory-layer-3);
+}
+
+.graph-replay__dot--l4 {
+  background: var(--nt-memory-layer-4);
+}
+
+.graph-replay__dot--fallback {
+  background: var(--nt-memory-layer-fallback);
 }
 </style>

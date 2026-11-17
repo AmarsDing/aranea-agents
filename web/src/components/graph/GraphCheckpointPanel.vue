@@ -61,7 +61,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { useQuasar } from 'quasar';
+import { confirm } from '../../composables/useAppConfirm';
 import type { CheckpointInfo } from '../../features/graph/types';
 import { formatTime } from '../../features/graph/utils';
 
@@ -81,7 +81,6 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useI18n();
-const $q = useQuasar();
 
 const snapshotJson = computed(() => {
   if (!props.stateSnapshot) return '';
@@ -92,16 +91,15 @@ const snapshotJson = computed(() => {
   }
 });
 
-function confirmRestore() {
+async function confirmRestore() {
   const cp = props.checkpoints.find((c) => c.checkpointId === props.selectedCheckpointId);
   if (!cp) return;
-  $q.dialog({
+  const ok = await confirm({
     title: t('graphs.checkpointPanelConfirmTitle'),
     message: t('graphs.checkpointPanelConfirmMessage', { id: cp.checkpointId, step: cp.step }),
-    cancel: true,
-    persistent: true,
-  }).onOk(() => {
-    emit('restore', cp);
+    tone: 'danger',
   });
+  if (!ok) return;
+  emit('restore', cp);
 }
 </script>

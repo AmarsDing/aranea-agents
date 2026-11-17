@@ -27,6 +27,7 @@ const quasarStubs = {
   },
   'q-card': { template: '<div class="q-card-stub"><slot /></div>' },
   'q-card-section': { template: '<div class="q-card-section-stub"><slot /></div>' },
+  'q-card-actions': { template: '<div class="q-card-actions-stub"><slot /></div>' },
   'q-btn': {
     // onClick 经 v-bind="$attrs" 自动注册为原生监听；再显式 @click 会触发两次
     template: '<button type="button" v-bind="$attrs"><slot /></button>',
@@ -82,7 +83,7 @@ describe('MemberSessionDialog', () => {
       props: { open: true, memberSession: baseMember({ AgentName: '阿尔法' }) },
       global: { plugins: [i18n], stubs: quasarStubs },
     });
-    expect(wrapper.find('.member-session-dialog__title').text()).toContain('阿尔法');
+    expect(wrapper.find('.app-dialog__title').text()).toContain('阿尔法');
     expect(wrapper.findComponent(MemberSessionPanel).exists()).toBe(true);
     expect(wrapper.findComponent(MemberSessionPanel).props('embedded')).toBe(true);
   });
@@ -92,7 +93,7 @@ describe('MemberSessionDialog', () => {
       props: { open: true, memberSession: baseMember() },
       global: { plugins: [i18n], stubs: quasarStubs },
     });
-    await wrapper.find('.member-session-dialog__close').trigger('click');
+    await wrapper.find('[data-test="dialog-close"]').trigger('click');
     expect(wrapper.emitted('update:open')?.[0]).toEqual([false]);
   });
 

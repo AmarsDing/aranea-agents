@@ -1,13 +1,5 @@
 <template>
-  <tool-glass-panel v-if="!loading && rows.length === 0">
-    <q-card-section class="column items-center text-center q-pa-xl">
-      <q-avatar size="72px" color="primary" text-color="white" icon="history" />
-      <div class="text-h6 q-mt-md">{{ $t('toolsPage.runsPage.emptyTitle') }}</div>
-      <div class="text-body2 muted-caption q-mt-sm">{{ $t('toolsPage.runsPage.emptySubtitle') }}</div>
-    </q-card-section>
-  </tool-glass-panel>
-
-  <tool-glass-panel v-else>
+  <tool-glass-panel>
     <AppRegistryTable
       :shell="false"
       table-class="tool-runs-data-table"
@@ -15,8 +7,16 @@
       :rows="rows"
       :columns="columns"
       :loading="loading"
+      :error="error"
+      :empty-title="$t('toolsPage.runsPage.emptyTitle')"
+      :empty-description="$t('toolsPage.runsPage.emptySubtitle')"
+      empty-icon="history"
+      :empty-action-label="$t('shell.runs.emptyAction')"
+      empty-action-icon="restart_alt"
       hide-pagination
       :pagination="{ rowsPerPage: 0 }"
+      @retry="$emit('retry')"
+      @empty-action="$emit('reset')"
     >
       <template #body-cell-tool="props">
         <q-td :props="props">
@@ -98,10 +98,13 @@ import {
 defineProps<{
   rows: ToolInvocation[];
   loading: boolean;
+  error?: string;
 }>();
 
 defineEmits<{
   viewDetail: [row: ToolInvocation];
+  retry: [];
+  reset: [];
 }>();
 
 const { t } = useI18n();

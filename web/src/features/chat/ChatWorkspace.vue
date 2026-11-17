@@ -1,7 +1,7 @@
 <!-- Container: approved because both chat pages share session, sender and confirmation orchestration. -->
 <template>
   <q-page v-if="!coreReady" class="app-standard-page flex flex-center" data-workspace-bootstrap>
-    <q-banner v-if="coreLoadError" class="bg-negative" role="alert">
+    <q-banner v-if="coreLoadError" class="app-page-error-banner" role="alert">
       <template #avatar><q-icon name="cloud_off" /></template>
       {{ coreLoadError }}
       <template #action

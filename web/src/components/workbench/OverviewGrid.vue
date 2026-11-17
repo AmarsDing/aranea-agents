@@ -36,6 +36,9 @@
         </span>
         <span class="wb-og__foot">
           {{ line.connected ? t('workbench.grid.pendingFoot') : t('workbench.sources.pending') }}
+          <template v-if="line.connected">
+            · {{ backfillReady ? t('workbench.grid.lineDone', { n: line.done }) : '—' }}
+          </template>
         </span>
         <span v-if="line.pending > 0" class="wb-await-badge wb-og__line-badge">{{ line.pending }}</span>
       </div>
@@ -85,14 +88,14 @@ function shortTime(iso: string): string {
 .wb-og
   display: flex
   flex-direction: column
-  gap: 8px
+  gap: var(--nt-space-2)
   min-height: 0
   height: 100%
 .wb-og__kpi
   flex: none
   display: grid
   grid-template-columns: repeat(4, 1fr)
-  gap: 8px
+  gap: var(--nt-space-2)
 .wb-og__tile
   position: relative
   padding: 8px 10px
@@ -131,7 +134,7 @@ function shortTime(iso: string): string {
   flex: none
   display: grid
   grid-template-columns: repeat(4, 1fr)
-  gap: 8px
+  gap: var(--nt-space-2)
 .wb-og__line
   position: relative
   padding: 6px 10px
@@ -158,10 +161,10 @@ function shortTime(iso: string): string {
   height: 132px
   overflow-y: auto
   border-top: 1px solid var(--wb-line-hairline)
-  padding-top: 4px
+  padding-top: var(--nt-space-1)
 .wb-og__log
   display: flex
-  gap: 8px
+  gap: var(--nt-space-2)
   padding: 2px 2px
   font-size: var(--wb-caption)
   color: var(--color-text-secondary)

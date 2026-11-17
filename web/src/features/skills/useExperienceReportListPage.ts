@@ -97,6 +97,7 @@ export function useExperienceReportListPage(skillIdFromQuery?: string) {
     total: computed(() => store.total),
     loading: computed(() => store.loading),
     error: computed(() => store.error),
+    forbidden: computed(() => store.forbidden),
     pageMax,
     failureTagsDistribution,
     rootCauseReports: computed(() => store.rootCauseReports),

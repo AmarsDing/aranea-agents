@@ -293,7 +293,7 @@ defineExpose({ scrollToOffset, scrollToOffsetPassive, scrollToOffsetExact, flush
   // SP3：编辑区扁平纯净——纯色底 + 发丝边框，零玻璃零模糊
   background: var(--kb-bg-deep)
   border: 1px solid var(--kb-line-hairline)
-  border-radius: 10px
+  border-radius: 8px
 
   &__bar
     display: flex

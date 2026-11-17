@@ -12,6 +12,7 @@ import { parseMemoryCenterDeepLink } from './memoryCenterDeepLink';
 import { useMemoryCenterFacts } from './useMemoryCenterFacts';
 import { useMemoryCenterSessionMemory } from './useMemoryCenterSessionMemory';
 import { useMemoryCenterTrust } from './useMemoryCenterTrust';
+import { isForbiddenApiError } from '../../utils/kratosError';
 
 export function useMemoryCenterPage() {
   const { t } = useI18n();
@@ -30,6 +31,8 @@ export function useMemoryCenterPage() {
   const loadingAgents = ref(false);
   const loadingSessions = ref(false);
   const error = ref('');
+  /** 403 / PERMISSION_DENIED：页面渲染 forbidden 态，不提供重试。 */
+  const forbidden = ref(false);
   const pendingFactId = ref<string | null>(null);
   const pendingSessionId = ref<string | null>(null);
   const pendingAgentKey = ref<string | null>(null);
@@ -120,6 +123,7 @@ export function useMemoryCenterPage() {
 
   async function loadAll() {
     error.value = '';
+    forbidden.value = false;
     try {
       const prevAgentId = selectedAgentId.value;
       await loadAgents();
@@ -134,6 +138,7 @@ export function useMemoryCenterPage() {
       }
     } catch (err) {
       error.value = err instanceof Error ? err.message : t('memory.error.loadFailed');
+      forbidden.value = isForbiddenApiError(err);
     }
   }
 
@@ -217,6 +222,7 @@ export function useMemoryCenterPage() {
     reviewEvolutionProposal: trust.reviewEvolutionProposal,
     revertEvolutionEvent: trust.revertEvolutionEvent,
     error,
+    forbidden,
     loading,
     loadingFacts: facts.loadingFacts,
     loadingSessions,

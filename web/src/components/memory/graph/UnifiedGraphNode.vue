@@ -97,7 +97,7 @@ const shapeStyle = computed(() => {
 }
 
 .ug-node__shape--square {
-  border-radius: 10px;
+  border-radius: 8px;
 }
 
 .ug-node__shape--triangle {

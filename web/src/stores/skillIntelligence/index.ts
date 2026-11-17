@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
 import { listExperienceReports } from '../../features/skills/api';
+import { isForbiddenApiError } from '../../utils/kratosError';
 import type { ExperienceReportView, FailureTagCountView } from '../../features/skills/types';
 
 export const useSkillIntelligenceStore = defineStore('skillIntelligence', () => {
@@ -8,6 +9,8 @@ export const useSkillIntelligenceStore = defineStore('skillIntelligence', () => 
   const total = ref(0);
   const loading = ref(false);
   const error = ref('');
+  /** 列表 403：列表页据此渲染 forbidden 态（无重试）。 */
+  const forbidden = ref(false);
   const failureTagCounts = ref<FailureTagCountView[]>([]);
   const rootCauseReports = ref<ExperienceReportView[]>([]);
   /** 筛选条件下的聚合统计（随 loadExperienceReports 一并返回） */
@@ -24,6 +27,7 @@ export const useSkillIntelligenceStore = defineStore('skillIntelligence', () => 
   }): Promise<void> {
     loading.value = true;
     error.value = '';
+    forbidden.value = false;
     try {
       const res = await listExperienceReports(params);
       reports.value = res.items;
@@ -34,6 +38,7 @@ export const useSkillIntelligenceStore = defineStore('skillIntelligence', () => 
       failureCount.value = res.failureCount;
       avgScore.value = res.avgScore;
     } catch (err) {
+      forbidden.value = isForbiddenApiError(err);
       error.value = err instanceof Error ? err.message : '加载经验报告失败';
     } finally {
       loading.value = false;
@@ -45,6 +50,7 @@ export const useSkillIntelligenceStore = defineStore('skillIntelligence', () => 
     total,
     loading,
     error,
+    forbidden,
     failureTagCounts,
     rootCauseReports,
     successCount,

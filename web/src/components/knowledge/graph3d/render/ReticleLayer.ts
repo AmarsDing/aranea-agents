@@ -5,9 +5,10 @@
  *   视空间偏移 aCorner·size 实现恒面向相机（无 CPU 每帧变换）
  * - 片元程序化绘制：hover=软边圆环 + 呼吸脉冲；选中=缓旋六边形描边 + 角点亮度流（SDF）
  * - 纯呈现层：index/半径由 Canvas 注入；uTime 仅活跃期推进（lazy-render 友好）
- * - 配色对齐 UX token：hover 霓虹青 #54E6FF、选中霓虹紫 #A855F7（夜间二级强调）
+ * - 配色对齐 UX token：hover 霓虹青 / 选中霓虹紫（--nt-graph-reticle-*）
  */
 import * as THREE from 'three';
+import { canvasPalette } from '../../../../utils/canvasPalette';
 
 /** 环/六边形相对节点半径的放大倍数（四边形半尺寸 = 节点半径 × 倍率）。
  *  UX 优化：2.1/2.6 → 1.5/1.8（环贴合节点轮廓，原值在 hub 节点上大得夸张、喧宾夺主）。 */
@@ -110,8 +111,8 @@ export class ReticleLayer {
         uHoverSize: { value: 1 },
         uSelSize: { value: 1 },
         uTime: { value: 0 },
-        uHoverColor: { value: new THREE.Color(0x54e6ff) },
-        uSelColor: { value: new THREE.Color(0xa855f7) },
+        uHoverColor: { value: new THREE.Color(canvasPalette().reticle.hover) },
+        uSelColor: { value: new THREE.Color(canvasPalette().reticle.selected) },
         // 屏幕像素钳制换算系数（同 NodeLayer：drawingBufferHeight·0.5/tan(fov/2)），Canvas 注入
         uPointScale: { value: 540 },
       },

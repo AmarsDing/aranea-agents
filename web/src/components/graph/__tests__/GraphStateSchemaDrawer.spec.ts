@@ -11,17 +11,12 @@ vi.mock('vue-i18n', () => ({
   }),
 }));
 
-// $q.dialog 链式 onOk 立即执行（测试删除路径）
-const dialogOnOk = vi.hoisted(() => ({ immediate: true }));
+// 确认框走 useAppConfirm 单例：立即放行（测试删除路径）
 vi.mock('quasar', () => ({
-  useQuasar: () => ({
-    dialog: () => ({
-      onOk: (cb: () => void) => {
-        if (dialogOnOk.immediate) cb();
-        return { onCancel: () => ({}) };
-      },
-    }),
-  }),
+  useQuasar: () => ({}),
+}));
+vi.mock('../../../composables/useAppConfirm', () => ({
+  confirm: () => Promise.resolve(true),
 }));
 
 const globalStubs = {
@@ -119,10 +114,6 @@ function mountDrawer(graph: GraphDefinition, open = true) {
     global: { stubs: globalStubs },
   });
 }
-
-beforeEach(() => {
-  dialogOnOk.immediate = true;
-});
 
 describe('GraphStateSchemaDrawer - R2-8 State Schema 独立抽屉', () => {
   it('R2-G.1 头部：字段总数 + 新建字段；新建追加唯一名字段并 emit change', async () => {

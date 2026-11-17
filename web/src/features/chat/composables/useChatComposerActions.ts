@@ -1,5 +1,5 @@
 import type { Ref } from 'vue';
-import { useQuasar } from 'quasar';
+import { confirm } from '../../../composables/useAppConfirm';
 import type { useChatSessionStore } from '../../../stores/chat/sessionStore';
 import type { useChatMessageStore } from '../../../stores/chat/messageStore';
 import type { useChatRuntimeStore } from '../../../stores/chat/runtimeStore';
@@ -25,7 +25,6 @@ export interface ComposerActionDeps {
 }
 
 export function useChatComposerActions(deps: ComposerActionDeps) {
-  const $q = useQuasar();
   const {
     sessionStore,
     messageStore,
@@ -115,26 +114,27 @@ export function useChatComposerActions(deps: ComposerActionDeps) {
   }
 
   /** v2 Task 重新生成：确认后原封不动重新发送 UserMessage。 */
-  function regenerateV2Task(task: Task) {
+  async function regenerateV2Task(task: Task) {
     const sid = selectedSessionId.value;
     if (!sid || !task.UserMessage) return;
-    $q.dialog({
+    const ok = await confirm({
       title: t('chat.v2.regenerateConfirmTitle', '重新生成'),
       message: t('chat.v2.regenerateConfirmMessage', '是否重新发送该问题？'),
-      cancel: { label: t('common.cancel', '取消'), flat: true },
-      ok: { label: t('common.confirm', '确认'), color: 'primary' },
-    }).onOk(() => {
-      if (runStatus.value === 'running' || runStatus.value === 'pending') {
-        streamManager.cancelActiveStream();
-        sender.stopStreaming(sid);
-      }
-      const entityKind = sessionStore.entityKind;
-      if (entityKind === 'team') {
-        sender.sendTeamMessage(task.UserMessage);
-      } else {
-        sender.sendAgentUserContent(task.UserMessage);
-      }
+      cancelLabel: t('common.cancel', '取消'),
+      confirmLabel: t('common.confirm', '确认'),
+      tone: 'primary',
     });
+    if (!ok) return;
+    if (runStatus.value === 'running' || runStatus.value === 'pending') {
+      streamManager.cancelActiveStream();
+      sender.stopStreaming(sid);
+    }
+    const entityKind = sessionStore.entityKind;
+    if (entityKind === 'team') {
+      sender.sendTeamMessage(task.UserMessage);
+    } else {
+      sender.sendAgentUserContent(task.UserMessage);
+    }
   }
 
   async function cancelBackgroundJob(job: { id: string; source: string }) {
