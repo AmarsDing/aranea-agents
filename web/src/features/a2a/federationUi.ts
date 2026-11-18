@@ -121,8 +121,12 @@ export function federationOrgDisplay(t: ComposerTranslation, orgID: string): str
 /** 联邦组织列表 */
 export function federationOrgColumns(t: ComposerTranslation): RegistryTableColumn<FederationOrg>[] {
   return [
-    registryCol<FederationOrg>('name', t('a2a.federation.orgColName'), 'name', 'left', REGISTRY_COL_W.name),
-    registryCol<FederationOrg>('domain', t('a2a.federation.orgColDomain'), 'domain', 'left', REGISTRY_COL_W.name),
+    registryCol<FederationOrg>('name', t('a2a.federation.orgColName'), 'name', 'left', REGISTRY_COL_W.name, {
+      cardRole: 'title',
+    }),
+    registryCol<FederationOrg>('domain', t('a2a.federation.orgColDomain'), 'domain', 'left', REGISTRY_COL_W.name, {
+      cardRole: 'meta',
+    }),
     registryCol<FederationOrg>(
       'trust_level',
       t('a2a.federation.orgColTrust'),
@@ -130,14 +134,24 @@ export function federationOrgColumns(t: ComposerTranslation): RegistryTableColum
       'left',
       REGISTRY_COL_W.metric,
     ),
-    registryCol<FederationOrg>('auth_type', t('a2a.federation.orgColAuth'), 'auth_type', 'left', REGISTRY_COL_W.metric),
-    registryCol<FederationOrg>('status', t('a2a.federation.orgColStatus'), 'status', 'left', REGISTRY_COL_W.status),
+    registryCol<FederationOrg>(
+      'auth_type',
+      t('a2a.federation.orgColAuth'),
+      'auth_type',
+      'left',
+      REGISTRY_COL_W.metric,
+      { cardRole: 'meta' },
+    ),
+    registryCol<FederationOrg>('status', t('a2a.federation.orgColStatus'), 'status', 'left', REGISTRY_COL_W.status, {
+      cardRole: 'status',
+    }),
     registryCol<FederationOrg>(
       'joined_at',
       t('a2a.federation.orgColJoinedAt'),
       'joined_at',
       'left',
       REGISTRY_COL_W.nameWide,
+      { cardRole: 'meta' },
     ),
     registryColActions<FederationOrg>(REGISTRY_COL_W.actionsWide, ''),
   ];
@@ -152,6 +166,7 @@ export function federationDirectoryColumns(t: ComposerTranslation): RegistryTabl
       (row) => row.card.display_name || row.card.agent_id,
       'left',
       REGISTRY_COL_W.nameWide,
+      { cardRole: 'title' },
     ),
     registryCol<FederationAgentEntry>(
       'org',
@@ -159,6 +174,7 @@ export function federationDirectoryColumns(t: ComposerTranslation): RegistryTabl
       (row) => row.org.name || row.org.domain,
       'left',
       REGISTRY_COL_W.name,
+      { cardRole: 'meta' },
     ),
     registryCol<FederationAgentEntry>(
       'capabilities',

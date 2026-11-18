@@ -18,8 +18,6 @@ const ACTION_NAME = /^(actions?|ops?|operations?|operate)$/i;
 // 列标题为“操作”或 Actions。中文用转义书写，免得被文案检查当成界面文字
 const ACTION_LABEL = /^(\u64cd\u4f5c|actions?)$/i;
 const SELECT_NAME = /^(select|selection|check|expand)$/i;
-/** 列太多的表是数据表（日志、流水），默认不拆成卡片 */
-const CARD_MAX_COLUMNS = 8;
 
 export function cellValue(col: RegistryColumnLike, row: Record<string, unknown>): unknown {
   const raw = typeof col.field === 'function' ? col.field(row) : col.field ? row[col.field] : undefined;
@@ -57,12 +55,12 @@ export function splitColumns<T extends RegistryColumnLike>(cols: readonly T[]): 
 }
 
 /**
- * 没有手动选过时的默认视图：有操作列、列数不多的是「一行一个对象」的登记表，默认卡片；
- * 其余（日志、流水、明细）默认表格。
+ * 没有手动选过时的默认视图：列定义上标了卡片角色的（「一行一个对象」的登记表）默认卡片；
+ * 没标的（运行记录、审计、日志、明细）默认表格，用户仍可手动切换。
+ * 标注是显式选择——新加的列表不标就是表格，不会意外变成卡片。
  */
 export function defaultViewMode(cols: readonly RegistryColumnLike[]): RegistryViewMode {
-  if (cols.length === 0 || cols.length > CARD_MAX_COLUMNS) return 'table';
-  return cols.some(isActionColumn) ? 'cards' : 'table';
+  return cols.some((c) => c.cardRole && c.cardRole !== 'hidden') ? 'cards' : 'table';
 }
 
 export function loadViewMode(key: string): RegistryViewMode | null {

@@ -101,6 +101,14 @@ export function registryColEnabled<T extends object>(
   return registryCol<T>('enabled', label, field, 'center', REGISTRY_COL_W.enabled, { sortable: false });
 }
 
+/** 给预设列（启用开关、操作列等）补上卡片角色。 */
+export function withCardRole<T extends object>(
+  column: RegistryTableColumn<T>,
+  cardRole: RegistryCardRole,
+): RegistryTableColumn<T> {
+  return { ...column, cardRole };
+}
+
 export function registryFieldValue(row: Record<string, unknown>, field: RegistryTableColumn['field']): unknown {
   if (typeof field === 'function') return field(row);
   if (typeof field === 'string') return row[field];

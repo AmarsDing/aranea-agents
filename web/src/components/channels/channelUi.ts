@@ -120,12 +120,18 @@ export async function copyChannelWebhookURL(row: ChannelRow): Promise<string> {
 
 export function channelTableColumns(t: (key: string) => string): QTableColumn<ChannelRow>[] {
   return [
-    registryCol<ChannelRow>('name', t('channelsPage.colName'), 'name', 'left', REGISTRY_COL_W.name),
-    registryCol<ChannelRow>('type', t('channelsPage.colType'), 'config_json', 'left', '15%'),
-    registryCol<ChannelRow>('external_id', t('channelsPage.colExternalId'), 'metadata_json', 'left', '16%'),
-    registryCol<ChannelRow>('status', t('channelsPage.colStatus'), 'status', 'left', '12%'),
+    registryCol<ChannelRow>('name', t('channelsPage.colName'), 'name', 'left', REGISTRY_COL_W.name, {
+      cardRole: 'title',
+    }),
+    registryCol<ChannelRow>('type', t('channelsPage.colType'), 'config_json', 'left', '15%', { cardRole: 'meta' }),
+    registryCol<ChannelRow>('external_id', t('channelsPage.colExternalId'), 'metadata_json', 'left', '16%', {
+      cardRole: 'meta',
+    }),
+    registryCol<ChannelRow>('status', t('channelsPage.colStatus'), 'status', 'left', '12%', { cardRole: 'status' }),
     registryColEnabled<ChannelRow>(),
-    registryCol<ChannelRow>('updated', t('channelsPage.colUpdated'), 'updated_at', 'left', REGISTRY_COL_W.time),
+    registryCol<ChannelRow>('updated', t('channelsPage.colUpdated'), 'updated_at', 'left', REGISTRY_COL_W.time, {
+      cardRole: 'meta',
+    }),
     registryColActions<ChannelRow>('80px'),
   ];
 }

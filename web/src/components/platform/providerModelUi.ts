@@ -5,12 +5,12 @@ import { toNullableNumber, hasPricingConfigured } from '../../features/platform/
 
 /** ProviderModelsTable 列定义 */
 export const PROVIDER_MODEL_TABLE_COLUMNS: QTableColumn<PlatformResource>[] = [
-  registryCol<PlatformResource>('model', '模型', 'name', 'left', '28%'),
-  registryCol<PlatformResource>('size', '大小', 'model', 'center', REGISTRY_COL_W.narrow),
-  registryCol<PlatformResource>('ctx', '上下文', 'model', 'center', REGISTRY_COL_W.metric),
-  registryCol<PlatformResource>('tps', 'TPS', 'model', 'center', REGISTRY_COL_W.metric),
-  registryCol<PlatformResource>('channel', '通道', 'model', 'center', REGISTRY_COL_W.narrow),
-  registryCol<PlatformResource>('usage', '热度 / 用量', 'model', 'left', '18%'),
+  registryCol<PlatformResource>('model', '模型', 'name', 'left', '28%', { cardRole: 'title' }),
+  registryCol<PlatformResource>('size', '大小', 'model', 'center', REGISTRY_COL_W.narrow, { cardRole: 'meta' }),
+  registryCol<PlatformResource>('ctx', '上下文', 'model', 'center', REGISTRY_COL_W.metric, { cardRole: 'meta' }),
+  registryCol<PlatformResource>('tps', 'TPS', 'model', 'center', REGISTRY_COL_W.metric, { cardRole: 'meta' }),
+  registryCol<PlatformResource>('channel', '通道', 'model', 'center', REGISTRY_COL_W.narrow, { cardRole: 'meta' }),
+  registryCol<PlatformResource>('usage', '热度 / 用量', 'model', 'left', '18%', { cardRole: 'metric' }),
   registryCol<PlatformResource>('secret', '密钥', 'model', 'left', '12%'),
   registryColActions<PlatformResource>(REGISTRY_COL_W.actionsWide),
 ];
@@ -25,11 +25,16 @@ export function isLocalChannelModel(row: PlatformResource): boolean {
 
 /** 非 models 资源的 ResourceManager 通用表 */
 export const PLATFORM_RESOURCE_TABLE_COLUMNS: QTableColumn<PlatformResource>[] = [
-  registryCol<PlatformResource>('name', 'Name', 'name', 'left', REGISTRY_COL_W.name, { sortable: true }),
-  registryCol<PlatformResource>('key', 'Key', 'key', 'left', REGISTRY_COL_W.name, { sortable: true }),
-  registryCol<PlatformResource>('provider', 'Provider', 'provider', 'left', REGISTRY_COL_W.category),
-  registryCol<PlatformResource>('model', 'Model', 'model', 'left', REGISTRY_COL_W.name),
-  registryCol<PlatformResource>('status', 'Status', 'status', 'left', REGISTRY_COL_W.status),
+  registryCol<PlatformResource>('name', 'Name', 'name', 'left', REGISTRY_COL_W.name, {
+    cardRole: 'title',
+    sortable: true,
+  }),
+  registryCol<PlatformResource>('key', 'Key', 'key', 'left', REGISTRY_COL_W.name, { cardRole: 'meta', sortable: true }),
+  registryCol<PlatformResource>('provider', 'Provider', 'provider', 'left', REGISTRY_COL_W.category, {
+    cardRole: 'meta',
+  }),
+  registryCol<PlatformResource>('model', 'Model', 'model', 'left', REGISTRY_COL_W.name, { cardRole: 'meta' }),
+  registryCol<PlatformResource>('status', 'Status', 'status', 'left', REGISTRY_COL_W.status, { cardRole: 'status' }),
   registryColActions<PlatformResource>(),
 ];
 

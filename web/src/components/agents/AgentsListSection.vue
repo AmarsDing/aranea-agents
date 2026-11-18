@@ -109,7 +109,7 @@
               :selected="selectedIds.includes(agent.id)"
               @toggle-select="$emit('toggle-select', $event)"
               @inspect="$emit('inspect', $event)"
-            @toggle-favorite="$emit('toggle-favorite', $event)"
+              @toggle-favorite="$emit('toggle-favorite', $event)"
               @copy-key="$emit('copy-key', $event)"
               @delete="$emit('delete', $event)"
               @duplicate="$emit('duplicate', $event)"
@@ -121,6 +121,7 @@
 
     <AppRegistryTable
       v-else
+      view="table"
       class="agents-table"
       :rows="agents"
       :columns="tableColumns"
@@ -340,7 +341,9 @@ function onBatchRun(key: string) {
 // 内置管家 = system_builtin 且非编制领导（与后端 CleanupNonSystemData 的保留规则一致）：
 // 精灵/系统/记忆/技能管家进管家区；dept_lead / company_lead 进编制/预设区。
 const isOrgLead = (a: Agent) => a.agent_variant === 'dept_lead' || a.agent_variant === 'company_lead';
-const builtinAgents = computed(() => props.agents.filter((a) => a.readonly && a.kind === 'system_builtin' && !isOrgLead(a)));
+const builtinAgents = computed(() =>
+  props.agents.filter((a) => a.readonly && a.kind === 'system_builtin' && !isOrgLead(a)),
+);
 const presetAgents = computed(() =>
   props.agents.filter((a) => isOrgLead(a) || (!a.readonly && a.kind === 'ecosystem_preset')),
 );

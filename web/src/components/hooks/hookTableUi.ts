@@ -10,10 +10,15 @@ type I18nT = (key: string) => string;
 
 export function createHooksTableColumns(t: I18nT): QTableColumn<HookRow>[] {
   return [
-    registryCol<HookRow>('name', t('hooksPage.colName'), 'name', 'left', REGISTRY_COL_W.nameWide),
+    registryCol<HookRow>('name', t('hooksPage.colName'), 'name', 'left', REGISTRY_COL_W.nameWide, {
+      cardRole: 'title',
+    }),
     registryCol<HookRow>('rule', t('hooksPage.colRule'), 'config_json', 'left', REGISTRY_COL_W.desc),
-    registryCol<HookRow>('sort', t('hooksPage.colSort'), 'sort_order', 'center', REGISTRY_COL_W.narrow),
+    registryCol<HookRow>('sort', t('hooksPage.colSort'), 'sort_order', 'center', REGISTRY_COL_W.narrow, {
+      cardRole: 'meta',
+    }),
     registryCol<HookRow>('enabled', t('hooksPage.colEnabled'), 'enabled', 'center', REGISTRY_COL_W.enabled, {
+      cardRole: 'status',
       sortable: false,
     }),
     registryColActions<HookRow>(REGISTRY_COL_W.actionsWide, t('hooksPage.colActions')),
@@ -22,9 +27,12 @@ export function createHooksTableColumns(t: I18nT): QTableColumn<HookRow>[] {
 
 export function createHooksAgentTableColumns(t: I18nT): QTableColumn<HookRow>[] {
   return [
-    registryCol<HookRow>('name', t('hooksPage.colName'), 'name', 'left', REGISTRY_COL_W.nameWide),
+    registryCol<HookRow>('name', t('hooksPage.colName'), 'name', 'left', REGISTRY_COL_W.nameWide, {
+      cardRole: 'title',
+    }),
     registryCol<HookRow>('rule', t('hooksPage.colRule'), 'config_json', 'left', REGISTRY_COL_W.desc),
     registryCol<HookRow>('enabled', t('hooksPage.colEnabled'), 'enabled', 'center', REGISTRY_COL_W.enabled, {
+      cardRole: 'status',
       sortable: false,
     }),
     registryColActions<HookRow>(REGISTRY_COL_W.actionsWide, t('hooksPage.colActions')),

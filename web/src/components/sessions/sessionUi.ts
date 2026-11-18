@@ -41,12 +41,12 @@ export const sessionsTableSelectionColumn = registryCol('select', '', 'id', 'lef
 });
 
 export const sessionsTableColumns = [
-  registryCol('session', '会话', 'title', 'left', '16%; max-width: 168px', { sortable: false }),
-  registryCol('owner', '类型 / 归属', 'owner_type', 'left', '128px', { sortable: false }),
+  registryCol('session', '会话', 'title', 'left', '16%; max-width: 168px', { cardRole: 'title', sortable: false }),
+  registryCol('owner', '类型 / 归属', 'owner_type', 'left', '128px', { cardRole: 'meta', sortable: false }),
   registryCol('context', '上下文', 'context_used_ratio', 'left', '108px', { sortable: false }),
-  registryCol('usage', '消耗', 'total_tokens', 'left', '108px', { sortable: false }),
-  registryCol('time', '时间', 'last_message_at', 'left', '128px', { sortable: false }),
-  registryCol('status', '状态', 'status', 'left', '80px', { sortable: false }),
+  registryCol('usage', '消耗', 'total_tokens', 'left', '108px', { cardRole: 'metric', sortable: false }),
+  registryCol('time', '时间', 'last_message_at', 'left', '128px', { cardRole: 'meta', sortable: false }),
+  registryCol('status', '状态', 'status', 'left', '80px', { cardRole: 'status', sortable: false }),
   registryCol('actions', '操作', 'id', 'right', '168px', {
     sortable: false,
     classes: 'app-registry-col-actions',

@@ -28,11 +28,10 @@ describe('splitColumns', () => {
 });
 
 describe('defaultViewMode', () => {
-  it('uses cards for object registries and tables for logs', () => {
-    expect(defaultViewMode(cols)).toBe('cards');
-    expect(defaultViewMode(cols.filter((c) => c.name !== 'actions'))).toBe('table');
-    const wide = [...Array.from({ length: 9 }, (_, i) => ({ name: `c${i}` })), { name: 'actions' }];
-    expect(defaultViewMode(wide)).toBe('table');
+  it('uses cards only for columns tagged with card roles', () => {
+    expect(defaultViewMode(cols)).toBe('table');
+    expect(defaultViewMode([{ name: 'name', cardRole: 'title' }, { name: 'actions' }])).toBe('cards');
+    expect(defaultViewMode([{ name: 'raw', cardRole: 'hidden' }, { name: 'actions' }])).toBe('table');
     expect(defaultViewMode([])).toBe('table');
   });
 });

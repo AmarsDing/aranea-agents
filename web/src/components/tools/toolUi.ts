@@ -7,16 +7,23 @@ import {
   registryCol,
   registryColActions,
   registryColEnabled,
+  withCardRole,
 } from '../../features/ui/registryTableColumns';
 
 /** ToolsTable 列定义（函数形式，随 locale 取值） */
 export function toolTableColumns(): QTableColumn<Tool>[] {
   const t = i18n.global.t;
   return [
-    registryCol<Tool>('name', t('toolsPage.columns.tool'), 'display_name', 'left', REGISTRY_COL_W.nameWide),
-    registryCol<Tool>('category', t('toolsPage.columns.categorySource'), 'category', 'left', REGISTRY_COL_W.category),
-    registryCol<Tool>('runtime', t('toolsPage.columns.runtime'), 'runtime_status', 'left', REGISTRY_COL_W.status),
-    registryColEnabled<Tool>(t('toolsPage.columns.enabled')),
+    registryCol<Tool>('name', t('toolsPage.columns.tool'), 'display_name', 'left', REGISTRY_COL_W.nameWide, {
+      cardRole: 'title',
+    }),
+    registryCol<Tool>('category', t('toolsPage.columns.categorySource'), 'category', 'left', REGISTRY_COL_W.category, {
+      cardRole: 'meta',
+    }),
+    registryCol<Tool>('runtime', t('toolsPage.columns.runtime'), 'runtime_status', 'left', REGISTRY_COL_W.status, {
+      cardRole: 'meta',
+    }),
+    withCardRole(registryColEnabled<Tool>(t('toolsPage.columns.enabled')), 'status'),
     registryCol<Tool>(
       'overrides',
       t('toolsPage.columns.overrides'),
@@ -24,7 +31,9 @@ export function toolTableColumns(): QTableColumn<Tool>[] {
       'center',
       REGISTRY_COL_W.narrow,
     ),
-    registryCol<Tool>('stats', t('toolsPage.columns.stats'), 'invoke_count', 'left', REGISTRY_COL_W.status),
+    registryCol<Tool>('stats', t('toolsPage.columns.stats'), 'invoke_count', 'left', REGISTRY_COL_W.status, {
+      cardRole: 'metric',
+    }),
     registryCol<Tool>(
       'success_rate',
       t('toolsPage.columns.successRate'),
@@ -39,8 +48,12 @@ export function toolTableColumns(): QTableColumn<Tool>[] {
       'left',
       REGISTRY_COL_W.status,
     ),
-    registryCol<Tool>('last', t('toolsPage.columns.last'), 'last_invoked_at', 'left', REGISTRY_COL_W.timeWide),
-    registryCol<Tool>('risk', t('toolsPage.columns.risk'), 'risk_level', 'left', REGISTRY_COL_W.status),
+    registryCol<Tool>('last', t('toolsPage.columns.last'), 'last_invoked_at', 'left', REGISTRY_COL_W.timeWide, {
+      cardRole: 'meta',
+    }),
+    registryCol<Tool>('risk', t('toolsPage.columns.risk'), 'risk_level', 'left', REGISTRY_COL_W.status, {
+      cardRole: 'meta',
+    }),
     registryColActions<Tool>(REGISTRY_COL_W.actions, t('toolsPage.columns.actions')),
   ];
 }

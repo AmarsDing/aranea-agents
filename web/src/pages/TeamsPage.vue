@@ -23,12 +23,7 @@
       @refresh="loadRows"
     />
 
-    <AppStatePanel
-      v-if="pageState === 'loading'"
-      class="q-mt-lg"
-      variant="loading"
-      :rows="4"
-    />
+    <AppStatePanel v-if="pageState === 'loading'" class="q-mt-lg" variant="loading" :rows="4" />
     <AppStatePanel
       v-else-if="pageState === 'error'"
       class="q-mt-lg"
@@ -38,11 +33,7 @@
       action-icon="refresh"
       @action="loadRows"
     />
-    <AppStatePanel
-      v-else-if="pageState === 'forbidden'"
-      class="q-mt-lg"
-      variant="forbidden"
-    />
+    <AppStatePanel v-else-if="pageState === 'forbidden'" class="q-mt-lg" variant="forbidden" />
     <template v-else-if="pageState === 'empty'">
       <AppStatePanel
         class="q-mt-lg"
@@ -74,11 +65,7 @@
       </div>
     </template>
 
-    <div
-      v-else
-      class="teams-workspace q-mt-lg"
-      :class="{ 'teams-workspace--inspecting': inspectorOpen }"
-    >
+    <div v-else class="teams-workspace q-mt-lg" :class="{ 'teams-workspace--inspecting': inspectorOpen }">
       <div class="teams-workspace__main">
         <AppStatePanel
           v-if="pageState === 'partial'"
@@ -122,7 +109,11 @@
           </template>
           <template #body-cell-name="slotProps">
             <q-td :props="slotProps">
-              <button type="button" class="registry-table-link app-registry-cell-primary" @click="inspectTeam(slotProps.row)">
+              <button
+                type="button"
+                class="registry-table-link app-registry-cell-primary"
+                @click="inspectTeam(slotProps.row)"
+              >
                 {{ slotProps.row.display_name }}
               </button>
               <div class="app-registry-cell-sub ellipsis">{{ slotProps.row.team_key }}</div>
@@ -144,7 +135,9 @@
             <q-td :props="slotProps">
               <div class="row items-center no-wrap q-gutter-xs">
                 <AppStatusChip :status="slotProps.row.status" />
-                <q-badge v-if="slotProps.row.has_active_run" color="positive" rounded>{{ t('shell.registry.activeRun') }}</q-badge>
+                <q-badge v-if="slotProps.row.has_active_run" color="positive" rounded>{{
+                  t('shell.registry.activeRun')
+                }}</q-badge>
               </div>
             </q-td>
           </template>
@@ -154,22 +147,69 @@
           <template #body-cell-actions="slotProps">
             <q-td :props="slotProps">
               <div class="app-registry-cell-actions">
-                <q-btn flat dense round icon="info" color="primary" :aria-label="t('shell.registry.inspect')" @click="inspectTeam(slotProps.row)" />
-                <q-btn flat dense round icon="format_list_bulleted" color="primary" :aria-label="t('shell.registry.runs')" @click="openRuns(slotProps.row)" />
-                <q-btn flat dense round icon="play_arrow" color="primary" :aria-label="t('shell.registry.runTest')" @click="openRunTest(slotProps.row)" />
-                <q-btn flat dense round icon="edit" color="primary" :aria-label="t('shell.registry.edit')" @click="openEdit(slotProps.row)" />
+                <q-btn
+                  flat
+                  dense
+                  round
+                  icon="info"
+                  color="primary"
+                  :aria-label="t('shell.registry.inspect')"
+                  @click="inspectTeam(slotProps.row)"
+                />
+                <q-btn
+                  flat
+                  dense
+                  round
+                  icon="format_list_bulleted"
+                  color="primary"
+                  :aria-label="t('shell.registry.runs')"
+                  @click="openRuns(slotProps.row)"
+                />
+                <q-btn
+                  flat
+                  dense
+                  round
+                  icon="play_arrow"
+                  color="primary"
+                  :aria-label="t('shell.registry.runTest')"
+                  @click="openRunTest(slotProps.row)"
+                />
+                <q-btn
+                  flat
+                  dense
+                  round
+                  icon="edit"
+                  color="primary"
+                  :aria-label="t('shell.registry.edit')"
+                  @click="openEdit(slotProps.row)"
+                />
                 <q-btn-dropdown flat dense round dropdown-icon="more_vert" :aria-label="t('shell.registry.actions')">
                   <q-list dense>
-                    <q-item v-if="slotProps.row.has_active_run" v-close-popup clickable @click="openTeamObservatory(slotProps.row)">
+                    <q-item
+                      v-if="slotProps.row.has_active_run"
+                      v-close-popup
+                      clickable
+                      @click="openTeamObservatory(slotProps.row)"
+                    >
                       <q-item-section>{{ t('shell.registry.observatory') }}</q-item-section>
                     </q-item>
                     <q-item v-close-popup clickable @click="duplicate(slotProps.row)">
                       <q-item-section>{{ t('shell.registry.duplicate') }}</q-item-section>
                     </q-item>
-                    <q-item v-if="canRetryTeam(slotProps.row)" v-close-popup clickable @click="retryTeam(slotProps.row)">
+                    <q-item
+                      v-if="canRetryTeam(slotProps.row)"
+                      v-close-popup
+                      clickable
+                      @click="retryTeam(slotProps.row)"
+                    >
                       <q-item-section>{{ t('shell.registry.retry') }}</q-item-section>
                     </q-item>
-                    <q-item v-if="!slotProps.row.readonly" v-close-popup clickable @click="confirmRemove(slotProps.row)">
+                    <q-item
+                      v-if="!slotProps.row.readonly"
+                      v-close-popup
+                      clickable
+                      @click="confirmRemove(slotProps.row)"
+                    >
                       <q-item-section class="text-negative">{{ t('shell.registry.remove') }}</q-item-section>
                     </q-item>
                   </q-list>
@@ -187,26 +227,59 @@
       >
         <div v-if="inspectedTeam && inspectedDefinition" class="registry-inspector-stack">
           <AppStatusChip :status="inspectedTeam.status" />
-          <p class="registry-inspector-description">{{ inspectedDefinition.description || t('shell.registry.noDescription') }}</p>
+          <p class="registry-inspector-description">
+            {{ inspectedDefinition.description || t('shell.registry.noDescription') }}
+          </p>
           <dl class="registry-facts">
-            <div><dt>{{ t('shell.registry.identifier') }}</dt><dd class="mono">{{ inspectedTeam.team_key }}</dd></div>
-            <div><dt>{{ t('shell.registry.department') }}</dt><dd>{{ departmentLabel(inspectedTeam) }}</dd></div>
-            <div><dt>{{ t('shell.registry.mode') }}</dt><dd>{{ teamModeLabel(inspectedDefinition.mode) }}</dd></div>
-            <div><dt>{{ t('shell.registry.members') }}</dt><dd class="mono">{{ inspectedDefinition.members.length }}</dd></div>
-            <div><dt>{{ t('shell.registry.updatedAt') }}</dt><dd class="mono">{{ formatDate(inspectedTeam.updated_at) }}</dd></div>
+            <div>
+              <dt>{{ t('shell.registry.identifier') }}</dt>
+              <dd class="mono">{{ inspectedTeam.team_key }}</dd>
+            </div>
+            <div>
+              <dt>{{ t('shell.registry.department') }}</dt>
+              <dd>{{ departmentLabel(inspectedTeam) }}</dd>
+            </div>
+            <div>
+              <dt>{{ t('shell.registry.mode') }}</dt>
+              <dd>{{ teamModeLabel(inspectedDefinition.mode) }}</dd>
+            </div>
+            <div>
+              <dt>{{ t('shell.registry.members') }}</dt>
+              <dd class="mono">{{ inspectedDefinition.members.length }}</dd>
+            </div>
+            <div>
+              <dt>{{ t('shell.registry.updatedAt') }}</dt>
+              <dd class="mono">{{ formatDate(inspectedTeam.updated_at) }}</dd>
+            </div>
           </dl>
           <section class="registry-inspector-section">
             <h3>{{ t('shell.registry.members') }}</h3>
             <ul class="registry-member-list">
               <li v-for="member in inspectedDefinition.members" :key="`${member.agent_id}:${member.sort_order}`">
-                <span>{{ member.name || agentName(storeAgents, member.agent_id) }} · {{ teamRoleLabel(member.role) }}</span>
+                <span
+                  >{{ member.name || agentName(storeAgents, member.agent_id) }} · {{ teamRoleLabel(member.role) }}</span
+                >
                 <AppStatusChip :status="member.enabled ? 'enabled' : 'disabled'" />
               </li>
             </ul>
           </section>
           <div class="row q-gutter-sm">
-            <q-btn outline no-caps color="primary" icon="format_list_bulleted" :label="t('shell.registry.runs')" @click="openRuns(inspectedTeam)" />
-            <q-btn unelevated no-caps color="primary" icon="edit" :label="t('shell.registry.edit')" @click="openEdit(inspectedTeam)" />
+            <q-btn
+              outline
+              no-caps
+              color="primary"
+              icon="format_list_bulleted"
+              :label="t('shell.registry.runs')"
+              @click="openRuns(inspectedTeam)"
+            />
+            <q-btn
+              unelevated
+              no-caps
+              color="primary"
+              icon="edit"
+              :label="t('shell.registry.edit')"
+              @click="openEdit(inspectedTeam)"
+            />
           </div>
         </div>
       </AppRegistryInspector>
@@ -320,7 +393,6 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
-import type { QTableColumn } from 'quasar';
 import AppPageHero from '../components/layout/AppPageHero.vue';
 import AppRegistryInspector from '../components/layout/AppRegistryInspector.vue';
 import AppRegistryTable from '../components/layout/AppRegistryTable.vue';
@@ -333,7 +405,7 @@ import TeamTestDialog from '../components/teams/TeamTestDialog.vue';
 import TeamToolbar from '../components/teams/TeamToolbar.vue';
 import { useTeamsPage } from '../features/teams/useTeamsPage';
 import { useTeamsBulk } from '../features/teams/useTeamsBulk';
-import { REGISTRY_COL_W, registryCol } from '../features/ui/registryTableColumns';
+import { REGISTRY_COL_W, registryCol, type RegistryTableColumn } from '../features/ui/registryTableColumns';
 import { useTeamsStore } from '../stores/teams';
 import { storeToRefs } from 'pinia';
 import { useI18n } from 'vue-i18n';
@@ -463,14 +535,32 @@ const pageState = computed(() =>
   }),
 );
 
-const teamColumns = computed<QTableColumn<Team>[]>(() => [
+const teamColumns = computed<RegistryTableColumn<Team>[]>(() => [
   registryCol<Team>('select', '', 'id', 'left', REGISTRY_COL_W.select, { sortable: false }),
-  { name: 'name', label: t('shell.registry.name'), field: 'display_name', align: 'left' },
-  { name: 'department', label: t('shell.registry.department'), field: 'taxonomy_industry_id', align: 'left' },
-  { name: 'mode', label: t('shell.registry.mode'), field: (row) => teamDefinition(row).mode, align: 'left' },
-  { name: 'members', label: t('shell.registry.members'), field: (row) => teamDefinition(row).members.length, align: 'right' },
-  { name: 'status', label: t('shell.registry.status'), field: 'status', align: 'left' },
-  { name: 'updated_at', label: t('shell.registry.updatedAt'), field: 'updated_at', align: 'left' },
+  { name: 'name', cardRole: 'title', label: t('shell.registry.name'), field: 'display_name', align: 'left' },
+  {
+    name: 'department',
+    cardRole: 'meta',
+    label: t('shell.registry.department'),
+    field: 'taxonomy_industry_id',
+    align: 'left',
+  },
+  {
+    name: 'mode',
+    cardRole: 'meta',
+    label: t('shell.registry.mode'),
+    field: (row) => teamDefinition(row).mode,
+    align: 'left',
+  },
+  {
+    name: 'members',
+    cardRole: 'metric',
+    label: t('shell.registry.members'),
+    field: (row) => teamDefinition(row).members.length,
+    align: 'right',
+  },
+  { name: 'status', cardRole: 'status', label: t('shell.registry.status'), field: 'status', align: 'left' },
+  { name: 'updated_at', cardRole: 'meta', label: t('shell.registry.updatedAt'), field: 'updated_at', align: 'left' },
   { name: 'actions', label: t('shell.registry.actions'), field: 'id', align: 'right' },
 ]);
 
