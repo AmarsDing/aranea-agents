@@ -91,3 +91,33 @@ describe('nextCardIndex', () => {
     expect(nextCardIndex(rects, 4, 'ArrowDown')).toBe(4);
   });
 });
+
+describe('splitColumns with card roles', () => {
+  const roleCols = [
+    { name: 'name', label: '名称', field: 'name', cardRole: 'title' as const },
+    { name: 'source', label: '来源', field: 'source', cardRole: 'meta' as const },
+    { name: 'runs', label: '运行', field: 'runs', cardRole: 'metric' as const },
+    { name: 'enabled', label: '启用', field: 'enabled', cardRole: 'status' as const },
+    { name: 'scope', label: '作用域', field: 'scope', cardRole: 'meta' as const },
+    { name: 'raw', label: '原始', field: 'raw', cardRole: 'hidden' as const },
+    { name: 'note', label: '备注', field: 'note' },
+    { name: 'actions', label: '操作' },
+  ];
+
+  it('places each column by its role and keeps unlabeled ones in the body', () => {
+    const layout = splitColumns(roleCols);
+    expect(layout.title?.name).toBe('name');
+    expect(layout.status?.name).toBe('enabled');
+    expect(layout.metric?.name).toBe('runs');
+    expect(layout.meta.map((c) => c.name)).toEqual(['source', 'scope']);
+    expect(layout.body.map((c) => c.name)).toEqual(['note']);
+    expect(layout.action?.name).toBe('actions');
+  });
+
+  it('falls back to the first unlabeled column as title', () => {
+    const layout = splitColumns([{ name: 'a', cardRole: 'meta' as const }, { name: 'b' }, { name: 'c' }]);
+    expect(layout.title?.name).toBe('b');
+    expect(layout.body.map((c) => c.name)).toEqual(['c']);
+    expect(layout.status).toBeNull();
+  });
+});

@@ -8,6 +8,7 @@ export type RegistryViewMode = 'cards' | 'table';
 export type RegistryColumnLike = {
   name?: string;
   label?: string;
+  cardRole?: 'title' | 'status' | 'metric' | 'meta' | 'hidden';
   field?: string | ((row: Record<string, unknown>) => unknown);
   format?: (value: unknown, row: Record<string, unknown>) => unknown;
 };
@@ -30,13 +31,29 @@ export function isActionColumn(col: RegistryColumnLike): boolean {
 }
 
 /** 把列分成：标题列、操作列、其余正文列（选择 / 展开这类功能列不进卡片）。 */
-export function splitColumns<T extends RegistryColumnLike>(
-  cols: readonly T[],
-): { title: T | null; action: T | null; body: T[] } {
-  const usable = cols.filter((c) => !SELECT_NAME.test(c.name ?? ''));
+export type CardLayout<T> = {
+  title: T | null;
+  status: T | null;
+  metric: T | null;
+  meta: T[];
+  action: T | null;
+  body: T[];
+};
+
+/**
+ * 按卡片角色拆列。没标角色的列：首列作标题，其余进正文；
+ * 标了 hidden 的列卡片里不出现。操作列始终沉到卡片底部。
+ */
+export function splitColumns<T extends RegistryColumnLike>(cols: readonly T[]): CardLayout<T> {
+  const usable = cols.filter((c) => !SELECT_NAME.test(c.name ?? '') && c.cardRole !== 'hidden');
   const action = usable.find(isActionColumn) ?? null;
   const rest = usable.filter((c) => c !== action);
-  return { title: rest[0] ?? null, action, body: rest.slice(1) };
+  const title = rest.find((c) => c.cardRole === 'title') ?? rest.find((c) => !c.cardRole) ?? null;
+  const status = rest.find((c) => c.cardRole === 'status') ?? null;
+  const metric = rest.find((c) => c.cardRole === 'metric') ?? null;
+  const meta = rest.filter((c) => c.cardRole === 'meta');
+  const placed = new Set<T | null>([title, status, metric, ...meta]);
+  return { title, status, metric, meta, action, body: rest.filter((c) => !placed.has(c)) };
 }
 
 /**

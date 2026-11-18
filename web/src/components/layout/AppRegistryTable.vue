@@ -110,7 +110,41 @@
                 />
                 <span v-else>{{ text(split.title, item.row) }}</span>
               </div>
+              <div v-if="split.status" class="app-registry-card__status app-registry-card__cell">
+                <slot
+                  v-if="slots[`body-cell-${split.status.name}`]"
+                  :name="`body-cell-${split.status.name}`"
+                  v-bind="cellProps(item, split.status)"
+                />
+                <span v-else>{{ text(split.status, item.row) }}</span>
+              </div>
             </header>
+            <div v-if="split.metric" class="app-registry-card__metric">
+              <span class="app-registry-card__metric-label">{{ split.metric.label }}</span>
+              <div class="app-registry-card__metric-value app-registry-card__cell">
+                <slot
+                  v-if="slots[`body-cell-${split.metric.name}`]"
+                  :name="`body-cell-${split.metric.name}`"
+                  v-bind="cellProps(item, split.metric)"
+                />
+                <span v-else>{{ text(split.metric, item.row) }}</span>
+              </div>
+            </div>
+            <div v-if="split.meta.length" class="app-registry-card__meta">
+              <span
+                v-for="col in split.meta"
+                :key="col.name"
+                class="app-registry-card__meta-item app-registry-card__cell"
+                :title="col.label"
+              >
+                <slot
+                  v-if="slots[`body-cell-${col.name}`]"
+                  :name="`body-cell-${col.name}`"
+                  v-bind="cellProps(item, col)"
+                />
+                <span v-else>{{ text(col, item.row) }}</span>
+              </span>
+            </div>
             <dl v-if="split.body.length" class="app-registry-card__body">
               <div v-for="col in split.body" :key="col.name" class="app-registry-card__field">
                 <dt>{{ col.label }}</dt>

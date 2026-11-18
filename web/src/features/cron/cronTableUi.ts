@@ -4,12 +4,13 @@ import { REGISTRY_COL_W, registryCol, registryColActions, registryColEnabled } f
 
 /** CronTasksPage 列定义 */
 export const CRON_TASK_TABLE_COLUMNS: QTableColumn<CronTaskRow>[] = [
-  registryCol<CronTaskRow>('name', '任务', 'name', 'left', REGISTRY_COL_W.name, { sortable: true }),
-  registryCol<CronTaskRow>('schedule', '调度', 'config_json', 'left', REGISTRY_COL_W.category),
+  // 卡片：运行卡——任务名、运行状态、上次 / 下次执行为关键指标，调度与统计作元信息
+  registryCol<CronTaskRow>('name', '任务', 'name', 'left', REGISTRY_COL_W.name, { sortable: true, cardRole: 'title' }),
+  registryCol<CronTaskRow>('schedule', '调度', 'config_json', 'left', REGISTRY_COL_W.category, { cardRole: 'meta' }),
   registryCol<CronTaskRow>('agent', '目标', 'agent_id', 'left', REGISTRY_COL_W.agent),
-  registryCol<CronTaskRow>('counts', '统计', 'metadata_json', 'left', REGISTRY_COL_W.status),
-  registryCol<CronTaskRow>('status', '状态', 'status', 'left', REGISTRY_COL_W.status),
-  registryCol<CronTaskRow>('timing', '执行时间', 'metadata_json', 'left', REGISTRY_COL_W.time),
+  registryCol<CronTaskRow>('counts', '统计', 'metadata_json', 'left', REGISTRY_COL_W.status, { cardRole: 'meta' }),
+  registryCol<CronTaskRow>('status', '状态', 'status', 'left', REGISTRY_COL_W.status, { cardRole: 'status' }),
+  registryCol<CronTaskRow>('timing', '执行时间', 'metadata_json', 'left', REGISTRY_COL_W.time, { cardRole: 'metric' }),
   registryColEnabled<CronTaskRow>(),
   registryColActions<CronTaskRow>(),
 ];
