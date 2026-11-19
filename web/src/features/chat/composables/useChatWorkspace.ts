@@ -1,6 +1,7 @@
 import { computed, onMounted, onUnmounted, reactive, ref, toRef, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useQuasar } from 'quasar';
+import { confirm } from '../../../composables/useAppConfirm';
 import { onBeforeRouteLeave, useRoute } from 'vue-router';
 import type { SessionView, TeamRow } from '../../../components/chat/types';
 import type { Agent } from '../../agents/types';
@@ -302,10 +303,10 @@ export function useChatWorkspace() {
     useChatAttachments(sessionIdForArtifacts);
   onBeforeRouteLeave(() => {
     if (!hasAttachments.value || !authStore.user) return true;
-    return new Promise<boolean>((resolve) => {
-      $q.dialog({ message: t('taskWorkspace.leaveAttachments'), cancel: true, persistent: true })
-        .onOk(() => resolve(true))
-        .onCancel(() => resolve(false));
+    return confirm({
+      title: t('taskWorkspace.leaveAttachmentsTitle'),
+      message: t('taskWorkspace.leaveAttachments'),
+      tone: 'danger',
     });
   });
 

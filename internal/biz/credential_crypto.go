@@ -60,6 +60,26 @@ func (c *CredentialCrypto) encryptCredential(ctx context.Context, plain string) 
 	return base64.StdEncoding.EncodeToString(sealed), nil
 }
 
+// EncryptSecret / DecryptSecret 是凭据模块（E 阶段 credentials 表）的字段级
+// 信封加解密出入口：与 encryptCredential/decryptCredential 同一 AES-GCM 实现，
+// 导出给 CredentialUsecase 使用。语义差异：无明文返回错误（encryptCredential
+// 对空串返回空串——历史行为供 config_json 用），凭据域要求写入前必有
+// 32B 密钥（RequireKeyForSecret 前置），解密失败绝不回退密文（fail-closed）。
+func (c *CredentialCrypto) EncryptSecret(ctx context.Context, plain string) (string, error) {
+	plain = strings.TrimSpace(plain)
+	if plain == "" {
+		return "", apierror.BadRequest("CREDENTIAL", "secret must not be empty")
+	}
+	if err := c.RequireKeyForSecret(ctx); err != nil {
+		return "", err
+	}
+	return c.encryptCredential(ctx, plain)
+}
+
+func (c *CredentialCrypto) DecryptSecret(ctx context.Context, enc string) (string, error) {
+	return c.decryptCredential(ctx, enc)
+}
+
 func (c *CredentialCrypto) decryptCredential(ctx context.Context, enc string) (string, error) {
 	enc = strings.TrimSpace(enc)
 	if enc == "" {

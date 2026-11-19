@@ -27,10 +27,8 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
-import { useQuasar } from 'quasar';
+import { confirm } from '../../composables/useAppConfirm';
 import type { AgentNodeState } from '../../features/orchestration/types';
-
-const $q = useQuasar();
 
 const props = defineProps<{
   nodes: AgentNodeState[];
@@ -44,15 +42,14 @@ const emit = defineEmits<{
   halt: [];
 }>();
 
-function confirmHalt() {
-  $q.dialog({
+async function confirmHalt() {
+  const ok = await confirm({
     title: '终止编排',
     message: '确定终止当前编排运行？此操作不可撤销。',
-    cancel: true,
-    persistent: true,
-  }).onOk(() => {
-    emit('halt');
+    tone: 'danger',
   });
+  if (!ok) return;
+  emit('halt');
 }
 
 const failedNodes = computed(() =>

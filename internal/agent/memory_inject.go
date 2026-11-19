@@ -203,6 +203,7 @@ func (r *MemoryCueResult) JoinCuesWithTokenBudget(budgetTokens int) string {
 func newMemoryInjectBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.Callback {
 	policy := biz.ResolveMemoryRuntimePolicy(ag.Settings)
 	biz.ClampSpecialistL3Scopes(&policy, ag)
+	biz.ApplyPersonalAssistantL3RecallDefault(&policy, ag)
 	if !policy.MasterEnabled || !policy.AnyInject() {
 		return nil
 	}
@@ -293,6 +294,7 @@ type memoryCueTurnCache struct {
 func buildRuntimeMemoryCue(ctx context.Context, deps TRPCBuilderDeps, ag biz.Agent, messages []trpcmodel.Message) (*MemoryCueResult, bool) {
 	policy := biz.ResolveMemoryRuntimePolicy(ag.Settings)
 	biz.ClampSpecialistL3Scopes(&policy, ag)
+	biz.ApplyPersonalAssistantL3RecallDefault(&policy, ag)
 	if !policy.MasterEnabled {
 		return &MemoryCueResult{}, false
 	}

@@ -18,6 +18,12 @@ var (
 		{Name: "access", Type: field.TypeString, Default: ""},
 		{Name: "password", Type: field.TypeString, Default: ""},
 		{Name: "workspace_id", Type: field.TypeString, Size: 128, Default: "default"},
+		{Name: "roles", Type: field.TypeJSON},
+		{Name: "clearance", Type: field.TypeInt, Default: 1},
+		{Name: "dept", Type: field.TypeString, Default: ""},
+		{Name: "status", Type: field.TypeEnum, Enums: []string{"active", "frozen", "offboarded"}, Default: "active"},
+		{Name: "force_reset", Type: field.TypeBool, Default: false},
+		{Name: "token_version", Type: field.TypeInt64, Default: 0},
 		{Name: "create_time", Type: field.TypeTime},
 		{Name: "update_time", Type: field.TypeTime},
 	}
@@ -524,6 +530,153 @@ var (
 			},
 		},
 	}
+	// CeoboardAuditColumns holds the columns for the "ceoboard_audit" table.
+	CeoboardAuditColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "at", Type: field.TypeTime},
+		{Name: "actor", Type: field.TypeString, Size: 128, Default: ""},
+		{Name: "action", Type: field.TypeString, Size: 64},
+		{Name: "target", Type: field.TypeString, Size: 256, Default: ""},
+		{Name: "ok", Type: field.TypeBool, Default: false},
+		{Name: "detail", Type: field.TypeString, Size: 1024, Default: ""},
+	}
+	// CeoboardAuditTable holds the schema information for the "ceoboard_audit" table.
+	CeoboardAuditTable = &schema.Table{
+		Name:       "ceoboard_audit",
+		Columns:    CeoboardAuditColumns,
+		PrimaryKey: []*schema.Column{CeoboardAuditColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "ceoboardaudit_at",
+				Unique:  false,
+				Columns: []*schema.Column{CeoboardAuditColumns[1]},
+			},
+		},
+	}
+	// CeoboardDeadLettersColumns holds the columns for the "ceoboard_dead_letters" table.
+	CeoboardDeadLettersColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "kind", Type: field.TypeString, Size: 32},
+		{Name: "source", Type: field.TypeString, Size: 64, Default: ""},
+		{Name: "ref_key", Type: field.TypeString, Size: 512, Default: ""},
+		{Name: "payload", Type: field.TypeString, Size: 2147483647, Default: ""},
+		{Name: "reason", Type: field.TypeString, Size: 1024, Default: ""},
+		{Name: "failed_at", Type: field.TypeTime},
+		{Name: "replayed_at", Type: field.TypeTime, Nullable: true},
+	}
+	// CeoboardDeadLettersTable holds the schema information for the "ceoboard_dead_letters" table.
+	CeoboardDeadLettersTable = &schema.Table{
+		Name:       "ceoboard_dead_letters",
+		Columns:    CeoboardDeadLettersColumns,
+		PrimaryKey: []*schema.Column{CeoboardDeadLettersColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "ceoboarddeadletter_kind_source_ref_key",
+				Unique:  false,
+				Columns: []*schema.Column{CeoboardDeadLettersColumns[1], CeoboardDeadLettersColumns[2], CeoboardDeadLettersColumns[3]},
+			},
+			{
+				Name:    "ceoboarddeadletter_replayed_at",
+				Unique:  false,
+				Columns: []*schema.Column{CeoboardDeadLettersColumns[7]},
+			},
+		},
+	}
+	// CeoboardEventsColumns holds the columns for the "ceoboard_events" table.
+	CeoboardEventsColumns = []*schema.Column{
+		{Name: "event_uid", Type: field.TypeString, Size: 512},
+		{Name: "platform", Type: field.TypeString, Size: 64},
+		{Name: "subject", Type: field.TypeString, Size: 256},
+		{Name: "subject_key", Type: field.TypeString, Size: 256},
+		{Name: "event_id", Type: field.TypeString, Size: 256, Default: ""},
+		{Name: "entity_id", Type: field.TypeString, Size: 256, Default: ""},
+		{Name: "occurred_at", Type: field.TypeTime, Nullable: true},
+		{Name: "received_at", Type: field.TypeTime},
+		{Name: "payload", Type: field.TypeString, Size: 2147483647, Default: ""},
+		{Name: "imported_from_spool", Type: field.TypeBool, Default: false},
+		{Name: "payload_complete", Type: field.TypeBool, Default: false},
+	}
+	// CeoboardEventsTable holds the schema information for the "ceoboard_events" table.
+	CeoboardEventsTable = &schema.Table{
+		Name:       "ceoboard_events",
+		Columns:    CeoboardEventsColumns,
+		PrimaryKey: []*schema.Column{CeoboardEventsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "ceoboardevent_subject_key_received_at",
+				Unique:  false,
+				Columns: []*schema.Column{CeoboardEventsColumns[3], CeoboardEventsColumns[7]},
+			},
+			{
+				Name:    "ceoboardevent_platform_received_at_event_uid",
+				Unique:  false,
+				Columns: []*schema.Column{CeoboardEventsColumns[1], CeoboardEventsColumns[7], CeoboardEventsColumns[0]},
+			},
+			{
+				Name:    "ceoboardevent_platform_subject_received_at",
+				Unique:  false,
+				Columns: []*schema.Column{CeoboardEventsColumns[1], CeoboardEventsColumns[2], CeoboardEventsColumns[7]},
+			},
+			{
+				Name:    "ceoboardevent_platform_event_id",
+				Unique:  false,
+				Columns: []*schema.Column{CeoboardEventsColumns[1], CeoboardEventsColumns[4]},
+			},
+		},
+	}
+	// CeoboardLatencySamplesColumns holds the columns for the "ceoboard_latency_samples" table.
+	CeoboardLatencySamplesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "metric_id", Type: field.TypeString, Size: 128},
+		{Name: "b_uid", Type: field.TypeString, Size: 512},
+		{Name: "entity_id", Type: field.TypeString, Size: 256, Default: ""},
+		{Name: "a_uid", Type: field.TypeString, Size: 512, Default: ""},
+		{Name: "latency_ms", Type: field.TypeInt64},
+		{Name: "at", Type: field.TypeTime},
+	}
+	// CeoboardLatencySamplesTable holds the schema information for the "ceoboard_latency_samples" table.
+	CeoboardLatencySamplesTable = &schema.Table{
+		Name:       "ceoboard_latency_samples",
+		Columns:    CeoboardLatencySamplesColumns,
+		PrimaryKey: []*schema.Column{CeoboardLatencySamplesColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "ceoboardlatencysample_metric_id_b_uid",
+				Unique:  true,
+				Columns: []*schema.Column{CeoboardLatencySamplesColumns[1], CeoboardLatencySamplesColumns[2]},
+			},
+			{
+				Name:    "ceoboardlatencysample_metric_id_at",
+				Unique:  false,
+				Columns: []*schema.Column{CeoboardLatencySamplesColumns[1], CeoboardLatencySamplesColumns[6]},
+			},
+		},
+	}
+	// CeoboardWebhookDeliveriesColumns holds the columns for the "ceoboard_webhook_deliveries" table.
+	CeoboardWebhookDeliveriesColumns = []*schema.Column{
+		{Name: "key", Type: field.TypeString, Size: 512},
+		{Name: "source", Type: field.TypeString, Size: 64},
+		{Name: "event", Type: field.TypeString, Size: 128, Default: ""},
+		{Name: "entity_id", Type: field.TypeString, Size: 256, Default: ""},
+		{Name: "at", Type: field.TypeTime},
+		{Name: "digest", Type: field.TypeString, Size: 64, Default: ""},
+		{Name: "fields", Type: field.TypeString, Size: 2147483647, Default: "{}"},
+		{Name: "status", Type: field.TypeString, Size: 32, Default: "ok"},
+		{Name: "error", Type: field.TypeString, Size: 1024, Default: ""},
+	}
+	// CeoboardWebhookDeliveriesTable holds the schema information for the "ceoboard_webhook_deliveries" table.
+	CeoboardWebhookDeliveriesTable = &schema.Table{
+		Name:       "ceoboard_webhook_deliveries",
+		Columns:    CeoboardWebhookDeliveriesColumns,
+		PrimaryKey: []*schema.Column{CeoboardWebhookDeliveriesColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "ceoboardwebhookdelivery_source_at",
+				Unique:  false,
+				Columns: []*schema.Column{CeoboardWebhookDeliveriesColumns[1], CeoboardWebhookDeliveriesColumns[4]},
+			},
+		},
+	}
 	// ChannelInboundReceiptColumns holds the columns for the "channel_inbound_receipt" table.
 	ChannelInboundReceiptColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString, Unique: true, Size: 256},
@@ -833,6 +986,71 @@ var (
 			},
 		},
 	}
+	// CredentialsColumns holds the columns for the "credentials" table.
+	CredentialsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "workspace_id", Type: field.TypeString, Size: 64, Default: ""},
+		{Name: "name", Type: field.TypeString, Size: 128},
+		{Name: "site", Type: field.TypeString, Size: 256},
+		{Name: "url", Type: field.TypeString, Size: 512, Default: ""},
+		{Name: "username", Type: field.TypeString, Size: 256, Default: ""},
+		{Name: "secret_kind", Type: field.TypeString, Size: 16},
+		{Name: "sensitivity", Type: field.TypeString, Size: 16, Default: "normal"},
+		{Name: "note", Type: field.TypeString, Size: 1024, Default: ""},
+		{Name: "secret_enc", Type: field.TypeString, Size: 2147483647},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// CredentialsTable holds the schema information for the "credentials" table.
+	CredentialsTable = &schema.Table{
+		Name:       "credentials",
+		Columns:    CredentialsColumns,
+		PrimaryKey: []*schema.Column{CredentialsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "credential_workspace_id_site",
+				Unique:  false,
+				Columns: []*schema.Column{CredentialsColumns[1], CredentialsColumns[3]},
+			},
+			{
+				Name:    "credential_site",
+				Unique:  false,
+				Columns: []*schema.Column{CredentialsColumns[3]},
+			},
+		},
+	}
+	// CredentialExecutionsColumns holds the columns for the "credential_executions" table.
+	CredentialExecutionsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "credential_id", Type: field.TypeInt64, Default: 0},
+		{Name: "site", Type: field.TypeString, Size: 256},
+		{Name: "action", Type: field.TypeString, Size: 32},
+		{Name: "actor_type", Type: field.TypeString, Size: 16},
+		{Name: "actor_key", Type: field.TypeString, Size: 128, Default: ""},
+		{Name: "agent_id", Type: field.TypeString, Size: 128, Default: ""},
+		{Name: "session_id", Type: field.TypeString, Size: 128, Default: ""},
+		{Name: "verdict", Type: field.TypeString, Size: 32},
+		{Name: "reason", Type: field.TypeString, Size: 512, Default: ""},
+		{Name: "created_at", Type: field.TypeTime},
+	}
+	// CredentialExecutionsTable holds the schema information for the "credential_executions" table.
+	CredentialExecutionsTable = &schema.Table{
+		Name:       "credential_executions",
+		Columns:    CredentialExecutionsColumns,
+		PrimaryKey: []*schema.Column{CredentialExecutionsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "credentialexecution_credential_id_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{CredentialExecutionsColumns[1], CredentialExecutionsColumns[10]},
+			},
+			{
+				Name:    "credentialexecution_site_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{CredentialExecutionsColumns[2], CredentialExecutionsColumns[10]},
+			},
+		},
+	}
 	// CronTaskColumns holds the columns for the "cron_task" table.
 	CronTaskColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString, Unique: true, Size: 256},
@@ -878,6 +1096,8 @@ var (
 		{Name: "output_json", Type: field.TypeString, Size: 2147483647, Default: ""},
 		{Name: "error_message", Type: field.TypeString, Size: 2147483647, Default: ""},
 		{Name: "created_at", Type: field.TypeString, Default: ""},
+		{Name: "resolved_at", Type: field.TypeString, Default: ""},
+		{Name: "resolved_by", Type: field.TypeString, Default: ""},
 	}
 	// CronTaskRunTable holds the schema information for the "cron_task_run" table.
 	CronTaskRunTable = &schema.Table{
@@ -889,6 +1109,11 @@ var (
 				Name:    "idx_cron_run_task",
 				Unique:  false,
 				Columns: []*schema.Column{CronTaskRunColumns[1], CronTaskRunColumns[7]},
+			},
+			{
+				Name:    "idx_cron_run_status",
+				Unique:  false,
+				Columns: []*schema.Column{CronTaskRunColumns[2], CronTaskRunColumns[8]},
 			},
 		},
 	}
@@ -2318,6 +2543,27 @@ var (
 			},
 		},
 	}
+	// PermissionsColumns holds the columns for the "permissions" table.
+	PermissionsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "code", Type: field.TypeString, Unique: true, Size: 128},
+		{Name: "kind", Type: field.TypeEnum, Enums: []string{"menu", "api"}, Default: "api"},
+		{Name: "description", Type: field.TypeString, Size: 512, Default: ""},
+		{Name: "create_time", Type: field.TypeTime},
+	}
+	// PermissionsTable holds the schema information for the "permissions" table.
+	PermissionsTable = &schema.Table{
+		Name:       "permissions",
+		Columns:    PermissionsColumns,
+		PrimaryKey: []*schema.Column{PermissionsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "permission_kind",
+				Unique:  false,
+				Columns: []*schema.Column{PermissionsColumns[2]},
+			},
+		},
+	}
 	// PlanBoardsV2Columns holds the columns for the "plan_boards_v2" table.
 	PlanBoardsV2Columns = []*schema.Column{
 		{Name: "id", Type: field.TypeString, Unique: true, Size: 64},
@@ -2845,6 +3091,7 @@ var (
 		{Name: "status", Type: field.TypeString, Size: 64, Default: "pending"},
 		{Name: "decision_note", Type: field.TypeString, Size: 2147483647, Default: ""},
 		{Name: "reviewer_id", Type: field.TypeString, Size: 256, Default: ""},
+		{Name: "creator_id", Type: field.TypeString, Size: 256, Default: ""},
 		{Name: "decided_at", Type: field.TypeString, Default: ""},
 		{Name: "created_at", Type: field.TypeString, Default: ""},
 		{Name: "updated_at", Type: field.TypeString, Default: ""},
@@ -2864,6 +3111,53 @@ var (
 				Name:    "reviewtask_graph_execution_id",
 				Unique:  false,
 				Columns: []*schema.Column{ReviewTasksColumns[2]},
+			},
+		},
+	}
+	// RolesColumns holds the columns for the "roles" table.
+	RolesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "code", Type: field.TypeString, Unique: true, Size: 64},
+		{Name: "name", Type: field.TypeString, Size: 128, Default: ""},
+		{Name: "description", Type: field.TypeString, Size: 512, Default: ""},
+		{Name: "builtin", Type: field.TypeBool, Default: false},
+		{Name: "create_time", Type: field.TypeTime},
+		{Name: "update_time", Type: field.TypeTime},
+	}
+	// RolesTable holds the schema information for the "roles" table.
+	RolesTable = &schema.Table{
+		Name:       "roles",
+		Columns:    RolesColumns,
+		PrimaryKey: []*schema.Column{RolesColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "role_builtin",
+				Unique:  false,
+				Columns: []*schema.Column{RolesColumns[4]},
+			},
+		},
+	}
+	// RolePermissionsColumns holds the columns for the "role_permissions" table.
+	RolePermissionsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "role_id", Type: field.TypeInt64},
+		{Name: "permission_id", Type: field.TypeInt64},
+	}
+	// RolePermissionsTable holds the schema information for the "role_permissions" table.
+	RolePermissionsTable = &schema.Table{
+		Name:       "role_permissions",
+		Columns:    RolePermissionsColumns,
+		PrimaryKey: []*schema.Column{RolePermissionsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "rolepermission_role_id_permission_id",
+				Unique:  true,
+				Columns: []*schema.Column{RolePermissionsColumns[1], RolePermissionsColumns[2]},
+			},
+			{
+				Name:    "rolepermission_permission_id",
+				Unique:  false,
+				Columns: []*schema.Column{RolePermissionsColumns[2]},
 			},
 		},
 	}
@@ -4219,6 +4513,31 @@ var (
 		Columns:    UserEmbeddingSettingsColumns,
 		PrimaryKey: []*schema.Column{UserEmbeddingSettingsColumns[0]},
 	}
+	// UserRolesColumns holds the columns for the "user_roles" table.
+	UserRolesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "user_id", Type: field.TypeInt64},
+		{Name: "role_id", Type: field.TypeInt64},
+		{Name: "create_time", Type: field.TypeTime},
+	}
+	// UserRolesTable holds the schema information for the "user_roles" table.
+	UserRolesTable = &schema.Table{
+		Name:       "user_roles",
+		Columns:    UserRolesColumns,
+		PrimaryKey: []*schema.Column{UserRolesColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "userrole_user_id_role_id",
+				Unique:  true,
+				Columns: []*schema.Column{UserRolesColumns[1], UserRolesColumns[2]},
+			},
+			{
+				Name:    "userrole_role_id",
+				Unique:  false,
+				Columns: []*schema.Column{UserRolesColumns[2]},
+			},
+		},
+	}
 	// Tables holds all the tables in the schema.
 	Tables = []*schema.Table{
 		AdminsTable,
@@ -4232,6 +4551,11 @@ var (
 		BackgroundJobsTable,
 		BorrowRequestsTable,
 		BudgetAlertsTable,
+		CeoboardAuditTable,
+		CeoboardDeadLettersTable,
+		CeoboardEventsTable,
+		CeoboardLatencySamplesTable,
+		CeoboardWebhookDeliveriesTable,
 		ChannelInboundReceiptTable,
 		ChannelRuntimeLeaseTable,
 		ChannelTurnJobTable,
@@ -4242,6 +4566,8 @@ var (
 		CompiledTeamsTable,
 		ComputerUseAuditTable,
 		ContentItemsTable,
+		CredentialsTable,
+		CredentialExecutionsTable,
 		CronTaskTable,
 		CronTaskRunTable,
 		DecisionRecordsTable,
@@ -4287,6 +4613,7 @@ var (
 		OrchestrationStepsTable,
 		OrganizationsTable,
 		PatchOutcomesTable,
+		PermissionsTable,
 		PlanBoardsV2Table,
 		PlanStepsV2Table,
 		ChannelTable,
@@ -4302,6 +4629,8 @@ var (
 		PublishJobsTable,
 		ResourceAccessAuditsTable,
 		ReviewTasksTable,
+		RolesTable,
+		RolePermissionsTable,
 		SchemaMigrationsTable,
 		SelfCheckReportsTable,
 		SelfImprovementRunsTable,
@@ -4338,6 +4667,7 @@ var (
 		TurnsV2Table,
 		UsageQuotasTable,
 		UserEmbeddingSettingsTable,
+		UserRolesTable,
 	}
 )
 
@@ -4372,6 +4702,21 @@ func init() {
 	BudgetAlertsTable.Annotation = &entsql.Annotation{
 		Table: "budget_alerts",
 	}
+	CeoboardAuditTable.Annotation = &entsql.Annotation{
+		Table: "ceoboard_audit",
+	}
+	CeoboardDeadLettersTable.Annotation = &entsql.Annotation{
+		Table: "ceoboard_dead_letters",
+	}
+	CeoboardEventsTable.Annotation = &entsql.Annotation{
+		Table: "ceoboard_events",
+	}
+	CeoboardLatencySamplesTable.Annotation = &entsql.Annotation{
+		Table: "ceoboard_latency_samples",
+	}
+	CeoboardWebhookDeliveriesTable.Annotation = &entsql.Annotation{
+		Table: "ceoboard_webhook_deliveries",
+	}
 	ChannelInboundReceiptTable.Annotation = &entsql.Annotation{
 		Table: "channel_inbound_receipt",
 	}
@@ -4401,6 +4746,12 @@ func init() {
 	}
 	ContentItemsTable.Annotation = &entsql.Annotation{
 		Table: "content_items",
+	}
+	CredentialsTable.Annotation = &entsql.Annotation{
+		Table: "credentials",
+	}
+	CredentialExecutionsTable.Annotation = &entsql.Annotation{
+		Table: "credential_executions",
 	}
 	CronTaskTable.Annotation = &entsql.Annotation{
 		Table: "cron_task",
@@ -4541,6 +4892,9 @@ func init() {
 	PatchOutcomesTable.Annotation = &entsql.Annotation{
 		Table: "patch_outcomes",
 	}
+	PermissionsTable.Annotation = &entsql.Annotation{
+		Table: "permissions",
+	}
 	PlanBoardsV2Table.Annotation = &entsql.Annotation{
 		Table: "plan_boards_v2",
 	}
@@ -4585,6 +4939,12 @@ func init() {
 	}
 	ReviewTasksTable.Annotation = &entsql.Annotation{
 		Table: "review_tasks",
+	}
+	RolesTable.Annotation = &entsql.Annotation{
+		Table: "roles",
+	}
+	RolePermissionsTable.Annotation = &entsql.Annotation{
+		Table: "role_permissions",
 	}
 	SchemaMigrationsTable.Annotation = &entsql.Annotation{
 		Table: "schema_migrations",
@@ -4687,5 +5047,8 @@ func init() {
 	}
 	UsageQuotasTable.Annotation = &entsql.Annotation{
 		Table: "usage_quotas",
+	}
+	UserRolesTable.Annotation = &entsql.Annotation{
+		Table: "user_roles",
 	}
 }

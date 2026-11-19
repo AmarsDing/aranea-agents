@@ -1,48 +1,26 @@
 <template>
-  <q-dialog v-model="dialogModel">
-    <q-card class="avatar-picker-card app-dialog-card app-dialog-card--md app-glass-dialog">
-      <q-card-section class="avatar-picker-card__header">
-        <div>
-          <div class="text-h6">{{ title }}</div>
-          <div class="text-caption text-grey-7">{{ subtitle }}</div>
-        </div>
-        <q-btn flat round icon="close" aria-label="关闭" @click="dialogModel = false" />
-      </q-card-section>
+  <AppDialog
+    :model-value="dialogModel"
+    :title="title"
+    :subtitle="subtitle"
+    size="md"
+    @update:model-value="dialogModel = $event"
+  >
+    <q-tabs v-model="tab" dense class="avatar-tabs">
+      <q-tab name="system" :label="isChannel ? '平台内置' : '内置'" />
+      <q-tab name="mine" :label="isChannel ? '自定义' : '我的上传'" />
+    </q-tabs>
+    <q-separator />
 
-      <q-tabs v-model="tab" dense class="avatar-tabs">
-        <q-tab name="system" :label="isChannel ? '平台内置' : '内置'" />
-        <q-tab name="mine" :label="isChannel ? '自定义' : '我的上传'" />
-      </q-tabs>
-      <q-separator />
-
-      <div class="avatar-picker-scroll">
-        <div v-if="loading" class="avatar-grid">
-          <q-skeleton v-for="i in 10" :key="i" type="QAvatar" size="72px" />
-        </div>
-        <template v-else-if="tab === 'system'">
-          <div v-for="group in systemGroups" :key="group.key" class="avatar-group">
-            <div class="avatar-group__label text-subtitle2">{{ group.label }}</div>
-            <div class="avatar-grid">
-              <button
-                v-for="asset in group.items"
-                :key="asset.id"
-                class="avatar-option"
-                :class="{ 'is-selected': selectedId === asset.id }"
-                type="button"
-                @click="selectedId = asset.id"
-              >
-                <q-avatar rounded size="72px">
-                  <resolved-avatar-img :icon="asset.id" :alt="asset.name" />
-                </q-avatar>
-                <span>{{ asset.name }}</span>
-                <q-icon v-if="selectedId === asset.id" name="check_circle" class="avatar-option__check" />
-              </button>
-            </div>
-          </div>
-        </template>
-        <div v-else class="avatar-grid">
+    <div v-if="loading" class="avatar-grid">
+      <q-skeleton v-for="i in 10" :key="i" type="QAvatar" size="72px" />
+    </div>
+    <template v-else-if="tab === 'system'">
+      <div v-for="group in systemGroups" :key="group.key" class="avatar-group">
+        <div class="avatar-group__label text-subtitle2">{{ group.label }}</div>
+        <div class="avatar-grid">
           <button
-            v-for="asset in visibleAssets"
+            v-for="asset in group.items"
             :key="asset.id"
             class="avatar-option"
             :class="{ 'is-selected': selectedId === asset.id }"
@@ -56,44 +34,59 @@
             <q-icon v-if="selectedId === asset.id" name="check_circle" class="avatar-option__check" />
           </button>
         </div>
-
-        <q-banner v-if="isEmpty" rounded class="avatar-picker-empty-banner">
-          {{ emptyHint }}
-        </q-banner>
       </div>
+    </template>
+    <div v-else class="avatar-grid">
+      <button
+        v-for="asset in visibleAssets"
+        :key="asset.id"
+        class="avatar-option"
+        :class="{ 'is-selected': selectedId === asset.id }"
+        type="button"
+        @click="selectedId = asset.id"
+      >
+        <q-avatar rounded size="72px">
+          <resolved-avatar-img :icon="asset.id" :alt="asset.name" />
+        </q-avatar>
+        <span>{{ asset.name }}</span>
+        <q-icon v-if="selectedId === asset.id" name="check_circle" class="avatar-option__check" />
+      </button>
+    </div>
 
-      <q-separator />
-      <q-card-section class="avatar-upload-row">
-        <input
-          ref="fileInput"
-          class="hidden-input"
-          type="file"
-          accept="image/png,image/jpeg,image/webp"
-          @change="onFileChange"
-        />
-        <q-btn
-          outline
-          rounded
-          color="primary"
-          icon="upload"
-          :label="uploadLabel"
-          :loading="uploading"
-          @click="fileInput?.click()"
-        />
-        <div class="text-caption text-grey-7">{{ uploadHint }}</div>
-      </q-card-section>
+    <q-banner v-if="isEmpty" rounded class="avatar-picker-empty-banner">
+      {{ emptyHint }}
+    </q-banner>
 
-      <q-card-actions align="right">
-        <q-btn flat rounded label="取消" @click="dialogModel = false" />
-        <q-btn color="primary" rounded unelevated label="确定" :disable="!selectedId" @click="confirm" />
-      </q-card-actions>
-    </q-card>
-  </q-dialog>
+    <div class="avatar-upload-row">
+      <input
+        ref="fileInput"
+        class="hidden-input"
+        type="file"
+        accept="image/png,image/jpeg,image/webp"
+        @change="onFileChange"
+      />
+      <q-btn
+        outline
+        rounded
+        color="primary"
+        icon="upload"
+        :label="uploadLabel"
+        :loading="uploading"
+        @click="fileInput?.click()"
+      />
+      <div class="text-caption text-grey-7">{{ uploadHint }}</div>
+    </div>
+    <template #actions>
+      <q-btn flat rounded label="取消" @click="dialogModel = false" />
+      <q-btn color="primary" rounded unelevated label="确定" :disable="!selectedId" @click="confirm" />
+    </template>
+  </AppDialog>
 </template>
 
 <script setup lang="ts">
 import { computed, toRef } from 'vue';
 import { useAvatarPickerDialog, type AvatarPickerScope } from '../../features/avatar/useAvatarPickerDialog';
+import AppDialog from '../common/AppDialog.vue';
 import ResolvedAvatarImg from './ResolvedAvatarImg.vue';
 const props = withDefaults(
   defineProps<{

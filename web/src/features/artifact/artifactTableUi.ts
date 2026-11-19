@@ -8,11 +8,25 @@ import { REGISTRY_COL_W, registryCol, registryColActions } from '../ui/registryT
  */
 export function createArtifactColumns(t: (key: string) => string): QTableColumn<ArtifactMeta>[] {
   return [
-    registryCol<ArtifactMeta>('name', t('artifact.page.colName'), 'name', 'left', REGISTRY_COL_W.name, { sortable: true }),
-    registryCol<ArtifactMeta>('mime_type', 'MIME', 'mime_type', 'left', REGISTRY_COL_W.agent),
-    registryCol<ArtifactMeta>('size', t('artifact.page.colSize'), 'size', 'left', REGISTRY_COL_W.metric),
-    registryCol<ArtifactMeta>('version', t('artifact.page.colVersion'), 'version', 'left', REGISTRY_COL_W.narrow),
-    registryCol<ArtifactMeta>('created_at', t('artifact.page.colCreatedAt'), 'created_at', 'left', REGISTRY_COL_W.time),
+    registryCol<ArtifactMeta>('name', t('artifact.page.colName'), 'name', 'left', REGISTRY_COL_W.name, {
+      cardRole: 'title',
+      sortable: true,
+    }),
+    registryCol<ArtifactMeta>('mime_type', 'MIME', 'mime_type', 'left', REGISTRY_COL_W.agent, { cardRole: 'meta' }),
+    registryCol<ArtifactMeta>('size', t('artifact.page.colSize'), 'size', 'left', REGISTRY_COL_W.metric, {
+      cardRole: 'meta',
+    }),
+    registryCol<ArtifactMeta>('version', t('artifact.page.colVersion'), 'version', 'left', REGISTRY_COL_W.narrow, {
+      cardRole: 'meta',
+    }),
+    registryCol<ArtifactMeta>(
+      'created_at',
+      t('artifact.page.colCreatedAt'),
+      'created_at',
+      'left',
+      REGISTRY_COL_W.time,
+      { cardRole: 'meta' },
+    ),
     registryColActions<ArtifactMeta>(REGISTRY_COL_W.actions, ''),
   ];
 }

@@ -1,12 +1,18 @@
 // M95: light tokens. Source: docs/development/95-frontend-ui-system.design.md
 // Legacy variable names remain aliases for existing components. No duplicate declarations.
 // stylelint-disable color-no-hex -- theme definitions
-\:root
+//
+// 令牌接入（2026-11-08）：核心 token 取值改为 var(--nt-*) 别名，
+// 唯一来源 docs/_shared/design/tokens.css（NovaTrader 同源）。
+// 浅色档 --nt-* 在 _nt-tokens.css 的 body:not(.body--dark) 块中定义。
+@import "./_nt-tokens.css"
+
+body:not(.body--dark)
   --q-primary: var(--color-accent)
   --q-secondary: var(--color-text-secondary)
   --q-accent: var(--color-violet)
   --color-primary: var(--color-accent)
-  --canvas-base: #F2F5FC
+  --canvas-base: var(--nt-bg-0)
   --glass-surface: rgba(255, 255, 255, 0.88)
   --glass-surface-hover: #FFFFFF
   --glass-blur-default: 12px
@@ -25,24 +31,24 @@
   --color-background-elevated: var(--surface-muted)
   --color-shadow: #000
   --glass-blur-elevated: 20px
-  --color-accent: #08748C
-  --color-on-accent: #FFFFFF
+  --color-accent: var(--nt-accent)
+  --color-on-accent: var(--nt-on-accent)
   --color-accent-text: var(--color-accent)
-  --color-accent-hover: #075E73
-  --color-accent-soft: color-mix(in srgb, var(--color-accent) 12%, transparent)
+  --color-accent-hover: var(--nt-accent-hover)
+  --color-accent-soft: var(--nt-accent-soft)
   --color-accent-border: color-mix(in srgb, var(--color-accent) 38%, var(--glass-border))
   --color-accent-hover-bg: var(--color-accent-soft)
   --shadow-accent-focus: 0 0 0 3px var(--color-accent-soft)
   --shadow-warm: var(--shadow-panel)
-  --color-text-primary: #202B45
-  --color-text-secondary: #536583
-  --color-icon-muted: #5D6B86
+  --color-text-primary: var(--nt-text-1)
+  --color-text-secondary: var(--nt-text-2)
+  --color-icon-muted: var(--nt-text-3)
   --focus-ring-light: var(--focus-ring)
   --interaction-surface-hover: color-mix(in srgb, var(--color-accent) 7%, var(--surface-base))
   --glass-inner-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.88)
-  --color-success: #087B58
-  --color-warning: #9A590C
-  --color-danger: #BD3754
+  --color-success: var(--nt-success)
+  --color-warning: var(--nt-warn)
+  --color-danger: var(--nt-danger)
   --nav-bg-light: var(--glass-surface)
   --nav-blur: 16px
   --text-xs: 12px
@@ -52,16 +58,17 @@
   --text-lg: 20px
   --text-xl: 28px
   --font-mono: ui-monospace, 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace
-  --space-1: 4px
-  --space-2: 8px
-  --space-3: 12px
-  --space-4: 16px
-  --space-5: 20px
-  --space-6: 24px
-  --space-8: 32px
-  --space-12: 48px
-  --space-16: 64px
-  --layout-max-width: 1600px
+  // 间距档位唯一来源：--nt-space-*（_nt-tokens.css），此处仅为存量引用保留别名
+  --space-1: var(--nt-space-1)
+  --space-2: var(--nt-space-2)
+  --space-3: var(--nt-space-3)
+  --space-4: var(--nt-space-4)
+  --space-5: var(--nt-space-5)
+  --space-6: var(--nt-space-6)
+  --space-8: var(--nt-space-8)
+  --space-12: var(--nt-space-12)
+  --space-16: var(--nt-space-16)
+  --layout-max-width: 100%
   --sidebar-width: 256px
   --sidebar-mini-width: 80px
   --sidebar-inset-x: 12px
@@ -357,8 +364,8 @@
   --font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif
   --font-display: var(--font-body)
   --radius-control: 12px
-  --radius-card: 20px
-  --radius-hero: 28px
+  --radius-card: 12px
+  --radius-hero: 12px
   --radius-pill: 999px
   --control-height: 40px
   --control-height-dense: 36px
@@ -367,8 +374,8 @@
   --table-row-height-dense: 44px
   --duration-fast: 160ms
   --duration-normal: 220ms
-  --page-gutter: clamp(16px, 2.2vw, 32px)
-  --space-10: 40px
+  --page-gutter: var(--nt-space-page)
+  --space-10: var(--nt-space-10)
   --text-display: clamp(28px, 3.2vw, 40px)
   --q-positive: var(--color-success)
   --q-negative: var(--color-danger)

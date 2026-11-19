@@ -75,10 +75,10 @@ func (s *evalMemoryStore) shadowRouteMode(ctx context.Context, userID, query str
 		QuestionID:    "route_mode",
 		State:         state,
 		Incumbent: decide.Incumbent{
-			Key:       best,
-			Scores:    scores,
-			Method:    "vir",
-			Matched:   best != "no_recall",
+			Key:     best,
+			Scores:  scores,
+			Method:  "vir",
+			Matched: best != "no_recall",
 		},
 		UserID: userID,
 	}

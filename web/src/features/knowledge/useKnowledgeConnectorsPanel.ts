@@ -1,5 +1,5 @@
 import { computed, onScopeDispose, reactive, ref, watch } from 'vue';
-import { useQuasar } from 'quasar';
+import { confirm } from '../../composables/useAppConfirm';
 import { useI18n } from 'vue-i18n';
 import { useSourceSyncStore } from '../../stores/knowledge/sourceSync';
 import type { SourceConnector } from './types';
@@ -10,7 +10,6 @@ import { useSourceSyncWs } from './useSourceSyncWs';
 export function useKnowledgeConnectorsPanel(active: () => boolean) {
   const store = useSourceSyncStore();
   const { t } = useI18n();
-  const $q = useQuasar();
   const dialogOpen = ref(false);
   const editing = ref<SourceConnector | null>(null);
   const form = reactive(emptySourceConnectorForm());
@@ -42,7 +41,7 @@ export function useKnowledgeConnectorsPanel(active: () => boolean) {
 
   function openEdit(connector: SourceConnector) {
     if (store.busy[connector.id]) return;
-    let config: Record<string, unknown> = {};
+    let config: Record<string, unknown>;
     try {
       const parsed: unknown = JSON.parse(connector.config_json || '{}');
       if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('Invalid connector configuration');
@@ -83,16 +82,22 @@ export function useKnowledgeConnectorsPanel(active: () => boolean) {
     if (ok) dialogOpen.value = false;
   }
 
-  function remove(connector: SourceConnector) {
+  async function remove(connector: SourceConnector) {
     if (store.busy[connector.id]) return;
-    $q.dialog({ title: t('sourceSync.remove'), message: t('sourceSync.removeConfirm'), cancel: true, persistent: true })
-      .onOk(() => { void store.remove(connector.id); });
+    const ok = await confirm({ title: t('sourceSync.remove'), message: t('sourceSync.removeConfirm'), tone: 'danger' });
+    if (!ok) return;
+    await store.remove(connector.id);
   }
 
-  function removeCredential(id: string, key: string) {
+  async function removeCredential(id: string, key: string) {
     if (store.busy[id]) return;
-    $q.dialog({ title: t('sourceSync.credDelete'), message: t('sourceSync.credDeleteConfirm'), cancel: true, persistent: true })
-      .onOk(() => { void store.removeCredential(id, key); });
+    const ok = await confirm({
+      title: t('sourceSync.credDelete'),
+      message: t('sourceSync.credDeleteConfirm'),
+      tone: 'danger',
+    });
+    if (!ok) return;
+    await store.removeCredential(id, key);
   }
 
   async function saveCredential(id: string) {

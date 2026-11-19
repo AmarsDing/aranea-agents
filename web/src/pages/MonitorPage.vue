@@ -15,7 +15,7 @@
             icon="refresh"
             label="刷新"
             :loading="loading"
-            @click="loadAll"
+            @click="refreshAll"
           />
         </template>
       </MonitorHeroSection>
@@ -55,6 +55,13 @@
             :latest-report="selfCheckLatestReport"
             @refresh="loadSelfCheckReports"
             @trigger="triggerSelfCheckAction"
+          />
+          <MetricsMatrix
+            :slices="matrixSlices"
+            :active-window="runnerWindowMinutes"
+            @select-window="runnerWindowMinutes = $event"
+            @retry="reloadMatrixOne"
+            @drill="onMatrixDrill"
           />
           <MonitorRunnerMetrics
             :metrics="runnerMetrics"
@@ -163,11 +170,14 @@ import RealtimeEvents from '../components/monitor/RealtimeEvents.vue';
 import TraceList from '../components/monitor/TraceList.vue';
 import TraceDetailDialog from '../components/monitor/TraceDetailDialog.vue';
 import MonitorRunnerMetrics from '../components/monitor/MonitorRunnerMetrics.vue';
+import MetricsMatrix from '../components/monitor/MetricsMatrix.vue';
 import MonitorAlertRules from '../components/monitor/MonitorAlertRules.vue';
 import SelfCheckStatusPanel from '../components/monitor/SelfCheckStatusPanel.vue';
 import MonitorDesktopPanel from '../features/computeruse/MonitorDesktopPanel.vue';
 import { useMonitorAlertRules } from '../features/monitor/useMonitorAlertRules';
 import { useMonitorPage } from '../features/monitor/useMonitorPage';
+import { useRunnerMetricsMatrix } from '../features/monitor/useRunnerMetricsMatrix';
+import type { MatrixMetricKey } from '../features/monitor/metricsMatrix';
 
 const {
   tab,
@@ -250,4 +260,21 @@ const {
   save: saveAlertRules,
   confirmRemoveRule: confirmRemoveAlertRule,
 } = useMonitorAlertRules();
+
+// 多窗口指标矩阵：右侧明细面板的窗口由矩阵列头驱动，两边共享 runnerWindowMinutes。
+const {
+  slices: matrixSlices,
+  reloadOne: reloadMatrixOne,
+  reloadAll: reloadMatrixAll,
+} = useRunnerMetricsMatrix();
+
+/** 矩阵下钻：失败类指标带上 status=error 过滤，直接落到失败的 Runs。 */
+function onMatrixDrill(payload: { windowMinutes: number; metric: MatrixMetricKey }) {
+  if (payload.metric === 'error_rate' || payload.metric === 'error_runs') traceStatus.value = 'error';
+  openRunsTab({ tab: 'traces' });
+}
+
+async function refreshAll() {
+  await Promise.all([loadAll(), reloadMatrixAll()]);
+}
 </script>

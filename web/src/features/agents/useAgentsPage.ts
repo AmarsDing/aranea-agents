@@ -166,8 +166,9 @@ export function useAgentsPage() {
   async function runLoadList() {
     try {
       await pageStore.loadAgentList();
-    } catch (error) {
-      $q.notify({ type: 'negative', message: error instanceof Error ? error.message : 'Agent 列表加载失败' });
+    } catch {
+      // 失败信息已写入 pageStore.listError，由列表内错误面板呈现并支持重试；
+      // 不再用 toast 提示后继续显示空态（会把 5xx 伪装成「没有数据」）。
     }
   }
 
@@ -430,6 +431,8 @@ export function useAgentsPage() {
     rowsPerPage,
     total,
     loading,
+    listError: computed(() => pageStore.listError),
+    runLoadList,
     createOpen,
     migrationOpen,
     deleteOpen,

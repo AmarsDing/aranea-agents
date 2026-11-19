@@ -1,22 +1,75 @@
 <template>
   <q-page class="app-standard-page ui-preview-page">
-    <AppPageHero
-      kicker="ARANEA / DESIGN SYSTEM"
-      :title="t('uiSystem.preview.pageTitle')"
-      :subtitle="t('uiSystem.preview.pageSubtitle')"
-    >
-      <template #actions>
-        <q-btn
-          outline
-          color="primary"
-          :icon="$q.dark.isActive ? 'light_mode' : 'dark_mode'"
-          :label="$q.dark.isActive ? t('uiSystem.preview.toLight') : t('uiSystem.preview.toDark')"
-          @click="$q.dark.toggle()"
-        />
-        <q-btn color="primary" unelevated :label="t('uiSystem.preview.openDialog')" icon="open_in_new" @click="dialogOpen = true" />
-      </template>
-    </AppPageHero>
+    <div class="app-coordinate-hero">
+      <div class="app-coordinate-hero__scale" aria-hidden="true">
+        <span>04</span><span>03</span><span>02</span><span>01</span>
+      </div>
+      <div class="app-coordinate-hero__content">
+        <div class="app-coordinate-hero__coordinate">ARANEA / UI-00 · DESIGN SAMPLE / NOT LIVE DATA</div>
+        <AppPageHero
+          kicker="ARANEA / DESIGN SYSTEM"
+          :title="t('uiSystem.preview.pageTitle')"
+          :subtitle="t('uiSystem.preview.pageSubtitle')"
+        >
+          <template #actions>
+            <q-btn
+              outline
+              color="primary"
+              :icon="$q.dark.isActive ? 'light_mode' : 'dark_mode'"
+              :label="$q.dark.isActive ? t('uiSystem.preview.toLight') : t('uiSystem.preview.toDark')"
+              @click="$q.dark.toggle()"
+            />
+            <q-btn
+              color="primary"
+              unelevated
+              :label="t('uiSystem.preview.openDialog')"
+              icon="open_in_new"
+              @click="dialogOpen = true"
+            />
+          </template>
+        </AppPageHero>
+      </div>
+    </div>
     <AppWorkspaceLaunchpad :label="t('uiSystem.preview.destinations')" :items="launchpadItems" />
+
+    <section class="ui-preview-section ui-preview-surfaces" aria-labelledby="preview-surfaces">
+      <div class="ui-preview-section__head">
+        <h2 id="preview-surfaces">SURFACE DEPTH / 00—04</h2>
+        <span>DESIGN SAMPLE · STATIC INSTRUMENT COORDINATES</span>
+      </div>
+      <div class="ui-preview-surface-grid">
+        <article
+          v-for="level in ['l0', 'l1', 'l2', 'l3', 'l4']"
+          :key="level"
+          class="ui-preview-surface"
+          :class="`app-surface-${level}`"
+        >
+          <span class="ui-preview-surface__code"
+            >{{ level.toUpperCase() }} /
+            {{
+              level === 'l0'
+                ? 'CANVAS'
+                : level === 'l1'
+                  ? 'SHELL'
+                  : level === 'l2'
+                    ? 'DATA'
+                    : level === 'l3'
+                      ? 'FLOAT'
+                      : 'SCRIM'
+            }}</span
+          >
+          <strong>{{ level === 'l2' ? 'Near-opaque data backplane' : 'Instrument surface' }}</strong>
+        </article>
+      </div>
+      <div class="ui-preview-state-grid">
+        <AppStatePanel
+          v-for="variant in ['empty', 'error', 'forbidden'] as const"
+          :key="variant"
+          dense
+          :variant="variant"
+        />
+      </div>
+    </section>
 
     <section class="ui-preview-section" aria-labelledby="preview-controls">
       <div class="ui-preview-section__head">
@@ -28,9 +81,24 @@
           ><q-card-section>
             <h3 class="ui-preview-label">{{ t('uiSystem.preview.hierarchy') }}</h3>
             <div class="ui-preview-actions">
-              <q-btn color="primary" unelevated :label="t('uiSystem.preview.primaryAction')" @click="notice = t('uiSystem.preview.primaryNotice')" />
-              <q-btn outline color="primary" :label="t('uiSystem.preview.secondaryAction')" @click="notice = t('uiSystem.preview.secondaryNotice')" />
-              <q-btn flat color="primary" :label="t('uiSystem.preview.textAction')" @click="notice = t('uiSystem.preview.textNotice')" />
+              <q-btn
+                color="primary"
+                unelevated
+                :label="t('uiSystem.preview.primaryAction')"
+                @click="notice = t('uiSystem.preview.primaryNotice')"
+              />
+              <q-btn
+                outline
+                color="primary"
+                :label="t('uiSystem.preview.secondaryAction')"
+                @click="notice = t('uiSystem.preview.secondaryNotice')"
+              />
+              <q-btn
+                flat
+                color="primary"
+                :label="t('uiSystem.preview.textAction')"
+                @click="notice = t('uiSystem.preview.textNotice')"
+              />
               <q-btn color="negative" outline :label="t('uiSystem.preview.dangerAction')" @click="dialogOpen = true" />
               <q-btn color="primary" unelevated :label="t('uiSystem.preview.unavailable')" disable />
               <q-btn color="primary" unelevated :label="t('uiSystem.preview.working')" loading />
@@ -61,10 +129,14 @@
             <div class="ui-preview-actions">
               <q-chip color="positive" icon="check_circle">{{ t('uiSystem.preview.availableLabel') }}</q-chip
               ><q-chip color="warning" icon="schedule">{{ t('uiSystem.preview.pendingLabel') }}</q-chip>
-              <q-chip color="negative" icon="error_outline">{{ t('uiSystem.preview.failedLabel') }}</q-chip><q-chip color="info" icon="info">{{ t('uiSystem.preview.infoLabel') }}</q-chip>
+              <q-chip color="negative" icon="error_outline">{{ t('uiSystem.preview.failedLabel') }}</q-chip
+              ><q-chip color="info" icon="info">{{ t('uiSystem.preview.infoLabel') }}</q-chip>
             </div>
             <div class="ui-preview-actions q-mt-sm">
-              <q-checkbox v-model="checked" :label="t('uiSystem.preview.selectItem')" /><q-toggle v-model="enabled" :label="t('uiSystem.preview.enableFeature')" />
+              <q-checkbox v-model="checked" :label="t('uiSystem.preview.selectItem')" /><q-toggle
+                v-model="enabled"
+                :label="t('uiSystem.preview.enableFeature')"
+              />
               <q-radio v-model="radio" val="standard" :label="t('uiSystem.preview.standard')" /><q-radio
                 v-model="radio"
                 val="compact"
@@ -90,7 +162,13 @@
         ><q-card-section
           ><q-form @submit.prevent="notice = t('uiSystem.preview.formNotice')">
             <div class="ui-preview-fields">
-              <q-input v-model="sampleText" outlined dense :label="t('uiSystem.preview.nameLabel')" :hint="t('uiSystem.preview.tabHint')" />
+              <q-input
+                v-model="sampleText"
+                outlined
+                dense
+                :label="t('uiSystem.preview.nameLabel')"
+                :hint="t('uiSystem.preview.tabHint')"
+              />
               <q-select
                 v-model="sampleSelect"
                 outlined
@@ -111,9 +189,28 @@
                 :label="t('uiSystem.preview.multiTags')"
                 :options="tagOptions"
               />
-              <q-input model-value="" outlined dense :label="t('uiSystem.preview.requiredLabel')" error :error-message="t('uiSystem.preview.requiredError')" />
-              <q-input :model-value="t('uiSystem.preview.systemManagement')" outlined dense :label="t('uiSystem.preview.readonlyLabel')" readonly />
-              <q-input :model-value="t('uiSystem.preview.lockedValue')" outlined dense :label="t('uiSystem.preview.disabledLabel')" disable />
+              <q-input
+                model-value=""
+                outlined
+                dense
+                :label="t('uiSystem.preview.requiredLabel')"
+                error
+                :error-message="t('uiSystem.preview.requiredError')"
+              />
+              <q-input
+                :model-value="t('uiSystem.preview.systemManagement')"
+                outlined
+                dense
+                :label="t('uiSystem.preview.readonlyLabel')"
+                readonly
+              />
+              <q-input
+                :model-value="t('uiSystem.preview.lockedValue')"
+                outlined
+                dense
+                :label="t('uiSystem.preview.disabledLabel')"
+                disable
+              />
             </div>
             <div class="app-actions-bar q-mt-md">
               <q-btn type="submit" color="primary" unelevated :label="t('uiSystem.preview.submit')" />
@@ -156,10 +253,18 @@
         >
         <template #body-cell-actions="props"
           ><q-td :props="props"
-            ><q-btn round flat dense icon="more_horiz" :aria-label="t('uiSystem.preview.rowAction', { name: props.row.name })"
+            ><q-btn
+              round
+              flat
+              dense
+              icon="more_horiz"
+              :aria-label="t('uiSystem.preview.rowAction', { name: props.row.name })"
               ><q-menu
                 ><q-list
-                  ><q-item v-close-popup clickable @click="notice = t('uiSystem.preview.rowNotice', { name: props.row.name })"
+                  ><q-item
+                    v-close-popup
+                    clickable
+                    @click="notice = t('uiSystem.preview.rowNotice', { name: props.row.name })"
                     ><q-item-section>{{ t('uiSystem.preview.viewDetails') }}</q-item-section></q-item
                   ></q-list
                 ></q-menu
@@ -177,15 +282,16 @@
       </div>
       <div class="app-tab-shell">
         <q-tabs v-model="activeTab" align="left" no-caps
-          ><q-tab name="overview" :label="t('uiSystem.preview.overview')" /><q-tab name="details" :label="t('uiSystem.preview.details')" /><q-tab
-            name="history"
-            :label="t('uiSystem.preview.history')"
+          ><q-tab name="overview" :label="t('uiSystem.preview.overview')" /><q-tab
+            name="details"
+            :label="t('uiSystem.preview.details')" /><q-tab name="history" :label="t('uiSystem.preview.history')"
         /></q-tabs>
       </div>
       <q-tab-panels v-model="activeTab">
         <q-tab-panel name="overview"
           ><q-banner class="bg-info"
-            ><template #avatar><q-icon name="info_outline" /></template>{{ t('uiSystem.preview.information') }}</q-banner
+            ><template #avatar><q-icon name="info_outline" /></template
+            >{{ t('uiSystem.preview.information') }}</q-banner
           ></q-tab-panel
         >
         <q-tab-panel name="details"
@@ -203,26 +309,29 @@
       </q-tab-panels>
     </section>
 
-    <q-dialog v-model="dialogOpen"
-      ><q-card class="app-dialog-card app-dialog-card--sm app-glass-dialog">
-        <q-card-section class="app-glass-dialog__head row items-center justify-between"
-          ><h2 class="app-glass-dialog__title">{{ t('uiSystem.preview.confirmTitle') }}</h2>
-          <q-btn v-close-popup flat round icon="close" :aria-label="t('uiSystem.preview.close')"
-        /></q-card-section>
-        <q-separator />
-        <q-card-section class="app-glass-dialog__body"
-          ><p class="ui-card-description">{{ t('uiSystem.preview.dialogDescription') }}</p>
-          <q-input v-model="sampleText" outlined :label="t('uiSystem.preview.sampleName')" class="q-mt-md"
-        /></q-card-section>
-        <q-card-actions align="right" class="app-actions-bar"
-          ><q-btn v-close-popup flat :label="t('uiSystem.preview.cancel')" /><q-btn
-            v-close-popup
-            color="primary"
-            unelevated
-            :label="t('uiSystem.preview.confirm')"
-            @click="notice = t('uiSystem.preview.confirmNotice')"
-        /></q-card-actions> </q-card
-    ></q-dialog>
+    <AppDialog
+      v-model="dialogOpen"
+      :title="t('uiSystem.preview.confirmTitle')"
+      icon="tune"
+      size="md"
+      :loading="dialogLoading"
+    >
+      <p class="ui-card-description">{{ t('uiSystem.preview.dialogDescription') }}</p>
+      <q-input v-model="sampleText" outlined :label="t('uiSystem.preview.sampleName')" class="q-mt-md" />
+      <q-toggle v-model="dialogLoading" :label="t('uiSystem.preview.working')" />
+      <template #actions>
+        <q-btn flat :label="t('uiSystem.preview.cancel')" @click="dialogOpen = false" />
+        <q-btn
+          color="primary"
+          unelevated
+          :label="t('uiSystem.preview.confirm')"
+          @click="
+            dialogOpen = false;
+            notice = t('uiSystem.preview.confirmNotice');
+          "
+        />
+      </template>
+    </AppDialog>
   </q-page>
 </template>
 
@@ -233,6 +342,8 @@ import { useI18n } from 'vue-i18n';
 import AppPageHero from '../components/layout/AppPageHero.vue';
 import AppWorkspaceLaunchpad from '../components/layout/AppWorkspaceLaunchpad.vue';
 import AppRegistryTable from '../components/layout/AppRegistryTable.vue';
+import AppDialog from '../components/common/AppDialog.vue';
+import AppStatePanel from '../components/common/AppStatePanel.vue';
 import { workspaceShortcuts } from '../config/workspaceShortcuts';
 import { createThemePreviewUi, type ThemePreviewRow } from '../features/ui/themePreviewUi';
 const $q = useQuasar();
@@ -246,6 +357,7 @@ const checked = ref(true);
 const enabled = ref(true);
 const radio = ref('standard');
 const dialogOpen = ref(false);
+const dialogLoading = ref(false);
 const showEmpty = ref(false);
 const tableLoading = ref(false);
 const activeTab = ref('overview');

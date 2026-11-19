@@ -48,12 +48,12 @@ const renderedContent = computed(() => renderChatMarkdownForMessage(props.step.I
 .notice-block
   display: flex
   align-items: flex-start
-  gap: 8px
-  padding: 8px 12px
-  border-radius: 10px
+  gap: var(--nt-space-2)
+  padding: var(--nt-space-2) var(--nt-space-3)
+  border-radius: 8px
   font-size: 13px
   line-height: 1.5
-  margin: 4px 0
+  margin: var(--nt-space-1) 0
 
   &--warning
     background: color-mix(in srgb, var(--color-warning) 8%, transparent)

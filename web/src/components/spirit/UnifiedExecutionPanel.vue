@@ -378,7 +378,7 @@ const dagLayers = computed<DagLayer[]>(() => {
     border-radius: 8px
     background: color-mix(in srgb, var(--color-primary) 12%, transparent)
     color: var(--color-primary)
-    padding: 0 4px
+    padding: 0 var(--nt-space-1)
 
   &__arrow
     color: var(--color-text-tertiary)
@@ -396,14 +396,14 @@ const dagLayers = computed<DagLayer[]>(() => {
   font-size: var(--text-xs)
   color: var(--color-text-tertiary)
   text-align: center
-  padding: 12px 0
+  padding: var(--nt-space-3) 0
 
 // ── Task Row ──
 .uep-task-row
   display: flex
   align-items: center
-  gap: 8px
-  padding: 4px 0
+  gap: var(--nt-space-2)
+  padding: var(--nt-space-1) 0
 
   &__num
     width: 18px
@@ -445,7 +445,7 @@ const dagLayers = computed<DagLayer[]>(() => {
     flex-shrink: 0
     display: inline-flex
     align-items: center
-    gap: 4px
+    gap: var(--nt-space-1)
 
     &--running
       color: var(--color-primary)
@@ -486,7 +486,7 @@ const dagLayers = computed<DagLayer[]>(() => {
 .uep-dag-node
   display: inline-flex
   align-items: center
-  gap: 4px
+  gap: var(--nt-space-1)
   padding: 3px 8px
   border-radius: 4px
   font-size: var(--text-xs)
@@ -546,7 +546,7 @@ const dagLayers = computed<DagLayer[]>(() => {
 .uep-team-list
   display: flex
   flex-direction: column
-  gap: 4px
+  gap: var(--nt-space-1)
 
 .uep-team-item
   &__header
@@ -590,7 +590,7 @@ const dagLayers = computed<DagLayer[]>(() => {
     font-weight: 500
     display: inline-flex
     align-items: center
-    gap: 4px
+    gap: var(--nt-space-1)
     flex-shrink: 0
 
     &--blue
@@ -654,5 +654,5 @@ const dagLayers = computed<DagLayer[]>(() => {
       color: var(--color-text-secondary)
 
   &__card
-    margin-top: 4px
+    margin-top: var(--nt-space-1)
 </style>

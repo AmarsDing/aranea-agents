@@ -52,17 +52,49 @@
       </template>
     </AppPageToolbar>
 
-    <q-card v-if="!tagsLoading && filteredGroups.length === 0" flat class="app-registry-empty app-empty-state-center">
-      <q-card-section class="column items-center text-center q-pa-xl">
-        <q-avatar size="72px" color="primary" text-color="white" icon="sell" />
-        <div class="text-h6 q-mt-md">
-          {{ search ? $t('skillTags.emptyTitleSearch') : $t('skillTags.emptyTitle') }}
-        </div>
-        <div class="text-body2 text-grey-7 q-mt-sm">{{ $t('skillTags.emptyHint') }}</div>
-      </q-card-section>
-    </q-card>
+    <!-- 五态：已有标签但刷新失败 → 局部失败横幅，列表照常渲染 -->
+    <AppStatePanel
+      v-if="(loadError || forbidden) && filteredTags.length > 0"
+      variant="partial"
+      dense
+      class="q-mb-md"
+      :description="loadError"
+      :action-label="$t('common.retry')"
+      action-icon="refresh"
+      @action="reload"
+    />
 
-    <template v-else>
+    <!-- 五态：无权限 → 只渲染 forbidden 面板，不提供重试 -->
+    <AppStatePanel v-else-if="forbidden" variant="forbidden" class="q-mb-md" />
+
+    <!-- 五态：加载失败且无标签 → 只渲染可重试错误面板，不与空态并存。 -->
+    <AppStatePanel
+      v-else-if="loadError"
+      variant="error"
+      class="q-mb-md"
+      :description="loadError"
+      :action-label="$t('common.retry')"
+      action-icon="refresh"
+      @action="reload"
+    />
+
+    <!-- 五态：首屏加载无标签 → 骨架面板 -->
+    <AppStatePanel
+      v-if="tagsLoading && !loadError && !forbidden && filteredTags.length === 0"
+      variant="loading"
+      :rows="4"
+    />
+
+    <!-- 五态：成功但无标签 → 空态 -->
+    <AppStatePanel
+      v-else-if="!tagsLoading && !loadError && !forbidden && filteredGroups.length === 0"
+      variant="empty"
+      :title="search ? $t('skillTags.emptyTitleSearch') : $t('skillTags.emptyTitle')"
+      :description="$t('skillTags.emptyHint')"
+      icon="sell"
+    />
+
+    <template v-else-if="filteredGroups.length > 0">
       <section v-for="group in filteredGroups" :key="group.dimension" class="skill-tags-group q-mb-md">
         <div class="skill-tags-group__header row items-center q-gutter-sm q-mb-sm">
           <q-icon :name="group.dimension ? 'folder_open' : 'label_important'" color="primary" size="20px" />
@@ -125,73 +157,65 @@
     </template>
 
     <!-- 新建标签 -->
-    <q-dialog v-model="createOpen" persistent>
-      <q-card class="skill-tags-dialog-card app-dialog-card app-dialog-card--sm">
-        <q-card-section class="text-h6">{{ $t('skillTags.createDialogTitle') }}</q-card-section>
-        <q-card-section class="q-pt-none">
-          <q-input
-            v-model="createName"
-            dense
-            outlined
-            autofocus
-            :label="$t('skillTags.nameLabel')"
-            :hint="$t('skillTags.nameHint')"
-            :error="!!createError"
-            :error-message="createError"
-            @keyup.enter="onCreate"
-          />
-        </q-card-section>
-        <q-card-actions align="right">
-          <q-btn v-close-popup flat no-caps :label="$t('common.cancel')" :disable="creating" />
-          <q-btn
-            color="primary"
-            unelevated
-            no-caps
-            :label="$t('common.create')"
-            :loading="creating"
-            @click="onCreate"
-          />
-        </q-card-actions>
-      </q-card>
-    </q-dialog>
+    <AppDialog v-model="createOpen" persistent size="sm" :title="$t('skillTags.createDialogTitle')">
+      <q-input
+        v-model="createName"
+        dense
+        outlined
+        autofocus
+        :label="$t('skillTags.nameLabel')"
+        :hint="$t('skillTags.nameHint')"
+        :error="!!createError"
+        :error-message="createError"
+        @keyup.enter="onCreate"
+      />
+      <template #actions>
+        <q-btn flat no-caps :label="$t('common.cancel')" :disable="creating" @click="createOpen = false" />
+        <q-btn
+          color="primary"
+          unelevated
+          no-caps
+          :label="$t('common.create')"
+          :loading="creating"
+          @click="onCreate"
+        />
+      </template>
+    </AppDialog>
 
     <!-- 改名 -->
-    <q-dialog v-model="renameOpen" persistent>
-      <q-card class="skill-tags-dialog-card app-dialog-card app-dialog-card--sm">
-        <q-card-section class="text-h6">{{ $t('skillTags.renameDialogTitle') }}</q-card-section>
-        <q-card-section class="q-pt-none">
-          <div class="text-body2 text-grey-7 q-mb-sm">
-            {{ $t('skillTags.renameDesc', { name: renameTarget?.name ?? '' }) }}
-          </div>
-          <q-input
-            v-model="renameName"
-            dense
-            outlined
-            autofocus
-            :label="$t('skillTags.newNameLabel')"
-            :hint="$t('skillTags.newNameHint')"
-            :error="!!renameError"
-            :error-message="renameError"
-            @keyup.enter="onRename"
-          />
-        </q-card-section>
-        <q-card-actions align="right">
-          <q-btn v-close-popup flat no-caps :label="$t('common.cancel')" :disable="renaming" />
-          <q-btn
-            color="primary"
-            unelevated
-            no-caps
-            :label="$t('skillTags.renameAction')"
-            :loading="renaming"
-            @click="onRename"
-          />
-        </q-card-actions>
-      </q-card>
-    </q-dialog>
+    <AppDialog v-model="renameOpen" persistent size="sm" :title="$t('skillTags.renameDialogTitle')">
+      <div class="text-body2 text-grey-7 q-mb-sm">
+        {{ $t('skillTags.renameDesc', { name: renameTarget?.name ?? '' }) }}
+      </div>
+      <q-input
+        v-model="renameName"
+        dense
+        outlined
+        autofocus
+        :label="$t('skillTags.newNameLabel')"
+        :hint="$t('skillTags.newNameHint')"
+        :error="!!renameError"
+        :error-message="renameError"
+        @keyup.enter="onRename"
+      />
+      <template #actions>
+        <q-btn flat no-caps :label="$t('common.cancel')" :disable="renaming" @click="renameOpen = false" />
+        <q-btn
+          color="primary"
+          unelevated
+          no-caps
+          :label="$t('skillTags.renameAction')"
+          :loading="renaming"
+          @click="onRename"
+        />
+      </template>
+    </AppDialog>
   </q-page>
 </template>
 
 <script setup lang="ts">
+import AppDialog from '../components/common/AppDialog.vue';
+import AppStatePanel from '../components/common/AppStatePanel.vue';
 import AppPageHero from '../components/layout/AppPageHero.vue';
 import AppPageToolbar from '../components/layout/AppPageToolbar.vue';
 import { useSkillTagsPage } from '../features/skills/useSkillTagsPage';
@@ -201,6 +225,8 @@ const {
   sourceFilter,
   sourceOptions,
   tagsLoading,
+  loadError,
+  forbidden,
   filteredTags,
   orphanCount,
   filteredGroups,

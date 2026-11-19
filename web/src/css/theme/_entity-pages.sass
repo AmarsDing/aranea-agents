@@ -36,7 +36,7 @@ body.body--dark .app-entity-page:not(.app-standard-page)
 
 .app-entity-empty
   border: 1px solid var(--glass-border)
-  border-radius: 24px
+  border-radius: 12px
   background: var(--glass-surface)
   box-shadow: var(--shadow-entity-panel)
   backdrop-filter: blur(var(--glass-blur-medium))
@@ -49,7 +49,7 @@ body.body--dark .app-entity-empty
 
 .app-entity-glass-panel
   border: 1px solid var(--glass-border)
-  border-radius: 24px
+  border-radius: 12px
   background: var(--glass-surface)
   box-shadow: var(--shadow-entity-panel)
   backdrop-filter: blur(var(--glass-blur-medium))
@@ -64,7 +64,7 @@ body.body--dark .app-entity-glass-panel,
   min-width: 96px
   padding: 10px 14px
   border: 1px solid var(--glass-border)
-  border-radius: 16px
+  border-radius: 12px
   background: var(--glass-surface)
 
 body.body--dark .app-entity-stat
@@ -344,22 +344,6 @@ body:not(.body--dark) .create-agent-card .q-toggle__inner--truthy .q-toggle__tra
   max-height: min(68vh, 640px)
   overflow: auto
 
-.skill-import-dialog .conflict-card
-  border-radius: 18px !important
-
-.skill-import-dialog .metrics-grid
-  display: grid
-  grid-template-columns: repeat(auto-fit, minmax(108px, 1fr))
-  gap: 8px
-
-.skill-import-dialog .metric-pill span
-  display: block
-  color: var(--color-text-secondary)
-  font-size: 11px
-
-.skill-import-dialog .metric-pill strong
-  font-size: 14px
-
 // Team 编译预览（extends app-glass-side-panel）
 .team-compile-preview
   min-height: 240px
@@ -526,7 +510,7 @@ body:not(.body--dark) .create-agent-card .q-toggle__inner--truthy .q-toggle__tra
 
 .agent-desc-tooltip
   border: 1px solid var(--glass-border) !important
-  border-radius: 14px !important
+  border-radius: 12px !important
   background: color-mix(in srgb, var(--glass-surface) 92%, var(--glass-elevated)) !important
   backdrop-filter: blur(var(--glass-blur-default)) !important
   box-shadow: var(--glass-inner-highlight), 0 12px 32px color-mix(in srgb, var(--color-shadow) 18%, transparent) !important
@@ -664,7 +648,7 @@ body.body--dark .agent-desc-tooltip
 
 .empty-agent-card,
 .agents-table
-  border-radius: 24px
+  border-radius: 12px
   border-color: var(--glass-border)
   box-shadow: var(--shadow-entity-panel)
 
@@ -924,7 +908,7 @@ body.body--dark .agent-desc-tooltip
 .team-empty
   padding: 8px 10px
   border: 1px dashed var(--glass-border)
-  border-radius: 10px
+  border-radius: 8px
   color: var(--color-text-tertiary)
   font-size: 12px
   line-height: 1.4
@@ -974,12 +958,13 @@ body.body--dark .agent-desc-tooltip
     justify-content: flex-start
 
 .team-runs-panel
-  width: min(640px, 94vw)
-  min-height: 100vh
-  border-radius: 24px 0 0 24px
-  border: 1px solid var(--glass-border)
-  background: color-mix(in srgb, var(--glass-surface) 96%, transparent)
-  box-shadow: var(--shadow-entity-panel)
+  display: flex
+  flex-direction: column
+  gap: var(--space-2)
+  min-height: 0
+
+.team-runs-panel__tabs
+  margin: 0
 
 .team-runs-panel .run-list
   border: 1px solid var(--glass-border)
@@ -994,7 +979,7 @@ body.body--dark .agent-desc-tooltip
   white-space: pre-wrap
   padding: 10px 12px
   border: 1px solid var(--glass-border)
-  border-radius: 14px
+  border-radius: 12px
   background: var(--surface-base)
   color: var(--color-text-tertiary)
   line-height: 1.55
@@ -1002,16 +987,11 @@ body.body--dark .agent-desc-tooltip
 .team-runs-panel .run-step
   padding: 12px
   border: 1px solid var(--glass-border)
-  border-radius: 16px
+  border-radius: 12px
   background: var(--surface-base)
 
 .team-runs-panel .run-step + .run-step
   margin-top: 10px
-
-.team-runs-panel.is-dark
-  border-color: var(--glass-border)
-  background: color-mix(in srgb, var(--glass-surface) 90%, transparent)
-  box-shadow: var(--shadow-entity-panel-dark)
 
 .team-runs-panel.is-dark .run-detail,
 .team-runs-panel.is-dark .run-step,
@@ -1121,7 +1101,7 @@ body.body--dark .app-entity-page--warm:not(.app-standard-page),
   gap: 8px
   min-height: 180px
   border: 2px dashed var(--glass-border)
-  border-radius: 20px
+  border-radius: 12px
   background: transparent
   cursor: pointer
   color: var(--color-text-tertiary)
@@ -1149,7 +1129,7 @@ body.body--dark .app-entity-page--warm:not(.app-standard-page),
 .taxonomy-tree-industry
   margin-bottom: 10px
   border: 1px solid var(--glass-border)
-  border-radius: 20px
+  border-radius: 12px
   background: color-mix(in srgb, var(--color-page-tint-blue) 38%, var(--glass-surface))
   overflow: hidden
 
@@ -1397,7 +1377,7 @@ body.body--dark .taxonomy-page .taxonomy-tree-department
   gap: 12px
   padding: 10px 12px
   border: 1px solid var(--glass-border)
-  border-radius: 14px
+  border-radius: 12px
   background: var(--surface-base)
 
 .position-item--ghost
@@ -1452,7 +1432,7 @@ body.body--dark .taxonomy-page .taxonomy-tree-department
 .taxonomy-dialog
   width: 720px
   max-width: 94vw
-  border-radius: 20px
+  border-radius: 12px
   overflow: hidden
   display: flex
   flex-direction: column
@@ -1698,7 +1678,7 @@ body.body--dark .resource-manager-page.is-dark .empty-state
   gap: 8px
   padding: 10px 12px
   border: 1px solid var(--glass-border)
-  border-radius: 14px 14px 0 0
+  border-radius: 12px 14px 0 0
   background: var(--glass-elevated)
 
 .workflow-kanban-board__column-title

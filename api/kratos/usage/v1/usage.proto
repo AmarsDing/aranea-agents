@@ -3,6 +3,7 @@ syntax = "proto3";
 package kratos.usage.v1;
 
 import "google/api/annotations.proto";
+import "aranea/auth/v1/requirement.proto";
 
 option go_package = "aranea-agents/api/kratos/usage/v1;v1";
 option java_multiple_files = true;
@@ -354,52 +355,65 @@ message GetCacheHitRatioStatsResponse {
 
 service UsageService {
   rpc GetUsageOverview(UsageQuery) returns (UsageOverview) {
+    option (aranea.auth.v1.requirement) = {permission: "usage.read"};
     option (google.api.http) = {get: "/v1/usage/overview"};
   }
   rpc ListUsageTrends(UsageQuery) returns (ListUsageTrendsResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "usage.read"};
     option (google.api.http) = {get: "/v1/usage/trends"};
   }
   rpc ListTopModels(UsageQuery) returns (ListBreakdownResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "usage.read"};
     option (google.api.http) = {get: "/v1/usage/top-models"};
   }
   rpc ListTopAgents(UsageQuery) returns (ListBreakdownResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "usage.read"};
     option (google.api.http) = {get: "/v1/usage/top-agents"};
   }
   rpc ListUsageEvents(UsageQuery) returns (ListUsageEventsResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "usage.read"};
     option (google.api.http) = {get: "/v1/usage/events"};
   }
   // Inserts model_token_usage_events, rolls up sessions counters, upserts model_token_usage_daily (parity with pkg/backend AddModelTokenUsageEvent + UpsertModelTokenUsageDaily).
   rpc RecordTokenUsageEvent(TokenUsageEvent) returns (TokenUsageEvent) {
+    option (aranea.auth.v1.requirement) = {permission: "usage.write"};
     option (google.api.http) = {
       post: "/v1/usage/token-events"
       body: "*"
     };
   }
   rpc GetUsageQuota(GetUsageQuotaRequest) returns (UsageQuota) {
+    option (aranea.auth.v1.requirement) = {permission: "usage.read"};
     option (google.api.http) = {get: "/v1/usage/quotas/{scope_type}/{scope_id}"};
   }
   rpc SetUsageQuota(SetUsageQuotaRequest) returns (UsageQuota) {
+    option (aranea.auth.v1.requirement) = {permission: "usage.write"};
     option (google.api.http) = {
       put: "/v1/usage/quotas/{scope_type}/{scope_id}"
       body: "*"
     };
   }
   rpc CheckUsageQuota(CheckUsageQuotaRequest) returns (CheckUsageQuotaResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "usage.read"};
     option (google.api.http) = {get: "/v1/usage/quotas/{scope_type}/{scope_id}/check"};
   }
   rpc ListBudgetAlerts(ListBudgetAlertsRequest) returns (ListBudgetAlertsResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "usage.read"};
     option (google.api.http) = {get: "/v1/usage/budget-alerts"};
   }
   rpc SetBudgetAlert(SetBudgetAlertRequest) returns (BudgetAlert) {
+    option (aranea.auth.v1.requirement) = {permission: "usage.write"};
     option (google.api.http) = {
       post: "/v1/usage/budget-alerts"
       body: "*"
     };
   }
   rpc ExportUsageEvents(UsageQuery) returns (ExportUsageEventsResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "usage.export"};
     option (google.api.http) = {get: "/v1/usage/events/export"};
   }
   rpc PurgeUsageEvents(PurgeUsageEventsRequest) returns (PurgeUsageEventsResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "usage.write"};
     option (google.api.http) = {
       post: "/v1/usage/events/purge"
       body: "*"
@@ -408,18 +422,21 @@ service UsageService {
   // ListAllModelsBreakdown returns a paginated, searchable, sortable breakdown of all models
   // for the full-model consumption overview table. Server-side pagination/sort/search.
   rpc ListAllModelsBreakdown(ListAllModelsBreakdownRequest) returns (ListAllModelsBreakdownResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "usage.read"};
     option (google.api.http) = {get: "/v1/usage/all-models-breakdown"};
   }
   // GetContextBudgetStats aggregates the per-turn context budget ledger
   // (metadata_json.context_budget) across turns: overall composition, per-agent
   // breakdown, per-day trend, and largest tool schemas. P2-1 (29-token §18).
   rpc GetContextBudgetStats(UsageQuery) returns (GetContextBudgetStatsResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "usage.read"};
     option (google.api.http) = {get: "/v1/usage/context-budget-stats"};
   }
   // GetCacheHitRatioStats aggregates prompt-cache hit ratios per
   // (provider, model) over a trailing window (29-token §9.3). Global
   // observability metric — same caller rules as budget alerts.
   rpc GetCacheHitRatioStats(GetCacheHitRatioStatsRequest) returns (GetCacheHitRatioStatsResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "usage.read"};
     option (google.api.http) = {get: "/v1/usage/cache-hit-ratio-stats"};
   }
 }

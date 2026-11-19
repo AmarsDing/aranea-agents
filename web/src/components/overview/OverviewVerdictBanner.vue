@@ -1,8 +1,11 @@
 <template>
   <div class="ov-verdict" :class="`ov-verdict--${verdict}`">
     <div class="ov-verdict__main">
-      <span class="ov-verdict__beacon" aria-hidden="true" />
+      <span class="ov-verdict__seat" aria-hidden="true">
+        <span class="ov-verdict__beacon" />
+      </span>
       <div class="ov-verdict__text">
+        <div class="ov-verdict__eyebrow">{{ t('overviewPage.v2.deckEyebrow') }}</div>
         <div class="ov-verdict__headline">{{ headline }}</div>
         <div class="ov-verdict__sub">{{ subline }}</div>
       </div>

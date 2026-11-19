@@ -95,11 +95,12 @@ func TestDecisionChainRepo_UpstreamDownstream_PG(t *testing.T) {
 
 // TestDecisionChainRepo_VirtualParent_PG covers 设计 §5 兜底补链的
 // 两段解析（2026-08-26 Gap 修复）：
-//  ① source_ref.flow_trace_id 非空 → 同 trace planner 决策精确匹配（且
-//    优先于 run_id 桥接）；② source_ref.run_id 非空 → 桥接
-//    team_runs→teams.spirit_session_id→planner metadata.spirit_session_id，
-//    取 created_at <= before 的最近一条。落空场景（run 不存在、team 无
-//    spirit 会话、ref 全空、excludeID 自排除）返回 nil。
+//
+//	① source_ref.flow_trace_id 非空 → 同 trace planner 决策精确匹配（且
+//	  优先于 run_id 桥接）；② source_ref.run_id 非空 → 桥接
+//	  team_runs→teams.spirit_session_id→planner metadata.spirit_session_id，
+//	  取 created_at <= before 的最近一条。落空场景（run 不存在、team 无
+//	  spirit 会话、ref 全空、excludeID 自排除）返回 nil。
 func TestDecisionChainRepo_VirtualParent_PG(t *testing.T) {
 	ctx := context.Background()
 	wr, qr, db := newDecisionQueryTestReposWithDB(t)

@@ -70,6 +70,7 @@ func PrefetchTurnCues(ctx context.Context, deps TRPCBuilderDeps, ag biz.Agent, u
 	groundedOnly := biz.ParseAgentKnowledgeConfig(ag.ConfigJSON).GroundedOnly
 	policy := biz.ResolveMemoryRuntimePolicy(ag.Settings)
 	biz.ClampSpecialistL3Scopes(&policy, ag)
+	biz.ApplyPersonalAssistantL3RecallDefault(&policy, ag)
 
 	eg, egCtx := errgroup.WithContext(ctx)
 	if deps.KnowledgeUsecase != nil {

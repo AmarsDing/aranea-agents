@@ -114,6 +114,10 @@ func (r *l3FactRepo) UpsertFactRow(ctx context.Context, in biz.FactUpsert) ([]by
 	}
 	validUntil := strings.TrimSpace(in.ValidUntil)
 	contextNote := strings.TrimSpace(in.ContextNote)
+	// D3 N-2 全量记忆信封：权威全文随行加密（AAD=指纹，防密文跨行挪移）。
+	// 写后由 PII 门裁剪 statement/details 载体列；无密钥或加密失败时 contentEnc
+	// 为空串——本行按旧明文载体存（拍板 B 降级，历史行惰性过渡同源）。
+	contentEnc, _ := biz.FactEnvelopeEncrypt(ctx, r.data.factCipher, statement, details, fp)
 	var result []byte
 	err := r.data.ExecInTx(ctx, func(txCtx context.Context) error {
 		_, execErr := r.data.RWDB().WriteDB(txCtx).ExecContext(txCtx, r.data.Dialect().RenumberPlaceholders(`INSERT INTO memory_facts (
@@ -130,10 +134,11 @@ func (r *l3FactRepo) UpsertFactRow(ctx context.Context, in biz.FactUpsert) ([]by
 		quality_score, pii_types, metadata_json, created_at, updated_at,
 		archived_at, deleted_at,
 		valid_from, valid_until, links, keywords, tags,
-		context_note
-	) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+		context_note, content_enc
+	) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 ON CONFLICT(scope_type, scope_id, fingerprint) DO UPDATE SET
 		statement = excluded.statement, details_markdown = excluded.details_markdown,
+		content_enc = CASE WHEN excluded.content_enc <> '' THEN excluded.content_enc ELSE memory_facts.content_enc END,
 		confidence = excluded.confidence, importance = excluded.importance,
 		use_count = memory_facts.use_count + excluded.use_count, hit_count = memory_facts.hit_count + excluded.hit_count,
 	positive_feedback_count = memory_facts.positive_feedback_count + excluded.positive_feedback_count,
@@ -206,7 +211,7 @@ ON CONFLICT(scope_type, scope_id, fingerprint) DO UPDATE SET
 			defaultFactQualityScore, piiTypesJSON, meta, createdAt, updatedAt,
 			"", "",
 			validFrom, validUntil, links, keywords, tags,
-			contextNote,
+			contextNote, contentEnc,
 		)
 		if execErr != nil {
 			return execErr
@@ -225,7 +230,7 @@ ON CONFLICT(scope_type, scope_id, fingerprint) DO UPDATE SET
 			}
 			return apierror.NotFound("MEMORY", "fact row not found after upsert")
 		}
-		result, execErr = scanFactRowJSON(rows)
+		result, execErr = scanFactRowJSON(ctx, rows, r.data.factCipher)
 		return execErr
 	})
 	if err != nil {

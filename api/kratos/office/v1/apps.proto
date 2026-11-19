@@ -1,0 +1,66 @@
+syntax = "proto3";
+
+package kratos.office.v1;
+
+import "google/api/annotations.proto";
+import "google/api/field_behavior.proto";
+import "google/protobuf/empty.proto";
+import "google/protobuf/timestamp.proto";
+import "aranea/auth/v1/requirement.proto";
+
+option go_package = "aranea-agents/api/kratos/office/v1;v1";
+option java_multiple_files = true;
+option java_package = "api.kratos.office.v1";
+
+// ============================================================================
+// OfficeAppsService —— 应用启动器（K-5 拍板随 office 同批平移）
+//
+// F1 范围：URL 快捷方式（注册/分组/打开=前端新窗口）。command 类本机命令
+// 启动属远控执行面（须挂沙箱/审批闸），后置到 F2 另行评估，本期不实现。
+// ============================================================================
+
+message OfficeApp {
+  string id = 1;
+  string workspace_id = 2;
+  string name = 3;
+  string url = 4;
+  string icon = 5; // 图标名（前端图标集）
+  string group_name = 6;
+  int32 sort_order = 7;
+  google.protobuf.Timestamp created_at = 8;
+}
+
+message UpsertAppRequest {
+  string id = 1; // 空 = 新建
+  string name = 2 [(google.api.field_behavior) = REQUIRED];
+  string url = 3 [(google.api.field_behavior) = REQUIRED];
+  string icon = 4;
+  string group_name = 5;
+  int32 sort_order = 6;
+}
+
+message DeleteAppRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message ListAppsResponse {
+  repeated OfficeApp items = 1;
+}
+
+service OfficeAppsService {
+  rpc ListApps(google.protobuf.Empty) returns (ListAppsResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "office.apps"};
+    option (google.api.http) = {get: "/v1/office/apps"};
+  }
+  rpc UpsertApp(UpsertAppRequest) returns (OfficeApp) {
+    option (aranea.auth.v1.requirement) = {permission: "office.apps"};
+    option (google.api.http) = {
+      post: "/v1/office/apps"
+      body: "*"
+    };
+  }
+  rpc DeleteApp(DeleteAppRequest) returns (google.protobuf.Empty) {
+    option (aranea.auth.v1.requirement) = {permission: "office.apps"};
+    option (google.api.http) = {delete: "/v1/office/apps/{id}"};
+  }
+}

@@ -21,6 +21,9 @@ export type ListDecisionRecordsRequest = {
   page: number | undefined;
   // page_size ≤ 100，0/越界由服务端收敛为默认值。
   pageSize: number | undefined;
+  // HITL 配对兜底：按 metadata.correlation_id 批量取回 asked/decided 全量记录，
+  // 绕过时间窗/分页，避免 48h、100 条上限把 asked 挤出。
+  correlationIds: string[] | undefined;
 };
 
 // Encoded using RFC 3339, where generated output will always be Z-normalized
@@ -190,6 +193,11 @@ export function createDecisionRecordServiceClient(
       }
       if (request.pageSize) {
         queryParams.push(`pageSize=${encodeURIComponent(request.pageSize.toString())}`)
+      }
+      if (request.correlationIds) {
+        request.correlationIds.forEach((x) => {
+          queryParams.push(`correlationIds=${encodeURIComponent(x.toString())}`)
+        })
       }
       let uri = path;
       if (queryParams.length > 0) {

@@ -9,8 +9,10 @@ import (
 
 	a2ahealth "aranea-agents/internal/a2a/health"
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/biz/ceoboard"
 	bizcg "aranea-agents/internal/biz/configgraph"
 	"aranea-agents/internal/biz/monitor"
+	"aranea-agents/internal/biz/office"
 	"aranea-agents/internal/cronrunner"
 	"aranea-agents/internal/cronrunner/jobs"
 	"aranea-agents/internal/event/contract"
@@ -81,6 +83,17 @@ type backgroundWorkersConfig struct {
 	ModelRegistrySyncAgent      any // presence check only
 	CronRepo                    biz.CronRepo
 	ConfigGraphIndexer          *bizcg.Indexer
+	// CeoboardRuntime CEO 驾驶舱运行时（整合 P2-7）。具体指针而非
+	// BackgroundStarter：conf 未声明 ceoboard 段时 provider 返回 nil，
+	// 具体指针判空避免 typed-nil 装瓶（同 ToolSpillGC D2-f-7 教训）。
+	CeoboardRuntime *ceoboard.Runtime
+	// OfficeReminderWorker 日程提醒扫描（E 阶段 W1c，K-4）。具体指针同理
+	// 判空（worker provider 恒非 nil，但保持与 CeoboardRuntime 同款防御）。
+	OfficeReminderWorker *office.ReminderWorker
+	// OfficeMailIdleSupervisor 邮件 IDLE 监听（E 阶段 W1d，E-5）；
+	// OfficeMailDigestWorker 每日摘要触发（E-4）。同为具体指针判空。
+	OfficeMailIdleSupervisor *office.MailIdleSupervisor
+	OfficeMailDigestWorker   *office.MailDigestWorker
 }
 
 // backgroundWorkersConfigFromOutput maps the wire output onto the worker
@@ -142,6 +155,10 @@ func backgroundWorkersConfigFromOutput(watchCtx context.Context, out *wireOut) *
 		ModelRegistrySyncAgent:      out.ModelRegistrySyncAgent,
 		CronRepo:                    out.CronRepo,
 		ConfigGraphIndexer:          out.ConfigGraphIndexer,
+		CeoboardRuntime:             out.CeoboardRuntime,
+		OfficeReminderWorker:        out.OfficeReminderWorker,
+		OfficeMailIdleSupervisor:    out.OfficeMailIdleSupervisor,
+		OfficeMailDigestWorker:      out.OfficeMailDigestWorker,
 	}
 	// D2-f-7（对抗评审确认）：ToolSpillGC 在 wireOut 中是具体指针
 	// （*jobs.ToolSpillGC，杀闸 TOOLSPILL_GC_DISABLED 时 provider 返回 nil）。
@@ -488,6 +505,34 @@ func startBackgroundWorkers(
 	// itself (loggateway, design R7); do not duplicate it here.
 	if cfg.ConfigGraphIndexer != nil {
 		goAfterReady("configgraph_indexer", func() { cfg.ConfigGraphIndexer.Start(ctx) })
+	}
+
+	// P2-7：ceoboard 运行时（spool 导入/归档/registry 热载/延迟探针/平台
+	// 轮询/NATS 节点接线）。走 goAfterReady：spool 导入依赖 DB 就绪。
+	if cfg.CeoboardRuntime != nil {
+		goAfterReady("ceoboard", func() { cfg.CeoboardRuntime.Start(ctx) })
+		logger.Log(log.LevelInfo, "msg", "ceoboard runtime scheduled")
+	}
+
+	// E 阶段 W1c：office 日程提醒扫描（K-4，每分钟窗口；到期事件 → 通知
+	// 中心落表 + channel 声明式接收点 IM 投递）。
+	if cfg.OfficeReminderWorker != nil {
+		goAfterReady("office_reminder", func() { cfg.OfficeReminderWorker.Start(ctx) })
+		logger.Log(log.LevelInfo, "msg", "office reminder worker scheduled", "interval", "1m")
+	}
+
+	// E 阶段 W1d：邮件 IDLE 监听（E-5，per-account goroutine + 30s 账号集
+	// 重扫 + 5min 兜底轮询；推送到达即触发同步）。
+	if cfg.OfficeMailIdleSupervisor != nil {
+		goAfterReady("office_mail_idle", func() { cfg.OfficeMailIdleSupervisor.Start(ctx) })
+		logger.Log(log.LevelInfo, "msg", "office mail idle supervisor scheduled")
+	}
+
+	// E 阶段 W1d：邮件每日摘要（E-4，ARANEA_MAIL_DIGEST_HOUR 整点，默认
+	// 08:00；通知中心 + IM 腿 + 作战总台卡片三腿幂等）。
+	if cfg.OfficeMailDigestWorker != nil {
+		goAfterReady("office_mail_digest", func() { cfg.OfficeMailDigestWorker.Start(ctx) })
+		logger.Log(log.LevelInfo, "msg", "office mail digest worker scheduled", "interval", "1m tick")
 	}
 }
 

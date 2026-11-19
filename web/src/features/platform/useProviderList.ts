@@ -3,6 +3,7 @@ import { useQuasar } from 'quasar';
 import type { PlatformResource, PlatformResourceName } from './types';
 import { errorMessage, getConfig, getCategories } from './providerUtils';
 import { usePlatformStore } from '../../stores/platform';
+import { confirm } from '../../composables/useAppConfirm';
 import { useProviderTrendDialog } from '../usage/useProviderTrendDialog';
 import { listProviderModelsPaged } from './api';
 
@@ -17,6 +18,8 @@ export function useProviderList(deps: {
   const rows = ref<PlatformResource[]>([]);
   const total = ref(0);
   const loading = ref(false);
+  /** 列表加载失败信息（五态：错误态/局部失败横幅据此渲染）。 */
+  const loadError = ref('');
   const keyword = ref('');
   const page = ref(1);
   const rowsPerPage = ref(20);
@@ -118,6 +121,7 @@ export function useProviderList(deps: {
   async function loadRows() {
     if (!deps.resource.value) return;
     loading.value = true;
+    loadError.value = '';
     try {
       if (deps.isProviderResource.value) {
         const result = await listProviderModelsPaged({
@@ -136,7 +140,8 @@ export function useProviderList(deps: {
         total.value = rows.value.length;
       }
     } catch (error) {
-      $q.notify({ type: 'negative', message: errorMessage(error) || '加载资源列表失败' });
+      loadError.value = errorMessage(error) || '加载资源列表失败';
+      $q.notify({ type: 'negative', message: loadError.value });
     } finally {
       loading.value = false;
     }
@@ -179,15 +184,14 @@ export function useProviderList(deps: {
     }
   }
 
-  function confirmRemoveRow(row: PlatformResource) {
-    $q.dialog({
+  async function confirmRemoveRow(row: PlatformResource) {
+    const ok = await confirm({
       title: '确认删除',
       message: `确定删除「${row.name}」吗？`,
-      cancel: true,
-      persistent: true,
-    }).onOk(() => {
-      void removeRow(row);
+      tone: 'danger',
     });
+    if (!ok) return;
+    await removeRow(row);
   }
 
   async function removeRow(row: PlatformResource) {
@@ -211,6 +215,7 @@ export function useProviderList(deps: {
     rows,
     total,
     loading,
+    loadError,
     keyword,
     page,
     rowsPerPage,

@@ -40,6 +40,7 @@
             flat
             dense
             round
+            class="pwd-vis-toggle"
             :icon="showSecret ? 'visibility_off' : 'visibility'"
             @click="showSecret = !showSecret"
           />

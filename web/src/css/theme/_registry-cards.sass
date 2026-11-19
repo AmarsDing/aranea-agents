@@ -1,0 +1,344 @@
+// 登记页列表的视图条与卡片视图（AppRegistryTable）：类名 app-registry-bar / -card，取值只走 --nt-* 令牌。
+// 卡片九态里用得上的：default / hover / focus-visible / selected（见 docs/NovaTrader/design/05 §4）。
+@import "./_nt-tokens.css"
+
+// ——— 视图条：即时筛选 + 计数 + 视图切换 ———
+.app-registry-bar
+  display: flex
+  align-items: center
+  gap: var(--nt-space-3)
+  padding: var(--nt-space-2) var(--nt-space-3)
+  border-bottom: 1px solid var(--nt-border-1)
+
+.app-registry-quick
+  display: flex
+  flex: 1
+  align-items: center
+  gap: var(--nt-space-2)
+  min-width: 0
+  max-width: 420px
+  min-height: 32px
+  padding: 0 var(--nt-space-3)
+  background: var(--nt-data-inset)
+  border: 1px solid var(--nt-border-1)
+  border-radius: var(--nt-radius-pill)
+  color: var(--nt-text-3)
+  transition: border-color var(--nt-transition), box-shadow var(--nt-transition)
+
+  &:focus-within
+    border-color: var(--nt-accent-border)
+    box-shadow: 0 0 0 3px var(--nt-focus-ring)
+    color: var(--nt-accent)
+
+.app-registry-quick__input
+  flex: 1
+  min-width: 0
+  padding: 0
+  background: none
+  border: 0
+  outline: none
+  color: var(--nt-text-0)
+  font: inherit
+  font-size: var(--nt-fs-body)
+
+  &::placeholder
+    color: var(--nt-text-3)
+
+  &::-webkit-search-cancel-button
+    display: none
+
+.app-registry-bar__count
+  flex: none
+  margin-left: auto
+  color: var(--nt-text-3)
+  font-family: var(--nt-font-mono)
+  font-size: var(--nt-fs-caption)
+  font-variant-numeric: tabular-nums
+
+.app-registry-viewswitch
+  display: flex
+  flex: none
+  padding: 2px
+  background: var(--nt-data-inset)
+  border: 1px solid var(--nt-border-1)
+  border-radius: var(--nt-radius-m)
+
+  button
+    display: flex
+    align-items: center
+    justify-content: center
+    width: 32px
+    height: 28px
+    padding: 0
+    background: none
+    border: 0
+    border-radius: var(--nt-radius-s)
+    color: var(--nt-text-3)
+    cursor: pointer
+    transition: background-color var(--nt-transition), color var(--nt-transition)
+
+    &:hover
+      color: var(--nt-text-0)
+
+    &[aria-pressed='true']
+      background: var(--nt-accent-soft)
+      color: var(--nt-accent)
+
+    &:focus-visible
+      outline: 2px solid var(--nt-accent)
+      outline-offset: 2px
+
+// ——— 卡片网格 ———
+.app-registry-table--cards
+  background: transparent
+
+  .q-table__grid-content
+    display: grid
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr))
+    gap: var(--nt-space-3)
+    padding: var(--nt-space-3)
+
+  // 网格视图下 Quasar 仍会渲染一条表头排序区，用不上
+  .q-table__top,
+  .q-table__middle
+    display: none
+
+.app-registry-card-wrap
+  min-width: 0
+
+.app-registry-card
+  position: relative
+  display: flex
+  flex-direction: column
+  gap: var(--nt-space-2)
+  height: 100%
+  padding: var(--nt-space-3)
+  background: var(--nt-bg-1)
+  border: 1px solid var(--nt-border-1)
+  border-radius: var(--nt-radius-l)
+  box-shadow: inset 0 1px 0 var(--nt-glass-highlight)
+  outline: none
+  overflow: hidden
+  transition: border-color var(--nt-transition), box-shadow var(--nt-transition), transform var(--nt-transition)
+
+  // 顶缘一条光，悬停 / 聚焦时掠过一次
+  &::before
+    content: ''
+    position: absolute
+    top: 0
+    left: -40%
+    width: 40%
+    height: 1px
+    background: linear-gradient(90deg, transparent, var(--nt-accent), transparent)
+    opacity: 0
+    pointer-events: none
+
+  &:hover,
+  &:focus-within
+    border-color: var(--nt-border-2)
+
+  &:hover::before,
+  &:focus-visible::before
+    opacity: 1
+    animation: app-registry-card-sweep 0.7s ease-out 1 forwards
+
+  &:focus-visible
+    border-color: var(--nt-accent-border)
+    box-shadow: 0 0 0 2px var(--nt-accent), var(--nt-glow-soft)
+
+.app-registry-card--clickable
+  cursor: pointer
+
+  &:hover
+    border-color: var(--nt-accent-border)
+    box-shadow: inset 0 1px 0 var(--nt-glass-highlight), var(--nt-glow-soft)
+    transform: translateY(-1px)
+
+.app-registry-card--selected
+  background: linear-gradient(180deg, var(--nt-accent-soft), transparent 60%), var(--nt-bg-1)
+  border-color: var(--nt-accent-border)
+
+@keyframes app-registry-card-sweep
+  to
+    left: 100%
+
+.app-registry-card__head
+  display: flex
+  align-items: flex-start
+  gap: var(--nt-space-2)
+  min-width: 0
+
+.app-registry-card__title
+  flex: 1
+  min-width: 0
+  color: var(--nt-text-0)
+  font-size: var(--nt-fs-title)
+  font-weight: 600
+
+.app-registry-card__body
+  display: grid
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr))
+  gap: var(--nt-space-2) var(--nt-space-3)
+  margin: 0
+
+.app-registry-card__field
+  min-width: 0
+
+  dt
+    margin-bottom: 2px
+    color: var(--nt-text-3)
+    font-family: var(--nt-font-mono)
+    font-size: var(--nt-fs-micro)
+    letter-spacing: 0.08em
+    text-transform: uppercase
+
+  dd
+    margin: 0
+    min-width: 0
+    color: var(--nt-text-1)
+    font-size: var(--nt-fs-body)
+    overflow-wrap: anywhere
+
+// 各页的单元格插槽渲染的是 <td>：在卡片里按普通块处理，去掉表格单元格的边框与内边距
+.app-registry-card__cell > td,
+.app-registry-card__cell > .q-td
+  display: block
+  width: auto !important
+  height: auto !important
+  padding: 0 !important
+  border: 0 !important
+  background: none !important
+  text-align: left !important
+  white-space: normal
+
+// 操作条：平时收起，悬停或键盘聚焦到卡片时浮出
+.app-registry-card__actions
+  display: flex
+  justify-content: flex-end
+  margin-top: auto
+  padding-top: var(--nt-space-2)
+  border-top: 1px solid var(--nt-border-1)
+  opacity: 1
+  transition: opacity var(--nt-transition)
+
+  > td,
+  > .q-td
+    display: flex
+    flex-wrap: wrap
+    justify-content: flex-end
+    gap: var(--nt-space-1)
+
+.app-registry-card:hover .app-registry-card__actions,
+.app-registry-card:focus-visible .app-registry-card__actions,
+.app-registry-card:focus-within .app-registry-card__actions
+  opacity: 1
+
+// 触屏没有悬停：操作条常显，卡片单列
+@media (hover: none)
+  .app-registry-card__actions
+    opacity: 1
+
+@media (max-width: 559px)
+  .app-registry-bar
+    flex-wrap: wrap
+
+  .app-registry-quick
+    flex-basis: 100%
+    max-width: none
+    min-height: 44px
+
+  .app-registry-viewswitch button
+    width: 44px
+    height: 44px
+
+@media (prefers-reduced-motion: reduce)
+  .app-registry-card
+    transition: none
+
+    &::before
+      animation: none !important
+
+  .app-registry-card--clickable:hover
+    transform: none
+
+:root[data-motion='reduced'] .app-registry-card
+  transition: none
+
+  &::before
+    animation: none !important
+
+// 单元格里的标签组在卡片里换行显示，不被卡片边缘截断
+.app-registry-card__cell
+  [class*='chip-wrap'],
+  [class*='tag-list'],
+  [class*='__tags']
+    flex-wrap: wrap
+    max-width: 100%
+    height: auto
+    max-height: none
+    overflow: visible
+    white-space: normal
+
+  // 表格里为单行裁切设的固定高度，在卡片里解除，换行后才不会压到下一栏
+  .app-registry-hover-tip
+    height: auto
+    max-height: none
+
+// ——— 按角色排版的卡片（列定义上的 cardRole） ———
+// 标题右侧：状态（这个对象好不好，一眼看到）
+.app-registry-card__status
+  flex: none
+  display: flex
+  align-items: center
+  margin-left: auto
+
+// 标题下方：关键指标，放大显示
+.app-registry-card__metric
+  display: flex
+  flex-direction: column
+  gap: 2px
+  padding: var(--nt-space-2) var(--nt-space-3)
+  background: var(--nt-data-inset)
+  border: 1px solid var(--nt-border-1)
+  border-radius: var(--nt-radius-m)
+
+.app-registry-card__metric-label
+  color: var(--nt-text-3)
+  font-size: var(--nt-fs-caption)
+
+.app-registry-card__metric-value
+  color: var(--nt-text-0)
+  font-family: var(--nt-font-mono)
+  font-size: var(--nt-fs-num-lg)
+  font-variant-numeric: tabular-nums
+  font-weight: 600
+  line-height: 1.35
+
+  // 单元格里原有的小字（如「未调用」「下次 …」）保持小号，只放大主数字
+  .text-caption,
+  [class*='__sub'],
+  [class*='--muted']
+    font-family: var(--nt-font-sans)
+    font-size: var(--nt-fs-caption)
+    font-weight: 400
+    color: var(--nt-text-2)
+
+// 关键指标下方：一行小字元信息
+.app-registry-card__meta
+  display: flex
+  flex-wrap: wrap
+  align-items: center
+  gap: var(--nt-space-1) var(--nt-space-2)
+  color: var(--nt-text-2)
+  font-size: var(--nt-fs-caption)
+
+.app-registry-card__meta-item
+  display: inline-flex
+  align-items: center
+  min-width: 0
+  max-width: 100%
+
+  & + &::before
+    content: '·'
+    margin-right: var(--nt-space-2)
+    color: var(--nt-text-3)

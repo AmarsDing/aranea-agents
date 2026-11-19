@@ -146,7 +146,7 @@ func (s *evalMemoryStore) appendEvalCodeContext(ctx context.Context, userID, que
 	}
 	defer rows.Close()
 	for rows.Next() {
-		raw, scanErr := scanFactRowJSON(rows)
+		raw, scanErr := scanFactRowJSON(ctx, rows, s.facts.data.factCipher)
 		if scanErr != nil {
 			s.lg.Warn("eval code context row skipped", loggateway.StepID("memoryeval.code_context"), loggateway.Err(scanErr))
 			continue

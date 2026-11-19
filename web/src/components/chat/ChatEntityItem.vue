@@ -140,7 +140,7 @@ const statusPillClass = computed(() => {
   width: 24px;
   height: 24px;
   min-height: 24px;
-  border-radius: 10px;
+  border-radius: 8px;
   background: var(--glass-elevated);
 }
 

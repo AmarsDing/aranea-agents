@@ -1,0 +1,132 @@
+syntax = "proto3";
+
+package kratos.github.v1;
+
+import "google/api/annotations.proto";
+import "google/api/field_behavior.proto";
+import "google/protobuf/empty.proto";
+import "google/protobuf/timestamp.proto";
+import "aranea/auth/v1/requirement.proto";
+
+option go_package = "aranea-agents/api/kratos/github/v1;v1";
+option java_multiple_files = true;
+option java_package = "api.kratos.github.v1";
+
+// ============================================================================
+// GitHubPanelService —— GitHub 研发情报面板（F2，G-1/G-2 拍板）
+//
+// 接入：GitHub webhook → ceoboard 入站通道（source=github，delivery ID 幂等，
+// 死信/重放现成）+ REST 轮询兜底（cron 10min）；token 存凭据模块（G-2）。
+// 定位：研发情报面板（仓库健康/SLA/热榜结构化分析），不再造 GitHub。
+// ============================================================================
+
+// WatchedRepo 观测仓库。
+message WatchedRepo {
+  string id = 1;
+  string full_name = 2; // owner/repo
+  string credential_id = 3; // 凭据模块条目（token 不出库）
+  bool webhook_ok = 4;      // 最近一次 webhook 事件落库成功
+  google.protobuf.Timestamp last_event_at = 5;
+  google.protobuf.Timestamp created_at = 6;
+}
+
+message WatchRepoRequest {
+  string full_name = 1 [(google.api.field_behavior) = REQUIRED];
+  string credential_id = 2 [(google.api.field_behavior) = REQUIRED];
+}
+
+message UnwatchRepoRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message ListWatchedReposResponse {
+  repeated WatchedRepo items = 1;
+}
+
+// RepoHealth 仓库健康卡。
+message RepoHealth {
+  string full_name = 1;
+  string ci_status = 2; // green | red | unknown
+  int32 open_prs = 3;
+  double oldest_pr_age_hours = 4;
+  int32 open_issues = 5;
+  google.protobuf.Timestamp as_of = 6;
+  bool stale = 7; // 数据超新鲜度窗口（诚实标记）
+}
+
+message GetRepoHealthResponse {
+  repeated RepoHealth items = 1;
+}
+
+// SLABucket SLA 分布桶。
+message SlaBucket {
+  string metric = 1;   // pr_first_response | pr_review_rounds | issue_close
+  double p50_hours = 2;
+  double p90_hours = 3;
+  int64 sample_count = 4;
+}
+
+message GetSlaReportRequest {
+  int32 days = 1; // 统计窗口，默认 30
+}
+
+message GetSlaReportResponse {
+  repeated SlaBucket buckets = 1;
+  int32 days = 2;
+}
+
+// TrendingReport 热榜结构化分析（每日 job 产出，全文入知识库 L1）。
+message TrendingReport {
+  string id = 1;
+  google.protobuf.Timestamp report_date = 2;
+  string summary = 3;         // 结构化解读（为何热/相关性）
+  string items_json = 4;      // [{repo, language, stars_delta, why}]
+  string knowledge_doc_id = 5;
+}
+
+message ListTrendingReportsRequest {
+  int32 page = 1;
+  int32 page_size = 2;
+}
+
+message ListTrendingReportsResponse {
+  repeated TrendingReport items = 1;
+  int64 total = 2;
+}
+
+service GitHubPanelService {
+  rpc ListWatchedRepos(google.protobuf.Empty) returns (ListWatchedReposResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "github.view"};
+    option (google.api.http) = {get: "/v1/github/repos"};
+  }
+  rpc WatchRepo(WatchRepoRequest) returns (WatchedRepo) {
+    option (aranea.auth.v1.requirement) = {permission: "github.manage"};
+    option (google.api.http) = {
+      post: "/v1/github/repos"
+      body: "*"
+    };
+  }
+  rpc UnwatchRepo(UnwatchRepoRequest) returns (google.protobuf.Empty) {
+    option (aranea.auth.v1.requirement) = {permission: "github.manage"};
+    option (google.api.http) = {delete: "/v1/github/repos/{id}"};
+  }
+  rpc GetRepoHealth(google.protobuf.Empty) returns (GetRepoHealthResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "github.view"};
+    option (google.api.http) = {get: "/v1/github/health"};
+  }
+  rpc GetSlaReport(GetSlaReportRequest) returns (GetSlaReportResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "github.view"};
+    option (google.api.http) = {get: "/v1/github/sla"};
+  }
+  rpc ListTrendingReports(ListTrendingReportsRequest) returns (ListTrendingReportsResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "github.view"};
+    option (google.api.http) = {get: "/v1/github/trending"};
+  }
+  rpc TriggerPoll(google.protobuf.Empty) returns (google.protobuf.Empty) {
+    option (aranea.auth.v1.requirement) = {permission: "github.manage"};
+    option (google.api.http) = {
+      post: "/v1/github/poll"
+      body: "*"
+    };
+  }
+}

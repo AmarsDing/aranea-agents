@@ -7,6 +7,7 @@ import "google/protobuf/timestamp.proto";
 import "google/protobuf/field_mask.proto";
 import "google/api/annotations.proto";
 import "google/api/field_behavior.proto";
+import "aranea/auth/v1/requirement.proto";
 
 option go_package = "aranea-agents/api/kratos/admin/v1;v1";
 option java_multiple_files = true;
@@ -42,6 +43,11 @@ message Admin {
   // or WS `?token=` when the HttpOnly cookie is unavailable. Identical to
   // the cookie value issued in the same login call; empty on all other RPCs.
   string token = 11;
+  // force_reset（P1 补漏·强制改密门）:true 表示账号须先改密才能使用系统
+  // （wb 迁移一次性口令、管理员重置后置位）。置位期间后端只放行
+  // Current/Logout/ChangePassword 三个 rpc,前端路由守卫强制改密页;
+  // 改密成功即吊销全部会话并清标记,须重新登录。Login/Current 响应携带。
+  bool force_reset = 12;
 }
 
 // AdminSet is the set of admins.
@@ -56,6 +62,7 @@ message AdminSet {
 service AdminService {
   // Login a user and return the username.
   rpc Login (LoginRequest) returns (Admin) {
+    option (aranea.auth.v1.requirement) = {public: true};
     option (google.api.http) = {
       post: "/v1/admins/login"
       body: "*"
@@ -63,6 +70,7 @@ service AdminService {
   }
   // Logout the currently logged-in user.
   rpc Logout (google.protobuf.Empty) returns (google.protobuf.Empty) {
+    option (aranea.auth.v1.requirement) = {public: true};
     option (google.api.http) = {
       post: "/v1/admins/logout"
       body: "*"
@@ -70,18 +78,21 @@ service AdminService {
   }
   // Current returns the currently logged-in user.
   rpc Current (google.protobuf.Empty) returns (Admin) {
+    option (aranea.auth.v1.requirement) = {public: true};
     option (google.api.http) = {
       get: "/v1/admins/current"
     };
   }
   // ListAdmins returns a list of admins.
   rpc ListAdmins(ListAdminsRequest) returns (AdminSet) {
+    option (aranea.auth.v1.requirement) = {permission: "user.read"};
     option (google.api.http) = {
       get: "/v1/admins/list"
     };
   }
   // CreateAdmin creates a new admin.
   rpc CreateAdmin(CreateAdminRequest) returns (Admin) {
+    option (aranea.auth.v1.requirement) = {permission: "user.write"};
     option (google.api.http) = {
       post: "/v1/admins/create"
       body: "admin"
@@ -89,6 +100,7 @@ service AdminService {
   }
   // UpdateAdmin updates an existing admin.
   rpc UpdateAdmin(UpdateAdminRequest) returns (Admin) {
+    option (aranea.auth.v1.requirement) = {permission: "user.write"};
     option (google.api.http) = {
       put: "/v1/admins/update"
       body: "admin"
@@ -96,14 +108,36 @@ service AdminService {
   }
   // DeleteAdmin deletes an admin by ID.
   rpc DeleteAdmin(DeleteAdminRequest) returns (google.protobuf.Empty) {
+    option (aranea.auth.v1.requirement) = {permission: "user.offboard"};
     option (google.api.http) = {
       delete: "/v1/admins/{id}"
     };
   }
   // GetAdmin retrieves an admin by ID.
   rpc GetAdmin(GetAdminRequest) returns (Admin) {
+    option (aranea.auth.v1.requirement) = {permission: "user.read"};
     option (google.api.http) = {
       get: "/v1/admins/{id}"
+    };
+  }
+  // GetMenus returns the caller's visible navigation tree, already filtered by
+  // the caller's effective permissions (P0 详设 01 §6). Presentation-only: the
+  // frontend hides what it is not given, while every API call is still
+  // hard-checked server-side by the permission middleware.
+  rpc GetMenus (google.protobuf.Empty) returns (MenusReply) {
+    option (aranea.auth.v1.requirement) = {authenticated: true};
+    option (google.api.http) = {
+      get: "/v1/auth/menus"
+    };
+  }
+  // ChangePassword changes the caller's own password. Success bumps the
+  // caller's token_version, so every previously issued session (including the
+  // one that made this call) is revoked and must re-authenticate.
+  rpc ChangePassword (ChangePasswordRequest) returns (google.protobuf.Empty) {
+    option (aranea.auth.v1.requirement) = {authenticated: true};
+    option (google.api.http) = {
+      post: "/v1/users/change-password"
+      body: "*"
     };
   }
 }
@@ -167,4 +201,52 @@ message UpdateAdminRequest {
 message DeleteAdminRequest {
   // Required. The ID of the admin to delete.
   int64 id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+// MenuItem is one navigable entry of the caller's sidebar tree.
+message MenuItem {
+  // Stable identifier of the entry (frontend key / test anchor).
+  string key = 1;
+  // Frontend route path.
+  string path = 2;
+  // i18n message key of the label.
+  string label_key = 3;
+  // Material icon name.
+  string icon = 4;
+  // Whether route matching must be exact (default false = prefix match).
+  bool exact = 5;
+  // Permission code the caller must hold. Empty means "authenticated only".
+  string permission = 6;
+  // Optional nested entries.
+  repeated MenuItem children = 7;
+}
+
+// MenuGroup is a labelled section of the sidebar.
+message MenuGroup {
+  // Stable identifier of the group.
+  string key = 1;
+  // i18n message key of the group label.
+  string label_key = 2;
+  // Entries of the group.
+  repeated MenuItem items = 3;
+}
+
+// MenusReply is the response message for the GetMenus method.
+message MenusReply {
+  // Menu groups visible to the caller, in display order; groups whose entries
+  // are all filtered out are omitted.
+  repeated MenuGroup groups = 1;
+  // Effective permission codes of the caller ("*" for superadmin). Lets the
+  // frontend gate finer-grained controls without a second round trip.
+  repeated string permissions = 2;
+  // Effective role codes of the caller.
+  repeated string roles = 3;
+}
+
+// ChangePasswordRequest is the request message for the ChangePassword method.
+message ChangePasswordRequest {
+  // Required. The caller's current password (re-authentication).
+  string old_password = 1 [(google.api.field_behavior) = REQUIRED];
+  // Required. The replacement password. Minimum length is enforced server-side.
+  string new_password = 2 [(google.api.field_behavior) = REQUIRED];
 }

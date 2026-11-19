@@ -102,6 +102,10 @@ type Document struct {
 	// SharedWith 是 visibility=shared 时的组织节点 ID 名单（部门/岗位）；
 	// 其余档位恒为空（切档即清，不留隐藏状态）。
 	SharedWith []string
+	// Classification 是文档密级（D6 L-3，20261329）：0=未标，L1-L5 语义随
+	// secops classification_labels。embedding 密级闸据此判定通道
+	//（L3+ 拒绝 cloud embedding，验收 #7）；首个写入方为 office 附件 sink。
+	Classification int
 }
 
 // Chunk is one indexed text chunk with its embedding.
@@ -335,6 +339,9 @@ var (
 	ErrCollectionIDRequired   = apierror.BadRequest("KNOWLEDGE", "collection_id is required")
 	ErrSourceRequired         = apierror.BadRequest("KNOWLEDGE", "source is required")
 	ErrQueryRequired          = apierror.BadRequest("KNOWLEDGE", "query is required")
+	// ErrClassificationInvalid 密级越界（合法域 0..5；0=未标，L1-L5 语义随
+	// secops classification_labels 标签体系，D6 L-3 embedding 闸读取）。
+	ErrClassificationInvalid = apierror.BadRequest("KNOWLEDGE", "classification must be between 0 and 5")
 	ErrDimensionMismatch      = apierror.BadRequest("KNOWLEDGE", "embedding dimension mismatch")
 	ErrEmbeddingEmpty         = apierror.BadRequest("KNOWLEDGE", "embedding is empty")
 	// ErrMoveDimensionMismatch 目标库与源库 dim 不一致，禁止跨库移动（向量维度不兼容）。
@@ -532,6 +539,9 @@ func (u *Usecase) CreateDocument(ctx context.Context, d Document) (Document, err
 	}
 	if d.Source == "" {
 		return Document{}, ErrSourceRequired
+	}
+	if d.Classification < 0 || d.Classification > 5 {
+		return Document{}, ErrClassificationInvalid
 	}
 	if d.ID == "" {
 		d.ID = newKnowledgeID()

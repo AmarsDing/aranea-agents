@@ -52,6 +52,7 @@ func (s *DecisionRecordService) ListDecisionRecords(ctx context.Context, req *v1
 		EntityKey:       req.GetEntityKey(),
 		SourceRunID:     req.GetSourceRunId(),
 		SourceSessionID: req.GetSourceSessionId(),
+		CorrelationIDs:  req.GetCorrelationIds(),
 		Page:            int(req.GetPage()),
 		PageSize:        int(req.GetPageSize()),
 	}

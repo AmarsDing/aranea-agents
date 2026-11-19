@@ -1,6 +1,7 @@
 import { computed, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useQuasar } from 'quasar';
+import { confirm } from '../../composables/useAppConfirm';
 import { useI18n } from 'vue-i18n';
 import { createArtifactColumns } from './artifactTableUi';
 import type { ArtifactMeta } from './types';
@@ -11,6 +12,7 @@ import { validateArtifactFileSize, artifactMaxSizeHint } from './limits';
 import { readFileAsBase64 } from './fileBase64';
 import { formatBytes, formatDate } from '../../shared/format';
 import { safeWorkspaceReturn } from '../chat/taskWorkspaceNavigation';
+import { isForbiddenApiError } from '../../utils/kratosError';
 
 export type ArtifactsPageTab = 'session' | 'all';
 
@@ -46,6 +48,8 @@ export function useArtifactsPage() {
   const rows = ref<ArtifactMeta[]>([]);
   const loading = ref(false);
   const error = ref('');
+  /** 403 / PERMISSION_DENIED：页面渲染 forbidden 态，不提供重试。 */
+  const forbidden = ref(false);
   const activeTab = ref<ArtifactsPageTab>('all');
   const sessionFilter = ref('');
   const search = ref('');
@@ -174,10 +178,12 @@ export function useArtifactsPage() {
       rows.value = [];
       tableTotal.value = 0;
       error.value = '';
+      forbidden.value = false;
       return;
     }
     loading.value = true;
     error.value = '';
+    forbidden.value = false;
     try {
       const { page: currentPage, rowsPerPage } = { page: page.value, rowsPerPage: pageSize.value };
       const offset = (currentPage - 1) * rowsPerPage;
@@ -192,6 +198,7 @@ export function useArtifactsPage() {
       tableTotal.value = res.total;
     } catch (e) {
       error.value = e instanceof Error ? e.message : t('artifact.page.loadFailed');
+      forbidden.value = isForbiddenApiError(e);
     } finally {
       loading.value = false;
     }
@@ -318,54 +325,54 @@ export function useArtifactsPage() {
     }
   }
 
-  function confirmDelete(row: ArtifactMeta) {
-    $q.dialog({
+  async function confirmDelete(row: ArtifactMeta) {
+    const ok = await confirm({
       title: t('artifact.page.deleteTitle'),
       message: t('artifact.page.deleteConfirm', { name: row.name }),
-      cancel: true,
-    }).onOk(async () => {
-      try {
-        await artifactStore.remove(row.id);
-        await loadRows();
-        $q.notify({ type: 'positive', message: t('artifact.page.deleted') });
-      } catch (e) {
-        $q.notify({ type: 'negative', message: e instanceof Error ? e.message : t('artifact.page.deleteFailed') });
-      }
+      tone: 'danger',
     });
+    if (!ok) return;
+    try {
+      await artifactStore.remove(row.id);
+      await loadRows();
+      $q.notify({ type: 'positive', message: t('artifact.page.deleted') });
+    } catch (e) {
+      $q.notify({ type: 'negative', message: e instanceof Error ? e.message : t('artifact.page.deleteFailed') });
+    }
   }
 
   /** 删除当前查看的单个版本（仅多版本时入口可见）；删后切到剩余最高版本并刷新列表。 */
-  function confirmDeleteVersion(meta: ArtifactMeta) {
+  async function confirmDeleteVersion(meta: ArtifactMeta) {
     if (detailVersions.value.length <= 1) return;
-    $q.dialog({
+    const ok = await confirm({
       title: t('artifact.detail.deleteVersionTitle'),
       message: t('artifact.detail.deleteVersionConfirm', { name: meta.name, version: meta.version }),
-      cancel: true,
-    }).onOk(async () => {
-      try {
-        await artifactStore.removeVersion(meta.id, meta.version);
-        // 被删版本的 meta.id 对应行已物理删除，不能再用作 anchor；换用同逻辑文件下其他版本的 id。
-        const anchor = detailVersions.value.find((v) => v.id !== meta.id)?.id ?? detailArtifactId.value;
-        const items = await artifactStore.listVersions(anchor).catch(() => [] as ArtifactMeta[]);
-        detailVersions.value = items;
-        if (items.length === 0) {
-          detailOpen.value = false;
-          detailMeta.value = null;
-        } else {
-          const latest = items.reduce((a, b) => (b.version > a.version ? b : a));
-          detailMeta.value = latest;
-          detailArtifactId.value = latest.id;
-          detailVersion.value = latest.version;
-        }
-        await loadRows();
-        $q.notify({ type: 'positive', message: t('artifact.detail.versionDeleted') });
-      } catch (e) {
-        $q.notify({
-          type: 'negative',
-          message: e instanceof Error ? e.message : t('artifact.detail.deleteVersionFailed'),
-        });
-      }
+      tone: 'danger',
     });
+    if (!ok) return;
+    try {
+      await artifactStore.removeVersion(meta.id, meta.version);
+      // 被删版本的 meta.id 对应行已物理删除，不能再用作 anchor；换用同逻辑文件下其他版本的 id。
+      const anchor = detailVersions.value.find((v) => v.id !== meta.id)?.id ?? detailArtifactId.value;
+      const items = await artifactStore.listVersions(anchor).catch(() => [] as ArtifactMeta[]);
+      detailVersions.value = items;
+      if (items.length === 0) {
+        detailOpen.value = false;
+        detailMeta.value = null;
+      } else {
+        const latest = items.reduce((a, b) => (b.version > a.version ? b : a));
+        detailMeta.value = latest;
+        detailArtifactId.value = latest.id;
+        detailVersion.value = latest.version;
+      }
+      await loadRows();
+      $q.notify({ type: 'positive', message: t('artifact.detail.versionDeleted') });
+    } catch (e) {
+      $q.notify({
+        type: 'negative',
+        message: e instanceof Error ? e.message : t('artifact.detail.deleteVersionFailed'),
+      });
+    }
   }
 
   function onSearchChange() {
@@ -417,6 +424,7 @@ export function useArtifactsPage() {
     rows,
     loading,
     error,
+    forbidden,
     activeTab,
     sessionFilterRequired,
     groupedRows,

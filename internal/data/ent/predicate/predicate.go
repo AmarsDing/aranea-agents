@@ -39,6 +39,21 @@ type BorrowRequest func(*sql.Selector)
 // BudgetAlert is the predicate function for budgetalert builders.
 type BudgetAlert func(*sql.Selector)
 
+// CeoboardAudit is the predicate function for ceoboardaudit builders.
+type CeoboardAudit func(*sql.Selector)
+
+// CeoboardDeadLetter is the predicate function for ceoboarddeadletter builders.
+type CeoboardDeadLetter func(*sql.Selector)
+
+// CeoboardEvent is the predicate function for ceoboardevent builders.
+type CeoboardEvent func(*sql.Selector)
+
+// CeoboardLatencySample is the predicate function for ceoboardlatencysample builders.
+type CeoboardLatencySample func(*sql.Selector)
+
+// CeoboardWebhookDelivery is the predicate function for ceoboardwebhookdelivery builders.
+type CeoboardWebhookDelivery func(*sql.Selector)
+
 // ChannelInboundReceipt is the predicate function for channelinboundreceipt builders.
 type ChannelInboundReceipt func(*sql.Selector)
 
@@ -68,6 +83,12 @@ type ComputerUseAudit func(*sql.Selector)
 
 // ContentItem is the predicate function for contentitem builders.
 type ContentItem func(*sql.Selector)
+
+// Credential is the predicate function for credential builders.
+type Credential func(*sql.Selector)
+
+// CredentialExecution is the predicate function for credentialexecution builders.
+type CredentialExecution func(*sql.Selector)
 
 // CronTask is the predicate function for crontask builders.
 type CronTask func(*sql.Selector)
@@ -204,6 +225,9 @@ type Organization func(*sql.Selector)
 // PatchOutcome is the predicate function for patchoutcome builders.
 type PatchOutcome func(*sql.Selector)
 
+// Permission is the predicate function for permission builders.
+type Permission func(*sql.Selector)
+
 // PlanBoardV2 is the predicate function for planboardv2 builders.
 type PlanBoardV2 func(*sql.Selector)
 
@@ -248,6 +272,12 @@ type ResourceAccessAudit func(*sql.Selector)
 
 // ReviewTask is the predicate function for reviewtask builders.
 type ReviewTask func(*sql.Selector)
+
+// Role is the predicate function for role builders.
+type Role func(*sql.Selector)
+
+// RolePermission is the predicate function for rolepermission builders.
+type RolePermission func(*sql.Selector)
 
 // SchemaMigration is the predicate function for schemamigration builders.
 type SchemaMigration func(*sql.Selector)
@@ -356,3 +386,6 @@ type UsageQuota func(*sql.Selector)
 
 // UserEmbeddingSetting is the predicate function for userembeddingsetting builders.
 type UserEmbeddingSetting func(*sql.Selector)
+
+// UserRole is the predicate function for userrole builders.
+type UserRole func(*sql.Selector)

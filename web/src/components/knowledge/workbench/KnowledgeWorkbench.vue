@@ -25,6 +25,7 @@
           :expanded-keys="expandedKeys"
           :loading="treeLoading"
           :error="treeError"
+          :load-error="loadError"
           :drag-file="dragFile"
           :files="files"
           :active-doc-id="workbench.activeTabId.value"
@@ -159,36 +160,35 @@
     />
 
     <!-- 脏关闭确认（SP3：全站标准玻璃对话框） -->
-    <q-dialog :model-value="!!confirmCloseTab" @update:model-value="onCancelClose">
-      <q-card class="app-dialog-card kb-workbench__confirm">
-        <q-card-section class="app-glass-dialog__head">
-          <div class="app-glass-dialog__title">{{ t('knowledgePage.workbench.closeConfirmTitle') }}</div>
-        </q-card-section>
-        <q-card-section>
-          <div class="kb-workbench__confirm-hint">
-            {{ t('knowledgePage.workbench.closeConfirmHint', { title: confirmCloseTab?.title ?? '' }) }}
-          </div>
-          <div class="kb-workbench__confirm-actions">
-            <q-btn flat no-caps :label="t('common.cancel')" @click="onCancelClose" />
-            <q-btn
-              flat
-              no-caps
-              color="negative"
-              :label="t('knowledgePage.workbench.closeConfirmDiscard')"
-              @click="onDiscardClose"
-            />
-            <q-btn
-              unelevated
-              no-caps
-              color="primary"
-              :label="t('knowledgePage.workbench.closeConfirmSave')"
-              :loading="confirmSaving"
-              @click="onSaveAndClose"
-            />
-          </div>
-        </q-card-section>
-      </q-card>
-    </q-dialog>
+    <AppDialog
+      :model-value="!!confirmCloseTab"
+      :title="t('knowledgePage.workbench.closeConfirmTitle')"
+      size="sm"
+      :loading="confirmSaving"
+      @update:model-value="onCancelClose"
+    >
+      <div class="kb-workbench__confirm-hint">
+        {{ t('knowledgePage.workbench.closeConfirmHint', { title: confirmCloseTab?.title ?? '' }) }}
+      </div>
+      <template #actions>
+        <q-btn flat no-caps :label="t('common.cancel')" @click="onCancelClose" />
+        <q-btn
+          flat
+          no-caps
+          color="negative"
+          :label="t('knowledgePage.workbench.closeConfirmDiscard')"
+          @click="onDiscardClose"
+        />
+        <q-btn
+          unelevated
+          no-caps
+          color="primary"
+          :label="t('knowledgePage.workbench.closeConfirmSave')"
+          :loading="confirmSaving"
+          @click="onSaveAndClose"
+        />
+      </template>
+    </AppDialog>
   </div>
 </template>
 
@@ -199,6 +199,8 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, toRef } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useQuasar } from 'quasar';
+import { confirm } from '../../../composables/useAppConfirm';
+import AppDialog from '../../common/AppDialog.vue';
 import WorkbenchTopBar from './WorkbenchTopBar.vue';
 import WorkbenchSidebar from './WorkbenchSidebar.vue';
 import WorkbenchTabs from './WorkbenchTabs.vue';
@@ -240,6 +242,8 @@ const props = defineProps<{
   panelsRefreshNonce?: number;
   /** 文档列表被分页截断（⌘O / 图谱索引不完整）。 */
   documentsTruncated?: boolean;
+  /** 页面级加载失败（collections 等）：透传给左栏以抑制空态（五态契约）。 */
+  loadError?: string;
 }>();
 
 const emit = defineEmits<{
@@ -280,25 +284,24 @@ async function flushAndSave(docId: string): Promise<boolean> {
   return props.workbench.saveTab(docId);
 }
 
-function confirmReload(docId: string) {
-  $q.dialog({
+async function confirmReload(docId: string) {
+  const ok = await confirm({
     title: t('knowledgeWorkflow.reloadStored'),
     message: t('knowledgeWorkflow.reloadStoredConfirm'),
-    cancel: true,
-    persistent: true,
-  }).onOk(async () => {
-    tabsRef.value?.flushPendingContent();
-    try {
-      if (!(await props.workbench.reloadTab(docId))) {
-        $q.notify({ type: 'warning', message: t('knowledgeWorkflow.savePending') });
-      }
-    } catch (error) {
-      $q.notify({
-        type: 'negative',
-        message: error instanceof Error ? error.message : t('knowledgeWorkflow.saveFailed'),
-      });
-    }
+    tone: 'danger',
   });
+  if (!ok) return;
+  tabsRef.value?.flushPendingContent();
+  try {
+    if (!(await props.workbench.reloadTab(docId))) {
+      $q.notify({ type: 'warning', message: t('knowledgeWorkflow.savePending') });
+    }
+  } catch (error) {
+    $q.notify({
+      type: 'negative',
+      message: error instanceof Error ? error.message : t('knowledgeWorkflow.saveFailed'),
+    });
+  }
 }
 
 const {
@@ -524,20 +527,10 @@ async function onSaveAndClose() {
     min-height: 0
     min-width: 0
 
-  // 脏关闭确认对话框（teleport 到 body，用全站令牌；!important 压过 app-dialog-card 全局默认宽度）
-  &__confirm
-    width: 420px !important
-    max-width: 90vw
-
   &__confirm-hint
     font-size: 13px
     color: var(--color-text-primary)
     margin-bottom: 16px
-
-  &__confirm-actions
-    display: flex
-    justify-content: flex-end
-    gap: 8px
 
 @media (max-width: 1100px)
   .kb-workbench__grid

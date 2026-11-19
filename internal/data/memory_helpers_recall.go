@@ -394,11 +394,12 @@ func scoreFactRow(row map[string]any, tokens []string, queryEmbedding []float32,
 // scoreFactRows scans fact row JSON from rows and computes the hybrid recall
 // score for each, keeping only rows at or above minScore. Callers that apply
 // AdaptiveRecallMinScore after ranking pass minScore=0 here so the candidate
-// distribution is visible to finalizeScoredFacts.
-func scoreFactRows(rows *sql.Rows, tokens []string, queryEmbedding []float32, vecOverrides map[string]float64, minScore float64, now time.Time) []scoredFact {
+// distribution is visible to finalizeScoredFacts. ctx/cipher 透传给
+// scanFactRowJSON 做 D3 信封透明解密（nil cipher 走明文载体降级）。
+func scoreFactRows(ctx context.Context, cipher biz.FactContentCipher, rows *sql.Rows, tokens []string, queryEmbedding []float32, vecOverrides map[string]float64, minScore float64, now time.Time) []scoredFact {
 	var scored []scoredFact
 	for rows.Next() {
-		b, err := scanFactRowJSON(rows)
+		b, err := scanFactRowJSON(ctx, rows, cipher)
 		if err != nil {
 			continue
 		}

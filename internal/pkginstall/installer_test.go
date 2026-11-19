@@ -59,7 +59,7 @@ func TestInstallSkillFromURLSubpathZipsTempPath(t *testing.T) {
 	defer srv.Close()
 
 	ins := &Installer{APIURL: srv.URL, Quiet: true}
-	result, err := ins.Install("", &Manifest{
+	result, err := ins.Install(context.Background(), "", &Manifest{
 		Version:  1,
 		Metadata: ManifestMetadata{Name: "pkg"},
 		Spec: ManifestSpec{Skills: []SkillSpec{{

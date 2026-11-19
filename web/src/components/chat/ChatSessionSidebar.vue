@@ -266,7 +266,8 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { useQuasar } from 'quasar';
+import { confirm } from '../../composables/useAppConfirm';
+import { prompt } from '../../composables/useAppPrompt';
 import type { DeleteKind, SessionView } from './types';
 import { isChannelSession, parseChannelSessionMeta } from '../../features/chat/channelSessionMeta';
 import type { ConversationSession, ConversationTurnStatus } from '../../domain/conversation';
@@ -316,7 +317,6 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useI18n();
-const $q = useQuasar();
 
 const inboxSessions = computed(() => props.inboxSessions ?? []);
 
@@ -369,29 +369,27 @@ const timelineGroups = computed(() => {
 });
 
 function confirmClearAll() {
-  $q.dialog({
-    title: t('chat.clearAllSession'),
-    message: t('chat.clearAllConfirm', '确定要清除全部会话吗？此操作不可撤销。'),
-    cancel: true,
-    persistent: true,
-  }).onOk(() => {
+  void (async () => {
+    const ok = await confirm({
+      title: t('chat.clearAllSession'),
+      message: t('chat.clearAllConfirm', '确定要清除全部会话吗？此操作不可撤销。'),
+      tone: 'danger',
+    });
+    if (!ok) return;
     emit('delete', 'all', '');
-  });
+  })();
 }
 
 function renameSession(session: SessionView) {
-  $q.dialog({
-    title: t('chat.rename'),
-    prompt: {
-      model: session.title,
-      type: 'text',
-      isValid: (value) => Boolean(String(value ?? '').trim()),
-    },
-    cancel: true,
-    persistent: true,
-  }).onOk((value) => {
-    emit('rename', { id: session.id, title: String(value ?? '').trim() });
-  });
+  void (async () => {
+    const value = await prompt({
+      title: t('chat.rename'),
+      defaultValue: session.title,
+      required: true,
+    });
+    if (!value) return;
+    emit('rename', { id: session.id, title: value });
+  })();
 }
 
 function openTrace(sessionID: string) {
@@ -651,7 +649,7 @@ function sessionTime(session: SessionView) {
   color: var(--color-text-secondary);
   overflow: hidden;
   box-sizing: border-box;
-  border-radius: 14px;
+  border-radius: 12px;
   backdrop-filter: blur(var(--glass-blur-default));
 }
 
@@ -743,7 +741,7 @@ function sessionTime(session: SessionView) {
   background: var(--glass-elevated);
   color: var(--color-text-heading);
   border: 1px solid var(--glass-border);
-  border-radius: 14px;
+  border-radius: 12px;
   box-shadow: var(--glass-inner-highlight);
   backdrop-filter: blur(var(--glass-blur-elevated));
 }

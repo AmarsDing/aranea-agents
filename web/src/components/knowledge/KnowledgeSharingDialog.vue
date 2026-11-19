@@ -1,13 +1,14 @@
 <template>
-  <q-dialog :model-value="open" @update:model-value="$emit('update:open', $event)">
-    <q-card class="app-dialog-card app-dialog-card--sm app-glass-dialog">
-      <q-card-section class="app-glass-dialog__head">
-        <div class="app-glass-dialog__title">{{ t('knowledgeWorkflow.sharing') }}</div>
-        <div class="text-caption">{{ title }}</div>
-      </q-card-section>
-      <div class="app-glass-dialog__scroll">
-        <q-card-section class="app-dialog-body app-glass-dialog__body q-gutter-md">
-          <q-linear-progress v-if="loading" indeterminate />
+  <AppDialog
+    :model-value="open"
+    :title="t('knowledgeWorkflow.sharing')"
+    :subtitle="title"
+    size="sm"
+    :loading="saving"
+    @update:model-value="$emit('update:open', $event)"
+  >
+    <div class="q-gutter-md">
+      <q-linear-progress v-if="loading" indeterminate />
           <q-banner v-if="error" class="app-banner-warning">{{ error }}</q-banner>
           <q-select
             :model-value="visibility"
@@ -40,23 +41,22 @@
               @update:model-value="$emit('update:sharedWith', $event)"
             />
           </template>
-        </q-card-section>
-      </div>
-      <q-card-actions align="right" class="app-actions-bar">
-        <q-btn v-close-popup flat :label="t('common.cancel')" />
-        <q-btn
-          color="primary"
-          :label="t('common.save')"
-          :loading="saving"
-          :disable="loading || !!error || (visibility === 'shared' && !sharedWith.length)"
-          @click="$emit('save')"
-        />
-      </q-card-actions>
-    </q-card>
-  </q-dialog>
+    </div>
+    <template #actions>
+      <q-btn flat :label="t('common.cancel')" @click="$emit('update:open', false)" />
+      <q-btn
+        color="primary"
+        :label="t('common.save')"
+        :loading="saving"
+        :disable="loading || !!error || (visibility === 'shared' && !sharedWith.length)"
+        @click="$emit('save')"
+      />
+    </template>
+  </AppDialog>
 </template>
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n';
+import AppDialog from '../../components/common/AppDialog.vue';
 defineProps<{
   open: boolean;
   loading: boolean;

@@ -3,7 +3,7 @@ import { configure } from "quasar/wrappers";
 export default configure(() => {
   return {
     supportTS: true,
-    boot: ["error-handler", "pinia", "theme", "i18n", "runtime", "heartbeat", "close-menu-on-scroll"],
+    boot: ["error-handler", "pinia", "theme", "a11y", "i18n", "runtime", "heartbeat", "close-menu-on-scroll"],
     css: ["style.sass"],
     extras: ["material-icons"],
     build: {
@@ -17,18 +17,6 @@ export default configure(() => {
       extendViteConf(viteConf) {
         viteConf.resolve = viteConf.resolve || {};
         viteConf.resolve.alias = viteConf.resolve.alias || {};
-        // P0-1 白屏修复（2026-11-09）：禁用 rolldown 自动分包，全部内联为单 bundle。
-        // 自动分包会把入口模块与共享模块拆进互相静态引用的 chunk（入口↔router），
-        // 跨 chunk 循环初始化导致生产构建顶层求值读到 undefined（整页白屏，
-        // 见 docs/development/91-44-deploy-readiness-and-runbook.md §3）。
-        // 内网部署单 bundle（gzip 后约 5-6MB）代价可接受；路由仍保持懒加载写法，
-        // 未来若恢复分包须先过 scripts/prod-preview-smoke.mjs 门禁。
-        viteConf.build = viteConf.build || {};
-        viteConf.build.rollupOptions = viteConf.build.rollupOptions || {};
-        viteConf.build.rollupOptions.output = {
-          ...(viteConf.build.rollupOptions.output || {}),
-          codeSplitting: false,
-        };
         // dev server 防崩：chokidar 监视 dist 构建产物时一旦文件被杀软/构建锁占用，
         // EBUSY 会作为未处理 'error' 事件直接打崩进程（实测 watch dist/spa/kws/*.data 崩 dev server）。
         // dist 为构建产物，dev 模式无需监听。
@@ -36,6 +24,20 @@ export default configure(() => {
         viteConf.server.watch = {
           ...viteConf.server.watch,
           ignored: ["**/dist/**", "**/node_modules/**", "**/.git/**"],
+        };
+
+        // Rolldown(Vite 8) 循环 chunk 启动崩溃修复：把 node_modules vendor 抽到独立 chunk。
+        // 否则 vue-i18n 的 createI18n 及其内部 helper 会与入口 app 代码同处 index chunk，
+        // 被动态 import 拆出的 i18n chunk 顶层反向调用入口尚未初始化的 binding（ll is not a function）而崩溃。
+        // vendor 不含 app 代码，i18n/router 等 chunk 只单向依赖 vendor，入口↔vendor 的 eager 环被切断。
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- rolldownOptions.output.codeSplitting 不在解析到的 Vite 类型里（实际构建走 app-vite 嵌套的 Vite 8/Rolldown）
+        const build = (viteConf.build ??= {}) as Record<string, any>;
+        const rolldownOptions = (build.rolldownOptions ??= {});
+        const output = (rolldownOptions.output ??= {});
+        const existing = typeof output.codeSplitting === 'object' && output.codeSplitting ? output.codeSplitting : {};
+        output.codeSplitting = {
+          ...existing,
+          groups: [{ name: 'vendor', test: /node_modules[\\/]/, priority: 10 }, ...(existing.groups ?? [])],
         };
       }
     },

@@ -902,6 +902,9 @@ func (r *TeamRepo) ListTaskDeadLetters(ctx context.Context, filter biz.TaskDeadL
 	if tid := strings.TrimSpace(filter.TeamID); tid != "" {
 		q = q.Where(taskdeadletter.TeamIDEQ(tid))
 	}
+	if len(filter.TeamIDs) > 0 {
+		q = q.Where(taskdeadletter.TeamIDIn(filter.TeamIDs...))
+	}
 	if st := strings.TrimSpace(filter.Status); st != "" {
 		q = q.Where(taskdeadletter.StatusEQ(st))
 	}

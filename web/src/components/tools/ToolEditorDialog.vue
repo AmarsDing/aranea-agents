@@ -1,417 +1,426 @@
 <template>
-  <q-dialog :model-value="open" maximized @update:model-value="onDialogUpdate">
-    <q-card class="app-dialog-card app-glass-dialog app-maximized-dialog tool-editor-shell">
-      <div class="tool-editor-shell__head">
-        <div class="tool-editor-shell__head-left">
-          <q-btn flat dense round icon="arrow_back" class="app-registry-icon-btn" :disable="saving" @click="tryClose">
-            <q-tooltip>{{ t('toolsPage.editor.back') }}</q-tooltip>
-          </q-btn>
-          <div class="tool-editor-shell__breadcrumb">
-            <span class="tool-editor-shell__breadcrumb-prefix">Tools</span>
-            <q-icon name="chevron_right" size="xs" color="grey-6" />
-            <span class="tool-editor-shell__breadcrumb-current">{{
-              editingId ? t('toolsPage.editor.editTitle') : t('toolsPage.editor.createTitle')
-            }}</span>
+  <AppDialog
+    :model-value="open"
+    :title="editingId ? t('toolsPage.editor.editTitle') : t('toolsPage.editor.createTitle')"
+    :subtitle="editingId ? form.display_name : ''"
+    size="xl"
+    :loading="saving"
+    @update:model-value="onDialogUpdate"
+  >
+    <template #header-prefix>
+      <q-btn flat dense round icon="arrow_back" class="app-registry-icon-btn" :disable="saving" @click="tryClose">
+        <q-tooltip>{{ t('toolsPage.editor.back') }}</q-tooltip>
+      </q-btn>
+      <q-btn flat dense round icon="help_outline" class="app-registry-icon-btn" @click="helpOpen = true">
+        <q-tooltip>{{ t('toolsPage.editor.help') }}</q-tooltip>
+      </q-btn>
+    </template>
+
+    <div class="tool-editor-shell__body">
+      <aside class="tool-editor-aside">
+        <div class="tool-editor-aside__nav">
+          <div class="tool-editor-aside__nav-title">{{ t('toolsPage.editor.navTitle') }}</div>
+          <div
+            v-for="(section, idx) in navSections"
+            :key="section.id"
+            class="tool-editor-aside__nav-item"
+            :class="{ 'tool-editor-aside__nav-item--active': activeSection === section.id }"
+            @click="scrollToSection(section.id)"
+          >
+            <div class="tool-editor-aside__nav-num">{{ idx + 1 }}</div>
+            <div class="tool-editor-aside__nav-text">
+              <div class="tool-editor-aside__nav-label">{{ section.label }}</div>
+              <div class="tool-editor-aside__nav-hint">{{ section.hint }}</div>
+            </div>
           </div>
-          <div v-if="editingId && form.display_name" class="tool-editor-shell__entity">{{ form.display_name }}</div>
         </div>
-        <div class="tool-editor-shell__head-right">
-          <q-btn flat dense round icon="help_outline" class="app-registry-icon-btn" @click="helpOpen = true">
-            <q-tooltip>{{ t('toolsPage.editor.help') }}</q-tooltip>
-          </q-btn>
+
+        <div class="tool-editor-aside__validation">
+          <div class="tool-editor-aside__nav-title">{{ t('toolsPage.editor.validationTitle') }}</div>
+          <div
+            v-for="check in validationChecks"
+            :key="check.key"
+            class="tool-editor-aside__check row items-center q-gutter-xs"
+          >
+            <q-icon
+              :name="check.ok ? 'check_circle' : 'error'"
+              :color="check.ok ? 'positive' : 'warning'"
+              size="xs"
+            />
+            <span class="text-caption">{{ check.label }}</span>
+          </div>
         </div>
-      </div>
 
-      <div class="tool-editor-shell__body">
-        <aside class="tool-editor-aside">
-          <div class="tool-editor-aside__nav">
-            <div class="tool-editor-aside__nav-title">{{ t('toolsPage.editor.navTitle') }}</div>
+        <div v-if="editingId && diffLines.length" class="tool-editor-aside__diff">
+          <div class="tool-editor-aside__nav-title">{{ t('toolsPage.editor.diffTitle') }}</div>
+          <div class="tool-editor-aside__diff-list">
             <div
-              v-for="(section, idx) in navSections"
-              :key="section.id"
-              class="tool-editor-aside__nav-item"
-              :class="{ 'tool-editor-aside__nav-item--active': activeSection === section.id }"
-              @click="scrollToSection(section.id)"
+              v-for="(line, i) in diffLines.slice(0, 6)"
+              :key="i"
+              class="tool-editor-aside__diff-line text-caption"
             >
-              <div class="tool-editor-aside__nav-num">{{ idx + 1 }}</div>
-              <div class="tool-editor-aside__nav-text">
-                <div class="tool-editor-aside__nav-label">{{ section.label }}</div>
-                <div class="tool-editor-aside__nav-hint">{{ section.hint }}</div>
-              </div>
+              {{ line }}
+            </div>
+            <div v-if="diffLines.length > 6" class="text-caption text-grey">
+              {{ t('toolsPage.editor.diffMore', { count: diffLines.length - 6 }) }}
             </div>
           </div>
+        </div>
+      </aside>
 
-          <div class="tool-editor-aside__validation">
-            <div class="tool-editor-aside__nav-title">{{ t('toolsPage.editor.validationTitle') }}</div>
-            <div
-              v-for="check in validationChecks"
-              :key="check.key"
-              class="tool-editor-aside__check row items-center q-gutter-xs"
-            >
-              <q-icon
-                :name="check.ok ? 'check_circle' : 'error'"
-                :color="check.ok ? 'positive' : 'warning'"
-                size="xs"
-              />
-              <span class="text-caption">{{ check.label }}</span>
-            </div>
-          </div>
-
-          <div v-if="editingId && diffLines.length" class="tool-editor-aside__diff">
-            <div class="tool-editor-aside__nav-title">{{ t('toolsPage.editor.diffTitle') }}</div>
-            <div class="tool-editor-aside__diff-list">
-              <div
-                v-for="(line, i) in diffLines.slice(0, 6)"
-                :key="i"
-                class="tool-editor-aside__diff-line text-caption"
-              >
-                {{ line }}
+      <main class="tool-editor-main">
+        <div ref="scrollContainer" class="tool-editor-main__scroll" @scroll="onScroll">
+          <div class="tool-editor-main__content">
+            <section id="section-basic" class="tool-editor-section">
+              <div class="tool-editor-section__header">
+                <div class="tool-editor-section__step">1</div>
+                <div>
+                  <h3 class="tool-editor-section__title">{{ t('toolsPage.editor.basicTitle') }}</h3>
+                  <p class="tool-editor-section__desc">
+                    {{ t('toolsPage.editor.basicDesc') }}
+                  </p>
+                </div>
               </div>
-              <div v-if="diffLines.length > 6" class="text-caption text-grey">
-                {{ t('toolsPage.editor.diffMore', { count: diffLines.length - 6 }) }}
-              </div>
-            </div>
-          </div>
-        </aside>
 
-        <main class="tool-editor-main">
-          <div ref="scrollContainer" class="tool-editor-main__scroll" @scroll="onScroll">
-            <div class="tool-editor-main__content">
-              <section id="section-basic" class="tool-editor-section">
-                <div class="tool-editor-section__header">
-                  <div class="tool-editor-section__step">1</div>
-                  <div>
-                    <h3 class="tool-editor-section__title">{{ t('toolsPage.editor.basicTitle') }}</h3>
-                    <p class="tool-editor-section__desc">
-                      {{ t('toolsPage.editor.basicDesc') }}
-                    </p>
-                  </div>
-                </div>
-
-                <div v-if="!editingId" class="tool-template-grid q-mb-md">
-                  <button
-                    v-for="tpl in templates"
-                    :key="tpl.id"
-                    type="button"
-                    class="tool-template-card"
-                    :class="{ 'tool-template-card--active': selectedTemplate === tpl.id }"
-                    @click="$emit('apply-template', tpl.id)"
-                  >
-                    <span class="tool-template-card__label">{{ tpl.label }}</span>
-                    <span class="tool-template-card__caption">{{ tpl.caption }}</span>
-                  </button>
-                </div>
-
-                <div class="app-form-field-grid app-form-field-grid--2col">
-                  <tool-field-hint-input
-                    :model-value="form.key"
-                    :label="t('toolsPage.editor.fieldKey')"
-                    :hint="hints.key"
-                    :disable="Boolean(editingId)"
-                    @update:model-value="$emit('patch-form', { key: $event })"
-                  />
-                  <tool-field-hint-input
-                    :model-value="form.display_name"
-                    :label="t('toolsPage.editor.fieldName')"
-                    :hint="hints.display_name"
-                    @update:model-value="$emit('patch-form', { display_name: $event })"
-                  />
-                  <q-input
-                    class="app-grid-span-full app-field-long"
-                    :model-value="form.description"
-                    dense
-                    outlined
-                    autogrow
-                    type="textarea"
-                    :label="t('toolsPage.editor.fieldDesc')"
-                    :hint="hints.description"
-                    @update:model-value="$emit('patch-form', { description: String($event ?? '') })"
-                  />
-                  <q-input
-                    :model-value="form.category"
-                    dense
-                    outlined
-                    :label="t('toolsPage.editor.fieldCategory')"
-                    :hint="hints.category"
-                    @update:model-value="$emit('patch-form', { category: String($event ?? 'custom') })"
-                  />
-                  <q-select
-                    v-if="!editingId"
-                    :model-value="form.source"
-                    dense
-                    outlined
-                    emit-value
-                    map-options
-                    :label="t('toolsPage.editor.fieldSource')"
-                    :hint="hints.source"
-                    :options="sourceOptions"
-                    @update:model-value="$emit('patch-form', { source: String($event ?? 'external') })"
-                  />
-                  <q-input
-                    v-else
-                    :model-value="form.source"
-                    dense
-                    outlined
-                    readonly
-                    :label="t('toolsPage.editor.fieldSource')"
-                    :hint="hints.source"
-                  />
-                  <q-select
-                    :model-value="form.risk_level"
-                    dense
-                    outlined
-                    emit-value
-                    map-options
-                    :label="t('toolsPage.editor.fieldRisk')"
-                    :hint="hints.risk_level"
-                    :options="riskOptions"
-                    @update:model-value="$emit('patch-form', { risk_level: String($event ?? 'low') })"
-                  />
-                </div>
-              </section>
-
-              <section id="section-policy" class="tool-editor-section">
-                <div class="tool-editor-section__header">
-                  <div class="tool-editor-section__step">2</div>
-                  <div>
-                    <h3 class="tool-editor-section__title">{{ t('toolsPage.editor.policyTitle') }}</h3>
-                    <p class="tool-editor-section__desc">{{ t('toolsPage.editor.policyDesc') }}</p>
-                  </div>
-                </div>
-
-                <q-banner v-if="registryLocked" rounded class="settings-warning-banner q-mb-sm">
-                  {{ t('toolsPage.editor.registryBanner') }}
-                </q-banner>
-
-                <tool-policy-toggle-list
-                  :form="form"
-                  :registry-locked="registryLocked"
-                  @patch-form="$emit('patch-form', $event)"
-                />
-
-                <q-banner rounded dense class="settings-info-banner q-mt-sm">
-                  {{ t('toolsPage.editor.agentConfigPre')
-                  }}<router-link :to="{ name: 'agents' }" class="text-primary">{{
-                    t('toolsPage.editor.agentConfigLink')
-                  }}</router-link>{{ t('toolsPage.editor.agentConfigPost') }}
-                </q-banner>
-              </section>
-
-              <section id="section-params" class="tool-editor-section">
-                <div class="tool-editor-section__header">
-                  <div class="tool-editor-section__step">3</div>
-                  <div>
-                    <h3 class="tool-editor-section__title">{{ t('toolsPage.editor.paramsTitle') }}</h3>
-                    <p class="tool-editor-section__desc">{{ t('toolsPage.editor.paramsDesc') }}</p>
-                    <p class="tool-editor-section__desc-detail">
-                      <strong>{{ t('toolsPage.editor.paramsWhen') }}</strong>{{ t('toolsPage.editor.paramsWhenText') }}
-                      <strong>{{ t('toolsPage.editor.paramsAfter') }}</strong>{{ t('toolsPage.editor.paramsAfterText') }}
-                    </p>
-                  </div>
-                </div>
-                <tool-schema-builder
-                  :model-value="form.parameters_schema_json"
-                  :title="t('toolsPage.editor.paramsBuilderTitle')"
-                  :hint="hints.parameters_schema_json"
-                  :readonly="schemaReadonly"
-                  @update:model-value="$emit('patch-form', { parameters_schema_json: $event })"
-                />
-                <q-expansion-item dense-toggle :label="t('toolsPage.editor.resultExpLabel')" class="q-mt-md">
-                  <div class="q-pt-sm">
-                    <p class="tool-editor-section__desc-detail">
-                      {{ t('toolsPage.editor.resultDesc') }}
-                    </p>
-                    <tool-schema-builder
-                      :model-value="form.result_schema_json"
-                      :title="t('toolsPage.editor.resultBuilderTitle')"
-                      :hint="hints.result_schema_json"
-                      :readonly="schemaReadonly"
-                      @update:model-value="$emit('patch-form', { result_schema_json: $event })"
-                    />
-                  </div>
-                </q-expansion-item>
-              </section>
-
-              <section id="section-config" class="tool-editor-section">
-                <div class="tool-editor-section__header">
-                  <div class="tool-editor-section__step">4</div>
-                  <div>
-                    <h3 class="tool-editor-section__title">{{ t('toolsPage.editor.configTitle') }}</h3>
-                    <p class="tool-editor-section__desc">
-                      {{ t('toolsPage.editor.configDesc') }}
-                    </p>
-                    <p class="tool-editor-section__desc-detail">
-                      <strong>{{ t('toolsPage.editor.configWhen') }}</strong>{{ t('toolsPage.editor.configWhenText') }}
-                      <strong>{{ t('toolsPage.editor.configAfter') }}</strong>{{ t('toolsPage.editor.configAfterText') }}
-                    </p>
-                  </div>
-                </div>
-
-                <q-expansion-item
-                  dense-toggle
-                  :default-opened="!hasConfigSchema"
-                  :label="t('toolsPage.editor.configSchemaExpLabel')"
-                  class="q-mb-md"
+              <div v-if="!editingId" class="tool-template-grid q-mb-md">
+                <button
+                  v-for="tpl in templates"
+                  :key="tpl.id"
+                  type="button"
+                  class="tool-template-card"
+                  :class="{ 'tool-template-card--active': selectedTemplate === tpl.id }"
+                  @click="$emit('apply-template', tpl.id)"
                 >
-                  <div class="q-pt-sm">
-                    <p class="tool-editor-section__desc-detail">
-                      {{ t('toolsPage.editor.configSchemaDesc') }}
-                    </p>
-                    <tool-schema-builder
-                      :model-value="form.config_schema_json"
-                      :title="t('toolsPage.editor.configSchemaBuilderTitle')"
-                      :hint="hints.config_schema_json"
-                      :readonly="schemaReadonly"
-                      @update:model-value="$emit('patch-form', { config_schema_json: $event })"
-                    />
-                  </div>
-                </q-expansion-item>
+                  <span class="tool-template-card__label">{{ tpl.label }}</span>
+                  <span class="tool-template-card__caption">{{ tpl.caption }}</span>
+                </button>
+              </div>
 
-                <div class="tool-editor-section__subtitle">{{ t('toolsPage.editor.currentConfig') }}</div>
-                <q-banner v-if="form.key === 'web_research'" rounded dense class="settings-info-banner q-mb-sm">
-                  {{ t('toolsPage.editor.webResearchPre')
-                  }}<router-link :to="{ name: 'settings' }" class="text-primary">{{
-                    t('toolsPage.editor.webResearchLink')
-                  }}</router-link>{{ t('toolsPage.editor.webResearchPost') }}
-                </q-banner>
-                <template v-if="hasConfigSchema">
-                  <tool-schema-form
-                    :schema-json="form.config_schema_json"
-                    :model-value="form.config_json"
-                    @update:model-value="$emit('patch-form', { config_json: $event })"
-                  />
-                </template>
+              <div class="app-form-field-grid app-form-field-grid--2col">
+                <tool-field-hint-input
+                  :model-value="form.key"
+                  :label="t('toolsPage.editor.fieldKey')"
+                  :hint="hints.key"
+                  :disable="Boolean(editingId)"
+                  @update:model-value="$emit('patch-form', { key: $event })"
+                />
+                <tool-field-hint-input
+                  :model-value="form.display_name"
+                  :label="t('toolsPage.editor.fieldName')"
+                  :hint="hints.display_name"
+                  @update:model-value="$emit('patch-form', { display_name: $event })"
+                />
                 <q-input
-                  v-else
-                  :model-value="form.config_json"
-                  type="textarea"
+                  class="app-grid-span-full app-field-long"
+                  :model-value="form.description"
+                  dense
                   outlined
                   autogrow
-                  dense
-                  class="app-field-long"
-                  :label="t('toolsPage.editor.configJsonLabel')"
-                  :hint="hints.config_json"
-                  :readonly="schemaReadonly"
-                  :error="Boolean(jsonErrors.config_json)"
-                  :error-message="jsonErrors.config_json"
-                  @update:model-value="$emit('patch-form', { config_json: String($event ?? '{}') })"
+                  type="textarea"
+                  :label="t('toolsPage.editor.fieldDesc')"
+                  :hint="hints.description"
+                  @update:model-value="$emit('patch-form', { description: String($event ?? '') })"
                 />
-                <q-banner v-if="extraConfigKeys.length" rounded class="settings-warning-banner q-mt-sm">
-                  {{ t('toolsPage.editor.extraKeysBanner', { keys: extraConfigKeys.join(', ') }) }}
-                </q-banner>
-              </section>
+                <q-input
+                  :model-value="form.category"
+                  dense
+                  outlined
+                  :label="t('toolsPage.editor.fieldCategory')"
+                  :hint="hints.category"
+                  @update:model-value="$emit('patch-form', { category: String($event ?? 'custom') })"
+                />
+                <q-select
+                  v-if="!editingId"
+                  :model-value="form.source"
+                  dense
+                  outlined
+                  emit-value
+                  map-options
+                  :label="t('toolsPage.editor.fieldSource')"
+                  :hint="hints.source"
+                  :options="sourceOptions"
+                  @update:model-value="$emit('patch-form', { source: String($event ?? 'external') })"
+                />
+                <q-input
+                  v-else
+                  :model-value="form.source"
+                  dense
+                  outlined
+                  readonly
+                  :label="t('toolsPage.editor.fieldSource')"
+                  :hint="hints.source"
+                />
+                <q-select
+                  :model-value="form.risk_level"
+                  dense
+                  outlined
+                  emit-value
+                  map-options
+                  :label="t('toolsPage.editor.fieldRisk')"
+                  :hint="hints.risk_level"
+                  :options="riskOptions"
+                  @update:model-value="$emit('patch-form', { risk_level: String($event ?? 'low') })"
+                />
+              </div>
+            </section>
 
-              <section id="section-advanced" class="tool-editor-section">
-                <div class="tool-editor-section__header">
-                  <div class="tool-editor-section__step">5</div>
-                  <div>
-                    <h3 class="tool-editor-section__title">{{ t('toolsPage.editor.advancedTitle') }}</h3>
-                    <p class="tool-editor-section__desc">{{ t('toolsPage.editor.advancedDesc') }}</p>
-                    <p class="tool-editor-section__desc-detail">
-                      <strong>{{ t('toolsPage.editor.advancedWhen') }}</strong>{{ t('toolsPage.editor.advancedWhenText') }}
-                      <strong>{{ t('toolsPage.editor.advancedAfter') }}</strong>{{ t('toolsPage.editor.advancedAfterText') }}
-                    </p>
-                  </div>
+            <section id="section-policy" class="tool-editor-section">
+              <div class="tool-editor-section__header">
+                <div class="tool-editor-section__step">2</div>
+                <div>
+                  <h3 class="tool-editor-section__title">{{ t('toolsPage.editor.policyTitle') }}</h3>
+                  <p class="tool-editor-section__desc">{{ t('toolsPage.editor.policyDesc') }}</p>
                 </div>
-                <q-banner v-if="registryLocked" rounded dense class="settings-info-banner q-mb-sm">
-                  {{ t('toolsPage.editor.advancedRegistryBanner') }}
-                </q-banner>
-                <q-expansion-item dense-toggle :label="t('toolsPage.editor.defaultConfigExp')">
-                  <div class="q-pt-sm column q-gutter-sm">
-                    <ul v-if="defaultDiffLines.length" class="app-registry-muted-caption q-pl-md q-ma-none">
-                      <li v-for="(line, i) in defaultDiffLines" :key="i">{{ line }}</li>
-                    </ul>
-                    <q-input
-                      :model-value="form.default_config_json"
-                      type="textarea"
-                      outlined
-                      autogrow
-                      dense
-                      class="app-field-long"
-                      :label="t('toolsPage.editor.defaultConfigLabel')"
-                      :readonly="registryLocked"
-                      :error="Boolean(jsonErrors.default_config_json)"
-                      :error-message="jsonErrors.default_config_json"
-                      @update:model-value="$emit('patch-form', { default_config_json: String($event ?? '{}') })"
-                    />
-                    <q-btn
-                      v-if="!registryLocked"
-                      flat
-                      dense
-                      no-caps
-                      size="sm"
-                      :label="t('toolsPage.editor.copyFromCurrent')"
-                      @click="$emit('patch-form', { default_config_json: form.config_json })"
-                    />
-                  </div>
-                </q-expansion-item>
-                <q-expansion-item dense-toggle :label="t('toolsPage.editor.metadataExp')">
-                  <div class="q-pt-sm">
-                    <q-input
-                      :model-value="form.metadata_json"
-                      type="textarea"
-                      outlined
-                      autogrow
-                      dense
-                      class="app-field-long"
-                      :label="t('toolsPage.editor.metadataLabel')"
-                      :readonly="registryLocked"
-                      :error="Boolean(jsonErrors.metadata_json)"
-                      :error-message="jsonErrors.metadata_json"
-                      @update:model-value="$emit('patch-form', { metadata_json: String($event ?? '{}') })"
-                    />
-                  </div>
-                </q-expansion-item>
-                <q-expansion-item dense-toggle :label="t('toolsPage.editor.rawExp')">
-                  <div class="q-pt-sm column q-gutter-sm">
-                    <q-input
-                      v-for="field in rawFields"
-                      :key="field.key"
-                      :model-value="form[field.key]"
-                      type="textarea"
-                      outlined
-                      autogrow
-                      dense
-                      class="app-field-long"
-                      :label="field.label"
-                      :readonly="registryLocked"
-                      :error="Boolean(jsonErrors[field.key])"
-                      :error-message="jsonErrors[field.key]"
-                      @update:model-value="$emit('patch-form', { [field.key]: String($event ?? '{}') })"
-                    />
-                  </div>
-                </q-expansion-item>
-              </section>
-            </div>
-          </div>
+              </div>
 
-          <div class="tool-editor-main__footer">
-            <q-btn outline no-caps :label="t('toolsPage.editor.cancel')" @click="tryClose" />
-            <q-btn
-              no-caps
-              unelevated
-              class="app-registry-primary-btn"
-              icon="save"
-              :label="t('toolsPage.editor.save')"
-              :loading="saving"
-              @click="$emit('save')"
-            />
-          </div>
-        </main>
-      </div>
+              <q-banner v-if="registryLocked" rounded class="settings-warning-banner q-mb-sm">
+                {{ t('toolsPage.editor.registryBanner') }}
+              </q-banner>
 
-      <tool-editor-help-drawer v-model:open="helpOpen" />
-    </q-card>
-  </q-dialog>
+              <tool-policy-toggle-list
+                :form="form"
+                :registry-locked="registryLocked"
+                @patch-form="$emit('patch-form', $event)"
+              />
+
+              <q-banner rounded dense class="settings-info-banner q-mt-sm">
+                {{ t('toolsPage.editor.agentConfigPre')
+                }}<router-link :to="{ name: 'agents' }" class="text-primary">{{
+                  t('toolsPage.editor.agentConfigLink')
+                }}</router-link
+                >{{ t('toolsPage.editor.agentConfigPost') }}
+              </q-banner>
+            </section>
+
+            <section id="section-params" class="tool-editor-section">
+              <div class="tool-editor-section__header">
+                <div class="tool-editor-section__step">3</div>
+                <div>
+                  <h3 class="tool-editor-section__title">{{ t('toolsPage.editor.paramsTitle') }}</h3>
+                  <p class="tool-editor-section__desc">{{ t('toolsPage.editor.paramsDesc') }}</p>
+                  <p class="tool-editor-section__desc-detail">
+                    <strong>{{ t('toolsPage.editor.paramsWhen') }}</strong
+                    >{{ t('toolsPage.editor.paramsWhenText') }}
+                    <strong>{{ t('toolsPage.editor.paramsAfter') }}</strong
+                    >{{ t('toolsPage.editor.paramsAfterText') }}
+                  </p>
+                </div>
+              </div>
+              <tool-schema-builder
+                :model-value="form.parameters_schema_json"
+                :title="t('toolsPage.editor.paramsBuilderTitle')"
+                :hint="hints.parameters_schema_json"
+                :readonly="schemaReadonly"
+                @update:model-value="$emit('patch-form', { parameters_schema_json: $event })"
+              />
+              <q-expansion-item dense-toggle :label="t('toolsPage.editor.resultExpLabel')" class="q-mt-md">
+                <div class="q-pt-sm">
+                  <p class="tool-editor-section__desc-detail">
+                    {{ t('toolsPage.editor.resultDesc') }}
+                  </p>
+                  <tool-schema-builder
+                    :model-value="form.result_schema_json"
+                    :title="t('toolsPage.editor.resultBuilderTitle')"
+                    :hint="hints.result_schema_json"
+                    :readonly="schemaReadonly"
+                    @update:model-value="$emit('patch-form', { result_schema_json: $event })"
+                  />
+                </div>
+              </q-expansion-item>
+            </section>
+
+            <section id="section-config" class="tool-editor-section">
+              <div class="tool-editor-section__header">
+                <div class="tool-editor-section__step">4</div>
+                <div>
+                  <h3 class="tool-editor-section__title">{{ t('toolsPage.editor.configTitle') }}</h3>
+                  <p class="tool-editor-section__desc">
+                    {{ t('toolsPage.editor.configDesc') }}
+                  </p>
+                  <p class="tool-editor-section__desc-detail">
+                    <strong>{{ t('toolsPage.editor.configWhen') }}</strong
+                    >{{ t('toolsPage.editor.configWhenText') }}
+                    <strong>{{ t('toolsPage.editor.configAfter') }}</strong
+                    >{{ t('toolsPage.editor.configAfterText') }}
+                  </p>
+                </div>
+              </div>
+
+              <q-expansion-item
+                dense-toggle
+                :default-opened="!hasConfigSchema"
+                :label="t('toolsPage.editor.configSchemaExpLabel')"
+                class="q-mb-md"
+              >
+                <div class="q-pt-sm">
+                  <p class="tool-editor-section__desc-detail">
+                    {{ t('toolsPage.editor.configSchemaDesc') }}
+                  </p>
+                  <tool-schema-builder
+                    :model-value="form.config_schema_json"
+                    :title="t('toolsPage.editor.configSchemaBuilderTitle')"
+                    :hint="hints.config_schema_json"
+                    :readonly="schemaReadonly"
+                    @update:model-value="$emit('patch-form', { config_schema_json: $event })"
+                  />
+                </div>
+              </q-expansion-item>
+
+              <div class="tool-editor-section__subtitle">{{ t('toolsPage.editor.currentConfig') }}</div>
+              <q-banner v-if="form.key === 'web_research'" rounded dense class="settings-info-banner q-mb-sm">
+                {{ t('toolsPage.editor.webResearchPre')
+                }}<router-link :to="{ name: 'settings' }" class="text-primary">{{
+                  t('toolsPage.editor.webResearchLink')
+                }}</router-link
+                >{{ t('toolsPage.editor.webResearchPost') }}
+              </q-banner>
+              <template v-if="hasConfigSchema">
+                <tool-schema-form
+                  :schema-json="form.config_schema_json"
+                  :model-value="form.config_json"
+                  @update:model-value="$emit('patch-form', { config_json: $event })"
+                />
+              </template>
+              <q-input
+                v-else
+                :model-value="form.config_json"
+                type="textarea"
+                outlined
+                autogrow
+                dense
+                class="app-field-long"
+                :label="t('toolsPage.editor.configJsonLabel')"
+                :hint="hints.config_json"
+                :readonly="schemaReadonly"
+                :error="Boolean(jsonErrors.config_json)"
+                :error-message="jsonErrors.config_json"
+                @update:model-value="$emit('patch-form', { config_json: String($event ?? '{}') })"
+              />
+              <q-banner v-if="extraConfigKeys.length" rounded class="settings-warning-banner q-mt-sm">
+                {{ t('toolsPage.editor.extraKeysBanner', { keys: extraConfigKeys.join(', ') }) }}
+              </q-banner>
+            </section>
+
+            <section id="section-advanced" class="tool-editor-section">
+              <div class="tool-editor-section__header">
+                <div class="tool-editor-section__step">5</div>
+                <div>
+                  <h3 class="tool-editor-section__title">{{ t('toolsPage.editor.advancedTitle') }}</h3>
+                  <p class="tool-editor-section__desc">{{ t('toolsPage.editor.advancedDesc') }}</p>
+                  <p class="tool-editor-section__desc-detail">
+                    <strong>{{ t('toolsPage.editor.advancedWhen') }}</strong
+                    >{{ t('toolsPage.editor.advancedWhenText') }}
+                    <strong>{{ t('toolsPage.editor.advancedAfter') }}</strong
+                    >{{ t('toolsPage.editor.advancedAfterText') }}
+                  </p>
+                </div>
+              </div>
+              <q-banner v-if="registryLocked" rounded dense class="settings-info-banner q-mb-sm">
+                {{ t('toolsPage.editor.advancedRegistryBanner') }}
+              </q-banner>
+              <q-expansion-item dense-toggle :label="t('toolsPage.editor.defaultConfigExp')">
+                <div class="q-pt-sm column q-gutter-sm">
+                  <ul v-if="defaultDiffLines.length" class="app-registry-muted-caption q-pl-md q-ma-none">
+                    <li v-for="(line, i) in defaultDiffLines" :key="i">{{ line }}</li>
+                  </ul>
+                  <q-input
+                    :model-value="form.default_config_json"
+                    type="textarea"
+                    outlined
+                    autogrow
+                    dense
+                    class="app-field-long"
+                    :label="t('toolsPage.editor.defaultConfigLabel')"
+                    :readonly="registryLocked"
+                    :error="Boolean(jsonErrors.default_config_json)"
+                    :error-message="jsonErrors.default_config_json"
+                    @update:model-value="$emit('patch-form', { default_config_json: String($event ?? '{}') })"
+                  />
+                  <q-btn
+                    v-if="!registryLocked"
+                    flat
+                    dense
+                    no-caps
+                    size="sm"
+                    :label="t('toolsPage.editor.copyFromCurrent')"
+                    @click="$emit('patch-form', { default_config_json: form.config_json })"
+                  />
+                </div>
+              </q-expansion-item>
+              <q-expansion-item dense-toggle :label="t('toolsPage.editor.metadataExp')">
+                <div class="q-pt-sm">
+                  <q-input
+                    :model-value="form.metadata_json"
+                    type="textarea"
+                    outlined
+                    autogrow
+                    dense
+                    class="app-field-long"
+                    :label="t('toolsPage.editor.metadataLabel')"
+                    :readonly="registryLocked"
+                    :error="Boolean(jsonErrors.metadata_json)"
+                    :error-message="jsonErrors.metadata_json"
+                    @update:model-value="$emit('patch-form', { metadata_json: String($event ?? '{}') })"
+                  />
+                </div>
+              </q-expansion-item>
+              <q-expansion-item dense-toggle :label="t('toolsPage.editor.rawExp')">
+                <div class="q-pt-sm column q-gutter-sm">
+                  <q-input
+                    v-for="field in rawFields"
+                    :key="field.key"
+                    :model-value="form[field.key]"
+                    type="textarea"
+                    outlined
+                    autogrow
+                    dense
+                    class="app-field-long"
+                    :label="field.label"
+                    :readonly="registryLocked"
+                    :error="Boolean(jsonErrors[field.key])"
+                    :error-message="jsonErrors[field.key]"
+                    @update:model-value="$emit('patch-form', { [field.key]: String($event ?? '{}') })"
+                  />
+                </div>
+              </q-expansion-item>
+            </section>
+          </div>
+        </div>
+
+      </main>
+    </div>
+
+    <tool-editor-help-drawer v-model:open="helpOpen" />
+
+    <template #actions>
+      <q-btn outline no-caps :label="t('toolsPage.editor.cancel')" @click="tryClose" />
+      <q-btn
+        no-caps
+        unelevated
+        class="app-registry-primary-btn"
+        icon="save"
+        :label="t('toolsPage.editor.save')"
+        :loading="saving"
+        @click="$emit('save')"
+      />
+    </template>
+  </AppDialog>
 </template>
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
+import AppDialog from '../common/AppDialog.vue';
 import { toolCreateTemplates, toolFieldHints, isRegistryLockedTool } from '../../features/tools/toolEditorCopy';
 import { configExtraKeys, configDiffSummary } from '../../features/tools/jsonSchemaBuilder';
 import type { ToolUpsertInput } from '../../features/tools/types';
-import { toolEditorJsonKeys, validateToolJsonFields, riskLevelOptions, sourceSuggestions, diffToolFormLines } from './toolUi';
+import {
+  toolEditorJsonKeys,
+  validateToolJsonFields,
+  riskLevelOptions,
+  sourceSuggestions,
+  diffToolFormLines,
+} from './toolUi';
 import ToolFieldHintInput from './editor/ToolFieldHintInput.vue';
 import ToolEditorHelpDrawer from './editor/ToolEditorHelpDrawer.vue';
 import ToolPolicyToggleList from './editor/ToolPolicyToggleList.vue';
@@ -473,9 +482,19 @@ const riskOptions = computed(() => riskLevelOptions());
 const navSections = computed(() => [
   { id: 'basic', label: t('toolsPage.editor.navBasic'), hint: t('toolsPage.editor.navBasicHint'), icon: 'info' },
   { id: 'policy', label: t('toolsPage.editor.navPolicy'), hint: t('toolsPage.editor.navPolicyHint'), icon: 'policy' },
-  { id: 'params', label: t('toolsPage.editor.navParams'), hint: t('toolsPage.editor.navParamsHint'), icon: 'data_object' },
+  {
+    id: 'params',
+    label: t('toolsPage.editor.navParams'),
+    hint: t('toolsPage.editor.navParamsHint'),
+    icon: 'data_object',
+  },
   { id: 'config', label: t('toolsPage.editor.navConfig'), hint: t('toolsPage.editor.navConfigHint'), icon: 'tune' },
-  { id: 'advanced', label: t('toolsPage.editor.navAdvanced'), hint: t('toolsPage.editor.navAdvancedHint'), icon: 'more_horiz' },
+  {
+    id: 'advanced',
+    label: t('toolsPage.editor.navAdvanced'),
+    hint: t('toolsPage.editor.navAdvancedHint'),
+    icon: 'more_horiz',
+  },
 ]);
 
 const registryLocked = computed(() => isRegistryLockedTool(props.form));
@@ -581,3 +600,11 @@ function onDialogUpdate(val: boolean) {
   }
 }
 </script>
+
+<style scoped>
+/* 迁到 AppDialog 后滚动容器由 dialog body 提供：两栏布局须占满 body 可视高度，
+   main 侧保留自己的滚动节点（scroll-spy 依赖 ref + @scroll）。 */
+.tool-editor-shell__body {
+  height: 100%;
+}
+</style>

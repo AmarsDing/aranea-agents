@@ -18,5 +18,27 @@
 @import ./theme/team-orchestrate
 @import ./theme/workbench
 @import ./theme/ecommerce-loop
+// 经营驾驶舱（整合 P2-8）：/ceo/overview 与 /ceo/oncall 全部样式，类名 ceo- 前缀
+@import ./theme/ceoboard
+// 概览页 V3 视觉层（异常驱动运维台）：类名 ov- 前缀，取值只走 --nt-* 令牌
+@import ./theme/overview
+// 工作台「今日」页（/workbench）：类名 today- 前缀，取值只走 --nt-* 令牌
+@import ./theme/today
+// 全局地基：状态面板/面包屑/命令面板/侧栏分组/无障碍兜底
+@import ./theme/ui-states
 // M95 实体卡片材质：兼容旧类名，统一表面与边框，不使用扫描/跟随高光
 @import ./theme/liquid-card
+// 公司树（/ceo/company）：类名 co- 前缀，取值只走 --nt-* 令牌
+@import ./theme/company
+// 登记页列表的视图条与卡片视图（AppRegistryTable）
+@import ./theme/registry-cards
+// 蓝图皮肤（aranea 先行试点，2026-11-18 起取代深空皮肤）：只覆盖令牌取值；换回 skin-deepspace 即回退
+@import ./theme/skin-blueprint
+// 科幻层：侧栏、卡片、控件、页面壳的全站外观；排在皮肤之后，去掉这一行即回退
+@import ./theme/skin-scifi
+// 页面骨架：一行页头、右侧检视面板尺寸；排在最后
+@import ./theme/page-frame
+// 两种视觉档位（指挥舱 / 工作区）与中文标签写法；排在最后
+@import ./theme/visual-registers
+// 导航重组：侧栏八个一级去处（手风琴 / 图标栏）与页面顶部领域页签
+@import ./theme/nav-domains

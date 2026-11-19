@@ -18,8 +18,8 @@ describe('deriveTrustState', () => {
     expect(deriveTrustState({ ...base, staleMs: 5 * 60_000 })).toBe('live');
   });
 
-  it('backlog（告警堆单）优先于 degraded', () => {
-    expect(deriveTrustState({ ...base, backlogCount: 1, lanesDegraded: true })).toBe('backlog');
+  it('degraded（数据源失败）优先于 backlog，禁止把失败掩盖成正常积压', () => {
+    expect(deriveTrustState({ ...base, backlogCount: 1, lanesDegraded: true })).toBe('degraded');
   });
 
   it('degraded 与 live 依次兜底', () => {

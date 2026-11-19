@@ -38,12 +38,31 @@
       </template>
     </AppPageToolbar>
 
-    <q-banner v-if="error" rounded class="bg-negative text-white q-mb-md">
-      {{ error }}
-      <template #action>
-        <q-btn flat color="white" label="重试" @click="loadRows" />
-      </template>
-    </q-banner>
+    <!-- 五态：已有数据但刷新失败 → 局部失败横幅，列表照常渲染 -->
+    <AppStatePanel
+      v-if="(error || forbidden) && rows.length > 0"
+      variant="partial"
+      dense
+      class="q-mb-md"
+      :description="error"
+      action-label="重试"
+      action-icon="refresh"
+      @action="loadRows"
+    />
+
+    <!-- 五态：无权限 → 只渲染 forbidden 面板，不提供重试 -->
+    <AppStatePanel v-else-if="forbidden" variant="forbidden" class="q-mb-md" />
+
+    <!-- 五态：加载失败且无数据 → 只渲染可重试错误面板，不与空态并存。 -->
+    <AppStatePanel
+      v-else-if="error"
+      variant="error"
+      class="q-mb-md"
+      :description="error"
+      action-label="重试"
+      action-icon="refresh"
+      @action="loadRows"
+    />
 
     <!-- KPI 概览条：始终展示（筛选条件下为 0 亦是有效信息），数据来自后端全量聚合而非当前页 -->
     <ExperienceReportStatCards
@@ -54,15 +73,21 @@
       :rca-count="rootCauseReports.length"
     />
 
-    <q-card v-if="!loading && rows.length === 0" flat class="app-registry-empty app-empty-state-center">
-      <q-card-section class="column items-center text-center q-pa-xl">
-        <q-avatar size="72px" color="primary" text-color="white" icon="assessment" />
-        <div class="text-h6 q-mt-md">{{ hasActiveFilters ? '没有匹配的经验报告' : '暂无经验报告' }}</div>
-        <div class="text-body2 text-grey-7 q-mt-sm">{{ hasActiveFilters ? '请调整筛选条件后重试。' : 'Skill 执行后将自动生成经验报告，可在此查看。' }}</div>
-      </q-card-section>
-    </q-card>
+    <!-- 五态：首屏加载无数据 → 骨架面板 -->
+    <AppStatePanel v-if="loading && rows.length === 0 && !error && !forbidden" variant="loading" :rows="5" />
 
-    <template v-else>
+    <!-- 五态：成功但无数据 → 空态 -->
+    <AppStatePanel
+      v-else-if="!loading && !error && !forbidden && rows.length === 0"
+      variant="empty"
+      :title="hasActiveFilters ? '没有匹配的经验报告' : '暂无经验报告'"
+      :description="
+        hasActiveFilters ? '请调整筛选条件后重试。' : 'Skill 执行后将自动生成经验报告，可在此查看。'
+      "
+      icon="assessment"
+    />
+
+    <template v-else-if="rows.length > 0">
       <div v-if="hasAnalytics" class="row q-col-gutter-md q-mb-md">
         <div class="col-12 col-md-6">
           <FailureTagsChart class="full-height" :failure-tags="failureTagsDistribution" />
@@ -91,6 +116,7 @@ import { computed } from 'vue';
 import { useRoute } from 'vue-router';
 import AppPageHero from '../components/layout/AppPageHero.vue';
 import AppPageToolbar from '../components/layout/AppPageToolbar.vue';
+import AppStatePanel from '../components/common/AppStatePanel.vue';
 import SkillPagination from '../components/skills/SkillPagination.vue';
 import ExperienceReportTable from '../components/skills/ExperienceReportTable.vue';
 import ExperienceReportStatCards from '../components/skills/ExperienceReportStatCards.vue';
@@ -111,6 +137,7 @@ const {
   total,
   loading,
   error,
+  forbidden,
   pageMax,
   failureTagsDistribution,
   rootCauseReports,

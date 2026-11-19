@@ -6,7 +6,10 @@
 
     <q-banner v-if="tool?.key === 'web_research'" rounded dense class="settings-info-banner">
       {{ $t('toolsPage.configPanel.webResearchPre') }}
-      <router-link :to="{ name: 'settings' }" class="text-primary">{{ $t('toolsPage.configPanel.webResearchLink') }}</router-link>{{ $t('toolsPage.configPanel.webResearchPost') }}
+      <router-link :to="{ name: 'settings' }" class="text-primary">{{
+        $t('toolsPage.configPanel.webResearchLink')
+      }}</router-link
+      >{{ $t('toolsPage.configPanel.webResearchPost') }}
     </q-banner>
 
     <q-expansion-item

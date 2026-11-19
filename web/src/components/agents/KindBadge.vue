@@ -1,5 +1,5 @@
 <template>
-  <q-badge v-if="badgeConfig" :style="badgeConfig.style" :label="badgeConfig.label" class="q-ml-xs" />
+  <q-badge v-if="badgeConfig" :label="badgeConfig.label" class="q-ml-xs" :class="`kind-badge--${badgeConfig.tone}`" />
 </template>
 
 <script setup lang="ts">
@@ -9,24 +9,30 @@ const props = defineProps<{
   kind?: string;
 }>();
 
-const kindMap: Record<string, { label: string; style: { backgroundColor: string; color: string } }> = {
-  system_builtin: {
-    label: '内置',
-    style: { backgroundColor: 'var(--color-accent)', color: 'var(--color-on-accent)' },
-  },
-  ecosystem_preset: {
-    label: '预设',
-    style: { backgroundColor: 'var(--color-success)', color: 'var(--color-on-accent)' },
-  },
-  marketplace: {
-    label: '商城',
-    style: { backgroundColor: 'var(--color-accent-indigo)', color: 'var(--color-on-accent)' },
-  },
-  certified: {
-    label: '认证',
-    style: { backgroundColor: 'var(--color-warning)', color: 'var(--color-on-accent)' },
-  },
+const kindMap: Record<string, { label: string; tone: string }> = {
+  system_builtin: { label: '内置', tone: 'builtin' },
+  ecosystem_preset: { label: '预设', tone: 'preset' },
+  marketplace: { label: '商城', tone: 'marketplace' },
+  certified: { label: '认证', tone: 'certified' },
 };
 
 const badgeConfig = computed(() => (props.kind ? (kindMap[props.kind] ?? null) : null));
 </script>
+
+<style scoped lang="sass">
+.kind-badge--builtin
+  background: var(--color-accent)
+  color: var(--color-on-accent)
+
+.kind-badge--preset
+  background: var(--color-success)
+  color: var(--color-on-accent)
+
+.kind-badge--marketplace
+  background: var(--color-accent-indigo)
+  color: var(--color-on-accent)
+
+.kind-badge--certified
+  background: var(--color-warning)
+  color: var(--color-on-accent)
+</style>

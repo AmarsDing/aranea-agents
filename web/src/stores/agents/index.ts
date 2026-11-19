@@ -31,6 +31,8 @@ export const useAgentsPageStore = defineStore('agentsPage', () => {
   const agents = ref<Agent[]>([]);
   const total = ref(0);
   const listLoading = ref(false);
+  /** 列表加载失败信息；非空时页面必须渲染可重试错误态，不得退化为空态。 */
+  const listError = ref('');
 
   const taxonomyTree = ref<PlatformResourceTreeNode[]>([]);
   const providerModels = ref<PlatformResource[]>([]);
@@ -62,6 +64,7 @@ export const useAgentsPageStore = defineStore('agentsPage', () => {
 
   async function loadAgentList() {
     listLoading.value = true;
+    listError.value = '';
     try {
       const result = await listAgentsPaged({
         keyword: keyword.value || undefined,
@@ -74,6 +77,9 @@ export const useAgentsPageStore = defineStore('agentsPage', () => {
       });
       agents.value = result.items;
       total.value = result.total;
+    } catch (error) {
+      listError.value = error instanceof Error ? error.message : String(error);
+      throw error;
     } finally {
       listLoading.value = false;
     }
@@ -194,6 +200,7 @@ export const useAgentsPageStore = defineStore('agentsPage', () => {
     agents,
     total,
     listLoading,
+    listError,
     taxonomyTree,
     providerModels,
     checkingModel,

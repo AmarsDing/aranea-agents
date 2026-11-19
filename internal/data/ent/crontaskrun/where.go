@@ -98,6 +98,16 @@ func CreatedAt(v string) predicate.CronTaskRun {
 	return predicate.CronTaskRun(sql.FieldEQ(FieldCreatedAt, v))
 }
 
+// ResolvedAt applies equality check predicate on the "resolved_at" field. It's identical to ResolvedAtEQ.
+func ResolvedAt(v string) predicate.CronTaskRun {
+	return predicate.CronTaskRun(sql.FieldEQ(FieldResolvedAt, v))
+}
+
+// ResolvedBy applies equality check predicate on the "resolved_by" field. It's identical to ResolvedByEQ.
+func ResolvedBy(v string) predicate.CronTaskRun {
+	return predicate.CronTaskRun(sql.FieldEQ(FieldResolvedBy, v))
+}
+
 // TaskIDEQ applies the EQ predicate on the "task_id" field.
 func TaskIDEQ(v string) predicate.CronTaskRun {
 	return predicate.CronTaskRun(sql.FieldEQ(FieldTaskID, v))
@@ -551,6 +561,136 @@ func CreatedAtEqualFold(v string) predicate.CronTaskRun {
 // CreatedAtContainsFold applies the ContainsFold predicate on the "created_at" field.
 func CreatedAtContainsFold(v string) predicate.CronTaskRun {
 	return predicate.CronTaskRun(sql.FieldContainsFold(FieldCreatedAt, v))
+}
+
+// ResolvedAtEQ applies the EQ predicate on the "resolved_at" field.
+func ResolvedAtEQ(v string) predicate.CronTaskRun {
+	return predicate.CronTaskRun(sql.FieldEQ(FieldResolvedAt, v))
+}
+
+// ResolvedAtNEQ applies the NEQ predicate on the "resolved_at" field.
+func ResolvedAtNEQ(v string) predicate.CronTaskRun {
+	return predicate.CronTaskRun(sql.FieldNEQ(FieldResolvedAt, v))
+}
+
+// ResolvedAtIn applies the In predicate on the "resolved_at" field.
+func ResolvedAtIn(vs ...string) predicate.CronTaskRun {
+	return predicate.CronTaskRun(sql.FieldIn(FieldResolvedAt, vs...))
+}
+
+// ResolvedAtNotIn applies the NotIn predicate on the "resolved_at" field.
+func ResolvedAtNotIn(vs ...string) predicate.CronTaskRun {
+	return predicate.CronTaskRun(sql.FieldNotIn(FieldResolvedAt, vs...))
+}
+
+// ResolvedAtGT applies the GT predicate on the "resolved_at" field.
+func ResolvedAtGT(v string) predicate.CronTaskRun {
+	return predicate.CronTaskRun(sql.FieldGT(FieldResolvedAt, v))
+}
+
+// ResolvedAtGTE applies the GTE predicate on the "resolved_at" field.
+func ResolvedAtGTE(v string) predicate.CronTaskRun {
+	return predicate.CronTaskRun(sql.FieldGTE(FieldResolvedAt, v))
+}
+
+// ResolvedAtLT applies the LT predicate on the "resolved_at" field.
+func ResolvedAtLT(v string) predicate.CronTaskRun {
+	return predicate.CronTaskRun(sql.FieldLT(FieldResolvedAt, v))
+}
+
+// ResolvedAtLTE applies the LTE predicate on the "resolved_at" field.
+func ResolvedAtLTE(v string) predicate.CronTaskRun {
+	return predicate.CronTaskRun(sql.FieldLTE(FieldResolvedAt, v))
+}
+
+// ResolvedAtContains applies the Contains predicate on the "resolved_at" field.
+func ResolvedAtContains(v string) predicate.CronTaskRun {
+	return predicate.CronTaskRun(sql.FieldContains(FieldResolvedAt, v))
+}
+
+// ResolvedAtHasPrefix applies the HasPrefix predicate on the "resolved_at" field.
+func ResolvedAtHasPrefix(v string) predicate.CronTaskRun {
+	return predicate.CronTaskRun(sql.FieldHasPrefix(FieldResolvedAt, v))
+}
+
+// ResolvedAtHasSuffix applies the HasSuffix predicate on the "resolved_at" field.
+func ResolvedAtHasSuffix(v string) predicate.CronTaskRun {
+	return predicate.CronTaskRun(sql.FieldHasSuffix(FieldResolvedAt, v))
+}
+
+// ResolvedAtEqualFold applies the EqualFold predicate on the "resolved_at" field.
+func ResolvedAtEqualFold(v string) predicate.CronTaskRun {
+	return predicate.CronTaskRun(sql.FieldEqualFold(FieldResolvedAt, v))
+}
+
+// ResolvedAtContainsFold applies the ContainsFold predicate on the "resolved_at" field.
+func ResolvedAtContainsFold(v string) predicate.CronTaskRun {
+	return predicate.CronTaskRun(sql.FieldContainsFold(FieldResolvedAt, v))
+}
+
+// ResolvedByEQ applies the EQ predicate on the "resolved_by" field.
+func ResolvedByEQ(v string) predicate.CronTaskRun {
+	return predicate.CronTaskRun(sql.FieldEQ(FieldResolvedBy, v))
+}
+
+// ResolvedByNEQ applies the NEQ predicate on the "resolved_by" field.
+func ResolvedByNEQ(v string) predicate.CronTaskRun {
+	return predicate.CronTaskRun(sql.FieldNEQ(FieldResolvedBy, v))
+}
+
+// ResolvedByIn applies the In predicate on the "resolved_by" field.
+func ResolvedByIn(vs ...string) predicate.CronTaskRun {
+	return predicate.CronTaskRun(sql.FieldIn(FieldResolvedBy, vs...))
+}
+
+// ResolvedByNotIn applies the NotIn predicate on the "resolved_by" field.
+func ResolvedByNotIn(vs ...string) predicate.CronTaskRun {
+	return predicate.CronTaskRun(sql.FieldNotIn(FieldResolvedBy, vs...))
+}
+
+// ResolvedByGT applies the GT predicate on the "resolved_by" field.
+func ResolvedByGT(v string) predicate.CronTaskRun {
+	return predicate.CronTaskRun(sql.FieldGT(FieldResolvedBy, v))
+}
+
+// ResolvedByGTE applies the GTE predicate on the "resolved_by" field.
+func ResolvedByGTE(v string) predicate.CronTaskRun {
+	return predicate.CronTaskRun(sql.FieldGTE(FieldResolvedBy, v))
+}
+
+// ResolvedByLT applies the LT predicate on the "resolved_by" field.
+func ResolvedByLT(v string) predicate.CronTaskRun {
+	return predicate.CronTaskRun(sql.FieldLT(FieldResolvedBy, v))
+}
+
+// ResolvedByLTE applies the LTE predicate on the "resolved_by" field.
+func ResolvedByLTE(v string) predicate.CronTaskRun {
+	return predicate.CronTaskRun(sql.FieldLTE(FieldResolvedBy, v))
+}
+
+// ResolvedByContains applies the Contains predicate on the "resolved_by" field.
+func ResolvedByContains(v string) predicate.CronTaskRun {
+	return predicate.CronTaskRun(sql.FieldContains(FieldResolvedBy, v))
+}
+
+// ResolvedByHasPrefix applies the HasPrefix predicate on the "resolved_by" field.
+func ResolvedByHasPrefix(v string) predicate.CronTaskRun {
+	return predicate.CronTaskRun(sql.FieldHasPrefix(FieldResolvedBy, v))
+}
+
+// ResolvedByHasSuffix applies the HasSuffix predicate on the "resolved_by" field.
+func ResolvedByHasSuffix(v string) predicate.CronTaskRun {
+	return predicate.CronTaskRun(sql.FieldHasSuffix(FieldResolvedBy, v))
+}
+
+// ResolvedByEqualFold applies the EqualFold predicate on the "resolved_by" field.
+func ResolvedByEqualFold(v string) predicate.CronTaskRun {
+	return predicate.CronTaskRun(sql.FieldEqualFold(FieldResolvedBy, v))
+}
+
+// ResolvedByContainsFold applies the ContainsFold predicate on the "resolved_by" field.
+func ResolvedByContainsFold(v string) predicate.CronTaskRun {
+	return predicate.CronTaskRun(sql.FieldContainsFold(FieldResolvedBy, v))
 }
 
 // And groups predicates with the AND operator between them.

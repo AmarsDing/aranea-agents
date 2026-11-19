@@ -198,7 +198,7 @@ func (s *evalMemoryStore) listEvalSeriesDigestRows(ctx context.Context, userID, 
 	defer rows.Close()
 	var out [][]byte
 	for rows.Next() {
-		raw, err := scanFactRowJSON(rows)
+		raw, err := scanFactRowJSON(ctx, rows, s.facts.data.factCipher)
 		if err != nil {
 			return nil, err
 		}
@@ -595,7 +595,7 @@ func (s *evalMemoryStore) appendEvalDerivedCandidates(ctx context.Context, userI
 	}
 	defer rows.Close()
 	for rows.Next() {
-		raw, err := scanFactRowJSON(rows)
+		raw, err := scanFactRowJSON(ctx, rows, s.facts.data.factCipher)
 		if err != nil {
 			return err
 		}

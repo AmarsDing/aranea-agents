@@ -149,6 +149,24 @@ type Downlink interface {
 	SendAudio(pcm []byte) error
 }
 
+// DownlinkCloser 是 Downlink 的可选关闭能力（评审 2026-11-09 V1）：
+// 单会话单连接替换时 ReplaceNoticeAndClose 发送 voice.replaced 后必须优雅
+// 关闭旧 WS 连接——旧实现只拆会话不碰连接，旧 conn 两端残留（服务端
+// readPump 阻塞在 ReadMessage，客户端误以为连接仍活）。实现侧需保证幂等
+// （close frame + Close + closeOnce，与 server 侧 voiceRevocableConn.RevokeClose
+// 同构）；Downlink 未实现该能力时维持原 teardown-only 语义。
+type DownlinkCloser interface {
+	// CloseWithCode 以业务关闭码优雅关闭底层连接（先写 close frame，
+	// 让对端读到有序的最后一帧后收到明确关闭码，再 Close）。
+	CloseWithCode(code int, text string)
+}
+
+// CloseCodeSessionRevoked 与 /v1/ws 会话吊销共用同一业务关闭码 4401
+// （4000–4999 为应用保留段，定义见 internal/server/ws_revocation.go）：
+// 单连接替换（voice_replaced）以同码优雅关闭旧连接，前端据此区分
+// 「被替换/被吊销」与网络抖动（web useVoiceSession 4401 分支）。
+const CloseCodeSessionRevoked = 4401
+
 // StartParams 对应 voice.start 控制帧。
 type StartParams struct {
 	SampleRate int
@@ -484,8 +502,13 @@ func (s *Session) Ping() {
 }
 
 // ReplaceNoticeAndClose 发 voice.replaced 后关闭（单会话单连接，设计 §2.1）。
+// 评审 2026-11-09 V1：通知发出后必须优雅关闭旧 WS 连接（DownlinkCloser，
+// 4401 + voice_replaced）——只拆会话不碰连接会让旧 conn 两端残留。
 func (s *Session) ReplaceNoticeAndClose() {
 	_ = s.down.SendJSON(map[string]any{"type": "voice.replaced"})
+	if c, ok := s.down.(DownlinkCloser); ok {
+		c.CloseWithCode(CloseCodeSessionRevoked, "voice_replaced")
+	}
 	s.Close()
 }
 

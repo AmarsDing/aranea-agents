@@ -48,6 +48,9 @@ func newApp(
 	teamUC *biz.TeamUsecase,
 	organizationUC *biz.OrganizationUsecase,
 	d *data.Data,
+	tvStore *data.TokenVersionStore,
+	permResolver *data.RolePermissionResolver,
+	adminUC *biz.AdminUsecase,
 	guard *service.SessionStatusGuard,
 	orchCache *biz.OrchestrationCache,
 	sessions *biz.SessionUsecase,
@@ -81,6 +84,31 @@ func newApp(
 		server.RegisterAuthFlowHooks(eventInfra.MonitorEventBus, lg)
 	}
 
+	// P1-3 会话吊销接线（P0 详设 01 §5）：tv 校验器注入 pkg/auth（HTTP/gRPC
+	// 中间件逐请求比对 claims.tv）；吊销执行器注入 AdminUsecase（踢会话/改密/
+	// 离职/角色密级变更共用入口）。
+	if tvStore != nil {
+		auth.SetTokenVersionChecker(tvStore)
+		if adminUC != nil {
+			adminUC.SetSessionRevoker(tvStore)
+		}
+		// P1-4：WS 长连接主动关闭——订阅 auth:tv_bump（Bump 发布）即时踢连接；
+		// WSServer.Start 内还会拉起周期兜底扫描（checker 不可用时自动降级）。
+		if wsSrv != nil {
+			wsSrv.SetTokenBumpSubscriber(tvStore)
+		}
+	}
+
+	// P1 权限底座·DB 版角色→权限解析器接线（P0 详设 01 §3；P1 任务分解 §4 收口）。
+	// 首刷失败仅降级不阻断启动：空缓存 = 纯内置兜底（fail-usable 而非 fail-open，
+	// DB 收窄的授权不会因此放大）；DB 就绪后由周期刷新接管（循环在下方
+	// consumerCtx 上拉起）。注入进程级解析器后,Permission 中间件/菜单下发/
+	// HasPermission 全链路即走 DB。
+	if permResolver != nil {
+		initialPermRefresh(permResolver, lg, initialPermRefreshTimeout)
+		auth.SetPermissionResolver(permResolver)
+	}
+
 	// MCP OAuth2 refresh_token 轮换回写钩子：进程级全局钩子，注册属于组合根
 	// 职责（勿放回 service 构造函数，避免重复构造相互覆写）。
 	if mcpServerUC != nil {
@@ -95,6 +123,14 @@ func newApp(
 	}
 
 	consumerCtx, consumerCancel := context.WithCancel(context.Background())
+
+	// DB 版权限解析器周期刷新（60s：RBAC 三小表变更低频；F 期角色管理台落地后
+	// 可在变更路径上直接 Refresh 获得即时生效）。失败保旧缓存,不致命。
+	if permResolver != nil {
+		safego.Go(consumerCtx, "auth.perm_resolver_refresh", func() {
+			permResolver.RunRefreshLoop(consumerCtx, 60*time.Second)
+		})
+	}
 
 	app := kratos.New(
 		kratos.ID(id),
@@ -288,6 +324,22 @@ func newApp(
 		}),
 	)
 	return app
+}
+
+// initialPermRefreshTimeout 启动首刷预算（评审 2026-11-09 D-LOW）：首刷位于
+// 启动关键路径，无超时的 DB 挂起会把进程就绪无限拖死。10s 与探针/健康档同量级。
+const initialPermRefreshTimeout = 10 * time.Second
+
+// initialPermRefresh 执行权限解析器启动首刷，带超时预算。失败（含超时）按既有
+// 语义降级：仅 Warn 不阻断启动——空缓存 = 纯内置兜底（fail-usable 而非
+// fail-open，DB 收窄的授权不会因此放大），DB 就绪后由周期刷新接管。与后续
+// 周期刷新失败路径（Refresh 内保旧缓存 + Warn）一致。
+func initialPermRefresh(r *data.RolePermissionResolver, lg loggateway.Logger, timeout time.Duration) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	if err := r.Refresh(ctx); err != nil {
+		lg.Warn("permission resolver initial refresh failed; builtin fallback until first success", loggateway.StepID("auth.perm_resolver_init"), loggateway.Err(err))
+	}
 }
 
 // startReadinessDependentServices starts all services that require the data layer

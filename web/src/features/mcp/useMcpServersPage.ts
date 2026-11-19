@@ -1,11 +1,13 @@
 import { computed, onMounted, ref, watch } from 'vue';
 import { useQuasar } from 'quasar';
+import { confirm } from '../../composables/useAppConfirm';
 import { storeToRefs } from 'pinia';
 import { useI18n } from 'vue-i18n';
 import type { McpHealthTone, McpServerConfig, McpServerMetadata, McpServerRow } from './types';
 import { parseJSON, mcpTestNotify } from './utils';
 import { useMcpStore } from '../../stores/mcp';
 import { useAuthStore } from '../../stores/auth';
+import { isForbiddenApiError } from '../../utils/kratosError';
 
 export function useMcpServersPage() {
   const $q = useQuasar();
@@ -20,6 +22,8 @@ export function useMcpServersPage() {
   const pageSize = ref(20);
   const loading = storeLoading;
   const error = ref('');
+  /** 列表接口 403：页面据此渲染 forbidden 态（无重试）。 */
+  const forbidden = ref(false);
   const testingId = ref('');
   const togglingId = ref('');
   const editorOpen = ref(false);
@@ -46,18 +50,17 @@ export function useMcpServersPage() {
   const usageEnabledAgents = computed(() => usageSummary.value?.enabled_agent_count ?? null);
   const usageTotalAgents = computed(() => usageSummary.value?.total_agent_count ?? null);
   /** 有可用服务器但无 Agent 开门禁 → 显示闲置警告。 */
-  const showUnusedWarning = computed(
-    () => usageEnabledAgents.value === 0 && enabledCount.value > 0,
-  );
+  const showUnusedWarning = computed(() => usageEnabledAgents.value === 0 && enabledCount.value > 0);
   const usageSummaryText = computed(() => {
     if (usageEnabledAgents.value == null || usageTotalAgents.value == null) return '';
-    return `${usageEnabledAgents.value} / ${usageTotalAgents.value} 个 Agent 已启用 MCP 能力（broker 或直连）`;
+    return t('shell.mcp.usage', { enabled: usageEnabledAgents.value, total: usageTotalAgents.value });
   });
   const pageMax = computed(() => Math.max(1, Math.ceil(Math.max(0, total.value) / pageSize.value)));
   const pagedRows = computed(() => rows.value);
 
   async function loadRows(manual = false) {
     error.value = '';
+    forbidden.value = false;
     try {
       await mcpStore.loadServers({
         page: page.value,
@@ -69,7 +72,8 @@ export function useMcpServersPage() {
         $q.notify({ type: 'positive', message: refreshFeedback(), timeout: 2500 });
       }
     } catch (err) {
-      error.value = err instanceof Error ? err.message : '加载 MCP 服务器失败';
+      forbidden.value = isForbiddenApiError(err);
+      error.value = err instanceof Error ? err.message : t('shell.mcp.loadFailed');
     }
   }
 
@@ -82,8 +86,8 @@ export function useMcpServersPage() {
       const at = parseJSON<McpServerMetadata>(row.metadata_json, {}).last_health_at ?? '';
       if (at > latest) latest = at;
     }
-    const base = `已刷新，共 ${total.value} 个服务器`;
-    return latest ? `${base}，最近健康检测：${formatDate(latest)}` : base;
+    const base = t('shell.mcp.refreshed', { total: total.value });
+    return latest ? t('shell.mcp.refreshedWithHealth', { total: total.value, time: formatDate(latest) }) : base;
   }
 
   let skipNextPageWatch = false;
@@ -116,7 +120,7 @@ export function useMcpServersPage() {
 
   function openCredentials(row: McpServerRow) {
     if (!credUserId.value) {
-      $q.notify({ type: 'warning', message: '请先登录后再配置用户凭据' });
+      $q.notify({ type: 'warning', message: t('shell.mcp.loginRequired') });
       return;
     }
     credServer.value = row;
@@ -151,25 +155,24 @@ export function useMcpServersPage() {
     }
   }
 
-  function confirmDelete(row: McpServerRow) {
+  async function confirmDelete(row: McpServerRow) {
     const config = parseJSON<McpServerConfig>(row.config_json, {});
     const name = row.name || row.key;
     const prefix = config.tool_prefix || row.key;
     const credentialNote = config.require_user_credentials ? '；所有用户已配置的凭据将一并删除' : '';
-    $q.dialog({
+    const ok = await confirm({
       title: '确认删除该 MCP 服务器？',
       message: `删除「${name}」后，依赖该服务器的工具（mcp_${prefix}__*）将不可用${credentialNote}。`,
-      cancel: true,
-      persistent: true,
-    }).onOk(async () => {
-      try {
-        await mcpStore.removeServer(row.id);
-        $q.notify({ type: 'positive', message: 'MCP 服务器已删除' });
-        await loadRows();
-      } catch (err) {
-        $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '删除失败' });
-      }
+      tone: 'danger',
     });
+    if (!ok) return;
+    try {
+      await mcpStore.removeServer(row.id);
+      $q.notify({ type: 'positive', message: 'MCP 服务器已删除' });
+      await loadRows();
+    } catch (err) {
+      $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '删除失败' });
+    }
   }
 
   function healthTone(row: McpServerRow): McpHealthTone {
@@ -214,6 +217,7 @@ export function useMcpServersPage() {
     total,
     loading,
     error,
+    forbidden,
     testingId,
     togglingId,
     editorOpen,

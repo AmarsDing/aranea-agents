@@ -12,6 +12,7 @@ import (
 
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
+	"entgo.io/ent/dialect/sql/sqljson"
 	"entgo.io/ent/schema/field"
 )
 
@@ -112,6 +113,102 @@ func (_u *AdminUpdate) SetNillableWorkspaceID(v *string) *AdminUpdate {
 	return _u
 }
 
+// SetRoles sets the "roles" field.
+func (_u *AdminUpdate) SetRoles(v []string) *AdminUpdate {
+	_u.mutation.SetRoles(v)
+	return _u
+}
+
+// AppendRoles appends value to the "roles" field.
+func (_u *AdminUpdate) AppendRoles(v []string) *AdminUpdate {
+	_u.mutation.AppendRoles(v)
+	return _u
+}
+
+// SetClearance sets the "clearance" field.
+func (_u *AdminUpdate) SetClearance(v int) *AdminUpdate {
+	_u.mutation.ResetClearance()
+	_u.mutation.SetClearance(v)
+	return _u
+}
+
+// SetNillableClearance sets the "clearance" field if the given value is not nil.
+func (_u *AdminUpdate) SetNillableClearance(v *int) *AdminUpdate {
+	if v != nil {
+		_u.SetClearance(*v)
+	}
+	return _u
+}
+
+// AddClearance adds value to the "clearance" field.
+func (_u *AdminUpdate) AddClearance(v int) *AdminUpdate {
+	_u.mutation.AddClearance(v)
+	return _u
+}
+
+// SetDept sets the "dept" field.
+func (_u *AdminUpdate) SetDept(v string) *AdminUpdate {
+	_u.mutation.SetDept(v)
+	return _u
+}
+
+// SetNillableDept sets the "dept" field if the given value is not nil.
+func (_u *AdminUpdate) SetNillableDept(v *string) *AdminUpdate {
+	if v != nil {
+		_u.SetDept(*v)
+	}
+	return _u
+}
+
+// SetStatus sets the "status" field.
+func (_u *AdminUpdate) SetStatus(v admin.Status) *AdminUpdate {
+	_u.mutation.SetStatus(v)
+	return _u
+}
+
+// SetNillableStatus sets the "status" field if the given value is not nil.
+func (_u *AdminUpdate) SetNillableStatus(v *admin.Status) *AdminUpdate {
+	if v != nil {
+		_u.SetStatus(*v)
+	}
+	return _u
+}
+
+// SetForceReset sets the "force_reset" field.
+func (_u *AdminUpdate) SetForceReset(v bool) *AdminUpdate {
+	_u.mutation.SetForceReset(v)
+	return _u
+}
+
+// SetNillableForceReset sets the "force_reset" field if the given value is not nil.
+func (_u *AdminUpdate) SetNillableForceReset(v *bool) *AdminUpdate {
+	if v != nil {
+		_u.SetForceReset(*v)
+	}
+	return _u
+}
+
+// SetTokenVersion sets the "token_version" field.
+func (_u *AdminUpdate) SetTokenVersion(v int64) *AdminUpdate {
+	_u.mutation.ResetTokenVersion()
+	_u.mutation.SetTokenVersion(v)
+	return _u
+}
+
+// SetNillableTokenVersion sets the "token_version" field if the given value is not nil.
+func (_u *AdminUpdate) SetNillableTokenVersion(v *int64) *AdminUpdate {
+	if v != nil {
+		_u.SetTokenVersion(*v)
+	}
+	return _u
+}
+
+// AddTokenVersion adds value to the "token_version" field.
+func (_u *AdminUpdate) AddTokenVersion(v int64) *AdminUpdate {
+	_u.mutation.AddTokenVersion(v)
+	return _u
+}
+
 // SetUpdateTime sets the "update_time" field.
 func (_u *AdminUpdate) SetUpdateTime(v time.Time) *AdminUpdate {
 	_u.mutation.SetUpdateTime(v)
@@ -166,6 +263,16 @@ func (_u *AdminUpdate) check() error {
 			return &ValidationError{Name: "workspace_id", err: fmt.Errorf(`ent: validator failed for field "Admin.workspace_id": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.Clearance(); ok {
+		if err := admin.ClearanceValidator(v); err != nil {
+			return &ValidationError{Name: "clearance", err: fmt.Errorf(`ent: validator failed for field "Admin.clearance": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.Status(); ok {
+		if err := admin.StatusValidator(v); err != nil {
+			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "Admin.status": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -198,6 +305,35 @@ func (_u *AdminUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.WorkspaceID(); ok {
 		_spec.SetField(admin.FieldWorkspaceID, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.Roles(); ok {
+		_spec.SetField(admin.FieldRoles, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedRoles(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, admin.FieldRoles, value)
+		})
+	}
+	if value, ok := _u.mutation.Clearance(); ok {
+		_spec.SetField(admin.FieldClearance, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedClearance(); ok {
+		_spec.AddField(admin.FieldClearance, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.Dept(); ok {
+		_spec.SetField(admin.FieldDept, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.Status(); ok {
+		_spec.SetField(admin.FieldStatus, field.TypeEnum, value)
+	}
+	if value, ok := _u.mutation.ForceReset(); ok {
+		_spec.SetField(admin.FieldForceReset, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.TokenVersion(); ok {
+		_spec.SetField(admin.FieldTokenVersion, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedTokenVersion(); ok {
+		_spec.AddField(admin.FieldTokenVersion, field.TypeInt64, value)
 	}
 	if value, ok := _u.mutation.UpdateTime(); ok {
 		_spec.SetField(admin.FieldUpdateTime, field.TypeTime, value)
@@ -306,6 +442,102 @@ func (_u *AdminUpdateOne) SetNillableWorkspaceID(v *string) *AdminUpdateOne {
 	return _u
 }
 
+// SetRoles sets the "roles" field.
+func (_u *AdminUpdateOne) SetRoles(v []string) *AdminUpdateOne {
+	_u.mutation.SetRoles(v)
+	return _u
+}
+
+// AppendRoles appends value to the "roles" field.
+func (_u *AdminUpdateOne) AppendRoles(v []string) *AdminUpdateOne {
+	_u.mutation.AppendRoles(v)
+	return _u
+}
+
+// SetClearance sets the "clearance" field.
+func (_u *AdminUpdateOne) SetClearance(v int) *AdminUpdateOne {
+	_u.mutation.ResetClearance()
+	_u.mutation.SetClearance(v)
+	return _u
+}
+
+// SetNillableClearance sets the "clearance" field if the given value is not nil.
+func (_u *AdminUpdateOne) SetNillableClearance(v *int) *AdminUpdateOne {
+	if v != nil {
+		_u.SetClearance(*v)
+	}
+	return _u
+}
+
+// AddClearance adds value to the "clearance" field.
+func (_u *AdminUpdateOne) AddClearance(v int) *AdminUpdateOne {
+	_u.mutation.AddClearance(v)
+	return _u
+}
+
+// SetDept sets the "dept" field.
+func (_u *AdminUpdateOne) SetDept(v string) *AdminUpdateOne {
+	_u.mutation.SetDept(v)
+	return _u
+}
+
+// SetNillableDept sets the "dept" field if the given value is not nil.
+func (_u *AdminUpdateOne) SetNillableDept(v *string) *AdminUpdateOne {
+	if v != nil {
+		_u.SetDept(*v)
+	}
+	return _u
+}
+
+// SetStatus sets the "status" field.
+func (_u *AdminUpdateOne) SetStatus(v admin.Status) *AdminUpdateOne {
+	_u.mutation.SetStatus(v)
+	return _u
+}
+
+// SetNillableStatus sets the "status" field if the given value is not nil.
+func (_u *AdminUpdateOne) SetNillableStatus(v *admin.Status) *AdminUpdateOne {
+	if v != nil {
+		_u.SetStatus(*v)
+	}
+	return _u
+}
+
+// SetForceReset sets the "force_reset" field.
+func (_u *AdminUpdateOne) SetForceReset(v bool) *AdminUpdateOne {
+	_u.mutation.SetForceReset(v)
+	return _u
+}
+
+// SetNillableForceReset sets the "force_reset" field if the given value is not nil.
+func (_u *AdminUpdateOne) SetNillableForceReset(v *bool) *AdminUpdateOne {
+	if v != nil {
+		_u.SetForceReset(*v)
+	}
+	return _u
+}
+
+// SetTokenVersion sets the "token_version" field.
+func (_u *AdminUpdateOne) SetTokenVersion(v int64) *AdminUpdateOne {
+	_u.mutation.ResetTokenVersion()
+	_u.mutation.SetTokenVersion(v)
+	return _u
+}
+
+// SetNillableTokenVersion sets the "token_version" field if the given value is not nil.
+func (_u *AdminUpdateOne) SetNillableTokenVersion(v *int64) *AdminUpdateOne {
+	if v != nil {
+		_u.SetTokenVersion(*v)
+	}
+	return _u
+}
+
+// AddTokenVersion adds value to the "token_version" field.
+func (_u *AdminUpdateOne) AddTokenVersion(v int64) *AdminUpdateOne {
+	_u.mutation.AddTokenVersion(v)
+	return _u
+}
+
 // SetUpdateTime sets the "update_time" field.
 func (_u *AdminUpdateOne) SetUpdateTime(v time.Time) *AdminUpdateOne {
 	_u.mutation.SetUpdateTime(v)
@@ -373,6 +605,16 @@ func (_u *AdminUpdateOne) check() error {
 			return &ValidationError{Name: "workspace_id", err: fmt.Errorf(`ent: validator failed for field "Admin.workspace_id": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.Clearance(); ok {
+		if err := admin.ClearanceValidator(v); err != nil {
+			return &ValidationError{Name: "clearance", err: fmt.Errorf(`ent: validator failed for field "Admin.clearance": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.Status(); ok {
+		if err := admin.StatusValidator(v); err != nil {
+			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "Admin.status": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -422,6 +664,35 @@ func (_u *AdminUpdateOne) sqlSave(ctx context.Context) (_node *Admin, err error)
 	}
 	if value, ok := _u.mutation.WorkspaceID(); ok {
 		_spec.SetField(admin.FieldWorkspaceID, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.Roles(); ok {
+		_spec.SetField(admin.FieldRoles, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedRoles(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, admin.FieldRoles, value)
+		})
+	}
+	if value, ok := _u.mutation.Clearance(); ok {
+		_spec.SetField(admin.FieldClearance, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedClearance(); ok {
+		_spec.AddField(admin.FieldClearance, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.Dept(); ok {
+		_spec.SetField(admin.FieldDept, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.Status(); ok {
+		_spec.SetField(admin.FieldStatus, field.TypeEnum, value)
+	}
+	if value, ok := _u.mutation.ForceReset(); ok {
+		_spec.SetField(admin.FieldForceReset, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.TokenVersion(); ok {
+		_spec.SetField(admin.FieldTokenVersion, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedTokenVersion(); ok {
+		_spec.AddField(admin.FieldTokenVersion, field.TypeInt64, value)
 	}
 	if value, ok := _u.mutation.UpdateTime(); ok {
 		_spec.SetField(admin.FieldUpdateTime, field.TypeTime, value)

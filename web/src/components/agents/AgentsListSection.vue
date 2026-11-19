@@ -10,6 +10,16 @@
     </q-card>
   </div>
 
+  <AppStatePanel
+    v-else-if="error"
+    variant="error"
+    class="q-mt-md"
+    :title="error"
+    :action-label="t('shell.common.retry')"
+    action-icon="refresh"
+    @action="$emit('retry')"
+  />
+
   <q-card v-else-if="agents.length === 0" flat bordered class="empty-agent-card q-mt-md">
     <q-card-section class="empty-agent-state column items-center text-center">
       <div class="empty-agent-visual">
@@ -44,6 +54,7 @@
             :taxonomy-label="getCategoryLabel(agent.taxonomy_position_id)"
             :context-label="formatLastRunContext(agent)"
             :evolving="isAgentEvolving(agent)"
+            @inspect="$emit('inspect', $event)"
             @toggle-favorite="$emit('toggle-favorite', $event)"
             @copy-key="$emit('copy-key', $event)"
             @delete="$emit('delete', $event)"
@@ -64,6 +75,7 @@
             :taxonomy-label="getCategoryLabel(agent.taxonomy_position_id)"
             :context-label="formatLastRunContext(agent)"
             :evolving="isAgentEvolving(agent)"
+            @inspect="$emit('inspect', $event)"
             @toggle-favorite="$emit('toggle-favorite', $event)"
             @copy-key="$emit('copy-key', $event)"
             @delete="$emit('delete', $event)"
@@ -96,6 +108,7 @@
               selectable
               :selected="selectedIds.includes(agent.id)"
               @toggle-select="$emit('toggle-select', $event)"
+              @inspect="$emit('inspect', $event)"
               @toggle-favorite="$emit('toggle-favorite', $event)"
               @copy-key="$emit('copy-key', $event)"
               @delete="$emit('delete', $event)"
@@ -108,6 +121,7 @@
 
     <AppRegistryTable
       v-else
+      view="table"
       class="agents-table"
       :rows="agents"
       :columns="tableColumns"
@@ -193,6 +207,17 @@
               dense
               round
               color="primary"
+              icon="info"
+              :aria-label="t('shell.registry.inspect')"
+              @click="$emit('inspect', slotProps.row)"
+            >
+              <q-tooltip>{{ t('shell.registry.inspect') }}</q-tooltip>
+            </q-btn>
+            <q-btn
+              flat
+              dense
+              round
+              color="primary"
               icon="edit"
               :aria-label="t('agentsPage.actions.edit')"
               :to="`/agents/${slotProps.row.id}/settings`"
@@ -229,51 +254,15 @@
     </AppRegistryTable>
   </section>
 
-  <q-card v-if="selectedIds.length > 0" flat bordered class="agents-batch-bar">
-    <span class="text-body2">{{ t('agentsPage.batch.selected', { n: selectedIds.length }) }}</span>
-    <div class="row items-center q-gutter-xs">
-      <q-btn
-        flat
-        dense
-        rounded
-        no-caps
-        color="positive"
-        icon="play_circle"
-        :label="t('agentsPage.batch.enable')"
-        @click="$emit('batch-enable')"
-      />
-      <q-btn
-        flat
-        dense
-        rounded
-        no-caps
-        color="warning"
-        icon="pause_circle"
-        :label="t('agentsPage.batch.disable')"
-        @click="$emit('batch-disable')"
-      />
-      <q-btn
-        flat
-        dense
-        rounded
-        no-caps
-        color="negative"
-        icon="delete"
-        :label="t('agentsPage.batch.delete')"
-        @click="$emit('batch-delete')"
-      />
-      <q-btn
-        flat
-        dense
-        rounded
-        no-caps
-        color="grey-7"
-        icon="close"
-        :label="t('agentsPage.batch.cancel')"
-        @click="$emit('clear-selection')"
-      />
-    </div>
-  </q-card>
+  <BulkActionBar
+    v-if="selectedIds.length > 0"
+    :count="selectedIds.length"
+    :actions="batchActions"
+    :busy="batchBusy"
+    :error="batchError"
+    @run="onBatchRun"
+    @clear="$emit('clear-selection')"
+  />
 </template>
 
 <script setup lang="ts">
@@ -285,8 +274,11 @@ import type { Agent } from '../../features/agents/types';
 import AgentCard from './AgentCard.vue';
 import AgentAvatarQ from '../avatar/AgentAvatarQ.vue';
 import AppRegistryTable from '../layout/AppRegistryTable.vue';
+import AppStatePanel from '../common/AppStatePanel.vue';
 import { formatLastRunContext, isAgentEvolving, MEMORY_TOOL_MODE_LABELS } from './agentUi';
 import AppStatusChip from '../common/AppStatusChip.vue';
+import BulkActionBar from '../common/BulkActionBar.vue';
+import type { BulkAction } from '../common/bulkAction';
 
 const { t } = useI18n();
 
@@ -302,10 +294,18 @@ const props = defineProps<{
   isFavorite: (id: string) => boolean;
   getCategoryLabel: (taxonomyPositionId: string) => string;
   selectedIds: string[];
+  /** 列表加载失败信息；非空时优先于空态展示可重试错误面板。 */
+  error?: string;
+  /** 正在执行的批量动作键（enable/disable/delete），用于按钮级 loading。 */
+  batchBusy?: string;
+  /** 批量动作失败信息：就地 role=alert 展示并可重试，不退化为 toast。 */
+  batchError?: string;
 }>();
 
 const emit = defineEmits<{
   create: [];
+  retry: [];
+  inspect: [agent: Agent];
   'toggle-favorite': [id: string];
   'toggle-select': [id: string];
   'copy-key': [key: string];
@@ -318,10 +318,32 @@ const emit = defineEmits<{
   'clear-selection': [];
 }>();
 
+/** 批量条动作合同：删除为破坏性操作，需二次确认；其余一次点击直达。 */
+const batchActions = computed<BulkAction[]>(() => [
+  { key: 'enable', label: t('agentsPage.batch.enable'), icon: 'play_circle', tone: 'primary' },
+  { key: 'disable', label: t('agentsPage.batch.disable'), icon: 'pause_circle', tone: 'warn' },
+  {
+    key: 'delete',
+    label: t('agentsPage.batch.delete'),
+    icon: 'delete',
+    tone: 'danger',
+    requiresConfirm: true,
+    confirmLabel: t('agentsPage.batch.deleteConfirm', { n: props.selectedIds.length }),
+  },
+]);
+
+function onBatchRun(key: string) {
+  if (key === 'enable') emit('batch-enable');
+  else if (key === 'disable') emit('batch-disable');
+  else if (key === 'delete') emit('batch-delete');
+}
+
 // 内置管家 = system_builtin 且非编制领导（与后端 CleanupNonSystemData 的保留规则一致）：
 // 精灵/系统/记忆/技能管家进管家区；dept_lead / company_lead 进编制/预设区。
 const isOrgLead = (a: Agent) => a.agent_variant === 'dept_lead' || a.agent_variant === 'company_lead';
-const builtinAgents = computed(() => props.agents.filter((a) => a.readonly && a.kind === 'system_builtin' && !isOrgLead(a)));
+const builtinAgents = computed(() =>
+  props.agents.filter((a) => a.readonly && a.kind === 'system_builtin' && !isOrgLead(a)),
+);
 const presetAgents = computed(() =>
   props.agents.filter((a) => isOrgLead(a) || (!a.readonly && a.kind === 'ecosystem_preset')),
 );

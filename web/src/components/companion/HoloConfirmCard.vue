@@ -134,7 +134,7 @@ onUnmounted(() => {
   position: relative
   width: min(360px, 86vw)
   padding: 14px 16px 12px
-  border-radius: 10px
+  border-radius: 8px
   color: var(--color-text-primary)
   background: var(--gradient-card)
   border: 1px solid rgba(var(--hud-cyan-rgb), 0.35)

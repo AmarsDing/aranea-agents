@@ -419,6 +419,7 @@ export function useTeamRunObservatoryPage() {
     runId,
     loading,
     error,
+    load,
     observatory,
     observatoryTab,
     selectedNodeId,

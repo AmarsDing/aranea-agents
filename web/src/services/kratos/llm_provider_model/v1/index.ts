@@ -20,6 +20,10 @@ export type ProviderModel = {
   deletedAt: string | undefined;
   capabilities: ModelCapabilities | undefined;
   pricingConfigured: boolean | undefined;
+  // channel_class 密级路由通道分组（D6/L-1）：local | cloud，空 = cloud。
+  // ClassificationAwareModelSelector 在水位线 >= model_policy.local_threshold
+  // 时把候选集裁到 local 组。
+  channelClass: string | undefined;
 };
 
 export type ModelCapabilities = {
@@ -65,6 +69,8 @@ export type CreateProviderModelRequest = {
   configJson: string | undefined;
   metadataJson: string | undefined;
   capabilities: ModelCapabilities | undefined;
+  // channel_class 密级路由通道分组（D6/L-1）：local | cloud，空 = cloud。
+  channelClass: string | undefined;
 };
 
 export type GetProviderModelRequest = {

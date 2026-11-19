@@ -714,6 +714,7 @@ func (s *KnowledgeService) runIngestPipeline(
 		ChunkSize:       chunkSize,
 		ChunkOverlap:    chunkOverlap,
 		ParentChunkSize: parentChunkSize,
+		Classification:  doc.Classification, // D6 L-3：密级随行至 embedding 闸
 	}
 	params.ApplyDefaults()
 

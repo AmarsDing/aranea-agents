@@ -161,7 +161,7 @@ func (a *memoryConsolidationWriterAdapter) UpsertFactsAndEpisodeBatch(ctx contex
 				return apierror.Internal("MEMORY", "consolidation fact read-back failed: %s", err.Error())
 			}
 			if readRows.Next() {
-				if b, scanErr := scanFactRowJSON(readRows); scanErr == nil {
+				if b, scanErr := scanFactRowJSON(ctx, readRows, a.data.factCipher); scanErr == nil {
 					factRows = append(factRows, b)
 					var row map[string]any
 					if json.Unmarshal(b, &row) == nil {
@@ -289,7 +289,7 @@ func (a *memoryFactIndexMaintainerAdapter) ListStaleIndexFacts(ctx context.Conte
 	defer rows.Close()
 	var out [][]byte
 	for rows.Next() {
-		b, err := scanFactRowJSON(rows)
+		b, err := scanFactRowJSON(ctx, rows, a.data.factCipher)
 		if err != nil {
 			return nil, entErrToBizErr(err, "MEMORY_L3")
 		}

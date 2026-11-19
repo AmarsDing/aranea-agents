@@ -17,6 +17,11 @@ export function formatUsdCompact(value?: number | null): string {
   return `$${usd.toFixed(4)}`;
 }
 
+/** 同 formatUsdCompact，入参已经是美元（概览页内部按美元算，别再把美元当微美元传进去）。 */
+export function formatUsdCompactFromUsd(usd?: number | null): string {
+  return formatUsdCompact((usd ?? 0) * 1_000_000);
+}
+
 /** Format integer count with locale grouping. */
 export function formatCount(value?: number | null): string {
   return new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 0 }).format(value ?? 0);

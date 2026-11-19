@@ -77,8 +77,17 @@ func WarnIfBypassEnabled() {
 	}
 }
 
+// DevBypassPrincipal 返回 bypass 模式注入的开发主体：superadmin + L5，
+// 使 RequirePermission / 密级谓词在本地开发下全通（仅限 dev/test/CI，见
+// HTTPAuthBypassEnabled 的门控）。
 func DevBypassPrincipal() *Auth {
-	return &Auth{UserID: 1, Access: "admin", WorkspaceID: DefaultWorkspaceID}
+	return &Auth{
+		UserID:      1,
+		Access:      "admin",
+		WorkspaceID: DefaultWorkspaceID,
+		Roles:       []string{"superadmin"},
+		Clearance:   5,
+	}
 }
 
 // --- Flow-log hooks (pkg cannot import internal/event) ---

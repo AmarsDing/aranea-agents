@@ -45,6 +45,7 @@ var ProviderSet = wire.NewSet(
 	NewLlmProviderModelRepo,
 	NewHookRepo,
 	NewCronRepo,
+	NewCredentialRepo,
 	NewPluginRepo,
 	NewPluginRunRepo,
 	NewHookDeliveryRepo,
@@ -235,6 +236,11 @@ type Data struct {
 	p1Cancel    context.CancelFunc
 	p1Done      chan struct{}
 	lg          loggateway.Logger
+	// factCipher 是 D3 N-2 全量记忆信封加密器（biz.FactContentCipher，通常 =
+	// biz.NewCredentialFactCipher(credentialCrypto)）。CredentialCrypto 依赖
+	// systemSettingRepo←Data，无法前置为 NewData 参数，故后置 setter 注入一次
+	// （wire_gen 装配态）。nil 时所有 fact 读写按无信封降级（读回退明文载体列）。
+	factCipher biz.FactContentCipher
 	// txTimeout is the hard deadline for ExecInTx transactions. Default 30s.
 	// Set to 0 to disable the timeout (e.g., for long-running Postgres migrations).
 	txTimeout time.Duration
@@ -246,6 +252,15 @@ type Data struct {
 	// Used by framework components (e.g. trpcsession postgres service) that
 	// create their own connection pools from a DSN rather than sharing *sql.DB.
 	pgDSN string
+}
+
+// SetFactContentCipher 注入记忆信封加密器（D3 N-2）。wire_gen 装配态在
+// credentialCrypto 就绪后调用一次；测试态可不注入（降级无信封）。
+func (d *Data) SetFactContentCipher(c biz.FactContentCipher) {
+	if d == nil {
+		return
+	}
+	d.factCipher = c
 }
 
 // Dialect returns the active primary database dialect.

@@ -6,7 +6,7 @@
     </div>
 
     <template v-else-if="sessionError">
-      <q-banner class="bg-negative text-white rounded-borders q-mb-md">
+      <q-banner class="app-page-error-banner q-mb-md">
         <template #avatar><q-icon name="error" /></template>
         {{ sessionError }}
         <template #action>
@@ -92,43 +92,8 @@
         </div>
       </div>
 
-      <q-card flat class="q-mb-md">
-        <q-card-section class="row q-col-gutter-md">
-          <div class="col-12 col-md-4">
-            <div class="text-caption text-grey-7">{{ t('sessionDetail.stats.context') }}</div>
-            <q-linear-progress
-              rounded
-              size="12px"
-              :value="ratioValue(session.context_used_ratio)"
-              :color="contextProgressColor(session.context_status)"
-              class="q-mt-sm"
-            />
-            <div class="text-caption text-grey-7 q-mt-xs">
-              当前 {{ formatPercent(session.context_used_ratio) }} · 最高
-              {{ formatPercent(session.max_context_used_ratio) }}
-            </div>
-          </div>
-          <div class="col-6 col-md-2">
-            <div class="text-caption text-grey-7">{{ t('sessionDetail.stats.messages') }}</div>
-            <div class="text-h6 app-text-primary">{{ session.message_count }}</div>
-          </div>
-          <div class="col-6 col-md-2">
-            <div class="text-caption text-grey-7">{{ t('sessionDetail.stats.modelCalls') }}</div>
-            <div class="text-h6 app-text-primary">{{ session.model_call_count }}</div>
-          </div>
-          <div class="col-6 col-md-2">
-            <div class="text-caption text-grey-7">{{ t('sessionDetail.stats.token') }}</div>
-            <div class="text-h6 app-text-primary">{{ formatNumber(session.total_tokens) }}</div>
-          </div>
-          <div class="col-6 col-md-2">
-            <div class="text-caption text-grey-7">{{ t('sessionDetail.stats.cost') }}</div>
-            <div class="text-h6 app-text-primary">
-              {{ formatCostMicroUsd(session.total_cost_micro_usd) }}
-            </div>
-          </div>
-        </q-card-section>
-      </q-card>
-
+      <div class="session-detail-workspace">
+        <main class="session-detail-workspace__main">
       <q-tabs
         v-model="activeTab"
         dense
@@ -166,7 +131,9 @@
         </q-tab-panel>
 
         <q-tab-panel name="messages" class="q-pa-none q-mt-md">
-          <SessionMessagesPanel :session-id="session.id" />
+          <div class="session-detail-message-measure">
+            <SessionMessagesPanel :session-id="session.id" />
+          </div>
         </q-tab-panel>
 
         <q-tab-panel name="timeline" class="q-pa-none q-mt-md">
@@ -192,6 +159,44 @@
           />
         </q-tab-panel>
       </q-tab-panels>
+        </main>
+        <aside class="session-detail-workspace__context">
+          <q-card flat class="session-detail-context app-surface-l2">
+            <q-card-section class="session-detail-context__grid">
+              <div class="session-detail-context__context">
+                <div class="text-caption text-grey-7">{{ t('sessionDetail.stats.context') }}</div>
+                <q-linear-progress
+                  rounded
+                  size="12px"
+                  :value="ratioValue(session.context_used_ratio)"
+                  :color="contextProgressColor(session.context_status)"
+                  class="q-mt-sm"
+                />
+                <div class="text-caption text-grey-7 q-mt-xs">
+                  当前 {{ formatPercent(session.context_used_ratio) }} · 最高
+                  {{ formatPercent(session.max_context_used_ratio) }}
+                </div>
+              </div>
+              <div>
+                <div class="text-caption text-grey-7">{{ t('sessionDetail.stats.messages') }}</div>
+                <div class="text-h6 app-text-primary">{{ session.message_count }}</div>
+              </div>
+              <div>
+                <div class="text-caption text-grey-7">{{ t('sessionDetail.stats.modelCalls') }}</div>
+                <div class="text-h6 app-text-primary">{{ session.model_call_count }}</div>
+              </div>
+              <div>
+                <div class="text-caption text-grey-7">{{ t('sessionDetail.stats.token') }}</div>
+                <div class="text-h6 app-text-primary">{{ formatNumber(session.total_tokens) }}</div>
+              </div>
+              <div>
+                <div class="text-caption text-grey-7">{{ t('sessionDetail.stats.cost') }}</div>
+                <div class="text-h6 app-text-primary">{{ formatCostMicroUsd(session.total_cost_micro_usd) }}</div>
+              </div>
+            </q-card-section>
+          </q-card>
+        </aside>
+      </div>
     </template>
   </q-page>
 </template>

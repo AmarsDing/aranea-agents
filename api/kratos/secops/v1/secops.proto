@@ -1,0 +1,273 @@
+syntax = "proto3";
+
+package kratos.secops.v1;
+
+import "google/api/annotations.proto";
+import "google/api/field_behavior.proto";
+import "google/protobuf/empty.proto";
+import "google/protobuf/timestamp.proto";
+import "aranea/auth/v1/requirement.proto";
+
+option go_package = "aranea-agents/api/kratos/secops/v1;v1";
+option java_multiple_files = true;
+option java_package = "api.kratos.secops.v1";
+
+// ============================================================================
+// SecopsService —— 安全运营面（D6 密级体系 + 脱敏五闸 + D3 离职处置）
+//
+// 自 workbench 平移的安全语义（逐字保留，验收用例随 verify-maskgate/
+// verify-memory 平移）：
+//   - 密级标签 L1-L5（L3=强制本地模型通道）；标签改仅 secops.policy；
+//   - model_policy.local_threshold（默认 3）：水位线 >= 阈值 → 强制本地；
+//     水位线只升不降（GREATEST）；
+//   - 脱敏五闸：提案 → 样本试跑（正样本召回=100%、负样本 0 命中，无正样本
+//     fail-closed）→ 静态检查（ReDoS 启发式）→ 人工审批（不可自批，批准只
+//     生成 shadow 规则）→ 影子模式 → activate 按 rollout_pct 灰度；
+//   - 离职五步：freeze → export-request → export-approve（仅 sysadmin 且
+//     不可自批）→ export（凭 approved 申请）→ delete（前置已导出审计校验，
+//     防只删不导出）。
+// ============================================================================
+
+// ClassificationLabel 密级标签。
+message ClassificationLabel {
+  int32 level = 1; // 1-5
+  string name = 2;
+  string description = 3;
+}
+
+message PutClassificationLabelRequest {
+  int32 level = 1 [(google.api.field_behavior) = REQUIRED];
+  string name = 2 [(google.api.field_behavior) = REQUIRED];
+  string description = 3;
+}
+
+message ListClassificationLabelsResponse {
+  repeated ClassificationLabel items = 1;
+}
+
+// ModelPolicy 模型路由策略。
+message ModelPolicy {
+  int32 local_threshold = 1; // 1-5，默认 3（水位线 >= 阈值强制本地通道）
+  string updated_by = 2;
+  google.protobuf.Timestamp updated_at = 3;
+}
+
+message SetModelPolicyRequest {
+  int32 local_threshold = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+// MaskRule 脱敏规则（运行态）。
+message MaskRule {
+  string id = 1;
+  string entity = 2;   // 实体名（占位符 <ENTITY_n> 的词头）
+  string pattern = 3;  // 正则或词表来源
+  string operator = 4; // placeholder | mask
+  bool enabled = 5;
+  bool shadow = 6;     // 影子模式：只记不替
+  int32 rollout_pct = 7; // 灰度百分比（FNV32a 会话稳定分桶）
+  int64 version = 8;
+  google.protobuf.Timestamp created_at = 9;
+}
+
+message ListMaskRulesResponse {
+  repeated MaskRule items = 1;
+}
+
+// MaskProposal 脱敏提案（五闸主体，状态机平移 workbench mask_proposals）。
+message MaskProposal {
+  string id = 1;
+  string entity = 2;
+  string pattern = 3;
+  string wordlist_json = 4;
+  string operator = 5;
+  string status = 6; // proposed | sample_failed | static_failed | pending_approval | shadow | rejected | activated
+  double sample_recall = 7;
+  string sample_detail_json = 8;
+  string static_findings_json = 9;
+  string created_by = 10;
+  string reviewed_by = 11;
+  google.protobuf.Timestamp reviewed_at = 12;
+  google.protobuf.Timestamp created_at = 13;
+}
+
+message CreateMaskProposalRequest {
+  string entity = 1 [(google.api.field_behavior) = REQUIRED];
+  string pattern = 2;
+  string wordlist_json = 3;
+  string operator = 4 [(google.api.field_behavior) = REQUIRED];
+}
+
+message MaskProposalActionRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message ActivateMaskProposalRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+  int32 rollout_pct = 2; // 1-100
+}
+
+message ListMaskProposalsRequest {
+  string status = 1;
+  int32 page = 2;
+  int32 page_size = 3;
+}
+
+message ListMaskProposalsResponse {
+  repeated MaskProposal items = 1;
+  int64 total = 2;
+}
+
+// OffboardRequest 离职处置申请单。
+message OffboardRequest {
+  string id = 1;
+  string user_id = 2;      // 离职成员
+  string requested_by = 3;
+  string status = 4;       // requested | approved | rejected | completed（建单即 requested，迁移 20261325 默认值同）
+  string approved_by = 5;
+  google.protobuf.Timestamp created_at = 6;
+  google.protobuf.Timestamp approved_at = 7;
+}
+
+message FreezeUserRequest {
+  string user_id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message RequestOffboardExportRequest {
+  string user_id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message ApproveOffboardExportRequest {
+  string user_id = 1 [(google.api.field_behavior) = REQUIRED];
+  bool approve = 2;
+  string note = 3;
+}
+
+// GetOffboardExportRequest 导出（凭 approved 申请；响应为用户 user 域全量）。
+message GetOffboardExportRequest {
+  string user_id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message OffboardExport {
+  string user_id = 1;
+  string items_json = 2; // 记忆/数据导出包（解密导出，调用方负责保管）
+  google.protobuf.Timestamp exported_at = 3;
+}
+
+message DeleteOffboardedUserRequest {
+  string user_id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message ListOffboardRequestsResponse {
+  repeated OffboardRequest items = 1;
+}
+
+service SecopsService {
+  rpc ListClassificationLabels(google.protobuf.Empty) returns (ListClassificationLabelsResponse) {
+    option (aranea.auth.v1.requirement) = {authenticated: true};
+    option (google.api.http) = {get: "/v1/secops/labels"};
+  }
+  rpc PutClassificationLabel(PutClassificationLabelRequest) returns (ClassificationLabel) {
+    option (aranea.auth.v1.requirement) = {permission: "secops.policy"};
+    option (google.api.http) = {
+      put: "/v1/secops/labels/{level}"
+      body: "*"
+    };
+  }
+  rpc GetModelPolicy(google.protobuf.Empty) returns (ModelPolicy) {
+    option (aranea.auth.v1.requirement) = {permission: "secops.policy"};
+    option (google.api.http) = {get: "/v1/secops/model-policy"};
+  }
+  rpc SetModelPolicy(SetModelPolicyRequest) returns (ModelPolicy) {
+    option (aranea.auth.v1.requirement) = {permission: "secops.policy"};
+    option (google.api.http) = {
+      put: "/v1/secops/model-policy"
+      body: "*"
+    };
+  }
+  rpc ListMaskRules(google.protobuf.Empty) returns (ListMaskRulesResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "secops.policy"};
+    option (google.api.http) = {get: "/v1/secops/mask-rules"};
+  }
+  rpc ListMaskProposals(ListMaskProposalsRequest) returns (ListMaskProposalsResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "secops.policy"};
+    option (google.api.http) = {get: "/v1/secops/mask-proposals"};
+  }
+  rpc CreateMaskProposal(CreateMaskProposalRequest) returns (MaskProposal) {
+    option (aranea.auth.v1.requirement) = {permission: "secops.policy"};
+    option (google.api.http) = {
+      post: "/v1/secops/mask-proposals"
+      body: "*"
+    };
+  }
+  rpc RunMaskGates(MaskProposalActionRequest) returns (MaskProposal) {
+    option (aranea.auth.v1.requirement) = {permission: "secops.policy"};
+    option (google.api.http) = {
+      post: "/v1/secops/mask-proposals/{id}/run-gates"
+      body: "*"
+    };
+  }
+  // ApproveMaskProposal 不可自批；批准只生成 shadow 规则（不直接激活）。
+  rpc ApproveMaskProposal(MaskProposalActionRequest) returns (MaskProposal) {
+    option (aranea.auth.v1.requirement) = {permission: "secops.policy"};
+    option (google.api.http) = {
+      post: "/v1/secops/mask-proposals/{id}/approve"
+      body: "*"
+    };
+  }
+  rpc RejectMaskProposal(MaskProposalActionRequest) returns (MaskProposal) {
+    option (aranea.auth.v1.requirement) = {permission: "secops.policy"};
+    option (google.api.http) = {
+      post: "/v1/secops/mask-proposals/{id}/reject"
+      body: "*"
+    };
+  }
+  rpc ActivateMaskProposal(ActivateMaskProposalRequest) returns (MaskProposal) {
+    option (aranea.auth.v1.requirement) = {permission: "secops.policy"};
+    option (google.api.http) = {
+      post: "/v1/secops/mask-proposals/{id}/activate"
+      body: "*"
+    };
+  }
+  // 离职处置五步（W2a D3，需求文档 §6.3）：整体为 sysadmin 专属域
+  // （user.offboard 码位，P1 码位分配 admin 行）。wb 原流 freeze/request 亦允许
+  // secadmin——aranea 收敛为 sysadmin 专属（用户生命周期=user.* 码位），
+  // 不可自批在 sysadmin A/B 之间保持请求/审批隔离。
+  rpc FreezeUser(FreezeUserRequest) returns (google.protobuf.Empty) {
+    option (aranea.auth.v1.requirement) = {permission: "user.offboard"};
+    option (google.api.http) = {
+      post: "/v1/secops/offboard/freeze"
+      body: "*"
+    };
+  }
+  rpc RequestOffboardExport(RequestOffboardExportRequest) returns (OffboardRequest) {
+    option (aranea.auth.v1.requirement) = {permission: "user.offboard"};
+    option (google.api.http) = {
+      post: "/v1/secops/offboard/export-request"
+      body: "*"
+    };
+  }
+  // ApproveOffboardExport 不可自批（申请人 != 审批人服务端强制）。
+  rpc ApproveOffboardExport(ApproveOffboardExportRequest) returns (OffboardRequest) {
+    option (aranea.auth.v1.requirement) = {permission: "user.offboard"};
+    option (google.api.http) = {
+      post: "/v1/secops/offboard/export-approve"
+      body: "*"
+    };
+  }
+  rpc GetOffboardExport(GetOffboardExportRequest) returns (OffboardExport) {
+    option (aranea.auth.v1.requirement) = {permission: "user.offboard"};
+    option (google.api.http) = {get: "/v1/secops/offboard/export/{user_id}"};
+  }
+  // DeleteOffboardedUser 前置：存在 approved 且已导出的审计记录，否则拒。
+  rpc DeleteOffboardedUser(DeleteOffboardedUserRequest) returns (google.protobuf.Empty) {
+    option (aranea.auth.v1.requirement) = {permission: "user.offboard"};
+    option (google.api.http) = {
+      post: "/v1/secops/offboard/delete"
+      body: "*"
+    };
+  }
+  rpc ListOffboardRequests(google.protobuf.Empty) returns (ListOffboardRequestsResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "user.offboard"};
+    option (google.api.http) = {get: "/v1/secops/offboard"};
+  }
+}

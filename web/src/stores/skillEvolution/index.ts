@@ -7,6 +7,7 @@ import {
   rejectUnifiedEvolutionSuggestion,
   triggerCuratorFlow,
 } from '../../features/skills/api';
+import { isForbiddenApiError } from '../../utils/kratosError';
 
 export const useSkillEvolutionStore = defineStore('skillEvolution', () => {
   const suggestions = ref<SkillEvolutionView[]>([]);
@@ -15,6 +16,8 @@ export const useSkillEvolutionStore = defineStore('skillEvolution', () => {
   const agentTotal = ref(0);
   const loading = ref(false);
   const error = ref<string | null>(null);
+  /** 列表 403：列表页据此渲染 forbidden 态（无重试）。 */
+  const forbidden = ref(false);
 
   async function loadSuggestions(params: {
     targetType?: EvolutionTargetType;
@@ -25,6 +28,7 @@ export const useSkillEvolutionStore = defineStore('skillEvolution', () => {
   }) {
     loading.value = true;
     error.value = null;
+    forbidden.value = false;
     try {
       const res = await listUnifiedEvolutionSuggestions(params);
       suggestions.value = res.items;
@@ -38,6 +42,7 @@ export const useSkillEvolutionStore = defineStore('skillEvolution', () => {
       total.value = 0;
       skillTotal.value = 0;
       agentTotal.value = 0;
+      forbidden.value = isForbiddenApiError(e);
       error.value = msg;
     } finally {
       loading.value = false;
@@ -71,6 +76,7 @@ export const useSkillEvolutionStore = defineStore('skillEvolution', () => {
     agentTotal,
     loading,
     error,
+    forbidden,
     loadSuggestions,
     approveSuggestion,
     rejectSuggestion,

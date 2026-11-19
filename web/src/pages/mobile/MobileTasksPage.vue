@@ -8,6 +8,7 @@
       <!-- 作战总台 P0：简版签收卡（床头不诊断只签收；数据同源 useYouQueue） -->
       <section v-if="signoffVisible" class="mobile-signoff">
         <div v-if="signoffOffline" class="mobile-signoff__offline">{{ t('workbench.mobile.offline') }}</div>
+        <div v-else-if="signoffNotice" class="mobile-signoff__notice">{{ signoffNotice }}</div>
         <div class="mobile-signoff__head row items-center q-px-md q-py-xs">
           <div class="text-subtitle2 text-weight-bold">{{ t('workbench.mobile.title') }}</div>
           <q-space />
@@ -53,6 +54,25 @@
                 :label="isArmed(item.id, 'acked') ? t('workbench.mobile.confirmHint') : t('workbench.you.ack')"
                 :disable="signoffOffline || busyMap.has(item.id)"
                 @click="onSignoff(item, 'acked')"
+              />
+              <q-btn
+                v-else-if="item.action === 'resolve'"
+                outline
+                no-caps
+                class="mobile-signoff__btn"
+                color="primary"
+                :label="isArmed(item.id, 'resolved') ? t('workbench.mobile.confirmHint') : t('workbench.you.resolve')"
+                :disable="signoffOffline || busyMap.has(item.id)"
+                @click="onSignoff(item, 'resolved')"
+              />
+              <q-btn
+                v-else
+                flat
+                no-caps
+                class="mobile-signoff__btn"
+                color="primary"
+                :label="t('workbench.you.goto')"
+                @click="onGoto(item)"
               />
             </div>
           </div>
@@ -105,6 +125,7 @@ import { useI18n } from 'vue-i18n';
 import type { QScrollArea } from 'quasar';
 import { useQuasar } from 'quasar';
 import TaskList from '../../components/chat/v2/TaskList.vue';
+import { prompt } from '../../composables/useAppPrompt';
 import { injectChatWorkspace } from '../../features/chat/composables/chatWorkspaceInjection';
 import { useChatMessagePanelBindings } from '../../features/chat/composables/useChatMessagePanelBindings';
 import { useActivityQueries } from '../../features/chat/composables/useActivityQueries';
@@ -132,6 +153,14 @@ let armTimer: ReturnType<typeof setInterval> | null = null;
 
 const signoffItems = computed(() => youQueue.lanes.value.flatMap((l) => l.items));
 const signoffVisible = computed(() => true);
+/** 信任态不说谎：任一 lane 拉取失败 / 审批无权限时，卡头必须显式说明而非静默少几条 */
+const signoffNotice = computed(() => {
+  if (youQueue.lanes.value.some((l) => l.denied)) return t('workbench.you.noPermission');
+  // 明细失败：不展示可能已过期的可签行（已清空），必须显式提示刷新后重取
+  if (youQueue.lanes.value.some((l) => l.detailFailed)) return t('workbench.you.detailFailed');
+  if (youQueue.lanes.value.some((l) => l.degraded)) return t('workbench.you.degradedTip');
+  return '';
+});
 
 function laneLabel(lane: YouLaneId): string {
   return t(`workbench.lanes.${lane}`);
@@ -143,8 +172,29 @@ function isArmed(id: string, verb: string): boolean {
   return !!at && Date.now() - at < 4000;
 }
 
+/** 桌面深链映射到移动路由（chat 会话用 mobile-chat，其余按路径原样跳） */
+function onGoto(item: YouItem): void {
+  const to = item.to ?? '';
+  if (to.startsWith('/chat')) {
+    const session = new URLSearchParams(to.split('?')[1] ?? '').get('session') ?? '';
+    void router.push({ name: 'mobile-chat', query: session ? { session } : {} });
+    return;
+  }
+  if (to) void router.push(to);
+}
+
+/** 拒绝理由必须由用户真实输入（与桌面同口径）；取消则不发请求 */
+async function promptRejectReason(): Promise<string> {
+  const reason = await prompt({
+    title: t('workbench.you.reasonPlaceholder'),
+    type: 'textarea',
+    required: true,
+  });
+  return reason ?? '';
+}
+
 /** 大触面 A/R + 二次点按确认（资金/高危类口径；滑动组件待 Quasar 原生件落地后升级）；离线灰条拒绝一切签批 */
-async function onSignoff(item: YouItem, verb: 'approved' | 'rejected' | 'acked'): Promise<void> {
+async function onSignoff(item: YouItem, verb: 'approved' | 'rejected' | 'acked' | 'resolved'): Promise<void> {
   if (signoffOffline.value || busyMap.value.has(item.id)) return;
   const key = `${item.id}:${verb}`;
   if (!isArmed(item.id, verb)) {
@@ -160,7 +210,9 @@ async function onSignoff(item: YouItem, verb: 'approved' | 'rejected' | 'acked')
   busy.add(item.id);
   busyMap.value = busy;
   try {
-    await youQueue.sign(item, verb, 'mobile');
+    const note = verb === 'rejected' ? await promptRejectReason() : '';
+    if (verb === 'rejected' && !note) return;
+    await youQueue.sign(item, verb, note);
   } catch (err) {
     // 异常合约（设计 §4.2）：驳回弹出 reason（不落戳、条目仍在等签，不欺骗）
     const reason = err instanceof Error ? err.message : String(err);
@@ -232,10 +284,18 @@ function goToSessions() {
   background: color-mix(in srgb, var(--color-text-primary) 8%, transparent);
 }
 
+.mobile-signoff__notice {
+  padding: 4px 16px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--color-text-secondary);
+  border-bottom: 1px dashed color-mix(in srgb, var(--wb-await) 25%, transparent);
+}
+
 .mobile-signoff__badge {
   min-width: 20px;
   padding: 1px 6px;
-  border-radius: 10px;
+  border-radius: 8px;
   font-size: 11px;
   font-weight: 600;
   text-align: center;

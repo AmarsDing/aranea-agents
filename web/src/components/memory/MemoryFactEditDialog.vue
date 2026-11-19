@@ -1,77 +1,76 @@
 <template>
-  <q-dialog :model-value="open" persistent @update:model-value="$emit('update:open', !!$event)">
-    <q-card class="app-dialog-card app-dialog-card--sm">
-      <q-card-section>
-        <div class="text-h6">
-          {{ mode === 'refine' ? t('memory.factEdit.refineTitle') : t('memory.factEdit.createTitle') }}
-        </div>
-        <div class="text-caption text-grey-7">
-          {{ mode === 'refine' ? t('memory.factEdit.refineCaption') : t('memory.factEdit.createCaption') }}
-        </div>
-      </q-card-section>
-      <q-card-section class="q-pt-none column q-gutter-md">
-        <q-input
-          v-model="statement"
+  <AppDialog
+    :model-value="open"
+    :title="mode === 'refine' ? t('memory.factEdit.refineTitle') : t('memory.factEdit.createTitle')"
+    :subtitle="mode === 'refine' ? t('memory.factEdit.refineCaption') : t('memory.factEdit.createCaption')"
+    size="sm"
+    persistent
+    :loading="saving"
+    @update:model-value="$emit('update:open', !!$event)"
+  >
+    <div class="column q-gutter-md">
+      <q-input
+        v-model="statement"
+        outlined
+        autogrow
+        :label="t('memory.factEdit.statementLabel')"
+        :hint="t('memory.factEdit.statementHint')"
+        :rules="[(v: string) => !!v.trim() || t('memory.factEdit.statementRequired')]"
+      />
+      <q-input
+        v-model="detailsMarkdown"
+        outlined
+        autogrow
+        type="textarea"
+        :label="t('memory.factEdit.detailsLabel')"
+        :hint="t('memory.factEdit.detailsHint')"
+      />
+      <div class="row q-gutter-md">
+        <q-select
+          v-model="factKind"
+          class="col"
           outlined
-          autogrow
-          :label="t('memory.factEdit.statementLabel')"
-          :hint="t('memory.factEdit.statementHint')"
-          :rules="[(v: string) => !!v.trim() || t('memory.factEdit.statementRequired')]"
+          dense
+          emit-value
+          map-options
+          options-dense
+          :label="t('memory.factEdit.kindLabel')"
+          :options="kindOptions"
         />
-        <q-input
-          v-model="detailsMarkdown"
+        <q-select
+          v-model="tags"
+          class="col"
           outlined
-          autogrow
-          type="textarea"
-          :label="t('memory.factEdit.detailsLabel')"
-          :hint="t('memory.factEdit.detailsHint')"
+          dense
+          multiple
+          use-chips
+          use-input
+          new-value-mode="add-unique"
+          hide-dropdown-icon
+          :label="t('memory.factEdit.tagsLabel')"
+          :hint="t('memory.factEdit.tagsHint')"
         />
-        <div class="row q-gutter-md">
-          <q-select
-            v-model="factKind"
-            class="col"
-            outlined
-            dense
-            emit-value
-            map-options
-            options-dense
-            :label="t('memory.factEdit.kindLabel')"
-            :options="kindOptions"
-          />
-          <q-select
-            v-model="tags"
-            class="col"
-            outlined
-            dense
-            multiple
-            use-chips
-            use-input
-            new-value-mode="add-unique"
-            hide-dropdown-icon
-            :label="t('memory.factEdit.tagsLabel')"
-            :hint="t('memory.factEdit.tagsHint')"
-          />
-        </div>
-      </q-card-section>
-      <q-card-actions align="right">
-        <q-btn v-close-popup flat no-caps :label="t('memory.factEdit.cancel')" :disable="saving" />
-        <q-btn
-          color="primary"
-          unelevated
-          no-caps
-          :label="mode === 'refine' ? t('memory.factEdit.submitRefine') : t('memory.factEdit.submitCreate')"
-          :disable="!statement.trim()"
-          :loading="saving"
-          @click="onSubmit"
-        />
-      </q-card-actions>
-    </q-card>
-  </q-dialog>
+      </div>
+    </div>
+    <template #actions>
+      <q-btn flat no-caps :label="t('memory.factEdit.cancel')" :disable="saving" @click="$emit('update:open', false)" />
+      <q-btn
+        color="primary"
+        unelevated
+        no-caps
+        :label="mode === 'refine' ? t('memory.factEdit.submitRefine') : t('memory.factEdit.submitCreate')"
+        :disable="!statement.trim()"
+        :loading="saving"
+        @click="onSubmit"
+      />
+    </template>
+  </AppDialog>
 </template>
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
+import AppDialog from '../common/AppDialog.vue';
 import type { MemoryFact } from '../../features/memory/types';
 
 // 事实编辑/新建对话框：纯展示组件，submit 由 Page composable 调 Store action。
@@ -133,4 +132,3 @@ function onSubmit() {
   });
 }
 </script>
-

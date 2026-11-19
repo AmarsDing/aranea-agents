@@ -172,7 +172,7 @@ const durationLabel = computed(() => formatDuration(props.data.durationMs));
 .observe-node
   position: relative
   border: 2px solid var(--color-border-soft)
-  border-radius: 10px
+  border-radius: 8px
   background: var(--color-surface-solid)
   min-width: 200px
   max-width: 260px
@@ -244,7 +244,7 @@ const durationLabel = computed(() => formatDuration(props.data.durationMs));
   display: flex
   align-items: center
   gap: 6px
-  margin-top: 8px
+  margin-top: var(--nt-space-2)
 
 .observe-node__avatars
   display: flex
@@ -316,7 +316,7 @@ const durationLabel = computed(() => formatDuration(props.data.durationMs));
 
 .observe-node__team-badge
   flex-shrink: 0
-  margin-left: 4px
+  margin-left: var(--nt-space-1)
   padding: 1px 5px
   border-radius: 8px
   background: var(--q-primary)
@@ -327,7 +327,7 @@ const durationLabel = computed(() => formatDuration(props.data.durationMs));
 
 // ── Progress ──
 .observe-node__progress
-  margin-top: 8px
+  margin-top: var(--nt-space-2)
   display: flex
   align-items: center
   gap: 6px
@@ -345,7 +345,7 @@ const durationLabel = computed(() => formatDuration(props.data.durationMs));
 .observe-node__action
   display: flex
   align-items: center
-  gap: 4px
+  gap: var(--nt-space-1)
   margin-top: 6px
   color: var(--color-text-tertiary)
   font-size: 11px
@@ -359,7 +359,7 @@ const durationLabel = computed(() => formatDuration(props.data.durationMs));
 .observe-node__error
   display: flex
   align-items: center
-  gap: 4px
+  gap: var(--nt-space-1)
   margin-top: 6px
   color: var(--color-danger)
   font-size: 11px
@@ -373,7 +373,7 @@ const durationLabel = computed(() => formatDuration(props.data.durationMs));
 .observe-node__footer
   display: flex
   align-items: center
-  gap: 4px
+  gap: var(--nt-space-1)
   margin-top: 6px
   font-size: 10px
   color: var(--color-text-tertiary)
@@ -412,7 +412,7 @@ const durationLabel = computed(() => formatDuration(props.data.durationMs));
 .observe-node__text-output
   display: flex
   align-items: center
-  gap: 4px
+  gap: var(--nt-space-1)
   margin-top: 6px
   color: var(--color-text-secondary)
   font-size: 11px

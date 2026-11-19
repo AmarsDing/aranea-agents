@@ -2,8 +2,20 @@ import type { QTableColumn, QTableProps } from 'quasar';
 
 type RegistryColumn = NonNullable<QTableProps['columns']>[number];
 
+/**
+ * 卡片视图里这一列放在哪（不写则按默认：首列作标题，其余成「标签 + 值」）：
+ *  - title  卡片标题
+ *  - status 标题右侧的状态（一个对象「好不好」的那一眼）
+ *  - metric 标题下方放大显示的关键指标（运行次数、下次运行时间等）
+ *  - meta   关键指标下方的一行小字（来源、作用域等次要信息）
+ *  - hidden 卡片里不显示（表格视图照常显示）
+ */
+export type RegistryCardRole = 'title' | 'status' | 'metric' | 'meta' | 'hidden';
+
 /** AppRegistryTable / AppRegistryMarkupTable 统一列定义类型 */
-export type RegistryTableColumn<T extends object = Record<string, unknown>> = QTableColumn<T>;
+export type RegistryTableColumn<T extends object = Record<string, unknown>> = QTableColumn<T> & {
+  cardRole?: RegistryCardRole;
+};
 
 /** 常用列宽 token（Registry 列表统一引用，避免散落 width 字符串） */
 export const REGISTRY_COL_W = {
@@ -72,7 +84,7 @@ export function registryCol<T extends object = Record<string, unknown>>(
 export function registryColActions<T extends object>(
   width: string = REGISTRY_COL_W.actions,
   label = '操作',
-  field: RegistryTableColumn<T>['field'] = (row) => 'id' in row ? row.id : undefined,
+  field: RegistryTableColumn<T>['field'] = (row) => ('id' in row ? row.id : undefined),
 ) {
   return registryCol<T>('actions', label, field, 'right', width, {
     sortable: false,
@@ -84,9 +96,17 @@ export function registryColActions<T extends object>(
 /** Toggle 列 preset：居中 + 固定宽度 */
 export function registryColEnabled<T extends object>(
   label = '启用',
-  field: RegistryTableColumn<T>['field'] = (row) => 'enabled' in row ? row.enabled : undefined,
+  field: RegistryTableColumn<T>['field'] = (row) => ('enabled' in row ? row.enabled : undefined),
 ) {
   return registryCol<T>('enabled', label, field, 'center', REGISTRY_COL_W.enabled, { sortable: false });
+}
+
+/** 给预设列（启用开关、操作列等）补上卡片角色。 */
+export function withCardRole<T extends object>(
+  column: RegistryTableColumn<T>,
+  cardRole: RegistryCardRole,
+): RegistryTableColumn<T> {
+  return { ...column, cardRole };
 }
 
 export function registryFieldValue(row: Record<string, unknown>, field: RegistryTableColumn['field']): unknown {

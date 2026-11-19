@@ -16,6 +16,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
 	"aranea-agents/internal/event/contract"
 	"aranea-agents/pkg/apierror"
@@ -85,6 +86,9 @@ type MultiProviderEmbedder struct {
 	monitorBus contract.MonitorBus
 	// usageRec embedding 用量记录器（装配层经 SetUsageRecorder 注入；nil 时不记录）。
 	usageRec EmbedUsageRecorder
+	// embedGate D6 L-3 密级门（SetClassificationGate 注入，nil 回落进程级
+	// 默认门；embed_gate.go）。网络调用前判定，拒绝即零流量返回。
+	embedGate biz.EmbedClassificationGate
 	// queryCache 仅缓存查询侧单条 embedding；配置变更立即清空。键为哈希，
 	// 避免在进程堆中额外保留查询明文。
 	queryCache  map[[sha256.Size]byte]queryEmbeddingCacheEntry
@@ -412,6 +416,10 @@ func (e *MultiProviderEmbedder) embedBatchWithTaskType(ctx context.Context, text
 func (e *MultiProviderEmbedder) embedBatchInternal(ctx context.Context, texts []string, taskType string, prewarm bool) (vecs [][]float32, err error) {
 	if len(texts) == 0 {
 		return nil, nil
+	}
+	// D6 L-3 密级闸：L3+ 内容拒绝 cloud 通道（验收 #7），拒绝即零网络流量。
+	if err := e.checkEmbedGate(ctx, len(texts)); err != nil {
+		return nil, err
 	}
 	// Skip when the embedder has not been fully configured via the memory
 	// module UI. This avoids blocking the LLM main flow on a doomed network

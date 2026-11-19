@@ -146,3 +146,73 @@ self_improvement:
 # P0-2 运行时冒烟已完成（2026-08-08）：enabled 态 API/UI/动作端点 409 守卫、
 # 风险规则读写回路、disabled 态空态均验证通过。生产默认关闭；灰度用 overlay。
 
+# CEO 驾驶舱域（整合 P2-7：registry 工作流声明 / agg 健康裁决 / store 事件
+# 存储 / adapter 轮询·webhook·NATS）。整段省略 = 全部走内置默认值；以下为
+# 逐字段样例与口径说明，按需解开注释覆盖。
+# ceoboard:
+#   registry_dir: "configs/workflows"     # 工作流 YAML 注册表目录（"" = configs/workflows；每 30s 热加载，全量成功才原子替换）
+#   spool_dir: "data/ceoboard/spool"      # DB 故障期事件 fsync 落盘目录（"" = data/ceoboard/spool；恢复后幂等回灌）
+#   spool_segment_bytes: 16777216         # spool 单段轮转上限字节（0 = 16MiB）
+#   spool_total_bytes: 268435456          # spool 总量上限字节（0 = 256MiB）
+#   archive_dir: "data/ceoboard/archive"  # 闭日归档目录（"" = data/ceoboard/archive；UTC+8 闭日，每小时扫描）
+#   event_retention_days: 90              # 事件在线保留天数，超期归档（0 = 90）
+#   db_capacity_bytes: 10737418240        # 库容量预算字节，容量治理口径（0 = 10GiB）
+#   export_max_rows: 100000               # 审计导出行数上限（0 = 100000）
+#   export_timeout: 60s                   # 审计导出超时（0 = 60s）
+#   # webhook 共享密钥（校验头 X-CEO-Key）。【生产必填】
+#   # /v1/ceoboard/webhooks/{source} 是挂在 server.http.addr（0.0.0.0）上的
+#   # no-auth 机器入口，本密钥是唯一闸门：留空 = 校验被跳过、入口对所有来源
+#   # 开放（仅适合内网/联调；启动装配期会打持久 Warn）。生产请用长随机串，
+#   # 并经 overlay 配置或环境变量注入，勿把真实密钥提交进本文件。
+#   webhook_key: ""
+#   qps_per_platform: 5.0                 # 每 host 回源（REST 轮询）QPS 池上限（0 = 5）
+#   poll_interval: 30s                    # 节点 rest_path 默认轮询间隔；workflow 的 probe.interval 可逐流覆盖（0 = 30s）
+#   stale_after: 90s                      # 探针数据陈旧阈值，超时未更新判 stale（0 = 90s）
+#   nats_platforms:                       # NATS endpoint host:port → 平台 id（事件打标口径）
+#     "192.168.4.44:14222": "hcf"
+#   nats_durable_prefix: "ceoboard"       # durable 名前缀（"" = "ceoboard"）；双跑期新系统改 "ceoboard-v2" 之类，防同名 durable 形成 queue-group 分流
+#   nats_deliver_all: false               # true = 新建 consumer 从最早 offset 重放建库（双跑建库）；false = 只看实时流量（默认，仅对新建 consumer 生效）
+#   auth_providers:                       # 登录型 token 回源凭据（REST 轮询自动携带 Bearer，401 时重登一次）
+#     - match: "127.0.0.1:18080"          # host:port 匹配前缀（请求 URL 命中此前缀才注入凭据）
+#       type: "nt-login"                  # 登录类型：nt-login | hcf-login
+#       login_url: "http://127.0.0.1:18080/api/v1/auth/login"  # 登录端点
+#       user: "robot"                     # 登录用户名
+#       pass_env: "CEOBOARD_NT_PASS"      # 密码环境变量名（密码不落配置文件；装配时展开，未设置即启动报错）
+#   platforms:                            # 平台健康灯数据源（总览顶行轮询）
+#     - id: "hcf"                         # 平台 id（与 nats_platforms 的值同源）
+#       name: "HotCraftFlow"              # 展示名
+#       probe: "GET http://127.0.0.1:18080/api/v1/health"      # 探针声明，形如 "METHOD URL"
+#   approvals:                            # 待拍板数据源（只读清单接口）
+#     - lane: "content"                   # 泳道 id
+#       label: "内容审核"                  # 展示名
+#       path: "GET http://127.0.0.1:18080/api/v1/approvals"    # 拉取路径，形如 "METHOD URL"
+#   # E 阶段 W1b：aranea 自身发文/商机队列已收编进 review.v1（/v1/review/pending、
+#   # /v1/review/opportunities，RBAC review.view）；agg 字段映射 PascalCase/
+#   # camelCase 双兼容。指向 aranea 自身新端点时需为轮询器挂接凭据（当前
+#   # auth_providers 仅 nt/hcf 登录协议，aranea token provider 待补）。
+
+
+# E 阶段 W1a 凭据托管（2026-11-09）。整段省略 = 仅用内置高敏默认清单
+# （金融/支付/交易所/政务，见 internal/biz/credential.go DefaultHighSensitivitySites）。
+# 配置侧与内置清单取并集——只能加、不能减（安全向单调）。命中清单的站点：
+# 创建凭据自动标 sensitivity=high；agent 执行动词一律 denied_sensitivity 拒绝。
+# credential:
+#   high_sensitivity_sites:           # 附加高敏站点清单（规范化 host，后缀匹配子域）
+#     - "intranet.example.com"
+#     - "erp.internal"
+
+# E 阶段 W1c 办公套件一期（2026-11-09，拍板 K-1..K-5）。本期无可调配置项：
+#   - 日程/通知/apps/ics 全部行为由代码与权限码（office.schedule / office.apps）
+#     控制；ics 订阅令牌只存 SHA-256 哈希，吊销即 feed 401；
+#   - 提醒扫描 worker 固定 1 分钟间隔（at-least-once：IM 幂等键
+#     sched-rem-<eventID>-<channelID> 去重 + 通知落表/事件置标事务恰好一次；
+#     停机错过的窗口恢复后首个 tick 补投，宁迟勿漏）；
+#   - agent 日程工具（calendar_list / calendar_create_draft）按 tools 表种子
+#     enabled=false 逐 agent 授予；create_draft 只产 schedule_draft 草案进审批
+#     中心，人批准后方落事件（审批中心即闸门，无环境闸）。
+#
+# IM 提醒接收点声明式契约（channel 元数据，非本文件）：
+#   在「渠道管理」编辑目标通道的 metadata_json，加入：
+#     {"reminder_sink": true, "reminder_recipient": "<平台接收方 id>"}
+#   工作区过滤规则：共享通道（workspace 为空）或属主空间通道生效；
+#   停用/已删除通道自动跳过。无声明 = 仅通知中心收件箱，IM 腿静默跳过。

@@ -1,162 +1,155 @@
 <!--
   Pure presentation: Trace 详情弹窗（APM 风）。
-  头部（状态点+标题+徽章+关联 ID 复制+操作组）→ 指标 stat 卡 → 错误面板 → 元信息 definition grid
-  → 胶囊分段 Tab（流程/瀑布图/Span 树）→ 原始 JSON。树与瀑布共享 selectedSpanId 联动高亮。
+  头部（AppDialog 标题栏：状态点+徽章+状态，关联 ID 复制+操作组移入 body 顶部条）
+  → 错误面板 → 胶囊分段 Tab（流程/瀑布图/Span 树）→ 指标 stat 卡 → 元信息 definition grid → 原始 JSON。
+  树与瀑布共享 selectedSpanId 联动高亮。
 -->
 <template>
-  <q-dialog :model-value="open" maximized @update:model-value="emit('update:open', $event)">
-    <q-card class="app-dialog-card app-glass-dialog monitor-trace-dialog">
-      <q-card-section class="app-glass-dialog__head trace-head row items-start justify-between no-wrap">
-        <div class="trace-head__main">
-          <span class="trace-head__status" :class="`trace-head__status--${headTone}`" />
-          <div class="trace-head__text">
-            <div class="trace-head__title-row row items-center q-gutter-sm no-wrap">
-              <span class="trace-head__title ellipsis">{{
-                detail?.name || detail?.key || t('monitorPage.traces.detailFallbackTitle')
-              }}</span>
-              <q-badge v-if="detail?.domain" outline :color="domainColor(detail)">{{ domainLabel(detail) }}</q-badge>
-              <AppStatusChip :status="detail?.status" />
-            </div>
-            <div class="trace-head__ids row items-center q-gutter-md">
-              <span class="trace-head__id text-mono">
-                trace_id: {{ activeCorrelation.traceId || detail?.key || '-' }}
-                <q-btn
-                  v-if="activeCorrelation.traceId || detail?.key"
-                  flat
-                  dense
-                  round
-                  size="xs"
-                  icon="content_copy"
-                  @click="copyText(activeCorrelation.traceId || detail?.key || '')"
-                />
-              </span>
-              <span v-if="activeCorrelation.runId" class="trace-head__id text-mono">
-                run_id: {{ activeCorrelation.runId }}
-                <q-btn flat dense round size="xs" icon="content_copy" @click="copyText(activeCorrelation.runId)" />
-              </span>
-            </div>
-          </div>
-        </div>
-        <div class="row q-gutter-sm items-center no-wrap">
-          <q-btn
-            v-if="activeCorrelation.sessionId"
-            flat
-            no-caps
-            icon="chat"
-            :label="t('monitorPage.traces.openSession')"
-            color="accent"
-            @click="emit('openChatSession', activeCorrelation.sessionId)"
-          />
-          <flow-log-export-button :trace-id="activeCorrelation.traceId" :lines="flowLines" @export="onExportFlow" />
-          <q-btn flat no-caps icon="content_copy" :label="t('monitorPage.traces.copyJson')" @click="copyDetail" />
-          <q-btn v-close-popup flat round dense icon="close" />
-        </div>
-      </q-card-section>
-      <q-separator />
-      <div class="app-glass-dialog__scroll">
-        <q-card-section class="app-glass-dialog__body">
-          <!-- 指标 stat 卡：图标 + label + 等宽大数值 -->
-          <div class="trace-metrics">
-            <div
-              v-for="card in metricCards"
-              :key="card.label"
-              class="trace-metric-card"
-              :class="{ 'trace-metric-card--danger': card.danger }"
-            >
-              <q-icon :name="card.icon" size="18px" class="trace-metric-card__icon" />
-              <div class="trace-metric-card__text">
-                <div class="trace-metric-card__label">{{ card.label }}</div>
-                <div class="trace-metric-card__value text-mono">{{ card.value }}</div>
-              </div>
-            </div>
-          </div>
+  <AppDialog
+    :model-value="open"
+    :title="detail?.name || detail?.key || t('monitorPage.traces.detailFallbackTitle')"
+    size="xl"
+    @update:model-value="emit('update:open', $event)"
+  >
+    <template #header-prefix>
+      <span class="trace-head__status" :class="`trace-head__status--${headTone}`" />
+      <q-badge v-if="detail?.domain" outline :color="domainColor(detail)">{{ domainLabel(detail) }}</q-badge>
+      <AppStatusChip :status="detail?.status" />
+    </template>
 
-          <!-- 错误面板：失败/超时/中断时置顶可见 -->
-          <q-banner v-if="errorPanel.visible" dense rounded class="bg-negative text-white q-mb-md">
-            <template #avatar><q-icon name="error_outline" /></template>
-            <div class="text-weight-bold">{{ errorPanel.title }}</div>
-            <div v-for="(line, idx) in errorPanel.lines" :key="idx" class="text-caption">{{ line }}</div>
-          </q-banner>
+    <div class="trace-head__ids row items-center q-gutter-md no-wrap q-mb-md">
+      <span class="trace-head__id text-mono">
+        trace_id: {{ activeCorrelation.traceId || detail?.key || '-' }}
+        <q-btn
+          v-if="activeCorrelation.traceId || detail?.key"
+          flat
+          dense
+          round
+          size="xs"
+          icon="content_copy"
+          @click="copyText(activeCorrelation.traceId || detail?.key || '')"
+        />
+      </span>
+      <span v-if="activeCorrelation.runId" class="trace-head__id text-mono">
+        run_id: {{ activeCorrelation.runId }}
+        <q-btn flat dense round size="xs" icon="content_copy" @click="copyText(activeCorrelation.runId)" />
+      </span>
+      <q-space />
+      <q-btn
+        v-if="activeCorrelation.sessionId"
+        flat
+        no-caps
+        icon="chat"
+        :label="t('monitorPage.traces.openSession')"
+        color="accent"
+        @click="emit('openChatSession', activeCorrelation.sessionId)"
+      />
+      <flow-log-export-button :trace-id="activeCorrelation.traceId" :lines="flowLines" @export="onExportFlow" />
+      <q-btn flat no-caps icon="content_copy" :label="t('monitorPage.traces.copyJson')" @click="copyDetail" />
+    </div>
 
-          <!-- 元信息 definition grid -->
-          <div class="trace-meta-grid">
-            <div v-if="detail?.team_name" class="trace-meta-item">
-              <div class="trace-meta-item__label">{{ t('monitorPage.traces.summaryTeam') }}</div>
-              <div class="trace-meta-item__value ellipsis">{{ detail.team_name }}</div>
-            </div>
-            <div class="trace-meta-item">
-              <div class="trace-meta-item__label">Agent</div>
-              <div class="trace-meta-item__value ellipsis">
-                {{ detail?.agent_name || '-' }}
-                <span v-if="detail?.agent_name && detail?.agent_id" class="trace-meta-item__sub text-mono">{{
-                  detail.agent_id
-                }}</span>
-              </div>
-            </div>
-            <div class="trace-meta-item">
-              <div class="trace-meta-item__label">{{ t('monitorPage.traces.summaryProviderModel') }}</div>
-              <div class="trace-meta-item__value ellipsis">
-                {{ detail?.provider || '-' }} / {{ detail?.model || '-' }}
-              </div>
-            </div>
-            <div class="trace-meta-item">
-              <div class="trace-meta-item__label">{{ t('monitorPage.traces.summaryCreatedAt') }}</div>
-              <div class="trace-meta-item__value text-mono">{{ formatDate(detail?.created_at || '') }}</div>
-            </div>
-            <div class="trace-meta-item">
-              <div class="trace-meta-item__label">{{ t('monitorPage.traces.summaryUpdatedAt') }}</div>
-              <div class="trace-meta-item__value text-mono">{{ formatDate(detail?.updated_at || '') }}</div>
-            </div>
-          </div>
+    <!-- 错误面板：失败/超时/中断时置顶可见 -->
+    <q-banner v-if="errorPanel.visible" dense rounded class="bg-negative text-white q-mb-md">
+      <template #avatar><q-icon name="error_outline" /></template>
+      <div class="text-weight-bold">{{ errorPanel.title }}</div>
+      <div v-for="(line, idx) in errorPanel.lines" :key="idx" class="text-caption">{{ line }}</div>
+    </q-banner>
 
-          <!-- 胶囊分段 Tab + 内容面板 -->
-          <div class="trace-tabs">
-            <q-btn-toggle
-              v-model="detailTab"
-              no-caps
-              unelevated
-              rounded
-              spread
-              class="trace-tabs__toggle"
-              toggle-color="accent"
-              :options="tabOptions"
-            />
-          </div>
+    <!-- 胶囊分段 Tab + 内容面板（tabs 落在 body 顶部） -->
+    <div class="trace-tabs">
+      <q-btn-toggle
+        v-model="detailTab"
+        no-caps
+        unelevated
+        rounded
+        spread
+        class="trace-tabs__toggle"
+        toggle-color="accent"
+        :options="tabOptions"
+      />
+    </div>
 
-          <div class="trace-panel">
-            <div v-show="detailTab === 'flow'">
-              <div class="row items-center q-mb-sm q-gutter-sm">
-                <q-badge outline color="accent">{{
-                  t('monitorPage.traces.flowLinesBadge', { count: flowLines.length })
-                }}</q-badge>
-                <span class="text-caption trace-panel__hint">{{ t('monitorPage.traces.flowLiveHint') }}</span>
-              </div>
-              <flow-trace-panel :lines="flowLines" />
-            </div>
-            <div v-show="detailTab === 'waterfall'">
-              <trace-waterfall :spans="spanList" :selected-id="selectedSpanId" @select="onSpanSelect" />
-            </div>
-            <div v-show="detailTab === 'tree'">
-              <trace-span-tree :spans="spanList" :selected-id="selectedSpanId" @select="onSpanSelect" />
-            </div>
-          </div>
-
-          <q-card flat bordered class="monitor-card q-mt-md">
-            <q-expansion-item
-              dense-toggle
-              icon="data_object"
-              :label="t('monitorPage.traces.rawJson')"
-              header-class="text-subtitle2"
-            >
-              <q-card-section>
-                <JsonCodeViewer :text="detailJSON" />
-              </q-card-section>
-            </q-expansion-item>
-          </q-card>
-        </q-card-section>
+    <div class="trace-panel">
+      <div v-show="detailTab === 'track'">
+        <run-track :spans="spanList" :selected-id="selectedSpanId" @select="onSpanSelect" />
       </div>
+      <div v-show="detailTab === 'flow'">
+        <div class="row items-center q-mb-sm q-gutter-sm">
+          <q-badge outline color="accent">{{
+            t('monitorPage.traces.flowLinesBadge', { count: flowLines.length })
+          }}</q-badge>
+          <span class="text-caption trace-panel__hint">{{ t('monitorPage.traces.flowLiveHint') }}</span>
+        </div>
+        <flow-trace-panel :lines="flowLines" />
+      </div>
+      <div v-show="detailTab === 'waterfall'">
+        <trace-waterfall :spans="spanList" :selected-id="selectedSpanId" @select="onSpanSelect" />
+      </div>
+      <div v-show="detailTab === 'tree'">
+        <trace-span-tree :spans="spanList" :selected-id="selectedSpanId" @select="onSpanSelect" />
+      </div>
+    </div>
+
+    <!-- 指标 stat 卡：图标 + label + 等宽大数值 -->
+    <div class="trace-metrics q-mt-md">
+      <div
+        v-for="card in metricCards"
+        :key="card.label"
+        class="trace-metric-card"
+        :class="{ 'trace-metric-card--danger': card.danger }"
+      >
+        <q-icon :name="card.icon" size="18px" class="trace-metric-card__icon" />
+        <div class="trace-metric-card__text">
+          <div class="trace-metric-card__label">{{ card.label }}</div>
+          <div class="trace-metric-card__value text-mono">{{ card.value }}</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 元信息 definition grid -->
+    <div class="trace-meta-grid">
+      <div v-if="detail?.team_name" class="trace-meta-item">
+        <div class="trace-meta-item__label">{{ t('monitorPage.traces.summaryTeam') }}</div>
+        <div class="trace-meta-item__value ellipsis">{{ detail.team_name }}</div>
+      </div>
+      <div class="trace-meta-item">
+        <div class="trace-meta-item__label">Agent</div>
+        <div class="trace-meta-item__value ellipsis">
+          {{ detail?.agent_name || '-' }}
+          <span v-if="detail?.agent_name && detail?.agent_id" class="trace-meta-item__sub text-mono">{{
+            detail.agent_id
+          }}</span>
+        </div>
+      </div>
+      <div class="trace-meta-item">
+        <div class="trace-meta-item__label">{{ t('monitorPage.traces.summaryProviderModel') }}</div>
+        <div class="trace-meta-item__value ellipsis">
+          {{ detail?.provider || '-' }} / {{ detail?.model || '-' }}
+        </div>
+      </div>
+      <div class="trace-meta-item">
+        <div class="trace-meta-item__label">{{ t('monitorPage.traces.summaryCreatedAt') }}</div>
+        <div class="trace-meta-item__value text-mono">{{ formatDate(detail?.created_at || '') }}</div>
+      </div>
+      <div class="trace-meta-item">
+        <div class="trace-meta-item__label">{{ t('monitorPage.traces.summaryUpdatedAt') }}</div>
+        <div class="trace-meta-item__value text-mono">{{ formatDate(detail?.updated_at || '') }}</div>
+      </div>
+    </div>
+
+    <q-card flat bordered class="monitor-card">
+      <q-expansion-item
+        dense-toggle
+        icon="data_object"
+        :label="t('monitorPage.traces.rawJson')"
+        header-class="text-subtitle2"
+      >
+        <q-card-section>
+          <JsonCodeViewer :text="detailJSON" />
+        </q-card-section>
+      </q-expansion-item>
     </q-card>
-  </q-dialog>
+  </AppDialog>
 </template>
 
 <script setup lang="ts">
@@ -168,9 +161,11 @@ import { compactJSON, formatDate, parseJSON } from '../../features/monitor/utils
 import { downloadFlowDiagnosticJsonl } from '../../features/monitor/flow';
 import { formatCompactInt, formatCostUsd } from '../../features/monitor/runFormat';
 import JsonCodeViewer from '../common/JsonCodeViewer.vue';
+import AppDialog from '../common/AppDialog.vue';
 import AppStatusChip from '../common/AppStatusChip.vue';
 import TraceWaterfall from './TraceWaterfall.vue';
 import TraceSpanTree from './TraceSpanTree.vue';
+import RunTrack from './RunTrack.vue';
 import FlowTracePanel from './FlowTracePanel.vue';
 import FlowLogExportButton from './FlowLogExportButton.vue';
 import { traceDomainColor, traceDomainLabel, traceRunMetrics } from './monitorTableUi';
@@ -192,14 +187,15 @@ const emit = defineEmits<{
   notify: [payload: { message: string; type: 'positive' | 'negative' | 'warning' }];
 }>();
 
-type DetailTab = 'flow' | 'waterfall' | 'tree';
+type DetailTab = 'track' | 'flow' | 'waterfall' | 'tree';
 
-const detailTab = ref<DetailTab>('flow');
-/** 树 ↔ 瀑布 联动选中 */
+const detailTab = ref<DetailTab>('track');
+/** 树 ↔ 瀑布 ↔ 轨迹 联动选中 */
 const selectedSpanId = ref('');
 
 const tabOptions = computed(() => [
-  { value: 'flow', label: t('monitorPage.traces.tabFlow'), icon: 'timeline' },
+  { value: 'track', label: t('monitorPage.traces.tabTrack'), icon: 'timeline' },
+  { value: 'flow', label: t('monitorPage.traces.tabFlow'), icon: 'subject' },
   { value: 'waterfall', label: t('monitorPage.traces.tabWaterfall'), icon: 'waterfall_chart' },
   { value: 'tree', label: t('monitorPage.traces.tabTree'), icon: 'account_tree' },
 ]);
@@ -208,7 +204,7 @@ const tabOptions = computed(() => [
 watch(
   () => props.detail?.id,
   () => {
-    detailTab.value = 'flow';
+    detailTab.value = 'track';
     selectedSpanId.value = '';
   },
 );
@@ -343,24 +339,11 @@ function onExportFlow() {
 </script>
 
 <style scoped>
-.trace-head {
-  gap: 16px;
-}
-
-.trace-head__main {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  min-width: 0;
-  flex: 1;
-}
-
 .trace-head__status {
   flex-shrink: 0;
   width: 12px;
   height: 12px;
   border-radius: 50%;
-  margin-top: 6px;
   background: var(--color-text-icon-muted);
 }
 
@@ -394,19 +377,8 @@ function onExportFlow() {
   }
 }
 
-.trace-head__text {
-  min-width: 0;
-  flex: 1;
-}
-
-.trace-head__title {
-  font-size: 17px;
-  font-weight: 700;
-  max-width: 60ch;
-}
-
 .trace-head__ids {
-  margin-top: 2px;
+  margin-top: var(--nt-space-1);
   color: var(--color-text-secondary);
 }
 
@@ -414,7 +386,7 @@ function onExportFlow() {
   font-size: 11px;
   display: inline-flex;
   align-items: center;
-  gap: 2px;
+  gap: var(--nt-space-1);
 }
 
 .text-mono {
@@ -425,16 +397,16 @@ function onExportFlow() {
 .trace-metrics {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 10px;
-  margin-bottom: 16px;
+  gap: var(--nt-space-3);
+  margin-bottom: var(--nt-space-4);
 }
 
 .trace-metric-card {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 12px 14px;
-  border-radius: 14px;
+  gap: var(--nt-space-3);
+  padding: var(--nt-space-3) var(--nt-space-4);
+  border-radius: 12px;
   border: 1px solid var(--glass-border);
   background: color-mix(in srgb, var(--glass-surface) 80%, transparent);
 }
@@ -469,10 +441,10 @@ function onExportFlow() {
 .trace-meta-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 10px 24px;
-  padding: 12px 16px;
-  margin-bottom: 16px;
-  border-radius: 14px;
+  gap: var(--nt-space-3) var(--nt-space-6);
+  padding: var(--nt-space-3) var(--nt-space-4);
+  margin-bottom: var(--nt-space-4);
+  border-radius: 12px;
   border: 1px solid var(--glass-border);
   background: color-mix(in srgb, var(--glass-surface) 55%, transparent);
 }
@@ -480,7 +452,7 @@ function onExportFlow() {
 .trace-meta-item__label {
   font-size: 11px;
   color: var(--color-text-secondary);
-  margin-bottom: 2px;
+  margin-bottom: var(--nt-space-1);
 }
 
 .trace-meta-item__value {
@@ -488,14 +460,14 @@ function onExportFlow() {
 }
 
 .trace-meta-item__sub {
-  margin-left: 6px;
+  margin-left: var(--nt-space-2);
   font-size: 11px;
   color: var(--color-text-secondary);
 }
 
 /* ── 胶囊分段 Tab ── */
 .trace-tabs {
-  margin-bottom: 12px;
+  margin-bottom: var(--nt-space-3);
 }
 
 .trace-tabs__toggle {

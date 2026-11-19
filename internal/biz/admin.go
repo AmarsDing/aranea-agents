@@ -15,16 +15,38 @@ import (
 )
 
 // Admin is a Admin model.
+//
+// P1 权限底座扩展（三项目整合，P0 详设 01 §1.1）：逻辑名 User，物理表 admins
+// 保留。Roles 为角色码读缓存（权威来源 user_roles 边表）；Clearance 为密级资质
+// L1-L5；TokenVersion 为会话吊销版本（踢会话/改密/离职/角色密级变更即递增）。
 type Admin struct {
-	ID          int64
-	Name        string
-	Email       string
-	Password    string
-	Access      string
-	Avatar      string
-	WorkspaceID string
-	CreateTime  time.Time
-	UpdateTime  time.Time
+	ID           int64
+	Name         string
+	Email        string
+	Password     string
+	Access       string
+	Avatar       string
+	WorkspaceID  string
+	Roles        []string
+	Clearance    int
+	Dept         string
+	Status       string
+	ForceReset   bool
+	TokenVersion int64
+	CreateTime   time.Time
+	UpdateTime   time.Time
+}
+
+// 账号状态取值（与 ent schema admin.go Enum 对齐）。
+const (
+	AdminStatusActive     = "active"
+	AdminStatusFrozen     = "frozen"
+	AdminStatusOffboarded = "offboarded"
+)
+
+// IsActive reports whether the account may authenticate.
+func (a *Admin) IsActive() bool {
+	return a == nil || a.Status == "" || a.Status == AdminStatusActive
 }
 
 // AdminReader provides read-only access to admin records.
@@ -49,18 +71,54 @@ type AdminRepo interface {
 	AdminWriter
 }
 
+// SessionRevoker 吊销指定用户的全部会话（P1-3；实现位于 data 层
+// TokenVersionStore：DB 递增 + Redis write-through + pub/sub 广播）。
+// 触发点：踢会话 / 改密（P1-8）/ 离职冻结 / 角色或密级变更。
+type SessionRevoker interface {
+	// RevokeSessions 递增 token_version，返回递增后的新版本。
+	RevokeSessions(ctx context.Context, userID int64) (newVersion int64, err error)
+}
+
 // AdminUsecase is a Admin usecase.
 // W-1 fix: depend on narrow interfaces instead of composite AdminRepo.
 type AdminUsecase struct {
-	reader AdminReader
-	writer AdminWriter
-	lg     loggateway.Logger
+	reader  AdminReader
+	writer  AdminWriter
+	lg      loggateway.Logger
+	revoker SessionRevoker
 }
 
 // NewAdminUsecase new a Admin usecase.
 // S-1 fix: accept narrow interfaces instead of composite AdminRepo.
 func NewAdminUsecase(reader AdminReader, writer AdminWriter, lg loggateway.Logger) *AdminUsecase {
 	return &AdminUsecase{reader: reader, writer: writer, lg: lg}
+}
+
+// SetSessionRevoker injects the session-revocation backend (composition-root
+// wiring; 与 SetTimeoutHandler 同模式的可选接线）。生产环境必接；未注入时
+// RevokeSessions 返回错误（诚实失败，绝不静默假吊销）。
+func (uc *AdminUsecase) SetSessionRevoker(r SessionRevoker) {
+	uc.revoker = r
+}
+
+// RevokeSessions 吊销 userID 的全部会话：旧 token 在下一次请求即被拒绝
+// （HTTP/gRPC 中间件逐请求比对 tv），WS 连接经 pub/sub 主动关闭（P1-4）。
+func (uc *AdminUsecase) RevokeSessions(ctx context.Context, userID int64, reason string) error {
+	if uc.revoker == nil {
+		uc.lg.Warn("session revocation unavailable: revoker not wired",
+			loggateway.StepID("admin.session_revoke"), loggateway.Int64("user_id", userID))
+		return apierror.Internal("AUTH", "session revocation unavailable")
+	}
+	newVersion, err := uc.revoker.RevokeSessions(ctx, userID)
+	if err != nil {
+		return err
+	}
+	uc.lg.Info("admin sessions revoked",
+		loggateway.StepID("admin.session_revoke"),
+		loggateway.Int64("user_id", userID),
+		loggateway.Int64("token_version", newVersion),
+		loggateway.Str("reason", reason))
+	return nil
 }
 
 // ErrInvalidCredentials is the unified error for both user-not-found and
@@ -137,6 +195,12 @@ func (uc *AdminUsecase) LoginByUsername(ctx context.Context, username, password 
 			loggateway.StepID("admin.login_failed"), loggateway.Str("method", "username"))
 		return nil, ErrInvalidCredentials
 	}
+	// P1: frozen/offboarded 账号拒绝登录；与密码错误同错误，防账号存在性枚举。
+	if !user.IsActive() {
+		uc.lg.Warn("admin login rejected: account not active",
+			loggateway.StepID("admin.login_failed"), loggateway.Str("method", "username"), loggateway.Str("admin_name", user.Name))
+		return nil, ErrInvalidCredentials
+	}
 	if !verifyPassword(user.Password, password) {
 		uc.lg.Warn("admin login failed: invalid credentials",
 			loggateway.StepID("admin.login_failed"), loggateway.Str("method", "username"), loggateway.Str("admin_name", user.Name))
@@ -159,6 +223,12 @@ func (uc *AdminUsecase) LoginByEmail(ctx context.Context, email, password string
 	if err != nil {
 		uc.lg.Warn("admin login failed",
 			loggateway.StepID("admin.login_failed"), loggateway.Str("method", "email"))
+		return nil, ErrInvalidCredentials
+	}
+	// P1: frozen/offboarded 账号拒绝登录；与密码错误同错误，防账号存在性枚举。
+	if !user.IsActive() {
+		uc.lg.Warn("admin login rejected: account not active",
+			loggateway.StepID("admin.login_failed"), loggateway.Str("method", "email"), loggateway.Str("admin_name", user.Name))
 		return nil, ErrInvalidCredentials
 	}
 	if !verifyPassword(user.Password, password) {
@@ -205,11 +275,128 @@ func (uc *AdminUsecase) CreateAdmin(ctx context.Context, admin *Admin) (*Admin, 
 }
 
 // UpdateAdmin updates an existing admin user.
+//
+// 角色信号变更即先吊销后写入（评审 2026-11-09 A4，镜像 DeleteAdmin 的 H1
+// 模式）：管理员改角色（access/roles）后，旧 token 里仍是旧角色 claim，
+// 不递增 tv 吊销即「改角色不生效」的安全缺口——旧会话最长可凭旧 claim
+// 活到自然过期。故与 DeleteAdmin 同理：检测到角色信号变化时先吊销全部会话
+// 再落库；吊销失败（含 revoker 未接线）则整个操作不动任何数据并如实报错，
+// 绝不留下「角色已改但旧会话仍活」的窗口。纯资料更新（姓名/头像/口令等）
+// 不触碰角色信号，不触发吊销。
 func (uc *AdminUsecase) UpdateAdmin(ctx context.Context, admin *Admin) (*Admin, error) {
+	changed, err := uc.roleSignalChanged(ctx, admin)
+	if err != nil {
+		return nil, err
+	}
+	if changed {
+		if err := uc.RevokeSessions(ctx, admin.ID, "role_change"); err != nil {
+			return nil, err
+		}
+	}
 	return uc.writer.UpdateAdmin(ctx, admin)
 }
 
+// roleSignalChanged 判定本次更新是否改变角色信号（access 或 roles）：
+// Access 始终比对（角色变更入口必带 access）；Roles 仅当入参非 nil 时比对
+// （service 层字段掩码更新不带 roles——此时 roles 未变，不得误吊销），
+// 且按无序集合比对（顺序不敏感）。旧记录读不到（FindByID 失败）时如实
+// 上抛，由调用方决定——不猜测、不默认无变更。
+func (uc *AdminUsecase) roleSignalChanged(ctx context.Context, admin *Admin) (bool, error) {
+	if admin == nil {
+		return false, nil
+	}
+	old, err := uc.reader.FindByID(ctx, admin.ID)
+	if err != nil {
+		return false, err
+	}
+	if old == nil {
+		return false, nil
+	}
+	if old.Access != admin.Access {
+		return true, nil
+	}
+	if admin.Roles == nil {
+		return false, nil
+	}
+	if len(old.Roles) != len(admin.Roles) {
+		return true, nil
+	}
+	set := make(map[string]struct{}, len(old.Roles))
+	for _, r := range old.Roles {
+		set[r] = struct{}{}
+	}
+	for _, r := range admin.Roles {
+		if _, ok := set[r]; !ok {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 // DeleteAdmin deletes an admin user by ID.
+//
+// 顺序刻意为「先吊销后删除」（评审 2026-11-09 H1，与 ChangePassword 同理）：
+// 删除后 HTTP/gRPC 面因 ErrAdminNotFound fail-closed 立即 401；WS 面双保险：
+// ①本函数先递增 tv 广播 bump，在线连接即时被关（主路径）；②若有连接错过
+// 事件，兜底扫描在下一个周期把 ErrAdminNotFound 视为已吊销主动关闭
+// （ws_revocation.go，最终一致）。
+// 吊销失败则不删并如实报错（绝不留下「账号已删但会话仍活」的窗口）；
+// revoker 未接线时整个操作不动任何数据。
 func (uc *AdminUsecase) DeleteAdmin(ctx context.Context, id int64) error {
+	if err := uc.RevokeSessions(ctx, id, "admin_deleted"); err != nil {
+		return err
+	}
 	return uc.writer.DeleteAdmin(ctx, id)
+}
+
+// MinPasswordLength 是自助改密与管理员建号共用的最小长度（P1-8）。
+const MinPasswordLength = 8
+
+// ChangePassword 自助改密（P1-8）：校验旧密码 → 吊销该用户全部会话 → 写入新
+// bcrypt 口令。
+//
+// 顺序刻意为「先吊销后改密」：若写入口令失败，用户只是被登出（旧口令仍可用），
+// 而不是「口令已改但旧会话仍活着」——后者是安全缺口，前者只是可用性抖动。
+// 同理，revoker 未接线时整个操作不动任何数据并如实报错（绝不静默假吊销）。
+//
+// 成功返回后调用方（含发起本次请求的会话）已全部失效，必须重新登录。
+func (uc *AdminUsecase) ChangePassword(ctx context.Context, userID int64, oldPassword, newPassword string) error {
+	if strings.TrimSpace(newPassword) == "" {
+		return apierror.BadRequest("AUTH", "new password is required")
+	}
+	if len(newPassword) < MinPasswordLength {
+		return apierror.BadRequest("AUTH", "new password is too short")
+	}
+	if newPassword == oldPassword {
+		return apierror.BadRequest("AUTH", "new password must differ from the old one")
+	}
+	user, err := uc.reader.FindByID(ctx, userID)
+	if err != nil {
+		return err
+	}
+	if !user.IsActive() {
+		// 冻结/离职账号不允许自助改密（同时也是防越权的兜底）。
+		return ErrInvalidCredentials
+	}
+	if !verifyPassword(user.Password, oldPassword) {
+		uc.lg.Warn("admin change password rejected: invalid old password",
+			loggateway.StepID("admin.change_password"), loggateway.Int64("user_id", userID))
+		return ErrInvalidCredentials
+	}
+	if err := uc.RevokeSessions(ctx, userID, "password_change"); err != nil {
+		return err
+	}
+	hashed, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return apierror.Internal("AUTH", "hash password failed")
+	}
+	user.Password = string(hashed)
+	// 改密即解除首次登录强制改密标记（P1-9 迁移账号置位）。
+	user.ForceReset = false
+	if _, err := uc.writer.UpdateAdmin(ctx, user); err != nil {
+		return err
+	}
+	uc.lg.Info("admin password changed; all sessions revoked",
+		loggateway.StepID("admin.change_password"), loggateway.Int64("user_id", userID))
+	return nil
 }

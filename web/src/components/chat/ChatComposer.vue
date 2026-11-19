@@ -380,7 +380,7 @@ function onInputKeydown(event: KeyboardEvent) {
 /* 听写状态条（M74 dictation）：录音态红点 + 实时识别文本 */
 .dictation-bar
   padding: 4px 10px
-  border-radius: 10px
+  border-radius: 8px
   border: 1px solid var(--glass-border)
   background: var(--glass-surface)
   backdrop-filter: blur(var(--glass-blur-subtle))
@@ -392,7 +392,7 @@ function onInputKeydown(event: KeyboardEvent) {
   width: 8px
   height: 8px
   border-radius: 50%
-  margin-right: 8px
+  margin-right: var(--nt-space-2)
   background: var(--color-danger)
   animation: dictation-pulse 1.2s ease-in-out infinite
 
@@ -437,7 +437,7 @@ function onInputKeydown(event: KeyboardEvent) {
     flex-direction: column
     align-items: stretch
     .composer-context-row
-      padding-right: 32px
+      padding-right: var(--nt-space-8)
       max-height: 72px
       overflow-y: auto
     .chat-skill-chips, .chat-attachments
@@ -537,7 +537,7 @@ body.body--dark .composer-card :deep(.composer-input .q-field__native)::-webkit-
 
 /* 底部工具条 */
 .composer-bottom-bar
-  gap: 8px
+  gap: var(--nt-space-2)
 .composer-model-summary
   min-width: 0
   flex: 1

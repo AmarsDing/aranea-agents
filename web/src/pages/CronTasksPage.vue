@@ -48,33 +48,39 @@
       </template>
     </AppPageToolbar>
 
-    <q-banner v-if="error" rounded class="bg-negative text-white q-mb-md">
-      {{ error }}
-      <template #action>
-        <q-btn flat color="white" :label="t('common.retry')" @click="loadAll" />
-      </template>
-    </q-banner>
-
-    <q-card v-if="!loading && filteredRows.length === 0" flat class="app-registry-empty app-empty-state-center">
-      <q-card-section class="column items-center text-center q-pa-xl">
-        <q-avatar size="80px" color="grey-9" text-color="grey-5" icon="schedule" />
-        <div class="text-h6 q-mt-md">{{ t('cron.emptyTitle') }}</div>
-        <div class="text-body2 text-grey-7 q-mt-sm">{{ t('cron.emptyHint') }}</div>
-        <q-btn
-          class="q-mt-md"
-          color="accent"
-          text-color="white"
-          rounded
-          unelevated
-          no-caps
-          icon="add"
-          :label="t('cron.createTask')"
-          @click="openCreate"
-        />
-      </q-card-section>
-    </q-card>
+    <AppStatePanel
+      v-if="pageState === 'error'"
+      class="q-mb-md"
+      variant="error"
+      :description="error"
+      :action-label="t('common.retry')"
+      action-icon="refresh"
+      @action="loadAll"
+    />
+    <AppStatePanel v-else-if="pageState === 'forbidden'" class="q-mb-md" variant="forbidden" />
+    <AppStatePanel v-else-if="pageState === 'loading'" variant="loading" :rows="4" />
+    <AppStatePanel
+      v-else-if="pageState === 'empty'"
+      variant="empty"
+      :title="t('cron.emptyTitle')"
+      :description="t('cron.emptyHint')"
+      icon="schedule"
+      :action-label="t('cron.createTask')"
+      action-icon="add"
+      @action="openCreate"
+    />
 
     <template v-else>
+      <AppStatePanel
+        v-if="pageState === 'partial'"
+        class="q-mb-md"
+        variant="partial"
+        dense
+        :description="error"
+        :action-label="t('common.retry')"
+        action-icon="refresh"
+        @action="loadAll"
+      />
       <AppRegistryTable
         :rows="pagedRows"
         :columns="columns"
@@ -238,14 +244,17 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import AppPageHero from '../components/layout/AppPageHero.vue';
 import AppPageToolbar from '../components/layout/AppPageToolbar.vue';
 import AppRegistryTable from '../components/layout/AppRegistryTable.vue';
 import AppRegistryPagination from '../components/layout/AppRegistryPagination.vue';
+import AppStatePanel from '../components/common/AppStatePanel.vue';
 import CronTaskFormDialog from '../components/cron/CronTaskFormDialog.vue';
 import CronRunsDialog from '../components/cron/CronRunsDialog.vue';
 import { useCronTasksPage } from '../features/cron/useCronTasksPage';
+import { resolvePageState } from './pageState';
 
 const { t } = useI18n();
 
@@ -254,6 +263,7 @@ const {
   teams,
   loading,
   error,
+  forbidden,
   search,
   statusFilter,
   editorOpen,
@@ -303,6 +313,16 @@ const {
   onRunsStatusChange,
   resetRunsFilters,
 } = useCronTasksPage();
+
+/** 五态判定：错误优先于空态；筛选后为空也算 empty，有数据时失败降级为 partial 横幅。 */
+const pageState = computed(() =>
+  resolvePageState({
+    loading: loading.value,
+    error: error.value,
+    count: filteredRows.value.length,
+    forbidden: forbidden.value,
+  }),
+);
 
 function resetFilters() {
   search.value = '';

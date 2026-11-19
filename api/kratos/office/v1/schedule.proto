@@ -1,0 +1,243 @@
+syntax = "proto3";
+
+package kratos.office.v1;
+
+import "google/api/annotations.proto";
+import "google/api/field_behavior.proto";
+import "google/api/httpbody.proto";
+import "google/protobuf/empty.proto";
+import "google/protobuf/timestamp.proto";
+import "aranea/auth/v1/requirement.proto";
+
+option go_package = "aranea-agents/api/kratos/office/v1;v1";
+option java_multiple_files = true;
+option java_package = "api.kratos.office.v1";
+
+// ============================================================================
+// OfficeScheduleService —— 日程（自 workbench misc.go 平移 + K-1..K-5 拍板）
+//
+// 平移语义（逐字保留，验收用例随 verify-schedule.ps1 平移）：
+//   - 同人同时段重叠 → 409 CONFLICT（创建与任务排期两条路径同语义）；
+//   - 任务双向联动：任务→时间块（ScheduleTask）、时间块→反查任务；
+//   - end_at > start_at 强制。
+// 新增（K 拍板）：
+//   - K-1 ListEventsRange 范围聚合（替代月历逐日 28-31 请求的缺陷实现）；
+//   - K-4 reminder_minutes + 提醒扫描 job → 通知中心/IM 通道；
+//   - K-3 ics 只读订阅（token-in-path 公开 feed，管理面 Create/Revoke）；
+//   - agent 排期草案：SubmitScheduleDraft 只产草案进审批中心
+//     （kind=schedule_draft），批准后方落库——需求概要「agent 规划草案逐项
+//     审批」。K-2：RRULE 重复规则不做。
+// ============================================================================
+
+message OfficeEvent {
+  string id = 1;
+  string workspace_id = 2;
+  string user_id = 3;
+  string task_ref = 4; // 关联任务引用（统一任务中心落位后解析；可空）
+  string task_title = 5; // 列表带出（LEFT JOIN 语义平移）
+  string title = 6;
+  string note = 7;
+  google.protobuf.Timestamp start_at = 8;
+  google.protobuf.Timestamp end_at = 9;
+  string timezone = 10; // IANA，默认 Asia/Shanghai
+  int32 reminder_minutes = 11; // 0=不提醒
+  string source = 12;    // manual | task_schedule | agent_draft
+  google.protobuf.Timestamp created_at = 13;
+  google.protobuf.Timestamp updated_at = 14;
+}
+
+message CreateEventRequest {
+  string title = 1 [(google.api.field_behavior) = REQUIRED];
+  string note = 2;
+  google.protobuf.Timestamp start_at = 3 [(google.api.field_behavior) = REQUIRED];
+  google.protobuf.Timestamp end_at = 4 [(google.api.field_behavior) = REQUIRED];
+  string timezone = 5;
+  int32 reminder_minutes = 6;
+  string task_ref = 7;
+}
+
+message UpdateEventRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+  string title = 2;
+  string note = 3;
+  google.protobuf.Timestamp start_at = 4;
+  google.protobuf.Timestamp end_at = 5;
+  string timezone = 6;
+  int32 reminder_minutes = 7;
+}
+
+message GetEventRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message DeleteEventRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message ListEventsRangeRequest {
+  google.protobuf.Timestamp start = 1 [(google.api.field_behavior) = REQUIRED];
+  google.protobuf.Timestamp end = 2 [(google.api.field_behavior) = REQUIRED];
+}
+
+message ListEventsRangeResponse {
+  repeated OfficeEvent items = 1;
+}
+
+// ScheduleTaskRequest 任务→日程正向联动（标题缺省自动「执行：」+任务标题，
+// 409 冲突语义与手工创建一致）。
+message ScheduleTaskRequest {
+  string task_ref = 1 [(google.api.field_behavior) = REQUIRED];
+  string task_title = 2 [(google.api.field_behavior) = REQUIRED];
+  google.protobuf.Timestamp start_at = 3 [(google.api.field_behavior) = REQUIRED];
+  google.protobuf.Timestamp end_at = 4 [(google.api.field_behavior) = REQUIRED];
+  int32 reminder_minutes = 5;
+}
+
+message ListTaskEventsRequest {
+  string task_ref = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message ListTaskEventsResponse {
+  repeated OfficeEvent items = 1;
+}
+
+// SubmitScheduleDraftRequest agent 排期草案（批量提交，逐项审批；批准落库）。
+message ScheduleDraftItem {
+  string title = 1 [(google.api.field_behavior) = REQUIRED];
+  string note = 2;
+  google.protobuf.Timestamp start_at = 3 [(google.api.field_behavior) = REQUIRED];
+  google.protobuf.Timestamp end_at = 4 [(google.api.field_behavior) = REQUIRED];
+  int32 reminder_minutes = 5;
+  string task_ref = 6;
+}
+
+message SubmitScheduleDraftRequest {
+  string agent_id = 1;
+  string session_id = 2;
+  repeated ScheduleDraftItem items = 3 [(google.api.field_behavior) = REQUIRED];
+}
+
+message SubmitScheduleDraftResponse {
+  string approval_id = 1; // 审批中心条目 id
+}
+
+// 草案决议（审批中心 schedule_draft 类的领域出口——聚合端点只读，决议走本
+// 对 RPC）。Approve 在单事务内逐项复检 409 冲突：任一项与已落库事件重叠即
+// 整体 409、草案保持 pending（不部分落库）；全部通过才落 office_events 并
+// 标记 approved。Reject 仅留 decided_by/reason 审计，不落事件。
+message ApproveScheduleDraftRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED]; // 草案 id（=审批条目 id）
+}
+
+message RejectScheduleDraftRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+  string reason = 2;
+}
+
+// ICalToken ics 只读订阅令牌（feed 本身为 token-in-path 公开端点，吊销即 401）。
+message ICalToken {
+  string id = 1;
+  string name = 2; // 用途备注，如「手机日历」
+  string feed_url = 3;
+  google.protobuf.Timestamp created_at = 4;
+  google.protobuf.Timestamp revoked_at = 5; // 未吊销留空
+}
+
+message CreateICalTokenRequest {
+  string name = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message RevokeICalTokenRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message ListICalTokensResponse {
+  repeated ICalToken items = 1;
+}
+
+service OfficeScheduleService {
+  rpc CreateEvent(CreateEventRequest) returns (OfficeEvent) {
+    option (aranea.auth.v1.requirement) = {permission: "office.schedule"};
+    option (google.api.http) = {
+      post: "/v1/office/events"
+      body: "*"
+    };
+  }
+  rpc UpdateEvent(UpdateEventRequest) returns (OfficeEvent) {
+    option (aranea.auth.v1.requirement) = {permission: "office.schedule"};
+    option (google.api.http) = {
+      patch: "/v1/office/events/{id}"
+      body: "*"
+    };
+  }
+  rpc DeleteEvent(DeleteEventRequest) returns (google.protobuf.Empty) {
+    option (aranea.auth.v1.requirement) = {permission: "office.schedule"};
+    option (google.api.http) = {delete: "/v1/office/events/{id}"};
+  }
+  rpc GetEvent(GetEventRequest) returns (OfficeEvent) {
+    option (aranea.auth.v1.requirement) = {permission: "office.schedule"};
+    option (google.api.http) = {get: "/v1/office/events/{id}"};
+  }
+  rpc ListEventsRange(ListEventsRangeRequest) returns (ListEventsRangeResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "office.schedule"};
+    option (google.api.http) = {get: "/v1/office/events"};
+  }
+  rpc ScheduleTask(ScheduleTaskRequest) returns (OfficeEvent) {
+    option (aranea.auth.v1.requirement) = {permission: "office.schedule"};
+    option (google.api.http) = {
+      post: "/v1/office/events:scheduleTask"
+      body: "*"
+    };
+  }
+  rpc ListTaskEvents(ListTaskEventsRequest) returns (ListTaskEventsResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "office.schedule"};
+    option (google.api.http) = {get: "/v1/office/events:byTask"};
+  }
+  rpc SubmitScheduleDraft(SubmitScheduleDraftRequest) returns (SubmitScheduleDraftResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "office.schedule"};
+    option (google.api.http) = {
+      post: "/v1/office/schedule-drafts"
+      body: "*"
+    };
+  }
+  rpc ApproveScheduleDraft(ApproveScheduleDraftRequest) returns (google.protobuf.Empty) {
+    option (aranea.auth.v1.requirement) = {permission: "office.schedule"};
+    option (google.api.http) = {
+      post: "/v1/office/schedule-drafts/{id}/approve"
+      body: "*"
+    };
+  }
+  rpc RejectScheduleDraft(RejectScheduleDraftRequest) returns (google.protobuf.Empty) {
+    option (aranea.auth.v1.requirement) = {permission: "office.schedule"};
+    option (google.api.http) = {
+      post: "/v1/office/schedule-drafts/{id}/reject"
+      body: "*"
+    };
+  }
+  rpc CreateICalToken(CreateICalTokenRequest) returns (ICalToken) {
+    option (aranea.auth.v1.requirement) = {permission: "office.schedule"};
+    option (google.api.http) = {
+      post: "/v1/office/calendar/tokens"
+      body: "*"
+    };
+  }
+  rpc RevokeICalToken(RevokeICalTokenRequest) returns (google.protobuf.Empty) {
+    option (aranea.auth.v1.requirement) = {permission: "office.schedule"};
+    option (google.api.http) = {delete: "/v1/office/calendar/tokens/{id}"};
+  }
+  rpc ListICalTokens(google.protobuf.Empty) returns (ListICalTokensResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "office.schedule"};
+    option (google.api.http) = {get: "/v1/office/calendar/tokens"};
+  }
+  // GetICalFeed ics 只读订阅输出：token-in-path 公开端点（日历客户端无法带
+  // Bearer），令牌即凭据；吊销后 401。输出 text/calendar。
+  // 路径不带 .ics 后缀：TS 生成器不接受路径段内「参数+字面量后缀」混排。
+  rpc GetICalFeed(GetICalFeedRequest) returns (google.api.HttpBody) {
+    option (aranea.auth.v1.requirement) = {public: true};
+    option (google.api.http) = {get: "/v1/office/calendar/feeds/{token}"};
+  }
+}
+
+message GetICalFeedRequest {
+  string token = 1 [(google.api.field_behavior) = REQUIRED];
+}

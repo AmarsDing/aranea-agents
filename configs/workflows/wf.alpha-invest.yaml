@@ -1,0 +1,70 @@
+# 大A 投资线(链路 B)— 声明式工作流注册单元
+# 依据:docs/CEO-Agent/01-CEO监控看板方案.md v0.2 §14.2;字段均有代码证据。
+# v3(2026-11-03 P2):REST 路径按 gate.go:352-359 转发规则修正为 /api/trade/*
+#   (旧 /api/v1/trade/* 前缀错误,网关 forward 只剥 /api/trade → /v1/trade);
+#   凭据:admin 网关 Bearer(POST /api/v1/login),看板 auth_providers 自动登录续期,实测 200。
+api_version: ceoboard/v1
+kind: Workflow
+id: wf.alpha-invest
+name: 大A 投资线
+biz_line: invest
+owner: quant-team
+version: 3
+permissions: [ceo, viewer]    # viewer 只读可见;值班默认不可见(方案 §9)
+changelog:
+  - { version: 2, date: "2026-11-03", note: "P0 落地:probe 改用实测 200 的 /healthz;REST 路径补 /api 前缀(实测)" }
+  - { version: 3, date: "2026-11-03", note: "P2:b3 对账改 GET /api/trade/channel/status(带 token 实测 200);b4 drill 改 /api/trade/account;路径前缀按 gate.go forward 规则修正;鉴权由看板 auth_providers 注入" }
+
+probe: { type: rest, path: "GET http://192.168.4.44:22001/healthz", interval: 30s, stale_after: 90s }
+  # 证据: NovaTrader/backend/pkg/scaffold/http.go:17(/healthz 裸端点);实测 200 {"status":"ok"}
+
+nodes:
+  - id: b2-signal
+    name: 信号
+    order: 1
+    enter: "event(subject='strategy.signal.updated')"     # events/envelope.go:22
+    exit:  "signal_event(to_status 终态)"                 # SignalEvent from→to 流水, schema/signal_event.go:13-39
+    source:
+      adapter: nats-jetstream                  # P0 不接 NATS → 未接入
+      endpoint: "nats://192.168.4.44:24222"    # deploy/README.md:22
+      subjects: ["strategy.signal.updated"]
+      dedupe_key: event_id                     # 信封 envelope.go:115-162
+      field_map: { entity_id: "payload.signal_id", version: entity_version }
+    metrics:
+      - { id: m.b2.rate, unit: "条/分", window: 1m, expr: "count(enter)" }
+
+  - id: b3-order
+    name: 风控/下单
+    order: 2
+    enter: "event(subject='trade.order')"
+    exit:  "order(终态)"                        # TradeOrder.status 自由文本,取值表 [待验证:biz 层归纳](附录 B)
+    source:
+      adapter: nats-jetstream
+      endpoint: "nats://192.168.4.44:24222"
+      subjects: ["trade.order", "risk.alert", "risk.exit", "sys.killswitch"]  # envelope.go:20-26
+      rest_path: "GET http://192.168.4.44:22001/api/trade/channel/status"  # 通道状态(对账语义最贴"风控/下单");带 token 实测 200 {"channels":[{"channel":"sim","status":"connected"}]}
+    metrics:
+      - { id: m.b2b3.lead, unit: ms, window: 5m, expr: "latency(b2.enter, b3.enter)", precompute: rolling_p50, join: "payload.signal_id" }
+          # 关联键 signal_id: PlaceOrderRequest.signal_id ↔ TradeOrder.signal_id;P2 物化器按 join 配对
+      - { id: m.b3.kill, unit: 次, window: 1h, expr: "count(subject='sys.killswitch')",
+          thresholds: { red: ">0" } }
+
+  - id: b4-fill
+    name: 成交/对账
+    order: 3
+    enter: "event(subject='trade.fill')"
+    exit:  "event(subject='trade.reconciliation')"        # 原生对账差异主题, envelope.go:28
+    source:
+      adapter: nats-jetstream
+      endpoint: "nats://192.168.4.44:24222"
+      subjects: ["trade.fill", "trade.reconciliation"]
+      dedupe_key: event_id
+    metrics:
+      - { id: m.b4.slippage, unit: bp, window: 5m, precompute: job_fill_vs_reference,
+          expr: "gauge(precompute)",
+          note: "滑点=fill 价 vs PlaceOrderRequest.reference_price,声明算不出,必须物化(R3-Q4)" }
+      - { id: m.b4.recon, unit: 条, window: 5m, expr: "count(subject='trade.reconciliation')",
+          thresholds: { yellow: ">0", red: ">3" } }
+    drill:
+      - { label: 账户/持仓, type: rest, path: "GET http://192.168.4.44:22001/api/trade/account",
+          permission: ceo, note: "trade.proto:28-37;带 token 实测 200(账户/权益/持仓数)" }

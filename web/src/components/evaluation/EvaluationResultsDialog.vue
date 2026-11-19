@@ -1,148 +1,149 @@
 <template>
-  <q-dialog :model-value="open" @update:model-value="$emit('update:open', $event)">
-    <q-card class="app-dialog-card app-dialog-card--xl app-glass-dialog">
-      <q-card-section class="text-h6">用例结果 · {{ runId }}</q-card-section>
-      <q-card-section class="app-dialog-body q-pt-none">
-        <AppRegistryTable
-          :shell="false"
-          :data-shell="true"
-          :rows="rows"
-          :columns="columns"
-          row-key="id"
-          :loading="loading"
-          hide-pagination
-          :pagination="{ rowsPerPage: 0 }"
-        >
-          <template #body-cell-case_id="slotProps">
-            <q-td :props="slotProps">
-              <AppRegistryHoverTip :text="slotProps.row.error_message">
-                <span class="app-registry-cell-primary ellipsis">{{ slotProps.row.case_id }}</span>
-              </AppRegistryHoverTip>
-            </q-td>
-          </template>
-          <template #body-cell-input="slotProps">
-            <q-td :props="slotProps">
-              <div class="app-registry-cell-sub ellipsis" :title="slotProps.row.input">
-                {{ slotProps.row.input || '—' }}
-              </div>
-            </q-td>
-          </template>
-          <template #body-cell-actual_output="slotProps">
-            <q-td :props="slotProps">
-              <div class="app-registry-cell-sub ellipsis" :title="slotProps.row.actual_output">
-                {{ slotProps.row.actual_output || '—' }}
-              </div>
-            </q-td>
-          </template>
-          <template #body-cell-human_pass="slotProps">
-            <q-td :props="slotProps">
-              <q-btn-toggle
-                :model-value="passValue(slotProps.row)"
-                toggle-color="primary"
-                dense
-                unelevated
-                :options="[
-                  { label: '-', value: 'unset' },
-                  { label: 'Pass', value: 'pass' },
-                  { label: 'Fail', value: 'fail' },
-                ]"
-                @update:model-value="(v: string) => onPassChange(slotProps.row, v)"
-              />
-            </q-td>
-          </template>
-          <template #body-cell-human_score="slotProps">
-            <q-td :props="slotProps">
-              <q-input
-                dense
-                outlined
-                type="number"
-                step="0.01"
-                min="0"
-                max="1"
-                :model-value="slotProps.row.human_score ?? ''"
-                class="evaluation-score-input"
-                @update:model-value="(v: string | number | null) => onScoreChange(slotProps.row, v)"
-              />
-            </q-td>
-          </template>
-          <template #body-cell-human_comment="slotProps">
-            <q-td :props="slotProps">
-              <q-input
-                dense
-                outlined
-                :model-value="slotProps.row.human_comment ?? ''"
-                placeholder="评语"
-                @update:model-value="(v: string | number | null) => onCommentChange(slotProps.row, String(v ?? ''))"
-              />
-            </q-td>
-          </template>
-          <template #body-cell-annotate="slotProps">
-            <q-td :props="slotProps">
-              <div class="app-registry-cell-actions">
-                <q-btn
-                  dense
-                  flat
-                  round
-                  icon="save"
-                  color="primary"
-                  aria-label="保存"
-                  :loading="savingId === slotProps.row.id"
-                  @click="$emit('annotate', slotProps.row)"
-                />
-                <q-btn
-                  v-if="slotProps.row.session_id || slotProps.row.trace_run_id"
-                  dense
-                  flat
-                  round
-                  icon="timeline"
-                  color="primary"
-                  :title="$t('evaluationPage.openTrace')"
-                  @click="$emit('open-trace', slotProps.row)"
-                />
-              </div>
-            </q-td>
-          </template>
-        </AppRegistryTable>
-        <AppRegistryPagination
-          :page="page"
-          :page-size="pageSize"
-          :page-max="pageMax"
-          :total="total"
-          :loading="loading"
-          label="条用例"
-          @update:page="emit('page-change', $event)"
-          @update:page-size="emit('page-size-change', $event)"
-        />
-      </q-card-section>
-      <q-card-actions align="right" class="app-actions-bar">
-        <q-btn
-          v-if="run"
-          flat
-          color="primary"
-          icon="download"
-          label="导出 CSV"
-          :disable="!total"
-          :loading="exporting"
-          @click="$emit('export-csv')"
-        />
-        <q-btn
-          v-if="run"
-          flat
-          color="primary"
-          icon="code"
-          label="导出 JSON"
-          :disable="!total"
-          :loading="exporting"
-          @click="$emit('export-json')"
-        />
-        <q-btn flat label="关闭" @click="$emit('update:open', false)" />
-      </q-card-actions>
-    </q-card>
-  </q-dialog>
+  <AppDialog
+    :model-value="open"
+    :title="`用例结果 · ${runId}`"
+    size="xl"
+    @update:model-value="$emit('update:open', $event)"
+  >
+    <AppRegistryTable
+      :shell="false"
+      :data-shell="true"
+      :rows="rows"
+      :columns="columns"
+      row-key="id"
+      :loading="loading"
+      hide-pagination
+      :pagination="{ rowsPerPage: 0 }"
+    >
+      <template #body-cell-case_id="slotProps">
+        <q-td :props="slotProps">
+          <AppRegistryHoverTip :text="slotProps.row.error_message">
+            <span class="app-registry-cell-primary ellipsis">{{ slotProps.row.case_id }}</span>
+          </AppRegistryHoverTip>
+        </q-td>
+      </template>
+      <template #body-cell-input="slotProps">
+        <q-td :props="slotProps">
+          <div class="app-registry-cell-sub ellipsis" :title="slotProps.row.input">
+            {{ slotProps.row.input || '—' }}
+          </div>
+        </q-td>
+      </template>
+      <template #body-cell-actual_output="slotProps">
+        <q-td :props="slotProps">
+          <div class="app-registry-cell-sub ellipsis" :title="slotProps.row.actual_output">
+            {{ slotProps.row.actual_output || '—' }}
+          </div>
+        </q-td>
+      </template>
+      <template #body-cell-human_pass="slotProps">
+        <q-td :props="slotProps">
+          <q-btn-toggle
+            :model-value="passValue(slotProps.row)"
+            toggle-color="primary"
+            dense
+            unelevated
+            :options="[
+              { label: '-', value: 'unset' },
+              { label: 'Pass', value: 'pass' },
+              { label: 'Fail', value: 'fail' },
+            ]"
+            @update:model-value="(v: string) => onPassChange(slotProps.row, v)"
+          />
+        </q-td>
+      </template>
+      <template #body-cell-human_score="slotProps">
+        <q-td :props="slotProps">
+          <q-input
+            dense
+            outlined
+            type="number"
+            step="0.01"
+            min="0"
+            max="1"
+            :model-value="slotProps.row.human_score ?? ''"
+            class="evaluation-score-input"
+            @update:model-value="(v: string | number | null) => onScoreChange(slotProps.row, v)"
+          />
+        </q-td>
+      </template>
+      <template #body-cell-human_comment="slotProps">
+        <q-td :props="slotProps">
+          <q-input
+            dense
+            outlined
+            :model-value="slotProps.row.human_comment ?? ''"
+            placeholder="评语"
+            @update:model-value="(v: string | number | null) => onCommentChange(slotProps.row, String(v ?? ''))"
+          />
+        </q-td>
+      </template>
+      <template #body-cell-annotate="slotProps">
+        <q-td :props="slotProps">
+          <div class="app-registry-cell-actions">
+            <q-btn
+              dense
+              flat
+              round
+              icon="save"
+              color="primary"
+              aria-label="保存"
+              :loading="savingId === slotProps.row.id"
+              @click="$emit('annotate', slotProps.row)"
+            />
+            <q-btn
+              v-if="slotProps.row.session_id || slotProps.row.trace_run_id"
+              dense
+              flat
+              round
+              icon="timeline"
+              color="primary"
+              :title="$t('evaluationPage.openTrace')"
+              @click="$emit('open-trace', slotProps.row)"
+            />
+          </div>
+        </q-td>
+      </template>
+    </AppRegistryTable>
+    <AppRegistryPagination
+      :page="page"
+      :page-size="pageSize"
+      :page-max="pageMax"
+      :total="total"
+      :loading="loading"
+      label="条用例"
+      @update:page="emit('page-change', $event)"
+      @update:page-size="emit('page-size-change', $event)"
+    />
+    <template #actions>
+      <q-btn
+        v-if="run"
+        flat
+        color="primary"
+        icon="download"
+        label="导出 CSV"
+        :disable="!total"
+        :loading="exporting"
+        @click="$emit('export-csv')"
+      />
+      <q-btn
+        v-if="run"
+        flat
+        color="primary"
+        icon="code"
+        label="导出 JSON"
+        :disable="!total"
+        :loading="exporting"
+        @click="$emit('export-json')"
+      />
+      <q-btn flat label="关闭" @click="$emit('update:open', false)" />
+    </template>
+  </AppDialog>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue';
+import AppDialog from '../common/AppDialog.vue';
 import AppRegistryTable from '../layout/AppRegistryTable.vue';
 import AppRegistryHoverTip from '../layout/AppRegistryHoverTip.vue';
 import AppRegistryPagination from '../layout/AppRegistryPagination.vue';

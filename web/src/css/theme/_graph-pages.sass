@@ -75,11 +75,6 @@ body.body--dark
 .graphs-page
   @extend .app-entity-page
 
-// 图任务详情抽屉尺寸
-.graph-task-drawer
-  min-width: 480px
-  max-width: 600px
-
 .graph-task-drawer__loading
   min-height: 120px
 
@@ -257,6 +252,30 @@ body:not(.body--dark) .graph-card--selected
   height: 6px
   border-radius: 50%
   flex-shrink: 0
+  // 默认与 nodeTypeBorderColor 的兜底一致（未知类型 → accent）
+  background: var(--color-accent)
+
+// 域色来源与 features/graph/types.ts NODE_TYPE_STYLES 一一对应
+.graph-card__chip-dot--function
+  background: var(--graph-node-function-border)
+
+.graph-card__chip-dot--llm
+  background: var(--graph-node-llm-border)
+
+.graph-card__chip-dot--tool
+  background: var(--graph-node-tool-border)
+
+.graph-card__chip-dot--agent
+  background: var(--graph-node-agent-border)
+
+.graph-card__chip-dot--router
+  background: var(--graph-node-router-border)
+
+.graph-card__chip-dot--join
+  background: var(--graph-node-join-border)
+
+.graph-card__chip-dot--hitl
+  background: var(--graph-node-hitl-border)
 
 .graph-card__chip--overflow
   color: var(--color-text-tertiary)
@@ -339,6 +358,46 @@ body:not(.body--dark) .graph-card--add:hover
     opacity: 1
     transform: translateY(0)
 
+// 卡片入场错峰：0..360ms（13 档，超出仍为 360ms），与列表顺序一致
+.graphs-grid > .graph-card:not(.graph-card--add):nth-child(1)
+  animation-delay: 0ms
+
+.graphs-grid > .graph-card:not(.graph-card--add):nth-child(2)
+  animation-delay: 30ms
+
+.graphs-grid > .graph-card:not(.graph-card--add):nth-child(3)
+  animation-delay: 60ms
+
+.graphs-grid > .graph-card:not(.graph-card--add):nth-child(4)
+  animation-delay: 90ms
+
+.graphs-grid > .graph-card:not(.graph-card--add):nth-child(5)
+  animation-delay: 120ms
+
+.graphs-grid > .graph-card:not(.graph-card--add):nth-child(6)
+  animation-delay: 150ms
+
+.graphs-grid > .graph-card:not(.graph-card--add):nth-child(7)
+  animation-delay: 180ms
+
+.graphs-grid > .graph-card:not(.graph-card--add):nth-child(8)
+  animation-delay: 210ms
+
+.graphs-grid > .graph-card:not(.graph-card--add):nth-child(9)
+  animation-delay: 240ms
+
+.graphs-grid > .graph-card:not(.graph-card--add):nth-child(10)
+  animation-delay: 270ms
+
+.graphs-grid > .graph-card:not(.graph-card--add):nth-child(11)
+  animation-delay: 300ms
+
+.graphs-grid > .graph-card:not(.graph-card--add):nth-child(12)
+  animation-delay: 330ms
+
+.graphs-grid > .graph-card:not(.graph-card--add):nth-child(n + 13)
+  animation-delay: 360ms
+
 @keyframes graph-card-status-breathe
   0%, 100%
     opacity: 1
@@ -405,13 +464,37 @@ body:not(.body--dark) .graph-card--add:hover
   position: relative
   min-width: 200px
   max-width: 260px
+  // 节点域色：默认 function（与 NODE_TYPE_STYLES 的兜底一致），按类型类覆盖
+  --node-accent: var(--graph-node-function-border)
   border: 2px solid var(--node-accent, var(--color-accent))
-  border-radius: 16px
+  border-radius: 12px
   background: var(--glass-elevated)
   backdrop-filter: blur(var(--glass-blur-default))
   box-shadow: 0 0 8px color-mix(in srgb, var(--node-accent, var(--color-accent)) 12%, transparent), var(--shadow-entity-panel)
   overflow: hidden
   transition: border-color 300ms ease, box-shadow 300ms ease, transform 160ms ease
+
+// 域色来源与 features/graph/types.ts NODE_TYPE_STYLES 一一对应
+.graph-flow-node--function
+  --node-accent: var(--graph-node-function-border)
+
+.graph-flow-node--llm
+  --node-accent: var(--graph-node-llm-border)
+
+.graph-flow-node--tool
+  --node-accent: var(--graph-node-tool-border)
+
+.graph-flow-node--agent
+  --node-accent: var(--graph-node-agent-border)
+
+.graph-flow-node--router
+  --node-accent: var(--graph-node-router-border)
+
+.graph-flow-node--join
+  --node-accent: var(--graph-node-join-border)
+
+.graph-flow-node--hitl
+  --node-accent: var(--graph-node-hitl-border)
 
 .graph-flow-node__accent
   height: 2px
@@ -586,6 +669,9 @@ body:not(.body--dark) .graph-card--add:hover
 .graph-flow-diamond
   width: 100px
   height: 100px
+  // 菱形域色：默认 router（与 NODE_TYPE_STYLES 的兜底一致），按类型类覆盖
+  --node-fill: var(--graph-node-router-fill)
+  --node-border: var(--graph-node-router-border)
   transform: rotate(45deg)
   border: 2px solid var(--node-border)
   border-radius: 8px
@@ -594,6 +680,52 @@ body:not(.body--dark) .graph-card--add:hover
   box-shadow: 0 0 6px color-mix(in srgb, var(--node-border) 15%, transparent)
   transition: box-shadow 0.2s, border-color 0.2s
   position: relative
+
+// 域色来源与 features/graph/types.ts NODE_TYPE_STYLES 一一对应
+.graph-flow-diamond--function
+  --node-fill: var(--graph-node-function-fill)
+  --node-border: var(--graph-node-function-border)
+
+.graph-flow-diamond--llm
+  --node-fill: var(--graph-node-llm-fill)
+  --node-border: var(--graph-node-llm-border)
+
+.graph-flow-diamond--tool
+  --node-fill: var(--graph-node-tool-fill)
+  --node-border: var(--graph-node-tool-border)
+
+.graph-flow-diamond--agent
+  --node-fill: var(--graph-node-agent-fill)
+  --node-border: var(--graph-node-agent-border)
+
+.graph-flow-diamond--router
+  --node-fill: var(--graph-node-router-fill)
+  --node-border: var(--graph-node-router-border)
+
+.graph-flow-diamond--join
+  --node-fill: var(--graph-node-join-fill)
+  --node-border: var(--graph-node-join-border)
+
+.graph-flow-diamond--hitl
+  --node-fill: var(--graph-node-hitl-fill)
+  --node-border: var(--graph-node-hitl-border)
+
+// 菱形锚点：顶/底居中、左右中点（覆盖 vue-flow 默认 handle 偏移，故加父级提高权重）
+.graph-flow-diamond .graph-flow-diamond__handle--top
+  left: 50%
+  top: 0
+
+.graph-flow-diamond .graph-flow-diamond__handle--bottom
+  left: 50%
+  bottom: 0
+
+.graph-flow-diamond .graph-flow-diamond__handle--right
+  right: 0
+  top: 50%
+
+.graph-flow-diamond .graph-flow-diamond__handle--left
+  left: 0
+  top: 50%
 
 .graph-flow-diamond--selected
   box-shadow: 0 0 12px color-mix(in srgb, var(--node-border) 30%, transparent), 0 0 0 1px color-mix(in srgb, var(--node-border) 20%, transparent)
@@ -747,6 +879,28 @@ body:not(.body--dark) .graph-card--add:hover
 .graph-property-panel.is-dark
   box-shadow: -4px 0 24px rgba(0, 0, 0, 0.2)
 
+// 域色来源与 features/graph/types.ts NODE_TYPE_STYLES 一一对应
+.graph-property-panel--node-function
+  --node-accent: var(--graph-node-function-border)
+
+.graph-property-panel--node-llm
+  --node-accent: var(--graph-node-llm-border)
+
+.graph-property-panel--node-tool
+  --node-accent: var(--graph-node-tool-border)
+
+.graph-property-panel--node-agent
+  --node-accent: var(--graph-node-agent-border)
+
+.graph-property-panel--node-router
+  --node-accent: var(--graph-node-router-border)
+
+.graph-property-panel--node-join
+  --node-accent: var(--graph-node-join-border)
+
+.graph-property-panel--node-hitl
+  --node-accent: var(--graph-node-hitl-border)
+
 .graph-property-panel__header
   display: flex
   align-items: center
@@ -857,7 +1011,7 @@ body:not(.body--dark) .graph-card--add:hover
 .graph-property-panel .state-field-row
   padding: 8px 10px
   border: 1px solid var(--glass-border)
-  border-radius: 10px
+  border-radius: 8px
   background: color-mix(in srgb, var(--glass-elevated) 50%, transparent)
   transition: border-color 140ms ease, background 140ms ease
 
@@ -1098,6 +1252,10 @@ body:not(.body--dark) .graph-card--add:hover
   filter: drop-shadow(0 0 2px color-mix(in srgb, var(--graph-edge-conditional) 40%, transparent))
   animation: graph-edge-flow-conditional 1.6s linear infinite
 
+// 流动光点：颜色由 :fill 承载，光晕跟随 currentColor
+.graph-edge-dot
+  filter: drop-shadow(0 0 4px currentColor)
+
 .graph-edge--transfer .vue-flow__edge-path
   stroke: var(--graph-edge-transfer)
   stroke-dasharray: 4 3
@@ -1136,14 +1294,14 @@ body:not(.body--dark) .graph-card--add:hover
 
 .graph-editor-canvas .vue-flow__controls
   border: 1px solid var(--glass-border)
-  border-radius: 14px
+  border-radius: 12px
   overflow: hidden
   background: var(--glass-surface)
   box-shadow: 0 0 8px color-mix(in srgb, var(--color-accent) 6%, transparent), var(--shadow-entity-panel)
 
 .graph-editor-canvas .vue-flow__minimap
   border: 1px solid var(--glass-border)
-  border-radius: 14px
+  border-radius: 12px
   overflow: hidden
   background: var(--glass-surface)
   box-shadow: 0 0 8px color-mix(in srgb, var(--color-accent) 6%, transparent), var(--shadow-entity-panel)
@@ -1157,7 +1315,7 @@ body:not(.body--dark) .graph-card--add:hover
   gap: 2px
   padding: 4px 8px
   border: 1px solid var(--glass-border)
-  border-radius: 10px
+  border-radius: 8px
   background: var(--glass-surface)
   backdrop-filter: blur(var(--glass-blur-default))
   box-shadow: 0 0 8px color-mix(in srgb, var(--color-accent) 6%, transparent), var(--shadow-entity-panel)
@@ -1292,7 +1450,7 @@ body:not(.body--dark) .graph-card--add:hover
   width: 100%
   padding: 10px
   border: 1px solid var(--glass-border)
-  border-radius: 14px
+  border-radius: 12px
   background: color-mix(in srgb, var(--glass-elevated) 72%, transparent)
   cursor: grab
   text-align: left
@@ -1313,10 +1471,32 @@ body:not(.body--dark) .graph-card--add:hover
   justify-content: center
   width: 34px
   height: 34px
-  border-radius: 10px
+  border-radius: 8px
   flex-shrink: 0
   background: color-mix(in srgb, var(--node-accent, var(--color-accent)) 14%, var(--glass-surface))
   color: var(--node-accent, var(--color-accent))
+
+// 域色来源与 features/graph/types.ts NODE_TYPE_STYLES 一一对应
+.graph-node-palette__icon--function
+  --node-accent: var(--graph-node-function-border)
+
+.graph-node-palette__icon--llm
+  --node-accent: var(--graph-node-llm-border)
+
+.graph-node-palette__icon--tool
+  --node-accent: var(--graph-node-tool-border)
+
+.graph-node-palette__icon--agent
+  --node-accent: var(--graph-node-agent-border)
+
+.graph-node-palette__icon--router
+  --node-accent: var(--graph-node-router-border)
+
+.graph-node-palette__icon--join
+  --node-accent: var(--graph-node-join-border)
+
+.graph-node-palette__icon--hitl
+  --node-accent: var(--graph-node-hitl-border)
 
 .graph-node-palette__info
   flex: 1
@@ -1338,7 +1518,7 @@ body:not(.body--dark) .graph-card--add:hover
   color: var(--color-success)
 
 .graph-task-card
-  border-radius: 14px
+  border-radius: 12px
   cursor: grab
   transition: box-shadow 0.2s
 
@@ -1376,7 +1556,7 @@ body:not(.body--dark) .graph-card--add:hover
   background: var(--graph-ctx-bg)
   backdrop-filter: blur(var(--glass-blur-heavy))
   border: 1px solid var(--graph-ctx-border)
-  border-radius: 10px
+  border-radius: 8px
   box-shadow: 0 0 32px color-mix(in srgb, var(--graph-ctx-accent) 5%, transparent), 0 12px 48px rgba(0, 0, 0, 0.8)
   padding: 6px 0
   overflow: hidden
@@ -1524,7 +1704,7 @@ body:not(.body--dark) .graph-card--add:hover
   background: var(--glass-surface)
   backdrop-filter: blur(var(--glass-blur-default))
   border: 1px solid var(--glass-border)
-  border-radius: 10px
+  border-radius: 8px
   padding: 6px 8px
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15)
 
@@ -1544,7 +1724,7 @@ body:not(.body--dark) .graph-card--add:hover
 .graph-executions-page__card
   background: var(--glass-surface)
   border: 1px solid var(--glass-border)
-  border-radius: 14px
+  border-radius: 12px
   backdrop-filter: blur(var(--glass-blur-default))
   cursor: pointer
   transition: border-color 0.2s, box-shadow 0.2s
@@ -1565,7 +1745,7 @@ body:not(.body--dark) .graph-card--add:hover
 .graph-executions-page__empty
   background: var(--glass-surface)
   border: 1px solid var(--glass-border)
-  border-radius: 16px
+  border-radius: 12px
   backdrop-filter: blur(var(--glass-blur-default))
 
 .graphs-page__body
@@ -1597,7 +1777,7 @@ body:not(.body--dark) .graph-card--add:hover
 .template-example-card
   overflow: hidden
   border: 1px solid var(--glass-border)
-  border-radius: 14px
+  border-radius: 12px
   background: var(--glass-surface)
   box-shadow: var(--shadow-entity-panel)
   backdrop-filter: blur(var(--glass-blur-medium))
@@ -1927,11 +2107,15 @@ body:not(.body--dark) .graph-detail-panel__status--ready
   padding: 2px 8px
   border-radius: 999px
   border: 1px solid
+  border-color: var(--detail-type-color)
+  color: var(--detail-type-color)
   background: transparent
   cursor: pointer
   opacity: 0.55
   transition: opacity 140ms ease, background 140ms ease
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace
+  // 默认与 nodeTypeBorderColor 的兜底一致（未知类型 → accent）
+  --detail-type-color: var(--color-accent)
 
   &:hover
     opacity: 0.85
@@ -1985,6 +2169,36 @@ body:not(.body--dark) .graph-detail-panel__status--ready
   height: 7px
   border-radius: 50%
   flex-shrink: 0
+  background: var(--detail-type-color, var(--color-accent))
+
+// 域色：与 features/graph/types.ts NODE_TYPE_STYLES 的 borderColor 一一对应
+.graph-detail-panel__type-chip--function,
+.graph-detail-panel__node-dot--function
+  --detail-type-color: var(--graph-node-function-border)
+
+.graph-detail-panel__type-chip--llm,
+.graph-detail-panel__node-dot--llm
+  --detail-type-color: var(--graph-node-llm-border)
+
+.graph-detail-panel__type-chip--tool,
+.graph-detail-panel__node-dot--tool
+  --detail-type-color: var(--graph-node-tool-border)
+
+.graph-detail-panel__type-chip--agent,
+.graph-detail-panel__node-dot--agent
+  --detail-type-color: var(--graph-node-agent-border)
+
+.graph-detail-panel__type-chip--router,
+.graph-detail-panel__node-dot--router
+  --detail-type-color: var(--graph-node-router-border)
+
+.graph-detail-panel__type-chip--join,
+.graph-detail-panel__node-dot--join
+  --detail-type-color: var(--graph-node-join-border)
+
+.graph-detail-panel__type-chip--hitl,
+.graph-detail-panel__node-dot--hitl
+  --detail-type-color: var(--graph-node-hitl-border)
 
 .graph-detail-panel__node-id
   flex: 1
@@ -2380,7 +2594,7 @@ body:not(.body--dark) .graph-detail-panel__status--ready
   overflow: visible
 
 .graph-flow-node__accent
-  border-radius: 14px 14px 0 0
+  border-radius: 12px 14px 0 0
 
 .graph-flow-node__issue-bar:last-child
   border-radius: 0 0 14px 14px
@@ -2394,7 +2608,7 @@ body:not(.body--dark) .graph-detail-panel__status--ready
   width: max-content
   max-width: 260px
   padding: 8px 10px
-  border-radius: 10px
+  border-radius: 8px
   border: 1px solid var(--glass-border)
   background: var(--glass-elevated)
   backdrop-filter: blur(var(--glass-blur-default))
@@ -2411,7 +2625,7 @@ body:not(.body--dark) .graph-detail-panel__status--ready
   width: max-content
   max-width: 260px
   padding: 8px 10px
-  border-radius: 10px
+  border-radius: 8px
   border: 1px solid var(--glass-border)
   background: var(--glass-elevated)
   backdrop-filter: blur(var(--glass-blur-default))

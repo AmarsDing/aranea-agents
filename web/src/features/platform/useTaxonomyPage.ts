@@ -4,6 +4,8 @@ import { useQuasar } from 'quasar';
 import type { PlatformResourceInput, PlatformResourceTreeNode } from './types';
 import { errorMessage } from './providerUtils';
 import { usePlatformStore } from '../../stores/platform';
+import { confirm } from '../../composables/useAppConfirm';
+import { isForbiddenApiError } from '../../utils/kratosError';
 import {
   taxonomyTreeStats,
   filterTaxonomyTree,
@@ -25,6 +27,10 @@ export function useTaxonomyPage() {
 
   const isDark = computed(() => $q.dark.isActive);
   const loading = ref(false);
+  /** 组织树加载失败信息（五态：错误态/局部失败横幅据此渲染）。 */
+  const loadError = ref('');
+  /** 组织树 403：页面据此渲染 forbidden 态（无重试）。 */
+  const forbidden = ref(false);
   const saving = ref(false);
   const keyword = ref('');
   const onlyCustom = ref(false);
@@ -57,10 +63,14 @@ export function useTaxonomyPage() {
 
   async function loadTree(opts?: { silent?: boolean }) {
     if (!opts?.silent) loading.value = true;
+    loadError.value = '';
+    forbidden.value = false;
     try {
       await platformStore.loadTaxonomyTree(CATEGORY_RESOURCE);
     } catch (err) {
-      $q.notify({ type: 'negative', message: errorMessage(err) || '加载组织架构失败' });
+      forbidden.value = isForbiddenApiError(err);
+      loadError.value = errorMessage(err) || '加载组织架构失败';
+      $q.notify({ type: 'negative', message: loadError.value });
     } finally {
       if (!opts?.silent) loading.value = false;
     }
@@ -149,27 +159,21 @@ export function useTaxonomyPage() {
       $q.notify({ type: 'warning', message: '请先删除或迁移子分类' });
       return;
     }
-    return new Promise<void>((resolve) => {
-      $q.dialog({
-        title: '确认删除',
-        message: `确定要删除分类「${node.name}」吗？此操作不可撤销。`,
-        cancel: { label: '取消', flat: true, rounded: true, noCaps: true },
-        ok: { label: '删除', color: 'negative', rounded: true, unelevated: true, noCaps: true },
-        persistent: true,
-      })
-        .onOk(async () => {
-          try {
-            await platformStore.removeResource(CATEGORY_RESOURCE, node.id);
-            await loadTree();
-            $q.notify({ type: 'positive', message: '已删除分类' });
-          } catch (error) {
-            $q.notify({ type: 'negative', message: errorMessage(error) || '删除分类失败' });
-          } finally {
-            resolve();
-          }
-        })
-        .onCancel(() => resolve());
+    const ok = await confirm({
+      title: '确认删除',
+      message: `确定要删除分类「${node.name}」吗？此操作不可撤销。`,
+      cancelLabel: '取消',
+      confirmLabel: '删除',
+      tone: 'danger',
     });
+    if (!ok) return;
+    try {
+      await platformStore.removeResource(CATEGORY_RESOURCE, node.id);
+      await loadTree();
+      $q.notify({ type: 'positive', message: '已删除分类' });
+    } catch (error) {
+      $q.notify({ type: 'negative', message: errorMessage(error) || '删除分类失败' });
+    }
   }
 
   async function toggleNodeEnabled(node: PlatformResourceTreeNode, enabled: boolean) {
@@ -233,6 +237,8 @@ export function useTaxonomyPage() {
   return {
     isDark,
     loading,
+    loadError,
+    forbidden,
     saving,
     togglingIds,
     keyword,

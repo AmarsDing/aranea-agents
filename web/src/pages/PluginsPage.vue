@@ -78,14 +78,39 @@
       </template>
     </AppPageToolbar>
 
-    <q-banner v-if="error" rounded class="app-page-error-banner q-mb-md">
-      {{ error }}
-      <template #action>
-        <q-btn flat dense :label="t('pluginsPage.retry')" class="text-white" @click="() => loadRows()" />
-      </template>
-    </q-banner>
+    <AppStatePanel
+      v-if="pageState === 'loading'"
+      variant="loading"
+      :rows="5"
+    />
+    <AppStatePanel
+      v-else-if="pageState === 'error'"
+      variant="error"
+      :title="error"
+      :action-label="t('pluginsPage.retry')"
+      action-icon="refresh"
+      @action="() => loadRows()"
+    />
+    <AppStatePanel
+      v-else-if="pageState === 'forbidden'"
+      variant="forbidden"
+    />
+    <AppStatePanel
+      v-else-if="pageState === 'empty'"
+      variant="empty"
+    />
 
-    <div class="app-registry-table-shell">
+    <div v-else class="app-registry-table-shell">
+      <AppStatePanel
+        v-if="pageState === 'partial'"
+        class="q-mb-md"
+        variant="partial"
+        dense
+        :description="error"
+        :action-label="t('pluginsPage.retry')"
+        action-icon="refresh"
+        @action="() => loadRows()"
+      />
       <PluginsTable
         :rows="rows"
         :loading="loading"
@@ -131,7 +156,9 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
+import AppStatePanel from '../components/common/AppStatePanel.vue';
 import PluginConfigDialog from '../components/plugins/PluginConfigDialog.vue';
 import PluginDetailDialog from '../components/plugins/PluginDetailDialog.vue';
 import PluginsTable from '../components/plugins/PluginsTable.vue';
@@ -139,6 +166,7 @@ import AppPageHero from '../components/layout/AppPageHero.vue';
 import AppPageToolbar from '../components/layout/AppPageToolbar.vue';
 import AppRegistryPagination from '../components/layout/AppRegistryPagination.vue';
 import { usePluginsPage } from '../features/plugins/usePluginsPage';
+import { resolvePageState } from './pageState';
 
 const { t } = useI18n();
 
@@ -154,6 +182,7 @@ const {
   callbackPoint,
   loading,
   error,
+  forbidden,
   togglingId,
   detailOpen,
   detailTarget,
@@ -181,4 +210,13 @@ const {
   saveScope,
   onSchemaValidationError,
 } = usePluginsPage();
+
+const pageState = computed(() =>
+  resolvePageState({
+    loading: loading.value,
+    error: error.value,
+    count: rows.value.length,
+    forbidden: forbidden.value,
+  }),
+);
 </script>

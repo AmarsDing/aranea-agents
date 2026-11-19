@@ -256,12 +256,13 @@ func (r *cascadeRepo) ReplaceNameInAgentFacts(ctx context.Context, agentID, oldN
 		ID      string
 		NewStmt string
 		NewMeta string
+		NewEnc  string
 	}
 	var updates []factUpdate
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	lg := r.data.lg
 	for rows.Next() {
-		b, err := scanFactRowJSON(rows)
+		b, err := scanFactRowJSON(ctx, rows, r.data.factCipher)
 		if err != nil {
 			continue
 		}
@@ -280,7 +281,12 @@ func (r *cascadeRepo) ReplaceNameInAgentFacts(ctx context.Context, agentID, oldN
 		id, _ := row["id"].(string)
 		meta, _ := row["metadata_json"].(string)
 		newMeta := mergeCascadeFactMeta(meta, oldName, newName, lg)
-		updates = append(updates, factUpdate{ID: id, NewStmt: newStmt, NewMeta: newMeta})
+		// D3 N-2：全文已随 scan 透明解密（stmt 即权威文本）。改名后按新指纹
+		// 重打信封；此处不碰 details 载体列（既存行为），信封 details 沿用
+		// 扫出的权威值（保持信封内部 s/d 一致）。
+		newFp := biz.FactFingerprint(newStmt, anyStr(row["scope_type"]), anyStr(row["scope_id"]))
+		newEnc, _ := biz.FactEnvelopeEncrypt(ctx, r.data.factCipher, newStmt, anyStr(row["details_markdown"]), newFp)
+		updates = append(updates, factUpdate{ID: id, NewStmt: newStmt, NewMeta: newMeta, NewEnc: newEnc})
 	}
 	if err := rows.Err(); err != nil {
 		return nil, 0, entErrToBizErr(err, "MEMORY_CASCADE")
@@ -293,8 +299,8 @@ func (r *cascadeRepo) ReplaceNameInAgentFacts(ctx context.Context, agentID, oldN
 	err = r.data.ExecInTx(ctx, func(txCtx context.Context) error {
 		for _, u := range updates {
 			if _, execErr := r.data.RWDB().WriteDB(txCtx).ExecContext(txCtx,
-				r.renum(`UPDATE memory_facts SET statement = ?, statement_normalized = ?, metadata_json = ?, updated_at = ? WHERE id = ?`),
-				u.NewStmt, strings.ToLower(u.NewStmt), u.NewMeta, now, u.ID,
+				r.renum(`UPDATE memory_facts SET statement = ?, statement_normalized = ?, metadata_json = ?, updated_at = ?, content_enc = CASE WHEN ? <> '' THEN ? ELSE content_enc END WHERE id = ?`),
+				u.NewStmt, strings.ToLower(u.NewStmt), u.NewMeta, now, u.NewEnc, u.NewEnc, u.ID,
 			); execErr != nil {
 				return entErrToBizErr(execErr, "MEMORY")
 			}
@@ -326,7 +332,7 @@ func (r *cascadeRepo) ReplaceNameInAgentFacts(ctx context.Context, agentID, oldN
 	defer readRows.Close()
 	var updated [][]byte
 	for readRows.Next() {
-		if b, err := scanFactRowJSON(readRows); err == nil {
+		if b, err := scanFactRowJSON(ctx, readRows, r.data.factCipher); err == nil {
 			updated = append(updated, b)
 		}
 	}
@@ -383,10 +389,11 @@ func (r *cascadeRepo) RevertCascadeFactStatements(ctx context.Context, agentID s
 	type revertItem struct {
 		ID       string
 		OrigStmt string
+		OrigEnc  string
 	}
 	var items []revertItem
 	for rows.Next() {
-		b, err := scanFactRowJSON(rows)
+		b, err := scanFactRowJSON(ctx, rows, r.data.factCipher)
 		if err != nil {
 			continue
 		}
@@ -401,7 +408,11 @@ func (r *cascadeRepo) RevertCascadeFactStatements(ctx context.Context, agentID s
 		if origStmt == "" || id == "" {
 			continue
 		}
-		items = append(items, revertItem{ID: id, OrigStmt: origStmt})
+		// D3 N-2：回退原文 → 按（可能不同的）指纹重打信封，信封 details 沿用
+		// 当前权威值。
+		origFp := biz.FactFingerprint(origStmt, anyStr(row["scope_type"]), anyStr(row["scope_id"]))
+		origEnc, _ := biz.FactEnvelopeEncrypt(ctx, r.data.factCipher, origStmt, anyStr(row["details_markdown"]), origFp)
+		items = append(items, revertItem{ID: id, OrigStmt: origStmt, OrigEnc: origEnc})
 	}
 	if err := rows.Err(); err != nil {
 		return 0, entErrToBizErr(err, "MEMORY_CASCADE")
@@ -417,8 +428,8 @@ func (r *cascadeRepo) RevertCascadeFactStatements(ctx context.Context, agentID s
 	err = r.data.ExecInTx(ctx, func(txCtx context.Context) error {
 		for _, item := range items {
 			if _, execErr := r.data.RWDB().WriteDB(txCtx).ExecContext(txCtx,
-				r.renum(fmt.Sprintf(`UPDATE memory_facts SET statement = ?, statement_normalized = ?, metadata_json = %s, updated_at = ? WHERE id = ?`, rmExpr)),
-				item.OrigStmt, strings.ToLower(item.OrigStmt), now, item.ID,
+				r.renum(fmt.Sprintf(`UPDATE memory_facts SET statement = ?, statement_normalized = ?, metadata_json = %s, updated_at = ?, content_enc = CASE WHEN ? <> '' THEN ? ELSE content_enc END WHERE id = ?`, rmExpr)),
+				item.OrigStmt, strings.ToLower(item.OrigStmt), now, item.OrigEnc, item.OrigEnc, item.ID,
 			); execErr != nil {
 				return entErrToBizErr(execErr, "MEMORY")
 			}
@@ -447,7 +458,7 @@ func (r *cascadeRepo) ListCascadeFactDiffs(ctx context.Context, agentID, oldName
 	defer rows.Close()
 	var diffs []map[string]any
 	for rows.Next() {
-		b, err := scanFactRowJSON(rows)
+		b, err := scanFactRowJSON(ctx, rows, r.data.factCipher)
 		if err != nil {
 			continue
 		}

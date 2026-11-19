@@ -29,11 +29,15 @@ func (CronTaskRun) Fields() []ent.Field {
 		field.Text("output_json").Default(""),
 		field.Text("error_message").Default(""),
 		field.String("created_at").Default(""),
+		// 失败核销（workbench 告警 lane）：resolved_at 非空 = 已忽略/核销。
+		field.String("resolved_at").Default(""),
+		field.String("resolved_by").Default(""),
 	}
 }
 
 func (CronTaskRun) Indexes() []ent.Index {
 	return []ent.Index{
 		index.Fields("task_id", "created_at").StorageKey("idx_cron_run_task"),
+		index.Fields("status", "resolved_at").StorageKey("idx_cron_run_status"),
 	}
 }

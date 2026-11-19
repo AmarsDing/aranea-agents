@@ -381,6 +381,7 @@ func listChunksAsOfCore(ctx context.Context, q sqlQuerier, collectionID string, 
 //     行级绑定，死文档历史不借本谓词复活可见性）；
 //   - includeArchived=false 的腿（current 腿，并集语义下宿主行必然存活）退化为
 //     单纯 IN 子查询（不带 archived 兜支）。
+//
 // 参位 argIdx 起排；系统调用方 sub=="" → 无过滤（与 buyer 语义同 current）。
 func asOfVisibilityClause(ctx context.Context, collectionPH, docCol string, includeArchived bool, argIdx int) (string, []any) {
 	sub, args := visibleDocIDsSubquery(ctx, collectionPH, argIdx)

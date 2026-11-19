@@ -57,6 +57,9 @@ type TaskRun struct {
 	CreatedAt    string
 	Trigger      string
 	RunID        string
+	// ResolvedAt 非空 = 该次失败已被人工忽略/核销（workbench 告警 lane）。
+	ResolvedAt string
+	ResolvedBy string
 }
 
 // TaskRunQuery filters ListCronTaskRuns.
@@ -65,6 +68,8 @@ type TaskRunQuery struct {
 	Status string
 	Limit  int
 	Offset int
+	// IncludeResolved 为 true 时连已核销失败一起返回；默认只返回未核销。
+	IncludeResolved bool
 }
 
 // TaskRunInput is the insert payload for a cron task run.
@@ -110,6 +115,9 @@ type Repo interface {
 	ListCronTaskRuns(ctx context.Context, q TaskRunQuery) ([]TaskRun, int, error)
 	InsertCronTaskRun(ctx context.Context, in TaskRunInput) error
 	UpdateCronTaskRun(ctx context.Context, id, status, finishedAt, outputJSON, errorMessage string) error
+	// ResolveCronTaskFailures 把该运行所属任务的全部未核销失败标记为已核销，
+	// 返回被点击运行的刷新后记录与本次核销条数。
+	ResolveCronTaskFailures(ctx context.Context, runID, actor string) (TaskRun, int, error)
 }
 
 // TaskTrigger enqueues immediate cron execution.
@@ -243,6 +251,14 @@ func (u *Usecase) GetTaskRun(ctx context.Context, id string) (TaskRun, error) {
 		return TaskRun{}, apierror.BadRequest("CRON", "run id is required")
 	}
 	return u.repo.GetCronTaskRun(ctx, id)
+}
+
+// ResolveTaskRun 核销一次失败（同任务全部未核销失败一并核销），返回刷新后运行与条数。
+func (u *Usecase) ResolveTaskRun(ctx context.Context, id, actor string) (TaskRun, int, error) {
+	if strings.TrimSpace(id) == "" {
+		return TaskRun{}, 0, apierror.BadRequest("CRON", "run id is required")
+	}
+	return u.repo.ResolveCronTaskFailures(ctx, id, actor)
 }
 
 // TriggerTask enqueues an immediate execution.

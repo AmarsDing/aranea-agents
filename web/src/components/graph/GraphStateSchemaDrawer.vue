@@ -181,7 +181,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { useQuasar } from 'quasar';
+import { confirm } from '../../composables/useAppConfirm';
 import type { GraphDefinition, ReducerType, StateFieldDef } from '../../features/graph/types';
 import { REDUCER_OPTIONS, STATE_FIELD_TYPE_OPTIONS, normalizeStateFieldType } from '../../features/graph/types';
 import { buildFieldUsageMap, type FieldUsage } from '../../features/graph/portTypes';
@@ -222,7 +222,6 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useI18n();
-const $q = useQuasar();
 
 const reducerOptions = REDUCER_OPTIONS.map((o) => ({ label: t(o.labelKey), value: o.value }));
 
@@ -473,7 +472,7 @@ function exportSelected() {
   URL.revokeObjectURL(url);
 }
 
-function confirmDeleteSelected() {
+async function confirmDeleteSelected() {
   // 被引用字段复选框已禁用，此处双保险再过滤一次
   const removable = [...selected.value].filter((i) => {
     const f = fields.value[i];
@@ -482,22 +481,21 @@ function confirmDeleteSelected() {
     return u.reads.length + u.writes.length === 0;
   });
   if (removable.length === 0) return;
-  $q.dialog({
+  const ok = await confirm({
     title: t('graphs.schemaBatchDelete'),
     message: t('graphs.schemaDeleteConfirm', { n: removable.length }),
-    cancel: true,
-    persistent: true,
-  }).onOk(() => {
-    const list = graphDef.value?.stateFields;
-    if (!list) return;
-    for (const i of removable.sort((a, b) => b - a)) {
-      list.splice(i, 1);
-    }
-    selected.value = new Set();
-    if (editingIndex.value !== null && !list[editingIndex.value]) {
-      editingIndex.value = null;
-    }
-    emit('change');
+    tone: 'danger',
   });
+  if (!ok) return;
+  const list = graphDef.value?.stateFields;
+  if (!list) return;
+  for (const i of removable.sort((a, b) => b - a)) {
+    list.splice(i, 1);
+  }
+  selected.value = new Set();
+  if (editingIndex.value !== null && !list[editingIndex.value]) {
+    editingIndex.value = null;
+  }
+  emit('change');
 }
 </script>

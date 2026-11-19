@@ -1,14 +1,14 @@
 <template>
-  <q-dialog :model-value="open" persistent @update:model-value="$emit('update:open', $event)">
-    <q-card class="app-dialog-card app-dialog-card--sm app-glass-dialog">
-      <q-card-section class="app-glass-dialog__head row items-center justify-between">
-        <div class="app-glass-dialog__title">粘贴文本入库</div>
-        <q-btn v-close-popup flat round dense icon="close" />
-      </q-card-section>
-      <q-separator />
-      <div class="app-glass-dialog__scroll">
-        <q-card-section class="app-dialog-body app-glass-dialog__body q-gutter-md">
-          <q-input
+  <AppDialog
+    :model-value="open"
+    title="粘贴文本入库"
+    size="sm"
+    persistent
+    :loading="loading"
+    @update:model-value="$emit('update:open', $event)"
+  >
+    <div class="q-gutter-md">
+      <q-input
             :model-value="source"
             class="app-field-md"
             dense
@@ -78,18 +78,16 @@
               </div>
             </div>
           </q-expansion-item>
-        </q-card-section>
-      </div>
-      <q-separator />
-      <q-card-actions align="right" class="app-actions-bar app-glass-dialog__actions">
-        <q-btn v-close-popup flat no-caps label="取消" />
-        <q-btn color="primary" unelevated no-caps label="入库" :loading="loading" @click="$emit('submit')" />
-      </q-card-actions>
-    </q-card>
-  </q-dialog>
+    </div>
+    <template #actions>
+      <q-btn flat no-caps label="取消" @click="$emit('update:open', false)" />
+      <q-btn color="primary" unelevated no-caps label="入库" :loading="loading" @click="$emit('submit')" />
+    </template>
+  </AppDialog>
 </template>
 
 <script setup lang="ts">
+import AppDialog from '../../components/common/AppDialog.vue';
 import { KNOWLEDGE_CHUNK_STRATEGY_OPTIONS } from '../../features/knowledge/knowledgeUi';
 
 defineProps<{

@@ -1,6 +1,7 @@
 import { computed, onMounted, ref, watch } from 'vue';
 import type { SkillInvocation } from './types';
 import { useSkillsStore } from '../../stores/skills';
+import { isForbiddenApiError } from '../../utils/kratosError';
 
 export function useSkillRunsPage() {
   const skillsStore = useSkillsStore();
@@ -16,6 +17,8 @@ export function useSkillRunsPage() {
   const total = ref(0);
   const loading = ref(false);
   const error = ref('');
+  /** 运行记录 403：页面据此渲染 forbidden 态（无重试）。 */
+  const forbidden = ref(false);
 
   const statusOptions = [
     { label: '成功', value: 'success' },
@@ -27,6 +30,7 @@ export function useSkillRunsPage() {
   async function loadRows() {
     loading.value = true;
     error.value = '';
+    forbidden.value = false;
     try {
       const data = await skillsStore.loadSkillRuns({
         skill_id: skillId.value,
@@ -40,6 +44,7 @@ export function useSkillRunsPage() {
       rows.value = data.items;
       total.value = data.total;
     } catch (err) {
+      forbidden.value = isForbiddenApiError(err);
       error.value = err instanceof Error ? err.message : '加载运行记录失败';
     } finally {
       loading.value = false;
@@ -81,6 +86,7 @@ export function useSkillRunsPage() {
     total,
     loading,
     error,
+    forbidden,
     statusOptions,
     pageMax,
     loadRows,

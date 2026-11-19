@@ -44,6 +44,9 @@ type IngestParams struct {
 	// ParentChunkSize 父子分块（parent_child）的父块 token 窗口：0 = 默认 4×ChunkSize，
 	// 规范化下限 2×ChunkSize。其他策略忽略。
 	ParentChunkSize int
+	// Classification 文档密级（D6 L-3，20261329）：0=未标；经 ctx 载体随行至
+	// embedding 闸（L3+ 拒绝 cloud 通道并走词法降级，验收 #7）。
+	Classification int
 }
 
 func (p *IngestParams) ApplyDefaults() {
@@ -121,17 +124,30 @@ func BuildIndexedChunks(ctx context.Context, embedder Embedder, p IngestParams, 
 			embedIdx = append(embedIdx, i)
 			texts = append(texts, ch.Content)
 		}
-		vecs, err = embedder.Embed(ctx, texts)
+		vecs, err = embedder.Embed(WithEmbedClassification(ctx, p.Classification, p.DocID), texts)
 		if err != nil {
-			if !errors.Is(err, ErrEmbedderNotConfigured) {
+			var blocked *EmbedClassificationBlockedError
+			switch {
+			case errors.As(err, &blocked):
+				// D6 L-3：L3+ 内容拒 cloud embed（验收 #7）——词法降级，
+				// 文档不卡 error 尸体；闸侧已审计+指标，这里发流程事件留痕。
+				vecs = nil
+				if flow != nil {
+					flow.LogError("knowledge.ingest.embed_blocked", "密级拦载云嵌入，降级为词法索引",
+						event.P("doc_id", p.DocID),
+						event.P("classification", p.Classification),
+						event.P("chunk_count", len(texts)))
+				}
+			case errors.Is(err, ErrEmbedderNotConfigured):
+				// F5 降级：embedder 未配置 → 词法索引（空向量），检索走 BM25。
+				vecs = nil
+				if flow != nil {
+					flow.LogError("knowledge.ingest.embed", "嵌入器未配置，降级为词法索引",
+						event.P("doc_id", p.DocID),
+						event.P("chunk_count", len(texts)))
+				}
+			default:
 				return nil, err
-			}
-			// F5 降级：embedder 未配置 → 词法索引（空向量），检索走 BM25。
-			vecs = nil
-			if flow != nil {
-				flow.LogError("knowledge.ingest.embed", "嵌入器未配置，降级为词法索引",
-					event.P("doc_id", p.DocID),
-					event.P("chunk_count", len(texts)))
 			}
 		} else if len(vecs) != len(texts) {
 			return nil, apierror.Internal(apierror.DomainKnowledge,

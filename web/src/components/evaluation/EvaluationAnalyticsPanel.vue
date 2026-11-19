@@ -206,6 +206,15 @@
       <div v-if="divergenceLoading && !divergence" class="text-grey-7 q-py-md">
         {{ $t('evaluationPage.divergenceLoading') }}
       </div>
+      <AppStatePanel
+        v-else-if="divergenceError"
+        variant="partial"
+        :title="$t('evaluation.divergenceLoadFailed')"
+        :description="`${divergenceError} ${$t('evaluation.divergencePartialHint')}`"
+        :action-label="$t('shell.common.retry')"
+        action-icon="refresh"
+        @action="emit('refresh-divergence')"
+      />
       <div v-else-if="!divergence || !divergence.annotated_total" class="text-grey-7 q-py-md">
         {{ $t('evaluationPage.divergenceEmpty') }}
       </div>
@@ -345,6 +354,7 @@ import { computed, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import AppRegistryTable from '../layout/AppRegistryTable.vue';
 import AppRegistryPagination from '../layout/AppRegistryPagination.vue';
+import AppStatePanel from '../common/AppStatePanel.vue';
 import EvaluationTrendChart from './EvaluationTrendChart.vue';
 
 import type {
@@ -372,6 +382,7 @@ const props = defineProps<{
   trendPoints: EvalTrendPoint[];
   comparisons: EvalRunComparison[];
   divergence: JudgeDivergence | null;
+  divergenceError?: string;
   trendLoading: boolean;
   compareLoading: boolean;
   divergenceLoading: boolean;

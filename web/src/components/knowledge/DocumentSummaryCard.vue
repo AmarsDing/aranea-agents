@@ -30,7 +30,7 @@ const hasCard = computed(() => Boolean(props.summary || props.docType || tags.va
   flex-direction: column
   gap: 6px
   padding: 8px 10px
-  border-radius: 10px
+  border-radius: 8px
   border: 1px solid var(--glass-border)
   background: color-mix(in srgb, var(--color-accent) 6%, transparent)
 

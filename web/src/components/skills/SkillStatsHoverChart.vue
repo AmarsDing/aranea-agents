@@ -196,7 +196,7 @@ useUsageChart(donutEl, donutOption, () => [health.value, locale.value]);
   padding: 0
   font-size: 12px
   line-height: 1.5
-  border-radius: 16px
+  border-radius: 12px
   border: 1px solid var(--glass-border)
   background: color-mix(in srgb, var(--glass-elevated) 94%, transparent)
   box-shadow: var(--glass-inner-highlight), var(--shadow-entity-panel)
@@ -305,7 +305,7 @@ useUsageChart(donutEl, donutOption, () => [health.value, locale.value]);
   min-width: 0
   padding: 7px 10px
   border: 1px solid var(--glass-border)
-  border-radius: 10px
+  border-radius: 8px
   background: color-mix(in srgb, var(--glass-elevated) 72%, transparent)
 
   span

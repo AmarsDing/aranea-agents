@@ -114,7 +114,7 @@ const lastToolText = computed(() => {
   letter-spacing: 0.14em
   text-transform: uppercase
   color: var(--color-text-tertiary, var(--color-text-secondary))
-  margin-bottom: 8px
+  margin-bottom: var(--nt-space-2)
 .wb-drawer__kv
   display: flex
   justify-content: space-between
@@ -133,14 +133,14 @@ const lastToolText = computed(() => {
 .wb-drawer__think
   margin-top: 6px
 .wb-drawer__think-text
-  margin: 4px 0 0
+  margin: var(--nt-space-1) 0 0
   font-size: var(--wb-caption)
   color: var(--color-text-secondary)
   line-height: 1.6
   word-break: break-all
 .wb-drawer__tool
   display: flex
-  gap: 8px
+  gap: var(--nt-space-2)
   padding: 3px 0
   font-size: var(--wb-caption)
   &.err

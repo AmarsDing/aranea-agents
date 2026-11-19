@@ -47,6 +47,7 @@ var ProviderSet = wire.NewSet(
 	NewLlmProviderModelService,
 	NewHookService,
 	NewCronService,
+	NewCredentialService,
 	NewPluginServiceWithBootstrap,
 	NewMCPServerService,
 	importer.ProvideEngine,

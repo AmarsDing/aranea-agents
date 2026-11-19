@@ -208,6 +208,25 @@ function isSelfPresentedChannelWrite(meta?: RequestMeta): boolean {
   return meta?.service === 'ChannelService' && CHANNEL_SELF_PRESENTED_WRITES.has(meta.method);
 }
 
+/**
+ * 审批中心决议出口由 DecisionDock 逐条呈现「成功 / 已被处理 / 失败可重试」，
+ * 批量裁决时全局 toast 会按条数重复弹出（409/5xx 各一条），与结果面板冲突。
+ * 这些方法在其它调用方（Agent 进化建议面板、技能进化列表）也均 catch 后自呈现。
+ */
+const APPROVAL_DECISION_WRITES = new Set([
+  'AgentBridgeService.ReviewTask',
+  'AgentService.ApplyEvolutionSuggestion',
+  'AgentService.RejectEvolutionSuggestion',
+  'SkillEvolutionSuggestionService.ApproveSkillEvolutionSuggestion',
+  'SkillEvolutionSuggestionService.RejectSkillEvolutionSuggestion',
+  'OfficeScheduleService.ApproveScheduleDraft',
+  'OfficeScheduleService.RejectScheduleDraft',
+]);
+
+function isApprovalDecisionWrite(meta?: RequestMeta): boolean {
+  return Boolean(meta && APPROVAL_DECISION_WRITES.has(`${meta.service}.${meta.method}`));
+}
+
 /** 与 proto 生成的 HTTP 客户端（`v1/...`）双参 handler 签名一致；`meta` 可供拦截器或日志使用 */
 export function requestHandler({ path, method, body }: Request, meta?: RequestMeta): Promise<unknown> {
   const headers: Record<string, string> = {};
@@ -216,13 +235,16 @@ export function requestHandler({ path, method, body }: Request, meta?: RequestMe
   }
   // CreateAgent：内联字段错误自呈现；SelfImprovementService：页面经
   // featureDisabled 空态 / 错误横幅 / notifyError 全量自呈现（含 503 功能
-  // 未启用结构化信号），全局 toast 均属重复。
+  // 未启用结构化信号），全局 toast 均属重复；CeoboardService：15s 轮询 +
+  // 抽屉降级全部由页面 banner 自呈现（整合 P2-8），全局 toast 会每 15s 重复骚扰。
   const skipErrorNotify =
     (meta?.skipErrorNotify ?? meta?.method === 'CreateAgent') ||
     meta?.method === 'EnqueueUserMessage' ||
     meta?.service === 'SelfImprovementService' ||
+    meta?.service === 'CeoboardService' ||
     isSelfPresentedToolWrite(meta) ||
-    isSelfPresentedChannelWrite(meta);
+    isSelfPresentedChannelWrite(meta) ||
+    isApprovalDecisionWrite(meta);
   const urlPath = '/' + path.replace(/^\//, '');
   return kratosApi
     .request({

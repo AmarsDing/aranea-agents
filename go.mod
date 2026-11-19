@@ -5,6 +5,7 @@ go 1.26.3
 require (
 	entgo.io/ent v0.14.6
 	github.com/aws/aws-sdk-go-v2/config v1.32.17
+	github.com/aymanbagabas/go-pty v0.2.3
 	github.com/bmatcuk/doublestar/v4 v4.9.1
 	github.com/bwmarrin/discordgo v0.29.0
 	github.com/creack/pty v1.1.24
@@ -23,7 +24,8 @@ require (
 	github.com/larksuite/oapi-sdk-go/v3 v3.9.2
 	github.com/ledongthuc/pdf v0.0.0-20250511090121-5959a4027728
 	github.com/lib/pq v1.12.3
-	github.com/mattn/go-isatty v0.0.20
+	github.com/mattn/go-isatty v0.0.24
+	github.com/nats-io/nats.go v1.55.0
 	github.com/olekukonko/tablewriter v1.1.4
 	github.com/open-dingtalk/dingtalk-stream-sdk-go v0.9.1
 	github.com/pelletier/go-toml/v2 v2.3.1
@@ -53,17 +55,18 @@ require (
 	go.uber.org/goleak v1.3.0
 	go.uber.org/zap v1.27.0
 	golang.org/x/image v0.41.0
-	golang.org/x/net v0.55.0
-	golang.org/x/sync v0.20.0
-	golang.org/x/sys v0.45.0
-	golang.org/x/text v0.37.0
-	golang.org/x/tools v0.45.0
+	golang.org/x/net v0.61.0
+	golang.org/x/sync v0.24.0
+	golang.org/x/sys v0.49.0
+	golang.org/x/text v0.43.0
+	golang.org/x/tools v0.52.0
 	google.golang.org/genai v1.40.0
 	google.golang.org/genproto/googleapis/api v0.0.0-20260401024825-9d38bb4040a9
 	google.golang.org/grpc v1.80.0
 	google.golang.org/protobuf v1.36.11
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 	gopkg.in/yaml.v3 v3.0.1
+	modernc.org/sqlite v1.62.0
 	trpc.group/trpc-go/trpc-a2a-go v0.2.6-0.20260721084546-18c8244d0acb
 	trpc.group/trpc-go/trpc-agent-go v1.11.2
 	trpc.group/trpc-go/trpc-agent-go/agent/extension/toolpipe v1.10.0
@@ -102,7 +105,7 @@ require (
 	github.com/gorilla/websocket v1.5.3
 	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.63.0 // indirect
-	golang.org/x/crypto v0.52.0
+	golang.org/x/crypto v0.58.0
 )
 
 require (
@@ -159,6 +162,7 @@ require (
 	github.com/docker/docker v28.4.0+incompatible // indirect
 	github.com/docker/go-connections v0.6.0 // indirect
 	github.com/docker/go-units v0.5.0 // indirect
+	github.com/dustin/go-humanize v1.1.0 // indirect
 	github.com/ebitengine/purego v0.10.0 // indirect
 	github.com/getkin/kin-openapi v0.133.0 // indirect
 	github.com/go-kratos/aegis v0.2.0 // indirect
@@ -189,7 +193,7 @@ require (
 	github.com/jackc/pgx/v5 v5.7.2 // indirect
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
-	github.com/klauspost/compress v1.18.5 // indirect
+	github.com/klauspost/compress v1.20.0 // indirect
 	github.com/kylelemons/godebug v1.1.0 // indirect
 	github.com/lestrrat-go/blackmagic v1.0.2 // indirect
 	github.com/lestrrat-go/httpcc v1.0.1 // indirect
@@ -216,6 +220,9 @@ require (
 	github.com/mohae/deepcopy v0.0.0-20170929034955-c48cc78d4826 // indirect
 	github.com/mozillazg/go-httpheader v0.2.1 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
+	github.com/nats-io/nkeys v0.4.16 // indirect
+	github.com/nats-io/nuid v1.0.1 // indirect
+	github.com/ncruces/go-strftime v1.1.0 // indirect
 	github.com/neurosnap/sentences v1.1.2 // indirect
 	github.com/oasdiff/yaml v0.0.0-20250309154309-f31be36b4037 // indirect
 	github.com/oasdiff/yaml3 v0.0.0-20250309153720-d2182401db90 // indirect
@@ -234,6 +241,7 @@ require (
 	github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55 // indirect
 	github.com/prometheus/common v0.66.1 // indirect
 	github.com/prometheus/procfs v0.16.1 // indirect
+	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/richardlehane/mscfb v1.0.6 // indirect
 	github.com/richardlehane/msoleps v1.0.6 // indirect
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2 // indirect
@@ -249,6 +257,7 @@ require (
 	github.com/tiendc/go-deepcopy v1.7.2 // indirect
 	github.com/tklauser/go-sysconf v0.3.16 // indirect
 	github.com/tklauser/numcpus v0.11.0 // indirect
+	github.com/u-root/u-root v0.16.0 // indirect
 	github.com/wk8/go-ordered-map/v2 v2.1.8 // indirect
 	github.com/wneessen/go-mail v0.7.2 // indirect
 	github.com/woodsbury/decimal128 v1.3.0 // indirect
@@ -269,13 +278,16 @@ require (
 	go.opentelemetry.io/proto/otlp v1.10.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.2 // indirect
-	golang.org/x/mod v0.36.0 // indirect
+	golang.org/x/mod v0.42.0 // indirect
 	golang.org/x/oauth2 v0.35.0 // indirect
 	google.golang.org/api v0.267.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260401024825-9d38bb4040a9 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gorm.io/gorm v1.31.0 // indirect
-	mvdan.cc/sh/v3 v3.8.0 // indirect
+	modernc.org/libc v1.80.1 // indirect
+	modernc.org/mathutil v1.7.1 // indirect
+	modernc.org/memory v1.12.1 // indirect
+	mvdan.cc/sh/v3 v3.11.0 // indirect
 	trpc.group/trpc-go/trpc-agent-go/storage/postgres v1.11.0 // indirect
 	trpc.group/trpc-go/trpc-agent-go/storage/s3 v1.8.0 // indirect
 )

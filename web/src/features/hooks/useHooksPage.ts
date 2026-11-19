@@ -5,6 +5,8 @@ import { useQuasar } from 'quasar';
 import { useCallbackPointOptions } from '../callback/constants';
 import { defaultHookRuleConfig, parseHookConfig, type HookRow, type HookRuleConfig } from '../hooks/types';
 import { useHooksStore } from '../../stores/hooks';
+import { isForbiddenApiError } from '../../utils/kratosError';
+import { confirm } from '../../composables/useAppConfirm';
 
 export function useHooksPage() {
   const { t } = useI18n();
@@ -14,6 +16,8 @@ export function useHooksPage() {
   const loading = storeLoading;
   const saving = ref(false);
   const error = ref('');
+  /** 403 / PERMISSION_DENIED：页面渲染 forbidden 态，不提供重试。 */
+  const forbidden = ref(false);
   const search = ref('');
   const filterPoint = ref('');
   const page = ref(1);
@@ -42,6 +46,7 @@ export function useHooksPage() {
 
   async function loadRows() {
     error.value = '';
+    forbidden.value = false;
     try {
       await hooksStore.loadHooks({
         page: page.value,
@@ -52,6 +57,7 @@ export function useHooksPage() {
       if (page.value > pageMax.value) page.value = pageMax.value;
     } catch (e) {
       error.value = e instanceof Error ? e.message : String(e);
+      forbidden.value = isForbiddenApiError(e);
     }
   }
 
@@ -151,20 +157,19 @@ export function useHooksPage() {
     }
   }
 
-  function confirmDelete(row: HookRow) {
-    $q.dialog({
+  async function confirmDelete(row: HookRow) {
+    const ok = await confirm({
       title: t('hooksPage.confirmDeleteTitle'),
       message: t('hooksPage.confirmDeleteMessage', { name: row.name }),
-      cancel: true,
-      persistent: true,
-    }).onOk(async () => {
-      try {
-        await hooksStore.removeHook(row.id);
-        await loadRows();
-      } catch (e) {
-        $q.notify({ type: 'negative', message: e instanceof Error ? e.message : String(e) });
-      }
+      tone: 'danger',
     });
+    if (!ok) return;
+    try {
+      await hooksStore.removeHook(row.id);
+      await loadRows();
+    } catch (e) {
+      $q.notify({ type: 'negative', message: e instanceof Error ? e.message : String(e) });
+    }
   }
 
   onMounted(loadRows);
@@ -174,6 +179,7 @@ export function useHooksPage() {
     loading,
     saving,
     error,
+    forbidden,
     search,
     filterPoint,
     callbackPointOptions,

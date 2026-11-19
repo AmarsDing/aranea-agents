@@ -3,6 +3,7 @@ import { useQuasar } from 'quasar';
 import { useRouter } from 'vue-router';
 import { useI18n } from 'vue-i18n';
 import type { GraphDefinition, GraphVersionInfo } from './types';
+import { prompt } from '../../composables/useAppPrompt';
 import { useGraphStore } from '../../stores/graph';
 
 export function useGraphEditorAssets(graphDef: GraphDefinition, _isNew: () => boolean) {
@@ -89,38 +90,34 @@ export function useGraphEditorAssets(graphDef: GraphDefinition, _isNew: () => bo
     try {
       const json = await file.text();
 
-      // Show dialog to choose import destination
-      $q.dialog({
+      // 导入落点选择：单选（当前画布 / 新建画布）
+      const choice = await prompt({
         title: t('graphs.assetImportTitle'),
         message: t('graphs.assetImportMessage'),
-        options: {
-          type: 'radio',
-          model: 'current',
-          items: [
-            { value: 'current', label: t('graphs.assetImportToCurrent') },
-            { value: 'new', label: t('graphs.assetImportCreateNew') },
-          ],
-        },
-        cancel: true,
-        persistent: true,
-      }).onOk(async (choice: string) => {
-        const created = await graphStore.importGraphDefinition(
-          json,
-          graphDef.name || file.name.replace(/\.json$/i, ''),
-          graphDef.description,
-        );
-
-        if (choice === 'current') {
-          // Import to current canvas - merge content
-          Object.assign(graphDef, created);
-          $q.notify({ type: 'positive', message: t('graphs.assetImportedToCurrent') });
-        } else {
-          // Create new graph - navigate to it
-          Object.assign(graphDef, created);
-          $q.notify({ type: 'positive', message: t('graphs.assetImportSuccess') });
-          router.replace({ name: 'graph-editor', params: { id: created.id } });
-        }
+        type: 'radio',
+        defaultValue: 'current',
+        items: [
+          { value: 'current', label: t('graphs.assetImportToCurrent') },
+          { value: 'new', label: t('graphs.assetImportCreateNew') },
+        ],
       });
+      if (choice === null) return;
+      const created = await graphStore.importGraphDefinition(
+        json,
+        graphDef.name || file.name.replace(/\.json$/i, ''),
+        graphDef.description,
+      );
+
+      if (choice === 'current') {
+        // Import to current canvas - merge content
+        Object.assign(graphDef, created);
+        $q.notify({ type: 'positive', message: t('graphs.assetImportedToCurrent') });
+      } else {
+        // Create new graph - navigate to it
+        Object.assign(graphDef, created);
+        $q.notify({ type: 'positive', message: t('graphs.assetImportSuccess') });
+        router.replace({ name: 'graph-editor', params: { id: created.id } });
+      }
     } catch (err) {
       $q.notify({ type: 'negative', message: err instanceof Error ? err.message : t('graphs.assetImportFailed') });
     }

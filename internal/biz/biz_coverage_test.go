@@ -300,6 +300,10 @@ func (m *memCronRepoB) UpdateCronTaskRun(_ context.Context, _, _, _, _, _ string
 	return nil
 }
 
+func (m *memCronRepoB) ResolveCronTaskFailures(_ context.Context, _, _ string) (biz.CronTaskRun, int, error) {
+	return biz.CronTaskRun{}, 0, nil
+}
+
 func TestCronUsecase_CreateGetDelete(t *testing.T) {
 	uc := biz.NewCronUsecase(newMemCronRepoB(), nil)
 	ctx := context.Background()

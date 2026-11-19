@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
@@ -20,6 +21,15 @@ import (
 // VoiceStatusProbe 报告 ASR/TTS 当前配置是否可用（V2-T8 差距2：前端麦克风
 // 置灰门控的数据源）。实现 = DB-first/env-fallback 配置读取 + Validate。
 type VoiceStatusProbe func(ctx context.Context) (asrAvailable, ttsAvailable bool)
+
+// VoiceRevocationRegistrar 是语音侧需要的会话吊销登记端口（评审 2026-11-09
+// MEDIUM-2）：握手成功的语音连接经它纳入与 /v1/ws 相同的「注册 → tv 兜底
+// 清扫 / pub/sub bump 主动关闭」机制。由 *WSServer 实现，NewHTTPServer
+// 组合根注入；nil 或未接线 = 语音连接不受吊销覆盖（仅限测试装配）。
+type VoiceRevocationRegistrar interface {
+	RegisterRevocableConn(c RevocableConn)
+	UnregisterRevocableConn(c RevocableConn)
+}
 
 // VoiceWSServer 是 /v1/voice 语音网关（设计 §2）：鉴权/单会话单连接/帧路由。
 // 音频帧与高频事件走独立端点，不污染 /v1/ws 事件总线通道。
@@ -40,6 +50,8 @@ type VoiceWSServer struct {
 	bus             biz.EventBus
 	infra           *event.Infra
 	lg              loggateway.Logger
+	// revocation 会话吊销登记端口（MEDIUM-2）；nil = 不登记（测试）。
+	revocation VoiceRevocationRegistrar
 
 	mu    sync.Mutex
 	conns map[string]*voice.Session
@@ -63,7 +75,23 @@ func NewVoiceWSServer(
 	probe VoiceStatusProbe,
 ) *VoiceWSServer {
 	return &VoiceWSServer{
-		upgrader:    websocket.Upgrader{CheckOrigin: func(*http.Request) bool { return true }},
+		// 评审 2026-11-09 V2：CheckOrigin 原先恒真——任何网页均可跨站建立
+		// 语音 WS（配合用户登录态实施跨站语音指令/旁听）。与 /v1/ws 对齐为
+		// 同一 OriginAllowed 策略：空 Origin（非浏览器客户端）放行，其余按
+		// CORS 白名单（dev localhost 前缀 + KRATOS_HTTP_EXTRA_CORS_ORIGINS
+		// 精确匹配）同语义判定，不放宽。
+		upgrader: websocket.Upgrader{
+			CheckOrigin: func(r *http.Request) bool {
+				if WSOriginAllowed(r) {
+					return true
+				}
+				lg.Warn("voice WS origin rejected",
+					loggateway.StepID("voice.ws.origin_rejected"),
+					loggateway.Str("origin", strings.TrimSpace(r.Header.Get("Origin"))),
+					loggateway.Str("remote_addr", r.RemoteAddr))
+				return false
+			},
+		},
 		sessionAuth: sessionAuth,
 		executor:    executor,
 		canceller:   canceller,
@@ -127,6 +155,16 @@ func (s *VoiceWSServer) SetDelegationRegistry(reg *voice.DelegationRegistry, ste
 	}
 	s.delegation = reg
 	s.delegationSteps = steps
+}
+
+// SetRevocationRegistrar 注入会话吊销登记端口（评审 2026-11-09 MEDIUM-2，
+// 可选依赖 setter 模式，与 SetTurnPrewarmer 一致）；nil 或未调用 = 语音连接
+// 不纳入会话吊销覆盖（仅限测试装配；生产由 NewHTTPServer 注入 *WSServer）。
+func (s *VoiceWSServer) SetRevocationRegistrar(r VoiceRevocationRegistrar) {
+	if s == nil {
+		return
+	}
+	s.revocation = r
 }
 
 // handleVoiceStatus 返回语音服务可用性（V2-T8 差距2）。probe 未接线时保守
@@ -223,15 +261,34 @@ func (s *VoiceWSServer) handleVoiceWS(w http.ResponseWriter, r *http.Request) {
 		old.ReplaceNoticeAndClose()
 	}
 
+	// MEDIUM-2（评审 2026-11-09）：握手成功后纳入会话吊销覆盖——账号吊销/
+	// 改密 bump 即时关闭（pub/sub），删号/漏事件由兜底扫描比对握手期 tv
+	// 关闭（与 /v1/ws 同一机制，同一份 TokenVersionIsCurrent 判定）。
+	var revEntry *voiceRevocableConn
+	if s.revocation != nil {
+		revEntry = &voiceRevocableConn{
+			userID:       userID,
+			sessionID:    sessionID,
+			tokenVersion: claims.TokenVersion,
+			conn:         conn,
+		}
+		s.revocation.RegisterRevocableConn(revEntry)
+	}
+
 	s.lg.Info("voice WS connected",
 		loggateway.StepID("voice.ws.connected"),
 		loggateway.SessionID(sessionID),
 		loggateway.Str("user_id", userID))
-	s.readPump(sess, conn, sessionID)
+	s.readPump(sess, conn, sessionID, revEntry)
 }
 
-func (s *VoiceWSServer) readPump(sess *voice.Session, conn *websocket.Conn, sessionID string) {
+func (s *VoiceWSServer) readPump(sess *voice.Session, conn *websocket.Conn, sessionID string, revEntry *voiceRevocableConn) {
 	defer func() {
+		// 单一拆除路径：无论自然断开还是 RevokeClose 触发，统一在此摘除
+		// 吊销登记与会话索引（两者均幂等，吊销路径已先摘亦安全）。
+		if revEntry != nil && s.revocation != nil {
+			s.revocation.UnregisterRevocableConn(revEntry)
+		}
 		s.mu.Lock()
 		if s.conns[sessionID] == sess {
 			delete(s.conns, sessionID)
@@ -296,10 +353,42 @@ func (s *VoiceWSServer) handleControl(sess *voice.Session, msg voiceControlMessa
 	}
 }
 
-// voiceWSDownlink 实现 voice.Downlink；gorilla 写并发需写锁。
+// voiceRevocableConn 把一条语音 WS 连接适配进 WSServer 的会话吊销机制
+// （评审 2026-11-09 MEDIUM-2，实现 server.RevocableConn）。
+type voiceRevocableConn struct {
+	userID       string
+	sessionID    string
+	tokenVersion int64 // 握手期 JWT tv claim，兜底扫描比对用
+	conn         *websocket.Conn
+	closeOnce    sync.Once // pub/sub 与兜底扫描可能并发触发
+}
+
+func (c *voiceRevocableConn) RevokeUserID() string      { return c.userID }
+func (c *voiceRevocableConn) RevokeTokenVersion() int64 { return c.tokenVersion }
+func (c *voiceRevocableConn) RevokeSessionID() string   { return c.sessionID }
+
+// RevokeClose 发送吊销 close frame（4401）后关闭底层连接——readPump 的
+// ReadMessage 随之出错返回，其 defer 完成 UnregisterRevocableConn / 摘会话
+// 索引 / sess.Close()（单一拆除路径，与聊天 WS 的 readPump 清理同构）。
+// gorilla 保证 WriteControl 与 Close 可与其它方法并发调用，故与 TTS 下行
+// 音频帧（downlink 写锁内）并发安全。
+func (c *voiceRevocableConn) RevokeClose(code int, reason string) {
+	c.closeOnce.Do(func() {
+		_ = c.conn.WriteControl(
+			websocket.CloseMessage,
+			websocket.FormatCloseMessage(code, reason),
+			time.Now().Add(time.Second),
+		)
+		_ = c.conn.Close()
+	})
+}
+
+// voiceWSDownlink 实现 voice.Downlink + voice.DownlinkCloser；gorilla 写并发
+// 需写锁。
 type voiceWSDownlink struct {
-	conn *websocket.Conn
-	mu   sync.Mutex
+	conn      *websocket.Conn
+	mu        sync.Mutex
+	closeOnce sync.Once // 替换关闭与吊销/自然拆除可能并发触发
 }
 
 func (d *voiceWSDownlink) SendJSON(v any) error {
@@ -316,6 +405,24 @@ func (d *voiceWSDownlink) SendAudio(pcm []byte) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	return d.conn.WriteMessage(websocket.BinaryMessage, pcm)
+}
+
+// CloseWithCode 以业务关闭码优雅关闭底层连接（评审 2026-11-09 V1，实现
+// voice.DownlinkCloser，供 ReplaceNoticeAndClose 关闭被替换的旧连接）：
+// 先写 close frame（对端读到有序的最后一帧 voice.replaced 后收到明确关闭码），
+// 再 Close。幂等；gorilla 保证 WriteControl/Close 可与其它写并发，故与
+// TTS 下行音频帧（本结构写锁内）及吊销路径（voiceRevocableConn.RevokeClose）
+// 并发安全。readPump 的 ReadMessage 随 Close 出错返回，其 defer 完成
+// 单一拆除路径（摘吊销登记/会话索引/sess.Close），无需此处代劳。
+func (d *voiceWSDownlink) CloseWithCode(code int, text string) {
+	d.closeOnce.Do(func() {
+		_ = d.conn.WriteControl(
+			websocket.CloseMessage,
+			websocket.FormatCloseMessage(code, text),
+			time.Now().Add(time.Second),
+		)
+		_ = d.conn.Close()
+	})
 }
 
 // ---- server 既有端口 → voice 窄端口适配器 ----

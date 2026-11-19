@@ -8,6 +8,7 @@ import { useListPage } from '../../composables/useListPage';
 import type { Plugin } from './types';
 import { PLUGIN_CATEGORY_OPTIONS, pluginEnabledOptions, prettyJSON } from '../../components/plugins/pluginUi';
 import { useCallbackPointOptions } from '../callback/constants';
+import { isForbiddenApiError } from '../../utils/kratosError';
 
 export function usePluginsPage() {
   const { t } = useI18n();
@@ -22,6 +23,8 @@ export function usePluginsPage() {
   const callbackPoint = ref('');
   const loading = ref(false);
   const error = ref('');
+  /** 列表接口 403：页面据此渲染 forbidden 态（无重试）。 */
+  const forbidden = ref(false);
   const togglingId = ref('');
 
   const detailOpen = ref(false);
@@ -70,6 +73,7 @@ export function usePluginsPage() {
   async function loadRows() {
     loading.value = true;
     error.value = '';
+    forbidden.value = false;
     try {
       if (agentOptionsFailed) await loadAgentOptions();
       await pluginsStore.loadPlugins({
@@ -81,6 +85,7 @@ export function usePluginsPage() {
         page_size: pageSize.value,
       });
     } catch (err) {
+      forbidden.value = isForbiddenApiError(err);
       error.value = err instanceof Error ? err.message : t('pluginsPage.notifyLoadFailed');
     } finally {
       loading.value = false;
@@ -207,6 +212,7 @@ export function usePluginsPage() {
     callbackPoint,
     loading,
     error,
+    forbidden,
     togglingId,
     detailOpen,
     detailTarget,

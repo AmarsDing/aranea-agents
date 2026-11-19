@@ -8,6 +8,7 @@ import { useKnowledgeStore } from '../../stores/knowledge';
 import { useKnowledgeIngestWs } from './useKnowledgeIngestWs';
 import { useVaultExplorer } from './useVaultExplorer';
 import { knowledgePageError } from './knowledgePageError';
+import { isForbiddenApiError } from '../../utils/kratosError';
 import { useKnowledgeUpload } from './useKnowledgeUpload';
 import { useKnowledgeVaultOps } from './useKnowledgeVaultOps';
 import type { VaultQTreeNode } from './useVaultExplorer';
@@ -21,6 +22,8 @@ export function useKnowledgePage() {
   const DOCUMENTS_PAGE_LIMIT = 2000;
 
   const error = ref('');
+  /** 集合列表接口 403：页面据此渲染 forbidden 态（无重试）。 */
+  const forbidden = ref(false);
   const unavailable = ref('');
 
   const embedderConfig = computed<EmbedderConfig | null>(() => knowledgeStore.embedderConfig);
@@ -56,12 +59,14 @@ export function useKnowledgePage() {
   async function loadCollections() {
     error.value = '';
     unavailable.value = '';
+    forbidden.value = false;
     try {
       const res = await knowledgeStore.loadCollections({ limit: 100 });
       if (!selectedId.value && res.items.length) {
         selectedId.value = res.items[0].id;
       }
     } catch (e) {
+      forbidden.value = isForbiddenApiError(e);
       error.value = friendlyError(e) || t('knowledgePage.loadVaultsFailed');
     }
   }
@@ -214,6 +219,7 @@ export function useKnowledgePage() {
     loading,
     docsLoading,
     error,
+    forbidden,
     unavailable,
     embedderConfig,
     embedderSaving,

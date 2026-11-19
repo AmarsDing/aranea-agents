@@ -118,7 +118,7 @@ function durationLabel(node: TraceSpanNode): string {
 .span-wf__ruler {
   display: flex;
   align-items: flex-end;
-  margin-bottom: 4px;
+  margin-bottom: var(--nt-space-1);
 }
 
 .span-wf__ruler-spacer {
@@ -155,7 +155,7 @@ function durationLabel(node: TraceSpanNode): string {
 .span-wf__rows {
   border: 1px solid var(--glass-border);
   border-radius: 12px;
-  padding: 6px 0;
+  padding: var(--nt-space-2) 0;
   max-height: 52vh;
   overflow-y: auto;
   background: color-mix(in srgb, var(--canvas-base) 30%, transparent);
@@ -165,10 +165,10 @@ function durationLabel(node: TraceSpanNode): string {
   display: flex;
   align-items: center;
   min-height: 28px;
-  padding: 2px 10px 2px 0;
+  padding: var(--nt-space-1) var(--nt-space-3) var(--nt-space-1) 0;
   border-radius: 6px;
   cursor: pointer;
-  gap: 8px;
+  gap: var(--nt-space-2);
 }
 
 .span-wf__row:hover {
@@ -185,7 +185,7 @@ function durationLabel(node: TraceSpanNode): string {
   flex: 0 0 300px;
   min-width: 0;
   font-size: 12px;
-  padding-left: 8px;
+  padding-left: var(--nt-space-2);
 }
 
 .span-wf__indent {
@@ -197,7 +197,7 @@ function durationLabel(node: TraceSpanNode): string {
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  margin-right: 6px;
+  margin-right: var(--nt-space-2);
   background: var(--color-text-icon-muted);
 }
 

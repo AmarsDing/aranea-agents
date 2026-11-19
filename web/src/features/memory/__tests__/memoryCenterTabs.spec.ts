@@ -15,6 +15,11 @@ describe('resolveMemoryCenterTab', () => {
     expect(resolveMemoryCenterTab('browse', true)).toBe('browse');
   });
 
+  it('keeps notes for everyone', () => {
+    expect(resolveMemoryCenterTab('notes', false)).toBe('notes');
+    expect(resolveMemoryCenterTab('notes', true)).toBe('notes');
+  });
+
   it('falls unknown tabs back to panorama', () => {
     expect(resolveMemoryCenterTab('unknown', true)).toBe('panorama');
     expect(resolveMemoryCenterTab('', false)).toBe('panorama');

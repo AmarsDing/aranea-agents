@@ -139,7 +139,7 @@ func (u *AgentBridgeUsecase) Dispatch(ctx context.Context, in DispatchInput) (*D
 		u.failTaskFrom(StatusDispatched, task.ID, fmt.Sprintf("spawn failed: %v", err))
 		u.notifyTerminal(task.ID)
 		return nil, apierror.BadRequest(apierror.DomainAgentBridge,
-			"start agent %s failed: %v", agent.AgentKey, err)
+			"start agent %s failed: %v（可在编程工具设置页对该工具执行「探测」获取分级诊断）", agent.AgentKey, err)
 	}
 	acpSessID := task.ID // M1：ACP session id 由会话实现持有；此处先用任务 ID 占位关联
 	// M4 P0-2b（S4）：任务行持久化子进程 PID（Windows 为进程组根），重启收割用

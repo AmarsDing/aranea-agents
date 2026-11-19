@@ -44,6 +44,8 @@ func TestToolsetConfigFromEffectiveKeys_allMappings(t *testing.T) {
 		{"claude_code", "ClaudeCode", true},
 		{biz.ToolKeyKanban, "Kanban", true},
 		{biz.ToolKeyWebResearch, "WebResearch", true},
+		{biz.ToolKeyMail, "Mail", true},
+		{biz.ToolKeyMailTask, "MailTask", true},
 		{"message", "Message", true},
 		{"browser", "BrowserEnabled", true},
 	}
@@ -167,6 +169,10 @@ func fieldByName(cfg ToolsetConfig, name string) bool {
 		return cfg.Kanban
 	case "WebResearch":
 		return cfg.WebResearch
+	case "Mail":
+		return cfg.Mail
+	case "MailTask":
+		return cfg.MailTask
 	case "Message":
 		return cfg.Message
 	case "BrowserEnabled":

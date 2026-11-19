@@ -1,6 +1,13 @@
 package commerce
 
-import "time"
+import (
+	"errors"
+	"time"
+)
+
+// ErrOpportunityNotFound 商机不存在哨兵（service 层据此映 404）。
+// Stability:evolving
+var ErrOpportunityNotFound = errors.New("commerce: opportunity not found")
 
 const (
 	AudienceNovaTradeIntel   = "novatrade_intel"

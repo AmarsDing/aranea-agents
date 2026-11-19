@@ -184,10 +184,11 @@ func (s *KnowledgeService) replayPromotedDocChunks(ctx context.Context, target b
 			continue
 		}
 		params := knowledge.IngestParams{
-			DocID:        doc.ID,
-			CollectionID: target.ID,
-			Text:         doc.ContentText,
-			Strategy:     knowledge.ChunkByMarkdown,
+			DocID:          doc.ID,
+			CollectionID:   target.ID,
+			Text:           doc.ContentText,
+			Strategy:       knowledge.ChunkByMarkdown,
+			Classification: doc.Classification, // D6 L-3：晋升重放同受密级闸约束
 		}
 		params.ApplyDefaults()
 		var chunks []biz.KnowledgeChunk

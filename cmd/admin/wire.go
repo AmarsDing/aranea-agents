@@ -28,6 +28,7 @@ import (
 	"aranea-agents/internal/biz"
 	a2abiz "aranea-agents/internal/biz/a2a"
 	"aranea-agents/internal/biz/backgroundjob"
+	"aranea-agents/internal/biz/ceoboard"
 	bizcu "aranea-agents/internal/biz/computeruse"
 	bizcg "aranea-agents/internal/biz/configgraph"
 	"aranea-agents/internal/biz/decision"
@@ -38,6 +39,7 @@ import (
 	bizmedia "aranea-agents/internal/biz/media"
 	"aranea-agents/internal/biz/monitor"
 	"aranea-agents/internal/biz/monitor/heal"
+	"aranea-agents/internal/biz/office"
 	bizsession "aranea-agents/internal/biz/session"
 	bizskill "aranea-agents/internal/biz/skill"
 	biztool "aranea-agents/internal/biz/tool"
@@ -76,9 +78,11 @@ import (
 	"aranea-agents/internal/skill/watch"
 	"aranea-agents/internal/team"
 	"aranea-agents/internal/tools"
+	"aranea-agents/internal/tools/calendar"
 	"aranea-agents/internal/tools/clientbridge"
 	"aranea-agents/internal/tools/codingbridge"
 	kanbanpkg "aranea-agents/internal/tools/kanban"
+	"aranea-agents/internal/tools/mail"
 	subagenttool "aranea-agents/internal/tools/subagent"
 	"aranea-agents/internal/toolspill"
 	"aranea-agents/internal/voice"
@@ -91,7 +95,6 @@ import (
 	trpcartifact "trpc.group/trpc-go/trpc-agent-go/artifact"
 	trpcevolution "trpc.group/trpc-go/trpc-agent-go/evolution"
 	trpcgraph "trpc.group/trpc-go/trpc-agent-go/graph"
-	trpcmemory "trpc.group/trpc-go/trpc-agent-go/memory"
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
 	trpcsession "trpc.group/trpc-go/trpc-agent-go/session"
 	trpcskill "trpc.group/trpc-go/trpc-agent-go/skill"
@@ -207,6 +210,16 @@ func provideCredentialCrypto(sys biz.SystemSettingRepo, lg loggateway.Logger) *b
 		lg.Warn("凭据加密密钥未配置，API 密钥将以明文存储。请设置 ARANEA_CREDENTIAL_KEY 环境变量或在系统设置中初始化加密密钥。", loggateway.Str("reason", "credential.encryption"))
 	}
 	return cc
+}
+
+// provideCredentialUsecase 装配 E 阶段凭据托管用例（需求文档 §3，V-1/V-2/V-3）。
+// 高敏清单：内置默认清单 ∪ configs credential.high_sensitivity_sites（只增不减）。
+func provideCredentialUsecase(repo biz.CredentialRepo, crypto *biz.CredentialCrypto, cfg *conf.Credential, lg loggateway.Logger) *biz.CredentialUsecase {
+	var highSites []string
+	if cfg != nil {
+		highSites = cfg.HighSensitivitySites
+	}
+	return biz.NewCredentialUsecase(repo, crypto, highSites, lg)
 }
 
 func provideLlmProviderModelUsecaseWithDeps(repo biz.LlmProviderModelRepo, inspector biz.LLMInspector, crypto *biz.CredentialCrypto, agentRefs biz.AgentReferenceChecker, statsInjector *biz.ModelStatsInjector, lg loggateway.Logger) *biz.LlmProviderModelUsecase {
@@ -626,6 +639,20 @@ func provideRedisClient(c *conf.Data, lg loggateway.Logger) *data.RedisClient {
 	return rdb
 }
 
+// provideTokenVersionStore builds the P1-3 session-revocation store (Redis
+// write-through + DB 回源）。注册进 pkg/auth 与 biz.AdminUsecase 的动作在
+// newApp 组合根完成（见 app.go）。
+func provideTokenVersionStore(d *data.Data, rdb *data.RedisClient, lg loggateway.Logger) *data.TokenVersionStore {
+	return data.NewTokenVersionStore(d, rdb, lg)
+}
+
+// providePermissionResolver builds the P1 DB 版角色→权限解析器（读
+// roles/permissions/role_permissions 三小表，周期刷新缓存；P1 任务分解 §4 收口）。
+// 首刷与 auth.SetPermissionResolver 注入在 newApp 组合根完成（见 app.go）。
+func providePermissionResolver(d *data.Data, lg loggateway.Logger) *data.RolePermissionResolver {
+	return data.NewRolePermissionResolver(data.NewRolePermissionLoader(d), lg)
+}
+
 func provideTurnLifecycleUsecase(sessions *biz.SessionUsecase, lg loggateway.Logger) *biz.TurnLifecycleUsecase {
 	return biz.NewTurnLifecycleUsecase(biz.TurnLifecycleUsecaseConfig{
 		Sessions: sessions,
@@ -730,6 +757,9 @@ func provideRuntimeTooling(
 	knowledgeUC *biz.KnowledgeUsecase,
 	codeExecFactory *localexec.Factory,
 	kanbanBridge kanbanpkg.Bridge,
+	credentialUC *biz.CredentialUsecase,
+	calendarTool calendar.Service,
+	mailTool mail.Service,
 	debugRecorder *debug.RecorderFactory,
 	orgUC *biz.OrganizationUsecase,
 	toolResultGate *biz.ToolResultGate,
@@ -764,6 +794,9 @@ func provideRuntimeTooling(
 		},
 		Bridges: service.ToolBridges{
 			Kanban:      kanbanBridge,
+			Credential:  credentialUC,
+			Calendar:    calendarTool,
+			Mail:        mailTool,
 			ComputerUse: computerUseUC,
 			Coding:      codingBridgeSvc,
 			Client:      clientBridge,
@@ -901,6 +934,7 @@ func provideRunnerConfig(
 	outboundRouter *outbound.Router,
 	subAgentSvc *subagenttool.Service,
 	kanbanBridge kanbanpkg.Bridge,
+	credentialUC *biz.CredentialUsecase,
 	computerUseUC *bizcu.ComputerUseUsecase,
 	sandboxLeases *sandbox.SessionLeases,
 	sandboxMgr *sandbox.Manager,
@@ -943,6 +977,7 @@ func provideRunnerConfig(
 		OutboundRouter:    outboundRouter,
 		SubAgentService:   subAgentSvc,
 		KanbanBridge:      kanbanBridge,
+		CredentialVault:   credentialUC,
 		ComputerUseUC:     computerUseUC,
 		SandboxFSStore:    sandboxLeases,
 		SandboxManager:    sandboxMgr,
@@ -3705,6 +3740,20 @@ type wireOut struct {
 	// ConfigGraphIndexer is the M81 config-asset graph background component
 	// (P0: rebuild capability only; started by startBackgroundWorkers).
 	ConfigGraphIndexer *bizcg.Indexer
+	// KnowledgeGraphProjection G-38 W4 图谱投影 worker（workers.go 消费；
+	// wireinject 变体漏登记导致 wire 再生成失败，2026-11-08 补齐）。
+	KnowledgeGraphProjection *jobs.KnowledgeGraphProjectionJob
+	// CeoboardRuntime CEO 驾驶舱运行时（整合 P2-7；workers.go 消费，与
+	// wire_gen.go 镜像保持一致）。
+	CeoboardRuntime *ceoboard.Runtime
+	// OfficeReminderWorker E 阶段 W1c 日程提醒扫描（K-4）。补登：W1c 漏登记
+	// wireinject 变体，W1d 顺手补齐（循 3739 行 KnowledgeGraphProjection
+	// 同款教训）。
+	OfficeReminderWorker *office.ReminderWorker
+	// OfficeMailIdleSupervisor / OfficeMailDigestWorker E 阶段 W1d 邮件
+	// IDLE 监听（E-5）与每日摘要（E-4）；workers.go 消费。
+	OfficeMailIdleSupervisor *office.MailIdleSupervisor
+	OfficeMailDigestWorker   *office.MailDigestWorker
 }
 
 func provideWireOut(
@@ -3773,6 +3822,11 @@ func provideWireOut(
 	pathBExtractor *biz.PathBExtractor,
 	wsV2Sub *server.WSV2Subscriber,
 	configGraphIndexer *bizcg.Indexer,
+	knowledgeGraphProjection *jobs.KnowledgeGraphProjectionJob,
+	ceoboardRuntime *ceoboard.Runtime,
+	officeReminderWorker *office.ReminderWorker,
+	officeMailIdleSupervisor *office.MailIdleSupervisor,
+	officeMailDigestWorker *office.MailDigestWorker,
 ) wireOut {
 	return wireOut{
 		App: app, Data: dataData, CronRunner: runner, SkillWatch: skillWatch, AutoMemory: autoMem,
@@ -3822,6 +3876,11 @@ func provideWireOut(
 		PathBExtractor:              pathBExtractor,
 		WSV2Subscriber:              wsV2Sub,
 		ConfigGraphIndexer:          configGraphIndexer,
+		KnowledgeGraphProjection:    knowledgeGraphProjection,
+		CeoboardRuntime:             ceoboardRuntime,
+		OfficeReminderWorker:        officeReminderWorker,
+		OfficeMailIdleSupervisor:    officeMailIdleSupervisor,
+		OfficeMailDigestWorker:      officeMailDigestWorker,
 	}
 }
 

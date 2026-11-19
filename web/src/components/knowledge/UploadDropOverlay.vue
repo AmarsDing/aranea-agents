@@ -77,7 +77,7 @@ onUnmounted(() => {
   gap: 8px;
   padding: 36px 56px;
   border: 2px dashed var(--q-primary);
-  border-radius: 20px;
+  border-radius: 12px;
   background: var(--glass-surface);
 }
 

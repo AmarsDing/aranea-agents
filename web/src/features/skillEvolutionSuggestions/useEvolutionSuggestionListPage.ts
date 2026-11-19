@@ -60,6 +60,7 @@ export function useEvolutionSuggestionListPage() {
   const total = computed(() => store.total);
   const loading = computed(() => store.loading);
   const error = computed(() => store.error ?? '');
+  const forbidden = computed(() => store.forbidden);
 
   const rejectDialogOpen = ref(false);
   const rejectTarget = ref<SkillEvolutionView | null>(null);
@@ -205,6 +206,7 @@ export function useEvolutionSuggestionListPage() {
     total,
     loading,
     error,
+    forbidden,
     pageMax,
     approvingId,
     rejectDialogOpen,

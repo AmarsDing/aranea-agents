@@ -87,10 +87,7 @@
         <div class="hud-toolbar__legend-section">
           <div class="hud-toolbar__legend-title">{{ t('knowledgePage.graphLegendEdges') }}</div>
           <div v-for="lt in linkTypes" :key="lt" class="hud-toolbar__legend-row">
-            <span
-              class="hud-toolbar__chip-dot"
-              :style="{ background: graphLinkColor(lt), color: graphLinkColor(lt) }"
-            />
+            <span class="hud-toolbar__chip-dot" :class="`hud-toolbar__chip-dot--${graphLinkTone(lt)}`" />
             <span>{{ t(`knowledgePage.linkType${lt.charAt(0).toUpperCase() + lt.slice(1)}`) }}</span>
           </div>
         </div>
@@ -114,7 +111,7 @@
 
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n';
-import { graphLinkColor } from '../../../features/knowledge/graphUi';
+import { graphLinkTone } from '../../../features/knowledge/graphUi';
 import type { GraphColorMode } from '../../../features/knowledge/graph3d/structurePalette';
 
 defineProps<{
@@ -215,6 +212,27 @@ const { t } = useI18n();
     border-radius: 50%;
     margin-right: 4px;
     box-shadow: 0 0 6px currentColor;
+  }
+
+  // 边类型色：与 graphLinkColor 的取值域（--nt-graph-link-*）一一对应
+  &__chip-dot--explicit {
+    background: var(--nt-graph-link-explicit);
+    color: var(--nt-graph-link-explicit);
+  }
+
+  &__chip-dot--entity {
+    background: var(--nt-graph-link-entity);
+    color: var(--nt-graph-link-entity);
+  }
+
+  &__chip-dot--semantic {
+    background: var(--nt-graph-link-semantic);
+    color: var(--nt-graph-link-semantic);
+  }
+
+  &__chip-dot--unknown {
+    background: var(--nt-graph-link-unknown);
+    color: var(--nt-graph-link-unknown);
   }
 }
 </style>

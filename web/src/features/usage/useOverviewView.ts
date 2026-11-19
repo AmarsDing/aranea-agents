@@ -7,7 +7,13 @@
  */
 import { computed, onUnmounted, ref, type ComputedRef } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { formatCount, formatLatencyMs, formatUsdCompact, formatUsdFromMicro } from './moneyFormat';
+import {
+  formatCount,
+  formatLatencyMs,
+  formatUsdCompact,
+  formatUsdCompactFromUsd,
+  formatUsdFromMicro,
+} from './moneyFormat';
 import { fmtClock } from '../../components/overview/ovTime';
 import type { OvBudget, OvCacheHit, OvRedTile, OvTone, OvVerdictChip } from '../../components/overview/ovTypes';
 import type { AttentionBoard } from './types';
@@ -125,7 +131,7 @@ export function useOverviewView(page: OverviewPageBindings, board: ComputedRef<A
       {
         id: 'burnRate',
         label: t('overviewPage.v2.metricBurnRate'),
-        value: page.burnRatePerHour.value != null ? `${formatUsdCompact(page.burnRatePerHour.value)}/h` : '—',
+        value: page.burnRatePerHour.value != null ? `${formatUsdCompactFromUsd(page.burnRatePerHour.value)}/h` : '—',
         caption: t('overviewPage.v2.burnRateCap'),
         tone: 'info',
         clickable: true,
@@ -169,7 +175,7 @@ export function useOverviewView(page: OverviewPageBindings, board: ComputedRef<A
 
   // —— ④ 成本与预算 ——
   const costValueUsd = computed(() =>
-    page.rangeSummary.value ? formatUsdCompact(page.rangeSummary.value.total_cost_micro_usd / 1_000_000) : '—',
+    page.rangeSummary.value ? formatUsdCompact(page.rangeSummary.value.total_cost_micro_usd) : '—',
   );
   const budget = computed<OvBudget>(() => {
     const q = page.quota.value;
@@ -181,7 +187,7 @@ export function useOverviewView(page: OverviewPageBindings, board: ComputedRef<A
       pct,
       spentUsd: formatUsdFromMicro(q?.total_spent_micro_usd),
       capUsd: formatUsdFromMicro(q?.total_cap_micro_usd),
-      forecastUsd: forecast != null ? formatUsdCompact(forecast) : null,
+      forecastUsd: forecast != null ? formatUsdCompactFromUsd(forecast) : null,
       lowConfidence: new Date().getDate() < 5,
       tone: pct >= 0.95 ? 'danger' : pct >= 0.8 ? 'warn' : 'ok',
     };

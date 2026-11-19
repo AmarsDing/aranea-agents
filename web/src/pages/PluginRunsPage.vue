@@ -121,68 +121,90 @@
       </template>
     </AppPageToolbar>
 
-    <q-banner v-if="error" rounded class="app-page-error-banner q-mb-md">
-      {{ error }}
-      <template #action>
-        <q-btn flat dense :label="t('pluginsPage.retry')" class="text-white" @click="() => loadRows()" />
-      </template>
-    </q-banner>
-
-    <AppRegistryTable
-      :rows="rows"
-      :columns="columns"
-      row-key="id"
-      :loading="loading"
-      hide-pagination
-      :pagination="{ rowsPerPage: 0 }"
-    >
-      <template #body-cell-plugin_key="props">
-        <q-td :props="props">
-          <div class="row items-center no-wrap q-gutter-xs">
-            <AppRegistryHoverTip :text="detailPreview(props.row)" :indicator="Boolean(detailPreview(props.row))">
-              <span class="app-registry-cell-primary ellipsis">{{ props.row.plugin_key }}</span>
-            </AppRegistryHoverTip>
-            <q-btn
-              v-if="detailPreview(props.row)"
-              flat
-              dense
-              round
-              icon="visibility"
-              color="primary"
-              :aria-label="t('pluginsPage.runs.viewDetail')"
-              @click="openDetail(props.row)"
-            />
-          </div>
-        </q-td>
-      </template>
-      <template #body-cell-agent_id="props">
-        <q-td :props="props">
-          <span class="app-registry-cell-sub ellipsis" :title="props.row.agent_id">{{
-            props.row.agent_id || '—'
-          }}</span>
-        </q-td>
-      </template>
-      <template #body-cell-status="props">
-        <q-td :props="props">
-          <q-chip dense :color="statusColor(props.row.status)" text-color="white">{{ props.row.status }}</q-chip>
-        </q-td>
-      </template>
-    </AppRegistryTable>
-
-    <AppRegistryPagination
-      v-model:page="page"
-      v-model:page-size="pageSize"
-      :page-max="pageMax"
-      :total="total"
-      :loading="loading"
-      :label="t('pluginsPage.runs.paginationLabel')"
+    <AppStatePanel
+      v-if="pageState === 'error'"
+      class="q-mb-md"
+      variant="error"
+      :description="error"
+      :action-label="t('common.retry')"
+      action-icon="refresh"
+      @action="() => loadRows()"
     />
+    <AppStatePanel v-else-if="pageState === 'forbidden'" class="q-mb-md" variant="forbidden" />
+    <AppStatePanel v-else-if="pageState === 'loading'" variant="loading" :rows="4" />
+    <AppStatePanel
+      v-else-if="pageState === 'empty'"
+      variant="empty"
+      :title="t('shell.runs.emptyTitle')"
+      :description="t('shell.runs.emptyDesc')"
+      icon="history"
+      :action-label="t('shell.runs.emptyAction')"
+      action-icon="restart_alt"
+      @action="resetFilters"
+    />
+
+    <template v-else>
+      <AppStatePanel
+        v-if="pageState === 'partial'"
+        class="q-mb-md"
+        variant="partial"
+        dense
+        :description="t('shell.runs.staleError', { message: error })"
+        :action-label="t('common.retry')"
+        action-icon="refresh"
+        @action="() => loadRows()"
+      />
+
+      <AppRegistryTable :rows="rows" :columns="columns" row-key="id" :loading="loading" hide-pagination :pagination="{ rowsPerPage: 0 }">
+        <template #body-cell-plugin_key="props">
+          <q-td :props="props">
+            <div class="row items-center no-wrap q-gutter-xs">
+              <AppRegistryHoverTip :text="detailPreview(props.row)" :indicator="Boolean(detailPreview(props.row))">
+                <span class="app-registry-cell-primary ellipsis">{{ props.row.plugin_key }}</span>
+              </AppRegistryHoverTip>
+              <q-btn
+                v-if="detailPreview(props.row)"
+                flat
+                dense
+                round
+                icon="visibility"
+                color="primary"
+                :aria-label="t('pluginsPage.runs.viewDetail')"
+                @click="openDetail(props.row)"
+              />
+            </div>
+          </q-td>
+        </template>
+        <template #body-cell-agent_id="props">
+          <q-td :props="props">
+            <span class="app-registry-cell-sub ellipsis" :title="props.row.agent_id">{{
+              props.row.agent_id || '—'
+            }}</span>
+          </q-td>
+        </template>
+        <template #body-cell-status="props">
+          <q-td :props="props">
+            <AppStatusChip :status="props.row.status" />
+          </q-td>
+        </template>
+      </AppRegistryTable>
+
+      <AppRegistryPagination
+        v-model:page="page"
+        v-model:page-size="pageSize"
+        :page-max="pageMax"
+        :total="total"
+        :loading="loading"
+        :label="t('pluginsPage.runs.paginationLabel')"
+      />
+    </template>
 
     <PluginRunDetailDialog v-model:open="detailOpen" :text="detailText" />
   </q-page>
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue';
 import { Dialog } from 'quasar';
 import { useI18n } from 'vue-i18n';
 import AppPageHero from '../components/layout/AppPageHero.vue';
@@ -190,8 +212,11 @@ import AppPageToolbar from '../components/layout/AppPageToolbar.vue';
 import AppRegistryTable from '../components/layout/AppRegistryTable.vue';
 import AppRegistryHoverTip from '../components/layout/AppRegistryHoverTip.vue';
 import AppRegistryPagination from '../components/layout/AppRegistryPagination.vue';
+import AppStatePanel from '../components/common/AppStatePanel.vue';
 import PluginRunDetailDialog from '../components/plugins/PluginRunDetailDialog.vue';
+import AppStatusChip from '../components/common/AppStatusChip.vue';
 import { usePluginRunsPage } from '../features/plugins/usePluginRunsPage';
+import { resolvePageState } from './pageState';
 
 const { t } = useI18n();
 
@@ -205,6 +230,7 @@ const {
   rows,
   loading,
   error,
+  forbidden,
   total,
   page,
   pageSize,
@@ -217,7 +243,6 @@ const {
   pluginKeyOptions,
   columns,
   filterPluginKeys,
-  statusColor,
   loadRows,
   onFilterChange,
   resetFilters,
@@ -225,6 +250,16 @@ const {
   detailPreview,
   clearAll,
 } = usePluginRunsPage();
+
+/** 五态判定：错误优先于空态；有数据时刷新失败只加 partial 横幅，不清空已渲染列表。 */
+const pageState = computed(() =>
+  resolvePageState({
+    loading: loading.value,
+    error: error.value,
+    count: rows.value.length,
+    forbidden: forbidden.value,
+  }),
+);
 
 function confirmClear() {
   Dialog.create({

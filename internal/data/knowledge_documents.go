@@ -24,8 +24,8 @@ func (r *knowledgeRepo) CreateDocument(ctx context.Context, d biz.KnowledgeDocum
 	q := `INSERT INTO knowledge_documents
 		(id, collection_id, source, mime_type, size_bytes, chunk_count, status, error_message, content_text, organized, asset_uri,
 		 rel_path, content_hash, summary, summary_hash, tags, doc_type, created_at, updated_at,
-		 chunk_strategy, chunk_size, chunk_overlap, owner_user_id)
-		VALUES ($1,$2,$3,$4,$5,0,$6,'',$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$16,$17,$18,$19,$20)
+		 chunk_strategy, chunk_size, chunk_overlap, owner_user_id, classification)
+		VALUES ($1,$2,$3,$4,$5,0,$6,'',$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$16,$17,$18,$19,$20,$21)
 		RETURNING id, collection_id, source, mime_type, size_bytes, chunk_count, status, error_message,
 	          content_text, organized, asset_uri,
 	          rel_path, content_hash, summary, summary_hash, tags, doc_type,
@@ -34,11 +34,11 @@ func (r *knowledgeRepo) CreateDocument(ctx context.Context, d biz.KnowledgeDocum
 	          to_char(updated_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
 	          COALESCE(NULLIF(visibility,''),'collection'), COALESCE(owner_user_id,''),
 	          COALESCE(shared_with, '{}'::text[]),
-	          chunk_strategy, chunk_size, chunk_overlap`
+	          chunk_strategy, chunk_size, chunk_overlap, classification`
 	row := r.knowledgeDB(ctx).QueryRowContext(ctx, q, d.ID, d.CollectionID, d.Source, d.MimeType, d.SizeBytes, d.Status,
 		d.ContentText, d.Organized, d.AssetURI,
 		d.RelPath, d.ContentHash, d.Summary, d.SummaryHash, tagsJSON, d.DocType, now,
-		d.ChunkStrategy, d.ChunkSize, d.ChunkOverlap, d.OwnerUserID)
+		d.ChunkStrategy, d.ChunkSize, d.ChunkOverlap, d.OwnerUserID, d.Classification)
 	return scanDocument(row)
 }
 
@@ -52,7 +52,7 @@ func (r *knowledgeRepo) GetDocumentByRelPath(ctx context.Context, collectionID, 
 		         to_char(d.updated_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
 		         COALESCE(NULLIF(d.visibility,''),'collection'), COALESCE(d.owner_user_id,''),
 		         COALESCE(d.shared_with, '{}'::text[]),
-		         d.chunk_strategy, d.chunk_size, d.chunk_overlap
+		         d.chunk_strategy, d.chunk_size, d.chunk_overlap, d.classification
 		  FROM knowledge_documents d
 		  JOIN knowledge_collections c ON c.id = d.collection_id
 		  WHERE d.collection_id = $1 AND d.rel_path = $2`
@@ -83,7 +83,7 @@ func (r *knowledgeRepo) GetDocumentByContentHash(ctx context.Context, collection
 		         to_char(d.updated_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
 		         COALESCE(NULLIF(d.visibility,''),'collection'), COALESCE(d.owner_user_id,''),
 		         COALESCE(d.shared_with, '{}'::text[]),
-		         d.chunk_strategy, d.chunk_size, d.chunk_overlap
+		         d.chunk_strategy, d.chunk_size, d.chunk_overlap, d.classification
 		  FROM knowledge_documents d
 		  JOIN knowledge_collections c ON c.id = d.collection_id
 		  WHERE d.collection_id = $1 AND d.content_hash = $2`
@@ -201,7 +201,7 @@ func (r *knowledgeRepo) GetDocument(ctx context.Context, id string) (biz.Knowled
 		         to_char(d.updated_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
 		         COALESCE(NULLIF(d.visibility,''),'collection'), COALESCE(d.owner_user_id,''),
 		         COALESCE(d.shared_with, '{}'::text[]),
-		         d.chunk_strategy, d.chunk_size, d.chunk_overlap
+		         d.chunk_strategy, d.chunk_size, d.chunk_overlap, d.classification
 		  FROM knowledge_documents d
 		  JOIN knowledge_collections c ON c.id = d.collection_id
 		  WHERE d.id = $1`
@@ -378,7 +378,7 @@ func scanDocument(row scannable) (biz.KnowledgeDocument, error) {
 		&d.RelPath, &d.ContentHash, &d.Summary, &d.SummaryHash, &tagsRaw, &d.DocType,
 		&d.EmbedFailCount, &embedLastTried,
 		&d.CreatedAt, &d.UpdatedAt, &d.Visibility, &d.OwnerUserID, pq.Array(&d.SharedWith),
-		&d.ChunkStrategy, &d.ChunkSize, &d.ChunkOverlap)
+		&d.ChunkStrategy, &d.ChunkSize, &d.ChunkOverlap, &d.Classification)
 	if err != nil {
 		return d, entErrToBizErr(err, "knowledge")
 	}

@@ -137,86 +137,69 @@
       </div>
     </q-card>
 
-    <q-dialog v-model="confirmClear" persistent>
-      <q-card class="app-dialog-card">
-        <q-card-section class="row items-center">
-          <q-icon name="warning" color="negative" size="md" class="q-mr-sm" />
-          <span class="text-h6">{{ t('monitorPage.audit.clearTitle') }}</span>
-        </q-card-section>
-        <q-card-section>
-          {{ t('monitorPage.audit.clearConfirm', { total }) }}
-        </q-card-section>
-        <q-card-actions align="right">
-          <q-btn v-close-popup flat no-caps :label="t('monitorPage.audit.cancel')" />
-          <q-btn
-            flat
-            no-caps
-            color="negative"
-            :label="t('monitorPage.audit.clearConfirmBtn')"
-            :loading="clearing"
-            @click="doClear"
-          />
-        </q-card-actions>
-      </q-card>
-    </q-dialog>
+    <AppDialog
+      v-model="confirmClear"
+      :title="t('monitorPage.audit.clearTitle')"
+      icon="warning"
+      size="md"
+      persistent
+      :loading="clearing"
+    >
+      {{ t('monitorPage.audit.clearConfirm', { total }) }}
+      <template #actions>
+        <q-btn flat no-caps :label="t('monitorPage.audit.cancel')" @click="confirmClear = false" />
+        <q-btn
+          flat
+          no-caps
+          color="negative"
+          :label="t('monitorPage.audit.clearConfirmBtn')"
+          :loading="clearing"
+          @click="doClear"
+        />
+      </template>
+    </AppDialog>
 
-    <q-dialog v-model="detailOpen">
-      <q-card class="app-dialog-card app-dialog-card--lg app-glass-dialog">
-        <q-card-section class="app-glass-dialog__head row items-start justify-between">
-          <div class="audit-detail-head">
-            <span
-              class="apm-status-dot audit-detail-head__dot"
-              :class="`apm-status-dot--${eventTone(selected?.action || '')}`"
-            />
-            <div>
-              <div class="app-glass-dialog__title">{{ t('monitorPage.audit.dialogTitle') }}</div>
-              <div class="app-glass-dialog__subtitle">{{ selected?.action }}</div>
-            </div>
+    <AppDialog
+      v-model="detailOpen"
+      :title="t('monitorPage.audit.dialogTitle')"
+      :subtitle="selected?.action"
+      size="lg"
+    >
+      <div class="apm-meta-grid q-mb-md">
+        <div class="apm-meta-item">
+          <div class="apm-meta-item__label">{{ t('monitorPage.audit.labelResource') }}</div>
+          <div class="apm-meta-item__value ellipsis">
+            {{ selected?.resource }}<span v-if="selected?.resource_id"> / {{ selected?.resource_id }}</span>
           </div>
-          <q-btn v-close-popup flat round dense icon="close" />
-        </q-card-section>
-        <q-separator />
-        <div class="app-glass-dialog__scroll">
-          <q-card-section class="app-glass-dialog__body">
-            <div class="apm-meta-grid q-mb-md">
-              <div class="apm-meta-item">
-                <div class="apm-meta-item__label">{{ t('monitorPage.audit.labelResource') }}</div>
-                <div class="apm-meta-item__value ellipsis">
-                  {{ selected?.resource }}<span v-if="selected?.resource_id"> / {{ selected?.resource_id }}</span>
-                </div>
-              </div>
-              <div class="apm-meta-item">
-                <div class="apm-meta-item__label">{{ t('monitorPage.audit.labelTime') }}</div>
-                <div class="apm-meta-item__value">{{ formatDate(selected?.created_at) }}</div>
-              </div>
-              <div v-if="selected?.actor" class="apm-meta-item">
-                <div class="apm-meta-item__label">{{ t('monitorPage.audit.labelActor') }}</div>
-                <div class="apm-meta-item__value ellipsis">{{ selected?.actor }}</div>
-              </div>
-              <div v-if="selected?.ip" class="apm-meta-item">
-                <div class="apm-meta-item__label">IP</div>
-                <div class="apm-meta-item__value">{{ selected?.ip }}</div>
-              </div>
-              <div v-if="selected?.user_agent" class="apm-meta-item">
-                <div class="apm-meta-item__label">User Agent</div>
-                <div class="apm-meta-item__value ellipsis">{{ selected?.user_agent }}</div>
-              </div>
-              <div v-if="selected?.severity" class="apm-meta-item">
-                <div class="apm-meta-item__label">{{ t('monitorPage.audit.labelSeverity') }}</div>
-                <div class="apm-meta-item__value">
-                  <q-badge :color="severityColor(selected!.severity)">{{ selected?.severity }}</q-badge>
-                </div>
-              </div>
-            </div>
-            <JsonCodeViewer :text="selectedJSON" :show-toolbar="false" scroll-height="320px" />
-          </q-card-section>
         </div>
-        <q-separator />
-        <q-card-actions align="right" class="app-actions-bar app-glass-dialog__actions">
-          <q-btn flat no-caps :label="t('monitorPage.audit.copyJson')" icon="content_copy" @click="copyJSON" />
-        </q-card-actions>
-      </q-card>
-    </q-dialog>
+        <div class="apm-meta-item">
+          <div class="apm-meta-item__label">{{ t('monitorPage.audit.labelTime') }}</div>
+          <div class="apm-meta-item__value">{{ formatDate(selected?.created_at) }}</div>
+        </div>
+        <div v-if="selected?.actor" class="apm-meta-item">
+          <div class="apm-meta-item__label">{{ t('monitorPage.audit.labelActor') }}</div>
+          <div class="apm-meta-item__value ellipsis">{{ selected?.actor }}</div>
+        </div>
+        <div v-if="selected?.ip" class="apm-meta-item">
+          <div class="apm-meta-item__label">IP</div>
+          <div class="apm-meta-item__value">{{ selected?.ip }}</div>
+        </div>
+        <div v-if="selected?.user_agent" class="apm-meta-item">
+          <div class="apm-meta-item__label">User Agent</div>
+          <div class="apm-meta-item__value ellipsis">{{ selected?.user_agent }}</div>
+        </div>
+        <div v-if="selected?.severity" class="apm-meta-item">
+          <div class="apm-meta-item__label">{{ t('monitorPage.audit.labelSeverity') }}</div>
+          <div class="apm-meta-item__value">
+            <q-badge :color="severityColor(selected!.severity)">{{ selected?.severity }}</q-badge>
+          </div>
+        </div>
+      </div>
+      <JsonCodeViewer :text="selectedJSON" :show-toolbar="false" scroll-height="320px" />
+      <template #actions>
+        <q-btn flat no-caps :label="t('monitorPage.audit.copyJson')" icon="content_copy" @click="copyJSON" />
+      </template>
+    </AppDialog>
   </div>
 </template>
 
@@ -224,6 +207,7 @@
 import { computed, ref, watch } from 'vue';
 import { copyToClipboard } from 'quasar';
 import { useI18n } from 'vue-i18n';
+import AppDialog from '../common/AppDialog.vue';
 import AppPageToolbar from '../layout/AppPageToolbar.vue';
 import AppRegistryTable from '../layout/AppRegistryTable.vue';
 import AppRegistryHoverTip from '../layout/AppRegistryHoverTip.vue';
@@ -364,7 +348,7 @@ async function copyJSON() {
 .audit-event-cell {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--nt-space-2);
 }
 
 .audit-event-cell .apm-status-dot {
@@ -382,13 +366,13 @@ async function copyJSON() {
 .audit-detail-head {
   display: flex;
   align-items: flex-start;
-  gap: 12px;
+  gap: var(--nt-space-3);
   min-width: 0;
 }
 
 .audit-detail-head__dot {
   width: 12px;
   height: 12px;
-  margin-top: 6px;
+  margin-top: var(--nt-space-2);
 }
 </style>

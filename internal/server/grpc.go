@@ -10,16 +10,22 @@ import (
 	agentv1 "aranea-agents/api/kratos/agent/v1"
 	agentbridgev1 "aranea-agents/api/kratos/agentbridge/v1"
 	airefinev1 "aranea-agents/api/kratos/ai_refine/v1"
+	approvalv1 "aranea-agents/api/kratos/approval/v1"
 	artifactv1 "aranea-agents/api/kratos/artifact/v1"
 	avatarv1 "aranea-agents/api/kratos/avatar/v1"
+	ceoboardv1 "aranea-agents/api/kratos/ceoboard/v1"
 	channelv1 "aranea-agents/api/kratos/channel/v1"
 	chatv1 "aranea-agents/api/kratos/chat/v1"
 	computerusev1 "aranea-agents/api/kratos/computeruse/v1"
+	credentialv1 "aranea-agents/api/kratos/credential/v1"
 	cronv1 "aranea-agents/api/kratos/cron/v1"
+	decisionv1 "aranea-agents/api/kratos/decision/v1"
 	ecosystemv1 "aranea-agents/api/kratos/ecosystem/v1"
 	evaluationv1 "aranea-agents/api/kratos/evaluation/v1"
 	evolutionv1 "aranea-agents/api/kratos/evolution/v1"
+	fleetv1 "aranea-agents/api/kratos/fleet/v1"
 	gatewayv1 "aranea-agents/api/kratos/gateway/v1"
+	githubv1 "aranea-agents/api/kratos/github/v1"
 	graphv1 "aranea-agents/api/kratos/graph/v1"
 	hookv1 "aranea-agents/api/kratos/hook/v1"
 	knowledgev1 "aranea-agents/api/kratos/knowledge/v1"
@@ -29,12 +35,14 @@ import (
 	memoryv1 "aranea-agents/api/kratos/memory/v1"
 	modelcatalogv1 "aranea-agents/api/kratos/model_catalog/v1"
 	monitorv1 "aranea-agents/api/kratos/monitor/v1"
+	officev1 "aranea-agents/api/kratos/office/v1"
 	organizationv1 "aranea-agents/api/kratos/organization/v1"
 	packv1 "aranea-agents/api/kratos/pack/v1"
 	pluginv1 "aranea-agents/api/kratos/plugin/v1"
+	reviewv1 "aranea-agents/api/kratos/review/v1"
 	runtimeprofilev1 "aranea-agents/api/kratos/runtime_profile/v1"
 	sandboxv1 "aranea-agents/api/kratos/sandbox/v1"
-	decisionv1 "aranea-agents/api/kratos/decision/v1"
+	secopsv1 "aranea-agents/api/kratos/secops/v1"
 	selfimprovementv1 "aranea-agents/api/kratos/self_improvement/v1"
 	sessionv1 "aranea-agents/api/kratos/session/v1"
 	skillv1 "aranea-agents/api/kratos/skill/v1"
@@ -70,6 +78,10 @@ func NewGRPCServer(c *conf.Server, s *ServiceRegistry, lg loggateway.Logger) *gr
 			recovery.Recovery(),
 			servermw.APIToKratos(),
 			validate.Middleware(),
+			// P1-5: 敏感域权限码硬判（必须在 auth.GRPCMiddleware 之后）。
+			servermw.Permission(servermw.DefaultPermissionRegistry(), lg),
+			// P1 补漏: force_reset 强制改密门（豁免组外一律 403）。
+			servermw.ForceResetGate(lg),
 		),
 	}
 	if c.Grpc.Network != "" {
@@ -91,6 +103,7 @@ func NewGRPCServer(c *conf.Server, s *ServiceRegistry, lg loggateway.Logger) *gr
 	llmprovidermodelv1.RegisterLlmProviderModelServiceServer(srv, s.LLM)
 	hookv1.RegisterHookServiceServer(srv, s.Hook)
 	cronv1.RegisterCronServiceServer(srv, s.Cron)
+	credentialv1.RegisterCredentialServiceServer(srv, s.Credential)
 	pluginv1.RegisterPluginServiceServer(srv, s.Plugin)
 	mcpserverv1.RegisterMCPServerServiceServer(srv, s.MCPServer)
 	skillv1.RegisterSkillServiceServer(srv, s.Skill)
@@ -132,6 +145,36 @@ func NewGRPCServer(c *conf.Server, s *ServiceRegistry, lg loggateway.Logger) *gr
 	}
 	if s.SelfImprovement != nil {
 		selfimprovementv1.RegisterSelfImprovementServiceServer(srv, s.SelfImprovement)
+	}
+	if s.Ceoboard != nil {
+		ceoboardv1.RegisterCeoboardServiceServer(srv, s.Ceoboard)
+	}
+	if s.ApprovalCenter != nil {
+		approvalv1.RegisterApprovalCenterServiceServer(srv, s.ApprovalCenter)
+	}
+	if s.Review != nil {
+		reviewv1.RegisterReviewServiceServer(srv, s.Review)
+	}
+	if s.OfficeSchedule != nil {
+		officev1.RegisterOfficeScheduleServiceServer(srv, s.OfficeSchedule)
+	}
+	if s.OfficeNotify != nil {
+		officev1.RegisterOfficeNotifyServiceServer(srv, s.OfficeNotify)
+	}
+	if s.OfficeApps != nil {
+		officev1.RegisterOfficeAppsServiceServer(srv, s.OfficeApps)
+	}
+	if s.OfficeMail != nil {
+		officev1.RegisterOfficeMailServiceServer(srv, s.OfficeMail)
+	}
+	if s.Secops != nil {
+		secopsv1.RegisterSecopsServiceServer(srv, s.Secops)
+	}
+	if s.GitHubPanel != nil {
+		githubv1.RegisterGitHubPanelServiceServer(srv, s.GitHubPanel)
+	}
+	if s.Fleet != nil {
+		fleetv1.RegisterFleetServiceServer(srv, s.Fleet)
 	}
 	return srv
 }

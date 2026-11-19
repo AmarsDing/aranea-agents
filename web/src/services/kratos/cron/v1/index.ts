@@ -69,6 +69,9 @@ export type CronTaskRun = {
   outputJson: string | undefined;
   errorMessage: string | undefined;
   createdAt: string | undefined;
+  // 失败核销（workbench 告警 lane 用）：非空 = 该次失败已被人工忽略/核销。
+  resolvedAt: string | undefined;
+  resolvedBy: string | undefined;
 };
 
 export type ListCronTaskRunsRequest = {
@@ -78,11 +81,26 @@ export type ListCronTaskRunsRequest = {
   limit: number | undefined;
   page: number | undefined;
   pageSize: number | undefined;
+  // 默认 false：过滤掉已核销的失败（未核销口径）。
+  includeResolved: boolean | undefined;
 };
 
 export type ListCronTaskRunsResponse = {
   items: CronTaskRun[] | undefined;
   total: number | undefined;
+};
+
+// ResolveCronTaskRunRequest 以一次运行 id 定位任务，核销该任务当前全部
+// 未核销失败（避免同一任务历史失败逐条复现）。
+export type ResolveCronTaskRunRequest = {
+  //
+  // Behaviors: REQUIRED
+  id: string | undefined;
+};
+
+export type ResolveCronTaskRunResponse = {
+  run: CronTaskRun | undefined;
+  resolved: number | undefined;
 };
 
 export type TriggerCronTaskRequest = {
@@ -106,6 +124,7 @@ export interface CronService {
   ListCronTaskRuns(request: ListCronTaskRunsRequest): Promise<ListCronTaskRunsResponse>;
   TriggerCronTask(request: TriggerCronTaskRequest): Promise<CronTaskRun>;
   ResetCronTaskFailures(request: ResetCronTaskFailuresRequest): Promise<CronTask>;
+  ResolveCronTaskRun(request: ResolveCronTaskRunRequest): Promise<ResolveCronTaskRunResponse>;
 }
 
 type RequestType = {
@@ -233,6 +252,9 @@ export function createCronServiceClient(
       if (request.pageSize) {
         queryParams.push(`pageSize=${encodeURIComponent(request.pageSize.toString())}`)
       }
+      if (request.includeResolved) {
+        queryParams.push(`includeResolved=${encodeURIComponent(request.includeResolved.toString())}`)
+      }
       let uri = path;
       if (queryParams.length > 0) {
         uri += `?${queryParams.join("&")}`
@@ -285,6 +307,26 @@ export function createCronServiceClient(
         service: "CronService",
         method: "ResetCronTaskFailures",
       }) as Promise<CronTask>;
+    },
+    ResolveCronTaskRun(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      if (!request.id) {
+        throw new Error("missing required field request.id");
+      }
+      const path = `v1/cron-task-runs/${request.id}/resolve`; // eslint-disable-line quotes
+      const body = JSON.stringify(request);
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "CronService",
+        method: "ResolveCronTaskRun",
+      }) as Promise<ResolveCronTaskRunResponse>;
     },
   };
 }

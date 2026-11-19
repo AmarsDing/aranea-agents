@@ -85,6 +85,7 @@
                     flat
                     round
                     dense
+                    class="pwd-vis-toggle"
                     :icon="showPwd ? 'visibility_off' : 'visibility'"
                     tabindex="-1"
                     @click.stop="showPwd = !showPwd"

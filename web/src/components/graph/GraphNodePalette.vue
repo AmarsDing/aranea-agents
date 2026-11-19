@@ -27,7 +27,7 @@
           draggable="true"
           @dragstart="onDragStart($event, item.type)"
         >
-          <div class="graph-node-palette__icon" :style="{ '--node-accent': item.style.borderColor }">
+          <div :class="['graph-node-palette__icon', `graph-node-palette__icon--${item.type}`]">
             <q-icon :name="item.style.icon" size="16px" />
           </div>
           <div class="graph-node-palette__info">

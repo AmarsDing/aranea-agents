@@ -42,35 +42,65 @@
       @refresh="loadAll"
     />
 
-    <q-banner v-if="error" rounded class="app-page-error-banner q-mb-md">
-      {{ error }}
-      <template #action>
-        <q-btn flat dense :label="t('channelsPage.retry')" class="text-white" @click="loadAll" />
-      </template>
-    </q-banner>
-
-    <ChannelsTable
-      :rows="pagedRows"
-      :catalog="catalog"
-      :loading="loading"
-      :toggling-id="togglingId"
-      :testing-id="testingId"
-      @toggle-enabled="toggleRow"
-      @test-connection="testRow"
-      @copy-webhook="copyWebhook"
-      @ops="openOps"
-      @edit="openEdit"
-      @remove="confirmDelete"
+    <AppStatePanel
+      v-if="pageState === 'loading'"
+      variant="loading"
+      :rows="5"
+    />
+    <AppStatePanel
+      v-else-if="pageState === 'error'"
+      variant="error"
+      :title="error"
+      :action-label="t('channelsPage.retry')"
+      action-icon="refresh"
+      @action="loadAll"
+    />
+    <AppStatePanel
+      v-else-if="pageState === 'forbidden'"
+      variant="forbidden"
+    />
+    <AppStatePanel
+      v-else-if="pageState === 'empty'"
+      variant="empty"
+      :action-label="t('channelsPage.add')"
+      action-icon="add"
+      @action="openCreate"
     />
 
-    <AppRegistryPagination
-      v-model:page="page"
-      v-model:page-size="pageSize"
-      :page-max="pageMax"
-      :total="total"
-      :loading="loading"
-      :label="t('channelsPage.paginationUnit')"
-    />
+    <template v-else>
+      <AppStatePanel
+        v-if="pageState === 'partial'"
+        class="q-mb-md"
+        variant="partial"
+        dense
+        :description="error"
+        :action-label="t('channelsPage.retry')"
+        action-icon="refresh"
+        @action="loadAll"
+      />
+      <ChannelsTable
+        :rows="pagedRows"
+        :catalog="catalog"
+        :loading="loading"
+        :toggling-id="togglingId"
+        :testing-id="testingId"
+        @toggle-enabled="toggleRow"
+        @test-connection="testRow"
+        @copy-webhook="copyWebhook"
+        @ops="openOps"
+        @edit="openEdit"
+        @remove="confirmDelete"
+      />
+
+      <AppRegistryPagination
+        v-model:page="page"
+        v-model:page-size="pageSize"
+        :page-max="pageMax"
+        :total="total"
+        :loading="loading"
+        :label="t('channelsPage.paginationUnit')"
+      />
+    </template>
 
     <section v-if="opsChannel" ref="opsSectionRef" class="channel-ops-section">
       <div class="row items-center justify-between q-mb-sm">
@@ -98,7 +128,7 @@
 </template>
 
 <script setup lang="ts">
-import { nextTick, ref, watch } from 'vue';
+import { computed, nextTick, ref, watch } from 'vue';
 import ChannelCatalogFilters from '../components/channels/ChannelCatalogFilters.vue';
 import ChannelHeroSection from '../components/channels/ChannelHeroSection.vue';
 import ChannelsTable from '../components/channels/ChannelsTable.vue';
@@ -106,7 +136,9 @@ import ChannelEditorDialog from '../features/channels/ChannelEditorDialog.vue';
 import ChannelDeliveriesPanel from '../features/channels/ChannelDeliveriesPanel.vue';
 import ChannelTurnJobsPanel from '../features/channels/ChannelTurnJobsPanel.vue';
 import AppRegistryPagination from '../components/layout/AppRegistryPagination.vue';
+import AppStatePanel from '../components/common/AppStatePanel.vue';
 import { useChannelsPage } from '../features/channels/useChannelsPage';
+import { resolvePageState } from './pageState';
 
 const {
   t,
@@ -118,6 +150,7 @@ const {
   total,
   loading,
   error,
+  forbidden,
   search,
   typeFilter,
   statusFilter,
@@ -142,6 +175,15 @@ const {
   confirmDelete,
 } = useChannelsPage();
 
+const pageState = computed(() =>
+  resolvePageState({
+    loading: loading.value,
+    error: error.value,
+    count: pagedRows.value.length,
+    forbidden: forbidden.value,
+  }),
+);
+
 const opsSectionRef = ref<HTMLElement | null>(null);
 
 watch(opsChannel, async (row) => {
@@ -156,7 +198,7 @@ watch(opsChannel, async (row) => {
   margin-top: var(--space-4);
   padding: var(--space-4);
   border: 1px solid var(--glass-border);
-  border-radius: 20px;
+  border-radius: 12px;
   background: var(--glass-elevated);
 }
 

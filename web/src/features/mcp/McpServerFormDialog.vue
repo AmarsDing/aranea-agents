@@ -1,27 +1,31 @@
 // Container: approved — feature-local panel/dialog; data from Page composable via props.
 <template>
-  <q-dialog :model-value="modelValue" persistent @update:model-value="$emit('update:modelValue', $event)">
-    <q-card class="mcp-form-card app-dialog-card app-dialog-card--xl app-glass-dialog">
-      <q-card-section class="row items-start justify-between q-gutter-md">
-        <div>
-          <div class="text-h6">{{ row ? '编辑 MCP 服务器' : '添加 MCP 服务器' }}</div>
-          <div class="text-caption text-grey-7">配置连接方式、请求头、环境变量与工具前缀。</div>
-        </div>
-        <q-btn flat dense round icon="close" aria-label="关闭" @click="$emit('update:modelValue', false)" />
-      </q-card-section>
-      <q-separator />
-
-      <q-card-section class="mcp-form-scroll">
-        <q-form class="app-form-field-grid app-form-field-grid--2col" @submit.prevent="save">
+  <AppDialog
+    :model-value="modelValue"
+    :title="row ? t('domains.mcpForm.editTitle') : t('domains.mcpForm.createTitle')"
+    :subtitle="t('domains.mcpForm.subtitle')"
+    size="xl"
+    icon="hub"
+    persistent
+    :loading="saving"
+    @update:model-value="$emit('update:modelValue', $event)"
+  >
+    <q-form class="app-form-field-grid app-form-field-grid--2col" @submit.prevent="save">
           <q-input
             v-model="form.name"
             dense
             outlined
-            label="标识符 (key) *"
+            :label="t('domains.mcpForm.key')"
             placeholder="my-mcp-server"
             :rules="[slugRule]"
           />
-          <q-input v-model="form.display_name" dense outlined label="显示名称" placeholder="sqlserver" />
+          <q-input
+            v-model="form.display_name"
+            dense
+            outlined
+            :label="t('domains.mcpForm.displayName')"
+            placeholder="sqlserver"
+          />
           <q-input
             v-model="form.description"
             class="app-grid-span-full"
@@ -29,11 +33,11 @@
             outlined
             autogrow
             type="textarea"
-            label="描述"
+            :label="t('domains.mcpForm.description')"
           />
 
           <div class="app-grid-span-full">
-            <div class="section-label q-mb-sm">传输方式 *</div>
+            <div class="section-label q-mb-sm">{{ t('domains.mcpForm.transport') }}</div>
             <q-btn-toggle
               v-model="form.transport"
               spread
@@ -61,7 +65,7 @@
               v-model="form.command"
               dense
               outlined
-              label="Command *"
+              :label="t('domains.mcpForm.command')"
               placeholder="node"
               :rules="[commandRule]"
             />
@@ -71,15 +75,29 @@
               outlined
               autogrow
               type="textarea"
-              label="Args"
-              hint="每行一个参数，例如 server.js"
+              :label="t('domains.mcpForm.args')"
+              :hint="t('domains.mcpForm.argsHint')"
             />
           </template>
 
-          <q-input v-model="form.tool_prefix" dense outlined label="工具前缀" hint="Tools: mcp_{prefix}__{tool}">
+          <q-input
+            v-model="form.tool_prefix"
+            dense
+            outlined
+            :label="t('domains.mcpForm.toolPrefix')"
+            hint="Tools: mcp_{prefix}__{tool}"
+          >
             <template #prepend>mcp_</template>
           </q-input>
-          <q-input v-model.number="form.timeout_sec" dense outlined type="number" min="1" suffix="s" label="超时" />
+          <q-input
+            v-model.number="form.timeout_sec"
+            dense
+            outlined
+            type="number"
+            min="1"
+            suffix="s"
+            :label="t('domains.mcpForm.timeout')"
+          />
           <q-input
             v-model.number="form.session_reconnect_max"
             dense
@@ -87,35 +105,35 @@
             type="number"
             min="0"
             max="10"
-            label="会话重连次数"
-            hint="SSE / Streamable HTTP 断线重连上限，0=关闭"
+            :label="t('domains.mcpForm.reconnect')"
+            :hint="t('domains.mcpForm.reconnectHint')"
           />
-          <q-toggle v-model="form.enabled" color="primary" label="启用" />
+          <q-toggle v-model="form.enabled" color="primary" :label="t('domains.mcpForm.enabled')" />
           <q-select
             v-model="form.probe_mode"
             dense
             outlined
             emit-value
             map-options
-            label="探活模式"
+            :label="t('domains.mcpForm.probeMode')"
             :options="probeModeOptions"
-            hint="connectivity=仅网络；auth_aware=带 OAuth/API Key"
+            :hint="t('domains.mcpForm.probeHint')"
           />
           <q-toggle
             v-model="form.require_user_credentials"
             class="app-grid-span-full"
             color="primary"
-            label="每个用户须配置自己的凭据，否则无法使用"
+            :label="t('domains.mcpForm.requireUserCredentials')"
           />
           <q-toggle
             v-model="form.allow_adhoc_http"
             class="app-grid-span-full"
             color="warning"
-            label="允许 Broker AdHoc HTTP（仍需系统设置 mcp_allow_adhoc_http 开启）"
+            :label="t('domains.mcpForm.allowAdhoc')"
           />
 
           <div v-if="usesUrl" class="app-grid-span-full">
-            <div class="section-label q-mb-sm">API 认证（可选）</div>
+            <div class="section-label q-mb-sm">{{ t('domains.mcpForm.apiAuth') }}</div>
             <div class="app-form-field-grid q-mb-md">
               <q-select
                 v-model="form.auth_type"
@@ -123,7 +141,7 @@
                 outlined
                 emit-value
                 map-options
-                label="认证方式"
+                :label="t('domains.mcpForm.authType')"
                 :options="authTypeOptions"
               />
               <q-input
@@ -131,9 +149,9 @@
                 v-model="form.auth_header_name"
                 dense
                 outlined
-                label="Header 名称"
+                :label="t('domains.mcpForm.headerName')"
                 placeholder="Authorization"
-                hint="留空则使用 Authorization"
+                :hint="t('domains.mcpForm.headerHint')"
               />
               <q-input
                 v-if="form.auth_type && !isOAuthAuth"
@@ -141,7 +159,7 @@
                 dense
                 outlined
                 type="password"
-                label="API Key / Token"
+                :label="t('domains.mcpForm.apiKey')"
                 placeholder="sk-..."
               />
               <template v-if="isOAuthAuth">
@@ -161,7 +179,7 @@
                   dense
                   outlined
                   type="password"
-                  label="Access Token（可选，静态）"
+                  :label="t('domains.mcpForm.accessToken')"
                 />
                 <q-input
                   v-if="form.auth_type === 'oauth2_refresh'"
@@ -175,7 +193,7 @@
               </template>
             </div>
             <div class="row items-center justify-between q-mb-xs">
-              <div class="section-label">请求头</div>
+              <div class="section-label">{{ t('domains.mcpForm.headers') }}</div>
               <q-btn
                 flat
                 dense
@@ -183,7 +201,7 @@
                 no-caps
                 color="primary"
                 icon="add"
-                label="添加请求头"
+                :label="t('domains.mcpForm.addHeader')"
                 @click="addPair('headers')"
               />
             </div>
@@ -192,13 +210,13 @@
               :key="`header-${index}`"
               class="app-form-field-grid app-form-field-grid--wide items-end q-mb-sm"
             >
-              <q-input v-model="item.key" dense outlined placeholder="Header 名称" />
+              <q-input v-model="item.key" dense outlined :placeholder="t('domains.mcpForm.headerName')" />
               <q-input
                 v-model="item.value"
                 dense
                 outlined
                 :type="isSensitiveKey(item.key) ? 'password' : 'text'"
-                placeholder="值"
+                :placeholder="t('domains.mcpForm.value')"
               />
               <div class="app-actions-bar app-actions-bar--start">
                 <q-btn
@@ -207,7 +225,7 @@
                   round
                   icon="delete"
                   color="negative"
-                  aria-label="删除请求头"
+                  :aria-label="t('domains.mcpForm.removeHeader')"
                   @click="removePair('headers', index)"
                 />
               </div>
@@ -216,21 +234,30 @@
 
           <div class="app-grid-span-full">
             <div class="row items-center justify-between q-mb-xs">
-              <div class="section-label">环境变量</div>
-              <q-btn flat dense rounded no-caps color="primary" icon="add" label="添加变量" @click="addPair('env')" />
+              <div class="section-label">{{ t('domains.mcpForm.env') }}</div>
+              <q-btn
+                flat
+                dense
+                rounded
+                no-caps
+                color="primary"
+                icon="add"
+                :label="t('domains.mcpForm.addEnv')"
+                @click="addPair('env')"
+              />
             </div>
             <div
               v-for="(item, index) in form.env"
               :key="`env-${index}`"
               class="app-form-field-grid app-form-field-grid--wide items-end q-mb-sm"
             >
-              <q-input v-model="item.key" dense outlined placeholder="变量名称" />
+              <q-input v-model="item.key" dense outlined :placeholder="t('domains.mcpForm.envKey')" />
               <q-input
                 v-model="item.value"
                 dense
                 outlined
                 :type="isSensitiveKey(item.key) ? 'password' : 'text'"
-                placeholder="值"
+                :placeholder="t('domains.mcpForm.value')"
               />
               <div class="app-actions-bar app-actions-bar--start">
                 <q-btn
@@ -239,7 +266,7 @@
                   round
                   icon="delete"
                   color="negative"
-                  aria-label="删除变量"
+                  :aria-label="t('domains.mcpForm.removeEnv')"
                   @click="removePair('env', index)"
                 />
               </div>
@@ -247,53 +274,55 @@
           </div>
 
           <div v-if="serverError" class="app-grid-span-full text-negative">{{ serverError }}</div>
-        </q-form>
-      </q-card-section>
+    </q-form>
 
-      <q-separator />
-      <q-card-actions class="app-actions-bar">
-        <q-btn
-          outline
-          rounded
-          no-caps
-          color="secondary"
-          icon="rule"
-          label="预检配置"
-          :loading="validating"
-          :disable="!canSave || saving"
-          @click="runValidate"
-        />
-        <q-btn
-          outline
-          rounded
-          no-caps
-          color="primary"
-          icon="science"
-          label="测试连接"
-          :loading="testing"
-          :disable="!canSave || saving"
-          @click="saveAndTest"
-        />
-        <q-space />
-        <q-btn flat rounded no-caps label="取消" @click="$emit('update:modelValue', false)" />
-        <q-btn
-          color="primary"
-          rounded
-          unelevated
-          no-caps
-          :label="row ? '保存' : '创建'"
-          :loading="saving"
-          :disable="!canSave"
-          @click="save"
-        />
-      </q-card-actions>
-    </q-card>
-  </q-dialog>
+    <template #actions>
+      <q-btn
+        outline
+        rounded
+        no-caps
+        color="secondary"
+        icon="rule"
+        :label="t('domains.mcpForm.validate')"
+        :loading="validating"
+        :disable="!canSave || saving"
+        @click="runValidate"
+      />
+      <q-btn
+        outline
+        rounded
+        no-caps
+        color="primary"
+        icon="science"
+        :label="t('domains.mcpForm.test')"
+        :loading="testing"
+        :disable="!canSave || saving"
+        @click="saveAndTest"
+      />
+      <q-space />
+      <q-btn flat rounded no-caps :label="t('domains.mcpForm.cancel')" @click="$emit('update:modelValue', false)" />
+      <q-btn
+        color="primary"
+        rounded
+        unelevated
+        no-caps
+        data-test="mcp-server-save"
+        :label="row ? t('domains.mcpForm.save') : t('domains.mcpForm.create')"
+        :loading="saving"
+        :disable="!canSave"
+        @click="save"
+      />
+    </template>
+  </AppDialog>
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n';
+import AppDialog from '../../components/common/AppDialog.vue';
 import type { McpServerRow } from './types';
 import { useMcpServerForm } from './useMcpServerForm';
+
+const { t } = useI18n();
 
 const props = defineProps<{ modelValue: boolean; row: McpServerRow | null }>();
 const emit = defineEmits<{ 'update:modelValue': [value: boolean]; saved: [row: McpServerRow]; tested: [] }>();

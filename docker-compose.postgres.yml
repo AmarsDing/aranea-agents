@@ -1,13 +1,14 @@
-# Local Postgres 16 + pgvector for Aranea (L3 memory + Knowledge).
-# Usage:
-#   docker compose -f docker-compose.postgres.yml up -d
-#   go run ./cmd/pginit -conf ./configs/config1.yaml
+# Local Postgres 16 + pgvector — 仅离线/隔离调试用（默认不启动）。
 #
-# Then set data.postgres.source to:
-#   postgres://aranea:aranea@127.0.0.1:5433/aranea?sslmode=disable
+# 2026-11-10 起 PostgreSQL 统一由工作区共享栈提供：
+#   E:\teamwork\infra（127.0.0.1:5436，库 aranea / 角色 aranea_app，口令见 infra/.env）
+# 本文件保留仅为「不依赖共享栈的自包含调试」，必须显式启用：
+#   docker compose -f docker-compose.postgres.yml --profile standalone-db up -d
+# 不得映射共享栈保留端口（5436），也不得作为默认部署路径。
 
 services:
   postgres:
+    profiles: ["standalone-db"]
     image: pgvector/pgvector:pg16
     container_name: aranea-pgvector
     environment:
@@ -15,7 +16,7 @@ services:
       POSTGRES_PASSWORD: aranea
       POSTGRES_DB: aranea
     ports:
-      - "5433:5432"
+      - "127.0.0.1:5433:5432"
     volumes:
       - aranea_pg_data:/var/lib/postgresql/data
     healthcheck:

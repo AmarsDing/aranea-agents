@@ -173,6 +173,7 @@ export const EVOLUTION_SUGGESTION_TABLE_COLUMNS: QTableColumn<SkillEvolutionView
     'targetType',
     'left',
     REGISTRY_COL_W.category,
+    { cardRole: 'meta' },
   ),
   registryCol<SkillEvolutionView>(
     'targetId',
@@ -180,6 +181,7 @@ export const EVOLUTION_SUGGESTION_TABLE_COLUMNS: QTableColumn<SkillEvolutionView
     'targetId',
     'left',
     REGISTRY_COL_W.name,
+    { cardRole: 'title' },
   ),
   registryCol<SkillEvolutionView>(
     'actionType',
@@ -187,6 +189,7 @@ export const EVOLUTION_SUGGESTION_TABLE_COLUMNS: QTableColumn<SkillEvolutionView
     'actionType',
     'left',
     REGISTRY_COL_W.category,
+    { cardRole: 'meta' },
   ),
   registryCol<SkillEvolutionView>(
     'status',
@@ -194,6 +197,7 @@ export const EVOLUTION_SUGGESTION_TABLE_COLUMNS: QTableColumn<SkillEvolutionView
     'status',
     'left',
     REGISTRY_COL_W.status,
+    { cardRole: 'status' },
   ),
   registryCol<SkillEvolutionView>(
     'lifecycleStatus',
@@ -201,6 +205,7 @@ export const EVOLUTION_SUGGESTION_TABLE_COLUMNS: QTableColumn<SkillEvolutionView
     'lifecycleStatus',
     'left',
     REGISTRY_COL_W.status,
+    { cardRole: 'meta' },
   ),
   registryCol<SkillEvolutionView>(
     'triggerReason',
@@ -222,6 +227,7 @@ export const EVOLUTION_SUGGESTION_TABLE_COLUMNS: QTableColumn<SkillEvolutionView
     'createdAt',
     'left',
     REGISTRY_COL_W.timeWide,
+    { cardRole: 'meta' },
   ),
   registryColActions<SkillEvolutionView>(),
 ];

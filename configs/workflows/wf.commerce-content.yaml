@@ -1,0 +1,123 @@
+# 电商内容线(链路 A)— 声明式工作流注册单元
+# 依据:docs/CEO-Agent/01-CEO监控看板方案.md v0.2 §14.2;字段均有代码证据(见各行注释)。
+# [待补] 语义:值含 "[待补" 的元素在加载期被显式跳过并记入注册表报告,不臆造字段。
+api_version: ceoboard/v1
+kind: Workflow
+id: wf.commerce-content
+name: 电商内容线
+biz_line: ecommerce
+owner: media-team
+version: 4
+permissions: [ceo, oncall, viewer]
+changelog:
+  - { version: 4, date: "2026-11-03", note: "P0 落地:探针端点按实测修正(HCF media:7790 无宿主映射,以 admin:7789 /healthz 代理平台健康)" }
+
+# 工作流级探针:HCF admin /healthz(裸端点,实测 200 {"status":"ok"})
+# 证据: HotCraftFlow/apps/server/app/media/internal/server/rest.go:96-100(裸 /healthz 无鉴权);
+#        deploy/compose/app.compose.yml:88 "media:7790 不映射宿主端口" → 以 admin:7789 代理(app.compose.yml:32)。
+probe: { type: rest, path: "GET http://192.168.4.44:7789/healthz", interval: 30s, stale_after: 90s }
+
+nodes:
+  - id: a1-intel
+    name: 情报采集
+    order: 1
+    enter: "event(subject='mm.intel.raw')"
+    exit:  "event(subject='mm.intel.normalized.v1')"
+    branch_out: [{ when: "event(subject='mm.intel.blocked.v1')", to: terminal.blocked }]  # 合规拦截分支,envelope.go
+    source:
+      adapter: nats-jetstream                  # P0 不接 NATS(方案 §10),节点显示"适配器未接入(P1)"
+      endpoint: "nats://192.168.4.44:14222"    # deploy/compose/base.compose.yml:75
+      stream: MM_INTEL                         # pkg/events/streams.go:51-67
+      subjects: ["mm.intel.raw", "mm.intel.normalized.v1", "mm.intel.blocked.v1"]
+      dedupe_key: event_id                     # evt_ 前缀幂等键, mediacontract/envelope.go:12
+      field_map:
+        entity_id: "[待补] intel 契约 payload 字段名(mediacontract intel.go)"   # 跳过:不编字段
+        occurred_at: occurred_at               # 信封顶层字段已核实,保留
+    metrics:
+      - { id: m.a1.throughput, unit: "条/分", window: 1m, expr: "count(exit)",
+          thresholds: { yellow: "<1 持续30m", red: "=0 持续30m 且探针活" } }
+      - { id: m.a1.block_rate, unit: "%", window: 5m, expr: "ratio(count(branch.blocked), count(enter))" }
+    drill:
+      - { label: 原始情报明细, type: rest, path: "GET /api/v1/media/jobs/{job_id}/events",
+          note: "SSE 权威源 media_job_events,可回放(jobstore.go:84-91)", empty_state: "本窗口无采集事件" }
+
+  - id: a2-topic
+    name: 热点/选题
+    order: 2
+    enter: "event(subject='mm.trend.burst.v1')"
+    exit:  "event(subject='mm.trend.candidate.v1')"   # CandidateRoute: mme|mia|both, enums.go:87-161
+    source:
+      adapter: nats-jetstream                  # P0 不接 NATS → 未接入
+      endpoint: "nats://192.168.4.44:14222"
+      stream: MM_TREND
+      subjects: ["mm.trend.snapshot.v1", "mm.trend.burst.v1", "mm.trend.candidate.v1"]
+      dedupe_key: event_id
+      field_map:
+        entity_id: "[待补] trend 契约 payload 字段名"
+    metrics:
+      - { id: m.a2.lead_time, unit: s, window: 5m, expr: "latency(a1.exit, a2.exit)", precompute: rolling_p50 }
+
+  - id: a3-produce
+    name: 内容生产(MIA/MME)
+    order: 3
+    enter: "job(state='queued', lane='media')"        # jobstore.State, jobstore.go:26-32
+    exit:  "job(state in ('done','failed','cancelled'))"
+    source:
+      adapter: rest-poll
+      # [待补] 通用 studio jobs 列表 proto 路由;参照 drama.proto:39 ListDramaRuns,但其响应
+      # 是否承载通用 job 字段未核实 → 整个 source 跳过,节点显示"数据未接通(声明待补)"。
+      rest_path: "[待补] studio jobs 列表 proto 路由(参照 drama.proto:39,未核实通用性)"
+      sse_path: "GET /api/v1/media/jobs/{id}/events"  # rest.go:89(增量通道,P1)
+      field_map: { state: state, queued_at: queued_at, finished_at: finished_at }  # jobstore.go:78-80
+    metrics:
+      - { id: m.a3.backlog, unit: 个, window: realtime, expr: "gauge(count(state='queued'))",
+          thresholds: { yellow: ">20", red: ">50" } }
+      - { id: m.a3.cycle, unit: s, window: 5m, expr: "latency(queued_at, finished_at)", precompute: rolling_p50_p95 }
+      - { id: m.a3.fail_rate, unit: "%", window: 5m, expr: "ratio(count(state='failed'), count(exit))" }
+    drill:
+      - { label: 发布审批队列, type: rest, path: "GET /api/v1/media/map/approvals" }   # map_service.proto:98
+
+  - id: a4-publish
+    name: 发布分发(MAP)
+    order: 4
+    enter: "dispatch_unit(state='submitted')"
+    exit:  "event(subject='mm.map.feedback.v1')"      # envelope.go:69
+    source:
+      adapter: hybrid                               # nats(MM_PUB) + rest 对账
+      endpoint: "nats://192.168.4.44:14222"
+      stream: MM_PUB
+      # P2 实测:44 上 MM_PUB 不存在——非声明漂移,而是 MAP worker 未启用时 EnsurePubStream 不建流的
+      # 预期降级(map/feedback_publisher.go:65-76;smoke.sh:52-63 明示)。stream_optional: true →
+      # 看板标灰"未启用"而非标红"声明漂移";MAP 启用后自动转绿(启动探测到流即消费)。
+      stream_optional: true
+      subjects: ["mm.map.dispatch.v1", "mm.map.feedback.v1"]
+      rest_path: "GET http://192.168.4.44:7789/api/v1/media/map/dispatch-units"  # map_service.proto:56;注:实际在 media:7790(未映射宿主),经 admin 可达性待核
+      field_map:
+        entity_id: "[待补] dispatch 契约 payload 字段名"
+    metrics:
+      - id: m.a4.success
+        unit: "%"
+        window: 5m
+        expr: "ratio(count(feedback.ok), count(dispatch))"
+        thresholds: { yellow: "<95%", red: "<80%" }
+        pending: "[待补] MAP feedback 状态枚举(dispatch.go 契约)"   # 该指标显式跳过
+
+  - id: a5-opportunity
+    name: 商机(aranea)
+    order: 5
+    enter: "webhook(event='opportunity.created')"     # config.mvp.media-commerce.example.yaml:16-25
+    exit:  "opportunity(status in ('acknowledged','dismissed','converted'))"  # types.go:10-13
+    source:
+      adapter: webhook-recv                         # 主通道:看板接收端 /api/v1/webhooks/aranea
+      # E 阶段 W1b(A-2):原对账轮询 GET /api/v1/mvp/opportunities 已收编下线;
+      # 新端点 /v1/review/opportunities 带 RBAC(review.view),而轮询器 token
+      # provider 仅支持 nt/hcf 登录协议、暂无 aranea 自身凭据——对账轨暂缺
+      # (事件轨为主,节点不因对账缺失误红),待补 aranea token provider 后恢复。
+      dedupe_key: idempotency_key                   # hook_deliveries.sql:3-24
+      field_map: { entity_id: id, score: score, audience: audience, status: status }  # types.go:23-34
+    metrics:
+      - { id: m.a5.received, unit: 条, window: 1h, expr: "count(enter)" }   # P0 可算:webhook 接收计数
+      - { id: m.a5.conv, unit: "%", window: 1h, expr: "ratio(count(status='converted'), count(status in ('converted','dismissed')))" }
+    drill:
+      - { label: 供应商候选, type: rest, path: "GET http://192.168.4.44:8800/api/v1/mvp/sourcing?opportunity_id={id}",
+          empty_state: "该商机暂无供应商候选" }       # mvp/api.ts:99

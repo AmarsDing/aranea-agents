@@ -69,31 +69,51 @@
     </section>
 
     <section class="taxonomy-page__content" aria-label="组织列表">
-      <q-card v-if="loading" flat bordered class="app-entity-glass-panel taxonomy-tree-shell">
-        <q-card-section>
-          <q-skeleton type="text" width="32%" />
-          <q-skeleton class="q-mt-md" height="240px" />
-        </q-card-section>
-      </q-card>
+      <!-- 五态：无权限 → 只渲染 forbidden 面板，不提供重试。
+           403 时缓存的组织树可能来自其他权限范围，优先于局部失败横幅。 -->
+      <AppStatePanel v-if="forbidden" variant="forbidden" class="q-mb-md" />
 
-      <q-card v-else-if="filteredTree.length === 0" flat bordered class="app-entity-glass-panel taxonomy-empty">
-        <q-card-section class="column items-center text-center">
-          <div class="taxonomy-empty__visual"><q-icon name="account_tree" size="44px" color="primary" /></div>
-          <div class="text-h6 q-mt-md">暂无匹配组织</div>
-          <div class="text-body2 text-grey-7 q-mt-sm">创建第一个公司，再添加部门与职位。</div>
-          <q-btn
-            class="q-mt-md"
-            color="primary"
-            rounded
-            unelevated
-            icon="add"
-            label="新增公司"
-            @click="openCreate('company')"
-          />
-        </q-card-section>
-      </q-card>
+      <!-- 五态：已有组织但刷新失败 → 局部失败横幅，树/卡片照常渲染 -->
+      <AppStatePanel
+        v-else-if="loadError && filteredTree.length > 0"
+        variant="partial"
+        dense
+        class="q-mb-md"
+        :description="loadError"
+        action-label="重试"
+        action-icon="refresh"
+        @action="loadTree()"
+      />
 
-      <template v-else>
+      <!-- 五态：加载失败且无组织 → 只渲染可重试错误面板，不与空态并存。 -->
+      <AppStatePanel
+        v-else-if="loadError"
+        variant="error"
+        class="q-mb-md"
+        :description="loadError"
+        action-label="重试"
+        action-icon="refresh"
+        @action="loadTree()"
+      />
+
+      <AppStatePanel
+        v-if="loading && filteredTree.length === 0 && !loadError && !forbidden"
+        variant="loading"
+        :rows="4"
+      />
+
+      <AppStatePanel
+        v-else-if="!loading && !loadError && !forbidden && filteredTree.length === 0"
+        variant="empty"
+        title="暂无匹配组织"
+        description="创建第一个公司，再添加部门与职位。"
+        icon="account_tree"
+        action-label="新增公司"
+        action-icon="add"
+        @action="openCreate('company')"
+      />
+
+      <template v-else-if="filteredTree.length > 0 && !forbidden">
         <taxonomy-tree
           v-if="viewMode === 'tree'"
           :tree="filteredTree"
@@ -139,6 +159,7 @@
 import { ref } from 'vue';
 import AppPageHero from '../components/layout/AppPageHero.vue';
 import AppPageToolbar from '../components/layout/AppPageToolbar.vue';
+import AppStatePanel from '../components/common/AppStatePanel.vue';
 import TaxonomyTree from '../components/agents/TaxonomyTree.vue';
 import TaxonomyIndustryCard from '../components/agents/TaxonomyIndustryCard.vue';
 import TaxonomyNodeDialog from '../components/agents/TaxonomyNodeDialog.vue';
@@ -148,6 +169,8 @@ import { useTaxonomyPage } from '../features/platform/useTaxonomyPage';
 const {
   isDark,
   loading,
+  loadError,
+  forbidden,
   saving,
   keyword,
   onlyCustom,

@@ -1,12 +1,13 @@
 <template>
-  <q-dialog :model-value="open" @update:model-value="$emit('update:open', !!$event)">
-    <q-card class="app-dialog-card app-dialog-card--sm">
-      <q-card-section>
-        <div class="text-h6">{{ t('knowledgePage.moveDialogTitle') }}</div>
-        <div class="text-caption text-grey-7 ellipsis">{{ docSource }}</div>
-      </q-card-section>
-      <q-card-section class="q-pt-none">
-        <q-select
+  <AppDialog
+    :model-value="open"
+    :title="t('knowledgePage.moveDialogTitle')"
+    :subtitle="docSource"
+    size="sm"
+    :loading="loading"
+    @update:model-value="$emit('update:open', $event)"
+  >
+    <q-select
           :model-value="targetId"
           dense
           outlined
@@ -33,25 +34,24 @@
             </q-item>
           </template>
         </q-select>
-      </q-card-section>
-      <q-card-actions align="right">
-        <q-btn v-close-popup flat no-caps :label="t('knowledgePage.moveCancel')" />
-        <q-btn
-          color="primary"
-          unelevated
-          no-caps
-          :label="t('knowledgePage.moveSubmit')"
-          :disable="!targetId"
-          :loading="loading"
-          @click="$emit('submit')"
-        />
-      </q-card-actions>
-    </q-card>
-  </q-dialog>
+    <template #actions>
+      <q-btn flat no-caps :label="t('knowledgePage.moveCancel')" @click="$emit('update:open', false)" />
+      <q-btn
+        color="primary"
+        unelevated
+        no-caps
+        :label="t('knowledgePage.moveSubmit')"
+        :disable="!targetId"
+        :loading="loading"
+        @click="$emit('submit')"
+      />
+    </template>
+  </AppDialog>
 </template>
 
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n';
+import AppDialog from '../../components/common/AppDialog.vue';
 
 // US-14 文档跨库移动对话框：选项中 dim 与源库不一致的目标库被禁用并提示原因。
 defineProps<{

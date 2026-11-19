@@ -3,6 +3,7 @@ import { useQuasar } from 'quasar';
 import { useRoute, useRouter } from 'vue-router';
 import { storeToRefs } from 'pinia';
 import { i18n } from '../../i18n';
+import { confirm } from '../../composables/useAppConfirm';
 import { GLOBAL_WS_SESSION_ID } from '../../config/runtime';
 import type { Agent } from '../agents/types';
 import type { Team, TeamDefinition, TeamRun, TeamRunEvent, TaskDeadLetterRow } from './types';
@@ -28,6 +29,7 @@ import {
 // TECH-DEBT(FL5): 同 useTeamCompilePreview —— compile RPC 为编辑器即时操作，
 // 不落地全局状态；如需持久化编译结果应迁入 Store。
 import { compileTeamGraph } from '../orchestration/compileApi';
+import { isForbiddenApiError } from '../../utils/kratosError';
 import { useGraphStore } from '../../stores/graph';
 import type { PlatformResourceTreeNode } from '../platform/types';
 
@@ -60,6 +62,8 @@ export function useTeamsPage() {
   // ── List state ──
   const loading = ref(false);
   const error = ref('');
+  /** 列表接口 403：页面据此渲染 forbidden 态（无重试）。 */
+  const forbidden = ref(false);
   const search = ref('');
   const modeFilter = ref('');
   const statusFilter = ref('');
@@ -244,6 +248,7 @@ export function useTeamsPage() {
   async function loadRows() {
     loading.value = true;
     error.value = '';
+    forbidden.value = false;
     try {
       const platformStore = usePlatformStore();
       // Backend Team.department_id references organization tree nodes (not legacy taxonomy).
@@ -251,6 +256,7 @@ export function useTeamsPage() {
       taxonomyTree.value = platformStore.taxonomyTree;
       openRouteEdit();
     } catch (err) {
+      forbidden.value = isForbiddenApiError(err);
       error.value = err instanceof Error ? err.message : '加载 Team 失败';
     } finally {
       loading.value = false;
@@ -390,13 +396,14 @@ export function useTeamsPage() {
     }
   }
 
-  function confirmRemove(team: Team) {
-    $q.dialog({
+  async function confirmRemove(team: Team) {
+    const ok = await confirm({
       title: '删除 Team',
       message: `确定删除「${team.display_name}」？此操作不可撤销。`,
-      cancel: true,
-      persistent: true,
-    }).onOk(() => void remove(team));
+      tone: 'danger',
+    });
+    if (!ok) return;
+    await remove(team);
   }
 
   async function remove(team: Team) {
@@ -571,6 +578,7 @@ export function useTeamsPage() {
     loading,
     saving,
     error,
+    forbidden,
     search,
     modeFilter,
     statusFilter,
@@ -616,6 +624,7 @@ export function useTeamsPage() {
     definitionJSON,
     canSave,
     filteredTeams,
+    paginatedTeams,
     loadRows,
     openCreate,
     openEdit,

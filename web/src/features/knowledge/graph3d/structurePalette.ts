@@ -6,6 +6,7 @@
  * - 边双模式：'unified'（默认，暗青灰隐入背景）/ 'typed'（explicit/entity/semantic 三色）
  * - 纯函数 + localStorage 键解析，渲染层零状态
  */
+import { canvasPalette } from '../../../utils/canvasPalette';
 import { graphLinkColor } from '../graphUi';
 import { hexToRgbFloat } from './palette';
 import { TIER_SUPERNODE, TIER_ULTRANODE } from './tiering';
@@ -16,14 +17,14 @@ export type EdgeColorMode = 'unified' | 'typed';
 export const COLOR_MODE_STORAGE_KEY = 'kg3d-color-mode';
 export const EDGE_COLOR_MODE_STORAGE_KEY = 'kg3d-edge-color-mode';
 
-/** 结构层级色（V13 视频同款三带配色）。 */
-export const STRUCTURE_ULTRA = '#f472b6';
-export const STRUCTURE_SUPER = '#f5c542';
-export const STRUCTURE_REGULAR = '#35c8d0';
-export const STRUCTURE_LEAF = '#16434f';
+/** 结构层级色（V13 视频同款三带配色，取值见 --nt-graph-structure-*）。 */
+export const STRUCTURE_ULTRA = canvasPalette().structure.ultra;
+export const STRUCTURE_SUPER = canvasPalette().structure.super;
+export const STRUCTURE_REGULAR = canvasPalette().structure.regular;
+export const STRUCTURE_LEAF = canvasPalette().structure.leaf;
 
-/** 边统一色：暗青灰（rest 亮度系数下隐入深空底，hover/聚焦提亮通道不受影响）。 */
-export const UNIFIED_EDGE_COLOR = '#4f6b7d';
+/** 边统一色：暗青灰（--nt-graph-edge-unified，rest 亮度系数下隐入深空底）。 */
+export const UNIFIED_EDGE_COLOR = canvasPalette().edgeUnified;
 
 /** localStorage 解析：仅认合法值，其余回退默认。 */
 export function resolveColorMode(stored: string | null | undefined): GraphColorMode {

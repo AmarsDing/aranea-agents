@@ -37,4 +37,3 @@ func provideEvolutionService(catalog *biz.LlmProviderModelUsecase, repo trpcskil
 	})
 	return svc
 }
-

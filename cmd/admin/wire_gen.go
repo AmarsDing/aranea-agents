@@ -21,6 +21,7 @@ import (
 	"aranea-agents/internal/biz/artifact"
 	"aranea-agents/internal/biz/avatar"
 	"aranea-agents/internal/biz/backgroundjob"
+	"aranea-agents/internal/biz/ceoboard"
 	"aranea-agents/internal/biz/computeruse"
 	configgraph2 "aranea-agents/internal/biz/configgraph"
 	"aranea-agents/internal/biz/cron"
@@ -36,6 +37,7 @@ import (
 	"aranea-agents/internal/biz/monitor"
 	"aranea-agents/internal/biz/monitor/alert"
 	"aranea-agents/internal/biz/monitor/heal"
+	"aranea-agents/internal/biz/office"
 	"aranea-agents/internal/biz/plugin"
 	"aranea-agents/internal/biz/session"
 	skill3 "aranea-agents/internal/biz/skill"
@@ -79,9 +81,11 @@ import (
 	"aranea-agents/internal/skill/watch"
 	"aranea-agents/internal/team"
 	"aranea-agents/internal/tools"
+	"aranea-agents/internal/tools/calendar"
 	"aranea-agents/internal/tools/clientbridge"
 	"aranea-agents/internal/tools/codingbridge"
 	"aranea-agents/internal/tools/kanban"
+	"aranea-agents/internal/tools/mail"
 	"aranea-agents/internal/tools/subagent"
 	"aranea-agents/internal/toolspill"
 	"aranea-agents/internal/voice"
@@ -116,7 +120,7 @@ import (
 // Injectors from wire.go:
 
 // wireApp init kratos application.
-func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime, selfImprovement *conf.SelfImprovement, sandbox *conf.Sandbox, debugRecorder *conf.DebugRecorder, logger log.Logger, loggatewayLogger loggateway.Logger, pipeline logpipeline.Pipeline, arg []*conf.LoggingSink) (wireOut, func(), error) {
+func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime, selfImprovement *conf.SelfImprovement, sandbox *conf.Sandbox, ceoboard *conf.Ceoboard, credential *conf.Credential, debugRecorder *conf.DebugRecorder, logger log.Logger, loggatewayLogger loggateway.Logger, pipeline logpipeline.Pipeline, arg []*conf.LoggingSink) (wireOut, func(), error) {
 	reranker := knowledge.NewMemoryReranker(loggatewayLogger)
 	dataData, cleanup, err := data.NewData(confData, loggatewayLogger, reranker)
 	if err != nil {
@@ -137,6 +141,14 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	llmProviderModelRepo := data.NewLlmProviderModelRepo(dataData)
 	llmInspector := provideLLMInspector(loggatewayLogger)
 	credentialCrypto := provideCredentialCrypto(systemSettingRepo, loggatewayLogger)
+	// W2a D3 记忆信封：CredentialCrypto 依赖 systemSettingRepo←Data，无法前置
+	// 为 NewData 参数，装配态后置注入一次（wire_gen 自包含快照，仅此处需要）。
+	dataData.SetFactContentCipher(biz.NewCredentialFactCipher(credentialCrypto))
+	// E 阶段凭据托管（手工镜像 wire.go provideCredentialUsecase——wire_gen
+	// 手工合并约定）。conf.Credential 为 nil 时仅内置高敏清单。
+	credentialRepo := data.NewCredentialRepo(dataData)
+	credentialUsecase := provideCredentialUsecase(credentialRepo, credentialCrypto, credential, loggatewayLogger)
+	credentialService := service.NewCredentialService(credentialUsecase)
 	usageRepo := data.NewUsageRepo(dataData)
 	modelStatsInjector := provideModelStatsInjector(usageRepo, loggatewayLogger)
 	llmProviderModelUsecase := provideLlmProviderModelUsecaseWithDeps(llmProviderModelRepo, llmInspector, credentialCrypto, agentRepository, modelStatsInjector, loggatewayLogger)
@@ -387,7 +399,22 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	agentbridgeTaskEventRepo := data.NewCodingTaskEventRepo(dataData)
 	sessionFactory := service.NewACPSessionFactory()
 	agentBridgeService := service.ProvideAgentBridgeService(agentRepo, projectRepo, agentbridgeTaskRepo, agentbridgeTaskEventRepo, sessionFactory, v2Bus, infra, loggatewayLogger)
-	runtimeTooling := provideRuntimeTooling(plugintrpcRuntime, manager, repository, skillHealthMetricsAdapter, retriever, adaptiveRouter, federatedRetriever, retrievalEvaluator, knowledgeUsecase, factory, kanbanToolBridge, recorderFactory, organizationUsecase, toolResultGate, router, subagentService, parallelToolExecutor, resourceAccessUsecase, deptMailboxUsecase, sessionSearchUsecase, bridge, computerUseUsecase, agentBridgeService, sessionLeases, runtime)
+	// E 阶段 W1c：日程工具窄口（calendar_list / calendar_create_draft）须在
+	// provideRuntimeTooling 之前装配，以注入 ToolBridges.Calendar；officeRepo
+	// 与审批中心/服务层（下方 office 块）复用同一实例。
+	officeRepo := provideOfficeRepo(dataData)
+	officeScheduleUsecase := provideOfficeScheduleUsecase(officeRepo)
+	officeDraftUsecase := provideOfficeDraftUsecase(officeRepo)
+	officeCalendarTool := provideOfficeCalendarTool(officeScheduleUsecase, officeDraftUsecase, sessionUsecase)
+	// E 阶段 W1d：邮件工具窄口（mail_list/mail_read/mail_search/mail_to_task）
+	// 须在 provideRuntimeTooling 之前装配，以注入 ToolBridges.Mail；
+	// officeMailRepo / officeMailKnowledgeSink / officeMailMessageUsecase 与
+	// 邮件服务层（下方 W1d 块）复用同一实例。
+	officeMailRepo := provideOfficeMailRepo(dataData)
+	officeMailKnowledgeSink := provideOfficeMailKnowledgeSink(knowledgeUsecase, loggatewayLogger)
+	officeMailMessageUsecase := provideOfficeMailMessageUsecase(officeMailRepo, officeMailKnowledgeSink, loggatewayLogger)
+	officeMailTool := provideOfficeMailTool(officeMailMessageUsecase, sessionUsecase)
+	runtimeTooling := provideRuntimeTooling(plugintrpcRuntime, manager, repository, skillHealthMetricsAdapter, retriever, adaptiveRouter, federatedRetriever, retrievalEvaluator, knowledgeUsecase, factory, kanbanToolBridge, credentialUsecase, officeCalendarTool, officeMailTool, recorderFactory, organizationUsecase, toolResultGate, router, subagentService, parallelToolExecutor, resourceAccessUsecase, deptMailboxUsecase, sessionSearchUsecase, bridge, computerUseUsecase, agentBridgeService, sessionLeases, runtime)
 	observationReadWriter := data.NewObservationRepo(dataData)
 	patternReadWriter := data.NewPatternRepo(dataData)
 	proposalReadWriter := data.NewProposalRepo(dataData)
@@ -406,7 +433,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	learningLoopUsecase := provideLearningLoopUsecase(observationReadWriter, patternReadWriter, proposalReadWriter, agentRepository, skillEvolutionOrchestrator, loggatewayLogger)
 	turnDeps := provideTeamTurnDeps(sessionUsecase, agentRepository, agentUsecase, toolRepo, toolUsecase, llmProviderModelUsecase, skillUsecase, systemSettingRepo, providerReader, persistenceSet, sessionCompressor, v2Bus, monitorBus, sequencer, learningLoopUsecase, loggatewayLogger, finishObserverHooks)
 	projectorFactory := provideV2ProjectorFactory(sequencer, taskV2Repo, loggatewayLogger)
-	runnerConfig := provideRunnerConfig(plugintrpcRuntime, manager, retriever, adaptiveRouter, federatedRetriever, retrievalEvaluator, knowledgeUsecase, graphUsecase, graphBuilderFactory, taskUsecase, runRegistry, toolUsecase, agentRepository, organizationUsecase, toolResultGate, router, subagentService, kanbanToolBridge, computerUseUsecase, sessionLeases, sandboxManager, a2aUsecase, sessionUsecase, skillUsecase, agentUsecase, systemSettingRepo, projectorFactory, teamUsecase, runtimeReplanner, lifecycle, runtime, loggatewayLogger)
+	runnerConfig := provideRunnerConfig(plugintrpcRuntime, manager, retriever, adaptiveRouter, federatedRetriever, retrievalEvaluator, knowledgeUsecase, graphUsecase, graphBuilderFactory, taskUsecase, runRegistry, toolUsecase, agentRepository, organizationUsecase, toolResultGate, router, subagentService, kanbanToolBridge, credentialUsecase, computerUseUsecase, sessionLeases, sandboxManager, a2aUsecase, sessionUsecase, skillUsecase, agentUsecase, systemSettingRepo, projectorFactory, teamUsecase, runtimeReplanner, lifecycle, runtime, loggatewayLogger)
 	teamRunHeartbeatWriter := data.NewTeamRunHeartbeatWriter(dataData, loggatewayLogger)
 	runner := team.ProvideRunner(teamRepo, teamRepo, teamRepo, teamUsecase, teamRepo, teamRepo, usageUsecase, monitorUsecase, turnDeps, repository, factory, loggatewayLogger, runnerConfig, teamRunHeartbeatWriter)
 	teamRunnerWirePort := service.ProvideTeamRunnerWirePort(runner)
@@ -587,6 +614,11 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	knowledgeService := service.NewKnowledgeService(knowledgeUsecase, multiProviderEmbedder, knowledgeSearchDeps, markdownOrganizer, extractorRegistry, assetStore, v2Bus, systemSettingRepo, writeBackGraphFunc, loggatewayLogger)
 	evaluationService := service.NewEvaluationService(evaluationUsecase, evaluationRunner)
 	redisClient := provideRedisClient(confData, loggatewayLogger)
+	// P1-3 会话吊销存储（手工镜像 wire.go provideTokenVersionStore；本仓库 wire_gen
+	// 按既定约定手工合并，wire 全量再生成当前不可用，见 wire.go 镜像约定注释）。
+	tokenVersionStore := provideTokenVersionStore(dataData, redisClient, loggatewayLogger)
+	// P1 权限底座·DB 版角色→权限解析器（手工镜像 wire.go providePermissionResolver）。
+	rolePermissionResolver := providePermissionResolver(dataData, loggatewayLogger)
 	limiter := provideA2ALimiter(redisClient, loggatewayLogger)
 	a2AService := provideA2AService(a2aUsecase, chatService, agentRepository, endpointRegistry, publicBaseURLStore, limiter, loggatewayLogger)
 	a2AFederationRepo := data.NewA2AFederationRepo(dataData, loggatewayLogger)
@@ -669,7 +701,71 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	configGraphService := provideConfigGraphService(indexer, configgraphRepo, loggatewayLogger)
 	diagnosticsUsecase := provideDiagnosticsUsecase(llmProviderModelUsecase, mcpServerUsecase, agentUsecase, dataData, usageRepo, indexer, configgraphRepo, loggatewayLogger)
 	diagnosticsService := provideDiagnosticsService(diagnosticsUsecase, loggatewayLogger)
-	serviceRegistry := server.NewServiceRegistry(adminService, avatarService, agentService, llmProviderModelService, hookService, cronService, pluginService, mcpServerService, skillService, toolService, serviceSessionService, sessionV2Service, channelService, usageService, monitorService, serviceMemoryService, systemSettingService, modelCatalogService, teamService, chatService, graphService, serviceArtifactService, knowledgeService, evaluationService, a2AService, endpointRegistry, federationService, ecosystemService, gatewayService, channelIngress, aiRefineService, taxonomyService, organizationService, skillIntelligenceService, skillDedupService, packService, skillEvolutionSuggestionService, serviceEvolutionService, selfImprovementService, ecosystemPresetService, aguiCompatService, openAISessionCompatService, a2AExtensionCompatService, twinOpenAPICompatService, runtimeProfileService, learningLoopService, computerUseService, agentBridgeAPI, sandboxService, decisionRecordService, configGraphService, diagnosticsService)
+	// P2-7 ceoboard 域装配（wire-gen-hand-merge-convention：与 wire_part2.go
+	// Build 列表同步镜像；registry 加载/spool/回源凭据失败即拒绝启动）。
+	ceoboardStore := provideCeoboardStore(dataData)
+	ceoboardRuntime, err := provideCeoboardRuntime(ceoboard, ceoboardStore, loggatewayLogger)
+	if err != nil {
+		cleanup()
+		return wireOut{}, nil, err
+	}
+	ceoboardService := provideCeoboardService(ceoboardRuntime, loggatewayLogger)
+	// E 阶段 W1b 统一审批中心 + review.v1 收编（wire-gen-hand-merge-convention：
+	// 与 wire_part2.go Build 列表同步镜像；拍板 A-1/A-2/A-4）。
+	approvalTaskReviewReader := provideApprovalTaskReviewReader(agentbridgeTaskRepo)
+	approvalEvolutionReader := provideApprovalEvolutionReader(unifiedEvolutionRepo)
+	approvalMatrix := provideApprovalMatrix(dataData, monitorUsecase)
+	reviewService := provideReviewService()
+	// E 阶段 W1c office 套件（wire-gen-hand-merge-convention：与 wire_part2.go
+	// Build 列表同步镜像；拍板 K-1..K-5）。日程草案读口先于聚合器装配；
+	// officeRepo / officeScheduleUsecase / officeDraftUsecase 已在上方
+	// provideRuntimeTooling 前装配（日程工具注入），此处复用同一实例。
+	scheduleDraftReader := provideScheduleDraftReader(officeRepo)
+	// E 阶段 W2a D3 secops 离职处置五步（wire-gen-hand-merge-convention：与
+	// wire_part2.go Build 列表同步镜像；拍板 §6.3）。台账实例被 usecase 与
+	// 审批中心 offboard lane 共享。
+	secopsOffboardRepo := provideSecopsOffboardRepo(dataData)
+	approvalOffboardReader := provideApprovalOffboardReader(secopsOffboardRepo)
+	approvalAggregator := provideApprovalAggregator(approvalTaskReviewReader, approvalEvolutionReader, scheduleDraftReader, approvalOffboardReader)
+	secopsOffboardUsecase := provideSecopsOffboardUsecase(adminReader, adminWriter, secopsOffboardRepo, dataData, tokenVersionStore, loggatewayLogger)
+	// E 阶段 W2b D6 密级面（L-1/L-4：标签/水位线/模型策略四 RPC，§7.3）。
+	secopsClassificationRepo := provideSecopsClassificationRepo(dataData)
+	secopsSessionWaterlineRepo := provideSecopsSessionWaterlineRepo(dataData)
+	secopsModelPolicyRepo := provideSecopsModelPolicyRepo(dataData)
+	secopsClassificationUsecase := provideSecopsClassificationUsecase(secopsClassificationRepo, secopsSessionWaterlineRepo, dataData, loggatewayLogger)
+	secopsModelPolicyUsecase := provideSecopsModelPolicyUsecase(secopsModelPolicyRepo, dataData, loggatewayLogger)
+	// E 阶段 W2b D6 V4 脱敏五闸（提案/审批/激活，§7.3 验收 #4）。
+	secopsMaskProposalUsecase := provideSecopsMaskProposalUsecase(dataData, loggatewayLogger)
+	secopsService := provideSecopsService(secopsOffboardUsecase, secopsClassificationUsecase, secopsModelPolicyUsecase, secopsMaskProposalUsecase, loggatewayLogger)
+	// E 阶段 W2c G GitHub 研发情报面板（需求 §4；手工镜像 wire_githubpanel.go）。
+	gitHubPanelUsecase := provideGitHubPanelUsecase(dataData, credentialUsecase, loggatewayLogger)
+	gitHubPanelService := provideGitHubPanelService(gitHubPanelUsecase, loggatewayLogger)
+	// Harness 多任务运行台（手工镜像 wire_fleet.go）。
+	fleetUsecase := provideFleetUsecase(dataData, projectRepo, confServer, loggatewayLogger)
+	fleetService := provideFleetService(fleetUsecase)
+	officeNotifyUsecase := provideOfficeNotifyUsecase(officeRepo)
+	officeICalUsecase := provideOfficeICalUsecase(officeRepo)
+	officeAppsUsecase := provideOfficeAppsUsecase(officeRepo)
+	officeReminderWorker := provideOfficeReminderWorker(officeRepo, channelUsecase, loggatewayLogger)
+	officeScheduleService := provideOfficeScheduleService(officeScheduleUsecase, officeDraftUsecase, officeICalUsecase)
+	// 统一收件箱：依赖日程服务，故审批中心服务在其后装配（手工镜像 wire_approval.go）。
+	inboxDeps := provideInboxDeps(agentBridgeService, agentService, skillEvolutionSuggestionService, officeScheduleService, chatService, decisionRecordService, reviewService, teamService, cronService)
+	approvalCenterService := provideApprovalCenterService(approvalAggregator, approvalMatrix, inboxDeps)
+	officeNotifyService := provideOfficeNotifyService(officeNotifyUsecase)
+	officeAppsService := provideOfficeAppsService(officeAppsUsecase)
+	// E 阶段 W1d 邮件（wire-gen-hand-merge-convention：与 wire_part2.go Build
+	// 列表同步镜像；拍板 E-1..E-5）。账号/同步/阅读/摘要/IDLE。
+	// officeMailRepo / officeMailKnowledgeSink / officeMailMessageUsecase 已在
+	// 上方 provideRuntimeTooling 前装配（邮件工具注入），此处复用同一实例。
+	officeMailAuditSink := provideOfficeMailAuditSink(monitorUsecase)
+	officeMailCeoboardSink := provideOfficeMailCeoboardSink(ceoboardStore)
+	officeMailAccountUsecase := provideOfficeMailAccountUsecase(officeMailRepo, credentialCrypto, loggatewayLogger)
+	officeMailSyncUsecase := provideOfficeMailSyncUsecase(officeMailRepo, credentialCrypto, officeMailAuditSink, loggatewayLogger)
+	officeMailDigestUsecase := provideOfficeMailDigestUsecase(officeMailRepo, officeRepo, channelUsecase, officeMailCeoboardSink, loggatewayLogger)
+	officeMailIdleSupervisor := provideOfficeMailIdleSupervisor(officeMailRepo, officeMailSyncUsecase, loggatewayLogger)
+	officeMailDigestWorker := provideOfficeMailDigestWorker(officeMailRepo, officeMailDigestUsecase, loggatewayLogger)
+	officeMailService := provideOfficeMailService(officeMailAccountUsecase, officeMailMessageUsecase, officeMailSyncUsecase, officeMailDigestUsecase)
+	serviceRegistry := server.NewServiceRegistry(adminService, avatarService, agentService, llmProviderModelService, hookService, cronService, credentialService, pluginService, mcpServerService, skillService, toolService, serviceSessionService, sessionV2Service, channelService, usageService, monitorService, serviceMemoryService, systemSettingService, modelCatalogService, teamService, chatService, graphService, serviceArtifactService, knowledgeService, evaluationService, a2AService, endpointRegistry, federationService, ecosystemService, gatewayService, channelIngress, aiRefineService, taxonomyService, organizationService, skillIntelligenceService, skillDedupService, packService, skillEvolutionSuggestionService, serviceEvolutionService, selfImprovementService, ecosystemPresetService, aguiCompatService, openAISessionCompatService, a2AExtensionCompatService, twinOpenAPICompatService, runtimeProfileService, learningLoopService, computerUseService, agentBridgeAPI, sandboxService, decisionRecordService, configGraphService, diagnosticsService, ceoboardService, approvalCenterService, reviewService, officeScheduleService, officeNotifyService, officeAppsService, officeMailService, secopsService, gitHubPanelService, fleetService)
 	grpcServer := server.NewGRPCServer(confServer, serviceRegistry, loggatewayLogger)
 	speechRegistry := provideSpeechRegistry()
 	speechConfigReader := provideSpeechConfigReader(systemSettingRepo, loggatewayLogger)
@@ -690,7 +786,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	wsv2Subscriber := provideWSV2Subscriber(v2Bus, wsServer, loggatewayLogger)
 	trpcBuilderDeps := provideTRPCBuilderDeps(llmProviderModelUsecase, toolUsecase, agentUsecase, agentRepository, systemSettingRepo, skillUsecase, persistenceSet, repository, factory, retriever, knowledgeUsecase, manager, organizationUsecase, toolResultGate, router, subagentService, a2aUsecase, circuitBreakerRegistry, bridge, runtime, lifecycle, loggatewayLogger, dataData, finishObserverHooks)
 	vaultSyncSupervisor := provideVaultSyncSupervisor(knowledgeUsecase, vaultFiler, multiProviderEmbedder, entityPipeline, relationExtractor, extractorRegistry, v2Bus, loggatewayLogger)
-	app := newApp(logger, loggatewayLogger, pipeline, arg, grpcServer, httpServer, wsServer, eventBusSideConsumers, infra, memoryDataMigrationWorker, agentUsecase, teamUsecase, organizationUsecase, dataData, sessionStatusGuard, orchestrationCache, sessionUsecase, mcpServerUsecase, chatService, spiritTeamUsecase, teamStarter, lifecycleManager, wsv2Subscriber, trpcBuilderDeps, knowledgeService, vaultSyncSupervisor, multiProviderEmbedder, channelGateCards, agentBridgeService, sandboxManager, lifecycle, lifecycle, teamService, plugintrpcRuntime)
+	app := newApp(logger, loggatewayLogger, pipeline, arg, grpcServer, httpServer, wsServer, eventBusSideConsumers, infra, memoryDataMigrationWorker, agentUsecase, teamUsecase, organizationUsecase, dataData, tokenVersionStore, rolePermissionResolver, adminUsecase, sessionStatusGuard, orchestrationCache, sessionUsecase, mcpServerUsecase, chatService, spiritTeamUsecase, teamStarter, lifecycleManager, wsv2Subscriber, trpcBuilderDeps, knowledgeService, vaultSyncSupervisor, multiProviderEmbedder, channelGateCards, agentBridgeService, sandboxManager, lifecycle, lifecycle, teamService, plugintrpcRuntime)
 	watchRunner := provideSkillWatchRunner(skillUsecase, skillUsecase, systemSettingRepo, monitorBus, monitorUsecase, loggatewayLogger)
 	l4GraphWriter := provideL4GraphWriter(dataData, l4CascadeUsecase, loggatewayLogger)
 	episodeIndexSyncer := provideEpisodeIndexSync(memoryUsecase, dataData)
@@ -802,7 +898,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	memoryEnhancedExtractor := service.NewMemoryEnhancedExtractor(memoryEnhancedExtractorConfig)
 	pathBL4Writer := providePathBL4Writer(dataData)
 	pathBExtractor := providePathBExtractor(memoryEnhancedExtractor, pathBL4Writer, memoryAdminUsecase, dataData, loggatewayLogger)
-	mainWireOut := provideWireOut(app, dataData, cronrunnerRunner, watchRunner, autoMemoryWorker, healthRunner, runner2, learningLoopScanner, providerHealthScanner, channelHealthScanner, jobsChannelDeliveryWorker, sessionRunDurableWorker, recoveryWorker, backgroundJobWorker, channelRuntime, plugintrpcRuntime, toolAuditCleanup, flowLogCleanup, toolSpillGC, monitorEventsCleanup, autoHealTTLCleanup, alertEvalWorker, monitorTraceBackfillWorker, memoryL2DecayWorker, memoryL1ArchiveWorker, channelTurnJobSweeper, memoryL3DecayWorker, memoryL4DecayWorker, memoryEbbinghausDecayWorker, memoryCanaryWorker, memoryCitationBackfillWorker, knowledgeCitationBackfillWorker, knowledgeRelationExtractWorker, knowledgeIndexRepairWorker, knowledgeCurateWorker, knowledgeWriteBackSweeperWorker, knowledgeGraphProjectionWorker, memorySleepTimeWorker, memoryEpisodeBackfillWorker, memoryDataMigrationWorker, memoryFactIndexReconciler, memoryDeadLetterReplayer, modelRegistrySyncAgent, selfCheckScheduler, selfHealObserver, infra, selfCheckCleanup, selfCheckJob, cronRepo, skillIntelligenceUsecase, skillIntelligenceWorker, curatorWorker, evolutionOrchestratorWorker, selfImproveObserveWorker, selfImproveDriveWorker, selfImproveWatchdogWorker, selfImproveOutcomeWorker, failurePatternSyncJob, predictiveHealUsecase, predictiveHealJob, patternMiningUsecase, patternMiningJob, pathBExtractor, wsv2Subscriber, indexer, sourceSyncWorker)
+	mainWireOut := provideWireOut(app, dataData, cronrunnerRunner, watchRunner, autoMemoryWorker, healthRunner, runner2, learningLoopScanner, providerHealthScanner, channelHealthScanner, jobsChannelDeliveryWorker, sessionRunDurableWorker, recoveryWorker, backgroundJobWorker, channelRuntime, plugintrpcRuntime, toolAuditCleanup, flowLogCleanup, toolSpillGC, monitorEventsCleanup, autoHealTTLCleanup, alertEvalWorker, monitorTraceBackfillWorker, memoryL2DecayWorker, memoryL1ArchiveWorker, channelTurnJobSweeper, memoryL3DecayWorker, memoryL4DecayWorker, memoryEbbinghausDecayWorker, memoryCanaryWorker, memoryCitationBackfillWorker, knowledgeCitationBackfillWorker, knowledgeRelationExtractWorker, knowledgeIndexRepairWorker, knowledgeCurateWorker, knowledgeWriteBackSweeperWorker, knowledgeGraphProjectionWorker, memorySleepTimeWorker, memoryEpisodeBackfillWorker, memoryDataMigrationWorker, memoryFactIndexReconciler, memoryDeadLetterReplayer, modelRegistrySyncAgent, selfCheckScheduler, selfHealObserver, infra, selfCheckCleanup, selfCheckJob, cronRepo, skillIntelligenceUsecase, skillIntelligenceWorker, curatorWorker, evolutionOrchestratorWorker, selfImproveObserveWorker, selfImproveDriveWorker, selfImproveWatchdogWorker, selfImproveOutcomeWorker, failurePatternSyncJob, predictiveHealUsecase, predictiveHealJob, patternMiningUsecase, patternMiningJob, pathBExtractor, wsv2Subscriber, indexer, sourceSyncWorker, ceoboardRuntime, officeReminderWorker, officeMailIdleSupervisor, officeMailDigestWorker)
 	return mainWireOut, func() {
 		cleanup()
 	}, nil
@@ -916,6 +1012,16 @@ func provideCredentialCrypto(sys biz.SystemSettingRepo, lg loggateway.Logger) *b
 		lg.Warn("凭据加密密钥未配置，API 密钥将以明文存储。请设置 ARANEA_CREDENTIAL_KEY 环境变量或在系统设置中初始化加密密钥。", loggateway.Str("reason", "credential.encryption"))
 	}
 	return cc
+}
+
+// provideCredentialUsecase 装配 E 阶段凭据托管用例（需求文档 §3，V-1/V-2/V-3）。
+// 手工镜像 wire.go 同名 provider（wire_gen 手工合并约定）。
+func provideCredentialUsecase(repo biz.CredentialRepo, crypto *biz.CredentialCrypto, cfg *conf.Credential, lg loggateway.Logger) *biz.CredentialUsecase {
+	var highSites []string
+	if cfg != nil {
+		highSites = cfg.HighSensitivitySites
+	}
+	return biz.NewCredentialUsecase(repo, crypto, highSites, lg)
 }
 
 func provideLlmProviderModelUsecaseWithDeps(repo biz.LlmProviderModelRepo, inspector biz.LLMInspector, crypto *biz.CredentialCrypto, agentRefs biz.AgentReferenceChecker, statsInjector *biz.ModelStatsInjector, lg loggateway.Logger) *biz.LlmProviderModelUsecase {
@@ -1215,6 +1321,18 @@ func provideRedisClient(c *conf.Data, lg loggateway.Logger) *data.RedisClient {
 	return rdb
 }
 
+// provideTokenVersionStore builds the P1-3 session-revocation store (Redis
+// write-through + DB 回源）。手工镜像 wire.go 同名 provider（wire_gen 手工合并约定）。
+func provideTokenVersionStore(d *data.Data, rdb *data.RedisClient, lg loggateway.Logger) *data.TokenVersionStore {
+	return data.NewTokenVersionStore(d, rdb, lg)
+}
+
+// providePermissionResolver builds the P1 DB 版角色→权限解析器。手工镜像
+// wire.go 同名 provider（wire_gen 手工合并约定）。
+func providePermissionResolver(d *data.Data, lg loggateway.Logger) *data.RolePermissionResolver {
+	return data.NewRolePermissionResolver(data.NewRolePermissionLoader(d), lg)
+}
+
 func provideTurnLifecycleUsecase(sessions *biz.SessionUsecase, lg loggateway.Logger) *biz.TurnLifecycleUsecase {
 	return biz.NewTurnLifecycleUsecase(biz.TurnLifecycleUsecaseConfig{
 		Sessions: sessions,
@@ -1419,6 +1537,9 @@ func provideRuntimeTooling(
 	knowledgeUC *biz.KnowledgeUsecase,
 	codeExecFactory *codeexecutor.Factory,
 	kanbanBridge kanban.Bridge,
+	credentialUC *biz.CredentialUsecase,
+	calendarTool calendar.Service,
+	mailTool mail.Service,
 	debugRecorder *debug.RecorderFactory,
 	orgUC *biz.OrganizationUsecase,
 	toolResultGate *biz.ToolResultGate,
@@ -1453,6 +1574,9 @@ func provideRuntimeTooling(
 		},
 		Bridges: service.ToolBridges{
 			Kanban:      kanbanBridge,
+			Credential:  credentialUC,
+			Calendar:    calendarTool,
+			Mail:        mailTool,
 			ComputerUse: computerUseUC,
 			Coding:      codingBridgeSvc,
 			Client:      clientBridge,
@@ -1585,6 +1709,7 @@ func provideRunnerConfig(
 	outboundRouter *outbound.Router,
 	subAgentSvc *subagent.Service,
 	kanbanBridge kanban.Bridge,
+	credentialUC *biz.CredentialUsecase,
 	computerUseUC *computeruse.ComputerUseUsecase,
 	sandboxLeases *sandbox.SessionLeases,
 	sandboxMgr *sandbox.Manager,
@@ -1626,6 +1751,7 @@ func provideRunnerConfig(
 		OutboundRouter:    outboundRouter,
 		SubAgentService:   subAgentSvc,
 		KanbanBridge:      kanbanBridge,
+		CredentialVault:   credentialUC,
 		ComputerUseUC:     computerUseUC,
 		SandboxFSStore:    sandboxLeases,
 		SandboxManager:    sandboxMgr,
@@ -4227,6 +4353,19 @@ type wireOut struct {
 	// ConfigGraphIndexer is the M81 config-asset graph background component
 	// (P0: rebuild capability only; started by startBackgroundWorkers).
 	ConfigGraphIndexer *configgraph2.Indexer
+	// CeoboardRuntime 是 CEO 驾驶舱运行时（整合 P2-7）；由
+	// startBackgroundWorkers 在数据就绪后 Start（spool 导入/归档/registry
+	// 热载/延迟探针/平台轮询/节点接线）。
+	CeoboardRuntime *ceoboard.Runtime
+	// OfficeReminderWorker 是 E 阶段 W1c 日程提醒扫描（K-4；每分钟窗口，
+	// 通知中心落表 + IM 声明式接收点投递）。
+	OfficeReminderWorker *office.ReminderWorker
+	// OfficeMailIdleSupervisor 是 E 阶段 W1d 邮件 IDLE 监听（E-5；per-account
+	// goroutine + 退避重连 + 兜底轮询）。
+	OfficeMailIdleSupervisor *office.MailIdleSupervisor
+	// OfficeMailDigestWorker 是 E 阶段 W1d 邮件摘要定时触发（E-4；每日
+	// ARANEA_MAIL_DIGEST_HOUR 整点，默认 08:00）。
+	OfficeMailDigestWorker *office.MailDigestWorker
 }
 
 func provideWireOut(
@@ -4296,6 +4435,10 @@ func provideWireOut(
 	wsV2Sub *server.WSV2Subscriber,
 	configGraphIndexer *configgraph2.Indexer,
 	sourceSyncWorker *jobs.SourceSyncWorker,
+	ceoboardRuntime *ceoboard.Runtime,
+	officeReminderWorker *office.ReminderWorker,
+	officeMailIdleSupervisor *office.MailIdleSupervisor,
+	officeMailDigestWorker *office.MailDigestWorker,
 ) wireOut {
 	return wireOut{
 		App: app, Data: dataData, CronRunner: runner, SkillWatch: skillWatch, AutoMemory: autoMem,
@@ -4348,6 +4491,10 @@ func provideWireOut(
 		PathBExtractor:              pathBExtractor,
 		WSV2Subscriber:              wsV2Sub,
 		ConfigGraphIndexer:          configGraphIndexer,
+		CeoboardRuntime:             ceoboardRuntime,
+		OfficeReminderWorker:        officeReminderWorker,
+		OfficeMailIdleSupervisor:    officeMailIdleSupervisor,
+		OfficeMailDigestWorker:      officeMailDigestWorker,
 	}
 }
 

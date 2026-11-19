@@ -1,7 +1,9 @@
 package data
 
 import (
+	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/loggateway"
+	"context"
 	"database/sql"
 	"encoding/json"
 )
@@ -112,7 +114,12 @@ func scanL1FieldRow(rows *sql.Rows) ([]byte, error) {
 	return json.Marshal(m)
 }
 
-func scanFactRowJSON(rows *sql.Rows) ([]byte, error) {
+// scanFactRowJSON 扫一行 memory_facts（投影 = sqlFactSelect）为 JSON。D3 N-2
+// 全量记忆信封：content_enc 为权威全文密文（AAD 绑定 fingerprint），此处透明
+// 解密并覆写 statement/details_markdown；密文本身不进 JSON（防上游 map 透传
+// 把密文带出去）。cipher 为 nil 或解密失败时回退明文载体列（降级不 crash，
+// 失败告警由 cipher 实现侧记录）。
+func scanFactRowJSON(ctx context.Context, rows *sql.Rows, cipher biz.FactContentCipher) ([]byte, error) {
 	var (
 		id, stype, sid, wid, uid, tid, aid string
 		stmt, snorm, fp, details           string
@@ -140,6 +147,7 @@ func scanFactRowJSON(rows *sql.Rows) ([]byte, error) {
 		decayScore                         float64
 		contextNote                        string
 		indexAttempts                      int
+		contentEnc                         string
 	)
 	if err := rows.Scan(
 		&id, &stype, &sid, &wid, &uid, &tid, &aid,
@@ -155,9 +163,14 @@ func scanFactRowJSON(rows *sql.Rows) ([]byte, error) {
 		&ttlD, &decay, &nextD, &lastU, &exp,
 		&meta, &qScore, &piiTypes, &ca, &ua, &arch, &del,
 		&validFrom, &validUntil, &links, &keywords, &llmTags,
-		&decayScore, &contextNote, &indexAttempts,
+		&decayScore, &contextNote, &indexAttempts, &contentEnc,
 	); err != nil {
 		return nil, err
+	}
+	if contentEnc != "" && cipher != nil {
+		if s, d, ok := biz.FactEnvelopeDecrypt(ctx, cipher, contentEnc, fp); ok && s != "" {
+			stmt, details = s, d
+		}
 	}
 	m := map[string]any{
 		"id": id, "scope_type": stype, "scope_id": sid, "workspace_id": wid,

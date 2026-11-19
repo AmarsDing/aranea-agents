@@ -115,7 +115,7 @@ const parts = computed(() => citeParts(renderChatMarkdownParts(messageId.value, 
     display: flex
     align-items: center
     gap: 6px
-    padding: 4px 0
+    padding: var(--nt-space-1) 0
 
   &__icon
     font-size: 14px

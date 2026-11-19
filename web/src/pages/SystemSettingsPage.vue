@@ -458,42 +458,36 @@
       </q-card>
     </div>
 
-    <q-dialog v-model="unloadDialogVisible" persistent>
-      <q-card class="app-dialog-card app-dialog-card--sm app-glass-dialog">
-        <q-card-section>
-          <div class="text-h6">{{ t('settingsPage.unloadConfirmTitle') }}</div>
-        </q-card-section>
-        <q-card-section>
-          <p>{{ t('settingsPage.unloadConfirmHint', { industry: unloadTargetIndustry }) }}</p>
-          <ul class="q-pl-md q-mt-sm">
-            <li>{{ t('settingsPage.unloadConfirmAgents', { count: unloadTargetInfo?.agents ?? 0 }) }}</li>
-            <li>{{ t('settingsPage.unloadConfirmTeams', { count: unloadTargetInfo?.teams ?? 0 }) }}</li>
-            <li>
-              {{ t('settingsPage.unloadConfirmTaxonomyNodes', { count: unloadTargetInfo?.taxonomy_nodes ?? 0 }) }}
-            </li>
-          </ul>
-          <q-banner dense rounded class="bg-warning text-dark q-mt-md">
-            {{ t('settingsPage.unloadConfirmWarning') }}
-          </q-banner>
-        </q-card-section>
-        <q-card-actions align="right">
-          <q-btn v-close-popup flat no-caps :label="t('common.cancel')" />
-          <q-btn
-            unelevated
-            no-caps
-            color="negative"
-            :label="t('settingsPage.unloadConfirmAction')"
-            :loading="ecosystemActionLoading === unloadTargetIndustry"
-            @click="handleUnloadConfirmed"
-          />
-        </q-card-actions>
-      </q-card>
-    </q-dialog>
+    <AppDialog v-model="unloadDialogVisible" persistent size="sm" :title="t('settingsPage.unloadConfirmTitle')">
+      <p>{{ t('settingsPage.unloadConfirmHint', { industry: unloadTargetIndustry }) }}</p>
+      <ul class="q-pl-md q-mt-sm">
+        <li>{{ t('settingsPage.unloadConfirmAgents', { count: unloadTargetInfo?.agents ?? 0 }) }}</li>
+        <li>{{ t('settingsPage.unloadConfirmTeams', { count: unloadTargetInfo?.teams ?? 0 }) }}</li>
+        <li>
+          {{ t('settingsPage.unloadConfirmTaxonomyNodes', { count: unloadTargetInfo?.taxonomy_nodes ?? 0 }) }}
+        </li>
+      </ul>
+      <q-banner dense rounded class="bg-warning text-dark q-mt-md">
+        {{ t('settingsPage.unloadConfirmWarning') }}
+      </q-banner>
+      <template #actions>
+        <q-btn flat no-caps :label="t('common.cancel')" @click="unloadDialogVisible = false" />
+        <q-btn
+          unelevated
+          no-caps
+          color="negative"
+          :label="t('settingsPage.unloadConfirmAction')"
+          :loading="ecosystemActionLoading === unloadTargetIndustry"
+          @click="handleUnloadConfirmed"
+        />
+      </template>
+    </AppDialog>
   </q-page>
 </template>
 
 <script setup lang="ts">
 import { ref } from 'vue';
+import AppDialog from '../components/common/AppDialog.vue';
 import KnowledgeEmbedderFields from '../components/knowledge/KnowledgeEmbedderFields.vue';
 import AppPageHero from '../components/layout/AppPageHero.vue';
 import AppStatusChip from '../components/common/AppStatusChip.vue';

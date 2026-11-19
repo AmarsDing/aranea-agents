@@ -34,7 +34,7 @@ body.body--dark .q-dialog .q-card.app-glass-dialog
   display: flex
   flex-direction: column
   max-height: min(92vh, 920px)
-  border-radius: 24px
+  border-radius: 12px
   border: 1px solid var(--glass-border) !important
   box-shadow: var(--glass-inner-highlight)
 
@@ -276,26 +276,6 @@ body.body--dark .q-dialog .q-card.app-maximized-dialog
     background: var(--color-accent-hover) !important
 
 // Agent 头像选择 Dialog
-.avatar-picker-card
-  display: flex
-  flex-direction: column
-  width: min(560px, 94vw)
-  max-height: min(88vh, 720px)
-  overflow: hidden
-
-.avatar-picker-card__header
-  flex-shrink: 0
-  display: flex
-  align-items: center
-  justify-content: space-between
-  gap: 16px
-  padding: 22px 24px
-  background: var(--glass-elevated)
-  box-shadow: var(--glass-inner-highlight)
-
-.avatar-picker-card__header .text-h6
-  color: var(--color-text-primary)
-
 .avatar-tabs
   flex-shrink: 0
   padding: 0 16px
@@ -401,29 +381,8 @@ body.body--dark .q-dialog .q-card.app-maximized-dialog
   min-height: 40px
   font-weight: 700
 
-.avatar-picker-card .q-card__actions
-  flex-shrink: 0
-  padding: 14px 22px 20px
-  background: var(--glass-elevated)
-  border-top: 1px solid var(--glass-border)
-
-.avatar-picker-card .q-card__actions .q-btn
-  min-height: 40px
-  padding: 0 18px
-  font-weight: 700
-
-.avatar-picker-card .text-grey-7
-  color: var(--color-text-secondary) !important
-
 .hidden-input
   display: none
-
-body.body--dark .avatar-picker-card
-  border-color: var(--glass-border)
-  background: var(--glass-surface)
-
-body.body--dark .avatar-picker-card__header
-  background: var(--glass-elevated)
 
 body.body--dark .avatar-tabs .q-tab--active
   background: color-mix(in srgb, var(--color-accent) 22%, transparent)

@@ -315,12 +315,13 @@ func (s *KnowledgeService) reembedOneDocument(ctx context.Context, uc *biz.Knowl
 	}
 
 	params := knowledge.IngestParams{
-		DocID:        doc.ID,
-		CollectionID: col.ID,
-		Text:         doc.ContentText,
-		ChunkSize:    size,
-		ChunkOverlap: overlap,
-		Strategy:     strategy,
+		DocID:          doc.ID,
+		CollectionID:   col.ID,
+		Text:           doc.ContentText,
+		ChunkSize:      size,
+		ChunkOverlap:   overlap,
+		Strategy:       strategy,
+		Classification: doc.Classification, // D6 L-3：重嵌同受密级闸约束
 	}
 	params.ApplyDefaults()
 	var bizChunks []biz.KnowledgeChunk

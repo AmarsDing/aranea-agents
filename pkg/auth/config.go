@@ -19,6 +19,12 @@ func authSecretFromEnv(key string) string {
 			return "version-placeholder"
 		}
 	}
+	// Allow the built-in `acp-shim` subcommand (admin acp-shim …) to run
+	// without server env: it is a pure stdio bridge process and never serves
+	// HTTP/JWT, so the signing secret is irrelevant on that path.
+	if len(os.Args) > 1 && os.Args[1] == "acp-shim" {
+		return "acp-shim-placeholder"
+	}
 	if secret := os.Getenv(key); secret != "" {
 		return secret
 	}
@@ -54,6 +60,10 @@ func isDevOrTestEnv() bool {
 	return deployEnv == "dev" || deployEnv == "development" || deployEnv == "test" ||
 		ci == "true" || ci == "1"
 }
+
+// DevOrTestEnv 导出 isDevOrTestEnv，供 internal 层（如权限中间件的 gRPC
+// 内网直通 carve-out）复用同一判定，禁止各处自行读 env 复制逻辑。
+func DevOrTestEnv() bool { return isDevOrTestEnv() }
 
 // persistentDevSecret returns a stable JWT signing secret for dev/test.
 // The secret is generated once (32 random bytes, base64-encoded) and

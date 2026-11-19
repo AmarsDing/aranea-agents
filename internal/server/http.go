@@ -13,16 +13,20 @@ import (
 	agentv1 "aranea-agents/api/kratos/agent/v1"
 	agentbridgev1 "aranea-agents/api/kratos/agentbridge/v1"
 	airefinev1 "aranea-agents/api/kratos/ai_refine/v1"
+	approvalv1 "aranea-agents/api/kratos/approval/v1"
 	artifactv1 "aranea-agents/api/kratos/artifact/v1"
 	avatarv1 "aranea-agents/api/kratos/avatar/v1"
+	ceoboardv1 "aranea-agents/api/kratos/ceoboard/v1"
 	channelv1 "aranea-agents/api/kratos/channel/v1"
 	chatv1 "aranea-agents/api/kratos/chat/v1"
 	computerusev1 "aranea-agents/api/kratos/computeruse/v1"
+	credentialv1 "aranea-agents/api/kratos/credential/v1"
 	cronv1 "aranea-agents/api/kratos/cron/v1"
 	decisionv1 "aranea-agents/api/kratos/decision/v1"
 	ecosystemv1 "aranea-agents/api/kratos/ecosystem/v1"
 	evaluationv1 "aranea-agents/api/kratos/evaluation/v1"
 	evolutionv1 "aranea-agents/api/kratos/evolution/v1"
+	fleetv1 "aranea-agents/api/kratos/fleet/v1"
 	gatewayv1 "aranea-agents/api/kratos/gateway/v1"
 	graphv1 "aranea-agents/api/kratos/graph/v1"
 	hookv1 "aranea-agents/api/kratos/hook/v1"
@@ -33,11 +37,14 @@ import (
 	memoryv1 "aranea-agents/api/kratos/memory/v1"
 	modelcatalogv1 "aranea-agents/api/kratos/model_catalog/v1"
 	monitorv1 "aranea-agents/api/kratos/monitor/v1"
+	officev1 "aranea-agents/api/kratos/office/v1"
 	organizationv1 "aranea-agents/api/kratos/organization/v1"
 	packv1 "aranea-agents/api/kratos/pack/v1"
 	pluginv1 "aranea-agents/api/kratos/plugin/v1"
+	reviewv1 "aranea-agents/api/kratos/review/v1"
 	runtimeprofilev1 "aranea-agents/api/kratos/runtime_profile/v1"
 	sandboxv1 "aranea-agents/api/kratos/sandbox/v1"
+	secopsv1 "aranea-agents/api/kratos/secops/v1"
 	selfimprovementv1 "aranea-agents/api/kratos/self_improvement/v1"
 	sessionv1 "aranea-agents/api/kratos/session/v1"
 	skillv1 "aranea-agents/api/kratos/skill/v1"
@@ -61,6 +68,7 @@ import (
 	"github.com/go-kratos/kratos/v2/middleware/recovery"
 	"github.com/go-kratos/kratos/v2/middleware/tracing"
 	kratoshttp "github.com/go-kratos/kratos/v2/transport/http"
+	"google.golang.org/genproto/googleapis/api/httpbody"
 )
 
 type ReadinessProbe interface {
@@ -83,6 +91,10 @@ func NewHTTPServer(c *conf.Server, s *ServiceRegistry, wsSrv *WSServer, voiceSrv
 			recovery.Recovery(),
 			servermw.APIToKratos(),
 			validate.Middleware(),
+			// P1-5: 敏感域权限码硬判（认证由 Filter 链 auth.Middleware 先行保证）。
+			servermw.Permission(servermw.DefaultPermissionRegistry(), lg),
+			// P1 补漏: force_reset 强制改密门（豁免组外一律 403）。
+			servermw.ForceResetGate(lg),
 		),
 		// Skill ZIP import accepts JSON bytes or legacy multipart/form-data.
 		kratoshttp.RequestDecoder(service.DecodeSkillImportRequest),
@@ -121,13 +133,21 @@ func NewHTTPServer(c *conf.Server, s *ServiceRegistry, wsSrv *WSServer, voiceSrv
 	// Custom routes MUST be registered before proto services so that exact
 	// paths (e.g. /v1/artifacts/download) take priority over wildcard
 	// patterns (e.g. /v1/artifacts/{id}).
-	registerCustomRoutes(srv, s.ChannelIngress, s.Artifact, s.Knowledge, s.A2APublic, s.SystemSetting, s.EcosystemPreset, s.AGUICompat, s.OpenAISession, s.A2AExtension, s.TwinOpenAPI, s.ConfigGraph, s.Diagnostics)
+	registerCustomRoutes(srv, s.ChannelIngress, s.Artifact, s.Knowledge, s.A2APublic, s.SystemSetting, s.EcosystemPreset, s.AGUICompat, s.OpenAISession, s.A2AExtension, s.TwinOpenAPI, s.ConfigGraph, s.Diagnostics, s.Ceoboard)
 	registerMVPMediaRoutes(srv)
+	// Harness 多任务运行台：终端 WebSocket + fleetctl 入口（非 proto，见 fleet_ws.go）。
+	if s.Fleet != nil {
+		NewFleetEndpoints(s.Fleet.Usecase(), lg).RegisterOnKratos(srv)
+	}
 	registerProtoServices(srv, s)
 	registerCompatibilityRedirects(srv)
 	registerInfrastructureRoutes(srv, readiness)
 	wsSrv.RegisterOnKratos(srv)
 	if voiceSrv != nil {
+		// MEDIUM-2（评审 2026-11-09）：voice WS 纳入 WSServer 会话吊销覆盖
+		// （同一 pub/sub 推送 + 周期兜底扫描，不复制第二套循环）。wsSrv 为
+		// nil（WS 未启用）时 WSServer 方法 nil-safe 短路，语音侧退化为不登记。
+		voiceSrv.SetRevocationRegistrar(wsSrv)
 		voiceSrv.RegisterOnKratos(srv)
 	}
 
@@ -144,6 +164,7 @@ func registerProtoServices(srv *kratoshttp.Server, s *ServiceRegistry) {
 	llmprovidermodelv1.RegisterLlmProviderModelServiceHTTPServer(srv, s.LLM)
 	hookv1.RegisterHookServiceHTTPServer(srv, s.Hook)
 	cronv1.RegisterCronServiceHTTPServer(srv, s.Cron)
+	credentialv1.RegisterCredentialServiceHTTPServer(srv, s.Credential)
 	pluginv1.RegisterPluginServiceHTTPServer(srv, s.Plugin)
 	mcpserverv1.RegisterMCPServerServiceHTTPServer(srv, s.MCPServer)
 	skillv1.RegisterSkillServiceHTTPServer(srv, s.Skill)
@@ -186,6 +207,33 @@ func registerProtoServices(srv *kratoshttp.Server, s *ServiceRegistry) {
 	if s.SelfImprovement != nil {
 		selfimprovementv1.RegisterSelfImprovementServiceHTTPServer(srv, s.SelfImprovement)
 	}
+	if s.Ceoboard != nil {
+		ceoboardv1.RegisterCeoboardServiceHTTPServer(srv, s.Ceoboard)
+	}
+	if s.ApprovalCenter != nil {
+		approvalv1.RegisterApprovalCenterServiceHTTPServer(srv, s.ApprovalCenter)
+	}
+	if s.Review != nil {
+		reviewv1.RegisterReviewServiceHTTPServer(srv, s.Review)
+	}
+	if s.OfficeSchedule != nil {
+		officev1.RegisterOfficeScheduleServiceHTTPServer(srv, s.OfficeSchedule)
+	}
+	if s.OfficeNotify != nil {
+		officev1.RegisterOfficeNotifyServiceHTTPServer(srv, s.OfficeNotify)
+	}
+	if s.OfficeApps != nil {
+		officev1.RegisterOfficeAppsServiceHTTPServer(srv, s.OfficeApps)
+	}
+	if s.OfficeMail != nil {
+		officev1.RegisterOfficeMailServiceHTTPServer(srv, s.OfficeMail)
+	}
+	if s.Secops != nil {
+		secopsv1.RegisterSecopsServiceHTTPServer(srv, s.Secops)
+	}
+	if s.Fleet != nil {
+		fleetv1.RegisterFleetServiceHTTPServer(srv, s.Fleet)
+	}
 }
 
 // registerCustomRoutes registers cross-cutting operational routes that bypass proto
@@ -208,6 +256,16 @@ func registerProtoServices(srv *kratoshttp.Server, s *ServiceRegistry) {
 //   - /api/v1/admin/diagnostics: 79-runtime-governance R8 doctor API（同
 //     ecosystem preset 先例：/api/v1 子树被 twinOpenAPI 前缀接管，proto
 //     注册次序在其后会被遮蔽，故走 custom route）
+//   - /v1/ceoboard/webhooks/{source}: ceoboard webhook 机器入口（整合 P2-7）。
+//     共享密钥 X-CEO-Key 由 receiver 自备校验，JWT 权限链不适用；且
+//     「原始 body 字节 → sha256 digest → 幂等键链」的保真语义要求绕过
+//     proto Struct 解码，故不走 proto 注册（P2-1 已裁定 webhook 入站
+//     不进契约）。no-auth 前缀注册使 auth filter 放行，密钥是唯一闸门。
+//   - /v1/ceoboard/event?uid=: ceoboard 事件详情查询参数出口（评审 2026-11-09
+//     D2）。proto 路由 GetEvent 的 {uid} 是路径段，event_uid 含 '/'、'?' 等
+//     保留字符时无法经 HTTP 网关寻址；permission 注册表键必须存在于 proto
+//     （arch 测试硬约束），故 ceoboard.view 在 handler 内硬判。不在 no-auth
+//     前缀内，JWT 过滤器照常被验。
 //
 // All custom routes are explicitly documented here for auditability. New bypass routes
 // MUST be added to this centralized block with justification comments.
@@ -225,6 +283,7 @@ func registerCustomRoutes(
 	twinOpenAPI *service.TwinOpenAPICompatService,
 	configGraphSvc *service.ConfigGraphService,
 	diagnosticsSvc *service.DiagnosticsService,
+	ceoboardSvc *service.CeoboardService,
 ) {
 	// GET /v1/system/info — CLI info endpoint; requires auth (not in noAuthPaths).
 	if systemSettingSvc != nil {
@@ -233,6 +292,29 @@ func registerCustomRoutes(
 	if channelIngress != nil {
 		auth.RegisterWebhookPath("/webhooks/")
 		srv.Route("/").POST("/webhooks/{channel_key}", channelIngress.FeishuWebhookHTTP())
+	}
+	if ceoboardSvc != nil {
+		// 见上方 custom-route 清单：X-CEO-Key 机器入口，receiver 自备校验。
+		auth.RegisterNoAuthPathPrefix("/v1/ceoboard/webhooks/")
+		srv.Route("/").POST("/v1/ceoboard/webhooks/{source}", func(ctx kratoshttp.Context) error {
+			ceoboardSvc.WebhookHandler(ctx.Vars().Get("source")).ServeHTTP(ctx.Response(), ctx.Request())
+			return nil
+		})
+		// 评审 2026-11-09 D2：GET /v1/ceoboard/event?uid=<event_uid>——proto 路由
+		// GetEvent 的 {uid} 为路径段，event_uid 含 '/'、'?' 等保留字符时无法经
+		// HTTP 网关寻址，故提供查询参数出口（鉴权在 handler 内硬判 ceoboard.view，
+		// 理由见 GetEventByUIDHTTP 注释；本路由不在 no-auth 前缀内，JWT 过滤器照常被验）。
+		srv.Route("/").GET("/v1/ceoboard/event", func(ctx kratoshttp.Context) error {
+			ceoboardSvc.GetEventByUIDHTTP(ctx.Response(), ctx.Request())
+			return nil
+		})
+		// GET /v1/ceoboard/company：电商经营业务快照（只读 JSON BFF）。
+		// 既有 12 个 ceoboard RPC 不动；该路由的 ceoboard.view 在 handler 内硬判，
+		// 与 GetEventByUIDHTTP 同一套鉴权语义。
+		srv.Route("/").GET("/v1/ceoboard/company", func(ctx kratoshttp.Context) error {
+			ceoboardSvc.CompanyViewHTTP(ctx.Response(), ctx.Request())
+			return nil
+		})
 	}
 	if artifactSvc != nil {
 		auth.RegisterNoAuthPath("/v1/artifacts/download")
@@ -524,7 +606,18 @@ type healthzOKResponse struct {
 // Content-Type includes charset=utf-8. Without this, Kratos sets
 // "application/json" without charset, which can cause Windows HTTP clients
 // to misinterpret UTF-8 bytes as GBK/GB2312, rendering Chinese as "????".
+//
+// *httpbody.HttpBody 直通（E 阶段 K-3 ics 订阅等原始字节端点）：kratos
+// v2.9.2 的 DefaultResponseEncoder 也不特判 HttpBody，缺省会被 codec
+// JSON/base64 包裹，日历客户端无法消费；此处按其声明 Content-Type 原样写出。
 func utf8ResponseEncoder(w nethttp.ResponseWriter, r *nethttp.Request, v interface{}) error {
+	if hb, ok := v.(*httpbody.HttpBody); ok {
+		if hb.ContentType != "" {
+			w.Header().Set("Content-Type", hb.ContentType)
+		}
+		_, err := w.Write(hb.Data)
+		return err
+	}
 	codec, _ := kratoshttp.CodecForRequest(r, "Accept")
 	data, err := codec.Marshal(v)
 	if err != nil {

@@ -274,7 +274,7 @@ describe('GraphStageBlock (方案A rich cards + viewport)', () => {
     await wrapper.find('.gtn-member').trigger('click');
     const dialog = wrapper.findComponent(MemberSessionDialog);
     expect(dialog.props('open')).toBe(true);
-    expect(wrapper.find('.member-session-dialog__title').text()).toContain('成员m0');
+    expect(wrapper.find('.app-dialog__title').text()).toContain('成员m0');
 
     // 弹框操作事件向上透传（暂停 / 注入）
     dialog.vm.$emit('pause-agent', 'sess-a-m0');
@@ -291,7 +291,7 @@ describe('GraphStageBlock (方案A rich cards + viewport)', () => {
 
     await wrapper.find('.gtn-member').trigger('click');
     expect(wrapper.find('.q-dialog-stub').exists()).toBe(true);
-    await wrapper.find('.member-session-dialog__close').trigger('click');
+    await wrapper.find('[data-test="dialog-close"]').trigger('click');
     expect(wrapper.find('.q-dialog-stub').exists()).toBe(false);
   });
 });

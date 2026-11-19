@@ -661,7 +661,7 @@ func (r *SkillIntelligenceRepo) backfillReportSkillNames(ctx context.Context, re
 
 // RecordAnalysisFailure 审计 W5②：记录一次报告生成失败——analysis_attempts 自增
 // 并落最近错误（截断防超长）。达到 maxSkillAnalysisAttempts 的行被 ListUnanalyzed
-// 死信隔离；行保持 analyzed_at=''，成绩状态清晰可查（attempts + analysis_error）。
+// 死信隔离；行保持 analyzed_at=”，成绩状态清晰可查（attempts + analysis_error）。
 // 与 MarkAnalyzed 同款的 activation_id 定位 + n==0 NotFound 语义。
 func (r *SkillIntelligenceRepo) RecordAnalysisFailure(ctx context.Context, activationID, errMsg string) error {
 	if activationID == "" {

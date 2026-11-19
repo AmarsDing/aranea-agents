@@ -66,12 +66,12 @@ function metricDescription(m: AlertMetricInfo): string {
 .monitor-alert-catalog-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: 12px;
+  gap: var(--nt-space-3);
 }
 
 .catalog-metric-card {
-  padding: 12px 14px;
-  border-radius: 14px;
+  padding: var(--nt-space-3) var(--nt-space-4);
+  border-radius: 12px;
   border: 1px solid var(--glass-border);
   background: color-mix(in srgb, var(--glass-surface) 80%, transparent);
   transition:

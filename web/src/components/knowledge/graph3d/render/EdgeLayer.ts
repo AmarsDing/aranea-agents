@@ -8,6 +8,7 @@
  * - 动态属性仅 aHi（per-edge 0/1），hover 变更时一次性写入
  */
 import * as THREE from 'three';
+import { canvasPalette } from '../../../../utils/canvasPalette';
 
 /** rest 透明度 / 高亮透明度。 */
 // UX 可读性：0.16→0.11（5121 边法线混合叠加成亮网淹没标签；hover 提亮通道不受影响）
@@ -149,7 +150,7 @@ export class EdgeLayer {
         uHoverAlpha: { value: EDGE_HOVER_ALPHA },
         uRestDim: { value: EDGE_REST_DIM },
         uHoverBoost: { value: EDGE_HOVER_BOOST },
-        uHiColor: { value: new THREE.Color('#39e6ff') },
+        uHiColor: { value: new THREE.Color(canvasPalette().edgeHighlight) },
       },
       vertexShader: EDGE_VERTEX,
       fragmentShader: EDGE_FRAGMENT,

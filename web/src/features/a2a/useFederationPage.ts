@@ -5,6 +5,7 @@
 import { computed, onMounted, reactive, ref } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useQuasar } from 'quasar';
+import { confirm } from '../../composables/useAppConfirm';
 import { useI18n } from 'vue-i18n';
 import { useA2AStore } from '../../stores/a2a';
 import { A2A_AUDIT_PAGE_SIZE_DEFAULT } from '../constants/queryLimits';
@@ -83,15 +84,14 @@ export function useFederationPage() {
     }
   }
 
-  function confirmRemoveOrg(org: FederationOrg) {
-    $q.dialog({
+  async function confirmRemoveOrg(org: FederationOrg) {
+    const ok = await confirm({
       title: t('a2a.federation.orgDeleteConfirmTitle'),
       message: t('a2a.federation.orgDeleteConfirmMessage', { name: org.name || org.domain }),
-      cancel: true,
-      persistent: true,
-    }).onOk(() => {
-      void removeOrg(org.id);
+      tone: 'danger',
     });
+    if (!ok) return;
+    await removeOrg(org.id);
   }
 
   async function removeOrg(id: string) {

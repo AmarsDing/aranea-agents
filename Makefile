@@ -41,6 +41,17 @@ ifeq ($(SKIP_API_TS),)
   endif
 endif
 
+# protoc-gen-aranea-auth: 权限登记表生成器(本仓库 cmd/protoc-gen-aranea-auth,`make init` 安装;
+# 整合 P1 §4——从 rpc 的 (aranea.auth.v1.requirement) 选项生成 permission_registry_gen.go,
+# 敏感域缺注解即生成失败)。
+PROTOC_GEN_ARANEA_AUTH:=$(GO_BIN_DIR)/protoc-gen-aranea-auth$(GOEXE)
+API_AUTH_PLUGIN_ARGS:=
+ifneq ($(wildcard $(PROTOC_GEN_ARANEA_AUTH)),)
+  API_AUTH_PLUGIN_ARGS:=--plugin=protoc-gen-aranea-auth=$(PROTOC_GEN_ARANEA_AUTH) --aranea-auth_out=./internal/server/middleware
+else
+  $(warning protoc-gen-aranea-auth not found at $(PROTOC_GEN_ARANEA_AUTH); run `make init`. Skipping permission registry emit.)
+endif
+
 ifeq ($(GOHOSTOS),windows)
 	# Use build/list-proto-files.ps1 so Git-Bash/sh does not parse $ $() inside $(shell ...).
 	INTERNAL_PROTO_FILES:=$(shell cd "$(CURDIR)" && powershell -NoProfile -ExecutionPolicy Bypass -File build/list-proto-files.ps1 internal)
@@ -69,6 +80,7 @@ init:
 	go install github.com/google/gnostic/cmd/protoc-gen-openapi@latest
 	go install go.einride.tech/protoc-gen-typescript-http@latest
 	go install github.com/google/wire/cmd/wire@latest
+	go install ./cmd/protoc-gen-aranea-auth
 
 .PHONY: config
 # generate internal proto
@@ -88,6 +100,7 @@ api:
  	       --go-grpc_out=paths=source_relative:./api \
 	       --openapi_out="fq_schema_naming=true,default_response=false:." \
 	       $(API_TS_PLUGIN_ARGS) \
+	       $(API_AUTH_PLUGIN_ARGS) \
 	       $(API_PROTO_FILES)
 
 .PHONY: check-overlay
@@ -219,8 +232,9 @@ wire-clean: wire
 
 .PHONY: proto-clean
 # EP-ENG-04: regenerate proto and fail if generated files differ (CI sync check)
+# permission_registry_gen.go 同属生成物(protoc-gen-aranea-auth),一并钉住。
 proto-clean: api
-	git diff --exit-code -- api/ web/src/services/ || \
+	git diff --exit-code -- api/ web/src/services/ internal/server/middleware/permission_registry_gen.go || \
 		(echo "Proto generated files are out of date; run 'make api' and commit." && exit 1)
 
 .PHONY: all

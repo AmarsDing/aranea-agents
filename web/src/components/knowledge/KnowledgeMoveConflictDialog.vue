@@ -1,14 +1,12 @@
 <template>
-  <q-dialog :model-value="open" @update:model-value="$emit('update:open', !!$event)">
-    <q-card class="app-dialog-card app-dialog-card--sm">
-      <q-card-section>
-        <div class="text-h6">{{ t('knowledgePage.moveConflictTitle') }}</div>
-        <div class="text-caption text-grey-7">
-          {{ t('knowledgePage.moveConflictMessage', { dir: targetLabel, name: fileName }) }}
-        </div>
-      </q-card-section>
-      <q-card-section class="q-pt-none">
-        <q-list dense>
+  <AppDialog
+    :model-value="open"
+    :title="t('knowledgePage.moveConflictTitle')"
+    :subtitle="t('knowledgePage.moveConflictMessage', { dir: targetLabel, name: fileName })"
+    size="sm"
+    @update:model-value="$emit('update:open', $event)"
+  >
+    <q-list dense>
           <q-item v-ripple clickable :disable="loading" @click="$emit('resolve', 'overwrite')">
             <q-item-section avatar><q-icon name="find_replace" color="warning" /></q-item-section>
             <q-item-section>
@@ -24,17 +22,16 @@
             </q-item-section>
           </q-item>
         </q-list>
-        <q-linear-progress v-if="loading" indeterminate color="primary" class="q-mt-sm" />
-      </q-card-section>
-      <q-card-actions align="right">
-        <q-btn v-close-popup flat no-caps :disable="loading" :label="t('knowledgePage.moveCancel')" />
-      </q-card-actions>
-    </q-card>
-  </q-dialog>
+    <q-linear-progress v-if="loading" indeterminate color="primary" class="q-mt-sm" />
+    <template #actions>
+      <q-btn flat no-caps :disable="loading" :label="t('knowledgePage.moveCancel')" @click="$emit('update:open', false)" />
+    </template>
+  </AppDialog>
 </template>
 
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n';
+import AppDialog from '../../components/common/AppDialog.vue';
 
 // G3-F1 拖拽移动同名冲突弹窗（V12.5）：覆盖（旧版入回收站）/ 保留两份（自动改名）/ 取消。
 defineProps<{

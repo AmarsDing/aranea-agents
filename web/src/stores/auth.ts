@@ -4,6 +4,7 @@ import type { AdminSession } from '../features/admin/types';
 import { clearServerDownNotify } from '../features/heartbeat/useServerHeartbeat';
 import { clearAuthToken, setAuthToken } from '../services/authToken';
 import { clearChatDrafts } from '../features/chat/chatDraftPersistence';
+import { useNavStore } from './nav';
 
 export type AuthIdentityMode = 'username' | 'email';
 
@@ -63,6 +64,8 @@ export const useAuthStore = defineStore('auth', {
         // cross-origin deployments; no-op when the server returns no token.
         if (this.user?.token) setAuthToken(this.user.token);
         this.sessionChecked = true;
+        // P1-7: 换账号/重新登录必须丢弃上一个会话的菜单白名单。
+        useNavStore().reset();
         clearServerDownNotify();
       } finally {
         this.loginLoading = false;
@@ -79,6 +82,8 @@ export const useAuthStore = defineStore('auth', {
       clearAuthToken();
       this.user = null;
       this.sessionChecked = true;
+      // P1-7: 菜单白名单随会话一起失效。
+      useNavStore().reset();
     },
   },
 });

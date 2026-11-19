@@ -95,155 +95,153 @@
     </AppRegistryTable>
 
     <!-- 注册组织 Dialog -->
-    <q-dialog v-model="registerOpen" persistent>
-      <q-card class="app-dialog-card app-glass-dialog app-dialog-card--lg">
-        <q-card-section class="app-glass-dialog__head row items-center justify-between">
-          <div class="app-glass-dialog__title">{{ t('a2a.federation.orgRegisterTitle') }}</div>
-          <q-btn flat round dense icon="close" :disable="registerLoading" @click="registerOpen = false" />
-        </q-card-section>
-        <q-card-section class="app-glass-dialog__scroll">
-          <div class="app-form-field-grid">
-            <q-input
-              v-model.trim="registerForm.name"
+    <AppDialog
+      v-model="registerOpen"
+      :title="t('a2a.federation.orgRegisterTitle')"
+      size="lg"
+      persistent
+      :loading="registerLoading"
+    >
+      <div class="app-form-field-grid">
+        <q-input
+          v-model.trim="registerForm.name"
+          dense
+          outlined
+          :label="t('a2a.federation.orgFieldName') + ' *'"
+          :disable="registerLoading"
+        />
+        <q-input
+          v-model.trim="registerForm.domain"
+          dense
+          outlined
+          :label="t('a2a.federation.orgFieldDomain') + ' *'"
+          :hint="t('a2a.federation.orgFieldDomainHint')"
+          :disable="registerLoading"
+        />
+        <q-input
+          v-model.trim="registerForm.public_base_url"
+          dense
+          outlined
+          :label="t('a2a.federation.orgFieldPublicBaseUrl')"
+          class="app-grid-span-full"
+          :disable="registerLoading"
+        />
+        <q-select
+          v-model="registerForm.trust_level"
+          dense
+          outlined
+          emit-value
+          map-options
+          :options="trustOptions"
+          :label="t('a2a.federation.orgFieldTrustLevel')"
+          :disable="registerLoading"
+        />
+        <q-select
+          v-model="registerForm.auth_type"
+          dense
+          outlined
+          emit-value
+          map-options
+          :options="authTypeOptions"
+          :label="t('a2a.federation.orgFieldAuthType')"
+          :disable="registerLoading"
+        />
+        <q-input
+          v-if="registerForm.auth_type === 'api_key' || registerForm.auth_type === 'bearer'"
+          v-model="authSecret"
+          dense
+          outlined
+          class="app-grid-span-full"
+          :type="showSecret ? 'text' : 'password'"
+          :label="registerForm.auth_type === 'bearer' ? 'Bearer Token' : 'API Key'"
+          :disable="registerLoading"
+        >
+          <template #append>
+            <q-btn
+              flat
               dense
-              outlined
-              :label="t('a2a.federation.orgFieldName') + ' *'"
-              :disable="registerLoading"
+              round
+              class="pwd-vis-toggle"
+              :icon="showSecret ? 'visibility_off' : 'visibility'"
+              @click="showSecret = !showSecret"
             />
-            <q-input
-              v-model.trim="registerForm.domain"
-              dense
-              outlined
-              :label="t('a2a.federation.orgFieldDomain') + ' *'"
-              :hint="t('a2a.federation.orgFieldDomainHint')"
-              :disable="registerLoading"
-            />
-            <q-input
-              v-model.trim="registerForm.public_base_url"
-              dense
-              outlined
-              :label="t('a2a.federation.orgFieldPublicBaseUrl')"
-              class="app-grid-span-full"
-              :disable="registerLoading"
-            />
-            <q-select
-              v-model="registerForm.trust_level"
-              dense
-              outlined
-              emit-value
-              map-options
-              :options="trustOptions"
-              :label="t('a2a.federation.orgFieldTrustLevel')"
-              :disable="registerLoading"
-            />
-            <q-select
-              v-model="registerForm.auth_type"
-              dense
-              outlined
-              emit-value
-              map-options
-              :options="authTypeOptions"
-              :label="t('a2a.federation.orgFieldAuthType')"
-              :disable="registerLoading"
-            />
-            <q-input
-              v-if="registerForm.auth_type === 'api_key' || registerForm.auth_type === 'bearer'"
-              v-model="authSecret"
-              dense
-              outlined
-              class="app-grid-span-full"
-              :type="showSecret ? 'text' : 'password'"
-              :label="registerForm.auth_type === 'bearer' ? 'Bearer Token' : 'API Key'"
-              :disable="registerLoading"
-            >
-              <template #append>
-                <q-btn
-                  flat
-                  dense
-                  round
-                  :icon="showSecret ? 'visibility_off' : 'visibility'"
-                  @click="showSecret = !showSecret"
-                />
-              </template>
-            </q-input>
-            <template v-if="registerForm.auth_type === 'mtls'">
-              <q-input
-                v-model="mtls.cert_file"
-                dense
-                outlined
-                :label="t('a2a.federation.orgFieldCertFile')"
-                :disable="registerLoading"
-              />
-              <q-input
-                v-model="mtls.key_file"
-                dense
-                outlined
-                :label="t('a2a.federation.orgFieldKeyFile')"
-                :disable="registerLoading"
-              />
-              <q-input
-                v-model="mtls.ca_file"
-                dense
-                outlined
-                :label="t('a2a.federation.orgFieldCaFile')"
-                class="app-grid-span-full"
-                :disable="registerLoading"
-              />
-            </template>
-          </div>
-        </q-card-section>
-        <q-card-actions align="right" class="q-px-md q-pb-md">
-          <q-btn
-            flat
-            rounded
-            no-caps
-            :label="t('common.cancel')"
-            :disable="registerLoading"
-            @click="registerOpen = false"
-          />
-          <q-btn
-            color="primary"
-            unelevated
-            rounded
-            no-caps
-            :label="t('a2a.federation.orgRegister')"
-            :loading="registerLoading"
-            @click="onRegisterSubmit"
-          />
-        </q-card-actions>
-      </q-card>
-    </q-dialog>
-
-    <!-- 信任等级编辑 Dialog -->
-    <q-dialog :model-value="trustTarget !== null" persistent @update:model-value="onTrustDialogToggle">
-      <q-card class="app-dialog-card app-glass-dialog">
-        <q-card-section class="app-glass-dialog__head row items-center justify-between">
-          <div class="app-glass-dialog__title">{{ t('a2a.federation.orgEditTrust') }} · {{ trustTarget?.name }}</div>
-          <q-btn flat round dense icon="close" @click="trustTarget = null" />
-        </q-card-section>
-        <q-card-section>
-          <q-select
-            v-model="trustDraft"
+          </template>
+        </q-input>
+        <template v-if="registerForm.auth_type === 'mtls'">
+          <q-input
+            v-model="mtls.cert_file"
             dense
             outlined
-            emit-value
-            map-options
-            :options="trustOptions"
-            :label="t('a2a.federation.orgFieldTrustLevel')"
+            :label="t('a2a.federation.orgFieldCertFile')"
+            :disable="registerLoading"
           />
-        </q-card-section>
-        <q-card-actions align="right" class="q-px-md q-pb-md">
-          <q-btn flat rounded no-caps :label="t('common.cancel')" @click="trustTarget = null" />
-          <q-btn color="primary" unelevated rounded no-caps :label="t('common.confirm')" @click="onTrustSubmit" />
-        </q-card-actions>
-      </q-card>
-    </q-dialog>
+          <q-input
+            v-model="mtls.key_file"
+            dense
+            outlined
+            :label="t('a2a.federation.orgFieldKeyFile')"
+            :disable="registerLoading"
+          />
+          <q-input
+            v-model="mtls.ca_file"
+            dense
+            outlined
+            :label="t('a2a.federation.orgFieldCaFile')"
+            class="app-grid-span-full"
+            :disable="registerLoading"
+          />
+        </template>
+      </div>
+      <template #actions>
+        <q-btn
+          flat
+          rounded
+          no-caps
+          :label="t('common.cancel')"
+          :disable="registerLoading"
+          @click="registerOpen = false"
+        />
+        <q-btn
+          color="primary"
+          unelevated
+          rounded
+          no-caps
+          :label="t('a2a.federation.orgRegister')"
+          :loading="registerLoading"
+          @click="onRegisterSubmit"
+        />
+      </template>
+    </AppDialog>
+
+    <!-- 信任等级编辑 Dialog -->
+    <AppDialog
+      :model-value="trustTarget !== null"
+      :title="`${t('a2a.federation.orgEditTrust')} · ${trustTarget?.name ?? ''}`"
+      size="md"
+      persistent
+      @update:model-value="onTrustDialogToggle"
+    >
+      <q-select
+        v-model="trustDraft"
+        dense
+        outlined
+        emit-value
+        map-options
+        :options="trustOptions"
+        :label="t('a2a.federation.orgFieldTrustLevel')"
+      />
+      <template #actions>
+        <q-btn flat rounded no-caps :label="t('common.cancel')" @click="trustTarget = null" />
+        <q-btn color="primary" unelevated rounded no-caps :label="t('common.confirm')" @click="onTrustSubmit" />
+      </template>
+    </AppDialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, reactive, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
+import AppDialog from '../../common/AppDialog.vue';
 import AppPageToolbar from '../../layout/AppPageToolbar.vue';
 import AppRegistryTable from '../../layout/AppRegistryTable.vue';
 import AppStatusChip from '../../common/AppStatusChip.vue';

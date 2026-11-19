@@ -12,7 +12,7 @@
     </div>
     <div class="l0-waterfall__legend">
       <div v-for="bar in bars" :key="`leg-${bar.section}`" class="l0-waterfall__legend-item">
-        <span class="l0-waterfall__swatch" :style="{ background: sectionColor(bar.section) }" />
+        <span class="l0-waterfall__swatch" :class="`l0-waterfall__swatch--${sectionTone(bar.section)}`" />
         <span class="ellipsis">{{ bar.section }}</span>
         <span class="text-grey-6">{{ bar.tokens.toLocaleString() }}</span>
       </div>
@@ -22,23 +22,28 @@
 
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n';
-import { memoryLayerColor } from '../../features/memory/panorama/layerMeta';
 import type { L0WaterfallBar } from '../../features/memory/l0Waterfall';
 
 defineProps<{ bars: L0WaterfallBar[] }>();
 
 const { t } = useI18n();
 
-function sectionColor(section: string): string {
+/** 段落 → 层色档位（取值域 L0–L4 + 兜底，与 --nt-memory-layer-* 令牌一一对应）。 */
+function sectionTone(section: string): string {
   const key = section.trim().toLowerCase();
-  if (key.includes('l4')) return memoryLayerColor('L4');
-  if (key.includes('l3')) return memoryLayerColor('L3');
-  if (key.includes('l2')) return memoryLayerColor('L2');
-  if (key.includes('l1')) return memoryLayerColor('L1');
+  if (key.includes('l4')) return 'l4';
+  if (key.includes('l3')) return 'l3';
+  if (key.includes('l2')) return 'l2';
+  if (key.includes('l1')) return 'l1';
   if (key.includes('l0') || key.includes('history') || key.includes('summary') || key.includes('system')) {
-    return memoryLayerColor('L0');
+    return 'l0';
   }
-  return '#9e9e9e';
+  return 'fallback';
+}
+
+function sectionColor(section: string): string {
+  const tone = sectionTone(section);
+  return tone === 'fallback' ? 'var(--nt-memory-layer-fallback)' : `var(--nt-memory-layer-${Number(tone.slice(1))})`;
 }
 
 function formatPercent(value: number): string {
@@ -81,4 +86,23 @@ function formatPercent(value: number): string {
   height: 8px
   border-radius: 50%
   flex-shrink: 0
+
+// 层色：与 --nt-memory-layer-* 令牌同源
+.l0-waterfall__swatch--l0
+  background: var(--nt-memory-layer-0)
+
+.l0-waterfall__swatch--l1
+  background: var(--nt-memory-layer-1)
+
+.l0-waterfall__swatch--l2
+  background: var(--nt-memory-layer-2)
+
+.l0-waterfall__swatch--l3
+  background: var(--nt-memory-layer-3)
+
+.l0-waterfall__swatch--l4
+  background: var(--nt-memory-layer-4)
+
+.l0-waterfall__swatch--fallback
+  background: var(--nt-memory-layer-fallback)
 </style>

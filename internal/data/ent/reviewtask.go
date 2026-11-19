@@ -40,6 +40,8 @@ type ReviewTask struct {
 	DecisionNote string `json:"decision_note,omitempty"`
 	// ReviewerID holds the value of the "reviewer_id" field.
 	ReviewerID string `json:"reviewer_id,omitempty"`
+	// CreatorID holds the value of the "creator_id" field.
+	CreatorID string `json:"creator_id,omitempty"`
 	// DecidedAt holds the value of the "decided_at" field.
 	DecidedAt string `json:"decided_at,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
@@ -54,7 +56,7 @@ func (*ReviewTask) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case reviewtask.FieldID, reviewtask.FieldContentItemID, reviewtask.FieldGraphExecutionID, reviewtask.FieldGraphNodeID, reviewtask.FieldGraphTaskID, reviewtask.FieldDraftArtifactID, reviewtask.FieldPlatformTargetsJSON, reviewtask.FieldMachineFlagsJSON, reviewtask.FieldDraftTitle, reviewtask.FieldDraftBody, reviewtask.FieldStatus, reviewtask.FieldDecisionNote, reviewtask.FieldReviewerID, reviewtask.FieldDecidedAt, reviewtask.FieldCreatedAt, reviewtask.FieldUpdatedAt:
+		case reviewtask.FieldID, reviewtask.FieldContentItemID, reviewtask.FieldGraphExecutionID, reviewtask.FieldGraphNodeID, reviewtask.FieldGraphTaskID, reviewtask.FieldDraftArtifactID, reviewtask.FieldPlatformTargetsJSON, reviewtask.FieldMachineFlagsJSON, reviewtask.FieldDraftTitle, reviewtask.FieldDraftBody, reviewtask.FieldStatus, reviewtask.FieldDecisionNote, reviewtask.FieldReviewerID, reviewtask.FieldCreatorID, reviewtask.FieldDecidedAt, reviewtask.FieldCreatedAt, reviewtask.FieldUpdatedAt:
 			values[i] = new(sql.NullString)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -149,6 +151,12 @@ func (_m *ReviewTask) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.ReviewerID = value.String
 			}
+		case reviewtask.FieldCreatorID:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field creator_id", values[i])
+			} else if value.Valid {
+				_m.CreatorID = value.String
+			}
 		case reviewtask.FieldDecidedAt:
 			if value, ok := values[i].(*sql.NullString); !ok {
 				return fmt.Errorf("unexpected type %T for field decided_at", values[i])
@@ -238,6 +246,9 @@ func (_m *ReviewTask) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("reviewer_id=")
 	builder.WriteString(_m.ReviewerID)
+	builder.WriteString(", ")
+	builder.WriteString("creator_id=")
+	builder.WriteString(_m.CreatorID)
 	builder.WriteString(", ")
 	builder.WriteString("decided_at=")
 	builder.WriteString(_m.DecidedAt)

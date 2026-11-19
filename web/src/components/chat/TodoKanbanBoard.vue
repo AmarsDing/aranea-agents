@@ -23,24 +23,9 @@
     </div>
 
     <div v-if="expanded" class="todo-kanban__columns">
-      <TodoColumn
-        :title="t('chat.todo.pending')"
-        :items="pendingItems"
-        column-key="pending"
-        color="var(--color-text-secondary)"
-      />
-      <TodoColumn
-        :title="t('chat.todo.inProgress')"
-        :items="inProgressItems"
-        column-key="in_progress"
-        color="var(--color-accent)"
-      />
-      <TodoColumn
-        :title="t('chat.todo.completed')"
-        :items="completedItems"
-        column-key="completed"
-        color="var(--color-success)"
-      />
+      <TodoColumn :title="t('chat.todo.pending')" :items="pendingItems" column-key="pending" />
+      <TodoColumn :title="t('chat.todo.inProgress')" :items="inProgressItems" column-key="in_progress" />
+      <TodoColumn :title="t('chat.todo.completed')" :items="completedItems" column-key="completed" />
     </div>
   </div>
 </template>
@@ -79,7 +64,7 @@ const completedCount = computed(() => completedItems.value.length);
   border-radius: 12px
   background: color-mix(in srgb, var(--glass-surface) 55%, transparent)
   backdrop-filter: blur(var(--glass-blur-default))
-  margin-bottom: 12px
+  margin-bottom: var(--nt-space-3)
   overflow: hidden
 
 .todo-kanban__header
@@ -125,6 +110,6 @@ const completedCount = computed(() => completedItems.value.length);
 
 .todo-kanban__columns
   display: flex
-  gap: 8px
+  gap: var(--nt-space-2)
   padding: 8px 10px 10px
 </style>

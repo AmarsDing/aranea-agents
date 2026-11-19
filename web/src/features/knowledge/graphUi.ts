@@ -7,38 +7,36 @@
  * - 渲染裁剪：>2k 节点默认仅渲染有连接节点（「显示孤立节点」开关放开）
  * - 一跳邻居：hover 高亮集计算
  */
+import { canvasPalette } from '../../utils/canvasPalette';
 import type { CollectionGraphEdge, CollectionGraphNode } from './types';
 
 /** 图谱边类型（chips 过滤项；与后端 link_type 一致）。 */
 export const GRAPH_LINK_TYPES = ['explicit', 'entity', 'semantic'] as const;
 
-/** 边类型配色（hex，供 three.js 材质）。 */
+/** 边类型配色（经 --nt-graph-link-* 令牌，供 three.js 材质）。 */
 export function graphLinkColor(type: string): string {
+  const palette = canvasPalette().link;
   switch (type) {
     case 'explicit':
-      return '#4c8dff'; // primary 蓝
+      return palette.explicit;
     case 'entity':
-      return '#a066d3'; // 紫
+      return palette.entity;
     case 'semantic':
-      return '#3bbdbd'; // 青
+      return palette.semantic;
     default:
-      return '#8a93a6'; // 未知类型灰
+      return palette.unknown;
   }
 }
 
-/** doc_type 调色板（稳定哈希取色，同类同色）。 */
-const DOC_TYPE_PALETTE = [
-  '#4c8dff', // 蓝
-  '#3bbdbd', // 青
-  '#a066d3', // 紫
-  '#d3864a', // 橙
-  '#c45b8a', // 品红
-  '#7fb069', // 绿
-  '#d3b04a', // 金
-  '#5bc4e5', // 天青
-] as const;
+/** 边类型类名档位：取值域与 graphLinkColor 完全一致（explicit/entity/semantic/unknown）。 */
+export function graphLinkTone(type: string): string {
+  return type === 'explicit' || type === 'entity' || type === 'semantic' ? type : 'unknown';
+}
 
-const DOC_TYPE_FALLBACK = '#8a93a6';
+/** doc_type 调色板（--nt-graph-node-1..8，稳定哈希取色，同类同色）。 */
+function docTypePalette(): string[] {
+  return canvasPalette().node;
+}
 
 /** 分组键归一（UX：doc_type 空时回退 rel_path 顶级目录）。
  *  团队收件箱等库 doc_type 全空 → 调色板退化为单色「未分类」、图例无信息量；
@@ -55,12 +53,13 @@ export function graphNodeGroupKey(docType: string, relPath: string): string {
 /** 节点配色：doc_type 稳定哈希 → 调色板；空类型灰。 */
 export function graphDocTypeColor(docType: string): string {
   const key = docType.trim().toLowerCase();
-  if (!key) return DOC_TYPE_FALLBACK;
+  if (!key) return canvasPalette().nodeFallback;
   let h = 0;
   for (let i = 0; i < key.length; i++) {
     h = (h * 31 + key.charCodeAt(i)) | 0;
   }
-  return DOC_TYPE_PALETTE[Math.abs(h) % DOC_TYPE_PALETTE.length];
+  const palette = docTypePalette();
+  return palette[Math.abs(h) % palette.length];
 }
 
 /** 节点大小（three.js nodeVal 体积）：sqrt 压缩长尾，孤立节点保持可见下限。 */

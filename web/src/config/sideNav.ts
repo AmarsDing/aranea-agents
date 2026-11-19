@@ -4,6 +4,15 @@ export type NavItem = {
   labelKey: string;
   /** 路由 exact，默认 true */
   exact?: boolean;
+  /**
+   * P1-7：可见所需权限码（空 = 仅需登录）。取值与后端
+   * internal/biz/menu.go 的目录逐项一致，由 Go 漂移测试守护
+   * （internal/biz/menu_test.go TestNavigationCatalogMatchesWebSideNav）。
+   *
+   * 注意：这里只是**展示层过滤**——真正的判定在后端中间件与业务层。
+   * 客户端过滤失败（接口不可用）时应放行展示，因为未授权请求仍会被后端拒绝。
+   */
+  permission?: string;
 };
 
 export type NavGroup = {
@@ -17,13 +26,21 @@ export const sideNavGroups: NavGroup[] = [
     items: [
       { to: '/overview', icon: 'dashboard', labelKey: 'menu.overview' },
       { to: '/workbench', icon: 'track_changes', labelKey: 'menu.cockpit' },
+      { to: '/approvals', icon: 'approval', labelKey: 'menu.approvals', permission: 'approval.review' },
+      { to: '/schedule', icon: 'event', labelKey: 'menu.schedule', permission: 'office.schedule' },
+      { to: '/apps', icon: 'apps', labelKey: 'menu.apps', permission: 'office.apps' },
+      { to: '/mail', icon: 'mail', labelKey: 'menu.mail', permission: 'office.mail' },
+      { to: '/ceo/company', icon: 'account_tree', labelKey: 'menu.ceoCompany', permission: 'ceoboard.view' },
+      { to: '/ceo/overview', icon: 'monitoring', labelKey: 'menu.ceoOverview', permission: 'ceoboard.view' },
+      { to: '/ceo/oncall', icon: 'engineering', labelKey: 'menu.ceoOncall', permission: 'ceoboard.view' },
       { to: '/task-workspace', icon: 'view_quilt', labelKey: 'menu.taskWorkspace' },
-      { to: '/usage/events', icon: 'receipt_long', labelKey: 'menu.usageEvents' },
+      { to: '/usage/events', icon: 'receipt_long', labelKey: 'menu.usageEvents', permission: 'usage.read' },
       { to: '/chat', icon: 'chat', labelKey: 'menu.chat' },
       { to: '/coding-tasks', icon: 'terminal', labelKey: 'menu.codingTasks' },
+      { to: '/fleet', icon: 'hub', labelKey: 'menu.fleet', permission: 'coding.manage' },
       { to: '/companion', icon: 'record_voice_over', labelKey: 'menu.companion' },
       { to: '/sessions', icon: 'history', labelKey: 'menu.sessions', exact: false },
-      { to: '/memory', icon: 'psychology', labelKey: 'menu.memory', exact: false },
+      { to: '/memory', icon: 'psychology', labelKey: 'menu.memory', exact: false, permission: 'memory.read' },
     ],
   },
   {
@@ -55,6 +72,7 @@ export const sideNavGroups: NavGroup[] = [
       { to: '/plugins', icon: 'tune', labelKey: 'menu.plugins' },
       { to: '/hooks', icon: 'link', labelKey: 'menu.hooks' },
       { to: '/webhooks', icon: 'webhook', labelKey: 'menu.webhooks' },
+      { to: '/credentials', icon: 'key', labelKey: 'menu.credentials', permission: 'credential.manage' },
       { to: '/a2a', icon: 'swap_horiz', labelKey: 'menu.a2a' },
     ],
   },
@@ -71,18 +89,30 @@ export const sideNavGroups: NavGroup[] = [
   {
     labelKey: 'menu.groupKnowledge',
     items: [
-      { to: '/knowledge', icon: 'menu_book', labelKey: 'menu.knowledge' },
-      { to: '/artifacts', icon: 'inventory_2', labelKey: 'menu.artifacts' },
+      { to: '/knowledge', icon: 'menu_book', labelKey: 'menu.knowledge', permission: 'knowledge.read' },
+      { to: '/artifacts', icon: 'inventory_2', labelKey: 'menu.artifacts', permission: 'knowledge.read' },
       { to: '/evaluation', icon: 'fact_check', labelKey: 'menu.evaluation' },
     ],
   },
   {
     labelKey: 'menu.groupOps',
     items: [
-      { to: '/cron', icon: 'schedule', labelKey: 'menu.cron' },
-      { to: '/monitor/logs', icon: 'monitor_heart', labelKey: 'menu.monitor', exact: false },
-      { to: '/self-improvement', icon: 'precision_manufacturing', labelKey: 'menu.selfImprovement' },
-      { to: '/settings', icon: 'settings', labelKey: 'menu.settings' },
+      { to: '/cron', icon: 'schedule', labelKey: 'menu.cron', permission: 'system.cron' },
+      { to: '/monitor/live', icon: 'hub', labelKey: 'menu.monitorLive', permission: 'system.monitor' },
+      {
+        to: '/monitor/logs',
+        icon: 'monitor_heart',
+        labelKey: 'menu.monitor',
+        exact: false,
+        permission: 'system.monitor',
+      },
+      {
+        to: '/self-improvement',
+        icon: 'precision_manufacturing',
+        labelKey: 'menu.selfImprovement',
+        permission: 'system.self_improve',
+      },
+      { to: '/settings', icon: 'settings', labelKey: 'menu.settings', permission: 'system.setting' },
     ],
   },
 ];

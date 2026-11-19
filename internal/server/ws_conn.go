@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"sync"
+	"time"
 
 	"github.com/gorilla/websocket"
 )
@@ -16,6 +17,9 @@ type wsConn struct {
 	channels    map[string]bool
 	filterKey   string
 	unsubscribe func()
+	// tokenVersion 是握手时 JWT 的 tv claim（P1-4）。WS 是长连接，无法逐请求
+	// 校验，故记录握手值供吊销时比对（pub/sub 主动关闭 + 周期兜底扫描）。
+	tokenVersion int64
 	// send is the legacy/system channel (normal priority). eventPump now routes
 	// through queues; non-event callers (sendSystemDownstream) still use send.
 	// MON-OPT-04: send is kept for backward compat; writePump drains queues first.
@@ -44,6 +48,9 @@ type wsConn struct {
 	// closeOnce ensures wc.send is closed at most once, preventing double-close panic
 	// when multiple eventPump goroutines might race on high-queue timeout.
 	closeOnce sync.Once
+	// revokeOnce ensures the revocation close frame is sent at most once, even
+	// when the pub/sub push and the periodic safety-net sweep race (P1-4).
+	revokeOnce sync.Once
 }
 
 // close performs all connection cleanup: cancel context, unsubscribe from event bus,
@@ -55,6 +62,23 @@ func (wc *wsConn) close() {
 		wc.unsubscribe()
 	}
 	wc.conn.Close()
+}
+
+// closeWithCode sends a WebSocket close frame with the given close code and
+// reason, then tears the connection down. Idempotent (once semantics) so the
+// pub/sub push and the safety-net sweep can both call it (P1-4).
+func (wc *wsConn) closeWithCode(code int, reason string) {
+	if wc == nil || wc.conn == nil {
+		return
+	}
+	wc.revokeOnce.Do(func() {
+		_ = wc.conn.WriteControl(
+			websocket.CloseMessage,
+			websocket.FormatCloseMessage(code, reason),
+			time.Now().Add(time.Second),
+		)
+		wc.close()
+	})
 }
 
 // sendSystemDownstream marshals and enqueues a system-level downstream message.
@@ -198,11 +222,41 @@ func wsBuildChannels(globalMode, probeMode bool) map[string]bool {
 type connStore struct {
 	mu    sync.RWMutex
 	conns map[string][]*wsConn
+	// byUser 是 userID → 连接集合的次级索引（P1-4 会话吊销按用户踢连接）。
+	// 与 conns 同步维护；会话 ID 与用户是一对多，反向也是一对多
+	// （同一用户可多端/多会话在线）。
+	byUser map[string]map[*wsConn]struct{}
 }
 
 func newConnStore() *connStore {
 	return &connStore{
-		conns: make(map[string][]*wsConn),
+		conns:  make(map[string][]*wsConn),
+		byUser: make(map[string]map[*wsConn]struct{}),
+	}
+}
+
+// indexUser 在 conns/byUser 同一把锁内登记（调用方已持锁）。
+func (cs *connStore) indexUser(wc *wsConn) {
+	if wc.userID == "" {
+		return
+	}
+	set := cs.byUser[wc.userID]
+	if set == nil {
+		set = make(map[*wsConn]struct{})
+		cs.byUser[wc.userID] = set
+	}
+	set[wc] = struct{}{}
+}
+
+// unindexUser 从 byUser 摘除（调用方已持锁）。
+func (cs *connStore) unindexUser(wc *wsConn) {
+	set := cs.byUser[wc.userID]
+	if set == nil {
+		return
+	}
+	delete(set, wc)
+	if len(set) == 0 {
+		delete(cs.byUser, wc.userID)
 	}
 }
 
@@ -210,6 +264,7 @@ func (cs *connStore) add(sessionID string, wc *wsConn) {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
 	cs.conns[sessionID] = append(cs.conns[sessionID], wc)
+	cs.indexUser(wc)
 }
 
 // tryAdd atomically enforces the connection limit AND registers the
@@ -237,6 +292,7 @@ func (cs *connStore) tryAdd(sessionID string, wc *wsConn, maxSession, maxGlobal 
 		}
 	}
 	cs.conns[sessionID] = append(cs.conns[sessionID], wc)
+	cs.indexUser(wc)
 	return true
 }
 
@@ -253,6 +309,7 @@ func (cs *connStore) remove(wc *wsConn) {
 	if len(cs.conns[wc.sessionID]) == 0 {
 		delete(cs.conns, wc.sessionID)
 	}
+	cs.unindexUser(wc)
 }
 
 func (cs *connStore) count(sessionID string) int {
@@ -282,6 +339,38 @@ func (cs *connStore) forEachConn(fn func(wc *wsConn)) {
 			fn(wc)
 		}
 	}
+}
+
+// forEachConnForUser 遍历某用户的所有在线连接（P1-4 会话吊销）。
+//
+// 先持读锁取快照，再在锁外回调：回调会关闭连接，进而触发
+// readPump → removeConn → cs.remove（写锁），在同一把锁内回调即自死锁。
+func (cs *connStore) forEachConnForUser(userID string, fn func(wc *wsConn)) {
+	if userID == "" {
+		return
+	}
+	cs.mu.RLock()
+	set := cs.byUser[userID]
+	snapshot := make([]*wsConn, 0, len(set))
+	for wc := range set {
+		snapshot = append(snapshot, wc)
+	}
+	cs.mu.RUnlock()
+	for _, wc := range snapshot {
+		fn(wc)
+	}
+}
+
+// userIDs returns a snapshot of all user IDs with at least one live connection
+// (P1-4 兜底扫描用)。
+func (cs *connStore) userIDs() []string {
+	cs.mu.RLock()
+	defer cs.mu.RUnlock()
+	out := make([]string, 0, len(cs.byUser))
+	for uid := range cs.byUser {
+		out = append(out, uid)
+	}
+	return out
 }
 
 // forEachConnForSession iterates over connections subscribed to a specific

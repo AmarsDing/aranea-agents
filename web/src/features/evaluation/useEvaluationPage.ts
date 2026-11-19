@@ -1,6 +1,8 @@
 import { computed, onMounted, ref } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useQuasar } from 'quasar';
+import { confirm } from '../../composables/useAppConfirm';
+import { prompt } from '../../composables/useAppPrompt';
 import { useI18n } from 'vue-i18n';
 import type {
   AnnotateCaseResultInput,
@@ -27,6 +29,7 @@ import {
 } from './evaluationTableUi';
 import { useEvaluationGate } from './useEvaluationGate';
 import { useMonitorRunNavigation } from '../monitor/useMonitorRunNavigation';
+import { isForbiddenApiError } from '../../utils/kratosError';
 
 export function useEvaluationPage() {
   const $q = useQuasar();
@@ -40,6 +43,8 @@ export function useEvaluationPage() {
   const runsPageMax = computed(() => Math.max(1, Math.ceil(Math.max(0, runsTotal.value) / runsPageSize.value)));
   const runsLoading = ref(false);
   const error = ref('');
+  /** 数据集接口 403：页面据此渲染 forbidden 态（无重试）。 */
+  const forbidden = ref(false);
   const createOpen = ref(false);
   const createLoading = ref(false);
   const runOpen = ref(false);
@@ -73,6 +78,8 @@ export function useEvaluationPage() {
   // P1-3: judge calibration summary for the selected dataset (+ trend agent).
   const divergence = ref<JudgeDivergence | null>(null);
   const divergenceLoading = ref(false);
+  /** 辅助区块失败不阻断整页，但必须显式呈现并可重试，不能伪装成空数据。 */
+  const divergenceError = ref('');
   // P2-3: failure groups (error_message aggregation) for the selected dataset.
   const failureGroups = ref<EvalFailureGroup[]>([]);
   const failureGroupsTotal = ref(0);
@@ -152,6 +159,7 @@ export function useEvaluationPage() {
 
   async function loadDatasets() {
     error.value = '';
+    forbidden.value = false;
     try {
       const res = await evaluationStore.loadDatasets({ limit: 100 });
       if (!selectedDatasetId.value && res.items.length) {
@@ -162,6 +170,7 @@ export function useEvaluationPage() {
         await loadRuns();
       }
     } catch (e) {
+      forbidden.value = isForbiddenApiError(e);
       error.value = e instanceof Error ? e.message : '加载失败';
     }
   }
@@ -235,9 +244,11 @@ export function useEvaluationPage() {
     const seq = ++divergenceSeq;
     if (!selectedDatasetId.value) {
       divergence.value = null;
+      divergenceError.value = '';
       return;
     }
     divergenceLoading.value = true;
+    divergenceError.value = '';
     try {
       const res = await evaluationStore.loadJudgeDivergence(selectedDatasetId.value, {
         agent_id: trendAgentId.value || undefined,
@@ -245,9 +256,10 @@ export function useEvaluationPage() {
       if (seq !== divergenceSeq) return; // stale — a newer request owns the state
       divergence.value = res;
     } catch (e) {
-      // Divergence is an auxiliary panel — never notify, just degrade to empty.
-      console.warn('[evaluation] load judge divergence failed:', e);
-      if (seq === divergenceSeq) divergence.value = null;
+      if (seq === divergenceSeq) {
+        divergence.value = null;
+        divergenceError.value = e instanceof Error ? e.message : String(e);
+      }
     } finally {
       if (seq === divergenceSeq) divergenceLoading.value = false;
     }
@@ -288,23 +300,23 @@ export function useEvaluationPage() {
     }
   }
 
-  function confirmDeleteDataset() {
+  async function confirmDeleteDataset() {
     const ds = selectedDataset.value;
     if (!ds) return;
-    $q.dialog({ title: '删除数据集', message: `确定删除「${ds.name}」？`, cancel: true }).onOk(async () => {
-      try {
-        await evaluationStore.removeDataset(ds.id);
-        if (selectedDatasetId.value === ds.id) {
-          selectedDatasetId.value = '';
-          runs.value = [];
-          runsTotal.value = 0; // keep pagination consistent with the cleared list
-        }
-        await loadDatasets();
-        $q.notify({ type: 'positive', message: '已删除' });
-      } catch (e) {
-        $q.notify({ type: 'negative', message: e instanceof Error ? e.message : '删除失败' });
+    const ok = await confirm({ title: '删除数据集', message: `确定删除「${ds.name}」？`, tone: 'danger' });
+    if (!ok) return;
+    try {
+      await evaluationStore.removeDataset(ds.id);
+      if (selectedDatasetId.value === ds.id) {
+        selectedDatasetId.value = '';
+        runs.value = [];
+        runsTotal.value = 0; // keep pagination consistent with the cleared list
       }
-    });
+      await loadDatasets();
+      $q.notify({ type: 'positive', message: '已删除' });
+    } catch (e) {
+      $q.notify({ type: 'negative', message: e instanceof Error ? e.message : '删除失败' });
+    }
   }
 
   function openEditDataset() {
@@ -379,19 +391,21 @@ export function useEvaluationPage() {
     }
   }
 
-  function confirmDeleteCase(row: EvalCase) {
-    $q.dialog({ title: t('evaluationPage.caseDelete'), message: t('evaluationPage.caseDeleteConfirm'), cancel: true }).onOk(
-      async () => {
-        try {
-          await evaluationStore.removeCase(row.dataset_id, row.id);
-          cases.value = cases.value.filter((c) => c.id !== row.id);
-          if (caseEditId.value === row.id) cancelEditCase();
-          $q.notify({ type: 'positive', message: t('evaluationPage.caseDeleted') });
-        } catch (e) {
-          $q.notify({ type: 'negative', message: e instanceof Error ? e.message : t('evaluationPage.caseDeleteFailed') });
-        }
-      },
-    );
+  async function confirmDeleteCase(row: EvalCase) {
+    const ok = await confirm({
+      title: t('evaluationPage.caseDelete'),
+      message: t('evaluationPage.caseDeleteConfirm'),
+      tone: 'danger',
+    });
+    if (!ok) return;
+    try {
+      await evaluationStore.removeCase(row.dataset_id, row.id);
+      cases.value = cases.value.filter((c) => c.id !== row.id);
+      if (caseEditId.value === row.id) cancelEditCase();
+      $q.notify({ type: 'positive', message: t('evaluationPage.caseDeleted') });
+    } catch (e) {
+      $q.notify({ type: 'negative', message: e instanceof Error ? e.message : t('evaluationPage.caseDeleteFailed') });
+    }
   }
 
   async function cancelEvalRun(row: EvalRun) {
@@ -403,17 +417,19 @@ export function useEvaluationPage() {
     }
   }
 
-  function confirmDeleteRun(row: EvalRun) {
-    $q.dialog({ title: t('evaluationPage.runDelete'), message: t('evaluationPage.runDeleteConfirm'), cancel: true }).onOk(
-      async () => {
-        try {
-          await evaluationStore.removeRun(row.id);
-          $q.notify({ type: 'positive', message: t('evaluationPage.runDeleted') });
-        } catch (e) {
-          $q.notify({ type: 'negative', message: e instanceof Error ? e.message : t('evaluationPage.runDeleteFailed') });
-        }
-      },
-    );
+  async function confirmDeleteRun(row: EvalRun) {
+    const ok = await confirm({
+      title: t('evaluationPage.runDelete'),
+      message: t('evaluationPage.runDeleteConfirm'),
+      tone: 'danger',
+    });
+    if (!ok) return;
+    try {
+      await evaluationStore.removeRun(row.id);
+      $q.notify({ type: 'positive', message: t('evaluationPage.runDeleted') });
+    } catch (e) {
+      $q.notify({ type: 'negative', message: e instanceof Error ? e.message : t('evaluationPage.runDeleteFailed') });
+    }
   }
 
   function buildExperimentVariants(): ExperimentVariant[] {
@@ -677,12 +693,13 @@ export function useEvaluationPage() {
   function submitPreferenceWinner(challengeRow: EvalRunComparison) {
     const base = comparisons.value[0];
     if (!base || challengeRow.run_id === base.run_id) return;
-    $q.dialog({
-      title: t('evaluationPage.preferenceDialogTitle'),
-      message: t('evaluationPage.preferenceDialogMessage'),
-      prompt: { model: '', type: 'text' },
-      cancel: true,
-    }).onOk(async (comment: string) => {
+    void (async () => {
+      const comment = await prompt({
+        title: t('evaluationPage.preferenceDialogTitle'),
+        message: t('evaluationPage.preferenceDialogMessage'),
+        persistent: false,
+      });
+      if (comment === null) return;
       preferenceSaving.value = true;
       try {
         await evaluationStore.submitPreference({
@@ -690,7 +707,7 @@ export function useEvaluationPage() {
           run_id_a: base.run_id,
           run_id_b: challengeRow.run_id,
           winner_run_id: challengeRow.run_id,
-          comment: comment?.trim() || undefined,
+          comment: comment || undefined,
         });
         await loadPreferences();
         $q.notify({ type: 'positive', message: t('evaluationPage.preferenceSaved') });
@@ -702,7 +719,7 @@ export function useEvaluationPage() {
       } finally {
         preferenceSaving.value = false;
       }
-    });
+    })();
   }
 
   function openResultTrace(row: EvalCaseResult) {
@@ -820,6 +837,7 @@ export function useEvaluationPage() {
     onRunsPageSize,
     runsLoading,
     error,
+    forbidden,
     createOpen,
     createLoading,
     runOpen,
@@ -889,6 +907,7 @@ export function useEvaluationPage() {
     submitCompare,
     divergence,
     divergenceLoading,
+    divergenceError,
     loadDivergence,
     failureGroups,
     failureGroupsTotal,

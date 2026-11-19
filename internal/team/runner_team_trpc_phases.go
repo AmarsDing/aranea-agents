@@ -207,13 +207,14 @@ func (r *Runner) buildTeamBuilderDeps(ctx context.Context, sess biz.Session, run
 			DialogMode: dialogMode,
 		},
 		TRPCToolAssemblyDeps: agent.TRPCToolAssemblyDeps{
-			ToolUC:         r.td.ReadDeps.ToolUC,
-			MCPTooling:     r.td.Persist.AgentMCP,
-			KanbanBridge:   r.cfg.KanbanBridge,
-			ComputerUseUC:  r.cfg.ComputerUseUC,
-			SandboxFSStore: r.cfg.SandboxFSStore,
-			MediaProviders: r.td.ReadDeps.MediaProviders,
-			ArtifactWriter: r.td.Persist.ArtifactUC,
+			ToolUC:          r.td.ReadDeps.ToolUC,
+			MCPTooling:      r.td.Persist.AgentMCP,
+			KanbanBridge:    r.cfg.KanbanBridge,
+			CredentialVault: r.cfg.CredentialVault,
+			ComputerUseUC:   r.cfg.ComputerUseUC,
+			SandboxFSStore:  r.cfg.SandboxFSStore,
+			MediaProviders:  r.td.ReadDeps.MediaProviders,
+			ArtifactWriter:  r.td.Persist.ArtifactUC,
 			// M80：成员 agent 决策记录入口（2026-08-27 二轮审查根修——chat 路径
 			// 已在 chat_orch_agent_build.go 补装，本 team 成员路径是镜像漏装；
 			// 漏接则成员 hitl_approval / param_rule_deny / loop_guard /

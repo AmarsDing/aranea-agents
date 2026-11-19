@@ -11,26 +11,42 @@
       </template>
     </AppPageHero>
 
-    <q-banner v-if="error" rounded class="bg-negative text-white q-mb-md">
-      {{ error }}
-      <template #action>
-        <q-btn flat color="white" label="重试" @click="loadAll(true)" />
-      </template>
-    </q-banner>
+    <AppStatePanel
+      v-if="pageState === 'error'"
+      class="q-mb-md"
+      variant="error"
+      :description="error"
+      action-label="重试"
+      action-icon="refresh"
+      @action="loadAll()"
+    />
+    <AppStatePanel v-else-if="pageState === 'forbidden'" class="q-mb-md" variant="forbidden" />
+    <AppStatePanel v-else-if="pageState === 'loading'" variant="loading" :rows="4" />
+    <AppStatePanel
+      v-else-if="pageState === 'empty'"
+      variant="empty"
+      title="还没有编码工具"
+      description="注册一个外部编程 CLI（命令行工具），即可在「编码任务」看板中派发只读或改代码任务。"
+      icon="terminal"
+      action-label="添加第一个工具"
+      action-icon="add"
+      @action="openCreate"
+    />
 
-    <!-- 工具列表 -->
-    <q-card v-if="!loading && agents.length === 0" flat class="app-registry-empty app-empty-state-center">
-      <q-card-section class="column items-center text-center q-pa-xl">
-        <q-icon name="terminal" size="48px" color="grey-5" />
-        <div class="text-subtitle1 text-weight-bold">还没有编码工具</div>
-        <div class="text-caption text-grey-7">
-          注册一个外部编程 CLI（命令行工具），即可在「编码任务」看板中派发只读或改代码任务。
-        </div>
-        <q-btn class="q-mt-md" color="primary" rounded unelevated icon="add" label="添加第一个工具" @click="openCreate" />
-      </q-card-section>
-    </q-card>
+    <template v-else>
+      <AppStatePanel
+        v-if="pageState === 'partial'"
+        class="q-mb-md"
+        variant="partial"
+        dense
+        :description="error"
+        action-label="重试"
+        action-icon="refresh"
+        @action="loadAll()"
+      />
 
-    <q-card v-else flat class="app-registry-panel q-mb-lg">
+      <!-- 工具列表 -->
+      <q-card flat class="app-registry-panel q-mb-lg">
       <q-list separator>
         <q-item v-for="agent in agents" :key="agent.agentKey" class="q-py-md">
           <q-item-section avatar>
@@ -80,7 +96,8 @@
           </q-item-section>
         </q-item>
       </q-list>
-    </q-card>
+      </q-card>
+    </template>
 
     <!-- 项目目录 -->
     <q-card flat class="app-registry-panel">
@@ -92,10 +109,16 @@
         <q-btn color="primary" rounded unelevated dense icon="add" label="添加项目" @click="openProjectCreate" />
       </q-card-section>
       <q-separator />
-      <q-card-section v-if="projects.length === 0" class="text-center text-grey-6 q-pa-lg">
-        暂无项目，点击右上角「添加项目」登记本机目录。
-      </q-card-section>
-      <q-list v-else separator>
+      <AppStatePanel
+        v-if="projects.length === 0 && !error"
+        class="q-ma-md"
+        variant="empty"
+        dense
+        title="暂无项目"
+        description="点击右上角「添加项目」登记本机目录。"
+        icon="folder_open"
+      />
+      <q-list v-else-if="projects.length" separator>
         <q-item v-for="p in projects" :key="p.id">
           <q-item-section avatar>
             <q-icon name="folder_open" color="amber-8" />
@@ -106,165 +129,201 @@
             <q-item-label v-if="p.description" caption class="text-grey-6">{{ p.description }}</q-item-label>
           </q-item-section>
           <q-item-section side>
-            <q-btn flat dense round icon="delete" color="negative" aria-label="删除项目" @click="confirmDeleteProject(p)" />
+            <q-btn
+              flat
+              dense
+              round
+              icon="delete"
+              color="negative"
+              aria-label="删除项目"
+              @click="confirmDeleteProject(p)"
+            />
           </q-item-section>
         </q-item>
       </q-list>
     </q-card>
 
     <!-- 编辑/新增工具对话框 -->
-    <q-dialog v-model="editorOpen" persistent>
-      <q-card class="app-dialog-card app-dialog-card--xl app-glass-dialog">
-        <q-card-section class="row items-start justify-between q-gutter-md">
-          <div>
-            <div class="text-h6">{{ editingAgent ? '编辑编码工具' : '添加编码工具' }}</div>
-            <div class="text-caption text-grey-7">配置工具命令、环境变量、能力声明与默认自治级别。</div>
+    <AppDialog
+      v-model="editorOpen"
+      persistent
+      size="xl"
+      :title="editingAgent ? '编辑编码工具' : '添加编码工具'"
+      subtitle="配置工具命令、环境变量、能力声明与默认自治级别。"
+    >
+      <div v-if="!editingAgent" class="q-pb-sm">
+        <q-btn
+          flat
+          dense
+          color="primary"
+          icon="auto_fix_high"
+          :label="$t('codingTools.shimPresetLabel')"
+          @click="applyBuiltinShimPreset"
+        />
+        <div class="text-caption text-grey-6 q-mt-xs">
+          {{ $t('codingTools.shimPresetHint') }}
+        </div>
+      </div>
+      <q-form class="app-form-field-grid app-form-field-grid--2col" @submit.prevent="saveAgent">
+        <q-input
+          v-model="form.agentKey"
+          dense
+          outlined
+          label="工具标识 (agentKey) *"
+          :readonly="!!editingAgent"
+          :rules="[(v) => !!v || '必填']"
+        />
+        <q-input v-model="form.displayName" dense outlined label="显示名称" />
+        <q-input
+          v-model="form.command"
+          dense
+          outlined
+          label="命令 (command) *"
+          placeholder="npx"
+          :rules="[(v) => !!v || '必填']"
+        />
+        <q-input v-model="form.argsText" dense outlined label="参数 (args)" hint="逗号分隔，例如 acp, --stdio" />
+        <q-input v-model="form.iconUrl" dense outlined label="图标 URL" hint="留空时使用工具名首字母占位" />
+        <q-select
+          v-model="form.defaultAutonomy"
+          dense
+          outlined
+          emit-value
+          map-options
+          label="默认自治级别"
+          :options="AUTONOMY_OPTIONS"
+        />
+        <div class="app-grid-span-full">
+          <div class="section-label q-mb-sm">能力声明</div>
+          <div class="row q-gutter-md">
+            <q-checkbox
+              v-for="opt in CAPABILITY_OPTIONS"
+              :key="opt.value"
+              v-model="form.capabilities"
+              :val="opt.value"
+              :label="opt.label"
+              dense
+            />
           </div>
-          <q-btn flat dense round icon="close" aria-label="关闭" @click="editorOpen = false" />
-        </q-card-section>
-        <q-separator />
-        <q-card-section class="mcp-form-scroll">
-          <q-form class="app-form-field-grid app-form-field-grid--2col" @submit.prevent="saveAgent">
-            <q-input v-model="form.agentKey" dense outlined label="工具标识 (agentKey) *" :readonly="!!editingAgent" :rules="[(v) => !!v || '必填']" />
-            <q-input v-model="form.displayName" dense outlined label="显示名称" />
-            <q-input v-model="form.command" dense outlined label="命令 (command) *" placeholder="npx" :rules="[(v) => !!v || '必填']" />
-            <q-input v-model="form.argsText" dense outlined label="参数 (args)" hint="逗号分隔，例如 acp, --stdio" />
-            <q-input v-model="form.iconUrl" dense outlined label="图标 URL" hint="留空时使用工具名首字母占位" />
-            <q-select
-              v-model="form.defaultAutonomy"
+        </div>
+        <div class="app-grid-span-full">
+          <div class="row items-center justify-between q-mb-sm">
+            <div class="section-label">环境变量</div>
+            <q-btn
+              flat
+              dense
+              color="primary"
+              icon="add"
+              label="添加一行"
+              @click="form.envRows.push({ key: '', value: '', masked: false })"
+            />
+          </div>
+          <div v-for="(row, i) in form.envRows" :key="i" class="row q-gutter-sm items-center q-mb-sm">
+            <q-input v-model="row.key" dense outlined class="col-4" label="键" :readonly="row.masked" />
+            <q-input
+              v-model="row.value"
               dense
               outlined
-              emit-value
-              map-options
-              label="默认自治级别"
-              :options="AUTONOMY_OPTIONS"
+              class="col"
+              label="值"
+              :readonly="row.masked"
+              :hint="row.masked ? '服务端已掩码，留空保持不变' : ''"
             />
-            <div class="app-grid-span-full">
-              <div class="section-label q-mb-sm">能力声明</div>
-              <div class="row q-gutter-md">
-                <q-checkbox
-                  v-for="opt in CAPABILITY_OPTIONS"
-                  :key="opt.value"
-                  v-model="form.capabilities"
-                  :val="opt.value"
-                  :label="opt.label"
-                  dense
-                />
-              </div>
-            </div>
-            <div class="app-grid-span-full">
-              <div class="row items-center justify-between q-mb-sm">
-                <div class="section-label">环境变量</div>
-                <q-btn flat dense color="primary" icon="add" label="添加一行" @click="form.envRows.push({ key: '', value: '', masked: false })" />
-              </div>
-              <div v-for="(row, i) in form.envRows" :key="i" class="row q-gutter-sm items-center q-mb-sm">
-                <q-input v-model="row.key" dense outlined class="col-4" label="键" :readonly="row.masked" />
-                <q-input
-                  v-model="row.value"
-                  dense
-                  outlined
-                  class="col"
-                  label="值"
-                  :readonly="row.masked"
-                  :hint="row.masked ? '服务端已掩码，留空保持不变' : ''"
-                />
-                <q-btn flat dense round icon="close" aria-label="删除该行" @click="form.envRows.splice(i, 1)" />
-              </div>
-            </div>
-            <q-toggle v-model="form.enabled" color="primary" label="启用" />
-          </q-form>
-        </q-card-section>
-        <q-separator />
-        <q-card-actions align="right" class="q-pa-md">
-          <q-btn flat rounded label="取消" @click="editorOpen = false" />
-          <q-btn color="primary" rounded unelevated label="保存" :loading="saving" @click="saveAgent" />
-        </q-card-actions>
-      </q-card>
-    </q-dialog>
+            <q-btn flat dense round icon="close" aria-label="删除该行" @click="form.envRows.splice(i, 1)" />
+          </div>
+        </div>
+        <q-toggle v-model="form.enabled" color="primary" label="启用" />
+      </q-form>
+      <template #actions>
+        <q-btn flat rounded label="取消" @click="editorOpen = false" />
+        <q-btn color="primary" rounded unelevated label="保存" :loading="saving" @click="saveAgent" />
+      </template>
+    </AppDialog>
 
     <!-- 项目新增对话框 -->
-    <q-dialog v-model="projectDialogOpen" persistent>
-      <q-card class="app-dialog-card app-glass-dialog" style="min-width: 420px">
-        <q-card-section class="row items-start justify-between">
-          <div class="text-h6">添加项目</div>
-          <q-btn flat dense round icon="close" aria-label="关闭" @click="projectDialogOpen = false" />
-        </q-card-section>
-        <q-separator />
-        <q-card-section>
-          <q-form class="q-gutter-md" @submit.prevent="saveProject">
-            <q-input v-model="projectForm.name" dense outlined label="项目名称 *" :rules="[(v) => !!v || '必填']" />
-            <q-input v-model="projectForm.path" dense outlined label="本机路径 *" placeholder="F:\project\demo" :rules="[(v) => !!v || '必填']" />
-            <q-input v-model="projectForm.description" dense outlined type="textarea" autogrow label="描述" />
-          </q-form>
-        </q-card-section>
-        <q-card-actions align="right" class="q-pa-md">
-          <q-btn flat rounded label="取消" @click="projectDialogOpen = false" />
-          <q-btn color="primary" rounded unelevated label="保存" :loading="projectSaving" @click="saveProject" />
-        </q-card-actions>
-      </q-card>
-    </q-dialog>
+    <AppDialog v-model="projectDialogOpen" persistent size="sm" title="添加项目">
+      <q-form class="q-gutter-md" @submit.prevent="saveProject">
+        <q-input v-model="projectForm.name" dense outlined label="项目名称 *" :rules="[(v) => !!v || '必填']" />
+        <q-input
+          v-model="projectForm.path"
+          dense
+          outlined
+          label="本机路径 *"
+          placeholder="F:\project\demo"
+          :rules="[(v) => !!v || '必填']"
+        />
+        <q-input v-model="projectForm.description" dense outlined type="textarea" autogrow label="描述" />
+      </q-form>
+      <template #actions>
+        <q-btn flat rounded label="取消" @click="projectDialogOpen = false" />
+        <q-btn color="primary" rounded unelevated label="保存" :loading="projectSaving" @click="saveProject" />
+      </template>
+    </AppDialog>
 
     <!-- 试跑：选择项目 -->
-    <q-dialog v-model="tryRunOpen" persistent>
-      <q-card class="app-dialog-card app-glass-dialog" style="min-width: 420px">
-        <q-card-section class="row items-start justify-between">
-          <div>
-            <div class="text-h6">试跑 {{ tryRunAgent?.displayName || tryRunAgent?.agentKey }}</div>
-            <div class="text-caption text-grey-7">以固定只读指令试跑：浏览项目顶层结构并说明用途，不修改任何文件。</div>
-          </div>
-          <q-btn flat dense round icon="close" aria-label="关闭" @click="tryRunOpen = false" />
-        </q-card-section>
-        <q-separator />
-        <q-card-section>
-          <q-select
-            v-model="tryRunProject"
-            dense
-            outlined
-            emit-value
-            map-options
-            label="选择项目 *"
-            :options="projectOptions"
-            :rules="[(v) => !!v || '请选择项目']"
-          />
-        </q-card-section>
-        <q-card-actions align="right" class="q-pa-md">
-          <q-btn flat rounded label="取消" @click="tryRunOpen = false" />
-          <q-btn color="primary" rounded unelevated icon="play_arrow" label="开始试跑" :loading="tryRunning" :disable="!tryRunProject" @click="runTryRun" />
-        </q-card-actions>
-      </q-card>
-    </q-dialog>
+    <AppDialog
+      v-model="tryRunOpen"
+      persistent
+      size="sm"
+      :title="`试跑 ${tryRunAgent?.displayName || tryRunAgent?.agentKey || ''}`"
+      subtitle="以固定只读指令试跑：浏览项目顶层结构并说明用途，不修改任何文件。"
+    >
+      <q-select
+        v-model="tryRunProject"
+        dense
+        outlined
+        emit-value
+        map-options
+        label="选择项目 *"
+        :options="projectOptions"
+        :rules="[(v) => !!v || '请选择项目']"
+      />
+      <template #actions>
+        <q-btn flat rounded label="取消" @click="tryRunOpen = false" />
+        <q-btn
+          color="primary"
+          rounded
+          unelevated
+          icon="play_arrow"
+          label="开始试跑"
+          :loading="tryRunning"
+          :disable="!tryRunProject"
+          @click="runTryRun"
+        />
+      </template>
+    </AppDialog>
 
     <!-- 候选项目选择（项目名歧义时） -->
-    <q-dialog v-model="candidatesOpen" persistent>
-      <q-card class="app-dialog-card app-glass-dialog" style="min-width: 480px">
-        <q-card-section class="row items-start justify-between">
-          <div>
-            <div class="text-h6">匹配到多个项目</div>
-            <div class="text-caption text-grey-7">请选择一个项目重新派发。</div>
-          </div>
-          <q-btn flat dense round icon="close" aria-label="关闭" @click="closeCandidates" />
-        </q-card-section>
-        <q-separator />
-        <q-list separator>
-          <q-item v-for="c in candidates" :key="c.id" v-ripple clickable @click="pickCandidate(c)">
-            <q-item-section avatar><q-icon name="folder_open" color="amber-8" /></q-item-section>
-            <q-item-section>
-              <q-item-label class="text-weight-medium">{{ c.name }}</q-item-label>
-              <q-item-label caption class="text-grey-7">{{ c.path }}</q-item-label>
-            </q-item-section>
-            <q-item-section side><q-icon name="chevron_right" /></q-item-section>
-          </q-item>
-        </q-list>
-      </q-card>
-    </q-dialog>
+    <AppDialog
+      v-model="candidatesOpen"
+      persistent
+      size="sm"
+      title="匹配到多个项目"
+      subtitle="请选择一个项目重新派发。"
+    >
+      <q-list separator>
+        <q-item v-for="c in candidates" :key="c.id" v-ripple clickable @click="pickCandidate(c)">
+          <q-item-section avatar><q-icon name="folder_open" color="amber-8" /></q-item-section>
+          <q-item-section>
+            <q-item-label class="text-weight-medium">{{ c.name }}</q-item-label>
+            <q-item-label caption class="text-grey-7">{{ c.path }}</q-item-label>
+          </q-item-section>
+          <q-item-section side><q-icon name="chevron_right" /></q-item-section>
+        </q-item>
+      </q-list>
+    </AppDialog>
   </q-page>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue';
 import { useQuasar } from 'quasar';
+import { confirm } from '../composables/useAppConfirm';
 import { useRouter } from 'vue-router';
+import AppDialog from '../components/common/AppDialog.vue';
+import AppStatePanel from '../components/common/AppStatePanel.vue';
 import AppPageHero from '../components/layout/AppPageHero.vue';
+import { resolvePageState } from './pageState';
 import {
   AUTONOMY_OPTIONS,
   CAPABILITY_OPTIONS,
@@ -278,6 +337,7 @@ import {
   upsertCodingProject,
 } from '../features/coding/api';
 import type { CodingAgent, CodingProject, ProjectCandidate } from '../features/coding/api';
+import { isForbiddenApiError } from '../utils/kratosError';
 
 const TRY_RUN_PROMPT = '只读浏览当前项目：列出顶层目录结构并一句话说明项目用途。不要修改任何文件。';
 
@@ -286,10 +346,22 @@ const router = useRouter();
 
 const loading = ref(false);
 const error = ref('');
+/** 403 / PERMISSION_DENIED：页面渲染 forbidden 态，不提供重试。 */
+const forbidden = ref(false);
 const agents = ref<CodingAgent[]>([]);
 const projects = ref<CodingProject[]>([]);
 const togglingKey = ref('');
 const probingKey = ref('');
+
+/** 五态判定：工具与项目目录共用一次加载，任一侧有数据时失败降级为 partial 横幅。 */
+const pageState = computed(() =>
+  resolvePageState({
+    loading: loading.value,
+    error: error.value,
+    count: agents.value.length + projects.value.length,
+    forbidden: forbidden.value,
+  }),
+);
 
 const editorOpen = ref(false);
 const editingAgent = ref<CodingAgent | null>(null);
@@ -322,7 +394,9 @@ const candidates = ref<ProjectCandidate[]>([]);
 // 候选重发时保留上一次派发上下文。
 const pendingDispatch = ref<{ agentKey: string; prompt: string } | null>(null);
 
-const projectOptions = computed(() => projects.value.map((p) => ({ label: `${p.name}（${p.path}）`, value: p.name ?? '' })));
+const projectOptions = computed(() =>
+  projects.value.map((p) => ({ label: `${p.name}（${p.path}）`, value: p.name ?? '' })),
+);
 
 function isMaskedValue(v: string): boolean {
   return v.length > 0 && /^[*•]+$/.test(v);
@@ -331,13 +405,16 @@ function isMaskedValue(v: string): boolean {
 async function loadAll(manual = false) {
   loading.value = true;
   error.value = '';
+  forbidden.value = false;
   try {
     const [a, p] = await Promise.all([listCodingAgents(), listCodingProjects()]);
     agents.value = a;
     projects.value = p;
-    if (manual) $q.notify({ type: 'positive', message: `已刷新，共 ${a.length} 个工具、${p.length} 个项目`, timeout: 2000 });
+    if (manual)
+      $q.notify({ type: 'positive', message: `已刷新，共 ${a.length} 个工具、${p.length} 个项目`, timeout: 2000 });
   } catch (err) {
     error.value = err instanceof Error ? err.message : '加载失败';
+    forbidden.value = isForbiddenApiError(err);
   } finally {
     loading.value = false;
   }
@@ -365,6 +442,13 @@ function openCreate() {
     enabled: true,
   });
   editorOpen.value = true;
+}
+
+// 内置通用 shim 预设：command=@self 解析为宿主进程自身（admin），配合
+// acp-shim 子命令把任意 OpenAI 兼容端点包成 ACP 工具——新增厂商零代码。
+function applyBuiltinShimPreset() {
+  form.command = '@self';
+  form.argsText = 'acp-shim, --base-url=https://api.example.com/v1, --model=your-model, --api-key-env=OPENAI_API_KEY';
 }
 
 function openEdit(agent: CodingAgent) {
@@ -557,20 +641,19 @@ async function saveProject() {
   }
 }
 
-function confirmDeleteProject(p: CodingProject) {
-  $q.dialog({
+async function confirmDeleteProject(p: CodingProject) {
+  const ok = await confirm({
     title: '确认删除该项目？',
     message: `删除「${p.name}」后将无法向该目录派发新任务，进行中的任务不受影响。`,
-    cancel: true,
-    persistent: true,
-  }).onOk(async () => {
-    try {
-      await deleteCodingProject(p.id ?? '');
-      $q.notify({ type: 'positive', message: '项目已删除' });
-      await loadAll();
-    } catch (err) {
-      $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '删除失败' });
-    }
+    tone: 'danger',
   });
+  if (!ok) return;
+  try {
+    await deleteCodingProject(p.id ?? '');
+    $q.notify({ type: 'positive', message: '项目已删除' });
+    await loadAll();
+  } catch (err) {
+    $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '删除失败' });
+  }
 }
 </script>

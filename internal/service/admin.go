@@ -49,6 +49,7 @@ func convertAdmin(m *biz.Admin) *v1.Admin {
 		WorkspaceId: m.WorkspaceID,
 		CreateTime:  timestamppb.New(m.CreateTime),
 		UpdateTime:  timestamppb.New(m.UpdateTime),
+		ForceReset:  m.ForceReset,
 	}
 }
 
@@ -106,8 +107,25 @@ func (s *AdminService) Login(ctx context.Context, req *v1.LoginRequest) (*v1.Adm
 	// return it in the response body. Cross-origin clients (WebView / frp)
 	// cannot rely on the HttpOnly cookie, so they authenticate subsequent
 	// requests via `Authorization: Bearer` and WS `?token=` using this value.
+	//
+	// P1-2：claims 携带 roles/clearance/tv。未迁移用户（roles 为空）按
+	// access 列平移为内置角色（P0 详设 01 §1.1），P1-9 迁移脚本回填后
+	// 该回退随 access 列一起退役。
 	expiresAt := time.Now().Add(7 * 24 * time.Hour)
-	token, err := auth.IssueTokenForWorkspace(admin.ID, admin.Access, admin.WorkspaceID, expiresAt)
+	roles := admin.Roles
+	if len(roles) == 0 {
+		roles = auth.LegacyRolesForAccess(admin.Access)
+	}
+	token, err := auth.IssueTokenForPrincipal(auth.Principal{
+		UserID:       admin.ID,
+		Access:       admin.Access,
+		WorkspaceID:  admin.WorkspaceID,
+		Roles:        roles,
+		Clearance:    admin.Clearance,
+		TokenVersion: admin.TokenVersion,
+		// 强制改密门：置位账号的会话被限制在豁免组（改密/登出/查自身）。
+		ForceReset: admin.ForceReset,
+	}, expiresAt)
 	if err != nil {
 		s.lg.Warn("admin login: issue token failed",
 			loggateway.StepID("admin.login"), loggateway.Str("method", method), loggateway.Str("admin_name", admin.Name), loggateway.Err(err))
@@ -198,6 +216,15 @@ func (s *AdminService) UpdateAdmin(ctx context.Context, req *v1.UpdateAdminReque
 	}
 	admin := convertAdmin(bizAdmin)
 	fieldmask.Update(req.UpdateMask, admin, req.Admin)
+	// 强制改密门:fieldmask 显式把 force_reset 置 true(管理员重置一次性口令)
+	// 时,先吊销目标全部会话再落库——顺序与 ChangePassword 一致(先吊销后变更):
+	// 置位失败用户只是被登出,不会出现"标记已置位但旧会话(fr=false claim)
+	// 继续活着"的安全窗口。吊销不可用时不落库(fail-closed,安全场景不许静默)。
+	if admin.ForceReset && !bizAdmin.ForceReset {
+		if err := s.uc.RevokeSessions(ctx, bizAdmin.ID, "force_reset_set"); err != nil {
+			return nil, err
+		}
+	}
 	updated, err := s.uc.UpdateAdmin(ctx, &biz.Admin{
 		ID:       admin.Id,
 		Name:     admin.Name,
@@ -205,6 +232,9 @@ func (s *AdminService) UpdateAdmin(ctx context.Context, req *v1.UpdateAdminReque
 		Password: admin.Password,
 		Avatar:   admin.Avatar,
 		Access:   admin.Access,
+		// fieldmask 未触及 force_reset 时保持已加载原值(管理台编辑不清标记);
+		// 触及即按请求值(置位路径已在上方先吊销会话)。
+		ForceReset: admin.ForceReset,
 	})
 	if err != nil {
 		return nil, err
@@ -245,6 +275,66 @@ func (s *AdminService) GetAdmin(ctx context.Context, req *v1.GetAdminRequest) (*
 		return nil, err
 	}
 	return convertAdmin(admin), nil
+}
+
+// GetMenus implements P1-7 菜单下发：返回按调用者权限裁剪后的侧栏目录。
+// 目录内容来自 biz.NavigationCatalog（与 web/src/config/sideNav.ts 由漂移测试
+// 对齐）；这里只做「主体 → 可见性」的投影与 proto 转换。
+func (s *AdminService) GetMenus(ctx context.Context, _ *emptypb.Empty) (*v1.MenusReply, error) {
+	a, ok := auth.FromContext(ctx)
+	if !ok || a == nil {
+		return nil, auth.ErrUnauthorized
+	}
+	groups := biz.FilterMenuGroups(biz.NavigationCatalog(), a.HasPermission)
+	reply := &v1.MenusReply{
+		Groups:      make([]*v1.MenuGroup, 0, len(groups)),
+		Permissions: auth.PermissionsFor(a),
+		Roles:       append([]string(nil), a.Roles...),
+	}
+	for _, g := range groups {
+		group := &v1.MenuGroup{Key: g.Key, LabelKey: g.LabelKey, Items: make([]*v1.MenuItem, 0, len(g.Items))}
+		for _, it := range g.Items {
+			group.Items = append(group.Items, convertMenuItem(it))
+		}
+		reply.Groups = append(reply.Groups, group)
+	}
+	return reply, nil
+}
+
+func convertMenuItem(it biz.MenuEntry) *v1.MenuItem {
+	item := &v1.MenuItem{
+		Key:        it.Key,
+		Path:       it.Path,
+		LabelKey:   it.LabelKey,
+		Icon:       it.Icon,
+		Exact:      it.Exact,
+		Permission: it.Permission,
+	}
+	if len(it.Children) > 0 {
+		item.Children = make([]*v1.MenuItem, 0, len(it.Children))
+		for _, c := range it.Children {
+			item.Children = append(item.Children, convertMenuItem(c))
+		}
+	}
+	return item
+}
+
+// ChangePassword implements P1-8 自助改密。成功即吊销调用者全部会话（tv 递增），
+// 因此客户端必须清理登录态并跳转登录页——本次响应的 cookie 已不再有效。
+func (s *AdminService) ChangePassword(ctx context.Context, req *v1.ChangePasswordRequest) (*emptypb.Empty, error) {
+	a, ok := auth.FromContext(ctx)
+	if !ok || a == nil {
+		return nil, auth.ErrUnauthorized
+	}
+	if err := s.uc.ChangePassword(ctx, a.UserID, req.GetOldPassword(), req.GetNewPassword()); err != nil {
+		return nil, err
+	}
+	if err := auth.DeleteCookie(ctx); err != nil {
+		// 会话已在服务端吊销；清 cookie 失败只影响本响应，不改变安全结论。
+		s.lg.Warn("admin change password: clear cookie failed",
+			loggateway.StepID("admin.change_password"), loggateway.Err(err))
+	}
+	return &emptypb.Empty{}, nil
 }
 
 // ListAdmins implements admin listing with filtering, ordering, and pagination.

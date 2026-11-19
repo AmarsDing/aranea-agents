@@ -1,0 +1,12 @@
+# 运行时专用镜像：直接打包宿主已构建的 dist/spa。
+# canonical 源码构建路径仍是 web/Dockerfile（容器内 npm install + quasar build）；
+# 本文件用于「构建机无法拉取 node:22 基础镜像 / 无外网」时，用同一次 npm run build
+# 的产物出图，保证镜像内容与源码一致（dist 由构建日志与 index.html 时间戳可核）。
+# 用法：docker build -f web/Dockerfile.runtime -t aranea-web:local web
+ARG NGINX_IMAGE=nginx:1.27-alpine
+FROM ${NGINX_IMAGE}
+
+COPY dist/spa /usr/share/nginx/html
+# SPA history 回退 + /v1 /v2 /api /healthz 同源反代到 compose 内 aranea-admin:8810
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+EXPOSE 80

@@ -411,20 +411,20 @@ const derivedStatus = computed<GraphStageStatus>(() => {
 
 <style lang="sass" scoped>
 .graph-stage-block
-  padding: 8px 0
-  margin: 8px 0
+  padding: var(--nt-space-2) 0
+  margin: var(--nt-space-2) 0
 
 .graph-stage-header
   display: flex
   align-items: center
-  gap: 8px
-  margin-bottom: 8px
+  gap: var(--nt-space-2)
+  margin-bottom: var(--nt-space-2)
   font-size: 13px
   font-weight: 600
   color: var(--color-text-primary)
 
 .header-icon
-  margin-right: 4px
+  margin-right: var(--nt-space-1)
   color: var(--q-primary)
 
 .header-label
@@ -440,8 +440,8 @@ const derivedStatus = computed<GraphStageStatus>(() => {
   display: flex
   align-items: center
   gap: 2px
-  margin-left: 8px
-  padding: 0 4px
+  margin-left: var(--nt-space-2)
+  padding: 0 var(--nt-space-1)
   border: 1px solid var(--glass-border)
   border-radius: 8px
   background: var(--glass-surface)
@@ -461,7 +461,7 @@ const derivedStatus = computed<GraphStageStatus>(() => {
   max-width: 100%
   min-height: 120px
   border: 1px solid var(--glass-border)
-  border-radius: 14px
+  border-radius: 12px
   background: color-mix(in srgb, var(--glass-surface) 55%, transparent)
   cursor: grab
   touch-action: none
@@ -474,7 +474,7 @@ const derivedStatus = computed<GraphStageStatus>(() => {
   // 点阵背景（对齐 showcase mk-gcanvas）
   background-image: radial-gradient(circle, color-mix(in srgb, var(--color-text-tertiary) 30%, transparent) 1px, transparent 1px)
   background-size: 22px 22px
-  border-radius: 14px
+  border-radius: 12px
 
 .graph-stage-edges
   position: absolute

@@ -66,6 +66,9 @@ export type CronTaskRun = {
   output_json: string;
   error_message: string;
   created_at: string;
+  /** 非空 = 该次失败已被人工核销（不计入未核销口径） */
+  resolved_at: string;
+  resolved_by: string;
 };
 
 export type CronTaskRunQuery = {
@@ -74,6 +77,8 @@ export type CronTaskRunQuery = {
   limit?: number;
   page?: number;
   page_size?: number;
+  /** true 时连已核销失败一起返回；默认 false（仅未核销） */
+  include_resolved?: boolean;
 };
 
 export type CronTaskRunPage = {

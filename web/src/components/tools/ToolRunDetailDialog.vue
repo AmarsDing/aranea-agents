@@ -1,25 +1,24 @@
 <template>
-  <q-dialog :model-value="open" @update:model-value="$emit('update:open', $event)">
-    <q-card v-if="invocation" class="app-dialog-card app-glass-dialog tool-run-detail-dialog">
-      <q-card-section class="row items-center justify-between">
-        <div class="min-width-0">
-          <div class="text-h6 ellipsis">{{ invocation.tool_display_name || invocation.tool_key }}</div>
-          <div class="text-caption muted-caption ellipsis">{{ invocation.tool_key }}</div>
-        </div>
-        <div class="row items-center q-gutter-sm">
-          <AppStatusChip :status="invocation.status" :tooltip="invocation.error_message || undefined" />
-          <q-btn flat dense round icon="close" class="app-dialog-icon-btn" @click="$emit('update:open', false)" />
-        </div>
-      </q-card-section>
-      <q-separator />
-
+  <AppDialog
+    :model-value="open"
+    :title="invocation?.tool_display_name || invocation?.tool_key || ''"
+    :subtitle="invocation?.tool_key || ''"
+    @update:model-value="$emit('update:open', $event)"
+  >
+    <template #header-prefix>
+      <AppStatusChip
+        v-if="invocation"
+        :status="invocation.status"
+        :tooltip="invocation.error_message || undefined"
+      />
+    </template>
+    <template v-if="invocation">
       <q-tabs v-model="tab" dense align="left" active-color="primary" indicator-color="primary">
         <q-tab name="params" :label="t('toolsPage.runDetail.tabParams')" />
         <q-tab name="output" :label="t('toolsPage.runDetail.tabOutput')" />
         <q-tab name="error" :label="t('toolsPage.runDetail.tabError')" />
         <q-tab name="context" :label="t('toolsPage.runDetail.tabContext')" />
       </q-tabs>
-      <q-separator />
 
       <q-tab-panels v-model="tab" animated class="tool-run-detail-panels">
         <q-tab-panel name="params">
@@ -38,13 +37,17 @@
               <q-badge rounded color="warning">{{ t('toolsPage.runDetail.redacted') }}</q-badge>
             </div>
             <JsonCodeViewer :text="params?.params_json || '{}'" />
-            <div class="text-caption muted-caption q-mt-sm">{{ t('toolsPage.runDetail.inputHash') }}{{ invocation.input_hash || '—' }}</div>
+            <div class="text-caption muted-caption q-mt-sm">
+              {{ t('toolsPage.runDetail.inputHash') }}{{ invocation.input_hash || '—' }}
+            </div>
           </template>
         </q-tab-panel>
 
         <q-tab-panel name="output">
           <JsonCodeViewer :text="invocation.output_preview || '{}'" />
-          <div class="text-caption muted-caption q-mt-sm">{{ t('toolsPage.runDetail.outputHash') }}{{ invocation.output_hash || '—' }}</div>
+          <div class="text-caption muted-caption q-mt-sm">
+            {{ t('toolsPage.runDetail.outputHash') }}{{ invocation.output_hash || '—' }}
+          </div>
         </q-tab-panel>
 
         <q-tab-panel name="error">
@@ -70,13 +73,14 @@
           </div>
         </q-tab-panel>
       </q-tab-panels>
-    </q-card>
-  </q-dialog>
+    </template>
+  </AppDialog>
 </template>
 
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
+import AppDialog from '../common/AppDialog.vue';
 import AppStatusChip from '../common/AppStatusChip.vue';
 import JsonCodeViewer from '../common/JsonCodeViewer.vue';
 import type { ToolInvocation, ToolInvocationParamDetail } from '../../features/tools/types';
@@ -116,17 +120,17 @@ const contextItems = computed(() => {
     { label: t('toolsPage.runDetail.startedAt'), value: formatInvocationWhen(r.started_at) },
     { label: t('toolsPage.runDetail.endedAt'), value: formatInvocationWhen(r.ended_at) },
     { label: t('toolsPage.runDetail.duration'), value: formatInvocationDuration(r.duration_ms) },
-    { label: 'streaming', value: r.streaming ? t('toolsPage.runDetail.streamingYes', { count: r.chunk_count ?? 0 }) : t('toolsPage.runDetail.streamingNo') },
+    {
+      label: 'streaming',
+      value: r.streaming
+        ? t('toolsPage.runDetail.streamingYes', { count: r.chunk_count ?? 0 })
+        : t('toolsPage.runDetail.streamingNo'),
+    },
   ];
 });
 </script>
 
 <style scoped>
-.tool-run-detail-dialog {
-  width: 640px;
-  max-width: 92vw;
-}
-
 .tool-run-detail-panels {
   min-height: 260px;
 }

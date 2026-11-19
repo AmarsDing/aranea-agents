@@ -1,0 +1,102 @@
+// 页面骨架（2026-11-17）：一行页头、右侧检视面板的尺寸。排在所有皮肤层之后。
+// 依据：docs/aranea-agents/review/2026-11-16-前端界面逐页检查.md 第 5 节「页面骨架」。
+@import "./_nt-tokens.css"
+
+// ——— 一行页头：标题在左、主操作在右，约 48px ———
+html body .app-page-hero
+  flex-wrap: nowrap
+  align-items: center
+  min-height: 48px
+  margin-bottom: var(--nt-space-3)
+
+html body .app-page-hero__main
+  display: flex
+  flex: 1
+  align-items: center
+  gap: var(--nt-space-2)
+  min-width: 0
+
+html body .app-page-hero .app-page-title
+  margin: 0
+  overflow: hidden
+  font-size: calc(var(--nt-fs-title) + 4px)
+  font-weight: 650
+  letter-spacing: 0
+  line-height: 1.3
+  text-overflow: ellipsis
+  white-space: nowrap
+
+html body .app-page-hero__hint
+  display: inline-flex
+  flex: none
+  align-items: center
+  justify-content: center
+  width: 28px
+  height: 28px
+  border-radius: var(--nt-radius-pill)
+  color: var(--nt-text-3)
+  cursor: help
+
+  &:hover
+    color: var(--nt-text-1)
+    background: var(--nt-accent-soft)
+
+  &:focus-visible
+    outline: 2px solid var(--nt-accent)
+    outline-offset: 2px
+
+html body .app-page-hero__actions
+  display: flex
+  flex: none
+  flex-wrap: nowrap
+  align-items: center
+  gap: var(--nt-space-2)
+
+// 旧页头的分类小字与说明行不再显示（说明已收进标题旁的图标）
+html body .app-page-hero .app-page-kicker,
+html body .app-page-hero .app-page-subtitle
+  display: none
+
+@media (max-width: 799px)
+  html body .app-page-hero
+    flex-wrap: wrap
+
+  html body .app-page-hero__actions
+    flex-wrap: wrap
+
+  html body .app-page-hero__hint
+    width: 44px
+    height: 44px
+
+// ——— 右侧检视面板（AppDialog 的 md / lg 默认从右侧滑出） ———
+html body .app-dialog--drawer
+  max-width: 100vw
+  border: 0
+  border-left: 1px solid var(--nt-accent-border)
+
+html body .app-dialog--drawer.app-dialog--md
+  width: min(560px, 100vw)
+
+html body .app-dialog--drawer.app-dialog--lg
+  width: min(760px, 100vw)
+
+// 面板里的操作区贴底，长表单滚动时提交按钮始终够得着（.app-dialog 本身是纵向 flex）
+html body .app-dialog--drawer .app-dialog__actions
+  margin-top: auto
+
+// 面板贴满右侧整高（Quasar 默认给非全屏弹层的外层留了内边距）
+html body .q-dialog__inner--right:has(> .app-dialog--drawer),
+html body .q-dialog__inner--left:has(> .app-dialog--drawer)
+  padding: 0
+
+// 选择器要压过 body.body--dark .q-dialog__inner > .q-card 给所有弹层卡片定的最大高度与圆角
+html body .q-dialog .q-dialog__inner--right > .q-card.app-dialog--drawer,
+html body .q-dialog .q-dialog__inner--left > .q-card.app-dialog--drawer
+  height: 100vh
+  max-height: 100vh
+  border-radius: 0
+
+// 检视面板只轻压一层：列表仍看得清，用户知道自己在改哪一条
+html body .q-dialog:has(.app-dialog--drawer) .q-dialog__backdrop
+  background: var(--nt-scrim-light)
+  backdrop-filter: none

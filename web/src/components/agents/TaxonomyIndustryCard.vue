@@ -2,7 +2,13 @@
   <article :class="['taxonomy-industry-card', { 'is-dark': isDark, 'is-disabled': !industry.enabled }]">
     <!-- Header: monogram + title + status -->
     <header class="taxonomy-industry-card__head">
-      <div class="taxonomy-industry-card__mono" :style="{ background: monoBg }" :aria-label="`行业 ${industry.name}`">
+      <div
+        :class="[
+          'taxonomy-industry-card__mono',
+          `taxonomy-industry-card__mono--${monoPaletteIndexForKey(industry.key)}`,
+        ]"
+        :aria-label="`行业 ${industry.name}`"
+      >
         <span>{{ monoLetters }}</span>
       </div>
       <div class="taxonomy-industry-card__title">
@@ -173,7 +179,7 @@ import {
   departmentPositions,
   type TaxonomyLevel,
 } from '../../features/platform/taxonomyTreeUtils';
-import { monoBgForKey, monoLettersForKey } from './monogram';
+import { monoLettersForKey, monoPaletteIndexForKey } from './monogram';
 
 const props = defineProps<{
   industry: PlatformResourceTreeNode;
@@ -196,7 +202,6 @@ const departments = computed(() => (props.industry.children ?? []).filter((node)
 const deptCount = computed(() => departments.value.length);
 const posCount = computed(() => departments.value.reduce((sum, dept) => sum + positionNodes(dept).length, 0));
 
-const monoBg = computed(() => monoBgForKey(props.industry.key));
 const monoLetters = computed(() => monoLettersForKey(props.industry.key, props.industry.name));
 
 function isToggling(id: string) {
@@ -289,7 +294,7 @@ function positionNodes(dept: PlatformResourceTreeNode) {
   width: 40px
   height: 40px
   flex-shrink: 0
-  border-radius: 10px
+  border-radius: 8px
   display: grid
   place-items: center
   font-weight: 700
@@ -298,6 +303,25 @@ function positionNodes(dept: PlatformResourceTreeNode) {
   color: var(--color-on-accent)
   box-shadow: inset 0 1px 0 color-mix(in srgb, var(--color-text-primary) 30%, transparent), 0 2px 6px color-mix(in srgb, var(--color-shadow) 6%, transparent)
   user-select: none
+
+// 色板渐变：索引来自 monoPaletteIndexForKey（0..5），与 --palette-industry-* 一一对应
+.taxonomy-industry-card__mono--0
+  background: linear-gradient(135deg, var(--palette-industry-0-start) 0%, var(--palette-industry-0-end) 100%)
+
+.taxonomy-industry-card__mono--1
+  background: linear-gradient(135deg, var(--palette-industry-1-start) 0%, var(--palette-industry-1-end) 100%)
+
+.taxonomy-industry-card__mono--2
+  background: linear-gradient(135deg, var(--palette-industry-2-start) 0%, var(--palette-industry-2-end) 100%)
+
+.taxonomy-industry-card__mono--3
+  background: linear-gradient(135deg, var(--palette-industry-3-start) 0%, var(--palette-industry-3-end) 100%)
+
+.taxonomy-industry-card__mono--4
+  background: linear-gradient(135deg, var(--palette-industry-4-start) 0%, var(--palette-industry-4-end) 100%)
+
+.taxonomy-industry-card__mono--5
+  background: linear-gradient(135deg, var(--palette-industry-5-start) 0%, var(--palette-industry-5-end) 100%)
 
 .taxonomy-industry-card__title
   flex: 1

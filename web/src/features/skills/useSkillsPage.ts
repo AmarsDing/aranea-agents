@@ -2,10 +2,12 @@ import { computed, onMounted, ref } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useI18n } from 'vue-i18n';
 import { useQuasar } from 'quasar';
+import { confirm as appConfirm } from '../../composables/useAppConfirm';
 import type { Skill, SkillFilesystemHealth } from './types';
 import { useSkillsStore } from '../../stores/skills';
 import { useEcosystemStore } from '../../stores/ecosystem';
 import { useListPage } from '../../composables/useListPage';
+import { isForbiddenApiError } from '../../utils/kratosError';
 
 export function useSkillsPage() {
   const $q = useQuasar();
@@ -28,6 +30,8 @@ export function useSkillsPage() {
   const { skills: rows, total } = storeToRefs(skillsStore);
   const loading = ref(false);
   const error = ref('');
+  /** 列表接口 403：页面据此渲染 forbidden 态（无重试）。 */
+  const forbidden = ref(false);
   const togglingId = ref('');
   const publishingId = ref('');
   const publishingEcosystemId = ref('');
@@ -64,16 +68,12 @@ export function useSkillsPage() {
     cancelLabel?: string;
     okColor?: string;
   }): Promise<boolean> {
-    return new Promise((resolve) => {
-      $q.dialog({
-        title: opts.title,
-        message: opts.message,
-        cancel: opts.cancelLabel ? { label: opts.cancelLabel, flat: true, noCaps: true } : true,
-        ok: { label: opts.okLabel ?? '确定', noCaps: true, color: opts.okColor ?? 'primary' },
-        persistent: true,
-      })
-        .onOk(() => resolve(true))
-        .onCancel(() => resolve(false));
+    return appConfirm({
+      title: opts.title,
+      message: opts.message,
+      confirmLabel: opts.okLabel,
+      cancelLabel: opts.cancelLabel,
+      tone: opts.okColor === 'negative' ? 'danger' : 'primary',
     });
   }
 
@@ -158,6 +158,7 @@ export function useSkillsPage() {
   async function loadRows() {
     loading.value = true;
     error.value = '';
+    forbidden.value = false;
     try {
       await skillsStore.loadSkills({
         search: search.value,
@@ -173,6 +174,7 @@ export function useSkillsPage() {
       });
       await loadFilesystemHealth();
     } catch (err) {
+      forbidden.value = isForbiddenApiError(err);
       error.value = err instanceof Error ? err.message : '加载 Skill 失败';
     } finally {
       loading.value = false;
@@ -345,6 +347,7 @@ export function useSkillsPage() {
     total,
     loading,
     error,
+    forbidden,
     togglingId,
     publishingId,
     publishingEcosystemId,

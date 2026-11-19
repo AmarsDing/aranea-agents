@@ -1,0 +1,611 @@
+syntax = "proto3";
+
+package kratos.fleet.v1;
+
+import "google/api/annotations.proto";
+import "google/protobuf/empty.proto";
+import "aranea/auth/v1/requirement.proto";
+
+option go_package = "aranea-agents/api/kratos/fleet/v1;v1";
+option java_multiple_files = true;
+option java_package = "api.kratos.fleet.v1";
+
+// ============================================================================
+// FleetService —— Harness 多任务运行台（复刻 stablyai/orca 的工作方式）。
+//
+// 每个任务一个 git worktree，每个 worktree 里跑一个或多个编码 agent 终端
+// （直接启动 Claude Code / Codex 等命令行，不经 ACP）。人在侧栏看状态灯，
+// 在 diff 上逐行批注后整批发回 agent，最后提交、推送。
+//
+// 终端字节流不走本服务：WebSocket /v1/fleet/terminals/{id}/ws（server/fleet_ws.go）。
+// agent 侧编排命令（fleetctl）走 POST /v1/fleet/cli，按终端令牌鉴权。
+//
+// 权限：全部 RPC 要求 coding.manage——终端等同于在本机执行任意命令，
+// diff 也会暴露源码，读操作同样收紧。
+// ============================================================================
+
+// ---------- 编码 agent ----------
+
+message AgentPreset {
+  string id = 1;          // claude | codex | gemini | opencode | ... | shell
+  string label = 2;
+  string command = 3;     // 实际执行的可执行文件
+  bool available = 4;     // 本机 PATH 上能找到
+  bool supports_full_access = 5;
+  string full_access_flag = 6;
+  string resolved_path = 7;
+}
+
+message ListAgentPresetsResponse {
+  repeated AgentPreset items = 1;
+}
+
+// ---------- 项目与 worktree ----------
+
+message Project {
+  string id = 1;
+  string name = 2;
+  string path = 3;
+  string default_branch = 4;
+  bool is_git = 5;
+}
+
+message ListProjectsResponse {
+  repeated Project items = 1;
+}
+
+message AddProjectRequest {
+  string path = 1;
+  string name = 2;
+}
+
+message ListRefsRequest {
+  string project_id = 1;
+}
+
+message ListRefsResponse {
+  repeated string local = 1;
+  repeated string remote = 2;
+  string default_ref = 3;
+}
+
+message Workspace {
+  string id = 1;
+  string project_id = 2;
+  string name = 3;
+  string branch = 4;
+  string base_ref = 5;       // 起点（start-from）
+  string path = 6;
+  string kind = 7;           // primary | worktree
+  string status = 8;         // creating | ready | failed | deleting
+  string error = 9;
+  bool pinned = 10;
+  bool archived = 11;
+  string parent_id = 12;
+  string origin = 13;        // ui | orchestration | automation
+  string linked_issue = 14;
+  string created_at = 15;
+  string updated_at = 16;
+  string last_active_at = 17;
+}
+
+message ListWorkspacesRequest {
+  string project_id = 1;
+  bool include_archived = 2;
+}
+
+message ListWorkspacesResponse {
+  repeated Workspace items = 1;
+}
+
+message CreateWorkspaceRequest {
+  string project_id = 1;
+  string name = 2;
+  string branch = 3;         // 空 = 由名字推导
+  string start_from = 4;     // 空 = 项目默认分支
+  string agent = 5;          // 建好后自动启动的 agent；空 = 不启动
+  string prompt = 6;         // 启动后发给 agent 的第一句话
+  bool full_access = 7;
+  string parent_id = 8;
+  bool fetch = 9;            // 先 git fetch
+}
+
+message UpdateWorkspaceRequest {
+  string id = 1;
+  optional string name = 2;
+  optional bool pinned = 3;
+  optional bool archived = 4;
+  optional string linked_issue = 5;
+}
+
+message DeleteWorkspaceRequest {
+  string id = 1;
+  bool force_branch = 2;     // 分支有未合并提交时也删
+}
+
+message DeleteWorkspaceResponse {
+  bool branch_kept = 1;
+  string message = 2;
+}
+
+// ---------- 终端 ----------
+
+message Terminal {
+  string id = 1;
+  string workspace_id = 2;
+  string agent = 3;
+  string title = 4;
+  string status = 5;         // starting | working | needs_input | done | idle | exited | failed | shell
+  bool full_access = 6;
+  int32 pid = 7;
+  string started_at = 8;
+  int32 exit_code = 9;
+  string last_activity_at = 10;
+  string preview = 11;       // 最近一屏的末几行（去掉控制字符）
+  string run_id = 12;
+  string task_id = 13;
+  string role = 14;          // coordinator | worker | ""
+  string status_changed_at = 15;
+}
+
+message ListTerminalsRequest {
+  string workspace_id = 1;   // 空 = 全部
+}
+
+message ListTerminalsResponse {
+  repeated Terminal items = 1;
+}
+
+message CreateTerminalRequest {
+  string workspace_id = 1;
+  string agent = 2;          // 空或 shell = 普通 shell
+  string prompt = 3;
+  bool full_access = 4;
+  string title = 5;
+}
+
+message TerminalIdRequest {
+  string id = 1;
+}
+
+message SendInputRequest {
+  string id = 1;
+  string text = 2;
+  bool submit = 3;           // 末尾补回车
+}
+
+// ---------- diff 与批注 ----------
+
+message DiffRequest {
+  string workspace_id = 1;
+  string base_ref = 2;       // 空 = worktree 起点
+}
+
+message DiffLine {
+  string kind = 1;           // ctx | add | del
+  int32 old_no = 2;
+  int32 new_no = 3;
+  string text = 4;
+}
+
+message DiffHunk {
+  string header = 1;
+  repeated DiffLine lines = 2;
+}
+
+message DiffFile {
+  string path = 1;
+  string old_path = 2;
+  string status = 3;         // modified | added | deleted | renamed | untracked
+  int32 additions = 4;
+  int32 deletions = 5;
+  bool binary = 6;
+  repeated DiffHunk hunks = 7;
+  bool truncated = 8;
+}
+
+message DiffResponse {
+  string base_ref = 1;
+  string merge_base = 2;
+  repeated DiffFile files = 3;
+  int32 additions = 4;
+  int32 deletions = 5;
+}
+
+message Note {
+  string id = 1;
+  string workspace_id = 2;
+  string path = 3;
+  int32 line = 4;
+  string side = 5;           // new | old
+  string body = 6;
+  bool resolved = 7;
+  string sent_at = 8;
+  string created_at = 9;
+  string line_text = 10;     // 批注时该行内容（行号漂移时帮 agent 定位）
+}
+
+message ListNotesRequest {
+  string workspace_id = 1;
+}
+
+message ListNotesResponse {
+  repeated Note items = 1;
+}
+
+message UpsertNoteRequest {
+  Note note = 1;
+}
+
+message NoteIdRequest {
+  string id = 1;
+}
+
+message SendNotesRequest {
+  string workspace_id = 1;
+  string terminal_id = 2;    // 空 = 新起一个 agent 终端
+  string agent = 3;
+  bool full_access = 4;
+}
+
+message SendNotesResponse {
+  string terminal_id = 1;
+  int32 sent = 2;
+}
+
+// ---------- 源码管理 ----------
+
+message GitFile {
+  string path = 1;
+  string index = 2;          // porcelain X
+  string worktree = 3;       // porcelain Y
+  bool staged = 4;
+  bool untracked = 5;
+}
+
+message GitStatus {
+  string branch = 1;
+  string upstream = 2;
+  int32 ahead = 3;
+  int32 behind = 4;
+  repeated GitFile files = 5;
+  string head = 6;
+  string base_ref = 7;
+  int32 additions = 8;       // 相对起点的总增删
+  int32 deletions = 9;
+}
+
+message WorkspaceIdRequest {
+  string workspace_id = 1;
+}
+
+message GitPathsRequest {
+  string workspace_id = 1;
+  repeated string paths = 2;
+}
+
+message CommitRequest {
+  string workspace_id = 1;
+  string message = 2;
+  bool amend = 3;
+}
+
+message GitOpResponse {
+  bool ok = 1;
+  string output = 2;
+}
+
+// ---------- 动态与通知 ----------
+
+message Event {
+  string id = 1;
+  string kind = 2;           // agent_done | needs_input | exited | worktree_ready | worktree_failed | worker_done | question | automation
+  string title = 3;
+  string body = 4;
+  string workspace_id = 5;
+  string terminal_id = 6;
+  bool read = 7;
+  string created_at = 8;
+  string run_id = 9;
+}
+
+message ListEventsRequest {
+  int32 limit = 1;
+  bool unread_only = 2;
+}
+
+message ListEventsResponse {
+  repeated Event items = 1;
+  int32 unread = 2;
+}
+
+message MarkEventsReadRequest {
+  repeated string ids = 1;
+  bool all = 2;
+}
+
+// ---------- 用量 ----------
+
+message UsageWindow {
+  string label = 1;          // 5h | 7d
+  int64 tokens = 2;
+  double percent = 3;        // -1 = 未知（日志里没有额度信息）
+  string resets_at = 4;
+}
+
+message AgentUsage {
+  string agent = 1;
+  repeated UsageWindow windows = 2;
+  string source = 3;         // 统计来源
+  string updated_at = 4;
+  int64 sessions = 5;
+}
+
+message GetUsageResponse {
+  repeated AgentUsage items = 1;
+}
+
+// ---------- 协调者编排 ----------
+
+message Run {
+  string id = 1;
+  string objective = 2;
+  string project_id = 3;
+  string workspace_id = 4;
+  string coordinator_terminal_id = 5;
+  string agent = 6;
+  string status = 7;         // running | done | stopped
+  string created_at = 8;
+  string updated_at = 9;
+  int32 task_count = 10;
+  int32 done_count = 11;
+  int32 unread = 12;
+}
+
+message Task {
+  string id = 1;
+  string run_id = 2;
+  string title = 3;
+  string spec = 4;
+  string status = 5;         // pending | ready | dispatched | completed | failed | blocked
+  repeated string deps = 6;
+  string worker_terminal_id = 7;
+  string worker_workspace_id = 8;
+  string worker_agent = 9;
+  string dispatch_id = 10;
+  string outcome = 11;
+  string summary = 12;
+  string created_at = 13;
+  string updated_at = 14;
+  repeated string files_modified = 15;
+}
+
+message Message {
+  string id = 1;
+  string run_id = 2;
+  string from = 3;
+  string to = 4;
+  string type = 5;           // worker_done | question | answer | status | escalation | note
+  string subject = 6;
+  string body = 7;
+  string task_id = 8;
+  string dispatch_id = 9;
+  bool read = 10;
+  string answer = 11;
+  string created_at = 12;
+  repeated string options = 13;
+}
+
+message CreateRunRequest {
+  string project_id = 1;
+  string workspace_id = 2;   // 协调者所在 worktree；空 = 项目主检出
+  string objective = 3;
+  string agent = 4;
+  bool full_access = 5;
+}
+
+message ListRunsResponse {
+  repeated Run items = 1;
+}
+
+message RunIdRequest {
+  string id = 1;
+}
+
+message GetRunResponse {
+  Run run = 1;
+  repeated Task tasks = 2;
+  repeated Message messages = 3;
+}
+
+message AnswerRequest {
+  string message_id = 1;
+  string answer = 2;
+}
+
+// ---------- 自动化 ----------
+
+message Automation {
+  string id = 1;
+  string name = 2;
+  string project_id = 3;
+  string agent = 4;
+  string prompt = 5;
+  string schedule = 6;       // every 6h | daily 02:00 | weekdays 09:30 | weekly mon 09:00
+  string worktree_mode = 7;  // new | primary
+  bool full_access = 8;
+  bool enabled = 9;
+  string last_run_at = 10;
+  string next_run_at = 11;
+  string last_status = 12;
+  string last_workspace_id = 13;
+  string created_at = 14;
+}
+
+message ListAutomationsResponse {
+  repeated Automation items = 1;
+}
+
+message UpsertAutomationRequest {
+  Automation automation = 1;
+}
+
+message AutomationIdRequest {
+  string id = 1;
+}
+
+service FleetService {
+  rpc ListAgentPresets(google.protobuf.Empty) returns (ListAgentPresetsResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "coding.manage"};
+    option (google.api.http) = {get: "/v1/fleet/agents"};
+  }
+
+  rpc ListProjects(google.protobuf.Empty) returns (ListProjectsResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "coding.manage"};
+    option (google.api.http) = {get: "/v1/fleet/projects"};
+  }
+  rpc AddProject(AddProjectRequest) returns (Project) {
+    option (aranea.auth.v1.requirement) = {permission: "coding.manage"};
+    option (google.api.http) = {post: "/v1/fleet/projects" body: "*"};
+  }
+  rpc ListRefs(ListRefsRequest) returns (ListRefsResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "coding.manage"};
+    option (google.api.http) = {get: "/v1/fleet/projects/{project_id}/refs"};
+  }
+
+  rpc ListWorkspaces(ListWorkspacesRequest) returns (ListWorkspacesResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "coding.manage"};
+    option (google.api.http) = {get: "/v1/fleet/workspaces"};
+  }
+  rpc CreateWorkspace(CreateWorkspaceRequest) returns (Workspace) {
+    option (aranea.auth.v1.requirement) = {permission: "coding.manage"};
+    option (google.api.http) = {post: "/v1/fleet/workspaces" body: "*"};
+  }
+  rpc UpdateWorkspace(UpdateWorkspaceRequest) returns (Workspace) {
+    option (aranea.auth.v1.requirement) = {permission: "coding.manage"};
+    option (google.api.http) = {patch: "/v1/fleet/workspaces/{id}" body: "*"};
+  }
+  rpc DeleteWorkspace(DeleteWorkspaceRequest) returns (DeleteWorkspaceResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "coding.manage"};
+    option (google.api.http) = {post: "/v1/fleet/workspaces/{id}/delete" body: "*"};
+  }
+
+  rpc ListTerminals(ListTerminalsRequest) returns (ListTerminalsResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "coding.manage"};
+    option (google.api.http) = {get: "/v1/fleet/terminals"};
+  }
+  rpc CreateTerminal(CreateTerminalRequest) returns (Terminal) {
+    option (aranea.auth.v1.requirement) = {permission: "coding.manage"};
+    option (google.api.http) = {post: "/v1/fleet/terminals" body: "*"};
+  }
+  rpc KillTerminal(TerminalIdRequest) returns (Terminal) {
+    option (aranea.auth.v1.requirement) = {permission: "coding.manage"};
+    option (google.api.http) = {post: "/v1/fleet/terminals/{id}/kill" body: "*"};
+  }
+  rpc RestartTerminal(TerminalIdRequest) returns (Terminal) {
+    option (aranea.auth.v1.requirement) = {permission: "coding.manage"};
+    option (google.api.http) = {post: "/v1/fleet/terminals/{id}/restart" body: "*"};
+  }
+  rpc CloseTerminal(TerminalIdRequest) returns (google.protobuf.Empty) {
+    option (aranea.auth.v1.requirement) = {permission: "coding.manage"};
+    option (google.api.http) = {post: "/v1/fleet/terminals/{id}/close" body: "*"};
+  }
+  rpc SendInput(SendInputRequest) returns (google.protobuf.Empty) {
+    option (aranea.auth.v1.requirement) = {permission: "coding.manage"};
+    option (google.api.http) = {post: "/v1/fleet/terminals/{id}/input" body: "*"};
+  }
+
+  rpc GetDiff(DiffRequest) returns (DiffResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "coding.manage"};
+    option (google.api.http) = {get: "/v1/fleet/workspaces/{workspace_id}/diff"};
+  }
+  rpc ListNotes(ListNotesRequest) returns (ListNotesResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "coding.manage"};
+    option (google.api.http) = {get: "/v1/fleet/workspaces/{workspace_id}/notes"};
+  }
+  rpc UpsertNote(UpsertNoteRequest) returns (Note) {
+    option (aranea.auth.v1.requirement) = {permission: "coding.manage"};
+    option (google.api.http) = {post: "/v1/fleet/notes" body: "*"};
+  }
+  rpc DeleteNote(NoteIdRequest) returns (google.protobuf.Empty) {
+    option (aranea.auth.v1.requirement) = {permission: "coding.manage"};
+    option (google.api.http) = {delete: "/v1/fleet/notes/{id}"};
+  }
+  rpc SendNotes(SendNotesRequest) returns (SendNotesResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "coding.manage"};
+    option (google.api.http) = {post: "/v1/fleet/workspaces/{workspace_id}/notes/send" body: "*"};
+  }
+
+  rpc GetGitStatus(WorkspaceIdRequest) returns (GitStatus) {
+    option (aranea.auth.v1.requirement) = {permission: "coding.manage"};
+    option (google.api.http) = {get: "/v1/fleet/workspaces/{workspace_id}/git"};
+  }
+  rpc StageFiles(GitPathsRequest) returns (GitOpResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "coding.manage"};
+    option (google.api.http) = {post: "/v1/fleet/workspaces/{workspace_id}/git/stage" body: "*"};
+  }
+  rpc UnstageFiles(GitPathsRequest) returns (GitOpResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "coding.manage"};
+    option (google.api.http) = {post: "/v1/fleet/workspaces/{workspace_id}/git/unstage" body: "*"};
+  }
+  rpc Commit(CommitRequest) returns (GitOpResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "coding.manage"};
+    option (google.api.http) = {post: "/v1/fleet/workspaces/{workspace_id}/git/commit" body: "*"};
+  }
+  rpc Push(WorkspaceIdRequest) returns (GitOpResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "coding.manage"};
+    option (google.api.http) = {post: "/v1/fleet/workspaces/{workspace_id}/git/push" body: "*"};
+  }
+
+  rpc ListEvents(ListEventsRequest) returns (ListEventsResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "coding.manage"};
+    option (google.api.http) = {get: "/v1/fleet/events"};
+  }
+  rpc MarkEventsRead(MarkEventsReadRequest) returns (google.protobuf.Empty) {
+    option (aranea.auth.v1.requirement) = {permission: "coding.manage"};
+    option (google.api.http) = {post: "/v1/fleet/events/read" body: "*"};
+  }
+
+  rpc GetUsage(google.protobuf.Empty) returns (GetUsageResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "coding.manage"};
+    option (google.api.http) = {get: "/v1/fleet/usage"};
+  }
+
+  rpc CreateRun(CreateRunRequest) returns (Run) {
+    option (aranea.auth.v1.requirement) = {permission: "coding.manage"};
+    option (google.api.http) = {post: "/v1/fleet/runs" body: "*"};
+  }
+  rpc ListRuns(google.protobuf.Empty) returns (ListRunsResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "coding.manage"};
+    option (google.api.http) = {get: "/v1/fleet/runs"};
+  }
+  rpc GetRun(RunIdRequest) returns (GetRunResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "coding.manage"};
+    option (google.api.http) = {get: "/v1/fleet/runs/{id}"};
+  }
+  rpc StopRun(RunIdRequest) returns (Run) {
+    option (aranea.auth.v1.requirement) = {permission: "coding.manage"};
+    option (google.api.http) = {post: "/v1/fleet/runs/{id}/stop" body: "*"};
+  }
+  rpc AnswerQuestion(AnswerRequest) returns (Message) {
+    option (aranea.auth.v1.requirement) = {permission: "coding.manage"};
+    option (google.api.http) = {post: "/v1/fleet/messages/{message_id}/answer" body: "*"};
+  }
+
+  rpc ListAutomations(google.protobuf.Empty) returns (ListAutomationsResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "coding.manage"};
+    option (google.api.http) = {get: "/v1/fleet/automations"};
+  }
+  rpc UpsertAutomation(UpsertAutomationRequest) returns (Automation) {
+    option (aranea.auth.v1.requirement) = {permission: "coding.manage"};
+    option (google.api.http) = {post: "/v1/fleet/automations" body: "*"};
+  }
+  rpc DeleteAutomation(AutomationIdRequest) returns (google.protobuf.Empty) {
+    option (aranea.auth.v1.requirement) = {permission: "coding.manage"};
+    option (google.api.http) = {delete: "/v1/fleet/automations/{id}"};
+  }
+  rpc RunAutomationNow(AutomationIdRequest) returns (Automation) {
+    option (aranea.auth.v1.requirement) = {permission: "coding.manage"};
+    option (google.api.http) = {post: "/v1/fleet/automations/{id}/run" body: "*"};
+  }
+}

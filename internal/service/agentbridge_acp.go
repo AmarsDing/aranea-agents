@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"os"
 	"strings"
 	"sync"
 
@@ -12,6 +13,24 @@ import (
 
 // acpSummaryLimit 结果摘要截断上限（设计 §12：入库前截断 4000 字符）。
 const acpSummaryLimit = 4000
+
+// selfLaunchCommand 是注册表 command 字段的内置 shim 哨兵："@self" 解析为
+// 宿主进程自身可执行文件。配合 args=["acp-shim","--base-url=…",…] 复用
+// admin 二进制的通用 shim 子命令，实现 OpenAI 兼容工具零新增二进制接入。
+const selfLaunchCommand = "@self"
+
+// resolveLaunchCommand 把 "@self" 解析为宿主可执行文件绝对路径；其余原样
+// 返回。解析失败回退原值（交 spawn/探针路径给出诊断）。
+func resolveLaunchCommand(command string) string {
+	if strings.TrimSpace(command) != selfLaunchCommand {
+		return command
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		return command
+	}
+	return exe
+}
 
 // acpSessionFactory 是 agentbridge.SessionFactory 的生产实现：
 // 按 agent 注册信息 spawn ACP 子进程并完成 initialize 握手。
@@ -26,7 +45,7 @@ func NewACPSessionFactory() agentbridge.SessionFactory {
 // Prompt 时建立——cwd 在派发解析项目后才确定。
 func (acpSessionFactory) Spawn(ctx context.Context, agent *agentbridge.CodingAgent) (agentbridge.ACPSession, error) {
 	client, err := acp.Start(ctx, acp.SpawnOptions{
-		Command: agent.Command,
+		Command: resolveLaunchCommand(agent.Command),
 		Args:    agent.Args,
 		Env:     agent.Env,
 	}, nil)

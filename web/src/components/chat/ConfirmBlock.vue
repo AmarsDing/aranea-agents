@@ -293,12 +293,12 @@ function onConfirm(reply: ToolConfirmReply) {
   &__content
     color: var(--color-text-primary)
     line-height: 1.5
-    margin-bottom: 8px
+    margin-bottom: var(--nt-space-2)
 
   &__tool-name
     display: flex
     align-items: center
-    gap: 4px
+    gap: var(--nt-space-1)
     margin-bottom: 6px
 
   &__tool-label
@@ -316,7 +316,7 @@ function onConfirm(reply: ToolConfirmReply) {
     margin-bottom: 2px
 
   &__args
-    margin-bottom: 8px
+    margin-bottom: var(--nt-space-2)
 
   &__actions
     display: flex
@@ -324,7 +324,7 @@ function onConfirm(reply: ToolConfirmReply) {
     gap: 6px
 
   &__btn
-    padding: 4px 12px
+    padding: var(--nt-space-1) var(--nt-space-3)
     border-radius: 6px
     border: none
     font-size: 12px
@@ -369,7 +369,7 @@ function onConfirm(reply: ToolConfirmReply) {
     &__actions
       flex-direction: column
       flex-wrap: nowrap
-      gap: 8px
+      gap: var(--nt-space-2)
 
     &__btn
       width: 100%

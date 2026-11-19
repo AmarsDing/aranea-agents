@@ -339,7 +339,7 @@ func (s *AgentBridgeService) ProbeAgent(ctx context.Context, workspace, agentKey
 		return err
 	}
 	level, detail := acp.Probe(ctx, acp.SpawnOptions{
-		Command: agent.Command,
+		Command: resolveLaunchCommand(agent.Command),
 		Args:    agent.Args,
 		Env:     agent.Env, // shim 启动即读 API key（缺则退出进程）——探针必须注入
 	}, acp.DefaultProbeWarmTimeout)

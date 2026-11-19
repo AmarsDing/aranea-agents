@@ -4,6 +4,7 @@ package kratos.memory.v1;
 
 import "google/api/annotations.proto";
 import "google/api/field_behavior.proto";
+import "aranea/auth/v1/requirement.proto";
 
 option go_package = "aranea-agents/api/kratos/memory/v1;v1";
 option java_multiple_files = true;
@@ -411,6 +412,27 @@ message UpsertMemoryFactRequest {
 }
 
 message UpsertMemoryFactResponse {
+  MemoryFact fact = 1;
+}
+
+// CopyMemoryFactRequest 跨域复制一条 L3 事实（D3 拍板 acceptance #3：
+// copyMemory 等价物——note 从 user 域复制到 workspace）。目标域写权限由
+// 本 rpc 的 memory.write 权限码 + service 层 authorizeMemoryScope(target,
+// write=true) 校验；源域可读性由 service 层 authorizeMemoryScope(source,
+// write=false) 双侧再判。statement/details_markdown/fact_kind 为空时
+// 继承源行（信封解密后的权威全文）。
+message CopyMemoryFactRequest {
+  string source_fact_id = 1 [(google.api.field_behavior) = REQUIRED];
+  // 目标 scope：agent | team | session | user | global | workspace（复制必须显式目标）
+  string target_scope_type = 2 [(google.api.field_behavior) = REQUIRED];
+  string target_scope_id = 3;
+  // 可选覆写；空 = 继承源行
+  string statement = 4;
+  string details_markdown = 5;
+  string fact_kind = 6;
+}
+
+message CopyMemoryFactResponse {
   MemoryFact fact = 1;
 }
 
@@ -919,6 +941,15 @@ service MemoryService {
   rpc UpsertMemoryFact(UpsertMemoryFactRequest) returns (UpsertMemoryFactResponse) {
     option (google.api.http) = {
       post: "/v1/memory/l3/facts"
+      body: "*"
+    };
+  }
+
+  rpc CopyMemoryFact(CopyMemoryFactRequest) returns (CopyMemoryFactResponse) {
+    // 目标域写权限（middleware 硬判）；源域读 ACL 在 service 层按源 scope 再判。
+    option (aranea.auth.v1.requirement) = {permission: "memory.write"};
+    option (google.api.http) = {
+      post: "/v1/memory/l3/facts/{source_fact_id}/copy"
       body: "*"
     };
   }

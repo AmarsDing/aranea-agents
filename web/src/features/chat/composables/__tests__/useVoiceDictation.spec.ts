@@ -225,6 +225,16 @@ describe('useVoiceDictation — 识别事件', () => {
     expect(d.dictating.value).toBe(false);
   });
 
+  it('评审 V3：关闭码 4401（会话吊销）上报 VOICE_SESSION_REVOKED 且不可重试', async () => {
+    const { deps, clients, errors } = makeDeps();
+    const d = useVoiceDictation(deps);
+    await d.toggle();
+
+    clients[0].opts.handlers.onClose?.({ code: 4401, reason: 'session_revoked' });
+    expect(errors.map((e) => [e.code, e.retryable])).toEqual([['VOICE_SESSION_REVOKED', false]]);
+    expect(d.dictating.value).toBe(false);
+  });
+
   it('停止后的迟到 onClose 不再重复报错', async () => {
     const { deps, clients, errors } = makeDeps();
     const d = useVoiceDictation(deps);

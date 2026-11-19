@@ -10,11 +10,29 @@
           :loading="loading"
           @click="refresh" /></template
     ></AppPageHero>
-    <q-banner v-if="error" class="bg-negative q-mb-md" role="alert"
-      >{{ error
-      }}<template #action
-        ><q-btn flat :label="t('uiSystem.operations.retry')" :disable="loading" @click="refresh" /></template
-    ></q-banner>
+    <!-- 五态：已有供应商但刷新失败 → 局部失败横幅，列表照常渲染 -->
+    <AppStatePanel
+      v-if="(error || forbidden) && rows.length > 0"
+      variant="partial"
+      dense
+      class="q-mb-md"
+      :description="error"
+      :action-label="t('uiSystem.operations.retry')"
+      action-icon="refresh"
+      @action="refresh"
+    />
+    <!-- 五态：无权限 → 只渲染 forbidden 面板，不提供重试 -->
+    <AppStatePanel v-else-if="forbidden" variant="forbidden" class="q-mb-md" />
+    <!-- 五态：加载失败且无供应商 → 只渲染可重试错误面板，不与空态并存。 -->
+    <AppStatePanel
+      v-else-if="error"
+      variant="error"
+      class="q-mb-md"
+      :description="error"
+      :action-label="t('uiSystem.operations.retry')"
+      action-icon="refresh"
+      @action="refresh"
+    />
     <q-banner v-if="opportunityId" class="app-info-banner"
       >{{ t('uiSystem.operations.currentOpportunity', { name: opportunityTitle || opportunityId })
       }}<template #action
@@ -52,7 +70,17 @@
             />
           </div> </q-form></q-card-section
     ></q-card>
+    <!-- 五态：首屏加载无供应商 → 骨架面板 -->
+    <AppStatePanel v-if="loading && rows.length === 0 && !error && !forbidden" variant="loading" :rows="4" />
+    <!-- 五态：成功但无供应商 → 空态 -->
+    <AppStatePanel
+      v-else-if="!loading && !error && !forbidden && rows.length === 0"
+      variant="empty"
+      :title="t('uiSystem.operations.noSuppliers')"
+      icon="storefront"
+    />
     <AppRegistryTable
+      v-else-if="rows.length > 0"
       :rows="rows"
       :columns="ui.supplierColumns"
       :loading="loading"
@@ -71,11 +99,12 @@ import { useRoute, useRouter } from 'vue-router';
 import { useSourcingBoardStore } from '../stores/mvp';
 import { createMvpUi } from '../features/mvp/mvpUi';
 import AppPageHero from '../components/layout/AppPageHero.vue';
+import AppStatePanel from '../components/common/AppStatePanel.vue';
 import AppRegistryTable from '../components/layout/AppRegistryTable.vue';
 const { t } = useI18n();
 const ui = computed(() => createMvpUi(t));
 const store = useSourcingBoardStore();
-const { rows, loading, saving, error } = storeToRefs(store);
+const { rows, loading, saving, error, forbidden } = storeToRefs(store);
 const route = useRoute();
 const router = useRouter();
 const name = ref('');

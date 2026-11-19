@@ -147,11 +147,11 @@ function dotStyle(key: string): Record<string, string> {
   flex: 1
   min-height: 0
   overflow-y: auto
-  padding: 0 4px
+  padding: 0 var(--nt-space-1)
 .wb-roster__dept
-  margin-bottom: 8px
+  margin-bottom: var(--nt-space-2)
 .wb-roster__dept-name
-  padding: 4px 8px
+  padding: var(--nt-space-1) var(--nt-space-2)
   font-size: 11px
   font-weight: 600
   color: var(--color-text-secondary)
@@ -166,7 +166,7 @@ function dotStyle(key: string): Record<string, string> {
   gap: 6px
   width: calc(100% - 4px)
   margin: 1px 2px
-  padding: 4px 8px 4px 20px
+  padding: var(--nt-space-1) var(--nt-space-2) var(--nt-space-1) var(--nt-space-5)
   border: 1px dashed transparent
   border-radius: var(--wb-radius)
   background: transparent
@@ -181,7 +181,7 @@ function dotStyle(key: string): Record<string, string> {
 .wb-roster__agent--active .wb-roster__word
   color: var(--wb-flow)
 .wb-roster__agent--float
-  padding-left: 8px
+  padding-left: var(--nt-space-2)
 .wb-roster__dot
   flex: none
   width: 7px
@@ -212,7 +212,7 @@ function dotStyle(key: string): Record<string, string> {
   display: flex
   align-items: center
   gap: 6px
-  padding: 4px 0
+  padding: var(--nt-space-1) 0
   font-size: var(--wb-caption)
   &.dim
     opacity: 0.45

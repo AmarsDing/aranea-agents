@@ -58,6 +58,19 @@ describe('useAgentsPageStore', () => {
     expect(store.listLoading).toBe(false);
   });
 
+  it('loadAgentList records listError and clears it on a successful retry', async () => {
+    const { listAgentsPaged } = await import('../../features/agents/api');
+    const store = useAgentsPageStore();
+
+    (listAgentsPaged as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('network down'));
+    await expect(store.loadAgentList()).rejects.toThrow('network down');
+    expect(store.listError).toBe('network down');
+
+    (listAgentsPaged as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ items: [], total: 0 });
+    await store.loadAgentList();
+    expect(store.listError).toBe('');
+  });
+
   it('toggleAgentFavorite updates list and emits event on success', async () => {
     const { toggleAgentFavorite } = await import('../../features/agents/api');
     const { emitSessionMutation } = await import('../sessionMutationBus');

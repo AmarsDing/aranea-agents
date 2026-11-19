@@ -3,6 +3,7 @@ import { storeToRefs } from 'pinia';
 import { useQuasar } from 'quasar';
 import { useI18n } from 'vue-i18n';
 import { useListPage } from '../../composables/useListPage';
+import { confirm } from '../../composables/useAppConfirm';
 import {
   buildToolSummaryCards,
   categoryFilterOptions,
@@ -16,7 +17,7 @@ import { useToolToggle } from './useToolToggle';
 import { patchToolForm, toolToUpsertInput } from './toolFormPatch';
 import type { Tool, ToolAgentOverride } from './types';
 import { useToolsStore } from '../../stores/tools';
-import { parseKratosApiError } from '../../utils/kratosError';
+import { isForbiddenApiError, parseKratosApiError } from '../../utils/kratosError';
 
 export function useToolsPage() {
   const $q = useQuasar();
@@ -33,6 +34,8 @@ export function useToolsPage() {
   const enabled = ref<boolean | null>(null);
   const abnormal = ref(false);
   const error = ref('');
+  /** 列表接口 403：页面据此渲染 forbidden 态（无重试）。 */
+  const forbidden = ref(false);
   const selected = ref<Tool[]>([]);
 
   const categoryOptions = categoryFilterOptions;
@@ -44,6 +47,7 @@ export function useToolsPage() {
 
   async function loadRows() {
     error.value = '';
+    forbidden.value = false;
     try {
       await toolsStore.loadTools({
         search: search.value,
@@ -56,6 +60,7 @@ export function useToolsPage() {
         page_size: pageSize.value,
       });
     } catch (err) {
+      forbidden.value = isForbiddenApiError(err);
       error.value = err instanceof Error ? err.message : t('toolsPage.list.loadFailed');
     }
   }
@@ -91,15 +96,15 @@ export function useToolsPage() {
 
   async function updateRisk(tool: Tool, value: string) {
     if (value === 'critical' || value === 'high') {
-      $q.dialog({
+      const ok = await confirm({
         title: t('toolsPage.list.riskChangeTitle'),
         message: t('toolsPage.list.riskChangeMessage', {
           name: tool.display_name || tool.key,
           level: value,
         }),
-        cancel: true,
-        persistent: true,
-      }).onOk(() => doUpdateRisk(tool, value));
+        tone: 'danger',
+      });
+      if (ok) await doUpdateRisk(tool, value);
       return;
     }
     await doUpdateRisk(tool, value);
@@ -129,20 +134,14 @@ export function useToolsPage() {
           .slice(0, 5)
           .map((tool) => tool.display_name || tool.key)
           .join('、');
-        const confirmed = await new Promise<boolean>((resolve) => {
-          $q.dialog({
-            title: t('toolsPage.list.batchHighRiskTitle'),
-            message: t('toolsPage.list.batchHighRiskMessage', {
-              names,
-              count: highRisk.length,
-              extra: highRisk.length > 5 ? t('toolsPage.list.batchHighRiskMore', { count: highRisk.length }) : '',
-            }),
-            cancel: true,
-            persistent: true,
-          })
-            .onOk(() => resolve(true))
-            .onCancel(() => resolve(false))
-            .onDismiss(() => resolve(false));
+        const confirmed = await confirm({
+          title: t('toolsPage.list.batchHighRiskTitle'),
+          message: t('toolsPage.list.batchHighRiskMessage', {
+            names,
+            count: highRisk.length,
+            extra: highRisk.length > 5 ? t('toolsPage.list.batchHighRiskMore', { count: highRisk.length }) : '',
+          }),
+          tone: 'danger',
         });
         if (!confirmed) return;
       }
@@ -175,7 +174,7 @@ export function useToolsPage() {
     }
   }
 
-  function batchRemove() {
+  async function batchRemove() {
     const readonlyCount = selected.value.filter((tool) => tool.readonly).length;
     const targets = selected.value.filter((tool) => !tool.readonly);
     const count = targets.length;
@@ -183,33 +182,32 @@ export function useToolsPage() {
       $q.notify({ type: 'warning', message: t('toolsPage.list.batchRemoveAllReadonly') });
       return;
     }
-    $q.dialog({
+    const okToRemove = await confirm({
       title: t('toolsPage.list.batchRemoveTitle'),
       message:
         readonlyCount > 0
           ? t('toolsPage.list.batchRemoveMessageSkipReadonly', { count, readonly: readonlyCount })
           : t('toolsPage.list.batchRemoveMessage', { count }),
-      cancel: true,
-      persistent: true,
-    }).onOk(async () => {
-      let ok = 0;
-      let failed = 0;
-      for (const tool of targets) {
-        try {
-          await toolsStore.remove(tool.id || tool.key);
-          ok += 1;
-        } catch {
-          failed += 1;
-        }
-      }
-      selected.value = [];
-      await loadRows();
-      if (failed > 0) {
-        $q.notify({ type: 'warning', message: t('toolsPage.list.batchRemovePartial', { ok, failed }) });
-      } else {
-        $q.notify({ type: 'positive', message: t('toolsPage.list.batchRemoveDone', { count: ok }) });
-      }
+      tone: 'danger',
     });
+    if (!okToRemove) return;
+    let ok = 0;
+    let failed = 0;
+    for (const tool of targets) {
+      try {
+        await toolsStore.remove(tool.id || tool.key);
+        ok += 1;
+      } catch {
+        failed += 1;
+      }
+    }
+    selected.value = [];
+    await loadRows();
+    if (failed > 0) {
+      $q.notify({ type: 'warning', message: t('toolsPage.list.batchRemovePartial', { ok, failed }) });
+    } else {
+      $q.notify({ type: 'positive', message: t('toolsPage.list.batchRemoveDone', { count: ok }) });
+    }
   }
 
   function onEditTool(tool: Tool) {
@@ -224,16 +222,15 @@ export function useToolsPage() {
   // ---- 编辑器 / 详情抽屉的 UI 反馈编排（store 保持纯数据流，红线 #4） ----
 
   /** 编辑器请求关闭：有未保存更改时在 Page 层弹确认，确认后丢弃。 */
-  function onEditorRequestClose() {
-    $q.dialog({
+  async function onEditorRequestClose() {
+    const ok = await confirm({
       title: t('toolsPage.editor.discardTitle'),
       message: t('toolsPage.editor.discardMessage'),
-      cancel: { label: t('toolsPage.editor.discardCancel'), flat: true, noCaps: true },
-      ok: { label: t('toolsPage.editor.discardOk'), noCaps: true, color: 'negative' },
-      persistent: true,
-    }).onOk(() => {
-      editorStore.closeEditor();
+      cancelLabel: t('toolsPage.editor.discardCancel'),
+      confirmLabel: t('toolsPage.editor.discardOk'),
+      tone: 'danger',
     });
+    if (ok) editorStore.closeEditor();
   }
 
   async function saveEditor() {
@@ -241,21 +238,17 @@ export function useToolsPage() {
       const { created } = await editorStore.save();
       if (created) {
         await loadRows();
-        $q.dialog({
+        const openDetail = await confirm({
           title: t('toolsPage.editor.createdTitle'),
           message: t('toolsPage.editor.createdMessage', { name: created.display_name || created.key }),
-          cancel: { label: t('toolsPage.editor.createdLater'), flat: true, noCaps: true },
-          ok: {
-            label: t('toolsPage.editor.createdOpenDetail'),
-            noCaps: true,
-            unelevated: true,
-            class: 'app-registry-primary-btn',
-          },
-          persistent: false,
-        }).onOk(async () => {
+          confirmLabel: t('toolsPage.editor.createdOpenDetail'),
+          cancelLabel: t('toolsPage.editor.createdLater'),
+          tone: 'primary',
+        });
+        if (openDetail) {
           const fetched = await toolsStore.fetchTool(created.id || created.key);
           detailStore.openDetail(fetched);
-        });
+        }
       } else {
         $q.notify({ type: 'positive', message: t('toolsPage.editor.saved') });
         await loadRows();
@@ -311,22 +304,21 @@ export function useToolsPage() {
     }
   }
 
-  function onRemoveOverride(o: ToolAgentOverride) {
-    $q.dialog({
+  async function onRemoveOverride(o: ToolAgentOverride) {
+    const ok = await confirm({
       title: t('toolsPage.override.removeTitle'),
       message: t('toolsPage.override.removeMessage', { agent: o.agent_id }),
-      cancel: true,
-      persistent: true,
-    }).onOk(async () => {
-      try {
-        await detailStore.removeOverride(o);
-      } catch (err) {
-        $q.notify({
-          type: 'negative',
-          message: parseKratosApiError(err).message || t('toolsPage.override.removeFailed'),
-        });
-      }
+      tone: 'danger',
     });
+    if (!ok) return;
+    try {
+      await detailStore.removeOverride(o);
+    } catch (err) {
+      $q.notify({
+        type: 'negative',
+        message: parseKratosApiError(err).message || t('toolsPage.override.removeFailed'),
+      });
+    }
   }
 
   watch(
@@ -369,6 +361,7 @@ export function useToolsPage() {
     page,
     pageSize,
     error,
+    forbidden,
     selected,
     // computed
     pageMax,

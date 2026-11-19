@@ -2,6 +2,8 @@
   <q-page :class="['app-standard-page app-entity-page agents-page', { 'is-dark': isDark }]">
     <agents-workspace-hero @create="openCreate" />
 
+    <div class="agents-workspace" :class="{ 'agents-workspace--inspecting': inspectorOpen }">
+      <div class="agents-workspace__main min-width-0">
     <agents-filters-card
       v-model:keyword="keyword"
       v-model:selected-status="selectedStatus"
@@ -25,7 +27,12 @@
       :is-favorite="isFavorite"
       :get-category-label="taxonomyLabel"
       :selected-ids="selectedAgentIds"
+      :error="listError"
+      :batch-busy="batchBusyAction"
+      :batch-error="batchError"
       @create="openCreate"
+      @retry="runLoadList"
+      @inspect="inspectAgent"
       @toggle-favorite="toggleFavorite"
       @toggle-select="toggleAgentSelected"
       @copy-key="copyAgentKey"
@@ -34,11 +41,53 @@
       @reorder="onReorder"
       @batch-enable="runBatchSetStatus('active')"
       @batch-disable="runBatchSetStatus('inactive')"
-      @batch-delete="requestBatchDelete"
+      @batch-delete="runBatchDelete"
       @clear-selection="clearAgentSelection"
     />
 
     <agents-pagination-bar v-model:page="page" v-model:rows-per-page="rowsPerPage" :total="total" :page-max="pageMax" />
+      </div>
+
+      <AppRegistryInspector
+        v-model="inspectorOpen"
+        :title="inspectedAgent?.display_name || t('shell.registry.inspect')"
+        :eyebrow="inspectedAgent ? `AGENT / ${inspectedAgent.agent_key}` : undefined"
+      >
+        <div v-if="inspectedAgent" class="registry-inspector-stack">
+          <div class="row items-center q-gutter-sm">
+            <AppStatusChip :status="inspectedAgent.status" />
+            <span v-if="inspectedAgent.last_run_status" class="app-registry-cell-sub">
+              {{ t('shell.registry.lastRun') }} · {{ inspectedAgent.last_run_status }}
+            </span>
+          </div>
+          <p class="registry-inspector-description">{{ inspectedAgent.agent_description || t('shell.registry.noDescription') }}</p>
+          <dl class="registry-facts">
+            <div><dt>{{ t('shell.registry.identifier') }}</dt><dd class="mono">{{ inspectedAgent.agent_key }}</dd></div>
+            <div><dt>{{ t('shell.registry.model') }}</dt><dd>{{ inspectedAgent.provider }} / {{ inspectedAgent.model }}</dd></div>
+            <div><dt>{{ t('shell.registry.organization') }}</dt><dd>{{ taxonomyLabel(inspectedAgent.taxonomy_position_id) }}</dd></div>
+            <div><dt>{{ t('shell.registry.contextWindow') }}</dt><dd class="mono">{{ inspectedAgent.context_window }}</dd></div>
+            <div><dt>{{ t('shell.registry.lastRunAt') }}</dt><dd class="mono">{{ formatInspectorTime(inspectedAgent.last_run_at) }}</dd></div>
+            <div><dt>{{ t('shell.registry.updatedAt') }}</dt><dd class="mono">{{ formatInspectorTime(inspectedAgent.updated_at) }}</dd></div>
+          </dl>
+          <section v-if="inspectedAgent.settings" class="registry-inspector-section">
+            <h3>{{ t('shell.registry.relatedSettings') }}</h3>
+            <dl class="registry-facts">
+              <div><dt>{{ t('shell.registry.tools') }}</dt><dd>{{ inspectedAgent.settings.tools_enabled ? t('shell.registry.enabled') : t('shell.registry.disabled') }}</dd></div>
+              <div><dt>{{ t('shell.registry.memory') }}</dt><dd>{{ inspectedAgent.settings.memory_enabled ? t('shell.registry.enabled') : t('shell.registry.disabled') }}</dd></div>
+              <div><dt>{{ t('shell.registry.subagents') }}</dt><dd>{{ inspectedAgent.settings.subagents_enabled ? t('shell.registry.enabled') : t('shell.registry.disabled') }}</dd></div>
+            </dl>
+          </section>
+          <q-btn
+            outline
+            no-caps
+            color="primary"
+            icon="settings"
+            :label="t('shell.registry.openSettings')"
+            :to="`/agents/${inspectedAgent.id}/settings`"
+          />
+        </div>
+      </AppRegistryInspector>
+    </div>
 
     <agent-create-dialog
       v-model="createOpen"
@@ -67,43 +116,13 @@
       @create="onCreate"
     />
 
-    <q-dialog v-model="deleteOpen">
-      <q-card class="app-dialog-card app-dialog-card--sm app-glass-dialog">
-        <q-card-section>
-          <div class="text-h6">删除 Agent</div>
-          <div class="text-body2 text-grey-7 q-mt-sm">
-            确认删除「{{ deleteTarget?.display_name }}」？此操作会软删除，列表中不再显示。
-          </div>
-        </q-card-section>
-        <q-card-actions align="right" class="app-actions-bar">
-          <q-btn v-close-popup flat rounded no-caps label="取消" />
-          <q-btn color="negative" rounded unelevated no-caps label="删除" @click="deleteAgentTarget" />
-        </q-card-actions>
-      </q-card>
-    </q-dialog>
-
-    <q-dialog v-model="batchDeleteOpen">
-      <q-card class="app-dialog-card app-dialog-card--sm app-glass-dialog">
-        <q-card-section>
-          <div class="text-h6">{{ $t('agentsPage.batch.deleteConfirmTitle') }}</div>
-          <div class="text-body2 text-grey-7 q-mt-sm">
-            {{ $t('agentsPage.batch.deleteConfirmMessage', { n: selectedAgentIds.length }) }}
-          </div>
-        </q-card-section>
-        <q-card-actions align="right" class="app-actions-bar">
-          <q-btn v-close-popup flat rounded no-caps :label="$t('agentsPage.batch.cancel')" />
-          <q-btn
-            color="negative"
-            rounded
-            unelevated
-            no-caps
-            :loading="batchBusy"
-            :label="$t('agentsPage.batch.delete')"
-            @click="runBatchDelete"
-          />
-        </q-card-actions>
-      </q-card>
-    </q-dialog>
+    <AppConfirmDialog
+      v-model="deleteOpen"
+      :title="t('shell.agents.deleteTitle')"
+      :message="t('shell.agents.deleteMessage', { name: deleteTarget?.display_name ?? '' })"
+      :confirm-label="t('shell.agents.delete')"
+      @confirm="deleteAgentTarget"
+    />
   </q-page>
 </template>
 
@@ -112,12 +131,33 @@
  * 路由容器：组装列表视图子组件，调度用例（由 useAgentsPage 提供）。
  * 表现与交互块在 components/agents/*；领域胶水在 features/agents/useAgentsPage.ts。
  */
+import { ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 import AgentCreateDialog from '../components/agents/AgentCreateDialog.vue';
 import AgentsFiltersCard from '../components/agents/AgentsFiltersCard.vue';
 import AgentsListSection from '../components/agents/AgentsListSection.vue';
 import AgentsPaginationBar from '../components/agents/AgentsPaginationBar.vue';
 import AgentsWorkspaceHero from '../components/agents/AgentsWorkspaceHero.vue';
+import AppRegistryInspector from '../components/layout/AppRegistryInspector.vue';
+import AppStatusChip from '../components/common/AppStatusChip.vue';
+import AppConfirmDialog from '../components/common/AppConfirmDialog.vue';
 import { useAgentsPage } from '../features/agents/useAgentsPage';
+import type { Agent } from '../features/agents/types';
+
+const { t } = useI18n();
+const inspectorOpen = ref(false);
+const inspectedAgent = ref<Agent | null>(null);
+
+function inspectAgent(agent: Agent) {
+  inspectedAgent.value = agent;
+  inspectorOpen.value = true;
+}
+
+function formatInspectorTime(value?: string) {
+  if (!value) return '—';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+}
 
 const {
   isDark,
@@ -132,6 +172,8 @@ const {
   rowsPerPage,
   total,
   loading,
+  listError,
+  runLoadList,
   createOpen,
   deleteOpen,
   deleteTarget,
@@ -174,9 +216,8 @@ const {
   selectedAgentIds,
   toggleAgentSelected,
   clearAgentSelection,
-  batchDeleteOpen,
-  batchBusy,
-  requestBatchDelete,
+  batchBusyAction,
+  batchError,
   runBatchSetStatus,
   runBatchDelete,
 } = useAgentsPage();

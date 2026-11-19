@@ -23,104 +23,83 @@
   </q-btn>
 
   <!-- Result dialog -->
-  <q-dialog v-model="showResult" persistent>
-    <q-card class="ai-refine-dialog-card app-dialog-card app-glass-dialog">
-      <q-card-section class="row items-center">
-        <div class="text-h6">{{ $t('agentSettings.aiRefine.dialogTitle') }}</div>
-        <q-space />
-        <span v-if="result" class="refine-chip">
-          {{ result.provider }} / {{ result.model }}
-          <q-tooltip>{{ $t('agentSettings.aiRefine.modelSource', { source: result.source }) }}</q-tooltip>
-        </span>
-        <q-btn flat round dense icon="close" class="q-ml-sm" @click="handleCancel">
-          <q-tooltip>{{ $t('agentSettings.aiRefine.closeTooltip') }}</q-tooltip>
-        </q-btn>
-      </q-card-section>
+  <AppDialog
+    v-model="showResult"
+    :title="$t('agentSettings.aiRefine.dialogTitle')"
+    size="md"
+    persistent
+  >
+    <!-- Token delta -->
+    <div v-if="result" class="row q-gutter-sm q-mb-sm">
+      <span class="refine-chip">{{
+        $t('agentSettings.aiRefine.tokensBefore', { count: result.tokensBefore })
+      }}</span>
+      <span class="refine-chip refine-chip--accent">{{
+        $t('agentSettings.aiRefine.tokensAfter', { count: result.tokensAfter })
+      }}</span>
+      <span class="refine-chip">
+        {{ result.provider }} / {{ result.model }}
+        <q-tooltip>{{ $t('agentSettings.aiRefine.modelSource', { source: result.source }) }}</q-tooltip>
+      </span>
+    </div>
 
-      <q-card-section class="q-pt-none">
-        <!-- Token delta -->
-        <div v-if="result" class="row q-gutter-sm q-mb-sm">
-          <span class="refine-chip">{{
-            $t('agentSettings.aiRefine.tokensBefore', { count: result.tokensBefore })
-          }}</span>
-          <span class="refine-chip refine-chip--accent">{{
-            $t('agentSettings.aiRefine.tokensAfter', { count: result.tokensAfter })
-          }}</span>
-        </div>
+    <!-- Diff toggle -->
+    <div class="row q-mb-sm">
+      <q-btn-toggle v-model="resultView" dense flat toggle-color="primary" :options="viewOptions" />
+    </div>
 
-        <!-- Diff toggle -->
-        <div class="row q-mb-sm">
-          <q-btn-toggle
-            v-model="resultView"
-            dense
-            flat
-            toggle-color="primary"
-            :options="viewOptions"
-          />
-        </div>
+    <q-input
+      v-if="resultView === 'result'"
+      v-model="editedResult"
+      type="textarea"
+      outlined
+      autogrow
+      :rows="12"
+      class="app-markdown-editor"
+    />
+    <pre v-else class="diff-view q-pa-sm">{{ result?.diff ?? '' }}</pre>
 
-        <q-input
-          v-if="resultView === 'result'"
-          v-model="editedResult"
-          type="textarea"
-          outlined
-          autogrow
-          :rows="12"
-          class="app-markdown-editor"
-        />
-        <pre v-else class="diff-view q-pa-sm">{{ result?.diff ?? '' }}</pre>
+    <!-- Char budget indicator -->
+    <div v-if="guide && editedResult" class="q-mt-xs text-caption">
+      <span :class="budgetClass">{{ $t('agentSettings.aiRefine.charCount', { count: charCount }) }}</span>
+      <span class="text-grey-6">
+        {{
+          $t('agentSettings.aiRefine.charBudget', {
+            soft: guide.budget.soft,
+            hard: guide.budget.hard || $t('agentSettings.aiRefine.charBudgetNone'),
+          })
+        }}
+      </span>
+    </div>
 
-        <!-- Char budget indicator -->
-        <div v-if="guide && editedResult" class="q-mt-xs text-caption">
-          <span :class="budgetClass">{{
-            $t('agentSettings.aiRefine.charCount', { count: charCount })
-          }}</span>
-          <span class="text-grey-6">
-            {{
-              $t('agentSettings.aiRefine.charBudget', {
-                soft: guide.budget.soft,
-                hard: guide.budget.hard || $t('agentSettings.aiRefine.charBudgetNone'),
-              })
-            }}
-          </span>
-        </div>
-
-        <!-- User hint input -->
-        <q-input
-          v-model="userHint"
-          class="q-mt-md"
-          dense
-          outlined
-          :label="$t('agentSettings.aiRefine.hintLabel')"
-          :placeholder="$t('agentSettings.aiRefine.hintPlaceholder')"
-          @keyup.enter="handleRefine"
-        />
-      </q-card-section>
-
-      <q-card-actions align="right" class="q-pa-md">
-        <q-btn flat :label="$t('agentSettings.aiRefine.cancel')" @click="handleCancel" />
-        <q-btn
-          flat
-          :loading="loading"
-          icon="refresh"
-          :label="$t('agentSettings.aiRefine.refineAgain')"
-          @click="handleRefine"
-        />
-        <q-btn
-          color="primary"
-          unelevated
-          rounded
-          :label="$t('agentSettings.aiRefine.apply')"
-          @click="applyResult"
-        />
-      </q-card-actions>
-    </q-card>
-  </q-dialog>
+    <!-- User hint input -->
+    <q-input
+      v-model="userHint"
+      class="q-mt-md"
+      dense
+      outlined
+      :label="$t('agentSettings.aiRefine.hintLabel')"
+      :placeholder="$t('agentSettings.aiRefine.hintPlaceholder')"
+      @keyup.enter="handleRefine"
+    />
+    <template #actions>
+      <q-btn flat :label="$t('agentSettings.aiRefine.cancel')" @click="handleCancel" />
+      <q-btn
+        flat
+        :loading="loading"
+        icon="refresh"
+        :label="$t('agentSettings.aiRefine.refineAgain')"
+        @click="handleRefine"
+      />
+      <q-btn color="primary" unelevated rounded :label="$t('agentSettings.aiRefine.apply')" @click="applyResult" />
+    </template>
+  </AppDialog>
 </template>
 
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
+import AppDialog from '../common/AppDialog.vue';
 import type { FieldScope, FieldGuide } from '../../features/agents/fieldGuides';
 import { getFieldGuide } from '../../features/agents/fieldGuides';
 import type { RefineResponse } from '../../features/agents/aiRefine';

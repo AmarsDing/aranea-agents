@@ -19,6 +19,21 @@ const (
 	ToolKeyWebResearch      = "web_research"
 	ToolKeyKanban           = "kanban"
 	ToolKeyCallAgent        = "call_agent"
+	// ToolKeyCredential 是 E 阶段凭据执行工具集授权键（credential_login_execute /
+	// credential_token_issue 两动词同闸）。默认关/高风险/需确认（种子），另受
+	// ARANEA_CREDENTIAL_TOOLS 环境闸与高敏站点清单裁决。
+	ToolKeyCredential = "credential"
+	// ToolKeyCalendar 是 E 阶段 W1c 日程工具集授权键（calendar_list /
+	// calendar_create_draft 两动词同闸）。草案由审批中心收口，故种子不设
+	// reqConfirm；默认关，按 agent 授予。
+	ToolKeyCalendar = "calendar"
+	// ToolKeyMail 是 E 阶段 W1d 邮件只读工具集授权键（mail_list / mail_read /
+	// mail_search 三动词同闸）。只读低风险，种子 enabled=true 默认开（需求
+	// 文档 §1.3「agent 触达」）。
+	ToolKeyMail = "mail"
+	// ToolKeyMailTask 是邮件转任务动词授权键（mail_to_task，中风险——建个人
+	// 任务+回写 task_ref，幂等）。种子 enabled=false，按 agent 授予。
+	ToolKeyMailTask = "mail_task"
 )
 
 // Tool is capability catalog row + aggregates.

@@ -80,7 +80,7 @@ defineEmits<{
   flex: 1
   min-width: 0
   cursor: pointer
-  border-radius: 10px
+  border-radius: 8px
 
 .spirit-entry:hover
   background: color-mix(in srgb, var(--glass-surface) 65%, transparent)
@@ -116,7 +116,7 @@ defineEmits<{
   line-height: 1.3
   display: flex
   align-items: center
-  gap: 4px
+  gap: var(--nt-space-1)
 
 .spirit-entry__online-dot
   width: 6px
@@ -137,7 +137,7 @@ defineEmits<{
   width: 28px
   height: 28px
   min-height: 28px
-  border-radius: 10px
+  border-radius: 8px
   background: var(--glass-elevated)
   opacity: 0
   transition: opacity 0.2s

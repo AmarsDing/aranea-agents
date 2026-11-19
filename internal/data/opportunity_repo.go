@@ -52,7 +52,7 @@ func (r *opportunityRepo) Get(id string) (commerce.Opportunity, error) {
 	row, err := r.client(ctx).Opportunity.Get(ctx, id)
 	if err != nil {
 		if ent.IsNotFound(err) {
-			return commerce.Opportunity{}, fmt.Errorf("commerce: opportunity not found %s", id)
+			return commerce.Opportunity{}, fmt.Errorf("%w: %s", commerce.ErrOpportunityNotFound, id)
 		}
 		return commerce.Opportunity{}, fmt.Errorf("commerce: opportunity get: %w", err)
 	}
@@ -73,7 +73,7 @@ func (r *opportunityRepo) Update(o commerce.Opportunity) (commerce.Opportunity, 
 		Save(ctx)
 	if err != nil {
 		if ent.IsNotFound(err) {
-			return commerce.Opportunity{}, fmt.Errorf("commerce: opportunity not found %s", o.ID)
+			return commerce.Opportunity{}, fmt.Errorf("%w: %s", commerce.ErrOpportunityNotFound, o.ID)
 		}
 		return commerce.Opportunity{}, fmt.Errorf("commerce: opportunity update: %w", err)
 	}

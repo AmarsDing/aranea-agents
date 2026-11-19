@@ -3,22 +3,21 @@
   路径约定：SKILL §3.3 → `web/src/components/teams/`。
 -->
 <template>
-  <q-dialog :model-value="modelValue" position="right" @update:model-value="$emit('update:modelValue', $event)">
-    <q-card :class="['team-runs-panel app-dialog-card app-glass-dialog', { 'is-dark': isDark }]">
-      <q-card-section class="row items-center justify-between">
-        <div>
-          <div class="text-h6">运行轨迹</div>
-          <div class="row items-center q-gutter-sm text-caption text-grey-7">
-            <span>{{ selectedTeam?.display_name || 'Team' }} · 最近 30 次</span>
-            <q-badge rounded :color="liveConnected ? 'positive' : 'grey'">{{
-              liveConnected ? '实时连接中' : '未连接'
-            }}</q-badge>
-          </div>
-        </div>
-        <q-btn flat round icon="close" @click="$emit('update:modelValue', false)" />
-      </q-card-section>
-      <q-separator />
-      <q-tabs v-model="tab" dense align="left" class="q-px-md">
+  <AppDialog
+    :model-value="modelValue"
+    position="right"
+    size="md"
+    title="运行轨迹"
+    :subtitle="`${selectedTeam?.display_name || 'Team'} · 最近 30 次`"
+    @update:model-value="$emit('update:modelValue', $event)"
+  >
+    <div :class="['team-runs-panel', { 'is-dark': isDark }]">
+      <div class="team-runs-panel__live">
+        <q-badge rounded :color="liveConnected ? 'positive' : 'grey'">{{
+          liveConnected ? '实时连接中' : '未连接'
+        }}</q-badge>
+      </div>
+      <q-tabs v-model="tab" dense align="left" class="team-runs-panel__tabs">
         <q-tab name="runs" label="运行记录" />
         <q-tab name="dead" :label="`死信 (${deadLetters?.length ?? 0})`" />
       </q-tabs>
@@ -168,12 +167,13 @@
           </div>
         </q-tab-panel>
       </q-tab-panels>
-    </q-card>
-  </q-dialog>
+    </div>
+  </AppDialog>
 </template>
 
 <script setup lang="ts">
 import { ref } from 'vue';
+import AppDialog from '../common/AppDialog.vue';
 import type { Agent } from '../../features/agents/types';
 import type { Team, TeamRun, TeamRunStep, TeamRunSummary, TaskDeadLetterRow } from '../../features/teams/types';
 import {

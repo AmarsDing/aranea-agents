@@ -101,30 +101,43 @@
       </template>
     </AppPageToolbar>
 
-    <q-banner v-if="error" rounded class="bg-negative text-white q-mb-md">
-      {{ error }}
-      <template #action>
-        <q-btn flat color="white" :label="t('common.retry')" @click="loadRows" />
-      </template>
-    </q-banner>
-
-    <q-card v-if="sessionFilterRequired" flat class="app-registry-empty app-empty-state-center">
-      <q-card-section class="column items-center text-center q-pa-xl">
-        <q-avatar size="72px" color="primary" text-color="white" icon="filter_alt" />
-        <div class="text-h6 q-mt-md">{{ t('artifact.page.sessionRequiredTitle') }}</div>
-        <div class="text-body2 text-grey-7 q-mt-sm">{{ t('artifact.page.sessionRequiredHint') }}</div>
-      </q-card-section>
-    </q-card>
-
-    <q-card v-else-if="!loading && rows.length === 0" flat class="app-registry-empty app-empty-state-center">
-      <q-card-section class="column items-center text-center q-pa-xl">
-        <q-avatar size="72px" color="primary" text-color="white" icon="inventory_2" />
-        <div class="text-h6 q-mt-md">{{ t('artifact.page.emptyTitle') }}</div>
-        <div class="text-body2 text-grey-7 q-mt-sm">{{ t('artifact.page.emptyHint') }}</div>
-      </q-card-section>
-    </q-card>
+    <AppStatePanel
+      v-if="pageState === 'error'"
+      class="q-mb-md"
+      variant="error"
+      :description="error"
+      :action-label="t('common.retry')"
+      action-icon="refresh"
+      @action="loadRows"
+    />
+    <AppStatePanel v-else-if="pageState === 'forbidden'" class="q-mb-md" variant="forbidden" />
+    <AppStatePanel v-else-if="pageState === 'loading'" variant="loading" :rows="4" />
+    <AppStatePanel
+      v-else-if="sessionFilterRequired"
+      variant="empty"
+      :title="t('artifact.page.sessionRequiredTitle')"
+      :description="t('artifact.page.sessionRequiredHint')"
+      icon="filter_alt"
+    />
+    <AppStatePanel
+      v-else-if="pageState === 'empty'"
+      variant="empty"
+      :title="t('artifact.page.emptyTitle')"
+      :description="t('artifact.page.emptyHint')"
+      icon="inventory_2"
+    />
 
     <template v-else>
+      <AppStatePanel
+        v-if="pageState === 'partial'"
+        class="q-mb-md"
+        variant="partial"
+        dense
+        :description="error"
+        :action-label="t('common.retry')"
+        action-icon="refresh"
+        @action="loadRows"
+      />
       <template v-for="group in tableGroups" :key="group.sessionId">
         <div v-if="group.showHeader" class="artifacts-page__group-header">
           <q-icon name="forum" size="16px" class="text-primary" />
@@ -226,9 +239,11 @@ import AppPageHero from '../components/layout/AppPageHero.vue';
 import AppPageToolbar from '../components/layout/AppPageToolbar.vue';
 import AppRegistryTable from '../components/layout/AppRegistryTable.vue';
 import AppRegistryPagination from '../components/layout/AppRegistryPagination.vue';
+import AppStatePanel from '../components/common/AppStatePanel.vue';
 import ArtifactsDetailDialog from '../components/artifact/ArtifactsDetailDialog.vue';
 import ArtifactsUploadDialog from '../components/artifact/ArtifactsUploadDialog.vue';
 import { useArtifactsPage, type ArtifactsPageTab } from '../features/artifact/useArtifactsPage';
+import { resolvePageState } from './pageState';
 
 const { t } = useI18n();
 
@@ -237,6 +252,7 @@ const {
   returnToWorkspace,
   loading,
   error,
+  forbidden,
   activeTab,
   sessionFilterRequired,
   groupedRows,
@@ -282,6 +298,16 @@ const {
   confirmDeleteVersion,
   artifactMaxSizeHint,
 } = useArtifactsPage();
+
+/** 五态判定：错误优先于空态；有数据时失败降级为 partial 横幅。 */
+const pageState = computed(() =>
+  resolvePageState({
+    loading: loading.value,
+    error: error.value,
+    count: rows.value.length,
+    forbidden: forbidden.value,
+  }),
+);
 
 function handleTabChange(value: string | number) {
   onTabChange(value as ArtifactsPageTab);

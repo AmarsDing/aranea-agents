@@ -202,6 +202,10 @@ export type ReviewTaskRequest = {
   comment: string | undefined;
 };
 
+// 权限码（评审 2026-11-09 H4 补录，本域原在 P1-6 普查范围外）：
+// UpsertAgent 注册的 command/args 是主机命令执行面，DispatchTask 直发任务即
+// 触发执行——manage/dispatch 两档收严（内置表授予 sysadmin coding.*）；
+// 读面（List*/Get*）与 tool 域自服务先例一致，显式 authenticated 默认登录可见。
 export interface AgentBridgeService {
   // 工具注册管理（删除经 enabled=false，M1 不提供物理删除）
   UpsertAgent(request: UpsertAgentRequest): Promise<CodingAgent>;

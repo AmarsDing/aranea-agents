@@ -207,9 +207,9 @@ function formatTime(iso: string): string {
 .selfcheck-hero {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 14px 16px;
-  border-radius: 14px;
+  gap: var(--nt-space-3);
+  padding: var(--nt-space-4);
+  border-radius: 12px;
   border: 1px solid var(--glass-border);
   background: color-mix(in srgb, var(--glass-surface) 55%, transparent);
 }
@@ -267,15 +267,15 @@ function formatTime(iso: string): string {
   display: flex;
   flex-direction: column;
   border: 1px solid var(--glass-border);
-  border-radius: 14px;
+  border-radius: 12px;
   overflow: hidden;
 }
 
 .selfcheck-row {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px 14px;
+  gap: var(--nt-space-3);
+  padding: var(--nt-space-3) var(--nt-space-4);
   transition: background 0.15s ease;
 }
 
@@ -309,7 +309,7 @@ function formatTime(iso: string): string {
   flex-shrink: 0;
   font-size: 11px;
   font-weight: 600;
-  padding: 2px 10px;
+  padding: var(--nt-space-1) var(--nt-space-3);
   border-radius: 999px;
 }
 

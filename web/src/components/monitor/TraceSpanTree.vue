@@ -211,7 +211,7 @@ async function copyId(id: string) {
 .span-tree {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--nt-space-3);
 }
 
 .span-tree__search {
@@ -229,7 +229,7 @@ async function copyId(id: string) {
 .span-tree__rows {
   border: 1px solid var(--glass-border);
   border-radius: 12px;
-  padding: 6px;
+  padding: var(--nt-space-2);
   max-height: 52vh;
   overflow-y: auto;
   background: color-mix(in srgb, var(--canvas-base) 30%, transparent);
@@ -237,10 +237,10 @@ async function copyId(id: string) {
 
 .span-tree__row {
   min-height: 30px;
-  padding: 2px 8px 2px 0;
+  padding: var(--nt-space-1) var(--nt-space-2) var(--nt-space-1) 0;
   border-radius: 8px;
   cursor: pointer;
-  gap: 6px;
+  gap: var(--nt-space-2);
 }
 
 .span-tree__row:hover {
@@ -265,7 +265,7 @@ async function copyId(id: string) {
 }
 
 .span-tree__guide:first-child {
-  margin-left: 7px;
+  margin-left: var(--nt-space-2);
 }
 
 .span-tree__arrow {
@@ -332,7 +332,7 @@ async function copyId(id: string) {
   flex-shrink: 0;
   font-size: 10px;
   line-height: 1;
-  padding: 3px 6px;
+  padding: var(--nt-space-1) var(--nt-space-2);
   border-radius: 6px;
   color: var(--color-accent);
   background: color-mix(in srgb, var(--color-accent) 12%, transparent);
@@ -408,21 +408,21 @@ async function copyId(id: string) {
 }
 
 .span-tree__detail {
-  margin: 2px 8px 6px 24px;
-  padding: 8px 12px;
-  border-radius: 10px;
+  margin: var(--nt-space-1) var(--nt-space-2) var(--nt-space-2) var(--nt-space-6);
+  padding: var(--nt-space-2) var(--nt-space-3);
+  border-radius: 8px;
   border: 1px solid var(--glass-border);
   background: color-mix(in srgb, var(--color-accent) 5%, transparent);
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--nt-space-1);
   font-size: 12px;
 }
 
 .span-tree__detail-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--nt-space-2);
   min-width: 0;
 }
 

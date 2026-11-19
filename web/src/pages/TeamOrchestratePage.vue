@@ -72,10 +72,28 @@
       </button>
     </q-banner>
 
-    <div v-if="loading" class="flex flex-center q-pa-xl">
-      <q-spinner color="primary" size="40px" />
-    </div>
-    <div v-else-if="error" class="q-pa-md text-negative">{{ error }}</div>
+    <!-- 五态：首屏加载无编排数据 → 骨架面板 -->
+    <AppStatePanel v-if="loading" variant="loading" :rows="5" class="q-ma-md" />
+    <!-- 五态：加载失败 → 只渲染可重试错误面板（工作台型页面不塞空态）。
+         403 错误码未透出（useTeamOrchestratePage 仅暴露 message），forbidden 分支未接上。 -->
+    <AppStatePanel
+      v-else-if="error"
+      variant="error"
+      class="q-ma-md"
+      :description="error"
+      action-label="重试"
+      action-icon="refresh"
+      @action="reload"
+    />
+    <!-- 五态：成功但无编排数据 → 空态（区别于加载失败） -->
+    <AppStatePanel
+      v-else-if="!definition && !compiled"
+      variant="empty"
+      title="该团队暂无编排数据"
+      description="请先在团队编辑对话框中配置成员与流程，再回到此页查看编排。"
+      icon="account_tree"
+      class="q-ma-md"
+    />
     <template v-else>
       <q-tabs v-model="activeTab" dense align="left" class="team-orchestrate-page__tabs" active-color="primary">
         <q-tab name="canvas" label="编排画布" />
@@ -144,6 +162,7 @@ import { computed, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import GraphEditorCanvas from '../components/graph/GraphEditorCanvas.vue';
 import AppStatusChip from '../components/common/AppStatusChip.vue';
+import AppStatePanel from '../components/common/AppStatePanel.vue';
 import OrchestrationKanban from '../components/orchestration/OrchestrationKanban.vue';
 import TeamMemberKanban from '../components/teams/TeamMemberKanban.vue';
 import TeamOrchestrateRuntimePanel from '../components/teams/TeamOrchestrateRuntimePanel.vue';

@@ -3,6 +3,7 @@ import { useI18n } from 'vue-i18n';
 import { toolInvocationStatusOptions } from '../../components/tools/toolUi';
 import type { ToolInvocationAudit } from './types';
 import { useToolsStore } from '../../stores/tools';
+import { isForbiddenApiError } from '../../utils/kratosError';
 
 export function useToolAuditsPage() {
   const { t } = useI18n();
@@ -18,6 +19,8 @@ export function useToolAuditsPage() {
   const total = ref(0);
   const loading = ref(false);
   const error = ref('');
+  /** 403 / PERMISSION_DENIED：页面渲染 forbidden 态，不提供重试。 */
+  const forbidden = ref(false);
 
   const pageMax = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)));
   const statusOptions = computed(() => toolInvocationStatusOptions());
@@ -29,6 +32,7 @@ export function useToolAuditsPage() {
     const seq = ++loadSeq;
     loading.value = true;
     error.value = '';
+    forbidden.value = false;
     try {
       const data = await toolsStore.loadToolAudits({
         tool_key: toolKey.value,
@@ -44,6 +48,7 @@ export function useToolAuditsPage() {
     } catch (err) {
       if (seq !== loadSeq) return;
       error.value = err instanceof Error ? err.message : t('toolsPage.audits.loadFailed');
+      forbidden.value = isForbiddenApiError(err);
     } finally {
       if (seq === loadSeq) loading.value = false;
     }
@@ -83,6 +88,7 @@ export function useToolAuditsPage() {
     total,
     loading,
     error,
+    forbidden,
     pageMax,
     statusOptions,
     loadRows,

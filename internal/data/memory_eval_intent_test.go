@@ -16,9 +16,9 @@ import (
 // intentTestEmbedder scheme — and caller-specified statement vectors are
 // layered on top. Unknown texts fall back to the neutral off-axis (axis 7).
 type evalIntentTestEmbedder struct {
-	vectors     map[string][]float32
-	embedCalls  int
-	batchCalls  int
+	vectors       map[string][]float32
+	embedCalls    int
+	batchCalls    int
 	failEmbedding bool
 }
 

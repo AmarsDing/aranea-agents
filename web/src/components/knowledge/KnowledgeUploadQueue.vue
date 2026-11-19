@@ -157,7 +157,7 @@ function stageList(task: KnowledgeUploadTask): { key: string; label: string; sta
 .knowledge-upload-queue {
   margin-bottom: 12px;
   border: 1px solid var(--glass-border);
-  border-radius: 16px;
+  border-radius: 12px;
   background: var(--glass-surface);
 }
 

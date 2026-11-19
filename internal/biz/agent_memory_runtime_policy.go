@@ -59,6 +59,10 @@ type MemoryRuntimePolicy struct {
 	// 400/800/1600, 0 → default standard (800).
 	L2RecallBudgetTokens int
 	L3RecallScopes         []string
+	// L3RecallScopesDefaulted 标记 L3RecallScopes 是否来自内置默认（管理端
+	// 未显式配置）。个人助理类 agent 的 user 域默认注入只看此标记——显式
+	// 配置永远优先（spec §6.3 召回接线，2026-11-10）。
+	L3RecallScopesDefaulted bool
 	L0L3MaxChunks          int
 	L0L4MaxPaths           int
 	L1FieldMaxChars        int
@@ -211,6 +215,7 @@ func ResolveMemoryRuntimePolicy(settings *AgentRuntimeSettings) MemoryRuntimePol
 		// by default. L3ScopeTargets skips the team scope when TeamID is empty,
 		// so non-team sessions are unaffected.
 		p.L3RecallScopes = []string{"agent", "team"}
+		p.L3RecallScopesDefaulted = true
 	}
 	// P2-04: unified prompt budget and provenance defaults.
 	if p.MemoryPromptTotalBudgetTokens <= 0 {

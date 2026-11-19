@@ -110,12 +110,34 @@
         </template>
       </AppPageToolbar>
 
-      <q-banner v-if="errorMessage" rounded class="app-page-error-banner q-mb-md">
-        {{ errorMessage }}
-        <template v-if="errorRetryable" #action>
-          <q-btn flat dense :label="t('selfImprovementPage.retry')" class="text-white" @click="loadRows" />
-        </template>
-      </q-banner>
+      <!-- 五态：已有数据但刷新失败 → 局部失败横幅，列表照常渲染 -->
+      <AppStatePanel
+        v-if="errorMessage && rows.length > 0"
+        variant="partial"
+        dense
+        class="q-mb-md"
+        :description="errorMessage"
+        :action-label="errorRetryable ? t('selfImprovementPage.retry') : ''"
+        action-icon="refresh"
+        @action="loadRows"
+      />
+
+      <!-- 五态：加载失败且无数据 → 403 走无重试的 forbidden，其余为可重试 error；不与空态并存 -->
+      <AppStatePanel
+        v-else-if="errorMessage && errorKind === 'forbidden'"
+        variant="forbidden"
+        class="q-mb-md"
+        :description="errorMessage"
+      />
+      <AppStatePanel
+        v-else-if="errorMessage"
+        variant="error"
+        class="q-mb-md"
+        :description="errorMessage"
+        :action-label="errorRetryable ? t('selfImprovementPage.retry') : ''"
+        action-icon="refresh"
+        @action="loadRows"
+      />
 
       <!-- 前置条件自检（P5.5）：enabled 但闭环无法真正运行时给出警告 -->
       <q-banner v-if="prereqLlmMissing || prereqRepoInvalid" rounded class="app-banner-warning q-mb-md">
@@ -128,20 +150,23 @@
         </ul>
       </q-banner>
 
-      <q-card
-        v-if="!loading && !errorMessage && rows.length === 0"
-        flat
-        class="app-registry-empty app-empty-state-center"
-      >
-        <q-card-section class="column items-center text-center q-pa-xl">
-          <q-avatar size="72px" color="primary" text-color="white" icon="precision_manufacturing" />
-          <div class="text-h6 q-mt-md">{{ t('selfImprovementPage.emptyTitle') }}</div>
-          <div class="text-body2 text-grey-7 q-mt-sm">{{ t('selfImprovementPage.emptyHint') }}</div>
-          <div class="text-caption text-grey-6 q-mt-sm">{{ t('selfImprovementPage.emptySignalHint') }}</div>
-        </q-card-section>
-      </q-card>
+      <!-- 五态：首屏加载无数据 → 骨架面板 -->
+      <AppStatePanel
+        v-if="loading && !errorMessage && rows.length === 0"
+        variant="loading"
+        :rows="5"
+      />
 
-      <template v-else>
+      <!-- 五态：成功但无数据 → 空态 -->
+      <AppStatePanel
+        v-else-if="!loading && !errorMessage && rows.length === 0"
+        variant="empty"
+        :title="t('selfImprovementPage.emptyTitle')"
+        :description="emptyDescription"
+        icon="precision_manufacturing"
+      />
+
+      <template v-else-if="rows.length > 0">
         <AppRegistryTable
           :rows="rows"
           :columns="columns"
@@ -299,6 +324,7 @@ import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import AppPageHero from '../components/layout/AppPageHero.vue';
 import AppPageToolbar from '../components/layout/AppPageToolbar.vue';
+import AppStatePanel from '../components/common/AppStatePanel.vue';
 import AppRegistryTable from '../components/layout/AppRegistryTable.vue';
 import AppRegistryPagination from '../components/layout/AppRegistryPagination.vue';
 import OutcomeStatsPanel from '../components/self-improvement/OutcomeStatsPanel.vue';
@@ -332,6 +358,7 @@ const {
   total,
   loading,
   errorMessage,
+  errorKind,
   errorRetryable,
   pageMax,
   statusOptions,
@@ -365,6 +392,9 @@ const {
 } = useSelfImprovementPage();
 
 const columns = computed(() => createSIRunColumns(t));
+const emptyDescription = computed(
+  () => `${t('selfImprovementPage.emptyHint')} ${t('selfImprovementPage.emptySignalHint')}`,
+);
 </script>
 
 <style scoped lang="sass">

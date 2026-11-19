@@ -48,9 +48,9 @@ function iconOf(mime?: string): string {
 
 <style scoped lang="sass">
 .artifact-ref-card
-  gap: 4px
-  margin: 4px 0 4px 20px
-  padding: 4px 8px
+  gap: var(--nt-space-1)
+  margin: var(--nt-space-1) 0 var(--nt-space-1) var(--nt-space-5)
+  padding: var(--nt-space-1) var(--nt-space-2)
   max-width: 360px
   border: 1px solid var(--glass-border)
   border-radius: var(--radius-control)
@@ -62,8 +62,8 @@ function iconOf(mime?: string): string {
   align-items: center
   flex: 1
   min-width: 0
-  gap: 8px
-  padding: 8px 4px
+  gap: var(--nt-space-2)
+  padding: var(--nt-space-2) var(--nt-space-1)
   border: 0
   background: transparent
   color: var(--color-accent)

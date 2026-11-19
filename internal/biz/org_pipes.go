@@ -2,6 +2,7 @@ package biz
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"unicode/utf8"
 )
@@ -160,4 +161,37 @@ func ClampSpecialistL3Scopes(p *MemoryRuntimePolicy, a Agent) {
 		return
 	}
 	p.L3RecallScopes = OrgMemberL3Scopes()
+}
+
+// ApplyPersonalAssistantL3RecallDefault 给个人助理类 agent 的默认召回域
+// 追加 user 域（spec §6.3 召回接线：个人助理默认 ["agent","team","user"]；
+// user 域召回的 PII 门由 data 层召回口把守，过渡期按 pii_flag 保守过滤）。
+// 仅当 scopes 为内置默认（L3RecallScopesDefaulted，即管理端未显式配置）时
+// 生效——显式配置永远优先。须在 ClampSpecialistL3Scopes 之后调用：非
+// Spirit 专员已被钳到组织成员域，本函数不会为其放宽。
+func ApplyPersonalAssistantL3RecallDefault(p *MemoryRuntimePolicy, a Agent) {
+	if p == nil || !p.L3RecallScopesDefaulted {
+		return
+	}
+	if !isPersonalAssistantAgent(a) {
+		return
+	}
+	for _, s := range p.L3RecallScopes {
+		if strings.EqualFold(strings.TrimSpace(s), "user") {
+			return
+		}
+	}
+	p.L3RecallScopes = append(p.L3RecallScopes, "user")
+}
+
+// isPersonalAssistantAgent 判定「个人助理类」：组织 Spirit（__spirit__）
+// 或 metadata_json 带 {"memory_personal_assistant":true} 的用户自建助理。
+func isPersonalAssistantAgent(a Agent) bool {
+	if strings.TrimSpace(a.AgentKey) == SpiritAgentKey {
+		return true
+	}
+	var m struct {
+		MemoryPersonalAssistant bool `json:"memory_personal_assistant"`
+	}
+	return json.Unmarshal([]byte(a.MetadataJSON), &m) == nil && m.MemoryPersonalAssistant
 }

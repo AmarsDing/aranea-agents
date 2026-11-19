@@ -1,36 +1,31 @@
 <template>
-  <q-dialog v-model="dialogModel" persistent>
-    <q-card
-      :class="[
-        'create-agent-card app-dialog-card app-dialog-card--2xl create-agent-card--tall',
-        { 'create-agent-card--dark': isDark },
-      ]"
-    >
-      <q-toolbar class="create-agent-card__toolbar">
-        <div class="avatar-picker-hit cursor-pointer" @click="avatarPickerOpen = true">
-          <agent-avatar-q
-            size="42px"
-            avatar-class="avatar-picker--toolbar"
-            :icon="form.icon"
-            :alt="form.display_name || 'Agent avatar'"
-          />
-          <q-tooltip>点击更换头像</q-tooltip>
-        </div>
-        <div class="q-ml-sm">
-          <q-toolbar-title class="q-pa-none">创建 Agent</q-toolbar-title>
-          <div class="text-caption create-agent-card__subtitle">最小字段创建，模型检查通过后才能提交。</div>
-        </div>
-        <q-space />
-        <q-btn v-close-popup flat round dense icon="close" />
-      </q-toolbar>
-      <q-separator />
+  <app-dialog
+    :model-value="dialogModel"
+    :title="$t('domains.agentCreate.title')"
+    :subtitle="$t('domains.agentCreate.subtitle')"
+    icon="smart_toy"
+    size="xl"
+    persistent
+    @update:model-value="dialogModel = $event"
+  >
+    <template #header-prefix>
+      <div class="avatar-picker-hit cursor-pointer" @click="avatarPickerOpen = true">
+        <agent-avatar-q
+          size="42px"
+          avatar-class="avatar-picker--toolbar"
+          :icon="form.icon"
+          :alt="form.display_name || 'Agent avatar'"
+        />
+        <q-tooltip>{{ $t('domains.agentCreate.changeAvatar') }}</q-tooltip>
+      </div>
+    </template>
 
-      <q-card-section class="create-agent-card__body">
+    <div class="create-agent-card">
         <q-banner v-if="createFormError" dense rounded class="bg-negative text-white q-mb-md">
           {{ createFormError }}
         </q-banner>
         <div class="agent-kind-row q-mb-md">
-          <div class="text-subtitle2 q-mb-sm">Agent 类型</div>
+          <div class="text-subtitle2 q-mb-sm">{{ $t('domains.agentCreate.agentKind') }}</div>
           <q-btn-toggle
             v-model="agentKindModel"
             no-caps
@@ -47,7 +42,7 @@
             class="agent-dialog-control"
             dense
             outlined
-            label="显示名称 *"
+            :label="$t('domains.agentCreate.displayName')"
             :error="Boolean(displayNameError)"
             :error-message="displayNameError"
           >
@@ -58,8 +53,8 @@
             class="agent-dialog-control"
             dense
             outlined
-            label="Agent 标识 *"
-            hint="小写字母、数字、连字符"
+            :label="$t('domains.agentCreate.agentKey')"
+            :hint="$t('domains.agentCreate.agentKeyHint')"
             :error="Boolean(agentKeyError)"
             :error-message="agentKeyError"
           />
@@ -68,7 +63,7 @@
             class="app-field-long"
             :tree="taxonomyTree"
             :label="$t('agentsPage.taxonomy.labelOptional')"
-            placeholder="选择组织 / 部门 / 职位"
+            :placeholder="$t('domains.agentCreate.taxonomyPlaceholder')"
             @update:model-value="onCategoryPick"
           />
           <template v-if="isA2AProxy">
@@ -77,12 +72,16 @@
               class="agent-dialog-control app-field-long create-agent-grid__span-full"
               dense
               outlined
-              label="远程 A2A URL *"
-              hint="例如 http://host:8087/"
+              :label="$t('domains.agentCreate.remoteUrl')"
+              :hint="$t('domains.agentCreate.remoteUrlHint')"
               :error="Boolean(remoteUrlError)"
               :error-message="remoteUrlError"
             />
-            <q-toggle v-model="a2aProxy.enable_streaming" color="primary" label="流式响应" />
+            <q-toggle
+              v-model="a2aProxy.enable_streaming"
+              color="primary"
+              :label="$t('domains.agentCreate.streaming')"
+            />
             <q-input
               v-model.number="a2aProxy.timeout_seconds"
               class="agent-dialog-control"
@@ -90,9 +89,9 @@
               outlined
               type="number"
               min="5"
-              label="超时（秒）"
+              :label="$t('domains.agentCreate.timeoutSeconds')"
             />
-            <q-toggle v-model="selfEvolveModel" color="primary" label="自我进化" dense />
+            <q-toggle v-model="selfEvolveModel" color="primary" :label="$t('domains.agentCreate.selfEvolve')" dense />
           </template>
           <template v-else>
             <q-select
@@ -102,7 +101,7 @@
               outlined
               emit-value
               map-options
-              label="提供商 *"
+              :label="$t('domains.agentCreate.provider')"
               :options="providerOptions"
               :error="Boolean(providerModelError)"
               :error-message="providerModelError"
@@ -114,7 +113,7 @@
               outlined
               emit-value
               map-options
-              label="模型 *"
+              :label="$t('domains.agentCreate.model')"
               :options="modelOptions"
               :error="Boolean(providerModelError)"
             />
@@ -125,19 +124,19 @@
                 rounded
                 no-caps
                 color="primary"
-                label="检查"
+                :label="$t('domains.agentCreate.checkModel')"
                 :disable="!form.provider || !form.model"
                 :loading="checkingModel"
                 @click.stop="$emit('check-model')"
               />
-              <q-toggle v-model="selfEvolveModel" color="primary" label="自我进化" dense />
+              <q-toggle v-model="selfEvolveModel" color="primary" :label="$t('domains.agentCreate.selfEvolve')" dense />
             </div>
           </template>
         </div>
 
         <section v-if="!isA2AProxy" class="description-block">
           <div class="row items-center q-gutter-xs">
-            <div class="text-subtitle2">描述您的 Agent</div>
+            <div class="text-subtitle2">{{ $t('domains.agentCreate.descriptionTitle') }}</div>
             <q-chip
               v-for="template in templates"
               :key="template.key"
@@ -158,42 +157,42 @@
             outlined
             type="textarea"
             rows="6"
-            label="Agent 描述"
-            hint="AI 将根据此描述自动生成上下文文件。留空则使用模板。"
+            :label="$t('domains.agentCreate.description')"
+            :hint="$t('domains.agentCreate.descriptionHint')"
           />
         </section>
-      </q-card-section>
+    </div>
 
-      <q-card-actions align="between" class="create-agent-card__actions app-actions-bar">
-        <div v-if="createDisabledHint" class="text-caption text-negative">{{ createDisabledHint }}</div>
-        <div class="row items-center q-gutter-sm">
-          <q-btn v-close-popup flat rounded label="取消" />
-          <!-- wrapper 捕获禁用态点击：Quasar disable 按钮不派发事件，点击/悬停均给出原因反馈 -->
-          <div class="create-agent-card__submit" @click="onCreateClick">
-            <q-btn
-              color="primary"
-              rounded
-              unelevated
-              label="创建"
-              :disable="!canCreate"
-              :loading="creating"
-              @click="$emit('create')"
-            >
-              <q-tooltip v-if="!canCreate && createDisabledHint">{{ createDisabledHint }}</q-tooltip>
-            </q-btn>
-          </div>
+    <template #actions>
+      <div v-if="createDisabledHint" class="text-caption text-negative">{{ createDisabledHint }}</div>
+      <div class="row items-center q-gutter-sm">
+        <q-btn flat rounded :label="$t('domains.agentCreate.cancel')" @click="dialogModel = false" />
+        <!-- wrapper 捕获禁用态点击：Quasar disable 按钮不派发事件，点击/悬停均给出原因反馈 -->
+        <div class="create-agent-card__submit" @click="onCreateClick">
+          <q-btn
+            color="primary"
+            rounded
+            unelevated
+            :label="$t('domains.agentCreate.create')"
+            :disable="!canCreate"
+            :loading="creating"
+            @click="$emit('create')"
+          >
+            <q-tooltip v-if="!canCreate && createDisabledHint">{{ createDisabledHint }}</q-tooltip>
+          </q-btn>
         </div>
-      </q-card-actions>
-    </q-card>
-    <agent-avatar-picker v-model="form.icon" v-model:open="avatarPickerOpen" />
-  </q-dialog>
+      </div>
+    </template>
+  </app-dialog>
+  <agent-avatar-picker v-model="form.icon" v-model:open="avatarPickerOpen" />
 </template>
 
 <script setup lang="ts">
 const form = defineModel<CreateForm>('form', { required: true });
 const a2aProxy = defineModel<A2AProxyConfig>('a2aProxy', { required: true });
 import { computed, ref } from 'vue';
-import { useQuasar } from 'quasar';
+import { useI18n } from 'vue-i18n';
+import AppDialog from '../common/AppDialog.vue';
 import AgentAvatarPicker from '../avatar/AgentAvatarPicker.vue';
 import AgentAvatarQ from '../avatar/AgentAvatarQ.vue';
 import TaxonomyPicker from './TaxonomyPicker.vue';
@@ -247,8 +246,7 @@ const emit = defineEmits<{
   create: [];
 }>();
 
-const $q = useQuasar();
-const isDark = computed(() => $q.dark.isActive);
+const { t } = useI18n();
 const dialogModel = computed({
   get: () => props.modelValue,
   set: (value: boolean) => emit('update:modelValue', value),
@@ -265,10 +263,10 @@ function onCategoryPick(value: string | null) {
 
 const avatarPickerOpen = ref(false);
 
-const agentKindOptions = [
-  { label: 'LLM 智能体', value: 'llm' },
-  { label: 'A2A 远程代理', value: 'a2a_proxy' },
-];
+const agentKindOptions = computed(() => [
+  { label: t('domains.agentCreate.agentKindLlm'), value: 'llm' },
+  { label: t('domains.agentCreate.agentKindA2a'), value: 'a2a_proxy' },
+]);
 
 const agentKindModel = computed({
   get: () => props.agentKind || 'llm',

@@ -109,7 +109,7 @@ async function handleCopy() {
 
 .code-block__body
   overflow-x: auto
-  padding: 8px 12px
+  padding: var(--nt-space-2) var(--nt-space-3)
   margin: 0
   background: transparent
   code
@@ -117,7 +117,7 @@ async function handleCopy() {
     font-size: inherit
 
 .code-block__collapsed
-  padding: 8px 12px
+  padding: var(--nt-space-2) var(--nt-space-3)
   cursor: pointer
   color: var(--color-text-secondary)
   user-select: none
@@ -125,7 +125,7 @@ async function handleCopy() {
     color: var(--color-text-primary)
 
 .code-block__collapse
-  padding: 4px 12px
+  padding: var(--nt-space-1) var(--nt-space-3)
   cursor: pointer
   color: var(--color-text-secondary)
   text-align: center

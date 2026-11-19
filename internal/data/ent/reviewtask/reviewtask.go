@@ -35,6 +35,8 @@ const (
 	FieldDecisionNote = "decision_note"
 	// FieldReviewerID holds the string denoting the reviewer_id field in the database.
 	FieldReviewerID = "reviewer_id"
+	// FieldCreatorID holds the string denoting the creator_id field in the database.
+	FieldCreatorID = "creator_id"
 	// FieldDecidedAt holds the string denoting the decided_at field in the database.
 	FieldDecidedAt = "decided_at"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
@@ -60,6 +62,7 @@ var Columns = []string{
 	FieldStatus,
 	FieldDecisionNote,
 	FieldReviewerID,
+	FieldCreatorID,
 	FieldDecidedAt,
 	FieldCreatedAt,
 	FieldUpdatedAt,
@@ -114,6 +117,10 @@ var (
 	DefaultReviewerID string
 	// ReviewerIDValidator is a validator for the "reviewer_id" field. It is called by the builders before save.
 	ReviewerIDValidator func(string) error
+	// DefaultCreatorID holds the default value on creation for the "creator_id" field.
+	DefaultCreatorID string
+	// CreatorIDValidator is a validator for the "creator_id" field. It is called by the builders before save.
+	CreatorIDValidator func(string) error
 	// DefaultDecidedAt holds the default value on creation for the "decided_at" field.
 	DefaultDecidedAt string
 	// DefaultCreatedAt holds the default value on creation for the "created_at" field.
@@ -190,6 +197,11 @@ func ByDecisionNote(opts ...sql.OrderTermOption) OrderOption {
 // ByReviewerID orders the results by the reviewer_id field.
 func ByReviewerID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldReviewerID, opts...).ToFunc()
+}
+
+// ByCreatorID orders the results by the creator_id field.
+func ByCreatorID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldCreatorID, opts...).ToFunc()
 }
 
 // ByDecidedAt orders the results by the decided_at field.

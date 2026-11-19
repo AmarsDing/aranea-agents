@@ -3,6 +3,7 @@ syntax = "proto3";
 package kratos.monitor.v1;
 
 import "google/api/annotations.proto";
+import "aranea/auth/v1/requirement.proto";
 
 option go_package = "aranea-agents/api/kratos/monitor/v1;v1";
 option java_multiple_files = true;
@@ -421,75 +422,94 @@ message ListHealRecordsResponse {
 
 service MonitorService {
   rpc ListAuditLogs(ListAuditLogsRequest) returns (ListAuditLogsResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "audit.read"};
     option (google.api.http) = {get: "/v1/monitor/audit"};
   }
   rpc DeleteAuditLogs(DeleteAuditLogsRequest) returns (DeleteAuditLogsResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "system.monitor"};
     option (google.api.http) = {delete: "/v1/monitor/audit-logs"};
   }
   rpc ListMonitorEvents(ListMonitorEventsRequest) returns (ListMonitorEventsResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "system.monitor"};
     option (google.api.http) = {get: "/v1/monitor/events"};
   }
   rpc GetMonitorEvent(GetMonitorEventRequest) returns (MonitorPlatformRow) {
+    option (aranea.auth.v1.requirement) = {permission: "system.monitor"};
     option (google.api.http) = {get: "/v1/monitor/events/{id}"};
   }
   rpc ListMonitorTraces(ListMonitorTracesRequest) returns (ListMonitorTracesResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "system.monitor"};
     option (google.api.http) = {get: "/v1/monitor/traces"};
   }
   rpc GetMonitorTrace(GetMonitorTraceRequest) returns (MonitorTraceDetail) {
+    option (aranea.auth.v1.requirement) = {permission: "system.monitor"};
     option (google.api.http) = {get: "/v1/monitor/traces/{id}"};
   }
   // Snapshot hint only; live lines use WebSocket GET /v1/ws (session_id=* or session-scoped, channel=monitor, type=log).
   rpc GetMonitorLogs(GetMonitorLogsRequest) returns (GetMonitorLogsResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "system.monitor"};
     option (google.api.http) = {get: "/v1/monitor/logs"};
   }
   rpc ListFlowLogs(ListFlowLogsRequest) returns (ListFlowLogsResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "system.monitor"};
     option (google.api.http) = {get: "/v1/monitor/flow-logs"};
   }
   rpc ListMonitorAlertRules(GetMonitorLogsRequest) returns (ListMonitorAlertRulesResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "system.monitor"};
     option (google.api.http) = {get: "/v1/monitor/alert-rules"};
   }
   // Alert metric directory: which metrics rules can target, what they mean,
   // and their current values.
   rpc ListAlertMetrics(GetMonitorLogsRequest) returns (ListAlertMetricsResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "system.monitor"};
     option (google.api.http) = {get: "/v1/monitor/alert-metrics"};
   }
   rpc PutMonitorAlertRules(PutMonitorAlertRulesRequest) returns (PutMonitorAlertRulesResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "system.monitor"};
     option (google.api.http) = {
       put: "/v1/monitor/alert-rules"
       body: "*"
     };
   }
   rpc GetRunnerMetrics(GetRunnerMetricsRequest) returns (RunnerMetricsSummary) {
+    option (aranea.auth.v1.requirement) = {permission: "system.monitor"};
     option (google.api.http) = {get: "/v1/monitor/runner-metrics"};
   }
   rpc GetCodeExecutorCapabilities(GetMonitorLogsRequest) returns (GetCodeExecutorCapabilitiesResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "system.monitor"};
     option (google.api.http) = {get: "/v1/monitor/code-executor-capabilities"};
   }
   rpc GenerateDiagnosticBundle(GenerateDiagnosticBundleRequest) returns (GenerateDiagnosticBundleResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "system.monitor"};
     option (google.api.http) = {
       post: "/v1/monitor/diagnostic-bundle"
       body: "*"
     };
   }
   rpc DiagnoseAndHeal(DiagnoseAndHealRequest) returns (DiagnoseAndHealResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "system.monitor"};
     option (google.api.http) = {
       post: "/v1/monitor/diagnose-and-heal"
       body: "*"
     };
   }
   rpc TriggerSelfCheck(TriggerSelfCheckRequest) returns (TriggerSelfCheckResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "system.monitor"};
     option (google.api.http) = {
       post: "/v1/monitor/self-check"
       body: "*"
     };
   }
   rpc ListSelfCheckReports(ListSelfCheckReportsRequest) returns (ListSelfCheckReportsResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "system.monitor"};
     option (google.api.http) = {get: "/v1/monitor/self-check-reports"};
   }
   rpc GetHealStats(HealStatsRequest) returns (HealStatsResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "system.monitor"};
     option (google.api.http) = {get: "/v1/monitor/heal-stats"};
   }
   rpc ListHealRecords(ListHealRecordsRequest) returns (ListHealRecordsResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "system.monitor"};
     option (google.api.http) = {get: "/v1/monitor/heal-records"};
   }
 }

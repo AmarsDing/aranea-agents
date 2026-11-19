@@ -1,90 +1,87 @@
 <template>
-  <q-dialog v-model="open" persistent>
-    <q-card class="app-dialog-card app-dialog-card--lg app-glass-dialog">
-      <q-card-section class="app-glass-dialog__head row items-center justify-between">
-        <div class="app-glass-dialog__title">
-          {{ editingId ? t('webhooksPage.dialogTitleEdit') : t('webhooksPage.dialogTitleCreate') }}
-        </div>
-        <q-btn v-close-popup flat round dense icon="close" />
-      </q-card-section>
-      <q-separator />
-      <div class="app-glass-dialog__scroll">
-        <q-card-section class="app-dialog-body app-glass-dialog__body q-gutter-md app-form-wide">
-          <div class="app-form-field-grid app-form-field-grid--2col">
-            <q-input v-model="form.name" dense outlined :label="t('webhooksPage.fieldName')" />
-            <q-toggle v-model="form.enabled" :label="t('webhooksPage.fieldEnabled')" />
-          </div>
-          <q-input
-            v-model="form.url"
-            dense
-            outlined
-            :label="t('webhooksPage.fieldUrl')"
-            :hint="t('webhooksPage.fieldUrlHint')"
-          />
-          <q-input
-            v-model="form.secret"
-            dense
-            outlined
-            type="password"
-            :label="t('webhooksPage.fieldSecret')"
-            :hint="editingId ? t('webhooksPage.fieldSecretHintEdit') : t('webhooksPage.fieldSecretHintCreate')"
-          />
-          <div>
-            <div class="text-caption q-mb-xs">{{ t('webhooksPage.fieldEventTypes') }}</div>
-            <div class="q-gutter-sm">
-              <q-checkbox
-                v-for="et in WEBHOOK_EVENT_TYPES"
-                :key="et.value"
-                v-model="selectedEventTypes"
-                :val="et.value"
-                :label="t(et.labelKey)"
-                dense
-              />
-            </div>
-            <div v-if="selectedEventTypes.length === 0" class="text-caption text-negative q-mt-xs">
-              {{ t('webhooksPage.notifyEventTypesRequired') }}
-            </div>
-          </div>
-          <div>
-            <div class="text-caption q-mb-xs">{{ t('webhooksPage.fieldHeaders') }}</div>
-            <div v-for="(entry, idx) in headerEntries" :key="idx" class="row items-center q-gutter-x-sm q-mb-xs">
-              <q-input v-model="entry.key" dense outlined :placeholder="t('webhooksPage.headerKey')" class="col-4" />
-              <q-input v-model="entry.value" dense outlined :placeholder="t('webhooksPage.headerValue')" class="col" />
-              <q-btn flat dense round icon="remove" color="negative" size="sm" @click="headerEntries.splice(idx, 1)" />
-            </div>
-            <q-btn
-              flat
-              dense
-              no-caps
-              icon="add"
-              :label="t('webhooksPage.addHeader')"
-              color="primary"
-              size="sm"
-              @click="headerEntries.push({ key: '', value: '' })"
-            />
-          </div>
-        </q-card-section>
+  <AppDialog
+    v-model="open"
+    :title="editingId ? t('webhooksPage.dialogTitleEdit') : t('webhooksPage.dialogTitleCreate')"
+    size="lg"
+    icon="webhook"
+    persistent
+    :loading="saving"
+  >
+    <div class="webhook-form app-form-wide">
+      <div class="app-form-field-grid app-form-field-grid--2col">
+        <q-input v-model="form.name" dense outlined :label="t('webhooksPage.fieldName')" />
+        <q-toggle v-model="form.enabled" :label="t('webhooksPage.fieldEnabled')" />
       </div>
-      <q-separator />
-      <q-card-actions align="right" class="app-actions-bar app-glass-dialog__actions">
-        <q-btn v-close-popup flat no-caps :label="t('webhooksPage.btnCancel')" />
+      <q-input
+        v-model="form.url"
+        dense
+        outlined
+        :label="t('webhooksPage.fieldUrl')"
+        :hint="t('webhooksPage.fieldUrlHint')"
+      />
+      <q-input
+        v-model="form.secret"
+        dense
+        outlined
+        type="password"
+        :label="t('webhooksPage.fieldSecret')"
+        :hint="editingId ? t('webhooksPage.fieldSecretHintEdit') : t('webhooksPage.fieldSecretHintCreate')"
+      />
+      <div>
+        <div class="text-caption q-mb-xs">{{ t('webhooksPage.fieldEventTypes') }}</div>
+        <div class="q-gutter-sm">
+          <q-checkbox
+            v-for="et in WEBHOOK_EVENT_TYPES"
+            :key="et.value"
+            v-model="selectedEventTypes"
+            :val="et.value"
+            :label="t(et.labelKey)"
+            dense
+          />
+        </div>
+        <div v-if="selectedEventTypes.length === 0" class="text-caption text-negative q-mt-xs">
+          {{ t('webhooksPage.notifyEventTypesRequired') }}
+        </div>
+      </div>
+      <div>
+        <div class="text-caption q-mb-xs">{{ t('webhooksPage.fieldHeaders') }}</div>
+        <div v-for="(entry, idx) in headerEntries" :key="idx" class="row items-center q-gutter-x-sm q-mb-xs">
+          <q-input v-model="entry.key" dense outlined :placeholder="t('webhooksPage.headerKey')" class="col-4" />
+          <q-input v-model="entry.value" dense outlined :placeholder="t('webhooksPage.headerValue')" class="col" />
+          <q-btn flat dense round icon="remove" color="negative" size="sm" @click="headerEntries.splice(idx, 1)" />
+        </div>
         <q-btn
-          color="primary"
-          unelevated
+          flat
+          dense
           no-caps
-          :label="t('webhooksPage.btnSave')"
-          :loading="saving"
-          :disable="!form.name?.trim() || !form.url?.trim() || selectedEventTypes.length === 0"
-          @click="$emit('save')"
+          icon="add"
+          :label="t('webhooksPage.addHeader')"
+          color="primary"
+          size="sm"
+          @click="headerEntries.push({ key: '', value: '' })"
         />
-      </q-card-actions>
-    </q-card>
-  </q-dialog>
+      </div>
+    </div>
+    <template #actions>
+      <q-btn flat no-caps :label="t('webhooksPage.btnCancel')" @click="open = false" />
+      <q-btn
+        color="primary"
+        unelevated
+        no-caps
+        data-test="webhook-save"
+        :label="t('webhooksPage.btnSave')"
+        :loading="saving"
+        :disable="!form.name?.trim() || !form.url?.trim() || selectedEventTypes.length === 0"
+        @click="$emit('save')"
+      />
+    </template>
+  </AppDialog>
 </template>
 
 <script setup lang="ts">
 import { reactive, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
+import AppDialog from '../common/AppDialog.vue';
 import { WEBHOOK_EVENT_TYPES, type WebhookRow } from '../../features/webhooks/types';
 
 const { t } = useI18n();

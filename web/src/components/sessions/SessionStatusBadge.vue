@@ -81,8 +81,8 @@ const tooltipContent = computed(() => {
 .session-status-badge
   display: inline-flex
   align-items: center
-  gap: var(--space-1)
-  padding: 2px 8px
+  gap: var(--nt-space-1)
+  padding: var(--nt-space-1) var(--nt-space-2)
   border-radius: 999px
   font-size: var(--text-xs)
   font-weight: 700

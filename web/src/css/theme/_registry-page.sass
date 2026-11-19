@@ -14,7 +14,7 @@
   &:not(.app-standard-page)
     padding: var(--space-6)
     max-width: var(--layout-max-width)
-    margin: 0 auto
+    margin: 0
     width: 100%
     box-sizing: border-box
 
@@ -22,7 +22,7 @@
 .app-glass-panel,
 .app-registry-panel
   border: 1px solid var(--glass-border)
-  border-radius: 20px
+  border-radius: var(--nt-radius-l, 12px)
   background: var(--glass-surface)
   backdrop-filter: blur(var(--glass-blur-default))
   box-shadow: var(--glass-inner-highlight)
@@ -45,7 +45,7 @@
   background: color-mix(in srgb, var(--color-accent) 8%, var(--glass-surface)) !important
   color: var(--color-text-primary) !important
   border: 1px solid color-mix(in srgb, var(--color-accent) 22%, var(--glass-border)) !important
-  border-radius: 16px
+  border-radius: var(--nt-radius-l, 12px)
   margin-bottom: var(--space-4)
 
   a
@@ -58,7 +58,7 @@
 // ── Tab 玻璃壳 ──
 .app-tab-shell
   border: 1px solid var(--glass-border)
-  border-radius: 20px
+  border-radius: var(--nt-radius-l, 12px)
   background: var(--glass-surface)
   backdrop-filter: blur(var(--glass-blur-default))
   box-shadow: var(--glass-inner-highlight)
@@ -100,7 +100,7 @@
 
 // ── KPI 统计卡（配合 .app-metrics-grid）──
 .app-metrics-card
-  border-radius: 18px
+  border-radius: var(--nt-radius-l, 12px)
   border: 1px solid var(--glass-border)
   background: var(--glass-surface)
   backdrop-filter: blur(var(--glass-blur-default))
@@ -165,7 +165,7 @@
 .app-registry-table-shell,
 .app-data-table-shell
   border: 1px solid var(--glass-border)
-  border-radius: 20px
+  border-radius: var(--nt-radius-l, 12px)
   background: var(--glass-surface)
   backdrop-filter: blur(var(--glass-blur-default))
   box-shadow: var(--glass-inner-highlight)
@@ -379,7 +379,7 @@ body.app-registry-col-resizing
 // ── 空态 / 分页 ──
 .app-registry-empty
   border: 1px solid var(--glass-border)
-  border-radius: 20px
+  border-radius: var(--nt-radius-l, 12px)
   background: var(--glass-surface)
   backdrop-filter: blur(var(--glass-blur-default))
   display: grid
@@ -406,7 +406,7 @@ body.app-registry-col-resizing
 // 独立卡片分页（Skill / Tool 列表页脚）
 .app-registry-pagination--card
   border: 1px solid var(--glass-border)
-  border-radius: 16px
+  border-radius: var(--nt-radius-l, 12px)
   background: color-mix(in srgb, var(--glass-surface) 92%, transparent)
 
 .app-registry-pagination__summary
@@ -915,7 +915,7 @@ body.body--dark .resource-manager-page.is-dark .provider-models-data-table
 
 .mcp-server-item
   background: color-mix(in srgb, var(--glass-surface) 84%, transparent)
-  border-radius: 18px
+  border-radius: var(--nt-radius-l, 12px)
 
 .mcp-detail-label
   color: var(--color-text-tertiary)
@@ -1180,7 +1180,7 @@ body.body--dark .plugin-tag--category
 
 .app-registry-hover-tip__popup
   border: 1px solid var(--glass-border) !important
-  border-radius: 14px !important
+  border-radius: var(--nt-radius-l, 12px) !important
   background: color-mix(in srgb, var(--glass-surface) 92%, var(--glass-elevated)) !important
   backdrop-filter: blur(var(--glass-blur-default)) !important
   box-shadow: var(--glass-inner-highlight), 0 12px 32px color-mix(in srgb, var(--color-shadow) 18%, transparent) !important
@@ -1341,7 +1341,7 @@ body.body--dark .app-registry-hover-tip__popup
 
 .tool-editor-section
   padding: 28px
-  border-radius: 16px
+  border-radius: var(--nt-radius-l, 12px)
   border: 1px solid color-mix(in srgb, var(--color-accent) 10%, var(--glass-border))
   background: var(--glass-surface)
   backdrop-filter: blur(var(--glass-blur-default))
@@ -1359,7 +1359,7 @@ body.body--dark .app-registry-hover-tip__popup
 .tool-editor-section__step
   width: 32px
   height: 32px
-  border-radius: 10px
+  border-radius: var(--nt-radius-l, 12px)
   display: flex
   align-items: center
   justify-content: center
@@ -1378,35 +1378,9 @@ body.body--dark .app-registry-hover-tip__popup
 
 .tool-schema-builder__field-card
   padding: var(--space-3)
-  border-radius: 10px
+  border-radius: var(--nt-radius-l, 12px)
   border: 1px solid var(--glass-border)
   background: var(--glass-surface)
-
-.tool-help-drawer-dialog
-  .q-dialog__backdrop
-    background: transparent
-
-.tool-help-drawer.q-card
-  width: min(480px, 96vw)
-  max-height: 96vh
-  border-radius: 16px 0 0 16px
-  border: 1px solid var(--glass-border)
-  background: var(--color-surface-elevated) !important
-  backdrop-filter: none !important
-  box-shadow: -8px 0 32px color-mix(in srgb, var(--color-text-primary) 12%, transparent)
-  color: var(--color-text-primary)
-
-body.body--dark .tool-help-drawer.q-card
-  background: var(--color-surface-elevated) !important
-
-.tool-help-drawer__head
-  padding: var(--space-3) var(--space-4) var(--space-2)
-
-.tool-help-drawer__title
-  font-size: 16px
-  font-weight: 600
-  line-height: 1.35
-  color: var(--color-text-primary)
 
 .tool-help-drawer__tabs
   padding: 0 var(--space-3)
@@ -1738,7 +1712,7 @@ body.body--dark .tool-help-drawer.q-card
   align-items: flex-start
   gap: 10px
   padding: 10px 8px
-  border-radius: 10px
+  border-radius: var(--nt-radius-l, 12px)
   cursor: pointer
   transition: background 0.15s ease, box-shadow 0.15s ease
   margin-bottom: 2px

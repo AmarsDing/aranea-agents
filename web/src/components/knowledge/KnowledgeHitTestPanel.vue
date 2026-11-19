@@ -157,38 +157,35 @@
       </div>
     </div>
 
-    <q-dialog v-model="saveDialog" persistent>
-      <q-card style="min-width: 320px">
-        <q-card-section>
-          <q-input
-            v-model="saveName"
-            dense
-            outlined
-            autofocus
-            :label="t('knowledgePage.hitTest.caseSave')"
-            :placeholder="t('knowledgePage.hitTest.caseNamePh')"
-            @keyup.enter="confirmSave"
-          />
-        </q-card-section>
-        <q-card-actions align="right">
-          <q-btn v-close-popup flat no-caps :label="t('knowledgePage.hitTest.caseCancel')" />
-          <q-btn
-            unelevated
-            no-caps
-            color="primary"
-            :label="t('knowledgePage.hitTest.caseSave')"
-            :disable="!saveName.trim()"
-            @click="confirmSave"
-          />
-        </q-card-actions>
-      </q-card>
-    </q-dialog>
+    <AppDialog v-model="saveDialog" :title="t('knowledgePage.hitTest.caseSave')" size="sm" persistent>
+      <q-input
+        v-model="saveName"
+        dense
+        outlined
+        autofocus
+        :label="t('knowledgePage.hitTest.caseSave')"
+        :placeholder="t('knowledgePage.hitTest.caseNamePh')"
+        @keyup.enter="confirmSave"
+      />
+      <template #actions>
+        <q-btn flat no-caps :label="t('knowledgePage.hitTest.caseCancel')" @click="saveDialog = false" />
+        <q-btn
+          unelevated
+          no-caps
+          color="primary"
+          :label="t('knowledgePage.hitTest.caseSave')"
+          :disable="!saveName.trim()"
+          @click="confirmSave"
+        />
+      </template>
+    </AppDialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
+import AppDialog from '../common/AppDialog.vue';
 import { useKnowledgeHitTest, type HitTestRun } from '../../features/knowledge/useKnowledgeHitTest';
 import { useHitTestCases } from '../../features/knowledge/useHitTestCases';
 import type { KnowledgeChunk } from '../../features/knowledge/types';

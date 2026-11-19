@@ -10,12 +10,14 @@ import (
 // only this struct and the Wire provider need updating — server constructors
 // are unaffected.
 type ServiceRegistry struct {
-	Admin              *service.AdminService
-	Avatar             *service.AvatarService
-	Agents             *service.AgentService
-	LLM                *service.LlmProviderModelService
-	Hook               *service.HookService
-	Cron               *service.CronService
+	Admin  *service.AdminService
+	Avatar *service.AvatarService
+	Agents *service.AgentService
+	LLM    *service.LlmProviderModelService
+	Hook   *service.HookService
+	Cron   *service.CronService
+	// Credential 是 E 阶段凭据托管服务（/v1/credentials*）。
+	Credential         *service.CredentialService
 	Plugin             *service.PluginService
 	MCPServer          *service.MCPServerService
 	Skill              *service.SkillService
@@ -73,6 +75,30 @@ type ServiceRegistry struct {
 	// Diagnostics exposes the 79-runtime-governance R8 doctor API
 	// (GET /api/v1/admin/diagnostics).
 	Diagnostics *service.DiagnosticsService
+	// Ceoboard exposes the CEO 驾驶舱 BFF(整合 P2-7;/v1/ceoboard/*)。
+	Ceoboard *service.CeoboardService
+	// ApprovalCenter 是 E 阶段 W1b 统一审批中心（/v1/approvals*，拍板 A-1/A-4）。
+	ApprovalCenter *service.ApprovalCenterService
+	// Review 是 E 阶段 W1b MVP 发文审批/商机签收的 proto 收编（/v1/review/*）。
+	Review *service.ReviewService
+	// OfficeSchedule/OfficeNotify/OfficeApps 是 E 阶段 W1c 办公套件
+	// （/v1/office/events*、/v1/office/notifications*、/v1/office/apps*，
+	// 需求文档 §2，拍板 K-1..K-5）。
+	OfficeSchedule *service.OfficeScheduleService
+	OfficeNotify   *service.OfficeNotifyService
+	OfficeApps     *service.OfficeAppsService
+	// OfficeMail 是 E 阶段 W1d 邮件域（/v1/office/mail/*，需求文档 §1，
+	// 拍板 E-1..E-5）。
+	OfficeMail *service.OfficeMailService
+	// Secops 是 E 阶段 W2a D3 离职处置五步（/v1/secops/offboard/*，需求 §6.3；
+	// 脱敏五闸/模型策略等 RPC 随 D6 接入，当前嵌入 Unimplemented 桩）。
+	Secops *service.SecopsService
+	// GitHubPanel 是 E 阶段 W2c G GitHub 研发情报面板（/v1/github/*，需求 §4；
+	// SLA/热榜/手动轮询 RPC 随 V3-V5 纵列接入）。
+	GitHubPanel *service.GitHubPanelService
+	// Fleet 是 Harness 多任务运行台（/v1/fleet/*，复刻 Orca：worktree + agent 终端
+	// + diff 批注 + 编排 + 自动化）。
+	Fleet *service.FleetService
 }
 
 // NewServiceRegistry assembles all services into a single registry for Wire injection.
@@ -84,6 +110,7 @@ func NewServiceRegistry(
 	llm *service.LlmProviderModelService,
 	hookSvc *service.HookService,
 	cronSvc *service.CronService,
+	credentialSvc *service.CredentialService,
 	pluginSvc *service.PluginService,
 	mcpSvc *service.MCPServerService,
 	skillSvc *service.SkillService,
@@ -130,6 +157,16 @@ func NewServiceRegistry(
 	decisionRecord *service.DecisionRecordService,
 	configGraph *service.ConfigGraphService,
 	diagnostics *service.DiagnosticsService,
+	ceoboard *service.CeoboardService,
+	approvalCenter *service.ApprovalCenterService,
+	reviewSvc *service.ReviewService,
+	officeSchedule *service.OfficeScheduleService,
+	officeNotify *service.OfficeNotifyService,
+	officeApps *service.OfficeAppsService,
+	officeMail *service.OfficeMailService,
+	secops *service.SecopsService,
+	gitHubPanel *service.GitHubPanelService,
+	fleetSvc *service.FleetService,
 ) *ServiceRegistry {
 	return &ServiceRegistry{
 		Admin:              admin,
@@ -138,6 +175,7 @@ func NewServiceRegistry(
 		LLM:                llm,
 		Hook:               hookSvc,
 		Cron:               cronSvc,
+		Credential:         credentialSvc,
 		Plugin:             pluginSvc,
 		MCPServer:          mcpSvc,
 		Skill:              skillSvc,
@@ -184,5 +222,15 @@ func NewServiceRegistry(
 		DecisionRecord:     decisionRecord,
 		ConfigGraph:        configGraph,
 		Diagnostics:        diagnostics,
+		Ceoboard:           ceoboard,
+		ApprovalCenter:     approvalCenter,
+		Review:             reviewSvc,
+		OfficeSchedule:     officeSchedule,
+		OfficeNotify:       officeNotify,
+		OfficeApps:         officeApps,
+		OfficeMail:         officeMail,
+		Secops:             secops,
+		GitHubPanel:        gitHubPanel,
+		Fleet:              fleetSvc,
 	}
 }

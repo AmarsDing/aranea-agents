@@ -15,7 +15,6 @@
     ]"
     role="group"
     :aria-label="primaryLabel"
-    :style="nodeStyle"
   >
     <Handle type="target" :position="Position.Left" class="graph-flow-node__handle" />
     <div class="graph-flow-node__accent" />
@@ -109,10 +108,6 @@ const props = defineProps<{
 }>();
 
 const styleConfig = computed(() => NODE_TYPE_STYLES[props.data.nodeType] ?? NODE_TYPE_STYLES.function);
-
-const nodeStyle = computed(() => ({
-  '--node-accent': styleConfig.value.borderColor,
-}));
 
 const statusConfig = computed(() => {
   const status = props.data.execStatus ?? 'idle';

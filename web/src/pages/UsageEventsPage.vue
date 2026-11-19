@@ -122,20 +122,45 @@
       </template>
     </AppPageToolbar>
 
-    <q-banner v-if="error" rounded class="bg-negative text-white q-mb-md" role="alert">
-      {{ error }}
-      <template #action><q-btn flat :label="t('usageEventsPage.retry')" :loading="loading" @click="load" /></template>
-    </q-banner>
+    <!-- 五态：已有数据但刷新失败 → 局部失败横幅，表格照常渲染 -->
+    <AppStatePanel
+      v-if="(error || forbidden) && events.length > 0"
+      variant="partial"
+      dense
+      class="q-mb-md"
+      :description="error"
+      :action-label="t('usageEventsPage.retry')"
+      action-icon="refresh"
+      @action="load"
+    />
 
-    <q-card v-if="!loading && !error && events.length === 0" flat class="app-registry-empty app-empty-state-center">
-      <q-card-section class="column items-center text-center q-pa-xl">
-        <q-avatar size="72px" color="primary" text-color="white" icon="insights" />
-        <div class="text-h6 q-mt-md">{{ t('usageEventsPage.empty') }}</div>
-        <div class="text-body2 text-grey-7 q-mt-sm">{{ t('usageEventsPage.emptyHint') }}</div>
-      </q-card-section>
-    </q-card>
+    <!-- 五态：无权限 → 只渲染 forbidden 面板，不提供重试 -->
+    <AppStatePanel v-else-if="forbidden" variant="forbidden" class="q-mb-md" />
 
-    <template v-else-if="!error || events.length">
+    <!-- 五态：加载失败且无数据 → 只渲染可重试错误面板，不与空态并存。 -->
+    <AppStatePanel
+      v-else-if="error"
+      variant="error"
+      class="q-mb-md"
+      :description="error"
+      :action-label="t('usageEventsPage.retry')"
+      action-icon="refresh"
+      @action="load"
+    />
+
+    <!-- 五态：首屏加载无数据 → 骨架面板 -->
+    <AppStatePanel v-if="loading && events.length === 0 && !error && !forbidden" variant="loading" :rows="5" />
+
+    <!-- 五态：成功但无数据 → 空态 -->
+    <AppStatePanel
+      v-else-if="!loading && !error && !forbidden && events.length === 0"
+      variant="empty"
+      :title="t('usageEventsPage.empty')"
+      :description="t('usageEventsPage.emptyHint')"
+      icon="insights"
+    />
+
+    <template v-else-if="events.length > 0">
       <AppRegistryTable
         :rows="events"
         :columns="columns"
@@ -202,6 +227,7 @@ import { computed, onMounted } from 'vue';
 import { useI18n } from 'vue-i18n';
 import AppPageHero from '../components/layout/AppPageHero.vue';
 import AppPageToolbar from '../components/layout/AppPageToolbar.vue';
+import AppStatePanel from '../components/common/AppStatePanel.vue';
 import AppRegistryTable from '../components/layout/AppRegistryTable.vue';
 import AppRegistryHoverTip from '../components/layout/AppRegistryHoverTip.vue';
 import AppRegistryPagination from '../components/layout/AppRegistryPagination.vue';
@@ -223,6 +249,7 @@ const {
   onPageSize,
   loading,
   error,
+  forbidden,
   exporting,
   filters,
   rangeOptions,

@@ -1,78 +1,63 @@
 <template>
-  <q-dialog
+  <AppDialog
     :model-value="open"
     position="right"
-    no-shake
-    class="tool-help-drawer-dialog"
+    size="sm"
+    :title="$t('toolsPage.helpDrawer.title')"
     @update:model-value="$emit('update:open', $event)"
-    @hide="$emit('update:open', false)"
   >
-    <q-card class="app-dialog-card tool-help-drawer column">
-      <q-card-section class="tool-help-drawer__head row items-center justify-between no-wrap">
-        <div class="tool-help-drawer__title">{{ $t('toolsPage.helpDrawer.title') }}</div>
-        <q-btn
-          flat
-          dense
-          round
-          icon="close"
-          class="app-registry-icon-btn"
-          :aria-label="$t('common.close')"
-          @click="$emit('update:open', false)"
-        />
-      </q-card-section>
+    <q-tabs
+      v-model="activeTab"
+      dense
+      narrow-indicator
+      inline-label
+      class="tool-help-drawer__tabs"
+      active-color="var(--color-accent)"
+      indicator-color="var(--color-accent)"
+    >
+      <q-tab name="fields" :label="$t('toolsPage.helpDrawer.tabFields')" no-caps />
+      <q-tab name="concepts" :label="$t('toolsPage.helpDrawer.tabConcepts')" no-caps />
+    </q-tabs>
+    <q-separator />
 
-      <q-tabs
-        v-model="activeTab"
-        dense
-        narrow-indicator
-        inline-label
-        class="tool-help-drawer__tabs"
-        active-color="var(--color-accent)"
-        indicator-color="var(--color-accent)"
-      >
-        <q-tab name="fields" :label="$t('toolsPage.helpDrawer.tabFields')" no-caps />
-        <q-tab name="concepts" :label="$t('toolsPage.helpDrawer.tabConcepts')" no-caps />
-      </q-tabs>
-      <q-separator />
-
-      <q-tab-panels v-model="activeTab" class="tool-help-drawer__panels col">
-        <q-tab-panel name="fields" class="tool-help-drawer__panel scroll">
-          <div class="tool-help-drawer__field-grid">
-            <div v-for="entry in fieldEntries" :key="entry.key" class="tool-help-drawer__field-card">
-              <div class="tool-help-drawer__field-header">
-                <span class="tool-help-drawer__field-label">{{ entry.label }}</span>
-                <span class="tool-help-drawer__field-key">{{ entry.key }}</span>
-              </div>
-              <div class="tool-help-drawer__field-hint">{{ fieldHints[entry.key] }}</div>
+    <q-tab-panels v-model="activeTab" class="tool-help-drawer__panels">
+      <q-tab-panel name="fields" class="tool-help-drawer__panel">
+        <div class="tool-help-drawer__field-grid">
+          <div v-for="entry in fieldEntries" :key="entry.key" class="tool-help-drawer__field-card">
+            <div class="tool-help-drawer__field-header">
+              <span class="tool-help-drawer__field-label">{{ entry.label }}</span>
+              <span class="tool-help-drawer__field-key">{{ entry.key }}</span>
             </div>
+            <div class="tool-help-drawer__field-hint">{{ fieldHints[entry.key] }}</div>
           </div>
-        </q-tab-panel>
+        </div>
+      </q-tab-panel>
 
-        <q-tab-panel name="concepts" class="tool-help-drawer__panel scroll">
-          <q-list class="tool-help-drawer__accordion">
-            <q-expansion-item
-              v-for="(sec, i) in sections"
-              :key="i"
-              :label="sec.title"
-              dense-toggle
-              switch-toggle-side
-              class="tool-help-drawer__expansion"
-            >
-              <ul v-if="sec.items?.length" class="tool-help-drawer__list">
-                <li v-for="(item, j) in sec.items" :key="j">{{ item }}</li>
-              </ul>
-              <p v-if="sec.body" class="tool-help-drawer__text">{{ sec.body }}</p>
-              <pre v-if="sec.code" class="tool-help-drawer__code">{{ sec.code }}</pre>
-            </q-expansion-item>
-          </q-list>
-        </q-tab-panel>
-      </q-tab-panels>
-    </q-card>
-  </q-dialog>
+      <q-tab-panel name="concepts" class="tool-help-drawer__panel">
+        <q-list class="tool-help-drawer__accordion">
+          <q-expansion-item
+            v-for="(sec, i) in sections"
+            :key="i"
+            :label="sec.title"
+            dense-toggle
+            switch-toggle-side
+            class="tool-help-drawer__expansion"
+          >
+            <ul v-if="sec.items?.length" class="tool-help-drawer__list">
+              <li v-for="(item, j) in sec.items" :key="j">{{ item }}</li>
+            </ul>
+            <p v-if="sec.body" class="tool-help-drawer__text">{{ sec.body }}</p>
+            <pre v-if="sec.code" class="tool-help-drawer__code">{{ sec.code }}</pre>
+          </q-expansion-item>
+        </q-list>
+      </q-tab-panel>
+    </q-tab-panels>
+  </AppDialog>
 </template>
 
 <script setup lang="ts">
 import { computed, ref } from 'vue';
+import AppDialog from '../../common/AppDialog.vue';
 import { toolFieldHintEntries, toolFieldHints, toolHelpSections } from '../../../features/tools/toolEditorCopy';
 
 defineProps<{ open: boolean }>();

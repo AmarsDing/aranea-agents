@@ -58,7 +58,7 @@
           rounded
           no-caps
           :icon="selectionMode ? 'close' : 'checklist'"
-          :label="selectionMode ? '取消选择' : '批量选择'"
+          :label="selectionMode ? '收起选择' : '批量选择'"
           :color="selectionMode ? 'primary' : undefined"
           @click="$emit('toggle-selection')"
         />

@@ -1,5 +1,11 @@
 <template>
-  <q-banner v-if="config" rounded class="app-info-banner">
+  <q-banner v-if="error" rounded class="app-page-error-banner" role="alert">
+    A2A 运行配置加载失败：{{ error }}
+    <template #action>
+      <q-btn flat :label="t('shell.common.retry')" @click="emit('retry')" />
+    </template>
+  </q-banner>
+  <q-banner v-else-if="config" rounded class="app-info-banner">
     <div class="text-subtitle2">A2A 公开 Endpoint</div>
     <div class="text-body2">{{ config.public_base_url || '—' }}</div>
     <div class="text-caption app-text-secondary">
@@ -12,11 +18,17 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
+import { useI18n } from 'vue-i18n';
 import type { A2ARuntimeConfig } from '../../features/a2a/types';
 
 const props = defineProps<{
   config: A2ARuntimeConfig | null;
+  /** 配置探测失败信息；非空时显示可重试错误，而不是静默隐藏横幅。 */
+  error?: string;
 }>();
+
+const emit = defineEmits<{ retry: [] }>();
+const { t } = useI18n();
 
 const sourceLabel = computed(() => {
   const s = props.config?.public_base_url_source;

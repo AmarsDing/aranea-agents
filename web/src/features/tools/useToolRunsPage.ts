@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n';
 import { toolInvocationStatusOptions } from '../../components/tools/toolUi';
 import type { ToolInvocation, ToolInvocationParamDetail } from './types';
 import { useToolsStore } from '../../stores/tools';
+import { isForbiddenApiError } from '../../utils/kratosError';
 
 export function useToolRunsPage() {
   const route = useRoute();
@@ -22,6 +23,8 @@ export function useToolRunsPage() {
   const total = ref(0);
   const loading = ref(false);
   const error = ref('');
+  /** 403 / PERMISSION_DENIED：页面渲染 forbidden 态，不提供重试。 */
+  const forbidden = ref(false);
 
   // 详情弹窗
   const detailOpen = ref(false);
@@ -40,6 +43,7 @@ export function useToolRunsPage() {
     const seq = ++loadSeq;
     loading.value = true;
     error.value = '';
+    forbidden.value = false;
     try {
       const data = await toolsStore.loadToolRuns({
         tool_key: toolKey.value,
@@ -57,6 +61,7 @@ export function useToolRunsPage() {
     } catch (err) {
       if (seq !== loadSeq) return;
       error.value = err instanceof Error ? err.message : t('toolsPage.runs.loadFailed');
+      forbidden.value = isForbiddenApiError(err);
     } finally {
       if (seq === loadSeq) loading.value = false;
     }
@@ -133,6 +138,7 @@ export function useToolRunsPage() {
     total,
     loading,
     error,
+    forbidden,
     pageMax,
     statusOptions,
     detailOpen,

@@ -112,6 +112,34 @@ func (_c *CronTaskRunCreate) SetNillableCreatedAt(v *string) *CronTaskRunCreate 
 	return _c
 }
 
+// SetResolvedAt sets the "resolved_at" field.
+func (_c *CronTaskRunCreate) SetResolvedAt(v string) *CronTaskRunCreate {
+	_c.mutation.SetResolvedAt(v)
+	return _c
+}
+
+// SetNillableResolvedAt sets the "resolved_at" field if the given value is not nil.
+func (_c *CronTaskRunCreate) SetNillableResolvedAt(v *string) *CronTaskRunCreate {
+	if v != nil {
+		_c.SetResolvedAt(*v)
+	}
+	return _c
+}
+
+// SetResolvedBy sets the "resolved_by" field.
+func (_c *CronTaskRunCreate) SetResolvedBy(v string) *CronTaskRunCreate {
+	_c.mutation.SetResolvedBy(v)
+	return _c
+}
+
+// SetNillableResolvedBy sets the "resolved_by" field if the given value is not nil.
+func (_c *CronTaskRunCreate) SetNillableResolvedBy(v *string) *CronTaskRunCreate {
+	if v != nil {
+		_c.SetResolvedBy(*v)
+	}
+	return _c
+}
+
 // SetID sets the "id" field.
 func (_c *CronTaskRunCreate) SetID(v string) *CronTaskRunCreate {
 	_c.mutation.SetID(v)
@@ -177,6 +205,14 @@ func (_c *CronTaskRunCreate) defaults() {
 		v := crontaskrun.DefaultCreatedAt
 		_c.mutation.SetCreatedAt(v)
 	}
+	if _, ok := _c.mutation.ResolvedAt(); !ok {
+		v := crontaskrun.DefaultResolvedAt
+		_c.mutation.SetResolvedAt(v)
+	}
+	if _, ok := _c.mutation.ResolvedBy(); !ok {
+		v := crontaskrun.DefaultResolvedBy
+		_c.mutation.SetResolvedBy(v)
+	}
 }
 
 // check runs all checks and user-defined validators on the builder.
@@ -206,6 +242,12 @@ func (_c *CronTaskRunCreate) check() error {
 	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		return &ValidationError{Name: "created_at", err: errors.New(`ent: missing required field "CronTaskRun.created_at"`)}
+	}
+	if _, ok := _c.mutation.ResolvedAt(); !ok {
+		return &ValidationError{Name: "resolved_at", err: errors.New(`ent: missing required field "CronTaskRun.resolved_at"`)}
+	}
+	if _, ok := _c.mutation.ResolvedBy(); !ok {
+		return &ValidationError{Name: "resolved_by", err: errors.New(`ent: missing required field "CronTaskRun.resolved_by"`)}
 	}
 	if v, ok := _c.mutation.ID(); ok {
 		if err := crontaskrun.IDValidator(v); err != nil {
@@ -275,6 +317,14 @@ func (_c *CronTaskRunCreate) createSpec() (*CronTaskRun, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(crontaskrun.FieldCreatedAt, field.TypeString, value)
 		_node.CreatedAt = value
+	}
+	if value, ok := _c.mutation.ResolvedAt(); ok {
+		_spec.SetField(crontaskrun.FieldResolvedAt, field.TypeString, value)
+		_node.ResolvedAt = value
+	}
+	if value, ok := _c.mutation.ResolvedBy(); ok {
+		_spec.SetField(crontaskrun.FieldResolvedBy, field.TypeString, value)
+		_node.ResolvedBy = value
 	}
 	return _node, _spec
 }
@@ -409,6 +459,30 @@ func (u *CronTaskRunUpsert) SetCreatedAt(v string) *CronTaskRunUpsert {
 // UpdateCreatedAt sets the "created_at" field to the value that was provided on create.
 func (u *CronTaskRunUpsert) UpdateCreatedAt() *CronTaskRunUpsert {
 	u.SetExcluded(crontaskrun.FieldCreatedAt)
+	return u
+}
+
+// SetResolvedAt sets the "resolved_at" field.
+func (u *CronTaskRunUpsert) SetResolvedAt(v string) *CronTaskRunUpsert {
+	u.Set(crontaskrun.FieldResolvedAt, v)
+	return u
+}
+
+// UpdateResolvedAt sets the "resolved_at" field to the value that was provided on create.
+func (u *CronTaskRunUpsert) UpdateResolvedAt() *CronTaskRunUpsert {
+	u.SetExcluded(crontaskrun.FieldResolvedAt)
+	return u
+}
+
+// SetResolvedBy sets the "resolved_by" field.
+func (u *CronTaskRunUpsert) SetResolvedBy(v string) *CronTaskRunUpsert {
+	u.Set(crontaskrun.FieldResolvedBy, v)
+	return u
+}
+
+// UpdateResolvedBy sets the "resolved_by" field to the value that was provided on create.
+func (u *CronTaskRunUpsert) UpdateResolvedBy() *CronTaskRunUpsert {
+	u.SetExcluded(crontaskrun.FieldResolvedBy)
 	return u
 }
 
@@ -555,6 +629,34 @@ func (u *CronTaskRunUpsertOne) SetCreatedAt(v string) *CronTaskRunUpsertOne {
 func (u *CronTaskRunUpsertOne) UpdateCreatedAt() *CronTaskRunUpsertOne {
 	return u.Update(func(s *CronTaskRunUpsert) {
 		s.UpdateCreatedAt()
+	})
+}
+
+// SetResolvedAt sets the "resolved_at" field.
+func (u *CronTaskRunUpsertOne) SetResolvedAt(v string) *CronTaskRunUpsertOne {
+	return u.Update(func(s *CronTaskRunUpsert) {
+		s.SetResolvedAt(v)
+	})
+}
+
+// UpdateResolvedAt sets the "resolved_at" field to the value that was provided on create.
+func (u *CronTaskRunUpsertOne) UpdateResolvedAt() *CronTaskRunUpsertOne {
+	return u.Update(func(s *CronTaskRunUpsert) {
+		s.UpdateResolvedAt()
+	})
+}
+
+// SetResolvedBy sets the "resolved_by" field.
+func (u *CronTaskRunUpsertOne) SetResolvedBy(v string) *CronTaskRunUpsertOne {
+	return u.Update(func(s *CronTaskRunUpsert) {
+		s.SetResolvedBy(v)
+	})
+}
+
+// UpdateResolvedBy sets the "resolved_by" field to the value that was provided on create.
+func (u *CronTaskRunUpsertOne) UpdateResolvedBy() *CronTaskRunUpsertOne {
+	return u.Update(func(s *CronTaskRunUpsert) {
+		s.UpdateResolvedBy()
 	})
 }
 
@@ -868,6 +970,34 @@ func (u *CronTaskRunUpsertBulk) SetCreatedAt(v string) *CronTaskRunUpsertBulk {
 func (u *CronTaskRunUpsertBulk) UpdateCreatedAt() *CronTaskRunUpsertBulk {
 	return u.Update(func(s *CronTaskRunUpsert) {
 		s.UpdateCreatedAt()
+	})
+}
+
+// SetResolvedAt sets the "resolved_at" field.
+func (u *CronTaskRunUpsertBulk) SetResolvedAt(v string) *CronTaskRunUpsertBulk {
+	return u.Update(func(s *CronTaskRunUpsert) {
+		s.SetResolvedAt(v)
+	})
+}
+
+// UpdateResolvedAt sets the "resolved_at" field to the value that was provided on create.
+func (u *CronTaskRunUpsertBulk) UpdateResolvedAt() *CronTaskRunUpsertBulk {
+	return u.Update(func(s *CronTaskRunUpsert) {
+		s.UpdateResolvedAt()
+	})
+}
+
+// SetResolvedBy sets the "resolved_by" field.
+func (u *CronTaskRunUpsertBulk) SetResolvedBy(v string) *CronTaskRunUpsertBulk {
+	return u.Update(func(s *CronTaskRunUpsert) {
+		s.SetResolvedBy(v)
+	})
+}
+
+// UpdateResolvedBy sets the "resolved_by" field to the value that was provided on create.
+func (u *CronTaskRunUpsertBulk) UpdateResolvedBy() *CronTaskRunUpsertBulk {
+	return u.Update(func(s *CronTaskRunUpsert) {
+		s.UpdateResolvedBy()
 	})
 }
 

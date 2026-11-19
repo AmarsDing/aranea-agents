@@ -80,48 +80,43 @@
       <HooksTable variant="agent" readonly :rows="globalRows" :loading="loading" />
     </template>
 
-    <q-dialog v-model="editOpen" persistent>
-      <q-card class="app-dialog-card app-dialog-card--md app-glass-dialog">
-        <q-card-section class="app-glass-dialog__head row items-center justify-between">
-          <div class="app-glass-dialog__title">{{ t('hooksPage.agentPanel.dialogTitleEdit') }}</div>
-          <q-btn v-close-popup flat round dense icon="close" />
-        </q-card-section>
-        <q-separator />
-        <div class="app-glass-dialog__scroll">
-          <q-card-section class="app-dialog-body app-glass-dialog__body">
-            <div class="app-form-field-grid app-form-field-grid--2col q-mb-md">
-              <q-input v-model="editName" dense outlined :label="t('hooksPage.fieldName')" />
-              <q-toggle v-model="editEnabled" :label="t('hooksPage.fieldEnabled')" />
-            </div>
-            <callback-editor
-              v-if="editRow"
-              v-model="editRule"
-              v-model:sort-order="editSort"
-              v-model:valid="editValid"
-              :agent-id="agentId"
-              :agent-key="agentKey"
-              lock-agent-id
-              :tool-options="toolOptions"
-              :loading-tool-options="loadingToolOptions"
-              :enabled-tool-keys="enabledToolKeys"
-            />
-          </q-card-section>
-        </div>
-        <q-separator />
-        <q-card-actions align="right" class="app-actions-bar app-glass-dialog__actions">
-          <q-btn v-close-popup flat no-caps :label="t('hooksPage.btnCancel')" />
-          <q-btn
-            color="primary"
-            unelevated
-            no-caps
-            :label="t('hooksPage.btnSave')"
-            :loading="saving"
-            :disable="!editValid"
-            @click="saveEdit"
-          />
-        </q-card-actions>
-      </q-card>
-    </q-dialog>
+    <app-dialog
+      v-model="editOpen"
+      :title="t('hooksPage.agentPanel.dialogTitleEdit')"
+      icon="call_split"
+      size="md"
+      persistent
+      :loading="saving"
+    >
+      <div class="app-form-field-grid app-form-field-grid--2col q-mb-md">
+        <q-input v-model="editName" dense outlined :label="t('hooksPage.fieldName')" />
+        <q-toggle v-model="editEnabled" :label="t('hooksPage.fieldEnabled')" />
+      </div>
+      <callback-editor
+        v-if="editRow"
+        v-model="editRule"
+        v-model:sort-order="editSort"
+        v-model:valid="editValid"
+        :agent-id="agentId"
+        :agent-key="agentKey"
+        lock-agent-id
+        :tool-options="toolOptions"
+        :loading-tool-options="loadingToolOptions"
+        :enabled-tool-keys="enabledToolKeys"
+      />
+      <template #actions>
+        <q-btn flat no-caps :label="t('hooksPage.btnCancel')" @click="editOpen = false" />
+        <q-btn
+          color="primary"
+          unelevated
+          no-caps
+          :label="t('hooksPage.btnSave')"
+          :loading="saving"
+          :disable="!editValid"
+          @click="saveEdit"
+        />
+      </template>
+    </app-dialog>
   </div>
 </template>
 
@@ -129,6 +124,7 @@
 import { useI18n } from 'vue-i18n';
 import CallbackEditor from '../hooks/CallbackEditor.vue';
 import HooksTable from '../hooks/HooksTable.vue';
+import AppDialog from '../common/AppDialog.vue';
 import { useAgentHooksPanel } from '../../features/agents/useAgentHooksPanel';
 
 const { t } = useI18n();

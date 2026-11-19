@@ -9,7 +9,11 @@ import { useGraphEditorPage } from '../useGraphEditorPage';
 // ── 外部依赖 mock ──
 const routerReplace = vi.hoisted(() => vi.fn());
 const notify = vi.hoisted(() => vi.fn());
-const dialogOnOk = vi.hoisted(() => ({ current: null as null | (() => void) }));
+// 确认框走 useAppConfirm 单例：捕获入参 + 手动放行。
+const confirmCall = vi.hoisted(() => ({
+  opts: null as null | Record<string, unknown>,
+  current: null as null | (() => void),
+}));
 vi.mock('vue-router', () => ({
   useRoute: () => ({ name: 'graph-editor', params: { id: 'g-1' } }),
   useRouter: () => ({ push: vi.fn(), replace: routerReplace }),
@@ -19,13 +23,15 @@ vi.mock('quasar', () => ({
   useQuasar: () => ({
     dark: { isActive: false },
     notify,
-    dialog: () => ({
-      onOk: (cb: () => void) => {
-        dialogOnOk.current = cb;
-      },
-      onCancel: () => ({}),
-    }),
   }),
+}));
+vi.mock('../../../composables/useAppConfirm', () => ({
+  confirm: (opts: Record<string, unknown>) => {
+    confirmCall.opts = opts;
+    return new Promise<boolean>((resolve) => {
+      confirmCall.current = () => resolve(true);
+    });
+  },
 }));
 
 const graphStoreMock = vi.hoisted(() => ({
@@ -107,7 +113,8 @@ function harness() {
 describe('useGraphEditorPage F4 team-owned 保存确认 (M53 Phase 11)', () => {
   beforeEach(() => {
     setActivePinia(createPinia());
-    dialogOnOk.current = null;
+    confirmCall.current = null;
+    confirmCall.opts = null;
     graphStoreMock.editGraph.mockReset().mockImplementation(async (_id: string, g: unknown) => g);
     teamsStoreMock.fetchTeam.mockReset();
     // onMounted 的 loadGraphDefinition 用一个普通独立图，避免干扰用例
@@ -127,7 +134,7 @@ describe('useGraphEditorPage F4 team-owned 保存确认 (M53 Phase 11)', () => {
     api.markDirty();
     api.onSaveClick();
     await vi.waitFor(() => expect(graphStoreMock.editGraph).toHaveBeenCalled());
-    expect(dialogOnOk.current).toBeNull();
+    expect(confirmCall.opts).toBeNull();
   });
 
   it('team-owned 图保存先弹确认，onOk 后才落库；确认文案含属主 Team 名', async () => {
@@ -139,10 +146,11 @@ describe('useGraphEditorPage F4 team-owned 保存确认 (M53 Phase 11)', () => {
     api.markDirty();
 
     api.onSaveClick();
-    await vi.waitFor(() => expect(dialogOnOk.current).not.toBeNull());
+    await vi.waitFor(() => expect(confirmCall.current).not.toBeNull());
+    expect(String(confirmCall.opts?.message)).toContain('阿尔法小队');
     expect(graphStoreMock.editGraph).not.toHaveBeenCalled();
 
-    dialogOnOk.current!();
+    confirmCall.current!();
     await vi.waitFor(() => expect(graphStoreMock.editGraph).toHaveBeenCalledWith('g-1', expect.anything()));
   });
 
@@ -155,8 +163,8 @@ describe('useGraphEditorPage F4 team-owned 保存确认 (M53 Phase 11)', () => {
     api.markDirty();
 
     api.onSaveClick();
-    await vi.waitFor(() => expect(dialogOnOk.current).not.toBeNull());
-    dialogOnOk.current!();
+    await vi.waitFor(() => expect(confirmCall.current).not.toBeNull());
+    confirmCall.current!();
     await vi.waitFor(() => expect(graphStoreMock.editGraph).toHaveBeenCalled());
   });
 });

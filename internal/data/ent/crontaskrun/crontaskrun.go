@@ -25,6 +25,10 @@ const (
 	FieldErrorMessage = "error_message"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
+	// FieldResolvedAt holds the string denoting the resolved_at field in the database.
+	FieldResolvedAt = "resolved_at"
+	// FieldResolvedBy holds the string denoting the resolved_by field in the database.
+	FieldResolvedBy = "resolved_by"
 	// Table holds the table name of the crontaskrun in the database.
 	Table = "cron_task_run"
 )
@@ -39,6 +43,8 @@ var Columns = []string{
 	FieldOutputJSON,
 	FieldErrorMessage,
 	FieldCreatedAt,
+	FieldResolvedAt,
+	FieldResolvedBy,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -66,6 +72,10 @@ var (
 	DefaultErrorMessage string
 	// DefaultCreatedAt holds the default value on creation for the "created_at" field.
 	DefaultCreatedAt string
+	// DefaultResolvedAt holds the default value on creation for the "resolved_at" field.
+	DefaultResolvedAt string
+	// DefaultResolvedBy holds the default value on creation for the "resolved_by" field.
+	DefaultResolvedBy string
 	// IDValidator is a validator for the "id" field. It is called by the builders before save.
 	IDValidator func(string) error
 )
@@ -111,4 +121,14 @@ func ByErrorMessage(opts ...sql.OrderTermOption) OrderOption {
 // ByCreatedAt orders the results by the created_at field.
 func ByCreatedAt(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldCreatedAt, opts...).ToFunc()
+}
+
+// ByResolvedAt orders the results by the resolved_at field.
+func ByResolvedAt(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldResolvedAt, opts...).ToFunc()
+}
+
+// ByResolvedBy orders the results by the resolved_by field.
+func ByResolvedBy(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldResolvedBy, opts...).ToFunc()
 }

@@ -624,4 +624,91 @@ var ddlMigrationsLate = []ddlMigration{
 	// 注册记录（真实图标 + 能力声明 + 默认自治级别），默认 enabled=false，探测后再启用。
 	// 幂等：按 (workspace, agent_key) 存在即跳过；不覆盖用户已改配置。
 	{Version: 20261309, Name: "coding_agents_seed", Func: ddlCodingAgentsSeed},
+	// 20261310 ceoboard_dead_letters 库层幂等兜底部分唯一索引（评审 2026-11-09 M2）：
+	// 先清理存量同 (kind,source,ref_key) 未重放重复（保留 id 最大者，与查重
+	// "最新优先"语义一致），再建部分唯一索引 ref_key<>'' AND replayed_at IS NULL。
+	// DEV 模式 auto-migrate WithDropIndex 会抹掉 schema 外索引——启动期 reconcile
+	// （EnsureCeoboardDeadLetterIdemSchema，本表同体 SQL）每次幂等重建。
+	// ent schema 不动（部分索引无法经 model 表达）；旧二进制无感知。幂等，重跑安全。
+	{Version: 20261310, Name: "ceoboard_dead_letters_unreplayed_ref_uidx", SQL: "sql/migrations/20261310_ceoboard_dead_letters_unreplayed_ref_uidx.sql"},
+	// 20261311 ceoboard_webhook_deliveries 幂等维度化 (source,key)（评审 2026-11-09
+	// MEDIUM-7）：存储主键改 source:幂等键 复合串（store 层收口拼接），存量裸键行
+	// 先复制再删回填；复制失败/超长残留在读侧恒等兼容。DDL/数据均可重入，重跑安全。
+	{Version: 20261311, Name: "ceoboard_webhook_deliveries_source_key", SQL: "sql/migrations/20261311_ceoboard_webhook_deliveries_source_key.sql"},
+	// 20261312 ceoboard_events_drop_redundant_idx（评审 2026-11-09 D1）：
+	// (platform, received_at) 两列索引是 (platform, received_at, event_uid) 的
+	// 左前缀冗余，ent schema 已删声明（on-model 收敛）；生产 Schema.Create 不删
+	// 索引（无 WithDropIndex），本迁移 DROP INDEX IF EXISTS 收敛存量库；DEV 模式
+	// auto-migrate 先删则本迁移 no-op。不改数据，幂等，重跑安全。
+	{Version: 20261312, Name: "ceoboard_events_drop_redundant_idx", SQL: "sql/migrations/20261312_ceoboard_events_drop_redundant_idx.sql"},
+	// 20261320 builtin_platform_tools_credential_reseed（E 阶段 W1a 凭据托管，
+	// 2026-11-09）：credential 工具种子（高风险/默认关/需确认 + ARANEA_CREDENTIAL_TOOLS
+	// 环境闸）在存量库中从未插入 → effective keys 查无工具行，credential_*
+	// 动词永不装配。种子函数幂等（ON CONFLICT DO NOTHING），重跑安全。
+	// 注：credentials / credential_executions 两表为 ent 管理表，生产由
+	// Schema.Create 自动建表（ceoboard 先例），无需 CREATE TABLE 迁移。
+	{Version: 20261320, Name: "builtin_platform_tools_credential_reseed", Func: ddlBuiltinPlatformTools},
+	// 20261321 office_suite（E 阶段 W1c 日程+通知+apps，需求文档 §2，拍板
+	// K-1..K-5）：office_events（原生 TIMESTAMPTZ 承载范围聚合与 409 重叠
+	// 检测）/office_notifications/office_ical_tokens（token 只存哈希）/
+	// office_apps/office_schedule_drafts（审批中心 schedule_draft 领域承载）。
+	// 幂等 IF NOT EXISTS，不重写存量行，重跑安全。
+	{Version: 20261321, Name: "office_suite", SQL: "sql/migrations/20261321_office_suite.sql"},
+	// 20261322 office_mail（E 阶段 W1d 邮件，需求文档 §1，拍板 E-1..E-5）：
+	// office_mail_accounts（password_enc 信封密文、无明文列）/office_mail_messages
+	//（(account_id,uid) 部分唯一索引幂等 + classification 密级列 + quadrant
+	// 预留 + task_ref 回写）/office_mail_attachments（BYTEA+16MB 上限+
+	// knowledge_doc_id 回链，ON DELETE CASCADE）/office_tasks（邮件转任务
+	// F1 落点，统一任务中心前身）。幂等 IF NOT EXISTS，重跑安全。
+	{Version: 20261322, Name: "office_mail", SQL: "sql/migrations/20261322_office_mail.sql"},
+	// 20261323 approval_risk_matrix（E 阶段 W1b 审批中心，拍板 A-4）：三级风险 ×
+	// approval-policy 四档默认档映射配置表（matcher_key 主键），配置存库可审计
+	// 变更（PutRiskMatrix 走 audit）。消费点=approval-policy 求值默认档建议
+	// （W3 接线）。幂等 IF NOT EXISTS，双方言一致。
+	{Version: 20261323, Name: "approval_risk_matrix", SQL: "sql/migrations/20261323_approval_risk_matrix.sql"},
+	// 20261325 memory_content_offboard（E 阶段 W2a D3，拍板 N-1/N-2/N-3）：
+	// memory_facts 增 content_enc 信封列（字段级 AES-GCM，CredentialCrypto 密钥，
+	// 召回透明解密）+ secops_offboard_requests 离职处置五步台账。content_enc 对历
+	// 史行为零影响：列默认空串、写路径补信封、读路径按存在性透明解密。
+	{Version: 20261325, Name: "memory_content_offboard", SQL: "sql/migrations/20261325_memory_content_offboard.sql"},
+	// 20261326 cron_run_resolved（个人工作台告警 lane 核销）：cron_task_run 增
+	// resolved_at/resolved_by（空 = 未核销）与 (status,resolved_at) 索引。Ent
+	// Schema.Create 不为存量表补列，故走 ALTER TABLE；幂等 IF NOT EXISTS。
+	{Version: 20261326, Name: "cron_run_resolved", SQL: "sql/migrations/20261326_cron_run_resolved.sql"},
+	// 20261327 secops_classification_mask（E 阶段 W2b D6，拍板 L-1/L-2/L-4）：
+	// 密级体系 + 脱敏五闸数据面，自 workbench schema.sql 语义平移——
+	// classification_labels（L1-L5 种子，L3=强制本地）/ model_policy（单行
+	// local_threshold 默认 3）/ mask_rules / mask_samples（7 条种子）/
+	// mask_proposals（五闸状态机）；sessions + session_runs 增 ceiling 水位线
+	// 列（0=未定级；GREATEST 只升不降由写路径保证，Dialect.Greatest）。
+	// wb 词表列 TEXT[] 收敛为 wordlist_json；布尔统一 INTEGER 0/1。幂等
+	// （IF NOT EXISTS / ON CONFLICT DO NOTHING），双方言一致。
+	{Version: 20261327, Name: "secops_classification_mask", SQL: "sql/migrations/20261327_secops_classification_mask.sql"},
+	// 20261328 secops_mask_rules_seed（E 阶段 W2b D6 L-2）：脱敏闸四类高频
+	// PII 出厂基线规则（身份证/手机号/银行卡/邮箱，占位符算子，全量灰度）。
+	// 理由：V3 BeforeModel 钩子的 secondCheck 命中即 fail-closed，规则全空
+	// 会让云通道路由对常见 PII 硬失败——基线种子保证开箱可用；后续变更走
+	// 五闸流程（V4）。id ASC 顺序保证身份证先于银行卡匹配。幂等 DO NOTHING。
+	{Version: 20261328, Name: "secops_mask_rules_seed", SQL: "sql/migrations/20261328_secops_mask_rules_seed.sql"},
+	// 20261329 knowledge_doc_classification（E 阶段 W2b D6 L-3 embedding 闸）：
+	// knowledge_documents 增 classification 密级列（0=未标，L1-L5 语义随
+	// 20261327 标签体系）。embedding 密级闸（验收 #7）按文档密级判定
+	// cloud/local 通道；首个写入方为 office 附件 sink 透传。幂等 ALTER，
+	// 默认 0 对存量行零影响。
+	{Version: 20261329, Name: "knowledge_doc_classification", SQL: "sql/migrations/20261329_knowledge_doc_classification.sql"},
+	// 20261330 github_panel（E 阶段 W2c G，需求 §4）：GitHub 研发情报面板
+	// 四表——github_repos（watch 清单+健康快照列随行）、github_events
+	//（webhook 落库，delivery_id 唯一幂等）、github_sla_snapshots（PR/issue
+	// 生命周期一对象一行）、github_trending_reports（热榜结构化分析回链
+	// 知识库 L1）。幂等 IF NOT EXISTS。
+	{Version: 20261330, Name: "github_panel", SQL: "sql/migrations/20261330_github_panel.sql"},
+	// 20261331 office_task_assignee（工作台重新设计第 3 步）：office_tasks 增
+	// assignee_kind/assignee_id/assignee_name 三列，任务可指派给 Agent 或团队
+	//（source='delegate'，source_ref=承载会话 id）；随手记录 source='note'。
+	// 存量行默认空串零影响。幂等 IF NOT EXISTS。
+	{Version: 20261331, Name: "office_task_assignee", SQL: "sql/migrations/20261331_office_task_assignee.sql"},
+	// 20261332 fleet_records（Harness 多任务运行台，复刻 Orca）：单表 JSON
+	// 文档存 worktree/批注/动态/编排/自动化记录，主键 (kind,id)。终端进程
+	// 是运行态不落库。幂等 IF NOT EXISTS。
+	{Version: 20261332, Name: "fleet_records", SQL: "sql/migrations/20261332_fleet_records.sql"},
 }

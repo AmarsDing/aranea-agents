@@ -135,6 +135,8 @@ func backfillLegacyTRPCMemoryEntities(ctx context.Context, d *Data) (int, error)
 			if meta == "" {
 				meta = "{}"
 			}
+			// D3 N-2：legacy 迁移行同样随行打信封（拍板 B 全量覆盖无豁免）。
+			contentEnc, _ := biz.FactEnvelopeEncrypt(ctx, d.factCipher, r.statement, r.details, fp)
 			_, insertErr := d.RWDB().WriteDB(txCtx).ExecContext(txCtx, d.Dialect().RenumberPlaceholders(`INSERT INTO memory_facts (
 			id, scope_type, scope_id, workspace_id, user_id, team_id, agent_id,
 			statement, statement_normalized, fingerprint, details_markdown,
@@ -144,15 +146,15 @@ func backfillLegacyTRPCMemoryEntities(ctx context.Context, d *Data) (int, error)
 			source_kind, source_episode_id, source_session_id, source_message_id, source_external,
 			version, status, superseded_by,
 			pii_flag, redacted_statement,
-			quality_score, metadata_json, created_at, updated_at
-		) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+			quality_score, metadata_json, created_at, updated_at, content_enc
+		) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 		ON CONFLICT(scope_type, scope_id, fingerprint) DO NOTHING`),
 				r.id, r.scopeType, r.scopeID, "", r.userID, "", r.agentID,
 				r.statement, strings.ToLower(r.statement), fp, r.details,
 				r.entityType, tags,
 				r.confidence, r.importance, 0, 0, 0, 0, 0,
 				r.sourceKind, "", r.sourceSessionID, r.sourceMessageID, "",
-				1, "active", "", 0, "", 0, meta, r.createdAt, now,
+				1, "active", "", 0, "", 0, meta, r.createdAt, now, contentEnc,
 			)
 			if insertErr != nil {
 				if lg != nil {

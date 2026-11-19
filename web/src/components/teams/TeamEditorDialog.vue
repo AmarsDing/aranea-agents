@@ -3,44 +3,52 @@
   路径约定：SKILL §3.3 → `web/src/components/teams/`。
 -->
 <template>
-  <q-dialog :model-value="modelValue" persistent @update:model-value="$emit('update:modelValue', $event)">
-    <q-card :class="['team-editor-dialog app-dialog-card app-glass-dialog', { 'is-dark': isDark }]">
-      <q-card-section class="app-glass-dialog__head row items-start justify-between no-wrap">
-        <div class="col min-width-0">
-          <div class="app-glass-dialog__title">{{ editingId ? '编辑 Team' : '新增 Team' }}</div>
-          <div class="app-glass-dialog__subtitle">配置成员角色与编排模式；右侧实时编译预览拓扑结构。</div>
-        </div>
-        <q-btn v-close-popup flat round dense icon="close" />
-      </q-card-section>
-
-      <q-banner v-if="hasActiveRun" dense rounded class="bg-warning text-dark q-mx-md q-mt-sm">
-        存在运行中的 TeamRun，编排定义只读；结束后可再编辑。
+  <AppDialog
+    :model-value="modelValue"
+    :title="editingId ? t('domains.teamEditor.editTitle') : t('domains.teamEditor.createTitle')"
+    :subtitle="t('domains.teamEditor.subtitle')"
+    size="xl"
+    icon="groups"
+    persistent
+    :loading="saving"
+    @update:model-value="$emit('update:modelValue', $event)"
+  >
+    <div class="team-editor-dialog">
+      <q-banner v-if="hasActiveRun" dense rounded class="bg-warning text-dark q-mb-md">
+        {{ t('domains.teamEditor.activeRunBanner') }}
       </q-banner>
-      <q-banner v-else-if="isSpiritTeam" dense rounded class="team-editor-spirit-banner q-mx-md q-mt-sm">
+      <q-banner v-else-if="isSpiritTeam" dense rounded class="team-editor-spirit-banner q-mb-md">
         <q-icon name="auto_awesome" size="16px" class="q-mr-xs" />
-        此团队由任务编排自动生成；App Name 与 Team Key 已锁定，成员与参数调整将影响后续编排运行。
+        {{ t('domains.teamEditor.spiritBanner') }}
       </q-banner>
       <q-banner
         v-else-if="isCustomSource"
         dense
         rounded
-        class="team-editor-custom-banner q-mx-md q-mt-sm"
+        class="team-editor-custom-banner q-mb-md"
         data-test="custom-source-banner"
       >
         <q-icon name="account_tree" size="16px" class="q-mr-xs" />
-        拓扑已在 Graph 编辑器中自定义，可能与表单字段不一致；修改编排模式/成员后保存将按表单重建并覆盖自定义拓扑。
+        {{ t('domains.teamEditor.customTopologyBanner') }}
         <template #action>
-          <q-btn flat no-caps dense label="重置为派生" data-test="reset-to-derived" @click="onResetToDerived" />
+          <q-btn
+            flat
+            no-caps
+            dense
+            :label="t('domains.teamEditor.resetToDerived')"
+            data-test="reset-to-derived"
+            @click="onResetToDerived"
+          />
         </template>
       </q-banner>
 
-      <div class="app-glass-dialog__scroll" :class="{ 'team-editor--readonly': hasActiveRun }">
+      <div :class="{ 'team-editor--readonly': hasActiveRun }">
         <div class="team-editor-workspace">
           <div class="team-editor-workspace__main">
             <section class="team-editor-section app-dialog-section">
               <header class="team-editor-section__head">
-                <h3 class="team-editor-section__title">快速开始</h3>
-                <p class="team-editor-section__hint">选择模板可快速生成成员角色和编排参数。</p>
+                <h3 class="team-editor-section__title">{{ t('domains.teamEditor.quickStart') }}</h3>
+                <p class="team-editor-section__hint">{{ t('domains.teamEditor.quickStartHint') }}</p>
               </header>
               <q-select
                 class="team-control app-field-md"
@@ -49,7 +57,7 @@
                 clearable
                 emit-value
                 map-options
-                label="Team 模板"
+                :label="t('domains.teamEditor.template')"
                 :model-value="selectedTemplateKey"
                 :options="teamTemplateOptions"
                 @update:model-value="onTemplatePick"
@@ -58,18 +66,24 @@
 
             <section class="team-editor-section">
               <header class="team-editor-section__head">
-                <h3 class="team-editor-section__title">基础信息</h3>
+                <h3 class="team-editor-section__title">{{ t('domains.teamEditor.basicInfo') }}</h3>
               </header>
               <div class="app-form-field-grid app-form-field-grid--2col">
-                <q-input v-model.trim="form.display_name" class="team-control" dense outlined label="Team 名称 *" />
+                <q-input
+                  v-model.trim="form.display_name"
+                  class="team-control"
+                  dense
+                  outlined
+                  :label="t('domains.teamEditor.teamName')"
+                />
                 <q-input
                   v-model.trim="form.team_key"
                   class="team-control"
                   dense
                   outlined
-                  label="Team Key *"
+                  :label="t('domains.teamEditor.teamKey')"
                   :readonly="isSpiritTeam"
-                  :hint="isSpiritTeam ? '编排生成的团队不可修改' : '小写字母、数字、连字符'"
+                  :hint="isSpiritTeam ? t('domains.teamEditor.spiritLockedHint') : t('domains.teamEditor.teamKeyHint')"
                 />
                 <q-input
                   v-model.trim="form.app_name"
@@ -78,13 +92,19 @@
                   outlined
                   label="App Name"
                   :readonly="isSpiritTeam"
-                  :hint="isSpiritTeam ? '编排生成的团队不可修改' : '留空则使用 Team Key'"
+                  :hint="isSpiritTeam ? t('domains.teamEditor.spiritLockedHint') : t('domains.teamEditor.appNameHint')"
                 />
-                <q-field class="team-control team-status-field" dense outlined label="状态" stack-label>
+                <q-field
+                  class="team-control team-status-field"
+                  dense
+                  outlined
+                  :label="t('domains.teamEditor.status')"
+                  stack-label
+                >
                   <template #control>
                     <div class="team-status-field__body row items-center no-wrap">
                       <AppStatusChip :status="form.status" />
-                      <span class="team-status-field__hint">自动流转</span>
+                      <span class="team-status-field__hint">{{ t('domains.teamEditor.statusAutoHint') }}</span>
                       <q-btn
                         v-if="canRetryStatus"
                         flat
@@ -94,10 +114,10 @@
                         size="sm"
                         color="warning"
                         icon="replay"
-                        label="重试"
+                        :label="t('domains.teamEditor.retry')"
                         @click="$emit('retry')"
                       >
-                        <q-tooltip>重置为待执行，可重新发起运行</q-tooltip>
+                        <q-tooltip>{{ t('domains.teamEditor.retryTooltip') }}</q-tooltip>
                       </q-btn>
                     </div>
                   </template>
@@ -110,7 +130,7 @@
                   emit-value
                   map-options
                   clearable
-                  label="所属部门"
+                  :label="t('domains.teamEditor.department')"
                   :options="departmentOptions"
                 />
                 <q-input
@@ -120,7 +140,7 @@
                   outlined
                   autogrow
                   type="textarea"
-                  label="Team 说明"
+                  :label="t('domains.teamEditor.teamDescription')"
                   :hint="t('teamsPage.descriptionHint')"
                 />
               </div>
@@ -128,8 +148,8 @@
 
             <section class="team-editor-section">
               <header class="team-editor-section__head">
-                <h3 class="team-editor-section__title">编排模式</h3>
-                <p class="team-editor-section__hint">选择模式即按模板生成图谱；成员角色由模式与顺序自动派生。</p>
+                <h3 class="team-editor-section__title">{{ t('domains.teamEditor.modeSection') }}</h3>
+                <p class="team-editor-section__hint">{{ t('domains.teamEditor.modeSectionHint') }}</p>
               </header>
               <div class="app-form-field-grid app-form-field-grid--2col">
                 <q-select
@@ -139,7 +159,7 @@
                   outlined
                   emit-value
                   map-options
-                  label="编排模式"
+                  :label="t('domains.teamEditor.modeSection')"
                   :hint="modeHint"
                   :options="modeOptions"
                 >
@@ -160,8 +180,8 @@
                   outlined
                   type="number"
                   min="1"
-                  label="并行批大小"
-                  hint="每批同时执行的 Worker 数"
+                  :label="t('domains.teamEditor.parallelBatchSize')"
+                  :hint="t('domains.teamEditor.parallelBatchHint')"
                 />
                 <q-field
                   v-if="definition.mode === 'parallel'"
@@ -170,8 +190,8 @@
                   outlined
                   readonly
                   stack-label
-                  label="汇总 Agent（派生）"
-                  hint="排序最后的启用成员；调整成员顺序可变更"
+                  :label="t('domains.teamEditor.synthesizer')"
+                  :hint="t('domains.teamEditor.synthesizerHint')"
                 >
                   <template #control>
                     <span class="team-derived-value">{{ synthesizerLabel }}</span>
@@ -186,8 +206,8 @@
                   type="number"
                   min="0"
                   max="32"
-                  label="外圈循环迭代"
-                  hint="0 = 默认 1 轮；轮数×成员数会拉长耗时"
+                  :label="t('domains.teamEditor.loopIterations')"
+                  :hint="t('domains.teamEditor.loopIterationsHint')"
                 />
                 <q-input
                   v-else-if="definition.mode === 'critic_loop'"
@@ -198,8 +218,8 @@
                   type="number"
                   min="1"
                   max="32"
-                  label="评审迭代次数"
-                  hint="对应 critic_loop.max_iterations"
+                  :label="t('domains.teamEditor.criticIterations')"
+                  :hint="t('domains.teamEditor.criticIterationsHint')"
                 />
                 <q-select
                   class="team-control app-grid-span-full"
@@ -208,11 +228,11 @@
                   clearable
                   emit-value
                   map-options
-                  label="关联 Graph（可选）"
+                  :label="t('domains.teamEditor.linkedGraph')"
                   :hint="
                     isLinkedExternal
-                      ? '拓扑来自关联的独立图资产，表单中的模式/成员不再驱动执行拓扑'
-                      : '选择独立图资产作为拓扑来源；清空则恢复表单派生'
+                      ? t('domains.teamEditor.linkedGraphHintExternal')
+                      : t('domains.teamEditor.linkedGraphHintDerived')
                   "
                   :options="graphOptions"
                   :model-value="linkedGraphSelection"
@@ -223,7 +243,11 @@
             </section>
 
             <div class="team-editor-expansion">
-              <q-expansion-item icon="settings" label="失败策略" caption="失败接管与重试配置（Graph 运行时）">
+              <q-expansion-item
+                icon="settings"
+                :label="t('domains.teamEditor.failurePolicy')"
+                :caption="t('domains.teamEditor.failurePolicyCaption')"
+              >
                 <div class="team-editor-expansion__body">
                   <div class="app-form-field-grid app-form-field-grid--2col">
                     <q-select
@@ -234,7 +258,7 @@
                       emit-value
                       map-options
                       clearable
-                      label="默认失败策略"
+                      :label="t('domains.teamEditor.failureDefault')"
                       :options="failureDefaultOptions"
                     />
                     <q-select
@@ -246,7 +270,7 @@
                       emit-value
                       map-options
                       clearable
-                      label="并行失败策略"
+                      :label="t('domains.teamEditor.parallelFail')"
                       :options="parallelFailOptions"
                     />
                     <q-input
@@ -257,7 +281,7 @@
                       type="number"
                       min="0"
                       max="10"
-                      label="默认重试次数"
+                      :label="t('domains.teamEditor.retryMaxAttempts')"
                     />
                     <q-input
                       v-model.number="circuitFailureThreshold"
@@ -267,8 +291,8 @@
                       type="number"
                       min="0"
                       max="100"
-                      label="熔断阈值"
-                      hint="0 = 禁用"
+                      :label="t('domains.teamEditor.circuitThreshold')"
+                      :hint="t('domains.teamEditor.circuitThresholdHint')"
                     />
                     <q-select
                       v-model="failureOnError"
@@ -278,7 +302,7 @@
                       emit-value
                       map-options
                       clearable
-                      label="错误接管"
+                      :label="t('domains.teamEditor.failureOnError')"
                       :options="failureOnErrorOptions"
                     />
                   </div>
@@ -288,7 +312,7 @@
 
             <section class="team-editor-section">
               <header class="team-editor-section__head">
-                <h3 class="team-editor-section__title">运行参数</h3>
+                <h3 class="team-editor-section__title">{{ t('domains.teamEditor.runtimeSection') }}</h3>
               </header>
               <div class="app-form-field-grid app-form-field-grid--2col">
                 <q-input
@@ -299,8 +323,8 @@
                   type="number"
                   min="0"
                   max="7200"
-                  label="单次运行超时（秒）"
-                  hint="0 = 仅遵循 HTTP/反代超时；长任务建议 ≥600"
+                  :label="t('domains.teamEditor.timeoutSeconds')"
+                  :hint="t('domains.teamEditor.timeoutHint')"
                 />
                 <q-select
                   v-model="definition.intent_anchor_agent_id"
@@ -310,24 +334,32 @@
                   clearable
                   emit-value
                   map-options
-                  label="Intent 锚定成员（可选）"
-                  hint="意图识别锁定由哪个成员承接；留空则用排序后首位启用成员"
+                  :label="t('domains.teamEditor.intentAnchor')"
+                  :hint="t('domains.teamEditor.intentAnchorHint')"
                   :options="intentAnchorOptions"
                 />
                 <q-toggle
                   v-model="checkpointEnabled"
                   class="team-control"
-                  label="启用 Checkpoint"
+                  :label="t('domains.teamEditor.enableCheckpoint')"
                   data-test="checkpoint-toggle"
                 />
               </div>
             </section>
 
             <div class="team-editor-expansion">
-              <q-expansion-item icon="sync_alt" label="A2A 协议" caption="信封格式与载荷限制">
+              <q-expansion-item
+                icon="sync_alt"
+                :label="t('domains.teamEditor.a2aSection')"
+                :caption="t('domains.teamEditor.a2aCaption')"
+              >
                 <div class="team-editor-expansion__body">
                   <div class="app-form-field-grid app-form-field-grid--2col">
-                    <q-toggle v-model="a2aEnabled" class="app-grid-span-full" label="启用 A2A 信封" />
+                    <q-toggle
+                      v-model="a2aEnabled"
+                      class="app-grid-span-full"
+                      :label="t('domains.teamEditor.a2aEnabled')"
+                    />
                     <q-select
                       v-model="a2aEnvelopeVersion"
                       class="team-control"
@@ -336,7 +368,7 @@
                       emit-value
                       map-options
                       label="Envelope Version"
-                      hint="信封协议版本，当前支持 a2a.v1"
+                      :hint="t('domains.teamEditor.envelopeVersionHint')"
                       :options="a2aVersionOptions"
                     />
                     <q-select
@@ -346,7 +378,7 @@
                       outlined
                       emit-value
                       map-options
-                      label="消息格式"
+                      :label="t('domains.teamEditor.messageFormat')"
                       :options="a2aFormatOptions"
                     />
                     <q-input
@@ -356,9 +388,13 @@
                       outlined
                       type="number"
                       min="500"
-                      label="最大载荷字符"
+                      :label="t('domains.teamEditor.maxPayloadChars')"
                     />
-                    <q-toggle v-model="a2aIncludeTrace" class="app-grid-span-full" label="包含追踪元数据" />
+                    <q-toggle
+                      v-model="a2aIncludeTrace"
+                      class="app-grid-span-full"
+                      :label="t('domains.teamEditor.includeTrace')"
+                    />
                   </div>
                 </div>
               </q-expansion-item>
@@ -367,22 +403,24 @@
             <section class="team-editor-section">
               <header class="team-editor-section__head row items-center justify-between no-wrap">
                 <div>
-                  <h3 class="team-editor-section__title">成员 Agent</h3>
-                  <p class="team-editor-section__hint">{{ definition.members.length }} 个成员 · 按顺序执行或并行编排</p>
+                  <h3 class="team-editor-section__title">{{ t('domains.teamEditor.membersSection') }}</h3>
+                  <p class="team-editor-section__hint">
+                    {{ t('domains.teamEditor.membersSummary', { n: definition.members.length }) }}
+                  </p>
                 </div>
                 <q-btn
                   flat
                   rounded
                   no-caps
                   icon="add"
-                  label="添加成员"
+                  :label="t('domains.teamEditor.addMember')"
                   class="team-editor-add-member"
                   @click="$emit('addMember')"
                 />
               </header>
 
               <div v-if="definition.members.length === 0" class="team-member-empty">
-                <div>尚未添加成员，点击「添加成员」或选择模板快速填充。</div>
+                <div>{{ t('domains.teamEditor.membersEmpty') }}</div>
                 <div v-if="agentOptions.length === 0" class="q-mt-xs">
                   {{ $t('teamsPage.editorNoAvailableAgents') }}
                 </div>
@@ -481,33 +519,34 @@
           </aside>
         </div>
       </div>
+    </div>
 
-      <q-card-actions align="right" class="app-actions-bar app-glass-dialog__actions">
-        <q-btn v-close-popup flat rounded no-caps :label="t('common.cancel')" />
-        <q-btn
-          class="team-dialog-save"
-          rounded
-          unelevated
-          no-caps
-          :label="editingId ? t('teamsPage.save') : t('teamsPage.createTeam')"
-          :loading="saving"
-          :disable="!canSave || hasActiveRun"
-          data-test="team-save"
-          @click="onSaveClick"
-        />
-      </q-card-actions>
-    </q-card>
-  </q-dialog>
+    <template #actions>
+      <q-btn flat rounded no-caps :label="t('common.cancel')" @click="$emit('update:modelValue', false)" />
+      <q-btn
+        class="team-dialog-save"
+        rounded
+        unelevated
+        no-caps
+        :label="editingId ? t('teamsPage.save') : t('teamsPage.createTeam')"
+        :loading="saving"
+        :disable="!canSave || hasActiveRun"
+        data-test="team-save"
+        @click="onSaveClick"
+      />
+    </template>
+  </AppDialog>
 </template>
 
 <script setup lang="ts">
 const definition = defineModel<TeamDefinition>('definition', { required: true });
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { useQuasar } from 'quasar';
+import { confirm } from '../../composables/useAppConfirm';
 import type { TeamDefinition } from '../../features/teams/types';
 import JsonCodeViewer from '../common/JsonCodeViewer.vue';
 import AppStatusChip from '../common/AppStatusChip.vue';
+import AppDialog from '../common/AppDialog.vue';
 import { useTeamCompilePreview } from '../../features/teams/useTeamCompilePreview';
 import TeamCompilePreview from './TeamCompilePreview.vue';
 import {
@@ -524,7 +563,6 @@ import {
   type TeamTemplateKey,
 } from './teamUtils';
 
-const $q = useQuasar();
 const { t } = useI18n();
 
 const form = defineModel<{
@@ -604,23 +642,25 @@ const checkpointEnabled = computed({
   },
 });
 
-function onResetToDerived() {
-  $q.dialog({
+async function onResetToDerived() {
+  const ok = await confirm({
     title: t('teamsPage.resetToDerivedTitle'),
     message: t('teamsPage.resetToDerivedMessage'),
-    cancel: true,
-    persistent: true,
-  }).onOk(() => emit('resetToDerived'));
+    tone: 'danger',
+  });
+  if (!ok) return;
+  emit('resetToDerived');
 }
 
-function onSaveClick() {
+async function onSaveClick() {
   if (isCustomSource.value && overwriteDirty.value) {
-    $q.dialog({
+    const ok = await confirm({
       title: t('teamsPage.overwriteCustomTitle'),
       message: t('teamsPage.overwriteCustomMessage'),
-      cancel: true,
-      persistent: true,
-    }).onOk(() => emit('save'));
+      tone: 'danger',
+    });
+    if (!ok) return;
+    emit('save');
     return;
   }
   emit('save');
@@ -656,14 +696,15 @@ const synthesizerLabel = computed(() => {
 function onTemplatePick(key: TeamTemplateKey | null) {
   emit('update:selectedTemplateKey', key);
   if (!key) return;
-  $q.dialog({
-    title: t('teamsPage.applyTemplate'),
-    message: t('teamsPage.applyTemplateMsg'),
-    cancel: true,
-    persistent: true,
-  }).onOk(() => {
+  void (async () => {
+    const ok = await confirm({
+      title: t('teamsPage.applyTemplate'),
+      message: t('teamsPage.applyTemplateMsg'),
+      tone: 'danger',
+    });
+    if (!ok) return;
     emit('applyTemplate', key);
-  });
+  })();
 }
 
 // ── Mode guidance: help users pick an orchestration mode ──

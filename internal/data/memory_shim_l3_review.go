@@ -95,7 +95,7 @@ func (r *l3FactRepo) ReviewFactRow(ctx context.Context, in biz.FactReview) ([]by
 			return apierror.NotFound("MEMORY", "fact row not found after review")
 		}
 		var scanErr error
-		result, scanErr = scanFactRowJSON(rows)
+		result, scanErr = scanFactRowJSON(ctx, rows, r.data.factCipher)
 		return scanErr
 	})
 	if err != nil {
@@ -132,8 +132,11 @@ func (r *l3FactRepo) buildFactRefineUpdate(ctx context.Context, in biz.FactRevie
 	if tags == "" {
 		tags = "[]"
 	}
-	updateSQL := `UPDATE memory_facts SET statement = ?, statement_normalized = ?, fingerprint = ?, details_markdown = ?, fact_kind = ?, tags_json = ?, version = version + 1, embedding_status = 'stale', pii_flag = ?, redacted_statement = ?, pii_types = ?, updated_at = ? WHERE id = ? AND deleted_at = ''`
-	args := []any{statement, strings.ToLower(statement), fp, details, strings.TrimSpace(in.FactKind), tags, pii, redacted, piiTypesJSON, now, factID}
+	// D3 N-2：精修改全文 → 重打信封（AAD=新指纹）。空信封（无密钥）不覆写存量
+	// 密文——防密钥暂时缺失时把已有信封抹成明文态。
+	contentEnc, _ := biz.FactEnvelopeEncrypt(ctx, r.data.factCipher, statement, details, fp)
+	updateSQL := `UPDATE memory_facts SET statement = ?, statement_normalized = ?, fingerprint = ?, details_markdown = ?, fact_kind = ?, tags_json = ?, version = version + 1, embedding_status = 'stale', pii_flag = ?, redacted_statement = ?, pii_types = ?, updated_at = ?, content_enc = CASE WHEN ? <> '' THEN ? ELSE content_enc END WHERE id = ? AND deleted_at = ''`
+	args := []any{statement, strings.ToLower(statement), fp, details, strings.TrimSpace(in.FactKind), tags, pii, redacted, piiTypesJSON, now, contentEnc, contentEnc, factID}
 	return updateSQL, args, nil
 }
 
@@ -207,7 +210,7 @@ func (r *l3FactRepo) ListConflictingFacts(ctx context.Context, scopeType, scopeI
 	defer rows.Close()
 	var out [][]byte
 	for rows.Next() {
-		b, err := scanFactRowJSON(rows)
+		b, err := scanFactRowJSON(ctx, rows, r.data.factCipher)
 		if err != nil {
 			return nil, 0, entErrToBizErr(err, "MEMORY_L3")
 		}
@@ -261,7 +264,7 @@ func (r *l3FactRepo) ListActivePreferenceFacts(ctx context.Context, agentID, use
 	defer rows.Close()
 	var out [][]byte
 	for rows.Next() {
-		b, err := scanFactRowJSON(rows)
+		b, err := scanFactRowJSON(ctx, rows, r.data.factCipher)
 		if err != nil {
 			return nil, entErrToBizErr(err, "MEMORY_L3")
 		}
@@ -307,7 +310,7 @@ func (r *l3FactRepo) ListPIIFlaggedFacts(ctx context.Context, scopeType, scopeID
 	defer rows.Close()
 	var out [][]byte
 	for rows.Next() {
-		b, err := scanFactRowJSON(rows)
+		b, err := scanFactRowJSON(ctx, rows, r.data.factCipher)
 		if err != nil {
 			return nil, 0, entErrToBizErr(err, "MEMORY_L3")
 		}

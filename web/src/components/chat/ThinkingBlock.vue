@@ -301,7 +301,7 @@ $border-accent: color-mix(in srgb, var(--color-accent) 40%, transparent)
 .thinking-block--thinking-only
   display: inline-flex
   align-items: center
-  gap: 4px
+  gap: var(--nt-space-1)
   color: var(--color-text-secondary)
   font-size: $font-size-inline
   font-family: inherit
@@ -326,7 +326,7 @@ $border-accent: color-mix(in srgb, var(--color-accent) 40%, transparent)
     opacity: 0.8
 
 .thinking-block__streaming-indicator--card
-  padding: 4px 0
+  padding: var(--nt-space-1) 0
   font-size: $font-size-card
 
   &:hover
@@ -344,7 +344,7 @@ $border-accent: color-mix(in srgb, var(--color-accent) 40%, transparent)
   border-radius: 50%
   background: var(--color-accent)
   vertical-align: middle
-  margin-left: 4px
+  margin-left: var(--nt-space-1)
   animation: thinking-pulse 1s ease-in-out infinite
 
 // ===== Blinking cursor =====
@@ -361,7 +361,7 @@ $border-accent: color-mix(in srgb, var(--color-accent) 40%, transparent)
 .thinking-block__duration
   color: var(--color-text-tertiary)
   font-size: 11px
-  margin-left: 4px
+  margin-left: var(--nt-space-1)
 
 // ===== Collapse/expand animation (grid-template-rows) =====
 .thinking-block__collapse-wrapper
@@ -377,7 +377,7 @@ $border-accent: color-mix(in srgb, var(--color-accent) 40%, transparent)
 
 // ===== card variant =====
 .thinking-block--card
-  margin-bottom: 4px
+  margin-bottom: var(--nt-space-1)
 
 // US-24/§6.8.3: collapsed and inline-short states render inline (single-line span)
 .thinking-block--card.thinking-block--collapsed,
@@ -390,7 +390,7 @@ $border-accent: color-mix(in srgb, var(--color-accent) 40%, transparent)
   align-items: center
   gap: 6px
   cursor: pointer
-  padding: 4px 0
+  padding: var(--nt-space-1) 0
   user-select: none
   transition: background 0.12s
 
@@ -417,7 +417,7 @@ $border-accent: color-mix(in srgb, var(--color-accent) 40%, transparent)
   font-size: 14px
   line-height: inherit
   vertical-align: -1px
-  margin-right: 4px
+  margin-right: var(--nt-space-1)
 
 .thinking-block__collapsed
   display: inline
@@ -437,7 +437,7 @@ $border-accent: color-mix(in srgb, var(--color-accent) 40%, transparent)
   color: var(--color-text-tertiary)
 
 .thinking-block__collapsed-toggle
-  margin-left: 4px
+  margin-left: var(--nt-space-1)
   color: var(--color-text-tertiary)
   font-size: 10px
 
@@ -454,8 +454,8 @@ $border-accent: color-mix(in srgb, var(--color-accent) 40%, transparent)
     color: var(--color-text-tertiary)
 
 .thinking-block--card .thinking-block__body
-  padding: 8px 12px
-  margin-left: 20px
+  padding: var(--nt-space-2) var(--nt-space-3)
+  margin-left: var(--nt-space-5)
   background: transparent  // US-24/§6.8.3: expanded completed state has transparent bg
   border-left: 2px solid var(--glass-border)
   border-radius: 0 8px 8px 0

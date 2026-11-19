@@ -34,7 +34,13 @@ type TaskRepo interface {
 	ListRecent(ctx context.Context, limit int, agentKey string) ([]*CodingTask, error)
 	// ListActive 返回所有非终态任务（服务重启恢复用）。
 	ListActive(ctx context.Context) ([]*CodingTask, error)
+	// ListPendingReview E 阶段 W1b：统一审批中心任务验收源——待验收
+	// （review_status=''）的终态任务，按创建时间倒序；workspaceID 非空时按
+	// 租户过滤（「不返回无权对象」的租户维度在源内 SQL 完成）。
+	ListPendingReview(ctx context.Context, workspaceID string, limit int) ([]*CodingTask, int, error)
 	// UpdateReview 03 P0：验收三动作落库（status: approved/rejected/archived）。
+	// E 阶段 W1b 起为 CAS：仅当 review_status='' 时生效，已被决议的任务返回
+	// 409 冲突（并发决议恰一个成功）。
 	UpdateReview(ctx context.Context, id, status, comment, reviewedAt string) error
 }
 

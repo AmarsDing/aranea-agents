@@ -47,7 +47,7 @@ import (
 )
 
 // wireApp init kratos application.
-func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.SelfImprovement, *conf.Sandbox, *conf.DebugRecorder, log.Logger, loggateway.Logger, logpipeline.Pipeline, []*conf.LoggingSink) (wireOut, func(), error) {
+func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.SelfImprovement, *conf.Sandbox, *conf.Ceoboard, *conf.Credential, *conf.DebugRecorder, log.Logger, loggateway.Logger, logpipeline.Pipeline, []*conf.LoggingSink) (wireOut, func(), error) {
 	panic(wire.Build(
 		server.ProviderSet,
 		data.ProviderSet,
@@ -58,6 +58,65 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.SelfImprovement, *co
 		data.NewPackRepoAdapter,
 		wire.Bind(new(service.PackExporterImporterValidator), new(*data.PackRepoAdapter)),
 		provideEventBusSideConsumers,
+		provideCeoboardStore,
+		provideCeoboardRuntime,
+		provideCeoboardService,
+		// E 阶段 W1b 统一审批中心 + review.v1 收编（拍板 A-1/A-2/A-4）。
+		provideApprovalTaskReviewReader,
+		provideApprovalEvolutionReader,
+		provideApprovalAggregator,
+		provideApprovalMatrix,
+		provideInboxDeps,
+		provideApprovalCenterService,
+		// E 阶段 W2a D3 secops 离职处置五步（拍板 §6.3；审批中心第三类数据源）。
+		provideSecopsOffboardRepo,
+		provideApprovalOffboardReader,
+		provideSecopsOffboardUsecase,
+		// E 阶段 W2b D6 密级面（L-1/L-4：标签/水位线/模型策略，§7.3）。
+		provideSecopsClassificationRepo,
+		provideSecopsSessionWaterlineRepo,
+		provideSecopsModelPolicyRepo,
+		provideSecopsClassificationUsecase,
+		provideSecopsModelPolicyUsecase,
+		// E 阶段 W2b D6 V4 脱敏五闸（提案/审批/激活，§7.3 验收 #4）。
+		provideSecopsMaskProposalUsecase,
+		provideSecopsService,
+		provideReviewService,
+		// E 阶段 W2c G GitHub 研发情报面板（需求 §4；G-2 凭据存在性核验窄口）。
+		provideGitHubPanelUsecase,
+		provideGitHubPanelService,
+		// Harness 多任务运行台（fleet，复刻 Orca）。
+		provideFleetUsecase,
+		provideFleetService,
+		// E 阶段 W1c office 套件（日程/通知/apps/ical/提醒，拍板 K-1..K-5）。
+		provideOfficeRepo,
+		provideScheduleDraftReader,
+		provideOfficeScheduleUsecase,
+		provideOfficeDraftUsecase,
+		provideOfficeNotifyUsecase,
+		provideOfficeICalUsecase,
+		provideOfficeAppsUsecase,
+		provideOfficeReminderWorker,
+		provideOfficeScheduleService,
+		provideOfficeNotifyService,
+		provideOfficeAppsService,
+		// W1c agent 日程工具窄口（calendar_list / calendar_create_draft）→ ToolBridges.Calendar。
+		provideOfficeCalendarTool,
+		// E 阶段 W1d 邮件（拍板 E-1..E-5）：账号/同步/阅读/摘要/IDLE。
+		provideOfficeMailRepo,
+		provideOfficeMailAuditSink,
+		provideOfficeMailCeoboardSink,
+		provideOfficeMailKnowledgeSink,
+		provideOfficeMailAccountUsecase,
+		provideOfficeMailSyncUsecase,
+		provideOfficeMailMessageUsecase,
+		provideOfficeMailDigestUsecase,
+		provideOfficeMailIdleSupervisor,
+		provideOfficeMailDigestWorker,
+		provideOfficeMailService,
+		// W1d agent 邮件工具窄口（mail_list/mail_read/mail_search/mail_to_task）
+		// → ToolBridges.Mail。
+		provideOfficeMailTool,
 		provideCronRunnerDeps,
 		provideCronRunner,
 		wire.Bind(new(biz.CronTaskTrigger), new(*cronrunner.Runner)),
@@ -127,6 +186,7 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.SelfImprovement, *co
 		provideMCPServerUsecaseWithDeps,
 		provideLLMInspector,
 		provideCredentialCrypto,
+		provideCredentialUsecase,
 		provideLlmProviderModelUsecaseWithDeps,
 		provideModelStatsInjector,
 		provideWebResearchReadinessChecker,
@@ -353,6 +413,8 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.SelfImprovement, *co
 		provideFilesystemHealthReader,
 		provideProcessLogEnabled,
 		provideRedisClient,
+		provideTokenVersionStore,
+		providePermissionResolver,
 		provideTurnLifecycleUsecase,
 		provideMonitorUsecase,
 		provideUsageUsecaseRef,

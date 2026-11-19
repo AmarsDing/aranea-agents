@@ -5,6 +5,7 @@ package kratos.computeruse.v1;
 import "google/api/annotations.proto";
 import "google/api/field_behavior.proto";
 import "google/protobuf/empty.proto";
+import "aranea/auth/v1/requirement.proto";
 
 option go_package = "aranea-agents/api/kratos/computeruse/v1;v1";
 option java_multiple_files = true;
@@ -58,14 +59,17 @@ message GetComputerUseStatusResponse {
 service ComputerUseService {
   // 急停：取消进行中动作并将会话置为 cancelled。
   rpc KillComputerUseSession(KillComputerUseSessionRequest) returns (KillComputerUseSessionResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "tool.exec"};
     option (google.api.http) = {post: "/v1/computeruse/sessions/{id}/kill"};
   }
   // 审计步骤查询（监控页）。
   rpc ListComputerUseSteps(ListComputerUseStepsRequest) returns (ListComputerUseStepsResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "tool.exec"};
     option (google.api.http) = {get: "/v1/computeruse/sessions/{id}/steps"};
   }
   // sidecar / OmniParser 健康状态。
   rpc GetComputerUseStatus(google.protobuf.Empty) returns (GetComputerUseStatusResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "tool.exec"};
     option (google.api.http) = {get: "/v1/computeruse/status"};
   }
 }

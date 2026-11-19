@@ -26,14 +26,22 @@ export const CALLBACK_CHIP_LIMIT = 2;
 /** PluginsTable 列定义（修改列宽请改此处；schema 变更会自动使拖拽缓存失效） */
 export function createPluginTableColumns(t: I18nT): QTableColumn<Plugin>[] {
   return [
-    registryCol<Plugin>('name', t('pluginsPage.colPlugin'), 'name', 'left', REGISTRY_COL_W.nameWide),
-    registryCol<Plugin>('category', t('pluginsPage.colCategoryRisk'), 'category', 'center', '15%'),
+    // 卡片：实体卡——名称、启用状态、运行次数为关键指标，类型 / 作用域作元信息
+    registryCol<Plugin>('name', t('pluginsPage.colPlugin'), 'name', 'left', REGISTRY_COL_W.nameWide, {
+      cardRole: 'title',
+    }),
+    registryCol<Plugin>('category', t('pluginsPage.colCategoryRisk'), 'category', 'center', '15%', {
+      cardRole: 'meta',
+    }),
     registryCol<Plugin>('callbacks', t('pluginsPage.colCallbacks'), 'callback_points', 'center', '24%'),
-    registryCol<Plugin>('stats', t('pluginsPage.colStats'), 'invoke_count', 'center', '20%'),
+    registryCol<Plugin>('stats', t('pluginsPage.colStats'), 'invoke_count', 'center', '20%', { cardRole: 'metric' }),
     registryCol<Plugin>('enabled', t('pluginsPage.colEnabled'), 'enabled', 'center', REGISTRY_COL_W.enabled, {
+      cardRole: 'status',
       sortable: false,
     }),
-    registryCol<Plugin>('scope', t('pluginsPage.colScope'), 'scope', 'center', REGISTRY_COL_W.status),
+    registryCol<Plugin>('scope', t('pluginsPage.colScope'), 'scope', 'center', REGISTRY_COL_W.status, {
+      cardRole: 'meta',
+    }),
     registryColActions<Plugin>(REGISTRY_COL_W.actionsWide),
   ];
 }

@@ -24,6 +24,32 @@ var llmRandFallback uint64
 // ErrProviderModelNotFound is returned when a provider-model row does not exist.
 var ErrProviderModelNotFound = apierror.NotFound("LLM_PROVIDER_MODEL", "provider model not found")
 
+// D6 L-1 通道类别（channel_class）语义常量。空/未标注一律视为 cloud
+//（保守兜底：密级路由只把显式标注 local 的候选留在本地桶）。
+const (
+	ProviderChannelClassLocal = "local"
+	ProviderChannelClassCloud = "cloud"
+)
+
+// ProviderChannelForcesLocal 判定通道类别是否走本地推理（D6 L-1 密级路由）。
+// 仅显式 "local"（大小写不敏感、容忍空白）为真；其余含空值全部视为 cloud。
+func ProviderChannelForcesLocal(channelClass string) bool {
+	return strings.EqualFold(strings.TrimSpace(channelClass), ProviderChannelClassLocal)
+}
+
+// NormalizeProviderChannelClass 校验并规范化写入的通道类别：空=cloud；
+// local/cloud 大小写不敏感；其余值 BadRequest（防止拼写漂移静默吞掉密级语义）。
+func NormalizeProviderChannelClass(v string) (string, error) {
+	s := strings.ToLower(strings.TrimSpace(v))
+	switch s {
+	case "":
+		return ProviderChannelClassCloud, nil
+	case ProviderChannelClassLocal, ProviderChannelClassCloud:
+		return s, nil
+	}
+	return "", apierror.BadRequest("LLM_PROVIDER_MODEL", "channel_class must be \"local\" or \"cloud\"")
+}
+
 func newLLMID() string {
 	buf := make([]byte, 12)
 	if _, err := cryptorand.Read(buf); err != nil {
@@ -46,6 +72,11 @@ type ProviderModel struct {
 	Model                string
 	ConfigJSON           string
 	MetadataJSON         string
+	// ChannelClass 是 D6 L-1 密级路由的通道类别（local|cloud，空=cloud）。
+	// 存储载体当前为 metadata_json 的 channel_class 键（Ent 实列迁移被
+	// peer 在制品阻断的过渡方案，W4 登记）；语义以 ProviderChannelClass*
+	// 常量与 ProviderChannelForcesLocal 判定为准。
+	ChannelClass         string
 	Capabilities         ModelCapabilities
 	CapabilitiesExplicit bool
 	PricingConfigured    bool
@@ -335,10 +366,14 @@ func (u *LlmProviderModelUsecase) Create(ctx context.Context, in ProviderModel) 
 	if in.Status == "" {
 		in.Status = "active"
 	}
+	normalizedClass, err := NormalizeProviderChannelClass(in.ChannelClass)
+	if err != nil {
+		return ProviderModel{}, err
+	}
+	in.ChannelClass = normalizedClass
 	if err := u.crypto.RequireKeyForPlaintext(ctx, in.ConfigJSON); err != nil {
 		return ProviderModel{}, err
 	}
-	var err error
 	in.ConfigJSON, err = u.crypto.ProcessConfigJSONForStorage(ctx, in.ConfigJSON)
 	if err != nil {
 		return ProviderModel{}, err
@@ -410,6 +445,15 @@ func (u *LlmProviderModelUsecase) Update(ctx context.Context, id string, patch P
 	if patch.CapabilitiesExplicit {
 		merged.Capabilities = patch.Capabilities
 		merged.CapabilitiesExplicit = true
+	}
+	// D6 L-1 通道类别合并：patch 未带（空串）保持现值；显式 local/cloud
+	//（含大小写变体）覆盖。非法值在此拒绝。
+	if strings.TrimSpace(patch.ChannelClass) != "" {
+		normalizedClass, err := NormalizeProviderChannelClass(patch.ChannelClass)
+		if err != nil {
+			return ProviderModel{}, err
+		}
+		merged.ChannelClass = normalizedClass
 	}
 	if merged.Key == "" {
 		merged.Key = cur.Key

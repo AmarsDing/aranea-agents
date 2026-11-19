@@ -157,7 +157,7 @@ watch(contextVisible, (visible) => emit('context-visible', visible), { immediate
   container-type: inline-size
   container-name: task-workspace
   :deep(.chat-workspace-shell__main)
-    gap: 12px
+    gap: var(--nt-space-3)
     min-height: 0
   :deep(.task-navigation)
     order: 0

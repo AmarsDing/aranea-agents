@@ -49,25 +49,50 @@
         </template>
       </OverviewVerdictBanner>
 
-      <OverviewTaskBoard
-        :items="taskSituations.items.value"
-        :total="taskSituations.total.value"
-        :limit="taskSituations.limit.value"
-        :offset="taskSituations.offset.value"
-        :loading="taskSituations.loading.value"
-        :error="taskSituations.error.value"
-        :query="taskSituations.query.value"
-        @refresh="taskSituations.refresh"
-        @filter="taskSituations.setQuery"
-        @page="(offset) => taskSituations.setQuery({ offset })"
-        @page-size="(limit) => taskSituations.setQuery({ limit, offset: 0 })"
-        @drill="onTaskDrill"
-        @create="onTaskCreate"
-      />
+      <OverviewDomainCards :cards="domainCards" />
 
-      <AppWorkspaceLaunchpad :label="t('uiSystem.launchpad.label')" :items="launchpadItems" />
+      <!-- 设计稿：费用消耗是主体，需要处理的事在右边 -->
+      <div class="ov-mainrow">
+        <OverviewCostBoard
+          :available="!!page.overview.value"
+          :cost-value-usd="costValueUsd"
+          :cost-delta="costDelta"
+          :budget="budget"
+          :unpriced-count="unpricedRows.length"
+          :top-bars="topModelBars"
+          :agent-bars="topAgentBars"
+          :cache="cacheView"
+          :terminals="terminals"
+          @drill="onTileDrill"
+        />
+        <OverviewAttentionQueue
+          :lanes="board.lanes"
+          :loading="loading || attentionLoading"
+          @drill="onDrillItem"
+          @refresh="onRefresh"
+        />
+      </div>
 
-      <OverviewAttentionQueue :lanes="board.lanes" :loading="loading || attentionLoading" @drill="onDrillItem" @refresh="onRefresh" />
+      <div class="ov-workrow">
+        <OverviewTaskBoard
+          :items="taskSituations.items.value"
+          :total="taskSituations.total.value"
+          :limit="taskSituations.limit.value"
+          :offset="taskSituations.offset.value"
+          :loading="taskSituations.loading.value"
+          :error="taskSituations.error.value"
+          :query="taskSituations.query.value"
+          @refresh="taskSituations.refresh"
+          @filter="taskSituations.setQuery"
+          @page="(offset) => taskSituations.setQuery({ offset })"
+          @page-size="(limit) => taskSituations.setQuery({ limit, offset: 0 })"
+          @drill="onTaskDrill"
+          @create="onTaskCreate"
+        />
+        <div class="ov-workrow__rail">
+          <AppWorkspaceLaunchpad :label="t('uiSystem.launchpad.label')" :items="launchpadItems" />
+        </div>
+      </div>
 
       <OverviewRedStrip
         :model-tiles="modelTiles"
@@ -75,17 +100,6 @@
         :run-window="runnerWindowMinutes"
         :run-window-options="runnerWindowOptions"
         @update:run-window="onRunWindow"
-        @drill="onTileDrill"
-      />
-
-      <OverviewCostBoard
-        :available="!!page.overview.value"
-        :cost-value-usd="costValueUsd"
-        :cost-delta="costDelta"
-        :budget="budget"
-        :unpriced-count="unpricedRows.length"
-        :top-bars="topModelBars"
-        :cache="cacheView"
         @drill="onTileDrill"
       />
 
@@ -119,6 +133,11 @@ import { useRouter } from 'vue-router';
 import { useOverviewPage } from '../features/usage/useOverviewPage';
 import { useOverviewView } from '../features/usage/useOverviewView';
 import { useAttentionBoard } from '../features/usage/useAttentionBoard';
+import { useTerminalUsage } from '../features/usage/useTerminalUsage';
+import { useHarnessCounts } from '../features/usage/useHarnessCounts';
+import { useInboxBadge } from '../features/today/useInboxBadge';
+import { buildNavDomains } from '../config/navDomains';
+import { useNavStore } from '../stores/nav';
 import { useTaskSituations } from '../features/session/useTaskSituations';
 import { workspaceLocationQuery } from '../features/chat/taskWorkspaceNavigation';
 import type { TaskSituationItem } from '../features/session/types';
@@ -128,6 +147,8 @@ import OverviewTaskBoard from '../components/overview/OverviewTaskBoard.vue';
 import OverviewAttentionQueue from '../components/overview/OverviewAttentionQueue.vue';
 import OverviewRedStrip from '../components/overview/OverviewRedStrip.vue';
 import OverviewCostBoard from '../components/overview/OverviewCostBoard.vue';
+import OverviewDomainCards from '../components/overview/OverviewDomainCards.vue';
+import type { OvDomainCard } from '../components/overview/ovTypes';
 import OverviewTrendBoard from '../components/overview/OverviewTrendBoard.vue';
 import OverviewOrgBoard from '../components/overview/OverviewOrgBoard.vue';
 import OverviewFreshnessFooter from '../components/overview/OverviewFreshnessFooter.vue';
@@ -149,6 +170,7 @@ const {
   costDelta,
   unpricedRows,
   topModelBars,
+  topAgentBars,
   runnerWindowMinutes,
   runnerWindowOptions,
   loadRunnerMetrics,
@@ -157,14 +179,66 @@ const {
   refreshAll,
 } = page;
 
-const launchpadItems = computed(() => workspaceShortcuts.map((item) => ({
-  ...item,
-  title: t(`uiSystem.launchpad.${item.key}.title`),
-  description: t(`uiSystem.launchpad.${item.key}.description`),
-  action: t('uiSystem.launchpad.start'),
-})));
+const launchpadItems = computed(() =>
+  workspaceShortcuts.map((item) => ({
+    ...item,
+    title: t(`uiSystem.launchpad.${item.key}.title`),
+    description: t(`uiSystem.launchpad.${item.key}.description`),
+    action: t('uiSystem.launchpad.start'),
+  })),
+);
 
 const { board, loading: attentionLoading, refresh: refreshAttention } = useAttentionBoard();
+// 没有运行台权限就不发请求，免得弹一条 403 提示
+const nav = useNavStore();
+const { terminals, refresh: refreshTerminals } = useTerminalUsage(() => nav.isPathVisible('/fleet'));
+const { counts, refresh: refreshCounts } = useHarnessCounts(nav.isPathVisible);
+const { count: inboxCount } = useInboxBadge();
+
+// 五张领域卡：导航里 Harness 模块的五个领域（看不到的领域不出卡），数字来自各自的接口
+const domainCards = computed<OvDomainCard[]>(() => {
+  const c = counts.value;
+  const inv = inventoryAvailable.value ? inventory.value : null;
+  const summary = page.rangeSummary.value;
+  const facts: Record<string, OvDomainCard['facts']> = {
+    agents: [
+      { label: 'Agent', value: inv ? `${inv.agentsEnabled} / ${inv.agentsTotal}` : undefined },
+      { label: t('overviewPage.v2.fact.teams'), value: inv?.teams },
+      { label: t('overviewPage.v2.fact.orgs'), value: inv?.orgs },
+    ],
+    orchestrate: [
+      { label: t('overviewPage.v2.fact.graphs'), value: c.graphs },
+      { label: t('overviewPage.v2.fact.cron'), value: c.cron },
+    ],
+    capability: [
+      { label: t('overviewPage.v2.fact.tools'), value: c.tools },
+      { label: t('overviewPage.v2.fact.skills'), value: c.skills },
+      { label: 'MCP', value: c.mcp },
+    ],
+    connect: [
+      { label: t('overviewPage.v2.fact.channels'), value: c.channels },
+      { label: t('overviewPage.v2.fact.credentials'), value: c.credentials },
+    ],
+    ops: [
+      { label: t('overviewPage.v2.fact.calls'), value: summary?.call_count },
+      {
+        label: t('overviewPage.v2.fact.successRate'),
+        value: summary && summary.call_count > 0 ? `${Math.round(summary.success_rate * 100)}%` : undefined,
+      },
+      { label: t('overviewPage.v2.fact.waiting'), value: inboxCount.value },
+    ],
+  };
+  return buildNavDomains(nav.isPathVisible)
+    .filter((domain) => domain.module === 'harness' && facts[domain.key])
+    .map((domain) => ({
+      key: domain.key,
+      icon: domain.icon,
+      title: t(domain.labelKey),
+      question: t(`overviewPage.v2.domainQ.${domain.key}`),
+      to: domain.primaries[0].to,
+      facts: facts[domain.key],
+    }));
+});
 const taskSituations = useTaskSituations();
 const {
   verdict,
@@ -191,6 +265,8 @@ const {
 function onRefresh() {
   void refreshAll();
   void refreshAttention();
+  void refreshTerminals();
+  void refreshCounts();
   void taskSituations.refresh();
 }
 function onTaskDrill(item: TaskSituationItem) {

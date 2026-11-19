@@ -24,7 +24,7 @@ func (r *l3FactRepo) RecallL3Facts(ctx context.Context, scopeType, scopeID, user
 // shouldUseBruteForce reports that the active fact count is small enough to
 // score in-process. Callers must already have ruled out the vector+RRF path.
 func (r *l3FactRepo) shouldUseBruteForce(ctx context.Context, scopeType, scopeID, userID string, _ []float32) bool {
-	clauses := []string{"status = 'active'", "deleted_at = ''", "valid_until = ''"}
+	clauses := []string{"status = 'active'", "deleted_at = ''", "valid_until = ''", factPIIGateClause}
 	args := []any{}
 	if scopeType != "" {
 		clauses = append(clauses, "scope_type = ?")
@@ -64,7 +64,7 @@ func (r *l3FactRepo) recallL3FactsBruteForce(ctx context.Context, scopeType, sco
 	if threshold <= 0 {
 		threshold = biz.DefaultFactBruteForceThreshold
 	}
-	clauses := []string{"status = 'active'", "deleted_at = ''", "valid_until = ''"}
+	clauses := []string{"status = 'active'", "deleted_at = ''", "valid_until = ''", factPIIGateClause}
 	args := []any{}
 	if scopeType != "" {
 		clauses = append(clauses, "scope_type = ?")
@@ -86,7 +86,7 @@ func (r *l3FactRepo) recallL3FactsBruteForce(ctx context.Context, scopeType, sco
 	if err != nil {
 		return nil, entErrToBizErr(err, "MEMORY_L3")
 	}
-	scored := scoreFactRows(rows, tokenizeQuery(query), queryEmbedding, nil, 0, time.Now().UTC())
+	scored := scoreFactRows(ctx, r.data.factCipher, rows, tokenizeQuery(query), queryEmbedding, nil, 0, time.Now().UTC())
 	rows.Close()
 	if err := rows.Err(); err != nil {
 		return nil, entErrToBizErr(err, "MEMORY_L3")
@@ -148,7 +148,7 @@ func (r *l3FactRepo) recallL3Facts(ctx context.Context, scopeType, scopeID, user
 	if pool < lim {
 		pool = lim
 	}
-	clauses := []string{"status = 'active'", "deleted_at = ''", "valid_until = ''"}
+	clauses := []string{"status = 'active'", "deleted_at = ''", "valid_until = ''", factPIIGateClause}
 	args := []any{}
 	if scopeType != "" {
 		clauses = append(clauses, "scope_type = ?")
@@ -170,7 +170,7 @@ func (r *l3FactRepo) recallL3Facts(ctx context.Context, scopeType, scopeID, user
 	if err != nil {
 		return nil, entErrToBizErr(err, "MEMORY_L3")
 	}
-	scored := scoreFactRows(rows, tokenizeQuery(query), queryEmbedding, nil, 0, time.Now().UTC())
+	scored := scoreFactRows(ctx, r.data.factCipher, rows, tokenizeQuery(query), queryEmbedding, nil, 0, time.Now().UTC())
 	rows.Close()
 	if err := rows.Err(); err != nil {
 		return nil, entErrToBizErr(err, "MEMORY_L3")
@@ -233,7 +233,7 @@ func (r *l3FactRepo) recallL3WithVectorStore(ctx context.Context, scopeType, sco
 	if err != nil {
 		return nil, entErrToBizErr(err, "MEMORY_L3")
 	}
-	scored := scoreFactRows(rows, tokenizeQuery(query), queryEmbedding, hitMap, 0, time.Now().UTC())
+	scored := scoreFactRows(ctx, r.data.factCipher, rows, tokenizeQuery(query), queryEmbedding, hitMap, 0, time.Now().UTC())
 	rows.Close()
 	if err := rows.Err(); err != nil {
 		return nil, entErrToBizErr(err, "MEMORY_L3")

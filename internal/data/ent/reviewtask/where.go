@@ -123,6 +123,11 @@ func ReviewerID(v string) predicate.ReviewTask {
 	return predicate.ReviewTask(sql.FieldEQ(FieldReviewerID, v))
 }
 
+// CreatorID applies equality check predicate on the "creator_id" field. It's identical to CreatorIDEQ.
+func CreatorID(v string) predicate.ReviewTask {
+	return predicate.ReviewTask(sql.FieldEQ(FieldCreatorID, v))
+}
+
 // DecidedAt applies equality check predicate on the "decided_at" field. It's identical to DecidedAtEQ.
 func DecidedAt(v string) predicate.ReviewTask {
 	return predicate.ReviewTask(sql.FieldEQ(FieldDecidedAt, v))
@@ -916,6 +921,71 @@ func ReviewerIDEqualFold(v string) predicate.ReviewTask {
 // ReviewerIDContainsFold applies the ContainsFold predicate on the "reviewer_id" field.
 func ReviewerIDContainsFold(v string) predicate.ReviewTask {
 	return predicate.ReviewTask(sql.FieldContainsFold(FieldReviewerID, v))
+}
+
+// CreatorIDEQ applies the EQ predicate on the "creator_id" field.
+func CreatorIDEQ(v string) predicate.ReviewTask {
+	return predicate.ReviewTask(sql.FieldEQ(FieldCreatorID, v))
+}
+
+// CreatorIDNEQ applies the NEQ predicate on the "creator_id" field.
+func CreatorIDNEQ(v string) predicate.ReviewTask {
+	return predicate.ReviewTask(sql.FieldNEQ(FieldCreatorID, v))
+}
+
+// CreatorIDIn applies the In predicate on the "creator_id" field.
+func CreatorIDIn(vs ...string) predicate.ReviewTask {
+	return predicate.ReviewTask(sql.FieldIn(FieldCreatorID, vs...))
+}
+
+// CreatorIDNotIn applies the NotIn predicate on the "creator_id" field.
+func CreatorIDNotIn(vs ...string) predicate.ReviewTask {
+	return predicate.ReviewTask(sql.FieldNotIn(FieldCreatorID, vs...))
+}
+
+// CreatorIDGT applies the GT predicate on the "creator_id" field.
+func CreatorIDGT(v string) predicate.ReviewTask {
+	return predicate.ReviewTask(sql.FieldGT(FieldCreatorID, v))
+}
+
+// CreatorIDGTE applies the GTE predicate on the "creator_id" field.
+func CreatorIDGTE(v string) predicate.ReviewTask {
+	return predicate.ReviewTask(sql.FieldGTE(FieldCreatorID, v))
+}
+
+// CreatorIDLT applies the LT predicate on the "creator_id" field.
+func CreatorIDLT(v string) predicate.ReviewTask {
+	return predicate.ReviewTask(sql.FieldLT(FieldCreatorID, v))
+}
+
+// CreatorIDLTE applies the LTE predicate on the "creator_id" field.
+func CreatorIDLTE(v string) predicate.ReviewTask {
+	return predicate.ReviewTask(sql.FieldLTE(FieldCreatorID, v))
+}
+
+// CreatorIDContains applies the Contains predicate on the "creator_id" field.
+func CreatorIDContains(v string) predicate.ReviewTask {
+	return predicate.ReviewTask(sql.FieldContains(FieldCreatorID, v))
+}
+
+// CreatorIDHasPrefix applies the HasPrefix predicate on the "creator_id" field.
+func CreatorIDHasPrefix(v string) predicate.ReviewTask {
+	return predicate.ReviewTask(sql.FieldHasPrefix(FieldCreatorID, v))
+}
+
+// CreatorIDHasSuffix applies the HasSuffix predicate on the "creator_id" field.
+func CreatorIDHasSuffix(v string) predicate.ReviewTask {
+	return predicate.ReviewTask(sql.FieldHasSuffix(FieldCreatorID, v))
+}
+
+// CreatorIDEqualFold applies the EqualFold predicate on the "creator_id" field.
+func CreatorIDEqualFold(v string) predicate.ReviewTask {
+	return predicate.ReviewTask(sql.FieldEqualFold(FieldCreatorID, v))
+}
+
+// CreatorIDContainsFold applies the ContainsFold predicate on the "creator_id" field.
+func CreatorIDContainsFold(v string) predicate.ReviewTask {
+	return predicate.ReviewTask(sql.FieldContainsFold(FieldCreatorID, v))
 }
 
 // DecidedAtEQ applies the EQ predicate on the "decided_at" field.

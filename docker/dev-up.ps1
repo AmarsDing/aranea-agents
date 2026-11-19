@@ -59,7 +59,7 @@ if (-not (Test-DockerDaemon)) {
 }
 
 # ---- 端口冲突预检（报具体 PID；Docker 端口映射代理占用属重跑场景，放行）----
-foreach ($p in 8810, 9910, 8812) {
+foreach ($p in 8810, 9910, 8812, 9402) {
   $c = Get-NetTCPConnection -LocalPort $p -State Listen -ErrorAction SilentlyContinue |
        Where-Object { $_.OwningProcess -ne 0 } | Select-Object -First 1
   if ($c) {
@@ -112,4 +112,4 @@ if ($SmokePassword) {
 } else {
   Write-Host '（未提供 -SmokePassword，跳过登录冒烟）' -ForegroundColor Yellow
 }
-Write-Host 'dev-up 完成。容器：aranea-postgres / aranea-redis / aranea-admin' -ForegroundColor Green
+Write-Host 'dev-up 完成。容器：teamwork-postgres / teamwork-redis / teamwork-nats（共享栈）+ aranea-admin / aranea-web' -ForegroundColor Green

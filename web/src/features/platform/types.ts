@@ -31,6 +31,8 @@ export type PlatformResource = {
   is_system: boolean;
   config_json: string;
   metadata_json: string;
+  /** D6 L-1 通道类别（local|cloud，空=cloud 保守兜底）。 */
+  channel_class?: string;
   dept_lead_agent_id: string;
   dept_lead_config_json: string;
   capabilities?: {

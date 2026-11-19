@@ -1,6 +1,7 @@
 package pkginstall
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -88,7 +89,7 @@ func installSkillAgainst(t *testing.T, backend *importBackend, decision string) 
 		t.Fatal(err)
 	}
 	ins := &Installer{APIURL: srv.URL, Quiet: true}
-	result, err := ins.Install(pkgDir, &Manifest{
+	result, err := ins.Install(context.Background(), pkgDir, &Manifest{
 		Version:  1,
 		Metadata: ManifestMetadata{Name: "pkg"},
 		Spec: ManifestSpec{Skills: []SkillSpec{{

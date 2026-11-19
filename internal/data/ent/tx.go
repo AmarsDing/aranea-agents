@@ -36,6 +36,16 @@ type Tx struct {
 	BorrowRequest *BorrowRequestClient
 	// BudgetAlert is the client for interacting with the BudgetAlert builders.
 	BudgetAlert *BudgetAlertClient
+	// CeoboardAudit is the client for interacting with the CeoboardAudit builders.
+	CeoboardAudit *CeoboardAuditClient
+	// CeoboardDeadLetter is the client for interacting with the CeoboardDeadLetter builders.
+	CeoboardDeadLetter *CeoboardDeadLetterClient
+	// CeoboardEvent is the client for interacting with the CeoboardEvent builders.
+	CeoboardEvent *CeoboardEventClient
+	// CeoboardLatencySample is the client for interacting with the CeoboardLatencySample builders.
+	CeoboardLatencySample *CeoboardLatencySampleClient
+	// CeoboardWebhookDelivery is the client for interacting with the CeoboardWebhookDelivery builders.
+	CeoboardWebhookDelivery *CeoboardWebhookDeliveryClient
 	// ChannelInboundReceipt is the client for interacting with the ChannelInboundReceipt builders.
 	ChannelInboundReceipt *ChannelInboundReceiptClient
 	// ChannelRuntimeLease is the client for interacting with the ChannelRuntimeLease builders.
@@ -56,6 +66,10 @@ type Tx struct {
 	ComputerUseAudit *ComputerUseAuditClient
 	// ContentItem is the client for interacting with the ContentItem builders.
 	ContentItem *ContentItemClient
+	// Credential is the client for interacting with the Credential builders.
+	Credential *CredentialClient
+	// CredentialExecution is the client for interacting with the CredentialExecution builders.
+	CredentialExecution *CredentialExecutionClient
 	// CronTask is the client for interacting with the CronTask builders.
 	CronTask *CronTaskClient
 	// CronTaskRun is the client for interacting with the CronTaskRun builders.
@@ -146,6 +160,8 @@ type Tx struct {
 	Organization *OrganizationClient
 	// PatchOutcome is the client for interacting with the PatchOutcome builders.
 	PatchOutcome *PatchOutcomeClient
+	// Permission is the client for interacting with the Permission builders.
+	Permission *PermissionClient
 	// PlanBoardV2 is the client for interacting with the PlanBoardV2 builders.
 	PlanBoardV2 *PlanBoardV2Client
 	// PlanStepV2 is the client for interacting with the PlanStepV2 builders.
@@ -176,6 +192,10 @@ type Tx struct {
 	ResourceAccessAudit *ResourceAccessAuditClient
 	// ReviewTask is the client for interacting with the ReviewTask builders.
 	ReviewTask *ReviewTaskClient
+	// Role is the client for interacting with the Role builders.
+	Role *RoleClient
+	// RolePermission is the client for interacting with the RolePermission builders.
+	RolePermission *RolePermissionClient
 	// SchemaMigration is the client for interacting with the SchemaMigration builders.
 	SchemaMigration *SchemaMigrationClient
 	// SelfCheckReport is the client for interacting with the SelfCheckReport builders.
@@ -248,6 +268,8 @@ type Tx struct {
 	UsageQuota *UsageQuotaClient
 	// UserEmbeddingSetting is the client for interacting with the UserEmbeddingSetting builders.
 	UserEmbeddingSetting *UserEmbeddingSettingClient
+	// UserRole is the client for interacting with the UserRole builders.
+	UserRole *UserRoleClient
 
 	// lazily loaded.
 	client     *Client
@@ -390,6 +412,11 @@ func (tx *Tx) init() {
 	tx.BackgroundJob = NewBackgroundJobClient(tx.config)
 	tx.BorrowRequest = NewBorrowRequestClient(tx.config)
 	tx.BudgetAlert = NewBudgetAlertClient(tx.config)
+	tx.CeoboardAudit = NewCeoboardAuditClient(tx.config)
+	tx.CeoboardDeadLetter = NewCeoboardDeadLetterClient(tx.config)
+	tx.CeoboardEvent = NewCeoboardEventClient(tx.config)
+	tx.CeoboardLatencySample = NewCeoboardLatencySampleClient(tx.config)
+	tx.CeoboardWebhookDelivery = NewCeoboardWebhookDeliveryClient(tx.config)
 	tx.ChannelInboundReceipt = NewChannelInboundReceiptClient(tx.config)
 	tx.ChannelRuntimeLease = NewChannelRuntimeLeaseClient(tx.config)
 	tx.ChannelTurnJob = NewChannelTurnJobClient(tx.config)
@@ -400,6 +427,8 @@ func (tx *Tx) init() {
 	tx.CompiledTeam = NewCompiledTeamClient(tx.config)
 	tx.ComputerUseAudit = NewComputerUseAuditClient(tx.config)
 	tx.ContentItem = NewContentItemClient(tx.config)
+	tx.Credential = NewCredentialClient(tx.config)
+	tx.CredentialExecution = NewCredentialExecutionClient(tx.config)
 	tx.CronTask = NewCronTaskClient(tx.config)
 	tx.CronTaskRun = NewCronTaskRunClient(tx.config)
 	tx.DecisionRecord = NewDecisionRecordClient(tx.config)
@@ -445,6 +474,7 @@ func (tx *Tx) init() {
 	tx.OrchestrationStep = NewOrchestrationStepClient(tx.config)
 	tx.Organization = NewOrganizationClient(tx.config)
 	tx.PatchOutcome = NewPatchOutcomeClient(tx.config)
+	tx.Permission = NewPermissionClient(tx.config)
 	tx.PlanBoardV2 = NewPlanBoardV2Client(tx.config)
 	tx.PlanStepV2 = NewPlanStepV2Client(tx.config)
 	tx.PlatformChannel = NewPlatformChannelClient(tx.config)
@@ -460,6 +490,8 @@ func (tx *Tx) init() {
 	tx.PublishJob = NewPublishJobClient(tx.config)
 	tx.ResourceAccessAudit = NewResourceAccessAuditClient(tx.config)
 	tx.ReviewTask = NewReviewTaskClient(tx.config)
+	tx.Role = NewRoleClient(tx.config)
+	tx.RolePermission = NewRolePermissionClient(tx.config)
 	tx.SchemaMigration = NewSchemaMigrationClient(tx.config)
 	tx.SelfCheckReport = NewSelfCheckReportClient(tx.config)
 	tx.SelfImprovementRun = NewSelfImprovementRunClient(tx.config)
@@ -496,6 +528,7 @@ func (tx *Tx) init() {
 	tx.TurnV2 = NewTurnV2Client(tx.config)
 	tx.UsageQuota = NewUsageQuotaClient(tx.config)
 	tx.UserEmbeddingSetting = NewUserEmbeddingSettingClient(tx.config)
+	tx.UserRole = NewUserRoleClient(tx.config)
 }
 
 // txDriver wraps the given dialect.Tx with a nop dialect.Driver implementation.

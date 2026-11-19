@@ -43,7 +43,7 @@ const emit = defineEmits<{
 <style lang="sass" scoped>
 .session-tree-sidebar
   &__state
-    padding: 24px 16px
+    padding: var(--nt-space-6) var(--nt-space-4)
     text-align: center
     color: var(--color-text-secondary)
     flex-direction: column
@@ -52,5 +52,5 @@ const emit = defineEmits<{
       color: var(--color-danger)
 
   &__tree
-    padding: 4px
+    padding: var(--nt-space-1)
 </style>

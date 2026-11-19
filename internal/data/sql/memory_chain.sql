@@ -345,7 +345,12 @@ CREATE TABLE IF NOT EXISTS memory_facts (
   -- above). On upgraded databases the same-named migrations are no-ops via
   -- AlreadyExists tolerance:
   --   20260725 bi-temporal validity, 20260726 A-MEM links/keywords/tags,
-  --   20260727 Ebbinghaus decay score, 20261004 context note.
+  --   20260727 Ebbinghaus decay score, 20261004 context note,
+  --   20261325 D3 envelope: encrypted authoritative content (content_enc =
+  --   base64(nonce || AES-GCM(JSON{v,s,d}, AAD=fingerprint))). Empty = legacy
+  --   row predating envelope; read path transparently falls back to the
+  --   statement/details_markdown carriers.
+  content_enc TEXT NOT NULL DEFAULT '',
   valid_from TEXT NOT NULL DEFAULT '',
   valid_until TEXT NOT NULL DEFAULT '',
   links TEXT NOT NULL DEFAULT '[]',

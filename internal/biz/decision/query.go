@@ -26,7 +26,10 @@ type ListFilter struct {
 	SourceRunID       string
 	// SourceSessionID 按 chat/team 会话过滤（T5）：匹配 SourceRef.SessionID，
 	// 读侧 COALESCE 兼容旧记录（session_id 仅在 metadata 的时期）。
-	SourceSessionID   string
+	SourceSessionID string
+	// CorrelationIDs HITL 配对兜底：匹配 metadata.correlation_id 的任一值
+	// （asked/decided 成对记录），绕过时间窗与分页上限。调用方应分批（≤50）。
+	CorrelationIDs    []string
 	VisibleWorkspaces []string
 	TimeFrom          time.Time
 	TimeTo            time.Time

@@ -25,6 +25,10 @@ type Provider int
 const (
 	ProviderDeepseek Provider = iota
 	ProviderGrok
+	// ProviderGeneric 任意 OpenAI 兼容端点的默认分支（内置通用 shim 子命令
+	// `admin acp-shim` 的缺省值）：无 vendor 特异行为，流式回退档默认关闭
+	// （可经 --fallback-non-stream 开启；deepseek 档保持默认开启）。
+	ProviderGeneric
 )
 
 // String 日志标识。
@@ -34,8 +38,23 @@ func (p Provider) String() string {
 		return "deepseek"
 	case ProviderGrok:
 		return "grok"
+	case ProviderGeneric:
+		return "generic"
 	default:
 		return "unknown"
+	}
+}
+
+// ParseProvider 按名字解析 vendor 分支（通用 shim 子命令 --provider 参数）。
+// 未知/空名字回退 generic——generic 无语义差异，只影响日志标识与回退档默认。
+func ParseProvider(name string) Provider {
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case "deepseek":
+		return ProviderDeepseek
+	case "grok":
+		return ProviderGrok
+	default:
+		return ProviderGeneric
 	}
 }
 
@@ -70,6 +89,13 @@ func New(baseURL, apiKey string, provider Provider, hc *http.Client, lg loggatew
 		lg:                lg.With(loggateway.Str("component", "openaicompat"), loggateway.Str("vendor", provider.String())),
 		fallbackNonStream: provider == ProviderDeepseek,
 	}
+}
+
+// WithNonStreamFallback 覆盖流式回退档默认（链式；通用 shim
+// --fallback-non-stream 参数由此透传）。
+func (c *Client) WithNonStreamFallback(enabled bool) *Client {
+	c.fallbackNonStream = enabled
+	return c
 }
 
 // Chat 发起一轮对话，返回增量通道（acpshim.LLMClient 契约）。

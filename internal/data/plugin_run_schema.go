@@ -75,7 +75,7 @@ func execDDLFile(ctx context.Context, client *ent.Client, ddl, label string) err
 // splitDDLStatements splits a DDL script into statements on semicolons.
 // Single-quoted string literals are honored: semicolons and `--` inside
 // strings never fragment statements (20261263 tool_param_rules seed 的正则
-// 字符类 `[;&|...]` 含字面量分号）；`''` 视为转义引号。
+// 字符类 `[;&|...]` 含字面量分号）；`”` 视为转义引号。
 // `--` line comments outside strings are stripped first so semicolons inside
 // comments never fragment statements (fresh-Postgres failure of 20261128_memory_facts_fts_index).
 // Contract: scripts fed here must not use `$$` dollar-quoted bodies;

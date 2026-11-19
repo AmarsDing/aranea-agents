@@ -1,9 +1,15 @@
 <template>
-  <q-dialog :model-value="open" persistent @update:model-value="$emit('update:open', $event)">
-    <q-card class="app-dialog-card app-dialog-card--sm app-glass-dialog">
-      <q-card-section class="text-h6">{{ $t('evaluationPage.gateTitle') }}</q-card-section>
-      <q-card-section class="app-dialog-body q-gutter-md q-pt-none">
-        <div class="text-caption text-grey-7">{{ $t('evaluationPage.gateHint') }}</div>
+  <AppDialog
+    :model-value="open"
+    :title="$t('evaluationPage.gateTitle')"
+    size="sm"
+    persistent
+    :loading="saving"
+    @update:model-value="$emit('update:open', $event)"
+  >
+    <q-inner-loading :showing="loading" />
+    <div class="q-gutter-md">
+      <div class="text-caption text-grey-7">{{ $t('evaluationPage.gateHint') }}</div>
         <q-toggle
           :model-value="enabled"
           :label="$t('evaluationPage.gateEnabled')"
@@ -86,26 +92,25 @@
           :disable="!enabled"
           @update:model-value="$emit('update:mode', String($event ?? 'advisory'))"
         />
-      </q-card-section>
-      <q-card-actions align="right" class="app-actions-bar">
-        <q-btn flat no-caps :label="$t('common.cancel')" @click="$emit('update:open', false)" />
-        <q-btn
-          color="primary"
-          unelevated
-          no-caps
-          :label="$t('common.save')"
-          :loading="saving"
-          @click="$emit('submit')"
-        />
-      </q-card-actions>
-      <q-inner-loading :showing="loading" />
-    </q-card>
-  </q-dialog>
+    </div>
+    <template #actions>
+      <q-btn flat no-caps :label="$t('common.cancel')" @click="$emit('update:open', false)" />
+      <q-btn
+        color="primary"
+        unelevated
+        no-caps
+        :label="$t('common.save')"
+        :loading="saving"
+        @click="$emit('submit')"
+      />
+    </template>
+  </AppDialog>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
+import AppDialog from '../../components/common/AppDialog.vue';
 
 defineProps<{
   open: boolean;

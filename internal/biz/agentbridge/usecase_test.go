@@ -237,13 +237,34 @@ func (m *mockTaskRepo) ListRecent(_ context.Context, limit int, _ string) ([]*Co
 	return out, nil
 }
 
-// UpdateReview 03 P0：验收落库。
+// ListPendingReview W1b：待验收终态任务（mock 无租户过滤需求）。
+func (m *mockTaskRepo) ListPendingReview(_ context.Context, _ string, limit int) ([]*CodingTask, int, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make([]*CodingTask, 0)
+	for _, t := range m.byID {
+		if t.ReviewStatus == "" && t.Status.IsTerminal() {
+			cp := *t
+			out = append(out, &cp)
+		}
+	}
+	total := len(out)
+	if limit > 0 && len(out) > limit {
+		out = out[:limit]
+	}
+	return out, total, nil
+}
+
+// UpdateReview 03 P0：验收落库。W1b CAS 防线：已被决议的任务返回冲突。
 func (m *mockTaskRepo) UpdateReview(_ context.Context, id, status, comment, reviewedAt string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	t, ok := m.byID[id]
 	if !ok {
 		return errTestNotFound
+	}
+	if t.ReviewStatus != "" {
+		return errTestConflict
 	}
 	t.ReviewStatus = status
 	t.ReviewComment = comment

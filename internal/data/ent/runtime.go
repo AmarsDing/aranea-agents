@@ -3,7 +3,6 @@
 package ent
 
 import (
-	"aranea-agents/internal/data/ent/schema"
 	"aranea-agents/internal/data/ent/admin"
 	"aranea-agents/internal/data/ent/agent"
 	"aranea-agents/internal/data/ent/agentperformance"
@@ -15,6 +14,11 @@ import (
 	"aranea-agents/internal/data/ent/backgroundjob"
 	"aranea-agents/internal/data/ent/borrowrequest"
 	"aranea-agents/internal/data/ent/budgetalert"
+	"aranea-agents/internal/data/ent/ceoboardaudit"
+	"aranea-agents/internal/data/ent/ceoboarddeadletter"
+	"aranea-agents/internal/data/ent/ceoboardevent"
+	"aranea-agents/internal/data/ent/ceoboardlatencysample"
+	"aranea-agents/internal/data/ent/ceoboardwebhookdelivery"
 	"aranea-agents/internal/data/ent/channelinboundreceipt"
 	"aranea-agents/internal/data/ent/channelruntimelease"
 	"aranea-agents/internal/data/ent/channelturnjob"
@@ -25,6 +29,8 @@ import (
 	"aranea-agents/internal/data/ent/compiledteam"
 	"aranea-agents/internal/data/ent/computeruseaudit"
 	"aranea-agents/internal/data/ent/contentitem"
+	"aranea-agents/internal/data/ent/credential"
+	"aranea-agents/internal/data/ent/credentialexecution"
 	"aranea-agents/internal/data/ent/crontask"
 	"aranea-agents/internal/data/ent/crontaskrun"
 	"aranea-agents/internal/data/ent/decisionrecord"
@@ -70,6 +76,7 @@ import (
 	"aranea-agents/internal/data/ent/orchestrationstep"
 	"aranea-agents/internal/data/ent/organization"
 	"aranea-agents/internal/data/ent/patchoutcome"
+	"aranea-agents/internal/data/ent/permission"
 	"aranea-agents/internal/data/ent/planboardv2"
 	"aranea-agents/internal/data/ent/planstepv2"
 	"aranea-agents/internal/data/ent/platformchannel"
@@ -85,6 +92,8 @@ import (
 	"aranea-agents/internal/data/ent/publishjob"
 	"aranea-agents/internal/data/ent/resourceaccessaudit"
 	"aranea-agents/internal/data/ent/reviewtask"
+	"aranea-agents/internal/data/ent/role"
+	"aranea-agents/internal/data/ent/schema"
 	"aranea-agents/internal/data/ent/selfcheckreport"
 	"aranea-agents/internal/data/ent/selfimprovementrun"
 	"aranea-agents/internal/data/ent/session"
@@ -120,6 +129,7 @@ import (
 	"aranea-agents/internal/data/ent/turnv2"
 	"aranea-agents/internal/data/ent/usagequota"
 	"aranea-agents/internal/data/ent/userembeddingsetting"
+	"aranea-agents/internal/data/ent/userrole"
 	"time"
 )
 
@@ -155,12 +165,34 @@ func init() {
 	admin.DefaultWorkspaceID = adminDescWorkspaceID.Default.(string)
 	// admin.WorkspaceIDValidator is a validator for the "workspace_id" field. It is called by the builders before save.
 	admin.WorkspaceIDValidator = adminDescWorkspaceID.Validators[0].(func(string) error)
+	// adminDescRoles is the schema descriptor for roles field.
+	adminDescRoles := adminFields[7].Descriptor()
+	// admin.DefaultRoles holds the default value on creation for the roles field.
+	admin.DefaultRoles = adminDescRoles.Default.([]string)
+	// adminDescClearance is the schema descriptor for clearance field.
+	adminDescClearance := adminFields[8].Descriptor()
+	// admin.DefaultClearance holds the default value on creation for the clearance field.
+	admin.DefaultClearance = adminDescClearance.Default.(int)
+	// admin.ClearanceValidator is a validator for the "clearance" field. It is called by the builders before save.
+	admin.ClearanceValidator = adminDescClearance.Validators[0].(func(int) error)
+	// adminDescDept is the schema descriptor for dept field.
+	adminDescDept := adminFields[9].Descriptor()
+	// admin.DefaultDept holds the default value on creation for the dept field.
+	admin.DefaultDept = adminDescDept.Default.(string)
+	// adminDescForceReset is the schema descriptor for force_reset field.
+	adminDescForceReset := adminFields[11].Descriptor()
+	// admin.DefaultForceReset holds the default value on creation for the force_reset field.
+	admin.DefaultForceReset = adminDescForceReset.Default.(bool)
+	// adminDescTokenVersion is the schema descriptor for token_version field.
+	adminDescTokenVersion := adminFields[12].Descriptor()
+	// admin.DefaultTokenVersion holds the default value on creation for the token_version field.
+	admin.DefaultTokenVersion = adminDescTokenVersion.Default.(int64)
 	// adminDescCreateTime is the schema descriptor for create_time field.
-	adminDescCreateTime := adminFields[7].Descriptor()
+	adminDescCreateTime := adminFields[13].Descriptor()
 	// admin.DefaultCreateTime holds the default value on creation for the create_time field.
 	admin.DefaultCreateTime = adminDescCreateTime.Default.(func() time.Time)
 	// adminDescUpdateTime is the schema descriptor for update_time field.
-	adminDescUpdateTime := adminFields[8].Descriptor()
+	adminDescUpdateTime := adminFields[14].Descriptor()
 	// admin.DefaultUpdateTime holds the default value on creation for the update_time field.
 	admin.DefaultUpdateTime = adminDescUpdateTime.Default.(func() time.Time)
 	// admin.UpdateDefaultUpdateTime holds the default value on update for the update_time field.
@@ -1291,6 +1323,170 @@ func init() {
 	budgetalertDescID := budgetalertFields[0].Descriptor()
 	// budgetalert.IDValidator is a validator for the "id" field. It is called by the builders before save.
 	budgetalert.IDValidator = budgetalertDescID.Validators[0].(func(string) error)
+	ceoboardauditFields := schema.CeoboardAudit{}.Fields()
+	_ = ceoboardauditFields
+	// ceoboardauditDescActor is the schema descriptor for actor field.
+	ceoboardauditDescActor := ceoboardauditFields[2].Descriptor()
+	// ceoboardaudit.DefaultActor holds the default value on creation for the actor field.
+	ceoboardaudit.DefaultActor = ceoboardauditDescActor.Default.(string)
+	// ceoboardaudit.ActorValidator is a validator for the "actor" field. It is called by the builders before save.
+	ceoboardaudit.ActorValidator = ceoboardauditDescActor.Validators[0].(func(string) error)
+	// ceoboardauditDescAction is the schema descriptor for action field.
+	ceoboardauditDescAction := ceoboardauditFields[3].Descriptor()
+	// ceoboardaudit.ActionValidator is a validator for the "action" field. It is called by the builders before save.
+	ceoboardaudit.ActionValidator = ceoboardauditDescAction.Validators[0].(func(string) error)
+	// ceoboardauditDescTarget is the schema descriptor for target field.
+	ceoboardauditDescTarget := ceoboardauditFields[4].Descriptor()
+	// ceoboardaudit.DefaultTarget holds the default value on creation for the target field.
+	ceoboardaudit.DefaultTarget = ceoboardauditDescTarget.Default.(string)
+	// ceoboardaudit.TargetValidator is a validator for the "target" field. It is called by the builders before save.
+	ceoboardaudit.TargetValidator = ceoboardauditDescTarget.Validators[0].(func(string) error)
+	// ceoboardauditDescOk is the schema descriptor for ok field.
+	ceoboardauditDescOk := ceoboardauditFields[5].Descriptor()
+	// ceoboardaudit.DefaultOk holds the default value on creation for the ok field.
+	ceoboardaudit.DefaultOk = ceoboardauditDescOk.Default.(bool)
+	// ceoboardauditDescDetail is the schema descriptor for detail field.
+	ceoboardauditDescDetail := ceoboardauditFields[6].Descriptor()
+	// ceoboardaudit.DefaultDetail holds the default value on creation for the detail field.
+	ceoboardaudit.DefaultDetail = ceoboardauditDescDetail.Default.(string)
+	// ceoboardaudit.DetailValidator is a validator for the "detail" field. It is called by the builders before save.
+	ceoboardaudit.DetailValidator = ceoboardauditDescDetail.Validators[0].(func(string) error)
+	ceoboarddeadletterFields := schema.CeoboardDeadLetter{}.Fields()
+	_ = ceoboarddeadletterFields
+	// ceoboarddeadletterDescKind is the schema descriptor for kind field.
+	ceoboarddeadletterDescKind := ceoboarddeadletterFields[1].Descriptor()
+	// ceoboarddeadletter.KindValidator is a validator for the "kind" field. It is called by the builders before save.
+	ceoboarddeadletter.KindValidator = ceoboarddeadletterDescKind.Validators[0].(func(string) error)
+	// ceoboarddeadletterDescSource is the schema descriptor for source field.
+	ceoboarddeadletterDescSource := ceoboarddeadletterFields[2].Descriptor()
+	// ceoboarddeadletter.DefaultSource holds the default value on creation for the source field.
+	ceoboarddeadletter.DefaultSource = ceoboarddeadletterDescSource.Default.(string)
+	// ceoboarddeadletter.SourceValidator is a validator for the "source" field. It is called by the builders before save.
+	ceoboarddeadletter.SourceValidator = ceoboarddeadletterDescSource.Validators[0].(func(string) error)
+	// ceoboarddeadletterDescRefKey is the schema descriptor for ref_key field.
+	ceoboarddeadletterDescRefKey := ceoboarddeadletterFields[3].Descriptor()
+	// ceoboarddeadletter.DefaultRefKey holds the default value on creation for the ref_key field.
+	ceoboarddeadletter.DefaultRefKey = ceoboarddeadletterDescRefKey.Default.(string)
+	// ceoboarddeadletter.RefKeyValidator is a validator for the "ref_key" field. It is called by the builders before save.
+	ceoboarddeadletter.RefKeyValidator = ceoboarddeadletterDescRefKey.Validators[0].(func(string) error)
+	// ceoboarddeadletterDescPayload is the schema descriptor for payload field.
+	ceoboarddeadletterDescPayload := ceoboarddeadletterFields[4].Descriptor()
+	// ceoboarddeadletter.DefaultPayload holds the default value on creation for the payload field.
+	ceoboarddeadletter.DefaultPayload = ceoboarddeadletterDescPayload.Default.(string)
+	// ceoboarddeadletterDescReason is the schema descriptor for reason field.
+	ceoboarddeadletterDescReason := ceoboarddeadletterFields[5].Descriptor()
+	// ceoboarddeadletter.DefaultReason holds the default value on creation for the reason field.
+	ceoboarddeadletter.DefaultReason = ceoboarddeadletterDescReason.Default.(string)
+	// ceoboarddeadletter.ReasonValidator is a validator for the "reason" field. It is called by the builders before save.
+	ceoboarddeadletter.ReasonValidator = ceoboarddeadletterDescReason.Validators[0].(func(string) error)
+	ceoboardeventFields := schema.CeoboardEvent{}.Fields()
+	_ = ceoboardeventFields
+	// ceoboardeventDescPlatform is the schema descriptor for platform field.
+	ceoboardeventDescPlatform := ceoboardeventFields[1].Descriptor()
+	// ceoboardevent.PlatformValidator is a validator for the "platform" field. It is called by the builders before save.
+	ceoboardevent.PlatformValidator = ceoboardeventDescPlatform.Validators[0].(func(string) error)
+	// ceoboardeventDescSubject is the schema descriptor for subject field.
+	ceoboardeventDescSubject := ceoboardeventFields[2].Descriptor()
+	// ceoboardevent.SubjectValidator is a validator for the "subject" field. It is called by the builders before save.
+	ceoboardevent.SubjectValidator = ceoboardeventDescSubject.Validators[0].(func(string) error)
+	// ceoboardeventDescSubjectKey is the schema descriptor for subject_key field.
+	ceoboardeventDescSubjectKey := ceoboardeventFields[3].Descriptor()
+	// ceoboardevent.SubjectKeyValidator is a validator for the "subject_key" field. It is called by the builders before save.
+	ceoboardevent.SubjectKeyValidator = ceoboardeventDescSubjectKey.Validators[0].(func(string) error)
+	// ceoboardeventDescEventID is the schema descriptor for event_id field.
+	ceoboardeventDescEventID := ceoboardeventFields[4].Descriptor()
+	// ceoboardevent.DefaultEventID holds the default value on creation for the event_id field.
+	ceoboardevent.DefaultEventID = ceoboardeventDescEventID.Default.(string)
+	// ceoboardevent.EventIDValidator is a validator for the "event_id" field. It is called by the builders before save.
+	ceoboardevent.EventIDValidator = ceoboardeventDescEventID.Validators[0].(func(string) error)
+	// ceoboardeventDescEntityID is the schema descriptor for entity_id field.
+	ceoboardeventDescEntityID := ceoboardeventFields[5].Descriptor()
+	// ceoboardevent.DefaultEntityID holds the default value on creation for the entity_id field.
+	ceoboardevent.DefaultEntityID = ceoboardeventDescEntityID.Default.(string)
+	// ceoboardevent.EntityIDValidator is a validator for the "entity_id" field. It is called by the builders before save.
+	ceoboardevent.EntityIDValidator = ceoboardeventDescEntityID.Validators[0].(func(string) error)
+	// ceoboardeventDescPayload is the schema descriptor for payload field.
+	ceoboardeventDescPayload := ceoboardeventFields[8].Descriptor()
+	// ceoboardevent.DefaultPayload holds the default value on creation for the payload field.
+	ceoboardevent.DefaultPayload = ceoboardeventDescPayload.Default.(string)
+	// ceoboardeventDescImportedFromSpool is the schema descriptor for imported_from_spool field.
+	ceoboardeventDescImportedFromSpool := ceoboardeventFields[9].Descriptor()
+	// ceoboardevent.DefaultImportedFromSpool holds the default value on creation for the imported_from_spool field.
+	ceoboardevent.DefaultImportedFromSpool = ceoboardeventDescImportedFromSpool.Default.(bool)
+	// ceoboardeventDescPayloadComplete is the schema descriptor for payload_complete field.
+	ceoboardeventDescPayloadComplete := ceoboardeventFields[10].Descriptor()
+	// ceoboardevent.DefaultPayloadComplete holds the default value on creation for the payload_complete field.
+	ceoboardevent.DefaultPayloadComplete = ceoboardeventDescPayloadComplete.Default.(bool)
+	// ceoboardeventDescID is the schema descriptor for id field.
+	ceoboardeventDescID := ceoboardeventFields[0].Descriptor()
+	// ceoboardevent.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	ceoboardevent.IDValidator = ceoboardeventDescID.Validators[0].(func(string) error)
+	ceoboardlatencysampleFields := schema.CeoboardLatencySample{}.Fields()
+	_ = ceoboardlatencysampleFields
+	// ceoboardlatencysampleDescMetricID is the schema descriptor for metric_id field.
+	ceoboardlatencysampleDescMetricID := ceoboardlatencysampleFields[1].Descriptor()
+	// ceoboardlatencysample.MetricIDValidator is a validator for the "metric_id" field. It is called by the builders before save.
+	ceoboardlatencysample.MetricIDValidator = ceoboardlatencysampleDescMetricID.Validators[0].(func(string) error)
+	// ceoboardlatencysampleDescBUID is the schema descriptor for b_uid field.
+	ceoboardlatencysampleDescBUID := ceoboardlatencysampleFields[2].Descriptor()
+	// ceoboardlatencysample.BUIDValidator is a validator for the "b_uid" field. It is called by the builders before save.
+	ceoboardlatencysample.BUIDValidator = ceoboardlatencysampleDescBUID.Validators[0].(func(string) error)
+	// ceoboardlatencysampleDescEntityID is the schema descriptor for entity_id field.
+	ceoboardlatencysampleDescEntityID := ceoboardlatencysampleFields[3].Descriptor()
+	// ceoboardlatencysample.DefaultEntityID holds the default value on creation for the entity_id field.
+	ceoboardlatencysample.DefaultEntityID = ceoboardlatencysampleDescEntityID.Default.(string)
+	// ceoboardlatencysample.EntityIDValidator is a validator for the "entity_id" field. It is called by the builders before save.
+	ceoboardlatencysample.EntityIDValidator = ceoboardlatencysampleDescEntityID.Validators[0].(func(string) error)
+	// ceoboardlatencysampleDescAUID is the schema descriptor for a_uid field.
+	ceoboardlatencysampleDescAUID := ceoboardlatencysampleFields[4].Descriptor()
+	// ceoboardlatencysample.DefaultAUID holds the default value on creation for the a_uid field.
+	ceoboardlatencysample.DefaultAUID = ceoboardlatencysampleDescAUID.Default.(string)
+	// ceoboardlatencysample.AUIDValidator is a validator for the "a_uid" field. It is called by the builders before save.
+	ceoboardlatencysample.AUIDValidator = ceoboardlatencysampleDescAUID.Validators[0].(func(string) error)
+	ceoboardwebhookdeliveryFields := schema.CeoboardWebhookDelivery{}.Fields()
+	_ = ceoboardwebhookdeliveryFields
+	// ceoboardwebhookdeliveryDescSource is the schema descriptor for source field.
+	ceoboardwebhookdeliveryDescSource := ceoboardwebhookdeliveryFields[1].Descriptor()
+	// ceoboardwebhookdelivery.SourceValidator is a validator for the "source" field. It is called by the builders before save.
+	ceoboardwebhookdelivery.SourceValidator = ceoboardwebhookdeliveryDescSource.Validators[0].(func(string) error)
+	// ceoboardwebhookdeliveryDescEvent is the schema descriptor for event field.
+	ceoboardwebhookdeliveryDescEvent := ceoboardwebhookdeliveryFields[2].Descriptor()
+	// ceoboardwebhookdelivery.DefaultEvent holds the default value on creation for the event field.
+	ceoboardwebhookdelivery.DefaultEvent = ceoboardwebhookdeliveryDescEvent.Default.(string)
+	// ceoboardwebhookdelivery.EventValidator is a validator for the "event" field. It is called by the builders before save.
+	ceoboardwebhookdelivery.EventValidator = ceoboardwebhookdeliveryDescEvent.Validators[0].(func(string) error)
+	// ceoboardwebhookdeliveryDescEntityID is the schema descriptor for entity_id field.
+	ceoboardwebhookdeliveryDescEntityID := ceoboardwebhookdeliveryFields[3].Descriptor()
+	// ceoboardwebhookdelivery.DefaultEntityID holds the default value on creation for the entity_id field.
+	ceoboardwebhookdelivery.DefaultEntityID = ceoboardwebhookdeliveryDescEntityID.Default.(string)
+	// ceoboardwebhookdelivery.EntityIDValidator is a validator for the "entity_id" field. It is called by the builders before save.
+	ceoboardwebhookdelivery.EntityIDValidator = ceoboardwebhookdeliveryDescEntityID.Validators[0].(func(string) error)
+	// ceoboardwebhookdeliveryDescDigest is the schema descriptor for digest field.
+	ceoboardwebhookdeliveryDescDigest := ceoboardwebhookdeliveryFields[5].Descriptor()
+	// ceoboardwebhookdelivery.DefaultDigest holds the default value on creation for the digest field.
+	ceoboardwebhookdelivery.DefaultDigest = ceoboardwebhookdeliveryDescDigest.Default.(string)
+	// ceoboardwebhookdelivery.DigestValidator is a validator for the "digest" field. It is called by the builders before save.
+	ceoboardwebhookdelivery.DigestValidator = ceoboardwebhookdeliveryDescDigest.Validators[0].(func(string) error)
+	// ceoboardwebhookdeliveryDescFields is the schema descriptor for fields field.
+	ceoboardwebhookdeliveryDescFields := ceoboardwebhookdeliveryFields[6].Descriptor()
+	// ceoboardwebhookdelivery.DefaultFields holds the default value on creation for the fields field.
+	ceoboardwebhookdelivery.DefaultFields = ceoboardwebhookdeliveryDescFields.Default.(string)
+	// ceoboardwebhookdeliveryDescStatus is the schema descriptor for status field.
+	ceoboardwebhookdeliveryDescStatus := ceoboardwebhookdeliveryFields[7].Descriptor()
+	// ceoboardwebhookdelivery.DefaultStatus holds the default value on creation for the status field.
+	ceoboardwebhookdelivery.DefaultStatus = ceoboardwebhookdeliveryDescStatus.Default.(string)
+	// ceoboardwebhookdelivery.StatusValidator is a validator for the "status" field. It is called by the builders before save.
+	ceoboardwebhookdelivery.StatusValidator = ceoboardwebhookdeliveryDescStatus.Validators[0].(func(string) error)
+	// ceoboardwebhookdeliveryDescError is the schema descriptor for error field.
+	ceoboardwebhookdeliveryDescError := ceoboardwebhookdeliveryFields[8].Descriptor()
+	// ceoboardwebhookdelivery.DefaultError holds the default value on creation for the error field.
+	ceoboardwebhookdelivery.DefaultError = ceoboardwebhookdeliveryDescError.Default.(string)
+	// ceoboardwebhookdelivery.ErrorValidator is a validator for the "error" field. It is called by the builders before save.
+	ceoboardwebhookdelivery.ErrorValidator = ceoboardwebhookdeliveryDescError.Validators[0].(func(string) error)
+	// ceoboardwebhookdeliveryDescID is the schema descriptor for id field.
+	ceoboardwebhookdeliveryDescID := ceoboardwebhookdeliveryFields[0].Descriptor()
+	// ceoboardwebhookdelivery.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	ceoboardwebhookdelivery.IDValidator = ceoboardwebhookdeliveryDescID.Validators[0].(func(string) error)
 	channelinboundreceiptFields := schema.ChannelInboundReceipt{}.Fields()
 	_ = channelinboundreceiptFields
 	// channelinboundreceiptDescChannelID is the schema descriptor for channel_id field.
@@ -1767,6 +1963,96 @@ func init() {
 	contentitemDescID := contentitemFields[0].Descriptor()
 	// contentitem.IDValidator is a validator for the "id" field. It is called by the builders before save.
 	contentitem.IDValidator = contentitemDescID.Validators[0].(func(string) error)
+	credentialFields := schema.Credential{}.Fields()
+	_ = credentialFields
+	// credentialDescWorkspaceID is the schema descriptor for workspace_id field.
+	credentialDescWorkspaceID := credentialFields[1].Descriptor()
+	// credential.DefaultWorkspaceID holds the default value on creation for the workspace_id field.
+	credential.DefaultWorkspaceID = credentialDescWorkspaceID.Default.(string)
+	// credential.WorkspaceIDValidator is a validator for the "workspace_id" field. It is called by the builders before save.
+	credential.WorkspaceIDValidator = credentialDescWorkspaceID.Validators[0].(func(string) error)
+	// credentialDescName is the schema descriptor for name field.
+	credentialDescName := credentialFields[2].Descriptor()
+	// credential.NameValidator is a validator for the "name" field. It is called by the builders before save.
+	credential.NameValidator = credentialDescName.Validators[0].(func(string) error)
+	// credentialDescSite is the schema descriptor for site field.
+	credentialDescSite := credentialFields[3].Descriptor()
+	// credential.SiteValidator is a validator for the "site" field. It is called by the builders before save.
+	credential.SiteValidator = credentialDescSite.Validators[0].(func(string) error)
+	// credentialDescURL is the schema descriptor for url field.
+	credentialDescURL := credentialFields[4].Descriptor()
+	// credential.DefaultURL holds the default value on creation for the url field.
+	credential.DefaultURL = credentialDescURL.Default.(string)
+	// credential.URLValidator is a validator for the "url" field. It is called by the builders before save.
+	credential.URLValidator = credentialDescURL.Validators[0].(func(string) error)
+	// credentialDescUsername is the schema descriptor for username field.
+	credentialDescUsername := credentialFields[5].Descriptor()
+	// credential.DefaultUsername holds the default value on creation for the username field.
+	credential.DefaultUsername = credentialDescUsername.Default.(string)
+	// credential.UsernameValidator is a validator for the "username" field. It is called by the builders before save.
+	credential.UsernameValidator = credentialDescUsername.Validators[0].(func(string) error)
+	// credentialDescSecretKind is the schema descriptor for secret_kind field.
+	credentialDescSecretKind := credentialFields[6].Descriptor()
+	// credential.SecretKindValidator is a validator for the "secret_kind" field. It is called by the builders before save.
+	credential.SecretKindValidator = credentialDescSecretKind.Validators[0].(func(string) error)
+	// credentialDescSensitivity is the schema descriptor for sensitivity field.
+	credentialDescSensitivity := credentialFields[7].Descriptor()
+	// credential.DefaultSensitivity holds the default value on creation for the sensitivity field.
+	credential.DefaultSensitivity = credentialDescSensitivity.Default.(string)
+	// credential.SensitivityValidator is a validator for the "sensitivity" field. It is called by the builders before save.
+	credential.SensitivityValidator = credentialDescSensitivity.Validators[0].(func(string) error)
+	// credentialDescNote is the schema descriptor for note field.
+	credentialDescNote := credentialFields[8].Descriptor()
+	// credential.DefaultNote holds the default value on creation for the note field.
+	credential.DefaultNote = credentialDescNote.Default.(string)
+	// credential.NoteValidator is a validator for the "note" field. It is called by the builders before save.
+	credential.NoteValidator = credentialDescNote.Validators[0].(func(string) error)
+	credentialexecutionFields := schema.CredentialExecution{}.Fields()
+	_ = credentialexecutionFields
+	// credentialexecutionDescCredentialID is the schema descriptor for credential_id field.
+	credentialexecutionDescCredentialID := credentialexecutionFields[1].Descriptor()
+	// credentialexecution.DefaultCredentialID holds the default value on creation for the credential_id field.
+	credentialexecution.DefaultCredentialID = credentialexecutionDescCredentialID.Default.(int64)
+	// credentialexecutionDescSite is the schema descriptor for site field.
+	credentialexecutionDescSite := credentialexecutionFields[2].Descriptor()
+	// credentialexecution.SiteValidator is a validator for the "site" field. It is called by the builders before save.
+	credentialexecution.SiteValidator = credentialexecutionDescSite.Validators[0].(func(string) error)
+	// credentialexecutionDescAction is the schema descriptor for action field.
+	credentialexecutionDescAction := credentialexecutionFields[3].Descriptor()
+	// credentialexecution.ActionValidator is a validator for the "action" field. It is called by the builders before save.
+	credentialexecution.ActionValidator = credentialexecutionDescAction.Validators[0].(func(string) error)
+	// credentialexecutionDescActorType is the schema descriptor for actor_type field.
+	credentialexecutionDescActorType := credentialexecutionFields[4].Descriptor()
+	// credentialexecution.ActorTypeValidator is a validator for the "actor_type" field. It is called by the builders before save.
+	credentialexecution.ActorTypeValidator = credentialexecutionDescActorType.Validators[0].(func(string) error)
+	// credentialexecutionDescActorKey is the schema descriptor for actor_key field.
+	credentialexecutionDescActorKey := credentialexecutionFields[5].Descriptor()
+	// credentialexecution.DefaultActorKey holds the default value on creation for the actor_key field.
+	credentialexecution.DefaultActorKey = credentialexecutionDescActorKey.Default.(string)
+	// credentialexecution.ActorKeyValidator is a validator for the "actor_key" field. It is called by the builders before save.
+	credentialexecution.ActorKeyValidator = credentialexecutionDescActorKey.Validators[0].(func(string) error)
+	// credentialexecutionDescAgentID is the schema descriptor for agent_id field.
+	credentialexecutionDescAgentID := credentialexecutionFields[6].Descriptor()
+	// credentialexecution.DefaultAgentID holds the default value on creation for the agent_id field.
+	credentialexecution.DefaultAgentID = credentialexecutionDescAgentID.Default.(string)
+	// credentialexecution.AgentIDValidator is a validator for the "agent_id" field. It is called by the builders before save.
+	credentialexecution.AgentIDValidator = credentialexecutionDescAgentID.Validators[0].(func(string) error)
+	// credentialexecutionDescSessionID is the schema descriptor for session_id field.
+	credentialexecutionDescSessionID := credentialexecutionFields[7].Descriptor()
+	// credentialexecution.DefaultSessionID holds the default value on creation for the session_id field.
+	credentialexecution.DefaultSessionID = credentialexecutionDescSessionID.Default.(string)
+	// credentialexecution.SessionIDValidator is a validator for the "session_id" field. It is called by the builders before save.
+	credentialexecution.SessionIDValidator = credentialexecutionDescSessionID.Validators[0].(func(string) error)
+	// credentialexecutionDescVerdict is the schema descriptor for verdict field.
+	credentialexecutionDescVerdict := credentialexecutionFields[8].Descriptor()
+	// credentialexecution.VerdictValidator is a validator for the "verdict" field. It is called by the builders before save.
+	credentialexecution.VerdictValidator = credentialexecutionDescVerdict.Validators[0].(func(string) error)
+	// credentialexecutionDescReason is the schema descriptor for reason field.
+	credentialexecutionDescReason := credentialexecutionFields[9].Descriptor()
+	// credentialexecution.DefaultReason holds the default value on creation for the reason field.
+	credentialexecution.DefaultReason = credentialexecutionDescReason.Default.(string)
+	// credentialexecution.ReasonValidator is a validator for the "reason" field. It is called by the builders before save.
+	credentialexecution.ReasonValidator = credentialexecutionDescReason.Validators[0].(func(string) error)
 	crontaskFields := schema.CronTask{}.Fields()
 	_ = crontaskFields
 	// crontaskDescTaskKey is the schema descriptor for task_key field.
@@ -1859,6 +2145,14 @@ func init() {
 	crontaskrunDescCreatedAt := crontaskrunFields[7].Descriptor()
 	// crontaskrun.DefaultCreatedAt holds the default value on creation for the created_at field.
 	crontaskrun.DefaultCreatedAt = crontaskrunDescCreatedAt.Default.(string)
+	// crontaskrunDescResolvedAt is the schema descriptor for resolved_at field.
+	crontaskrunDescResolvedAt := crontaskrunFields[8].Descriptor()
+	// crontaskrun.DefaultResolvedAt holds the default value on creation for the resolved_at field.
+	crontaskrun.DefaultResolvedAt = crontaskrunDescResolvedAt.Default.(string)
+	// crontaskrunDescResolvedBy is the schema descriptor for resolved_by field.
+	crontaskrunDescResolvedBy := crontaskrunFields[9].Descriptor()
+	// crontaskrun.DefaultResolvedBy holds the default value on creation for the resolved_by field.
+	crontaskrun.DefaultResolvedBy = crontaskrunDescResolvedBy.Default.(string)
 	// crontaskrunDescID is the schema descriptor for id field.
 	crontaskrunDescID := crontaskrunFields[0].Descriptor()
 	// crontaskrun.IDValidator is a validator for the "id" field. It is called by the builders before save.
@@ -4253,6 +4547,22 @@ func init() {
 	patchoutcome.DefaultID = patchoutcomeDescID.Default.(func() string)
 	// patchoutcome.IDValidator is a validator for the "id" field. It is called by the builders before save.
 	patchoutcome.IDValidator = patchoutcomeDescID.Validators[0].(func(string) error)
+	permissionFields := schema.Permission{}.Fields()
+	_ = permissionFields
+	// permissionDescCode is the schema descriptor for code field.
+	permissionDescCode := permissionFields[1].Descriptor()
+	// permission.CodeValidator is a validator for the "code" field. It is called by the builders before save.
+	permission.CodeValidator = permissionDescCode.Validators[0].(func(string) error)
+	// permissionDescDescription is the schema descriptor for description field.
+	permissionDescDescription := permissionFields[3].Descriptor()
+	// permission.DefaultDescription holds the default value on creation for the description field.
+	permission.DefaultDescription = permissionDescDescription.Default.(string)
+	// permission.DescriptionValidator is a validator for the "description" field. It is called by the builders before save.
+	permission.DescriptionValidator = permissionDescDescription.Validators[0].(func(string) error)
+	// permissionDescCreateTime is the schema descriptor for create_time field.
+	permissionDescCreateTime := permissionFields[4].Descriptor()
+	// permission.DefaultCreateTime holds the default value on creation for the create_time field.
+	permission.DefaultCreateTime = permissionDescCreateTime.Default.(func() time.Time)
 	planboardv2Fields := schema.PlanBoardV2{}.Fields()
 	_ = planboardv2Fields
 	// planboardv2DescTaskID is the schema descriptor for task_id field.
@@ -5247,22 +5557,60 @@ func init() {
 	reviewtask.DefaultReviewerID = reviewtaskDescReviewerID.Default.(string)
 	// reviewtask.ReviewerIDValidator is a validator for the "reviewer_id" field. It is called by the builders before save.
 	reviewtask.ReviewerIDValidator = reviewtaskDescReviewerID.Validators[0].(func(string) error)
+	// reviewtaskDescCreatorID is the schema descriptor for creator_id field.
+	reviewtaskDescCreatorID := reviewtaskFields[13].Descriptor()
+	// reviewtask.DefaultCreatorID holds the default value on creation for the creator_id field.
+	reviewtask.DefaultCreatorID = reviewtaskDescCreatorID.Default.(string)
+	// reviewtask.CreatorIDValidator is a validator for the "creator_id" field. It is called by the builders before save.
+	reviewtask.CreatorIDValidator = reviewtaskDescCreatorID.Validators[0].(func(string) error)
 	// reviewtaskDescDecidedAt is the schema descriptor for decided_at field.
-	reviewtaskDescDecidedAt := reviewtaskFields[13].Descriptor()
+	reviewtaskDescDecidedAt := reviewtaskFields[14].Descriptor()
 	// reviewtask.DefaultDecidedAt holds the default value on creation for the decided_at field.
 	reviewtask.DefaultDecidedAt = reviewtaskDescDecidedAt.Default.(string)
 	// reviewtaskDescCreatedAt is the schema descriptor for created_at field.
-	reviewtaskDescCreatedAt := reviewtaskFields[14].Descriptor()
+	reviewtaskDescCreatedAt := reviewtaskFields[15].Descriptor()
 	// reviewtask.DefaultCreatedAt holds the default value on creation for the created_at field.
 	reviewtask.DefaultCreatedAt = reviewtaskDescCreatedAt.Default.(string)
 	// reviewtaskDescUpdatedAt is the schema descriptor for updated_at field.
-	reviewtaskDescUpdatedAt := reviewtaskFields[15].Descriptor()
+	reviewtaskDescUpdatedAt := reviewtaskFields[16].Descriptor()
 	// reviewtask.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	reviewtask.DefaultUpdatedAt = reviewtaskDescUpdatedAt.Default.(string)
 	// reviewtaskDescID is the schema descriptor for id field.
 	reviewtaskDescID := reviewtaskFields[0].Descriptor()
 	// reviewtask.IDValidator is a validator for the "id" field. It is called by the builders before save.
 	reviewtask.IDValidator = reviewtaskDescID.Validators[0].(func(string) error)
+	roleFields := schema.Role{}.Fields()
+	_ = roleFields
+	// roleDescCode is the schema descriptor for code field.
+	roleDescCode := roleFields[1].Descriptor()
+	// role.CodeValidator is a validator for the "code" field. It is called by the builders before save.
+	role.CodeValidator = roleDescCode.Validators[0].(func(string) error)
+	// roleDescName is the schema descriptor for name field.
+	roleDescName := roleFields[2].Descriptor()
+	// role.DefaultName holds the default value on creation for the name field.
+	role.DefaultName = roleDescName.Default.(string)
+	// role.NameValidator is a validator for the "name" field. It is called by the builders before save.
+	role.NameValidator = roleDescName.Validators[0].(func(string) error)
+	// roleDescDescription is the schema descriptor for description field.
+	roleDescDescription := roleFields[3].Descriptor()
+	// role.DefaultDescription holds the default value on creation for the description field.
+	role.DefaultDescription = roleDescDescription.Default.(string)
+	// role.DescriptionValidator is a validator for the "description" field. It is called by the builders before save.
+	role.DescriptionValidator = roleDescDescription.Validators[0].(func(string) error)
+	// roleDescBuiltin is the schema descriptor for builtin field.
+	roleDescBuiltin := roleFields[4].Descriptor()
+	// role.DefaultBuiltin holds the default value on creation for the builtin field.
+	role.DefaultBuiltin = roleDescBuiltin.Default.(bool)
+	// roleDescCreateTime is the schema descriptor for create_time field.
+	roleDescCreateTime := roleFields[5].Descriptor()
+	// role.DefaultCreateTime holds the default value on creation for the create_time field.
+	role.DefaultCreateTime = roleDescCreateTime.Default.(func() time.Time)
+	// roleDescUpdateTime is the schema descriptor for update_time field.
+	roleDescUpdateTime := roleFields[6].Descriptor()
+	// role.DefaultUpdateTime holds the default value on creation for the update_time field.
+	role.DefaultUpdateTime = roleDescUpdateTime.Default.(func() time.Time)
+	// role.UpdateDefaultUpdateTime holds the default value on update for the update_time field.
+	role.UpdateDefaultUpdateTime = roleDescUpdateTime.UpdateDefault.(func() time.Time)
 	selfcheckreportFields := schema.SelfCheckReport{}.Fields()
 	_ = selfcheckreportFields
 	// selfcheckreportDescCheckResultsJSON is the schema descriptor for check_results_json field.
@@ -7601,4 +7949,10 @@ func init() {
 	userembeddingsetting.DefaultUpdateTime = userembeddingsettingDescUpdateTime.Default.(func() time.Time)
 	// userembeddingsetting.UpdateDefaultUpdateTime holds the default value on update for the update_time field.
 	userembeddingsetting.UpdateDefaultUpdateTime = userembeddingsettingDescUpdateTime.UpdateDefault.(func() time.Time)
+	userroleFields := schema.UserRole{}.Fields()
+	_ = userroleFields
+	// userroleDescCreateTime is the schema descriptor for create_time field.
+	userroleDescCreateTime := userroleFields[3].Descriptor()
+	// userrole.DefaultCreateTime holds the default value on creation for the create_time field.
+	userrole.DefaultCreateTime = userroleDescCreateTime.Default.(func() time.Time)
 }

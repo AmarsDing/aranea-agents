@@ -3,6 +3,7 @@ import { storeToRefs } from 'pinia';
 import { useRoute } from 'vue-router';
 import { useI18n } from 'vue-i18n';
 import { useHooksStore } from '../../stores/hooks';
+import { isForbiddenApiError } from '../../utils/kratosError';
 import type { HookDeliveryRow } from './deliveries';
 
 export function useHookDeliveriesPage() {
@@ -16,6 +17,8 @@ export function useHookDeliveriesPage() {
   const from = ref('');
   const to = ref('');
   const error = ref('');
+  /** 403 / PERMISSION_DENIED：页面渲染 forbidden 态，不提供重试。 */
+  const forbidden = ref(false);
   const page = ref(1);
   const pageSize = ref(20);
   const pageMax = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)));
@@ -40,6 +43,7 @@ export function useHookDeliveriesPage() {
 
   async function loadRows(nextPage = page.value, nextPageSize = pageSize.value) {
     error.value = '';
+    forbidden.value = false;
     try {
       await hooksStore.loadDeliveries({
         hook_key: hookKey.value.trim() || undefined,
@@ -51,6 +55,7 @@ export function useHookDeliveriesPage() {
       });
     } catch (err) {
       error.value = err instanceof Error ? err.message : t('hooksPage.deliveries.loadFailed');
+      forbidden.value = isForbiddenApiError(err);
     }
   }
 
@@ -92,6 +97,7 @@ export function useHookDeliveriesPage() {
     from,
     to,
     error,
+    forbidden,
     page,
     pageSize,
     pageMax,

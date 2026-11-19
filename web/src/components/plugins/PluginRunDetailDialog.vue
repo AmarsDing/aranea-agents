@@ -1,23 +1,20 @@
 <template>
-  <q-dialog :model-value="open" @update:model-value="$emit('update:open', $event)">
-    <q-card class="app-dialog-card app-dialog-card--sm app-glass-dialog">
-      <q-card-section class="app-glass-dialog__head row items-center justify-between">
-        <div class="app-glass-dialog__title">{{ t('pluginsPage.runs.detailTitle') }}</div>
-        <q-btn v-close-popup flat dense round icon="close" :aria-label="t('pluginsPage.detail.close')" />
-      </q-card-section>
-      <q-separator />
-      <q-card-section class="app-dialog-body q-pt-none">
-        <JsonCodeViewer :text="text" />
-      </q-card-section>
-      <q-card-actions align="right" class="app-actions-bar app-glass-dialog__actions">
-        <q-btn v-close-popup flat rounded no-caps :label="t('common.close')" />
-      </q-card-actions>
-    </q-card>
-  </q-dialog>
+  <AppDialog
+    :model-value="open"
+    :title="t('pluginsPage.runs.detailTitle')"
+    size="sm"
+    @update:model-value="$emit('update:open', $event)"
+  >
+    <JsonCodeViewer :text="text" />
+    <template #actions>
+      <q-btn flat rounded no-caps :label="t('common.close')" @click="$emit('update:open', false)" />
+    </template>
+  </AppDialog>
 </template>
 
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n';
+import AppDialog from '../common/AppDialog.vue';
 import JsonCodeViewer from '../common/JsonCodeViewer.vue';
 
 defineProps<{

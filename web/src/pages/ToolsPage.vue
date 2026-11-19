@@ -60,50 +60,77 @@
       @refresh="loadRows"
     />
 
-    <q-banner v-if="error" rounded class="app-page-error-banner q-mb-md">
-      {{ error }}
-      <template #action>
-        <q-btn flat dense :label="$t('common.retry')" class="text-white" @click="loadRows" />
-      </template>
-    </q-banner>
-
-    <tools-table
-      :rows="rows"
-      :loading="loading"
-      :busy-id="busyId"
-      :selected="selected"
-      @update:selected="selected = $event"
-      @toggle-enabled="toggleEnabled"
-      @update-risk="updateRisk"
-      @view-detail="openDetail"
-      @edit="editorStore.openEdit($event)"
-      @remove="removeTool"
+    <AppStatePanel
+      v-if="pageState === 'loading'"
+      variant="loading"
+      :rows="5"
+    />
+    <AppStatePanel
+      v-else-if="pageState === 'error'"
+      variant="error"
+      :title="error"
+      :action-label="$t('common.retry')"
+      action-icon="refresh"
+      @action="loadRows"
+    />
+    <AppStatePanel
+      v-else-if="pageState === 'forbidden'"
+      variant="forbidden"
+    />
+    <AppStatePanel
+      v-else-if="pageState === 'empty'"
+      variant="empty"
     />
 
-    <div v-if="selected.length" class="tools-batch-bar q-pa-sm">
-      <span class="text-caption q-mr-md">{{ $t('toolsPage.list.selectedCount', { count: selected.length }) }}</span>
-      <q-btn
-        flat
+    <template v-else>
+      <AppStatePanel
+        v-if="pageState === 'partial'"
+        class="q-mb-md"
+        variant="partial"
         dense
-        no-caps
-        icon="toggle_on"
-        :label="$t('toolsPage.list.batchEnable')"
-        size="sm"
-        class="app-registry-accent-btn"
-        @click="batchToggle(true)"
+        :description="error"
+        :action-label="$t('common.retry')"
+        action-icon="refresh"
+        @action="loadRows"
       />
-      <q-btn flat dense no-caps icon="toggle_off" :label="$t('toolsPage.list.batchDisable')" size="sm" @click="batchToggle(false)" />
-      <q-btn flat dense no-caps icon="delete" :label="$t('toolsPage.list.batchRemove')" size="sm" color="negative" @click="batchRemove" />
-    </div>
+      <tools-table
+        :rows="rows"
+        :loading="loading"
+        :busy-id="busyId"
+        :selected="selected"
+        @update:selected="selected = $event"
+        @toggle-enabled="toggleEnabled"
+        @update-risk="updateRisk"
+        @view-detail="openDetail"
+        @edit="editorStore.openEdit($event)"
+        @remove="removeTool"
+      />
 
-    <AppRegistryPagination
-      v-model:page="page"
-      v-model:page-size="pageSize"
-      :page-max="pageMax"
-      :total="total"
-      :loading="loading"
-      :label="$t('toolsPage.list.pageUnit')"
-    />
+      <div v-if="selected.length" class="tools-batch-bar q-pa-sm">
+        <span class="text-caption q-mr-md">{{ $t('toolsPage.list.selectedCount', { count: selected.length }) }}</span>
+        <q-btn
+          flat
+          dense
+          no-caps
+          icon="toggle_on"
+          :label="$t('toolsPage.list.batchEnable')"
+          size="sm"
+          class="app-registry-accent-btn"
+          @click="batchToggle(true)"
+        />
+        <q-btn flat dense no-caps icon="toggle_off" :label="$t('toolsPage.list.batchDisable')" size="sm" @click="batchToggle(false)" />
+        <q-btn flat dense no-caps icon="delete" :label="$t('toolsPage.list.batchRemove')" size="sm" color="negative" @click="batchRemove" />
+      </div>
+
+      <AppRegistryPagination
+        v-model:page="page"
+        v-model:page-size="pageSize"
+        :page-max="pageMax"
+        :total="total"
+        :loading="loading"
+        :label="$t('toolsPage.list.pageUnit')"
+      />
+    </template>
 
     <tool-detail-drawer
       :open="detailStore.open"
@@ -167,7 +194,9 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue';
 import AppRegistryPagination from '../components/layout/AppRegistryPagination.vue';
+import AppStatePanel from '../components/common/AppStatePanel.vue';
 import ToolHeroSection from '../components/tools/ToolHeroSection.vue';
 import ToolsMetricStrip from '../components/tools/ToolsMetricStrip.vue';
 import ToolCatalogFilters from '../components/tools/ToolCatalogFilters.vue';
@@ -175,6 +204,7 @@ import ToolsTable from '../components/tools/ToolsTable.vue';
 import ToolDetailDrawer from '../components/tools/ToolDetailDrawer.vue';
 import ToolEditorDialog from '../components/tools/ToolEditorDialog.vue';
 import { useToolsPage } from '../features/tools/useToolsPage';
+import { resolvePageState } from './pageState';
 
 const {
   detailStore,
@@ -191,6 +221,7 @@ const {
   page,
   pageSize,
   error,
+  forbidden,
   selected,
   pageMax,
   summaryCards,
@@ -217,4 +248,13 @@ const {
   onSaveOverride,
   onRemoveOverride,
 } = useToolsPage();
+
+const pageState = computed(() =>
+  resolvePageState({
+    loading: loading.value,
+    error: error.value,
+    count: rows.value.length,
+    forbidden: forbidden.value,
+  }),
+);
 </script>

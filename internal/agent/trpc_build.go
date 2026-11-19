@@ -196,6 +196,12 @@ func buildTRPCLLMAgentWithToolSets(ctx context.Context, ag biz.Agent, deps TRPCB
 	hasPluginModelRouter := false
 	hasPluginCostGuard := false
 	var modelSelectors []trpcagent.ModelSelector
+	// D6 L-1：密级路由必须最先判定（命中强制 local 即短路链上其余 selector；
+	// 未命中/门停用/解析失败返回 nil 保持 base，验收 §7.3 #5）。恒挂链首：
+	// 门未装配时该 selector 是零开销 no-op。
+	modelSelectors = append(modelSelectors,
+		ClassificationAwareModelSelector(prov, mod, deps.ModelCatalog, deps.RT, lg),
+	)
 	if deps.PluginManager != nil {
 		// N-B1：插件配置按调用方工作区过滤，杜绝跨租户配置泄漏。
 		pluginWsID := workspace.IDFromContext(ctx)
@@ -605,6 +611,12 @@ func buildTRPCRuntimeOptions(s *biz.AgentRuntimeSettings, skipRuntimeModelSelect
 	if !skipRuntimeModelSelector && s.ModelSelector != "" && s.ModelSelector != "default" {
 		selector := buildModelSelector(s.ModelSelector, prov, mod, catalog, rt, lg)
 		if selector != nil {
+			// D6 L-1：runtime selector 会替换 build 级链（框架语义），密级路由
+			// 在此重新包链首，保证 settings.ModelSelector 路径同样被门覆盖。
+			selector = ChainedModelSelector(
+				ClassificationAwareModelSelector(prov, mod, catalog, rt, lg),
+				selector,
+			)
 			opts = append(opts, trpcllmagent.WithModelSelector(selector))
 		}
 	}

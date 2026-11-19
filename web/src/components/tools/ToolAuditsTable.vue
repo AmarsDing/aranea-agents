@@ -1,13 +1,5 @@
 <template>
-  <tool-glass-panel v-if="!loading && rows.length === 0">
-    <q-card-section class="column items-center text-center q-pa-xl">
-      <q-avatar size="72px" color="primary" text-color="white" icon="policy" />
-      <div class="text-h6 q-mt-md">{{ $t('toolsPage.auditsPage.emptyTitle') }}</div>
-      <div class="text-body2 muted-caption q-mt-sm">{{ $t('toolsPage.auditsPage.emptySubtitle') }}</div>
-    </q-card-section>
-  </tool-glass-panel>
-
-  <tool-glass-panel v-else>
+  <tool-glass-panel>
     <AppRegistryTable
       :shell="false"
       table-class="tool-runs-data-table"
@@ -15,12 +7,23 @@
       :rows="rows"
       :columns="columns"
       :loading="loading"
+      :error="error"
+      :empty-title="$t('toolsPage.auditsPage.emptyTitle')"
+      :empty-description="$t('toolsPage.auditsPage.emptySubtitle')"
+      empty-icon="policy"
+      :empty-action-label="$t('shell.runs.emptyAction')"
+      empty-action-icon="restart_alt"
       hide-pagination
       :pagination="{ rowsPerPage: 0 }"
+      @retry="$emit('retry')"
+      @empty-action="$emit('reset')"
     >
       <template #body-cell-tool="props">
         <q-td :props="props">
-          <AppRegistryHoverTip :text="clipPreview(props.row.result_summary)" :empty-label="$t('toolsPage.auditsPage.hoverEmpty')">
+          <AppRegistryHoverTip
+            :text="clipPreview(props.row.result_summary)"
+            :empty-label="$t('toolsPage.auditsPage.hoverEmpty')"
+          >
             <div class="min-width-0">
               <div class="app-registry-cell-primary ellipsis">{{ props.row.tool_key }}</div>
               <div class="app-registry-cell-sub ellipsis">{{ props.row.action }}</div>
@@ -64,6 +67,12 @@ import { toolAuditsTableColumns, clipPreview, formatInvocationWhen } from './too
 defineProps<{
   rows: ToolInvocationAudit[];
   loading: boolean;
+  error?: string;
+}>();
+
+defineEmits<{
+  retry: [];
+  reset: [];
 }>();
 
 const columns = computed(() => toolAuditsTableColumns());

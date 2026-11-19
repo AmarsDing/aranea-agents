@@ -195,6 +195,20 @@ func (_u *ReviewTaskUpdate) SetNillableReviewerID(v *string) *ReviewTaskUpdate {
 	return _u
 }
 
+// SetCreatorID sets the "creator_id" field.
+func (_u *ReviewTaskUpdate) SetCreatorID(v string) *ReviewTaskUpdate {
+	_u.mutation.SetCreatorID(v)
+	return _u
+}
+
+// SetNillableCreatorID sets the "creator_id" field if the given value is not nil.
+func (_u *ReviewTaskUpdate) SetNillableCreatorID(v *string) *ReviewTaskUpdate {
+	if v != nil {
+		_u.SetCreatorID(*v)
+	}
+	return _u
+}
+
 // SetDecidedAt sets the "decided_at" field.
 func (_u *ReviewTaskUpdate) SetDecidedAt(v string) *ReviewTaskUpdate {
 	_u.mutation.SetDecidedAt(v)
@@ -311,6 +325,11 @@ func (_u *ReviewTaskUpdate) check() error {
 			return &ValidationError{Name: "reviewer_id", err: fmt.Errorf(`ent: validator failed for field "ReviewTask.reviewer_id": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.CreatorID(); ok {
+		if err := reviewtask.CreatorIDValidator(v); err != nil {
+			return &ValidationError{Name: "creator_id", err: fmt.Errorf(`ent: validator failed for field "ReviewTask.creator_id": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -361,6 +380,9 @@ func (_u *ReviewTaskUpdate) sqlSave(ctx context.Context) (_node int, err error) 
 	}
 	if value, ok := _u.mutation.ReviewerID(); ok {
 		_spec.SetField(reviewtask.FieldReviewerID, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.CreatorID(); ok {
+		_spec.SetField(reviewtask.FieldCreatorID, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.DecidedAt(); ok {
 		_spec.SetField(reviewtask.FieldDecidedAt, field.TypeString, value)
@@ -559,6 +581,20 @@ func (_u *ReviewTaskUpdateOne) SetNillableReviewerID(v *string) *ReviewTaskUpdat
 	return _u
 }
 
+// SetCreatorID sets the "creator_id" field.
+func (_u *ReviewTaskUpdateOne) SetCreatorID(v string) *ReviewTaskUpdateOne {
+	_u.mutation.SetCreatorID(v)
+	return _u
+}
+
+// SetNillableCreatorID sets the "creator_id" field if the given value is not nil.
+func (_u *ReviewTaskUpdateOne) SetNillableCreatorID(v *string) *ReviewTaskUpdateOne {
+	if v != nil {
+		_u.SetCreatorID(*v)
+	}
+	return _u
+}
+
 // SetDecidedAt sets the "decided_at" field.
 func (_u *ReviewTaskUpdateOne) SetDecidedAt(v string) *ReviewTaskUpdateOne {
 	_u.mutation.SetDecidedAt(v)
@@ -688,6 +724,11 @@ func (_u *ReviewTaskUpdateOne) check() error {
 			return &ValidationError{Name: "reviewer_id", err: fmt.Errorf(`ent: validator failed for field "ReviewTask.reviewer_id": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.CreatorID(); ok {
+		if err := reviewtask.CreatorIDValidator(v); err != nil {
+			return &ValidationError{Name: "creator_id", err: fmt.Errorf(`ent: validator failed for field "ReviewTask.creator_id": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -755,6 +796,9 @@ func (_u *ReviewTaskUpdateOne) sqlSave(ctx context.Context) (_node *ReviewTask, 
 	}
 	if value, ok := _u.mutation.ReviewerID(); ok {
 		_spec.SetField(reviewtask.FieldReviewerID, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.CreatorID(); ok {
+		_spec.SetField(reviewtask.FieldCreatorID, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.DecidedAt(); ok {
 		_spec.SetField(reviewtask.FieldDecidedAt, field.TypeString, value)

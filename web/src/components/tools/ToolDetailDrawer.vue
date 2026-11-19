@@ -43,7 +43,9 @@
             :aria-label="tool.readonly ? t('toolsPage.detail.readonlyNoRemove') : t('toolsPage.detail.remove')"
             @click="$emit('remove-tool', tool)"
           >
-            <q-tooltip>{{ tool.readonly ? t('toolsPage.detail.readonlyNoRemove') : t('toolsPage.detail.remove') }}</q-tooltip>
+            <q-tooltip>{{
+              tool.readonly ? t('toolsPage.detail.readonlyNoRemove') : t('toolsPage.detail.remove')
+            }}</q-tooltip>
           </q-btn>
           <q-btn
             flat
@@ -136,24 +138,47 @@
                 <div class="tool-detail-metrics__label">
                   {{ $t('toolsPage.argsQuality.firstPassLabel') }}
                   <q-tooltip>
-                    {{ $t('toolsPage.argsQuality.firstPassTip', { repaired: tool.repaired_count, invalid: tool.invalid_count, invoke: tool.invoke_count }) }}
+                    {{
+                      $t('toolsPage.argsQuality.firstPassTip', {
+                        repaired: tool.repaired_count,
+                        invalid: tool.invalid_count,
+                        invoke: tool.invoke_count,
+                      })
+                    }}
                   </q-tooltip>
                 </div>
               </div>
             </div>
 
             <div class="row q-col-gutter-sm text-body2 q-mb-md">
-              <div class="col-6"><span class="text-weight-medium">{{ t('toolsPage.detail.labelKey') }}</span>{{ tool.key }}</div>
-              <div class="col-6"><span class="text-weight-medium">{{ t('toolsPage.detail.labelCategory') }}</span>{{ tool.category }}</div>
-              <div class="col-6"><span class="text-weight-medium">{{ t('toolsPage.detail.labelSource') }}</span>{{ tool.source }}</div>
-              <div class="col-6"><span class="text-weight-medium">{{ t('toolsPage.detail.labelRisk') }}</span>{{ riskLabel(tool.risk_level) }}</div>
+              <div class="col-6">
+                <span class="text-weight-medium">{{ t('toolsPage.detail.labelKey') }}</span
+                >{{ tool.key }}
+              </div>
+              <div class="col-6">
+                <span class="text-weight-medium">{{ t('toolsPage.detail.labelCategory') }}</span
+                >{{ tool.category }}
+              </div>
+              <div class="col-6">
+                <span class="text-weight-medium">{{ t('toolsPage.detail.labelSource') }}</span
+                >{{ tool.source }}
+              </div>
+              <div class="col-6">
+                <span class="text-weight-medium">{{ t('toolsPage.detail.labelRisk') }}</span
+                >{{ riskLabel(tool.risk_level) }}
+              </div>
             </div>
 
             <q-expansion-item dense-toggle default-opened :label="t('toolsPage.detail.paramsSchema')" class="q-mb-md">
               <div class="q-pt-sm">
                 <p class="app-registry-muted-caption">{{ t('toolsPage.detail.paramsSchemaHint') }}</p>
                 <tool-json-block :text="prettyParamsSchema" />
-                <q-expansion-item v-if="hasResultSchema" dense-toggle :label="t('toolsPage.detail.resultSchema')" class="q-mt-sm">
+                <q-expansion-item
+                  v-if="hasResultSchema"
+                  dense-toggle
+                  :label="t('toolsPage.detail.resultSchema')"
+                  class="q-mt-sm"
+                >
                   <tool-json-block class="q-mt-sm" :text="prettyResultSchema" />
                 </q-expansion-item>
               </div>
@@ -236,7 +261,8 @@
                       <q-item-section>
                         <q-item-label>{{ r.agent_display_name || r.agent_id }}</q-item-label>
                         <q-item-label caption
-                          >{{ formatInvocationWhen(r.started_at) }} · {{ formatInvocationDuration(r.duration_ms) }}</q-item-label
+                          >{{ formatInvocationWhen(r.started_at) }} ·
+                          {{ formatInvocationDuration(r.duration_ms) }}</q-item-label
                         >
                       </q-item-section>
                       <q-item-section side>

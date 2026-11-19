@@ -11,6 +11,7 @@ import { createGatewayServiceClient } from './kratos/gateway/v1/index';
 import { createAvatarServiceClient } from './kratos/avatar/v1/index';
 import { createChannelServiceClient } from './kratos/channel/v1/index';
 import { createCronServiceClient } from './kratos/cron/v1/index';
+import { createCredentialServiceClient } from './kratos/credential/v1/index';
 import { createDecisionRecordServiceClient } from './kratos/decision/v1/index';
 import { createEvaluationServiceClient } from './kratos/evaluation/v1/index';
 import { createHookServiceClient } from './kratos/hook/v1/index';
@@ -37,6 +38,16 @@ import { createRuntimeProfileServiceClient } from './kratos/runtime_profile/v1/i
 import { createChatServiceClient } from './kratos/chat/v1/index';
 import { createComputerUseServiceClient } from './kratos/computeruse/v1/index';
 import { createAgentBridgeServiceClient } from './kratos/agentbridge/v1/index';
+import { createFleetServiceClient } from './kratos/fleet/v1/index';
+import { createCeoboardServiceClient } from './kratos/ceoboard/v1/index';
+import { createApprovalCenterServiceClient } from './kratos/approval/v1/index';
+import { createReviewServiceClient } from './kratos/review/v1/index';
+import {
+  createOfficeScheduleServiceClient,
+  createOfficeNotifyServiceClient,
+  createOfficeAppsServiceClient,
+  createOfficeMailServiceClient,
+} from './kratos/office/v1/index';
 import { requestHandler, kratosApi } from './axiosHandler';
 
 // 每个功能模块的 service（proto 生成客户端 + requestHandler → kratosApi）。
@@ -74,6 +85,39 @@ export function createLlmProviderModelService() {
 
 export function createCronService() {
   return createCronServiceClient(requestHandler);
+}
+
+export function createCredentialService() {
+  return createCredentialServiceClient(requestHandler);
+}
+
+// E 阶段 W1b：统一审批中心（/v1/approvals*）+ 发文审批收编（/v1/review/*）。
+export function createApprovalCenterService() {
+  return createApprovalCenterServiceClient(requestHandler);
+}
+
+export function createReviewService() {
+  return createReviewServiceClient(requestHandler);
+}
+
+// E 阶段 W1c：办公套件（日程 /v1/office/events*、通知 /v1/office/notifications*、
+// 应用启动器 /v1/office/apps*；拍板 K-1..K-5）。
+export function createOfficeScheduleService() {
+  return createOfficeScheduleServiceClient(requestHandler);
+}
+
+export function createOfficeNotifyService() {
+  return createOfficeNotifyServiceClient(requestHandler);
+}
+
+export function createOfficeAppsService() {
+  return createOfficeAppsServiceClient(requestHandler);
+}
+
+// E 阶段 W1d：邮件聚合（/v1/office/mail*；账号密码仅创建/轮换时上行，
+// 列表与详情永不含密码）。
+export function createOfficeMailService() {
+  return createOfficeMailServiceClient(requestHandler);
 }
 
 export function createDecisionService() {
@@ -146,6 +190,15 @@ export function createComputerUseService() {
 
 export function createAgentBridgeService() {
   return createAgentBridgeServiceClient(requestHandler);
+}
+
+// Harness 多任务运行台（复刻 Orca）。
+export function createFleetService() {
+  return createFleetServiceClient(requestHandler);
+}
+
+export function createCeoboardService() {
+  return createCeoboardServiceClient(requestHandler);
 }
 
 export function createArtifactService() {

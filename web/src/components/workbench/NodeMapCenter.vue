@@ -358,7 +358,7 @@ onUnmounted(() => {
   position: relative
   display: grid
   grid-template-columns: 15% 21% minmax(0, 1fr)
-  gap: 12px
+  gap: var(--nt-space-3)
   height: 100%
   min-height: 0
 .wb-nmc__corridor
@@ -407,7 +407,7 @@ onUnmounted(() => {
   display: flex
   align-items: center
   gap: 6px
-  padding: 8px
+  padding: var(--nt-space-2)
   border: 1px solid var(--wb-line-hairline)
   border-radius: var(--wb-radius)
   background: color-mix(in srgb, var(--color-text-primary) 3%, transparent)
@@ -435,7 +435,7 @@ onUnmounted(() => {
   z-index: 1
   display: flex
   flex-direction: column
-  gap: 4px
+  gap: var(--nt-space-1)
   min-height: 0
   overflow-y: auto
 .wb-nmc__bus-entry
@@ -471,7 +471,7 @@ onUnmounted(() => {
   overflow-y: auto
   padding-right: 2px
 .wb-nmc__empty
-  padding: 16px 8px
+  padding: var(--nt-space-4) var(--nt-space-2)
   font-size: var(--wb-caption)
   color: var(--color-text-secondary)
 

@@ -14,6 +14,7 @@ import (
 	bizmedia "aranea-agents/internal/biz/media"
 	"aranea-agents/internal/tools"
 	"aranea-agents/internal/tools/browser"
+	credentialpkg "aranea-agents/internal/tools/credential"
 	kanbanpkg "aranea-agents/internal/tools/kanban"
 	knowledgetool "aranea-agents/internal/tools/knowledge"
 	"aranea-agents/internal/tools/memory"
@@ -142,6 +143,8 @@ type coreShardFP struct {
 	CallAgent          bool
 	Kanban             bool
 	HasKanbanBridge    bool
+	Credential         bool
+	HasCredentialVault bool
 	ReadDocument       bool
 	ReadSpreadsheet    bool
 	Datetime           bool
@@ -302,6 +305,52 @@ func computeShardPlan(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps, p
 		}
 	}
 
+	// E 阶段凭据执行工具（需求文档 §3 V-1）：双闸——环境闸
+	// ARANEA_CREDENTIAL_TOOLS（credentialpkg.Enabled）+ tools 表种子
+	// enabled=false 按 Agent 授予。Executor 恒 nil（computeruse 接线前置），
+	// 工具裁决/审计完整、执行步诚实 unavailable。
+	if credentialpkg.Enabled() {
+		if deps.CredentialVault != nil {
+			cfg.Credential = true
+			cfg.CredentialVault = deps.CredentialVault
+			cfg.CredentialExecutor = deps.CredentialExecutor
+		} else {
+			lg.Warn("credential 工具已启用但 CredentialVault 未注入，跳过凭据工具",
+				loggateway.StepID("agent.tool_build"),
+				loggateway.Str("agent_id", ag.ID))
+		}
+	}
+
+	// E 阶段 W1c 日程工具（calendar_list / calendar_create_draft）：无环境闸——
+	// 审批中心即闸门（create_draft 只产 schedule_draft 草案，人批准后方落事件），
+	// 由 tools 表种子按 agent 授予（eff key，仅在 ToolsEnabled 门内置位）。
+	// CalendarSvc 未注入时裁剪（诚实降级，不伪造空表）。
+	if cfg.Calendar {
+		if deps.CalendarSvc != nil {
+			cfg.CalendarService = deps.CalendarSvc
+		} else {
+			lg.Warn("calendar 已授予但 CalendarSvc 未注入，跳过日程工具",
+				loggateway.StepID("agent.tool_build"),
+				loggateway.Str("agent_id", ag.ID))
+			cfg.Calendar = false
+		}
+	}
+
+	// E 阶段 W1d 邮件工具（mail_list / mail_read / mail_search 只读默认开；
+	// mail_to_task 中风险独立授权键 mail_task）：无环境闸，tools 表种子裁决。
+	// MailSvc 未注入时裁剪（诚实降级）。
+	if cfg.Mail || cfg.MailTask {
+		if deps.MailSvc != nil {
+			cfg.MailService = deps.MailSvc
+		} else {
+			lg.Warn("mail 已授予但 MailSvc 未注入，跳过邮件工具",
+				loggateway.StepID("agent.tool_build"),
+				loggateway.Str("agent_id", ag.ID))
+			cfg.Mail = false
+			cfg.MailTask = false
+		}
+	}
+
 	memoryMaster := deps.HasMemory && biz.ResolveMemoryRuntimePolicy(ag.Settings).MasterEnabled
 	if memoryMaster {
 		cfg.MemoryEnabled = true
@@ -427,6 +476,8 @@ func computeShardPlan(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps, p
 			CallAgent:          coreCfg.CallAgent,
 			Kanban:             coreCfg.Kanban,
 			HasKanbanBridge:    coreCfg.KanbanBridge != nil,
+			Credential:         coreCfg.Credential,
+			HasCredentialVault: coreCfg.CredentialVault != nil,
 			ReadDocument:       coreCfg.ReadDocument,
 			ReadSpreadsheet:    coreCfg.ReadSpreadsheet,
 			Datetime:           coreCfg.Datetime,

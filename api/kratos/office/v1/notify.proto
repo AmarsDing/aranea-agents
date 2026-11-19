@@ -1,0 +1,69 @@
+syntax = "proto3";
+
+package kratos.office.v1;
+
+import "google/api/annotations.proto";
+import "google/api/field_behavior.proto";
+import "google/protobuf/empty.proto";
+import "google/protobuf/timestamp.proto";
+import "aranea/auth/v1/requirement.proto";
+
+option go_package = "aranea-agents/api/kratos/office/v1;v1";
+option java_multiple_files = true;
+option java_package = "api.kratos.office.v1";
+
+// ============================================================================
+// OfficeNotifyService —— 通知中心 MVP（K-4 提醒与邮件摘要的承载面）
+//
+// 定位：进程内通知统一落表 + 铃铛徽标 + WS 直推；向外触达（IM 通道/语音）
+// 由生产方 job 自行叠加，本服务只管「应用内收件箱」。全量生产方为系统行为
+// （cron 提醒/摘要/审批待办提示），写路径不开放 RPC——只读+已读状态管理。
+// ============================================================================
+
+message OfficeNotification {
+  string id = 1;
+  string user_id = 2;
+  string kind = 3;   // schedule_reminder | mail_digest | approval_todo | system
+  string title = 4;
+  string body = 5;
+  string link = 6;   // 前端路由或外部 URL（点击跳转）
+  bool read = 7;
+  google.protobuf.Timestamp created_at = 8;
+}
+
+message ListNotificationsRequest {
+  bool unread_only = 1;
+  int32 page = 2;
+  int32 page_size = 3; // <=0 默认 20，>100 截 100
+}
+
+message ListNotificationsResponse {
+  repeated OfficeNotification items = 1;
+  int64 total = 2;
+  int64 unread_count = 3;
+}
+
+message DismissNotificationRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+service OfficeNotifyService {
+  rpc ListNotifications(ListNotificationsRequest) returns (ListNotificationsResponse) {
+    option (aranea.auth.v1.requirement) = {authenticated: true};
+    option (google.api.http) = {get: "/v1/office/notifications"};
+  }
+  rpc DismissNotification(DismissNotificationRequest) returns (google.protobuf.Empty) {
+    option (aranea.auth.v1.requirement) = {authenticated: true};
+    option (google.api.http) = {
+      post: "/v1/office/notifications/{id}/dismiss"
+      body: "*"
+    };
+  }
+  rpc MarkAllNotificationsRead(google.protobuf.Empty) returns (google.protobuf.Empty) {
+    option (aranea.auth.v1.requirement) = {authenticated: true};
+    option (google.api.http) = {
+      post: "/v1/office/notifications:markAllRead"
+      body: "*"
+    };
+  }
+}

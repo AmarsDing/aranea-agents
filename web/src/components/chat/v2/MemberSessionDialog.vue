@@ -3,46 +3,35 @@
   - 替代原 TeamRunCard 折叠展开的成员面板展示方式
   - 内容复用 MemberSessionPanel（embedded 模式：始终展开、无折叠开关）
   - 纯展示组件：open 由父组件 v-model 控制，操作事件原样透传
+  2026-11-11：迁入 AppDialog；移动端（<600px）沿用最大化弹框。
 -->
 <template>
-  <!-- 移动端（<600px）最大化弹框：注入输入栏成为底部操作区（72 §3.2 触控化） -->
-  <q-dialog
+  <AppDialog
     :model-value="open"
+    size="lg"
     :maximized="isMobileScreen"
+    :title="title"
+    card-class="member-session-dialog"
     @update:model-value="(v: boolean) => $emit('update:open', v)"
   >
-    <!-- 2026-07-27：md(720px) → lg(880px) + body 60vh→70vh，给活动流/任务指令/输入栏更充裕空间 -->
-    <q-card class="app-dialog-card app-dialog-card--lg member-session-dialog">
-      <q-card-section class="member-session-dialog__header">
-        <span class="member-session-dialog__title">{{ title }}</span>
-        <q-btn
-          flat
-          dense
-          round
-          icon="close"
-          class="member-session-dialog__close"
-          :aria-label="t('chat.v2.cancel')"
-          @click="$emit('update:open', false)"
-        />
-      </q-card-section>
-      <q-card-section v-if="memberSession" class="member-session-dialog__body" @click="handleCodeBlockClick">
-        <MemberSessionPanel
-          :member-session="memberSession"
-          embedded
-          @pause-agent="(sid) => $emit('pause-agent', sid)"
-          @inject-agent="(p) => $emit('inject-agent', p)"
-          @expand="(ids) => $emit('expand', ids)"
-          @confirm-step="(p) => $emit('confirm-step', p)"
-        />
-      </q-card-section>
-    </q-card>
-  </q-dialog>
+    <div v-if="memberSession" class="member-session-dialog__body" @click="handleCodeBlockClick">
+      <MemberSessionPanel
+        :member-session="memberSession"
+        embedded
+        @pause-agent="(sid) => $emit('pause-agent', sid)"
+        @inject-agent="(p) => $emit('inject-agent', p)"
+        @expand="(ids) => $emit('expand', ids)"
+        @confirm-step="(p) => $emit('confirm-step', p)"
+      />
+    </div>
+  </AppDialog>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useQuasar } from 'quasar';
+import AppDialog from '../../common/AppDialog.vue';
 import type { MemberSession } from '../../../features/chat/v2Types';
 import type { ConfirmStepPayload } from '../../../features/chat/types';
 import { useChatCodeCopy } from '../../../features/chat/composables/useChatMessageScroll';
@@ -98,47 +87,18 @@ const title = computed(() => props.memberSession?.AgentName || props.memberSessi
 </script>
 
 <style lang="sass" scoped>
-.member-session-dialog
-  &__header
-    display: flex
-    align-items: center
-    gap: 8px
-    padding-bottom: 4px
+.member-session-dialog__body
+  padding-top: var(--nt-space-1)
+  max-height: 70vh
+  overflow-y: auto
 
-  &__title
-    flex: 1 1 auto
-    min-width: 0
-    font-size: 14px
-    font-weight: 600
-    color: var(--color-text-primary)
-    white-space: nowrap
-    overflow: hidden
-    text-overflow: ellipsis
-
-  &__close
-    flex: 0 0 auto
-
-  &__body
-    padding-top: 4px
-    max-height: 70vh
-    overflow-y: auto
-
-// 移动端（<600px，与 $q.screen.lt.sm 一致）：最大化弹框 → 卡片 flex 列，
-// body 撑满剩余高度且不整体滚动（活动流在 MemberSessionPanel 内部滚动，输入栏固定底部）。
+// 移动端（<600px，与 $q.screen.lt.sm 一致）：最大化弹框 → body 撑满剩余高度且不整体滚动
+// （活动流在 MemberSessionPanel 内部滚动，输入栏固定底部）。
 @media (max-width: 599px)
-  .member-session-dialog
+  .member-session-dialog__body
     display: flex
     flex-direction: column
     height: 100%
-
-    &__header
-      flex: 0 0 auto
-
-    &__body
-      flex: 1 1 auto
-      min-height: 0
-      max-height: none
-      overflow: hidden
-      display: flex
-      flex-direction: column
+    max-height: none
+    overflow: hidden
 </style>

@@ -316,10 +316,10 @@ function answerDisplay(i: number): string {
   &__header
     display: flex
     align-items: center
-    gap: 8px
+    gap: var(--nt-space-2)
     width: 100%
     margin: 0
-    padding: 8px 12px
+    padding: var(--nt-space-2) var(--nt-space-3)
     border: none
     cursor: pointer
     font: inherit
@@ -395,7 +395,7 @@ function answerDisplay(i: number): string {
   &__question
     display: flex
     align-items: baseline
-    gap: 8px
+    gap: var(--nt-space-2)
     margin-bottom: 10px
 
   &__question-text
@@ -417,9 +417,9 @@ function answerDisplay(i: number): string {
   &__option
     display: flex
     align-items: center
-    gap: 8px
+    gap: var(--nt-space-2)
     padding: 8px 10px
-    border-radius: 10px
+    border-radius: 8px
     border: 1px solid var(--glass-border)
     cursor: pointer
     transition: border-color 0.15s ease, background 0.15s ease
@@ -475,8 +475,8 @@ function answerDisplay(i: number): string {
     width: 100%
     box-sizing: border-box
     padding: 8px 10px
-    margin-bottom: 12px
-    border-radius: 10px
+    margin-bottom: var(--nt-space-3)
+    border-radius: 8px
     border: 1px solid var(--glass-border)
     background: transparent
     color: var(--color-text-primary)
@@ -493,7 +493,7 @@ function answerDisplay(i: number): string {
   &__nav
     display: flex
     justify-content: flex-end
-    gap: 8px
+    gap: var(--nt-space-2)
 
   &__btn
     padding: 6px 16px

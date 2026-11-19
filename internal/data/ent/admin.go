@@ -4,6 +4,7 @@ package ent
 
 import (
 	"aranea-agents/internal/data/ent/admin"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -29,6 +30,18 @@ type Admin struct {
 	Password string `json:"-"`
 	// WorkspaceID holds the value of the "workspace_id" field.
 	WorkspaceID string `json:"workspace_id,omitempty"`
+	// role codes; source of truth is user_roles edge, this JSON is a read cache
+	Roles []string `json:"roles,omitempty"`
+	// 密级资质 L1-L5（1 最低，5 最高）
+	Clearance int `json:"clearance,omitempty"`
+	// department code
+	Dept string `json:"dept,omitempty"`
+	// account status
+	Status admin.Status `json:"status,omitempty"`
+	// require password change on next login (wb migrated users)
+	ForceReset bool `json:"force_reset,omitempty"`
+	// session revocation version; bumped on kick/password-change/offboard/role-change
+	TokenVersion int64 `json:"token_version,omitempty"`
 	// CreateTime holds the value of the "create_time" field.
 	CreateTime time.Time `json:"create_time,omitempty"`
 	// UpdateTime holds the value of the "update_time" field.
@@ -41,9 +54,13 @@ func (*Admin) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case admin.FieldID:
+		case admin.FieldRoles:
+			values[i] = new([]byte)
+		case admin.FieldForceReset:
+			values[i] = new(sql.NullBool)
+		case admin.FieldID, admin.FieldClearance, admin.FieldTokenVersion:
 			values[i] = new(sql.NullInt64)
-		case admin.FieldName, admin.FieldEmail, admin.FieldAvatar, admin.FieldAccess, admin.FieldPassword, admin.FieldWorkspaceID:
+		case admin.FieldName, admin.FieldEmail, admin.FieldAvatar, admin.FieldAccess, admin.FieldPassword, admin.FieldWorkspaceID, admin.FieldDept, admin.FieldStatus:
 			values[i] = new(sql.NullString)
 		case admin.FieldCreateTime, admin.FieldUpdateTime:
 			values[i] = new(sql.NullTime)
@@ -103,6 +120,44 @@ func (_m *Admin) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field workspace_id", values[i])
 			} else if value.Valid {
 				_m.WorkspaceID = value.String
+			}
+		case admin.FieldRoles:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field roles", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.Roles); err != nil {
+					return fmt.Errorf("unmarshal field roles: %w", err)
+				}
+			}
+		case admin.FieldClearance:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field clearance", values[i])
+			} else if value.Valid {
+				_m.Clearance = int(value.Int64)
+			}
+		case admin.FieldDept:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field dept", values[i])
+			} else if value.Valid {
+				_m.Dept = value.String
+			}
+		case admin.FieldStatus:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field status", values[i])
+			} else if value.Valid {
+				_m.Status = admin.Status(value.String)
+			}
+		case admin.FieldForceReset:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field force_reset", values[i])
+			} else if value.Valid {
+				_m.ForceReset = value.Bool
+			}
+		case admin.FieldTokenVersion:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field token_version", values[i])
+			} else if value.Valid {
+				_m.TokenVersion = value.Int64
 			}
 		case admin.FieldCreateTime:
 			if value, ok := values[i].(*sql.NullTime); !ok {
@@ -168,6 +223,24 @@ func (_m *Admin) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("workspace_id=")
 	builder.WriteString(_m.WorkspaceID)
+	builder.WriteString(", ")
+	builder.WriteString("roles=")
+	builder.WriteString(fmt.Sprintf("%v", _m.Roles))
+	builder.WriteString(", ")
+	builder.WriteString("clearance=")
+	builder.WriteString(fmt.Sprintf("%v", _m.Clearance))
+	builder.WriteString(", ")
+	builder.WriteString("dept=")
+	builder.WriteString(_m.Dept)
+	builder.WriteString(", ")
+	builder.WriteString("status=")
+	builder.WriteString(fmt.Sprintf("%v", _m.Status))
+	builder.WriteString(", ")
+	builder.WriteString("force_reset=")
+	builder.WriteString(fmt.Sprintf("%v", _m.ForceReset))
+	builder.WriteString(", ")
+	builder.WriteString("token_version=")
+	builder.WriteString(fmt.Sprintf("%v", _m.TokenVersion))
 	builder.WriteString(", ")
 	builder.WriteString("create_time=")
 	builder.WriteString(_m.CreateTime.Format(time.ANSIC))

@@ -98,12 +98,25 @@
       </div>
     </div>
 
-    <div v-if="topBars.length" class="ov-topbars">
+    <div v-if="topBars.length || agentBars.length" class="ov-topbars">
       <div class="ov-topbars__head">
         <span class="ov-tile__label">{{ t('overviewPage.v2.topCostTitle') }}</span>
         <span class="ov-tile__caption">{{ t('overviewPage.v2.topCostCap') }}</span>
+        <q-btn-toggle
+          v-model="by"
+          dense
+          outline
+          no-caps
+          class="ov-topbars__by"
+          :options="[
+            { label: t('overviewPage.v2.spendByModel'), value: 'model' },
+            { label: t('overviewPage.v2.spendByAgent'), value: 'agent' },
+          ]"
+        />
       </div>
-      <div v-for="bar in topBars" :key="bar.key" class="ov-topbars__row">
+      <div v-if="!bars.length" class="ov-tile__caption">{{ t('overviewPage.v2.spendEmpty') }}</div>
+      <div v-for="(bar, i) in bars" :key="bar.key" class="ov-topbars__row">
+        <span class="ov-topbars__rank" aria-hidden="true">{{ String(i + 1).padStart(2, '0') }}</span>
         <span class="ov-topbars__label" :title="bar.key">{{ bar.label }}</span>
         <div class="ov-topbars__track">
           <div
@@ -113,20 +126,62 @@
           />
         </div>
         <span class="ov-topbars__value">
-          {{ bar.unpriced ? t('overviewPage.v2.unpricedMark') : formatUsdCompact(bar.costUsd) }}
+          {{ bar.unpriced ? t('overviewPage.v2.unpricedMark') : formatUsdCompactFromUsd(bar.costUsd) }}
         </span>
+      </div>
+    </div>
+
+    <!-- 编码终端：terminals 为 undefined 时还没取回，不占位；null 是取不到，如实写明 -->
+    <div v-if="terminals !== undefined" class="ov-topbars">
+      <div class="ov-topbars__head">
+        <span class="ov-tile__label">{{ t('overviewPage.v2.termTitle') }}</span>
+        <span class="ov-tile__caption">{{ t('overviewPage.v2.termCap') }}</span>
+      </div>
+      <div v-if="!terminals" class="ov-tile__caption">{{ t('overviewPage.v2.termUnavailable') }}</div>
+      <div v-else-if="!terminals.length" class="ov-tile__caption">{{ t('overviewPage.v2.termEmpty') }}</div>
+      <div v-for="term in terminals ?? []" :key="term.agent" class="ov-terms__row">
+        <span class="ov-topbars__label" :title="term.source">{{ term.agent }}</span>
+        <div class="ov-terms__wins">
+          <div v-for="w in term.windows" :key="w.label" class="ov-terms__win" :title="windowTip(w)">
+            <span class="ov-tile__caption">{{ w.label }}</span>
+            <div
+              v-if="w.percent >= 0"
+              class="ov-topbars__track"
+              role="progressbar"
+              :aria-label="`${term.agent} ${w.label}`"
+              :aria-valuenow="Math.round(w.percent)"
+              aria-valuemin="0"
+              aria-valuemax="100"
+            >
+              <div
+                class="ov-topbars__fill ov-terms__fill"
+                :class="{
+                  'ov-terms__fill--warn': w.percent >= 70 && w.percent < 90,
+                  'ov-terms__fill--danger': w.percent >= 90,
+                }"
+                :style="{ width: `${Math.min(w.percent, 100)}%` }"
+              />
+            </div>
+            <span v-else class="ov-tile__caption">{{ t('overviewPage.v2.termQuotaUnknown') }}</span>
+            <span class="ov-topbars__value">{{
+              w.percent >= 0 ? `${Math.round(w.percent)}%` : formatCompactCount(w.tokens)
+            }}</span>
+          </div>
+        </div>
+        <span class="ov-tile__caption">{{ t('overviewPage.v2.termSessions', { count: term.sessions }) }}</span>
       </div>
     </div>
   </section>
 </template>
 
 <script setup lang="ts">
+import { computed, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import OverviewStatTile from './OverviewStatTile.vue';
-import { formatUsdCompact } from '../../features/usage/moneyFormat';
-import type { OvBudget, OvCacheHit, OvTopBar } from './ovTypes';
+import { formatCompactCount, formatCount, formatUsdCompactFromUsd } from '../../features/usage/moneyFormat';
+import type { OvBudget, OvCacheHit, OvTerminal, OvTopBar } from './ovTypes';
 
-withDefaults(
+const props = withDefaults(
   defineProps<{
     available?: boolean;
     costValueUsd: string;
@@ -134,12 +189,25 @@ withDefaults(
     budget: OvBudget;
     unpricedCount: number;
     topBars: OvTopBar[];
+    agentBars?: OvTopBar[];
     cache: OvCacheHit;
+    terminals?: OvTerminal[] | null;
   }>(),
-  { available: true },
+  { available: true, agentBars: () => [], terminals: undefined },
 );
 
 defineEmits<{ drill: [key: string] }>();
 
 const { t } = useI18n();
+
+const by = ref<'model' | 'agent'>('model');
+const bars = computed(() => (by.value === 'model' ? props.topBars : props.agentBars));
+
+function windowTip(w: OvTerminal['windows'][number]) {
+  const tip = t('overviewPage.v2.termWindowTip', { label: w.label, tokens: formatCount(w.tokens) });
+  if (!w.resetsAt) return tip;
+  const at = new Date(w.resetsAt);
+  const time = Number.isNaN(at.getTime()) ? w.resetsAt : at.toLocaleString();
+  return `${tip} · ${t('overviewPage.v2.termResets', { time })}`;
+}
 </script>

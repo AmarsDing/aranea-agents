@@ -3,6 +3,9 @@ import { BarChart, LineChart, PieChart } from 'echarts/charts';
 import { GridComponent, LegendComponent, TooltipComponent } from 'echarts/components';
 import { CanvasRenderer } from 'echarts/renderers';
 import type { EChartsCoreOption } from 'echarts/core';
+import { readCssVar } from '../../utils/cssVar';
+
+export { readCssVar };
 
 let registered = false;
 
@@ -10,17 +13,6 @@ export function ensureUsageEcharts(): void {
   if (registered) return;
   echarts.use([BarChart, LineChart, PieChart, GridComponent, TooltipComponent, LegendComponent, CanvasRenderer]);
   registered = true;
-}
-
-/**
- * 读取 CSS 变量。夜间 token 定义在 body.body--dark 上，
- * 必须从 body 读取才能拿到昼夜覆盖（html 读不到 body 上的变量）。
- */
-export function readCssVar(name: string, fallback: string): string {
-  if (typeof document === 'undefined') return fallback;
-  const el = document.body ?? document.documentElement;
-  const v = getComputedStyle(el).getPropertyValue(name).trim();
-  return v || fallback;
 }
 
 export function usageChartPalette() {

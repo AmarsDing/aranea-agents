@@ -444,6 +444,27 @@ func TestUsecase_CreateDocument(t *testing.T) {
 				}
 			},
 		},
+		{
+			"negative classification rejected",
+			Document{CollectionID: "col-1", Source: "file.txt", Classification: -1},
+			nil, true, ErrClassificationInvalid, nil,
+		},
+		{
+			"classification above 5 rejected",
+			Document{CollectionID: "col-1", Source: "file.txt", Classification: 6},
+			nil, true, ErrClassificationInvalid, nil,
+		},
+		{
+			"classification preserved",
+			Document{CollectionID: "col-1", Source: "file.txt", Classification: 4},
+			func(_ context.Context, d Document) (Document, error) { return d, nil },
+			false, nil,
+			func(t *testing.T, got Document) {
+				if got.Classification != 4 {
+					t.Errorf("Classification = %d, want 4", got.Classification)
+				}
+			},
+		},
 	}
 
 	for _, tt := range tests {

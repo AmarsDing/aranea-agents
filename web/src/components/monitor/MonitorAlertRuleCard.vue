@@ -219,8 +219,8 @@ function onMetricChange(key: string) {
 .rule-state-pill {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 3px 10px;
+  gap: var(--nt-space-2);
+  padding: var(--nt-space-1) var(--nt-space-3);
   border-radius: 999px;
   font-size: 11px;
   font-weight: 600;

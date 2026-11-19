@@ -2,6 +2,7 @@ package pkginstall
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -49,9 +50,12 @@ var cloneBackoff = func(attempt int) time.Duration {
 // FetchFromURL clones a git repository (shallow) into a temporary directory.
 // Returns the directory path and a cleanup function.
 //
+// ctx 取消时重试退避立即返回 ctx.Err()（评审 2026-11-09 D-LOW：原 time.Sleep
+// 退避不可取消，CN 网络抖动叠加 2s/4s 退避会把取消拖延到秒级）。
+//
 // Implementation note: uses os/exec("git clone --depth 1") instead of go-git
 // to avoid a large transitive dependency. Requires git in PATH.
-func FetchFromURL(repoURL, ref string, quiet bool) (pkgDir string, cleanup func(), err error) {
+func FetchFromURL(ctx context.Context, repoURL, ref string, quiet bool) (pkgDir string, cleanup func(), err error) {
 	var lastErr error
 	for attempt := 1; attempt <= cloneMaxAttempts; attempt++ {
 		pkgDir, cleanup, err = fetchFromURLOnce(repoURL, ref, quiet)
@@ -60,7 +64,13 @@ func FetchFromURL(repoURL, ref string, quiet bool) (pkgDir string, cleanup func(
 		}
 		lastErr = err
 		if attempt < cloneMaxAttempts {
-			time.Sleep(cloneBackoff(attempt))
+			timer := time.NewTimer(cloneBackoff(attempt))
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				return "", nil, ctx.Err()
+			case <-timer.C:
+			}
 		}
 	}
 	return "", nil, lastErr

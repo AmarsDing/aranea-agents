@@ -79,3 +79,7 @@ func (m *memCronRepoReset) InsertCronTaskRun(context.Context, CronTaskRunInput) 
 func (m *memCronRepoReset) UpdateCronTaskRun(context.Context, string, string, string, string, string) error {
 	return nil
 }
+
+func (m *memCronRepoReset) ResolveCronTaskFailures(context.Context, string, string) (CronTaskRun, int, error) {
+	return CronTaskRun{}, 0, nil
+}

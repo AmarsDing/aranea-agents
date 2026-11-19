@@ -3,6 +3,8 @@ import {
   createPrerollBuffer,
   createVoiceSessionClient,
   shouldUplinkAudio,
+  VOICE_CLOSE_CODE_SESSION_REVOKED,
+  type VoiceCloseInfo,
   type VoiceDownstreamHandlers,
   type VoiceState,
 } from '../voice/useVoiceSession';
@@ -16,16 +18,16 @@ class FakeWebSocket {
   closed = false;
   onopen: (() => void) | null = null;
   onmessage: ((ev: { data: unknown }) => void) | null = null;
-  onclose: (() => void) | null = null;
+  onclose: ((ev: { code: number; reason: string }) => void) | null = null;
   onerror: ((e: unknown) => void) | null = null;
 
   send(data: string | ArrayBuffer): void {
     this.sent.push(data);
   }
-  close(): void {
+  close(code = 1000, reason = ''): void {
     this.closed = true;
     this.readyState = 3;
-    this.onclose?.();
+    this.onclose?.({ code, reason });
   }
   // 测试辅助
   open(): void {
@@ -212,6 +214,16 @@ describe('createVoiceSessionClient — 下行分发', () => {
     expect(starts).toEqual([{ encoding: 'pcm_f32le_16k', sampleRate: 16000 }]);
     expect(audio).toEqual([chunk]);
     expect(ends).toEqual([false, true]);
+  });
+
+  it('评审 V3：onclose 事件摘要 {code, reason} 透传 onClose（4401 = 会话吊销）', () => {
+    const closes: VoiceCloseInfo[] = [];
+    const { client, sockets } = makeClient({ onClose: (info) => closes.push(info!) });
+    client.connect();
+    sockets[0].open();
+    sockets[0].close(VOICE_CLOSE_CODE_SESSION_REVOKED, 'session_revoked');
+    sockets[0].close(1000, 'normal'); // ws 已置空：迟到的第二次关闭不得重复上报
+    expect(closes).toEqual([{ code: 4401, reason: 'session_revoked' }]);
   });
 
   it('dispatches voice.error / voice.replaced / ignores pong and malformed frames', () => {

@@ -57,6 +57,7 @@
                 flat
                 dense
                 round
+                class="pwd-vis-toggle"
                 :icon="isCandidateKeyVisible(idx) ? 'visibility_off' : 'visibility'"
                 :aria-label="isCandidateKeyVisible(idx) ? '隐藏 API Key' : '显示 API Key'"
                 @click="toggleCandidateKeyVisibility(idx)"

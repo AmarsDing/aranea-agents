@@ -1,5 +1,6 @@
 import { onMounted, ref } from 'vue';
 import { useQuasar } from 'quasar';
+import { confirm } from '../../composables/useAppConfirm';
 import { useRouter } from 'vue-router';
 import { useSkillsStore } from '../../stores/skills';
 import type { Skill, SkillHealthMetric, SkillVersionDetail } from './types';
@@ -61,16 +62,12 @@ export function useSkillDetailPage(skillId: string) {
   }
 
   async function rollbackVersion(version: SkillVersionDetail) {
-    const ok = await new Promise<boolean>((resolve) => {
-      $q.dialog({
-        title: '回滚版本',
-        message: `确认回滚到 ${version.version || version.id}？将新建版本并保留历史。`,
-        cancel: { label: '取消', flat: true, noCaps: true },
-        ok: { label: '回滚', noCaps: true, color: 'primary' },
-        persistent: true,
-      })
-        .onOk(() => resolve(true))
-        .onCancel(() => resolve(false));
+    const ok = await confirm({
+      title: '回滚版本',
+      message: `确认回滚到 ${version.version || version.id}？将新建版本并保留历史。`,
+      cancelLabel: '取消',
+      confirmLabel: '回滚',
+      tone: 'primary',
     });
     if (!ok) return;
     rollingId.value = version.id;

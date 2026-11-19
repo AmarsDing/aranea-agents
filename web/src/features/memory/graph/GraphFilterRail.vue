@@ -16,7 +16,7 @@
       <q-list v-if="matches.length" dense bordered class="graph-rail__matches q-mt-xs">
         <q-item v-for="m in matches" :key="m.id" clickable dense @click="emit('locate', m.id)">
           <q-item-section avatar>
-            <q-badge :style="{ background: memoryLayerColor(m.layer) }" rounded />
+            <q-badge :class="`graph-rail__layer--${memoryLayerTone(m.layer)}`" rounded />
           </q-item-section>
           <q-item-section>{{ m.label }}</q-item-section>
         </q-item>
@@ -33,7 +33,7 @@
         :label="`${layer} · ${t(`memory.panorama.layers.${layer}.name`)}`"
         @update:model-value="emit('toggle-layer', layer)"
       >
-        <q-badge :style="{ background: memoryLayerColor(layer) }" rounded class="q-ml-sm graph-rail__swatch" />
+        <q-badge :class="['q-ml-sm', 'graph-rail__swatch', `graph-rail__layer--${memoryLayerTone(layer)}`]" rounded />
       </q-toggle>
     </div>
 
@@ -100,7 +100,7 @@
 import { ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { UnifiedGraphNode } from '../types';
-import { memoryLayerColor } from '../panorama/layerMeta';
+import { memoryLayerTone } from '../panorama/layerMeta';
 import { GRAPH_LAYERS } from './composables/useUnifiedMemoryGraph';
 
 const props = defineProps<{
@@ -138,6 +138,31 @@ function onKeywordInput() {
   display: inline-block;
   height: 10px;
   width: 10px;
+}
+
+/* 层色：与 --nt-memory-layer-* 令牌同源（memoryLayerColor 读取同一批令牌） */
+.graph-rail__layer--l0 {
+  background: var(--nt-memory-layer-0);
+}
+
+.graph-rail__layer--l1 {
+  background: var(--nt-memory-layer-1);
+}
+
+.graph-rail__layer--l2 {
+  background: var(--nt-memory-layer-2);
+}
+
+.graph-rail__layer--l3 {
+  background: var(--nt-memory-layer-3);
+}
+
+.graph-rail__layer--l4 {
+  background: var(--nt-memory-layer-4);
+}
+
+.graph-rail__layer--fallback {
+  background: var(--nt-memory-layer-fallback);
 }
 
 .graph-rail__matches {

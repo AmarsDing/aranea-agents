@@ -5,18 +5,19 @@
  * HudScene 每帧调用 `hudParamsFor(state, level, boot)` 取参应用。
  *
  * v3 说明：视觉完全复刻 TwinSprite SpriteOrb——uAmp（0.12+level×0.38）、
- * 粒子环转速/缩放、配色 #123a6e→#4dd8e8 均为 TwinSprite 原值；状态差异仅
+ * 粒子环转速/缩放、配色（--nt-hud-orb-a → --nt-hud-orb-b）均为 TwinSprite 原值；状态差异仅
  * 映射为噪声流速/环转速/核心收缩/颜色/震动（设计 §7.4 v3 状态映射表）。
  */
 
+import { canvasPalette } from '../../../utils/canvasPalette';
 import type { VoiceState } from '../types';
 
-/** TwinSprite 光球配色（SpriteOrb.vue uColorA/uColorB 原值）。 */
-export const TINT_ORB_A = '#123a6e';
-export const TINT_ORB_B = '#4dd8e8';
-/** 警示红系（仅 interrupted/error，V5.1 约束沿用）。 */
-export const TINT_RED_A = '#4c0519';
-export const TINT_RED_B = '#f87171';
+/** TwinSprite 光球配色（--nt-hud-orb-*，SpriteOrb 原值的令牌化）。 */
+export const TINT_ORB_A = canvasPalette().hud.orbA;
+export const TINT_ORB_B = canvasPalette().hud.orbB;
+/** 警示红系（仅 interrupted/error，V5.1 约束沿用；--nt-hud-alert-*）。 */
+export const TINT_RED_A = canvasPalette().hud.alertA;
+export const TINT_RED_B = canvasPalette().hud.alertB;
 
 /** TwinSprite uAmp 公式常量：uAmp = AMP_BASE + level × AMP_GAIN。 */
 const AMP_BASE = 0.12;

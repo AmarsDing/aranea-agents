@@ -403,10 +403,10 @@ function copyMessage() {
 .task-interrupted
   display: flex
   align-items: center
-  gap: 8px
-  margin: 4px 0 8px
-  padding: 8px 12px
-  border-radius: 10px
+  gap: var(--nt-space-2)
+  margin: var(--nt-space-1) 0 var(--nt-space-2)
+  padding: var(--nt-space-2) var(--nt-space-3)
+  border-radius: 8px
   border: 1px solid var(--color-warning)
   background: color-mix(in srgb, var(--color-warning) 8%, transparent)
 
@@ -428,13 +428,13 @@ function copyMessage() {
   flex-direction: column
   align-items: flex-end
   gap: 6px
-  margin-bottom: 8px
+  margin-bottom: var(--nt-space-2)
 
   &__header
     display: flex
     align-items: center
-    gap: 8px
-    padding-right: 4px
+    gap: var(--nt-space-2)
+    padding-right: var(--nt-space-1)
 
   &__time
     font-size: 12px
@@ -494,7 +494,7 @@ function copyMessage() {
     max-width: 70%
     background: var(--glass-surface)
     border: 1px solid var(--glass-border)
-    border-radius: 14px 14px 4px 14px
+    border-radius: 12px 14px 4px 14px
     padding: 10px 14px
     word-break: break-word
 
@@ -530,7 +530,7 @@ function copyMessage() {
 .task-meta-bar
   display: flex
   align-items: center
-  gap: 8px
+  gap: var(--nt-space-2)
   margin: -2px 0 8px auto
   width: fit-content
   padding: 4px 10px
@@ -550,7 +550,7 @@ function copyMessage() {
   display: flex
   flex-direction: column
   gap: 10px
-  margin: 4px 0 8px
+  margin: var(--nt-space-1) 0 var(--nt-space-2)
 
   &-bar
     height: 14px
@@ -575,8 +575,8 @@ function copyMessage() {
 /* 收起执行过程按钮（水合态底部） */
 .task-card__collapse-btn
   display: block
-  margin: 4px auto 8px
-  padding: 4px 12px
+  margin: var(--nt-space-1) auto var(--nt-space-2)
+  padding: var(--nt-space-1) var(--nt-space-3)
   border: none
   background: transparent
   color: var(--color-text-tertiary)

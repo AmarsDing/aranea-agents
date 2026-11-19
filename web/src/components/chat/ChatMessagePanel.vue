@@ -732,5 +732,5 @@ onMounted(() => {
 
   &__sep
     color: var(--color-text-tertiary)
-    margin: 0 4px
+    margin: 0 var(--nt-space-1)
 </style>

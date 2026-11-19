@@ -18,6 +18,7 @@ type mockRepo struct {
 	listRunFn   func(ctx context.Context, q TaskRunQuery) ([]TaskRun, int, error)
 	insertRunFn func(ctx context.Context, in TaskRunInput) error
 	updateRunFn func(ctx context.Context, id, status, finishedAt, outputJSON, errorMessage string) error
+	resolveFn   func(ctx context.Context, runID, actor string) (TaskRun, int, error)
 }
 
 func (m *mockRepo) ListCronTasks(ctx context.Context) ([]Task, error) {
@@ -46,6 +47,12 @@ func (m *mockRepo) InsertCronTaskRun(ctx context.Context, in TaskRunInput) error
 }
 func (m *mockRepo) UpdateCronTaskRun(ctx context.Context, id, status, finishedAt, outputJSON, errorMessage string) error {
 	return m.updateRunFn(ctx, id, status, finishedAt, outputJSON, errorMessage)
+}
+func (m *mockRepo) ResolveCronTaskFailures(ctx context.Context, runID, actor string) (TaskRun, int, error) {
+	if m.resolveFn == nil {
+		return TaskRun{}, 0, nil
+	}
+	return m.resolveFn(ctx, runID, actor)
 }
 
 type mockTaskTrigger struct {

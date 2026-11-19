@@ -52,6 +52,11 @@ func mapFactKindToken(kind string) string {
 		return "agent_instruction"
 	case "domain_knowledge":
 		return "domain_knowledge"
+	case "note":
+		// D3 记忆分域：笔记（workbench 迁移/用户记事）是显式一等 kind，
+		// 恒等保留——不进 user_identity 启发式（Canonicalize 的 identity/
+		// health 判定在前，但笔记走 UpsertFactRow 直写不经过 canonicalize）。
+		return "note"
 	default:
 		k := strings.ToLower(strings.TrimSpace(kind))
 		if k == "" {

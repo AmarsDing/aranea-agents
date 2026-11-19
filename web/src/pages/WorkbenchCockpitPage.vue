@@ -3,7 +3,7 @@
     <CockpitShell :retreat="!!drill" :offline="!wsConnected">
       <template #topbar>
         <CockpitTopBar
-          :today-await="youQueue.total.value"
+          :await-total="youQueue.total.value"
           :ws-connected="wsConnected"
           :clock-iso="nowIso"
           :trust-state="trustState"
@@ -54,9 +54,15 @@
           :lanes="youQueue.lanes.value"
           :total="youQueue.total.value"
           :selected-id="floatItem?.id ?? ''"
+          :busy-ids="busyIds"
+          :errors="itemErrors"
+          :now-iso="nowIso"
           @sign="onRowSign"
+          @batch-sign="onBatchSign"
           @goto-item="onGotoItem"
           @focus-item="onFocusItem"
+          @retry-lane="onRetryLane"
+          @open-route="(route) => router.push(route)"
         />
       </template>
 
@@ -64,7 +70,7 @@
         <StatusBar
           :ws-connected="wsConnected"
           :clock-iso="nowIso"
-          :stale-seconds="staleSeconds"
+          :freshness-seconds="laneFreshnessSeconds"
           :event-rate="stream.eventRatePerMin.value"
           :backlog-count="backlogCount"
           :trust-state="trustState"
@@ -74,8 +80,9 @@
       <template #floats>
         <ApprovalFloat
           :item="floatItem"
-          :busy="signing"
+          :busy="!!floatItem && (busyIds.includes(floatItem.id) || busyIds.includes(`reject:${floatItem.id}`))"
           :docked="!!drill"
+          :error="floatItem ? (itemErrors[floatItem.id] ?? '') : ''"
           @sign="onFloatSign"
           @dismiss="floatItem = null"
         />
@@ -170,8 +177,20 @@ const wsConnected = computed(() => stream.connected.value);
 
 // ——— YOU 金门 ———
 const floatItem = ref<YouItem | null>(null);
-const signing = ref(false);
+/** 在途签批条目（含批量；reject: 前缀表示拒绝理由确认在途）——驱动行内 loading/disable 防重复提交 */
+const busyIds = ref<string[]>([]);
+/** 行内失败原因（不落戳不写绿行；刷新后仍在该条目则持续展示） */
+const itemErrors = ref<Record<string, string>>({});
 const sealReceipt = ref<SignReceipt | null>(null);
+
+/** 状态栏新鲜度：各 lane 最旧一次成功刷新（与 YOU 行内 freshness 同源） */
+const laneFreshnessSeconds = computed(() => {
+  const oldest = youQueue.oldestUpdatedAt.value;
+  if (!oldest) return -1;
+  const at = Date.parse(oldest);
+  if (Number.isNaN(at)) return -1;
+  return Math.max(0, Math.floor((Date.parse(nowIso.value) - at) / 1000));
+});
 
 /** 等批归因集：WS confirm 命中 + lane 行 agentKey 命中（无 join key 的 lane 不强归因） */
 const waitingAgents = computed(() => {
@@ -189,6 +208,12 @@ const bizLineCards = computed(() => pageState.buildBizLineCards(youQueue.lanes.v
 const completionsToday = computed(() => stream.completionsToday.value);
 
 function onFocusItem(item: YouItem): void {
+  // 无写路径的条目（stale 交易确认 / 非可决议审批类）浮层里没有动作可做，
+  // 直接走深链，避免打开一个只能关闭的死胡同浮层。
+  if (item.action === 'goto') {
+    onGotoItem(item);
+    return;
+  }
   floatItem.value = item;
 }
 
@@ -196,32 +221,59 @@ function onGotoItem(item: YouItem): void {
   if (item.to) void router.push(item.to);
 }
 
-async function applySign(item: YouItem, verb: 'approved' | 'rejected' | 'acked', note: string): Promise<void> {
-  if (signing.value) return;
-  signing.value = true;
+async function applySign(
+  item: YouItem,
+  verb: 'approved' | 'rejected' | 'acked' | 'resolved',
+  note: string,
+): Promise<boolean> {
+  if (busyIds.value.includes(item.id) || busyIds.value.includes(`reject:${item.id}`)) return false;
+  const key = verb === 'rejected' ? `reject:${item.id}` : item.id;
+  busyIds.value = [...busyIds.value, key];
+  delete itemErrors.value[item.id];
   try {
     const receipt = await youQueue.sign(item, verb, note);
     if (receipt) {
       sealReceipt.value = receipt;
       stream.completions.value.push({ kind: 'seal', at: receipt.at, label: receipt.title });
       if (floatItem.value?.id === item.id) floatItem.value = null;
+      return true;
     }
+    return false;
   } catch (err) {
-    // 异常合约（设计 §4.2）：弹出 reason + 金日志记录（不欺骗）；不落戳不写绿行，浮层停留供重试
+    // 异常合约（设计 §4.2）：行内 reason + 金日志记录（不欺骗）；不落戳不写绿行
     const reason = err instanceof Error ? err.message : String(err);
-    $q.notify({ type: 'negative', message: t('workbench.sign.failed', { reason }) });
+    itemErrors.value = { ...itemErrors.value, [item.id]: reason };
     stream.pushGoldLog(t('workbench.sign.failedLog', { title: item.summary.slice(0, 40), reason }));
+    return false;
   } finally {
-    signing.value = false;
+    busyIds.value = busyIds.value.filter((k) => k !== key);
   }
 }
 
-function onRowSign(item: YouItem, verb: 'approved' | 'rejected' | 'acked'): void {
-  void applySign(item, verb, '');
+function onRowSign(item: YouItem, verb: 'approved' | 'rejected' | 'acked' | 'resolved', note = ''): void {
+  void applySign(item, verb, note);
 }
 
-function onFloatSign(item: YouItem, verb: 'approved' | 'rejected' | 'acked', note: string): void {
+function onFloatSign(item: YouItem, verb: 'approved' | 'rejected' | 'acked' | 'resolved', note: string): void {
   void applySign(item, verb, note);
+}
+
+/** 批量签批：串行执行（避免同一时刻多次写），逐条失败行内反馈并汇总 */
+async function onBatchSign(items: YouItem[], verb: 'approved' | 'acked'): Promise<void> {
+  if (items.length === 0 || busyIds.value.length > 0) return;
+  let ok = 0;
+  let failed = 0;
+  for (const item of items) {
+    const done = await applySign(item, verb, '');
+    if (done) ok += 1;
+    else failed += 1;
+  }
+  if (failed > 0) $q.notify({ type: 'warning', message: t('workbench.you.batchResult', { ok, failed }) });
+}
+
+/** lane 级重试：失败注记不自动重试，用户显式触发一次全量刷新 */
+function onRetryLane(): void {
+  void youQueue.refresh();
 }
 
 function onSealDone(receipt: SignReceipt): void {

@@ -176,23 +176,16 @@
       @rollback="rollbackVersion"
     />
 
-    <q-dialog v-model="templateDialogOpen" persistent>
-      <q-card class="app-dialog-card app-dialog-card--sm app-glass-dialog">
-        <q-card-section class="app-glass-dialog__head">
-          <div class="app-glass-dialog__title">保存为用户模板</div>
-        </q-card-section>
-        <q-separator />
-        <q-card-section class="app-dialog-body app-glass-dialog__body q-gutter-md">
-          <q-input v-model="templateName" dense outlined label="模板名称" />
-          <q-input v-model="templateCategory" dense outlined label="分类" />
-        </q-card-section>
-        <q-separator />
-        <q-card-actions align="right" class="app-actions-bar app-glass-dialog__actions">
-          <q-btn flat rounded label="取消" @click="templateDialogOpen = false" />
-          <q-btn color="primary" rounded unelevated label="保存" :loading="templateSaving" @click="saveTemplate" />
-        </q-card-actions>
-      </q-card>
-    </q-dialog>
+    <AppDialog v-model="templateDialogOpen" persistent size="sm" title="保存为用户模板">
+      <div class="q-gutter-md">
+        <q-input v-model="templateName" dense outlined label="模板名称" />
+        <q-input v-model="templateCategory" dense outlined label="分类" />
+      </div>
+      <template #actions>
+        <q-btn flat rounded label="取消" @click="templateDialogOpen = false" />
+        <q-btn color="primary" rounded unelevated label="保存" :loading="templateSaving" @click="saveTemplate" />
+      </template>
+    </AppDialog>
 
     <!-- P0-5：State Schema 抽屉（open 为普通 prop，关闭走 close 事件） -->
     <GraphStateSchemaDrawer
@@ -209,6 +202,7 @@
 import { ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useRoute } from 'vue-router';
+import AppDialog from '../components/common/AppDialog.vue';
 import GraphNodePalette from '../components/graph/GraphNodePalette.vue';
 import GraphEditorCanvas from '../components/graph/GraphEditorCanvas.vue';
 import GraphPropertyPanel from '../components/graph/GraphPropertyPanel.vue';

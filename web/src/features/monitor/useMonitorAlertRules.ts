@@ -1,6 +1,7 @@
 import { onMounted } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useQuasar } from 'quasar';
+import { confirm } from '../../composables/useAppConfirm';
 import { useI18n } from 'vue-i18n';
 import { useMonitorStore } from '../../stores/monitor/index';
 import type { MonitorAlertRule } from './types';
@@ -31,17 +32,12 @@ export function useMonitorAlertRules() {
 
   /** 删除已持久化规则前的破坏性操作确认（红线 #4：对话框只在 composable/Page 层）。 */
   function confirmRemoveRule(ruleName: string): Promise<boolean> {
-    return new Promise<boolean>((resolve) => {
-      $q.dialog({
-        title: t('monitorPage.alerts.removeConfirmTitle'),
-        message: t('monitorPage.alerts.removeConfirmMessage', { name: ruleName }),
-        cancel: { label: t('common.cancel'), flat: true, noCaps: true },
-        ok: { label: t('monitorPage.alerts.rule.delete'), noCaps: true, color: 'negative' },
-        persistent: true,
-      })
-        .onOk(() => resolve(true))
-        .onCancel(() => resolve(false))
-        .onDismiss(() => resolve(false));
+    return confirm({
+      title: t('monitorPage.alerts.removeConfirmTitle'),
+      message: t('monitorPage.alerts.removeConfirmMessage', { name: ruleName }),
+      cancelLabel: t('common.cancel'),
+      confirmLabel: t('monitorPage.alerts.rule.delete'),
+      tone: 'danger',
     });
   }
 

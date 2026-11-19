@@ -129,7 +129,7 @@ const results = computed<SearchResultEntry[]>(() => {
     overflow-y: auto
 
   &__search-item
-    padding: 4px 0
+    padding: var(--nt-space-1) 0
     border-bottom: 1px solid var(--glass-border)
     &:last-child
       border-bottom: none

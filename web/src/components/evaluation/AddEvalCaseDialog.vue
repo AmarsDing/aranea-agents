@@ -1,9 +1,14 @@
 <template>
-  <q-dialog :model-value="open" persistent @update:model-value="$emit('update:open', $event)">
-    <q-card class="app-dialog-card app-dialog-card--md app-glass-dialog">
-      <q-card-section class="text-h6">{{ $t('evaluationPage.addCaseTitle') }}</q-card-section>
-      <q-card-section class="app-dialog-body q-gutter-md q-pt-none">
-        <q-btn-toggle
+  <AppDialog
+    :model-value="open"
+    :title="$t('evaluationPage.addCaseTitle')"
+    size="md"
+    persistent
+    :loading="submitting"
+    @update:model-value="$emit('update:open', $event)"
+  >
+    <div class="q-gutter-md">
+      <q-btn-toggle
           :model-value="mode"
           dense
           no-caps
@@ -65,24 +70,25 @@
           :hint="$t('evaluationPage.addCaseRubricHint')"
           @update:model-value="$emit('update:rubric', String($event ?? ''))"
         />
-      </q-card-section>
-      <q-card-actions align="right" class="app-actions-bar">
-        <q-btn flat no-caps :label="$t('common.cancel')" @click="$emit('update:open', false)" />
-        <q-btn
-          color="primary"
-          unelevated
-          no-caps
-          :label="$t('evaluationPage.addCaseSubmit')"
-          :loading="submitting"
-          :disable="!input?.trim()"
-          @click="$emit('submit')"
-        />
-      </q-card-actions>
-    </q-card>
-  </q-dialog>
+    </div>
+    <template #actions>
+      <q-btn flat no-caps :label="$t('common.cancel')" @click="$emit('update:open', false)" />
+      <q-btn
+        color="primary"
+        unelevated
+        no-caps
+        :label="$t('evaluationPage.addCaseSubmit')"
+        :loading="submitting"
+        :disable="!input?.trim()"
+        @click="$emit('submit')"
+      />
+    </template>
+  </AppDialog>
 </template>
 
 <script setup lang="ts">
+import AppDialog from '../../components/common/AppDialog.vue';
+
 defineProps<{
   open: boolean;
   mode: 'existing' | 'new';

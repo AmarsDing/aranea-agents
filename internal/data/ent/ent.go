@@ -14,6 +14,11 @@ import (
 	"aranea-agents/internal/data/ent/backgroundjob"
 	"aranea-agents/internal/data/ent/borrowrequest"
 	"aranea-agents/internal/data/ent/budgetalert"
+	"aranea-agents/internal/data/ent/ceoboardaudit"
+	"aranea-agents/internal/data/ent/ceoboarddeadletter"
+	"aranea-agents/internal/data/ent/ceoboardevent"
+	"aranea-agents/internal/data/ent/ceoboardlatencysample"
+	"aranea-agents/internal/data/ent/ceoboardwebhookdelivery"
 	"aranea-agents/internal/data/ent/channelinboundreceipt"
 	"aranea-agents/internal/data/ent/channelruntimelease"
 	"aranea-agents/internal/data/ent/channelturnjob"
@@ -24,6 +29,8 @@ import (
 	"aranea-agents/internal/data/ent/compiledteam"
 	"aranea-agents/internal/data/ent/computeruseaudit"
 	"aranea-agents/internal/data/ent/contentitem"
+	"aranea-agents/internal/data/ent/credential"
+	"aranea-agents/internal/data/ent/credentialexecution"
 	"aranea-agents/internal/data/ent/crontask"
 	"aranea-agents/internal/data/ent/crontaskrun"
 	"aranea-agents/internal/data/ent/decisionrecord"
@@ -69,6 +76,7 @@ import (
 	"aranea-agents/internal/data/ent/orchestrationstep"
 	"aranea-agents/internal/data/ent/organization"
 	"aranea-agents/internal/data/ent/patchoutcome"
+	"aranea-agents/internal/data/ent/permission"
 	"aranea-agents/internal/data/ent/planboardv2"
 	"aranea-agents/internal/data/ent/planstepv2"
 	"aranea-agents/internal/data/ent/platformchannel"
@@ -84,6 +92,8 @@ import (
 	"aranea-agents/internal/data/ent/publishjob"
 	"aranea-agents/internal/data/ent/resourceaccessaudit"
 	"aranea-agents/internal/data/ent/reviewtask"
+	"aranea-agents/internal/data/ent/role"
+	"aranea-agents/internal/data/ent/rolepermission"
 	"aranea-agents/internal/data/ent/schemamigration"
 	"aranea-agents/internal/data/ent/selfcheckreport"
 	"aranea-agents/internal/data/ent/selfimprovementrun"
@@ -120,6 +130,7 @@ import (
 	"aranea-agents/internal/data/ent/turnv2"
 	"aranea-agents/internal/data/ent/usagequota"
 	"aranea-agents/internal/data/ent/userembeddingsetting"
+	"aranea-agents/internal/data/ent/userrole"
 	"context"
 	"errors"
 	"fmt"
@@ -200,6 +211,11 @@ func checkColumn(t, c string) error {
 			backgroundjob.Table:              backgroundjob.ValidColumn,
 			borrowrequest.Table:              borrowrequest.ValidColumn,
 			budgetalert.Table:                budgetalert.ValidColumn,
+			ceoboardaudit.Table:              ceoboardaudit.ValidColumn,
+			ceoboarddeadletter.Table:         ceoboarddeadletter.ValidColumn,
+			ceoboardevent.Table:              ceoboardevent.ValidColumn,
+			ceoboardlatencysample.Table:      ceoboardlatencysample.ValidColumn,
+			ceoboardwebhookdelivery.Table:    ceoboardwebhookdelivery.ValidColumn,
 			channelinboundreceipt.Table:      channelinboundreceipt.ValidColumn,
 			channelruntimelease.Table:        channelruntimelease.ValidColumn,
 			channelturnjob.Table:             channelturnjob.ValidColumn,
@@ -210,6 +226,8 @@ func checkColumn(t, c string) error {
 			compiledteam.Table:               compiledteam.ValidColumn,
 			computeruseaudit.Table:           computeruseaudit.ValidColumn,
 			contentitem.Table:                contentitem.ValidColumn,
+			credential.Table:                 credential.ValidColumn,
+			credentialexecution.Table:        credentialexecution.ValidColumn,
 			crontask.Table:                   crontask.ValidColumn,
 			crontaskrun.Table:                crontaskrun.ValidColumn,
 			decisionrecord.Table:             decisionrecord.ValidColumn,
@@ -255,6 +273,7 @@ func checkColumn(t, c string) error {
 			orchestrationstep.Table:          orchestrationstep.ValidColumn,
 			organization.Table:               organization.ValidColumn,
 			patchoutcome.Table:               patchoutcome.ValidColumn,
+			permission.Table:                 permission.ValidColumn,
 			planboardv2.Table:                planboardv2.ValidColumn,
 			planstepv2.Table:                 planstepv2.ValidColumn,
 			platformchannel.Table:            platformchannel.ValidColumn,
@@ -270,6 +289,8 @@ func checkColumn(t, c string) error {
 			publishjob.Table:                 publishjob.ValidColumn,
 			resourceaccessaudit.Table:        resourceaccessaudit.ValidColumn,
 			reviewtask.Table:                 reviewtask.ValidColumn,
+			role.Table:                       role.ValidColumn,
+			rolepermission.Table:             rolepermission.ValidColumn,
 			schemamigration.Table:            schemamigration.ValidColumn,
 			selfcheckreport.Table:            selfcheckreport.ValidColumn,
 			selfimprovementrun.Table:         selfimprovementrun.ValidColumn,
@@ -306,6 +327,7 @@ func checkColumn(t, c string) error {
 			turnv2.Table:                     turnv2.ValidColumn,
 			usagequota.Table:                 usagequota.ValidColumn,
 			userembeddingsetting.Table:       userembeddingsetting.ValidColumn,
+			userrole.Table:                   userrole.ValidColumn,
 		})
 	})
 	return columnCheck(t, c)

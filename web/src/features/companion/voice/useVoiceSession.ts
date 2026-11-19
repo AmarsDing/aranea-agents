@@ -27,6 +27,16 @@ const KNOWN_STATES: ReadonlySet<string> = new Set([
 /** V10：voice.wake 唤醒来源（设计 §16.3）：KWS 检出 / 手动点击 / 委派系统唤醒。 */
 export type VoiceWakeSource = 'kws' | 'manual' | 'system';
 
+/** WS 关闭信息（onclose 事件摘要）；评审 2026-11-09 V3。 */
+export type VoiceCloseInfo = {
+  /** WebSocket 关闭码；4401 = 会话被吊销（与后端 wsCloseCodeSessionRevoked 同码）。 */
+  code: number;
+  reason: string;
+};
+
+/** 会话吊销关闭码（后端 internal/server/ws_revocation.go wsCloseCodeSessionRevoked）。 */
+export const VOICE_CLOSE_CODE_SESSION_REVOKED = 4401;
+
 export type VoiceDownstreamHandlers = {
   onState(state: VoiceState): void;
   onPartial(text: string): void;
@@ -40,7 +50,8 @@ export type VoiceDownstreamHandlers = {
   /** 同会话第二连接到达，本连接被替换（设计 §2.1）。 */
   onReplaced(): void;
   onOpen?(): void;
-  onClose?(): void;
+  /** 连接关闭；info 缺省 = 关闭事件未携带码（测试桩/旧实现）。 */
+  onClose?(info?: VoiceCloseInfo): void;
 };
 
 export type VoiceStartParams = {
@@ -170,10 +181,10 @@ export function createVoiceSessionClient(opts: VoiceSessionClientOptions): Voice
         if (ws !== socket) return;
         handleMessage(ev.data);
       };
-      socket.onclose = () => {
+      socket.onclose = (ev: CloseEvent) => {
         if (ws !== socket) return;
         ws = null;
-        opts.handlers.onClose?.();
+        opts.handlers.onClose?.({ code: ev.code, reason: ev.reason });
       };
       socket.onerror = () => {
         // 错误经 onclose 收口；语音错误由服务端 voice.error 帧承载
@@ -459,10 +470,22 @@ export function useVoiceSession(deps: {
           client = null;
           store.onVoiceReplaced();
         },
-        onClose: () => {
+        onClose: (info) => {
           if (store.voiceModeOn) {
             teardownLocal();
             store.setVoiceMode(false);
+            // 评审 2026-11-09 V3：4401 = 会话被吊销（改密/角色变更/踢出/销户，
+            // 后端 tv bump 主动关连接）。终态：非可重试错误（不触发自动重连
+            // 策略），UI 可感知，重新进入语音模式须重新鉴权。非 4401 维持
+            // 原重连策略（可重试 VOICE_CHANNEL_CLOSED）。
+            if (info?.code === VOICE_CLOSE_CODE_SESSION_REVOKED) {
+              store.setVoiceError({
+                code: 'VOICE_SESSION_REVOKED',
+                message: t('companion.voiceSessionRevoked'),
+                retryable: false,
+              });
+              return;
+            }
             store.setVoiceError({
               code: 'VOICE_CHANNEL_CLOSED',
               message: t('companion.voiceChannelClosed'),

@@ -13,7 +13,7 @@ import (
 // 2026-10-19)：tool_invocations 工作区化。
 //  1. 写入方未提供 WorkspaceID 时 data 层自 agents 表按 AgentID 派生；
 //  2. 显式提供的 WorkspaceID 原样落库（AgentID 为空时不派生）；
-//  3. KPI 24h 聚合按 q.WorkspaceID 过滤：tenant 只见本租户行，'' = 系统全局视图。
+//  3. KPI 24h 聚合按 q.WorkspaceID 过滤：tenant 只见本租户行，” = 系统全局视图。
 func TestToolRepo_ToolInvocations_WorkspaceScoping(t *testing.T) {
 	ctx := context.Background()
 	repo, d := newToolTestRepo(t)

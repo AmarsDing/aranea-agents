@@ -260,7 +260,7 @@ const failedMemberCount = computed(() => props.team.members.filter((m) => m.stat
 <style scoped lang="sass">
 .team-progress-card
   padding: var(--space-3)
-  border-radius: 10px
+  border-radius: 8px
   border: 1px solid transparent
   background: color-mix(in srgb, var(--glass-surface) 40%, transparent)
   cursor: pointer
@@ -351,7 +351,7 @@ const failedMemberCount = computed(() => props.team.members.filter((m) => m.stat
 .team-progress-card__deps
   display: flex
   align-items: center
-  margin-left: 32px
+  margin-left: var(--nt-space-8)
   padding: 2px 6px
   border-radius: 4px
   background: color-mix(in srgb, var(--color-warning) 8%, transparent)
@@ -378,12 +378,12 @@ const failedMemberCount = computed(() => props.team.members.filter((m) => m.stat
     color: var(--color-text-secondary)
 
 .team-progress-card__progress
-  margin-left: 32px
+  margin-left: var(--nt-space-8)
 
 .team-progress-card__error
   display: flex
   align-items: center
-  margin-left: 32px
+  margin-left: var(--nt-space-8)
   padding: 2px 6px
   border-radius: 4px
   color: var(--color-danger)
@@ -392,18 +392,18 @@ const failedMemberCount = computed(() => props.team.members.filter((m) => m.stat
 .team-progress-card__warning
   display: flex
   align-items: center
-  margin-left: 32px
+  margin-left: var(--nt-space-8)
   padding: 2px 6px
   border-radius: 4px
   color: var(--color-warning)
   background: color-mix(in srgb, var(--color-warning) 8%, transparent)
 
 .team-progress-card__avatars
-  margin-left: 32px
+  margin-left: var(--nt-space-8)
   flex-wrap: nowrap
 
 .team-progress-card__details
-  margin-left: 32px
+  margin-left: var(--nt-space-8)
   padding: var(--space-2) var(--space-3)
   border-radius: 6px
   background: color-mix(in srgb, var(--glass-surface) 50%, transparent)
@@ -428,7 +428,7 @@ const failedMemberCount = computed(() => props.team.members.filter((m) => m.stat
 .team-progress-card__detail-body
   display: flex
   align-items: center
-  gap: 4px
+  gap: var(--nt-space-1)
   min-width: 0
 
 .team-progress-card__detail-waiting

@@ -11,11 +11,14 @@ import (
 	"aranea-agents/internal/sandbox"
 	"aranea-agents/internal/tools"
 	"aranea-agents/internal/tools/browser"
+	calendarpkg "aranea-agents/internal/tools/calendar"
 	"aranea-agents/internal/tools/clientbridge"
 	"aranea-agents/internal/tools/codingbridge"
 	computerusepkg "aranea-agents/internal/tools/computeruse"
+	credentialpkg "aranea-agents/internal/tools/credential"
 	kanbanpkg "aranea-agents/internal/tools/kanban"
 	knowledgepkg "aranea-agents/internal/tools/knowledge"
+	mailpkg "aranea-agents/internal/tools/mail"
 	sandboxfspkg "aranea-agents/internal/tools/sandboxfs"
 	serviceawaitreply "aranea-agents/internal/tools/serviceawaitreply"
 	subagenttool "aranea-agents/internal/tools/subagent"
@@ -64,23 +67,40 @@ type ToolsetConfig struct {
 	CallAgent         bool
 	Kanban            bool
 	KanbanBridge      kanbanpkg.Bridge
-	MemoryEnabled     bool
-	MemoryTools       []trpctool.Tool
-	DeferredTools     []string
-	BlobReader        biz.ToolResultBlobReader
+	// Credential enables the vault credential verbs (credential_login_execute /
+	// credential_token_issue, E 阶段凭据托管). Requires CredentialVault; when nil
+	// the flag is pruned. CredentialExecutor nil = 执行面未接线，工具诚实返回
+	// unavailable（裁决与审计仍完整执行）。
+	Credential         bool
+	CredentialVault    credentialpkg.Vault
+	CredentialExecutor credentialpkg.Executor
+	// Calendar 启用日程工具（calendar_list / calendar_create_draft，E 阶段
+	// W1c）。Requires CalendarService；nil 时该开关被裁剪（诚实降级）。
+	Calendar        bool
+	CalendarService calendarpkg.Service
+	// Mail 启用邮件只读工具（mail_list / mail_read / mail_search，E 阶段 W1d）；
+	// MailTask 启用转任务动词（mail_to_task，中风险独立授权键）。Requires
+	// MailService；nil 时对应开关被裁剪（诚实降级）。
+	Mail          bool
+	MailTask      bool
+	MailService   mailpkg.Service
+	MemoryEnabled bool
+	MemoryTools   []trpctool.Tool
+	DeferredTools []string
+	BlobReader    biz.ToolResultBlobReader
 	// SpillStore 是 P0-2 locator 回读消费口（批 B）；nil → read_tool_result 走
 	// blob repo 直接取回（老行为）。
-	SpillStore        toolspill.Store
-	ReadDocument      bool
-	ReadSpreadsheet   bool
-	ReadLints         bool
-	DeleteFile        bool
-	WorkingMemory     bool
-	Datetime          bool
-	Message           bool
-	OutboundRouter    *outbound.Router
-	SubAgent          bool
-	SubAgentService   *subagenttool.Service
+	SpillStore      toolspill.Store
+	ReadDocument    bool
+	ReadSpreadsheet bool
+	ReadLints       bool
+	DeleteFile      bool
+	WorkingMemory   bool
+	Datetime        bool
+	Message         bool
+	OutboundRouter  *outbound.Router
+	SubAgent        bool
+	SubAgentService *subagenttool.Service
 	// ClientBridge enables the client tool bridge ToolSet (client_open_app /
 	// client_open_url). Requires ClientBridgeSvc; when nil the flag is pruned
 	// so agents never see a tool that would always fail offline.
@@ -263,6 +283,26 @@ func BuildToolsets(ctx context.Context, cfg ToolsetConfig, lg loggateway.Logger)
 	}
 	if cfg.Kanban {
 		for _, t := range kanbanpkg.NewToolset(cfg.KanbanBridge) {
+			customTools = append(customTools, t)
+		}
+	}
+	if cfg.Credential {
+		for _, t := range credentialpkg.NewToolset(cfg.CredentialVault, cfg.CredentialExecutor) {
+			customTools = append(customTools, t)
+		}
+	}
+	if cfg.Calendar {
+		for _, t := range calendarpkg.NewToolset(cfg.CalendarService) {
+			customTools = append(customTools, t)
+		}
+	}
+	if cfg.Mail {
+		for _, t := range mailpkg.NewToolset(cfg.MailService) {
+			customTools = append(customTools, t)
+		}
+	}
+	if cfg.MailTask {
+		for _, t := range mailpkg.NewTaskToolset(cfg.MailService) {
 			customTools = append(customTools, t)
 		}
 	}

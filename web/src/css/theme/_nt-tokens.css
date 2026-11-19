@@ -1,0 +1,205 @@
+/* teamwork 跨项目设计令牌（--nt-*），从 docs/_shared/design/tokens.css 同步。
+   唯一来源：NovaTrader web/src/theme/tokens.css。改值先改源再同步本文件。
+   参考 docs/_shared/ui-ux/guidelines/08-项目接入模板.md §A。 */
+
+:root {
+  color-scheme: dark;
+
+  /* 背景四层 */
+  --nt-bg-0: #050d17;
+  --nt-bg-1: #0b1b2b;
+  --nt-bg-2: #10263a;
+  --nt-bg-3: #18364d;
+
+  --nt-border-1: #213e53;
+  --nt-border-2: #365e78;
+
+  /* 文字四级 */
+  --nt-text-0: #eef6fa;
+  --nt-text-1: #d3dee6;
+  --nt-text-2: #adc8da;
+  --nt-text-3: #85a5bc;
+
+  /* 强调与语义色 */
+  --nt-accent: #45e0ff;
+  --nt-accent-2: #769dff;
+  --nt-up: #ff6b81;
+  --nt-down: #60b296;
+  --nt-warn: #ffe852;
+  --nt-danger: #ff5c7c;
+  --nt-success: #35dfb1;
+  --nt-info: #66b5ff;
+  --nt-ai: #c792ea;
+  --nt-on-accent: #04131e;
+
+  /* 强调色派生 */
+  --nt-accent-soft: rgba(69, 224, 255, 0.09);
+  --nt-accent-hover: rgba(69, 224, 255, 0.17);
+  --nt-accent-border: rgba(69, 224, 255, 0.42);
+  --nt-focus-ring: rgba(69, 224, 255, 0.3);
+
+  /* 材质 */
+  --nt-glass-bg: rgba(10, 29, 46, 0.84);
+  --nt-glass-border: rgba(118, 186, 222, 0.38);
+  --nt-glass-highlight: rgba(167, 229, 255, 0.23);
+  --nt-glass-filter: blur(16px) saturate(125%);
+  --nt-data-bg: rgba(11, 27, 43, 0.98);
+  --nt-data-raised: rgba(16, 38, 58, 0.98);
+  --nt-data-inset: rgba(5, 13, 23, 0.98);
+  --nt-scrim: rgba(2, 8, 15, 0.62);
+  --nt-scrim-light: rgba(2, 8, 15, 0.5);
+  --nt-shadow-depth: 0 16px 48px rgba(0, 5, 13, 0.44);
+  --nt-glow-soft: 0 0 20px rgba(69, 224, 255, 0.1);
+  --nt-glow-accent: 0 0 14px rgba(69, 224, 255, 0.28);
+  --nt-glow-danger: 0 0 14px rgba(255, 92, 124, 0.35);
+  --nt-glow-warn: 0 0 14px rgba(255, 232, 82, 0.28);
+
+  /* 洗色基底（仅 color-mix 调和用——压暗/提亮/遮罩，不直接作前景或背景色） */
+  --nt-ink: #000000;
+  --nt-ink-inverse: #ffffff;
+
+  /* 间距档位（4px 基准，节奏见 08-重设计方案 §2.4）
+     1=4 2=8 3=12 4=16 5=20 6=24 8=32 10=40 12=48 16=64
+     5(20) / 10(40) 为存量档位，仅为兼容既有 --space-5/--space-10 引用保留，
+     新代码禁止使用，改用 4/6/8/12。 */
+  --nt-space-1: 4px;
+  --nt-space-2: 8px;
+  --nt-space-3: 12px;
+  --nt-space-4: 16px;
+  --nt-space-5: 20px;
+  --nt-space-6: 24px;
+  --nt-space-8: 32px;
+  --nt-space-10: 40px;
+  --nt-space-12: 48px;
+  --nt-space-16: 64px;
+
+  /* 语义间距别名：页面留白 / 区块纵向 / 面板内 / 单元格
+     新代码优先使用语义别名，避免到处写数字档位。 */
+  --nt-space-page: clamp(16px, 2.2vw, 32px);
+  --nt-space-section: var(--nt-space-6);
+  --nt-space-panel: var(--nt-space-4);
+  --nt-space-cell: var(--nt-space-2);
+
+  /* 圆角四档 */
+  --nt-radius-s: 6px;
+  --nt-radius-m: 8px;
+  --nt-radius-l: 12px;
+  --nt-radius-pill: 999px;
+
+  /* 密度 */
+  --nt-row-h: 26px;
+  --nt-cell-pad: 4px 8px;
+  --nt-pad-panel: 12px 14px;
+
+  /* 字体与字号阶梯 */
+  --nt-font-sans: 'Segoe UI', system-ui, -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  --nt-font-mono: 'JetBrains Mono', 'IBM Plex Mono', 'Cascadia Code', Consolas, monospace;
+  --nt-fs-hero: 24px;
+  --nt-fs-num-lg: 17px;
+  --nt-fs-title: 15px;
+  --nt-fs-panel: 13px;
+  --nt-fs-body: 12.5px;
+  --nt-fs-caption: 11.5px;
+  --nt-fs-micro: 10.5px;
+
+  /* 动效 */
+  --nt-transition: 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* 图谱 / 画布（three.js、Canvas2D、Sprite 取色源）
+     纯函数禁止再写字面量，统一经 src/utils/canvasPalette.ts 读取；
+     本组 token 为该读数的唯一真源，代码内 fallback 与之一致。 */
+  --nt-graph-link-explicit: #4c8dff;
+  --nt-graph-link-entity: #a066d3;
+  --nt-graph-link-semantic: #3bbdbd;
+  --nt-graph-link-unknown: #8a93a6;
+  --nt-graph-node-1: #4c8dff;
+  --nt-graph-node-2: #3bbdbd;
+  --nt-graph-node-3: #a066d3;
+  --nt-graph-node-4: #d3864a;
+  --nt-graph-node-5: #c45b8a;
+  --nt-graph-node-6: #7fb069;
+  --nt-graph-node-7: #d3b04a;
+  --nt-graph-node-8: #5bc4e5;
+  --nt-graph-node-fallback: #8a93a6;
+  --nt-graph-structure-ultra: #f472b6;
+  --nt-graph-structure-super: #f5c542;
+  --nt-graph-structure-regular: #35c8d0;
+  --nt-graph-structure-leaf: #16434f;
+  --nt-graph-structure-fallback: #8a93a6;
+  --nt-graph-edge-unified: #4f6b7d;
+  --nt-graph-edge-highlight: #39e6ff;
+  --nt-graph-reticle-hover: #54e6ff;
+  --nt-graph-reticle-selected: #a855f7;
+  --nt-graph-label: #8fb9d9;
+  --nt-graph-label-group: #9fdcff;
+  --nt-graph-label-group-text: #d8ecff;
+  --nt-graph-label-focus: #e8f7ff;
+  --nt-graph-label-focus-selected: #ffffff;
+  --nt-graph-label-bg: rgba(5, 8, 16, 0.55);
+  --nt-graph-label-focus-bg: rgba(5, 8, 16, 0.78);
+  --nt-graph-label-group-bg: rgba(5, 8, 16, 0.72);
+  --nt-graph-focus-ring-hover: rgba(84, 230, 255, 0.9);
+  --nt-graph-focus-ring-selected: rgba(168, 85, 247, 0.95);
+  --nt-graph-conflict: #ef5350;
+
+  /* 记忆全景分层（L0 信号 → L4 洞察） */
+  --nt-memory-layer-0: #90a4ae;
+  --nt-memory-layer-1: #7986cb;
+  --nt-memory-layer-2: #4db6ac;
+  --nt-memory-layer-3: #ba68c8;
+  --nt-memory-layer-4: #ff8a65;
+  --nt-memory-layer-fallback: #9e9e9e;
+
+  /* 陪伴 HUD 粒子环 */
+  --nt-hud-orb-a: #123a6e;
+  --nt-hud-orb-b: #4dd8e8;
+  --nt-hud-alert-a: #4c0519;
+  --nt-hud-alert-b: #f87171;
+}
+
+/* 浅色档（覆盖核心色，让 --nt-* 在浅色下也可用） */
+:root[data-theme='light'], body:not(.body--dark) {
+  --nt-bg-0: #f4f7fb;
+  --nt-bg-1: #ffffff;
+  --nt-bg-2: #f4f7fb;
+  --nt-bg-3: #e6edf5;
+  --nt-border-1: #d0dce8;
+  --nt-border-2: #b2c4d8;
+  --nt-text-0: #04131e;
+  --nt-text-1: #1d2b3f;
+  --nt-text-2: #4b6076;
+  --nt-text-3: #6f8296;
+  --nt-accent: #00677f;
+  --nt-accent-2: #3a5fd9;
+  --nt-on-accent: #eef6fa;
+  --nt-accent-soft: rgba(0, 103, 127, 0.08);
+  --nt-accent-hover: rgba(0, 103, 127, 0.16);
+  --nt-accent-border: rgba(0, 103, 127, 0.4);
+  --nt-focus-ring: rgba(0, 103, 127, 0.3);
+  --nt-warn: #b96b00;
+  --nt-danger: #bd3754;
+  --nt-success: #087b58;
+  --nt-info: #0067c0;
+  --nt-up: #d83931;
+  --nt-down: #2ea121;
+}
+
+/* 色觉安全档 */
+:root[data-colorvision='safe'] {
+  --nt-up: #f87e64;
+  --nt-down: #46a0fe;
+  --nt-danger: #f87e64;
+  --nt-success: #46a0fe;
+}
+
+/* 紧凑密度 */
+:root[data-density='compact'] {
+  --nt-row-h: 22px;
+  --nt-cell-pad: 2px 6px;
+  --nt-pad-panel: 8px 10px;
+}
+
+/* 减少动态 */
+:root[data-motion='reduced'] {
+  --nt-transition: 0s;
+}

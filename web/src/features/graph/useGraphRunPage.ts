@@ -8,6 +8,7 @@ import { useGraphRunStream } from './runtime/useGraphRunStream';
 import { buildGraphRunKanbanNodes, synthesizeGraphNodesFromSteps } from './runtime/graphExecutionProjection';
 import { useGraphRunTasks } from './useGraphRunTasks';
 import { useGraphRunHitl } from './useGraphRunHitl';
+import { confirm } from '../../composables/useAppConfirm';
 
 /** Kratos NotFound 经 axios 暴露为 HTTP 404（拦截器对 404 不弹全局 toast）。 */
 function isNotFoundError(err: unknown): boolean {
@@ -138,13 +139,14 @@ export function useGraphRunPage() {
     });
   }
 
-  function confirmCancelExec() {
-    $q.dialog({
+  async function confirmCancelExec() {
+    const ok = await confirm({
       title: '取消执行',
       message: '确定取消当前执行？正在运行的节点将被中断。',
-      cancel: true,
-      persistent: true,
-    }).onOk(() => void cancelExec());
+      tone: 'danger',
+    });
+    if (!ok) return;
+    await cancelExec();
   }
 
   async function cancelExec() {

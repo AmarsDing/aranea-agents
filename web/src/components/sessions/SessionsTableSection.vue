@@ -11,7 +11,13 @@
   >
     <template v-if="selectionMode" #header-cell-select="slotProps">
       <q-th :props="slotProps">
-        <q-checkbox dense :model-value="pageAllSelected" @update:model-value="$emit('toggle-page', $event)" />
+        <q-checkbox
+          dense
+          data-test="select-all"
+          :aria-label="t('shell.bulkBar.selectAllPage')"
+          :model-value="pageAllSelected"
+          @update:model-value="$emit('toggle-page', $event)"
+        />
       </q-th>
     </template>
 
@@ -19,6 +25,8 @@
       <q-td :props="slotProps">
         <q-checkbox
           dense
+          :data-test="`row-select-${slotProps.row.id}`"
+          :aria-label="t('shell.bulkBar.selectRow', { name: slotProps.row.title || slotProps.row.id })"
           :model-value="isRowSelected(slotProps.row.id)"
           @update:model-value="$emit('toggle-row', slotProps.row.id, $event)"
         />
@@ -28,6 +36,16 @@
     <template #body-cell-session="slotProps">
       <q-td :props="slotProps">
         <div class="row items-center no-wrap q-gutter-xs">
+          <q-btn
+            flat
+            dense
+            round
+            size="sm"
+            icon="info"
+            color="primary"
+            :aria-label="t('shell.registry.inspect')"
+            @click="$emit('inspect', slotProps.row)"
+          />
           <q-icon v-if="isSessionPinned(slotProps.row)" name="push_pin" color="primary" size="16px" />
           <div class="col min-width-0">
             <router-link
@@ -260,6 +278,7 @@ const props = defineProps<{
 }>();
 
 defineEmits<{
+  inspect: [session: Session];
   'update:page': [v: number];
   'update:pageSize': [v: number];
   'archive-row': [id: string];

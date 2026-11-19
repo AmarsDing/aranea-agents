@@ -101,6 +101,7 @@
 import { ref, watch, nextTick, computed, onMounted, onUnmounted, markRaw } from 'vue';
 import type { Ref, Component } from 'vue';
 import { useQuasar } from 'quasar';
+import { confirm } from '../../composables/useAppConfirm';
 import { useI18n } from 'vue-i18n';
 import {
   VueFlow,
@@ -795,7 +796,7 @@ function duplicateNode(nodeId: string) {
   emit('selectNode', newId);
 }
 
-function deleteNode(nodeId: string) {
+async function deleteNode(nodeId: string) {
   if (readOnly.value) return;
   const nodeIdx = graphDef.value.nodes.findIndex((n) => n.id === nodeId);
   if (nodeIdx < 0) return;
@@ -806,30 +807,29 @@ function deleteNode(nodeId: string) {
   );
   const totalEdges = connectedEdges.length + connectedCondEdges.length;
   const edgeHint = totalEdges > 0 ? t('graphs.canvasDeleteNodeEdgeHint', { count: totalEdges }) : '';
-  $q.dialog({
+  const ok = await confirm({
     title: t('graphs.canvasDeleteNodeTitle'),
     message: t('graphs.canvasDeleteNodeConfirm', { name: nodeLabel, edgeHint }),
-    cancel: true,
-    persistent: true,
-  }).onOk(() => {
-    const idx = graphDef.value.nodes.findIndex((n) => n.id === nodeId);
-    if (idx < 0) return;
-    const node = { ...graphDef.value.nodes[idx] };
-    const edges = graphDef.value.edges.filter((e) => e.from === nodeId || e.to === nodeId);
-    const condEdges = graphDef.value.conditionalEdges.filter(
-      (e) => e.from === nodeId || Object.values(e.pathMap ?? {}).includes(nodeId),
-    );
-    graphDef.value.nodes.splice(idx, 1);
-    graphDef.value.edges = graphDef.value.edges.filter((e) => e.from !== nodeId && e.to !== nodeId);
-    graphDef.value.conditionalEdges = graphDef.value.conditionalEdges.filter(
-      (e) => e.from !== nodeId && !Object.values(e.pathMap ?? {}).includes(nodeId),
-    );
-    if (props.undoRedo) {
-      props.undoRedo.pushDeleteNode(node, idx, edges, condEdges);
-    } else {
-      emit('updateGraph');
-    }
+    tone: 'danger',
   });
+  if (!ok) return;
+  const idx = graphDef.value.nodes.findIndex((n) => n.id === nodeId);
+  if (idx < 0) return;
+  const node = { ...graphDef.value.nodes[idx] };
+  const edges = graphDef.value.edges.filter((e) => e.from === nodeId || e.to === nodeId);
+  const condEdges = graphDef.value.conditionalEdges.filter(
+    (e) => e.from === nodeId || Object.values(e.pathMap ?? {}).includes(nodeId),
+  );
+  graphDef.value.nodes.splice(idx, 1);
+  graphDef.value.edges = graphDef.value.edges.filter((e) => e.from !== nodeId && e.to !== nodeId);
+  graphDef.value.conditionalEdges = graphDef.value.conditionalEdges.filter(
+    (e) => e.from !== nodeId && !Object.values(e.pathMap ?? {}).includes(nodeId),
+  );
+  if (props.undoRedo) {
+    props.undoRedo.pushDeleteNode(node, idx, edges, condEdges);
+  } else {
+    emit('updateGraph');
+  }
 }
 
 function disconnectNode(nodeId: string) {
@@ -849,48 +849,47 @@ function disconnectNode(nodeId: string) {
   }
 }
 
-function deleteSelectedNodes() {
+async function deleteSelectedNodes() {
   if (readOnly.value) return;
   const selected = getSelectedNodes.value;
   if (selected.length === 0) return;
   if (selected.length === 1) {
-    deleteNode(selected[0].id);
+    await deleteNode(selected[0].id);
     return;
   }
   const ids = selected.map((n) => n.id);
-  $q.dialog({
+  const ok = await confirm({
     title: t('graphs.canvasBatchDeleteTitle'),
     message: t('graphs.canvasBatchDeleteConfirm', { count: ids.length }),
-    cancel: true,
-    persistent: true,
-  }).onOk(() => {
-    const deleted: { node: NodeDef; index: number; edges: EdgeDef[]; condEdges: ConditionalEdgeDef[] }[] = [];
-    for (const id of ids) {
-      const idx = graphDef.value.nodes.findIndex((n) => n.id === id);
-      if (idx >= 0) {
-        deleted.push({
-          node: { ...graphDef.value.nodes[idx] },
-          index: idx,
-          edges: graphDef.value.edges.filter((e) => e.from === id || e.to === id),
-          condEdges: graphDef.value.conditionalEdges.filter(
-            (e) => e.from === id || Object.values(e.pathMap ?? {}).includes(id),
-          ),
-        });
-      }
-    }
-    const idSet = new Set(ids);
-    graphDef.value.nodes = graphDef.value.nodes.filter((n) => !idSet.has(n.id));
-    graphDef.value.edges = graphDef.value.edges.filter((e) => !idSet.has(e.from) && !idSet.has(e.to));
-    graphDef.value.conditionalEdges = graphDef.value.conditionalEdges.filter(
-      (e) => !idSet.has(e.from) && !Object.values(e.pathMap ?? {}).some((v) => idSet.has(v)),
-    );
-    if (props.undoRedo) {
-      props.undoRedo.pushDeleteNodes(deleted);
-    } else {
-      emit('updateGraph');
-    }
-    emit('selectNode', null);
+    tone: 'danger',
   });
+  if (!ok) return;
+  const deleted: { node: NodeDef; index: number; edges: EdgeDef[]; condEdges: ConditionalEdgeDef[] }[] = [];
+  for (const id of ids) {
+    const idx = graphDef.value.nodes.findIndex((n) => n.id === id);
+    if (idx >= 0) {
+      deleted.push({
+        node: { ...graphDef.value.nodes[idx] },
+        index: idx,
+        edges: graphDef.value.edges.filter((e) => e.from === id || e.to === id),
+        condEdges: graphDef.value.conditionalEdges.filter(
+          (e) => e.from === id || Object.values(e.pathMap ?? {}).includes(id),
+        ),
+      });
+    }
+  }
+  const idSet = new Set(ids);
+  graphDef.value.nodes = graphDef.value.nodes.filter((n) => !idSet.has(n.id));
+  graphDef.value.edges = graphDef.value.edges.filter((e) => !idSet.has(e.from) && !idSet.has(e.to));
+  graphDef.value.conditionalEdges = graphDef.value.conditionalEdges.filter(
+    (e) => !idSet.has(e.from) && !Object.values(e.pathMap ?? {}).some((v) => idSet.has(v)),
+  );
+  if (props.undoRedo) {
+    props.undoRedo.pushDeleteNodes(deleted);
+  } else {
+    emit('updateGraph');
+  }
+  emit('selectNode', null);
 }
 
 function onConnect(connection: Connection) {
@@ -1188,7 +1187,7 @@ onUnmounted(() => {
     align-items: center
     gap: 8px
     padding: 6px 12px
-    border-radius: 20px
+    border-radius: 12px
     background: var(--glass-surface)
     backdrop-filter: blur(var(--glass-blur-soft))
     border: 1px solid var(--glass-border)
