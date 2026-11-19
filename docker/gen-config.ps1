@@ -13,18 +13,39 @@
   幂等：每次从源配置全量重新生成。
   注意：DB 系统设置（embedding base_url、MCP/channel 回调等 localhost 出站地址）
         不在本文件作用域，切换后需在 UI/DB 改指 host.docker.internal（见 docker/migrate-data.ps1 尾注）。
+.PARAMETER Target
+  docker（默认）：生成容器用的 docker\config\config.yaml，规则如上。
+  host：生成宿主机日常部署用的 docker\volumes\host\config.yaml（docker\host.ps1 调用）。
+        只换端口（部署版）并改绑回环；中间件地址保持源配置（共享栈在宿主机侧就是
+        127.0.0.1:5436 / 6382）；日志与容器共用 docker\volumes\logs。
 .EXAMPLE
   powershell -ExecutionPolicy Bypass -File gen-config.ps1
+  powershell -ExecutionPolicy Bypass -File gen-config.ps1 -Target host
 #>
+param([ValidateSet('docker', 'host')][string]$Target = 'docker')
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path $PSScriptRoot -Parent
 $src  = Join-Path $repo 'configs\config.yaml'
 $dstDir = Join-Path $PSScriptRoot 'config'
+if ($Target -eq 'host') { $dstDir = Join-Path $PSScriptRoot 'volumes\host' }
 $dst  = Join-Path $dstDir 'config.yaml'
 
 New-Item -ItemType Directory -Force $dstDir | Out-Null
 
 $t = [IO.File]::ReadAllText($src, [Text.Encoding]::UTF8)
+
+if ($Target -eq 'host') {
+  # 宿主机上有运行台（能在本机开终端），所以只绑回环，不对局域网开放
+  $t = $t.Replace('0.0.0.0:8800', '127.0.0.1:8810')
+  $t = $t.Replace('0.0.0.0:9900', '127.0.0.1:9910')
+  $t = $t.Replace('0.0.0.0:8802', '127.0.0.1:8812')
+  $t = $t.Replace('./bin/logs', './docker/volumes/logs')
+  # 日志已落文件；stdout 由 host.ps1 收进一个每次启动覆盖的小文件，只留启动报错和 panic
+  $t = $t.Replace('stdout_enabled: true', 'stdout_enabled: false')
+  [IO.File]::WriteAllText($dst, $t, (New-Object System.Text.UTF8Encoding($false)))
+  Write-Host "宿主机配置已生成: $dst" -ForegroundColor Green
+  return
+}
 
 # 1) 监听端口（dev → 部署版）
 $t = $t.Replace('0.0.0.0:8800', '0.0.0.0:8810')

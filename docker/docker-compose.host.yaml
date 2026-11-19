@@ -1,0 +1,18 @@
+# 宿主机模式覆盖文件：后端以 bin\admin.exe 跑在宿主机上（运行台要在本机开终端），
+# 容器只留 aranea-web（nginx）与 aranea-egress-proxy。
+# 不要单独使用，由 docker\host.ps1 叠在 docker-compose.yaml 上：
+#   docker compose --project-directory . -f docker-compose.yaml -f docker/docker-compose.host.yaml up -d
+# 回退（回到容器后端）：docker\host.ps1 -Action rollback，即不带本文件的 docker compose up -d。
+services:
+  # 宿主机模式下不起容器后端；容器只停不删，留作回退
+  admin:
+    profiles: ["container-admin"]
+
+  web:
+    depends_on: !reset []
+    # nginx.conf 里的上游名字 aranea-admin 不改，让它指向宿主机（后端在 127.0.0.1:8810）
+    extra_hosts:
+      - "aranea-admin:host-gateway"
+    # 用仓库里的 nginx.conf（含 /v1/fleet/cli 的拒绝规则），改它不必重建 web 镜像
+    volumes:
+      - ./web/nginx.conf:/etc/nginx/conf.d/default.conf:ro
