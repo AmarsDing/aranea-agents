@@ -158,16 +158,18 @@ export function useOverviewPage() {
     ),
   );
 
-  /** Top 模型成本条（Top5 + 其他）。 */
-  const topModelBars = computed(() => {
-    const rows = [...(overview.value?.top_models ?? [])].sort(
-      (a, b) => (b.total_cost_micro_usd ?? 0) - (a.total_cost_micro_usd ?? 0),
-    );
+  /** 成本条（Top5 + 其他）：按模型、按 Agent 共用。 */
+  function costBars(
+    source: ModelUsageBreakdownRow[],
+    keyOf: (r: ModelUsageBreakdownRow) => string,
+    labelOf: (r: ModelUsageBreakdownRow) => string,
+  ) {
+    const rows = [...source].sort((a, b) => (b.total_cost_micro_usd ?? 0) - (a.total_cost_micro_usd ?? 0));
     const top = rows.slice(0, 5);
     const restCost = rows.slice(5).reduce((acc, r) => acc + (r.total_cost_micro_usd ?? 0), 0);
     const bars = top.map((r) => ({
-      key: `${r.provider_code}/${r.model_api_id}`,
-      label: r.model_display_name || r.model_api_id,
+      key: keyOf(r),
+      label: labelOf(r),
       costUsd: (r.total_cost_micro_usd ?? 0) / 1_000_000,
       unpriced: shouldWarnZeroCost({ totalTokens: r.total_tokens, totalCostMicroUsd: r.total_cost_micro_usd }),
     }));
@@ -180,7 +182,21 @@ export function useOverviewPage() {
       });
     const max = Math.max(...bars.map((b) => b.costUsd), 0.000001);
     return bars.map((b) => ({ ...b, ratio: b.costUsd / max }));
-  });
+  }
+  const topModelBars = computed(() =>
+    costBars(
+      overview.value?.top_models ?? [],
+      (r) => `${r.provider_code}/${r.model_api_id}`,
+      (r) => r.model_display_name || r.model_api_id,
+    ),
+  );
+  const topAgentBars = computed(() =>
+    costBars(
+      overview.value?.top_agents ?? [],
+      (r) => r.agent_id || r.agent_key,
+      (r) => r.agent_key || r.agent_id,
+    ),
+  );
 
   /** Agent 健康榜：按成功率升序取最差 5（调用数>0）。 */
   const worstAgents = computed<ModelUsageBreakdownRow[]>(() =>
@@ -279,6 +295,7 @@ export function useOverviewPage() {
     monthEndForecastUsd,
     unpricedRows,
     topModelBars,
+    topAgentBars,
     worstAgents,
     callSparkline,
     quota,

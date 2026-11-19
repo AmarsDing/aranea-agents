@@ -943,6 +943,136 @@ body:not(.body--dark) .ov-page
   box-shadow: var(--nt-glow-soft)
   transition: width 0.4s cubic-bezier(0.22, 0.8, 0.22, 1)
 
+// ——— 基座总览：五张领域卡 ———
+.ov-domains
+  display: grid
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr))
+  gap: var(--nt-space-3)
+
+.ov-domain
+  display: grid
+  gap: var(--nt-space-1)
+  min-width: 0
+  padding: var(--nt-space-3) var(--nt-space-4)
+  background: var(--nt-bg-1)
+  border: 1px solid var(--nt-border-1)
+  border-radius: var(--nt-radius-l)
+  color: inherit
+  text-decoration: none
+  transition: border-color var(--nt-transition)
+
+  &:hover
+    border-color: var(--nt-accent)
+
+  &:focus-visible
+    outline: var(--focus-ring)
+    outline-offset: 2px
+
+.ov-domain__head
+  display: flex
+  align-items: center
+  gap: var(--nt-space-2)
+
+.ov-domain__icon
+  display: grid
+  flex: none
+  place-items: center
+  width: 28px
+  height: 28px
+  border: 1px solid var(--nt-accent-border)
+  border-radius: var(--nt-radius-s)
+  color: var(--nt-accent)
+
+.ov-domain__name
+  color: var(--nt-text-0)
+  font-size: var(--nt-fs-title)
+  font-weight: 600
+
+.ov-domain__q
+  overflow: hidden
+  color: var(--nt-text-2)
+  font-size: var(--nt-fs-caption)
+  text-overflow: ellipsis
+  white-space: nowrap
+
+.ov-domain__facts
+  display: flex
+  flex-wrap: wrap
+  gap: 2px var(--nt-space-3)
+  color: var(--nt-text-1)
+  font-size: var(--nt-fs-panel)
+
+  b
+    margin-left: var(--nt-space-1)
+    color: var(--nt-text-0)
+    font-family: var(--nt-font-mono)
+    font-variant-numeric: tabular-nums
+    font-weight: 400
+
+// 费用消耗是主体，需要处理的事在右边；窄了就上下排
+.ov-mainrow
+  display: grid
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 360px)
+  gap: 16px
+  align-items: start
+
+// 右边这一列窄：四条泳道上下排，每条一张卡
+.ov-mainrow .ov-attention__grid
+  grid-template-columns: minmax(0, 1fr)
+  gap: var(--nt-space-2)
+
+// 成本板在窄列里：四个数两行两列，成本条的名称列收窄
+.ov-mainrow .ov-cost__grid
+  grid-template-columns: repeat(2, minmax(0, 1fr))
+
+@media (max-width: 1199px)
+  .ov-mainrow
+    grid-template-columns: minmax(0, 1fr)
+
+  .ov-mainrow .ov-attention__grid
+    grid-template-columns: repeat(2, minmax(0, 1fr))
+
+// 「按模型 / 按 Agent」切换靠右
+.ov-topbars__by
+  margin-left: auto
+
+// 编码终端：每个终端一行，各额度窗口（5 小时 / 7 天）并排；占比用数据色，快用完才变色
+.ov-terms__row
+  display: grid
+  grid-template-columns: minmax(90px, 168px) minmax(0, 1fr) auto
+  gap: var(--nt-space-3)
+  align-items: center
+
+.ov-terms__wins
+  display: grid
+  grid-auto-flow: column
+  grid-auto-columns: minmax(0, 1fr)
+  gap: var(--nt-space-4)
+
+.ov-terms__win
+  display: grid
+  grid-template-columns: auto minmax(0, 1fr) auto
+  gap: var(--nt-space-2)
+  align-items: center
+
+.ov-terms__fill
+  background: var(--nt-info)
+  box-shadow: none
+
+.ov-terms__fill--warn
+  background: var(--nt-warn)
+
+.ov-terms__fill--danger
+  background: var(--nt-danger)
+
+@media (max-width: 799px)
+  .ov-terms__row
+    grid-template-columns: minmax(0, 1fr) auto
+  .ov-terms__wins
+    grid-column: 1 / -1
+    grid-row: 2
+    grid-auto-flow: row
+
 // 未定价：斜纹填充，与已定价成本行明确区分
 .ov-topbars__fill--unpriced
   background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--nt-warn) 55%, transparent) 0 4px, transparent 4px 8px)

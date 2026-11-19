@@ -30,6 +30,24 @@ export type OvBudget = {
 
 export type OvTopBar = { key: string; label: string; costUsd: number; ratio: number; unpriced: boolean };
 
+/** 一个编码终端的用量；percent 是额度已用百分比（0–100），-1 表示终端日志里没有额度信息。 */
+export type OvTerminal = {
+  agent: string;
+  sessions: number;
+  source: string;
+  windows: Array<{ label: string; tokens: number; percent: number; resetsAt: string }>;
+};
+
+/** 基座总览的领域卡；value 为 undefined 表示这个数没读到，界面写「—」。 */
+export type OvDomainCard = {
+  key: string;
+  icon: string;
+  title: string;
+  question: string;
+  to: string;
+  facts: Array<{ label: string; value?: string | number }>;
+};
+
 export type OvCacheHit = { denied: boolean; samples: number; p50: number; low: boolean };
 
 export type OvWorstAgent = { key: string; name: string; calls: number; successRate: number };

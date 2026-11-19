@@ -94,7 +94,7 @@
         <div class="ov-chart__readout" aria-live="polite">
           <template v-if="activeCost !== null">
             <span class="ov-chart__readout-key">{{ labels[activeCost] }}</span>
-            <span class="ov-chart__readout-cost">{{ formatUsdCompact(costsUsd[activeCost] ?? 0) }}</span>
+            <span class="ov-chart__readout-cost">{{ formatUsdCompactFromUsd(costsUsd[activeCost] ?? 0) }}</span>
           </template>
           <span v-else class="ov-chart__readout-hint">{{ t('overviewPage.v2.trendReadoutHint') }}</span>
         </div>
@@ -109,7 +109,7 @@
           @blur="activeCost = null"
           @keydown="onKey($event, 'cost')"
         >
-          <span class="ov-chart__max">{{ formatUsdCompact(maxCost) }}</span>
+          <span class="ov-chart__max">{{ formatUsdCompactFromUsd(maxCost) }}</span>
           <svg
             class="ov-chart__svg"
             viewBox="0 0 600 150"
@@ -152,7 +152,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { formatCount, formatUsdCompact } from '../../features/usage/moneyFormat';
+import { formatCount, formatUsdCompactFromUsd } from '../../features/usage/moneyFormat';
 
 const props = defineProps<{
   /** x 轴刻度文本（页面预格式化为本地时区短标签；首尾展示）。 */
