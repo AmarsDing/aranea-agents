@@ -37,6 +37,7 @@ export const sideNavGroups: NavGroup[] = [
       { to: '/usage/events', icon: 'receipt_long', labelKey: 'menu.usageEvents', permission: 'usage.read' },
       { to: '/chat', icon: 'chat', labelKey: 'menu.chat' },
       { to: '/coding-tasks', icon: 'terminal', labelKey: 'menu.codingTasks' },
+      { to: '/fleet', icon: 'hub', labelKey: 'menu.fleet', permission: 'coding.manage' },
       { to: '/companion', icon: 'record_voice_over', labelKey: 'menu.companion' },
       { to: '/sessions', icon: 'history', labelKey: 'menu.sessions', exact: false },
       { to: '/memory', icon: 'psychology', labelKey: 'menu.memory', exact: false, permission: 'memory.read' },

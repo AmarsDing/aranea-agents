@@ -65,6 +65,7 @@ export const NAV_DOMAIN_DEFS: DomainDef[] = [
       { path: '/task-workspace' },
       { path: '/sessions' },
       { path: '/coding-tasks' },
+      { path: '/fleet' },
       { path: '/companion' },
     ],
   },

@@ -15,6 +15,8 @@ import (
 // P2 并入 ceoboard（整合方案 §5.1：经营驾驶舱域全量收严 view/ops 两档）。
 // 评审 2026-11-09 H4 补录 agentbridge（原在普查范围外；管理/派发是主机
 // 命令执行面，manage/dispatch 收严、读面 authenticated）。
+// 2026-11-18 补录 fleet（Harness 多任务运行台：起终端 = 主机命令执行面，
+// 读写全部 coding.manage）。
 var sensitiveDomains = []string{
 	"admin",
 	"agentbridge",
@@ -23,6 +25,7 @@ var sensitiveDomains = []string{
 	"computeruse",
 	"credential",
 	"cron",
+	"fleet",
 	"github",
 	"llm_provider_model",
 	"monitor",

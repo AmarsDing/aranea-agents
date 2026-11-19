@@ -85,6 +85,44 @@ func registerGeneratedPermissions(r *PermissionRegistry) {
 	requireRPC(r, "cron", "CronService", "TriggerCronTask", "POST", "/v1/cron-tasks/{id}/trigger", "system.cron")
 	requireRPC(r, "cron", "CronService", "UpdateCronTask", "PATCH", "/v1/cron-tasks/{id}", "system.cron")
 
+	// ── fleet ──
+	requireRPC(r, "fleet", "FleetService", "AddProject", "POST", "/v1/fleet/projects", "coding.manage")
+	requireRPC(r, "fleet", "FleetService", "AnswerQuestion", "POST", "/v1/fleet/messages/{message_id}/answer", "coding.manage")
+	requireRPC(r, "fleet", "FleetService", "CloseTerminal", "POST", "/v1/fleet/terminals/{id}/close", "coding.manage")
+	requireRPC(r, "fleet", "FleetService", "Commit", "POST", "/v1/fleet/workspaces/{workspace_id}/git/commit", "coding.manage")
+	requireRPC(r, "fleet", "FleetService", "CreateRun", "POST", "/v1/fleet/runs", "coding.manage")
+	requireRPC(r, "fleet", "FleetService", "CreateTerminal", "POST", "/v1/fleet/terminals", "coding.manage")
+	requireRPC(r, "fleet", "FleetService", "CreateWorkspace", "POST", "/v1/fleet/workspaces", "coding.manage")
+	requireRPC(r, "fleet", "FleetService", "DeleteAutomation", "DELETE", "/v1/fleet/automations/{id}", "coding.manage")
+	requireRPC(r, "fleet", "FleetService", "DeleteNote", "DELETE", "/v1/fleet/notes/{id}", "coding.manage")
+	requireRPC(r, "fleet", "FleetService", "DeleteWorkspace", "POST", "/v1/fleet/workspaces/{id}/delete", "coding.manage")
+	requireRPC(r, "fleet", "FleetService", "GetDiff", "GET", "/v1/fleet/workspaces/{workspace_id}/diff", "coding.manage")
+	requireRPC(r, "fleet", "FleetService", "GetGitStatus", "GET", "/v1/fleet/workspaces/{workspace_id}/git", "coding.manage")
+	requireRPC(r, "fleet", "FleetService", "GetRun", "GET", "/v1/fleet/runs/{id}", "coding.manage")
+	requireRPC(r, "fleet", "FleetService", "GetUsage", "GET", "/v1/fleet/usage", "coding.manage")
+	requireRPC(r, "fleet", "FleetService", "KillTerminal", "POST", "/v1/fleet/terminals/{id}/kill", "coding.manage")
+	requireRPC(r, "fleet", "FleetService", "ListAgentPresets", "GET", "/v1/fleet/agents", "coding.manage")
+	requireRPC(r, "fleet", "FleetService", "ListAutomations", "GET", "/v1/fleet/automations", "coding.manage")
+	requireRPC(r, "fleet", "FleetService", "ListEvents", "GET", "/v1/fleet/events", "coding.manage")
+	requireRPC(r, "fleet", "FleetService", "ListNotes", "GET", "/v1/fleet/workspaces/{workspace_id}/notes", "coding.manage")
+	requireRPC(r, "fleet", "FleetService", "ListProjects", "GET", "/v1/fleet/projects", "coding.manage")
+	requireRPC(r, "fleet", "FleetService", "ListRefs", "GET", "/v1/fleet/projects/{project_id}/refs", "coding.manage")
+	requireRPC(r, "fleet", "FleetService", "ListRuns", "GET", "/v1/fleet/runs", "coding.manage")
+	requireRPC(r, "fleet", "FleetService", "ListTerminals", "GET", "/v1/fleet/terminals", "coding.manage")
+	requireRPC(r, "fleet", "FleetService", "ListWorkspaces", "GET", "/v1/fleet/workspaces", "coding.manage")
+	requireRPC(r, "fleet", "FleetService", "MarkEventsRead", "POST", "/v1/fleet/events/read", "coding.manage")
+	requireRPC(r, "fleet", "FleetService", "Push", "POST", "/v1/fleet/workspaces/{workspace_id}/git/push", "coding.manage")
+	requireRPC(r, "fleet", "FleetService", "RestartTerminal", "POST", "/v1/fleet/terminals/{id}/restart", "coding.manage")
+	requireRPC(r, "fleet", "FleetService", "RunAutomationNow", "POST", "/v1/fleet/automations/{id}/run", "coding.manage")
+	requireRPC(r, "fleet", "FleetService", "SendInput", "POST", "/v1/fleet/terminals/{id}/input", "coding.manage")
+	requireRPC(r, "fleet", "FleetService", "SendNotes", "POST", "/v1/fleet/workspaces/{workspace_id}/notes/send", "coding.manage")
+	requireRPC(r, "fleet", "FleetService", "StageFiles", "POST", "/v1/fleet/workspaces/{workspace_id}/git/stage", "coding.manage")
+	requireRPC(r, "fleet", "FleetService", "StopRun", "POST", "/v1/fleet/runs/{id}/stop", "coding.manage")
+	requireRPC(r, "fleet", "FleetService", "UnstageFiles", "POST", "/v1/fleet/workspaces/{workspace_id}/git/unstage", "coding.manage")
+	requireRPC(r, "fleet", "FleetService", "UpdateWorkspace", "PATCH", "/v1/fleet/workspaces/{id}", "coding.manage")
+	requireRPC(r, "fleet", "FleetService", "UpsertAutomation", "POST", "/v1/fleet/automations", "coding.manage")
+	requireRPC(r, "fleet", "FleetService", "UpsertNote", "POST", "/v1/fleet/notes", "coding.manage")
+
 	// ── github ──
 	requireRPC(r, "github", "GitHubPanelService", "GetRepoHealth", "GET", "/v1/github/health", "github.view")
 	requireRPC(r, "github", "GitHubPanelService", "GetSlaReport", "GET", "/v1/github/sla", "github.view")
@@ -273,4 +311,4 @@ var generatedPublicRPCs = []string{
 	"/kratos.office.v1.OfficeScheduleService/GetICalFeed",
 }
 
-// 统计:permission=170 authenticated=42 public=4
+// 统计:permission=206 authenticated=42 public=4

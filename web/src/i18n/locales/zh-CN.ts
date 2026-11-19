@@ -2062,6 +2062,7 @@ export default {
     usageQuotas: '用量配额',
     chat: '聊天',
     codingTasks: '编码任务',
+    fleet: '运行台',
     codingTools: '编码工具',
     companion: '语音伴侣',
     sessions: '会话历史',

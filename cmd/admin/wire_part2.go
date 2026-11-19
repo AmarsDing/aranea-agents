@@ -85,6 +85,9 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.SelfImprovement, *co
 		// E 阶段 W2c G GitHub 研发情报面板（需求 §4；G-2 凭据存在性核验窄口）。
 		provideGitHubPanelUsecase,
 		provideGitHubPanelService,
+		// Harness 多任务运行台（fleet，复刻 Orca）。
+		provideFleetUsecase,
+		provideFleetService,
 		// E 阶段 W1c office 套件（日程/通知/apps/ical/提醒，拍板 K-1..K-5）。
 		provideOfficeRepo,
 		provideScheduleDraftReader,

@@ -23,6 +23,7 @@ import (
 	ecosystemv1 "aranea-agents/api/kratos/ecosystem/v1"
 	evaluationv1 "aranea-agents/api/kratos/evaluation/v1"
 	evolutionv1 "aranea-agents/api/kratos/evolution/v1"
+	fleetv1 "aranea-agents/api/kratos/fleet/v1"
 	gatewayv1 "aranea-agents/api/kratos/gateway/v1"
 	githubv1 "aranea-agents/api/kratos/github/v1"
 	graphv1 "aranea-agents/api/kratos/graph/v1"
@@ -171,6 +172,9 @@ func NewGRPCServer(c *conf.Server, s *ServiceRegistry, lg loggateway.Logger) *gr
 	}
 	if s.GitHubPanel != nil {
 		githubv1.RegisterGitHubPanelServiceServer(srv, s.GitHubPanel)
+	}
+	if s.Fleet != nil {
+		fleetv1.RegisterFleetServiceServer(srv, s.Fleet)
 	}
 	return srv
 }

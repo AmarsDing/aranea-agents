@@ -38,6 +38,7 @@ import { createRuntimeProfileServiceClient } from './kratos/runtime_profile/v1/i
 import { createChatServiceClient } from './kratos/chat/v1/index';
 import { createComputerUseServiceClient } from './kratos/computeruse/v1/index';
 import { createAgentBridgeServiceClient } from './kratos/agentbridge/v1/index';
+import { createFleetServiceClient } from './kratos/fleet/v1/index';
 import { createCeoboardServiceClient } from './kratos/ceoboard/v1/index';
 import { createApprovalCenterServiceClient } from './kratos/approval/v1/index';
 import { createReviewServiceClient } from './kratos/review/v1/index';
@@ -189,6 +190,11 @@ export function createComputerUseService() {
 
 export function createAgentBridgeService() {
   return createAgentBridgeServiceClient(requestHandler);
+}
+
+// Harness 多任务运行台（复刻 Orca）。
+export function createFleetService() {
+  return createFleetServiceClient(requestHandler);
 }
 
 export function createCeoboardService() {

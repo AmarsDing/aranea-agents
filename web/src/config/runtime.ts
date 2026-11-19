@@ -150,6 +150,22 @@ export function buildVoiceWsUrl(params: { sessionId: string; token?: string }): 
 }
 
 /**
+ * Harness 多任务运行台的终端字节流 `/v1/fleet/terminal-ws`（server/fleet_ws.go）。
+ * 鉴权与 /v1/ws 一致（同源 HttpOnly Cookie；跨源回退 token query）。
+ */
+export function buildFleetTerminalWsUrl(terminalId: string): string {
+  const origin = getWsOrigin();
+  const protocol = origin.startsWith('https') ? 'wss' : 'ws';
+  const wsOrigin = origin.replace(/^https?/, protocol);
+  const q = new URLSearchParams({ id: terminalId });
+  const token = getAuthToken();
+  if (token && !isWsSameOriginAsPage()) {
+    q.set('token', token);
+  }
+  return `${wsOrigin}/v1/fleet/terminal-ws?${q.toString()}`;
+}
+
+/**
  * @deprecated Session cookie is HttpOnly; JS cannot read it on same-origin deployments.
  * Cross-origin integrations should use Bearer token or explicit `token` query on WS URL.
  */

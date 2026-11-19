@@ -65,7 +65,7 @@ const SECTION_DEFS: Record<string, SectionDef[]> = {
     {
       key: 'collab',
       labelKey: 'shell.nav.section.collab',
-      paths: ['/chat', '/sessions', '/coding-tasks', '/companion'],
+      paths: ['/chat', '/sessions', '/coding-tasks', '/fleet', '/companion'],
     },
     {
       key: 'office',

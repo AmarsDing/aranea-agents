@@ -96,6 +96,9 @@ type ServiceRegistry struct {
 	// GitHubPanel 是 E 阶段 W2c G GitHub 研发情报面板（/v1/github/*，需求 §4；
 	// SLA/热榜/手动轮询 RPC 随 V3-V5 纵列接入）。
 	GitHubPanel *service.GitHubPanelService
+	// Fleet 是 Harness 多任务运行台（/v1/fleet/*，复刻 Orca：worktree + agent 终端
+	// + diff 批注 + 编排 + 自动化）。
+	Fleet *service.FleetService
 }
 
 // NewServiceRegistry assembles all services into a single registry for Wire injection.
@@ -163,6 +166,7 @@ func NewServiceRegistry(
 	officeMail *service.OfficeMailService,
 	secops *service.SecopsService,
 	gitHubPanel *service.GitHubPanelService,
+	fleetSvc *service.FleetService,
 ) *ServiceRegistry {
 	return &ServiceRegistry{
 		Admin:              admin,
@@ -227,5 +231,6 @@ func NewServiceRegistry(
 		OfficeMail:         officeMail,
 		Secops:             secops,
 		GitHubPanel:        gitHubPanel,
+		Fleet:              fleetSvc,
 	}
 }

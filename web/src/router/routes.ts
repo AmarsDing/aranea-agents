@@ -339,6 +339,13 @@ export const routes: RouteRecordRaw[] = [
         meta: { titleKey: 'menu.codingTasks' },
       },
       {
+        // Harness 多任务运行台（复刻 Orca：worktree + agent 终端 + diff 批注 + 编排 + 自动化）。
+        path: 'fleet',
+        name: 'fleet',
+        component: () => import('../pages/FleetPage.vue'),
+        meta: { titleKey: 'menu.fleet', breadcrumb: false },
+      },
+      {
         path: 'skills',
         name: 'skills',
         component: () => import('../pages/SkillsPage.vue'),

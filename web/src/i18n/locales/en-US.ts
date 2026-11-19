@@ -2070,6 +2070,7 @@ export default {
     usageQuotas: 'Usage quotas',
     chat: 'Chat',
     codingTasks: 'Coding tasks',
+    fleet: 'Agent fleet',
     codingTools: 'Coding tools',
     companion: 'Voice Companion',
     sessions: 'Session history',

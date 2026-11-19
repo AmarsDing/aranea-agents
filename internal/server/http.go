@@ -26,6 +26,7 @@ import (
 	ecosystemv1 "aranea-agents/api/kratos/ecosystem/v1"
 	evaluationv1 "aranea-agents/api/kratos/evaluation/v1"
 	evolutionv1 "aranea-agents/api/kratos/evolution/v1"
+	fleetv1 "aranea-agents/api/kratos/fleet/v1"
 	gatewayv1 "aranea-agents/api/kratos/gateway/v1"
 	graphv1 "aranea-agents/api/kratos/graph/v1"
 	hookv1 "aranea-agents/api/kratos/hook/v1"
@@ -134,6 +135,10 @@ func NewHTTPServer(c *conf.Server, s *ServiceRegistry, wsSrv *WSServer, voiceSrv
 	// patterns (e.g. /v1/artifacts/{id}).
 	registerCustomRoutes(srv, s.ChannelIngress, s.Artifact, s.Knowledge, s.A2APublic, s.SystemSetting, s.EcosystemPreset, s.AGUICompat, s.OpenAISession, s.A2AExtension, s.TwinOpenAPI, s.ConfigGraph, s.Diagnostics, s.Ceoboard)
 	registerMVPMediaRoutes(srv)
+	// Harness 多任务运行台：终端 WebSocket + fleetctl 入口（非 proto，见 fleet_ws.go）。
+	if s.Fleet != nil {
+		NewFleetEndpoints(s.Fleet.Usecase(), lg).RegisterOnKratos(srv)
+	}
 	registerProtoServices(srv, s)
 	registerCompatibilityRedirects(srv)
 	registerInfrastructureRoutes(srv, readiness)
@@ -225,6 +230,9 @@ func registerProtoServices(srv *kratoshttp.Server, s *ServiceRegistry) {
 	}
 	if s.Secops != nil {
 		secopsv1.RegisterSecopsServiceHTTPServer(srv, s.Secops)
+	}
+	if s.Fleet != nil {
+		fleetv1.RegisterFleetServiceHTTPServer(srv, s.Fleet)
 	}
 }
 

@@ -707,4 +707,8 @@ var ddlMigrationsLate = []ddlMigration{
 	//（source='delegate'，source_ref=承载会话 id）；随手记录 source='note'。
 	// 存量行默认空串零影响。幂等 IF NOT EXISTS。
 	{Version: 20261331, Name: "office_task_assignee", SQL: "sql/migrations/20261331_office_task_assignee.sql"},
+	// 20261332 fleet_records（Harness 多任务运行台，复刻 Orca）：单表 JSON
+	// 文档存 worktree/批注/动态/编排/自动化记录，主键 (kind,id)。终端进程
+	// 是运行态不落库。幂等 IF NOT EXISTS。
+	{Version: 20261332, Name: "fleet_records", SQL: "sql/migrations/20261332_fleet_records.sql"},
 }

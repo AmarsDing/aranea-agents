@@ -5,6 +5,7 @@ go 1.26.3
 require (
 	entgo.io/ent v0.14.6
 	github.com/aws/aws-sdk-go-v2/config v1.32.17
+	github.com/aymanbagabas/go-pty v0.2.3
 	github.com/bmatcuk/doublestar/v4 v4.9.1
 	github.com/bwmarrin/discordgo v0.29.0
 	github.com/creack/pty v1.1.24
@@ -256,6 +257,7 @@ require (
 	github.com/tiendc/go-deepcopy v1.7.2 // indirect
 	github.com/tklauser/go-sysconf v0.3.16 // indirect
 	github.com/tklauser/numcpus v0.11.0 // indirect
+	github.com/u-root/u-root v0.16.0 // indirect
 	github.com/wk8/go-ordered-map/v2 v2.1.8 // indirect
 	github.com/wneessen/go-mail v0.7.2 // indirect
 	github.com/woodsbury/decimal128 v1.3.0 // indirect
@@ -285,7 +287,7 @@ require (
 	modernc.org/libc v1.80.1 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.12.1 // indirect
-	mvdan.cc/sh/v3 v3.8.0 // indirect
+	mvdan.cc/sh/v3 v3.11.0 // indirect
 	trpc.group/trpc-go/trpc-agent-go/storage/postgres v1.11.0 // indirect
 	trpc.group/trpc-go/trpc-agent-go/storage/s3 v1.8.0 // indirect
 )

@@ -70,8 +70,8 @@ type SelfImprovementServiceHTTPServer interface {
 
 func RegisterSelfImprovementServiceHTTPServer(s *http.Server, srv SelfImprovementServiceHTTPServer) {
 	r := s.Route("/")
-	r.GET("/v1/self-improvement/runs", _SelfImprovementService_ListRuns1_HTTP_Handler(srv))
-	r.GET("/v1/self-improvement/runs/{id}", _SelfImprovementService_GetRun1_HTTP_Handler(srv))
+	r.GET("/v1/self-improvement/runs", _SelfImprovementService_ListRuns2_HTTP_Handler(srv))
+	r.GET("/v1/self-improvement/runs/{id}", _SelfImprovementService_GetRun2_HTTP_Handler(srv))
 	r.POST("/v1/self-improvement/runs/{id}/approve", _SelfImprovementService_ApproveRun0_HTTP_Handler(srv))
 	r.POST("/v1/self-improvement/runs/{id}/reject", _SelfImprovementService_RejectRun0_HTTP_Handler(srv))
 	r.POST("/v1/self-improvement/runs/{id}/rollback", _SelfImprovementService_RollbackRun0_HTTP_Handler(srv))
@@ -83,7 +83,7 @@ func RegisterSelfImprovementServiceHTTPServer(s *http.Server, srv SelfImprovemen
 	r.PUT("/v1/self-improvement/risk-rules", _SelfImprovementService_UpdateRiskRules0_HTTP_Handler(srv))
 }
 
-func _SelfImprovementService_ListRuns1_HTTP_Handler(srv SelfImprovementServiceHTTPServer) func(ctx http.Context) error {
+func _SelfImprovementService_ListRuns2_HTTP_Handler(srv SelfImprovementServiceHTTPServer) func(ctx http.Context) error {
 	return func(ctx http.Context) error {
 		var in ListRunsRequest
 		if err := ctx.BindQuery(&in); err != nil {
@@ -102,7 +102,7 @@ func _SelfImprovementService_ListRuns1_HTTP_Handler(srv SelfImprovementServiceHT
 	}
 }
 
-func _SelfImprovementService_GetRun1_HTTP_Handler(srv SelfImprovementServiceHTTPServer) func(ctx http.Context) error {
+func _SelfImprovementService_GetRun2_HTTP_Handler(srv SelfImprovementServiceHTTPServer) func(ctx http.Context) error {
 	return func(ctx http.Context) error {
 		var in GetRunRequest
 		if err := ctx.BindQuery(&in); err != nil {
