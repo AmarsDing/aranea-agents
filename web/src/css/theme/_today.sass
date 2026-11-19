@@ -1,12 +1,14 @@
 // 工作台「今日」页（/workbench）：类名 today- 前缀，取值只走 --nt-* 令牌。
-// 版面：左列待我处理（列表 + 详情），右列今日时间线、我的任务、交办中。
+// 版面（照设计稿，一屏）：四张摘要卡；下面三列——待我处理（列表 + 处理台）｜今日时间线、我的任务｜最新邮件、交办中。
+// 内容多的卡片在卡片里滚动；宽度不到 1100 时改成普通的上下排，整页滚动。
 @import "./_nt-tokens.css"
 
 .today-page
   display: flex
   flex-direction: column
-  gap: var(--nt-space-4)
-  padding: var(--nt-space-page)
+  gap: var(--nt-space-3)
+  height: 0
+  padding: var(--nt-space-4) var(--nt-space-page)
   color: var(--nt-text-1)
   font-family: var(--nt-font-sans)
   font-size: var(--nt-fs-body)
@@ -15,41 +17,20 @@
   font-family: var(--nt-font-mono)
   font-variant-numeric: tabular-nums
 
-// ——— 页头 ———
-.today-head
-  display: flex
-  align-items: flex-end
-  justify-content: space-between
-  gap: var(--nt-space-4)
-  flex-wrap: wrap
-
-.today-head__date
-  margin: 0 0 var(--nt-space-1)
-  color: var(--nt-text-3)
-  font-size: var(--nt-fs-caption)
-
-.today-head__line
-  margin: 0
-  color: var(--nt-text-0)
-  font-size: var(--nt-fs-hero)
-  font-weight: 600
-  line-height: 1.3
-
-.today-head__risk
-  margin: var(--nt-space-1) 0 0
-  color: var(--nt-danger)
-  font-size: var(--nt-fs-panel)
-
-.today-head__tools
+// ——— 状态行：操作结果播报 + 更新时间 + 刷新 ———
+.today-statusline
   display: flex
   align-items: center
   gap: var(--nt-space-3)
 
-.today-head__fresh
+.today-fresh
   color: var(--nt-text-3)
   font-size: var(--nt-fs-caption)
+  white-space: nowrap
 
 .today-live
+  flex: 1
+  min-width: 0
   min-height: 1.5em
   margin: 0
   color: var(--nt-text-2)
@@ -61,20 +42,31 @@
 // ——— 栅格与面板 ———
 .today-grid
   display: grid
-  grid-template-columns: minmax(0, 3fr) minmax(280px, 2fr)
+  flex: 1
+  grid-template-columns: minmax(0, 1.9fr) minmax(0, 1fr) minmax(0, 1fr)
   gap: var(--nt-space-4)
-  align-items: start
+  min-height: 0
 
 .today-side
   display: flex
   flex-direction: column
   gap: var(--nt-space-4)
   min-width: 0
+  min-height: 0
+
+  > .today-panel
+    flex: 1 1 0
+
+  // 最右一列给右下角的指令窗留出位置
+  &:last-child
+    padding-bottom: var(--app-dock-space, 0px)
 
 .today-panel
   min-width: 0
+  min-height: 0
+  overflow-y: auto
   padding: var(--nt-space-panel)
-  background: var(--nt-data-bg)
+  background: var(--nt-bg-1)
   border: 1px solid var(--nt-border-1)
   border-radius: var(--nt-radius-l)
 
@@ -143,10 +135,11 @@
 
 // ——— 收件箱 ———
 .today-inbox__list
+  flex: 1
+  min-height: 0
   margin: 0
   padding: 0
   list-style: none
-  max-height: min(52vh, 520px)
   overflow-y: auto
   border-radius: var(--nt-radius-m)
 
@@ -226,10 +219,27 @@
   color: var(--nt-text-3)
   font-size: var(--nt-fs-micro)
 
+// 处理台：列表右边，自己滚动；动作条沉在底部
 .today-inbox__detail
-  margin-top: var(--nt-space-4)
-  padding-top: var(--nt-space-4)
-  border-top: 1px solid var(--nt-border-1)
+  display: flex
+  flex-direction: column
+  min-width: 0
+  min-height: 0
+  overflow-y: auto
+  padding-left: var(--nt-space-4)
+  border-left: 1px solid var(--nt-border-1)
+
+  .today-inbox__actions,
+  .today-inbox__reject
+    margin-top: auto
+    padding-top: var(--nt-space-3)
+
+.today-inbox__tags
+  display: flex
+  align-items: center
+  flex-wrap: wrap
+  gap: var(--nt-space-2)
+  margin: 0 0 var(--nt-space-3)
 
 .today-inbox__detail-title
   margin: 0 0 var(--nt-space-2)
@@ -241,7 +251,11 @@
 
 .today-inbox__summary
   margin: 0 0 var(--nt-space-3)
-  color: var(--nt-text-2)
+  padding: var(--nt-space-3)
+  background: var(--nt-data-inset)
+  border: 1px solid var(--nt-border-1)
+  border-radius: var(--nt-radius-m)
+  color: var(--nt-text-1)
   line-height: 1.6
   overflow-wrap: anywhere
   white-space: pre-wrap
@@ -420,16 +434,28 @@
 
 // ——— 响应式（断点 1099 / 559）———
 @media (max-width: 1099px)
+  .today-page
+    height: auto
+
   .today-grid
     grid-template-columns: minmax(0, 1fr)
 
-  .today-inbox__list
-    max-height: none
+  .today-sum
+    grid-template-columns: repeat(2, minmax(0, 1fr))
+
+  .today-panel,
+  .today-inbox__detail
+    overflow-y: visible
+
+  .today-inbox__body
+    grid-template-columns: minmax(0, 1fr)
+
+  .today-inbox__detail
+    padding: var(--nt-space-4) 0 0
+    border-top: 1px solid var(--nt-border-1)
+    border-left: 0
 
 @media (max-width: 559px)
-  .today-head__line
-    font-size: var(--nt-fs-num-lg)
-
   .today-inbox__row
     flex-wrap: wrap
 
@@ -458,50 +484,6 @@
   line-height: 1.5
   text-align: center
 
-// ——— 指令栏（交办 / 建任务 / 记录） ———
-.today-command
-  display: flex
-  flex-direction: column
-  gap: var(--nt-space-2)
-
-.today-command__row
-  display: grid
-  grid-template-columns: minmax(0, 1fr) auto
-  gap: var(--nt-space-2)
-  align-items: start
-
-.today-command__key
-  padding: 0 var(--nt-space-2)
-  border: 1px solid var(--nt-border-2)
-  border-radius: var(--nt-radius-s)
-  color: var(--nt-text-3)
-  font-size: var(--nt-fs-caption)
-  line-height: 1.6
-
-.today-command__preview
-  display: flex
-  align-items: center
-  gap: var(--nt-space-3)
-  flex-wrap: wrap
-
-.today-command__intent
-  flex: none
-
-.today-command__to
-  flex: none
-  width: 220px
-  max-width: 100%
-
-.today-command__hint
-  flex: 1
-  min-width: 200px
-  margin: 0
-  color: var(--nt-text-3)
-  font-size: var(--nt-fs-caption)
-
-.today-command__hint--confirm
-  color: var(--nt-text-1)
-
 // ——— 最近记录 / 交办验收 ———
 .today-notes
   margin-top: var(--nt-space-2)
@@ -528,12 +510,115 @@
     min-width: 0
 
 @media (max-width: 559px)
-  .today-command__row
-    grid-template-columns: minmax(0, 1fr)
-
-  .today-command__to
-    width: 100%
-
   .today-notes__summary
     min-height: 44px
     line-height: 44px
+
+// ——— 四张摘要卡 ———
+.today-sum
+  display: grid
+  grid-template-columns: repeat(4, minmax(0, 1fr))
+  gap: var(--nt-space-4)
+
+.today-sum__card
+  display: grid
+  grid-template-columns: auto minmax(0, 1fr)
+  align-items: center
+  gap: 0 var(--nt-space-3)
+  padding: var(--nt-space-3) var(--nt-space-4)
+  background: var(--nt-bg-1)
+  border: 1px solid var(--nt-border-1)
+  border-radius: var(--nt-radius-l)
+
+.today-sum__icon
+  display: grid
+  grid-row: 1 / 3
+  place-items: center
+  width: 40px
+  height: 40px
+  border: 1px solid var(--nt-border-1)
+  border-radius: var(--nt-radius-m)
+  color: var(--nt-accent)
+
+.today-sum__top
+  display: flex
+  align-items: baseline
+  gap: var(--nt-space-2)
+  color: var(--nt-text-1)
+  white-space: nowrap
+
+.today-sum__num
+  color: var(--nt-text-0)
+  font-size: var(--nt-fs-hero)
+  font-weight: 600
+  line-height: 1.2
+
+// 要我处理的数用琥珀色
+.today-sum__num--warn
+  color: var(--nt-warn)
+
+.today-sum__sub
+  overflow: hidden
+  color: var(--nt-text-2)
+  font-size: var(--nt-fs-caption)
+  text-overflow: ellipsis
+  white-space: nowrap
+
+// ——— 待我处理：筛选靠右；列表和处理台左右并排 ———
+.today-inbox
+  display: flex
+  flex-direction: column
+
+.today-inbox__filter
+  margin-left: auto
+
+.today-inbox__body
+  display: grid
+  flex: 1
+  grid-template-columns: minmax(200px, 0.8fr) minmax(0, 1.4fr)
+  gap: var(--nt-space-4)
+  min-height: 0
+
+.today-inbox__col
+  display: flex
+  flex-direction: column
+  min-width: 0
+  min-height: 0
+
+// ——— 最新邮件 ———
+.today-mail__row
+  display: grid
+  grid-template-columns: minmax(0, 1fr) auto
+  gap: 2px var(--nt-space-2)
+  padding: var(--nt-space-2) 0
+  border-top: 1px solid var(--nt-border-1)
+  color: inherit
+  text-decoration: none
+
+  &:hover .today-mail__subject
+    color: var(--nt-text-0)
+
+  &:focus-visible
+    outline: var(--focus-ring)
+    outline-offset: 2px
+
+li:first-child > .today-mail__row
+  border-top: 0
+
+.today-mail__from
+  overflow: hidden
+  color: var(--nt-text-0)
+  font-weight: 600
+  text-overflow: ellipsis
+  white-space: nowrap
+
+.today-mail__time
+  color: var(--nt-text-3)
+  font-size: var(--nt-fs-caption)
+
+.today-mail__subject
+  overflow: hidden
+  color: var(--nt-text-2)
+  font-size: var(--nt-fs-panel)
+  text-overflow: ellipsis
+  white-space: nowrap

@@ -5,6 +5,15 @@
         {{ t('today.inbox.title') }}
         <span class="today-panel__count">{{ total }}</span>
       </h2>
+      <q-btn-toggle
+        v-model="filter"
+        dense
+        outline
+        no-caps
+        class="today-inbox__filter"
+        :options="filterOptions"
+        :aria-label="t('today.inbox.filterLabel')"
+      />
       <router-link class="today-link" to="/approvals">{{ t('today.inbox.viewAll') }}</router-link>
     </header>
 
@@ -16,47 +25,63 @@
     <p v-if="!loaded" class="today-empty">{{ t('today.inbox.loading') }}</p>
     <p v-else-if="rows.length === 0" class="today-empty">{{ t('today.inbox.empty') }}</p>
 
-    <template v-else>
-      <ul
-        ref="listEl"
-        class="today-inbox__list"
-        role="listbox"
-        tabindex="0"
-        :aria-label="t('today.inbox.listLabel')"
-        :aria-activedescendant="selected ? optionId(selected.id) : undefined"
-        @keydown="onKeydown"
-      >
-        <li
-          v-for="row in rows"
-          :id="optionId(row.id)"
-          :key="row.id"
-          class="today-inbox__row"
-          :class="{ 'today-inbox__row--selected': row.id === selectedId }"
-          role="option"
-          :aria-selected="row.id === selectedId"
-          @click="emit('select', row.id)"
+    <div v-else class="today-inbox__body">
+      <div class="today-inbox__col">
+        <p v-if="shown.length === 0" class="today-empty">{{ t('today.inbox.filterEmpty') }}</p>
+        <ul
+          v-else
+          ref="listEl"
+          class="today-inbox__list"
+          role="listbox"
+          tabindex="0"
+          :aria-label="t('today.inbox.listLabel')"
+          :aria-activedescendant="selected ? optionId(selected.id) : undefined"
+          @keydown="onKeydown"
         >
-          <span class="today-risk" :class="`today-risk--${riskOf(row)}`">{{ t(`today.risk.${riskOf(row)}`) }}</span>
-          <span class="today-inbox__main">
-            <span class="today-inbox__title">
-              <span class="today-inbox__kind">{{ kindLabel(row) }}</span>
-              {{ row.title || row.summary }}
+          <li
+            v-for="row in shown"
+            :id="optionId(row.id)"
+            :key="row.id"
+            class="today-inbox__row"
+            :class="{ 'today-inbox__row--selected': row.id === selectedId }"
+            role="option"
+            :aria-selected="row.id === selectedId"
+            @click="emit('select', row.id)"
+          >
+            <span class="today-risk" :class="`today-risk--${riskOf(row)}`">{{ t(`today.risk.${riskOf(row)}`) }}</span>
+            <span class="today-inbox__main">
+              <span class="today-inbox__title">
+                <span class="today-inbox__kind">{{ kindLabel(row) }}</span>
+                {{ row.title || row.summary }}
+              </span>
+              <span class="today-inbox__sub">
+                {{ sourceLabel(row.source) }}
+                <template v-if="row.requester"> · {{ t('today.inbox.from', { who: row.requester }) }}</template>
+              </span>
             </span>
-            <span class="today-inbox__sub">
-              {{ sourceLabel(row.source) }}
-              <template v-if="row.requester"> · {{ t('today.inbox.from', { who: row.requester }) }}</template>
+            <span v-if="dueLabel(row)" class="today-inbox__due" :class="{ 'today-inbox__due--late': isOverdue(row) }">
+              {{ dueLabel(row) }}
             </span>
-          </span>
-          <span v-if="dueLabel(row)" class="today-inbox__due" :class="{ 'today-inbox__due--late': isOverdue(row) }">
-            {{ dueLabel(row) }}
-          </span>
-        </li>
-      </ul>
-      <p v-if="total > rows.length" class="today-note">{{ t('today.inbox.more', { n: total - rows.length }) }}</p>
-      <p class="today-inbox__keys">{{ t('today.inbox.shortcuts') }}</p>
+          </li>
+        </ul>
+        <p v-if="total > rows.length" class="today-note">{{ t('today.inbox.more', { n: total - rows.length }) }}</p>
+        <p class="today-inbox__keys">{{ t('today.inbox.shortcuts') }}</p>
+      </div>
 
       <article v-if="selected" class="today-inbox__detail" :aria-label="selected.title">
         <h3 class="today-inbox__detail-title">{{ selected.title || selected.summary }}</h3>
+        <p class="today-inbox__tags">
+          <span class="today-risk" :class="`today-risk--${riskOf(selected)}`">{{
+            t('today.inbox.riskTag', { level: t(`today.risk.${riskOf(selected)}`) })
+          }}</span>
+          <span v-if="kindLabel(selected)" class="today-tag">{{ kindLabel(selected) }}</span>
+          <span
+            v-if="dueLabel(selected)"
+            class="today-inbox__due"
+            :class="{ 'today-inbox__due--late': isOverdue(selected) }"
+            >{{ dueLabel(selected) }}</span
+          >
+        </p>
         <p v-if="selected.summary && selected.summary !== selected.title" class="today-inbox__summary">
           {{ selected.summary }}
         </p>
@@ -141,7 +166,7 @@
         </div>
       </article>
       <p v-else class="today-empty">{{ t('today.inbox.selectHint') }}</p>
-    </template>
+    </div>
   </section>
 </template>
 
@@ -182,6 +207,24 @@ const noteEl = ref<{ focus: () => void } | null>(null);
 const rejecting = ref(false);
 const note = ref('');
 const noteMissing = ref(false);
+
+// 筛选只在已取回的条目里做：全部 / 今天到期（含已逾期）/ 高风险
+const filter = ref<'all' | 'due' | 'high'>('all');
+const filterOptions = computed(() => [
+  { label: t('today.inbox.filter.all'), value: 'all' },
+  { label: t('today.inbox.filter.due'), value: 'due' },
+  { label: t('today.inbox.filter.high'), value: 'high' },
+]);
+const shown = computed(() => {
+  if (filter.value === 'high') return props.rows.filter((row) => row.risk_level === 'high');
+  if (filter.value !== 'due') return props.rows;
+  const end = dayBounds(new Date()).end.getTime();
+  return props.rows.filter((row) => row.due_at && new Date(row.due_at).getTime() < end);
+});
+// 选中的条目被筛掉时，落到筛选结果的第一条
+watch(shown, (rows) => {
+  if (rows.length > 0 && !rows.some((row) => row.id === props.selectedId)) emit('select', rows[0].id);
+});
 
 const selected = computed(() => props.rows.find((row) => row.id === props.selectedId) ?? null);
 const primary = computed(() => (selected.value ? primaryAction(selected.value) : ''));
@@ -268,10 +311,11 @@ function submitReject() {
 }
 
 function move(delta: number) {
-  if (props.rows.length === 0) return;
-  const index = props.rows.findIndex((row) => row.id === props.selectedId);
-  const next = Math.min(props.rows.length - 1, Math.max(0, (index < 0 ? -1 : index) + delta));
-  const id = props.rows[next]?.id;
+  const rows = shown.value;
+  if (rows.length === 0) return;
+  const index = rows.findIndex((row) => row.id === props.selectedId);
+  const next = Math.min(rows.length - 1, Math.max(0, (index < 0 ? -1 : index) + delta));
+  const id = rows[next]?.id;
   if (!id) return;
   emit('select', id);
   void nextTick(() => document.getElementById(optionId(id))?.scrollIntoView({ block: 'nearest' }));
@@ -290,10 +334,10 @@ function onKeydown(event: KeyboardEvent) {
       move(-1);
       break;
     case 'Home':
-      move(-props.rows.length);
+      move(-shown.value.length);
       break;
     case 'End':
-      move(props.rows.length);
+      move(shown.value.length);
       break;
     case 'Enter':
       if (primary.value) act(primary.value);

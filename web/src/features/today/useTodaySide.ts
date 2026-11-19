@@ -1,5 +1,5 @@
 /**
- * 工作台右栏的数据：今日日程、Agent 定时任务、我的任务、随手记录、交办中。
+ * 工作台右栏的数据：今日日程、Agent 定时任务、我的任务、随手记录、交办中、最新邮件。
  * 各块独立读取与降级——一块失败或无权限不影响其余几块。
  * 交办中有两个来源：编程任务看板，和指令栏交办时登记的任务（进度取承载
  * 会话的任务态势）。
@@ -7,8 +7,14 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { listCodingTasks } from '../coding/api';
 import { listCronTasks, parseCronMetadata } from '../cron/api';
-import { createOfficeTask, listEventsRange, listOfficeTasks, setOfficeTaskStatus } from '../office/api';
-import type { OfficeEventRow, OfficeTaskRow } from '../office/types';
+import {
+  createOfficeTask,
+  listEventsRange,
+  listMailMessages,
+  listOfficeTasks,
+  setOfficeTaskStatus,
+} from '../office/api';
+import type { MailMessageRow, OfficeEventRow, OfficeTaskRow } from '../office/types';
 import { listTaskSituations } from '../session/api';
 import { useNavStore } from '../../stores/nav';
 import { parseKratosApiError } from '../../utils/kratosError';
@@ -28,6 +34,7 @@ export type BlockStatus = 'loading' | 'ok' | 'denied' | 'error';
 const POLL_INTERVAL_MS = 60_000;
 const DELEGATED_FETCH_LIMIT = 100;
 const NOTES_SHOWN = 5;
+const MAILS_SHOWN = 5;
 
 export function useTodaySide() {
   const nav = useNavStore();
@@ -42,6 +49,9 @@ export function useTodaySide() {
   const delegated = ref<DelegatedRow[]>([]);
   const delegatedStatus = ref<BlockStatus>('loading');
   const notes = ref<OfficeTaskRow[]>([]);
+  const mails = ref<MailMessageRow[]>([]);
+  const mailTotal = ref(0);
+  const mailsStatus = ref<BlockStatus>('loading');
 
   let timer: ReturnType<typeof setInterval> | null = null;
 
@@ -127,8 +137,25 @@ export function useTodaySide() {
     }
   }
 
+  async function loadMails() {
+    if (!can('office.mail')) {
+      mails.value = [];
+      mailsStatus.value = 'denied';
+      return;
+    }
+    try {
+      const res = await listMailMessages({ pageSize: MAILS_SHOWN });
+      mails.value = res.items;
+      mailTotal.value = res.total;
+      mailsStatus.value = 'ok';
+    } catch (err) {
+      console.warn('[today] mails load failed', err);
+      mailsStatus.value = 'error';
+    }
+  }
+
   async function refresh(): Promise<void> {
-    await Promise.all([loadEvents(), loadCron(), loadTasks(), loadDelegated(), loadNotes()]);
+    await Promise.all([loadEvents(), loadCron(), loadTasks(), loadDelegated(), loadNotes(), loadMails()]);
   }
 
   /** 记一笔；失败时返回错误文案，成功返回空串。 */
@@ -272,6 +299,9 @@ export function useTodaySide() {
     delegatedStatus,
     delegatedCounts,
     notes,
+    mails,
+    mailTotal,
+    mailsStatus,
     refresh,
     addTask,
     addNote,

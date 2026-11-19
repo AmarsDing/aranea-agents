@@ -1,34 +1,34 @@
 <template>
+  <!--
+    工作台 · 今日（照设计稿）：一屏三列。上面四张摘要卡，下面左列待我处理（列表 + 处理台），
+    中列今日时间线和我的任务，右列最新邮件和交办中。日期在顶栏，指令入口是右下角的指令窗。
+  -->
   <q-page class="app-standard-page today-page">
-    <header class="today-head">
-      <div>
-        <p class="today-head__date today-mono">{{ dateLabel }}</p>
-        <h1 class="today-head__line">{{ greeting }}。{{ headlineText }}</h1>
-        <p v-if="headline.highRisk > 0" class="today-head__risk">
-          {{ t('today.headline.highRisk', { n: headline.highRisk }) }}
-        </p>
-      </div>
-      <div class="today-head__tools">
-        <span v-if="inbox.updatedAt.value" class="today-head__fresh today-mono">
-          {{ t('today.updatedAt', { time: clock(inbox.updatedAt.value) }) }}
+    <div class="today-statusline">
+      <p class="today-live" :role="feedback.error ? 'alert' : 'status'" aria-live="polite">
+        {{ feedback.text }}
+        <router-link v-if="feedback.link" class="today-link" :to="feedback.link">{{
+          t('today.command.openSession')
+        }}</router-link>
+      </p>
+      <span v-if="inbox.updatedAt.value" class="today-fresh today-mono">
+        {{ t('today.updatedAt', { time: clock(inbox.updatedAt.value) }) }}
+      </span>
+      <q-btn flat dense no-caps icon="refresh" :label="t('today.refresh')" :loading="refreshing" @click="refreshAll" />
+    </div>
+
+    <div class="today-sum">
+      <div v-for="card in summary" :key="card.key" class="today-sum__card">
+        <span class="today-sum__icon"><q-icon :name="card.icon" size="20px" aria-hidden="true" /></span>
+        <span class="today-sum__top">
+          {{ card.label }}
+          <strong class="today-sum__num today-mono" :class="{ 'today-sum__num--warn': card.warn }">{{
+            card.value
+          }}</strong>
         </span>
-        <q-btn flat no-caps icon="refresh" :label="t('today.refresh')" :loading="refreshing" @click="refreshAll" />
+        <span class="today-sum__sub">{{ card.sub }}</span>
       </div>
-    </header>
-
-    <TodayCommandBar
-      ref="commandEl"
-      :recipients="recipients.recipients.value"
-      :recipients-status="recipients.status.value"
-      :run="runCommand"
-    />
-
-    <p class="today-live" :role="feedback.error ? 'alert' : 'status'" aria-live="polite">
-      {{ feedback.text }}
-      <router-link v-if="feedback.link" class="today-link" :to="feedback.link">{{
-        t('today.command.openSession')
-      }}</router-link>
-    </p>
+    </div>
 
     <div class="today-grid">
       <TodayInbox
@@ -55,6 +55,7 @@
         />
         <TodayTasks
           class="today-panel"
+          part="tasks"
           :tasks="side.tasks.value"
           :tasks-status="side.tasksStatus.value"
           :task-busy="side.taskBusy.value"
@@ -66,6 +67,26 @@
           @complete="onComplete"
           @undo="onUndo"
           @dismiss-note="side.dismissNote($event.id)"
+        />
+      </div>
+      <div class="today-side">
+        <TodayMail
+          class="today-panel"
+          :mails="side.mails.value"
+          :total="side.mailTotal.value"
+          :status="side.mailsStatus.value"
+        />
+        <TodayTasks
+          class="today-panel"
+          part="delegated"
+          :tasks="side.tasks.value"
+          :tasks-status="side.tasksStatus.value"
+          :task-busy="side.taskBusy.value"
+          :last-done="null"
+          :notes="[]"
+          :delegated="side.delegated.value"
+          :delegated-status="side.delegatedStatus.value"
+          :add="side.addTask"
           @accept="onAccept"
         />
       </div>
@@ -76,73 +97,100 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-import TodayCommandBar, { type CommandFailure, type CommandRequest } from '../components/today/TodayCommandBar.vue';
 import TodayInbox from '../components/today/TodayInbox.vue';
+import TodayMail from '../components/today/TodayMail.vue';
 import TodayTasks from '../components/today/TodayTasks.vue';
 import TodayTimeline from '../components/today/TodayTimeline.vue';
 import type { InboxAction, InboxItemRow } from '../features/approval/api';
 import type { OfficeTaskRow } from '../features/office/types';
-import { batchableLowRisk, buildTimeline, clock, inboxHeadline, type DelegatedRow } from '../features/today/logic';
-import { useRecipients } from '../features/today/useDelegation';
 import {
-  COMMAND_DONE_EVENT,
-  runCommand as executeCommand,
-  type CommandDoneDetail,
-} from '../features/today/useCommandRunner';
+  batchableLowRisk,
+  buildTimeline,
+  clock,
+  dayBounds,
+  inboxHeadline,
+  type DelegatedRow,
+} from '../features/today/logic';
+import { COMMAND_DONE_EVENT, type CommandDoneDetail } from '../features/today/useCommandRunner';
 import { useInbox } from '../features/today/useInbox';
 import { useTodaySide } from '../features/today/useTodaySide';
 
-const { t, locale } = useI18n();
+const { t } = useI18n();
 const inbox = useInbox();
 const side = useTodaySide();
-const recipients = useRecipients();
 
 const inboxEl = ref<{ focusList: () => void } | null>(null);
-const commandEl = ref<{ focus: () => void } | null>(null);
 const selectedId = ref('');
 const refreshing = ref(false);
 const feedback = reactive({ text: '', error: false, link: '' });
 const lastDone = ref<OfficeTaskRow | null>(null);
 
-// 每分钟推进一次「现在」，驱动问候语、时间线分隔线与逾期判断。
+// 每分钟推进一次「现在」，驱动时间线分隔线与逾期判断。
 const nowIso = ref(new Date().toISOString());
 let clockTimer: ReturnType<typeof setInterval> | null = null;
 onMounted(() => {
   clockTimer = setInterval(() => (nowIso.value = new Date().toISOString()), 60_000);
-  void recipients.load();
-  document.addEventListener('keydown', onPageKey);
   window.addEventListener(COMMAND_DONE_EVENT, onCommandDone);
 });
 onUnmounted(() => {
   if (clockTimer) clearInterval(clockTimer);
-  document.removeEventListener('keydown', onPageKey);
   window.removeEventListener(COMMAND_DONE_EVENT, onCommandDone);
 });
 
-/** 「/」把焦点送进指令栏（正在别处输入、或带修饰键时不抢）。 */
-function onPageKey(event: KeyboardEvent) {
-  if (event.key !== '/' || event.ctrlKey || event.metaKey || event.altKey) return;
-  const target = event.target as HTMLElement | null;
-  if (target?.closest('input, textarea, select, [contenteditable="true"]')) return;
-  event.preventDefault();
-  commandEl.value?.focus();
-}
 const now = computed(() => new Date(nowIso.value));
 
-const dateLabel = computed(() =>
-  new Intl.DateTimeFormat(locale.value, { weekday: 'long', month: 'long', day: 'numeric' }).format(now.value),
-);
-const greeting = computed(() => {
-  const hour = now.value.getHours();
-  if (hour < 12) return t('today.greeting.morning');
-  return hour < 18 ? t('today.greeting.afternoon') : t('today.greeting.evening');
-});
 const headline = computed(() => inboxHeadline(inbox.rows.value, inbox.total.value, now.value));
-const headlineText = computed(() => {
-  const { total, dueToday } = headline.value;
-  if (!inbox.loaded.value) return '';
-  if (total === 0) return t('today.headline.none');
-  return dueToday > 0 ? t('today.headline.countDue', { total, due: dueToday }) : t('today.headline.count', { total });
+
+// 四张摘要卡：数字都来自下面几块已经取回的数据，取不到的写明，不显示成 0
+const summary = computed(() => {
+  const { total, dueToday, highRisk } = headline.value;
+  const end = dayBounds(now.value).end.getTime();
+  const nextDue = inbox.rows.value
+    .filter((row) => row.due_at && new Date(row.due_at).getTime() < end)
+    .sort((a, b) => new Date(a.due_at).getTime() - new Date(b.due_at).getTime())[0];
+  const counts = side.delegatedCounts.value;
+  const latestMail = side.mails.value[0];
+  const mailReady = side.mailsStatus.value === 'ok';
+  return [
+    {
+      key: 'inbox',
+      icon: 'inbox',
+      label: t('today.inbox.title'),
+      value: inbox.loaded.value ? String(total) : '—',
+      warn: total > 0,
+      sub: total === 0 ? t('today.summary.inboxNone') : t('today.summary.inboxSub', { high: highRisk }),
+    },
+    {
+      key: 'due',
+      icon: 'schedule',
+      label: t('today.summary.due'),
+      value: inbox.loaded.value ? String(dueToday) : '—',
+      warn: dueToday > 0,
+      sub: nextDue
+        ? t('today.summary.dueSub', { time: clock(nextDue.due_at), title: nextDue.title || nextDue.summary })
+        : t('today.summary.dueNone'),
+    },
+    {
+      key: 'delegated',
+      icon: 'send',
+      label: t('today.delegated.title'),
+      value: side.delegatedStatus.value === 'ok' ? String(side.delegated.value.length) : '—',
+      warn: false,
+      sub: t('today.summary.delegatedSub', { stuck: counts.stuck, review: counts.review }),
+    },
+    {
+      key: 'mail',
+      icon: 'mail',
+      label: t('today.summary.mail'),
+      value: mailReady ? String(side.mailTotal.value) : '—',
+      warn: false,
+      sub: !mailReady
+        ? t(side.mailsStatus.value === 'denied' ? 'today.mail.denied' : 'today.mail.failed')
+        : latestMail
+          ? t('today.summary.mailSub', { subject: latestMail.subject || t('today.mail.noSubject') })
+          : t('today.mail.empty'),
+    },
+  ];
 });
 
 const timeline = computed(() =>
@@ -170,25 +218,7 @@ function say(text: string, error = false, link = '') {
   feedback.link = link;
 }
 
-/** 指令栏的三种指令；失败时把原因交回指令栏（输入保留），成功时在页面播报。 */
-async function runCommand(request: CommandRequest): Promise<CommandFailure | null> {
-  const result = await executeCommand(request);
-  if (!result.ok) return { message: result.message, link: result.link };
-  if (request.intent === 'delegate') {
-    say(
-      t(result.untracked ? 'today.command.done.delegateUntracked' : 'today.command.done.delegate', {
-        name: request.recipient.name,
-      }),
-      result.untracked,
-      result.link,
-    );
-  } else {
-    say(t(`today.command.done.${request.intent}`, { title: request.text }));
-  }
-  return null;
-}
-
-// 任何入口执行完指令（本页指令栏或 Ctrl+K 指令面板）都会广播，这里统一更新列表
+// 指令窗 / Ctrl+K 指令面板执行完指令都会广播，这里统一更新列表
 function onCommandDone(event: Event) {
   const detail = (event as CustomEvent<CommandDoneDetail>).detail;
   if (detail) side.ingest(detail.intent, detail.task);
