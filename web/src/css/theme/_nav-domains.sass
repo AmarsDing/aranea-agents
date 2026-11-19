@@ -1,8 +1,112 @@
-// 导航重组（2026-11-17）：侧栏八个一级去处的两种形态 + 页面顶部领域页签。
-// 展开 = 手风琴（.app-sidebar-domains）；收起 = 图标栏（.app-sidebar-domains--rail）+ 浮出层。
+// 壳层导航（三大模块重设计，2026-11-18）。照设计稿的壳层做：
+//   左边一条模块栏（工作台 / 看板 / Harness，底部是通知、应用、设置、我）
+//   顶栏一行（模块 › 页面，右边是日期和指令入口）；工作台、看板的页签是顶栏的第二行
+//   Harness 页面多，另有一条二级侧栏：领域 → 页面
+//   右下角浮动的指令窗
+// 样稿：E:\teamwork\docs\aranea-agents\design\assets\2026-11-18-blueprint\index.html
 @import "./_nt-tokens.css"
 
-// ——— 侧栏：一级去处 ———
+// ——— 模块栏 + Harness 二级侧栏（都在左侧抽屉里） ———
+html body .app-shellnav
+  display: flex
+  height: 100%
+  background: var(--nt-shell)
+  border-right: 1px solid var(--nt-border-1)
+
+html body .app-rail
+  display: flex
+  flex: none
+  flex-direction: column
+  align-items: center
+  gap: var(--nt-space-1)
+  width: 68px
+  padding: var(--nt-space-3) 0
+  overflow-y: auto
+  scrollbar-width: none
+
+html body .app-rail__brand
+  display: grid
+  flex: none
+  place-items: center
+  width: 36px
+  height: 36px
+  margin-bottom: var(--nt-space-3)
+  border: 1px solid var(--nt-accent-border)
+  border-radius: var(--nt-radius-m)
+  color: var(--nt-accent)
+  font: 700 12px var(--nt-font-mono)
+  text-decoration: none
+
+  &:focus-visible
+    outline: var(--focus-ring)
+    outline-offset: 2px
+
+html body .app-rail__btn
+  display: grid
+  flex: none
+  justify-items: center
+  gap: var(--nt-space-1)
+  width: 58px
+  min-height: 56px
+  padding: var(--nt-space-2) 0
+  background: none
+  border: 1px solid transparent
+  border-radius: var(--nt-radius-m)
+  color: var(--nt-text-2)
+  font: inherit
+  font-size: var(--nt-fs-caption)
+  cursor: pointer
+  transition: background-color var(--nt-transition), border-color var(--nt-transition), color var(--nt-transition)
+
+  &:hover
+    background: var(--nt-accent-soft)
+    color: var(--nt-text-0)
+
+  &:focus-visible
+    outline: var(--focus-ring)
+    outline-offset: 2px
+
+  &--active
+    background: var(--nt-accent-soft)
+    border-color: var(--nt-accent-border)
+    color: var(--nt-text-0)
+
+    .q-icon
+      color: var(--nt-accent)
+
+html body .app-rail__icon
+  position: relative
+  display: inline-flex
+
+html body .app-rail__spacer
+  flex: 1
+
+html body .app-sidebar-badge--corner
+  position: absolute
+  top: -6px
+  right: -8px
+  min-width: 16px
+  height: 16px
+  padding: 0 4px
+  font-size: 10px
+  line-height: 16px
+
+html body .app-drail
+  flex: 1
+  min-width: 0
+  padding: var(--nt-space-3) var(--nt-space-2)
+  overflow-y: auto
+  border-left: 1px solid var(--nt-border-1)
+
+html body .app-drail__head
+  margin: 0 0 var(--nt-space-2)
+  padding: 0 var(--nt-space-2)
+  color: var(--nt-accent)
+  font: var(--nt-fs-micro) var(--nt-font-mono)
+  letter-spacing: 0.14em
+  text-transform: uppercase
+
+// ——— 二级侧栏里的领域：手风琴，同时只展开一个 ———
 html body .app-sidebar-domains
   display: flex
   flex-direction: column
@@ -31,7 +135,7 @@ html body .app-sidebar-domain__head
     color: var(--nt-text-0)
 
   &:focus-visible
-    outline: 2px solid var(--nt-accent)
+    outline: var(--focus-ring)
     outline-offset: 2px
 
 html body .app-sidebar-domain__icon
@@ -55,9 +159,10 @@ html body .app-sidebar-domain__label
   text-overflow: ellipsis
   white-space: nowrap
 
-html body .app-sidebar-domain__chevron
+html body .app-sidebar-domain__count
   flex: none
   color: var(--nt-text-3)
+  font: var(--nt-fs-caption) var(--nt-font-mono)
 
 // 当前所在领域：图标座点亮
 html body .app-sidebar-domain--active .app-sidebar-domain__icon
@@ -74,104 +179,99 @@ html body .app-sidebar-domain__items
   padding-left: var(--nt-space-2)
   border-left: 1px solid var(--nt-border-1)
 
-  .q-item__section--avatar
-    flex: 0 0 24px
-    min-width: 24px
-    max-width: 24px
-    height: 24px
-    background: none
-    border: 0
+// ——— 顶栏：一行 ———
+// 选择器带上昼夜类，压过 _ui-layouts.sass 里给顶栏定的 64px 高度
+html body.body--dark .q-header .app-topbar,
+html body:not(.body--dark) .q-header .app-topbar
+  gap: var(--nt-space-3)
+  min-height: 52px
+  padding: 0 var(--nt-space-4)
 
-html body .app-sidebar-badge--corner
-  position: absolute
-  top: -6px
-  right: -8px
-  min-width: 16px
-  height: 16px
-  padding: 0 4px
-  font-size: 10px
-  line-height: 16px
+html body .app-topbar__crumb
+  display: flex
+  align-items: center
+  gap: var(--nt-space-2)
+  min-width: 0
+  overflow: hidden
+  color: var(--nt-text-2)
+  font-size: var(--nt-fs-body)
+  white-space: nowrap
 
-// ——— 收起形态：图标栏 ———
-html body .app-sidebar-domains--rail
-  align-items: stretch
-  padding: var(--nt-space-2) 0 !important
+  strong
+    overflow: hidden
+    color: var(--nt-text-0)
+    text-overflow: ellipsis
 
-  .app-sidebar-domain__head
-    flex-direction: column
-    justify-content: center
-    gap: 4px
-    min-height: 56px
-    padding: var(--nt-space-1) 0
-    font-size: 11px
-    font-weight: 500
-    text-align: center
+html body .app-topbar__code
+  color: var(--nt-accent)
+  font: var(--nt-fs-micro) var(--nt-font-mono)
+  letter-spacing: 0.14em
 
-  .app-sidebar-domain__icon
-    width: 36px
-    height: 32px
+html body .app-topbar__date
+  color: var(--nt-text-1)
+  font-size: var(--nt-fs-body)
+  white-space: nowrap
 
-  .app-sidebar-domain__label
+html body .app-topbar__cmd
+  display: inline-flex
+  align-items: center
+  gap: var(--nt-space-2)
+  width: 240px
+  height: 34px
+  padding: 0 var(--nt-space-2) 0 var(--nt-space-3)
+  background: var(--nt-accent-soft)
+  border: 1px solid var(--nt-border-1)
+  border-radius: var(--nt-radius-m)
+  color: var(--nt-text-2)
+  font: inherit
+  font-size: var(--nt-fs-caption)
+  cursor: pointer
+  transition: border-color var(--nt-transition), color var(--nt-transition)
+
+  span
+    flex: 1
+    min-width: 0
+    overflow: hidden
+    text-align: left
+    text-overflow: ellipsis
+    white-space: nowrap
+
+  kbd
     flex: none
-    width: 100%
-    color: var(--nt-text-3)
+    padding: 0 var(--nt-space-1)
+    border: 1px solid var(--nt-border-1)
+    border-radius: var(--nt-radius-s)
+    color: var(--nt-text-2)
+    font: var(--nt-fs-micro) var(--nt-font-mono)
 
-  .app-sidebar-domain--active .app-sidebar-domain__label
+  &:hover
+    border-color: var(--nt-accent-border)
     color: var(--nt-text-0)
 
-// 浮出层：本领域的页面清单
-html body .app-sidebar-flyout
-  min-width: 200px
-  padding: var(--nt-space-2)
-  background: var(--nt-bg-2)
-  border: 1px solid var(--nt-border-2)
-  border-radius: var(--nt-radius-l)
-  box-shadow: var(--nt-shadow-depth)
+  &:focus-visible
+    outline: var(--focus-ring)
+    outline-offset: 2px
 
-html body .app-sidebar-flyout__title
-  padding: var(--nt-space-1) var(--nt-space-2) var(--nt-space-2)
-  color: var(--nt-text-3)
-  font-size: var(--nt-fs-caption)
-  font-weight: 600
-
-html body .app-sidebar-flyout__item
-  min-height: 36px
-  border-radius: var(--nt-radius-s)
-  color: var(--nt-text-1)
-
-  .q-item__section--avatar
-    min-width: 28px
-    color: var(--nt-text-3)
-
-// ——— 页面顶部：领域页签 ———
+// ——— 模块页签（顶栏第二行）与子页签 ———
+// 页签和子页签排在同一行：页签靠左，子页签靠右；放不下时子页签折到下一行
 html body .app-domain-tabs
-  position: sticky
-  top: 0
-  z-index: 8
-  padding: 0 var(--nt-space-page)
-  background: color-mix(in srgb, var(--nt-bg-0) 92%, transparent)
-  backdrop-filter: blur(8px)
-  border-bottom: 1px solid var(--nt-border-1)
+  display: flex
+  flex-wrap: wrap
+  align-items: center
+  gap: 0 var(--nt-space-4)
+  padding: 0 var(--nt-space-4)
+  border-top: 1px solid var(--nt-border-1)
 
 html body .app-domain-tabs__row
   display: flex
+  flex: 1
   align-items: center
-  gap: var(--nt-space-4)
-  min-height: 44px
+  min-height: 42px
   overflow-x: auto
   scrollbar-width: none
 
   &::-webkit-scrollbar
     display: none
-
-html body .app-domain-tabs__domain
-  display: inline-flex
-  flex: none
-  align-items: center
-  gap: var(--nt-space-1)
-  color: var(--nt-text-3)
-  font-size: var(--nt-fs-caption)
-  font-weight: 600
 
 html body .app-domain-tabs__list,
 html body .app-domain-tabs__sub
@@ -185,7 +285,7 @@ html body .app-domain-tabs__tab
   position: relative
   display: inline-flex
   align-items: center
-  min-height: 44px
+  min-height: 42px
   padding: 0 var(--nt-space-3)
   color: var(--nt-text-2)
   font-size: var(--nt-fs-body)
@@ -197,7 +297,7 @@ html body .app-domain-tabs__tab
     color: var(--nt-text-0)
 
   &:focus-visible
-    outline: 2px solid var(--nt-accent)
+    outline: var(--focus-ring)
     outline-offset: -4px
     border-radius: var(--nt-radius-s)
 
@@ -217,7 +317,9 @@ html body .app-domain-tabs__tab--active
 
 // 子页签：小号胶囊
 html body .app-domain-tabs__sub
-  padding: 0 0 var(--nt-space-2)
+  flex: none
+  max-width: 100%
+  padding: var(--nt-space-2) 0
   overflow-x: auto
   scrollbar-width: none
 
@@ -238,7 +340,7 @@ html body .app-domain-tabs__subtab
     border-color: var(--nt-border-2)
 
   &:focus-visible
-    outline: 2px solid var(--nt-accent)
+    outline: var(--focus-ring)
     outline-offset: 2px
 
 html body .app-domain-tabs__subtab--active
@@ -246,42 +348,77 @@ html body .app-domain-tabs__subtab--active
   border-color: var(--nt-accent-border)
   color: var(--nt-text-0)
 
-@media (max-width: 799px)
-  html body .app-domain-tabs__domain
-    display: none
+// ——— 右下角指令窗：默认打开，可以收起成一个按钮 ———
+html body .app-dock
+  position: fixed
+  right: var(--nt-space-6)
+  bottom: var(--nt-space-5)
+  z-index: 2000
+  width: 340px
+  max-width: calc(100vw - 32px)
+  background: var(--nt-bg-2)
+  border: 1px solid var(--nt-accent-border)
+  border-radius: var(--nt-radius-l)
+  box-shadow: var(--nt-shadow-depth)
 
-  html body .app-sidebar-domain__head
-    min-height: 44px
-
-  html body .app-domain-tabs__subtab
-    min-height: 44px
-
-// ——— Ctrl+K 指令面板：跳转与「直接办」两组 ———
-html body .app-command__heading
-  padding: var(--nt-space-2) var(--nt-space-3) var(--nt-space-1)
-  color: var(--nt-text-3)
-  font-size: var(--nt-fs-caption)
+html body .app-dock__head
+  display: flex
+  align-items: center
+  gap: var(--nt-space-2)
+  padding: var(--nt-space-2) var(--nt-space-2) 0 var(--nt-space-3)
+  color: var(--nt-text-0)
+  font-size: var(--nt-fs-body)
   font-weight: 600
 
-html body .app-command__item--action .q-item__section--avatar
-  color: var(--nt-accent)
-
-html body .app-command__caption
-  overflow: hidden
-  text-overflow: ellipsis
-  white-space: nowrap
-
-html body .app-command__error
-  margin: 0
-  padding: var(--nt-space-2) var(--nt-space-4)
-  border-bottom: 1px solid var(--nt-border-1)
-  color: var(--nt-danger)
-  font-size: var(--nt-fs-caption)
-
-  a
-    margin-left: var(--nt-space-2)
+  .q-icon:first-child
     color: var(--nt-accent)
 
-html body .app-command__footer
-  flex-wrap: wrap
-  gap: var(--nt-space-1) var(--nt-space-3)
+  kbd
+    margin-left: auto
+    padding: 0 var(--nt-space-1)
+    border: 1px solid var(--nt-border-1)
+    border-radius: var(--nt-radius-s)
+    color: var(--nt-text-2)
+    font: var(--nt-fs-micro) var(--nt-font-mono)
+
+html body .app-dock__form
+  display: flex
+  align-items: center
+  gap: var(--nt-space-2)
+  margin: var(--nt-space-2) var(--nt-space-3) var(--nt-space-3)
+  padding: var(--nt-space-1) var(--nt-space-1) var(--nt-space-1) var(--nt-space-3)
+  background: var(--nt-data-inset)
+  border: 1px solid var(--nt-border-1)
+  border-radius: var(--nt-radius-m)
+
+  &:focus-within
+    border-color: var(--nt-accent-border)
+
+  input
+    flex: 1
+    min-width: 0
+    height: 32px
+    background: none
+    border: 0
+    outline: 0
+    color: var(--nt-text-0)
+    font: inherit
+    font-size: var(--nt-fs-body)
+
+    &::placeholder
+      color: var(--nt-text-3)
+
+html body .app-dock-fab
+  position: fixed
+  right: var(--nt-space-6)
+  bottom: var(--nt-space-5)
+  z-index: 2000
+
+@media (max-width: 799px)
+  html body .app-topbar__date,
+  html body .app-topbar__cmd span,
+  html body .app-topbar__cmd kbd
+    display: none
+
+  html body .app-topbar__cmd
+    width: auto

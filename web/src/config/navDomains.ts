@@ -1,81 +1,100 @@
 /**
- * 八个一级去处（导航重组，2026-11-17）。
- * 设计：docs/aranea-agents/design/2026-11-17-导航重组方案.md
+ * 三个模块 → 领域 → 页面（三大模块重设计，2026-11-18；前身是 2026-11-17 的八个一级去处）。
+ * 设计：E:\teamwork\docs\aranea-agents\design\2026-11-17-三大模块重设计\00-总纲.md 第 4.4、4.5 节
  *
  * 只是展示层的重新归组：入口集合、路径、权限码全部来自 sideNav.ts / navView.ts，
  * 后端菜单目录（internal/biz/menu.go）不动，URL 不变。
- *  - primaries：侧栏与页面顶部「领域页签」里出现的页面
+ *  - 模块：工作台 / 看板 / Harness，在左边的模块栏上；shell 是壳层入口（应用、设置），在模块栏底部
+ *  - primaries：工作台、看板是顶栏第二行的页签；Harness 是二级侧栏里领域下的页面
  *  - children：只在父页面的子页签里出现（运行记录、审计、标签字典等）
  */
 import { flatNavLeaves, navLeafVisible, type NavLeaf } from './navView';
 
+export type NavModuleKey = 'workbench' | 'board' | 'harness' | 'shell';
+
+/** 模块栏上的三个模块；code 是顶栏的模块代号，home 是点模块时的落点。 */
+export const NAV_MODULES: Array<{ key: Exclude<NavModuleKey, 'shell'>; code: string; icon: string; home: string }> = [
+  { key: 'workbench', code: 'WB', icon: 'space_dashboard', home: '/workbench' },
+  { key: 'board', code: 'KB', icon: 'account_tree', home: '/ceo/company' },
+  { key: 'harness', code: 'HX', icon: 'hexagon', home: '/overview' },
+];
+
 export type NavDomainKey =
   | 'workbench'
   | 'business'
-  | 'conversation'
+  | 'home'
   | 'agents'
+  | 'orchestrate'
   | 'capability'
-  | 'knowledge'
+  | 'connect'
   | 'ops'
   | 'settings';
 
 type PrimaryDef = {
   path: string;
-  /** 在领域页签里换一个更贴切的叫法（不改原菜单文案） */
+  /** 在页签里换一个更贴切的叫法（不改原菜单文案） */
   labelKey?: string;
   children?: string[];
 };
 
 type DomainDef = {
   key: NavDomainKey;
+  module: NavModuleKey;
   icon: string;
   primaries: PrimaryDef[];
 };
 
 export const NAV_DOMAIN_DEFS: DomainDef[] = [
+  // ——— 工作台：顶部 6 个页签，合并前的旧页面先挂在子页签里 ———
   {
     key: 'workbench',
-    icon: 'track_changes',
+    module: 'workbench',
+    icon: 'space_dashboard',
     primaries: [
-      { path: '/workbench', labelKey: 'shell.nav.tab.today' },
-      { path: '/approvals', labelKey: 'shell.nav.tab.inboxHistory' },
+      { path: '/workbench', labelKey: 'shell.nav.tab.today', children: ['/approvals'] },
+      { path: '/task-workspace', labelKey: 'shell.nav.tab.tasks', children: ['/coding-tasks'] },
+      { path: '/chat', labelKey: 'shell.nav.tab.chat', children: ['/sessions', '/companion'] },
       { path: '/schedule' },
       { path: '/mail' },
-      { path: '/apps' },
+      { path: '/knowledge', labelKey: 'shell.nav.tab.library', children: ['/artifacts'] },
     ],
   },
+  // ——— 看板：总览 + 业务线（目前只有电商这一条线有页面） ———
   {
     key: 'business',
+    module: 'board',
     icon: 'account_tree',
     primaries: [
-      { path: '/ceo/company' },
-      { path: '/ceo/overview' },
-      { path: '/ecommerce-loop' },
-      { path: '/content-inbox' },
-      { path: '/review-queue' },
-      { path: '/opportunity-board' },
-      { path: '/sourcing' },
+      { path: '/ceo/company', labelKey: 'shell.nav.tab.boardHome', children: ['/ceo/overview'] },
+      {
+        path: '/ecommerce-loop',
+        labelKey: 'shell.nav.tab.ecommerce',
+        children: ['/content-inbox', '/review-queue', '/opportunity-board', '/sourcing'],
+      },
     ],
   },
+  // ——— Harness：首页 + 五个领域，在二级侧栏里 ———
   {
-    key: 'conversation',
-    icon: 'forum',
-    primaries: [
-      { path: '/chat' },
-      { path: '/task-workspace' },
-      { path: '/sessions' },
-      { path: '/coding-tasks' },
-      { path: '/fleet' },
-      { path: '/companion' },
-    ],
+    key: 'home',
+    module: 'harness',
+    icon: 'hexagon',
+    primaries: [{ path: '/overview', labelKey: 'shell.nav.tab.harnessHome' }],
   },
   {
     key: 'agents',
+    module: 'harness',
     icon: 'smart_toy',
-    primaries: [{ path: '/agents' }, { path: '/settings/organization' }, { path: '/team' }, { path: '/graphs' }],
+    primaries: [{ path: '/agents' }, { path: '/settings/organization' }, { path: '/team' }],
+  },
+  {
+    key: 'orchestrate',
+    module: 'harness',
+    icon: 'schema',
+    primaries: [{ path: '/graphs' }, { path: '/fleet' }, { path: '/cron' }],
   },
   {
     key: 'capability',
+    module: 'harness',
     icon: 'extension',
     primaries: [
       { path: '/tools', children: ['/tools/runs', '/tools/audits'] },
@@ -86,38 +105,41 @@ export const NAV_DOMAIN_DEFS: DomainDef[] = [
       { path: '/plugins', children: ['/plugins/runs'] },
       { path: '/mcp-servers' },
       { path: '/settings/coding-tools' },
+      { path: '/memory' },
     ],
   },
   {
-    key: 'knowledge',
-    icon: 'menu_book',
-    primaries: [{ path: '/knowledge' }, { path: '/memory' }, { path: '/artifacts' }, { path: '/evaluation' }],
-  },
-  {
-    key: 'ops',
-    icon: 'monitor_heart',
+    key: 'connect',
+    module: 'harness',
+    icon: 'hub',
     primaries: [
-      { path: '/monitor/live' },
-      { path: '/cron' },
-      { path: '/monitor/logs' },
-      { path: '/ceo/oncall' },
-      { path: '/usage/events' },
-      { path: '/overview', labelKey: 'shell.nav.tab.modelUsage' },
-      { path: '/self-improvement' },
-    ],
-  },
-  {
-    key: 'settings',
-    icon: 'tune',
-    primaries: [
-      { path: '/settings' },
       { path: '/models' },
       { path: '/channels' },
       { path: '/credentials' },
-      { path: '/hooks', children: ['/hooks/deliveries'] },
       { path: '/webhooks' },
       { path: '/a2a' },
     ],
+  },
+  {
+    key: 'ops',
+    module: 'harness',
+    icon: 'monitor_heart',
+    primaries: [
+      { path: '/monitor/live' },
+      { path: '/monitor/logs' },
+      { path: '/ceo/oncall' },
+      { path: '/usage/events' },
+      { path: '/evaluation' },
+      { path: '/self-improvement' },
+      { path: '/hooks', children: ['/hooks/deliveries'] },
+    ],
+  },
+  // ——— 壳层：模块栏底部的应用、设置 ———
+  {
+    key: 'settings',
+    module: 'shell',
+    icon: 'tune',
+    primaries: [{ path: '/apps' }, { path: '/settings', labelKey: 'shell.nav.domain.settings' }],
   },
 ];
 
@@ -125,9 +147,10 @@ export type DomainPage = NavLeaf & { tabLabelKey: string };
 export type DomainPrimary = DomainPage & { children: DomainPage[] };
 export type NavDomain = {
   key: NavDomainKey;
+  module: NavModuleKey;
+  moduleLabelKey: string;
   icon: string;
   labelKey: string;
-  shortLabelKey: string;
   primaries: DomainPrimary[];
 };
 
@@ -149,7 +172,7 @@ export function assignedPaths(): Set<string> {
 
 /**
  * 按可见性构建领域树：无权限的页面不出现；一个领域下没有可见页面时整个领域隐藏。
- * 菜单里新增了却还没登记到任何领域的入口，追加到「设置与接入」末尾，避免入口凭空消失
+ * 菜单里新增了却还没登记到任何领域的入口，追加到「设置」末尾，避免入口凭空消失
  * （单测会拦住这种情况，提示补登记）。
  */
 export function buildNavDomains(isVisible: (path: string) => boolean): NavDomain[] {
@@ -178,12 +201,20 @@ export function buildNavDomains(isVisible: (path: string) => boolean): NavDomain
     }
     return {
       key: def.key,
+      module: def.module,
+      moduleLabelKey: `shell.nav.module.${def.module}`,
       icon: def.icon,
       labelKey: `shell.nav.domain.${def.key}`,
-      shortLabelKey: `shell.nav.domainShort.${def.key}`,
       primaries,
     };
   }).filter((domain) => domain.primaries.length > 0);
+}
+
+/** 点模块时的落点：首选该模块的 home；没权限看 home 时退到本模块第一个可见页面。 */
+export function moduleLanding(key: NavModuleKey, domains: readonly NavDomain[]): string | null {
+  const pages = domains.filter((d) => d.module === key).flatMap((d) => d.primaries.map((p) => p.to));
+  const home = NAV_MODULES.find((m) => m.key === key)?.home;
+  return home && pages.includes(home) ? home : (pages[0] ?? null);
 }
 
 /** 路由别名：详情页路径 → 所属入口（与 navView 保持一致）。 */

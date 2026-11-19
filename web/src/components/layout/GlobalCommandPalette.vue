@@ -93,7 +93,7 @@ import { planPaletteActions, type PaletteAction } from '../../features/today/com
 import { runCommand } from '../../features/today/useCommandRunner';
 import { useRecipients } from '../../features/today/useDelegation';
 
-const props = defineProps<{ modelValue: boolean }>();
+const props = defineProps<{ modelValue: boolean; seed?: string }>();
 const emit = defineEmits<{ 'update:modelValue': [value: boolean] }>();
 
 const { t } = useI18n();
@@ -241,7 +241,8 @@ watch(results, () => {
 });
 
 function onShow() {
-  query.value = '';
+  // 从右下角指令窗发出时带着一句话进来，其余情况为空
+  query.value = props.seed ?? '';
   activeIndex.value = 0;
   error.value = '';
   errorLink.value = '';

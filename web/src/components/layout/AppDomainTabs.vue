@@ -1,14 +1,14 @@
 <template>
   <!--
-    页面顶部的领域页签：同一个一级去处下的页面横向排开，领域内切换不必回侧栏。
-    当前页面有子页（运行记录、审计等）时，下面再出一行子页签。
+    顶栏第二行。工作台、看板：本模块的页签横向排开；Harness 的页面在二级侧栏里，这里不重复。
+    当前页面有子页（运行记录、审计、合并前的旧页面等）时，下面再出一行子页签。
   -->
-  <nav v-if="trail" class="app-domain-tabs" :aria-label="t(trail.domain.labelKey)">
-    <div class="app-domain-tabs__row">
-      <span class="app-domain-tabs__domain">
-        <q-icon :name="trail.domain.icon" size="18px" aria-hidden="true" />
-        {{ t(trail.domain.labelKey) }}
-      </span>
+  <nav
+    v-if="trail && (showTabs || trail.primary.children.length)"
+    class="app-domain-tabs"
+    :aria-label="t(trail.domain.labelKey)"
+  >
+    <div v-if="showTabs" class="app-domain-tabs__row">
       <ul class="app-domain-tabs__list" role="list">
         <li v-for="page in trail.domain.primaries" :key="page.to">
           <router-link
@@ -48,10 +48,13 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { DomainTrail } from '../../config/navDomains';
 
-defineProps<{ trail: DomainTrail | null }>();
+const props = defineProps<{ trail: DomainTrail | null }>();
 
 const { t } = useI18n();
+
+const showTabs = computed(() => props.trail?.domain.module === 'workbench' || props.trail?.domain.module === 'board');
 </script>
