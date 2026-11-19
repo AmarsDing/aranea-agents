@@ -1,0 +1,183 @@
+// 蓝图皮肤（aranea-agents 先行试点，2026-11-18，取代深空皮肤）。
+// 视觉参考：E:\teamwork\infra\intro（TwinMonitor 导览的蓝图主题）
+// 样稿：docs/aranea-agents/design/assets/2026-11-18-blueprint/index.html
+// 设计说明：docs/aranea-agents/design/2026-11-17-三大模块重设计/01-视觉与交互基线.md §2
+//
+// 做法同深空皮肤：不动从共享源同步来的 _nt-tokens.css，也不动存量 _css-vars-*.sass，
+// 只在这一层覆盖取值。回退 = 在 app-theme.sass 里把这一行换回 skin-deepspace。
+// 取值：底色取 intro 的实测值（画布 #0b3a6f、壳层 #0a3260），不要凭感觉加深。
+//   - 面板比画布略亮（intro 的卡片是「画布 + 3.5% 白」），所以三、四级文字比样稿略提亮，
+//     保证在 --nt-bg-2 上仍有 4.5:1；涨色同理。
+//   - 颜色分工：冰青 = 可操作；琥珀 = 要人处理、边界、焦点环；青绿 = 运行中；淡紫 = AI 内容；钢蓝 = 数据。
+// 浅色档暂时沿用深空皮肤的浅色取值，「蓝图纸」浅色版另行设计。
+// stylelint-disable color-no-hex -- theme definitions
+
+// ——— 深色（默认档） ———
+html:root
+  --nt-bg-0: #0b3a6f
+  --nt-bg-1: #0e3d72
+  --nt-bg-2: #124173
+  --nt-bg-3: #18487b
+  --nt-shell: #0a3260
+  --nt-border-0: rgba(190, 220, 255, 0.14)
+  --nt-border-1: rgba(190, 220, 255, 0.3)
+  --nt-border-2: rgba(190, 220, 255, 0.55)
+  --nt-text-0: #e8f3ff
+  --nt-text-1: #b8d4f0
+  --nt-text-2: #9ac0e3
+  --nt-text-3: #8ab3d8
+  --nt-accent: #75e4ff
+  --nt-accent-2: #7c9cff
+  --nt-on-accent: #082d51
+  --nt-accent-soft: rgba(117, 228, 255, 0.08)
+  --nt-accent-hover: rgba(117, 228, 255, 0.16)
+  --nt-accent-border: rgba(117, 228, 255, 0.5)
+  --nt-focus-ring: rgba(255, 210, 122, 0.45)
+  --nt-warn: #ffd27a
+  --nt-danger: #ff8a96
+  --nt-success: #8ef0a6
+  --nt-info: #a9bfd3
+  --nt-ai: #c3a6ff
+  --nt-run: #63e6e2
+  --nt-up: #ff8f9c
+  --nt-down: #7fe3a0
+  // 材质：壳层用略深的蓝，面板近不透明
+  --nt-glass-bg: rgba(10, 50, 96, 0.92)
+  --nt-glass-border: rgba(190, 220, 255, 0.3)
+  --nt-glass-highlight: rgba(232, 243, 255, 0.05)
+  --nt-glass-filter: blur(10px)
+  --nt-data-bg: #082d55
+  --nt-data-raised: #0c3766
+  --nt-data-inset: #07284c
+  --nt-scrim: rgba(2, 15, 33, 0.62)
+  --nt-scrim-light: rgba(2, 15, 33, 0.46)
+  --nt-shadow-depth: 0 12px 36px rgba(2, 15, 33, 0.5)
+  --nt-glow-soft: 0 0 20px rgba(117, 228, 255, 0.08)
+  --nt-glow-accent: 0 0 14px rgba(117, 228, 255, 0.26)
+  --nt-glow-danger: 0 0 14px rgba(255, 138, 150, 0.32)
+  --nt-glow-warn: 0 0 14px rgba(255, 210, 122, 0.26)
+  // 字体与字号：正文 14px 起，辅助文字不小于 11px
+  --nt-font-sans: 'Microsoft YaHei UI', 'Microsoft YaHei', 'PingFang SC', 'HarmonyOS Sans SC', 'Segoe UI', system-ui, sans-serif
+  --nt-font-mono: 'Cascadia Mono', 'JetBrains Mono', 'IBM Plex Mono', Consolas, monospace
+  --nt-fs-hero: 26px
+  --nt-fs-num-lg: 19px
+  --nt-fs-title: 16px
+  --nt-fs-panel: 14px
+  --nt-fs-body: 14px
+  --nt-fs-caption: 12px
+  --nt-fs-micro: 11px
+  --nt-row-h: 30px
+  --nt-transition: 0.18s cubic-bezier(0.4, 0, 0.2, 1)
+  // 业务线识别色：只用于连线、色条、图表系列，旁边要有文字；按相邻顺序过了色盲可辨校验
+  --nt-line-1: #ffa25e
+  --nt-line-2: #7c9cff
+  --nt-line-3: #e9d86b
+  --nt-line-4: #f07acb
+  --nt-line-5: #56d39a
+  --nt-line-6: #a98bff
+
+html:root[data-density='compact']
+  --nt-row-h: 24px
+
+// 存量别名（_css-vars-dark.sass 里写死的那部分）改指令牌
+html body.body--dark
+  --glass-surface: var(--nt-bg-1)
+  --glass-surface-hover: var(--nt-bg-2)
+  --glass-border: var(--nt-border-1)
+  --glass-blur-default: 0px
+  --glass-blur-hover: 0px
+  --glass-blur-subtle: 0px
+  --glass-blur-soft: 0px
+  --glass-blur-medium: 6px
+  --glass-blur-heavy: 12px
+  --glass-blur-elevated: 10px
+  --glass-inner-highlight: inset 0 1px 0 var(--nt-glass-highlight)
+  --surface-base: var(--nt-bg-1)
+  --surface-raised: var(--nt-bg-2)
+  --surface-muted: var(--nt-bg-0)
+  --color-text-tertiary: var(--nt-text-3)
+  --gradient-page: radial-gradient(ellipse 900px 320px at 50% 0%, var(--nt-accent-soft), transparent 70%), var(--nt-bg-0)
+  --gradient-card: linear-gradient(var(--nt-bg-1), var(--nt-bg-1))
+  --button-primary-bg: var(--nt-accent)
+  --button-primary-hover: color-mix(in srgb, var(--nt-accent) 88%, var(--nt-ink-inverse))
+  --button-primary-text: var(--nt-on-accent)
+  --shadow-panel: none
+  --shadow-floating: var(--nt-shadow-depth)
+  --shadow-glow: var(--nt-glow-soft)
+  --overlay-backdrop: var(--nt-scrim)
+  --font-body: var(--nt-font-sans)
+  --font-mono: var(--nt-font-mono)
+  // 焦点环用琥珀：冰青到处是可操作元素的描边，同色的焦点环看不出来
+  --focus-ring: 2px solid var(--nt-warn)
+
+// 壳层（左侧菜单）比画布略深。选择器多带一个 :root，权重压过排在后面的科幻层
+html:root body.body--dark
+  --sidebar-bg: color-mix(in srgb, var(--nt-shell) 90%, transparent)
+
+// ——— 浅色（暂沿用深空皮肤的浅色取值） ———
+html body:not(.body--dark)
+  --nt-bg-0: #f3f5f9
+  --nt-bg-1: #ffffff
+  --nt-bg-2: #f1f4f9
+  --nt-bg-3: #e6ebf3
+  --nt-shell: #ffffff
+  --nt-border-0: #e9edf3
+  --nt-border-1: #dde3ec
+  --nt-border-2: #c3ccda
+  --nt-text-0: #0b1422
+  --nt-text-1: #263247
+  --nt-text-2: #4d5b72
+  --nt-text-3: #64728a
+  --nt-accent: #0786a3
+  --nt-accent-2: #2f62d6
+  --nt-on-accent: #ffffff
+  --nt-accent-soft: rgba(7, 134, 163, 0.09)
+  --nt-accent-hover: rgba(7, 134, 163, 0.16)
+  --nt-accent-border: rgba(7, 134, 163, 0.45)
+  --nt-focus-ring: rgba(7, 134, 163, 0.3)
+  --nt-warn: #a86600
+  --nt-danger: #c93535
+  --nt-success: #12855a
+  --nt-info: #1f6fd0
+  --nt-ai: #6d4fd6
+  --nt-run: #0b7f86
+  --nt-up: #cf2f4a
+  --nt-down: #1f7f63
+  --nt-glass-bg: rgba(255, 255, 255, 0.94)
+  --nt-glass-border: #dde3ec
+  --nt-glass-highlight: rgba(255, 255, 255, 0.6)
+  --nt-data-bg: #ffffff
+  --nt-data-raised: #f1f4f9
+  --nt-data-inset: #f3f5f9
+  --nt-scrim: rgba(11, 20, 34, 0.42)
+  --nt-scrim-light: rgba(11, 20, 34, 0.28)
+  --nt-shadow-depth: 0 8px 24px rgba(20, 34, 58, 0.12)
+  --nt-glow-soft: 0 0 0 rgba(0, 0, 0, 0)
+  --nt-glow-accent: 0 0 0 2px rgba(7, 134, 163, 0.18)
+  --nt-glow-danger: 0 0 0 2px rgba(201, 53, 53, 0.18)
+  --nt-glow-warn: 0 0 0 2px rgba(168, 102, 0, 0.18)
+  --nt-line-1: #c8521f
+  --nt-line-2: #1f6fd0
+  --nt-line-3: #946a00
+  --nt-line-4: #c02f85
+  --nt-line-5: #12855a
+  --nt-line-6: #6d4fd6
+  // 存量别名
+  --glass-surface: var(--nt-bg-1)
+  --glass-surface-hover: var(--nt-bg-1)
+  --glass-border: var(--nt-border-1)
+  --surface-base: var(--nt-bg-1)
+  --surface-raised: var(--nt-bg-1)
+  --surface-muted: var(--nt-bg-2)
+  --color-text-tertiary: var(--nt-text-3)
+  --gradient-page: linear-gradient(var(--nt-bg-0), var(--nt-bg-0))
+  --gradient-card: linear-gradient(var(--nt-bg-1), var(--nt-bg-1))
+  --button-primary-bg: var(--nt-accent)
+  --button-primary-hover: color-mix(in srgb, var(--nt-accent) 88%, var(--nt-ink))
+  --button-primary-text: var(--nt-on-accent)
+  --shadow-panel: 0 1px 2px rgba(20, 34, 58, 0.06)
+  --shadow-floating: var(--nt-shadow-depth)
+  --shadow-glow: none
+  --overlay-backdrop: var(--nt-scrim)
+  --font-body: var(--nt-font-sans)
+  --font-mono: var(--nt-font-mono)
