@@ -1,12 +1,16 @@
-// 公司树（/ceo/company，经营看板 V2 首屏）：类名 co- 前缀，取值只走 --nt-* 令牌。
-// 版面：我 → 总经理 Agent → 部门（横排，可横向滚动）→ 岗位（竖排）；右侧是选中节点的详情。
+// 公司树（/ceo/company，看板 › 总览）：类名 co- 前缀，取值只走 --nt-* 令牌。
+// 版面（照设计稿，一屏）：一行结论；树直接画在页面上（我 → 总经理 Agent → 部门横排 → 岗位竖排）；
+// 树下面一条是选中节点的详情，右边给指令窗留位。宽度不到 1100 时改成普通的上下排，整页滚动。
+// 样稿：E:\teamwork\docs\aranea-agents\design\assets\2026-11-18-blueprint\index.html#kb
 @import "./_nt-tokens.css"
 
 .co-page
   display: flex
   flex-direction: column
-  gap: var(--nt-space-4)
-  padding: var(--nt-space-page)
+  gap: var(--nt-space-3)
+  // q-page 自带 min-height = 视口减顶栏；height: 0 让它成为确定高度，树才能在里面滚动
+  height: 0
+  padding: var(--nt-space-4) var(--nt-space-page)
   color: var(--nt-text-1)
   font-family: var(--nt-font-sans)
   font-size: var(--nt-fs-body)
@@ -15,44 +19,36 @@
   font-family: var(--nt-font-mono)
   font-variant-numeric: tabular-nums
 
+// ——— 一行结论 ———
 .co-head
-  display: flex
-  align-items: flex-end
-  justify-content: space-between
-  gap: var(--nt-space-4)
-  flex-wrap: wrap
-
-.co-head__title
-  margin: 0
-  color: var(--nt-text-2)
-  font-size: var(--nt-fs-panel)
-  font-weight: 600
-  line-height: 1.5
-
-.co-head__line
-  margin: 0
-  min-height: 1.3em
-  color: var(--nt-text-0)
-  font-size: var(--nt-fs-hero)
-  font-weight: 600
-  line-height: 1.3
-
-.co-head__tools
   display: flex
   align-items: center
   gap: var(--nt-space-3)
-  flex-wrap: wrap
+
+.co-head__line
+  flex: 1
+  min-width: 0
+  margin: 0
+  overflow: hidden
+  color: var(--nt-text-0)
+  font-size: var(--nt-fs-title)
+  font-weight: 600
+  text-overflow: ellipsis
+  white-space: nowrap
+
+.co-head__name
+  margin-right: var(--nt-space-2)
+  color: var(--nt-text-2)
+  font-size: var(--nt-fs-panel)
+  font-weight: 400
 
 .co-head__company
   width: 200px
 
-.co-head__fresh,
-.co-footnote
+.co-head__fresh
   color: var(--nt-text-3)
   font-size: var(--nt-fs-caption)
-
-.co-footnote
-  margin: 0
+  white-space: nowrap
 
 .co-note
   margin: 0
@@ -81,118 +77,262 @@
   &:hover
     text-decoration: underline
 
-.co-layout
-  display: grid
-  grid-template-columns: minmax(0, 1fr) 320px
-  gap: var(--nt-space-4)
-  align-items: start
-
 // ——— 树 ———
 .co-tree
-  padding: var(--nt-space-6) var(--nt-space-4)
-  overflow-x: auto
-  background: radial-gradient(ellipse 900px 300px at 50% 0%, var(--nt-accent-soft), transparent 70%), var(--nt-bg-1)
-  border: 1px solid var(--nt-border-1)
-  border-radius: var(--nt-radius-l)
-
-.co-tree__inner
-  min-width: min-content
-
-.co-spine
+  position: relative
   display: flex
+  flex: 1
   flex-direction: column
-  align-items: center
+  min-height: 0
+  overflow: auto
 
-.co-stub
-  width: 1px
-  height: var(--nt-space-4)
-  background: var(--nt-border-2)
+.co-wires
+  position: absolute
+  inset: 0
+  width: 100%
+  height: 100%
+  overflow: visible
+  pointer-events: none
 
-.co-flow
-  display: flex
-  gap: var(--nt-space-2)
-  margin: var(--nt-space-2) 0
-  color: var(--nt-text-2)
-  font-size: var(--nt-fs-micro)
+  path
+    fill: none
+    stroke-width: 1.5
+    stroke-linecap: round
+    opacity: 0.78
 
-  span
-    padding: 2px var(--nt-space-2)
-    background: var(--nt-bg-0)
-    border: 1px solid var(--nt-border-1)
-    border-radius: var(--nt-radius-s)
+.co-tree > :not(svg)
+  position: relative
+  flex: none
 
 .co-node
   display: flex
   flex-direction: column
-  gap: 2px
-  width: 100%
+  gap: var(--nt-space-1)
+  min-width: 0
   padding: var(--nt-space-3)
-  background: var(--nt-bg-2)
+  background: var(--nt-bg-1)
   border: 1px solid var(--nt-border-1)
   border-radius: var(--nt-radius-l)
   color: inherit
   font: inherit
   text-align: left
   cursor: pointer
-  transition: border-color var(--nt-transition), background var(--nt-transition), box-shadow var(--nt-transition)
+  transition: border-color var(--nt-transition), box-shadow var(--nt-transition)
 
   &:hover
-    background: var(--nt-bg-3)
     border-color: var(--nt-border-2)
 
   &[aria-pressed='true']
-    border-color: var(--nt-accent-border)
-    box-shadow: 0 0 0 1px var(--nt-accent-border), var(--nt-glow-soft)
+    border-color: var(--nt-accent)
+    box-shadow: var(--nt-glow-accent)
 
 .co-node:focus-visible,
 .co-leaf:focus-visible,
 .co-link:focus-visible,
 .co-detail__agent:focus-visible
-  outline: 2px solid var(--nt-accent)
-  outline-offset: 4px
-
-.co-node--me
-  width: auto
-  min-width: 280px
-  border-style: dashed
-
-.co-node--ceo
-  width: auto
-  min-width: 340px
-  background: linear-gradient(180deg, var(--nt-accent-soft), transparent), var(--nt-bg-2)
-  border-color: var(--nt-accent-border)
-
-.co-node--unset
-  background: var(--nt-bg-2)
-  border-color: var(--nt-border-2)
-  border-style: dashed
+  outline: var(--focus-ring)
+  outline-offset: 2px
 
 .co-node__row
   display: flex
   align-items: center
   gap: var(--nt-space-2)
+  min-width: 0
 
 .co-node__row--figure
   align-items: baseline
-  margin-top: var(--nt-space-1)
 
 .co-node__main
   display: flex
+  flex: 1
   flex-direction: column
   min-width: 0
 
 .co-node__name
-  flex: 1
-  min-width: 0
   overflow: hidden
   color: var(--nt-text-0)
+  font-size: var(--nt-fs-title)
   font-weight: 600
+  line-height: 1.4
   text-overflow: ellipsis
   white-space: nowrap
 
 .co-node__sub
-  color: var(--nt-text-3)
+  overflow: hidden
+  color: var(--nt-text-2)
   font-size: var(--nt-fs-caption)
+  text-overflow: ellipsis
+  white-space: nowrap
+
+// 我：琥珀色——只有这里需要人
+.co-me
+  flex-direction: row
+  align-items: center
+  align-self: center
+  gap: var(--nt-space-3)
+  width: min(400px, 100%)
+  margin-top: auto
+  border-color: color-mix(in srgb, var(--nt-warn) 60%, transparent)
+  background: linear-gradient(180deg, color-mix(in srgb, var(--nt-warn) 10%, transparent), color-mix(in srgb, var(--nt-warn) 3%, transparent))
+  box-shadow: 0 0 28px color-mix(in srgb, var(--nt-warn) 14%, transparent)
+
+  &:hover
+    border-color: var(--nt-warn)
+
+.co-me__av
+  display: grid
+  flex: none
+  place-items: center
+  width: 40px
+  height: 40px
+  border-radius: var(--nt-radius-pill)
+  background: var(--nt-warn)
+  color: var(--nt-on-accent)
+  font-weight: 700
+
+.co-me__badge
+  flex: none
+  padding: 0 var(--nt-space-3)
+  border-radius: var(--nt-radius-s)
+  background: var(--nt-warn)
+  color: var(--nt-on-accent)
+  font-size: var(--nt-fs-panel)
+  font-weight: 700
+  line-height: 30px
+
+// 我和总经理之间：两条弧线，两侧各一个说明
+.co-lens
+  display: grid
+  grid-template-columns: minmax(0, 1fr) 92px minmax(0, 1fr)
+  align-items: center
+  width: 100%
+  min-height: 56px
+  flex: 1 1 56px
+  max-height: 84px
+
+.co-lab
+  display: grid
+  padding: var(--nt-space-1) var(--nt-space-2)
+  // 用画布底色挡住穿过标签的连线
+  background: var(--nt-bg-0)
+  border: 1px solid var(--nt-border-1)
+  border-radius: var(--nt-radius-s)
+  font-size: var(--nt-fs-micro)
+  line-height: 1.5
+  white-space: nowrap
+
+  b
+    color: var(--nt-accent)
+    font-weight: 400
+
+  span
+    color: var(--nt-text-2)
+
+.co-lab__hot
+  color: var(--nt-warn) !important
+
+.co-lab--down
+  justify-self: end
+
+  b
+    color: var(--nt-warn)
+
+.co-lab--up
+  grid-column: 3
+  justify-self: start
+
+  b
+    color: var(--nt-run)
+
+// 总经理：冰青描边
+.co-ceo
+  flex-direction: row
+  align-items: center
+  align-self: center
+  gap: var(--nt-space-3)
+  width: min(520px, 100%)
+  border: 1.5px solid color-mix(in srgb, var(--nt-accent) 70%, transparent)
+  background: linear-gradient(180deg, color-mix(in srgb, var(--nt-accent) 9%, transparent), color-mix(in srgb, var(--nt-accent) 2%, transparent))
+  box-shadow: 0 0 32px color-mix(in srgb, var(--nt-accent) 16%, transparent)
+
+.co-node--unset
+  border-style: dashed
+  box-shadow: none
+
+.co-radar
+  position: relative
+  flex: none
+  width: 44px
+  height: 44px
+  border: 1px solid color-mix(in srgb, var(--nt-accent) 55%, transparent)
+  border-radius: var(--nt-radius-pill)
+  background: radial-gradient(circle, transparent 0 30%, color-mix(in srgb, var(--nt-accent) 32%, transparent) 31% 34%, transparent 35% 62%, color-mix(in srgb, var(--nt-accent) 24%, transparent) 63% 66%, transparent 67%)
+
+  &::after
+    content: ''
+    position: absolute
+    top: 50%
+    left: 50%
+    width: 5px
+    height: 5px
+    margin: -2.5px
+    border-radius: inherit
+    background: var(--nt-accent)
+
+// 今天跑过才转
+.co-radar--on::before
+  content: ''
+  position: absolute
+  inset: 0
+  border-radius: inherit
+  background: conic-gradient(color-mix(in srgb, var(--nt-accent) 55%, transparent), transparent 30%)
+  animation: co-sweep 4s linear infinite
+
+@keyframes co-sweep
+  to
+    transform: rotate(360deg)
+
+// 部门：标签一排、卡片一排，共用同一套列，所以标签正好在卡片正上方
+.co-cols
+  display: grid
+  grid-template-columns: repeat(var(--co-cols), minmax(170px, 260px))
+  justify-content: center
+  gap: 0 var(--nt-space-4)
+  // 部门多到放不下时这一排比容器宽：从左边排起、横向滚动；放得下时居中
+  width: max-content
+  min-width: 100%
+
+.co-fan
+  align-items: end
+  flex: 1 1 92px
+  min-height: 92px
+  max-height: 132px
+  padding-bottom: var(--nt-space-2)
+
+  .co-lab
+    justify-self: center
+
+.co-depts
+  align-items: start
+  margin-bottom: auto
+
+.co-dept
+  min-width: 0
+
+.co-node--dept
+  width: 100%
+
+  &:hover,
+  &[aria-pressed='true']
+    border-color: var(--co-c)
+    box-shadow: 0 0 0 1px var(--co-c), 0 0 26px color-mix(in srgb, var(--co-c) 30%, transparent)
+
+.co-dept__mark
+  flex: none
+  width: 8px
+  height: 8px
+  border-radius: var(--nt-radius-pill)
+  background: var(--co-c)
 
 .co-figure
   color: var(--nt-text-0)
@@ -205,126 +345,72 @@
     font-size: var(--nt-fs-panel)
     font-weight: 400
 
-.co-chip
-  flex: none
-  padding: 0 var(--nt-space-2)
-  border: 1px solid var(--nt-border-2)
-  border-radius: var(--nt-radius-pill)
-  color: var(--nt-text-2)
-  font-size: var(--nt-fs-caption)
-
-.co-chip--hot
-  border-color: var(--nt-danger)
-  color: var(--nt-danger)
-
-.co-pulse
-  flex: none
-  width: 32px
-  height: 32px
-  border: 1px solid var(--nt-border-2)
-  border-radius: var(--nt-radius-pill)
-  background: var(--nt-bg-0)
-
-.co-pulse--on
-  border-color: var(--nt-accent-border)
-  background: conic-gradient(from 0deg, var(--nt-accent), transparent 35%)
-  animation: co-spin 3.2s linear infinite
-
-@keyframes co-spin
-  to
-    transform: rotate(360deg)
-
-.co-bus
-  height: 1px
-  margin: 0 var(--nt-space-12)
-  background: var(--nt-border-2)
-
-.co-depts
-  display: grid
-  grid-template-columns: repeat(var(--co-cols), minmax(176px, 1fr))
-  gap: var(--nt-space-3)
-
-.co-dept
-  --co-c: var(--nt-accent)
-  display: flex
-  flex-direction: column
-  min-width: 0
-
-.co-dept__stub
-  align-self: center
-  width: 1px
-  height: var(--nt-space-3)
-  background: var(--co-c)
-
-.co-dept__edge
-  align-self: center
-  display: flex
-  flex-direction: column
-  margin-bottom: var(--nt-space-2)
-  padding: 2px var(--nt-space-2)
-  background: var(--nt-bg-0)
-  border: 1px solid var(--nt-border-1)
-  border-radius: var(--nt-radius-s)
-  color: var(--nt-text-2)
-  font-size: var(--nt-fs-micro)
-
-.co-node--dept
-  border-top: 2px solid var(--co-c)
-
-.co-dept__mark
-  flex: none
-  width: 10px
-  height: 10px
-  border-radius: var(--nt-radius-s)
-  background: var(--co-c)
-
+// 岗位：一根竖线从部门卡左下角垂下来，每个岗位一个接点
 .co-leaves
-  display: flex
-  flex-direction: column
-  gap: var(--nt-space-2)
-  margin: 0 0 0 var(--nt-space-3)
-  padding: var(--nt-space-2) 0 0 var(--nt-space-3)
-  border-left: 1px solid color-mix(in srgb, var(--co-c) 55%, transparent)
+  position: relative
+  display: grid
+  gap: var(--nt-space-1)
+  margin: var(--nt-space-2) 0 0 var(--nt-space-3)
+  padding: 0 0 0 var(--nt-space-3)
+  border-left: 1.5px solid color-mix(in srgb, var(--co-c) 55%, transparent)
   list-style: none
 
 .co-leaf
+  position: relative
   display: flex
   align-items: center
   gap: var(--nt-space-2)
   width: 100%
-  min-height: 36px
-  padding: var(--nt-space-1) var(--nt-space-2)
-  background: var(--nt-bg-0)
-  border: 1px solid var(--nt-border-1)
+  min-height: 34px
+  padding: 0 var(--nt-space-2)
+  background: var(--nt-bg-1)
+  border: 1px solid var(--nt-border-0)
   border-radius: var(--nt-radius-m)
   color: inherit
   font: inherit
   text-align: left
   cursor: pointer
-  transition: border-color var(--nt-transition)
+  transition: border-color var(--nt-transition), background-color var(--nt-transition)
 
-  &:hover
-    border-color: var(--co-c)
+  &::before
+    content: ''
+    position: absolute
+    top: 50%
+    left: calc(-1 * var(--nt-space-3) - 4px)
+    width: 6px
+    height: 6px
+    margin-top: -3px
+    border-radius: var(--nt-radius-pill)
+    background: var(--co-c)
 
+  &:hover,
   &[aria-pressed='true']
-    border-color: var(--nt-accent-border)
+    border-color: var(--co-c)
+    background: var(--nt-bg-2)
 
 .co-leaf__name
   flex: 1
   min-width: 0
   overflow: hidden
-  color: var(--nt-text-1)
-  font-size: var(--nt-fs-caption)
+  color: var(--nt-text-0)
+  font-size: var(--nt-fs-panel)
   text-overflow: ellipsis
   white-space: nowrap
 
 .co-leaf__val
   flex: none
-  color: var(--nt-text-3)
+  color: var(--nt-text-2)
   font-size: var(--nt-fs-caption)
 
-.co-leaf__val--hot
-  color: var(--nt-danger)
+// 要人看一眼的岗位：琥珀描边；空岗：虚线
+.co-leaf--hot
+  border-color: color-mix(in srgb, var(--nt-warn) 75%, transparent)
+
+  .co-leaf__val
+    color: var(--nt-warn)
+
+.co-leaf--empty
+  border-style: dashed
 
 // ——— 状态（点 + 文字，不只靠颜色） ———
 .co-dot
@@ -355,6 +441,7 @@
   color: var(--nt-text-3)
   font-size: var(--nt-fs-micro)
   line-height: 1.6
+  white-space: nowrap
 
 .co-state--ok
   color: var(--nt-success)
@@ -365,11 +452,17 @@
 .co-state--idle
   color: var(--nt-warn)
 
-// ——— 详情 ———
+// ——— 树下面一条：选中节点的详情；右边给右下角的指令窗留位 ———
 .co-detail
-  position: sticky
-  top: var(--nt-space-4)
-  padding: var(--nt-space-4)
+  display: grid
+  flex: none
+  grid-template-columns: minmax(180px, 1.1fr) minmax(0, 1fr) minmax(0, 1.2fr) auto
+  gap: var(--nt-space-4)
+  align-items: start
+  max-height: 150px
+  margin-right: var(--app-dock-w, 0px)
+  padding: var(--nt-space-3) var(--nt-space-4)
+  overflow-y: auto
   background: var(--nt-bg-1)
   border: 1px solid var(--nt-border-1)
   border-radius: var(--nt-radius-l)
@@ -377,25 +470,28 @@
 .co-detail__head
   display: flex
   align-items: center
-  justify-content: space-between
   gap: var(--nt-space-2)
 
 .co-detail__title
   margin: 0
+  overflow: hidden
   color: var(--nt-text-0)
   font-size: var(--nt-fs-title)
   font-weight: 600
   line-height: 1.4
+  text-overflow: ellipsis
+  white-space: nowrap
 
 .co-detail__now
-  margin: var(--nt-space-2) 0 0
+  margin: var(--nt-space-1) 0 0
   color: var(--nt-text-1)
+  font-size: var(--nt-fs-panel)
 
 .co-detail__facts
   display: grid
   grid-template-columns: auto 1fr
   gap: var(--nt-space-1) var(--nt-space-3)
-  margin: var(--nt-space-3) 0 0
+  margin: 0
   font-size: var(--nt-fs-caption)
 
   dt
@@ -406,17 +502,15 @@
     color: var(--nt-text-1)
 
 .co-detail__agents
-  max-height: 280px
-  margin: var(--nt-space-3) 0 0
+  margin: 0
   padding: 0
-  overflow-y: auto
   list-style: none
 
 .co-detail__agent
   display: flex
   align-items: center
   gap: var(--nt-space-2)
-  min-height: 36px
+  min-height: 28px
   padding: 0 var(--nt-space-1)
   border-radius: var(--nt-radius-s)
   color: inherit
@@ -438,54 +532,29 @@
 
 .co-detail__actions
   display: flex
+  flex-direction: column
   gap: var(--nt-space-2)
-  flex-wrap: wrap
-  margin-top: var(--nt-space-4)
 
-@media (max-width: 1199px)
-  .co-layout
-    grid-template-columns: minmax(0, 1fr)
+@media (max-width: 1099px)
+  .co-page
+    height: auto
+
+  .co-tree
+    overflow-x: auto
+    overflow-y: visible
 
   .co-detail
-    position: static
-
-@media (max-width: 799px)
-  .co-depts
     grid-template-columns: minmax(0, 1fr)
-
-  .co-bus,
-  .co-dept__stub
-    display: none
-
-  .co-dept__edge
-    align-self: flex-start
-    flex-direction: row
-    gap: var(--nt-space-3)
-    margin-top: var(--nt-space-3)
-
-  .co-node--me,
-  .co-node--ceo
-    width: 100%
-    min-width: 0
-
-  .co-leaf,
-  .co-detail__agent
-    min-height: 44px
+    max-height: none
+    margin-right: 0
 
 @media (max-width: 559px)
-  .co-head__line
-    font-size: var(--nt-fs-num-lg)
+  .co-head
+    flex-wrap: wrap
 
-  .co-head__company
-    width: 100%
+  .co-head__line
+    white-space: normal
 
 @media (prefers-reduced-motion: reduce)
-  .co-pulse--on
+  .co-radar--on::before
     animation: none
-
-  .co-node,
-  .co-leaf
-    transition: none
-
-:root[data-motion='reduced'] .co-pulse--on
-  animation: none

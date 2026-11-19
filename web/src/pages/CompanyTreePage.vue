@@ -1,27 +1,32 @@
 <template>
+  <!--
+    看板 › 总览（照设计稿，一屏）：一行结论；公司树直接画在页面上；树下面一条是选中节点的详情。
+    数据只用已有的：组织架构、Agent 名册、待办、交办登记、定时任务（见右上角的说明）。
+  -->
   <q-page class="app-standard-page co-page">
     <header class="co-head">
-      <div>
-        <h1 class="co-head__title">{{ tree.company?.name || t('company.title') }}</h1>
-        <p class="co-head__line">{{ conclusion }}</p>
-      </div>
-      <div class="co-head__tools">
-        <q-select
-          v-if="tree.companies.length > 1"
-          v-model="companyId"
-          class="co-head__company"
-          dense
-          outlined
-          emit-value
-          map-options
-          :options="companyOptions"
-          :label="t('company.pickCompany')"
-        />
-        <span v-if="updatedAt" class="co-head__fresh co-mono">
-          {{ t('company.updatedAt', { time: shortTime(updatedAt, now) }) }}
-        </span>
-        <q-btn flat no-caps icon="refresh" :label="t('company.refresh')" :loading="refreshing" @click="onRefresh" />
-      </div>
+      <h1 class="co-head__line">
+        <span class="co-head__name">{{ tree.company?.name || t('company.title') }}</span
+        >{{ conclusion }}
+      </h1>
+      <q-select
+        v-if="tree.companies.length > 1"
+        v-model="companyId"
+        class="co-head__company"
+        dense
+        outlined
+        emit-value
+        map-options
+        :options="companyOptions"
+        :label="t('company.pickCompany')"
+      />
+      <span v-if="updatedAt" class="co-head__fresh co-mono">
+        {{ t('company.updatedAt', { time: shortTime(updatedAt, now) }) }}
+      </span>
+      <q-btn flat dense round icon="info" :aria-label="t('company.footnote')">
+        <q-tooltip max-width="360px">{{ t('company.footnote') }}</q-tooltip>
+      </q-btn>
+      <q-btn flat dense no-caps icon="refresh" :label="t('company.refresh')" :loading="refreshing" @click="onRefresh" />
     </header>
 
     <p v-if="status === 'error'" class="co-note co-note--danger" role="alert">{{ t('company.loadFailed') }}</p>
@@ -35,24 +40,26 @@
         <router-link class="co-link" to="/settings/organization">{{ t('company.goOrg') }}</router-link>
       </p>
 
-      <div v-else class="co-layout">
+      <template v-else>
         <CompanyTree :tree="tree" :now="now" :selected="selected" @select="selected = $event" />
 
         <aside class="co-detail" aria-live="polite">
-          <header class="co-detail__head">
-            <h2 class="co-detail__title">{{ detail.title }}</h2>
-            <span v-if="detail.state" class="co-state" :class="`co-state--${detail.state}`">
-              {{ t(`company.state.${detail.state}`) }}
-            </span>
-          </header>
-          <p class="co-detail__now">{{ detail.now }}</p>
+          <div>
+            <header class="co-detail__head">
+              <h2 class="co-detail__title">{{ detail.title }}</h2>
+              <span v-if="detail.state" class="co-state" :class="`co-state--${detail.state}`">
+                {{ t(`company.state.${detail.state}`) }}
+              </span>
+            </header>
+            <p class="co-detail__now">{{ detail.now }}</p>
+          </div>
           <dl class="co-detail__facts">
             <template v-for="fact in detail.facts" :key="fact.label">
               <dt>{{ fact.label }}</dt>
               <dd :class="{ 'co-mono': fact.mono }">{{ fact.value }}</dd>
             </template>
           </dl>
-          <ul v-if="detail.agents.length" class="co-detail__agents">
+          <ul class="co-detail__agents">
             <li v-for="agent in detail.agents" :key="agent.id">
               <router-link class="co-detail__agent" :to="`/chat?agent=${encodeURIComponent(agent.id)}`">
                 <span
@@ -73,6 +80,7 @@
               v-for="(action, index) in detail.actions"
               :key="action.to"
               no-caps
+              dense
               :unelevated="index === 0"
               :outline="index > 0"
               color="primary"
@@ -81,9 +89,7 @@
             />
           </div>
         </aside>
-      </div>
-
-      <p v-if="tree.company" class="co-footnote">{{ t('company.footnote') }}</p>
+      </template>
     </template>
   </q-page>
 </template>
