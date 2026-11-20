@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	officev1 "aranea-agents/api/kratos/office/v1"
 	v1 "aranea-agents/api/kratos/skill/v1"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/metrics"
@@ -39,12 +40,15 @@ func (s *SkillService) assertImportAdmin(ctx context.Context) error {
 
 // DecodeSkillImportRequest lets POST /v1/skills/import accept both proto JSON
 // (bytes file + filename) and legacy multipart/form-data field "file".
+// 任务附件上传（POST /v1/office/tasks/{task_id}/files）同样收 multipart。
 // Other RPCs fall through to the default Kratos decoder.
 func DecodeSkillImportRequest(r *http.Request, v any) error {
-	if req, ok := v.(*v1.ImportSkillZipRequest); ok {
-		ct := r.Header.Get("Content-Type")
-		if strings.HasPrefix(ct, "multipart/form-data") {
+	if strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data") {
+		switch req := v.(type) {
+		case *v1.ImportSkillZipRequest:
 			return bindImportSkillZipMultipart(r, req)
+		case *officev1.UploadOfficeTaskFileRequest:
+			return bindOfficeTaskFileMultipart(r, req)
 		}
 	}
 	return kratoshttp.DefaultRequestDecoder(r, v)

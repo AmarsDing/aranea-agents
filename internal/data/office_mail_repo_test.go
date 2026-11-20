@@ -86,6 +86,21 @@ CREATE TABLE IF NOT EXISTS office_tasks (
   "updated_at"   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_office_tasks_user ON office_tasks ("user_id", "status", "created_at" DESC);
+
+-- 镜像 20261336_office_task_lifecycle.sql
+ALTER TABLE office_tasks ADD COLUMN IF NOT EXISTS "session_id" TEXT NOT NULL DEFAULT '';
+ALTER TABLE office_tasks ADD COLUMN IF NOT EXISTS "due_at" TIMESTAMPTZ;
+CREATE TABLE IF NOT EXISTS office_task_files (
+  "id"           TEXT PRIMARY KEY,
+  "task_id"      TEXT NOT NULL REFERENCES office_tasks("id") ON DELETE CASCADE,
+  "user_id"      TEXT NOT NULL,
+  "filename"     TEXT NOT NULL DEFAULT '',
+  "content_type" TEXT NOT NULL DEFAULT '',
+  "size"         BIGINT NOT NULL DEFAULT 0,
+  "content"      BYTEA NOT NULL,
+  "created_at"   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_office_task_files_task ON office_task_files ("task_id", "created_at");
 `)
 	if err != nil {
 		t.Fatalf("create office mail mirror DDL: %v", err)

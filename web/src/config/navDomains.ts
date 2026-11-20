@@ -52,8 +52,9 @@ export const NAV_DOMAIN_DEFS: DomainDef[] = [
     icon: 'space_dashboard',
     primaries: [
       { path: '/workbench', labelKey: 'shell.nav.tab.today', children: ['/approvals'] },
-      { path: '/task-workspace', labelKey: 'shell.nav.tab.tasks', children: ['/coding-tasks'] },
-      { path: '/chat', labelKey: 'shell.nav.tab.chat', children: ['/sessions', '/companion'] },
+      { path: '/tasks', children: ['/coding-tasks'] },
+      // 任务工作区是「带任务进展的对话」，归到对话下面
+      { path: '/chat', labelKey: 'shell.nav.tab.chat', children: ['/task-workspace', '/sessions', '/companion'] },
       { path: '/schedule' },
       { path: '/mail' },
       { path: '/knowledge', labelKey: 'shell.nav.tab.library', children: ['/artifacts'] },

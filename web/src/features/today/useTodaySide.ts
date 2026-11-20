@@ -14,7 +14,7 @@ import {
   listOfficeTasks,
   setOfficeTaskStatus,
 } from '../office/api';
-import type { MailMessageRow, OfficeEventRow, OfficeTaskRow } from '../office/types';
+import type { MailMessageRow, OfficeEventRow, OfficeTaskRow, OfficeTaskStatus } from '../office/types';
 import { listTaskSituations } from '../session/api';
 import { useNavStore } from '../../stores/nav';
 import { parseKratosApiError } from '../../utils/kratosError';
@@ -32,11 +32,15 @@ import {
 export type BlockStatus = 'loading' | 'ok' | 'denied' | 'error';
 
 const POLL_INTERVAL_MS = 60_000;
+/** 有 AI 任务在跑时，进行中这一块每 10 秒对一次账（页面隐藏时不读）。 */
+const LIVE_POLL_MS = 10_000;
+const TASKS_FETCH_LIMIT = 100;
 const DELEGATED_FETCH_LIMIT = 100;
 const NOTES_SHOWN = 5;
 const MAILS_SHOWN = 5;
 
-export function useTodaySide() {
+/** scope = 'tasks'：任务页只读任务相关的三块，不去读日程、定时任务和邮件。 */
+export function useTodaySide(scope: 'all' | 'tasks' = 'all') {
   const nav = useNavStore();
   const can = (code: string) => nav.permissions.includes('*') || nav.permissions.includes(code);
 
@@ -47,6 +51,8 @@ export function useTodaySide() {
   const tasksStatus = ref<BlockStatus>('loading');
   const taskBusy = ref<Set<string>>(new Set());
   const delegated = ref<DelegatedRow[]>([]);
+  /** 派给 AI 的工作台任务原始行（详情抽屉、看板配对用） */
+  const aiTasks = ref<OfficeTaskRow[]>([]);
   const delegatedStatus = ref<BlockStatus>('loading');
   const notes = ref<OfficeTaskRow[]>([]);
   const mails = ref<MailMessageRow[]>([]);
@@ -54,6 +60,7 @@ export function useTodaySide() {
   const mailsStatus = ref<BlockStatus>('loading');
 
   let timer: ReturnType<typeof setInterval> | null = null;
+  let liveTimer: ReturnType<typeof setInterval> | null = null;
 
   async function loadEvents() {
     if (!can('office.schedule')) {
@@ -88,9 +95,10 @@ export function useTodaySide() {
     }
   }
 
+  // 我的任务 = 待办 + 我在做（派给 AI 的不在这里，在 delegated）
   async function loadTasks() {
     try {
-      tasks.value = await listOfficeTasks('open', 50);
+      tasks.value = await listOfficeTasks('active', TASKS_FETCH_LIMIT);
       tasksStatus.value = 'ok';
     } catch (err) {
       console.warn('[today] tasks load failed', err);
@@ -121,8 +129,9 @@ export function useTodaySide() {
     }
     const rows: DelegatedRow[] = [];
     if (coding.status === 'fulfilled') rows.push(...classifyDelegated(coding.value, new Date()));
-    if (office.status === 'fulfilled' && office.value.length > 0) {
-      rows.push(...classifyOfficeDelegated(office.value, await loadSituations()));
+    if (office.status === 'fulfilled') {
+      aiTasks.value = office.value;
+      if (office.value.length > 0) rows.push(...classifyOfficeDelegated(office.value, await loadSituations()));
     }
     delegated.value = sortDelegated(rows);
     delegatedStatus.value = 'ok';
@@ -155,7 +164,8 @@ export function useTodaySide() {
   }
 
   async function refresh(): Promise<void> {
-    await Promise.all([loadEvents(), loadCron(), loadTasks(), loadDelegated(), loadNotes(), loadMails()]);
+    const taskBlocks = [loadTasks(), loadDelegated(), loadNotes()];
+    await Promise.all(scope === 'tasks' ? taskBlocks : [...taskBlocks, loadEvents(), loadCron(), loadMails()]);
   }
 
   /** 记一笔；失败时返回错误文案，成功返回空串。 */
@@ -219,26 +229,29 @@ export function useTodaySide() {
     }
   }
 
-  /** 新建一条我的任务；失败时返回错误文案，成功返回空串。 */
-  async function addTask(title: string): Promise<string> {
+  /** 新建一条我的任务；失败时 error 是错误文案。 */
+  async function addTask(title: string, dueAt = ''): Promise<{ error: string; task: OfficeTaskRow | null }> {
     const trimmed = title.trim();
-    if (!trimmed) return '';
+    if (!trimmed) return { error: '', task: null };
     try {
-      const created = await createOfficeTask(trimmed);
+      const created = await createOfficeTask(trimmed, '', 'manual', dueAt);
       tasks.value = [created, ...tasks.value];
-      return '';
+      return { error: '', task: created };
     } catch (err) {
-      return parseKratosApiError(err).message || 'error';
+      return { error: parseKratosApiError(err).message || 'error', task: null };
     }
   }
 
-  /** 勾选完成：成功后从列表移除；失败时保留并返回错误文案。 */
-  async function completeTask(id: string): Promise<string> {
+  /** 开始 / 完成 / 退回待办：成功后就地改列表；失败时保留并返回错误文案。 */
+  async function setTaskStatus(id: string, status: OfficeTaskStatus): Promise<string> {
     if (taskBusy.value.has(id)) return '';
     taskBusy.value = new Set(taskBusy.value).add(id);
     try {
-      await setOfficeTaskStatus(id, 'done');
-      tasks.value = tasks.value.filter((task) => task.id !== id);
+      const updated = await setOfficeTaskStatus(id, status);
+      tasks.value =
+        status === 'done'
+          ? tasks.value.filter((task) => task.id !== id)
+          : tasks.value.map((t) => (t.id === id ? updated : t));
       return '';
     } catch (err) {
       return parseKratosApiError(err).message || 'error';
@@ -247,6 +260,11 @@ export function useTodaySide() {
       next.delete(id);
       taskBusy.value = next;
     }
+  }
+
+  /** 勾选完成：成功后从列表移除；失败时保留并返回错误文案。 */
+  function completeTask(id: string): Promise<string> {
+    return setTaskStatus(id, 'done');
   }
 
   /** 撤销刚才的完成（重开任务）。 */
@@ -274,6 +292,9 @@ export function useTodaySide() {
     timer = setInterval(() => {
       if (!document.hidden) void refresh();
     }, POLL_INTERVAL_MS);
+    liveTimer = setInterval(() => {
+      if (!document.hidden && delegated.value.some((row) => row.state === 'running')) void loadDelegated();
+    }, LIVE_POLL_MS);
     document.addEventListener('visibilitychange', onVisibility);
   });
 
@@ -284,6 +305,7 @@ export function useTodaySide() {
 
   onUnmounted(() => {
     if (timer) clearInterval(timer);
+    if (liveTimer) clearInterval(liveTimer);
     document.removeEventListener('visibilitychange', onVisibility);
   });
 
@@ -296,8 +318,11 @@ export function useTodaySide() {
     tasksStatus,
     taskBusy,
     delegated,
+    aiTasks,
     delegatedStatus,
     delegatedCounts,
+    loadDelegated,
+    setTaskStatus,
     notes,
     mails,
     mailTotal,

@@ -33,6 +33,7 @@ type mailFakeRepos struct {
 	messages    map[string]*MailMessage
 	attachments map[string]*MailAttachment
 	tasks       map[string]*OfficeTask
+	taskFiles   map[string]*OfficeTaskFile
 	failUID     map[int64]int // uid → 剩余注入失败次数
 	insertedSeq []int64       // 成功插入的 uid 轨迹（故障注入断言用）
 }
@@ -43,6 +44,7 @@ func newMailFakeRepos() *mailFakeRepos {
 		messages:    map[string]*MailMessage{},
 		attachments: map[string]*MailAttachment{},
 		tasks:       map[string]*OfficeTask{},
+		taskFiles:   map[string]*OfficeTaskFile{},
 		failUID:     map[int64]int{},
 	}
 }
@@ -390,19 +392,34 @@ func (f *mailFakeRepos) GetOfficeTask(_ context.Context, id, userID string) (*Of
 	return &c, nil
 }
 
-func (f *mailFakeRepos) ListOfficeTasks(_ context.Context, userID, status string, sources []string, limit int) ([]*OfficeTask, error) {
-	wanted := make(map[string]bool, len(sources))
-	for _, s := range sources {
-		wanted[s] = true
+func (f *mailFakeRepos) ListOfficeTasks(_ context.Context, userID string, filter OfficeTaskFilter, limit int) ([]*OfficeTask, error) {
+	in := func(list []string, v string) bool {
+		if len(list) == 0 {
+			return true
+		}
+		for _, s := range list {
+			if s == v {
+				return true
+			}
+		}
+		return false
 	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	out := make([]*OfficeTask, 0)
 	for _, t := range f.tasks {
-		if t.UserID == userID && t.Status == status && wanted[t.Source] {
-			c := *t
-			out = append(out, &c)
+		assigned := t.AssigneeKind != ""
+		if t.UserID != userID || !in(filter.Statuses, t.Status) || !in(filter.Sources, t.Source) ||
+			(filter.Assigned > 0 && !assigned) || (filter.Assigned < 0 && assigned) {
+			continue
 		}
+		c := *t
+		for _, file := range f.taskFiles {
+			if file.TaskID == t.ID {
+				c.FileCount++
+			}
+		}
+		out = append(out, &c)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].CreatedAt.After(out[j].CreatedAt) })
 	if len(out) > limit {

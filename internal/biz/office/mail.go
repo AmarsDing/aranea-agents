@@ -126,14 +126,37 @@ type OfficeTask struct {
 	Title       string
 	Body        string
 	Source      string // manual | mail | delegate | note
-	SourceRef   string // 邮件转任务：office_mail_messages.id；交办：承载会话 id
-	Status      string // open | done
-	// 负责人：AssigneeKind 为空 = 属主本人；agent / team = 交办对象。
+	SourceRef   string // 邮件转任务：office_mail_messages.id；指令栏交办：承载会话 id
+	Status      string // open | doing | done
+	// 负责人：AssigneeKind 为空 = 属主本人；agent / team = 交办（AI 执行）对象。
 	AssigneeKind string
 	AssigneeID   string
 	AssigneeName string // 交办当时的显示名快照
+	SessionID    string // AI 执行的承载会话；没派给 AI 为空
+	DueAt        *time.Time
+	FileCount    int // 附件数（读路径物化，写路径忽略）
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
+}
+
+// OfficeTaskFile 任务附件。列表读路径不装载 Content。
+type OfficeTaskFile struct {
+	ID          string
+	TaskID      string
+	UserID      string
+	Filename    string
+	ContentType string
+	Size        int64
+	Content     []byte
+	CreatedAt   time.Time
+}
+
+// OfficeTaskFilter 任务列表过滤：Statuses / Sources 非空才过滤；Assigned 为 1 只要
+// 交办出去的（有执行对象），-1 只要本人负责的，0 不限。
+type OfficeTaskFilter struct {
+	Statuses []string
+	Sources  []string
+	Assigned int
 }
 
 // ============================================================================
@@ -201,10 +224,20 @@ type OfficeTaskRepo interface {
 	// CreateTaskFromMailTx 单事务：插入任务 + 回写邮件 task_ref（幂等前置
 	// 由 usecase 判空保证；同事务防「任务建而回写丢」的孤儿态）。
 	CreateTaskFromMailTx(ctx context.Context, t *OfficeTask, mailID, userID string) error
-	// ListOfficeTasks 本人任务按状态与来源过滤（sources 非空），created_at 倒序限量。
-	ListOfficeTasks(ctx context.Context, userID, status string, sources []string, limit int) ([]*OfficeTask, error)
+	// ListOfficeTasks 本人任务按过滤条件取，created_at 倒序限量。
+	ListOfficeTasks(ctx context.Context, userID string, filter OfficeTaskFilter, limit int) ([]*OfficeTask, error)
 	// SetOfficeTaskStatus 按 id+user_id 改状态；行不存在返回 ErrOfficeTaskNotFound。
 	SetOfficeTaskStatus(ctx context.Context, id, userID, status string, at time.Time) error
+	// UpdateOfficeTask 按 id+user_id 整行回写可变列（标题、说明、来源、状态、执行对象、
+	// 会话、到期、更新时间）；行不存在返回 ErrOfficeTaskNotFound。
+	UpdateOfficeTask(ctx context.Context, t *OfficeTask) error
+	// DeleteOfficeTask 删任务（附件级联），并清掉指向它的邮件 task_ref。
+	DeleteOfficeTask(ctx context.Context, id, userID string) error
+	ListOfficeTaskFiles(ctx context.Context, taskID, userID string) ([]*OfficeTaskFile, error)
+	CreateOfficeTaskFile(ctx context.Context, f *OfficeTaskFile) error
+	// GetOfficeTaskFile 装载含 Content；不存在或不属于 userID 返回 ErrOfficeTaskFileNotFound。
+	GetOfficeTaskFile(ctx context.Context, id, userID string) (*OfficeTaskFile, error)
+	DeleteOfficeTaskFile(ctx context.Context, id, userID string) error
 }
 
 // ============================================================================

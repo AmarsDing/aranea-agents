@@ -55,14 +55,24 @@ describe('三个模块与领域', () => {
     const workbench = buildNavDomains(all).find((d) => d.key === 'workbench');
     expect(workbench?.primaries.map((p) => p.to)).toEqual([
       '/workbench',
-      '/task-workspace',
+      '/tasks',
       '/chat',
       '/schedule',
       '/mail',
       '/knowledge',
     ]);
     expect(workbench?.primaries[0].children.map((c) => c.to)).toEqual(['/approvals']);
-    expect(workbench?.primaries[2].children.map((c) => c.to)).toEqual(['/sessions', '/companion']);
+    expect(workbench?.primaries[1].children.map((c) => c.to)).toEqual(['/coding-tasks']);
+    expect(workbench?.primaries[2].children.map((c) => c.to)).toEqual(['/task-workspace', '/sessions', '/companion']);
+  });
+
+  it('任务页不在后端菜单目录里，可见性跟随今日页', () => {
+    const tabs = (isVisible: (path: string) => boolean) =>
+      buildNavDomains(isVisible)
+        .find((d) => d.key === 'workbench')
+        ?.primaries.map((p) => p.to) ?? [];
+    expect(tabs((path) => path !== '/tasks')).toContain('/tasks');
+    expect(tabs((path) => path !== '/workbench')).not.toContain('/tasks');
   });
 
   it('点模块的落点：首选 home，没权限时退到本模块第一个可见页面，整个模块不可见时为 null', () => {

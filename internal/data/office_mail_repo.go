@@ -566,9 +566,9 @@ func (r *OfficeMailRepo) SetMailAttachmentKnowledgeDoc(ctx context.Context, id, 
 func (r *OfficeMailRepo) insertOfficeTaskOn(ctx context.Context, db execer, t *office.OfficeTask) error {
 	_, err := db.ExecContext(ctx, r.data.Dialect().RenumberPlaceholders(
 		`INSERT INTO office_tasks (`+officeTaskColumns+`)
-		 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`),
+		 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`),
 		t.ID, t.WorkspaceID, t.UserID, t.Title, t.Body, t.Source, t.SourceRef, t.Status,
-		t.AssigneeKind, t.AssigneeID, t.AssigneeName, t.CreatedAt, t.UpdatedAt)
+		t.AssigneeKind, t.AssigneeID, t.AssigneeName, t.SessionID, t.DueAt, t.CreatedAt, t.UpdatedAt)
 	return err
 }
 
@@ -586,7 +586,7 @@ func (r *OfficeMailRepo) GetOfficeTask(ctx context.Context, id, userID string) (
 		return nil, err
 	}
 	rows, err := db.QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(
-		`SELECT `+officeTaskColumns+`
+		`SELECT `+officeTaskSelect+`
 		 FROM office_tasks WHERE id=? AND user_id=?`), id, userID)
 	if err != nil {
 		return nil, err

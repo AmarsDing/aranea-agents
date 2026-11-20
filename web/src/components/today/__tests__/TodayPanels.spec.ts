@@ -120,24 +120,60 @@ describe('工作台今日 · 最新邮件与任务两张卡', () => {
     expect(text('ok')).toContain('还没有邮件');
   });
 
-  it('同一个任务组件按 part 只出一半：我的任务，或交办中', () => {
+  it('同一个任务组件按生命周期分两块：我的任务只列待办（输入框沉底），进行中列我在做的和 AI 在做的', () => {
+    const row = (id: string, status: string) => ({
+      id,
+      title: id,
+      body: '',
+      source: 'manual',
+      source_ref: '',
+      status,
+      assignee_kind: '',
+      assignee_id: '',
+      assignee_name: '',
+      session_id: '',
+      due_at: '',
+      file_count: 0,
+      created_at: '2026-11-20T00:00:00Z',
+      updated_at: '',
+    });
     const base = {
-      tasks: [],
+      tasks: [row('写周报', 'open'), row('改合同', 'doing')],
       tasksStatus: 'ok' as const,
       taskBusy: new Set<string>(),
       lastDone: null,
       notes: [],
-      delegated: [],
+      delegated: [
+        {
+          id: 'office:t9',
+          title: '竞品分析',
+          agentKey: '分析师',
+          state: 'running' as const,
+          at: '',
+          to: '/chat',
+          officeTaskId: 't9',
+          detail: '正在检索资料',
+        },
+      ],
+      aiTasks: [],
       delegatedStatus: 'ok' as const,
-      add: async () => '',
+      now: new Date('2026-11-20T08:00:00Z'),
+      add: async () => ({ error: '', task: null }),
+      addNote: async () => '',
     };
-    const part = (p?: 'tasks' | 'delegated') =>
-      mount(TodayTasks, { props: { ...base, part: p }, global: { plugins: [i18n], stubs } }).text();
-    expect(part('tasks')).toContain('我的任务');
-    expect(part('tasks')).not.toContain('交办中');
-    expect(part('delegated')).toContain('交办中');
-    expect(part('delegated')).not.toContain('我的任务');
-    expect(part()).toContain('我的任务');
-    expect(part()).toContain('交办中');
+    const mountPart = (part: 'tasks' | 'delegated') =>
+      mount(TodayTasks, {
+        props: { ...base, part },
+        global: { plugins: [i18n], stubs: { ...stubs, TaskComposer: true, TaskRecipientMenu: true } },
+      });
+    const mine = mountPart('tasks');
+    expect(mine.text()).toContain('我的任务');
+    expect(mine.findAll('.tk-card__title').map((el) => el.text())).toEqual(['写周报']);
+    expect(mine.find('task-composer-stub').exists()).toBe(true);
+    const doing = mountPart('delegated');
+    expect(doing.text()).toContain('进行中');
+    expect(doing.findAll('.tk-card__title').map((el) => el.text())).toEqual(['竞品分析', '改合同']);
+    expect(doing.text()).toContain('正在检索资料');
+    expect(doing.text()).toContain('实时');
   });
 });

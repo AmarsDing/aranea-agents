@@ -210,6 +210,13 @@ export const routes: RouteRecordRaw[] = [
         meta: { titleKey: 'menu.taskWorkspace' },
       },
       {
+        // 工作台 · 任务：我的任务、交办中、待验收、最近完成（数据与今日页同源）
+        path: 'tasks',
+        name: 'tasks',
+        component: () => import('../pages/TasksPage.vue'),
+        meta: { titleKey: 'shell.nav.tab.tasks', breadcrumb: false, uiVisual: 'deck' },
+      },
+      {
         path: 'sessions',
         name: 'sessions',
         component: () => import('../pages/SessionsPage.vue'),

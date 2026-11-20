@@ -1,103 +1,104 @@
 <template>
-  <section class="today-tasks">
-    <template v-if="part !== 'delegated'">
+  <!--
+    今日页的两块任务（数据与任务页同源，按生命周期分）：
+      part=tasks    我的任务 = 待办（列表在上，输入框沉底；随手记录收在列表下面）
+      part=delegated 进行中 = 我在做的 + AI 在做 / 卡住 / 做完待验收的（有在跑的就每 10 秒对一次账）
+  -->
+  <section class="today-tasks" :class="{ 'today-tasks--compose': part === 'tasks' }">
+    <template v-if="part === 'tasks'">
       <header class="today-panel__head">
         <h2 class="today-panel__title">
           {{ t('today.tasks.title') }}
-          <span class="today-panel__count">{{ tasks.length }}</span>
+          <span class="today-panel__count">{{ todo.length }}</span>
         </h2>
+        <router-link class="today-link" to="/tasks">{{ t('today.delegated.viewAll') }}</router-link>
       </header>
 
-      <form class="today-tasks__add" @submit.prevent="submit">
-        <q-input
-          v-model="draft"
-          dense
-          outlined
-          maxlength="200"
-          :placeholder="t('today.tasks.addPlaceholder')"
-          :aria-label="t('today.tasks.addLabel')"
-          :disable="adding"
-        />
-        <q-btn type="submit" flat no-caps :label="t('today.tasks.add')" :loading="adding" :disable="!draft.trim()" />
-      </form>
-      <p v-if="error" class="today-note today-note--danger" role="alert">
-        {{ t('today.tasks.saveFailed', { message: error }) }}
-      </p>
-
-      <p v-if="tasksStatus === 'error'" class="today-note today-note--danger" role="alert">
-        {{ t('today.tasks.failed') }}
-      </p>
-      <p v-else-if="tasksStatus === 'ok' && tasks.length === 0" class="today-empty">{{ t('today.tasks.empty') }}</p>
-      <ul v-else class="today-tasks__list">
-        <li v-for="task in tasks" :key="task.id" class="today-tasks__row">
-          <q-checkbox
-            :model-value="false"
-            dense
-            :disable="taskBusy.has(task.id)"
-            :aria-label="t('today.tasks.complete', { title: task.title })"
-            @update:model-value="emit('complete', task)"
-          />
-          <span class="today-tasks__title">{{ task.title }}</span>
-          <router-link v-if="task.source === 'mail'" class="today-tag" to="/mail">
-            {{ t('today.tasks.fromMail') }}
-          </router-link>
-        </li>
-      </ul>
-      <p v-if="lastDone" class="today-tasks__undo" role="status" aria-live="polite">
-        {{ t('today.tasks.completed', { title: lastDone.title }) }}
-        <button type="button" class="today-link" @click="emit('undo', lastDone)">{{ t('today.tasks.undo') }}</button>
-      </p>
-
-      <details v-if="notes.length > 0" class="today-notes">
-        <summary class="today-notes__summary">{{ t('today.notes.title', { n: notes.length }) }}</summary>
-        <ul class="today-tasks__list">
-          <li v-for="note in notes" :key="note.id" class="today-tasks__row">
-            <span class="today-tasks__title">{{ note.title }}</span>
-            <button type="button" class="today-link" @click="emit('dismissNote', note)">
-              {{ t('today.notes.dismiss') }}
-            </button>
+      <div class="today-tasks__scroll">
+        <p v-if="tasksStatus === 'error'" class="today-note today-note--danger" role="alert">
+          {{ t('today.tasks.failed') }}
+        </p>
+        <p v-else-if="tasksStatus === 'ok' && todo.length === 0" class="today-empty">{{ t('today.tasks.empty') }}</p>
+        <ul v-else class="tk-list">
+          <li v-for="task in todo" :key="task.id">
+            <TaskCard
+              :task="task"
+              :busy="taskBusy.has(task.id)"
+              :now="now"
+              @open="emit('open', task, null)"
+              @complete="emit('complete', task)"
+              @move="emit('move', task, $event)"
+              @dispatch="emit('dispatch', task, $event)"
+            />
           </li>
         </ul>
-      </details>
+        <p v-if="lastDone" class="today-tasks__undo" role="status" aria-live="polite">
+          {{ t('today.tasks.completed', { title: lastDone.title }) }}
+          <button type="button" class="today-link" @click="emit('undo', lastDone)">{{ t('today.tasks.undo') }}</button>
+        </p>
+
+        <details v-if="notes.length > 0" class="today-notes">
+          <summary class="today-notes__summary">{{ t('today.notes.title', { n: notes.length }) }}</summary>
+          <ul class="today-tasks__list">
+            <li v-for="item in notes" :key="item.id" class="today-tasks__row">
+              <span class="today-tasks__title">{{ item.title }}</span>
+              <button type="button" class="today-link" @click="emit('dismissNote', item)">
+                {{ t('today.notes.dismiss') }}
+              </button>
+            </li>
+          </ul>
+        </details>
+      </div>
+
+      <TaskComposer
+        :add="add"
+        :add-note="addNote"
+        @created="emit('created', $event)"
+        @say="(text, error, link) => emit('say', text, error, link)"
+      />
     </template>
 
-    <template v-if="part !== 'tasks'">
-      <header class="today-panel__head" :class="{ 'today-panel__head--sub': !part }">
+    <template v-else>
+      <header class="today-panel__head">
         <h2 class="today-panel__title">
           {{ t('today.delegated.title') }}
-          <span class="today-panel__count">{{ delegated.length }}</span>
+          <span class="today-panel__count">{{ doing.length + delegated.length }}</span>
+          <span v-if="running" class="tk-live-tag" :title="t('taskBoard.liveHint')">
+            <span class="tk-live" aria-hidden="true" />{{ t('taskBoard.live') }}
+          </span>
         </h2>
-        <router-link class="today-link" to="/coding-tasks">{{ t('today.delegated.viewAll') }}</router-link>
+        <router-link class="today-link" to="/tasks">{{ t('today.delegated.viewAll') }}</router-link>
       </header>
       <p v-if="delegatedStatus === 'error'" class="today-note today-note--danger" role="alert">
         {{ t('today.delegated.failed') }}
       </p>
-      <p v-else-if="delegatedStatus === 'ok' && delegated.length === 0" class="today-empty">
+      <p
+        v-else-if="delegatedStatus === 'ok' && tasksStatus !== 'loading' && doing.length + delegated.length === 0"
+        class="today-empty"
+      >
         {{ t('today.delegated.empty') }}
       </p>
-      <ul v-else class="today-tasks__list">
-        <li v-for="row in visibleDelegated" :key="row.id" class="today-delegated__item">
-          <router-link class="today-delegated__row" :to="row.to" :title="row.detail || undefined">
-            <span class="today-delegated__title">{{ row.title }}</span>
-            <span v-if="row.agentKey" class="today-delegated__agent">{{ row.agentKey }}</span>
-            <span class="today-state" :class="`today-state--${row.state}`">
-              {{ t(`today.delegated.state.${row.state}`) }}
-            </span>
-          </router-link>
-          <button
-            v-if="row.officeTaskId && row.state !== 'running'"
-            type="button"
-            class="today-link"
-            :disabled="taskBusy.has(row.officeTaskId)"
-            :aria-label="
-              t(row.state === 'review' ? 'today.delegated.acceptLabel' : 'today.delegated.dropLabel', {
-                title: row.title,
-              })
-            "
-            @click="emit('accept', row)"
-          >
-            {{ t(row.state === 'review' ? 'today.delegated.accept' : 'today.delegated.drop') }}
-          </button>
+      <ul v-else class="tk-list" aria-live="polite">
+        <li v-for="row in visibleRuns" :key="row.id">
+          <TaskCard
+            :task="aiTask(row)"
+            :run="row"
+            :busy="row.officeTaskId ? taskBusy.has(row.officeTaskId) : false"
+            :now="now"
+            @open="emit('open', aiTask(row), row)"
+            @accept="emit('accept', row)"
+          />
+        </li>
+        <li v-for="task in doing" :key="task.id">
+          <TaskCard
+            :task="task"
+            :busy="taskBusy.has(task.id)"
+            :now="now"
+            @open="emit('open', task, null)"
+            @complete="emit('complete', task)"
+            @move="emit('move', task, $event)"
+            @dispatch="emit('dispatch', task, $event)"
+          />
         </li>
       </ul>
     </template>
@@ -105,17 +106,22 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
+import TaskCard from '../tasks/TaskCard.vue';
+import TaskComposer from '../tasks/TaskComposer.vue';
 import type { OfficeTaskRow } from '../../features/office/types';
+import { sortMyTasks, type BoardColumn } from '../../features/tasks/board';
+import type { Recipient } from '../../features/today/command';
 import type { DelegatedRow } from '../../features/today/logic';
 import type { BlockStatus } from '../../features/today/useTodaySide';
 
-const MAX_DELEGATED_ROWS = 8;
+const MAX_RUN_ROWS = 8;
 
 const props = defineProps<{
-  /** 只出一半：tasks = 我的任务和记录，delegated = 交办中；不传则两块都出 */
-  part?: 'tasks' | 'delegated';
+  /** tasks = 我的任务（待办）；delegated = 进行中 */
+  part: 'tasks' | 'delegated';
+  /** 我的任务：待办 + 我在做 */
   tasks: OfficeTaskRow[];
   tasksStatus: BlockStatus;
   taskBusy: Set<string>;
@@ -123,34 +129,39 @@ const props = defineProps<{
   lastDone: OfficeTaskRow | null;
   /** 最近几条随手记录 */
   notes: OfficeTaskRow[];
+  /** AI 执行（派给 AI 的任务 + 编码任务） */
   delegated: DelegatedRow[];
+  /** 派给 AI 的工作台任务原始行（按 id 配对） */
+  aiTasks: OfficeTaskRow[];
   delegatedStatus: BlockStatus;
-  /** 新建任务：返回错误文案，成功返回空串 */
-  add: (title: string) => Promise<string>;
+  now: Date;
+  add: (title: string, dueAt?: string) => Promise<{ error: string; task: OfficeTaskRow | null }>;
+  addNote: (text: string) => Promise<string>;
 }>();
 
 const emit = defineEmits<{
+  open: [task: OfficeTaskRow | null, run: DelegatedRow | null];
   complete: [task: OfficeTaskRow];
+  move: [task: OfficeTaskRow, to: BoardColumn];
+  dispatch: [task: OfficeTaskRow, recipient: Recipient];
   undo: [task: OfficeTaskRow];
   dismissNote: [note: OfficeTaskRow];
-  /** 结掉一条指令栏交办的任务：待验收的是验收通过，卡住的是不再跟进 */
+  /** 待验收的验收通过 */
   accept: [row: DelegatedRow];
+  created: [task: OfficeTaskRow];
+  say: [text: string, error: boolean, link?: string];
 }>();
 
 const { t } = useI18n();
 
-const draft = ref('');
-const adding = ref(false);
-const error = ref('');
+const sorted = computed(() => sortMyTasks(props.tasks));
+const todo = computed(() => sorted.value.filter((task) => task.status !== 'doing'));
+const doing = computed(() => sorted.value.filter((task) => task.status === 'doing'));
+const visibleRuns = computed(() => props.delegated.slice(0, MAX_RUN_ROWS));
+const running = computed(() => props.delegated.some((row) => row.state === 'running'));
 
-const visibleDelegated = computed(() => props.delegated.slice(0, MAX_DELEGATED_ROWS));
-
-async function submit() {
-  const title = draft.value.trim();
-  if (!title || adding.value) return;
-  adding.value = true;
-  error.value = await props.add(title);
-  adding.value = false;
-  if (!error.value) draft.value = '';
+const byId = computed(() => new Map(props.aiTasks.map((task) => [task.id, task])));
+function aiTask(row: DelegatedRow): OfficeTaskRow | null {
+  return (row.officeTaskId && byId.value.get(row.officeTaskId)) || null;
 }
 </script>

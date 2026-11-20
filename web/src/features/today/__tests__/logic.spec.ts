@@ -243,3 +243,56 @@ describe('classifyOfficeDelegated', () => {
     expect(coding).toMatchObject({ id: 'a', officeTaskId: '', to: '/coding-tasks?focus=a' });
   });
 });
+
+describe('任务生命周期（2026-11-20）', () => {
+  it('今天到期的任务进时间轴，点了打开任务详情；别的日子的不进', () => {
+    const entries = buildTimeline({
+      events: [],
+      inbox: [],
+      cron: [],
+      tasks: [
+        { id: 't1', title: '交周报', due_at: at(17, 30) },
+        { id: 't2', title: '早过了', due_at: at(8, 0) },
+        { id: 't3', title: '明天的', due_at: at(9, 0, 1) },
+        { id: 't4', title: '没设到期', due_at: '' },
+      ],
+      now: NOW,
+    });
+    expect(entries.map((e) => [e.title, e.kind, e.past, e.to])).toEqual([
+      ['早过了', 'deadline', true, '/tasks?task=t2'],
+      ['交周报', 'deadline', false, '/tasks?task=t1'],
+    ]);
+  });
+
+  it('派出去的待办：进度看 session_id（来源 source_ref 是邮件 id 也不受影响），等我回复单独标出', () => {
+    const [row] = classifyOfficeDelegated(
+      [
+        {
+          id: 'm1',
+          title: '回复王总',
+          source_ref: 'mail-9',
+          session_id: 's-9',
+          assignee_kind: 'agent',
+          assignee_id: 'agent-1',
+          assignee_name: '写手',
+          created_at: '2026-11-16T01:00:00Z',
+        },
+      ],
+      [
+        {
+          session_id: 's-9',
+          status: 'waiting',
+          updated_at: '2026-11-16T02:00:00Z',
+          current_step_summary: '等你确认语气',
+        },
+      ],
+    );
+    expect(row).toMatchObject({
+      state: 'stuck',
+      waiting: true,
+      sessionId: 's-9',
+      detail: '等你确认语气',
+      to: '/chat?session=s-9&agent=agent-1',
+    });
+  });
+});

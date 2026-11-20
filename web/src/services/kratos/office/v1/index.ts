@@ -332,12 +332,15 @@ export type OfficeTask = {
   assigneeKind: string | undefined;
   assigneeId: string | undefined;
   assigneeName: string | undefined;
+  sessionId: string | undefined;
+  dueAt: wellKnownTimestamp | undefined;
+  fileCount: number | undefined;
 };
 
 export type ListOfficeTasksRequest = {
   status: string | undefined;
   limit: number | undefined;
-  // 空 = 我的任务（manual + mail）；delegate = 交办中；note = 随手记录
+  // 空 = 我的任务（manual + mail，且没派给 AI）；delegate = 派给了 AI 的；note = 随手记录
   source: string | undefined;
 };
 
@@ -357,6 +360,7 @@ export type CreateOfficeTaskRequest = {
   assigneeKind: string | undefined;
   assigneeId: string | undefined;
   assigneeName: string | undefined;
+  dueAt: wellKnownTimestamp | undefined;
 };
 
 export type SetOfficeTaskStatusRequest = {
@@ -366,6 +370,72 @@ export type SetOfficeTaskStatusRequest = {
   //
   // Behaviors: REQUIRED
   status: string | undefined;
+};
+
+// UpdateOfficeTaskRequest 改任务：只改带了的字段（optional 区分「没带」和「清空」）。
+export type UpdateOfficeTaskRequest = {
+  //
+  // Behaviors: REQUIRED
+  id: string | undefined;
+  title?: string;
+  body?: string;
+  dueAt: wellKnownTimestamp | undefined;
+  clearDue: boolean | undefined;
+};
+
+// AssignOfficeTaskRequest 派给 AI：assignee_kind 为 agent / team，带上承载会话；
+// assignee_kind 为空 = 收回自己做。
+export type AssignOfficeTaskRequest = {
+  //
+  // Behaviors: REQUIRED
+  id: string | undefined;
+  assigneeKind: string | undefined;
+  assigneeId: string | undefined;
+  assigneeName: string | undefined;
+  sessionId: string | undefined;
+};
+
+export type DeleteOfficeTaskRequest = {
+  //
+  // Behaviors: REQUIRED
+  id: string | undefined;
+};
+
+// OfficeTaskFile 任务附件元数据。
+export type OfficeTaskFile = {
+  id: string | undefined;
+  taskId: string | undefined;
+  filename: string | undefined;
+  contentType: string | undefined;
+  size: number | undefined;
+  createdAt: wellKnownTimestamp | undefined;
+};
+
+export type ListOfficeTaskFilesRequest = {
+  //
+  // Behaviors: REQUIRED
+  taskId: string | undefined;
+};
+
+export type ListOfficeTaskFilesResponse = {
+  items: OfficeTaskFile[] | undefined;
+};
+
+// UploadOfficeTaskFileRequest 上传附件：页面走 multipart/form-data（字段 file），
+// 服务端解码器转成本消息；也收 JSON（content 为 base64）。单个文件 ≤50MB。
+export type UploadOfficeTaskFileRequest = {
+  //
+  // Behaviors: REQUIRED
+  taskId: string | undefined;
+  filename: string | undefined;
+  contentType: string | undefined;
+  content: string | undefined;
+};
+
+export type OfficeTaskFileRequest = {
+  //
+  // Behaviors: REQUIRED
+  id: string | undefined;
 };
 
 export type TriggerDigestRequest = {
@@ -401,6 +471,16 @@ export interface OfficeMailService {
   ListOfficeTasks(request: ListOfficeTasksRequest): Promise<ListOfficeTasksResponse>;
   CreateOfficeTask(request: CreateOfficeTaskRequest): Promise<OfficeTask>;
   SetOfficeTaskStatus(request: SetOfficeTaskStatusRequest): Promise<OfficeTask>;
+  UpdateOfficeTask(request: UpdateOfficeTaskRequest): Promise<OfficeTask>;
+  // AssignOfficeTask 派给 AI（会话由页面先建好）或收回自己做。
+  AssignOfficeTask(request: AssignOfficeTaskRequest): Promise<OfficeTask>;
+  // DeleteOfficeTask 删任务（附件一并删除，邮件上的转任务回链清掉）。
+  DeleteOfficeTask(request: DeleteOfficeTaskRequest): Promise<wellKnownEmpty>;
+  ListOfficeTaskFiles(request: ListOfficeTaskFilesRequest): Promise<ListOfficeTaskFilesResponse>;
+  UploadOfficeTaskFile(request: UploadOfficeTaskFileRequest): Promise<OfficeTaskFile>;
+  // DownloadOfficeTaskFile 附件下载（HttpBody 原始字节直通）。
+  DownloadOfficeTaskFile(request: OfficeTaskFileRequest): Promise<googleapi_HttpBody>;
+  DeleteOfficeTaskFile(request: OfficeTaskFileRequest): Promise<wellKnownEmpty>;
 }
 
 export function createOfficeMailServiceClient(
@@ -783,6 +863,146 @@ export function createOfficeMailServiceClient(
         service: "OfficeMailService",
         method: "SetOfficeTaskStatus",
       }) as Promise<OfficeTask>;
+    },
+    UpdateOfficeTask(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      if (!request.id) {
+        throw new Error("missing required field request.id");
+      }
+      const path = `v1/office/tasks/${request.id}`; // eslint-disable-line quotes
+      const body = JSON.stringify(request);
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "PATCH",
+        body,
+      }, {
+        service: "OfficeMailService",
+        method: "UpdateOfficeTask",
+      }) as Promise<OfficeTask>;
+    },
+    AssignOfficeTask(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      if (!request.id) {
+        throw new Error("missing required field request.id");
+      }
+      const path = `v1/office/tasks/${request.id}:assign`; // eslint-disable-line quotes
+      const body = JSON.stringify(request);
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "OfficeMailService",
+        method: "AssignOfficeTask",
+      }) as Promise<OfficeTask>;
+    },
+    DeleteOfficeTask(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      if (!request.id) {
+        throw new Error("missing required field request.id");
+      }
+      const path = `v1/office/tasks/${request.id}`; // eslint-disable-line quotes
+      const body = null;
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "DELETE",
+        body,
+      }, {
+        service: "OfficeMailService",
+        method: "DeleteOfficeTask",
+      }) as Promise<wellKnownEmpty>;
+    },
+    ListOfficeTaskFiles(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      if (!request.taskId) {
+        throw new Error("missing required field request.task_id");
+      }
+      const path = `v1/office/tasks/${request.taskId}/files`; // eslint-disable-line quotes
+      const body = null;
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "OfficeMailService",
+        method: "ListOfficeTaskFiles",
+      }) as Promise<ListOfficeTaskFilesResponse>;
+    },
+    UploadOfficeTaskFile(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      if (!request.taskId) {
+        throw new Error("missing required field request.task_id");
+      }
+      const path = `v1/office/tasks/${request.taskId}/files`; // eslint-disable-line quotes
+      const body = JSON.stringify(request);
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "OfficeMailService",
+        method: "UploadOfficeTaskFile",
+      }) as Promise<OfficeTaskFile>;
+    },
+    DownloadOfficeTaskFile(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      if (!request.id) {
+        throw new Error("missing required field request.id");
+      }
+      const path = `v1/office/task-files/${request.id}`; // eslint-disable-line quotes
+      const body = null;
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "OfficeMailService",
+        method: "DownloadOfficeTaskFile",
+      }) as Promise<googleapi_HttpBody>;
+    },
+    DeleteOfficeTaskFile(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      if (!request.id) {
+        throw new Error("missing required field request.id");
+      }
+      const path = `v1/office/task-files/${request.id}`; // eslint-disable-line quotes
+      const body = null;
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "DELETE",
+        body,
+      }, {
+        service: "OfficeMailService",
+        method: "DeleteOfficeTaskFile",
+      }) as Promise<wellKnownEmpty>;
     },
   };
 }

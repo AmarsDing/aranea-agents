@@ -88,13 +88,31 @@ export type OfficeTaskRow = {
   title: string;
   body: string;
   source: 'manual' | 'mail' | 'delegate' | 'note' | string;
-  /** 邮件转任务：邮件 id；交办：承载会话 id */
+  /** 邮件转任务：邮件 id；指令栏交办：承载会话 id */
   source_ref: string;
-  status: 'open' | 'done' | string;
-  /** 空 = 负责人是本人；agent / team = 交办对象 */
+  /** open 待办 | doing 我在做 | done 已完成（派给 AI 的保持 open，进度看会话） */
+  status: OfficeTaskStatus | string;
+  /** 空 = 负责人是本人；agent / team = 派给了 AI */
   assignee_kind: string;
   assignee_id: string;
   assignee_name: string;
+  /** AI 执行的承载会话；没派给 AI 为空 */
+  session_id: string;
+  /** RFC3339；空串 = 没设到期 */
+  due_at: string;
+  file_count: number;
   created_at: string;
   updated_at: string;
+};
+
+export type OfficeTaskStatus = 'open' | 'doing' | 'done';
+
+/** 任务附件元数据。 */
+export type OfficeTaskFileRow = {
+  id: string;
+  task_id: string;
+  filename: string;
+  content_type: string;
+  size: number;
+  created_at: string;
 };

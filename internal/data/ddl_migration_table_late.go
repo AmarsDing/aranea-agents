@@ -711,4 +711,11 @@ var ddlMigrationsLate = []ddlMigration{
 	// 文档存 worktree/批注/动态/编排/自动化记录，主键 (kind,id)。终端进程
 	// 是运行态不落库。幂等 IF NOT EXISTS。
 	{Version: 20261332, Name: "fleet_records", SQL: "sql/migrations/20261332_fleet_records.sql"},
+	// 20261336 office_task_lifecycle（工作台任务生命周期）：office_tasks 增 session_id
+	//（AI 执行的承载会话，存量交办行从 source_ref 回填）与 due_at；status 扩为
+	// open|doing|done；新表 office_task_files（BYTEA 附件，任务删除级联）。幂等。
+	{Version: 20261336, Name: "office_task_lifecycle", SQL: "sql/migrations/20261336_office_task_lifecycle.sql"},
+	// 20261337 knowledge_collection_space（工作台 › 资料 P1）：knowledge_collections 增 space
+	//（mine|company）。空串 = 未登记，按后端归（team→company，其余→mine），存量行不回填。幂等。
+	{Version: 20261337, Name: "knowledge_collection_space", SQL: "sql/migrations/20261337_knowledge_collection_space.sql"},
 }

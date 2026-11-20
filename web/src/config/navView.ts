@@ -55,6 +55,15 @@ const RUN_ENTRIES: NavLeaf[] = [
   },
 ];
 
+// 任务页与今日页同源（我的任务、交办中），不单独进后端菜单目录，可见性跟随今日页
+const TASKS_ENTRY: NavLeaf = {
+  to: '/tasks',
+  icon: 'checklist',
+  labelKey: 'shell.nav.tab.tasks',
+  derived: true,
+  derivedFrom: '/workbench',
+};
+
 // 健康与告警（2026-11-19 从监控页拆出）：前端派生入口，可见性跟随 /monitor/logs
 const HEALTH_ENTRY: NavLeaf = {
   to: '/monitor/health',
@@ -70,6 +79,7 @@ const SECTION_DEFS: Record<string, SectionDef[]> = {
       key: 'today',
       labelKey: 'shell.nav.section.today',
       paths: ['/workbench', '/overview', '/task-workspace', '/approvals'],
+      derived: [TASKS_ENTRY],
     },
     {
       key: 'collab',

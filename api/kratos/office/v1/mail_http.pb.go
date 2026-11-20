@@ -21,11 +21,15 @@ var _ = binding.EncodeURL
 
 const _ = http.SupportPackageIsVersion1
 
+const OperationOfficeMailServiceAssignOfficeTask = "/kratos.office.v1.OfficeMailService/AssignOfficeTask"
 const OperationOfficeMailServiceAttachmentToKnowledge = "/kratos.office.v1.OfficeMailService/AttachmentToKnowledge"
 const OperationOfficeMailServiceCreateAccount = "/kratos.office.v1.OfficeMailService/CreateAccount"
 const OperationOfficeMailServiceCreateOfficeTask = "/kratos.office.v1.OfficeMailService/CreateOfficeTask"
 const OperationOfficeMailServiceDeleteAccount = "/kratos.office.v1.OfficeMailService/DeleteAccount"
 const OperationOfficeMailServiceDeleteMessage = "/kratos.office.v1.OfficeMailService/DeleteMessage"
+const OperationOfficeMailServiceDeleteOfficeTask = "/kratos.office.v1.OfficeMailService/DeleteOfficeTask"
+const OperationOfficeMailServiceDeleteOfficeTaskFile = "/kratos.office.v1.OfficeMailService/DeleteOfficeTaskFile"
+const OperationOfficeMailServiceDownloadOfficeTaskFile = "/kratos.office.v1.OfficeMailService/DownloadOfficeTaskFile"
 const OperationOfficeMailServiceExportEml = "/kratos.office.v1.OfficeMailService/ExportEml"
 const OperationOfficeMailServiceGetAttachment = "/kratos.office.v1.OfficeMailService/GetAttachment"
 const OperationOfficeMailServiceGetMessage = "/kratos.office.v1.OfficeMailService/GetMessage"
@@ -33,6 +37,7 @@ const OperationOfficeMailServiceImportEml = "/kratos.office.v1.OfficeMailService
 const OperationOfficeMailServiceListAccounts = "/kratos.office.v1.OfficeMailService/ListAccounts"
 const OperationOfficeMailServiceListAttachments = "/kratos.office.v1.OfficeMailService/ListAttachments"
 const OperationOfficeMailServiceListMessages = "/kratos.office.v1.OfficeMailService/ListMessages"
+const OperationOfficeMailServiceListOfficeTaskFiles = "/kratos.office.v1.OfficeMailService/ListOfficeTaskFiles"
 const OperationOfficeMailServiceListOfficeTasks = "/kratos.office.v1.OfficeMailService/ListOfficeTasks"
 const OperationOfficeMailServiceMailToTask = "/kratos.office.v1.OfficeMailService/MailToTask"
 const OperationOfficeMailServiceSendMail = "/kratos.office.v1.OfficeMailService/SendMail"
@@ -40,13 +45,22 @@ const OperationOfficeMailServiceSetOfficeTaskStatus = "/kratos.office.v1.OfficeM
 const OperationOfficeMailServiceSyncAccount = "/kratos.office.v1.OfficeMailService/SyncAccount"
 const OperationOfficeMailServiceTriggerDigest = "/kratos.office.v1.OfficeMailService/TriggerDigest"
 const OperationOfficeMailServiceUpdateAccount = "/kratos.office.v1.OfficeMailService/UpdateAccount"
+const OperationOfficeMailServiceUpdateOfficeTask = "/kratos.office.v1.OfficeMailService/UpdateOfficeTask"
+const OperationOfficeMailServiceUploadOfficeTaskFile = "/kratos.office.v1.OfficeMailService/UploadOfficeTaskFile"
 
 type OfficeMailServiceHTTPServer interface {
+	// AssignOfficeTask AssignOfficeTask 派给 AI（会话由页面先建好）或收回自己做。
+	AssignOfficeTask(context.Context, *AssignOfficeTaskRequest) (*OfficeTask, error)
 	AttachmentToKnowledge(context.Context, *AttachmentToKnowledgeRequest) (*AttachmentToKnowledgeResponse, error)
 	CreateAccount(context.Context, *CreateAccountRequest) (*MailAccount, error)
 	CreateOfficeTask(context.Context, *CreateOfficeTaskRequest) (*OfficeTask, error)
 	DeleteAccount(context.Context, *DeleteAccountRequest) (*emptypb.Empty, error)
 	DeleteMessage(context.Context, *DeleteMessageRequest) (*emptypb.Empty, error)
+	// DeleteOfficeTask DeleteOfficeTask 删任务（附件一并删除，邮件上的转任务回链清掉）。
+	DeleteOfficeTask(context.Context, *DeleteOfficeTaskRequest) (*emptypb.Empty, error)
+	DeleteOfficeTaskFile(context.Context, *OfficeTaskFileRequest) (*emptypb.Empty, error)
+	// DownloadOfficeTaskFile DownloadOfficeTaskFile 附件下载（HttpBody 原始字节直通）。
+	DownloadOfficeTaskFile(context.Context, *OfficeTaskFileRequest) (*httpbody.HttpBody, error)
 	// ExportEml ExportEml 补齐现状缺口（workbench 只有导入）。
 	ExportEml(context.Context, *ExportEmlRequest) (*httpbody.HttpBody, error)
 	// GetAttachment GetAttachment 附件下载（application/octet-stream + Content-Disposition）。
@@ -56,6 +70,7 @@ type OfficeMailServiceHTTPServer interface {
 	ListAccounts(context.Context, *emptypb.Empty) (*ListAccountsResponse, error)
 	ListAttachments(context.Context, *ListAttachmentsRequest) (*ListAttachmentsResponse, error)
 	ListMessages(context.Context, *ListMessagesRequest) (*ListMessagesResponse, error)
+	ListOfficeTaskFiles(context.Context, *ListOfficeTaskFilesRequest) (*ListOfficeTaskFilesResponse, error)
 	// ListOfficeTasks 个人任务（工作台「我的任务」）：只读写调用者本人的任务，仅需登录。
 	ListOfficeTasks(context.Context, *ListOfficeTasksRequest) (*ListOfficeTasksResponse, error)
 	MailToTask(context.Context, *MailToTaskRequest) (*MailToTaskResponse, error)
@@ -65,6 +80,8 @@ type OfficeMailServiceHTTPServer interface {
 	SyncAccount(context.Context, *SyncAccountRequest) (*SyncAccountResponse, error)
 	TriggerDigest(context.Context, *TriggerDigestRequest) (*TriggerDigestResponse, error)
 	UpdateAccount(context.Context, *UpdateAccountRequest) (*MailAccount, error)
+	UpdateOfficeTask(context.Context, *UpdateOfficeTaskRequest) (*OfficeTask, error)
+	UploadOfficeTaskFile(context.Context, *UploadOfficeTaskFileRequest) (*OfficeTaskFile, error)
 }
 
 func RegisterOfficeMailServiceHTTPServer(s *http.Server, srv OfficeMailServiceHTTPServer) {
@@ -88,6 +105,13 @@ func RegisterOfficeMailServiceHTTPServer(s *http.Server, srv OfficeMailServiceHT
 	r.GET("/v1/office/tasks", _OfficeMailService_ListOfficeTasks0_HTTP_Handler(srv))
 	r.POST("/v1/office/tasks", _OfficeMailService_CreateOfficeTask0_HTTP_Handler(srv))
 	r.POST("/v1/office/tasks/{id}:setStatus", _OfficeMailService_SetOfficeTaskStatus0_HTTP_Handler(srv))
+	r.PATCH("/v1/office/tasks/{id}", _OfficeMailService_UpdateOfficeTask0_HTTP_Handler(srv))
+	r.POST("/v1/office/tasks/{id}:assign", _OfficeMailService_AssignOfficeTask0_HTTP_Handler(srv))
+	r.DELETE("/v1/office/tasks/{id}", _OfficeMailService_DeleteOfficeTask0_HTTP_Handler(srv))
+	r.GET("/v1/office/tasks/{task_id}/files", _OfficeMailService_ListOfficeTaskFiles0_HTTP_Handler(srv))
+	r.POST("/v1/office/tasks/{task_id}/files", _OfficeMailService_UploadOfficeTaskFile0_HTTP_Handler(srv))
+	r.GET("/v1/office/task-files/{id}", _OfficeMailService_DownloadOfficeTaskFile0_HTTP_Handler(srv))
+	r.DELETE("/v1/office/task-files/{id}", _OfficeMailService_DeleteOfficeTaskFile0_HTTP_Handler(srv))
 }
 
 func _OfficeMailService_ListAccounts0_HTTP_Handler(srv OfficeMailServiceHTTPServer) func(ctx http.Context) error {
@@ -511,12 +535,182 @@ func _OfficeMailService_SetOfficeTaskStatus0_HTTP_Handler(srv OfficeMailServiceH
 	}
 }
 
+func _OfficeMailService_UpdateOfficeTask0_HTTP_Handler(srv OfficeMailServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in UpdateOfficeTaskRequest
+		if err := ctx.Bind(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationOfficeMailServiceUpdateOfficeTask)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.UpdateOfficeTask(ctx, req.(*UpdateOfficeTaskRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*OfficeTask)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _OfficeMailService_AssignOfficeTask0_HTTP_Handler(srv OfficeMailServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in AssignOfficeTaskRequest
+		if err := ctx.Bind(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationOfficeMailServiceAssignOfficeTask)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.AssignOfficeTask(ctx, req.(*AssignOfficeTaskRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*OfficeTask)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _OfficeMailService_DeleteOfficeTask0_HTTP_Handler(srv OfficeMailServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in DeleteOfficeTaskRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationOfficeMailServiceDeleteOfficeTask)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.DeleteOfficeTask(ctx, req.(*DeleteOfficeTaskRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*emptypb.Empty)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _OfficeMailService_ListOfficeTaskFiles0_HTTP_Handler(srv OfficeMailServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in ListOfficeTaskFilesRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationOfficeMailServiceListOfficeTaskFiles)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.ListOfficeTaskFiles(ctx, req.(*ListOfficeTaskFilesRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*ListOfficeTaskFilesResponse)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _OfficeMailService_UploadOfficeTaskFile0_HTTP_Handler(srv OfficeMailServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in UploadOfficeTaskFileRequest
+		if err := ctx.Bind(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationOfficeMailServiceUploadOfficeTaskFile)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.UploadOfficeTaskFile(ctx, req.(*UploadOfficeTaskFileRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*OfficeTaskFile)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _OfficeMailService_DownloadOfficeTaskFile0_HTTP_Handler(srv OfficeMailServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in OfficeTaskFileRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationOfficeMailServiceDownloadOfficeTaskFile)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.DownloadOfficeTaskFile(ctx, req.(*OfficeTaskFileRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*httpbody.HttpBody)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _OfficeMailService_DeleteOfficeTaskFile0_HTTP_Handler(srv OfficeMailServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in OfficeTaskFileRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationOfficeMailServiceDeleteOfficeTaskFile)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.DeleteOfficeTaskFile(ctx, req.(*OfficeTaskFileRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*emptypb.Empty)
+		return ctx.Result(200, reply)
+	}
+}
+
 type OfficeMailServiceHTTPClient interface {
+	// AssignOfficeTask AssignOfficeTask 派给 AI（会话由页面先建好）或收回自己做。
+	AssignOfficeTask(ctx context.Context, req *AssignOfficeTaskRequest, opts ...http.CallOption) (rsp *OfficeTask, err error)
 	AttachmentToKnowledge(ctx context.Context, req *AttachmentToKnowledgeRequest, opts ...http.CallOption) (rsp *AttachmentToKnowledgeResponse, err error)
 	CreateAccount(ctx context.Context, req *CreateAccountRequest, opts ...http.CallOption) (rsp *MailAccount, err error)
 	CreateOfficeTask(ctx context.Context, req *CreateOfficeTaskRequest, opts ...http.CallOption) (rsp *OfficeTask, err error)
 	DeleteAccount(ctx context.Context, req *DeleteAccountRequest, opts ...http.CallOption) (rsp *emptypb.Empty, err error)
 	DeleteMessage(ctx context.Context, req *DeleteMessageRequest, opts ...http.CallOption) (rsp *emptypb.Empty, err error)
+	// DeleteOfficeTask DeleteOfficeTask 删任务（附件一并删除，邮件上的转任务回链清掉）。
+	DeleteOfficeTask(ctx context.Context, req *DeleteOfficeTaskRequest, opts ...http.CallOption) (rsp *emptypb.Empty, err error)
+	DeleteOfficeTaskFile(ctx context.Context, req *OfficeTaskFileRequest, opts ...http.CallOption) (rsp *emptypb.Empty, err error)
+	// DownloadOfficeTaskFile DownloadOfficeTaskFile 附件下载（HttpBody 原始字节直通）。
+	DownloadOfficeTaskFile(ctx context.Context, req *OfficeTaskFileRequest, opts ...http.CallOption) (rsp *httpbody.HttpBody, err error)
 	// ExportEml ExportEml 补齐现状缺口（workbench 只有导入）。
 	ExportEml(ctx context.Context, req *ExportEmlRequest, opts ...http.CallOption) (rsp *httpbody.HttpBody, err error)
 	// GetAttachment GetAttachment 附件下载（application/octet-stream + Content-Disposition）。
@@ -526,6 +720,7 @@ type OfficeMailServiceHTTPClient interface {
 	ListAccounts(ctx context.Context, req *emptypb.Empty, opts ...http.CallOption) (rsp *ListAccountsResponse, err error)
 	ListAttachments(ctx context.Context, req *ListAttachmentsRequest, opts ...http.CallOption) (rsp *ListAttachmentsResponse, err error)
 	ListMessages(ctx context.Context, req *ListMessagesRequest, opts ...http.CallOption) (rsp *ListMessagesResponse, err error)
+	ListOfficeTaskFiles(ctx context.Context, req *ListOfficeTaskFilesRequest, opts ...http.CallOption) (rsp *ListOfficeTaskFilesResponse, err error)
 	// ListOfficeTasks 个人任务（工作台「我的任务」）：只读写调用者本人的任务，仅需登录。
 	ListOfficeTasks(ctx context.Context, req *ListOfficeTasksRequest, opts ...http.CallOption) (rsp *ListOfficeTasksResponse, err error)
 	MailToTask(ctx context.Context, req *MailToTaskRequest, opts ...http.CallOption) (rsp *MailToTaskResponse, err error)
@@ -535,6 +730,8 @@ type OfficeMailServiceHTTPClient interface {
 	SyncAccount(ctx context.Context, req *SyncAccountRequest, opts ...http.CallOption) (rsp *SyncAccountResponse, err error)
 	TriggerDigest(ctx context.Context, req *TriggerDigestRequest, opts ...http.CallOption) (rsp *TriggerDigestResponse, err error)
 	UpdateAccount(ctx context.Context, req *UpdateAccountRequest, opts ...http.CallOption) (rsp *MailAccount, err error)
+	UpdateOfficeTask(ctx context.Context, req *UpdateOfficeTaskRequest, opts ...http.CallOption) (rsp *OfficeTask, err error)
+	UploadOfficeTaskFile(ctx context.Context, req *UploadOfficeTaskFileRequest, opts ...http.CallOption) (rsp *OfficeTaskFile, err error)
 }
 
 type OfficeMailServiceHTTPClientImpl struct {
@@ -543,6 +740,20 @@ type OfficeMailServiceHTTPClientImpl struct {
 
 func NewOfficeMailServiceHTTPClient(client *http.Client) OfficeMailServiceHTTPClient {
 	return &OfficeMailServiceHTTPClientImpl{client}
+}
+
+// AssignOfficeTask AssignOfficeTask 派给 AI（会话由页面先建好）或收回自己做。
+func (c *OfficeMailServiceHTTPClientImpl) AssignOfficeTask(ctx context.Context, in *AssignOfficeTaskRequest, opts ...http.CallOption) (*OfficeTask, error) {
+	var out OfficeTask
+	pattern := "/v1/office/tasks/{id}:assign"
+	path := binding.EncodeURL(pattern, in, false)
+	opts = append(opts, http.Operation(OperationOfficeMailServiceAssignOfficeTask))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
 }
 
 func (c *OfficeMailServiceHTTPClientImpl) AttachmentToKnowledge(ctx context.Context, in *AttachmentToKnowledgeRequest, opts ...http.CallOption) (*AttachmentToKnowledgeResponse, error) {
@@ -604,6 +815,47 @@ func (c *OfficeMailServiceHTTPClientImpl) DeleteMessage(ctx context.Context, in 
 	opts = append(opts, http.Operation(OperationOfficeMailServiceDeleteMessage))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "DELETE", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// DeleteOfficeTask DeleteOfficeTask 删任务（附件一并删除，邮件上的转任务回链清掉）。
+func (c *OfficeMailServiceHTTPClientImpl) DeleteOfficeTask(ctx context.Context, in *DeleteOfficeTaskRequest, opts ...http.CallOption) (*emptypb.Empty, error) {
+	var out emptypb.Empty
+	pattern := "/v1/office/tasks/{id}"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationOfficeMailServiceDeleteOfficeTask))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "DELETE", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *OfficeMailServiceHTTPClientImpl) DeleteOfficeTaskFile(ctx context.Context, in *OfficeTaskFileRequest, opts ...http.CallOption) (*emptypb.Empty, error) {
+	var out emptypb.Empty
+	pattern := "/v1/office/task-files/{id}"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationOfficeMailServiceDeleteOfficeTaskFile))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "DELETE", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// DownloadOfficeTaskFile DownloadOfficeTaskFile 附件下载（HttpBody 原始字节直通）。
+func (c *OfficeMailServiceHTTPClientImpl) DownloadOfficeTaskFile(ctx context.Context, in *OfficeTaskFileRequest, opts ...http.CallOption) (*httpbody.HttpBody, error) {
+	var out httpbody.HttpBody
+	pattern := "/v1/office/task-files/{id}"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationOfficeMailServiceDownloadOfficeTaskFile))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -703,6 +955,19 @@ func (c *OfficeMailServiceHTTPClientImpl) ListMessages(ctx context.Context, in *
 	return &out, nil
 }
 
+func (c *OfficeMailServiceHTTPClientImpl) ListOfficeTaskFiles(ctx context.Context, in *ListOfficeTaskFilesRequest, opts ...http.CallOption) (*ListOfficeTaskFilesResponse, error) {
+	var out ListOfficeTaskFilesResponse
+	pattern := "/v1/office/tasks/{task_id}/files"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationOfficeMailServiceListOfficeTaskFiles))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 // ListOfficeTasks 个人任务（工作台「我的任务」）：只读写调用者本人的任务，仅需登录。
 func (c *OfficeMailServiceHTTPClientImpl) ListOfficeTasks(ctx context.Context, in *ListOfficeTasksRequest, opts ...http.CallOption) (*ListOfficeTasksResponse, error) {
 	var out ListOfficeTasksResponse
@@ -790,6 +1055,32 @@ func (c *OfficeMailServiceHTTPClientImpl) UpdateAccount(ctx context.Context, in 
 	opts = append(opts, http.Operation(OperationOfficeMailServiceUpdateAccount))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "PATCH", path, in, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *OfficeMailServiceHTTPClientImpl) UpdateOfficeTask(ctx context.Context, in *UpdateOfficeTaskRequest, opts ...http.CallOption) (*OfficeTask, error) {
+	var out OfficeTask
+	pattern := "/v1/office/tasks/{id}"
+	path := binding.EncodeURL(pattern, in, false)
+	opts = append(opts, http.Operation(OperationOfficeMailServiceUpdateOfficeTask))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "PATCH", path, in, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *OfficeMailServiceHTTPClientImpl) UploadOfficeTaskFile(ctx context.Context, in *UploadOfficeTaskFileRequest, opts ...http.CallOption) (*OfficeTaskFile, error) {
+	var out OfficeTaskFile
+	pattern := "/v1/office/tasks/{task_id}/files"
+	path := binding.EncodeURL(pattern, in, false)
+	opts = append(opts, http.Operation(OperationOfficeMailServiceUploadOfficeTaskFile))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
 	if err != nil {
 		return nil, err
 	}

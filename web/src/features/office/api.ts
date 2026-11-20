@@ -4,7 +4,7 @@ import {
   createOfficeNotifyService,
   createOfficeScheduleService,
 } from '../../services';
-import { kratosApi } from '../../services/axiosHandler';
+import { KRATOS_API_LONG_TIMEOUT_MS, kratosApi } from '../../services/axiosHandler';
 import type {
   ICalTokenRow,
   MailAccountRow,
@@ -15,7 +15,9 @@ import type {
   OfficeEventRow,
   OfficeEventSource,
   OfficeNotificationRow,
+  OfficeTaskFileRow,
   OfficeTaskRow,
+  OfficeTaskStatus,
 } from './types';
 
 // office 套件 API 适配（E 阶段 W1c）：proto 生成客户端 → 页内行模型。
@@ -389,14 +391,20 @@ function wireToTask(raw: Record<string, unknown>): OfficeTaskRow {
     assignee_kind: String(raw.assigneeKind ?? raw.assignee_kind ?? ''),
     assignee_id: String(raw.assigneeId ?? raw.assignee_id ?? ''),
     assignee_name: String(raw.assigneeName ?? raw.assignee_name ?? ''),
+    session_id: String(raw.sessionId ?? raw.session_id ?? ''),
+    due_at: String(raw.dueAt ?? raw.due_at ?? ''),
+    file_count: Number(raw.fileCount ?? raw.file_count ?? 0),
     created_at: String(raw.createdAt ?? raw.created_at ?? ''),
     updated_at: String(raw.updatedAt ?? raw.updated_at ?? ''),
   };
 }
 
-/** source 缺省 = 我的任务（手工 + 邮件转）；delegate = 交办中；note = 随手记录。 */
+/**
+ * source 缺省 = 我的任务（手工 + 邮件转，且没派给 AI）；delegate = 派给了 AI 的；note = 随手记录。
+ * status：active = 待办 + 我在做。
+ */
 export async function listOfficeTasks(
-  status: 'open' | 'done' = 'open',
+  status: OfficeTaskStatus | 'active' = 'open',
   limit = 50,
   source: '' | 'delegate' | 'note' = '',
 ): Promise<OfficeTaskRow[]> {
@@ -416,6 +424,7 @@ export async function createOfficeTask(
   title: string,
   body = '',
   kind: 'manual' | 'note' | OfficeTaskDelegation = 'manual',
+  dueAt = '',
 ): Promise<OfficeTaskRow> {
   const delegation = typeof kind === 'object' ? kind : null;
   const res = await createOfficeMailService().CreateOfficeTask({
@@ -426,11 +435,125 @@ export async function createOfficeTask(
     assigneeKind: delegation?.assigneeKind,
     assigneeId: delegation?.assigneeId,
     assigneeName: delegation?.assigneeName,
+    dueAt: dueAt || undefined,
   });
   return wireToTask(res as Record<string, unknown>);
 }
 
-export async function setOfficeTaskStatus(id: string, status: 'open' | 'done'): Promise<OfficeTaskRow> {
+export async function setOfficeTaskStatus(id: string, status: OfficeTaskStatus): Promise<OfficeTaskRow> {
   const res = await createOfficeMailService().SetOfficeTaskStatus({ id, status });
   return wireToTask(res as Record<string, unknown>);
+}
+
+/** 改标题 / 说明 / 到期；dueAt 传 null = 清掉到期，undefined = 不动。 */
+export async function updateOfficeTask(
+  id: string,
+  patch: { title?: string; body?: string; dueAt?: string | null },
+): Promise<OfficeTaskRow> {
+  const res = await createOfficeMailService().UpdateOfficeTask({
+    id,
+    title: patch.title,
+    body: patch.body,
+    dueAt: patch.dueAt || undefined,
+    clearDue: patch.dueAt === null ? true : undefined,
+  });
+  return wireToTask(res as Record<string, unknown>);
+}
+
+/** 派给 AI（会话已建好）；delegation 传 null = 收回自己做。 */
+export async function assignOfficeTask(id: string, delegation: OfficeTaskDelegation | null): Promise<OfficeTaskRow> {
+  const res = await createOfficeMailService().AssignOfficeTask({
+    id,
+    assigneeKind: delegation?.assigneeKind,
+    assigneeId: delegation?.assigneeId,
+    assigneeName: delegation?.assigneeName,
+    sessionId: delegation?.sessionId,
+  });
+  return wireToTask(res as Record<string, unknown>);
+}
+
+export async function deleteOfficeTask(id: string): Promise<void> {
+  await createOfficeMailService().DeleteOfficeTask({ id });
+}
+
+// ---------- 任务附件 ----------
+
+/** 与后端 OfficeTaskFileMaxBytes 一致。 */
+export const TASK_FILE_MAX_BYTES = 50 * 1024 * 1024;
+export const TASK_FILES_MAX = 20;
+
+function wireToTaskFile(raw: Record<string, unknown>): OfficeTaskFileRow {
+  return {
+    id: String(raw.id ?? ''),
+    task_id: String(raw.taskId ?? raw.task_id ?? ''),
+    filename: String(raw.filename ?? ''),
+    content_type: String(raw.contentType ?? raw.content_type ?? ''),
+    size: Number(raw.size ?? 0),
+    created_at: String(raw.createdAt ?? raw.created_at ?? ''),
+  };
+}
+
+export async function listTaskFiles(taskId: string): Promise<OfficeTaskFileRow[]> {
+  const res = await createOfficeMailService().ListOfficeTaskFiles({ taskId });
+  return (res.items ?? []).map((row) => wireToTaskFile(row as Record<string, unknown>));
+}
+
+/** multipart 直传（不走 base64 JSON）；onProgress 给 0–1 的进度。 */
+export async function uploadTaskFile(
+  taskId: string,
+  file: File,
+  onProgress?: (ratio: number) => void,
+): Promise<OfficeTaskFileRow> {
+  const form = new FormData();
+  form.append('file', file, file.name);
+  form.append('filename', file.name);
+  const res = await kratosApi.post(`/v1/office/tasks/${encodeURIComponent(taskId)}/files`, form, {
+    timeout: KRATOS_API_LONG_TIMEOUT_MS,
+    onUploadProgress: (event) => {
+      if (onProgress && event.total) onProgress(event.loaded / event.total);
+    },
+  });
+  return wireToTaskFile(res.data as Record<string, unknown>);
+}
+
+/** 附件原始字节（图片预览、转交给 AI、下载都用它）。 */
+export async function fetchTaskFile(id: string): Promise<Blob> {
+  const res = await kratosApi.get(`/v1/office/task-files/${encodeURIComponent(id)}`, { responseType: 'blob' });
+  return res.data as Blob;
+}
+
+export async function downloadTaskFile(file: OfficeTaskFileRow): Promise<void> {
+  const url = URL.createObjectURL(await fetchTaskFile(file.id));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = file.filename || 'file';
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+export async function deleteTaskFile(id: string): Promise<void> {
+  await createOfficeMailService().DeleteOfficeTaskFile({ id });
+}
+
+// ---------- 任务 → 日程 ----------
+
+/** 把任务排进日程（生成一条带 task_ref 回链的日程；时间冲突时后端回 409）。 */
+export async function scheduleTask(
+  task: Pick<OfficeTaskRow, 'id' | 'title'>,
+  startISO: string,
+  endISO: string,
+): Promise<OfficeEventRow> {
+  const res = await createOfficeScheduleService().ScheduleTask({
+    taskRef: task.id,
+    taskTitle: task.title,
+    startAt: startISO,
+    endAt: endISO,
+    reminderMinutes: undefined,
+  });
+  return wireToEvent(res as Record<string, unknown>);
+}
+
+export async function listTaskEvents(taskId: string): Promise<OfficeEventRow[]> {
+  const res = await createOfficeScheduleService().ListTaskEvents({ taskRef: taskId });
+  return (res.items ?? []).map((row) => wireToEvent(row as Record<string, unknown>));
 }

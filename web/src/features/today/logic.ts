@@ -3,7 +3,7 @@
  * 待办的口径与排序在服务端（/v1/inbox），这里只做展示层的派生。
  */
 import type { InboxItemRow } from '../approval/api';
-import type { OfficeEventRow } from '../office/types';
+import type { OfficeEventRow, OfficeTaskRow } from '../office/types';
 
 // 展示组件不直接依赖 api 模块，从这里取收件箱类型。
 export type { InboxAction, InboxItemRow } from '../approval/api';
@@ -32,6 +32,15 @@ export function clock(iso: string): string {
   if (!Number.isFinite(ms)) return '';
   const d = new Date(ms);
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+/** 当天显示 HH:mm，其余显示 MM-DD；无效时间返回空串。 */
+export function dayOrClock(iso: string, now: Date): string {
+  const ms = parseMs(iso);
+  if (!Number.isFinite(ms)) return '';
+  const d = new Date(ms);
+  if (d.toDateString() === now.toDateString()) return clock(iso);
+  return `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
 // ——— 收件箱标题计数 ———
@@ -91,6 +100,8 @@ export function buildTimeline(input: {
   events: readonly OfficeEventRow[];
   inbox: readonly InboxItemRow[];
   cron: readonly CronNextRun[];
+  /** 我的任务：今天到期的进时间轴（点了打开任务详情） */
+  tasks?: readonly Pick<OfficeTaskRow, 'id' | 'title' | 'due_at'>[];
   now: Date;
 }): TimelineEntry[] {
   const { now } = input;
@@ -123,6 +134,20 @@ export function buildTimeline(input: {
       past: due < nowMs,
       to: '',
       inboxId: row.id,
+    });
+  }
+  for (const task of input.tasks ?? []) {
+    const due = parseMs(task.due_at);
+    if (!inDay(due, now)) continue;
+    out.push({
+      id: `task:${task.id}`,
+      kind: 'deadline',
+      at: task.due_at,
+      endAt: '',
+      title: task.title,
+      past: due < nowMs,
+      to: `/tasks?task=${encodeURIComponent(task.id)}`,
+      inboxId: '',
     });
   }
   for (const job of input.cron) {
@@ -159,6 +184,13 @@ export type DelegatedRow = {
   officeTaskId: string;
   /** 当前进展的一句话（有则显示） */
   detail: string;
+  /** 承载会话 id（停止、追加指令用）；编程任务为空串 */
+  sessionId?: string;
+  /** 执行对象（追加指令时要带上 agent / team） */
+  assigneeKind?: string;
+  assigneeId?: string;
+  /** 卡住的原因是「等我回复」（不是失败） */
+  waiting?: boolean;
 };
 
 /** 交办任务的最小字段（与 agentbridge CodingTask 同名，便于直接传入）。 */
@@ -234,8 +266,10 @@ export function sortDelegated(rows: DelegatedRow[]): DelegatedRow[] {
 export type OfficeDelegatedInput = {
   id: string;
   title: string;
-  /** 承载这次交办的会话 id */
+  /** 指令栏交办时是承载会话 id；派出去的待办是来源（邮件 id 等） */
   source_ref: string;
+  /** 承载执行的会话 id（新数据都有；缺省回落到 source_ref） */
+  session_id?: string;
   assignee_kind: string;
   assignee_id: string;
   assignee_name: string;
@@ -269,7 +303,8 @@ export function classifyOfficeDelegated(
   const out: DelegatedRow[] = [];
   for (const task of tasks) {
     if (!task.id) continue;
-    const situation = latest.get(task.source_ref);
+    const sessionId = task.session_id || task.source_ref;
+    const situation = latest.get(sessionId);
     let state: DelegatedState = 'running';
     if (situation && SITUATION_STUCK.has(situation.status)) state = 'stuck';
     else if (situation?.status === 'completed') state = 'review';
@@ -280,11 +315,15 @@ export function classifyOfficeDelegated(
       agentKey: task.assignee_name || task.assignee_id,
       state,
       at: situation?.updated_at || task.created_at,
-      to: task.source_ref
-        ? `/chat?session=${encodeURIComponent(task.source_ref)}&${owner}=${encodeURIComponent(task.assignee_id)}`
+      to: sessionId
+        ? `/chat?session=${encodeURIComponent(sessionId)}&${owner}=${encodeURIComponent(task.assignee_id)}`
         : '/chat',
       officeTaskId: task.id,
       detail: state === 'review' ? '' : firstLine(situation?.current_step_summary),
+      sessionId,
+      assigneeKind: task.assignee_kind,
+      assigneeId: task.assignee_id,
+      waiting: situation?.status === 'waiting',
     });
   }
   return sortDelegated(out);

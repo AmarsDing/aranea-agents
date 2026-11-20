@@ -201,20 +201,23 @@ message OfficeTask {
   string title = 2;
   string body = 3;
   string source = 4; // manual | mail | delegate | note
-  string source_ref = 5; // 邮件转任务：邮件 id；交办：承载会话 id
-  string status = 6; // open | done
+  string source_ref = 5; // 邮件转任务：邮件 id；指令栏交办：承载会话 id
+  string status = 6; // open | doing | done
   google.protobuf.Timestamp created_at = 7;
   google.protobuf.Timestamp updated_at = 8;
   // 负责人：assignee_kind 为空 = 本人；agent / team = 交办对象。
   string assignee_kind = 9;
   string assignee_id = 10;
   string assignee_name = 11; // 交办当时的显示名
+  string session_id = 12; // AI 执行的承载会话；没派给 AI 为空
+  google.protobuf.Timestamp due_at = 13; // 到期时间；空 = 没设
+  int32 file_count = 14; // 附件数
 }
 
 message ListOfficeTasksRequest {
-  string status = 1; // 空 = open
+  string status = 1; // 空 = open；doing | done；active = open + doing
   int32 limit = 2; // 缺省 50，上限 200
-  // 空 = 我的任务（manual + mail）；delegate = 交办中；note = 随手记录
+  // 空 = 我的任务（manual + mail，且没派给 AI）；delegate = 派给了 AI 的；note = 随手记录
   string source = 3;
 }
 
@@ -232,11 +235,66 @@ message CreateOfficeTaskRequest {
   string assignee_kind = 5; // agent | team
   string assignee_id = 6;
   string assignee_name = 7;
+  google.protobuf.Timestamp due_at = 8;
 }
 
 message SetOfficeTaskStatusRequest {
   string id = 1 [(google.api.field_behavior) = REQUIRED];
-  string status = 2 [(google.api.field_behavior) = REQUIRED]; // open | done
+  string status = 2 [(google.api.field_behavior) = REQUIRED]; // open | doing | done
+}
+
+// UpdateOfficeTaskRequest 改任务：只改带了的字段（optional 区分「没带」和「清空」）。
+message UpdateOfficeTaskRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+  optional string title = 2;
+  optional string body = 3;
+  google.protobuf.Timestamp due_at = 4;
+  bool clear_due = 5; // true = 清掉到期时间（优先于 due_at）
+}
+
+// AssignOfficeTaskRequest 派给 AI：assignee_kind 为 agent / team，带上承载会话；
+// assignee_kind 为空 = 收回自己做。
+message AssignOfficeTaskRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+  string assignee_kind = 2;
+  string assignee_id = 3;
+  string assignee_name = 4;
+  string session_id = 5;
+}
+
+message DeleteOfficeTaskRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+// OfficeTaskFile 任务附件元数据。
+message OfficeTaskFile {
+  string id = 1;
+  string task_id = 2;
+  string filename = 3;
+  string content_type = 4;
+  int64 size = 5;
+  google.protobuf.Timestamp created_at = 6;
+}
+
+message ListOfficeTaskFilesRequest {
+  string task_id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message ListOfficeTaskFilesResponse {
+  repeated OfficeTaskFile items = 1;
+}
+
+// UploadOfficeTaskFileRequest 上传附件：页面走 multipart/form-data（字段 file），
+// 服务端解码器转成本消息；也收 JSON（content 为 base64）。单个文件 ≤50MB。
+message UploadOfficeTaskFileRequest {
+  string task_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string filename = 2;
+  string content_type = 3;
+  bytes content = 4;
+}
+
+message OfficeTaskFileRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
 }
 
 message TriggerDigestRequest {
@@ -358,5 +416,45 @@ service OfficeMailService {
       post: "/v1/office/tasks/{id}:setStatus"
       body: "*"
     };
+  }
+  rpc UpdateOfficeTask(UpdateOfficeTaskRequest) returns (OfficeTask) {
+    option (aranea.auth.v1.requirement) = {authenticated: true};
+    option (google.api.http) = {
+      patch: "/v1/office/tasks/{id}"
+      body: "*"
+    };
+  }
+  // AssignOfficeTask 派给 AI（会话由页面先建好）或收回自己做。
+  rpc AssignOfficeTask(AssignOfficeTaskRequest) returns (OfficeTask) {
+    option (aranea.auth.v1.requirement) = {authenticated: true};
+    option (google.api.http) = {
+      post: "/v1/office/tasks/{id}:assign"
+      body: "*"
+    };
+  }
+  // DeleteOfficeTask 删任务（附件一并删除，邮件上的转任务回链清掉）。
+  rpc DeleteOfficeTask(DeleteOfficeTaskRequest) returns (google.protobuf.Empty) {
+    option (aranea.auth.v1.requirement) = {authenticated: true};
+    option (google.api.http) = {delete: "/v1/office/tasks/{id}"};
+  }
+  rpc ListOfficeTaskFiles(ListOfficeTaskFilesRequest) returns (ListOfficeTaskFilesResponse) {
+    option (aranea.auth.v1.requirement) = {authenticated: true};
+    option (google.api.http) = {get: "/v1/office/tasks/{task_id}/files"};
+  }
+  rpc UploadOfficeTaskFile(UploadOfficeTaskFileRequest) returns (OfficeTaskFile) {
+    option (aranea.auth.v1.requirement) = {authenticated: true};
+    option (google.api.http) = {
+      post: "/v1/office/tasks/{task_id}/files"
+      body: "*"
+    };
+  }
+  // DownloadOfficeTaskFile 附件下载（HttpBody 原始字节直通）。
+  rpc DownloadOfficeTaskFile(OfficeTaskFileRequest) returns (google.api.HttpBody) {
+    option (aranea.auth.v1.requirement) = {authenticated: true};
+    option (google.api.http) = {get: "/v1/office/task-files/{id}"};
+  }
+  rpc DeleteOfficeTaskFile(OfficeTaskFileRequest) returns (google.protobuf.Empty) {
+    option (aranea.auth.v1.requirement) = {authenticated: true};
+    option (google.api.http) = {delete: "/v1/office/task-files/{id}"};
   }
 }

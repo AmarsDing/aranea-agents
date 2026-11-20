@@ -21,25 +21,32 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	OfficeMailService_ListAccounts_FullMethodName          = "/kratos.office.v1.OfficeMailService/ListAccounts"
-	OfficeMailService_CreateAccount_FullMethodName         = "/kratos.office.v1.OfficeMailService/CreateAccount"
-	OfficeMailService_UpdateAccount_FullMethodName         = "/kratos.office.v1.OfficeMailService/UpdateAccount"
-	OfficeMailService_DeleteAccount_FullMethodName         = "/kratos.office.v1.OfficeMailService/DeleteAccount"
-	OfficeMailService_SyncAccount_FullMethodName           = "/kratos.office.v1.OfficeMailService/SyncAccount"
-	OfficeMailService_ListMessages_FullMethodName          = "/kratos.office.v1.OfficeMailService/ListMessages"
-	OfficeMailService_GetMessage_FullMethodName            = "/kratos.office.v1.OfficeMailService/GetMessage"
-	OfficeMailService_DeleteMessage_FullMethodName         = "/kratos.office.v1.OfficeMailService/DeleteMessage"
-	OfficeMailService_ListAttachments_FullMethodName       = "/kratos.office.v1.OfficeMailService/ListAttachments"
-	OfficeMailService_GetAttachment_FullMethodName         = "/kratos.office.v1.OfficeMailService/GetAttachment"
-	OfficeMailService_ImportEml_FullMethodName             = "/kratos.office.v1.OfficeMailService/ImportEml"
-	OfficeMailService_ExportEml_FullMethodName             = "/kratos.office.v1.OfficeMailService/ExportEml"
-	OfficeMailService_MailToTask_FullMethodName            = "/kratos.office.v1.OfficeMailService/MailToTask"
-	OfficeMailService_AttachmentToKnowledge_FullMethodName = "/kratos.office.v1.OfficeMailService/AttachmentToKnowledge"
-	OfficeMailService_SendMail_FullMethodName              = "/kratos.office.v1.OfficeMailService/SendMail"
-	OfficeMailService_TriggerDigest_FullMethodName         = "/kratos.office.v1.OfficeMailService/TriggerDigest"
-	OfficeMailService_ListOfficeTasks_FullMethodName       = "/kratos.office.v1.OfficeMailService/ListOfficeTasks"
-	OfficeMailService_CreateOfficeTask_FullMethodName      = "/kratos.office.v1.OfficeMailService/CreateOfficeTask"
-	OfficeMailService_SetOfficeTaskStatus_FullMethodName   = "/kratos.office.v1.OfficeMailService/SetOfficeTaskStatus"
+	OfficeMailService_ListAccounts_FullMethodName           = "/kratos.office.v1.OfficeMailService/ListAccounts"
+	OfficeMailService_CreateAccount_FullMethodName          = "/kratos.office.v1.OfficeMailService/CreateAccount"
+	OfficeMailService_UpdateAccount_FullMethodName          = "/kratos.office.v1.OfficeMailService/UpdateAccount"
+	OfficeMailService_DeleteAccount_FullMethodName          = "/kratos.office.v1.OfficeMailService/DeleteAccount"
+	OfficeMailService_SyncAccount_FullMethodName            = "/kratos.office.v1.OfficeMailService/SyncAccount"
+	OfficeMailService_ListMessages_FullMethodName           = "/kratos.office.v1.OfficeMailService/ListMessages"
+	OfficeMailService_GetMessage_FullMethodName             = "/kratos.office.v1.OfficeMailService/GetMessage"
+	OfficeMailService_DeleteMessage_FullMethodName          = "/kratos.office.v1.OfficeMailService/DeleteMessage"
+	OfficeMailService_ListAttachments_FullMethodName        = "/kratos.office.v1.OfficeMailService/ListAttachments"
+	OfficeMailService_GetAttachment_FullMethodName          = "/kratos.office.v1.OfficeMailService/GetAttachment"
+	OfficeMailService_ImportEml_FullMethodName              = "/kratos.office.v1.OfficeMailService/ImportEml"
+	OfficeMailService_ExportEml_FullMethodName              = "/kratos.office.v1.OfficeMailService/ExportEml"
+	OfficeMailService_MailToTask_FullMethodName             = "/kratos.office.v1.OfficeMailService/MailToTask"
+	OfficeMailService_AttachmentToKnowledge_FullMethodName  = "/kratos.office.v1.OfficeMailService/AttachmentToKnowledge"
+	OfficeMailService_SendMail_FullMethodName               = "/kratos.office.v1.OfficeMailService/SendMail"
+	OfficeMailService_TriggerDigest_FullMethodName          = "/kratos.office.v1.OfficeMailService/TriggerDigest"
+	OfficeMailService_ListOfficeTasks_FullMethodName        = "/kratos.office.v1.OfficeMailService/ListOfficeTasks"
+	OfficeMailService_CreateOfficeTask_FullMethodName       = "/kratos.office.v1.OfficeMailService/CreateOfficeTask"
+	OfficeMailService_SetOfficeTaskStatus_FullMethodName    = "/kratos.office.v1.OfficeMailService/SetOfficeTaskStatus"
+	OfficeMailService_UpdateOfficeTask_FullMethodName       = "/kratos.office.v1.OfficeMailService/UpdateOfficeTask"
+	OfficeMailService_AssignOfficeTask_FullMethodName       = "/kratos.office.v1.OfficeMailService/AssignOfficeTask"
+	OfficeMailService_DeleteOfficeTask_FullMethodName       = "/kratos.office.v1.OfficeMailService/DeleteOfficeTask"
+	OfficeMailService_ListOfficeTaskFiles_FullMethodName    = "/kratos.office.v1.OfficeMailService/ListOfficeTaskFiles"
+	OfficeMailService_UploadOfficeTaskFile_FullMethodName   = "/kratos.office.v1.OfficeMailService/UploadOfficeTaskFile"
+	OfficeMailService_DownloadOfficeTaskFile_FullMethodName = "/kratos.office.v1.OfficeMailService/DownloadOfficeTaskFile"
+	OfficeMailService_DeleteOfficeTaskFile_FullMethodName   = "/kratos.office.v1.OfficeMailService/DeleteOfficeTaskFile"
 )
 
 // OfficeMailServiceClient is the client API for OfficeMailService service.
@@ -69,6 +76,16 @@ type OfficeMailServiceClient interface {
 	ListOfficeTasks(ctx context.Context, in *ListOfficeTasksRequest, opts ...grpc.CallOption) (*ListOfficeTasksResponse, error)
 	CreateOfficeTask(ctx context.Context, in *CreateOfficeTaskRequest, opts ...grpc.CallOption) (*OfficeTask, error)
 	SetOfficeTaskStatus(ctx context.Context, in *SetOfficeTaskStatusRequest, opts ...grpc.CallOption) (*OfficeTask, error)
+	UpdateOfficeTask(ctx context.Context, in *UpdateOfficeTaskRequest, opts ...grpc.CallOption) (*OfficeTask, error)
+	// AssignOfficeTask 派给 AI（会话由页面先建好）或收回自己做。
+	AssignOfficeTask(ctx context.Context, in *AssignOfficeTaskRequest, opts ...grpc.CallOption) (*OfficeTask, error)
+	// DeleteOfficeTask 删任务（附件一并删除，邮件上的转任务回链清掉）。
+	DeleteOfficeTask(ctx context.Context, in *DeleteOfficeTaskRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	ListOfficeTaskFiles(ctx context.Context, in *ListOfficeTaskFilesRequest, opts ...grpc.CallOption) (*ListOfficeTaskFilesResponse, error)
+	UploadOfficeTaskFile(ctx context.Context, in *UploadOfficeTaskFileRequest, opts ...grpc.CallOption) (*OfficeTaskFile, error)
+	// DownloadOfficeTaskFile 附件下载（HttpBody 原始字节直通）。
+	DownloadOfficeTaskFile(ctx context.Context, in *OfficeTaskFileRequest, opts ...grpc.CallOption) (*httpbody.HttpBody, error)
+	DeleteOfficeTaskFile(ctx context.Context, in *OfficeTaskFileRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 }
 
 type officeMailServiceClient struct {
@@ -269,6 +286,76 @@ func (c *officeMailServiceClient) SetOfficeTaskStatus(ctx context.Context, in *S
 	return out, nil
 }
 
+func (c *officeMailServiceClient) UpdateOfficeTask(ctx context.Context, in *UpdateOfficeTaskRequest, opts ...grpc.CallOption) (*OfficeTask, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(OfficeTask)
+	err := c.cc.Invoke(ctx, OfficeMailService_UpdateOfficeTask_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *officeMailServiceClient) AssignOfficeTask(ctx context.Context, in *AssignOfficeTaskRequest, opts ...grpc.CallOption) (*OfficeTask, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(OfficeTask)
+	err := c.cc.Invoke(ctx, OfficeMailService_AssignOfficeTask_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *officeMailServiceClient) DeleteOfficeTask(ctx context.Context, in *DeleteOfficeTaskRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, OfficeMailService_DeleteOfficeTask_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *officeMailServiceClient) ListOfficeTaskFiles(ctx context.Context, in *ListOfficeTaskFilesRequest, opts ...grpc.CallOption) (*ListOfficeTaskFilesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListOfficeTaskFilesResponse)
+	err := c.cc.Invoke(ctx, OfficeMailService_ListOfficeTaskFiles_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *officeMailServiceClient) UploadOfficeTaskFile(ctx context.Context, in *UploadOfficeTaskFileRequest, opts ...grpc.CallOption) (*OfficeTaskFile, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(OfficeTaskFile)
+	err := c.cc.Invoke(ctx, OfficeMailService_UploadOfficeTaskFile_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *officeMailServiceClient) DownloadOfficeTaskFile(ctx context.Context, in *OfficeTaskFileRequest, opts ...grpc.CallOption) (*httpbody.HttpBody, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(httpbody.HttpBody)
+	err := c.cc.Invoke(ctx, OfficeMailService_DownloadOfficeTaskFile_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *officeMailServiceClient) DeleteOfficeTaskFile(ctx context.Context, in *OfficeTaskFileRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, OfficeMailService_DeleteOfficeTaskFile_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // OfficeMailServiceServer is the server API for OfficeMailService service.
 // All implementations must embed UnimplementedOfficeMailServiceServer
 // for forward compatibility.
@@ -296,6 +383,16 @@ type OfficeMailServiceServer interface {
 	ListOfficeTasks(context.Context, *ListOfficeTasksRequest) (*ListOfficeTasksResponse, error)
 	CreateOfficeTask(context.Context, *CreateOfficeTaskRequest) (*OfficeTask, error)
 	SetOfficeTaskStatus(context.Context, *SetOfficeTaskStatusRequest) (*OfficeTask, error)
+	UpdateOfficeTask(context.Context, *UpdateOfficeTaskRequest) (*OfficeTask, error)
+	// AssignOfficeTask 派给 AI（会话由页面先建好）或收回自己做。
+	AssignOfficeTask(context.Context, *AssignOfficeTaskRequest) (*OfficeTask, error)
+	// DeleteOfficeTask 删任务（附件一并删除，邮件上的转任务回链清掉）。
+	DeleteOfficeTask(context.Context, *DeleteOfficeTaskRequest) (*emptypb.Empty, error)
+	ListOfficeTaskFiles(context.Context, *ListOfficeTaskFilesRequest) (*ListOfficeTaskFilesResponse, error)
+	UploadOfficeTaskFile(context.Context, *UploadOfficeTaskFileRequest) (*OfficeTaskFile, error)
+	// DownloadOfficeTaskFile 附件下载（HttpBody 原始字节直通）。
+	DownloadOfficeTaskFile(context.Context, *OfficeTaskFileRequest) (*httpbody.HttpBody, error)
+	DeleteOfficeTaskFile(context.Context, *OfficeTaskFileRequest) (*emptypb.Empty, error)
 	mustEmbedUnimplementedOfficeMailServiceServer()
 }
 
@@ -362,6 +459,27 @@ func (UnimplementedOfficeMailServiceServer) CreateOfficeTask(context.Context, *C
 }
 func (UnimplementedOfficeMailServiceServer) SetOfficeTaskStatus(context.Context, *SetOfficeTaskStatusRequest) (*OfficeTask, error) {
 	return nil, status.Error(codes.Unimplemented, "method SetOfficeTaskStatus not implemented")
+}
+func (UnimplementedOfficeMailServiceServer) UpdateOfficeTask(context.Context, *UpdateOfficeTaskRequest) (*OfficeTask, error) {
+	return nil, status.Error(codes.Unimplemented, "method UpdateOfficeTask not implemented")
+}
+func (UnimplementedOfficeMailServiceServer) AssignOfficeTask(context.Context, *AssignOfficeTaskRequest) (*OfficeTask, error) {
+	return nil, status.Error(codes.Unimplemented, "method AssignOfficeTask not implemented")
+}
+func (UnimplementedOfficeMailServiceServer) DeleteOfficeTask(context.Context, *DeleteOfficeTaskRequest) (*emptypb.Empty, error) {
+	return nil, status.Error(codes.Unimplemented, "method DeleteOfficeTask not implemented")
+}
+func (UnimplementedOfficeMailServiceServer) ListOfficeTaskFiles(context.Context, *ListOfficeTaskFilesRequest) (*ListOfficeTaskFilesResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListOfficeTaskFiles not implemented")
+}
+func (UnimplementedOfficeMailServiceServer) UploadOfficeTaskFile(context.Context, *UploadOfficeTaskFileRequest) (*OfficeTaskFile, error) {
+	return nil, status.Error(codes.Unimplemented, "method UploadOfficeTaskFile not implemented")
+}
+func (UnimplementedOfficeMailServiceServer) DownloadOfficeTaskFile(context.Context, *OfficeTaskFileRequest) (*httpbody.HttpBody, error) {
+	return nil, status.Error(codes.Unimplemented, "method DownloadOfficeTaskFile not implemented")
+}
+func (UnimplementedOfficeMailServiceServer) DeleteOfficeTaskFile(context.Context, *OfficeTaskFileRequest) (*emptypb.Empty, error) {
+	return nil, status.Error(codes.Unimplemented, "method DeleteOfficeTaskFile not implemented")
 }
 func (UnimplementedOfficeMailServiceServer) mustEmbedUnimplementedOfficeMailServiceServer() {}
 func (UnimplementedOfficeMailServiceServer) testEmbeddedByValue()                           {}
@@ -726,6 +844,132 @@ func _OfficeMailService_SetOfficeTaskStatus_Handler(srv interface{}, ctx context
 	return interceptor(ctx, in, info, handler)
 }
 
+func _OfficeMailService_UpdateOfficeTask_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpdateOfficeTaskRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OfficeMailServiceServer).UpdateOfficeTask(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: OfficeMailService_UpdateOfficeTask_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OfficeMailServiceServer).UpdateOfficeTask(ctx, req.(*UpdateOfficeTaskRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _OfficeMailService_AssignOfficeTask_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AssignOfficeTaskRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OfficeMailServiceServer).AssignOfficeTask(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: OfficeMailService_AssignOfficeTask_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OfficeMailServiceServer).AssignOfficeTask(ctx, req.(*AssignOfficeTaskRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _OfficeMailService_DeleteOfficeTask_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteOfficeTaskRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OfficeMailServiceServer).DeleteOfficeTask(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: OfficeMailService_DeleteOfficeTask_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OfficeMailServiceServer).DeleteOfficeTask(ctx, req.(*DeleteOfficeTaskRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _OfficeMailService_ListOfficeTaskFiles_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListOfficeTaskFilesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OfficeMailServiceServer).ListOfficeTaskFiles(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: OfficeMailService_ListOfficeTaskFiles_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OfficeMailServiceServer).ListOfficeTaskFiles(ctx, req.(*ListOfficeTaskFilesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _OfficeMailService_UploadOfficeTaskFile_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UploadOfficeTaskFileRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OfficeMailServiceServer).UploadOfficeTaskFile(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: OfficeMailService_UploadOfficeTaskFile_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OfficeMailServiceServer).UploadOfficeTaskFile(ctx, req.(*UploadOfficeTaskFileRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _OfficeMailService_DownloadOfficeTaskFile_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(OfficeTaskFileRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OfficeMailServiceServer).DownloadOfficeTaskFile(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: OfficeMailService_DownloadOfficeTaskFile_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OfficeMailServiceServer).DownloadOfficeTaskFile(ctx, req.(*OfficeTaskFileRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _OfficeMailService_DeleteOfficeTaskFile_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(OfficeTaskFileRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OfficeMailServiceServer).DeleteOfficeTaskFile(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: OfficeMailService_DeleteOfficeTaskFile_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OfficeMailServiceServer).DeleteOfficeTaskFile(ctx, req.(*OfficeTaskFileRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // OfficeMailService_ServiceDesc is the grpc.ServiceDesc for OfficeMailService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -808,6 +1052,34 @@ var OfficeMailService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SetOfficeTaskStatus",
 			Handler:    _OfficeMailService_SetOfficeTaskStatus_Handler,
+		},
+		{
+			MethodName: "UpdateOfficeTask",
+			Handler:    _OfficeMailService_UpdateOfficeTask_Handler,
+		},
+		{
+			MethodName: "AssignOfficeTask",
+			Handler:    _OfficeMailService_AssignOfficeTask_Handler,
+		},
+		{
+			MethodName: "DeleteOfficeTask",
+			Handler:    _OfficeMailService_DeleteOfficeTask_Handler,
+		},
+		{
+			MethodName: "ListOfficeTaskFiles",
+			Handler:    _OfficeMailService_ListOfficeTaskFiles_Handler,
+		},
+		{
+			MethodName: "UploadOfficeTaskFile",
+			Handler:    _OfficeMailService_UploadOfficeTaskFile_Handler,
+		},
+		{
+			MethodName: "DownloadOfficeTaskFile",
+			Handler:    _OfficeMailService_DownloadOfficeTaskFile_Handler,
+		},
+		{
+			MethodName: "DeleteOfficeTaskFile",
+			Handler:    _OfficeMailService_DeleteOfficeTaskFile_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

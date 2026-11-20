@@ -8,7 +8,8 @@
   flex-direction: column
   gap: var(--nt-space-3)
   height: 0
-  padding: var(--nt-space-4) var(--nt-space-page)
+  // 2026-11-20 收紧：上 8 / 左右 12；底部只留到指令半圆按钮不压住面板为止
+  padding: var(--nt-space-2) var(--nt-space-3) max(var(--nt-space-2), calc(var(--app-dock-space, 0px) - var(--nt-space-3)))
   color: var(--nt-text-1)
   font-family: var(--nt-font-sans)
   font-size: var(--nt-fs-body)
@@ -17,65 +18,81 @@
   font-family: var(--nt-font-mono)
   font-variant-numeric: tabular-nums
 
-// ——— 状态行：操作结果播报 + 更新时间 + 刷新 ———
-.today-statusline
-  display: flex
-  align-items: center
-  gap: var(--nt-space-3)
-
-.today-fresh
-  color: var(--nt-text-3)
-  font-size: var(--nt-fs-caption)
-  white-space: nowrap
+// ——— 操作结果：浮在页面右上角，不占版面；有内容时淡入，几秒后由页面清空 ———
+.today-page
+  position: relative
 
 .today-live
-  flex: 1
-  min-width: 0
-  min-height: 1.5em
+  position: absolute
+  top: var(--nt-space-2)
+  right: var(--nt-space-page)
+  z-index: 10
+  max-width: min(480px, 70%)
   margin: 0
-  color: var(--nt-text-2)
+  padding: var(--nt-space-2) var(--nt-space-4)
+  background: var(--nt-glass-bg)
+  border: 1px solid var(--nt-glass-border)
+  border-radius: var(--nt-radius-l)
+  box-shadow: var(--nt-shadow-depth)
+  color: var(--nt-text-1)
   font-size: var(--nt-fs-panel)
+  opacity: 0
+  pointer-events: none
+  backdrop-filter: var(--nt-glass-filter)
+  transition: opacity var(--nt-transition), translate var(--nt-transition)
+  translate: 0 -6px
 
   &[role='alert']
+    border-color: var(--nt-danger)
     color: var(--nt-danger)
+
+.today-live--on
+  opacity: 1
+  pointer-events: auto
+  translate: 0 0
 
 // ——— 栅格与面板 ———
 .today-grid
   display: grid
   flex: 1
   grid-template-columns: minmax(0, 1.9fr) minmax(0, 1fr) minmax(0, 1fr)
-  gap: var(--nt-space-4)
+  gap: var(--nt-space-3)
   min-height: 0
 
 .today-side
   display: flex
   flex-direction: column
-  gap: var(--nt-space-4)
+  gap: var(--nt-space-3)
   min-width: 0
   min-height: 0
 
   > .today-panel
     flex: 1 1 0
 
-  // 最右一列给右下角的指令窗留出位置
-  &:last-child
-    padding-bottom: var(--app-dock-space, 0px)
+// 面板与摘要卡：半透明毛玻璃，淡描边 + 顶缘内高光 + 一层景深
+.today-panel,
+.today-sum__card
+  background: var(--nt-glass-panel)
+  border: 1px solid var(--nt-glass-border)
+  border-radius: var(--nt-radius-l)
+  box-shadow: inset 0 1px 0 var(--nt-glass-highlight), var(--nt-shadow-depth)
+  backdrop-filter: var(--nt-glass-filter)
 
 .today-panel
   min-width: 0
   min-height: 0
   overflow-y: auto
-  padding: var(--nt-space-panel)
-  background: var(--nt-bg-1)
-  border: 1px solid var(--nt-border-1)
-  border-radius: var(--nt-radius-l)
+  padding: var(--nt-space-3)
 
+// 面板头：下面一条分隔线，把标题区和内容分开
 .today-panel__head
   display: flex
-  align-items: baseline
+  align-items: center
   justify-content: space-between
   gap: var(--nt-space-3)
-  margin-bottom: var(--nt-space-3)
+  margin: 0 0 var(--nt-space-2)
+  padding-bottom: var(--nt-space-2)
+  border-bottom: 1px solid var(--nt-border-1)
 
 .today-panel__head--sub
   margin-top: var(--nt-space-5)
@@ -117,10 +134,15 @@
   outline: 2px solid var(--nt-accent)
   outline-offset: 4px
 
+// 空状态：一块虚线取景框，而不是一行飘着的字
 .today-empty
   margin: 0
-  padding: var(--nt-space-4) 0
+  padding: var(--nt-space-5) var(--nt-space-4)
+  background: var(--nt-tile-bg)
+  border: 1px dashed var(--nt-border-1)
+  border-radius: var(--nt-radius-m)
   color: var(--nt-text-3)
+  text-align: center
 
 .today-note
   margin: 0 0 var(--nt-space-2)
@@ -135,7 +157,10 @@
 
 // ——— 收件箱 ———
 .today-inbox__list
+  display: flex
   flex: 1
+  flex-direction: column
+  gap: var(--nt-space-2)
   min-height: 0
   margin: 0
   padding: 0
@@ -143,29 +168,37 @@
   overflow-y: auto
   border-radius: var(--nt-radius-m)
 
+// 每条一块小卡片：彼此分开；选中的那块描边点亮、左缘一道冰青
 .today-inbox__row
   display: flex
+  flex: none
   align-items: center
   gap: var(--nt-space-3)
   min-height: 44px
   padding: var(--nt-space-2) var(--nt-space-3)
-  border-left: 2px solid transparent
-  border-radius: var(--nt-radius-s)
+  background: var(--nt-tile-bg)
+  border: 1px solid var(--nt-border-0)
+  border-radius: var(--nt-radius-m)
   cursor: pointer
-  transition: background var(--nt-transition)
+  transition: background var(--nt-transition), border-color var(--nt-transition)
 
   &:hover
-    background: var(--nt-accent-soft)
+    background: var(--nt-tile-hover)
+    border-color: var(--nt-border-1)
 
-.today-inbox__row--selected
-  background: var(--nt-accent-hover)
-  border-left-color: var(--nt-accent)
+.today-inbox__row--selected,
+.today-inbox__row--selected:hover
+  background: var(--nt-accent-soft)
+  border-color: var(--nt-accent-border)
+  box-shadow: inset 3px 0 0 var(--nt-accent)
 
+// 风险 / 状态小标：同色淡底 + 同色淡描边，不再是一圈亮线
 .today-risk
   flex: none
   min-width: 28px
   padding: 0 var(--nt-space-2)
-  border: 1px solid currentColor
+  background: color-mix(in srgb, currentColor 14%, transparent)
+  border: 1px solid color-mix(in srgb, currentColor 30%, transparent)
   border-radius: var(--nt-radius-pill)
   font-size: var(--nt-fs-micro)
   line-height: 1.6
@@ -252,19 +285,25 @@
 .today-inbox__summary
   margin: 0 0 var(--nt-space-3)
   padding: var(--nt-space-3)
-  background: var(--nt-data-inset)
-  border: 1px solid var(--nt-border-1)
+  background: var(--nt-field-bg)
+  border: 1px solid var(--nt-border-0)
   border-radius: var(--nt-radius-m)
   color: var(--nt-text-1)
   line-height: 1.6
   overflow-wrap: anywhere
   white-space: pre-wrap
 
+// 处理台字段：一格一块
 .today-inbox__meta
   display: grid
   grid-template-columns: repeat(auto-fit, minmax(140px, 1fr))
-  gap: var(--nt-space-2) var(--nt-space-4)
+  gap: var(--nt-space-2)
   margin: 0 0 var(--nt-space-4)
+
+  > div
+    padding: var(--nt-space-2) var(--nt-space-3)
+    background: var(--nt-tile-bg)
+    border-radius: var(--nt-radius-m)
 
   dt
     color: var(--nt-text-3)
@@ -288,6 +327,8 @@
 
 // ——— 时间线 ———
 .today-timeline__list
+  display: grid
+  gap: var(--nt-space-1)
   margin: 0
   padding: 0
   list-style: none
@@ -311,10 +352,11 @@
   align-items: baseline
   gap: var(--nt-space-2)
   min-width: 0
-  padding: var(--nt-space-1) var(--nt-space-2)
-  background: none
+  padding: var(--nt-space-2) var(--nt-space-3)
+  background: var(--nt-tile-bg)
   border: 0
   border-left: 2px solid var(--nt-border-2)
+  border-radius: 0 var(--nt-radius-s) var(--nt-radius-s) 0
   color: var(--nt-text-1)
   font: inherit
   text-align: left
@@ -322,7 +364,7 @@
   cursor: pointer
 
   &:hover
-    background: var(--nt-accent-soft)
+    background: var(--nt-tile-hover)
 
 .today-timeline__body--deadline
   border-left-color: var(--nt-danger)
@@ -371,6 +413,9 @@
   padding: 0
   list-style: none
 
+  > li + li
+    border-top: 1px solid var(--nt-border-0)
+
 .today-tasks__row,
 .today-delegated__row
   display: flex
@@ -396,7 +441,8 @@
 .today-tag
   flex: none
   padding: 0 var(--nt-space-2)
-  border: 1px solid var(--nt-border-2)
+  background: var(--nt-tile-hover)
+  border: 1px solid var(--nt-border-1)
   border-radius: var(--nt-radius-pill)
   color: var(--nt-text-3)
   font-size: var(--nt-fs-micro)
@@ -418,7 +464,8 @@
 .today-state
   flex: none
   padding: 0 var(--nt-space-2)
-  border: 1px solid currentColor
+  background: color-mix(in srgb, currentColor 14%, transparent)
+  border: 1px solid color-mix(in srgb, currentColor 30%, transparent)
   border-radius: var(--nt-radius-pill)
   font-size: var(--nt-fs-micro)
   line-height: 1.6
@@ -432,10 +479,673 @@
 .today-state--running
   color: var(--nt-text-2)
 
+// ——— 任务生命周期（2026-11-20）：今日页两块任务 + 任务页四栏看板共用 ———
+// 视觉：卡片 = 近不透明数据背板 + 左缘状态色；AI 在跑的有呼吸点；拖动时半透明占位。
+
+.tk-sr
+  position: absolute
+  width: 1px
+  height: 1px
+  overflow: hidden
+  clip: rect(0 0 0 0)
+  white-space: nowrap
+
+.today-state--idle
+  color: var(--nt-text-3)
+
+// 我的任务：列表在上自己滚，输入框沉底
+.today-panel.today-tasks--compose
+  display: flex
+  flex-direction: column
+  overflow: hidden
+
+.today-tasks__scroll
+  flex: 1
+  min-height: 0
+  overflow-y: auto
+  margin: 0 calc(var(--nt-space-1) * -1)
+  padding: 0 var(--nt-space-1)
+
+.tk-list
+  display: flex
+  flex-direction: column
+  gap: var(--nt-space-2)
+  margin: 0
+  padding: 0
+  list-style: none
+
+// —— 卡片 ——
+.tk-card
+  display: flex
+  align-items: flex-start
+  gap: var(--nt-space-2)
+  padding: var(--nt-space-2) var(--nt-space-2) var(--nt-space-2) var(--nt-space-3)
+  background: var(--nt-tile-bg)
+  border: 1px solid var(--nt-border-0)
+  border-left: 2px solid var(--nt-border-2)
+  border-radius: var(--nt-radius-m)
+  transition: border-color var(--nt-transition), background var(--nt-transition)
+
+  &:hover
+    background: var(--nt-tile-hover)
+    border-color: var(--nt-accent-border)
+
+  // 快捷动作平时淡一点，悬停 / 聚焦时清楚
+  &:hover .tk-card__acts,
+  &:focus-within .tk-card__acts
+    opacity: 1
+
+.tk-card--doing,
+.tk-card--running
+  border-left-color: var(--nt-run)
+
+.tk-card--stuck,
+.tk-card--waiting
+  border-left-color: var(--nt-danger)
+
+.tk-card--review
+  border-left-color: var(--nt-warn)
+
+.tk-card--done
+  border-left-color: var(--nt-border-1)
+
+  .tk-card__title
+    color: var(--nt-text-2)
+    text-decoration: line-through
+    text-decoration-color: var(--nt-text-3)
+
+.tk-card--busy
+  opacity: .6
+
+.tk-card--ghost
+  opacity: .35
+
+.tk-card__check
+  flex: none
+  margin-top: 1px
+
+.tk-card__main
+  display: grid
+  flex: 1
+  gap: var(--nt-space-1)
+  min-width: 0
+  padding: 0
+  background: none
+  border: 0
+  border-radius: var(--nt-radius-s)
+  color: inherit
+  font: inherit
+  text-align: left
+  text-decoration: none
+  cursor: pointer
+
+  &:hover .tk-card__title
+    color: var(--nt-accent)
+
+  &:focus-visible
+    outline: var(--focus-ring)
+    outline-offset: 4px
+
+.tk-card__title
+  overflow: hidden
+  color: var(--nt-text-1)
+  line-height: 1.45
+  text-overflow: ellipsis
+  white-space: nowrap
+
+.tk-card__meta
+  display: flex
+  flex-wrap: wrap
+  align-items: center
+  gap: var(--nt-space-1) var(--nt-space-2)
+  color: var(--nt-text-3)
+  font-size: var(--nt-fs-caption)
+
+.tk-card__who,
+.tk-card__files,
+.tk-due
+  display: inline-flex
+  align-items: center
+  gap: 2px
+
+.tk-due--today
+  color: var(--nt-warn)
+
+.tk-due--overdue
+  color: var(--nt-danger)
+
+// 当前进展的一句话：最多两行
+.tk-card__detail
+  display: -webkit-box
+  overflow: hidden
+  color: var(--nt-text-2)
+  font-size: var(--nt-fs-caption)
+  -webkit-box-orient: vertical
+  -webkit-line-clamp: 2
+
+.tk-card__acts
+  display: flex
+  flex: none
+  align-items: center
+  gap: 2px
+  opacity: .72
+  transition: opacity var(--nt-transition)
+
+.tk-card__act
+  color: var(--nt-text-2)
+  font-size: var(--nt-fs-caption)
+
+.tk-card__act--primary
+  color: var(--nt-accent)
+
+// AI 在跑：呼吸点
+.tk-live
+  display: inline-block
+  width: 6px
+  height: 6px
+  margin-right: 4px
+  vertical-align: middle
+  background: var(--nt-run)
+  border-radius: var(--nt-radius-pill)
+  animation: tk-breathe 1.6s ease-in-out infinite
+
+.tk-live-tag
+  display: inline-flex
+  align-items: center
+  margin-left: var(--nt-space-2)
+  color: var(--nt-run)
+  font-size: var(--nt-fs-micro)
+  font-weight: 400
+
+@keyframes tk-breathe
+  0%, 100%
+    opacity: 1
+  50%
+    opacity: .3
+
+// —— 输入框：一张小卡，输入在上、工具条在下 ——
+.tk-composer
+  position: relative
+  flex: none
+  margin-top: var(--nt-space-2)
+  padding: var(--nt-space-2)
+  background: var(--nt-data-bg)
+  border: 1px solid var(--nt-border-1)
+  border-radius: var(--nt-radius-m)
+  transition: border-color var(--nt-transition), box-shadow var(--nt-transition)
+
+  &:focus-within
+    border-color: var(--nt-accent-border)
+    box-shadow: var(--nt-glow-soft)
+
+.tk-composer--drag
+  border-style: dashed
+  border-color: var(--nt-accent)
+
+.tk-composer__input
+  display: block
+  width: 100%
+  min-height: 24px
+  max-height: 120px
+  padding: var(--nt-space-1)
+  background: none
+  border: 0
+  outline: 0
+  resize: none
+  color: var(--nt-text-1)
+  font: inherit
+  line-height: 1.5
+
+  &::placeholder
+    color: var(--nt-text-3)
+
+.tk-composer__files
+  display: flex
+  flex-wrap: wrap
+  gap: var(--nt-space-1)
+  margin: var(--nt-space-1) 0 0
+  padding: 0
+  list-style: none
+
+.tk-chip
+  display: inline-flex
+  align-items: center
+  gap: var(--nt-space-1)
+  max-width: 100%
+  padding: 0 2px 0 var(--nt-space-2)
+  background: var(--nt-accent-soft)
+  border: 1px solid var(--nt-accent-border)
+  border-radius: var(--nt-radius-pill)
+  color: var(--nt-text-1)
+  font-size: var(--nt-fs-caption)
+
+.tk-chip__name
+  overflow: hidden
+  max-width: 160px
+  text-overflow: ellipsis
+  white-space: nowrap
+
+.tk-chip__meta
+  color: var(--nt-text-3)
+
+.tk-chip__x
+  display: grid
+  place-items: center
+  width: 20px
+  height: 20px
+  padding: 0
+  background: none
+  border: 0
+  border-radius: var(--nt-radius-pill)
+  color: var(--nt-text-3)
+  cursor: pointer
+
+  &:hover
+    color: var(--nt-danger)
+
+  &:focus-visible
+    outline: var(--focus-ring)
+    outline-offset: 2px
+
+.tk-composer__bar
+  display: flex
+  align-items: center
+  gap: var(--nt-space-1)
+  margin-top: var(--nt-space-1)
+
+.tk-composer__tool
+  color: var(--nt-text-2)
+
+// 到期：一个日历图标，点开是原生日期时间选择；设了值才显示文字
+.tk-composer__due
+  position: relative
+  display: inline-flex
+  align-items: center
+  gap: var(--nt-space-1)
+  height: 28px
+  padding: 0 var(--nt-space-1)
+  border-radius: var(--nt-radius-s)
+  color: var(--nt-text-2)
+  cursor: pointer
+
+  &:hover,
+  &:focus-within
+    background: var(--nt-tile-hover)
+
+  input
+    width: 0
+    padding: 0
+    background: none
+    border: 0
+    color: var(--nt-text-1)
+    font: inherit
+    font-family: var(--nt-font-mono)
+    font-size: var(--nt-fs-caption)
+    color-scheme: dark
+
+    &:focus
+      outline: 0
+
+.tk-composer__due--set,
+.tk-composer__due:focus-within
+  color: var(--nt-accent)
+
+  input
+    width: auto
+
+.tk-composer__hint
+  flex: 1
+  min-width: 0
+  overflow: hidden
+  color: var(--nt-text-3)
+  font-size: var(--nt-fs-micro)
+  text-align: right
+  text-overflow: ellipsis
+  white-space: nowrap
+
+.tk-composer__send
+  flex: none
+  padding: 0 var(--nt-space-3)
+  border-radius: var(--nt-radius-s)
+
+.tk-composer__file
+  display: none
+
+.tk-composer__drop
+  position: absolute
+  inset: 0
+  display: grid
+  place-items: center
+  margin: 0
+  background: var(--nt-scrim-light)
+  border-radius: var(--nt-radius-m)
+  color: var(--nt-accent)
+  font-size: var(--nt-fs-panel)
+  pointer-events: none
+
+// —— 派给 AI 的对象菜单 ——
+.tk-pick
+  min-width: 260px
+  background: var(--nt-data-raised)
+  border: 1px solid var(--nt-border-1)
+  border-radius: var(--nt-radius-m)
+  box-shadow: var(--nt-shadow-depth)
+
+.tk-pick__box
+  padding: var(--nt-space-2)
+
+.tk-pick__search,
+.tk-input
+  height: 32px
+  padding: 0 var(--nt-space-2)
+  background: var(--nt-data-inset)
+  border: 1px solid var(--nt-border-1)
+  border-radius: var(--nt-radius-s)
+  color: var(--nt-text-1)
+  font: inherit
+  color-scheme: dark
+
+  &:focus
+    border-color: var(--nt-accent)
+    outline: 0
+
+.tk-pick__search
+  width: 100%
+
+.tk-input
+  font-family: var(--nt-font-mono)
+  font-size: var(--nt-fs-caption)
+
+.tk-pick__note
+  margin: var(--nt-space-2) 0 0
+  color: var(--nt-text-3)
+  font-size: var(--nt-fs-caption)
+
+.tk-pick__note--danger
+  color: var(--nt-danger)
+
+.tk-pick__list
+  max-height: 280px
+  overflow-y: auto
+  margin: var(--nt-space-2) 0 0
+  padding: 0
+  list-style: none
+
+.tk-pick__item
+  display: flex
+  align-items: center
+  gap: var(--nt-space-2)
+  min-height: 36px
+  padding: 0 var(--nt-space-2)
+  border-radius: var(--nt-radius-s)
+  color: var(--nt-text-1)
+  cursor: pointer
+
+.tk-pick__item--on
+  background: var(--nt-accent-soft)
+  color: var(--nt-accent)
+
+.tk-pick__name
+  flex: 1
+  min-width: 0
+  overflow: hidden
+  text-overflow: ellipsis
+  white-space: nowrap
+
+.tk-pick__kind
+  color: var(--nt-text-3)
+  font-size: var(--nt-fs-micro)
+
+.tk-moves
+  min-width: 140px
+
+// —— 详情抽屉 ——
+.tk-detail
+  display: flex
+  flex-direction: column
+  gap: var(--nt-space-4)
+
+.tk-detail__block
+  display: flex
+  flex-direction: column
+  gap: var(--nt-space-2)
+
+.tk-detail__h
+  margin: 0
+  color: var(--nt-text-1)
+  font-size: var(--nt-fs-panel)
+  font-weight: 600
+
+.tk-detail__sub
+  color: var(--nt-text-2)
+  font-size: var(--nt-fs-caption)
+
+.tk-detail__muted
+  margin: 0
+  color: var(--nt-text-3)
+  font-size: var(--nt-fs-caption)
+
+.tk-detail__row
+  display: flex
+  align-items: center
+  gap: var(--nt-space-2)
+  margin: 0
+
+.tk-detail__row--wrap
+  flex-wrap: wrap
+
+.tk-detail__label
+  color: var(--nt-text-2)
+  font-size: var(--nt-fs-caption)
+
+.tk-detail__acts
+  display: flex
+  flex-wrap: wrap
+  gap: var(--nt-space-2)
+
+.tk-detail__follow
+  display: grid
+  grid-template-columns: minmax(0, 1fr) auto
+  align-items: end
+  gap: var(--nt-space-2)
+
+.tk-detail__facts
+  display: grid
+  grid-template-columns: repeat(2, minmax(0, 1fr))
+  gap: var(--nt-space-2)
+  margin: 0
+
+  > div
+    padding: var(--nt-space-2) var(--nt-space-3)
+    background: var(--nt-data-inset)
+    border: 1px solid var(--nt-border-0)
+    border-radius: var(--nt-radius-s)
+
+  dt
+    color: var(--nt-text-3)
+    font-size: var(--nt-fs-micro)
+
+  dd
+    display: flex
+    align-items: center
+    gap: var(--nt-space-1)
+    margin: 2px 0 0
+    color: var(--nt-text-1)
+
+.tk-detail__fact--wide
+  grid-column: 1 / -1
+
+.tk-detail__delete
+  margin-right: auto
+
+// 生命周期条：四段，已过的点亮、当前的描边
+.tk-steps
+  display: grid
+  grid-template-columns: repeat(4, minmax(0, 1fr))
+  gap: var(--nt-space-1)
+  margin: 0
+  padding: 0
+  list-style: none
+
+.tk-steps__item
+  padding: var(--nt-space-1) 0
+  border-top: 3px solid var(--nt-border-1)
+  color: var(--nt-text-3)
+  font-size: var(--nt-fs-caption)
+  text-align: center
+
+.tk-steps__item--done
+  border-top-color: var(--nt-accent-border)
+  color: var(--nt-text-2)
+
+.tk-steps__item--on
+  border-top-color: var(--nt-accent)
+  color: var(--nt-accent)
+  font-weight: 600
+
+// 附件拖放区与列表
+.tk-drop
+  display: flex
+  align-items: center
+  justify-content: center
+  gap: var(--nt-space-2)
+  min-height: 56px
+  padding: var(--nt-space-3)
+  background: var(--nt-data-inset)
+  border: 1px dashed var(--nt-border-2)
+  border-radius: var(--nt-radius-m)
+  color: var(--nt-text-2)
+  font-size: var(--nt-fs-caption)
+  text-align: center
+  cursor: pointer
+  transition: border-color var(--nt-transition), color var(--nt-transition)
+
+  &:hover,
+  &:focus-visible
+    border-color: var(--nt-accent)
+    color: var(--nt-accent)
+    outline: 0
+
+.tk-drop--on
+  border-color: var(--nt-accent)
+  background: var(--nt-accent-soft)
+  color: var(--nt-accent)
+
+.tk-files
+  display: flex
+  flex-direction: column
+  gap: var(--nt-space-1)
+  margin: 0
+  padding: 0
+  list-style: none
+
+.tk-file
+  display: flex
+  align-items: center
+  gap: var(--nt-space-2)
+  min-height: 44px
+  padding: var(--nt-space-1) var(--nt-space-2)
+  background: var(--nt-tile-bg)
+  border: 1px solid var(--nt-border-0)
+  border-radius: var(--nt-radius-s)
+
+.tk-file--pending
+  opacity: .7
+
+.tk-file__thumb
+  width: 36px
+  height: 36px
+  object-fit: cover
+  border-radius: var(--nt-radius-s)
+
+.tk-file__icon
+  width: 36px
+  color: var(--nt-text-2)
+
+.tk-file__name
+  flex: 1
+  min-width: 0
+  overflow: hidden
+  color: var(--nt-text-1)
+  text-overflow: ellipsis
+  white-space: nowrap
+
+.tk-file__meta
+  flex: none
+  color: var(--nt-text-3)
+  font-size: var(--nt-fs-caption)
+
+.tk-events
+  margin: 0
+  padding: 0
+  list-style: none
+  color: var(--nt-text-2)
+  font-size: var(--nt-fs-caption)
+
+  li
+    padding: 2px 0
+
+.tk-events__title
+  margin-left: var(--nt-space-2)
+  font-family: var(--nt-font-sans)
+  color: var(--nt-text-1)
+
+// —— 任务页看板：四栏，每栏在栏内滚动；待办栏底部带输入框 ——
+.tk-board
+  display: grid
+  flex: 1
+  grid-template-columns: repeat(4, minmax(0, 1fr))
+  gap: var(--nt-space-3)
+  min-height: 0
+
+.tk-col
+  display: flex
+  flex-direction: column
+  overflow: hidden
+
+.tk-col__dot
+  display: inline-block
+  width: 8px
+  height: 8px
+  margin-right: var(--nt-space-1)
+  vertical-align: middle
+  background: var(--nt-text-3)
+  border-radius: var(--nt-radius-pill)
+
+.tk-col--doing .tk-col__dot
+  background: var(--nt-run)
+
+.tk-col--review .tk-col__dot
+  background: var(--nt-warn)
+
+.tk-col--done .tk-col__dot
+  background: var(--nt-success)
+
+.tk-col__list
+  display: flex
+  flex: 1
+  flex-direction: column
+  gap: var(--nt-space-2)
+  min-height: 48px
+  overflow-y: auto
+  margin: 0
+  padding: 0 var(--nt-space-1) var(--nt-space-1) 0
+  list-style: none
+
+  > li:not(.tk-col__item--fixed) .tk-card
+    cursor: grab
+
+.tk-col__empty
+  pointer-events: none
+
+
 // ——— 响应式（断点 1099 / 559）———
 @media (max-width: 1099px)
   .today-page
     height: auto
+
+  .tk-board
+    grid-template-columns: repeat(2, minmax(0, 1fr))
 
   .today-grid
     grid-template-columns: minmax(0, 1fr)
@@ -444,8 +1154,19 @@
     grid-template-columns: repeat(2, minmax(0, 1fr))
 
   .today-panel,
-  .today-inbox__detail
+  .today-inbox__detail,
+  .today-panel.today-tasks--compose,
+  .today-tasks__scroll,
+  .tk-col,
+  .tk-col__list
     overflow-y: visible
+
+  .tk-col__list
+    flex: none
+
+  // 上下排时各块按内容高，不再按 flex:1 平分（否则 min-height:0 会把面板压成一条）
+  .today-side > .today-panel
+    flex: none
 
   .today-inbox__body
     grid-template-columns: minmax(0, 1fr)
@@ -456,6 +1177,9 @@
     border-left: 0
 
 @media (max-width: 559px)
+  .tk-board
+    grid-template-columns: minmax(0, 1fr)
+
   .today-inbox__row
     flex-wrap: wrap
 
@@ -464,9 +1188,24 @@
   .today-delegated__row
     min-height: 44px
 
+@media (max-width: 559px)
+  .tk-card__acts
+    opacity: 1
+
+  .tk-detail__facts,
+  .tk-detail__follow
+    grid-template-columns: minmax(0, 1fr)
+
+  .tk-composer__hint
+    display: none
+
 @media (prefers-reduced-motion: reduce)
-  .today-inbox__row
+  .today-inbox__row,
+  .tk-card
     transition: none
+
+  .tk-live
+    animation: none
 
 // 侧栏「工作台」入口的待办角标
 .app-sidebar-badge
@@ -518,7 +1257,7 @@
 .today-sum
   display: grid
   grid-template-columns: repeat(4, minmax(0, 1fr))
-  gap: var(--nt-space-4)
+  gap: var(--nt-space-3)
 
 .today-sum__card
   display: grid
@@ -526,9 +1265,18 @@
   align-items: center
   gap: 0 var(--nt-space-3)
   padding: var(--nt-space-3) var(--nt-space-4)
-  background: var(--nt-bg-1)
-  border: 1px solid var(--nt-border-1)
-  border-radius: var(--nt-radius-l)
+  color: inherit
+  text-decoration: none
+  transition: border-color var(--nt-transition), box-shadow var(--nt-transition)
+
+  // 摘要卡是链接：点了去对应的页
+  &:hover
+    border-color: var(--nt-accent-border)
+    box-shadow: inset 0 1px 0 var(--nt-glass-highlight), var(--nt-shadow-depth), var(--nt-glow-soft)
+
+  &:focus-visible
+    outline: var(--focus-ring)
+    outline-offset: 4px
 
 .today-sum__icon
   display: grid
@@ -536,7 +1284,8 @@
   place-items: center
   width: 40px
   height: 40px
-  border: 1px solid var(--nt-border-1)
+  background: var(--nt-accent-soft)
+  border: 1px solid var(--nt-border-0)
   border-radius: var(--nt-radius-m)
   color: var(--nt-accent)
 
@@ -591,7 +1340,7 @@
   grid-template-columns: minmax(0, 1fr) auto
   gap: 2px var(--nt-space-2)
   padding: var(--nt-space-2) 0
-  border-top: 1px solid var(--nt-border-1)
+  border-top: 1px solid var(--nt-border-0)
   color: inherit
   text-decoration: none
 
