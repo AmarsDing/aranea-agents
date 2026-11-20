@@ -1,70 +1,101 @@
 <template>
-  <q-page class="app-standard-page app-registry-page tools-page">
-    <tool-hero-section
-      :kicker="$t('toolsPage.hero.kicker')"
-      :title="$t('toolsPage.hero.title')"
-      :subtitle="$t('toolsPage.hero.subtitle')"
-    >
-      <template #actions>
-        <q-btn
-          outline
-          rounded
-          no-caps
-          class="app-outline-btn"
-          icon="policy"
-          :label="$t('toolsPage.hero.audits')"
-          :to="{ name: 'tool-audits' }"
-        />
-        <q-btn
-          outline
-          rounded
-          no-caps
-          class="app-outline-btn"
-          icon="history"
-          :label="$t('toolsPage.hero.runs')"
-          :to="{ name: 'tool-runs' }"
-        />
-        <q-btn
-          rounded
-          no-caps
-          unelevated
-          class="app-accent-btn"
-          icon="add"
-          :label="$t('toolsPage.hero.create')"
-          @click="editorStore.openCreate()"
-        />
-      </template>
-    </tool-hero-section>
+  <q-page class="app-standard-page cap-page tools-page">
+    <!-- 操作放在页签行右边（工具 | 工具运行 | 调用审计 那一行），不再单独占一行页头 -->
+    <Teleport defer to="#app-tab-actions">
+      <q-btn
+        flat
+        dense
+        round
+        icon="refresh"
+        :title="t('cap.common.refresh')"
+        :aria-label="t('cap.common.refresh')"
+        :loading="loading"
+        @click="loadRows"
+      />
+      <q-btn
+        unelevated
+        dense
+        no-caps
+        color="primary"
+        icon="add"
+        :label="t('cap.tools.create')"
+        @click="editorStore.openCreate()"
+      />
+    </Teleport>
 
-    <tools-metric-strip :cards="summaryCards" />
+    <CapStats :stats="stats" :label="t('cap.common.statsLabel')" :active="activeStat" @pick="onPickStat" />
 
-    <tool-catalog-filters
-      :search="search"
-      :category="category"
-      :source="source"
-      :risk-level="riskLevel"
-      :enabled="enabled"
-      :abnormal="abnormal"
-      :category-options="categoryOptions"
-      :source-options="sourceOptions"
-      :risk-options="riskOptions"
-      :enabled-options="enabledOptions"
-      :loading="loading"
-      @update:search="search = $event"
-      @update:category="category = $event"
-      @update:source="source = $event"
-      @update:risk-level="riskLevel = $event"
-      @update:enabled="enabled = $event"
-      @update:abnormal="abnormal = $event"
-      @reset="resetFilters"
-      @refresh="loadRows"
-    />
+    <div class="cap-bar" role="search">
+      <q-input
+        v-model="search"
+        class="cap-bar__search"
+        dense
+        outlined
+        clearable
+        debounce="250"
+        :placeholder="t('cap.tools.searchPlaceholder')"
+        :aria-label="t('cap.tools.searchPlaceholder')"
+      >
+        <template #prepend><q-icon name="search" size="18px" /></template>
+      </q-input>
+      <div class="cap-seg" role="group" :aria-label="t('cap.common.statusFilter')">
+        <button
+          v-for="opt in statusSegments"
+          :key="String(opt.value)"
+          type="button"
+          :aria-pressed="enabled === opt.value"
+          @click="enabled = opt.value"
+        >
+          {{ opt.label }}
+        </button>
+      </div>
+      <q-select
+        v-model="category"
+        dense
+        outlined
+        clearable
+        emit-value
+        map-options
+        options-dense
+        :label="t('cap.tools.category')"
+        :options="categoryOptions"
+      />
+      <q-select
+        v-model="source"
+        dense
+        outlined
+        clearable
+        emit-value
+        map-options
+        options-dense
+        :label="t('cap.tools.source')"
+        :options="sourceOptions"
+      />
+      <q-select
+        v-model="riskLevel"
+        dense
+        outlined
+        clearable
+        emit-value
+        map-options
+        options-dense
+        :label="t('cap.tools.risk')"
+        :options="riskOptions"
+      />
+      <q-toggle v-model="abnormal" dense :label="t('cap.tools.abnormalOnly')" />
+      <span class="cap-bar__spacer" />
+      <q-btn
+        v-if="filtersActive"
+        flat
+        dense
+        no-caps
+        icon="filter_alt_off"
+        :label="t('cap.common.reset')"
+        @click="resetFilters"
+      />
+    </div>
 
-    <AppStatePanel
-      v-if="pageState === 'loading'"
-      variant="loading"
-      :rows="5"
-    />
+    <AppStatePanel v-if="pageState === 'loading'" variant="loading" :rows="5" />
     <AppStatePanel
       v-else-if="pageState === 'error'"
       variant="error"
@@ -73,19 +104,21 @@
       action-icon="refresh"
       @action="loadRows"
     />
-    <AppStatePanel
-      v-else-if="pageState === 'forbidden'"
-      variant="forbidden"
-    />
+    <AppStatePanel v-else-if="pageState === 'forbidden'" variant="forbidden" />
     <AppStatePanel
       v-else-if="pageState === 'empty'"
       variant="empty"
+      icon="build"
+      :title="t('cap.tools.emptyTitle')"
+      :description="t('cap.tools.emptyHint')"
+      :action-label="filtersActive ? t('cap.common.reset') : t('cap.tools.create')"
+      :action-icon="filtersActive ? 'filter_alt_off' : 'add'"
+      @action="filtersActive ? resetFilters() : editorStore.openCreate()"
     />
 
     <template v-else>
       <AppStatePanel
         v-if="pageState === 'partial'"
-        class="q-mb-md"
         variant="partial"
         dense
         :description="error"
@@ -98,29 +131,16 @@
         :loading="loading"
         :busy-id="busyId"
         :selected="selected"
+        :active-id="detailStore.open ? detailStore.tool?.id : ''"
+        :total="total"
         @update:selected="selected = $event"
         @toggle-enabled="toggleEnabled"
         @update-risk="updateRisk"
         @view-detail="openDetail"
+        @view-agents="openAgents"
         @edit="editorStore.openEdit($event)"
         @remove="removeTool"
       />
-
-      <div v-if="selected.length" class="tools-batch-bar q-pa-sm">
-        <span class="text-caption q-mr-md">{{ $t('toolsPage.list.selectedCount', { count: selected.length }) }}</span>
-        <q-btn
-          flat
-          dense
-          no-caps
-          icon="toggle_on"
-          :label="$t('toolsPage.list.batchEnable')"
-          size="sm"
-          class="app-registry-accent-btn"
-          @click="batchToggle(true)"
-        />
-        <q-btn flat dense no-caps icon="toggle_off" :label="$t('toolsPage.list.batchDisable')" size="sm" @click="batchToggle(false)" />
-        <q-btn flat dense no-caps icon="delete" :label="$t('toolsPage.list.batchRemove')" size="sm" color="negative" @click="batchRemove" />
-      </div>
 
       <AppRegistryPagination
         v-model:page="page"
@@ -130,6 +150,35 @@
         :loading="loading"
         :label="$t('toolsPage.list.pageUnit')"
       />
+
+      <div
+        v-if="selected.length"
+        class="cap-dock"
+        role="toolbar"
+        :aria-label="t('cap.common.selected', { count: selected.length })"
+      >
+        <span class="cap-dock__count">{{ t('cap.common.selected', { count: selected.length }) }}</span>
+        <q-btn
+          flat
+          dense
+          no-caps
+          icon="toggle_on"
+          color="primary"
+          :label="t('cap.common.batchEnable')"
+          @click="batchToggle(true)"
+        />
+        <q-btn flat dense no-caps icon="toggle_off" :label="t('cap.common.batchDisable')" @click="batchToggle(false)" />
+        <q-btn
+          flat
+          dense
+          no-caps
+          icon="delete"
+          color="negative"
+          :label="t('cap.common.batchRemove')"
+          @click="batchRemove"
+        />
+        <q-btn flat dense round icon="close" :aria-label="t('cap.common.clearSelection')" @click="selected = []" />
+      </div>
     </template>
 
     <tool-detail-drawer
@@ -155,6 +204,8 @@
       :agent-binding-error="detailStore.agentBindingError"
       :agent-options="detailStore.agentOptions"
       :agents-loading="detailStore.agentsLoading"
+      :policy="detailStore.policy"
+      :policy-loading="detailStore.policyLoading"
       @close="detailStore.closeDetail()"
       @update:active-tab="detailStore.activeTab = $event"
       @update:test-args-json="detailStore.testArgsJson = $event"
@@ -195,22 +246,26 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
+import { useI18n } from 'vue-i18n';
 import AppRegistryPagination from '../components/layout/AppRegistryPagination.vue';
 import AppStatePanel from '../components/common/AppStatePanel.vue';
-import ToolHeroSection from '../components/tools/ToolHeroSection.vue';
-import ToolsMetricStrip from '../components/tools/ToolsMetricStrip.vue';
-import ToolCatalogFilters from '../components/tools/ToolCatalogFilters.vue';
+import CapStats from '../components/capability/CapStats.vue';
+import { formatCount, formatRate, type CapTone } from '../components/capability/capTypes';
 import ToolsTable from '../components/tools/ToolsTable.vue';
 import ToolDetailDrawer from '../components/tools/ToolDetailDrawer.vue';
 import ToolEditorDialog from '../components/tools/ToolEditorDialog.vue';
 import { useToolsPage } from '../features/tools/useToolsPage';
+import type { Tool } from '../features/tools/types';
 import { resolvePageState } from './pageState';
+
+const { t } = useI18n();
 
 const {
   detailStore,
   editorStore,
   rows,
   total,
+  summary,
   loading,
   search,
   category,
@@ -224,11 +279,9 @@ const {
   forbidden,
   selected,
   pageMax,
-  summaryCards,
   categoryOptions,
   sourceOptions,
   riskOptions,
-  enabledOptions,
   busyId,
   loadRows,
   toggleEnabled,
@@ -248,6 +301,66 @@ const {
   onSaveOverride,
   onRemoveOverride,
 } = useToolsPage();
+
+const statusSegments = computed(() => [
+  { value: null, label: t('cap.common.all') },
+  { value: true, label: t('cap.common.enabled') },
+  { value: false, label: t('cap.common.disabled') },
+]);
+
+const filtersActive = computed(
+  () =>
+    Boolean(search.value || category.value || source.value || riskLevel.value || abnormal.value) ||
+    enabled.value !== null,
+);
+
+// 关键数随当前筛选口径变化（后端 summary 与列表同一 where）
+const stats = computed(() => {
+  const s = summary.value;
+  const failure: CapTone =
+    s.calls_24h === 0 ? 'pending' : s.failure_rate_24h > 0.1 ? 'alert' : s.failure_rate_24h > 0.02 ? 'watch' : 'ok';
+  return [
+    // 后端汇总与列表同一筛选口径：有筛选时这个数是「符合筛选」，不是全部登记
+    {
+      key: 'total',
+      label: t(filtersActive.value ? 'cap.tools.stats.matched' : 'cap.tools.stats.total'),
+      value: formatCount(s.total_tools),
+    },
+    { key: 'enabled', label: t('cap.tools.stats.enabled'), value: formatCount(s.enabled_tools), clickable: true },
+    {
+      key: 'highRisk',
+      label: t('cap.tools.stats.highRisk'),
+      value: formatCount(s.high_risk_enabled),
+      tone: (s.high_risk_enabled > 0 ? 'watch' : undefined) as CapTone | undefined,
+      hint: t('cap.tools.stats.highRiskHint'),
+    },
+    // 平台还没怎么用时，「24h 调用 0」说明不了什么；「近 7 天用过几个工具」更能看出真实使用面
+    {
+      key: 'used7d',
+      label: t('cap.tools.stats.used7d'),
+      value: `${formatCount(s.used_tools_7d ?? 0)} / ${formatCount(s.enabled_tools)}`,
+      hint: t('cap.tools.stats.used7dHint', { calls: s.calls_24h }),
+    },
+    {
+      key: 'failure',
+      label: t('cap.tools.stats.failure'),
+      value: s.calls_24h === 0 ? '—' : formatRate(s.failure_rate_24h),
+      tone: failure,
+    },
+  ];
+});
+
+const activeStat = computed(() => (enabled.value === true ? 'enabled' : ''));
+
+// 「看哪些 Agent 能用」：打开检视抽屉并直接切到 Agent 页签
+function openAgents(tool: Tool) {
+  openDetail(tool);
+  detailStore.activeTab = 'agents';
+}
+
+function onPickStat(key: string) {
+  if (key === 'enabled') enabled.value = enabled.value === true ? null : true;
+}
 
 const pageState = computed(() =>
   resolvePageState({

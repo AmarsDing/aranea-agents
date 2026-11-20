@@ -107,8 +107,10 @@ type Tool struct {
 	CreatedAt     string           `protobuf:"bytes,30,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	UpdatedAt     string           `protobuf:"bytes,31,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
 	Permissions   *ToolPermissions `protobuf:"bytes,32,opt,name=permissions,proto3" json:"permissions,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	// 当前能用这个工具的 Agent 数（列表接口批量算；未计算时缺省）
+	AllowedAgentCount *int32 `protobuf:"varint,36,opt,name=allowed_agent_count,json=allowedAgentCount,proto3,oneof" json:"allowed_agent_count,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *Tool) Reset() {
@@ -386,6 +388,13 @@ func (x *Tool) GetPermissions() *ToolPermissions {
 	return nil
 }
 
+func (x *Tool) GetAllowedAgentCount() int32 {
+	if x != nil && x.AllowedAgentCount != nil {
+		return *x.AllowedAgentCount
+	}
+	return 0
+}
+
 type ToolSummary struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
 	TotalTools      int32                  `protobuf:"varint,1,opt,name=total_tools,json=totalTools,proto3" json:"total_tools,omitempty"`
@@ -393,8 +402,12 @@ type ToolSummary struct {
 	HighRiskEnabled int32                  `protobuf:"varint,3,opt,name=high_risk_enabled,json=highRiskEnabled,proto3" json:"high_risk_enabled,omitempty"`
 	Calls_24H       int32                  `protobuf:"varint,4,opt,name=calls_24h,json=calls24h,proto3" json:"calls_24h,omitempty"`
 	FailureRate_24H float64                `protobuf:"fixed64,5,opt,name=failure_rate_24h,json=failureRate24h,proto3" json:"failure_rate_24h,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// 可见范围内出现过的分类（不受列表筛选影响），给分类下拉用
+	Categories []string `protobuf:"bytes,6,rep,name=categories,proto3" json:"categories,omitempty"`
+	// 近 7 天至少被调用过一次的工具数（不受列表筛选影响）
+	UsedTools_7D  int32 `protobuf:"varint,7,opt,name=used_tools_7d,json=usedTools7d,proto3" json:"used_tools_7d,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ToolSummary) Reset() {
@@ -458,6 +471,20 @@ func (x *ToolSummary) GetCalls_24H() int32 {
 func (x *ToolSummary) GetFailureRate_24H() float64 {
 	if x != nil {
 		return x.FailureRate_24H
+	}
+	return 0
+}
+
+func (x *ToolSummary) GetCategories() []string {
+	if x != nil {
+		return x.Categories
+	}
+	return nil
+}
+
+func (x *ToolSummary) GetUsedTools_7D() int32 {
+	if x != nil {
+		return x.UsedTools_7D
 	}
 	return 0
 }
@@ -2191,7 +2218,7 @@ type ToolGrant struct {
 	ToolKey   string                 `protobuf:"bytes,3,opt,name=tool_key,json=toolKey,proto3" json:"tool_key,omitempty"`
 	GrantedBy string                 `protobuf:"bytes,4,opt,name=granted_by,json=grantedBy,proto3" json:"granted_by,omitempty"`
 	CreatedAt string                 `protobuf:"bytes,5,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
-	// expires_at is the RFC3339 UTC deadline of the grant (” = never
+	// expires_at is the RFC3339 UTC deadline of the grant ('' = never
 	// expires). Grants created via the always-scope approval carry the
 	// default 72h TTL (BUG-MON-B); frontend shows the remaining window.
 	ExpiresAt     string `protobuf:"bytes,6,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
@@ -4142,8 +4169,7 @@ const file_kratos_tool_v1_tool_proto_rawDesc = "" +
 	"\x19kratos/tool/v1/tool.proto\x12\x0ekratos.tool.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x1bgoogle/protobuf/empty.proto\x1a aranea/auth/v1/requirement.proto\"0\n" +
 	"\x0fToolPermissions\x12\x1d\n" +
 	"\n" +
-	"can_manage\x18\x01 \x01(\bR\tcanManage\"\xcc\n" +
-	"\n" +
+	"can_manage\x18\x01 \x01(\bR\tcanManage\"\x99\v\n" +
 	"\x04Tool\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x10\n" +
 	"\x03key\x18\x02 \x01(\tR\x03key\x12!\n" +
@@ -4185,15 +4211,21 @@ const file_kratos_tool_v1_tool_proto_rawDesc = "" +
 	"created_at\x18\x1e \x01(\tR\tcreatedAt\x12\x1d\n" +
 	"\n" +
 	"updated_at\x18\x1f \x01(\tR\tupdatedAt\x12A\n" +
-	"\vpermissions\x18  \x01(\v2\x1f.kratos.tool.v1.ToolPermissionsR\vpermissionsB\x12\n" +
-	"\x10_avg_duration_ms\"\xc6\x01\n" +
+	"\vpermissions\x18  \x01(\v2\x1f.kratos.tool.v1.ToolPermissionsR\vpermissions\x123\n" +
+	"\x13allowed_agent_count\x18$ \x01(\x05H\x01R\x11allowedAgentCount\x88\x01\x01B\x12\n" +
+	"\x10_avg_duration_msB\x16\n" +
+	"\x14_allowed_agent_count\"\x8a\x02\n" +
 	"\vToolSummary\x12\x1f\n" +
 	"\vtotal_tools\x18\x01 \x01(\x05R\n" +
 	"totalTools\x12#\n" +
 	"\renabled_tools\x18\x02 \x01(\x05R\fenabledTools\x12*\n" +
 	"\x11high_risk_enabled\x18\x03 \x01(\x05R\x0fhighRiskEnabled\x12\x1b\n" +
 	"\tcalls_24h\x18\x04 \x01(\x05R\bcalls24h\x12(\n" +
-	"\x10failure_rate_24h\x18\x05 \x01(\x01R\x0efailureRate24h\"\xf8\x01\n" +
+	"\x10failure_rate_24h\x18\x05 \x01(\x01R\x0efailureRate24h\x12\x1e\n" +
+	"\n" +
+	"categories\x18\x06 \x03(\tR\n" +
+	"categories\x12\"\n" +
+	"\rused_tools_7d\x18\a \x01(\x05R\vusedTools7d\"\xf8\x01\n" +
 	"\x10ListToolsRequest\x12\x16\n" +
 	"\x06search\x18\x01 \x01(\tR\x06search\x12\x1a\n" +
 	"\bcategory\x18\x02 \x01(\tR\bcategory\x12\x16\n" +

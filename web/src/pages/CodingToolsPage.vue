@@ -1,155 +1,212 @@
 <template>
-  <q-page class="app-standard-page app-registry-page">
-    <AppPageHero
-      kicker="Coding Agents"
-      title="编码工具"
-      subtitle="注册并管理外部编程 CLI 工具（ACP 子进程），维护可派发任务的项目目录白名单。"
-    >
-      <template #actions>
-        <q-btn color="primary" rounded unelevated icon="add" label="添加工具" @click="openCreate" />
-        <q-btn outline rounded color="primary" icon="refresh" label="刷新" :loading="loading" @click="loadAll(true)" />
-      </template>
-    </AppPageHero>
+  <q-page class="app-standard-page cap-page coding-tools-page">
+    <Teleport defer to="#app-tab-actions">
+      <q-btn
+        flat
+        dense
+        round
+        icon="refresh"
+        :title="t('cap.common.refresh')"
+        :aria-label="t('cap.common.refresh')"
+        :loading="loading"
+        @click="loadAll(true)"
+      />
+      <q-btn unelevated dense no-caps color="primary" icon="add" :label="t('cap.coding.create')" @click="openCreate" />
+    </Teleport>
 
     <AppStatePanel
       v-if="pageState === 'error'"
-      class="q-mb-md"
       variant="error"
       :description="error"
-      action-label="重试"
+      :action-label="$t('shell.common.retry')"
       action-icon="refresh"
       @action="loadAll()"
     />
-    <AppStatePanel v-else-if="pageState === 'forbidden'" class="q-mb-md" variant="forbidden" />
+    <AppStatePanel v-else-if="pageState === 'forbidden'" variant="forbidden" />
     <AppStatePanel v-else-if="pageState === 'loading'" variant="loading" :rows="4" />
-    <AppStatePanel
-      v-else-if="pageState === 'empty'"
-      variant="empty"
-      title="还没有编码工具"
-      description="注册一个外部编程 CLI（命令行工具），即可在「编码任务」看板中派发只读或改代码任务。"
-      icon="terminal"
-      action-label="添加第一个工具"
-      action-icon="add"
-      @action="openCreate"
-    />
 
     <template v-else>
       <AppStatePanel
         v-if="pageState === 'partial'"
-        class="q-mb-md"
         variant="partial"
         dense
         :description="error"
-        action-label="重试"
+        :action-label="$t('shell.common.retry')"
         action-icon="refresh"
         @action="loadAll()"
       />
 
-      <!-- 工具列表 -->
-      <q-card flat class="app-registry-panel q-mb-lg">
-      <q-list separator>
-        <q-item v-for="agent in agents" :key="agent.agentKey" class="q-py-md">
-          <q-item-section avatar>
-            <q-avatar size="40px" color="primary" text-color="white" class="text-weight-bold">
-              <img v-if="agent.iconUrl" :src="agent.iconUrl" :alt="agent.displayName || agent.agentKey" />
-              <template v-else>{{ agentInitial(agent) }}</template>
-            </q-avatar>
-          </q-item-section>
-          <q-item-section>
-            <q-item-label class="text-weight-bold">
-              {{ agent.displayName || agent.agentKey }}
-              <span class="text-caption text-grey-6 q-ml-sm">{{ agent.agentKey }}</span>
-            </q-item-label>
-            <q-item-label caption class="text-grey-7 ellipsis">
-              {{ agent.command }} {{ (agent.args || []).join(' ') }}
-            </q-item-label>
-          </q-item-section>
-          <q-item-section side>
-            <div class="row items-center q-gutter-sm">
-              <q-badge
-                :color="probeBadge(agent).color"
-                :text-color="probeBadge(agent).textColor"
-                :label="probeBadge(agent).label"
-                class="q-px-sm"
-              >
-                <q-tooltip v-if="agent.lastProbeError" max-width="320px">{{ agent.lastProbeError }}</q-tooltip>
-              </q-badge>
-              <q-toggle
-                :model-value="!!agent.enabled"
-                color="primary"
-                :disable="togglingKey === agent.agentKey"
-                :aria-label="agent.enabled ? '停用工具' : '启用工具'"
-                @update:model-value="toggleEnabled(agent, $event)"
-              />
-              <q-btn flat dense round icon="edit" aria-label="编辑" @click="openEdit(agent)" />
-              <q-btn
-                flat
-                dense
-                round
-                icon="network_check"
-                aria-label="探测可用性"
-                :loading="probingKey === agent.agentKey"
-                @click="probe(agent)"
-              />
-              <q-btn flat dense round icon="play_arrow" color="primary" aria-label="试跑" @click="openTryRun(agent)" />
-            </div>
-          </q-item-section>
-        </q-item>
-      </q-list>
-      </q-card>
-    </template>
+      <CapStats :stats="stats" :label="t('cap.common.statsLabel')" />
 
-    <!-- 项目目录 -->
-    <q-card flat class="app-registry-panel">
-      <q-card-section class="row items-center justify-between">
-        <div>
-          <div class="text-h6">项目目录</div>
-          <div class="text-caption text-grey-7">可派发任务的本机项目（cwd 白名单），派发任务前请先在此登记。</div>
+      <!-- 工具：一张构件卡一个；探测失败的原因直接写在卡上，不藏在悬停提示里 -->
+      <section class="cap-grid" :aria-label="t('cap.coding.toolsLabel')">
+        <CapCard
+          v-for="agent in agents"
+          :key="agent.agentKey"
+          icon="terminal"
+          :icon-url="agent.iconUrl || undefined"
+          :code="agent.agentKey || ''"
+          :title="agent.displayName || agent.agentKey || ''"
+          :description="commandLine(agent)"
+          :status="agentStatus(agent)"
+          :facts="agentFacts(agent)"
+          :tags="agentTags(agent)"
+          @open="openEdit(agent)"
+        >
+          <template #switch>
+            <q-toggle
+              dense
+              color="primary"
+              :model-value="!!agent.enabled"
+              :disable="togglingKey === agent.agentKey"
+              :aria-label="agent.enabled ? t('cap.common.batchDisable') : t('cap.common.batchEnable')"
+              @update:model-value="toggleEnabled(agent, Boolean($event))"
+            />
+          </template>
+          <p v-if="agent.lastProbeError" class="cap-note cap-note--alert" role="note">
+            <q-icon name="error_outline" size="16px" aria-hidden="true" />
+            <span class="cap-note__body">{{ agent.lastProbeError }}</span>
+          </p>
+          <!-- 同一个工具在运行台（终端）里能不能用：两处接入方式不同，结论可能不一样，并排写清 -->
+          <p v-if="fleetPresetFor(agent)" class="cap-note cap-note--info" role="note">
+            <q-icon name="terminal" size="16px" aria-hidden="true" />
+            <span class="cap-note__body">{{ fleetLine(agent) }}</span>
+          </p>
+          <template #relation>{{
+            agent.updatedAt ? t('cap.coding.updatedAt', { at: formatWhen(agent.updatedAt) }) : ''
+          }}</template>
+          <template #actions>
+            <q-btn
+              flat
+              dense
+              no-caps
+              size="sm"
+              color="primary"
+              icon="network_check"
+              :label="t('cap.coding.probe')"
+              :loading="probingKey === agent.agentKey"
+              @click="probe(agent)"
+            />
+            <q-btn flat dense round size="sm" icon="more_horiz" :aria-label="t('cap.common.more')">
+              <q-menu anchor="bottom right" self="top right">
+                <q-list dense class="cap-menu">
+                  <q-item v-close-popup clickable :disable="!agent.enabled" @click="openTryRun(agent)">
+                    <q-item-section avatar><q-icon name="play_arrow" size="18px" /></q-item-section>
+                    <q-item-section>{{ t('cap.coding.tryRun') }}</q-item-section>
+                  </q-item>
+                  <q-item v-close-popup clickable @click="openEdit(agent)">
+                    <q-item-section avatar><q-icon name="edit" size="18px" /></q-item-section>
+                    <q-item-section>{{ t('cap.common.edit') }}</q-item-section>
+                  </q-item>
+                  <q-item clickable :to="{ path: '/coding-tasks' }">
+                    <q-item-section avatar><q-icon name="history" size="18px" /></q-item-section>
+                    <q-item-section>{{ t('cap.coding.tasks') }}</q-item-section>
+                  </q-item>
+                  <q-separator />
+                  <q-item v-close-popup clickable class="text-negative" @click="confirmDeleteAgent(agent)">
+                    <q-item-section avatar><q-icon name="delete" size="18px" /></q-item-section>
+                    <q-item-section>{{ t('cap.common.remove') }}</q-item-section>
+                  </q-item>
+                </q-list>
+              </q-menu>
+            </q-btn>
+          </template>
+        </CapCard>
+        <AppStatePanel
+          v-if="agents.length === 0"
+          variant="empty"
+          icon="terminal"
+          :title="t('cap.coding.emptyTitle')"
+          :description="t('cap.coding.emptyDesc')"
+          :action-label="t('cap.coding.create')"
+          action-icon="add"
+          @action="openCreate"
+        />
+      </section>
+
+      <!-- 运行台的终端清单：在本机 PATH 上找命令，和上面的 ACP 派发是两种接入方式 -->
+      <section class="cap-section" :aria-label="t('cap.coding.fleet.title')">
+        <div class="cap-section__head">
+          <h2 class="cap-section__title">{{ t('cap.coding.fleet.title') }}</h2>
+          <p class="cap-section__hint">{{ t('cap.coding.fleet.hint') }}</p>
+          <q-btn
+            flat
+            dense
+            no-caps
+            color="primary"
+            icon="open_in_new"
+            :label="t('cap.coding.fleet.open')"
+            to="/fleet"
+          />
         </div>
-        <q-btn color="primary" rounded unelevated dense icon="add" label="添加项目" @click="openProjectCreate" />
-      </q-card-section>
-      <q-separator />
-      <AppStatePanel
-        v-if="projects.length === 0 && !error"
-        class="q-ma-md"
-        variant="empty"
-        dense
-        title="暂无项目"
-        description="点击右上角「添加项目」登记本机目录。"
-        icon="folder_open"
-      />
-      <q-list v-else-if="projects.length" separator>
-        <q-item v-for="p in projects" :key="p.id">
-          <q-item-section avatar>
-            <q-icon name="folder_open" color="amber-8" />
-          </q-item-section>
-          <q-item-section>
-            <q-item-label class="text-weight-medium">{{ p.name }}</q-item-label>
-            <q-item-label caption class="text-grey-7">{{ p.path }}</q-item-label>
-            <q-item-label v-if="p.description" caption class="text-grey-6">{{ p.description }}</q-item-label>
-          </q-item-section>
-          <q-item-section side>
+        <p v-if="presetsError" class="cap-section__hint">{{ t('cap.coding.fleet.unavailable') }}</p>
+        <ul v-else class="cap-chips" role="list">
+          <li v-for="p in terminalPresets" :key="p.id" class="cap-chip" :class="{ 'cap-chip--off': !p.available }">
+            <i class="cap-dot" :class="p.available ? 'cap-dot--ok' : 'cap-dot--off'" aria-hidden="true" />
+            <span>{{ p.label }}</span>
+            <code class="cap-mono">{{ p.command }}</code>
+            <span class="cap-chip__state">{{
+              p.available ? t('cap.coding.fleet.installed') : t('cap.coding.fleet.missing')
+            }}</span>
+          </li>
+        </ul>
+      </section>
+
+      <!-- 项目目录：可派发任务的本机目录白名单 -->
+      <section class="cap-section" :aria-label="t('cap.coding.projects')">
+        <div class="cap-section__head">
+          <h2 class="cap-section__title">{{ t('cap.coding.projects') }}</h2>
+          <p class="cap-section__hint">{{ t('cap.coding.projectsHint') }}</p>
+          <q-btn
+            flat
+            dense
+            no-caps
+            color="primary"
+            icon="add"
+            :label="t('cap.coding.addProject')"
+            @click="openProjectCreate"
+          />
+        </div>
+        <ul v-if="projects.length" class="cap-rows" role="list">
+          <li v-for="p in projects" :key="p.id" class="cap-row">
+            <q-icon name="folder_open" size="20px" class="cap-row__icon" aria-hidden="true" />
+            <div class="cap-row__main">
+              <strong class="cap-row__title">{{ p.name }}</strong>
+              <code class="cap-mono cap-row__sub">{{ p.path }}</code>
+              <span v-if="p.description" class="cap-row__desc">{{ p.description }}</span>
+            </div>
             <q-btn
               flat
               dense
               round
+              size="sm"
+              icon="edit"
+              :aria-label="t('cap.common.edit')"
+              @click="openProjectEdit(p)"
+            />
+            <q-btn
+              flat
+              dense
+              round
+              size="sm"
               icon="delete"
               color="negative"
-              aria-label="删除项目"
+              :aria-label="t('cap.common.remove')"
               @click="confirmDeleteProject(p)"
             />
-          </q-item-section>
-        </q-item>
-      </q-list>
-    </q-card>
+          </li>
+        </ul>
+        <p v-else class="cap-section__hint">{{ t('cap.coding.projectsEmpty') }}</p>
+      </section>
+    </template>
 
     <!-- 编辑/新增工具对话框 -->
     <AppDialog
       v-model="editorOpen"
       persistent
       size="xl"
-      :title="editingAgent ? '编辑编码工具' : '添加编码工具'"
-      subtitle="配置工具命令、环境变量、能力声明与默认自治级别。"
+      :title="editingAgent ? t('cap.coding.form.editTitle') : t('cap.coding.form.createTitle')"
+      :subtitle="t('cap.coding.form.subtitle')"
     >
       <div v-if="!editingAgent" class="q-pb-sm">
         <q-btn
@@ -169,32 +226,44 @@
           v-model="form.agentKey"
           dense
           outlined
-          label="工具标识 (agentKey) *"
+          :label="t('cap.coding.form.agentKey')"
           :readonly="!!editingAgent"
-          :rules="[(v) => !!v || '必填']"
+          :rules="[(v) => !!v || t('cap.coding.form.required')]"
         />
-        <q-input v-model="form.displayName" dense outlined label="显示名称" />
+        <q-input v-model="form.displayName" dense outlined :label="t('cap.coding.form.displayName')" />
         <q-input
           v-model="form.command"
           dense
           outlined
-          label="命令 (command) *"
+          :label="t('cap.coding.form.command')"
           placeholder="npx"
-          :rules="[(v) => !!v || '必填']"
+          :rules="[(v) => !!v || t('cap.coding.form.required')]"
         />
-        <q-input v-model="form.argsText" dense outlined label="参数 (args)" hint="逗号分隔，例如 acp, --stdio" />
-        <q-input v-model="form.iconUrl" dense outlined label="图标 URL" hint="留空时使用工具名首字母占位" />
+        <q-input
+          v-model="form.argsText"
+          dense
+          outlined
+          :label="t('cap.coding.form.args')"
+          :hint="t('cap.coding.form.argsHint')"
+        />
+        <q-input
+          v-model="form.iconUrl"
+          dense
+          outlined
+          :label="t('cap.coding.form.iconUrl')"
+          :hint="t('cap.coding.form.iconHint')"
+        />
         <q-select
           v-model="form.defaultAutonomy"
           dense
           outlined
           emit-value
           map-options
-          label="默认自治级别"
+          :label="t('cap.coding.form.autonomy')"
           :options="AUTONOMY_OPTIONS"
         />
         <div class="app-grid-span-full">
-          <div class="section-label q-mb-sm">能力声明</div>
+          <div class="section-label q-mb-sm">{{ t('cap.coding.form.capabilities') }}</div>
           <div class="row q-gutter-md">
             <q-checkbox
               v-for="opt in CAPABILITY_OPTIONS"
@@ -208,55 +277,102 @@
         </div>
         <div class="app-grid-span-full">
           <div class="row items-center justify-between q-mb-sm">
-            <div class="section-label">环境变量</div>
+            <div class="section-label">{{ t('cap.coding.form.env') }}</div>
             <q-btn
               flat
               dense
               color="primary"
               icon="add"
-              label="添加一行"
+              :label="t('cap.coding.form.addRow')"
               @click="form.envRows.push({ key: '', value: '', masked: false })"
             />
           </div>
           <div v-for="(row, i) in form.envRows" :key="i" class="row q-gutter-sm items-center q-mb-sm">
-            <q-input v-model="row.key" dense outlined class="col-4" label="键" :readonly="row.masked" />
+            <q-input
+              v-model="row.key"
+              dense
+              outlined
+              class="col-4"
+              :label="t('cap.coding.form.envKey')"
+              :readonly="row.masked"
+            />
             <q-input
               v-model="row.value"
               dense
               outlined
               class="col"
-              label="值"
+              :label="t('cap.coding.form.envValue')"
               :readonly="row.masked"
-              :hint="row.masked ? '服务端已掩码，留空保持不变' : ''"
+              :hint="row.masked ? t('cap.coding.form.maskedHint') : ''"
             />
-            <q-btn flat dense round icon="close" aria-label="删除该行" @click="form.envRows.splice(i, 1)" />
+            <q-btn
+              flat
+              dense
+              round
+              icon="close"
+              :aria-label="t('cap.coding.form.removeRow')"
+              @click="form.envRows.splice(i, 1)"
+            />
           </div>
         </div>
-        <q-toggle v-model="form.enabled" color="primary" label="启用" />
+        <q-toggle v-model="form.enabled" color="primary" :label="t('cap.coding.form.enabled')" />
       </q-form>
       <template #actions>
-        <q-btn flat rounded label="取消" @click="editorOpen = false" />
-        <q-btn color="primary" rounded unelevated label="保存" :loading="saving" @click="saveAgent" />
+        <q-btn flat rounded :label="t('cap.coding.form.cancel')" @click="editorOpen = false" />
+        <q-btn
+          color="primary"
+          rounded
+          unelevated
+          :label="t('cap.coding.form.save')"
+          :loading="saving"
+          @click="saveAgent"
+        />
       </template>
     </AppDialog>
 
     <!-- 项目新增对话框 -->
-    <AppDialog v-model="projectDialogOpen" persistent size="sm" title="添加项目">
+    <AppDialog
+      v-model="projectDialogOpen"
+      persistent
+      size="sm"
+      :title="projectEditing ? t('cap.coding.editProject') : t('cap.coding.addProject')"
+    >
       <q-form class="q-gutter-md" @submit.prevent="saveProject">
-        <q-input v-model="projectForm.name" dense outlined label="项目名称 *" :rules="[(v) => !!v || '必填']" />
+        <q-input
+          v-model="projectForm.name"
+          dense
+          outlined
+          :label="t('cap.coding.form.projectName')"
+          :readonly="projectEditing"
+          :rules="[(v) => !!v || t('cap.coding.form.required')]"
+        />
         <q-input
           v-model="projectForm.path"
           dense
           outlined
-          label="本机路径 *"
+          :label="t('cap.coding.form.projectPath')"
           placeholder="F:\project\demo"
-          :rules="[(v) => !!v || '必填']"
+          :rules="[(v) => !!v || t('cap.coding.form.required')]"
         />
-        <q-input v-model="projectForm.description" dense outlined type="textarea" autogrow label="描述" />
+        <q-input
+          v-model="projectForm.description"
+          dense
+          outlined
+          type="textarea"
+          autogrow
+          :label="t('cap.coding.form.projectDesc')"
+        />
       </q-form>
       <template #actions>
-        <q-btn flat rounded label="取消" @click="projectDialogOpen = false" />
-        <q-btn color="primary" rounded unelevated label="保存" :loading="projectSaving" @click="saveProject" />
+        <q-btn flat rounded :label="t('cap.coding.form.cancel')" @click="projectDialogOpen = false" />
+        <q-btn
+          color="primary"
+          rounded
+          unelevated
+          :label="t('cap.coding.form.save')"
+          :loading="projectSaving"
+          @click="saveProject"
+        />
       </template>
     </AppDialog>
 
@@ -265,8 +381,8 @@
       v-model="tryRunOpen"
       persistent
       size="sm"
-      :title="`试跑 ${tryRunAgent?.displayName || tryRunAgent?.agentKey || ''}`"
-      subtitle="以固定只读指令试跑：浏览项目顶层结构并说明用途，不修改任何文件。"
+      :title="t('cap.coding.form.tryRunTitle', { name: tryRunAgent?.displayName || tryRunAgent?.agentKey || '' })"
+      :subtitle="t('cap.coding.form.tryRunSubtitle')"
     >
       <q-select
         v-model="tryRunProject"
@@ -274,18 +390,18 @@
         outlined
         emit-value
         map-options
-        label="选择项目 *"
+        :label="t('cap.coding.form.pickProject')"
         :options="projectOptions"
-        :rules="[(v) => !!v || '请选择项目']"
+        :rules="[(v) => !!v || t('cap.coding.form.pickProjectRequired')]"
       />
       <template #actions>
-        <q-btn flat rounded label="取消" @click="tryRunOpen = false" />
+        <q-btn flat rounded :label="t('cap.coding.form.cancel')" @click="tryRunOpen = false" />
         <q-btn
           color="primary"
           rounded
           unelevated
           icon="play_arrow"
-          label="开始试跑"
+          :label="t('cap.coding.form.startTryRun')"
           :loading="tryRunning"
           :disable="!tryRunProject"
           @click="runTryRun"
@@ -298,8 +414,8 @@
       v-model="candidatesOpen"
       persistent
       size="sm"
-      title="匹配到多个项目"
-      subtitle="请选择一个项目重新派发。"
+      :title="t('cap.coding.form.candidatesTitle')"
+      :subtitle="t('cap.coding.form.candidatesSubtitle')"
     >
       <q-list separator>
         <q-item v-for="c in candidates" :key="c.id" v-ripple clickable @click="pickCandidate(c)">
@@ -317,17 +433,20 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { useQuasar } from 'quasar';
 import { confirm } from '../composables/useAppConfirm';
 import { useRouter } from 'vue-router';
 import AppDialog from '../components/common/AppDialog.vue';
 import AppStatePanel from '../components/common/AppStatePanel.vue';
-import AppPageHero from '../components/layout/AppPageHero.vue';
+import CapCard from '../components/capability/CapCard.vue';
+import CapStats from '../components/capability/CapStats.vue';
+import type { CapFact, CapStatus, CapTag, CapTone } from '../components/capability/capTypes';
 import { resolvePageState } from './pageState';
 import {
   AUTONOMY_OPTIONS,
   CAPABILITY_OPTIONS,
-  agentInitial,
+  deleteCodingAgent,
   deleteCodingProject,
   dispatchCodingTask,
   listCodingAgents,
@@ -337,12 +456,15 @@ import {
   upsertCodingProject,
 } from '../features/coding/api';
 import type { CodingAgent, CodingProject, ProjectCandidate } from '../features/coding/api';
-import { isForbiddenApiError } from '../utils/kratosError';
+import { listPresets } from '../features/fleet/api';
+import type { AgentPreset } from '../features/fleet/api';
+import { isForbiddenApiError, parseKratosApiError } from '../utils/kratosError';
 
-const TRY_RUN_PROMPT = '只读浏览当前项目：列出顶层目录结构并一句话说明项目用途。不要修改任何文件。';
+const TRY_RUN_PROMPT = '只读浏览当前项目：列出顶层目录结构并一句话说明项目用途。不要修改任何文件。'; // i18n-exempt 发给编码工具的指令，不是界面文字
 
 const $q = useQuasar();
 const router = useRouter();
+const { t } = useI18n();
 
 const loading = ref(false);
 const error = ref('');
@@ -381,6 +503,8 @@ const form = reactive({
 });
 
 const projectDialogOpen = ref(false);
+/** 编辑已有项目：名称是唯一键（后端按名称 upsert），只能改路径和描述 */
+const projectEditing = ref(false);
 const projectSaving = ref(false);
 const projectForm = reactive({ name: '', path: '', description: '' });
 
@@ -407,13 +531,24 @@ async function loadAll(manual = false) {
   error.value = '';
   forbidden.value = false;
   try {
-    const [a, p] = await Promise.all([listCodingAgents(), listCodingProjects()]);
+    const [a, p, presetList] = await Promise.all([
+      listCodingAgents(),
+      listCodingProjects(),
+      // 运行台接口取不到（如容器模式没开运行台）时不影响本页
+      listPresets().catch(() => null),
+    ]);
     agents.value = a;
     projects.value = p;
+    presets.value = presetList ?? [];
+    presetsError.value = presetList === null;
     if (manual)
-      $q.notify({ type: 'positive', message: `已刷新，共 ${a.length} 个工具、${p.length} 个项目`, timeout: 2000 });
+      $q.notify({
+        type: 'positive',
+        message: t('cap.coding.msg.refreshed', { tools: a.length, projects: p.length }),
+        timeout: 2000,
+      });
   } catch (err) {
-    error.value = err instanceof Error ? err.message : '加载失败';
+    error.value = err instanceof Error ? err.message : t('cap.coding.msg.loadFailed');
     forbidden.value = isForbiddenApiError(err);
   } finally {
     loading.value = false;
@@ -422,11 +557,87 @@ async function loadAll(manual = false) {
 
 onMounted(() => void loadAll());
 
-function probeBadge(agent: CodingAgent): { label: string; color: string; textColor: string } {
-  if (agent.lastProbeOk === true) return { label: '可用', color: 'positive', textColor: 'white' };
-  if (agent.lastProbeError) return { label: '不可用', color: 'negative', textColor: 'white' };
-  return { label: '未探测', color: 'grey-4', textColor: 'grey-9' };
+// ——— 运行台（终端）对照 ———
+const presets = ref<AgentPreset[]>([]);
+const presetsError = ref(false);
+const terminalPresets = computed(() => presets.value.filter((p) => p.id !== 'shell'));
+// 编码工具（ACP 派发）的 agentKey → 运行台终端清单里的同一个工具
+const FLEET_ID_BY_AGENT: Record<string, string> = {
+  claude_code: 'claude',
+  codex: 'codex',
+  codebuddy: 'codebuddy',
+  workbuddy: 'codebuddy',
+  gemini: 'gemini',
+  qwen: 'qwen',
+  kimi: 'kimi',
+  opencode: 'opencode',
+};
+function fleetPresetFor(agent: CodingAgent): AgentPreset | undefined {
+  const id = FLEET_ID_BY_AGENT[agent.agentKey ?? ''];
+  return id ? presets.value.find((p) => p.id === id) : undefined;
 }
+function fleetLine(agent: CodingAgent): string {
+  const p = fleetPresetFor(agent);
+  if (!p) return '';
+  if (!p.available) return t('cap.coding.fleet.lineMissing', { label: p.label, cmd: p.command });
+  return agent.lastProbeOk
+    ? t('cap.coding.fleet.lineBoth', { label: p.label })
+    : t('cap.coding.fleet.lineTerminalOnly', { label: p.label, cmd: agent.command ?? '' });
+}
+
+// ——— 构件卡取值 ———
+function commandLine(agent: CodingAgent): string {
+  return [agent.command, ...(agent.args ?? [])].filter(Boolean).join(' ');
+}
+
+function agentStatus(agent: CodingAgent): CapStatus {
+  if (!agent.enabled) return { tone: 'off', label: t('cap.common.disabled') };
+  if (agent.lastProbeOk === true) return { tone: 'ok', label: t('cap.coding.probeOk') };
+  if (agent.lastProbeError) return { tone: 'alert', label: t('cap.coding.probeFailed') };
+  return { tone: 'pending', label: t('cap.coding.probeNever') };
+}
+
+const AUTONOMY_SHORT: Record<string, string> = {
+  readonly: 'autonomyReadonly',
+  workspace: 'autonomyWorkspace',
+  full: 'autonomyFull',
+};
+
+function agentFacts(agent: CodingAgent): CapFact[] {
+  const autonomy = agent.defaultAutonomy || 'readonly';
+  const tone: CapTone | undefined = autonomy === 'full' ? 'alert' : autonomy === 'workspace' ? 'watch' : undefined;
+  return [
+    { label: t('cap.coding.autonomy'), value: t(`cap.coding.${AUTONOMY_SHORT[autonomy] ?? 'autonomyReadonly'}`), tone },
+    { label: t('cap.coding.capabilities'), value: (agent.capabilities ?? []).length },
+    { label: t('cap.coding.env'), value: Object.keys(agent.env ?? {}).length },
+  ];
+}
+
+function agentTags(agent: CodingAgent): CapTag[] {
+  return (agent.capabilities ?? []).map((c) => ({ label: CAPABILITY_OPTIONS.find((o) => o.value === c)?.label ?? c }));
+}
+
+function formatWhen(iso: string): string {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? iso : d.toLocaleString();
+}
+
+const stats = computed(() => {
+  const on = agents.value.filter((a) => a.enabled);
+  const ok = on.filter((a) => a.lastProbeOk === true).length;
+  const failed = on.filter((a) => !a.lastProbeOk && a.lastProbeError).length;
+  return [
+    { key: 'tools', label: t('cap.coding.stats.tools'), value: agents.value.length },
+    { key: 'enabled', label: t('cap.coding.stats.enabled'), value: on.length },
+    {
+      key: 'probe',
+      label: t('cap.coding.stats.probe'),
+      value: `${ok} / ${on.length}`,
+      tone: (failed > 0 ? 'alert' : on.length && ok === on.length ? 'ok' : 'pending') as CapTone,
+    },
+    { key: 'projects', label: t('cap.coding.stats.projects'), value: projects.value.length },
+  ];
+});
 
 function openCreate() {
   editingAgent.value = null;
@@ -471,7 +682,7 @@ function openEdit(agent: CodingAgent) {
 
 async function saveAgent() {
   if (!form.agentKey || !form.command) {
-    $q.notify({ type: 'warning', message: '请填写工具标识与命令' });
+    $q.notify({ type: 'warning', message: t('cap.coding.msg.needKeyCommand') });
     return;
   }
   saving.value = true;
@@ -502,11 +713,11 @@ async function saveAgent() {
       capabilities: form.capabilities,
       defaultAutonomy: form.defaultAutonomy,
     });
-    $q.notify({ type: 'positive', message: '已保存' });
+    $q.notify({ type: 'positive', message: t('cap.coding.msg.saved') });
     editorOpen.value = false;
     await loadAll();
   } catch (err) {
-    $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '保存失败' });
+    $q.notify({ type: 'negative', message: err instanceof Error ? err.message : t('cap.coding.msg.saveFailed') });
   } finally {
     saving.value = false;
   }
@@ -519,8 +730,9 @@ async function toggleEnabled(agent: CodingAgent, enabled: boolean) {
       agentKey: agent.agentKey,
       displayName: agent.displayName,
       command: agent.command,
-      args: agent.args,
-      env: agent.env,
+      // 只改启停：env / args 省略 = 后端保留旧值（列表里的密钥是掩码，不能回传）
+      args: undefined,
+      env: undefined,
       enabled,
       livenessOverrideJson: undefined,
       iconUrl: agent.iconUrl,
@@ -529,7 +741,7 @@ async function toggleEnabled(agent: CodingAgent, enabled: boolean) {
     });
     await loadAll();
   } catch (err) {
-    $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '切换启用状态失败' });
+    $q.notify({ type: 'negative', message: err instanceof Error ? err.message : t('cap.coding.msg.toggleFailed') });
   } finally {
     togglingKey.value = '';
   }
@@ -541,12 +753,12 @@ async function probe(agent: CodingAgent) {
     const res = await probeCodingAgent(agent.agentKey ?? '');
     $q.notify(
       res.ok
-        ? { type: 'positive', message: `${agent.displayName || agent.agentKey} 探测通过` }
-        : { type: 'negative', message: res.error || '探测失败' },
+        ? { type: 'positive', message: t('cap.coding.msg.probeOk', { name: agent.displayName || agent.agentKey }) }
+        : { type: 'negative', message: res.error || t('cap.coding.msg.probeFailed') },
     );
     await loadAll();
   } catch (err) {
-    $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '探测失败' });
+    $q.notify({ type: 'negative', message: err instanceof Error ? err.message : t('cap.coding.msg.probeFailed') });
   } finally {
     probingKey.value = '';
   }
@@ -554,7 +766,7 @@ async function probe(agent: CodingAgent) {
 
 function openTryRun(agent: CodingAgent) {
   if (projects.value.length === 0) {
-    $q.notify({ type: 'warning', message: '请先在下方「项目目录」中添加项目' });
+    $q.notify({ type: 'warning', message: t('cap.coding.needProject') });
     return;
   }
   tryRunAgent.value = agent;
@@ -573,17 +785,17 @@ async function runTryRun() {
     });
     tryRunOpen.value = false;
     if (res.task?.id) {
-      $q.notify({ type: 'positive', message: '试跑任务已派发' });
+      $q.notify({ type: 'positive', message: t('cap.coding.msg.dispatched') });
       void router.push({ path: '/coding-tasks', query: { focus: res.task.id } });
     } else if ((res.candidates ?? []).length > 0) {
       candidates.value = res.candidates ?? [];
       pendingDispatch.value = { agentKey: tryRunAgent.value.agentKey ?? '', prompt: TRY_RUN_PROMPT };
       candidatesOpen.value = true;
     } else {
-      $q.notify({ type: 'warning', message: '派发失败：未返回任务' });
+      $q.notify({ type: 'warning', message: t('cap.coding.msg.noTask') });
     }
   } catch (err) {
-    $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '派发失败' });
+    $q.notify({ type: 'negative', message: err instanceof Error ? err.message : t('cap.coding.msg.dispatchFailed') });
   } finally {
     tryRunning.value = false;
   }
@@ -600,11 +812,11 @@ async function pickCandidate(c: ProjectCandidate) {
     });
     closeCandidates();
     if (res.task?.id) {
-      $q.notify({ type: 'positive', message: '试跑任务已派发' });
+      $q.notify({ type: 'positive', message: t('cap.coding.msg.dispatched') });
       void router.push({ path: '/coding-tasks', query: { focus: res.task.id } });
     }
   } catch (err) {
-    $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '派发失败' });
+    $q.notify({ type: 'negative', message: err instanceof Error ? err.message : t('cap.coding.msg.dispatchFailed') });
   }
 }
 
@@ -614,14 +826,39 @@ function closeCandidates() {
   pendingDispatch.value = null;
 }
 
+// 删除编码工具：只有从没跑过任务的能删，后端会拒绝其余的，把原因原样告诉用户
+async function confirmDeleteAgent(agent: CodingAgent) {
+  const name = agent.displayName || agent.agentKey || '';
+  const ok = await confirm({
+    title: t('cap.coding.msg.deleteAgentTitle', { name }),
+    message: t('cap.coding.msg.deleteAgentMessage'),
+    tone: 'danger',
+  });
+  if (!ok) return;
+  try {
+    await deleteCodingAgent(agent.agentKey ?? '');
+    $q.notify({ type: 'positive', message: t('cap.coding.msg.agentDeleted', { name }) });
+    await loadAll();
+  } catch (err) {
+    $q.notify({ type: 'warning', message: parseKratosApiError(err).message || t('cap.coding.msg.deleteFailed') });
+  }
+}
+
 function openProjectCreate() {
   Object.assign(projectForm, { name: '', path: '', description: '' });
+  projectEditing.value = false;
+  projectDialogOpen.value = true;
+}
+
+function openProjectEdit(p: CodingProject) {
+  Object.assign(projectForm, { name: p.name ?? '', path: p.path ?? '', description: p.description ?? '' });
+  projectEditing.value = true;
   projectDialogOpen.value = true;
 }
 
 async function saveProject() {
   if (!projectForm.name || !projectForm.path) {
-    $q.notify({ type: 'warning', message: '请填写项目名称与路径' });
+    $q.notify({ type: 'warning', message: t('cap.coding.msg.needProjectFields') });
     return;
   }
   projectSaving.value = true;
@@ -631,11 +868,11 @@ async function saveProject() {
       path: projectForm.path,
       description: projectForm.description,
     });
-    $q.notify({ type: 'positive', message: '项目已保存' });
+    $q.notify({ type: 'positive', message: t('cap.coding.msg.projectSaved') });
     projectDialogOpen.value = false;
     await loadAll();
   } catch (err) {
-    $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '保存失败' });
+    $q.notify({ type: 'negative', message: err instanceof Error ? err.message : t('cap.coding.msg.saveFailed') });
   } finally {
     projectSaving.value = false;
   }
@@ -643,17 +880,17 @@ async function saveProject() {
 
 async function confirmDeleteProject(p: CodingProject) {
   const ok = await confirm({
-    title: '确认删除该项目？',
-    message: `删除「${p.name}」后将无法向该目录派发新任务，进行中的任务不受影响。`,
+    title: t('cap.coding.msg.deleteProjectTitle'),
+    message: t('cap.coding.msg.deleteProjectMessage', { name: p.name }),
     tone: 'danger',
   });
   if (!ok) return;
   try {
     await deleteCodingProject(p.id ?? '');
-    $q.notify({ type: 'positive', message: '项目已删除' });
+    $q.notify({ type: 'positive', message: t('cap.coding.msg.projectDeleted') });
     await loadAll();
   } catch (err) {
-    $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '删除失败' });
+    $q.notify({ type: 'negative', message: err instanceof Error ? err.message : t('cap.coding.msg.deleteFailed') });
   }
 }
 </script>

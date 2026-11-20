@@ -1,9 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  formatToolArgsFirstPassRate,
-  toolArgsFirstPassRate,
-  toolArgsFirstPassRateColor,
-} from '../toolUi';
+import { formatToolArgsFirstPassRate, toolArgsFirstPassRate, toolArgsFirstPassRateColor } from '../toolUi';
 
 describe('toolArgsFirstPassRate', () => {
   it('returns null when the tool has no invocations', () => {

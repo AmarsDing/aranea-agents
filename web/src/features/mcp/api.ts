@@ -35,6 +35,8 @@ function mcpRowToPlatform(raw: unknown): McpServerRow {
     model: '',
     is_system: false,
     shared: pickBool(r, 'shared', 'shared'),
+    // 会挂载它的 Agent 数；后端没算出来时为 null
+    agent_count: (r.agent_count ?? r.agentCount) == null ? null : Number(r.agent_count ?? r.agentCount),
     config_json: pickStr(r, 'config_json', 'configJson'),
     metadata_json: pickStr(r, 'metadata_json', 'metadataJson'),
     dept_lead_agent_id: '',

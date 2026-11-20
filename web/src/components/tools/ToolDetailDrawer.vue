@@ -81,9 +81,14 @@
           {{ policyChip.supports_concurrency.label }}
           <q-tooltip>{{ policyChip.supports_concurrency.tooltip }}</q-tooltip>
         </q-chip>
-        <q-chip dense outline :color="runtimeStatusColor(tool.runtime_status)">{{
-          runtimeStatusLabel(tool.runtime_status)
-        }}</q-chip>
+        <!-- 停用时上面的启用状态已经说了，不再重复一个「禁用」 -->
+        <q-chip
+          v-if="tool.runtime_status !== 'disabled'"
+          dense
+          outline
+          :color="runtimeStatusColor(tool.runtime_status)"
+          >{{ runtimeStatusLabel(tool.runtime_status) }}</q-chip
+        >
       </div>
 
       <q-tabs
@@ -99,6 +104,7 @@
         <q-tab name="overview" :label="t('toolsPage.detail.tabOverview')" />
         <q-tab name="config" :label="t('toolsPage.detail.tabConfig')" />
         <q-tab name="agents" :label="agentTabLabel" />
+        <q-tab name="policy" :label="t('cap.tools.policy.tab')" />
       </q-tabs>
 
       <div class="tool-detail-drawer__body">
@@ -534,6 +540,30 @@
               />
             </template>
           </q-tab-panel>
+
+          <!-- 生效规则：调用这个工具之前要过的每一层，逐层给结论，最后给一句最终结论 -->
+          <q-tab-panel name="policy" class="q-pa-none">
+            <div v-if="policyLoading" class="text-center q-pa-md"><q-spinner-dots size="28px" /></div>
+            <template v-else-if="policyView">
+              <p class="cap-note" :class="{ 'cap-note--info': policyView.final.tone === 'ok' }" role="status">
+                <q-icon name="gavel" size="16px" aria-hidden="true" />
+                <span class="cap-note__body">
+                  <strong>{{ t('cap.tools.policy.final') }}</strong
+                  >{{ policyView.final.label }}
+                </span>
+              </p>
+              <ol class="cap-policy" role="list">
+                <li v-for="(layer, i) in policyView.layers" :key="layer.key" class="cap-policy__row">
+                  <span class="cap-policy__no cap-mono">{{ i + 1 }}</span>
+                  <span class="cap-policy__label">{{ layer.label }}</span>
+                  <span class="cap-policy__verdict">
+                    <i class="cap-dot" :class="`cap-dot--${layer.tone}`" aria-hidden="true" />{{ layer.verdict }}
+                  </span>
+                </li>
+              </ol>
+              <p class="cap-section__hint q-mt-sm">{{ t('cap.tools.policy.order') }}</p>
+            </template>
+          </q-tab-panel>
         </q-tab-panels>
       </div>
     </template>
@@ -585,6 +615,7 @@ import AppStatusChip from '../common/AppStatusChip.vue';
 import ToolDetailConfigPanel from './ToolDetailConfigPanel.vue';
 import ToolJsonBlock from './ToolJsonBlock.vue';
 import ToolOverrideEditorDialog from './ToolOverrideEditorDialog.vue';
+import { toolPolicyLayers, type ToolPolicyInput } from './toolPolicyLayers';
 
 const props = defineProps<{
   open: boolean;
@@ -609,6 +640,8 @@ const props = defineProps<{
   agentBindingError: boolean;
   agentOptions: { label: string; value: string }[];
   agentsLoading: boolean;
+  policy?: ToolPolicyInput | null;
+  policyLoading?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -631,6 +664,7 @@ const emit = defineEmits<{
 }>();
 
 const policyChip = computed(() => toolPolicyChipCopy());
+const policyView = computed(() => (props.tool && props.policy ? toolPolicyLayers(props.tool, props.policy, t) : null));
 
 const { t } = useI18n();
 

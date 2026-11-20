@@ -436,7 +436,7 @@ func (s *MemoryService) ListMemoryFacts(ctx context.Context, req *v1.ListMemoryF
 			out.Items = append(out.Items, f)
 		}
 	}
-	return out, nil
+	return s.withMemoryFootprint(ctx, strings.TrimSpace(req.GetAgentId()) == "" && scopeType == "", out), nil
 }
 
 func (s *MemoryService) ListMemoryEntities(ctx context.Context, req *v1.ListMemoryEntitiesRequest) (*v1.ListMemoryEntitiesResponse, error) {

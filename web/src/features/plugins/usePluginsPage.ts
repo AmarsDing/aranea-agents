@@ -55,7 +55,7 @@ export function usePluginsPage() {
 
   async function loadAgentOptions() {
     try {
-      const agents = await agentsCatalog.fetchAgents({ limit: 200 });
+      const agents = await agentsCatalog.fetchAgents({ limit: 500 }); // shortcut: 后端上限 500；Agent 超过 500 个时改成服务端搜索
       agentOptions.value = agents.map((a) => ({ label: a.display_name || a.agent_key || a.id, value: a.id }));
       agentOptionsFailed = false;
     } catch (reason) {

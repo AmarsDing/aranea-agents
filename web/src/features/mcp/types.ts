@@ -84,6 +84,8 @@ export type McpServerFormValue = {
 export type McpServerRow = PlatformResource & {
   /** 内置/共享服务器（workspace_id=""）：全租户可读，但租户不可编辑/删除/启停。 */
   shared?: boolean;
+  /** 会挂载它的 Agent 数（开了 MCP 且策略放行）；null = 后端没算出来 */
+  agent_count?: number | null;
 };
 
 export type McpServerTestResult = {

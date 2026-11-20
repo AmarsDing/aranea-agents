@@ -38,7 +38,16 @@ export function useToolsPage() {
   const forbidden = ref(false);
   const selected = ref<Tool[]>([]);
 
-  const categoryOptions = categoryFilterOptions;
+  // 分类以库里实际出现的为准（后端 summary.categories 不受分类筛选影响）；旧后端没有这个字段时退回固定表 ∪ 当前页
+  const categoryOptions = computed(() => {
+    const facet = summary.value.categories ?? [];
+    const values = new Set(
+      facet.length ? facet : [...categoryFilterOptions.map((o) => o.value), ...rows.value.map((r) => r.category)],
+    );
+    if (category.value) values.add(category.value);
+    values.delete('');
+    return [...values].sort().map((value) => ({ label: value, value }));
+  });
   const sourceOptions = computed(() => sourceFilterOptions());
   const riskOptions = computed(() => riskLevelOptions());
   const enabledOptions = computed(() => enabledTriStateOptions());
@@ -88,7 +97,11 @@ export function useToolsPage() {
       .then((fetched) => {
         const cur = detailStore.tool;
         if (cur && (cur.id === fetched.id || cur.key === fetched.key)) {
-          detailStore.updateTool(fetched);
+          // 「能用的 Agent 数」只有列表接口批量算，单个详情里没有：沿用列表行上的值
+          detailStore.updateTool({
+            ...fetched,
+            allowed_agent_count: fetched.allowed_agent_count ?? cur.allowed_agent_count,
+          });
         }
       })
       .catch(() => {});

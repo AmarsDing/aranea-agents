@@ -129,16 +129,6 @@ func bizToolToProto(t biz.Tool) *v1.Tool {
 	return out
 }
 
-func bizSummaryToProto(s biz.ToolSummary) *v1.ToolSummary {
-	return &v1.ToolSummary{
-		TotalTools:      int32(s.TotalTools),
-		EnabledTools:    int32(s.EnabledTools),
-		HighRiskEnabled: int32(s.HighRiskEnabled),
-		Calls_24H:       int32(s.Calls24h),
-		FailureRate_24H: s.FailureRate24h,
-	}
-}
-
 func bizInvocationToProto(x biz.ToolInvocation) *v1.ToolInvocation {
 	return &v1.ToolInvocation{
 		Id:               x.ID,
@@ -203,6 +193,7 @@ func (s *ToolService) ListTools(ctx context.Context, req *v1.ListToolsRequest) (
 	for i := range result.Items {
 		items = append(items, bizToolToProto(result.Items[i]))
 	}
+	attachToolAgentCounts(ctx, s.agents, items)
 	return &v1.ListToolsResponse{
 		Items:    items,
 		Total:    int32(result.Total),

@@ -6,8 +6,129 @@
     :columns="SKILL_TABLE_COLUMNS"
     :loading="loading"
     :pagination="tablePagination"
+    :total="total"
     hide-pagination
   >
+    <!-- 卡片视图：构件卡。整卡进技能详情；草稿的主操作是「发布」，其余收在「更多」里 -->
+    <template #item="card">
+      <CapCard
+        icon="school"
+        :code="card.row.slug"
+        :title="card.row.name"
+        :description="card.row.description"
+        :status="skillStatus(card.row, t)"
+        :facts="skillFacts(card.row, t)"
+        :tags="skillTags(card.row)"
+        @open="router.push({ name: 'skill-detail', params: { skillId: card.row.id } })"
+      >
+        <template #switch>
+          <q-toggle
+            dense
+            color="primary"
+            :model-value="card.row.enabled"
+            :disable="
+              !card.row.permissions.can_toggle_enabled ||
+              card.row.status !== 'published' ||
+              togglingId === card.row.id
+            "
+            :aria-label="card.row.enabled ? t('cap.common.batchDisable') : t('cap.common.batchEnable')"
+            @update:model-value="emit('toggle-enabled', card.row, Boolean($event))"
+          >
+            <q-tooltip v-if="card.row.status !== 'published'">{{ t('cap.skills.publishFirst') }}</q-tooltip>
+          </q-toggle>
+        </template>
+        <template #relation>{{ skillRelation(card.row, t, formatRelativeTime) }}</template>
+        <template #actions>
+          <q-btn
+            v-if="card.row.status === 'draft'"
+            flat
+            dense
+            no-caps
+            size="sm"
+            color="primary"
+            icon="rocket_launch"
+            :label="t('cap.skills.publish')"
+            :disable="!card.row.permissions.can_edit"
+            :loading="publishingId === card.row.id"
+            @click="emit('publish', card.row)"
+          />
+          <q-btn
+            v-else
+            flat
+            dense
+            no-caps
+            size="sm"
+            color="primary"
+            icon="folder_open"
+            :label="t('cap.skills.editFiles')"
+            :disable="!card.row.permissions.can_edit"
+            @click="emit('edit-files', card.row)"
+          />
+          <q-btn flat dense round size="sm" icon="more_horiz" :aria-label="t('cap.common.more')">
+            <q-menu anchor="bottom right" self="top right">
+              <q-list dense class="cap-menu">
+                <q-item
+                  v-close-popup
+                  clickable
+                  :disable="!card.row.permissions.can_edit"
+                  @click="emit('edit-meta', card.row)"
+                >
+                  <q-item-section avatar><q-icon name="edit" size="18px" /></q-item-section>
+                  <q-item-section>{{ t('cap.skills.editMeta') }}</q-item-section>
+                </q-item>
+                <q-item
+                  v-if="card.row.status === 'draft'"
+                  v-close-popup
+                  clickable
+                  :disable="!card.row.permissions.can_edit"
+                  @click="emit('edit-files', card.row)"
+                >
+                  <q-item-section avatar><q-icon name="folder_open" size="18px" /></q-item-section>
+                  <q-item-section>{{ t('cap.skills.editFiles') }}</q-item-section>
+                </q-item>
+                <q-item
+                  v-close-popup
+                  clickable
+                  :disable="duplicatingId === card.row.id"
+                  @click="emit('duplicate', card.row)"
+                >
+                  <q-item-section avatar><q-icon name="content_copy" size="18px" /></q-item-section>
+                  <q-item-section>{{ t('cap.skills.duplicate') }}</q-item-section>
+                </q-item>
+                <q-item clickable :to="{ path: '/skills/experience-reports', query: { skill_id: card.row.id } }">
+                  <q-item-section avatar><q-icon name="assessment" size="18px" /></q-item-section>
+                  <q-item-section>{{ t('cap.skills.reports') }}</q-item-section>
+                </q-item>
+                <q-item
+                  v-if="card.row.status === 'published'"
+                  v-close-popup
+                  clickable
+                  :disable="!card.row.permissions.can_edit || ecosystemPublishBtn(card.row).disabled"
+                  @click="emit('publish-ecosystem', card.row)"
+                >
+                  <q-item-section avatar
+                    ><q-icon :name="ecosystemPublishBtn(card.row).icon" size="18px"
+                  /></q-item-section>
+                  <q-item-section>{{ ecosystemPublishBtn(card.row).tooltip }}</q-item-section>
+                </q-item>
+                <q-separator />
+                <q-item
+                  v-close-popup
+                  clickable
+                  class="text-negative"
+                  :disable="!card.row.permissions.can_delete"
+                  @click="emit('delete', card.row)"
+                >
+                  <q-item-section avatar><q-icon name="delete" size="18px" /></q-item-section>
+                  <q-item-section>{{ t('cap.common.remove') }}</q-item-section>
+                </q-item>
+              </q-list>
+            </q-menu>
+          </q-btn>
+        </template>
+      </CapCard>
+    </template>
+
     <template #body-cell-name="props">
       <q-td :props="props">
         <AppRegistryHoverTip :text="props.row.description" empty-label="暂无描述">
@@ -26,7 +147,11 @@
     <template #body-cell-tags="props">
       <q-td :props="props">
         <div class="app-registry-chip-wrap skill-tags-cell">
-          <span v-for="group in groupSkillTags(props.row.tags)" :key="group.dimension || '__plain'" class="skill-tag-group">
+          <span
+            v-for="group in groupSkillTags(props.row.tags)"
+            :key="group.dimension || '__plain'"
+            class="skill-tag-group"
+          >
             <span v-if="group.dimension" class="skill-tag-group__dim">{{ group.dimension }}</span>
             <span
               v-for="tag in group.tags"
@@ -104,7 +229,9 @@
     <template #body-cell-last="props">
       <q-td :props="props">
         <template v-if="props.row.last_invoked_at">
-          <div class="app-registry-cell-primary">{{ props.row.last_agent_display_name || t('skillsPage.unknownAgent') }}</div>
+          <div class="app-registry-cell-primary">
+            {{ props.row.last_agent_display_name || t('skillsPage.unknownAgent') }}
+          </div>
           <div class="text-caption text-grey-7">
             {{ formatRelativeTime(props.row.last_invoked_at) }}
             <q-tooltip>{{ formatDate(props.row.last_invoked_at) }}</q-tooltip>
@@ -210,8 +337,11 @@
 
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n';
+import { useRouter } from 'vue-router';
 import AppRegistryTable from '../layout/AppRegistryTable.vue';
 import AppRegistryHoverTip from '../layout/AppRegistryHoverTip.vue';
+import CapCard from '../capability/CapCard.vue';
+import { skillFacts, skillRelation, skillStatus, skillTags } from './skillCapCard';
 import AppStatusChip from '../common/AppStatusChip.vue';
 import SkillStatsHoverChart from './SkillStatsHoverChart.vue';
 import type { Skill, SkillHealthMetric, SkillTag } from '../../features/skills/types';
@@ -231,7 +361,11 @@ const props = defineProps<{
   ecosystemPublishState: (skill: Skill) => 'published' | 'failed' | 'unpublished';
   /** 懒加载单行健康数据（统计悬浮图形面板用，store 方法经 Page 注入） */
   loadHealth: (skillId: string) => Promise<SkillHealthMetric>;
+  /** 服务端总条数（视图条上的计数） */
+  total?: number;
 }>();
+
+const router = useRouter();
 
 const emit = defineEmits<{
   'toggle-enabled': [skill: Skill, enabled: boolean];
@@ -251,7 +385,12 @@ const tablePagination = { rowsPerPage: 0 };
 function ecosystemPublishBtn(skill: Skill): { icon: string; color: string; tooltip: string; disabled: boolean } {
   const state = props.ecosystemPublishState(skill);
   if (state === 'published') {
-    return { icon: 'cloud_done', color: 'positive', tooltip: t('skillsPage.ecosystemPublishedTooltip'), disabled: true };
+    return {
+      icon: 'cloud_done',
+      color: 'positive',
+      tooltip: t('skillsPage.ecosystemPublishedTooltip'),
+      disabled: true,
+    };
   }
   if (state === 'failed') {
     return {

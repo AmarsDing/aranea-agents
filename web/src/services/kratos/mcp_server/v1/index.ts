@@ -19,6 +19,8 @@ export type MCPServer = {
   // all workspaces but read-only for tenant callers (no real workspace ID is
   // exposed to avoid leaking tenant topology).
   shared: boolean | undefined;
+  // 会挂载这个服务器的 Agent 数（开了 mcp_tool_set / mcp_broker 且策略放行；列表接口批量算，未计算时缺省）
+  agentCount?: number;
 };
 
 // ListMCPServersRequest carries server-side pagination + search params.

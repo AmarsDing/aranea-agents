@@ -1,24 +1,17 @@
 <template>
-  <q-page class="app-standard-page app-registry-page evolution-suggestion-page">
-    <AppPageHero
-      kicker="Skill intelligence"
-      :title="$t('evolutionSuggestionsPage.pageTitle')"
-      :subtitle="$t('evolutionSuggestionsPage.pageSubtitle')"
-    >
-      <template #actions>
-        <q-btn
-          color="primary"
-          unelevated
-          rounded
-          no-caps
-          icon="auto_fix_high"
-          :label="$t('evolutionSuggestionsPage.triggerCurator')"
-          :loading="triggeringCurator"
-          @click="handleTriggerCurator(targetId)"
-        />
-      </template>
-    </AppPageHero>
-
+  <q-page class="app-standard-page cap-page app-registry-page evolution-suggestion-page">
+    <Teleport defer to="#app-tab-actions">
+      <q-btn
+        unelevated
+        dense
+        no-caps
+        color="primary"
+        icon="auto_fix_high"
+        :label="$t('evolutionSuggestionsPage.triggerCurator')"
+        :loading="triggeringCurator"
+        @click="handleTriggerCurator(targetId)"
+      />
+    </Teleport>
     <AppPageToolbar>
       <q-btn-toggle
         v-model="targetType"
@@ -104,9 +97,7 @@
       v-else-if="!loading && !error && !forbidden && rows.length === 0"
       variant="empty"
       :title="
-        targetId || status
-          ? $t('evolutionSuggestionsPage.emptyFiltered')
-          : $t('evolutionSuggestionsPage.emptyDefault')
+        targetId || status ? $t('evolutionSuggestionsPage.emptyFiltered') : $t('evolutionSuggestionsPage.emptyDefault')
       "
       :description="
         targetId || status
@@ -286,7 +277,6 @@
 <script setup lang="ts">
 import AppDialog from '../components/common/AppDialog.vue';
 import AppStatePanel from '../components/common/AppStatePanel.vue';
-import AppPageHero from '../components/layout/AppPageHero.vue';
 import AppPageToolbar from '../components/layout/AppPageToolbar.vue';
 import AppRegistryTable from '../components/layout/AppRegistryTable.vue';
 import AppRegistryPagination from '../components/layout/AppRegistryPagination.vue';

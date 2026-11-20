@@ -1,0 +1,886 @@
+// Harness › 能力 六个目录页（工具 / 技能 / 插件 / MCP / 编码工具 / 记忆）：类名 cap- 前缀，取值只走 --nt-* 令牌。
+// 版面：页签行右边放操作（#app-tab-actions）→ 一条关键数 → 一条筛选 → 构件卡网格（或表格）→ 右侧检视抽屉。
+// 设计：docs/aranea-agents/design/2026-11-17-三大模块重设计/04-Harness系统.md 第 5、8 节；01 第 5、7 节。
+@import "./_nt-tokens.css"
+
+// ——— 页面骨架 ———
+html body .cap-page
+  display: flex
+  flex-direction: column
+  gap: var(--nt-space-3)
+  // 底部给页面正中的指令半圆按钮留位
+  padding: var(--nt-space-4) var(--nt-space-page) max(var(--nt-space-6), var(--app-dock-space, 0px))
+  color: var(--nt-text-1)
+  font-size: var(--nt-fs-body)
+
+  // 旧页头组件在本页不出现；万一残留也不占位
+  .app-page-hero
+    display: none
+
+.cap-mono
+  font-family: var(--nt-font-mono)
+  font-variant-numeric: tabular-nums
+
+// ——— 语气色：状态词表（01 第 4 节） ———
+.cap-tone--ok
+  --cap-tone: var(--nt-success)
+
+.cap-tone--watch
+  --cap-tone: var(--nt-warn)
+
+.cap-tone--alert
+  --cap-tone: var(--nt-danger)
+
+.cap-tone--pending
+  --cap-tone: var(--nt-info)
+
+.cap-tone--running
+  --cap-tone: var(--nt-run, var(--nt-info))
+
+.cap-tone--off
+  --cap-tone: var(--nt-text-3)
+
+// ——— 状态点 ———
+.cap-dot
+  display: inline-block
+  flex: none
+  width: 8px
+  height: 8px
+  border-radius: var(--nt-radius-pill)
+  background: var(--nt-text-3)
+
+.cap-dot--ok
+  background: var(--nt-success)
+
+.cap-dot--watch
+  background: var(--nt-warn)
+
+.cap-dot--alert
+  background: var(--nt-danger)
+
+.cap-dot--pending
+  background: var(--nt-info)
+
+.cap-dot--running
+  background: var(--nt-run, var(--nt-info))
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--nt-run, var(--nt-info)) 25%, transparent)
+
+.cap-dot--off
+  background: var(--nt-text-3)
+
+// ——— 关键数条 ———
+.cap-stats
+  display: flex
+  flex-wrap: wrap
+  gap: 0
+  margin: 0
+  background: var(--nt-glass-panel, var(--nt-bg-1))
+  border: 1px solid var(--nt-border-1)
+  border-radius: var(--nt-radius-l)
+  overflow: hidden
+
+.cap-stats__item
+  display: flex
+  flex: 1 1 140px
+  flex-direction: column
+  gap: 2px
+  min-width: 0
+  margin: 0
+  padding: var(--nt-space-3) var(--nt-space-4)
+  background: none
+  border: 0
+  border-right: 1px solid var(--nt-border-1)
+  color: inherit
+  font: inherit
+  text-align: left
+
+  &:last-child
+    border-right: 0
+
+  &:is(button)
+    cursor: pointer
+    transition: background var(--nt-transition)
+
+    &:hover
+      background: var(--nt-tile-hover, var(--nt-accent-soft))
+
+    &:focus-visible
+      outline: 2px solid var(--nt-focus-ring)
+      outline-offset: -2px
+
+.cap-stats__item--active
+  background: var(--nt-accent-soft)
+  box-shadow: inset 0 -2px 0 var(--nt-accent)
+
+.cap-stats__value
+  color: var(--cap-tone, var(--nt-text-0))
+  font-family: var(--nt-font-mono)
+  font-size: var(--nt-fs-num-lg)
+  font-variant-numeric: tabular-nums
+  font-weight: 600
+  line-height: 1.15
+
+.cap-stats__label
+  overflow: hidden
+  color: var(--nt-text-2)
+  font-size: var(--nt-fs-caption)
+  text-overflow: ellipsis
+  white-space: nowrap
+
+// ——— 筛选条：搜索 + 下拉 + 快捷开关，一行；窄屏换行 ———
+.cap-bar
+  display: flex
+  flex-wrap: wrap
+  align-items: center
+  gap: var(--nt-space-2)
+
+  .q-field
+    flex: 0 1 160px
+    min-width: 128px
+
+  .cap-bar__search
+    flex: 1 1 240px
+    max-width: 360px
+
+  .q-field--dense .q-field__control
+    min-height: 34px
+
+.cap-bar__spacer
+  flex: 1
+
+.cap-bar__meta
+  color: var(--nt-text-2)
+  font-size: var(--nt-fs-caption)
+  white-space: nowrap
+
+// 一组互斥的快捷筛选（全部 / 已启用 / 停用 …）
+.cap-seg
+  display: inline-flex
+  gap: 2px
+  padding: 2px
+  background: var(--nt-data-inset)
+  border: 1px solid var(--nt-border-1)
+  border-radius: var(--nt-radius-pill)
+
+  button
+    min-height: 28px
+    padding: 0 var(--nt-space-3)
+    background: none
+    border: 0
+    border-radius: var(--nt-radius-pill)
+    color: var(--nt-text-2)
+    font: inherit
+    font-size: var(--nt-fs-caption)
+    cursor: pointer
+    white-space: nowrap
+
+    &:hover
+      color: var(--nt-text-0)
+
+    &[aria-pressed='true']
+      background: var(--nt-accent-soft)
+      color: var(--nt-accent)
+
+    &:focus-visible
+      outline: 2px solid var(--nt-focus-ring)
+      outline-offset: 1px
+
+// ——— 构件卡 ———
+.cap-grid
+  display: grid
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr))
+  gap: var(--nt-space-3)
+
+.cap-card
+  position: relative
+  display: flex
+  flex-direction: column
+  gap: var(--nt-space-2)
+  height: 100%
+  min-width: 0
+  padding: var(--nt-space-3) var(--nt-space-4)
+  background: var(--nt-glass-panel, var(--nt-bg-1))
+  border: 1px solid var(--nt-border-1)
+  border-radius: var(--nt-radius-l)
+  cursor: pointer
+  outline: none
+  transition: border-color var(--nt-transition), box-shadow var(--nt-transition), transform var(--nt-transition)
+
+  &:hover
+    border-color: var(--nt-accent-border)
+    box-shadow: var(--nt-glow-soft)
+    transform: translateY(-1px)
+
+  &:focus-visible
+    border-color: var(--nt-accent-border)
+    box-shadow: 0 0 0 2px var(--nt-focus-ring)
+
+.cap-card--selected
+  background: linear-gradient(180deg, var(--nt-accent-soft), transparent 70%), var(--nt-glass-panel, var(--nt-bg-1))
+  border-color: var(--nt-accent-border)
+
+// 停用的对象整体退后一档，仍可点开
+.cap-card--off
+  .cap-card__title,
+  .cap-card__icon
+    opacity: 0.62
+
+.cap-card__head
+  display: flex
+  align-items: center
+  gap: var(--nt-space-2)
+  min-width: 0
+  min-height: 28px
+
+.cap-card__check
+  margin-left: calc(var(--nt-space-2) * -1)
+
+.cap-card__icon
+  display: inline-flex
+  flex: none
+  align-items: center
+  justify-content: center
+  width: 28px
+  height: 28px
+  overflow: hidden
+  background: var(--nt-accent-soft)
+  border: 1px solid var(--nt-accent-border)
+  border-radius: var(--nt-radius-m)
+  color: var(--nt-accent)
+
+  img
+    width: 100%
+    height: 100%
+    object-fit: cover
+
+// emoji 图标（Agent 自带的 icon）：系统 emoji 字体，不染色
+.cap-card__glyph
+  font-size: 16px
+  line-height: 1
+
+.cap-card__code
+  flex: 1
+  min-width: 0
+  overflow: hidden
+  color: var(--nt-text-2)
+  font-family: var(--nt-font-mono)
+  font-size: var(--nt-fs-caption)
+  text-overflow: ellipsis
+  white-space: nowrap
+
+.cap-card__status
+  display: inline-flex
+  flex: none
+  align-items: center
+  gap: 6px
+  color: var(--nt-text-1)
+  font-size: var(--nt-fs-caption)
+  white-space: nowrap
+
+.cap-card__switch
+  display: inline-flex
+  flex: none
+  margin-right: calc(var(--nt-space-2) * -1)
+
+.cap-card__title
+  margin: 0
+  overflow: hidden
+  color: var(--nt-text-0)
+  font-size: var(--nt-fs-title)
+  font-weight: 600
+  line-height: 1.35
+  text-overflow: ellipsis
+  white-space: nowrap
+
+.cap-card__desc
+  display: -webkit-box
+  min-height: calc(var(--nt-fs-body) * 1.5 * 2)
+  margin: 0
+  overflow: hidden
+  color: var(--nt-text-2)
+  font-size: var(--nt-fs-body)
+  line-height: 1.5
+  -webkit-box-orient: vertical
+  -webkit-line-clamp: 2
+
+.cap-card__desc--empty
+  color: var(--nt-text-3)
+  font-style: italic
+
+.cap-card__facts
+  display: grid
+  grid-template-columns: repeat(3, minmax(0, 1fr))
+  gap: var(--nt-space-2)
+  margin: 0
+  padding: var(--nt-space-2) 0 0
+  border-top: 1px solid var(--nt-border-1)
+
+.cap-card__fact
+  min-width: 0
+
+  dt
+    overflow: hidden
+    color: var(--nt-text-3)
+    font-size: var(--nt-fs-micro)
+    text-overflow: ellipsis
+    white-space: nowrap
+
+  dd
+    margin: 0
+    overflow: hidden
+    color: var(--cap-tone, var(--nt-text-0))
+    font-family: var(--nt-font-mono)
+    font-size: var(--nt-fs-body)
+    font-variant-numeric: tabular-nums
+    font-weight: 600
+    text-overflow: ellipsis
+    white-space: nowrap
+
+.cap-card__tags
+  display: flex
+  flex-wrap: wrap
+  gap: 4px
+  margin: 0
+  padding: 0
+  list-style: none
+
+.cap-tag
+  display: inline-flex
+  align-items: center
+  max-width: 100%
+  min-height: 20px
+  padding: 0 var(--nt-space-2)
+  overflow: hidden
+  background: var(--nt-tile-bg, var(--nt-bg-2))
+  border: 1px solid var(--nt-border-1)
+  border-radius: var(--nt-radius-pill)
+  color: var(--nt-text-2)
+  font-size: var(--nt-fs-micro)
+  text-overflow: ellipsis
+  white-space: nowrap
+
+.cap-tag--watch
+  border-color: color-mix(in srgb, var(--nt-warn) 45%, transparent)
+  color: var(--nt-warn)
+
+.cap-tag--alert
+  border-color: color-mix(in srgb, var(--nt-danger) 45%, transparent)
+  color: var(--nt-danger)
+
+.cap-tag--ok
+  border-color: color-mix(in srgb, var(--nt-success) 45%, transparent)
+  color: var(--nt-success)
+
+.cap-tag--pending
+  border-color: color-mix(in srgb, var(--nt-info) 45%, transparent)
+  color: var(--nt-info)
+
+.cap-tag--ai
+  border-color: color-mix(in srgb, var(--nt-ai) 45%, transparent)
+  color: var(--nt-ai)
+
+.cap-card__foot
+  display: flex
+  align-items: center
+  gap: var(--nt-space-2)
+  min-height: 32px
+  margin-top: auto
+  padding-top: var(--nt-space-2)
+  border-top: 1px solid var(--nt-border-1)
+
+.cap-card__relation
+  flex: 1
+  min-width: 0
+  overflow: hidden
+  color: var(--nt-text-2)
+  font-size: var(--nt-fs-caption)
+  text-overflow: ellipsis
+  white-space: nowrap
+
+.cap-card__actions
+  display: inline-flex
+  flex: none
+  align-items: center
+  gap: 2px
+
+// 卡片「更多」菜单里的小标题
+.cap-menu__header
+  padding-top: var(--nt-space-2)
+  padding-bottom: var(--nt-space-1)
+  color: var(--nt-text-3)
+  font-size: var(--nt-fs-micro)
+
+// ——— 构件卡放进 AppRegistryTable 的卡片视图时：网格由表格外壳给，卡片自己撑满格子 ———
+.cap-page .app-registry-table--cards .q-table__grid-content
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr))
+
+// ——— 批量操作坞：勾选后出现在页面底部正中，取消勾选后消失 ———
+.cap-dock
+  position: sticky
+  bottom: max(var(--nt-space-4), var(--app-dock-space, 0px))
+  z-index: 5
+  display: flex
+  align-self: center
+  align-items: center
+  gap: var(--nt-space-2)
+  padding: var(--nt-space-2) var(--nt-space-3)
+  background: var(--nt-bg-2)
+  border: 1px solid var(--nt-accent-border)
+  border-radius: var(--nt-radius-pill)
+  box-shadow: var(--nt-shadow-depth)
+
+.cap-dock__count
+  padding: 0 var(--nt-space-2)
+  color: var(--nt-text-0)
+  font-size: var(--nt-fs-caption)
+  font-weight: 600
+
+// ——— 分区：编码工具的项目目录、记忆的子面板等 ———
+.cap-section
+  display: flex
+  flex-direction: column
+  gap: var(--nt-space-3)
+  padding: var(--nt-space-4)
+  background: var(--nt-glass-panel, var(--nt-bg-1))
+  border: 1px solid var(--nt-border-1)
+  border-radius: var(--nt-radius-l)
+
+.cap-section__head
+  display: flex
+  align-items: center
+  gap: var(--nt-space-3)
+  min-width: 0
+
+.cap-section__title
+  margin: 0
+  color: var(--nt-text-0)
+  font-size: var(--nt-fs-title)
+  font-weight: 600
+
+.cap-section__hint
+  flex: 1
+  min-width: 0
+  margin: 0
+  color: var(--nt-text-2)
+  font-size: var(--nt-fs-caption)
+
+.cap-section__text
+  flex: 1
+  min-width: 0
+
+// 空态引导：几种起步方式并排，每格一个图标 + 名称 + 一句说明 + 动作
+.cap-ways
+  display: grid
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr))
+  gap: var(--nt-space-3)
+  margin: 0
+  padding: 0
+  list-style: none
+
+  li
+    display: flex
+    flex-direction: column
+    align-items: flex-start
+    gap: var(--nt-space-2)
+    padding: var(--nt-space-3) var(--nt-space-4)
+    background: var(--nt-tile-bg, var(--nt-bg-2))
+    border: 1px solid var(--nt-border-1)
+    border-radius: var(--nt-radius-m)
+
+    > .q-icon
+      color: var(--nt-accent)
+
+    // 只管直接子元素：按钮内部也有 span，不能被染灰
+    > strong
+      color: var(--nt-text-0)
+      font-size: var(--nt-fs-body)
+
+    > span
+      flex: 1
+      color: var(--nt-text-2)
+      font-size: var(--nt-fs-caption)
+      line-height: 1.5
+
+.cap-ways__path
+  max-width: 100%
+  padding: 2px var(--nt-space-2)
+  overflow-wrap: anywhere
+  background: var(--nt-data-inset)
+  border-radius: var(--nt-radius-s)
+  color: var(--nt-text-1)
+  font-size: var(--nt-fs-caption)
+
+// 「更多筛选」弹层：几项次要筛选竖排
+.cap-filter-menu
+  display: flex
+  flex-direction: column
+  gap: var(--nt-space-3)
+  width: 260px
+  padding: var(--nt-space-3)
+
+.cap-filter-menu__row
+  display: flex
+  align-items: center
+  gap: var(--nt-space-2)
+
+  .q-field
+    flex: 1
+
+// ——— 边界说明（琥珀左边线，诚实声明）：01 第 5 节 BoundaryNote ———
+.cap-note
+  display: flex
+  align-items: flex-start
+  gap: var(--nt-space-2)
+  margin: 0
+  padding: var(--nt-space-2) var(--nt-space-3)
+  background: color-mix(in srgb, var(--nt-warn) 8%, transparent)
+  border-left: 2px solid var(--nt-warn)
+  border-radius: var(--nt-radius-s)
+  color: var(--nt-text-1)
+  font-size: var(--nt-fs-caption)
+  line-height: 1.5
+
+  .q-icon
+    flex: none
+    margin-top: 1px
+    color: var(--nt-warn)
+
+  .cap-note__body
+    flex: 1
+    min-width: 0
+
+// 说明条里的逐条列项
+.cap-note__item
+  display: list-item
+  margin-left: var(--nt-space-4)
+  list-style: disc
+
+.cap-note--info
+  background: color-mix(in srgb, var(--nt-info) 8%, transparent)
+  border-left-color: var(--nt-info)
+
+  .q-icon
+    color: var(--nt-info)
+
+// 失败原因（卡片里的探测错误等）：粉红边线，文字最多三行
+.cap-note--alert
+  background: color-mix(in srgb, var(--nt-danger) 8%, transparent)
+  border-left-color: var(--nt-danger)
+
+  .q-icon
+    color: var(--nt-danger)
+
+  .cap-note__body
+    display: -webkit-box
+    overflow: hidden
+    overflow-wrap: anywhere
+    -webkit-box-orient: vertical
+    -webkit-line-clamp: 3
+
+// ——— 行列表：编码工具的项目目录等「一行一个」的小清单 ———
+.cap-rows
+  display: flex
+  flex-direction: column
+  margin: 0
+  padding: 0
+  list-style: none
+
+.cap-row
+  display: flex
+  align-items: center
+  gap: var(--nt-space-3)
+  min-height: 52px
+  padding: var(--nt-space-2) var(--nt-space-1)
+  border-bottom: 1px solid var(--nt-border-1)
+
+  &:last-child
+    border-bottom: 0
+
+.cap-row__icon
+  flex: none
+  color: var(--nt-warn)
+
+.cap-row__main
+  display: flex
+  flex: 1
+  flex-wrap: wrap
+  align-items: baseline
+  gap: 2px var(--nt-space-3)
+  min-width: 0
+
+.cap-row__title
+  color: var(--nt-text-0)
+  font-weight: 600
+
+.cap-row__sub
+  min-width: 0
+  overflow: hidden
+  color: var(--nt-text-2)
+  font-size: var(--nt-fs-caption)
+  text-overflow: ellipsis
+  white-space: nowrap
+
+.cap-row__desc
+  flex-basis: 100%
+  color: var(--nt-text-3)
+  font-size: var(--nt-fs-caption)
+
+// ——— 记忆：左侧视图栏 + 右侧内容 ———
+html body .mem-agent-pick
+  width: 240px
+
+.mem-shell
+  display: grid
+  grid-template-columns: 232px minmax(0, 1fr)
+  gap: var(--nt-space-4)
+  align-items: start
+
+.mem-rail
+  position: sticky
+  top: var(--nt-space-3)
+  display: flex
+  flex-direction: column
+  gap: 2px
+  padding: var(--nt-space-2)
+  background: var(--nt-glass-panel, var(--nt-bg-1))
+  border: 1px solid var(--nt-border-1)
+  border-radius: var(--nt-radius-l)
+
+.mem-rail__item
+  display: flex
+  align-items: flex-start
+  gap: var(--nt-space-2)
+  width: 100%
+  padding: var(--nt-space-2) var(--nt-space-3)
+  background: none
+  border: 1px solid transparent
+  border-radius: var(--nt-radius-m)
+  color: var(--nt-text-2)
+  font: inherit
+  text-align: left
+  cursor: pointer
+  transition: background var(--nt-transition), color var(--nt-transition)
+
+  > .q-icon
+    flex: none
+    margin-top: 2px
+
+  &:hover
+    background: var(--nt-tile-hover, var(--nt-accent-soft))
+    color: var(--nt-text-0)
+
+  &:focus-visible
+    outline: 2px solid var(--nt-focus-ring)
+    outline-offset: 1px
+
+.mem-rail__item--active
+  background: var(--nt-accent-soft)
+  border-color: var(--nt-accent-border)
+  color: var(--nt-text-0)
+
+  > .q-icon
+    color: var(--nt-accent)
+
+.mem-rail__text
+  display: flex
+  flex: 1
+  flex-direction: column
+  min-width: 0
+
+.mem-rail__label
+  font-size: var(--nt-fs-body)
+  font-weight: 600
+
+.mem-rail__desc
+  color: var(--nt-text-3)
+  font-size: var(--nt-fs-micro)
+  line-height: 1.4
+
+.mem-rail__count,
+.mem-seg-count
+  flex: none
+  min-width: 20px
+  padding: 0 6px
+  background: color-mix(in srgb, var(--nt-warn) 18%, transparent)
+  border-radius: var(--nt-radius-pill)
+  color: var(--nt-warn)
+  font-family: var(--nt-font-mono)
+  font-size: var(--nt-fs-micro)
+  font-variant-numeric: tabular-nums
+  line-height: 20px
+  text-align: center
+
+.mem-seg-count
+  margin-left: 6px
+  display: inline-block
+
+// 小块清单：运行台终端可用性等
+.cap-chips
+  display: flex
+  flex-wrap: wrap
+  gap: var(--nt-space-2)
+  margin: 0
+  padding: 0
+  list-style: none
+
+.cap-chip
+  display: inline-flex
+  align-items: center
+  gap: var(--nt-space-2)
+  min-height: 32px
+  padding: 0 var(--nt-space-3)
+  background: var(--nt-tile-bg, var(--nt-bg-2))
+  border: 1px solid var(--nt-border-1)
+  border-radius: var(--nt-radius-pill)
+  color: var(--nt-text-0)
+  font-size: var(--nt-fs-caption)
+
+  code
+    color: var(--nt-text-2)
+
+.cap-chip--off
+  color: var(--nt-text-2)
+
+.cap-chip__state
+  color: var(--nt-text-3)
+
+.cap-policy
+  display: flex
+  flex-direction: column
+  margin: var(--nt-space-3) 0 0
+  padding: 0
+  list-style: none
+
+.cap-policy__row
+  display: grid
+  grid-template-columns: 24px minmax(0, 1fr) minmax(0, 1.4fr)
+  align-items: center
+  gap: var(--nt-space-2)
+  min-height: 40px
+  padding: var(--nt-space-2) 0
+  border-bottom: 1px solid var(--nt-border-1)
+
+.cap-policy__no
+  color: var(--nt-text-3)
+  font-size: var(--nt-fs-caption)
+
+.cap-policy__label
+  color: var(--nt-text-1)
+  font-size: var(--nt-fs-body)
+
+.cap-policy__verdict
+  display: inline-flex
+  align-items: center
+  gap: 6px
+  color: var(--nt-text-0)
+  font-size: var(--nt-fs-caption)
+
+.mem-foot
+  display: flex
+  flex-direction: column
+  gap: 2px
+  margin-top: var(--nt-space-2)
+  padding: var(--nt-space-2) var(--nt-space-2) 0
+  border-top: 1px solid var(--nt-border-1)
+
+.mem-foot__title
+  margin: 0 0 var(--nt-space-1)
+  color: var(--nt-text-3)
+  font-size: var(--nt-fs-micro)
+  font-weight: 600
+
+.mem-foot__row
+  display: flex
+  align-items: center
+  gap: var(--nt-space-2)
+  padding: 4px var(--nt-space-2)
+  background: none
+  border: 0
+  border-radius: var(--nt-radius-s)
+  color: var(--nt-text-1)
+  font: inherit
+  font-size: var(--nt-fs-caption)
+  text-align: left
+  cursor: pointer
+
+  &:hover,
+  &[aria-pressed='true']
+    background: var(--nt-accent-soft)
+    color: var(--nt-text-0)
+
+  &:focus-visible
+    outline: 2px solid var(--nt-focus-ring)
+
+.mem-foot__name
+  flex: 1
+  min-width: 0
+  overflow: hidden
+  text-overflow: ellipsis
+  white-space: nowrap
+
+.mem-foot__empty,
+.mem-foot__unowned
+  margin: 0
+  padding: 2px var(--nt-space-2)
+  color: var(--nt-text-3)
+  font-size: var(--nt-fs-micro)
+
+.mem-main
+  display: flex
+  flex-direction: column
+  gap: var(--nt-space-3)
+  min-width: 0
+
+  .memory-panels
+    background: transparent
+
+  .memory-panels .q-tab-panel
+    padding: 0
+
+.mem-gov-bar
+  display: flex
+  align-items: center
+  margin-bottom: var(--nt-space-3)
+
+.mem-ops-grid
+  display: grid
+  grid-template-columns: repeat(2, minmax(0, 1fr))
+  gap: var(--nt-space-3)
+  align-items: start
+
+.mem-ops-grid__wide
+  grid-column: 1 / -1
+
+@media (max-width: 1099px)
+  .mem-shell
+    grid-template-columns: minmax(0, 1fr)
+
+  .mem-rail
+    position: static
+    flex-direction: row
+    overflow-x: auto
+
+  .mem-rail__item
+    flex: none
+    width: auto
+
+  .mem-rail__desc
+    display: none
+
+  .mem-ops-grid
+    grid-template-columns: minmax(0, 1fr)
+
+// ——— 窄屏 ———
+@media (max-width: 799px)
+  html body .cap-page
+    padding-right: var(--nt-space-3)
+    padding-left: var(--nt-space-3)
+
+  .cap-stats__item
+    flex-basis: 50%
+    border-bottom: 1px solid var(--nt-border-1)
+
+  .cap-bar .q-field,
+  .cap-bar .cap-bar__search
+    flex: 1 1 100%
+    max-width: none

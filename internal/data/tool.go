@@ -247,7 +247,7 @@ func (r *toolRepo) computeToolSummary(ctx context.Context, client *ent.Client, q
 		s.FailureRate24h = float64(failed24h+blocked24h) / float64(s.Calls24h)
 	}
 	_ = success24h // already accounted for in Calls24h
-	return s, nil
+	return r.withSummaryFacets(ctx, client, q.WorkspaceID, s)
 }
 
 func (r *toolRepo) SearchTools(ctx context.Context, q biz.ToolListQuery) (biz.ToolListResult, error) {

@@ -25,7 +25,10 @@ export function useToolToggle(onChanged: () => void | Promise<void>) {
         await toolsStore.toggle(tool.id || tool.key, value, 'I_UNDERSTAND_RISK');
         await onChanged();
       } catch (err) {
-        $q.notify({ type: 'negative', message: parseKratosApiError(err).message || t('toolsPage.toggle.actionFailed') });
+        $q.notify({
+          type: 'negative',
+          message: parseKratosApiError(err).message || t('toolsPage.toggle.actionFailed'),
+        });
       } finally {
         busyId.value = '';
       }

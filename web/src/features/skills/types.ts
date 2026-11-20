@@ -66,6 +66,8 @@ export type Skill = {
   sync_origin?: 'filesystem' | 'import' | 'manual' | string;
   visibility?: string;
   default_config_json?: string;
+  /** 能看见它的 Agent 数（按各 Agent 的技能白名单 / 黑名单）；null = 后端没算出来 */
+  visible_agent_count?: number | null;
 };
 
 export type SkillFilesystemHealth = {

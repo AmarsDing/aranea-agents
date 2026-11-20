@@ -1,32 +1,9 @@
 <template>
-  <q-page class="app-standard-page app-registry-page plugin-runs-page">
-    <AppPageHero
-      :kicker="t('pluginsPage.runs.kicker')"
-      :title="t('pluginsPage.runs.title')"
-      :subtitle="t('pluginsPage.runs.subtitle')"
-    >
-      <template #actions>
-        <q-btn
-          outline
-          rounded
-          no-caps
-          color="primary"
-          icon="rule"
-          :label="t('pluginsPage.runs.btnHookRules')"
-          to="/hooks"
-        />
-        <q-btn
-          outline
-          rounded
-          no-caps
-          color="primary"
-          icon="arrow_back"
-          :label="t('pluginsPage.runs.btnPlugins')"
-          to="/plugins"
-        />
-      </template>
-    </AppPageHero>
-
+  <q-page class="app-standard-page cap-page app-registry-page plugin-runs-page">
+    <!-- 插件本身在子页签里；这里只留跳到 Hook 规则（拦截规则在运行与治理里配） -->
+    <Teleport defer to="#app-tab-actions">
+      <q-btn flat dense no-caps icon="rule" :label="t('pluginsPage.runs.btnHookRules')" to="/hooks" />
+    </Teleport>
     <AppPageToolbar>
       <q-select
         v-model="pluginKey"
@@ -155,7 +132,14 @@
         @action="() => loadRows()"
       />
 
-      <AppRegistryTable :rows="rows" :columns="columns" row-key="id" :loading="loading" hide-pagination :pagination="{ rowsPerPage: 0 }">
+      <AppRegistryTable
+        :rows="rows"
+        :columns="columns"
+        row-key="id"
+        :loading="loading"
+        hide-pagination
+        :pagination="{ rowsPerPage: 0 }"
+      >
         <template #body-cell-plugin_key="props">
           <q-td :props="props">
             <div class="row items-center no-wrap q-gutter-xs">
@@ -207,7 +191,6 @@
 import { computed } from 'vue';
 import { Dialog } from 'quasar';
 import { useI18n } from 'vue-i18n';
-import AppPageHero from '../components/layout/AppPageHero.vue';
 import AppPageToolbar from '../components/layout/AppPageToolbar.vue';
 import AppRegistryTable from '../components/layout/AppRegistryTable.vue';
 import AppRegistryHoverTip from '../components/layout/AppRegistryHoverTip.vue';

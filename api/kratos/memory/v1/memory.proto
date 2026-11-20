@@ -157,6 +157,21 @@ message ListMemoryFactsResponse {
   // filtered_count matches the returned items' caliber (same WHERE including
   // the status filter, default 'active') — the server-side pagination total.
   int32 filtered_count = 7;
+  // 平台视角，只在不带 agent_id、不限作用域的管理员查询时返回：各 Agent 名下的记忆量（前 20）
+  repeated MemoryAgentFootprint agent_footprints = 8;
+  // 同上：不属于任何 Agent 的有效事实，按作用域计
+  repeated MemoryScopeFactCount unowned_scopes = 9;
+}
+
+message MemoryAgentFootprint {
+  string agent_id = 1;
+  int32 facts = 2;
+  int32 episodes = 3;
+}
+
+message MemoryScopeFactCount {
+  string scope_type = 1;
+  int32 facts = 2;
 }
 
 message ListConflictingFactsRequest {

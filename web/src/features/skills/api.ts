@@ -100,6 +100,8 @@ function mapSkill(row: unknown): Skill {
     sync_origin: s('sync_origin', 'syncOrigin') || undefined,
     visibility: s('visibility', 'visibility') || '',
     default_config_json: s('default_config_json', 'defaultConfigJson') || '',
+    visible_agent_count:
+      (r.visible_agent_count ?? r.visibleAgentCount) == null ? null : n('visible_agent_count', 'visibleAgentCount'),
   };
 }
 

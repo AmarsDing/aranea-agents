@@ -40,7 +40,9 @@ type MCPServer struct {
 	// Derived from workspace_id == "": shared/system built-in server, readable by
 	// all workspaces but read-only for tenant callers (no real workspace ID is
 	// exposed to avoid leaking tenant topology).
-	Shared        bool `protobuf:"varint,13,opt,name=shared,proto3" json:"shared,omitempty"`
+	Shared bool `protobuf:"varint,13,opt,name=shared,proto3" json:"shared,omitempty"`
+	// 会挂载这个服务器的 Agent 数（开了 mcp_tool_set / mcp_broker 且策略放行；列表接口批量算，未计算时缺省）
+	AgentCount    *int32 `protobuf:"varint,14,opt,name=agent_count,json=agentCount,proto3,oneof" json:"agent_count,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -164,6 +166,13 @@ func (x *MCPServer) GetShared() bool {
 		return x.Shared
 	}
 	return false
+}
+
+func (x *MCPServer) GetAgentCount() int32 {
+	if x != nil && x.AgentCount != nil {
+		return *x.AgentCount
+	}
+	return 0
 }
 
 // ListMCPServersRequest carries server-side pagination + search params.
@@ -1176,7 +1185,7 @@ var File_kratos_mcp_server_v1_mcp_server_proto protoreflect.FileDescriptor
 
 const file_kratos_mcp_server_v1_mcp_server_proto_rawDesc = "" +
 	"\n" +
-	"%kratos/mcp_server/v1/mcp_server.proto\x12\x14kratos.mcp_server.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x1bgoogle/protobuf/empty.proto\"\xef\x02\n" +
+	"%kratos/mcp_server/v1/mcp_server.proto\x12\x14kratos.mcp_server.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x1bgoogle/protobuf/empty.proto\"\xa5\x03\n" +
 	"\tMCPServer\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x10\n" +
 	"\x03key\x18\x02 \x01(\tR\x03key\x12\x12\n" +
@@ -1196,7 +1205,10 @@ const file_kratos_mcp_server_v1_mcp_server_proto_rawDesc = "" +
 	"updated_at\x18\v \x01(\tR\tupdatedAt\x12\x1d\n" +
 	"\n" +
 	"deleted_at\x18\f \x01(\tR\tdeletedAt\x12\x16\n" +
-	"\x06shared\x18\r \x01(\bR\x06shared\"`\n" +
+	"\x06shared\x18\r \x01(\bR\x06shared\x12$\n" +
+	"\vagent_count\x18\x0e \x01(\x05H\x00R\n" +
+	"agentCount\x88\x01\x01B\x0e\n" +
+	"\f_agent_count\"`\n" +
 	"\x15ListMCPServersRequest\x12\x12\n" +
 	"\x04page\x18\x01 \x01(\x05R\x04page\x12\x1b\n" +
 	"\tpage_size\x18\x02 \x01(\x05R\bpageSize\x12\x16\n" +
@@ -1358,6 +1370,7 @@ func file_kratos_mcp_server_v1_mcp_server_proto_init() {
 	if File_kratos_mcp_server_v1_mcp_server_proto != nil {
 		return
 	}
+	file_kratos_mcp_server_v1_mcp_server_proto_msgTypes[0].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{

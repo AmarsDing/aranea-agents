@@ -1,23 +1,5 @@
 <template>
-  <q-page class="app-standard-page tool-audits-page">
-    <tool-hero-section
-      :kicker="$t('toolsPage.auditsPage.kicker')"
-      :title="$t('toolsPage.auditsPage.title')"
-      :subtitle="$t('toolsPage.auditsPage.subtitle')"
-    >
-      <template #actions>
-        <q-btn
-          outline
-          rounded
-          no-caps
-          class="tool-audits-outline-btn"
-          icon="arrow_back"
-          :label="$t('toolsPage.auditsPage.back')"
-          :to="{ name: 'tools' }"
-        />
-      </template>
-    </tool-hero-section>
-
+  <q-page class="app-standard-page cap-page tool-audits-page">
     <tool-audits-filters
       :tool-key="toolKey"
       :agent-id="agentId"
@@ -87,7 +69,6 @@ import AppRegistryPagination from '../components/layout/AppRegistryPagination.vu
 import AppStatePanel from '../components/common/AppStatePanel.vue';
 import ToolAuditsFilters from '../components/tools/ToolAuditsFilters.vue';
 import ToolAuditsTable from '../components/tools/ToolAuditsTable.vue';
-import ToolHeroSection from '../components/tools/ToolHeroSection.vue';
 import { useToolAuditsPage } from '../features/tools/useToolAuditsPage';
 import { resolvePageState } from './pageState';
 

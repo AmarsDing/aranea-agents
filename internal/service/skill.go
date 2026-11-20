@@ -224,7 +224,7 @@ func (s *SkillService) ListSkills(ctx context.Context, req *v1.ListSkillsRequest
 	for i := range result.Items {
 		resp.Items = append(resp.Items, toProtoSkill(result.Items[i]))
 	}
-	return resp, nil
+	return withSkillAgentCounts(ctx, s.agentUC, resp), nil
 }
 
 func (s *SkillService) ToggleSkillEnabled(ctx context.Context, req *v1.ToggleSkillEnabledRequest) (*v1.Skill, error) {

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"strings"
 
+	"aranea-agents/internal/tools/deferred"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -51,10 +52,15 @@ func webResearchPlatformFieldsPtr(s *WebResearchSetting) *WebResearchPlatformFie
 }
 
 // Runtime status values (see 23 tools.design.md).
+// 只用于展示：管理页据此告诉人「这个工具 Agent 现在能不能用、为什么不能」。
 const (
 	RuntimeStatusAvailable      = "available"
 	RuntimeStatusRegisteredOnly = "registered_only"
 	RuntimeStatusDisabled       = "disabled"
+	// RuntimeStatusSessionBound 有实现，但要在 Agent 会话 / 任务里才装配（记忆、知识、技能、工作记忆等）
+	RuntimeStatusSessionBound = "session_bound"
+	// RuntimeStatusNeedsConfig 有实现，但缺必要配置（API Key、模型等），配好前 Agent 调不到
+	RuntimeStatusNeedsConfig = "needs_config"
 )
 
 // Catalog runtime_kind values.
@@ -73,6 +79,9 @@ var registryBackedToolKeys = map[string]struct{}{
 	"google_search": {}, "arxiv_search": {}, "wikipedia_search": {},
 	"send_email": {}, "todo_write": {}, "await_user_reply": {},
 	"claude_code": {},
+	// 以下按 internal/tools/trpc/effective_config.go 的开关装配（目录键 → 运行时工具集）
+	ToolKeyKanban: {}, ToolKeyCredential: {}, ToolKeyCalendar: {}, ToolKeyMail: {}, ToolKeyMailTask: {},
+	"coding_dispatch_task": {}, "coding_check_task": {}, "coding_cancel_task": {},
 }
 
 // spiritOrchestrationToolKeys are orchestration tools injected via CustomTools path
@@ -94,6 +103,8 @@ var sessionBoundToolKeys = map[string]struct{}{
 	"mcp_tool_set": {}, ToolKeyMCPBroker: {},
 	"memory_search": {}, "memory_get": {},
 	"skill_search": {}, "use_skill": {},
+	// 框架记忆编辑工具：由 internal/agent/memory_edit_inject.go 按会话注入
+	"memory_insert": {}, "memory_rethink": {}, "memory_replace": {},
 	// subagents_* require SubAgentService wired at runtime (cfg.SubAgent && cfg.SubAgentService != nil).
 	"subagents_spawn": {}, "subagents_list": {}, "subagents_get": {}, "subagents_cancel": {},
 }
@@ -133,7 +144,11 @@ func toolRuntimeStatus(t Tool, platform *WebResearchSetting, readiness WebResear
 		return RuntimeStatusDisabled
 	}
 	if _, sessionOnly := sessionBoundToolKeys[t.Key]; sessionOnly {
-		return RuntimeStatusRegisteredOnly
+		return RuntimeStatusSessionBound
+	}
+	// 工作记忆工具要有当前任务上下文（目录键是下划线写法 working_memory_read 等；旧写法带点）
+	if strings.HasPrefix(t.Key, "working_memory_") || strings.HasPrefix(t.Key, "working_memory.") {
+		return RuntimeStatusSessionBound
 	}
 	src := strings.ToLower(strings.TrimSpace(t.Source))
 	if src == "mcp" {
@@ -146,7 +161,7 @@ func toolRuntimeStatus(t Tool, platform *WebResearchSetting, readiness WebResear
 		return RuntimeStatusAvailable
 	}
 	if !toolConfigReady(t, platform, readiness) {
-		return RuntimeStatusRegisteredOnly
+		return RuntimeStatusNeedsConfig
 	}
 	if _, ok := spiritOrchestrationToolKeys[t.Key]; ok {
 		return RuntimeStatusAvailable
@@ -154,7 +169,8 @@ func toolRuntimeStatus(t Tool, platform *WebResearchSetting, readiness WebResear
 	if _, ok := registryBackedToolKeys[t.Key]; ok {
 		return RuntimeStatusAvailable
 	}
-	if strings.HasPrefix(t.Key, "working_memory.") {
+	// deferred 映射表只收「Registry 里有 Factory / ToolSetFactory」的工具，在表里即有运行时实现
+	if len(deferred.RegistryNamesForBizKeys([]string{t.Key})) > 0 {
 		return RuntimeStatusAvailable
 	}
 	return RuntimeStatusRegisteredOnly

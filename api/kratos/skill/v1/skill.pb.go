@@ -600,6 +600,8 @@ type Skill struct {
 	// system | workspace | agent | private | public
 	Visibility        string `protobuf:"bytes,24,opt,name=visibility,proto3" json:"visibility,omitempty"`
 	DefaultConfigJson string `protobuf:"bytes,25,opt,name=default_config_json,json=defaultConfigJson,proto3" json:"default_config_json,omitempty"`
+	// 能看见这个技能的 Agent 数（按各 Agent 的技能白名单 / 黑名单；列表接口批量算，未计算时缺省）
+	VisibleAgentCount *int32 `protobuf:"varint,26,opt,name=visible_agent_count,json=visibleAgentCount,proto3,oneof" json:"visible_agent_count,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
@@ -807,6 +809,13 @@ func (x *Skill) GetDefaultConfigJson() string {
 		return x.DefaultConfigJson
 	}
 	return ""
+}
+
+func (x *Skill) GetVisibleAgentCount() int32 {
+	if x != nil && x.VisibleAgentCount != nil {
+		return *x.VisibleAgentCount
+	}
+	return 0
 }
 
 type SkillFilesystemHealth struct {
@@ -4122,7 +4131,7 @@ const file_kratos_skill_v1_skill_proto_rawDesc = "" +
 	"\n" +
 	"can_delete\x18\x02 \x01(\bR\tcanDelete\x12,\n" +
 	"\x12can_toggle_enabled\x18\x03 \x01(\bR\x10canToggleEnabled\x12#\n" +
-	"\rcan_duplicate\x18\x04 \x01(\bR\fcanDuplicate\"\xc6\a\n" +
+	"\rcan_duplicate\x18\x04 \x01(\bR\fcanDuplicate\"\x93\b\n" +
 	"\x05Skill\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x12\n" +
@@ -4154,7 +4163,9 @@ const file_kratos_skill_v1_skill_proto_rawDesc = "" +
 	"\n" +
 	"visibility\x18\x18 \x01(\tR\n" +
 	"visibility\x12.\n" +
-	"\x13default_config_json\x18\x19 \x01(\tR\x11defaultConfigJson\"\xc4\x01\n" +
+	"\x13default_config_json\x18\x19 \x01(\tR\x11defaultConfigJson\x123\n" +
+	"\x13visible_agent_count\x18\x1a \x01(\x05H\x00R\x11visibleAgentCount\x88\x01\x01B\x16\n" +
+	"\x14_visible_agent_count\"\xc4\x01\n" +
 	"\x15SkillFilesystemHealth\x12'\n" +
 	"\x0froot_accessible\x18\x01 \x01(\bR\x0erootAccessible\x12#\n" +
 	"\rresolved_root\x18\x02 \x01(\tR\fresolvedRoot\x12#\n" +
@@ -4635,6 +4646,7 @@ func file_kratos_skill_v1_skill_proto_init() {
 	if File_kratos_skill_v1_skill_proto != nil {
 		return
 	}
+	file_kratos_skill_v1_skill_proto_msgTypes[10].OneofWrappers = []any{}
 	file_kratos_skill_v1_skill_proto_msgTypes[30].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{

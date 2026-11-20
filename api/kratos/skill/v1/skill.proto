@@ -95,6 +95,8 @@ message Skill {
   // system | workspace | agent | private | public
   string visibility = 24;
   string default_config_json = 25;
+  // 能看见这个技能的 Agent 数（按各 Agent 的技能白名单 / 黑名单；列表接口批量算，未计算时缺省）
+  optional int32 visible_agent_count = 26;
 }
 
 message SkillFilesystemHealth {

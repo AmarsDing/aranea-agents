@@ -39,6 +39,8 @@ export type Tool = {
   created_at: string;
   updated_at: string;
   permissions: ToolPermissions;
+  /** 当前能用它的 Agent 数；null = 后端没算出来 */
+  allowed_agent_count?: number | null;
 };
 
 export type ToolUpsertInput = {
@@ -67,6 +69,10 @@ export type ToolSummary = {
   high_risk_enabled: number;
   calls_24h: number;
   failure_rate_24h: number;
+  /** 可见范围内出现过的分类（不受筛选影响）；旧后端没有时为空数组 */
+  categories?: string[];
+  /** 近 7 天至少被调用过一次的工具数 */
+  used_tools_7d?: number;
 };
 
 export type ToolListQuery = {

@@ -1,25 +1,5 @@
 <template>
-  <q-page class="app-standard-page app-registry-page experience-report-list-page">
-    <AppPageHero
-      kicker="Skill intelligence"
-      title="经验报告"
-      subtitle="查看 Skill 执行后的经验报告，包括成功/失败、评分、失败标签与流程摘要。"
-    >
-      <template #actions>
-        <q-btn outline rounded no-caps color="primary" icon="arrow_back" label="返回 Skill 管理" to="/skills" />
-        <q-btn
-          color="primary"
-          unelevated
-          rounded
-          no-caps
-          icon="refresh"
-          label="刷新"
-          :loading="loading"
-          @click="loadRows"
-        />
-      </template>
-    </AppPageHero>
-
+  <q-page class="app-standard-page cap-page app-registry-page experience-report-list-page">
     <AppPageToolbar>
       <q-input
         v-model="skillId"
@@ -81,9 +61,7 @@
       v-else-if="!loading && !error && !forbidden && rows.length === 0"
       variant="empty"
       :title="hasActiveFilters ? '没有匹配的经验报告' : '暂无经验报告'"
-      :description="
-        hasActiveFilters ? '请调整筛选条件后重试。' : 'Skill 执行后将自动生成经验报告，可在此查看。'
-      "
+      :description="hasActiveFilters ? '请调整筛选条件后重试。' : 'Skill 执行后将自动生成经验报告，可在此查看。'"
       icon="assessment"
     />
 
@@ -114,7 +92,6 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { useRoute } from 'vue-router';
-import AppPageHero from '../components/layout/AppPageHero.vue';
 import AppPageToolbar from '../components/layout/AppPageToolbar.vue';
 import AppStatePanel from '../components/common/AppStatePanel.vue';
 import SkillPagination from '../components/skills/SkillPagination.vue';

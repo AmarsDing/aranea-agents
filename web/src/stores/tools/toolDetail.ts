@@ -7,6 +7,9 @@ import {
   type ToolAgentBindingSummary,
 } from '../../features/tools/toolAgentBindingSummary';
 import { toolToUpsertInput } from '../../features/tools/toolFormPatch';
+import { countToolParamRules } from '../../features/tools/api';
+import { listPlugins } from '../../features/plugins/api';
+import type { ToolPolicyInput } from '../../components/tools/toolPolicyLayers';
 import { i18n } from '../../i18n';
 import type { Tool, ToolAgentOverride, ToolInvocation, ToolTestResult } from '../../features/tools/types';
 
@@ -114,7 +117,42 @@ export const useToolDetailStore = defineStore('toolDetail', () => {
     }
   }
 
+  // 「生效规则」页签：确认守卫 / 权限守卫两个插件的启用与配置 + 这个工具的参数规则条数
+  const policy = ref<ToolPolicyInput | null>(null);
+  const policyLoading = ref(false);
+  const policyLoaded = ref(false);
+
+  async function loadPolicy() {
+    const key = toolKey();
+    if (!key) return;
+    policyLoading.value = true;
+    try {
+      const [plugins, rules] = await Promise.all([
+        listPlugins({ page_size: 100 }).catch(() => null),
+        countToolParamRules(key).catch(() => null),
+      ]);
+      const pick = (k: string) => {
+        const p = plugins?.items.find((x) => x.key === k);
+        return p
+          ? { enabled: p.enabled, config_json: p.config_json, default_config_json: p.default_config_json }
+          : null;
+      };
+      policy.value = {
+        confirmationGuard: pick('confirmation_guard'),
+        permissionGuard: pick('permission_guard'),
+        paramRuleCount: rules,
+      };
+    } finally {
+      policyLoading.value = false;
+    }
+  }
+
   function ensureTabData(tab: string) {
+    if (tab === 'policy' && !policyLoaded.value) {
+      policyLoaded.value = true;
+      void loadPolicy();
+      return;
+    }
     if (tab === 'overview' && !runsLoaded.value) {
       runsLoaded.value = true;
       void loadRecentRuns();
@@ -128,6 +166,8 @@ export const useToolDetailStore = defineStore('toolDetail', () => {
 
   function resetDetailState() {
     runsLoaded.value = false;
+    policyLoaded.value = false;
+    policy.value = null;
     agentsTabLoaded.value = false;
     overrides.value = [];
     recentRuns.value = [];
@@ -198,7 +238,7 @@ export const useToolDetailStore = defineStore('toolDetail', () => {
     if (agentOptions.value.length > 0) return;
     agentsLoading.value = true;
     try {
-      const agents = await agentsCatalog.fetchAgents({ limit: 200 });
+      const agents = await agentsCatalog.fetchAgents({ limit: 500 }); // shortcut: 后端上限 500；Agent 超过 500 个时改成服务端搜索
       agentOptions.value = agents.map((a) => ({
         label: a.display_name || a.agent_key || a.id,
         value: a.id,
@@ -319,6 +359,8 @@ export const useToolDetailStore = defineStore('toolDetail', () => {
     agentBindingError,
     agentOptions,
     agentsLoading,
+    policy,
+    policyLoading,
     openDetail,
     updateTool,
     closeDetail,

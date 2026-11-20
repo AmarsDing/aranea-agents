@@ -1,23 +1,5 @@
 <template>
-  <q-page class="app-standard-page app-registry-page skill-runs-page">
-    <AppPageHero
-      kicker="Skill observability"
-      :title="t('shell.runs.skillTitle')"
-      :subtitle="t('shell.runs.skillSubtitle')"
-    >
-      <template #actions>
-        <q-btn
-          outline
-          rounded
-          no-caps
-          color="primary"
-          icon="arrow_back"
-          :label="t('shell.runs.backToSkills')"
-          to="/skills"
-        />
-      </template>
-    </AppPageHero>
-
+  <q-page class="app-standard-page cap-page app-registry-page skill-runs-page">
     <AppPageToolbar>
       <q-input
         v-model="skillId"
@@ -109,14 +91,7 @@
     <!-- 五态：首屏加载无数据 → 骨架面板 -->
     <AppStatePanel v-else-if="loading && rows.length === 0" variant="loading" :rows="4" />
 
-    <skill-runs-table
-      v-else
-      :rows="rows"
-      :loading="loading"
-      :error="error"
-      @retry="loadRows"
-      @reset="resetFilters"
-    />
+    <skill-runs-table v-else :rows="rows" :loading="loading" :error="error" @retry="loadRows" @reset="resetFilters" />
 
     <AppRegistryPagination
       v-if="rows.length > 0"
@@ -132,7 +107,6 @@
 
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n';
-import AppPageHero from '../components/layout/AppPageHero.vue';
 import AppPageToolbar from '../components/layout/AppPageToolbar.vue';
 import AppStatePanel from '../components/common/AppStatePanel.vue';
 import AppRegistryPagination from '../components/layout/AppRegistryPagination.vue';

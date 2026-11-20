@@ -42,11 +42,7 @@
             :key="check.key"
             class="tool-editor-aside__check row items-center q-gutter-xs"
           >
-            <q-icon
-              :name="check.ok ? 'check_circle' : 'error'"
-              :color="check.ok ? 'positive' : 'warning'"
-              size="xs"
-            />
+            <q-icon :name="check.ok ? 'check_circle' : 'error'" :color="check.ok ? 'positive' : 'warning'" size="xs" />
             <span class="text-caption">{{ check.label }}</span>
           </div>
         </div>
@@ -54,11 +50,7 @@
         <div v-if="editingId && diffLines.length" class="tool-editor-aside__diff">
           <div class="tool-editor-aside__nav-title">{{ t('toolsPage.editor.diffTitle') }}</div>
           <div class="tool-editor-aside__diff-list">
-            <div
-              v-for="(line, i) in diffLines.slice(0, 6)"
-              :key="i"
-              class="tool-editor-aside__diff-line text-caption"
-            >
+            <div v-for="(line, i) in diffLines.slice(0, 6)" :key="i" class="tool-editor-aside__diff-line text-caption">
               {{ line }}
             </div>
             <div v-if="diffLines.length > 6" class="text-caption text-grey">
@@ -200,8 +192,7 @@
                   <p class="tool-editor-section__desc">{{ t('toolsPage.editor.paramsDesc') }}</p>
                   <p class="tool-editor-section__desc-detail">
                     <strong>{{ t('toolsPage.editor.paramsWhen') }}</strong
-                    >{{ t('toolsPage.editor.paramsWhenText') }}
-                    <strong>{{ t('toolsPage.editor.paramsAfter') }}</strong
+                    >{{ t('toolsPage.editor.paramsWhenText') }} <strong>{{ t('toolsPage.editor.paramsAfter') }}</strong
                     >{{ t('toolsPage.editor.paramsAfterText') }}
                   </p>
                 </div>
@@ -239,8 +230,7 @@
                   </p>
                   <p class="tool-editor-section__desc-detail">
                     <strong>{{ t('toolsPage.editor.configWhen') }}</strong
-                    >{{ t('toolsPage.editor.configWhenText') }}
-                    <strong>{{ t('toolsPage.editor.configAfter') }}</strong
+                    >{{ t('toolsPage.editor.configWhenText') }} <strong>{{ t('toolsPage.editor.configAfter') }}</strong
                     >{{ t('toolsPage.editor.configAfterText') }}
                   </p>
                 </div>
@@ -386,7 +376,6 @@
             </section>
           </div>
         </div>
-
       </main>
     </div>
 

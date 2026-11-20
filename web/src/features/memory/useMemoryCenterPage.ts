@@ -13,6 +13,8 @@ import { useMemoryCenterFacts } from './useMemoryCenterFacts';
 import { useMemoryCenterSessionMemory } from './useMemoryCenterSessionMemory';
 import { useMemoryCenterTrust } from './useMemoryCenterTrust';
 import { isForbiddenApiError } from '../../utils/kratosError';
+import { getMemoryFootprint } from './api';
+import { EMPTY_FOOTPRINT, pickDefaultAgent, type MemoryFootprint } from './memoryFootprint';
 
 export function useMemoryCenterPage() {
   const { t } = useI18n();
@@ -142,17 +144,29 @@ export function useMemoryCenterPage() {
     }
   }
 
+  /** 平台视角：哪些 Agent 有记忆（只有管理员拿得到，拿不到就是空表） */
+  const footprint = ref<MemoryFootprint>(EMPTY_FOOTPRINT);
+
   async function loadAgents() {
     loadingAgents.value = true;
     try {
-      agents.value = await agentsCatalog.fetchAgents({ limit: 200 });
+      const [list, fp] = await Promise.all([
+        agentsCatalog.fetchAgents({ limit: 500 }), // shortcut: 后端上限 500；Agent 超过 500 个时改成服务端搜索
+        getMemoryFootprint().catch(() => EMPTY_FOOTPRINT),
+      ]);
+      agents.value = list;
+      footprint.value = fp;
       if (pendingAgentKey.value) {
         const matched = agents.value.find((agent) => agent.agent_key === pendingAgentKey.value);
         if (matched) selectedAgentId.value = matched.id;
         pendingAgentKey.value = null;
       }
-      if (!selectedAgentId.value && agents.value.length) {
-        selectedAgentId.value = agents.value[0].id;
+      // 默认选记忆最多的 Agent；列表第一个往往什么都没有
+      if (!selectedAgentId.value) {
+        selectedAgentId.value = pickDefaultAgent(
+          agents.value.map((a) => a.id),
+          footprint.value,
+        );
       }
     } finally {
       loadingAgents.value = false;
@@ -229,6 +243,7 @@ export function useMemoryCenterPage() {
     loadingSnapshots: sessionMemory.loadingSnapshots,
     loadingTasks: sessionMemory.loadingTasks,
     agentOptions,
+    footprint,
     sessionRows: sessions,
     factRows: facts.facts,
     snapshotRows: sessionMemory.snapshots,

@@ -139,7 +139,11 @@ export function toolCreateTemplates(): ToolCreateTemplate[] {
             type: 'object',
             properties: {
               base_url: { type: 'string', title: t('toolsPage.copy.templates.restQuery.baseUrlTitle') },
-              timeout_sec: { type: 'integer', title: t('toolsPage.copy.templates.restQuery.timeoutTitle'), default: 30 },
+              timeout_sec: {
+                type: 'integer',
+                title: t('toolsPage.copy.templates.restQuery.timeoutTitle'),
+                default: 30,
+              },
             },
           },
           null,
@@ -159,7 +163,11 @@ export function toolCreateTemplates(): ToolCreateTemplate[] {
         source: 'external',
         risk_level: 'medium',
         parameters_schema_json: '{}',
-        metadata_json: JSON.stringify({ kind: 'openapi', openapi_spec_url: 'https://example.com/openapi.json' }, null, 2),
+        metadata_json: JSON.stringify(
+          { kind: 'openapi', openapi_spec_url: 'https://example.com/openapi.json' },
+          null,
+          2,
+        ),
       },
     },
   ];

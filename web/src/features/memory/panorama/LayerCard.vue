@@ -9,7 +9,12 @@
           <span class="layer-card__key">{{ stat.layer }}</span>
         </div>
       </div>
+      <!-- 这一层还没有任何数据时不说「健康」：没东西可判断 -->
+      <q-chip v-if="!stat.item_count" dense square outline color="grey-6" class="layer-card__health">
+        {{ t('cap.memory.noData') }}
+      </q-chip>
       <q-chip
+        v-else
         dense
         square
         :color="stat.health === 'ok' ? 'positive' : 'warning'"

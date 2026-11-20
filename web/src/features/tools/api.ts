@@ -93,6 +93,7 @@ function kratosToolToLegacy(t: KratosTool): Tool {
     created_at: t.createdAt ?? '',
     updated_at: t.updatedAt ?? '',
     permissions: { can_manage: Boolean(t.permissions?.canManage) },
+    allowed_agent_count: t.allowedAgentCount ?? null,
   };
 }
 
@@ -103,6 +104,8 @@ function kratosSummaryToLegacy(s?: KratosSummary) {
     high_risk_enabled: s?.highRiskEnabled ?? 0,
     calls_24h: s?.calls24h ?? 0,
     failure_rate_24h: s?.failureRate24h ?? 0,
+    categories: s?.categories ?? [],
+    used_tools_7d: s?.usedTools7d ?? 0,
   };
 }
 
@@ -420,4 +423,10 @@ export async function listToolInvocationAudits(
     page_size: data.pageSize ?? query.page_size ?? 20,
     total: data.total ?? items.length,
   };
+}
+
+/** 某工具配了几条参数规则（命中时拦截或要求确认）；生效规则页用 */
+export async function countToolParamRules(toolKey: string): Promise<number> {
+  const res = await toolApi.ListToolParamRules({ toolKey });
+  return res.items?.length ?? 0;
 }

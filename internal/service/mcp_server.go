@@ -247,7 +247,7 @@ func (s *MCPServerService) ListMCPServers(ctx context.Context, req *v1.ListMCPSe
 		for i := range result.Items {
 			resp.Items = append(resp.Items, toProtoMCP(result.Items[i]))
 		}
-		return resp, nil
+		return withMCPAgentCounts(ctx, s.agents, resp), nil
 	}
 	items, err := s.uc.List(ctx, q)
 	if err != nil {
@@ -263,7 +263,7 @@ func (s *MCPServerService) ListMCPServers(ctx context.Context, req *v1.ListMCPSe
 	for i := range items {
 		resp.Items = append(resp.Items, toProtoMCP(items[i]))
 	}
-	return resp, nil
+	return withMCPAgentCounts(ctx, s.agents, resp), nil
 }
 
 // usageSummary 计算 MCP 采纳汇总（使用方数量），供管理页提示「配置了但无 Agent 使用」。

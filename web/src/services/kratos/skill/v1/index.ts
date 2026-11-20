@@ -87,6 +87,8 @@ export type Skill = {
   // system | workspace | agent | private | public
   visibility: string | undefined;
   defaultConfigJson: string | undefined;
+  // 能看见这个技能的 Agent 数（按各 Agent 的技能白名单 / 黑名单；列表接口批量算，未计算时缺省）
+  visibleAgentCount?: number;
 };
 
 export type SkillFilesystemHealth = {

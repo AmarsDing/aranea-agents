@@ -1,23 +1,5 @@
 <template>
-  <q-page class="app-standard-page tool-runs-page">
-    <tool-hero-section
-      :kicker="$t('toolsPage.runsPage.kicker')"
-      :title="$t('toolsPage.runsPage.title')"
-      :subtitle="$t('toolsPage.runsPage.subtitle')"
-    >
-      <template #actions>
-        <q-btn
-          outline
-          rounded
-          no-caps
-          class="app-outline-btn"
-          icon="arrow_back"
-          :label="$t('toolsPage.runsPage.back')"
-          :to="{ name: 'tools' }"
-        />
-      </template>
-    </tool-hero-section>
-
+  <q-page class="app-standard-page cap-page tool-runs-page">
     <tool-runs-filters
       :tool-key="toolKey"
       :agent-id="agentId"
@@ -98,7 +80,6 @@
 import { computed } from 'vue';
 import AppRegistryPagination from '../components/layout/AppRegistryPagination.vue';
 import AppStatePanel from '../components/common/AppStatePanel.vue';
-import ToolHeroSection from '../components/tools/ToolHeroSection.vue';
 import ToolRunsFilters from '../components/tools/ToolRunsFilters.vue';
 import ToolRunsTable from '../components/tools/ToolRunsTable.vue';
 import ToolRunDetailDialog from '../components/tools/ToolRunDetailDialog.vue';

@@ -1,28 +1,59 @@
 <template>
-  <q-page class="app-standard-page memory-page">
-    <memory-hero
-      v-model:selected-agent-id="selectedAgentId"
-      :agent-options="agentOptions"
-      :loading="loading"
-      @refresh="loadAll"
-    />
+  <q-page class="app-standard-page cap-page memory-page">
+    <!-- 看谁的记忆：Agent 选择器放在页签行右边；Agent 多，支持输入过滤 -->
+    <Teleport defer to="#app-tab-actions">
+      <q-select
+        :model-value="selectedAgentId"
+        class="mem-agent-pick"
+        dense
+        outlined
+        clearable
+        emit-value
+        map-options
+        use-input
+        hide-selected
+        fill-input
+        input-debounce="0"
+        options-dense
+        :placeholder="selectedAgentId ? '' : t('cap.memory.pickAgent')"
+        :aria-label="t('cap.memory.pickAgent')"
+        :options="agentPickOptions"
+        @filter="onAgentFilter"
+        @update:model-value="selectedAgentId = $event as string | null"
+      >
+        <template #prepend><q-icon name="smart_toy" size="18px" /></template>
+        <template #no-option>
+          <q-item dense>
+            <q-item-section class="text-caption">{{ t('cap.memory.noAgentMatch') }}</q-item-section>
+          </q-item>
+        </template>
+      </q-select>
+      <q-btn
+        flat
+        dense
+        round
+        icon="refresh"
+        :title="t('cap.common.refresh')"
+        :aria-label="t('cap.common.refresh')"
+        :loading="loading"
+        @click="loadAll"
+      />
+    </Teleport>
 
     <AppStatePanel
       v-if="pageState === 'error'"
-      class="q-mb-md"
       variant="error"
       :description="error"
       :action-label="t('memory.error.retry')"
       action-icon="refresh"
       @action="loadAll"
     />
-    <AppStatePanel v-else-if="pageState === 'forbidden'" class="q-mb-md" variant="forbidden" />
+    <AppStatePanel v-else-if="pageState === 'forbidden'" variant="forbidden" />
     <AppStatePanel v-else-if="pageState === 'loading'" variant="loading" :rows="5" />
 
     <template v-else>
       <AppStatePanel
         v-if="pageState === 'partial'"
-        class="q-mb-md"
         variant="partial"
         dense
         :description="error"
@@ -30,163 +61,221 @@
         action-icon="refresh"
         @action="loadAll"
       />
-      <!-- 空态不遮面板：治理/运维 Tab 不依赖会话与事实列表。 -->
-      <AppStatePanel v-else-if="pageState === 'empty'" class="q-mb-md" variant="empty" dense />
 
-    <q-card flat class="memory-tabs-card">
-      <q-tabs
-        v-model="tab"
-        align="left"
-        active-color="primary"
-        indicator-color="primary"
-        no-caps
-        outside-arrows
-        mobile-arrows
-      >
-        <q-tab name="panorama" icon="dashboard" :label="t('memory.tabs.panorama')" />
-        <q-tab name="graph" icon="bubble_chart" :label="t('memory.tabs.graph')" />
-        <q-tab name="browse" icon="travel_explore" :label="t('memory.tabs.browse')" />
-        <q-tab name="notes" icon="sticky_note_2" :label="t('memory.tabs.notes')" />
-        <q-tab name="governance" icon="verified_user" :label="t('memory.tabs.governance')" />
-        <q-tab name="pending" icon="pending_actions" :label="t('memory.tabs.pending')" />
-        <q-tab v-if="isPlatformAdmin" name="ops" icon="admin_panel_settings" :label="t('memory.tabs.ops')" />
-      </q-tabs>
-    </q-card>
+      <div class="mem-shell">
+        <!-- 左侧：七个视图，每个写一句它回答什么问题；治理有待处理时带数 -->
+        <nav class="mem-rail" :aria-label="t('cap.memory.views')">
+          <button
+            v-for="item in railItems"
+            :key="item.name"
+            type="button"
+            class="mem-rail__item"
+            :class="{ 'mem-rail__item--active': tab === item.name }"
+            :aria-current="tab === item.name ? 'page' : undefined"
+            @click="tab = item.name"
+          >
+            <q-icon :name="item.icon" size="18px" aria-hidden="true" />
+            <span class="mem-rail__text">
+              <span class="mem-rail__label">{{ item.label }}</span>
+              <span class="mem-rail__desc">{{ item.desc }}</span>
+            </span>
+            <span v-if="item.count" class="mem-rail__count">{{ item.count }}</span>
+          </button>
 
-    <q-tab-panels v-model="tab" animated class="memory-panels">
-      <q-tab-panel name="panorama">
-        <memory-panorama-tab
-          :agent-id="selectedAgentId"
-          :session-id="selectedSessionId"
-          @drill-layer="onDrillLayer"
-          @navigate-tab="onNavigateTab"
-        />
-      </q-tab-panel>
+          <!-- 平台视角：哪些 Agent 有记忆（点一下切过去）；不属于任何 Agent 的按作用域列出 -->
+          <section
+            v-if="footprint.agents.length || footprint.unowned.length"
+            class="mem-foot"
+            :aria-label="t('cap.memory.footprintTitle')"
+          >
+            <h3 class="mem-foot__title">{{ t('cap.memory.footprintTitle') }}</h3>
+            <button
+              v-for="fp in footprint.agents.slice(0, 6)"
+              :key="fp.agent_id"
+              type="button"
+              class="mem-foot__row"
+              :aria-pressed="selectedAgentId === fp.agent_id"
+              @click="selectedAgentId = fp.agent_id"
+            >
+              <span class="mem-foot__name">{{ agentName(fp.agent_id) }}</span>
+              <span class="cap-mono">{{ fp.facts + fp.episodes }}</span>
+            </button>
+            <p v-if="!footprint.agents.length" class="mem-foot__empty">{{ t('cap.memory.footprintNone') }}</p>
+            <p v-for="u in footprint.unowned" :key="u.scope_type" class="mem-foot__unowned">
+              {{ t('cap.memory.unowned', { scope: u.scope_type, n: u.facts }) }}
+            </p>
+          </section>
+        </nav>
 
-      <q-tab-panel name="graph">
-        <unified-memory-graph :agent-id="selectedAgentId" @open-in-browse="onOpenInBrowse" />
-      </q-tab-panel>
+        <div class="mem-main">
+          <p v-if="!selectedAgentId && agentScopedTab" class="cap-note cap-note--info" role="note">
+            <q-icon name="info" size="16px" aria-hidden="true" />
+            <span class="cap-note__body">{{ t('cap.memory.agentFirst') }}</span>
+          </p>
 
-      <q-tab-panel name="browse">
-        <memory-browse-tab v-model:layer="browseLayer">
-          <template #default="{ show }">
-            <memory-sessions-panel
-              v-if="show('L0') || show('L1')"
-              v-model:selected-session-id="selectedSessionId"
-              v-model:selected-task-id="selectedTaskId"
-              :session-rows="sessionRows"
-              :loading-sessions="loadingSessions"
-              :snapshot-rows="snapshotRows"
-              :snapshot-columns="snapshotColumns"
-              :loading-snapshots="loadingSnapshots"
-              :task-rows="taskRows"
-              :loading-tasks="loadingTasks"
-              :field-rows="fieldRows"
-              :loading-fields="loadingFields"
-              @refresh-sessions="loadSessions"
-              @refresh-memory="loadSessionMemory"
-              @open-snapshot="openSnapshot"
-            />
-            <memory-episode-timeline v-if="show('L2')" :agent-id="selectedAgentId" :session-id="selectedSessionId" />
-            <memory-knowledge-panel
-              v-if="show('L3')"
-              v-model:fact-keyword="factKeyword"
-              v-model:fact-scope="factScope"
-              v-model:fact-status="factStatus"
-              v-model:page="factPage"
-              v-model:page-size="factPageSize"
-              :facts-endpoint-ready="factsEndpointReady"
-              :scope-options="scopeOptions"
-              :fact-status-options="factStatusOptions"
-              :fact-rows="factRows"
-              :fact-columns="factColumns"
-              :loading-facts="loadingFacts"
-              :facts-active-count="factsActiveCount"
-              :facts-archived-count="factsArchivedCount"
-              :facts-total="factsFilteredCount"
-              :page-max="factPageMax"
-              @reset="resetFactFilters"
-              @search="reloadFactsFromFirstPage"
-              @open-fact="openFact"
-              @create-fact="openCreateFact"
-            />
-          </template>
-        </memory-browse-tab>
-      </q-tab-panel>
+          <q-tab-panels v-model="tab" animated class="memory-panels">
+            <q-tab-panel name="panorama">
+              <memory-panorama-tab
+                :agent-id="selectedAgentId"
+                :session-id="selectedSessionId"
+                @drill-layer="onDrillLayer"
+                @navigate-tab="onNavigateTab"
+              />
+            </q-tab-panel>
 
-      <q-tab-panel name="notes">
-        <memory-notes-tab />
-      </q-tab-panel>
+            <q-tab-panel name="graph">
+              <unified-memory-graph :agent-id="selectedAgentId" @open-in-browse="onOpenInBrowse" />
+            </q-tab-panel>
 
-      <q-tab-panel name="governance">
-        <div class="column q-gutter-md">
-          <memory-conflict-panel
-            :rows="conflictFacts"
-            :loading="loadingConflicts"
-            :acting-id="conflictActingId"
-            @refresh="loadFacts"
-            @open-fact="openFact"
-            @review="reviewConflictFact"
-          />
-          <memory-cascade-panel
-            v-model:preview-open="cascadePreviewOpen"
-            :agent-id="selectedAgentId"
-            :rows="cascadeProposals"
-            :loading="loadingCascade"
-            :acting-id="cascadeActingId"
-            :preview-loading="loadingCascadePreview"
-            :preview="cascadePreviewData"
-            :preview-proposal-id="cascadePreviewProposalId"
-            @refresh="loadCascade"
-            @approve="approveCascade"
-            @reject="rejectCascade"
-            @preview="previewCascade"
-            @confirm-preview="confirmPreviewCascade"
-            @saga="openSagaDrawer"
-            @retry="retryCascade"
-            @compensate="compensateCascade"
-          />
-          <memory-evolution-panel :panels="evolutionPanels" />
-          <memory-evolution-review-panel
-            :proposals="evolutionProposals"
-            :events="evolutionEvents"
-            :acting-id="evolutionActingId"
-            @approve="reviewEvolutionProposal($event, 'approve')"
-            @reject="reviewEvolutionProposal($event, 'reject')"
-            @revert="revertEvolutionEvent"
-          />
-          <MemoryPIIPanel
-            :rows="piiFacts"
-            :loading="loadingPII"
-            :acting-id="piiActingId"
-            @refresh="loadPIIFacts"
-            @open-fact="openFact"
-            @review="reviewPIIFactRow"
-          />
+            <q-tab-panel name="browse">
+              <memory-browse-tab v-model:layer="browseLayer">
+                <template #default="{ show }">
+                  <memory-sessions-panel
+                    v-if="show('L0') || show('L1')"
+                    v-model:selected-session-id="selectedSessionId"
+                    v-model:selected-task-id="selectedTaskId"
+                    :session-rows="sessionRows"
+                    :loading-sessions="loadingSessions"
+                    :snapshot-rows="snapshotRows"
+                    :snapshot-columns="snapshotColumns"
+                    :loading-snapshots="loadingSnapshots"
+                    :task-rows="taskRows"
+                    :loading-tasks="loadingTasks"
+                    :field-rows="fieldRows"
+                    :loading-fields="loadingFields"
+                    @refresh-sessions="loadSessions"
+                    @refresh-memory="loadSessionMemory"
+                    @open-snapshot="openSnapshot"
+                  />
+                  <memory-episode-timeline
+                    v-if="show('L2')"
+                    :agent-id="selectedAgentId"
+                    :session-id="selectedSessionId"
+                  />
+                  <memory-knowledge-panel
+                    v-if="show('L3')"
+                    v-model:fact-keyword="factKeyword"
+                    v-model:fact-scope="factScope"
+                    v-model:fact-status="factStatus"
+                    v-model:page="factPage"
+                    v-model:page-size="factPageSize"
+                    :facts-endpoint-ready="factsEndpointReady"
+                    :scope-options="scopeOptions"
+                    :fact-status-options="factStatusOptions"
+                    :fact-rows="factRows"
+                    :fact-columns="factColumns"
+                    :loading-facts="loadingFacts"
+                    :facts-active-count="factsActiveCount"
+                    :facts-archived-count="factsArchivedCount"
+                    :facts-total="factsFilteredCount"
+                    :page-max="factPageMax"
+                    @reset="resetFactFilters"
+                    @search="reloadFactsFromFirstPage"
+                    @open-fact="openFact"
+                    @create-fact="openCreateFact"
+                  />
+                </template>
+              </memory-browse-tab>
+            </q-tab-panel>
+
+            <q-tab-panel name="notes">
+              <memory-notes-tab />
+            </q-tab-panel>
+
+            <!-- 治理：四件事分开看，一次只看一件，各带待处理数 -->
+            <q-tab-panel name="governance">
+              <div class="mem-gov-bar">
+                <div class="cap-seg" role="group" :aria-label="t('cap.memory.rail.governance')">
+                  <button
+                    v-for="seg in governanceSegments"
+                    :key="seg.value"
+                    type="button"
+                    :aria-pressed="governance === seg.value"
+                    @click="governance = seg.value"
+                  >
+                    {{ seg.label }}<span v-if="seg.count" class="mem-seg-count">{{ seg.count }}</span>
+                  </button>
+                </div>
+              </div>
+              <memory-conflict-panel
+                v-if="governance === 'conflict'"
+                :rows="conflictFacts"
+                :loading="loadingConflicts"
+                :acting-id="conflictActingId"
+                @refresh="loadFacts"
+                @open-fact="openFact"
+                @review="reviewConflictFact"
+              />
+              <memory-cascade-panel
+                v-else-if="governance === 'cascade'"
+                v-model:preview-open="cascadePreviewOpen"
+                :agent-id="selectedAgentId"
+                :rows="cascadeProposals"
+                :loading="loadingCascade"
+                :acting-id="cascadeActingId"
+                :preview-loading="loadingCascadePreview"
+                :preview="cascadePreviewData"
+                :preview-proposal-id="cascadePreviewProposalId"
+                @refresh="loadCascade"
+                @approve="approveCascade"
+                @reject="rejectCascade"
+                @preview="previewCascade"
+                @confirm-preview="confirmPreviewCascade"
+                @saga="openSagaDrawer"
+                @retry="retryCascade"
+                @compensate="compensateCascade"
+              />
+              <div v-else-if="governance === 'evolution'" class="column q-gutter-md">
+                <memory-evolution-review-panel
+                  :proposals="evolutionProposals"
+                  :events="evolutionEvents"
+                  :acting-id="evolutionActingId"
+                  @approve="reviewEvolutionProposal($event, 'approve')"
+                  @reject="reviewEvolutionProposal($event, 'reject')"
+                  @revert="revertEvolutionEvent"
+                />
+                <memory-evolution-panel :panels="evolutionPanels" />
+              </div>
+              <MemoryPIIPanel
+                v-else
+                :rows="piiFacts"
+                :loading="loadingPII"
+                :acting-id="piiActingId"
+                @refresh="loadPIIFacts"
+                @open-fact="openFact"
+                @review="reviewPIIFactRow"
+              />
+            </q-tab-panel>
+
+            <q-tab-panel name="pending">
+              <memory-fact-pending-panel :agent-id="selectedAgentId" />
+            </q-tab-panel>
+
+            <!-- 运维（平台管理员）：设置与后台状态并排，死信和召回测试在下面 -->
+            <q-tab-panel v-if="isPlatformAdmin" name="ops">
+              <div class="mem-ops-grid">
+                <memory-platform-settings-panel />
+                <memory-worker-status-panel
+                  :status="workerStatus"
+                  :loading="loadingWorkerStatus"
+                  @refresh="loadWorkerStatus"
+                />
+                <memory-dead-letter-panel
+                  ref="deadLetterPanelRef"
+                  class="mem-ops-grid__wide"
+                  @replay="onDeadLetterReplay"
+                  @abandon="onDeadLetterAbandon"
+                />
+                <memory-recall-tester-panel
+                  class="mem-ops-grid__wide"
+                  :agent-id="selectedAgentId"
+                  :session-id="selectedSessionId"
+                />
+              </div>
+            </q-tab-panel>
+          </q-tab-panels>
         </div>
-      </q-tab-panel>
-
-      <q-tab-panel name="pending">
-        <memory-fact-pending-panel :agent-id="selectedAgentId" />
-      </q-tab-panel>
-
-      <q-tab-panel v-if="isPlatformAdmin" name="ops">
-        <div class="column q-gutter-md">
-          <memory-platform-settings-panel />
-          <memory-worker-status-panel
-            :status="workerStatus"
-            :loading="loadingWorkerStatus"
-            @refresh="loadWorkerStatus"
-          />
-          <memory-dead-letter-panel
-            ref="deadLetterPanelRef"
-            @replay="onDeadLetterReplay"
-            @abandon="onDeadLetterAbandon"
-          />
-          <memory-recall-tester-panel :agent-id="selectedAgentId" :session-id="selectedSessionId" />
-        </div>
-      </q-tab-panel>
-    </q-tab-panels>
+      </div>
     </template>
 
     <memory-snapshot-drawer v-model="snapshotDrawer" :snapshot="selectedSnapshot" />
@@ -228,7 +317,6 @@ import MemoryPIIPanel from '../features/memory/MemoryPIIPanel.vue';
 import MemoryFactDrawer from '../features/memory/MemoryFactDrawer.vue';
 import MemoryFactPendingPanel from '../features/memory/MemoryFactPendingPanel.vue';
 import MemoryFactEditDialog from '../components/memory/MemoryFactEditDialog.vue';
-import MemoryHero from '../components/memory/MemoryHero.vue';
 import MemoryKnowledgePanel from '../features/memory/MemoryKnowledgePanel.vue';
 import MemoryPanoramaTab from '../features/memory/panorama/MemoryPanoramaTab.vue';
 import MemorySagaDrawer from '../features/memory/MemorySagaDrawer.vue';
@@ -237,12 +325,16 @@ import MemorySnapshotDrawer from '../features/memory/MemorySnapshotDrawer.vue';
 import UnifiedMemoryGraph from '../features/memory/graph/UnifiedMemoryGraph.vue';
 import type { UnifiedGraphNode } from '../features/memory/types';
 import { useMemoryCenterPage } from '../features/memory/useMemoryCenterPage';
+import { annotateAgentOptions } from '../features/memory/memoryFootprint';
 
 const deadLetterPanelRef = ref<InstanceType<typeof MemoryDeadLetterPanel> | null>(null);
 const { t } = useI18n();
 
 /** 浏览 Tab 层级过滤（chips 状态由 MemoryBrowseTab 编辑，钻取跳转由本页写入）。 */
 const browseLayer = ref<BrowseLayer>('all');
+
+/** 治理视图里当前看哪一件事 */
+const governance = ref<'conflict' | 'cascade' | 'evolution' | 'pii'>('conflict');
 
 const {
   tab,
@@ -284,6 +376,7 @@ const {
   loadingSnapshots,
   loadingTasks,
   agentOptions,
+  footprint,
   sessionRows,
   factRows,
   snapshotRows,
@@ -338,6 +431,81 @@ const {
   loadingWorkerStatus,
   loadWorkerStatus,
 } = useMemoryCenterPage();
+
+// ——— Agent 选择：输入即过滤（Agent 有几百个） ———
+const agentNeedle = ref('');
+// 有记忆的 Agent 排到前面并标上条数
+const annotatedAgentOptions = computed(() =>
+  annotateAgentOptions(agentOptions.value, footprint.value, (n) => t('cap.memory.itemCount', { n })),
+);
+const agentPickOptions = computed(() => {
+  const kw = agentNeedle.value.trim().toLowerCase();
+  const all = annotatedAgentOptions.value;
+  return kw ? all.filter((o) => o.label.toLowerCase().includes(kw)) : all;
+});
+function agentName(id: string): string {
+  return agentOptions.value.find((o) => o.value === id)?.label ?? id;
+}
+function onAgentFilter(val: string, update: (fn: () => void) => void) {
+  update(() => {
+    agentNeedle.value = val;
+  });
+}
+
+// 这几个视图按 Agent 取数：没选 Agent 时提示先选
+const agentScopedTab = computed(() => ['panorama', 'graph', 'browse', 'pending'].includes(tab.value));
+
+const governanceSegments = computed(() => [
+  { value: 'conflict' as const, label: t('cap.memory.gov.conflict'), count: conflictFacts.value.length },
+  { value: 'cascade' as const, label: t('cap.memory.gov.cascade'), count: cascadeProposals.value.length },
+  { value: 'evolution' as const, label: t('cap.memory.gov.evolution'), count: evolutionProposals.value.length },
+  { value: 'pii' as const, label: t('cap.memory.gov.pii'), count: piiFacts.value.length },
+]);
+
+const railItems = computed(() => {
+  const items = [
+    {
+      name: 'panorama',
+      icon: 'dashboard',
+      label: t('memory.tabs.panorama'),
+      desc: t('cap.memory.rail.panorama'),
+      count: 0,
+    },
+    { name: 'graph', icon: 'bubble_chart', label: t('memory.tabs.graph'), desc: t('cap.memory.rail.graph'), count: 0 },
+    {
+      name: 'browse',
+      icon: 'travel_explore',
+      label: t('memory.tabs.browse'),
+      desc: t('cap.memory.rail.browse'),
+      count: 0,
+    },
+    { name: 'notes', icon: 'sticky_note_2', label: t('memory.tabs.notes'), desc: t('cap.memory.rail.notes'), count: 0 },
+    {
+      name: 'governance',
+      icon: 'verified_user',
+      label: t('memory.tabs.governance'),
+      desc: t('cap.memory.rail.governance'),
+      count: governanceSegments.value.reduce((n, s) => n + s.count, 0),
+    },
+    {
+      name: 'pending',
+      icon: 'pending_actions',
+      label: t('memory.tabs.pending'),
+      desc: t('cap.memory.rail.pending'),
+      count: 0,
+    },
+  ];
+  if (isPlatformAdmin.value) {
+    items.push({
+      name: 'ops',
+      icon: 'admin_panel_settings',
+      label: t('memory.tabs.ops'),
+      desc: t('cap.memory.rail.ops'),
+      count: 0,
+    });
+  }
+  return items;
+});
 
 /**
  * 五态判定：记忆中心是多子面板容器，`count` 取首屏两个主列表（会话/事实）的行数，

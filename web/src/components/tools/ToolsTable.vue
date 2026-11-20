@@ -8,9 +8,97 @@
     :pagination="tablePagination"
     :selected="selected"
     selection="multiple"
+    :total="total"
     hide-pagination
     @update:selected="$emit('update:selected', $event)"
   >
+    <!-- 卡片视图：构件卡。整卡点开检视抽屉；开关直接启停；风险、编辑、删除收在「更多」里 -->
+    <template #item="props">
+      <CapCard
+        :icon="toolIcon(props.row)"
+        :code="props.row.key"
+        :title="props.row.display_name || props.row.key"
+        :description="props.row.description"
+        :status="toolStatus(props.row, t)"
+        :facts="toolFacts(props.row, t)"
+        :tags="toolTags(props.row, t)"
+        :selected="props.row.id === activeId"
+        :checked="props.selected"
+        @open="$emit('viewDetail', props.row)"
+        @update:checked="props.selected = $event"
+      >
+        <template #switch>
+          <q-toggle
+            dense
+            color="primary"
+            :model-value="props.row.enabled"
+            :disable="busyId === props.row.id"
+            :aria-label="props.row.enabled ? t('cap.common.batchDisable') : t('cap.common.batchEnable')"
+            @update:model-value="$emit('toggleEnabled', props.row, Boolean($event))"
+          />
+        </template>
+        <template #relation>{{ toolRelation(props.row, t) }}</template>
+        <template #actions>
+          <q-btn
+            flat
+            dense
+            no-caps
+            size="sm"
+            color="primary"
+            icon="play_arrow"
+            :label="t('cap.tools.tryRun')"
+            @click="$emit('viewDetail', props.row)"
+          />
+          <q-btn flat dense round size="sm" icon="more_horiz" :aria-label="t('cap.common.more')">
+            <q-menu anchor="bottom right" self="top right">
+              <q-list dense class="cap-menu">
+                <q-item v-close-popup clickable @click="$emit('edit', props.row)">
+                  <q-item-section avatar><q-icon name="edit" size="18px" /></q-item-section>
+                  <q-item-section>{{ t('cap.common.edit') }}</q-item-section>
+                </q-item>
+                <q-item v-close-popup clickable @click="$emit('viewAgents', props.row)">
+                  <q-item-section avatar><q-icon name="groups" size="18px" /></q-item-section>
+                  <q-item-section>{{ t('cap.tools.viewAgents') }}</q-item-section>
+                </q-item>
+                <q-item clickable :to="{ name: 'tool-runs', query: { tool_key: props.row.key } }">
+                  <q-item-section avatar><q-icon name="history" size="18px" /></q-item-section>
+                  <q-item-section>{{ t('cap.common.runs') }}</q-item-section>
+                </q-item>
+                <q-separator />
+                <q-item-label header class="cap-menu__header">{{ t('cap.tools.setRisk') }}</q-item-label>
+                <q-item
+                  v-for="opt in riskLevelOptions()"
+                  :key="opt.value"
+                  v-close-popup
+                  clickable
+                  :active="opt.value === props.row.risk_level"
+                  @click="opt.value !== props.row.risk_level && $emit('updateRisk', props.row, opt.value)"
+                >
+                  <q-item-section avatar>
+                    <i class="cap-dot" :class="`cap-dot--${riskTone(opt.value)}`" aria-hidden="true" />
+                  </q-item-section>
+                  <q-item-section>{{ opt.label }}</q-item-section>
+                </q-item>
+                <q-separator />
+                <q-item
+                  v-close-popup
+                  clickable
+                  class="text-negative"
+                  :disable="props.row.readonly"
+                  @click="$emit('remove', props.row)"
+                >
+                  <q-item-section avatar><q-icon name="delete" size="18px" /></q-item-section>
+                  <q-item-section>
+                    {{ props.row.readonly ? $t('toolsPage.table.readonlyNoRemove') : t('cap.common.remove') }}
+                  </q-item-section>
+                </q-item>
+              </q-list>
+            </q-menu>
+          </q-btn>
+        </template>
+      </CapCard>
+    </template>
+
     <template #body-cell-name="props">
       <q-td :props="props">
         <div class="app-registry-cell-primary">{{ props.row.display_name }}</div>
@@ -202,8 +290,12 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
+import { useI18n } from 'vue-i18n';
 import AppRegistryTable from '../layout/AppRegistryTable.vue';
 import AppStatusChip from '../common/AppStatusChip.vue';
+import CapCard from '../capability/CapCard.vue';
+import { riskTone } from '../capability/capTypes';
+import { toolFacts, toolIcon, toolRelation, toolStatus, toolTags } from './toolCapCard';
 import type { Tool } from '../../features/tools/types';
 import { toolPolicyChipCopy } from '../../features/tools/toolEditorCopy';
 import {
@@ -224,12 +316,19 @@ defineProps<{
   loading: boolean;
   busyId: string;
   selected?: Tool[];
+  /** 检视抽屉里正在看的工具，卡片高亮 */
+  activeId?: string;
+  /** 服务端总条数（视图条上的计数） */
+  total?: number;
 }>();
+
+const { t } = useI18n();
 
 defineEmits<{
   toggleEnabled: [tool: Tool, value: boolean];
   updateRisk: [tool: Tool, value: string];
   viewDetail: [tool: Tool];
+  viewAgents: [tool: Tool];
   edit: [tool: Tool];
   remove: [tool: Tool];
   'update:selected': [value: Tool[]];

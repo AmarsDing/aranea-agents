@@ -7,7 +7,81 @@
     :loading="loading"
     hide-pagination
     :pagination="{ rowsPerPage: 0 }"
+    :total="total"
   >
+    <!-- 卡片视图：构件卡。整卡打开编辑（内置共享的只能测试）；主操作是测试连接 -->
+    <template #item="props">
+      <CapCard
+        icon="hub"
+        :code="props.row.key"
+        :title="displayName(props.row)"
+        :description="props.row.description || endpointLabel(props.row)"
+        :status="cardStatus(props.row)"
+        :facts="cardFacts(props.row)"
+        :tags="cardTags(props.row)"
+        @open="props.row.shared ? $emit('test', props.row) : $emit('edit', props.row)"
+      >
+        <template #switch>
+          <q-toggle
+            dense
+            color="primary"
+            :model-value="props.row.enabled"
+            :disable="togglingId === props.row.id || props.row.shared"
+            :aria-label="props.row.enabled ? t('cap.common.batchDisable') : t('cap.common.batchEnable')"
+            @update:model-value="$emit('toggleEnabled', props.row, Boolean($event))"
+          >
+            <q-tooltip v-if="props.row.shared">{{ t('cap.mcp.sharedLocked') }}</q-tooltip>
+          </q-toggle>
+        </template>
+        <template #relation>
+          <span class="cap-mono" :title="endpointLabel(props.row)">{{ endpointLabel(props.row) }}</span>
+        </template>
+        <template #actions>
+          <q-btn
+            flat
+            dense
+            no-caps
+            size="sm"
+            color="primary"
+            icon="science"
+            :label="t('cap.mcp.test')"
+            :loading="testingId === props.row.id"
+            @click="$emit('test', props.row)"
+          />
+          <q-btn flat dense round size="sm" icon="more_horiz" :aria-label="t('cap.common.more')">
+            <q-menu anchor="bottom right" self="top right">
+              <q-list dense class="cap-menu">
+                <q-item
+                  v-if="rowConfig(props.row).require_user_credentials"
+                  v-close-popup
+                  clickable
+                  @click="$emit('credentials', props.row)"
+                >
+                  <q-item-section avatar><q-icon name="vpn_key" size="18px" /></q-item-section>
+                  <q-item-section>{{ t('cap.mcp.userCredentials') }}</q-item-section>
+                </q-item>
+                <q-item v-close-popup clickable :disable="props.row.shared" @click="$emit('edit', props.row)">
+                  <q-item-section avatar><q-icon name="edit" size="18px" /></q-item-section>
+                  <q-item-section>{{ t('cap.common.edit') }}</q-item-section>
+                </q-item>
+                <q-separator />
+                <q-item
+                  v-close-popup
+                  clickable
+                  class="text-negative"
+                  :disable="props.row.shared"
+                  @click="$emit('delete', props.row)"
+                >
+                  <q-item-section avatar><q-icon name="delete" size="18px" /></q-item-section>
+                  <q-item-section>{{ t('cap.common.remove') }}</q-item-section>
+                </q-item>
+              </q-list>
+            </q-menu>
+          </q-btn>
+        </template>
+      </CapCard>
+    </template>
+
     <template #body-cell-name="props">
       <q-td :props="props">
         <div class="row items-center no-wrap q-gutter-sm">
@@ -131,6 +205,8 @@ import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import AppRegistryTable from '../layout/AppRegistryTable.vue';
 import AppRegistryHoverTip from '../layout/AppRegistryHoverTip.vue';
+import CapCard from '../capability/CapCard.vue';
+import type { CapFact, CapStatus, CapTag } from '../capability/capTypes';
 import type { McpHealthTone, McpServerConfig, McpServerMetadata, McpServerRow } from '../../features/mcp/types';
 import { parseJSON } from '../../features/mcp/utils';
 import { MCP_SERVER_TABLE_COLUMNS } from './mcpServerTableUi';
@@ -145,7 +221,52 @@ const tableProps = defineProps<{
   togglingId: string;
   healthTone: (row: McpServerRow) => McpHealthTone;
   healthTooltip: (row: McpServerRow) => string;
+  /** 视图条上的计数（筛选后的总条数） */
+  total?: number;
 }>();
+
+// ——— 构件卡取值 ———
+function cardStatus(row: McpServerRow): CapStatus {
+  if (!row.enabled) return { tone: 'off', label: t('cap.common.disabled') };
+  const status = rowMetadata(row).health_status;
+  const hint = rowMetadata(row).last_error_message || undefined;
+  if (status === 'ok') return { tone: 'ok', label: t('cap.mcp.healthOk') };
+  if (status === 'error') return { tone: 'alert', label: t('cap.mcp.healthError'), hint };
+  if (status === 'degraded') return { tone: 'watch', label: t('cap.mcp.healthDegraded'), hint };
+  return { tone: 'pending', label: t('cap.mcp.healthUnknown') };
+}
+
+function cardFacts(row: McpServerRow): CapFact[] {
+  const m = rowMetadata(row);
+  const tools: CapFact =
+    typeof m.tool_count === 'number'
+      ? { label: t('cap.mcp.tools'), value: m.tool_count, hint: toolCountTooltip(row) }
+      : m.tools_error_message
+        ? { label: t('cap.mcp.tools'), value: t('cap.mcp.discoverFailed'), tone: 'alert', hint: toolCountTooltip(row) }
+        : { label: t('cap.mcp.tools'), value: '—', hint: t('cap.mcp.toolsUnknown') };
+  const agents = row.agent_count;
+  return [
+    { label: t('cap.mcp.transport'), value: transportLabel(row) },
+    tools,
+    {
+      label: t('cap.mcp.agents'),
+      value: agents === null || agents === undefined ? '—' : agents,
+      tone: agents === 0 && row.enabled ? 'watch' : undefined,
+      hint: t('cap.mcp.agentsHint'),
+    },
+  ];
+}
+
+function cardTags(row: McpServerRow): CapTag[] {
+  const config = rowConfig(row);
+  const tags: CapTag[] = [];
+  if (row.shared) tags.push({ label: t('cap.mcp.shared') });
+  if (config.require_user_credentials) tags.push({ label: t('cap.mcp.needsUserCredential'), tone: 'watch' });
+  if (config.auth?.type) tags.push({ label: config.auth.type, tone: 'pending' });
+  if (config.tool_prefix) tags.push({ label: `mcp_${config.tool_prefix}__` });
+  tags.push({ label: t('cap.mcp.timeoutTag', { s: config.timeout_sec ?? 60 }) });
+  return tags;
+}
 
 defineEmits<{
   edit: [row: McpServerRow];

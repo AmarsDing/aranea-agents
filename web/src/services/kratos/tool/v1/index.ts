@@ -44,6 +44,8 @@ export type Tool = {
   createdAt: string | undefined;
   updatedAt: string | undefined;
   permissions: ToolPermissions | undefined;
+  // 当前能用这个工具的 Agent 数（列表接口批量算；未计算时缺省）
+  allowedAgentCount?: number;
 };
 
 export type ToolSummary = {
@@ -52,6 +54,10 @@ export type ToolSummary = {
   highRiskEnabled: number | undefined;
   calls24h: number | undefined;
   failureRate24h: number | undefined;
+  // 可见范围内出现过的分类（不受列表筛选影响），给分类下拉用
+  categories: string[] | undefined;
+  // 近 7 天至少被调用过一次的工具数（不受列表筛选影响）
+  usedTools7d: number | undefined;
 };
 
 export type ListToolsRequest = {

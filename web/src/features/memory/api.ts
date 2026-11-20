@@ -50,6 +50,7 @@ export type {
 
 export { memoryEndpoints } from './memoryEndpoints';
 
+import type { MemoryFootprint } from './memoryFootprint';
 import { createMemoryService } from '../../services/index';
 import type { AppendEvolutionEventRequest, MemoryFact as PbMemoryFact } from '../../services/kratos/memory/v1/index';
 import type {
@@ -475,6 +476,37 @@ export async function listMemoryFacts(query: MemoryFactListQuery = {}): Promise<
     active_count: pickOptionalI32(res, 'active_count', 'activeCount'),
     archived_count: pickOptionalI32(res, 'archived_count', 'archivedCount'),
     filtered_count: pickOptionalI32(res, 'filtered_count', 'filteredCount'),
+  };
+}
+
+/**
+ * 平台视角的记忆分布（后端只在管理员不带 Agent、不限作用域查询事实时返回）。
+ * 非管理员或旧后端拿到的是空表，界面照常按 Agent 浏览。
+ */
+export async function getMemoryFootprint(): Promise<MemoryFootprint> {
+  const res = asRecord(
+    await memory.ListMemoryFacts({
+      scopeType: undefined,
+      scopeId: undefined,
+      kind: undefined,
+      status: undefined,
+      keyword: undefined,
+      agentId: undefined,
+      limit: 1,
+      offset: 0,
+    }),
+  );
+  const list = (v: unknown) => (Array.isArray(v) ? (v as Record<string, unknown>[]) : []);
+  return {
+    agents: list(res.agentFootprints ?? res.agent_footprints).map((a) => ({
+      agent_id: String(a.agentId ?? a.agent_id ?? ''),
+      facts: Number(a.facts ?? 0),
+      episodes: Number(a.episodes ?? 0),
+    })),
+    unowned: list(res.unownedScopes ?? res.unowned_scopes).map((x) => ({
+      scope_type: String(x.scopeType ?? x.scope_type ?? ''),
+      facts: Number(x.facts ?? 0),
+    })),
   };
 }
 

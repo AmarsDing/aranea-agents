@@ -6,11 +6,7 @@
     @update:model-value="$emit('update:open', $event)"
   >
     <template #header-prefix>
-      <AppStatusChip
-        v-if="invocation"
-        :status="invocation.status"
-        :tooltip="invocation.error_message || undefined"
-      />
+      <AppStatusChip v-if="invocation" :status="invocation.status" :tooltip="invocation.error_message || undefined" />
     </template>
     <template v-if="invocation">
       <q-tabs v-model="tab" dense align="left" active-color="primary" indicator-color="primary">

@@ -154,6 +154,10 @@ export type ListMemoryFactsResponse = {
   // filtered_count matches the returned items' caliber (same WHERE including
   // the status filter, default 'active') — the server-side pagination total.
   filteredCount: number | undefined;
+  // 平台视角，只在不带 agent_id、不限作用域的管理员查询时返回：各 Agent 名下的记忆量（前 20）
+  agentFootprints: MemoryAgentFootprint[] | undefined;
+  // 同上：不属于任何 Agent 的有效事实，按作用域计
+  unownedScopes: MemoryScopeFactCount[] | undefined;
 };
 
 export type MemoryFact = {
@@ -194,6 +198,17 @@ export type MemoryFact = {
   recalledCount: number | undefined;
   injectedCount: number | undefined;
   citedCount: number | undefined;
+};
+
+export type MemoryAgentFootprint = {
+  agentId: string | undefined;
+  facts: number | undefined;
+  episodes: number | undefined;
+};
+
+export type MemoryScopeFactCount = {
+  scopeType: string | undefined;
+  facts: number | undefined;
 };
 
 export type ListConflictingFactsRequest = {

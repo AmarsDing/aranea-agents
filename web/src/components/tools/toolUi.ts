@@ -205,12 +205,15 @@ export function runtimeStatusLabel(value?: string): string {
   if (!value || value === 'available') return t('toolsPage.runtimeStatus.available');
   if (value === 'registered_only') return t('toolsPage.runtimeStatus.registeredOnly');
   if (value === 'disabled') return t('toolsPage.runtimeStatus.disabled');
+  if (value === 'session_bound') return t('toolsPage.runtimeStatus.sessionBound');
+  if (value === 'needs_config') return t('toolsPage.runtimeStatus.needsConfig');
   return value;
 }
 
 export function runtimeStatusColor(value?: string): string {
   if (value === 'disabled') return 'negative';
   if (value === 'registered_only') return 'grey';
+  if (value === 'needs_config') return 'warning';
   return 'positive';
 }
 

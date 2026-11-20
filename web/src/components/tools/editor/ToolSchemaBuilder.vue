@@ -29,7 +29,8 @@
 
     <div v-if="!showJson" class="column q-gutter-sm">
       <q-banner rounded dense class="settings-info-banner">
-        {{ $t('toolsPage.schemaBuilder.bannerPre') }}<code>object.properties</code>{{ $t('toolsPage.schemaBuilder.bannerPost') }}
+        {{ $t('toolsPage.schemaBuilder.bannerPre') }}<code>object.properties</code
+        >{{ $t('toolsPage.schemaBuilder.bannerPost') }}
       </q-banner>
       <div v-for="(row, idx) in rows" :key="row.key || `row-${idx}`" class="tool-schema-builder__field-card">
         <div class="app-form-field-grid app-form-field-grid--2col">

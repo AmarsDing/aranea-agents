@@ -144,6 +144,8 @@ type ToolSummary struct {
 	HighRiskEnabled int
 	Calls24h        int
 	FailureRate24h  float64
+	Categories      []string // 可见范围内出现过的分类（不受列表筛选影响），给分类下拉用
+	UsedTools7d     int      // 近 7 天至少被调用过一次的工具数
 }
 
 type ToolInvocation struct {
@@ -178,11 +180,11 @@ type ToolInvocation struct {
 }
 
 type ToolInvocationWrite struct {
-	ToolKey       string
-	AgentID       string
-	AgentKey      string
-	SessionID     string
-	UserID        string
+	ToolKey   string
+	AgentID   string
+	AgentKey  string
+	SessionID string
+	UserID    string
 	// WorkspaceID：租户归属（A2）。写入方留空时 data 层自 agents 表按
 	// AgentID 派生；KPI 24h 聚合按此过滤，empty = 宿主缺失行（仅系统视图可见）。
 	WorkspaceID   string

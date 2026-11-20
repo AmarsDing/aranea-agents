@@ -1,21 +1,18 @@
 <template>
-  <q-page class="app-standard-page app-registry-page skill-tags-page">
-    <AppPageHero kicker="Skill registry" :title="$t('skillTags.title')" :subtitle="$t('skillTags.subtitle')">
-      <template #actions>
-        <q-btn outline rounded no-caps color="primary" icon="add" :label="$t('skillTags.create')" @click="openCreate" />
-        <q-btn
-          color="primary"
-          unelevated
-          rounded
-          no-caps
-          icon="refresh"
-          :label="$t('common.refresh')"
-          :loading="tagsLoading"
-          @click="reload"
-        />
-      </template>
-    </AppPageHero>
-
+  <q-page class="app-standard-page cap-page app-registry-page skill-tags-page">
+    <Teleport defer to="#app-tab-actions">
+      <q-btn
+        flat
+        dense
+        round
+        icon="refresh"
+        :title="$t('common.refresh')"
+        :aria-label="$t('common.refresh')"
+        :loading="tagsLoading"
+        @click="reload"
+      />
+      <q-btn unelevated dense no-caps color="primary" icon="add" :label="$t('skillTags.create')" @click="openCreate" />
+    </Teleport>
     <AppPageToolbar class="skill-tags-filter">
       <q-input
         v-model="search"
@@ -171,14 +168,7 @@
       />
       <template #actions>
         <q-btn flat no-caps :label="$t('common.cancel')" :disable="creating" @click="createOpen = false" />
-        <q-btn
-          color="primary"
-          unelevated
-          no-caps
-          :label="$t('common.create')"
-          :loading="creating"
-          @click="onCreate"
-        />
+        <q-btn color="primary" unelevated no-caps :label="$t('common.create')" :loading="creating" @click="onCreate" />
       </template>
     </AppDialog>
 
@@ -216,7 +206,6 @@
 <script setup lang="ts">
 import AppDialog from '../components/common/AppDialog.vue';
 import AppStatePanel from '../components/common/AppStatePanel.vue';
-import AppPageHero from '../components/layout/AppPageHero.vue';
 import AppPageToolbar from '../components/layout/AppPageToolbar.vue';
 import { useSkillTagsPage } from '../features/skills/useSkillTagsPage';
 

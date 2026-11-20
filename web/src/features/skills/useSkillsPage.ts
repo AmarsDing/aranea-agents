@@ -212,7 +212,7 @@ export function useSkillsPage() {
     publishingId.value = skill.id;
     try {
       await skillsStore.publish(skill.id);
-      $q.notify({ type: 'positive', message: 'Skill 已启用；如需运行时挂载请再打开「启用」开关' });
+      $q.notify({ type: 'positive', message: '技能已发布；打开卡片上的「启用」开关后，Agent 才会用到它' });
     } catch (err) {
       $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '启用失败' });
     } finally {
