@@ -61,10 +61,10 @@ func RegisterOfficeScheduleServiceHTTPServer(s *http.Server, srv OfficeScheduleS
 	r.POST("/v1/office/events", _OfficeScheduleService_CreateEvent0_HTTP_Handler(srv))
 	r.PATCH("/v1/office/events/{id}", _OfficeScheduleService_UpdateEvent0_HTTP_Handler(srv))
 	r.DELETE("/v1/office/events/{id}", _OfficeScheduleService_DeleteEvent0_HTTP_Handler(srv))
-	r.GET("/v1/office/events/{id}", _OfficeScheduleService_GetEvent1_HTTP_Handler(srv))
+	r.GET("/v1/office/events/{id}", _OfficeScheduleService_GetEvent0_HTTP_Handler(srv))
 	r.GET("/v1/office/events", _OfficeScheduleService_ListEventsRange0_HTTP_Handler(srv))
 	r.POST("/v1/office/events:scheduleTask", _OfficeScheduleService_ScheduleTask0_HTTP_Handler(srv))
-	r.GET("/v1/office/events:byTask", _OfficeScheduleService_ListTaskEvents2_HTTP_Handler(srv))
+	r.GET("/v1/office/events:byTask", _OfficeScheduleService_ListTaskEvents0_HTTP_Handler(srv))
 	r.POST("/v1/office/schedule-drafts", _OfficeScheduleService_SubmitScheduleDraft0_HTTP_Handler(srv))
 	r.POST("/v1/office/schedule-drafts/{id}/approve", _OfficeScheduleService_ApproveScheduleDraft0_HTTP_Handler(srv))
 	r.POST("/v1/office/schedule-drafts/{id}/reject", _OfficeScheduleService_RejectScheduleDraft0_HTTP_Handler(srv))
@@ -143,7 +143,7 @@ func _OfficeScheduleService_DeleteEvent0_HTTP_Handler(srv OfficeScheduleServiceH
 	}
 }
 
-func _OfficeScheduleService_GetEvent1_HTTP_Handler(srv OfficeScheduleServiceHTTPServer) func(ctx http.Context) error {
+func _OfficeScheduleService_GetEvent0_HTTP_Handler(srv OfficeScheduleServiceHTTPServer) func(ctx http.Context) error {
 	return func(ctx http.Context) error {
 		var in GetEventRequest
 		if err := ctx.BindQuery(&in); err != nil {
@@ -206,7 +206,7 @@ func _OfficeScheduleService_ScheduleTask0_HTTP_Handler(srv OfficeScheduleService
 	}
 }
 
-func _OfficeScheduleService_ListTaskEvents2_HTTP_Handler(srv OfficeScheduleServiceHTTPServer) func(ctx http.Context) error {
+func _OfficeScheduleService_ListTaskEvents0_HTTP_Handler(srv OfficeScheduleServiceHTTPServer) func(ctx http.Context) error {
 	return func(ctx http.Context) error {
 		var in ListTaskEventsRequest
 		if err := ctx.BindQuery(&in); err != nil {

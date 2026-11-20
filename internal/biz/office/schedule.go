@@ -49,17 +49,43 @@ func normalizeEvent(ev *Event) {
 	if ev.ReminderMinutes < 0 {
 		ev.ReminderMinutes = 0
 	}
+	if ev.Kind == "" {
+		ev.Kind = KindPlan
+	}
+	if ev.Status == "" {
+		ev.Status = StatusTodo
+	}
 }
+
+// validateKindStatus 类型、状态白名单（normalizeEvent 之后调用）。
+func validateKindStatus(ev *Event) error {
+	if !ValidKind(ev.Kind) {
+		return ErrInvalidKind
+	}
+	if !ValidStatus(ev.Status) {
+		return ErrInvalidStatus
+	}
+	return nil
+}
+
+// occupiesTime 只有「定了时间段的计划」占用时间：工作记录（log）和全天
+// 计划都不参与 409 重叠检测（仓储侧计数同口径）。
+func occupiesTime(ev *Event) bool { return ev.Kind == KindPlan && !ev.AllDay }
 
 // CreateEvent 手工建事件（409 语义平移 verify-schedule S4 createEvent 路径）。
 func (u *ScheduleUsecase) CreateEvent(ctx context.Context, ev *Event) (*Event, error) {
 	if err := validateWindow(ev.Title, ev.StartAt, ev.EndAt); err != nil {
 		return nil, err
 	}
-	if err := u.countOverlap(ctx, ev.UserID, ev.StartAt, ev.EndAt, ""); err != nil {
+	normalizeEvent(ev)
+	if err := validateKindStatus(ev); err != nil {
 		return nil, err
 	}
-	normalizeEvent(ev)
+	if occupiesTime(ev) {
+		if err := u.countOverlap(ctx, ev.UserID, ev.StartAt, ev.EndAt, ""); err != nil {
+			return nil, err
+		}
+	}
 	ev.ID = "ev_" + uuid.NewString()
 	if ev.Source == "" {
 		ev.Source = SourceManual
@@ -74,7 +100,9 @@ func (u *ScheduleUsecase) CreateEvent(ctx context.Context, ev *Event) (*Event, e
 // timezone 空串=保持；reminder_minutes 恒应用（proto3 标量无 presence，
 // 0 语义=关闭提醒——见 proto UpdateEventRequest 注释）。改时间后复检 409
 // （排除自身）；提醒窗口变化时重置提醒投递标记（reminded_at 清空重投）。
-func (u *ScheduleUsecase) UpdateEvent(ctx context.Context, userID string, patch *Event) (*Event, error) {
+// extra 里的类型 / 状态 / 全天 / 完成情况 nil = 不改（可以清空完成情况、取消全天）；
+// 变成「定了时间段的计划」时（改时间、log→plan、取消全天）复检 409。
+func (u *ScheduleUsecase) UpdateEvent(ctx context.Context, userID string, patch *Event, extra EventPatch) (*Event, error) {
 	cur, err := u.events.GetEvent(ctx, patch.ID, userID)
 	if err != nil {
 		return nil, err
@@ -82,7 +110,9 @@ func (u *ScheduleUsecase) UpdateEvent(ctx context.Context, userID string, patch 
 	if strings.TrimSpace(patch.Title) != "" {
 		cur.Title = patch.Title
 	}
-	if patch.Note != "" {
+	if extra.Note != nil {
+		cur.Note = *extra.Note
+	} else if patch.Note != "" {
 		cur.Note = patch.Note
 	}
 	timeChanged := false
@@ -99,10 +129,27 @@ func (u *ScheduleUsecase) UpdateEvent(ctx context.Context, userID string, patch 
 	}
 	reminderChanged := patch.ReminderMinutes != cur.ReminderMinutes
 	cur.ReminderMinutes = patch.ReminderMinutes
+	occupiedBefore := occupiesTime(cur)
+	if extra.Kind != nil {
+		cur.Kind = *extra.Kind
+	}
+	if extra.Status != nil {
+		cur.Status = *extra.Status
+	}
+	if extra.AllDay != nil {
+		cur.AllDay = *extra.AllDay
+	}
+	if extra.Outcome != nil {
+		cur.Outcome = *extra.Outcome
+	}
+	normalizeEvent(cur)
+	if err := validateKindStatus(cur); err != nil {
+		return nil, err
+	}
 	if err := validateWindow(cur.Title, cur.StartAt, cur.EndAt); err != nil {
 		return nil, err
 	}
-	if timeChanged {
+	if occupiesTime(cur) && (timeChanged || !occupiedBefore) {
 		if err := u.countOverlap(ctx, userID, cur.StartAt, cur.EndAt, cur.ID); err != nil {
 			return nil, err
 		}

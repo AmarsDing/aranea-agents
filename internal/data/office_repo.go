@@ -72,12 +72,13 @@ func scanOne(ctx context.Context, db execer, query string, args []any, dest ...a
 
 // ---------- 事件 ----------
 
-const officeEventCols = `id, workspace_id, user_id, task_ref, task_title, title, note, start_at, end_at, timezone, reminder_minutes, source, reminded_at, created_at, updated_at`
+const officeEventCols = `id, workspace_id, user_id, task_ref, task_title, title, note, start_at, end_at, timezone, reminder_minutes, source, reminded_at, created_at, updated_at, kind, status, all_day, outcome`
 
 func scanOfficeEvent(row interface{ Scan(...any) error }) (*office.Event, error) {
 	var ev office.Event
 	if err := row.Scan(&ev.ID, &ev.WorkspaceID, &ev.UserID, &ev.TaskRef, &ev.TaskTitle, &ev.Title, &ev.Note,
-		&ev.StartAt, &ev.EndAt, &ev.Timezone, &ev.ReminderMinutes, &ev.Source, &ev.RemindedAt, &ev.CreatedAt, &ev.UpdatedAt); err != nil {
+		&ev.StartAt, &ev.EndAt, &ev.Timezone, &ev.ReminderMinutes, &ev.Source, &ev.RemindedAt, &ev.CreatedAt, &ev.UpdatedAt,
+		&ev.Kind, &ev.Status, &ev.AllDay, &ev.Outcome); err != nil {
 		return nil, err
 	}
 	return &ev, nil
@@ -91,10 +92,18 @@ func (r *OfficeRepo) insertEvent(ctx context.Context, db execer, ev *office.Even
 		ev.CreatedAt = now
 	}
 	ev.UpdatedAt = now
+	// 任务排期、草案批准等路径不填类型 / 状态：按「未开始的计划」落库
+	if ev.Kind == "" {
+		ev.Kind = office.KindPlan
+	}
+	if ev.Status == "" {
+		ev.Status = office.StatusTodo
+	}
 	_, err := db.ExecContext(ctx, r.data.Dialect().RenumberPlaceholders(
-		`INSERT INTO office_events (`+officeEventCols+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`),
+		`INSERT INTO office_events (`+officeEventCols+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`),
 		ev.ID, ev.WorkspaceID, ev.UserID, ev.TaskRef, ev.TaskTitle, ev.Title, ev.Note,
-		ev.StartAt, ev.EndAt, ev.Timezone, ev.ReminderMinutes, ev.Source, ev.RemindedAt, ev.CreatedAt, ev.UpdatedAt)
+		ev.StartAt, ev.EndAt, ev.Timezone, ev.ReminderMinutes, ev.Source, ev.RemindedAt, ev.CreatedAt, ev.UpdatedAt,
+		ev.Kind, ev.Status, ev.AllDay, ev.Outcome)
 	return err
 }
 
@@ -112,9 +121,11 @@ func (r *OfficeRepo) UpdateEvent(ctx context.Context, ev *office.Event) error {
 		return err
 	}
 	res, err := db.ExecContext(ctx, r.data.Dialect().RenumberPlaceholders(
-		`UPDATE office_events SET title=?, note=?, start_at=?, end_at=?, timezone=?, reminder_minutes=?, reminded_at=?, updated_at=NOW()
+		`UPDATE office_events SET title=?, note=?, start_at=?, end_at=?, timezone=?, reminder_minutes=?, reminded_at=?,
+		        kind=?, status=?, all_day=?, outcome=?, updated_at=NOW()
 		 WHERE id=? AND user_id=?`),
-		ev.Title, ev.Note, ev.StartAt, ev.EndAt, ev.Timezone, ev.ReminderMinutes, ev.RemindedAt, ev.ID, ev.UserID)
+		ev.Title, ev.Note, ev.StartAt, ev.EndAt, ev.Timezone, ev.ReminderMinutes, ev.RemindedAt,
+		ev.Kind, ev.Status, ev.AllDay, ev.Outcome, ev.ID, ev.UserID)
 	if err != nil {
 		return err
 	}
@@ -218,7 +229,8 @@ func (r *OfficeRepo) CountOverlap(ctx context.Context, userID string, start, end
 
 // countOverlapOn 在指定 execer（可为事务内连接）上执行重叠计数。
 func (r *OfficeRepo) countOverlapOn(ctx context.Context, db execer, userID string, start, end time.Time, excludeID string) (int, error) {
-	q := `SELECT count(*) FROM office_events WHERE user_id=? AND NOT (end_at<=? OR start_at>=?)`
+	// 只有定了时间段的计划占用时间：工作记录（log）、全天计划不算重叠
+	q := `SELECT count(*) FROM office_events WHERE user_id=? AND kind='plan' AND all_day=FALSE AND NOT (end_at<=? OR start_at>=?)`
 	args := []any{userID, start, end}
 	if excludeID != "" {
 		q += ` AND id<>?`
@@ -244,6 +256,7 @@ func (r *OfficeRepo) ListDueReminders(ctx context.Context, now time.Time, limit 
 	rows, err := db.QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(
 		`SELECT `+officeEventCols+` FROM office_events
 		 WHERE reminder_minutes>0 AND reminded_at IS NULL
+		   AND kind='plan' AND status IN ('todo','doing')
 		   AND start_at - make_interval(mins => reminder_minutes) <= ?
 		 ORDER BY start_at LIMIT ?`), now, limit)
 	if err != nil {

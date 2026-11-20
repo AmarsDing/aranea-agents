@@ -44,6 +44,11 @@ message OfficeEvent {
   string source = 12;    // manual | task_schedule | agent_draft
   google.protobuf.Timestamp created_at = 13;
   google.protobuf.Timestamp updated_at = 14;
+  // 日程 P1（08-日程.md）：计划 + 工作内容两本账。
+  string kind = 15;      // plan（打算做的）| log（已经做了的工作记录）
+  string status = 16;    // todo | doing | done | cancelled；「逾期」不存，按结束时间算
+  bool all_day = 17;     // 全天；全天与 log 不参与 409 重叠检测
+  string outcome = 18;   // 完成情况 / 结果
 }
 
 message CreateEventRequest {
@@ -54,16 +59,25 @@ message CreateEventRequest {
   string timezone = 5;
   int32 reminder_minutes = 6;
   string task_ref = 7;
+  string kind = 8;       // 空 = plan
+  string status = 9;     // 空 = todo
+  bool all_day = 10;
+  string outcome = 11;
 }
 
 message UpdateEventRequest {
   string id = 1 [(google.api.field_behavior) = REQUIRED];
   string title = 2;
-  string note = 3;
+  optional string note = 3; // 有 presence：不传 = 不改；传空串 = 清空
   google.protobuf.Timestamp start_at = 4;
   google.protobuf.Timestamp end_at = 5;
   string timezone = 6;
   int32 reminder_minutes = 7;
+  // 以下有 presence：不传 = 不改；传空串 / false = 清空（如去掉完成情况、取消全天）
+  optional string kind = 8;
+  optional string status = 9;
+  optional bool all_day = 10;
+  optional string outcome = 11;
 }
 
 message GetEventRequest {

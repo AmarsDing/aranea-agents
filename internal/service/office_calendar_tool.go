@@ -66,6 +66,10 @@ func (a *officeCalendarTool) ListMyEvents(ctx context.Context, sessionID string,
 			ReminderMinutes: ev.ReminderMinutes,
 			Source:          ev.Source,
 			TaskRef:         ev.TaskRef,
+			Kind:            ev.Kind,
+			Status:          ev.Status,
+			AllDay:          ev.AllDay,
+			Outcome:         ev.Outcome,
 		})
 	}
 	return out, nil

@@ -38,6 +38,26 @@ const (
 	SourceAgentDraft   = "agent_draft"
 )
 
+// 日程条目类型（office_events.kind）：计划是事前打算做的，工作内容是事后的记录。
+const (
+	KindPlan = "plan"
+	KindLog  = "log"
+)
+
+// 计划状态（office_events.status）。「逾期」不存，由结束时间推算。
+const (
+	StatusTodo      = "todo"
+	StatusDoing     = "doing"
+	StatusDone      = "done"
+	StatusCancelled = "cancelled"
+)
+
+// ValidKind / ValidStatus 入参白名单（空串由调用方按默认值处理）。
+func ValidKind(k string) bool { return k == KindPlan || k == KindLog }
+func ValidStatus(s string) bool {
+	return s == StatusTodo || s == StatusDoing || s == StatusDone || s == StatusCancelled
+}
+
 // 通知类别（office_notifications.kind）。
 const (
 	NotifyKindScheduleReminder = "schedule_reminder"
@@ -64,6 +84,9 @@ var (
 	ErrInvalidTimeRange = apierror.BadRequest(DomainOffice, "invalid time range")
 	// ErrTitleRequired 标题必填。
 	ErrTitleRequired = apierror.BadRequest(DomainOffice, "title is required")
+	// ErrInvalidKind / ErrInvalidStatus 日程条目类型、状态不在白名单内。
+	ErrInvalidKind   = apierror.BadRequest(DomainOffice, "invalid event kind")
+	ErrInvalidStatus = apierror.BadRequest(DomainOffice, "invalid event status")
 	// ErrDraftNotFound 草案不存在。
 	ErrDraftNotFound = apierror.NotFound(DomainOffice, "schedule draft not found")
 	// ErrDraftNotPending 草案已被决议（并发决议恰一个成功，其余得此错误）。
@@ -106,9 +129,23 @@ type Event struct {
 	Timezone        string
 	ReminderMinutes int
 	Source          string
+	Kind            string // plan | log
+	Status          string // todo | doing | done | cancelled
+	AllDay          bool
+	Outcome         string // 完成情况 / 结果
 	RemindedAt      *time.Time
 	CreatedAt       time.Time
 	UpdatedAt       time.Time
+}
+
+// EventPatch 更新时有「是否给了值」之分的字段（nil = 不改），
+// 让清空完成情况、取消全天这类操作可以表达。
+type EventPatch struct {
+	Note    *string // 给了就改（可清空）；nil 时沿用旧口径：patch.Note 非空才改
+	Kind    *string
+	Status  *string
+	AllDay  *bool
+	Outcome *string
 }
 
 // DraftItem 草案单条排期项（与 proto ScheduleDraftItem 对应）。

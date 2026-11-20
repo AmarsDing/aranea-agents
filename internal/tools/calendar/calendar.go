@@ -36,6 +36,11 @@ type EventView struct {
 	ReminderMinutes int       `json:"reminder_minutes,omitempty"`
 	Source          string    `json:"source"`
 	TaskRef         string    `json:"task_ref,omitempty"`
+	// Kind plan = 打算做的，log = 已经做了的工作记录；Status todo/doing/done/cancelled。
+	Kind    string `json:"kind"`
+	Status  string `json:"status"`
+	AllDay  bool   `json:"all_day,omitempty"`
+	Outcome string `json:"outcome,omitempty"`
 }
 
 // DraftItemInput 是草案条目的工具入参。

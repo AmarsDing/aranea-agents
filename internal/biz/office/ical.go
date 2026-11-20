@@ -83,11 +83,25 @@ func (u *ICalUsecase) RenderFeed(ctx context.Context, token string, now time.Tim
 	var b strings.Builder
 	b.WriteString("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//aranea//office calendar//CN\r\nCALSCALE:GREGORIAN\r\n")
 	for _, ev := range events {
+		// 订阅到手机的是「要做的」：工作记录和已取消的计划不导出。
+		if ev.Kind == KindLog || ev.Status == StatusCancelled {
+			continue
+		}
 		b.WriteString("BEGIN:VEVENT\r\n")
 		fmt.Fprintf(&b, "UID:%s@aranea\r\n", ev.ID)
 		fmt.Fprintf(&b, "DTSTAMP:%s\r\n", ev.CreatedAt.UTC().Format("20060102T150405Z"))
-		fmt.Fprintf(&b, "DTSTART:%s\r\n", ev.StartAt.UTC().Format("20060102T150405Z"))
-		fmt.Fprintf(&b, "DTEND:%s\r\n", ev.EndAt.UTC().Format("20060102T150405Z"))
+		if ev.AllDay {
+			// 全天按事件自己的时区取日期，写成 DATE 值（结束不含），手机上显示为全天。
+			loc, lerr := time.LoadLocation(ev.Timezone)
+			if lerr != nil {
+				loc = time.UTC
+			}
+			fmt.Fprintf(&b, "DTSTART;VALUE=DATE:%s\r\n", ev.StartAt.In(loc).Format("20060102"))
+			fmt.Fprintf(&b, "DTEND;VALUE=DATE:%s\r\n", ev.EndAt.In(loc).Format("20060102"))
+		} else {
+			fmt.Fprintf(&b, "DTSTART:%s\r\n", ev.StartAt.UTC().Format("20060102T150405Z"))
+			fmt.Fprintf(&b, "DTEND:%s\r\n", ev.EndAt.UTC().Format("20060102T150405Z"))
+		}
 		fmt.Fprintf(&b, "SUMMARY:%s\r\n", icalEscape(ev.Title))
 		if ev.Note != "" {
 			fmt.Fprintf(&b, "DESCRIPTION:%s\r\n", icalEscape(ev.Note))

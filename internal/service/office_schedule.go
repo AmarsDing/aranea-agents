@@ -54,6 +54,10 @@ func eventToProto(ev *office.Event) *v1.OfficeEvent {
 		Source:          ev.Source,
 		CreatedAt:       timestamppb.New(ev.CreatedAt),
 		UpdatedAt:       timestamppb.New(ev.UpdatedAt),
+		Kind:            ev.Kind,
+		Status:          ev.Status,
+		AllDay:          ev.AllDay,
+		Outcome:         ev.Outcome,
 	}
 }
 
@@ -80,6 +84,10 @@ func (s *OfficeScheduleService) CreateEvent(ctx context.Context, req *v1.CreateE
 		Timezone:        req.GetTimezone(),
 		ReminderMinutes: int(req.GetReminderMinutes()),
 		Source:          office.SourceManual,
+		Kind:            req.GetKind(),
+		Status:          req.GetStatus(),
+		AllDay:          req.GetAllDay(),
+		Outcome:         req.GetOutcome(),
 	})
 	if err != nil {
 		return nil, apierror.ToKratos(err)
@@ -100,7 +108,7 @@ func (s *OfficeScheduleService) UpdateEvent(ctx context.Context, req *v1.UpdateE
 		EndAt:           tsAsTime(req.GetEndAt()),
 		Timezone:        req.GetTimezone(),
 		ReminderMinutes: int(req.GetReminderMinutes()),
-	})
+	}, office.EventPatch{Note: req.Note, Kind: req.Kind, Status: req.Status, AllDay: req.AllDay, Outcome: req.Outcome})
 	if err != nil {
 		return nil, apierror.ToKratos(err)
 	}

@@ -42,8 +42,13 @@ type OfficeEvent struct {
 	Source          string                 `protobuf:"bytes,12,opt,name=source,proto3" json:"source,omitempty"`                                           // manual | task_schedule | agent_draft
 	CreatedAt       *timestamppb.Timestamp `protobuf:"bytes,13,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	UpdatedAt       *timestamppb.Timestamp `protobuf:"bytes,14,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// 日程 P1（08-日程.md）：计划 + 工作内容两本账。
+	Kind          string `protobuf:"bytes,15,opt,name=kind,proto3" json:"kind,omitempty"`                    // plan（打算做的）| log（已经做了的工作记录）
+	Status        string `protobuf:"bytes,16,opt,name=status,proto3" json:"status,omitempty"`                // todo | doing | done | cancelled；「逾期」不存，按结束时间算
+	AllDay        bool   `protobuf:"varint,17,opt,name=all_day,json=allDay,proto3" json:"all_day,omitempty"` // 全天；全天与 log 不参与 409 重叠检测
+	Outcome       string `protobuf:"bytes,18,opt,name=outcome,proto3" json:"outcome,omitempty"`              // 完成情况 / 结果
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *OfficeEvent) Reset() {
@@ -174,6 +179,34 @@ func (x *OfficeEvent) GetUpdatedAt() *timestamppb.Timestamp {
 	return nil
 }
 
+func (x *OfficeEvent) GetKind() string {
+	if x != nil {
+		return x.Kind
+	}
+	return ""
+}
+
+func (x *OfficeEvent) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *OfficeEvent) GetAllDay() bool {
+	if x != nil {
+		return x.AllDay
+	}
+	return false
+}
+
+func (x *OfficeEvent) GetOutcome() string {
+	if x != nil {
+		return x.Outcome
+	}
+	return ""
+}
+
 type CreateEventRequest struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
 	Title           string                 `protobuf:"bytes,1,opt,name=title,proto3" json:"title,omitempty"`
@@ -183,6 +216,10 @@ type CreateEventRequest struct {
 	Timezone        string                 `protobuf:"bytes,5,opt,name=timezone,proto3" json:"timezone,omitempty"`
 	ReminderMinutes int32                  `protobuf:"varint,6,opt,name=reminder_minutes,json=reminderMinutes,proto3" json:"reminder_minutes,omitempty"`
 	TaskRef         string                 `protobuf:"bytes,7,opt,name=task_ref,json=taskRef,proto3" json:"task_ref,omitempty"`
+	Kind            string                 `protobuf:"bytes,8,opt,name=kind,proto3" json:"kind,omitempty"`     // 空 = plan
+	Status          string                 `protobuf:"bytes,9,opt,name=status,proto3" json:"status,omitempty"` // 空 = todo
+	AllDay          bool                   `protobuf:"varint,10,opt,name=all_day,json=allDay,proto3" json:"all_day,omitempty"`
+	Outcome         string                 `protobuf:"bytes,11,opt,name=outcome,proto3" json:"outcome,omitempty"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -266,17 +303,50 @@ func (x *CreateEventRequest) GetTaskRef() string {
 	return ""
 }
 
+func (x *CreateEventRequest) GetKind() string {
+	if x != nil {
+		return x.Kind
+	}
+	return ""
+}
+
+func (x *CreateEventRequest) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *CreateEventRequest) GetAllDay() bool {
+	if x != nil {
+		return x.AllDay
+	}
+	return false
+}
+
+func (x *CreateEventRequest) GetOutcome() string {
+	if x != nil {
+		return x.Outcome
+	}
+	return ""
+}
+
 type UpdateEventRequest struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
 	Id              string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
 	Title           string                 `protobuf:"bytes,2,opt,name=title,proto3" json:"title,omitempty"`
-	Note            string                 `protobuf:"bytes,3,opt,name=note,proto3" json:"note,omitempty"`
+	Note            *string                `protobuf:"bytes,3,opt,name=note,proto3,oneof" json:"note,omitempty"` // 有 presence：不传 = 不改；传空串 = 清空
 	StartAt         *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=start_at,json=startAt,proto3" json:"start_at,omitempty"`
 	EndAt           *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=end_at,json=endAt,proto3" json:"end_at,omitempty"`
 	Timezone        string                 `protobuf:"bytes,6,opt,name=timezone,proto3" json:"timezone,omitempty"`
 	ReminderMinutes int32                  `protobuf:"varint,7,opt,name=reminder_minutes,json=reminderMinutes,proto3" json:"reminder_minutes,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// 以下有 presence：不传 = 不改；传空串 / false = 清空（如去掉完成情况、取消全天）
+	Kind          *string `protobuf:"bytes,8,opt,name=kind,proto3,oneof" json:"kind,omitempty"`
+	Status        *string `protobuf:"bytes,9,opt,name=status,proto3,oneof" json:"status,omitempty"`
+	AllDay        *bool   `protobuf:"varint,10,opt,name=all_day,json=allDay,proto3,oneof" json:"all_day,omitempty"`
+	Outcome       *string `protobuf:"bytes,11,opt,name=outcome,proto3,oneof" json:"outcome,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *UpdateEventRequest) Reset() {
@@ -324,8 +394,8 @@ func (x *UpdateEventRequest) GetTitle() string {
 }
 
 func (x *UpdateEventRequest) GetNote() string {
-	if x != nil {
-		return x.Note
+	if x != nil && x.Note != nil {
+		return *x.Note
 	}
 	return ""
 }
@@ -356,6 +426,34 @@ func (x *UpdateEventRequest) GetReminderMinutes() int32 {
 		return x.ReminderMinutes
 	}
 	return 0
+}
+
+func (x *UpdateEventRequest) GetKind() string {
+	if x != nil && x.Kind != nil {
+		return *x.Kind
+	}
+	return ""
+}
+
+func (x *UpdateEventRequest) GetStatus() string {
+	if x != nil && x.Status != nil {
+		return *x.Status
+	}
+	return ""
+}
+
+func (x *UpdateEventRequest) GetAllDay() bool {
+	if x != nil && x.AllDay != nil {
+		return *x.AllDay
+	}
+	return false
+}
+
+func (x *UpdateEventRequest) GetOutcome() string {
+	if x != nil && x.Outcome != nil {
+		return *x.Outcome
+	}
+	return ""
 }
 
 type GetEventRequest struct {
@@ -1254,7 +1352,7 @@ var File_kratos_office_v1_schedule_proto protoreflect.FileDescriptor
 
 const file_kratos_office_v1_schedule_proto_rawDesc = "" +
 	"\n" +
-	"\x1fkratos/office/v1/schedule.proto\x12\x10kratos.office.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x19google/api/httpbody.proto\x1a\x1bgoogle/protobuf/empty.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a aranea/auth/v1/requirement.proto\"\xfc\x03\n" +
+	"\x1fkratos/office/v1/schedule.proto\x12\x10kratos.office.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x19google/api/httpbody.proto\x1a\x1bgoogle/protobuf/empty.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a aranea/auth/v1/requirement.proto\"\xdb\x04\n" +
 	"\vOfficeEvent\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12!\n" +
 	"\fworkspace_id\x18\x02 \x01(\tR\vworkspaceId\x12\x17\n" +
@@ -1273,7 +1371,11 @@ const file_kratos_office_v1_schedule_proto_rawDesc = "" +
 	"\n" +
 	"created_at\x18\r \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
 	"\n" +
-	"updated_at\x18\x0e \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"\x9c\x02\n" +
+	"updated_at\x18\x0e \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x12\x12\n" +
+	"\x04kind\x18\x0f \x01(\tR\x04kind\x12\x16\n" +
+	"\x06status\x18\x10 \x01(\tR\x06status\x12\x17\n" +
+	"\aall_day\x18\x11 \x01(\bR\x06allDay\x12\x18\n" +
+	"\aoutcome\x18\x12 \x01(\tR\aoutcome\"\xfb\x02\n" +
 	"\x12CreateEventRequest\x12\x1a\n" +
 	"\x05title\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\x05title\x12\x12\n" +
 	"\x04note\x18\x02 \x01(\tR\x04note\x12;\n" +
@@ -1281,15 +1383,32 @@ const file_kratos_office_v1_schedule_proto_rawDesc = "" +
 	"\x06end_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampB\x04\xe2A\x01\x02R\x05endAt\x12\x1a\n" +
 	"\btimezone\x18\x05 \x01(\tR\btimezone\x12)\n" +
 	"\x10reminder_minutes\x18\x06 \x01(\x05R\x0freminderMinutes\x12\x19\n" +
-	"\btask_ref\x18\a \x01(\tR\ataskRef\"\x85\x02\n" +
+	"\btask_ref\x18\a \x01(\tR\ataskRef\x12\x12\n" +
+	"\x04kind\x18\b \x01(\tR\x04kind\x12\x16\n" +
+	"\x06status\x18\t \x01(\tR\x06status\x12\x17\n" +
+	"\aall_day\x18\n" +
+	" \x01(\bR\x06allDay\x12\x18\n" +
+	"\aoutcome\x18\v \x01(\tR\aoutcome\"\xb2\x03\n" +
 	"\x12UpdateEventRequest\x12\x14\n" +
 	"\x02id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\x02id\x12\x14\n" +
-	"\x05title\x18\x02 \x01(\tR\x05title\x12\x12\n" +
-	"\x04note\x18\x03 \x01(\tR\x04note\x125\n" +
+	"\x05title\x18\x02 \x01(\tR\x05title\x12\x17\n" +
+	"\x04note\x18\x03 \x01(\tH\x00R\x04note\x88\x01\x01\x125\n" +
 	"\bstart_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\astartAt\x121\n" +
 	"\x06end_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\x05endAt\x12\x1a\n" +
 	"\btimezone\x18\x06 \x01(\tR\btimezone\x12)\n" +
-	"\x10reminder_minutes\x18\a \x01(\x05R\x0freminderMinutes\"'\n" +
+	"\x10reminder_minutes\x18\a \x01(\x05R\x0freminderMinutes\x12\x17\n" +
+	"\x04kind\x18\b \x01(\tH\x01R\x04kind\x88\x01\x01\x12\x1b\n" +
+	"\x06status\x18\t \x01(\tH\x02R\x06status\x88\x01\x01\x12\x1c\n" +
+	"\aall_day\x18\n" +
+	" \x01(\bH\x03R\x06allDay\x88\x01\x01\x12\x1d\n" +
+	"\aoutcome\x18\v \x01(\tH\x04R\aoutcome\x88\x01\x01B\a\n" +
+	"\x05_noteB\a\n" +
+	"\x05_kindB\t\n" +
+	"\a_statusB\n" +
+	"\n" +
+	"\b_all_dayB\n" +
+	"\n" +
+	"\b_outcome\"'\n" +
 	"\x0fGetEventRequest\x12\x14\n" +
 	"\x02id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\x02id\"*\n" +
 	"\x12DeleteEventRequest\x12\x14\n" +
@@ -1475,6 +1594,7 @@ func file_kratos_office_v1_schedule_proto_init() {
 	if File_kratos_office_v1_schedule_proto != nil {
 		return
 	}
+	file_kratos_office_v1_schedule_proto_msgTypes[2].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{

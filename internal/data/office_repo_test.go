@@ -37,6 +37,11 @@ CREATE TABLE IF NOT EXISTS office_events (
   "created_at"       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   "updated_at"       TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+-- 镜像 20261333_office_events_plan_log.sql
+ALTER TABLE office_events ADD COLUMN IF NOT EXISTS "kind"    TEXT    NOT NULL DEFAULT 'plan';
+ALTER TABLE office_events ADD COLUMN IF NOT EXISTS "status"  TEXT    NOT NULL DEFAULT 'todo';
+ALTER TABLE office_events ADD COLUMN IF NOT EXISTS "all_day" BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE office_events ADD COLUMN IF NOT EXISTS "outcome" TEXT    NOT NULL DEFAULT '';
 CREATE INDEX IF NOT EXISTS idx_office_events_user_start ON office_events ("user_id", "start_at");
 CREATE INDEX IF NOT EXISTS idx_office_events_task ON office_events ("task_ref") WHERE "task_ref" <> '';
 CREATE INDEX IF NOT EXISTS idx_office_events_reminder ON office_events ("start_at")

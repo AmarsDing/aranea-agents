@@ -84,7 +84,7 @@ func (f *fakeEventRepo) CountOverlap(_ context.Context, userID string, start, en
 	}
 	n := 0
 	for _, ev := range f.byID {
-		if ev.UserID != userID || ev.ID == excludeID {
+		if ev.UserID != userID || ev.ID == excludeID || ev.Kind == KindLog || ev.AllDay {
 			continue
 		}
 		if overlap(ev.StartAt, ev.EndAt, start, end) {
@@ -97,7 +97,8 @@ func (f *fakeEventRepo) CountOverlap(_ context.Context, userID string, start, en
 func (f *fakeEventRepo) ListDueReminders(_ context.Context, now time.Time, _ int) ([]*Event, error) {
 	var out []*Event
 	for _, ev := range f.byID {
-		if ev.ReminderMinutes > 0 && ev.RemindedAt == nil &&
+		if ev.ReminderMinutes > 0 && ev.RemindedAt == nil && ev.Kind != KindLog &&
+			(ev.Status == "" || ev.Status == StatusTodo || ev.Status == StatusDoing) &&
 			!ev.StartAt.Add(-time.Duration(ev.ReminderMinutes)*time.Minute).After(now) {
 			out = append(out, ev)
 		}
@@ -363,11 +364,11 @@ func TestScheduleUsecase_UpdateSelfExclude(t *testing.T) {
 		t.Fatal(err)
 	}
 	// 仅改标题（时间不动 → 不复检）。
-	if _, err := uc.UpdateEvent(ctx, "u-1", &Event{ID: a.ID, Title: "A2"}); err != nil {
+	if _, err := uc.UpdateEvent(ctx, "u-1", &Event{ID: a.ID, Title: "A2"}, EventPatch{}); err != nil {
 		t.Fatalf("title-only update must pass, got %v", err)
 	}
 	// 移到与 B 重叠 → 409。
-	if _, err := uc.UpdateEvent(ctx, "u-1", &Event{ID: a.ID, StartAt: day(11).Add(30 * time.Minute), EndAt: day(12).Add(30 * time.Minute)}); !errors.Is(err, ErrEventConflict) {
+	if _, err := uc.UpdateEvent(ctx, "u-1", &Event{ID: a.ID, StartAt: day(11).Add(30 * time.Minute), EndAt: day(12).Add(30 * time.Minute)}, EventPatch{}); !errors.Is(err, ErrEventConflict) {
 		t.Fatalf("overlapping move must be 409, got %v", err)
 	}
 	// 移到空窗成功；reminded_at 重置。
@@ -380,12 +381,104 @@ func TestScheduleUsecase_UpdateSelfExclude(t *testing.T) {
 	if err := repo.UpdateEvent(ctx, a2); err != nil {
 		t.Fatal(err)
 	}
-	moved, err := uc.UpdateEvent(ctx, "u-1", &Event{ID: a.ID, StartAt: day(14), EndAt: day(15), ReminderMinutes: 10})
+	moved, err := uc.UpdateEvent(ctx, "u-1", &Event{ID: a.ID, StartAt: day(14), EndAt: day(15), ReminderMinutes: 10}, EventPatch{})
 	if err != nil {
 		t.Fatalf("move to free window: %v", err)
 	}
 	if moved.RemindedAt != nil {
 		t.Fatal("time/reminder change must reset reminded_at")
+	}
+}
+
+// TestScheduleUsecase_PlanAndLog 日程 P1：计划 / 工作内容两本账。
+// 工作记录与全天计划不占时间（不 409）；类型、状态走白名单；完成情况可清空；
+// 工作记录改回计划且撞上已有计划 → 409；默认是未开始的计划。
+func TestScheduleUsecase_PlanAndLog(t *testing.T) {
+	repo := newFakeEventRepo()
+	uc := NewScheduleUsecase(repo)
+	ctx := context.Background()
+	str := func(s string) *string { return &s }
+	yes, no := true, false
+
+	plan, err := uc.CreateEvent(ctx, &Event{UserID: "u-1", Title: "对周报", StartAt: day(14), EndAt: day(15)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Kind != KindPlan || plan.Status != StatusTodo {
+		t.Fatalf("defaults must be plan/todo, got %s/%s", plan.Kind, plan.Status)
+	}
+	// 同时段记一条工作内容、一条全天计划：都不算冲突
+	log, err := uc.CreateEvent(ctx, &Event{UserID: "u-1", Title: "回了报价邮件", Kind: KindLog, StartAt: day(14), EndAt: day(15)})
+	if err != nil {
+		t.Fatalf("log must not conflict, got %v", err)
+	}
+	if _, err := uc.CreateEvent(ctx, &Event{UserID: "u-1", Title: "出差", AllDay: true, StartAt: day(0), EndAt: day(24)}); err != nil {
+		t.Fatalf("all-day must not conflict, got %v", err)
+	}
+	// 白名单
+	if _, err := uc.CreateEvent(ctx, &Event{UserID: "u-1", Title: "x", Kind: "memo", StartAt: day(16), EndAt: day(17)}); !errors.Is(err, ErrInvalidKind) {
+		t.Fatalf("unknown kind must be 400, got %v", err)
+	}
+	if _, err := uc.UpdateEvent(ctx, "u-1", &Event{ID: plan.ID}, EventPatch{Status: str("late")}); !errors.Is(err, ErrInvalidStatus) {
+		t.Fatalf("unknown status must be 400, got %v", err)
+	}
+	// 标完成 + 写结果，再清空结果；不传的字段不动
+	done, err := uc.UpdateEvent(ctx, "u-1", &Event{ID: plan.ID}, EventPatch{Status: str(StatusDone), Outcome: str("预算不追加")})
+	if err != nil || done.Status != StatusDone || done.Outcome != "预算不追加" {
+		t.Fatalf("mark done: %+v %v", done, err)
+	}
+	cleared, err := uc.UpdateEvent(ctx, "u-1", &Event{ID: plan.ID}, EventPatch{Outcome: str("")})
+	if err != nil || cleared.Outcome != "" || cleared.Status != StatusDone {
+		t.Fatalf("clear outcome must keep status: %+v %v", cleared, err)
+	}
+	// 说明：给了 Note 就按它改（可清空）；没给时空串 = 不改（老客户端口径）
+	if _, err := uc.UpdateEvent(ctx, "u-1", &Event{ID: plan.ID}, EventPatch{Note: str("带上预算表")}); err != nil {
+		t.Fatal(err)
+	}
+	kept, _ := uc.UpdateEvent(ctx, "u-1", &Event{ID: plan.ID}, EventPatch{})
+	if kept.Note != "带上预算表" {
+		t.Fatalf("absent note must keep, got %q", kept.Note)
+	}
+	noNote, _ := uc.UpdateEvent(ctx, "u-1", &Event{ID: plan.ID}, EventPatch{Note: str("")})
+	if noNote.Note != "" {
+		t.Fatalf("explicit empty note must clear, got %q", noNote.Note)
+	}
+	// 工作记录改回计划：撞上已有计划 → 409；全天改回定时同理
+	if _, err := uc.UpdateEvent(ctx, "u-1", &Event{ID: log.ID}, EventPatch{Kind: str(KindPlan)}); !errors.Is(err, ErrEventConflict) {
+		t.Fatalf("log→plan over a plan must be 409, got %v", err)
+	}
+	allDay, err := uc.CreateEvent(ctx, &Event{UserID: "u-1", Title: "截止日", AllDay: true, StartAt: day(14), EndAt: day(15)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := uc.UpdateEvent(ctx, "u-1", &Event{ID: allDay.ID}, EventPatch{AllDay: &no}); !errors.Is(err, ErrEventConflict) {
+		t.Fatalf("all-day→timed over a plan must be 409, got %v", err)
+	}
+	if _, err := uc.UpdateEvent(ctx, "u-1", &Event{ID: allDay.ID}, EventPatch{AllDay: &yes, Status: str(StatusCancelled)}); err != nil {
+		t.Fatalf("staying all-day must pass, got %v", err)
+	}
+}
+
+// TestReminder_SkipsLogsAndFinishedPlans 提醒只扫未完成的计划（与仓储 SQL 同口径）。
+func TestReminder_SkipsLogsAndFinishedPlans(t *testing.T) {
+	repo := newFakeEventRepo()
+	uc := NewScheduleUsecase(repo)
+	ctx := context.Background()
+	for _, ev := range []*Event{
+		{UserID: "u-1", Title: "要提醒", StartAt: day(9), EndAt: day(10), ReminderMinutes: 15},
+		{UserID: "u-1", Title: "记录", Kind: KindLog, StartAt: day(11), EndAt: day(12), ReminderMinutes: 15},
+		{UserID: "u-1", Title: "做完了", Status: StatusDone, StartAt: day(13), EndAt: day(14), ReminderMinutes: 15},
+	} {
+		if _, err := uc.CreateEvent(ctx, ev); err != nil {
+			t.Fatal(err)
+		}
+	}
+	due, err := repo.ListDueReminders(ctx, day(23), 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(due) != 1 || due[0].Title != "要提醒" {
+		t.Fatalf("only the open plan is due, got %d", len(due))
 	}
 }
 
@@ -616,6 +709,12 @@ func TestICalUsecase_TokenAndFeed(t *testing.T) {
 
 	events.byID["ev-1"] = &Event{ID: "ev-1", UserID: "u-1", Title: "逗号,分号;换行\n反斜\\", Note: "备注,;x", StartAt: day(9), EndAt: day(10), CreatedAt: day(0)}
 	events.byID["ev-other"] = &Event{ID: "ev-other", UserID: "u-2", Title: "他人", StartAt: day(9), EndAt: day(10)}
+	// 工作记录、已取消的不导出；全天写成 DATE（按事件时区取日期，结束不含）
+	events.byID["ev-log"] = &Event{ID: "ev-log", UserID: "u-1", Kind: KindLog, Title: "记录", StartAt: day(9), EndAt: day(10)}
+	events.byID["ev-cancel"] = &Event{ID: "ev-cancel", UserID: "u-1", Kind: KindPlan, Status: StatusCancelled, Title: "取消", StartAt: day(9), EndAt: day(10)}
+	sh, _ := time.LoadLocation("Asia/Shanghai")
+	events.byID["ev-allday"] = &Event{ID: "ev-allday", UserID: "u-1", Kind: KindPlan, AllDay: true, Timezone: "Asia/Shanghai", Title: "出差",
+		StartAt: time.Date(2026, 11, 10, 0, 0, 0, 0, sh), EndAt: time.Date(2026, 11, 12, 0, 0, 0, 0, sh)}
 
 	feed, err := uc.RenderFeed(ctx, plain, day(12))
 	if err != nil {
@@ -628,6 +727,14 @@ func TestICalUsecase_TokenAndFeed(t *testing.T) {
 	}
 	if strings.Contains(feed, "ev-other") {
 		t.Fatal("feed must not contain other user's events")
+	}
+	for _, gone := range []string{"ev-log", "ev-cancel"} {
+		if strings.Contains(feed, gone) {
+			t.Fatalf("feed must skip %s:\n%s", gone, feed)
+		}
+	}
+	if !strings.Contains(feed, "DTSTART;VALUE=DATE:20261110\r\nDTEND;VALUE=DATE:20261112") {
+		t.Fatalf("all-day must be DATE values:\n%s", feed)
 	}
 
 	// 吊销 → feed 401 语义；管理端重复吊销 404。

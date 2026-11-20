@@ -1,0 +1,604 @@
+// 工作台 › 日程（/schedule）。类名 sch- 前缀，取值只走 --nt-* 令牌。
+// 版式照样稿：docs/aranea-agents/design/assets/2026-11-19-workbench-pages/index.html#page=schedule
+// 两栏：一屏月历（6 × 7 撑满高度，不滚动）· 当天面板 384px（里面自己滚）。
+@import "./_nt-tokens.css"
+
+.sch-page
+  display: grid
+  grid-template-columns: minmax(0, 1fr) 384px
+  gap: var(--nt-space-3)
+  // 高度跟着 q-page 的 min-height 走（一屏）
+  height: 0
+  padding: var(--nt-space-3) var(--nt-space-4) var(--nt-space-4)
+  color: var(--nt-text-1)
+  font-family: var(--nt-font-sans)
+  font-size: var(--nt-fs-body)
+
+.sch-forbidden
+  grid-column: 1 / -1
+
+.sch-num
+  font-family: var(--nt-font-mono)
+  font-variant-numeric: tabular-nums
+
+.sch-sp
+  flex: 1
+
+.sch-hint
+  margin: 0
+  color: var(--nt-text-3)
+  font-size: var(--nt-fs-caption)
+
+.sch-muted
+  color: var(--nt-text-2)
+  font-size: var(--nt-fs-caption)
+
+.sch-panel
+  position: relative
+  display: flex
+  flex-direction: column
+  min-width: 0
+  min-height: 0
+  overflow: hidden
+  background: var(--nt-glass-panel)
+  border: 1px solid var(--nt-glass-border)
+  border-radius: var(--nt-radius-l)
+  box-shadow: inset 0 1px 0 var(--nt-glass-highlight), var(--nt-shadow-depth)
+  backdrop-filter: var(--nt-glass-filter)
+
+// ——— 月历 ———
+.sch-cal
+  padding: var(--nt-space-3) var(--nt-space-3) var(--nt-space-3)
+
+.sch-bar
+  display: flex
+  flex-wrap: wrap
+  align-items: center
+  gap: var(--nt-space-1) 6px
+  margin-bottom: var(--nt-space-2)
+
+.sch-month
+  display: inline-flex
+  align-items: center
+  gap: 6px
+  height: 34px
+  padding: 0 10px
+  background: none
+  border: 1px solid transparent
+  border-radius: var(--nt-radius-m)
+  color: var(--nt-text-0)
+  font-size: var(--nt-fs-title)
+  font-weight: 600
+  cursor: pointer
+  transition: background var(--nt-transition), border-color var(--nt-transition)
+
+  &:hover
+    background: var(--nt-tile-hover)
+    border-color: var(--nt-border-1)
+
+.sch-month--on
+  background: var(--nt-tile-hover)
+  border-color: var(--nt-border-1)
+
+.sch-stats
+  display: flex
+  gap: var(--nt-space-3)
+  margin: 0 0 0 var(--nt-space-3)
+  color: var(--nt-text-3)
+  font-size: var(--nt-fs-caption)
+
+  div
+    display: flex
+    align-items: baseline
+    gap: 4px
+
+  dt,
+  dd
+    margin: 0
+
+  dd
+    color: var(--nt-text-1)
+    font-weight: 600
+
+.sch-stats--bad dd
+  color: var(--nt-danger)
+
+.sch-filters
+  display: flex
+  gap: 6px
+  margin-left: auto
+
+.sch-fchip
+  display: inline-flex
+  align-items: center
+  gap: 6px
+  height: 28px
+  padding: 0 10px
+  background: none
+  border: 1px solid var(--nt-border-1)
+  border-radius: var(--nt-radius-pill)
+  color: var(--nt-text-2)
+  font-size: var(--nt-fs-caption)
+  cursor: pointer
+  transition: opacity var(--nt-transition), background var(--nt-transition)
+
+  &:hover
+    background: var(--nt-tile-hover)
+
+  i
+    width: 8px
+    height: 8px
+
+.sch-fchip--plan i
+  border-radius: var(--nt-radius-pill)
+  box-shadow: inset 0 0 0 1.5px var(--nt-text-2)
+
+.sch-fchip--log i
+  border-radius: 2px
+  background: var(--nt-success)
+
+.sch-fchip--ai i
+  border: 1px dashed var(--nt-ai)
+  border-radius: 2px
+
+.sch-fchip--off
+  opacity: 0.45
+
+.sch-wk
+  display: grid
+  grid-template-columns: repeat(7, minmax(0, 1fr))
+  padding: 0 2px 6px
+  color: var(--nt-text-3)
+  font-size: var(--nt-fs-caption)
+
+  span
+    padding-left: var(--nt-space-2)
+
+.sch-days
+  flex: 1
+  display: grid
+  grid-template-columns: repeat(7, minmax(0, 1fr))
+  grid-template-rows: repeat(6, minmax(0, 1fr))
+  gap: 4px
+  min-height: 0
+
+.sch-day
+  display: flex
+  flex-direction: column
+  gap: 3px
+  min-width: 0
+  min-height: 0
+  padding: 6px 6px 4px
+  overflow: hidden
+  background: var(--nt-tile-bg)
+  border: 1px solid transparent
+  border-radius: var(--nt-radius-m)
+  color: inherit
+  font: inherit
+  text-align: left
+  cursor: pointer
+  transition: background var(--nt-transition), border-color var(--nt-transition)
+
+  &:hover
+    background: var(--nt-tile-hover)
+    border-color: var(--nt-border-1)
+
+.sch-day--out
+  opacity: 0.38
+
+.sch-day--wkend
+  background: none
+
+.sch-day--sel,
+.sch-day--sel:hover
+  background: var(--nt-accent-soft)
+  border-color: var(--nt-accent-border)
+
+.sch-day__n
+  color: var(--nt-text-2)
+  font-size: var(--nt-fs-caption)
+
+  b
+    display: inline-grid
+    place-items: center
+    min-width: 22px
+    height: 22px
+    font-weight: 600
+
+.sch-day--today .sch-day__n b
+  border-radius: var(--nt-radius-pill)
+  background: var(--nt-accent)
+  color: var(--nt-on-accent)
+  font-weight: 700
+
+.sch-it
+  display: flex
+  flex: none
+  align-items: center
+  gap: 5px
+  min-width: 0
+  padding: 1px 5px
+  border-radius: var(--nt-radius-s)
+  color: var(--nt-text-1)
+  font-size: var(--nt-fs-caption)
+  line-height: 18px
+  white-space: nowrap
+
+.sch-it__txt
+  overflow: hidden
+  text-overflow: ellipsis
+
+.sch-it__tm
+  flex: none
+  color: var(--nt-text-3)
+  font-size: var(--nt-fs-micro)
+
+// 计划：状态圆点 —— 空心未开始 / 青绿进行中 / 绿 + 划掉已完成 / 灰 + 划掉已取消 / 红逾期
+.sch-it--plan::before
+  flex: none
+  width: 7px
+  height: 7px
+  border-radius: var(--nt-radius-pill)
+  box-shadow: inset 0 0 0 1.5px var(--nt-text-2)
+  content: ''
+
+.sch-it--plan.sch-st--doing::before
+  background: var(--nt-run)
+  box-shadow: none
+
+.sch-it--plan.sch-st--done::before
+  background: var(--nt-success)
+  box-shadow: none
+
+.sch-it--plan.sch-st--cancelled::before
+  box-shadow: inset 0 0 0 1.5px var(--nt-text-3)
+
+.sch-it--plan.sch-st--overdue
+  color: var(--nt-danger)
+
+  &::before
+    background: var(--nt-danger)
+    box-shadow: none
+
+.sch-it--plan.sch-st--done,
+.sch-it--plan.sch-st--cancelled
+  color: var(--nt-text-3)
+
+  .sch-it__txt
+    text-decoration: line-through
+
+.sch-it--log
+  background: color-mix(in srgb, var(--nt-success) 8%, transparent)
+  color: var(--nt-success)
+
+.sch-it--ai
+  border: 1px dashed color-mix(in srgb, var(--nt-ai) 50%, transparent)
+  color: var(--nt-ai)
+
+.sch-day__more
+  padding-left: 5px
+  color: var(--nt-text-3)
+  font-size: var(--nt-fs-micro)
+
+// ——— 选月面板 ———
+.sch-picker
+  width: 300px
+  padding: var(--nt-space-3)
+
+.sch-picker__y
+  display: flex
+  align-items: center
+  justify-content: space-between
+  margin-bottom: var(--nt-space-2)
+  color: var(--nt-text-0)
+  font-size: var(--nt-fs-panel)
+  font-weight: 600
+
+.sch-picker__grid
+  display: grid
+  grid-template-columns: repeat(4, 1fr)
+  gap: 6px
+  margin-bottom: var(--nt-space-2)
+
+.sch-picker__m
+  position: relative
+  height: 44px
+  background: var(--nt-tile-bg)
+  border: 1px solid transparent
+  border-radius: var(--nt-radius-m)
+  color: var(--nt-text-1)
+  font: inherit
+  font-size: var(--nt-fs-caption)
+  cursor: pointer
+
+  &:hover
+    background: var(--nt-tile-hover)
+
+  small
+    position: absolute
+    top: 3px
+    right: 6px
+    color: var(--nt-text-3)
+    font-size: var(--nt-fs-micro)
+
+.sch-picker__m--on
+  background: var(--nt-accent-soft)
+  border-color: var(--nt-accent-border)
+  color: var(--nt-accent)
+  font-weight: 600
+
+.sch-picker__m--now::after
+  position: absolute
+  bottom: 6px
+  left: 50%
+  width: 4px
+  height: 4px
+  margin-left: -2px
+  border-radius: var(--nt-radius-pill)
+  background: var(--nt-accent)
+  content: ''
+
+// ——— 当天面板 ———
+.sch-dp
+  padding: var(--nt-space-3) var(--nt-space-4) 0
+
+.sch-ed
+  display: flex
+  flex: 1
+  flex-direction: column
+  min-height: 0
+
+.sch-dp__head
+  display: flex
+  flex: none
+  align-items: center
+  gap: var(--nt-space-2)
+  min-height: 36px
+
+.sch-dp__title
+  margin: 0
+  color: var(--nt-text-0)
+  font-size: var(--nt-fs-title)
+  font-weight: 600
+  line-height: 1.3
+
+.sch-dp__body
+  flex: 1
+  min-height: 0
+  margin: 0 calc(-1 * var(--nt-space-4))
+  padding: 0 var(--nt-space-4) var(--nt-space-3)
+  overflow-y: auto
+
+.sch-dp__foot
+  display: flex
+  flex: none
+  align-items: center
+  gap: var(--nt-space-2)
+  margin: 0 calc(-1 * var(--nt-space-4))
+  padding: var(--nt-space-3) var(--nt-space-4)
+  border-top: 1px solid var(--nt-border-1)
+
+.sch-sect
+  display: flex
+  align-items: center
+  gap: 6px
+  margin: var(--nt-space-3) 0 var(--nt-space-2)
+  color: var(--nt-text-1)
+  font-size: var(--nt-fs-caption)
+  font-weight: 600
+
+  .sch-hint
+    font-weight: 400
+    text-align: right
+
+.sch-sect__n
+  color: var(--nt-text-3)
+  font-weight: 400
+
+.sch-sect--ai
+  color: var(--nt-ai)
+
+.sch-ent
+  display: flex
+  align-items: flex-start
+  gap: var(--nt-space-2)
+  margin-bottom: 6px
+  padding: var(--nt-space-2) 10px
+  background: var(--nt-tile-bg)
+  border: 1px solid var(--nt-border-1)
+  border-radius: var(--nt-radius-m)
+  transition: background var(--nt-transition), border-color var(--nt-transition)
+
+  &:hover
+    background: var(--nt-tile-hover)
+    border-color: var(--nt-border-2)
+
+.sch-ent--log
+  border-left: 3px solid color-mix(in srgb, var(--nt-success) 60%, transparent)
+
+.sch-ent__main
+  display: grid
+  flex: 1
+  grid-template-columns: 76px minmax(0, 1fr)
+  gap: 2px 10px
+  min-width: 0
+  padding: 0
+  background: none
+  border: 0
+  color: inherit
+  font: inherit
+  text-align: left
+  cursor: pointer
+
+.sch-ent__t
+  color: var(--nt-text-2)
+  font-size: var(--nt-fs-caption)
+  line-height: 1.6
+
+.sch-ent__title
+  overflow: hidden
+  color: var(--nt-text-0)
+  font-weight: 600
+  text-overflow: ellipsis
+  white-space: nowrap
+
+  &.sch-st--done,
+  &.sch-st--cancelled
+    color: var(--nt-text-3)
+    text-decoration: line-through
+
+.sch-ent__meta
+  display: flex
+  flex-wrap: wrap
+  grid-column: 2
+  gap: 6px
+  align-items: center
+
+.sch-ent__sub
+  flex-basis: 100%
+  overflow: hidden
+  color: var(--nt-text-2)
+  font-size: var(--nt-fs-caption)
+  text-overflow: ellipsis
+  white-space: nowrap
+
+.sch-chip
+  display: inline-flex
+  align-items: center
+  gap: 4px
+  height: 22px
+  padding: 0 8px
+  background: var(--nt-tile-hover)
+  border-radius: var(--nt-radius-pill)
+  color: var(--nt-text-2)
+  font-size: var(--nt-fs-micro)
+
+.sch-chip--ai
+  background: color-mix(in srgb, var(--nt-ai) 12%, transparent)
+  color: var(--nt-ai)
+
+// 状态按钮：点一下循环（未开始 → 进行中 → 已完成）
+.sch-stbtn
+  flex: none
+  min-width: 64px
+  height: 26px
+  padding: 0 10px
+  background: var(--nt-tile-hover)
+  border: 0
+  border-radius: var(--nt-radius-pill)
+  color: var(--nt-text-2)
+  font: inherit
+  font-size: var(--nt-fs-micro)
+  cursor: pointer
+
+  &:disabled
+    opacity: 0.5
+    cursor: progress
+
+  &.sch-st--doing
+    background: color-mix(in srgb, var(--nt-run) 14%, transparent)
+    color: var(--nt-run)
+
+  &.sch-st--done
+    background: color-mix(in srgb, var(--nt-success) 13%, transparent)
+    color: var(--nt-success)
+
+  &.sch-st--overdue
+    background: color-mix(in srgb, var(--nt-danger) 13%, transparent)
+    color: var(--nt-danger)
+
+.sch-ai
+  margin-bottom: 6px
+  padding: 10px var(--nt-space-3)
+  background: color-mix(in srgb, var(--nt-ai) 6%, transparent)
+  border: 1px dashed color-mix(in srgb, var(--nt-ai) 45%, transparent)
+  border-radius: var(--nt-radius-m)
+
+  p
+    margin: 0 0 6px
+
+.sch-ai__what
+  color: var(--nt-text-1)
+
+.sch-ai__why
+  color: var(--nt-text-3)
+  font-size: var(--nt-fs-caption)
+
+.sch-ai__acts
+  display: flex
+  gap: var(--nt-space-2)
+
+// ——— 就地编辑 ———
+.sch-ed__body
+  display: flex
+  flex-direction: column
+  gap: var(--nt-space-3)
+  padding-top: var(--nt-space-3)
+
+.sch-ed__row
+  display: flex
+  flex-wrap: wrap
+  align-items: center
+  gap: var(--nt-space-2)
+
+.sch-ed__lab
+  color: var(--nt-text-2)
+  font-size: var(--nt-fs-caption)
+
+.sch-ed__grid
+  display: grid
+  grid-template-columns: repeat(2, minmax(0, 1fr))
+  gap: var(--nt-space-2)
+  align-items: center
+
+.sch-ical__url
+  font-size: var(--nt-fs-caption)
+  word-break: break-all
+
+// ——— 断点（AGENTS.md §6-10） ———
+@media (max-width: 1399px)
+  .sch-page
+    grid-template-columns: minmax(0, 1fr) 340px
+
+// 1099 以下：当天面板转到月历下面，整页滚动
+@media (max-width: 1099px)
+  .sch-page
+    grid-template-columns: minmax(0, 1fr)
+    height: auto
+
+  .sch-days
+    grid-template-rows: repeat(6, minmax(88px, auto))
+
+  .sch-dp
+    min-height: 420px
+
+  .sch-filters
+    margin-left: 0
+
+// 窄屏：格子里只留状态点，文字看当天面板
+@media (max-width: 559px)
+  .sch-page
+    padding: var(--nt-space-2)
+
+  .sch-days
+    grid-template-rows: repeat(6, minmax(52px, auto))
+    gap: 2px
+
+  .sch-day
+    flex-flow: row wrap
+    align-content: flex-start
+    padding: 4px
+
+  .sch-day__n
+    flex-basis: 100%
+
+  .sch-it
+    padding: 0
+
+  .sch-it__txt,
+  .sch-it__tm,
+  .sch-day__more
+    display: none
+
+  .sch-stats
+    margin-left: 0
