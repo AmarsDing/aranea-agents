@@ -282,6 +282,12 @@ func (r *organizationRepo) DeleteOrgNode(ctx context.Context, id string) error {
 	if err := r.ensureNodeCanDelete(ctx, id); err != nil {
 		return err
 	}
+	return r.ForceDeleteOrgNode(ctx, id)
+}
+
+// ForceDeleteOrgNode soft-deletes without the system / has-children guards.
+// Only for the company cascade (biz orgNodeForceDeleter), which removes children first.
+func (r *organizationRepo) ForceDeleteOrgNode(ctx context.Context, id string) error {
 	now := nowRFC3339()
 	return r.data.RW().Write(ctx).Organization.UpdateOneID(id).
 		SetDeletedAt(now).

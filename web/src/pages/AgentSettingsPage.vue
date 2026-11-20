@@ -6,6 +6,7 @@
         :show-evolving="showEvolving"
         :favorite="form.is_favorite"
         :saving="saving"
+        :dirty="dirty"
         @back="goBack"
         @change-avatar="avatarPickerOpen = true"
         @open-prompt="promptDialog = true"
@@ -26,142 +27,176 @@
       </q-banner>
 
       <template v-if="!loadError">
-        <q-tabs v-model="tab" dense align="left" class="agent-settings-tabs" :breakpoint="0">
-          <q-tab name="agent" :label="t('agentSettings.tabs.agent')" />
-          <q-tab name="memory" :label="t('agentSettings.tabs.memory')" />
-          <q-tab name="files" :label="t('agentSettings.tabs.files')" />
-          <q-tab name="permissions" :label="t('agentSettings.tabs.permissions')" />
-          <q-tab name="skills" :label="t('agentSettings.tabs.skills')" />
-          <q-tab name="evolution" :label="t('agentSettings.tabs.evolution')" />
-          <q-tab name="learning" :label="t('agentSettings.tabs.learning')" />
-          <q-tab name="hooks" :label="t('agentSettings.tabs.hooks')" />
-          <q-tab name="a2a" :label="t('agentSettings.tabs.a2a')" />
-        </q-tabs>
-        <q-separator />
+        <div class="as-layout">
+          <!-- 分区导航：按业务分组（身份与大脑 / 能力 / 护栏 / 连接 / 成长），键与 ?tab= 深链一致 -->
+          <nav class="as-nav" :aria-label="t('agentAssembly.navAria')">
+            <button
+              type="button"
+              class="as-nav__b"
+              :class="{ 'as-nav__b--on': tab === 'overview' }"
+              :aria-current="tab === 'overview' ? 'page' : undefined"
+              @click="tab = 'overview'"
+            >
+              <q-icon name="dashboard" size="18px" aria-hidden="true" />{{ t('agentAssembly.overview') }}
+            </button>
+            <template v-for="g in NAV_GROUPS" :key="g.key">
+              <div class="as-nav__g">{{ t(`agentAssembly.group.${g.key}`) }}</div>
+              <button
+                v-for="item in g.items"
+                :key="item.tab"
+                type="button"
+                class="as-nav__b"
+                :class="{ 'as-nav__b--on': tab === item.tab }"
+                :aria-current="tab === item.tab ? 'page' : undefined"
+                @click="tab = item.tab"
+              >
+                <q-icon :name="item.icon" size="18px" aria-hidden="true" />{{ t(`agentSettings.tabs.${item.tab}`) }}
+              </button>
+            </template>
+          </nav>
 
-        <q-tab-panels v-model="tab" animated class="settings-panels">
-          <q-tab-panel name="agent">
-            <agent-settings-agent-tab
-              v-model:planner-form="plannerForm"
-              v-model:ralph-loop-form="ralphLoopForm"
-              v-model:selected-provider-model-id="selectedProviderModelIDModel"
-              v-model:form="form"
-              v-model:config="config"
-              :agent-id="agentId"
-              :taxonomy-tree="taxonomyTree"
-              :prompt-modes="promptModes"
-              :status-options="statusOptions"
-              :filtered-provider-model-options="filteredProviderModelOptions"
-              :loading-provider-models="loadingProviderModels"
-              :orphan-provider-model="orphanProviderModel"
-              :disabled-catalog-match="disabledCatalogMatch"
-              :checking-agent-model="checkingAgentModel"
-              :agent-model-check-ok="agentModelCheckOk"
-              :agent-model-check-message="agentModelCheckMessage"
-              @copy-key="copyKey"
-              @open-permissions-tab="tab = 'permissions'"
-              @open-memory-tab="tab = 'memory'"
-              @open-provider-manager="openProviderManager"
-              @filter-provider-models="filterProviderModels"
-              @reset-provider-model-filter="resetProviderModelFilter"
-              @refine-error="onRefineError"
-            />
-          </q-tab-panel>
+          <q-tab-panels v-model="tab" animated class="settings-panels as-panels">
+            <q-tab-panel name="overview">
+              <agent-settings-overview
+                :form="form"
+                :config="config"
+                :planner-form="plannerForm"
+                :advanced="advancedState"
+                :org-path="overviewOrgPath"
+                :role-label="overviewRoleLabel"
+                :file-count="files.length"
+                :file-tokens="overviewFileTokens"
+                :model-ok="agentModelCheckOk"
+                :channel-name="overviewChannelName"
+                @go="tab = $event"
+              />
+            </q-tab-panel>
 
-          <q-tab-panel name="memory">
-            <agent-settings-memory-tab
-              v-model:config="config"
-              :truncate-strategy-options="truncateStrategyOptions"
-              :snapshot-mode-options="snapshotModeOptions"
-              :memory-scope-options="memoryScopeOptions"
-              :pii-policy-options="piiPolicyOptions"
-              @open-evolution-tab="tab = 'evolution'"
-            />
-          </q-tab-panel>
-          <q-tab-panel name="files" class="settings-tab-panel-fill">
-            <agent-files-panel
-              v-model:active-file="activeFile"
-              v-model:splitter="fileSplitter"
-              :files="files"
-              :file-token-by-name="fileTokenByName"
-              :dirty="fileDirty"
-              :agent-id="toValue(agentId)"
-              :system-prompt-mode="form.system_prompt_mode"
-              :available-optional-files="availableOptionalFiles"
-              :refine-fn="refinePromptField"
-              @update-file-body="updateFileBody"
-              @confirm-reload="confirmFileReload"
-              @save="saveAgent"
-              @add-optional-file="addOptionalFile"
-              @remove-file="confirmRemoveFile"
-              @refine-error="onRefineError"
-            />
-          </q-tab-panel>
+            <q-tab-panel name="agent">
+              <agent-settings-agent-tab
+                v-model:planner-form="plannerForm"
+                v-model:ralph-loop-form="ralphLoopForm"
+                v-model:selected-provider-model-id="selectedProviderModelIDModel"
+                v-model:form="form"
+                v-model:config="config"
+                :agent-id="agentId"
+                :taxonomy-tree="taxonomyTree"
+                :prompt-modes="promptModes"
+                :status-options="statusOptions"
+                :filtered-provider-model-options="filteredProviderModelOptions"
+                :loading-provider-models="loadingProviderModels"
+                :orphan-provider-model="orphanProviderModel"
+                :disabled-catalog-match="disabledCatalogMatch"
+                :checking-agent-model="checkingAgentModel"
+                :agent-model-check-ok="agentModelCheckOk"
+                :agent-model-check-message="agentModelCheckMessage"
+                @copy-key="copyKey"
+                @open-permissions-tab="tab = 'permissions'"
+                @open-memory-tab="tab = 'memory'"
+                @open-provider-manager="openProviderManager"
+                @filter-provider-models="filterProviderModels"
+                @reset-provider-model-filter="resetProviderModelFilter"
+                @refine-error="onRefineError"
+              />
+            </q-tab-panel>
 
-          <q-tab-panel name="permissions">
-            <div class="settings-grid settings-grid--wide">
-              <agent-usage-quota-panel v-if="form.id" :agent-id="form.id" />
-              <q-banner v-else rounded class="settings-placeholder-banner">{{ t('agentSettings.quotaNeedAgent') }}</q-banner>
-            </div>
-          </q-tab-panel>
+            <q-tab-panel name="memory">
+              <agent-settings-memory-tab
+                v-model:config="config"
+                :truncate-strategy-options="truncateStrategyOptions"
+                :snapshot-mode-options="snapshotModeOptions"
+                :memory-scope-options="memoryScopeOptions"
+                :pii-policy-options="piiPolicyOptions"
+                @open-evolution-tab="tab = 'evolution'"
+              />
+            </q-tab-panel>
+            <q-tab-panel name="files" class="settings-tab-panel-fill">
+              <agent-files-panel
+                v-model:active-file="activeFile"
+                v-model:splitter="fileSplitter"
+                :files="files"
+                :file-token-by-name="fileTokenByName"
+                :dirty="fileDirty"
+                :agent-id="toValue(agentId)"
+                :system-prompt-mode="form.system_prompt_mode"
+                :available-optional-files="availableOptionalFiles"
+                :refine-fn="refinePromptField"
+                @update-file-body="updateFileBody"
+                @confirm-reload="confirmFileReload"
+                @save="saveAgent"
+                @add-optional-file="addOptionalFile"
+                @remove-file="confirmRemoveFile"
+                @refine-error="onRefineError"
+              />
+            </q-tab-panel>
 
-          <q-tab-panel name="skills">
-            <agent-settings-skills-tab
-              v-model:config="config"
-              :agent-id="toValue(agentId)"
-              :skill-slug-options="skillSlugOptions"
-              :loading-skill-slugs="loadingSkillSlugs"
-              :skill-tag-options="skillTagOptions"
-              :loading-skill-tags="loadingSkillTags"
-              :code-executor-capabilities="codeExecutorCapabilities"
-              :tool-profile-options="toolProfileOptions"
-              :tool-select-options="toolSelectOptions"
-              :loading-catalog-tools="loadingCatalogTools"
-              :tool-conflicts="toolConflicts"
-              @load-skill-slugs="loadSkillSlugOptions"
-              @reset-skill-defaults="confirmResetSkillDefaults"
-            />
-          </q-tab-panel>
-          <q-tab-panel name="evolution">
-            <agent-evolution-panel
-              v-model:evolution="config.evolution"
-              v-model:evolution-settings="config.evolutionSettings"
-              v-model:guardrails="config.evolution_guardrails"
-              v-model:eval-auto="config.evaluation"
-              :agent-id="agentId"
-              :eval-dataset-options="evalDatasetOptions"
-              :loading-eval-datasets="loadingEvalDatasets"
-              @load-eval-datasets="loadEvalDatasetOptions"
-            />
-          </q-tab-panel>
+            <q-tab-panel name="permissions">
+              <div class="settings-grid settings-grid--wide">
+                <agent-usage-quota-panel v-if="form.id" :agent-id="form.id" />
+                <q-banner v-else rounded class="settings-placeholder-banner">{{
+                  t('agentSettings.quotaNeedAgent')
+                }}</q-banner>
+              </div>
+            </q-tab-panel>
 
-          <q-tab-panel name="learning">
-            <agent-learning-loop-panel :agent-id="agentId" />
-          </q-tab-panel>
+            <q-tab-panel name="skills">
+              <agent-settings-skills-tab
+                v-model:config="config"
+                :agent-id="toValue(agentId)"
+                :skill-slug-options="skillSlugOptions"
+                :loading-skill-slugs="loadingSkillSlugs"
+                :skill-tag-options="skillTagOptions"
+                :loading-skill-tags="loadingSkillTags"
+                :code-executor-capabilities="codeExecutorCapabilities"
+                :tool-profile-options="toolProfileOptions"
+                :tool-select-options="toolSelectOptions"
+                :loading-catalog-tools="loadingCatalogTools"
+                :tool-conflicts="toolConflicts"
+                @load-skill-slugs="loadSkillSlugOptions"
+                @reset-skill-defaults="confirmResetSkillDefaults"
+              />
+            </q-tab-panel>
+            <q-tab-panel name="evolution">
+              <agent-evolution-panel
+                v-model:evolution="config.evolution"
+                v-model:evolution-settings="config.evolutionSettings"
+                v-model:guardrails="config.evolution_guardrails"
+                v-model:eval-auto="config.evaluation"
+                :agent-id="agentId"
+                :eval-dataset-options="evalDatasetOptions"
+                :loading-eval-datasets="loadingEvalDatasets"
+                @load-eval-datasets="loadEvalDatasetOptions"
+              />
+            </q-tab-panel>
 
-          <q-tab-panel name="hooks">
-            <div class="settings-grid settings-grid--wide">
-              <section class="settings-section">
-                <agent-hooks-panel
-                  :agent-id="agentId"
-                  :agent-key="form.agent_key"
-                  :tool-options="toolSelectOptions"
-                  :loading-tool-options="loadingCatalogTools"
-                />
-              </section>
-            </div>
-          </q-tab-panel>
+            <q-tab-panel name="learning">
+              <agent-learning-loop-panel :agent-id="agentId" />
+            </q-tab-panel>
 
-          <q-tab-panel name="a2a">
-            <agent-settings-a2-a-tab
-              v-if="form.agent_kind === 'a2a_proxy'"
-              :agent-id="agentId"
-              :a2a-proxy="form.a2a_proxy_config"
-              @saved="reloadAgent"
-            />
-            <agent-settings-a2-a-endpoint-tab v-else :agent-id="agentId" />
-          </q-tab-panel>
-        </q-tab-panels>
+            <q-tab-panel name="hooks">
+              <div class="settings-grid settings-grid--wide">
+                <section class="settings-section">
+                  <agent-hooks-panel
+                    :agent-id="agentId"
+                    :agent-key="form.agent_key"
+                    :tool-options="toolSelectOptions"
+                    :loading-tool-options="loadingCatalogTools"
+                  />
+                </section>
+              </div>
+            </q-tab-panel>
+
+            <q-tab-panel name="a2a">
+              <agent-settings-a2-a-tab
+                v-if="form.agent_kind === 'a2a_proxy'"
+                :agent-id="agentId"
+                :a2a-proxy="form.a2a_proxy_config"
+                @saved="reloadAgent"
+              />
+              <agent-settings-a2-a-endpoint-tab v-else :agent-id="agentId" />
+            </q-tab-panel>
+          </q-tab-panels>
+        </div>
       </template>
       <q-inner-loading :showing="pageLoading" />
     </q-card>
@@ -209,6 +244,7 @@ import AgentPromptPreviewDialog from '../components/agents/AgentPromptPreviewDia
 import AgentSettingsAgentTab from './agent-settings/AgentSettingsAgentTab.vue';
 import AgentSettingsMemoryTab from './agent-settings/AgentSettingsMemoryTab.vue';
 import AgentSettingsSkillsTab from './agent-settings/AgentSettingsSkillsTab.vue';
+import AgentSettingsOverview from './agent-settings/AgentSettingsOverview.vue';
 import AgentSettingsA2ATab from '../components/agents/AgentSettingsA2ATab.vue';
 import AgentSettingsA2AEndpointTab from '../components/agents/AgentSettingsA2AEndpointTab.vue';
 import AgentUsageQuotaPanel from '../components/agents/AgentUsageQuotaPanel.vue';
@@ -286,7 +322,44 @@ const {
   evalDatasetOptions,
   loadingEvalDatasets,
   loadEvalDatasetOptions,
+  dirty,
+  overviewOrgPath,
+  overviewRoleLabel,
+  overviewFileTokens,
+  overviewChannelName,
 } = useAgentSettingsPage();
+
+const NAV_GROUPS = [
+  {
+    key: 'identity',
+    items: [
+      { tab: 'agent', icon: 'badge' },
+      { tab: 'files', icon: 'description' },
+    ],
+  },
+  {
+    key: 'ability',
+    items: [
+      { tab: 'skills', icon: 'build' },
+      { tab: 'memory', icon: 'psychology' },
+    ],
+  },
+  {
+    key: 'guard',
+    items: [
+      { tab: 'permissions', icon: 'savings' },
+      { tab: 'hooks', icon: 'webhook' },
+    ],
+  },
+  { key: 'reach', items: [{ tab: 'a2a', icon: 'hub' }] },
+  {
+    key: 'growth',
+    items: [
+      { tab: 'evolution', icon: 'auto_awesome' },
+      { tab: 'learning', icon: 'school' },
+    ],
+  },
+] as const;
 
 /** Return to the previous page (e.g. chat); fall back to agents list. */
 function goBack() {

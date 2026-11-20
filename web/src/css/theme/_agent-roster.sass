@@ -1,0 +1,657 @@
+// Harness › 编制 › Agent 管理（/agents）。类名 ar- 前缀，取值只走 --nt-* 令牌。
+// 两栏：编制树（共用 OrgTreeRail）· 花名册；选中 Agent 时右侧多一栏检视。一屏，各栏自己滚。
+@import "./_nt-tokens.css"
+
+// 骨架（编制树 | 花名册）用三页共用的 .bz-page（_org-team.sass）；选中 Agent 时才多出第三栏检视
+// .bz-page 在后面导入、同权重，这里写成 .bz-page.ar-page--inspecting 才盖得过
+@media (min-width: 1200px)
+  html body .bz-page.ar-page--inspecting
+    grid-template-columns: 216px minmax(0, 1fr) 340px
+
+.ar-full
+  grid-column: 1 / -1
+
+.ar-num
+  font-family: var(--nt-font-mono)
+  font-variant-numeric: tabular-nums
+
+.ar-mono
+  font-family: var(--nt-font-mono)
+  font-size: var(--nt-fs-caption)
+
+.ar-sp
+  flex: 1
+
+.ar-hint
+  margin: 0
+  color: var(--nt-text-3)
+  font-size: var(--nt-fs-caption)
+  line-height: 1.5
+
+.ar-star
+  color: var(--nt-warn)
+
+.ar-danger
+  color: var(--nt-danger)
+
+.ar-bad
+  color: var(--nt-danger)
+
+.ar-link
+  padding: 0
+  background: none
+  border: 0
+  color: var(--nt-accent)
+  font: inherit
+  text-align: left
+  text-decoration: none
+  cursor: pointer
+
+  &:hover
+    text-decoration: underline
+
+.ar-sep
+  margin: 0 4px
+  color: var(--nt-text-3)
+
+.ar-panel
+  position: relative
+  display: flex
+  flex-direction: column
+  min-width: 0
+  min-height: 0
+  overflow: hidden
+  background: var(--nt-glass-panel)
+  border: 1px solid var(--nt-glass-border)
+  border-radius: var(--nt-radius-l)
+  box-shadow: inset 0 1px 0 var(--nt-glass-highlight), var(--nt-shadow-depth)
+  backdrop-filter: var(--nt-glass-filter)
+
+.ar-chip
+  display: inline-flex
+  align-items: center
+  height: 20px
+  padding: 0 8px
+  background: var(--nt-tile-hover)
+  border-radius: var(--nt-radius-pill)
+  color: var(--nt-text-2)
+  font-size: var(--nt-fs-micro)
+  white-space: nowrap
+
+// ——— 角色标签：治理岗用冰青描边，专项实底淡色，管家灰 ———
+.ar-role
+  display: inline-flex
+  align-items: center
+  justify-self: start
+  height: 20px
+  padding: 0 8px
+  border: 1px solid transparent
+  border-radius: var(--nt-radius-pill)
+  font-size: var(--nt-fs-micro)
+  white-space: nowrap
+
+.ar-role--company_lead
+  border-color: var(--nt-accent-border)
+  background: var(--nt-accent-soft)
+  color: var(--nt-text-0)
+
+.ar-role--dept_lead
+  border-color: var(--nt-accent-border)
+  color: var(--nt-accent)
+
+.ar-role--specialist
+  background: color-mix(in srgb, var(--nt-line-2) 22%, transparent)
+  color: var(--nt-text-1)
+
+.ar-role--custom
+  background: color-mix(in srgb, var(--nt-line-4) 22%, transparent)
+  color: var(--nt-text-1)
+
+.ar-role--butler
+  background: var(--nt-tile-hover)
+  color: var(--nt-text-2)
+
+// ——— 状态 ———
+.ar-st
+  display: inline-flex
+  align-items: center
+  gap: 6px
+  color: var(--nt-text-2)
+  font-size: var(--nt-fs-caption)
+  white-space: nowrap
+
+.ar-dot
+  flex: none
+  width: 7px
+  height: 7px
+  border-radius: var(--nt-radius-pill)
+  background: var(--nt-success)
+
+.ar-st--inactive .ar-dot
+  background: transparent
+  box-shadow: inset 0 0 0 1.5px var(--nt-text-3)
+
+// ——— 中：花名册 ———
+$ar-cols: 28px minmax(190px, 1.6fr) minmax(110px, 1fr) 76px minmax(110px, 0.9fr) 60px minmax(100px, 0.8fr) 60px
+
+.ar-list
+  container: ar-list / inline-size
+
+.ar-list__head
+  display: flex
+  flex: none
+  align-items: center
+  gap: var(--nt-space-3)
+  padding: var(--nt-space-3) var(--nt-space-3) var(--nt-space-2)
+
+.ar-list__title
+  display: flex
+  align-items: baseline
+  gap: 8px
+  min-width: 0
+
+.ar-list__name
+  overflow: hidden
+  color: var(--nt-text-0)
+  font-size: var(--nt-fs-title)
+  font-weight: 600
+  text-overflow: ellipsis
+  white-space: nowrap
+
+.ar-list__count
+  color: var(--nt-text-3)
+
+// 角色关键数条：和另外两页的 CapStats 同一个组件，这里收紧一点放进花名册面板
+// 写两层类名：.cap-stats 自己的 margin: 0 在后面导入，同权重会把外边距盖掉
+.ar-list .ar-stats
+  flex: none
+  margin: 0 var(--nt-space-3) var(--nt-space-2)
+
+  .cap-stats__item
+    flex-basis: 96px
+    padding: var(--nt-space-2) var(--nt-space-3)
+
+.ar-list__bar
+  display: flex
+  flex: none
+  flex-wrap: wrap
+  align-items: center
+  gap: var(--nt-space-2)
+  padding: 0 var(--nt-space-3) var(--nt-space-2)
+  border-bottom: 1px solid var(--nt-border-1)
+
+.ar-cols,
+.ar-row
+  display: grid
+  grid-template-columns: $ar-cols
+  gap: var(--nt-space-2)
+  align-items: center
+
+.ar-cols
+  flex: none
+  min-height: 32px
+  padding: 0 var(--nt-space-3)
+  border-bottom: 1px solid var(--nt-border-1)
+  color: var(--nt-text-3)
+  font-size: var(--nt-fs-micro)
+  letter-spacing: 0.04em
+
+.ar-list__body
+  flex: 1
+  min-height: 0
+  padding: 0 0 var(--nt-space-3)
+  overflow-y: auto
+
+.ar-trunc
+  padding: var(--nt-space-2) var(--nt-space-3) 0
+
+.ar-grp__head
+  position: sticky
+  top: 0
+  z-index: 1
+  display: flex
+  align-items: baseline
+  gap: 8px
+  padding: 10px var(--nt-space-3) 6px
+  background: var(--nt-bg-1)
+  border-bottom: 1px solid var(--nt-border-1)
+  font-size: var(--nt-fs-caption)
+
+.ar-grp__co
+  color: var(--nt-text-3)
+
+.ar-grp__name
+  color: var(--nt-text-0)
+  font-weight: 600
+
+.ar-grp__n
+  color: var(--nt-text-3)
+
+.ar-grp__lead
+  margin-left: auto
+  color: var(--nt-text-2)
+
+.ar-row
+  min-height: 48px
+  padding: 4px var(--nt-space-3)
+  border-bottom: 1px solid color-mix(in srgb, var(--nt-border-1) 60%, transparent)
+  cursor: pointer
+  transition: background var(--nt-transition)
+
+  &:hover
+    background: var(--nt-tile-hover)
+
+  &:hover .ar-row__acts,
+  &:focus-within .ar-row__acts
+    opacity: 1
+
+.ar-row--on,
+.ar-row--on:hover
+  background: var(--nt-accent-soft)
+  box-shadow: inset 2px 0 0 var(--nt-accent)
+
+.ar-row--off .ar-row__who
+  opacity: 0.6
+
+.ar-row__check
+  display: flex
+  justify-content: center
+
+.ar-row__who
+  display: flex
+  align-items: center
+  gap: 10px
+  min-width: 0
+
+.ar-row__names
+  display: flex
+  flex-direction: column
+  min-width: 0
+
+.ar-row__name
+  display: flex
+  align-items: center
+  gap: 4px
+  overflow: hidden
+  color: var(--nt-text-0)
+  text-overflow: ellipsis
+  white-space: nowrap
+
+.ar-row__lock
+  color: var(--nt-text-3)
+
+.ar-row__key
+  overflow: hidden
+  color: var(--nt-text-3)
+  text-overflow: ellipsis
+  white-space: nowrap
+
+.ar-row__pos,
+.ar-row__model,
+.ar-row__run
+  overflow: hidden
+  color: var(--nt-text-2)
+  font-size: var(--nt-fs-caption)
+  text-overflow: ellipsis
+  white-space: nowrap
+
+.ar-row__run--bad
+  color: var(--nt-danger)
+
+.ar-row__acts
+  display: flex
+  justify-content: flex-end
+  opacity: 0
+  transition: opacity var(--nt-transition)
+
+.ar-row--on .ar-row__acts
+  opacity: 1
+
+.ar-menu
+  min-width: 180px
+
+.ar-menu__danger
+  color: var(--nt-danger)
+
+.ar-bulk
+  flex: none
+  margin: 0 var(--nt-space-3) var(--nt-space-3)
+
+// ——— 右：检视 ———
+.ar-insp
+  overflow-y: auto
+
+.ar-insp__body
+  display: flex
+  flex-direction: column
+  gap: var(--nt-space-3)
+  padding: var(--nt-space-4)
+
+.ar-insp__head
+  display: flex
+  align-items: center
+  gap: var(--nt-space-3)
+
+.ar-insp__title
+  flex: 1
+  min-width: 0
+
+.ar-insp__name
+  overflow: hidden
+  color: var(--nt-text-0)
+  font-size: var(--nt-fs-title)
+  font-weight: 600
+  text-overflow: ellipsis
+  white-space: nowrap
+
+.ar-insp__key
+  display: inline-flex
+  align-items: center
+  gap: 4px
+  max-width: 100%
+  padding: 0
+  overflow: hidden
+  background: none
+  border: 0
+  color: var(--nt-text-3)
+  text-overflow: ellipsis
+  white-space: nowrap
+  cursor: pointer
+
+  &:hover
+    color: var(--nt-accent)
+
+.ar-insp__tags
+  display: flex
+  flex-wrap: wrap
+  align-items: center
+  gap: 8px
+
+.ar-insp__desc
+  display: -webkit-box
+  margin: 0
+  overflow: hidden
+  color: var(--nt-text-1)
+  line-height: 1.6
+  -webkit-box-orient: vertical
+  -webkit-line-clamp: 4
+
+.ar-insp__actions
+  display: flex
+  align-items: center
+  gap: 4px
+
+  .q-btn--unelevated
+    margin-right: auto
+
+.ar-sec
+  padding-top: var(--nt-space-3)
+  border-top: 1px solid var(--nt-border-1)
+
+.ar-sec__t
+  margin: 0 0 var(--nt-space-2)
+  color: var(--nt-text-3)
+  font-size: var(--nt-fs-micro)
+  font-weight: 400
+  letter-spacing: 0.04em
+
+.ar-facts
+  display: grid
+  gap: 6px
+  margin: 0
+
+  > div
+    display: grid
+    grid-template-columns: 76px minmax(0, 1fr)
+    gap: var(--nt-space-2)
+
+  dt
+    color: var(--nt-text-3)
+    font-size: var(--nt-fs-caption)
+
+  dd
+    margin: 0
+    overflow-wrap: anywhere
+    color: var(--nt-text-1)
+    font-size: var(--nt-fs-caption)
+
+.ar-jump
+  display: grid
+  grid-template-columns: 1fr 1fr
+  gap: 6px
+
+.ar-jump__a
+  display: flex
+  align-items: center
+  gap: 6px
+  min-height: 32px
+  padding: 0 10px
+  border: 1px solid var(--nt-border-1)
+  border-radius: var(--nt-radius-m)
+  color: var(--nt-text-1)
+  font-size: var(--nt-fs-caption)
+  text-decoration: none
+  transition: background var(--nt-transition), border-color var(--nt-transition)
+
+  &:hover
+    background: var(--nt-tile-hover)
+    border-color: var(--nt-accent-border)
+
+// ——— 花名册按自身宽度收列 ———
+@container ar-list (max-width: 820px)
+  .ar-cols,
+  .ar-row
+    grid-template-columns: 28px minmax(0, 1.6fr) minmax(0, 1fr) 76px minmax(0, 0.9fr) 60px 60px
+
+  .ar-row__run,
+  .ar-cols > :nth-child(7)
+    display: none
+
+@container ar-list (max-width: 640px)
+  .ar-cols,
+  .ar-row
+    grid-template-columns: 28px minmax(0, 1.6fr) minmax(0, 1fr) 76px 60px 60px
+
+  .ar-row__model,
+  .ar-cols > :nth-child(5)
+    display: none
+
+@container ar-list (max-width: 480px)
+  .ar-cols
+    display: none
+
+  .ar-row
+    grid-template-columns: 28px minmax(0, 1fr) 76px 44px
+
+  .ar-row__pos,
+  .ar-st
+    display: none
+
+  .ar-row__acts
+    opacity: 1
+
+// ——— 断点（AGENTS.md §6-10）：栏数由 .bz-page 管，这里只管检视怎么出来 ———
+// 1199 以下：检视改成从右侧浮出的面板（选中 Agent 时出现）
+@media (max-width: 1199px)
+  .ar-page--inspecting .ar-insp
+    position: fixed
+    top: 120px
+    right: var(--nt-space-4)
+    bottom: var(--nt-space-4)
+    z-index: 20
+    display: flex
+    width: min(360px, calc(100vw - 2 * var(--nt-space-4)))
+    background: var(--nt-bg-1)
+
+@media (max-width: 799px)
+  .ar-list__head
+    flex-wrap: wrap
+
+// ================================================================
+// Agent 设置页（/agents/:id/settings）：左侧分组导航 + 概览装配图。类名 as- 前缀。
+// ================================================================
+.as-layout
+  display: grid
+  grid-template-columns: 188px minmax(0, 1fr)
+  min-height: 0
+
+.settings-shell--fill .as-layout
+  flex: 1 1 auto
+
+.as-nav
+  display: flex
+  flex-direction: column
+  gap: 2px
+  padding: var(--nt-space-3) 10px
+  border-right: 1px solid var(--nt-border-1)
+
+.as-nav__g
+  margin: var(--nt-space-3) 10px 4px
+  color: var(--nt-text-3)
+  font-size: var(--nt-fs-micro)
+  letter-spacing: 0.04em
+
+.as-nav__b
+  display: flex
+  align-items: center
+  gap: 8px
+  width: 100%
+  min-height: 34px
+  padding: 4px 10px
+  background: none
+  border: 1px solid transparent
+  border-radius: var(--nt-radius-m)
+  color: var(--nt-text-1)
+  font: inherit
+  font-size: var(--nt-fs-body)
+  text-align: left
+  cursor: pointer
+  transition: background var(--nt-transition), border-color var(--nt-transition)
+
+  &:hover
+    background: var(--nt-tile-hover)
+
+.as-nav__b--on,
+.as-nav__b--on:hover
+  background: var(--nt-accent-soft)
+  border-color: var(--nt-accent-border)
+  color: var(--nt-text-0)
+
+.as-panels
+  min-width: 0
+
+.as-ov
+  display: grid
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr))
+  gap: var(--nt-space-3)
+
+.as-blk
+  display: flex
+  flex-direction: column
+  gap: 6px
+  padding: var(--nt-space-3) var(--nt-space-4)
+  background: var(--nt-data-bg)
+  border: 1px solid var(--nt-border-1)
+  border-radius: var(--nt-radius-l)
+  color: var(--nt-text-1)
+  font: inherit
+  text-align: left
+  cursor: pointer
+  transition: border-color var(--nt-transition), background var(--nt-transition)
+
+  &:hover
+    border-color: var(--nt-accent-border)
+
+  &:hover .as-blk__edit
+    opacity: 1
+
+// 护栏用琥珀虚线框，表示「边界」（04 文档 §6）
+.as-blk--guard
+  border-style: dashed
+  border-color: color-mix(in srgb, var(--nt-warn) 55%, transparent)
+
+.as-blk__head
+  display: flex
+  align-items: center
+  gap: 8px
+  color: var(--nt-text-0)
+
+.as-blk__t
+  font-size: var(--nt-fs-panel)
+  font-weight: 600
+
+.as-blk__edit
+  display: inline-flex
+  align-items: center
+  gap: 2px
+  margin-left: auto
+  color: var(--nt-accent)
+  font-size: var(--nt-fs-caption)
+  opacity: 0
+  transition: opacity var(--nt-transition)
+
+.as-blk__hint
+  color: var(--nt-text-3)
+  font-size: var(--nt-fs-caption)
+
+.as-blk__facts
+  display: grid
+  gap: 4px
+  margin: 4px 0 0
+
+  > div
+    display: grid
+    grid-template-columns: 84px minmax(0, 1fr)
+    gap: var(--nt-space-2)
+
+  dt
+    color: var(--nt-text-3)
+    font-size: var(--nt-fs-caption)
+
+  dd
+    margin: 0
+    overflow: hidden
+    color: var(--nt-text-1)
+    font-size: var(--nt-fs-caption)
+    text-overflow: ellipsis
+    white-space: nowrap
+
+.as-blk__facts dd.as-mono
+  font-family: var(--nt-font-mono)
+
+.as-blk__facts dd.as-bad
+  color: var(--nt-danger)
+
+.as-blk__facts dd.as-dim
+  color: var(--nt-text-3)
+
+.settings-dirty
+  display: inline-flex
+  align-items: center
+  gap: 6px
+  color: var(--nt-warn)
+  font-size: var(--nt-fs-caption)
+
+.settings-dirty__dot
+  width: 7px
+  height: 7px
+  background: var(--nt-warn)
+  border-radius: var(--nt-radius-pill)
+
+@media (max-width: 799px)
+  .as-layout
+    grid-template-columns: minmax(0, 1fr)
+
+  .as-nav
+    flex-direction: row
+    flex-wrap: nowrap
+    overflow-x: auto
+    border-right: 0
+    border-bottom: 1px solid var(--nt-border-1)
+
+  .as-nav__g
+    display: none
+
+  .as-nav__b
+    flex: none
+    width: auto

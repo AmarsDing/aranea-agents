@@ -17,8 +17,9 @@ import {
   definitionTopologyKey,
   definitionTopologyOverwriteKey,
   deriveMemberRolesForMode,
-  groupTeamsByDepartment,
   departmentOptionsFromTree,
+  inferTeamDepartmentId,
+  UNCategorizedGroupId,
   linkableGraphOptions,
   parseDefinition,
   rebuildDefinitionGraph,
@@ -32,6 +33,7 @@ import { compileTeamGraph } from '../orchestration/compileApi';
 import { isForbiddenApiError } from '../../utils/kratosError';
 import { useGraphStore } from '../../stores/graph';
 import type { PlatformResourceTreeNode } from '../platform/types';
+import { departmentPath, findNode, teamDepartmentRail } from '../organization/orgChart';
 
 /**
  * useTeamsPage — thin orchestrator composing sub-concerns.
@@ -195,19 +197,46 @@ export function useTeamsPage() {
   const canSave = computed(() =>
     Boolean(form.team_key && form.display_name && definition.members.some((member) => member.enabled)),
   );
-  const matchesListFilters = (team: Team) => {
+  // 失败档把「部分失败」一起算进去（关键数「失败」点进来时两种都要看到）
+  const statusMatches = (status: string) =>
+    !statusFilter.value ||
+    status === statusFilter.value ||
+    (statusFilter.value === 'failed' && status === 'partial_failure');
+  const matchesListFilters = (team: Team, ignoreStatus = false) => {
     const q = search.value.trim().toLowerCase();
     const def = parseDefinition(team);
     const matchesSearch =
       !q ||
       [team.display_name, team.team_key, def.description].some((value) => (value || '').toLowerCase().includes(q));
     const matchesMode = !modeFilter.value || def.mode === modeFilter.value;
-    const matchesStatus = !statusFilter.value || team.status === statusFilter.value;
-    return matchesSearch && matchesMode && matchesStatus;
+    return matchesSearch && matchesMode && (ignoreStatus || statusMatches(team.status));
   };
   const isOrchestrated = (team: Team) => String(team.spirit_session_id || '').trim() !== '';
-  const filteredTeams = computed(() =>
+  // 部门归属与组织页同一口径：显式部门优先，其次按成员所在部门投票；都没有 = 未分类。
+  const teamDeptId = computed(() => {
+    const map = new Map<string, string>();
+    for (const team of store.teams) map.set(team.id, inferTeamDepartmentId(team, store.agents, taxonomyTree.value));
+    return map;
+  });
+  /** 搜索 / 模式 / 状态 / 编排开关筛过、还没按部门筛的团队——部门栏的计数基于它。 */
+  const baseTeams = computed(() =>
     store.teams.filter((team) => (showOrchestrated.value || !isOrchestrated(team)) && matchesListFilters(team)),
+  );
+  // 部门栏可以选部门，也可以选整家公司（该公司所有部门的团队）
+  const inDepartmentScope = (team: Team) => {
+    const f = departmentFilter.value;
+    if (!f) return true;
+    const deptId = teamDeptId.value.get(team.id) ?? '';
+    return deptId === f || findNode(taxonomyTree.value, deptId)?.parent_id === f;
+  };
+  // 修复：部门筛选此前只影响分组标签，表格行并不按部门过滤。
+  const filteredTeams = computed(() => baseTeams.value.filter(inDepartmentScope));
+  /** 当前部门范围里、只差状态没筛的团队：关键数（运行中 / 待执行 / 失败…）按它数 */
+  const scopeTeams = computed(() =>
+    store.teams.filter(
+      (team) =>
+        (showOrchestrated.value || !isOrchestrated(team)) && matchesListFilters(team, true) && inDepartmentScope(team),
+    ),
   );
   // Orchestrated teams hidden solely by the toggle — surfaced in the empty state
   // so users don't mistake "filtered out" for "no teams exist".
@@ -215,15 +244,31 @@ export function useTeamsPage() {
     showOrchestrated.value ? 0 : store.teams.filter((team) => isOrchestrated(team) && matchesListFilters(team)).length,
   );
   const departmentOptions = computed(() => departmentOptionsFromTree(taxonomyTree.value));
+  const departmentRail = computed(() =>
+    teamDepartmentRail(
+      baseTeams.value.map((team) => teamDeptId.value.get(team.id) ?? UNCategorizedGroupId),
+      taxonomyTree.value,
+      departmentFilter.value,
+    ),
+  );
+  const unassignedCount = computed(
+    () => baseTeams.value.filter((team) => teamDeptId.value.get(team.id) === UNCategorizedGroupId).length,
+  );
   const totalFiltered = computed(() => filteredTeams.value.length);
   const pageMax = computed(() => Math.max(1, Math.ceil(totalFiltered.value / pageSize.value)));
   const paginatedTeams = computed(() => {
     const start = (currentPage.value - 1) * pageSize.value;
     return filteredTeams.value.slice(start, start + pageSize.value);
   });
-  const teamGroups = computed(() =>
-    groupTeamsByDepartment(paginatedTeams.value, store.agents, taxonomyTree.value, departmentFilter.value),
-  );
+
+  function departmentLabel(team: Team) {
+    return departmentPath(taxonomyTree.value, teamDeptId.value.get(team.id) ?? '');
+  }
+
+  /** 团队所在部门的主管（组织树上部门节点记录的 Agent）。 */
+  function departmentLeadId(team: Team) {
+    return findNode(taxonomyTree.value, teamDeptId.value.get(team.id) ?? '')?.dept_lead_agent_id ?? '';
+  }
 
   watch([search, modeFilter, statusFilter, departmentFilter, showOrchestrated], () => {
     currentPage.value = 1;
@@ -239,6 +284,15 @@ export function useTeamsPage() {
     () => route.query.edit,
     () => openRouteEdit(),
   );
+  // 组织页「在 Team 页查看」带 ?department=&team= 跳过来：预选部门、聚焦团队。
+  const focusTeamId = ref('');
+  function applyRouteFilters() {
+    const dept = typeof route.query.department === 'string' ? route.query.department : '';
+    if (dept) departmentFilter.value = dept;
+    const teamId = typeof route.query.team === 'string' ? route.query.team : '';
+    if (teamId) focusTeamId.value = teamId;
+  }
+  watch(() => [route.query.department, route.query.team], applyRouteFilters);
   watch(runsOpen, (open) => {
     if (!open) closeRunEvents();
   });
@@ -254,6 +308,7 @@ export function useTeamsPage() {
       // Backend Team.department_id references organization tree nodes (not legacy taxonomy).
       await Promise.all([store.loadTeams(), store.loadAgents(), platformStore.loadTaxonomyTree('organization')]);
       taxonomyTree.value = platformStore.taxonomyTree;
+      applyRouteFilters();
       openRouteEdit();
     } catch (err) {
       forbidden.value = isForbiddenApiError(err);
@@ -587,7 +642,13 @@ export function useTeamsPage() {
     hiddenOrchestratedCount,
     taxonomyTree,
     departmentOptions,
-    teamGroups,
+    departmentRail,
+    unassignedCount,
+    departmentLabel,
+    departmentLeadId,
+    focusTeamId,
+    baseCount: computed(() => baseTeams.value.length),
+    scopeTeams,
     currentPage,
     pageSize,
     totalFiltered,

@@ -520,7 +520,16 @@ func (s *TeamService) DuplicateTeam(ctx context.Context, req *v1.DuplicateTeamRe
 	if err := s.assertTeamAccess(ctx, req.GetId()); err != nil {
 		return nil, err
 	}
-	t, err := s.uc.Duplicate(ctx, req.GetId())
+	// P2-B: the copy belongs to the caller (same rule as CreateTeam); system callers keep the source workspace.
+	ws := workspace.IDFromContext(ctx)
+	if workspace.IsSystem(ctx) {
+		src, err := s.uc.Get(ctx, req.GetId())
+		if err != nil {
+			return nil, mapTeamErr(err)
+		}
+		ws = src.WorkspaceID
+	}
+	t, err := s.uc.Duplicate(ctx, req.GetId(), ws)
 	if err != nil {
 		return nil, mapTeamErr(err)
 	}

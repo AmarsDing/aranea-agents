@@ -1,7 +1,7 @@
-import { computed, onMounted, reactive, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue';
 import { copyToClipboard, useQuasar } from 'quasar';
 import { confirm } from '../../composables/useAppConfirm';
-import { useRoute, useRouter } from 'vue-router';
+import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router';
 import { useI18n } from 'vue-i18n';
 import { storeToRefs } from 'pinia';
 import type { Agent } from './types';
@@ -23,6 +23,7 @@ import { useAgentEvolutionSettings } from './useAgentEvolutionSettings';
 import { useAgentAvatarIcon } from './useAgentAvatarIcon';
 import { resetSkillRuntimeDefaults } from './agentSkillRuntimeConfig';
 import { useAgentSettingsPersistence } from './useAgentSettingsPersistence';
+import { rosterRole } from './roster';
 import type { UseAgentSettingsPersistenceDeps } from './useAgentSettingsPersistence';
 
 export function useAgentSettingsPage() {
@@ -79,9 +80,21 @@ export function useAgentSettingsPage() {
   } = useAgentSkillCatalog();
 
   // Tab 深链：?tab= 初始化 + 切换时写回 URL（replace，不污染历史栈）
-  const AGENT_SETTINGS_TABS = ['agent', 'memory', 'files', 'permissions', 'skills', 'evolution', 'learning', 'hooks', 'a2a'];
+  // 默认进「概览」（装配图）；其余分区按业务分组排在左侧导航里
+  const AGENT_SETTINGS_TABS = [
+    'overview',
+    'agent',
+    'files',
+    'skills',
+    'memory',
+    'permissions',
+    'hooks',
+    'a2a',
+    'evolution',
+    'learning',
+  ];
   const initialTab = String(route.query.tab ?? '');
-  const tab = ref((AGENT_SETTINGS_TABS as string[]).includes(initialTab) ? initialTab : 'agent');
+  const tab = ref((AGENT_SETTINGS_TABS as string[]).includes(initialTab) ? initialTab : 'overview');
   watch(tab, (value) => {
     if (String(route.query.tab ?? '') === value) return;
     void router.replace({ query: { ...route.query, tab: value } });
@@ -207,6 +220,7 @@ export function useAgentSettingsPage() {
     loadSkillSlugOptions,
     loadSkillTagOptions,
     loadCodeExecutorCapabilities,
+    onClean: () => void markClean(),
   });
 
   const selectedProviderModelIDModel = computed({
@@ -215,6 +229,39 @@ export function useAgentSettingsPage() {
       selectProviderModel(value ?? null);
       persistence.modelChanged.value = true;
     },
+  });
+
+  // ── 未保存改动：加载 / 保存后拍快照，之后任何字段变化都算改动；离开页面时确认 ──
+  const cleanSnapshot = ref('');
+  const snapshot = () => JSON.stringify([form, config, plannerForm, ralphLoopForm, advancedState]);
+  async function markClean() {
+    // 等水合引起的级联 watch（模型选择器等）跑完再拍，避免一打开就显示「有改动」
+    await nextTick();
+    cleanSnapshot.value = snapshot();
+  }
+  const dirty = computed(() => Boolean(cleanSnapshot.value) && (fileDirty.value || snapshot() !== cleanSnapshot.value));
+  onBeforeRouteLeave(async (to, from) => {
+    // 同一页面只改了 ?tab= 不算离开
+    if (!dirty.value || to.path === from.path) return true;
+    return confirm({
+      title: t('agentAssembly.leaveTitle'),
+      message: t('agentAssembly.leaveMessage'),
+      confirmLabel: t('agentAssembly.leaveConfirm'),
+      tone: 'danger',
+    });
+  });
+
+  // ── 概览（装配图）用到的派生数据 ──
+  const overviewOrgPath = computed(() => agentsPageStore.taxonomyLabel(form.taxonomy_position_id));
+  const overviewRoleLabel = computed(() => t(`agentRoster.role.${rosterRole(form)}`));
+  const overviewFileTokens = computed(() =>
+    Object.values(fileTokenByName.value).reduce((n, v) => n + (Number(v) || 0), 0),
+  );
+  const overviewChannelName = computed(() => {
+    const id = advancedState.channel_id;
+    if (!id) return '';
+    const ch = channelsStore.channels.find((c) => c.id === id);
+    return ch ? ch.name || ch.key : id;
   });
 
   // ── Lifecycle ────────────────────────────────────────────────
@@ -396,5 +443,10 @@ export function useAgentSettingsPage() {
     evalDatasetOptions,
     loadingEvalDatasets,
     loadEvalDatasetOptions,
+    dirty,
+    overviewOrgPath,
+    overviewRoleLabel,
+    overviewFileTokens,
+    overviewChannelName,
   };
 }

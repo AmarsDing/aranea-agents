@@ -8,7 +8,6 @@ import {
   definitionTopologyOverwriteKey,
   deriveMemberRolesForMode,
   formatCost,
-  groupTeamsByDepartment,
   inferTeamDepartmentId,
   linkableGraphOptions,
   parseDefinition,
@@ -481,7 +480,7 @@ describe('teamUtils.deriveMemberRolesForMode', () => {
   });
 });
 
-describe('teamUtils.groupTeamsByDepartment', () => {
+describe('teamUtils.inferTeamDepartmentId', () => {
   const taxonomyTree = [
     {
       id: 'ind-1',
@@ -570,59 +569,14 @@ describe('teamUtils.groupTeamsByDepartment', () => {
 
   it('infers department from member agents', () => {
     expect(inferTeamDepartmentId(team, agents, taxonomyTree)).toBe('dep-1');
-    const groups = groupTeamsByDepartment([team], agents, taxonomyTree);
-    expect(groups).toHaveLength(1);
-    expect(groups[0]?.label).toBe('金融 / 研究部');
-    expect(groups[0]?.teams).toHaveLength(1);
   });
 
-  it('still shows teams under disabled departments', () => {
-    const disabledTree: PlatformResourceTreeNode[] = [
-      {
-        ...taxonomyTree[0]!,
-        children: [{ ...taxonomyTree[0]!.children![0]!, enabled: false }],
-      },
-    ];
-    const groups = groupTeamsByDepartment([team], agents, disabledTree);
-    expect(groups).toHaveLength(1);
-    expect(groups[0]?.label).toBe('金融 / 研究部（已停用）');
-    expect(groups[0]?.teams).toHaveLength(1);
+  it('falls back to uncategorized when no member sits in a department', () => {
+    const orphanTeam: Team = { ...team, id: 't-orphan', definition_json: JSON.stringify({ version: 1, members: [] }) };
+    expect(inferTeamDepartmentId(orphanTeam, [], taxonomyTree)).toBe('__uncategorized__');
   });
 
-  it('places uncategorized teams exactly once in 未分类 group', () => {
-    const orphanTeam: Team = {
-      ...team,
-      id: 't-orphan',
-      taxonomy_industry_id: '',
-      definition_json: JSON.stringify({
-        version: 1,
-        mode: 'sequential',
-        members: [],
-      }),
-    };
-    const groups = groupTeamsByDepartment([orphanTeam], [], taxonomyTree);
-    const uncategorized = groups.find((g) => g.id === '__uncategorized__');
-    expect(uncategorized).toBeDefined();
-    expect(uncategorized?.teams).toHaveLength(1);
-    expect(uncategorized?.teams[0]?.id).toBe('t-orphan');
-    // Team must not appear in any other group simultaneously.
-    const totalOccurrences = groups.reduce((sum, g) => sum + g.teams.filter((t) => t.id === 't-orphan').length, 0);
-    expect(totalOccurrences).toBe(1);
-  });
-
-  it('does not duplicate uncategorized teams alongside categorized teams', () => {
-    const orphanTeam: Team = {
-      ...team,
-      id: 't-orphan',
-      taxonomy_industry_id: '',
-      definition_json: JSON.stringify({
-        version: 1,
-        mode: 'sequential',
-        members: [],
-      }),
-    };
-    const groups = groupTeamsByDepartment([team, orphanTeam], agents, taxonomyTree);
-    const allIds = groups.flatMap((g) => g.teams.map((t) => t.id));
-    expect(allIds.sort()).toEqual(['t-orphan', 't1']);
+  it('explicit department wins over member voting (key or id)', () => {
+    expect(inferTeamDepartmentId({ ...team, taxonomy_industry_id: 'research' }, [], taxonomyTree)).toBe('dep-1');
   });
 });

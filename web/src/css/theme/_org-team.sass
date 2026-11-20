@@ -1,0 +1,739 @@
+// Harness › 编制 三页：组织架构（/settings/organization）、Team 管理（/team）、Agent 管理（/agents）。取值只走 --nt-* 令牌。
+//   bz-  三页共用骨架：编制树 | 主区 | 检视（选中时才出现）；一屏，各栏自己滚
+//   org- 组织页与检视面板里的内容；tm- Team 页的结构图、运行列表、成员头像
+// 与 Harness 其他目录页同一套版面：操作放页签行右边（#app-tab-actions），主区里是 页头 → 关键数（CapStats）→ 筛选条（cap-bar）→ 构件卡（CapCard）。
+@import "./_nt-tokens.css"
+
+// ——— 骨架 ———
+html body .bz-page
+  display: grid
+  grid-template-columns: 232px minmax(0, 1fr)
+  gap: var(--nt-space-3)
+  height: 0
+  // 底部给内容区正中的指令按钮留位
+  padding: var(--nt-space-3) var(--nt-space-4) max(var(--nt-space-4), var(--app-dock-space, 0px))
+  color: var(--nt-text-1)
+  font-family: var(--nt-font-sans)
+  font-size: var(--nt-fs-body)
+
+.bz-full
+  grid-column: 1 / -1
+
+.bz-num,
+.org-mono
+  font-family: var(--nt-font-mono)
+  font-variant-numeric: tabular-nums
+
+.bz-panel
+  position: relative
+  display: flex
+  flex-direction: column
+  min-width: 0
+  min-height: 0
+  overflow: hidden
+  background: var(--nt-glass-panel)
+  border: 1px solid var(--nt-glass-border)
+  border-radius: var(--nt-radius-l)
+  box-shadow: inset 0 1px 0 var(--nt-glass-highlight), var(--nt-shadow-depth)
+  backdrop-filter: var(--nt-glass-filter)
+
+.bz-main
+  gap: var(--nt-space-3)
+  padding: var(--nt-space-4) var(--nt-space-4) 0
+
+  // 主区比整页窄（左有编制树、右有检视），卡片下限放到 240 才排得下两列
+  .cap-grid
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr))
+
+  .cap-stats__item
+    flex-basis: 110px
+    padding: var(--nt-space-2) var(--nt-space-4)
+
+// 岗位卡只有两个事实（模型、最近运行），给模型多留宽度
+.org-pos-card .cap-card__facts
+  grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr)
+
+.bz-scroll
+  flex: 1
+  min-height: 0
+  margin: 0 calc(var(--nt-space-4) * -1)
+  padding: 2px var(--nt-space-4) var(--nt-space-4)
+  overflow-y: auto
+
+// 页头：面包屑 + 名称 + 标签 + 说明 ｜ 负责人 ｜ 操作。主区被检视面板挤窄时，负责人和操作换到下一行
+.bz-head
+  display: flex
+  flex-wrap: wrap
+  align-items: flex-start
+  gap: var(--nt-space-2) var(--nt-space-4)
+
+.bz-head__main
+  flex: 1 1 280px
+  min-width: 0
+
+.bz-crumb
+  display: flex
+  align-items: center
+  gap: var(--nt-space-1)
+  margin-bottom: 2px
+  color: var(--nt-text-3)
+  font-size: var(--nt-fs-caption)
+
+.bz-crumb__link
+  padding: 0
+  background: none
+  border: 0
+  color: var(--nt-text-2)
+  font: inherit
+  cursor: pointer
+
+  &:hover
+    color: var(--nt-accent)
+
+.bz-head__desc
+  display: -webkit-box
+  margin: var(--nt-space-1) 0 0
+  overflow: hidden
+  color: var(--nt-text-2)
+  font-size: var(--nt-fs-caption)
+  line-height: 1.5
+  -webkit-box-orient: vertical
+  -webkit-line-clamp: 2
+
+.bz-head__lead
+  display: flex
+  flex-direction: column
+  gap: var(--nt-space-1)
+  min-width: 0
+  max-width: 260px
+
+.bz-head__actions
+  display: flex
+  flex: none
+  align-items: center
+  gap: var(--nt-space-1)
+
+// 滚动区里的小节标题（如部门下的「团队」）
+.bz-sec
+  display: flex
+  align-items: center
+  justify-content: space-between
+  gap: var(--nt-space-2)
+  margin: var(--nt-space-5) 0 var(--nt-space-2)
+  padding-top: var(--nt-space-3)
+  border-top: 1px solid var(--nt-border-1)
+
+.bz-sec__title
+  margin: 0
+  color: var(--nt-text-1)
+  font-size: var(--nt-fs-panel)
+  font-weight: 600
+
+// ——— 编制树（三页同一个组件 OrgTreeRail） ———
+.bz-rail
+  @extend .bz-panel
+  gap: 2px
+  padding: var(--nt-space-3) 10px
+  overflow-y: auto
+
+.bz-rail__head
+  display: flex
+  align-items: center
+  gap: var(--nt-space-2)
+  margin: 0 6px var(--nt-space-2)
+  color: var(--nt-text-0)
+  font-size: var(--nt-fs-panel)
+  font-weight: 600
+
+  .bz-num
+    margin-right: auto
+    color: var(--nt-text-3)
+    font-size: var(--nt-fs-caption)
+    font-weight: 400
+
+.bz-nv
+  display: flex
+  align-items: center
+  gap: 8px
+  width: 100%
+  min-height: 32px
+  padding: 4px 10px
+  background: none
+  border: 1px solid transparent
+  border-radius: var(--nt-radius-m)
+  color: var(--nt-text-1)
+  font: inherit
+  text-align: left
+  cursor: pointer
+  transition: background var(--nt-transition), border-color var(--nt-transition)
+
+  &:hover
+    background: var(--nt-tile-hover)
+
+.bz-nv--on,
+.bz-nv--on:hover
+  background: var(--nt-accent-soft)
+  border-color: var(--nt-accent-border)
+  color: var(--nt-text-0)
+
+.bz-nv--off
+  opacity: 0.55
+
+.bz-nv__icon
+  flex: none
+  color: var(--nt-warn)
+
+.bz-nv__name
+  min-width: 0
+  overflow: hidden
+  text-overflow: ellipsis
+  white-space: nowrap
+
+.bz-nv__n
+  margin-left: auto
+  color: var(--nt-text-3)
+  font-size: var(--nt-fs-caption)
+
+.bz-vac
+  flex: none
+  margin-left: auto
+  padding: 0 6px
+  border: 1px solid color-mix(in srgb, var(--nt-warn) 45%, transparent)
+  border-radius: var(--nt-radius-pill)
+  color: var(--nt-warn)
+  font-size: var(--nt-fs-micro)
+  line-height: 16px
+  white-space: nowrap
+
+  + .bz-nv__n
+    margin-left: 0
+
+.bz-sect
+  margin: var(--nt-space-4) 10px 4px
+  color: var(--nt-text-3)
+  font-size: var(--nt-fs-micro)
+  letter-spacing: 0.04em
+
+.bz-co__row
+  display: flex
+  align-items: center
+  gap: 2px
+
+.bz-co__toggle
+  flex: none
+  color: var(--nt-text-3)
+
+.bz-nv--co
+  flex: 1
+  width: auto
+  min-width: 0
+  padding-left: 4px
+  font-weight: 600
+
+.bz-co__depts
+  margin: 0 0 4px 22px
+  padding-left: 6px
+  border-left: 1px solid var(--nt-border-1)
+
+.bz-nv--dept
+  min-height: 30px
+  font-size: var(--nt-fs-caption)
+
+.bz-rail__empty
+  margin: 4px 10px
+  color: var(--nt-text-3)
+  font-size: var(--nt-fs-caption)
+
+.bz-rail__foot
+  display: flex
+  flex-direction: column
+  gap: 2px
+  margin: auto 0 0
+  padding: var(--nt-space-3) 6px 2px
+
+.bz-rail__link
+  display: flex
+  align-items: center
+  gap: 6px
+  padding: 4px
+  color: var(--nt-text-2)
+  font-size: var(--nt-fs-caption)
+  text-decoration: none
+
+  &:hover
+    color: var(--nt-accent)
+
+// ——— 共用小件：标签、状态点、空态、说明 ———
+.org-heading
+  display: flex
+  flex-wrap: wrap
+  align-items: center
+  gap: var(--nt-space-2)
+  min-width: 0
+
+.org-heading__title
+  margin: 0
+  color: var(--nt-text-0)
+  font-size: var(--nt-fs-title)
+  font-weight: 600
+  line-height: 1.4
+
+.org-label
+  color: var(--nt-text-3)
+  font-size: var(--nt-fs-caption)
+  white-space: nowrap
+
+.org-note
+  margin: 0
+  color: var(--nt-text-3)
+  font-size: var(--nt-fs-caption)
+  line-height: 1.5
+
+.org-tag
+  display: inline-flex
+  flex: none
+  align-items: center
+  padding: 0 var(--nt-space-2)
+  background: var(--nt-tile-hover)
+  border: 1px solid var(--nt-border-1)
+  border-radius: var(--nt-radius-pill)
+  color: var(--nt-text-2)
+  font-size: var(--nt-fs-micro)
+  line-height: 18px
+  white-space: nowrap
+
+// 治理岗 / 系统预置：琥珀描边，表示「边界、不在这里改」
+.org-tag--gov
+  border-color: color-mix(in srgb, var(--nt-warn) 55%, transparent)
+  color: var(--nt-warn)
+
+.org-tag--off
+  color: var(--nt-text-3)
+  text-decoration: line-through
+
+.org-dot
+  flex: none
+  width: 8px
+  height: 8px
+  border-radius: var(--nt-radius-pill)
+  background: var(--nt-text-3)
+
+.org-dot--ok
+  background: var(--nt-success)
+
+.org-dot--watch
+  background: var(--nt-warn)
+
+.org-dot--run
+  background: var(--nt-run)
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--nt-run) 25%, transparent)
+
+.org-empty
+  display: flex
+  flex-wrap: wrap
+  align-items: center
+  justify-content: center
+  gap: var(--nt-space-2)
+  margin: 0
+  padding: var(--nt-space-6) var(--nt-space-4)
+  background: var(--nt-tile-bg)
+  border: 1px dashed var(--nt-border-1)
+  border-radius: var(--nt-radius-m)
+  color: var(--nt-text-3)
+  text-align: center
+
+.org-menu
+  min-width: 160px
+
+.org-menu__danger
+  color: var(--nt-danger)
+
+.org-menu__note
+  max-width: 220px
+  color: var(--nt-text-3)
+  font-size: var(--nt-fs-caption)
+
+// 空缺岗位：去 Agent 页创建
+.org-vacant
+  display: inline-flex
+  align-items: center
+  gap: var(--nt-space-1)
+  color: var(--nt-warn)
+  font-size: var(--nt-fs-caption)
+  text-decoration: none
+
+  &:hover
+    text-decoration: underline
+
+// ——— Agent 小牌：头像（emoji 或首字，薰衣草 = AI）+ 名字 + 模型 + 状态点 ———
+.org-agent
+  display: inline-flex
+  align-items: center
+  gap: var(--nt-space-2)
+  max-width: 100%
+  min-width: 0
+  padding: 3px var(--nt-space-3) 3px 3px
+  background: var(--nt-data-raised)
+  border: 1px solid var(--nt-border-1)
+  border-radius: var(--nt-radius-pill)
+  color: var(--nt-text-1)
+  font: inherit
+  text-align: left
+
+button.org-agent
+  cursor: pointer
+  transition: border-color var(--nt-transition), background var(--nt-transition)
+
+  &:hover
+    border-color: var(--nt-accent-border)
+    background: var(--nt-tile-hover)
+
+.org-agent--empty
+  border-style: dashed
+  color: var(--nt-text-3)
+
+.org-agent__avatar
+  display: inline-grid
+  flex: none
+  place-items: center
+  width: 24px
+  height: 24px
+  border-radius: var(--nt-radius-pill)
+  background: color-mix(in srgb, var(--nt-ai) 24%, transparent)
+  color: var(--nt-ai)
+  font-size: var(--nt-fs-caption)
+  font-weight: 600
+
+.org-agent--empty .org-agent__avatar
+  background: var(--nt-tile-hover)
+  color: var(--nt-text-3)
+
+.org-agent__text
+  display: flex
+  flex-direction: column
+  min-width: 0
+  line-height: 1.25
+
+.org-agent__name
+  overflow: hidden
+  font-size: var(--nt-fs-caption)
+  font-weight: 600
+  text-overflow: ellipsis
+  white-space: nowrap
+
+.org-agent__meta
+  overflow: hidden
+  color: var(--nt-text-3)
+  font-size: var(--nt-fs-micro)
+  text-overflow: ellipsis
+  white-space: nowrap
+
+// 卡片底部的一句关系（主管 / 坐岗人），和 cap-card__relation 同字号
+.org-relation
+  display: inline-flex
+  align-items: center
+  gap: var(--nt-space-1)
+  min-width: 0
+  overflow: hidden
+  text-overflow: ellipsis
+  white-space: nowrap
+
+.org-relation__who
+  overflow: hidden
+  color: var(--nt-text-1)
+  text-overflow: ellipsis
+
+// 部门下的团队：一行胶囊
+.org-team-strip
+  display: flex
+  flex-wrap: wrap
+  gap: var(--nt-space-2)
+
+.org-team-pill
+  display: inline-flex
+  align-items: center
+  gap: var(--nt-space-2)
+  max-width: 100%
+  padding: var(--nt-space-1) var(--nt-space-3)
+  background: var(--nt-tile-bg)
+  border: 1px solid var(--nt-border-1)
+  border-radius: var(--nt-radius-pill)
+  color: var(--nt-text-1)
+  font: inherit
+  cursor: pointer
+
+  &:hover
+    border-color: var(--nt-accent-border)
+
+.org-team-pill__name
+  overflow: hidden
+  font-size: var(--nt-fs-caption)
+  font-weight: 600
+  text-overflow: ellipsis
+  white-space: nowrap
+
+.org-team-pill__meta
+  color: var(--nt-text-3)
+  font-size: var(--nt-fs-micro)
+
+// ——— 检视面板内容（组织页、Team 页共用） ———
+.org-detail,
+.org-form
+  display: flex
+  flex-direction: column
+  gap: var(--nt-space-4)
+
+.org-detail__tags
+  display: flex
+  flex-wrap: wrap
+  gap: var(--nt-space-1)
+
+.org-detail__desc
+  margin: 0
+  color: var(--nt-text-2)
+  line-height: 1.6
+  white-space: pre-line
+
+.org-detail__section
+  display: flex
+  flex-direction: column
+  gap: var(--nt-space-2)
+  padding-top: var(--nt-space-3)
+  border-top: 1px solid var(--nt-border-1)
+
+  h3
+    margin: 0
+    color: var(--nt-text-1)
+    font-size: var(--nt-fs-caption)
+    font-weight: 600
+
+.org-detail__agents
+  display: flex
+  flex-wrap: wrap
+  gap: var(--nt-space-2)
+
+.org-detail__actions
+  display: flex
+  flex-wrap: wrap
+  align-items: center
+  gap: var(--nt-space-2)
+
+.org-team-list
+  display: flex
+  flex-direction: column
+  gap: var(--nt-space-1)
+  margin: 0
+  padding: 0
+  list-style: none
+
+.org-team-row
+  display: flex
+  align-items: center
+  justify-content: space-between
+  gap: var(--nt-space-2)
+  width: 100%
+  padding: var(--nt-space-1) var(--nt-space-2)
+  background: transparent
+  border: 0
+  border-radius: var(--nt-radius-s)
+  color: var(--nt-text-1)
+  font: inherit
+  text-align: left
+  cursor: pointer
+
+  &:hover
+    background: var(--nt-tile-hover)
+
+.org-team-row__name
+  min-width: 0
+  overflow: hidden
+  text-overflow: ellipsis
+  white-space: nowrap
+
+.org-form__refine
+  display: flex
+  justify-content: flex-end
+  margin-top: var(--nt-space-1)
+
+.org-form__textarea
+  min-height: 96px
+
+// ——— Team 页：成员头像串、结构图、最近运行、翻页 ———
+// 成员头像串：最多 5 个，重叠排列，多出来的显示 +n
+.tm-avatars
+  display: flex
+  align-items: center
+  min-width: 0
+  padding-left: 6px
+
+.tm-avatar
+  display: inline-grid
+  flex: none
+  place-items: center
+  width: 24px
+  height: 24px
+  margin-left: -6px
+  border: 2px solid var(--nt-bg-1)
+  border-radius: var(--nt-radius-pill)
+  background: color-mix(in srgb, var(--nt-ai) 24%, var(--nt-bg-2))
+  color: var(--nt-ai)
+  font-size: var(--nt-fs-micro)
+  font-weight: 600
+
+.tm-avatar--more
+  background: var(--nt-bg-3)
+  color: var(--nt-text-2)
+
+.tm-avatar--off
+  opacity: 0.45
+
+.tm-avatars__label
+  margin-left: var(--nt-space-2)
+  color: var(--nt-text-3)
+  font-size: var(--nt-fs-caption)
+  white-space: nowrap
+
+// 结构图：按协作模式画成员关系（顺序 = 一条链；并行 / 主控 = 入口 → 一组并列成员 → 汇总；评审 = 生成 ⇄ 评审）
+.tm-flow
+  display: flex
+  flex-direction: column
+  gap: var(--nt-space-2)
+  margin: 0
+  padding: var(--nt-space-3)
+  background: var(--nt-data-bg)
+  border: 1px solid var(--nt-border-1)
+  border-radius: var(--nt-radius-m)
+
+.tm-flow__mode
+  display: flex
+  flex-wrap: wrap
+  align-items: center
+  gap: var(--nt-space-1) var(--nt-space-2)
+  color: var(--nt-text-2)
+  font-size: var(--nt-fs-caption)
+
+  strong
+    color: var(--nt-text-1)
+    white-space: nowrap
+
+.tm-flow__hint
+  flex-basis: 100%
+  color: var(--nt-text-3)
+  font-size: var(--nt-fs-micro)
+  line-height: 1.5
+
+.tm-flow__lane
+  display: flex
+  flex-direction: column
+  gap: var(--nt-space-1)
+
+.tm-flow__fan
+  display: grid
+  grid-template-columns: repeat(auto-fill, minmax(128px, 1fr))
+  gap: var(--nt-space-1)
+  padding-left: var(--nt-space-3)
+  border-left: 2px solid var(--nt-border-2)
+
+.tm-flow__arrow
+  align-self: center
+  color: var(--nt-text-3)
+
+.tm-flow__node
+  display: flex
+  align-items: center
+  gap: var(--nt-space-2)
+  min-width: 0
+  padding: var(--nt-space-1) var(--nt-space-2)
+  background: var(--nt-data-raised)
+  border: 1px solid var(--nt-border-1)
+  border-radius: var(--nt-radius-m)
+
+  .tm-avatar
+    margin-left: 0
+
+.tm-flow__node--off
+  opacity: 0.5
+
+.tm-flow__name
+  flex: 1
+  min-width: 0
+  overflow: hidden
+  font-size: var(--nt-fs-caption)
+  text-overflow: ellipsis
+  white-space: nowrap
+
+.tm-flow__role
+  flex: none
+  color: var(--nt-text-3)
+  font-size: var(--nt-fs-micro)
+
+.tm-runs
+  display: flex
+  flex-direction: column
+  gap: var(--nt-space-1)
+  margin: 0
+  padding: 0
+  list-style: none
+
+.tm-run
+  display: grid
+  grid-template-columns: auto minmax(0, 1fr) auto
+  align-items: center
+  gap: var(--nt-space-2)
+  padding: var(--nt-space-1) 0
+  border-bottom: 1px solid var(--nt-border-1)
+  font-size: var(--nt-fs-caption)
+
+.tm-run__preview
+  overflow: hidden
+  color: var(--nt-text-2)
+  text-overflow: ellipsis
+  white-space: nowrap
+
+.tm-run__meta
+  color: var(--nt-text-3)
+  font-size: var(--nt-fs-micro)
+
+.tm-pager
+  display: flex
+  align-items: center
+  justify-content: flex-end
+  gap: var(--nt-space-2)
+  margin-top: var(--nt-space-3)
+  color: var(--nt-text-3)
+  font-size: var(--nt-fs-caption)
+
+.tm-pager__size
+  width: 96px
+
+// ——— 宽度档 ———
+// ≥1440 检视面板在格子里占第三列；更窄时它从右侧浮出，不占列
+@media (min-width: 1440px)
+  html body .bz-page--inspecting
+    grid-template-columns: 216px minmax(0, 1fr) minmax(340px, 380px)
+
+@media (max-width: 1199px)
+  html body .bz-page
+    grid-template-columns: 200px minmax(0, 1fr)
+
+  .bz-head
+    flex-wrap: wrap
+
+  .bz-head__lead
+    max-width: none
+
+// 799 以下：一栏整页滚动，编制树压成顶部一段
+@media (max-width: 799px)
+  html body .bz-page
+    grid-template-columns: minmax(0, 1fr)
+    height: auto
+    padding: var(--nt-space-2)
+
+  .bz-rail
+    max-height: 220px
+
+  .bz-main
+    overflow: visible
+
+  .bz-scroll
+    overflow: visible

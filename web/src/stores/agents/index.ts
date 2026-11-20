@@ -5,29 +5,24 @@ import {
   checkAgentKey,
   deleteAgent as deleteAgentApi,
   duplicateAgent,
-  listAgentCreators,
   listAgentTemplates,
   listAgentsPaged,
   toggleAgentFavorite as toggleAgentFavoriteApi,
 } from '../../features/agents/api';
-import type { Agent, AgentCreatorOption, AgentTemplatePreset } from '../../features/agents/types';
+import type { Agent, AgentTemplatePreset } from '../../features/agents/types';
 import { listPlatformResources, listPlatformResourceTree, validateModel } from '../../features/platform/api';
 import type { PlatformResource, PlatformResourceTreeNode } from '../../features/platform/types';
-import { flattenTaxonomyPositions, formatContext } from '../../components/agents/agentUi';
-import { buildAgentTableColumns } from '../../components/agents/agentTableUi';
 import { findTaxonomyPath, formatTaxonomyPath } from '../../features/platform/taxonomyTreeUtils';
 import { emitSessionMutation } from '../sessionMutationBus';
 
-/** Agent 列表页：筛选、分页、依赖数据与列表 CRUD；Agent HTTP 经 features/agents/api（Kratos）。 */
+/**
+ * 花名册一次拉全量：左侧编制树要算每个公司 / 部门的人数，按页取拿不到。
+ * shortcut: 上限 1000 个 Agent，超过时页面提示「只显示前 1000 个」；Agent 过千再改成服务端按节点分页 + 计数接口。
+ */
+export const ROSTER_LIMIT = 1000;
+
+/** Agent 列表页（编制花名册）：全量 Agent、组织树、模型目录与列表上的增删改；HTTP 经 features/agents/api。 */
 export const useAgentsPageStore = defineStore('agentsPage', () => {
-  const keyword = ref('');
-  const selectedStatus = ref<string | null>(null);
-  const selectedProvider = ref<string | null>(null);
-  const selectedTaxonomy = ref<string | null>(null);
-  const selectedCreator = ref<string | null>(null);
-  const creatorOptions = ref<AgentCreatorOption[]>([]);
-  const page = ref(1);
-  const rowsPerPage = ref(21);
   const agents = ref<Agent[]>([]);
   const total = ref(0);
   const listLoading = ref(false);
@@ -42,10 +37,6 @@ export const useAgentsPageStore = defineStore('agentsPage', () => {
 
   const selectedAgentIds = ref<string[]>([]);
 
-  const industryNodes = computed(() => taxonomyTree.value.filter((row) => row.level === 'company' && row.enabled));
-  const taxonomyPositionOptions = computed(() => flattenTaxonomyPositions(industryNodes.value));
-  const pageMax = computed(() => Math.max(1, Math.ceil(total.value / rowsPerPage.value)));
-
   const providerOptions = computed(() =>
     Array.from(new Set(providerModels.value.map((row) => row.provider).filter(Boolean))).map((provider) => ({
       label: provider,
@@ -54,29 +45,20 @@ export const useAgentsPageStore = defineStore('agentsPage', () => {
   );
 
   function taxonomyLabel(id: string) {
-    if (!id) return '未分类';
     const path = findTaxonomyPath(taxonomyTree.value, id);
-    if (path.length) return formatTaxonomyPath(path);
-    return taxonomyPositionOptions.value.find((item) => item.value === id)?.label ?? '未分类';
+    return path.length ? formatTaxonomyPath(path) : '';
   }
-
-  const tableColumns = computed(() => buildAgentTableColumns(taxonomyLabel, formatContext));
 
   async function loadAgentList() {
     listLoading.value = true;
     listError.value = '';
     try {
-      const result = await listAgentsPaged({
-        keyword: keyword.value || undefined,
-        status: selectedStatus.value || undefined,
-        provider: selectedProvider.value || undefined,
-        org_node_id: selectedTaxonomy.value || undefined,
-        created_by: selectedCreator.value && selectedCreator.value !== '' ? selectedCreator.value : undefined,
-        limit: rowsPerPage.value,
-        offset: (page.value - 1) * rowsPerPage.value,
-      });
+      const result = await listAgentsPaged({ limit: ROSTER_LIMIT, offset: 0 });
       agents.value = result.items;
       total.value = result.total;
+      // 已不在列表里的选中项（被删、被别处改成只读）一并清掉
+      const ids = new Set(result.items.filter((a) => !a.readonly).map((a) => a.id));
+      selectedAgentIds.value = selectedAgentIds.value.filter((id) => ids.has(id));
     } catch (error) {
       listError.value = error instanceof Error ? error.message : String(error);
       throw error;
@@ -86,14 +68,12 @@ export const useAgentsPageStore = defineStore('agentsPage', () => {
   }
 
   async function loadAgentsDependencies() {
-    const [treeRows, providerRows, creators] = await Promise.all([
+    const [treeRows, providerRows] = await Promise.all([
       listPlatformResourceTree('organization'),
       listPlatformResources('llm-provider-models'),
-      listAgentCreators().catch(() => [] as AgentCreatorOption[]),
     ]);
     taxonomyTree.value = treeRows;
     providerModels.value = providerRows;
-    creatorOptions.value = [{ user_id: '', label: '所有创建者' }, ...creators];
     emitSessionMutation({ type: 'agents_dependencies_loaded' });
   }
 
@@ -118,18 +98,23 @@ export const useAgentsPageStore = defineStore('agentsPage', () => {
     selectedAgentIds.value.push(id);
   }
 
+  function setSelection(ids: string[]) {
+    const ok = new Set(agents.value.filter((a) => !a.readonly).map((a) => a.id));
+    selectedAgentIds.value = ids.filter((id) => ok.has(id));
+  }
+
   function clearAgentSelection() {
     selectedAgentIds.value = [];
   }
 
-  async function batchUpdateListedAgents(action: {
-    status?: 'active' | 'inactive';
-    delete?: boolean;
-  }): Promise<number> {
-    const ids = [...selectedAgentIds.value];
+  /** 批量启停 / 删除；ids 缺省为当前选中。返回后端实际影响的条数。 */
+  async function batchUpdateListedAgents(
+    action: { status?: 'active' | 'inactive'; delete?: boolean },
+    ids: string[] = [...selectedAgentIds.value],
+  ): Promise<number> {
     if (ids.length === 0) return 0;
     const affected = await batchUpdateAgentsApi(ids, action);
-    clearAgentSelection();
+    selectedAgentIds.value = selectedAgentIds.value.filter((id) => !ids.includes(id));
     await loadAgentList();
     return affected;
   }
@@ -141,7 +126,9 @@ export const useAgentsPageStore = defineStore('agentsPage', () => {
     agent.is_favorite = !previous;
     try {
       const updated = await toggleAgentFavoriteApi(id);
-      agents.value = agents.value.map((item) => (item.id === id ? updated : item));
+      agents.value = agents.value.map((item) =>
+        item.id === id ? { ...item, is_favorite: updated.is_favorite } : item,
+      );
       emitSessionMutation({ type: 'agent_updated', agent: updated });
     } catch (error) {
       agent.is_favorite = previous;
@@ -172,31 +159,7 @@ export const useAgentsPageStore = defineStore('agentsPage', () => {
     return duplicateAgent(id);
   }
 
-  function resetListFiltersAfterCreate() {
-    keyword.value = '';
-    selectedStatus.value = null;
-    selectedProvider.value = null;
-    selectedTaxonomy.value = null;
-    selectedCreator.value = null;
-    page.value = 1;
-  }
-
-  function reorderAgents(ids: string[]) {
-    const map = new Map(agents.value.map((a) => [a.id, a]));
-    const reordered = ids.map((id) => map.get(id)).filter(Boolean) as Agent[];
-    const remaining = agents.value.filter((a) => !ids.includes(a.id));
-    agents.value = [...reordered, ...remaining];
-  }
-
   return {
-    keyword,
-    selectedStatus,
-    selectedProvider,
-    selectedTaxonomy,
-    selectedCreator,
-    creatorOptions,
-    page,
-    rowsPerPage,
     agents,
     total,
     listLoading,
@@ -205,27 +168,22 @@ export const useAgentsPageStore = defineStore('agentsPage', () => {
     providerModels,
     checkingModel,
     modelCheckPassed,
-    industryNodes,
-    taxonomyPositionOptions,
-    pageMax,
     providerOptions,
     taxonomyLabel,
-    tableColumns,
     loadAgentList,
     loadAgentsDependencies,
     ensureTaxonomyTree,
     removeListedAgent,
     selectedAgentIds,
     toggleAgentSelected,
+    setSelection,
     clearAgentSelection,
     batchUpdateListedAgents,
     toggleAgentFavorite,
     validateCreateModel,
-    resetListFiltersAfterCreate,
     verifyAgentKey,
     fetchAgentTemplates,
     copyAgent,
-    reorderAgents,
   };
 });
 

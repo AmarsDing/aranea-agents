@@ -1,35 +1,4 @@
-import type { QTableColumn } from 'quasar';
-import type { Agent } from '../../features/agents/types';
-import { REGISTRY_COL_W, registryCol, registryColActions } from '../../features/ui/registryTableColumns';
-import { deriveMemoryToolMode } from './agentUi';
-
-/** AgentsListSection 列定义（taxonomyLabel 由 store computed 注入 field） */
-export function buildAgentTableColumns(
-  taxonomyLabel: (id: string) => string,
-  formatContext: (value?: number) => string,
-): QTableColumn<Agent>[] {
-  return [
-    registryCol<Agent>('name', '名称', 'display_name', 'left', REGISTRY_COL_W.name),
-    registryCol<Agent>('status', '状态', 'status', 'left', REGISTRY_COL_W.status),
-    registryCol<Agent>('model', '模型', (row) => `${row.provider} / ${row.model}`, 'left', REGISTRY_COL_W.stats),
-    registryCol<Agent>(
-      'category',
-      '组织架构',
-      (row) => taxonomyLabel(row.taxonomy_position_id),
-      'left',
-      REGISTRY_COL_W.category,
-    ),
-    registryCol<Agent>('ctx', '上下文', (row) => formatContext(row.context_window), 'left', REGISTRY_COL_W.status),
-    registryCol<Agent>(
-      'memory_mode',
-      '记忆模式',
-      (row) => deriveMemoryToolMode(row.settings?.tools_deny_json),
-      'left',
-      REGISTRY_COL_W.category,
-    ),
-    registryColActions<Agent>(),
-  ];
-}
+import { REGISTRY_COL_W, registryCol } from '../../features/ui/registryTableColumns';
 
 /** AgentSettings — Prompt 组装预览表 */
 export const AGENT_PROMPT_ASSEMBLY_TABLE_COLUMNS = [

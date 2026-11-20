@@ -320,8 +320,22 @@ func (u *AgentUsecase) GetAgentRuntimeSettings(ctx context.Context, agentID stri
 }
 
 // Create inserts an agent and persists settings + prompt files.
+// 这是 HTTP CreateAgent 的唯一入口：标识格式与 CheckAgentKey 同一条规则；
+// 治理岗（dept_lead / company_lead）只能由组织流程创建（dept_lead.go / company_lead.go），
+// 否则任何用户都能自报部门主管拿到治理工具，或抢注 __dept_lead_<部门>__ 被新部门认领。
 func (u *AgentUsecase) Create(ctx context.Context, in Agent) (Agent, error) {
+	if key := strings.TrimSpace(in.AgentKey); key != "" && !agentKeyPattern.MatchString(key) {
+		return Agent{}, apierror.BadRequest("AGENT_KEY_INVALID", "agent_key must be lowercase letters, digits, and hyphens")
+	}
+	if isGovernanceVariant(in.AgentVariant) {
+		return Agent{}, apierror.BadRequest("AGENT", "agent_variant dept_lead / company_lead is reserved for organization leads")
+	}
 	return u.create(ctx, in, false)
+}
+
+func isGovernanceVariant(v string) bool {
+	v = strings.TrimSpace(v)
+	return v == "dept_lead" || v == "company_lead"
 }
 
 // create is the internal creation path shared by Create and Duplicate.
@@ -357,7 +371,7 @@ func (u *AgentUsecase) create(ctx context.Context, in Agent, skipProviderValidat
 	files = withFileDefaults(files)
 	// DEV-10: settings/files are the source of truth. Persist only overlay
 	// keys that hydrate still merges (evaluation, knowledge.grounded_only).
-	in.ConfigJSON = extractConfigJSONKeys(in.ConfigJSON, "evaluation", "knowledge")
+	in.ConfigJSON = persistedConfigJSON(in.ConfigJSON, in, u.lg)
 	in.Status = strings.TrimSpace(in.Status)
 	if in.Status == "" {
 		in.Status = string(AgentStatusActive)
@@ -413,6 +427,11 @@ func (u *AgentUsecase) Update(ctx context.Context, id string, patch Agent) (Agen
 		if strings.TrimSpace(patch.AgentKind) != "" && NormalizeAgentKind(patch.AgentKind) != NormalizeAgentKind(current.AgentKind) {
 			return apierror.BadRequest("AGENT", "agent_kind is immutable")
 		}
+		// 治理岗身份只能由组织流程授予或收回：普通保存既不能把专项改成部门主管，也不能把主管改成别的
+		if strings.TrimSpace(patch.AgentVariant) != strings.TrimSpace(current.AgentVariant) &&
+			(isGovernanceVariant(patch.AgentVariant) || isGovernanceVariant(current.AgentVariant)) {
+			return apierror.BadRequest("AGENT", "agent_variant of organization leads is managed by the organization")
+		}
 		merged := mergeAgentCatalog(current, patch)
 		// AS-FSM-01: Validate state transition when status changes.
 		if merged.Status != current.Status && strings.TrimSpace(merged.Status) != "" {
@@ -445,7 +464,7 @@ func (u *AgentUsecase) Update(ctx context.Context, id string, patch Agent) (Agen
 		if overlay == "{}" {
 			overlay = extractConfigJSONKeys(current.ConfigJSON, "evaluation", "knowledge")
 		}
-		merged.ConfigJSON = overlay
+		merged.ConfigJSON = persistedConfigJSON(overlay, merged, u.lg)
 		if _, err := u.writer.UpdateAgent(txCtx, merged); err != nil {
 			return err
 		}

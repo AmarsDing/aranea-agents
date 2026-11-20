@@ -89,7 +89,6 @@
           emit-value
           map-options
           use-input
-          clearable
           input-debounce="0"
           :label="$t('domains.agentSettings.model')"
           :hint="$t('domains.agentSettings.modelHint')"

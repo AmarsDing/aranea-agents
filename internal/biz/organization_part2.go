@@ -20,8 +20,8 @@ func (u *OrganizationUsecase) cascadeDeleteDeptLead(ctx context.Context, dept Or
 	}
 }
 
-// cascadeDeleteChildPositions deletes child position nodes.
-func (u *OrganizationUsecase) cascadeDeleteChildPositions(ctx context.Context, dept OrganizationNode) {
+// cascadeDeleteChildPositions deletes child position nodes (force: see orgNodeForceDeleter).
+func (u *OrganizationUsecase) cascadeDeleteChildPositions(ctx context.Context, dept OrganizationNode, force bool) {
 	positions, posErr := u.repo.ListOrgNodesByParentID(ctx, dept.ID)
 	if posErr != nil {
 		u.lg.Warn("failed to list positions during department deletion",
@@ -30,7 +30,7 @@ func (u *OrganizationUsecase) cascadeDeleteChildPositions(ctx context.Context, d
 		return
 	}
 	for _, pos := range positions {
-		if delErr := u.repo.DeleteOrgNode(ctx, pos.ID); delErr != nil {
+		if delErr := u.removeNode(ctx, pos.ID, force); delErr != nil {
 			u.lg.Warn("failed to delete position during department deletion",
 				loggateway.Str("position_id", pos.ID),
 				loggateway.Err(delErr))

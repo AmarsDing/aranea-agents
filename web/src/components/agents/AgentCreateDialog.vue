@@ -24,6 +24,12 @@
         <q-banner v-if="createFormError" dense rounded class="bg-negative text-white q-mb-md">
           {{ createFormError }}
         </q-banner>
+        <q-banner v-if="!isA2AProxy && !providerOptions.length" dense rounded class="settings-warning-banner q-mb-md">
+          {{ $t('agentRoster.createForm.noModels') }}
+          <template #action>
+            <q-btn flat no-caps color="primary" :label="$t('agentRoster.createForm.openModels')" to="/models" />
+          </template>
+        </q-banner>
         <div class="agent-kind-row q-mb-md">
           <div class="text-subtitle2 q-mb-sm">{{ $t('domains.agentCreate.agentKind') }}</div>
           <q-btn-toggle

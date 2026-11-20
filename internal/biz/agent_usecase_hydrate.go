@@ -254,6 +254,16 @@ func mergeEvaluationFromLegacy(computed, legacy string, lg loggateway.Logger) st
 // extractConfigJSONKeys keeps only the named top-level objects from raw JSON.
 // Used so agents.config_json can persist evaluation/knowledge overlays after
 // DEV-10 stopped writing the full settings projection.
+// persistedConfigJSON 是 agents.config_json 落库的内容：只留 evaluation / knowledge 叠加层；
+// a2a_proxy 类型没有独立列，agent_kind 与 a2a_proxy 也得写在这里，否则保存一次就被降级成 llm。
+func persistedConfigJSON(raw string, a Agent, lg loggateway.Logger) string {
+	overlay := extractConfigJSONKeys(raw, "evaluation", "knowledge")
+	if NormalizeAgentKind(a.AgentKind) == AgentKindA2AProxy {
+		return EmbedAgentKindInConfigJSON(overlay, AgentKindA2AProxy, a.A2AProxy, lg)
+	}
+	return overlay
+}
+
 func extractConfigJSONKeys(raw string, keys ...string) string {
 	raw = strings.TrimSpace(raw)
 	if raw == "" || raw == "{}" || len(keys) == 0 {

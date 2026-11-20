@@ -5,12 +5,24 @@ import { useRoute, useRouter, type LocationQueryRaw } from 'vue-router';
 import { copyToClipboard, useQuasar } from 'quasar';
 import { mapAgentCreateFieldErrors, parseKratosApiError } from '../../utils/kratosError';
 import type { Agent, AgentKind, A2AProxyConfig, AgentTemplatePreset } from './types';
-import type { PlatformResource } from '../platform/types';
-import { statusOptions } from '../../components/agents/agentUi';
-import { useAgentsPageStore } from '../../stores/agents';
+import type { PlatformResource, PlatformResourceTreeNode } from '../platform/types';
+import { ROSTER_LIMIT, useAgentsPageStore } from '../../stores/agents';
 import { useAppStore } from '../../stores/app';
 import { useAvatarCatalogStore } from '../../stores/avatar';
-import { useAgentBatch } from './useAgentBatch';
+import {
+  buildOrgIndex,
+  buildRail,
+  canDeleteAgent,
+  canToggleAgent,
+  countByRole,
+  groupRoster,
+  rosterRole,
+  scopeRoster,
+  vacancyAgentKey,
+  type RosterRole,
+  type RosterScope,
+  type RosterStatus,
+} from './roster';
 
 export type CreateAgentForm = {
   agent_key: string;
@@ -25,11 +37,13 @@ export type CreateAgentForm = {
   taxonomy_position_id: string;
 };
 
-type ViewMode = 'grid' | 'list';
+const AGENT_KEY_RE = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+const DEFAULT_PROVIDER = 'deepseek';
+const DEFAULT_MODEL = 'deepseek-v4-flash';
+const ROLES: Array<RosterRole | ''> = ['', 'company_lead', 'dept_lead', 'specialist', 'custom', 'butler'];
+const STATUSES: RosterStatus[] = ['', 'active', 'inactive', 'failed'];
 
-const LS_VIEW = 'agents.viewMode';
-
-/** Agent 列表页：组合 Pinia Store 与局部 UI（表单 / 对话框），不包含裸 HTTP（见 aranea-frontend-guide SKILL §3）。 */
+/** 编制花名册（/agents）：左编制树 · 中花名册 · 右检视。数据走 useAgentsPageStore，口径在 roster.ts。 */
 export function useAgentsPage() {
   const $q = useQuasar();
   const { t } = useI18n();
@@ -38,87 +52,176 @@ export function useAgentsPage() {
   const appStore = useAppStore();
   const avatarCatalog = useAvatarCatalogStore();
   const pageStore = useAgentsPageStore();
+  const { agents, total, listLoading, providerModels, checkingModel, modelCheckPassed, taxonomyTree, providerOptions } =
+    storeToRefs(pageStore);
 
-  const {
-    agents,
-    keyword,
-    selectedStatus,
-    selectedProvider,
-    selectedTaxonomy,
-    selectedCreator,
-    creatorOptions,
-    page,
-    rowsPerPage,
-    total,
-    listLoading,
-    providerModels,
-    checkingModel,
-    modelCheckPassed,
-    taxonomyTree,
-    pageMax,
-    providerOptions,
-    tableColumns,
-  } = storeToRefs(pageStore);
+  // ——— 筛选与选中：同步到地址栏，刷新和分享链接都能还原 ———
+  const qs = (k: string) => (typeof route.query[k] === 'string' ? (route.query[k] as string) : '');
+  const scope = ref<RosterScope>(qs('scope') || 'all');
+  const keyword = ref(qs('q'));
+  const role = ref<RosterRole | ''>(ROLES.includes(qs('role') as RosterRole) ? (qs('role') as RosterRole) : '');
+  const status = ref<RosterStatus>(
+    STATUSES.includes(qs('status') as RosterStatus) ? (qs('status') as RosterStatus) : '',
+  );
+  const selectedId = ref(qs('agent'));
 
-  const taxonomyLabel = pageStore.taxonomyLabel;
-
-  // ISSUE-004：筛选/分页状态同步 URL query，刷新与分享链接后恢复
-  {
-    const q = route.query;
-    if (typeof q.q === 'string' && q.q) keyword.value = q.q;
-    if (typeof q.status === 'string' && q.status) selectedStatus.value = q.status;
-    if (typeof q.provider === 'string' && q.provider) selectedProvider.value = q.provider;
-    if (typeof q.org === 'string' && q.org) selectedTaxonomy.value = q.org;
-    if (typeof q.creator === 'string' && q.creator) selectedCreator.value = q.creator;
-    const urlPage = Number(q.page);
-    if (Number.isInteger(urlPage) && urlPage > 1) page.value = urlPage;
-    const urlSize = Number(q.size);
-    if ([10, 20, 50].includes(urlSize)) rowsPerPage.value = urlSize;
-  }
-
-  function syncListQueryToUrl() {
+  watch([scope, keyword, role, status, selectedId], () => {
     const query: LocationQueryRaw = {};
+    if (scope.value !== 'all') query.scope = scope.value;
     if (keyword.value) query.q = keyword.value;
-    if (selectedStatus.value) query.status = selectedStatus.value;
-    if (selectedProvider.value) query.provider = selectedProvider.value;
-    if (selectedTaxonomy.value) query.org = selectedTaxonomy.value;
-    if (selectedCreator.value) query.creator = selectedCreator.value;
-    if (page.value > 1) query.page = String(page.value);
-    if (rowsPerPage.value !== 20) query.size = String(rowsPerPage.value);
+    if (role.value) query.role = role.value;
+    if (status.value) query.status = status.value;
+    if (selectedId.value) query.agent = selectedId.value;
     void router.replace({ query });
+  });
+
+  const orgIndex = computed(() => buildOrgIndex(taxonomyTree.value));
+  const rail = computed(() => buildRail(orgIndex.value, agents.value));
+  const scoped = computed(() =>
+    scopeRoster(orgIndex.value, agents.value, { scope: scope.value, q: keyword.value ?? '', status: status.value }),
+  );
+  const roleCounts = computed(() => countByRole(scoped.value));
+  const visible = computed(() =>
+    role.value ? scoped.value.filter((a) => rosterRole(a) === role.value) : scoped.value,
+  );
+  const groups = computed(() => groupRoster(orgIndex.value, visible.value));
+  const statusCounts = computed(() => {
+    const base = scopeRoster(orgIndex.value, agents.value, { scope: scope.value, q: keyword.value ?? '', status: '' });
+    return {
+      inactive: base.filter((a) => a.status === 'inactive').length,
+      failed: base.filter((a) => a.last_run_status === 'failed').length,
+    };
+  });
+  const truncated = computed(() => total.value > agents.value.length);
+
+  const selectedAgent = computed(() => agents.value.find((a) => a.id === selectedId.value) ?? null);
+  const scopeNode = computed(() => orgIndex.value.nodes.get(scope.value) ?? null);
+
+  function selectAgent(agent: Agent | null) {
+    selectedId.value = agent?.id ?? '';
   }
 
-  const isDark = computed(() => $q.dark.isActive);
-  const loading = listLoading;
+  function setScope(next: RosterScope) {
+    scope.value = next;
+    selectedId.value = '';
+  }
 
-  const createOpen = ref(false);
-  const migrationOpen = ref(false);
+  function resetFilters() {
+    keyword.value = '';
+    role.value = '';
+    status.value = '';
+  }
+
+  async function runLoadList() {
+    try {
+      await pageStore.loadAgentList();
+    } catch {
+      // 失败信息在 pageStore.listError，由页面错误面板呈现并可重试（不退化成空态）
+    }
+  }
+
+  // ——— 选择与批量 ———
+  const { selectedAgentIds } = storeToRefs(pageStore);
+  const selectableVisible = computed(() => visible.value.filter(canToggleAgent));
+  const allVisibleSelected = computed(
+    () =>
+      selectableVisible.value.length > 0 && selectableVisible.value.every((a) => selectedAgentIds.value.includes(a.id)),
+  );
+  const selectedAgents = computed(() => agents.value.filter((a) => selectedAgentIds.value.includes(a.id)));
+  const deletableSelected = computed(() => selectedAgents.value.filter(canDeleteAgent));
+  const batchBusy = ref('');
+  const batchError = ref('');
+
+  function toggleSelectAllVisible() {
+    pageStore.setSelection(allVisibleSelected.value ? [] : selectableVisible.value.map((a) => a.id));
+  }
+
+  async function runBatch(action: 'enable' | 'disable' | 'delete') {
+    if (batchBusy.value) return;
+    batchBusy.value = action;
+    batchError.value = '';
+    try {
+      if (action === 'delete') {
+        // 后端会拒绝内置 / 行业包专项；只把能删的发过去，其余保留选中
+        const ids = deletableSelected.value.map((a) => a.id);
+        const n = await pageStore.batchUpdateListedAgents({ delete: true }, ids);
+        $q.notify({ type: 'positive', message: t('agentRoster.batch.deleted', { n }) });
+      } else {
+        const n = await pageStore.batchUpdateListedAgents({ status: action === 'enable' ? 'active' : 'inactive' });
+        $q.notify({ type: 'positive', message: t('agentRoster.batch.statusDone', { n }) });
+      }
+    } catch (error) {
+      batchError.value = error instanceof Error ? error.message : t('agentRoster.batch.failed');
+    } finally {
+      batchBusy.value = '';
+    }
+  }
+
+  // ——— 单个 Agent 的动作 ———
+  async function setAgentStatus(agent: Agent, next: 'active' | 'inactive') {
+    try {
+      await pageStore.batchUpdateListedAgents({ status: next }, [agent.id]);
+      $q.notify({ type: 'positive', message: t(next === 'active' ? 'agentRoster.enabled' : 'agentRoster.disabled') });
+    } catch (error) {
+      $q.notify({ type: 'negative', message: error instanceof Error ? error.message : t('agentRoster.actionFailed') });
+    }
+  }
+
+  async function toggleFavorite(agent: Agent) {
+    try {
+      await pageStore.toggleAgentFavorite(agent.id);
+    } catch (error) {
+      $q.notify({ type: 'negative', message: error instanceof Error ? error.message : t('agentRoster.actionFailed') });
+    }
+  }
+
+  async function copyAgentKey(value: string) {
+    await copyToClipboard(value);
+    $q.notify({ type: 'positive', message: t('agentRoster.keyCopied') });
+  }
+
+  async function duplicateListedAgent(agent: Agent) {
+    try {
+      const created = await pageStore.copyAgent(agent.id);
+      appStore.upsertAgent(created);
+      await runLoadList();
+      selectedId.value = created.id;
+      $q.notify({ type: 'positive', message: t('agentRoster.duplicated', { name: created.display_name }) });
+    } catch (error) {
+      $q.notify({ type: 'negative', message: error instanceof Error ? error.message : t('agentRoster.actionFailed') });
+    }
+  }
+
   const deleteOpen = ref(false);
   const deleteTarget = ref<Agent | null>(null);
+
+  function confirmDelete(agent: Agent) {
+    deleteTarget.value = agent;
+    deleteOpen.value = true;
+  }
+
+  async function deleteAgentTarget() {
+    const target = deleteTarget.value;
+    if (!target) return;
+    try {
+      await pageStore.removeListedAgent(target.id);
+      if (selectedId.value === target.id) selectedId.value = '';
+      deleteOpen.value = false;
+      deleteTarget.value = null;
+      $q.notify({ type: 'positive', message: t('agentRoster.deleted') });
+    } catch (error) {
+      $q.notify({ type: 'negative', message: error instanceof Error ? error.message : t('agentRoster.actionFailed') });
+    }
+  }
+
+  // ——— 新建 / 补人 ———
+  const createOpen = ref(false);
   const creating = ref(false);
   // 与后端 DefaultAgentRuntimeSettings（agent_defaults.go）opt-in 语义一致：自进化默认关。
   const selfEvolve = ref(false);
   const agentKind = ref<AgentKind>('llm');
-  const a2aProxy = reactive<A2AProxyConfig>({
-    remote_url: '',
-    enable_streaming: true,
-    timeout_seconds: 30,
-  });
-  const viewMode = ref<ViewMode>((localStorage.getItem(LS_VIEW) as ViewMode) || 'grid');
-
-  const form = reactive<CreateAgentForm>({
-    agent_key: '',
-    display_name: '',
-    provider: 'deepseek',
-    model: 'deepseek-v4-flash',
-    icon: 'smart_toy',
-    agent_description: '',
-    position_key: '',
-    agent_variant: '',
-    variant_description: '',
-    taxonomy_position_id: '',
-  });
-
+  const a2aProxy = reactive<A2AProxyConfig>({ remote_url: '', enable_streaming: true, timeout_seconds: 30 });
+  const form = reactive<CreateAgentForm>(emptyForm());
   const selectedTemplateKey = ref('');
   const createTemplates = ref<AgentTemplatePreset[]>([]);
   const agentKeyServerError = ref('');
@@ -128,7 +231,20 @@ export function useAgentsPage() {
   const createFormError = ref('');
   let agentKeyCheckTimer: ReturnType<typeof setTimeout> | undefined;
 
-  const avatars = computed(() => avatarCatalog.agentsCatalog);
+  function emptyForm(): CreateAgentForm {
+    return {
+      agent_key: '',
+      display_name: '',
+      provider: DEFAULT_PROVIDER,
+      model: DEFAULT_MODEL,
+      icon: avatarCatalog.agentsCatalog[0]?.id ?? 'smart_toy',
+      agent_description: '',
+      position_key: '',
+      agent_variant: '',
+      variant_description: '',
+      taxonomy_position_id: '',
+    };
+  }
 
   const modelOptions = computed(() =>
     providerModels.value
@@ -137,107 +253,57 @@ export function useAgentsPage() {
   );
 
   const agentKeyError = computed(() => {
-    // 空值时也回显 serverError：onCreateAttempt 对空标识写入"请填写"提示，
-    // 输入变化时 watch 会清空 serverError，不会误残留。
-    if (!form.agent_key) return agentKeyServerError.value;
-    if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(form.agent_key)) {
-      return '仅支持小写字母、数字、连字符';
-    }
+    if (form.agent_key && !AGENT_KEY_RE.test(form.agent_key)) return t('agentRoster.createForm.keyPattern');
     return agentKeyServerError.value;
   });
   const isA2AProxyCreate = computed(() => agentKind.value === 'a2a_proxy');
+  // 模型不再要求先点「检查」：创建时自动校验，不通过就在模型字段上就地报错
   const canCreate = computed(() => {
     const base = Boolean(form.display_name && form.agent_key && !agentKeyError.value);
-    if (isA2AProxyCreate.value) {
-      return base && Boolean(a2aProxy.remote_url.trim());
-    }
-    return base && Boolean(form.provider && form.model && modelCheckPassed.value);
+    if (isA2AProxyCreate.value) return base && Boolean(a2aProxy.remote_url.trim());
+    return base && Boolean(form.provider && form.model);
   });
-
   const createDisabledHint = computed(() => {
     if (canCreate.value) return '';
     if (!form.display_name || !form.agent_key) return t('agentsPage.create.hintDisplayNameAndKey');
     if (agentKeyError.value) return agentKeyError.value;
     if (isA2AProxyCreate.value) return t('agentsPage.create.hintA2aUrl');
-    if (!modelCheckPassed.value) return t('agentsPage.create.hintCheckModel');
-    return '';
+    return t('agentRoster.createForm.pickModel');
   });
 
-  async function runLoadList() {
-    try {
-      await pageStore.loadAgentList();
-    } catch {
-      // 失败信息已写入 pageStore.listError，由列表内错误面板呈现并支持重试；
-      // 不再用 toast 提示后继续显示空态（会把 5xx 伪装成「没有数据」）。
-    }
-  }
-
-  watch(viewMode, (value) => localStorage.setItem(LS_VIEW, value));
-  watch(rowsPerPage, () => {
-    page.value = 1;
-    syncListQueryToUrl();
-    void runLoadList();
-  });
-  watch(page, () => {
-    syncListQueryToUrl();
-    void runLoadList();
-  });
-  watch([keyword, selectedStatus, selectedProvider, selectedTaxonomy, selectedCreator], () => {
-    page.value = 1;
-    syncListQueryToUrl();
-    void runLoadList();
-  });
   watch(
     () => form.provider,
     () => {
-      form.model = modelOptions.value[0]?.value ?? '';
+      // 模板同时带来的 provider + model 若在目录里就保留，否则换成该 provider 的第一个模型
+      if (!modelOptions.value.some((o) => o.value === form.model)) form.model = modelOptions.value[0]?.value ?? '';
       modelCheckPassed.value = false;
+      providerModelError.value = '';
     },
   );
   watch(
     () => form.model,
     () => {
       modelCheckPassed.value = false;
+      providerModelError.value = '';
     },
   );
-
   watch(
     () => form.agent_key,
     (key) => {
       agentKeyServerError.value = '';
       if (agentKeyCheckTimer) clearTimeout(agentKeyCheckTimer);
       const trimmed = key.trim();
-      if (!trimmed || !/^[a-z0-9]+(-[a-z0-9]+)*$/.test(trimmed)) return;
+      if (!trimmed || !AGENT_KEY_RE.test(trimmed)) return;
       agentKeyCheckTimer = setTimeout(() => {
         void pageStore
           .verifyAgentKey(trimmed)
           .then((res) => {
-            if (!res.available) {
-              agentKeyServerError.value = res.message === 'agent_key already in use' ? '标识已被使用' : res.message;
-            }
+            if (!res.available) agentKeyServerError.value = t('agentRoster.createForm.keyTaken');
           })
           .catch(() => {});
       }, 500);
     },
   );
-
-  onMounted(async () => {
-    try {
-      const remote = await pageStore.fetchAgentTemplates();
-      createTemplates.value = remote;
-    } catch {
-      // intentional empty — template fetch is non-critical
-    }
-    try {
-      await Promise.all([runLoadList(), pageStore.loadAgentsDependencies()]);
-    } catch (error) {
-      $q.notify({ type: 'negative', message: error instanceof Error ? error.message : '依赖数据加载失败' });
-    }
-    const avatarRows = avatarCatalog.agentsCatalog;
-    if (!form.icon || form.icon === 'smart_toy') {
-      form.icon = avatarRows[0]?.id ?? 'smart_toy';
-    }
-  });
 
   function clearCreateFieldErrors() {
     agentKeyServerError.value = '';
@@ -247,44 +313,8 @@ export function useAgentsPage() {
     createFormError.value = '';
   }
 
-  async function openCreate() {
-    clearCreateFieldErrors();
-    modelCheckPassed.value = false;
-    try {
-      await pageStore.loadAgentsDependencies();
-    } catch (error) {
-      $q.notify({ type: 'negative', message: error instanceof Error ? error.message : '依赖数据加载失败' });
-      return;
-    }
-    const avatarRows = avatarCatalog.agentsCatalog;
-    if (!form.icon || form.icon === 'smart_toy') {
-      form.icon = avatarRows[0]?.id ?? 'smart_toy';
-    }
-    createOpen.value = true;
-  }
-
-  async function checkModel() {
-    try {
-      const result = await pageStore.validateCreateModel(form.provider, form.model);
-      $q.notify({ type: result.ok ? 'positive' : 'negative', message: result.message });
-    } catch (error) {
-      $q.notify({ type: 'negative', message: error instanceof Error ? error.message : '校验失败' });
-    }
-  }
-
   function resetForm() {
-    Object.assign(form, {
-      agent_key: '',
-      display_name: '',
-      provider: 'deepseek',
-      model: 'deepseek-v4-flash',
-      icon: avatars.value[0]?.id ?? 'smart_toy',
-      agent_description: '',
-      position_key: '',
-      agent_variant: '',
-      variant_description: '',
-      taxonomy_position_id: '',
-    });
+    Object.assign(form, emptyForm());
     selectedTemplateKey.value = '';
     clearCreateFieldErrors();
     modelCheckPassed.value = false;
@@ -293,24 +323,63 @@ export function useAgentsPage() {
     Object.assign(a2aProxy, { remote_url: '', enable_streaming: true, timeout_seconds: 30 });
   }
 
-  /** ISSUE-005：禁用态点击"创建"时的反馈——必填空字段标红 + toast 说明原因。 */
+  /** 新建；从缺编岗位进来时预填岗位、名称、描述与标识。 */
+  async function openCreate(position?: PlatformResourceTreeNode) {
+    resetForm();
+    try {
+      await pageStore.loadAgentsDependencies();
+    } catch (error) {
+      $q.notify({
+        type: 'negative',
+        message: error instanceof Error ? error.message : t('agentRoster.loadDepsFailed'),
+      });
+      return;
+    }
+    // 默认模型不在目录里（被删 / 停用）时退到目录第一个
+    if (!providerOptions.value.some((o) => o.value === form.provider)) {
+      form.provider = providerOptions.value[0]?.value ?? '';
+      form.model = modelOptions.value[0]?.value ?? '';
+    }
+    if (position) {
+      form.taxonomy_position_id = position.id;
+      form.display_name = position.name;
+      form.agent_description = position.description ?? '';
+      form.agent_key = vacancyAgentKey(position);
+    }
+    createOpen.value = true;
+  }
+
+  async function checkModel() {
+    try {
+      const result = await pageStore.validateCreateModel(form.provider, form.model);
+      providerModelError.value = result.ok ? '' : result.message;
+      $q.notify({ type: result.ok ? 'positive' : 'negative', message: result.message });
+    } catch (error) {
+      $q.notify({ type: 'negative', message: error instanceof Error ? error.message : t('agentRoster.actionFailed') });
+    }
+  }
+
+  /** 禁用态点击「创建」：必填空字段标红 + toast 说明原因。 */
   function onCreateAttempt() {
     if (canCreate.value) return;
     if (!form.display_name.trim()) displayNameError.value = t('agentsPage.create.requireDisplayName');
     if (!form.agent_key.trim()) agentKeyServerError.value = t('agentsPage.create.requireAgentKey');
-    if (isA2AProxyCreate.value && !a2aProxy.remote_url.trim()) {
-      remoteUrlError.value = t('agentsPage.create.hintA2aUrl');
-    }
-    if (createDisabledHint.value) {
-      $q.notify({ type: 'warning', message: createDisabledHint.value });
-    }
+    if (isA2AProxyCreate.value && !a2aProxy.remote_url.trim()) remoteUrlError.value = t('agentsPage.create.hintA2aUrl');
+    if (createDisabledHint.value) $q.notify({ type: 'warning', message: createDisabledHint.value });
   }
 
   async function onCreate() {
-    if (!canCreate.value) return;
+    if (!canCreate.value || creating.value) return;
     clearCreateFieldErrors();
     creating.value = true;
     try {
+      if (!isA2AProxyCreate.value && !modelCheckPassed.value) {
+        const check = await pageStore.validateCreateModel(form.provider, form.model);
+        if (!check.ok) {
+          providerModelError.value = check.message || t('agentRoster.createForm.modelUnavailable');
+          return;
+        }
+      }
       const payload: Parameters<typeof appStore.addAgent>[0] = {
         ...form,
         agent_kind: agentKind.value,
@@ -324,40 +393,25 @@ export function useAgentsPage() {
         payload.model = 'proxy';
         payload.a2a_proxy_config = { ...a2aProxy };
       }
-      await appStore.addAgent(payload);
-      pageStore.resetListFiltersAfterCreate();
+      const created = await appStore.addAgent(payload);
       await runLoadList();
       resetForm();
       createOpen.value = false;
-      $q.notify({ type: 'positive', message: '创建成功' });
+      if (created?.id) selectedId.value = created.id;
+      $q.notify({ type: 'positive', message: t('agentRoster.created') });
     } catch (error) {
       const fields = mapAgentCreateFieldErrors(parseKratosApiError(error));
       if (fields.agent_key) agentKeyServerError.value = fields.agent_key;
       if (fields.display_name) displayNameError.value = fields.display_name;
-      if (fields.provider || fields.model) {
-        providerModelError.value = fields.provider || fields.model || '';
-      }
+      if (fields.provider || fields.model) providerModelError.value = fields.provider || fields.model || '';
       if (fields.remote_url) remoteUrlError.value = fields.remote_url;
       if (fields.form) createFormError.value = fields.form;
       const hasInline = Boolean(
         fields.agent_key || fields.display_name || fields.provider || fields.model || fields.remote_url,
       );
-      if (!hasInline && fields.form) {
-        $q.notify({ type: 'negative', message: fields.form });
-      }
+      if (!hasInline && fields.form) $q.notify({ type: 'negative', message: fields.form });
     } finally {
       creating.value = false;
-    }
-  }
-
-  async function duplicateListedAgent(agent: Agent) {
-    try {
-      const created = await pageStore.copyAgent(agent.id);
-      appStore.upsertAgent(created);
-      await runLoadList();
-      $q.notify({ type: 'positive', message: 'Agent 已复制' });
-    } catch (error) {
-      $q.notify({ type: 'negative', message: error instanceof Error ? error.message : '复制失败' });
     }
   }
 
@@ -365,95 +419,93 @@ export function useAgentsPage() {
     selectedTemplateKey.value = template.key;
     form.display_name = template.display_name?.trim() || template.label;
     if (!isA2AProxyCreate.value) {
-      if (template.provider?.trim()) {
-        form.provider = template.provider.trim();
-      }
-      if (template.model?.trim()) {
-        form.model = template.model.trim();
-        modelCheckPassed.value = false;
-      }
+      if (template.provider?.trim()) form.provider = template.provider.trim();
+      if (template.model?.trim()) form.model = template.model.trim();
     }
     const text = template.description?.trim() || '';
-    if (!text) return;
-    form.agent_description = text;
+    if (text) form.agent_description = text;
   }
 
-  function confirmDelete(agent: Agent) {
-    deleteTarget.value = agent;
-    deleteOpen.value = true;
-  }
-
-  async function deleteAgentTarget() {
-    if (!deleteTarget.value) return;
+  onMounted(async () => {
+    void pageStore
+      .fetchAgentTemplates()
+      .then((rows) => {
+        createTemplates.value = rows;
+      })
+      .catch(() => {
+        // 模板只是创建时的快捷填充，取不到不影响页面
+      });
     try {
-      await pageStore.removeListedAgent(deleteTarget.value.id);
-      deleteOpen.value = false;
-      deleteTarget.value = null;
-      $q.notify({ type: 'positive', message: '已删除' });
+      await Promise.all([runLoadList(), pageStore.loadAgentsDependencies()]);
     } catch (error) {
-      $q.notify({ type: 'negative', message: error instanceof Error ? error.message : '删除失败' });
+      $q.notify({
+        type: 'negative',
+        message: error instanceof Error ? error.message : t('agentRoster.loadDepsFailed'),
+      });
     }
-  }
-
-  function isFavorite(id: string) {
-    return agents.value.find((agent: Agent) => agent.id === id)?.is_favorite ?? false;
-  }
-
-  async function toggleFavorite(id: string) {
-    try {
-      await pageStore.toggleAgentFavorite(id);
-    } catch (error) {
-      $q.notify({ type: 'negative', message: error instanceof Error ? error.message : '收藏保存失败' });
-    }
-  }
-
-  async function copyAgentKey(value: string) {
-    await copyToClipboard(value);
-    $q.notify({ type: 'positive', message: 'Agent 标识已复制' });
-  }
-
-  // Drag reorder is disabled in the list UI (no Agent.sort_order persistence / ReorderAgents RPC).
-  function onReorder(_ids: string[]) {
-    /* intentionally no-op */
-  }
+  });
 
   return {
-    ...useAgentBatch(),
-    isDark,
+    // 数据
     agents,
-    keyword,
-    selectedStatus,
-    selectedProvider,
-    selectedTaxonomy,
-    selectedCreator,
-    creatorOptions,
-    page,
-    rowsPerPage,
     total,
-    loading,
+    truncated,
+    rosterLimit: ROSTER_LIMIT,
+    loading: listLoading,
     listError: computed(() => pageStore.listError),
+    taxonomyTree,
+    orgIndex,
+    rail,
+    scoped,
+    visible,
+    groups,
+    roleCounts,
+    statusCounts,
+    // 筛选与选中
+    scope,
+    scopeNode,
+    keyword,
+    role,
+    status,
+    selectedId,
+    selectedAgent,
+    selectAgent,
+    setScope,
+    resetFilters,
     runLoadList,
-    createOpen,
-    migrationOpen,
+    // 选择与批量
+    selectedAgentIds,
+    selectedAgents,
+    deletableSelected,
+    allVisibleSelected,
+    toggleSelectAllVisible,
+    toggleAgentSelected: pageStore.toggleAgentSelected,
+    clearAgentSelection: pageStore.clearAgentSelection,
+    batchBusy,
+    batchError,
+    runBatch,
+    // 单个动作
+    setAgentStatus,
+    toggleFavorite,
+    copyAgentKey,
+    duplicateListedAgent,
     deleteOpen,
     deleteTarget,
+    confirmDelete,
+    deleteAgentTarget,
+    // 新建
+    createOpen,
     creating,
     checkingModel,
-    modelCheckPassed,
     selfEvolve,
     agentKind,
     a2aProxy,
     isA2AProxyCreate,
-    viewMode,
     form,
     selectedTemplateKey,
     createTemplates,
-    avatars,
     providerOptions,
     modelOptions,
-    taxonomyTree,
-    pageMax,
-    tableColumns,
     agentKeyError,
     displayNameError,
     providerModelError,
@@ -461,19 +513,10 @@ export function useAgentsPage() {
     createFormError,
     canCreate,
     createDisabledHint,
-    statusOptions,
-    taxonomyLabel,
-    isFavorite,
-    toggleFavorite,
-    copyAgentKey,
     openCreate,
     checkModel,
     onCreate,
     onCreateAttempt,
     applyTemplate,
-    confirmDelete,
-    deleteAgentTarget,
-    duplicateListedAgent,
-    onReorder,
   };
 }

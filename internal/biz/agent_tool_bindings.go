@@ -51,16 +51,12 @@ func (u *AgentUsecase) GetToolAgentBindings(ctx context.Context, toolID, callerW
 	if err != nil {
 		return nil, err
 	}
-	agents, err := u.listAllAgentsForBindings(ctx, callerWS)
+	snaps, _, err := u.policySnapshots(ctx, callerWS)
 	if err != nil {
 		return nil, err
 	}
-	if len(agents) == 0 {
+	if len(snaps) == 0 {
 		return []ToolAgentBinding{}, nil
-	}
-	settingsByAgent, err := u.settings.ListAgentRuntimeSettings(ctx)
-	if err != nil {
-		return nil, err
 	}
 	overrides, err := u.tools.ListToolAgentOverrides(ctx, tool.Key)
 	if err != nil {
@@ -70,61 +66,22 @@ func (u *AgentUsecase) GetToolAgentBindings(ctx context.Context, toolID, callerW
 	for _, o := range overrides {
 		overrideByAgent[strings.TrimSpace(o.AgentID)] = o
 	}
-	// Full catalog is required because profile groups (group:filesystem, ...)
-	// expand against it and admin denials apply to every catalog row.
-	catalog, err := u.tools.SearchTools(ctx, ToolListQuery{Limit: searchToolsAllLimit, Offset: 0})
-	if err != nil {
-		return nil, err
-	}
 	platform := loadWebResearchPlatformFromSys(ctx, u.sys, u.lg)
 
-	out := make([]ToolAgentBinding, 0, len(agents))
-	for i := range agents {
-		ag := agents[i]
-		settings, ok := settingsByAgent[ag.ID]
-		if !ok {
-			settings = DefaultAgentRuntimeSettings()
-			settings.AgentID = ag.ID
+	out := make([]ToolAgentBinding, 0, len(snaps))
+	for _, s := range snaps {
+		var ov *ToolAgentOverride
+		if o, ok := overrideByAgent[s.agent.ID]; ok {
+			ov = &o
 		}
-		settings = withSettingDefaults(settings)
-
-		allow := jsonStringList(settings.ToolsAllowJSON, u.lg)
-		deny := jsonStringList(settings.ToolsDenyJSON, u.lg)
-		prof := strings.TrimSpace(settings.ToolsProfile)
-		allowedSet := computePolicyAllowedSet(prof, allow, catalog.Items)
-		denySet := computePolicyDenySet(deny, catalog.Items)
-		applyRegistryAdminDenials(catalog.Items, denySet)
-
-		state, reason, enabled := computeEffectiveToolState(settings, tool, prof, allowedSet, denySet)
-		item := EffectiveAgentTool{ToolKey: tool.Key, Enabled: enabled, EffectiveState: state, Reason: reason}
-
-		overrideMode := ""
-		if ov, ok := overrideByAgent[ag.ID]; ok {
-			overrideMode = strings.ToLower(strings.TrimSpace(ov.Mode))
-			applyOverrideToEffectiveItem(&item, ov, settings.ToolsEnabled)
-		}
-		// Web research readiness gate: mirror applyWebResearchEffectiveGate for
-		// the single-tool case (allowed → denied when API key is missing).
-		if tool.Key == ToolKeyWebResearch && item.EffectiveState == "allowed" && u.webResearchChecker != nil && platform != nil {
-			// fallback 垫底、用户配置优先（BUG-2：此前参数顺序颠倒，默认值覆盖用户配置）。
-			cfgMap := MergeToolConfigMaps(tool.DefaultConfigJSON, tool.ConfigJSON)
-			if ov, ok := overrideByAgent[ag.ID]; ok && strings.TrimSpace(ov.ConfigOverrideJSON) != "" {
-				MergeJSONMapInto(cfgMap, ov.ConfigOverrideJSON)
-			}
-			if !u.webResearchChecker.ResolveReady(cfgMap, webResearchPlatformFieldsPtr(platform)) {
-				item.Enabled = false
-				item.EffectiveState = "denied"
-				item.Reason = "missing_api_key"
-			}
-		}
-
+		item, overrideMode := u.toolStateFor(s, tool, ov, platform)
 		out = append(out, ToolAgentBinding{
-			AgentID:      ag.ID,
-			AgentKey:     ag.AgentKey,
-			AgentName:    ag.DisplayName,
-			AgentStatus:  ag.Status,
-			ToolsEnabled: settings.ToolsEnabled,
-			Profile:      CanonicalToolProfile(settings.ToolsProfile),
+			AgentID:      s.agent.ID,
+			AgentKey:     s.agent.AgentKey,
+			AgentName:    s.agent.DisplayName,
+			AgentStatus:  s.agent.Status,
+			ToolsEnabled: s.settings.ToolsEnabled,
+			Profile:      CanonicalToolProfile(s.settings.ToolsProfile),
 			State:        item.EffectiveState,
 			Reason:       item.Reason,
 			OverrideMode: overrideMode,

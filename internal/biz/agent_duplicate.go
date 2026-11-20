@@ -54,6 +54,10 @@ func (u *AgentUsecase) Duplicate(ctx context.Context, id string) (Agent, error) 
 	copy.LastRunAt = ""
 	copy.PendingEvolutionCount = 0
 	copy.CreatedBy = ""
+	// 副本是调用者自己的 Agent：不继承内置 / 行业包的归属与只读，否则复制出来的东西删不掉、还排在列表最前
+	copy.Kind = "user"
+	copy.Source = "user"
+	copy.Readonly = false
 	// PositionID/PositionKey 继承源 agent：唯一索引是 (position_key, agent_variant)，
 	// 下面的 copy.AgentVariant 已保证唯一，继承岗位不会冲突，且保留行业/岗位分类。
 	// The (position_key, agent_variant) unique index requires a distinct pair.

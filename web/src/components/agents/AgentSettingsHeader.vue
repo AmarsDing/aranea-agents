@@ -26,7 +26,10 @@
       </div>
     </div>
 
-    <div class="row q-gutter-sm">
+    <div class="row items-center q-gutter-sm">
+      <span v-if="dirty" class="settings-dirty" role="status">
+        <span class="settings-dirty__dot" aria-hidden="true" />{{ $t('agentAssembly.dirty') }}
+      </span>
       <q-btn
         outline
         rounded
@@ -81,6 +84,8 @@ const props = defineProps<{
   showEvolving: boolean;
   favorite: boolean;
   saving: boolean;
+  /** 有未保存的改动：头部给出提示，避免切走后才发现没存 */
+  dirty?: boolean;
 }>();
 
 /** 过滤误写入的相对路径式 agent_key（如 `./`），避免副标题出现怪字符串 */

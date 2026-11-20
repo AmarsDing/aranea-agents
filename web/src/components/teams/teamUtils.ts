@@ -2,20 +2,14 @@
  * Team 展示用纯函数（无网络）。与 `components/teams/*.vue` 共址，见 aranea-frontend-guide SKILL §3.3 路径硬性约定。
  * 类型来自 `features/teams/api`（仅 type import）。
  *
- * 常量 → teamConstants.ts | 模板 → teamTemplates.ts | 本文件 → 解析/序列化/格式化/分组
+ * 常量 → teamConstants.ts | 模板 → teamTemplates.ts | 本文件 → 解析/序列化/格式化/部门归属
  */
 import type { Agent } from '../../features/agents/types';
 import { findTaxonomyPath } from '../../features/platform/taxonomyTreeUtils';
 import type { PlatformResourceTreeNode } from '../../features/platform/types';
 import type { Team, TeamDefinition } from '../../features/teams/types';
 import { buildGraphFromDefinition } from '../../features/teams/graphUtils';
-import {
-  BuiltinGroupId,
-  PresetGroupId,
-  teamRoleLabel,
-  teamModeLabel,
-  failurePolicyValueLabel,
-} from './teamConstants';
+import { teamRoleLabel, teamModeLabel, failurePolicyValueLabel } from './teamConstants';
 import { defaultDefinition, defaultA2AConfig, withGraph } from './teamTemplates';
 
 // Re-export from split modules
@@ -44,14 +38,8 @@ export {
 export type { TeamTemplateKey } from './teamConstants';
 export { defaultDefinition, definitionFromTemplate, defaultA2AConfig, withGraph } from './teamTemplates';
 
-export type TeamGroup = {
-  id: string;
-  label: string;
-  sortOrder: number;
-  teams: Team[];
-};
-
-const UNCategorizedGroupId = '__uncategorized__';
+/** inferTeamDepartmentId 找不到部门时的占位 id（未分类）。 */
+export const UNCategorizedGroupId = '__uncategorized__';
 
 // ── Role-mode validation (mirrors backend validRolesForMode) ──
 
@@ -600,86 +588,13 @@ function findDepartmentNode(taxonomyTree: PlatformResourceTreeNode[], department
 export function departmentOptionsFromTree(taxonomyTree: PlatformResourceTreeNode[]) {
   return taxonomyTree
     .flatMap((company) =>
-      (company.children ?? [])
-        .filter((node) => node.level === 'department')
-        .map((node) => ({ company, node })),
+      (company.children ?? []).filter((node) => node.level === 'department').map((node) => ({ company, node })),
     )
-    .sort((a, b) => (a.node.sort_order ?? 0) - (b.node.sort_order ?? 0) || a.node.name.localeCompare(b.node.name, 'zh-CN'))
+    .sort(
+      (a, b) => (a.node.sort_order ?? 0) - (b.node.sort_order ?? 0) || a.node.name.localeCompare(b.node.name, 'zh-CN'),
+    )
     .map(({ company, node }) => ({
       label: `${company.name} / ${node.enabled ? node.name : `${node.name}（已停用）`}`,
       value: node.id,
     }));
-}
-
-export function groupTeamsByDepartment(
-  teams: Team[],
-  agents: Agent[],
-  taxonomyTree: PlatformResourceTreeNode[],
-  departmentFilter = '',
-): TeamGroup[] {
-  const builtinTeams = teams.filter((t) => t.readonly);
-  const presetTeams = teams.filter((t) => !t.readonly && t.kind === 'ecosystem_preset');
-  const userTeams = teams.filter((t) => !t.readonly && t.kind !== 'ecosystem_preset');
-
-  const departments = taxonomyTree.flatMap((company) =>
-    (company.children ?? [])
-      .filter((node) => node.level === 'department')
-      .map((node) => ({ company, node })),
-  );
-  const buckets = new Map<string, Team[]>();
-  buckets.set(UNCategorizedGroupId, []);
-  for (const { node } of departments) buckets.set(node.id, []);
-
-  for (const team of userTeams) {
-    const departmentId = inferTeamDepartmentId(team, agents, taxonomyTree);
-    if (!buckets.has(departmentId)) buckets.set(departmentId, []);
-    buckets.get(departmentId)!.push(team);
-  }
-
-  const groups: TeamGroup[] = departments
-    .map(({ company, node }) => ({
-      id: node.id,
-      label: `${company.name} / ${node.enabled ? node.name : `${node.name}（已停用）`}`,
-      sortOrder: node.sort_order ?? 0,
-      teams: buckets.get(node.id) ?? [],
-    }))
-    .filter((group) => group.teams.length > 0);
-
-  const assigned = new Set(groups.flatMap((group) => group.teams.map((team) => team.id)));
-  // Uncategorized = user teams not claimed by any visible department group.
-  // Filtering from userTeams (instead of appending to the bucket) prevents
-  // double-adding teams already placed in the uncategorized bucket above.
-  const uncategorized = userTeams.filter((team) => !assigned.has(team.id));
-  if (uncategorized.length > 0) {
-    groups.push({
-      id: UNCategorizedGroupId,
-      label: '未分类',
-      sortOrder: 9999,
-      teams: uncategorized,
-    });
-  }
-
-  if (presetTeams.length > 0) {
-    groups.unshift({
-      id: PresetGroupId,
-      label: '预设模板',
-      sortOrder: 0,
-      teams: presetTeams,
-    });
-  }
-
-  if (builtinTeams.length > 0) {
-    groups.unshift({
-      id: BuiltinGroupId,
-      label: '系统内置',
-      sortOrder: -1,
-      teams: builtinTeams,
-    });
-  }
-
-  groups.sort((a, b) => a.sortOrder - b.sortOrder || a.label.localeCompare(b.label, 'zh-CN'));
-  if (!departmentFilter) return groups;
-  return groups.filter(
-    (group) => group.id === departmentFilter || group.id === BuiltinGroupId || group.id === PresetGroupId,
-  );
 }

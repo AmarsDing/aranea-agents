@@ -288,8 +288,8 @@ func (u *OrganizationUsecase) Update(ctx context.Context, id string, patch Organ
 	// P2-C: workspace_id is immutable on Update (preserve current value).
 	// merged.WorkspaceID stays from `current` (line 198: `merged := current`).
 	// Do NOT apply patch.WorkspaceID — clients cannot forge workspace reassignment.
-	merged.OwnerUserID = patch.OwnerUserID
-	merged.IsSystem = patch.IsSystem
+	// is_system / owner_user_id are immutable on Update (like workspace_id): a tenant
+	// flipping is_system would make its node shared — readable and writable by every workspace.
 	merged.ConfigJSON = patch.ConfigJSON
 	merged.MetadataJSON = patch.MetadataJSON
 
@@ -304,6 +304,17 @@ func (u *OrganizationUsecase) Update(ctx context.Context, id string, patch Organ
 	}
 	if err := u.posPrompt.normalizeOrg(ctx, &merged); err != nil {
 		return OrganizationNode{}, err
+	}
+	// Changing level would leave children under a parent of the wrong level
+	// (e.g. positions under a position), which normalizeOrg cannot see.
+	if merged.Level != current.Level {
+		children, cErr := u.repo.ListOrgNodesByParentID(ctx, id)
+		if cErr != nil {
+			return OrganizationNode{}, cErr
+		}
+		if len(children) > 0 {
+			return OrganizationNode{}, ErrOrgBadRequest("cannot change level of a node that has children")
+		}
 	}
 	updated, err := u.repo.UpdateOrgNode(ctx, merged)
 	if err != nil {
@@ -321,35 +332,53 @@ func (u *OrganizationUsecase) Delete(ctx context.Context, id string) error {
 	if err != nil {
 		return err
 	}
-
-	// Department-level deletion requires cascade handling
-	if node.Level == "department" {
-		err := u.deleteDepartmentWithCascade(ctx, node)
-		if err == nil {
-			u.publishOrgEvent("organization.deleted", "Organization deleted", node)
-		}
-		return err
+	// Same rule as the repo guard, checked before any cascade side effect runs
+	// (archiving teams, deleting lead agents) so a refused delete changes nothing.
+	if node.IsSystem {
+		return ErrOrgBadRequest("system preset node cannot be deleted")
 	}
 
-	// Non-department nodes: simple delete with lead cleanup
-	if u.deptLeadMgr != nil {
-		if node.Level == "company" {
-			if clErr := u.deptLeadMgr.DeleteCompanyLead(ctx, id); clErr != nil {
-				u.lg.Warn("failed to delete company lead",
-					loggateway.Str("company_id", id),
-					loggateway.Err(clErr))
-			}
-		} else if dlErr := u.deptLeadMgr.DeleteDeptLead(ctx, id); dlErr != nil {
-			u.lg.Warn("failed to delete dept lead",
-				loggateway.Str("dept_id", id),
-				loggateway.Err(dlErr))
-		}
+	switch node.Level {
+	case "department":
+		err = u.deleteDepartmentWithCascade(ctx, node)
+	case "company":
+		err = u.deleteCompanyWithCascade(ctx, node)
+	default:
+		err = u.deletePosition(ctx, node)
 	}
-	err = u.repo.DeleteOrgNode(ctx, id)
 	if err == nil {
 		u.publishOrgEvent("organization.deleted", "Organization deleted", node)
 	}
 	return err
+}
+
+// agentPositionIDClearer is the narrow capability the agent repo offers for
+// unseating agents from specific positions (type-asserted, so test fakes of
+// DeptAgentPositionClearer need not implement it).
+type agentPositionIDClearer interface {
+	ClearPositionByIDs(ctx context.Context, positionIDs []string) (int, error)
+}
+
+func (u *OrganizationUsecase) inTx(ctx context.Context, run func(context.Context) error) error {
+	if tx, ok := u.repo.(interface {
+		ExecInTx(context.Context, func(context.Context) error) error
+	}); ok {
+		return tx.ExecInTx(ctx, run)
+	}
+	return run(ctx)
+}
+
+// deletePosition unseats the agents on the position (the agents themselves stay)
+// so they don't keep pointing at a deleted node, then deletes it.
+func (u *OrganizationUsecase) deletePosition(ctx context.Context, pos OrganizationNode) error {
+	return u.inTx(ctx, func(txCtx context.Context) error {
+		if c, ok := u.agentClear.(agentPositionIDClearer); ok {
+			if _, err := c.ClearPositionByIDs(txCtx, []string{pos.ID}); err != nil {
+				return err
+			}
+		}
+		return u.repo.DeleteOrgNode(txCtx, pos.ID)
+	})
 }
 
 // deleteDepartmentWithCascade implements the full cascade logic for department deletion:
@@ -364,20 +393,61 @@ func (u *OrganizationUsecase) deleteDepartmentWithCascade(ctx context.Context, d
 	if err := u.cascadeBlockActiveTeams(ctx, dept); err != nil {
 		return err
 	}
-	run := func(txCtx context.Context) error {
-		u.cascadeCancelBorrowRequests(txCtx, dept)
-		u.cascadeArchiveTeams(txCtx, dept)
-		u.cascadeClearAgentPositions(txCtx, dept)
-		u.cascadeDeleteDeptLead(txCtx, dept)
-		u.cascadeDeleteChildPositions(txCtx, dept)
-		return u.repo.DeleteOrgNode(txCtx, dept.ID)
+	return u.inTx(ctx, func(txCtx context.Context) error { return u.cascadeDepartment(txCtx, dept, false) })
+}
+
+// orgNodeForceDeleter deletes a node without the repo's system-node guard. Only the
+// company cascade uses it, for the 总经理办公室 / 总经理 nodes the system created for
+// that company (they are is_system, so the plain delete always refuses them).
+type orgNodeForceDeleter interface {
+	ForceDeleteOrgNode(ctx context.Context, id string) error
+}
+
+func (u *OrganizationUsecase) removeNode(ctx context.Context, id string, force bool) error {
+	if f, ok := u.repo.(orgNodeForceDeleter); ok && force {
+		return f.ForceDeleteOrgNode(ctx, id)
 	}
-	if tx, ok := u.repo.(interface {
-		ExecInTx(context.Context, func(context.Context) error) error
-	}); ok {
-		return tx.ExecInTx(ctx, run)
+	return u.repo.DeleteOrgNode(ctx, id)
+}
+
+func (u *OrganizationUsecase) cascadeDepartment(ctx context.Context, dept OrganizationNode, force bool) error {
+	u.cascadeCancelBorrowRequests(ctx, dept)
+	u.cascadeArchiveTeams(ctx, dept)
+	u.cascadeClearAgentPositions(ctx, dept)
+	u.cascadeDeleteDeptLead(ctx, dept)
+	u.cascadeDeleteChildPositions(ctx, dept, force)
+	return u.removeNode(ctx, dept.ID, force)
+}
+
+// deleteCompanyWithCascade deletes every department (same cascade as a single
+// department, including the 总经理办公室 that ensureCompanyLeads always creates),
+// the company lead agent, then the company. Previously only the company row was
+// deleted, leaving its departments, positions and lead agents orphaned.
+func (u *OrganizationUsecase) deleteCompanyWithCascade(ctx context.Context, company OrganizationNode) error {
+	depts, err := u.repo.ListOrgNodesByParentID(ctx, company.ID)
+	if err != nil {
+		return err
 	}
-	return run(ctx)
+	for _, d := range depts {
+		if err := u.cascadeBlockActiveTeams(ctx, d); err != nil {
+			return err
+		}
+	}
+	return u.inTx(ctx, func(txCtx context.Context) error {
+		for _, d := range depts {
+			if err := u.cascadeDepartment(txCtx, d, IsCompanyOfficeDept(company, d.Key)); err != nil {
+				return err
+			}
+		}
+		if u.deptLeadMgr != nil {
+			if clErr := u.deptLeadMgr.DeleteCompanyLead(txCtx, company.ID); clErr != nil {
+				u.lg.Warn("failed to delete company lead",
+					loggateway.Str("company_id", company.ID),
+					loggateway.Err(clErr))
+			}
+		}
+		return u.repo.DeleteOrgNode(txCtx, company.ID)
+	})
 }
 
 // cascadeBlockActiveTeams blocks deletion if there are active teams.

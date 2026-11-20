@@ -530,6 +530,22 @@ func (u *TeamUsecase) Update(ctx context.Context, id string, patch Team) (Team, 
 	if err := u.validateTeamMembersExist(ctx, current.DefinitionJSON); err != nil {
 		return Team{}, err
 	}
+	// Same department rules as Create: the lead follows the department, and the
+	// borrow ratio is re-checked whenever the department or the members change.
+	if u.deptLeadMgr != nil && current.DepartmentID != prev.DepartmentID {
+		current.DeptLeadAgentID = ""
+		if lead, dlErr := u.deptLeadMgr.GetDeptLeadForTeam(ctx, current.DepartmentID); dlErr == nil && lead != nil {
+			current.DeptLeadAgentID = lead.ID
+		}
+	}
+	if u.deptLeadMgr != nil && current.DepartmentID != "" &&
+		(current.DepartmentID != prev.DepartmentID || current.DefinitionJSON != prev.DefinitionJSON) {
+		if memberIDs := u.extractEnabledMemberIDs(current.DefinitionJSON); len(memberIDs) > 0 {
+			if ratioErr := u.deptLeadMgr.ValidateBorrowRatio(ctx, current.DepartmentID, memberIDs); ratioErr != nil {
+				return Team{}, ratioErr
+			}
+		}
+	}
 
 	// ORG-11b: Sync Graph.team_id when Team.linked_graph_id changes
 	// B3/D1：物化/换绑 + team 写入同一事务；物化失败 = 保存失败。
@@ -733,7 +749,10 @@ func (u *TeamUsecase) Delete(ctx context.Context, id string) error {
 	})
 }
 
-func (u *TeamUsecase) Duplicate(ctx context.Context, id string) (Team, error) {
+// Duplicate copies a team into workspaceID (the caller's workspace; "" only for
+// system callers). Inheriting the source workspace made copies of shared teams
+// shared too, so a tenant could not edit or delete its own copy.
+func (u *TeamUsecase) Duplicate(ctx context.Context, id, workspaceID string) (Team, error) {
 	id, err := requireNonEmpty(id, "TEAM", "id")
 	if err != nil {
 		return Team{}, err
@@ -759,7 +778,7 @@ func (u *TeamUsecase) Duplicate(ctx context.Context, id string) (Team, error) {
 		TaskDescription:    current.TaskDescription,
 		ParallelConfigJSON: current.ParallelConfigJSON,
 		Topology:           current.Topology,
-		WorkspaceID:        current.WorkspaceID, // P2-B: inherit source workspace
+		WorkspaceID:        workspaceID,
 	}
 	// Delegate to Create which validates definition_json and member existence.
 	return u.Create(ctx, dup)

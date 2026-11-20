@@ -1,75 +1,62 @@
 <template>
-  <q-page :class="['app-standard-page app-entity-page teams-page', { 'is-dark': isDark }]">
-    <AppPageHero
-      kicker="ADK Multi-Agent"
-      title="Team 管理"
-      subtitle="参照 ADK Web 的 App / Session / Trace 工作台，将多个 Agent 编排成可运行、可观测的协作团队。"
-    >
-      <template #actions>
-        <q-btn color="primary" rounded unelevated icon="add" label="新增 Team" @click="openCreate" />
-      </template>
-    </AppPageHero>
+  <!-- Harness › 编制 › Team 管理：编制树（按部门）| 关键数 + 筛选 + 团队构件卡 | 检视（结构图、最近运行） -->
+  <q-page class="app-standard-page bz-page" :class="{ 'bz-page--inspecting': inspector.open.value }">
+    <Teleport defer to="#app-tab-actions">
+      <q-btn
+        flat
+        dense
+        round
+        icon="refresh"
+        :title="t('cap.common.refresh')"
+        :aria-label="t('cap.common.refresh')"
+        :loading="loading"
+        @click="loadRows"
+      />
+      <q-btn unelevated dense no-caps color="primary" icon="add" :label="t('teamsHub.newTeam')" @click="openCreate" />
+    </Teleport>
 
-    <TeamToolbar
-      v-model:search="search"
-      v-model:mode-filter="modeFilter"
-      v-model:status-filter="statusFilter"
-      v-model:department-filter="departmentFilter"
-      v-model:show-orchestrated="showOrchestrated"
-      class="q-mt-md"
-      :department-options="departmentOptions"
-      :loading="loading"
-      :is-dark="isDark"
-      @refresh="loadRows"
-    />
-
-    <AppStatePanel v-if="pageState === 'loading'" class="q-mt-lg" variant="loading" :rows="4" />
+    <AppStatePanel v-if="pageState === 'loading'" class="bz-full" variant="loading" :rows="4" />
     <AppStatePanel
       v-else-if="pageState === 'error'"
-      class="q-mt-lg"
+      class="bz-full"
       variant="error"
       :title="error"
       :action-label="t('shell.common.retry')"
       action-icon="refresh"
       @action="loadRows"
     />
-    <AppStatePanel v-else-if="pageState === 'forbidden'" class="q-mt-lg" variant="forbidden" />
-    <template v-else-if="pageState === 'empty'">
-      <AppStatePanel
-        class="q-mt-lg"
-        variant="empty"
-        title="暂无 Team"
-        description="创建一个 Team，把多个 Agent 组织成顺序、并行或评审闭环。"
-        action-label="新增 Team"
-        action-icon="add"
-        @action="openCreate"
-      />
-      <div v-if="storeAgents.length === 0" class="text-body2 app-text-secondary q-mt-sm text-center">
-        你还没有可用 Agent——Team 由 Agent 组成，请先到 Agent 页创建。
-      </div>
-      <div
-        v-if="hiddenOrchestratedCount > 0"
-        class="q-mt-md row items-center no-wrap rounded-borders q-px-sm q-py-xs text-caption app-text-secondary teams-page__hint-banner"
-      >
-        <q-icon name="visibility_off" size="16px" class="q-mr-xs" />
-        <span>{{ t('teamsPage.hiddenOrchestrated', { count: hiddenOrchestratedCount }) }}</span>
-        <q-btn
-          flat
-          dense
-          no-caps
-          rounded
-          color="primary"
-          :label="t('teamsPage.showOrchestratedAction')"
-          @click="showOrchestrated = true"
-        />
-      </div>
-    </template>
+    <AppStatePanel v-else-if="pageState === 'forbidden'" class="bz-full" variant="forbidden" />
+    <AppStatePanel
+      v-else-if="pageState === 'empty'"
+      class="bz-full"
+      variant="empty"
+      icon="groups"
+      :title="t('teamsHub.emptyTitle')"
+      :description="storeAgents.length ? t('teamsHub.emptyBody') : t('teamsPage.editorNoAvailableAgents')"
+      :action-label="t('teamsHub.newTeam')"
+      action-icon="add"
+      @action="openCreate"
+    />
 
-    <div v-else class="teams-workspace q-mt-lg" :class="{ 'teams-workspace--inspecting': inspectorOpen }">
-      <div class="teams-workspace__main">
+    <template v-else>
+      <OrgTreeRail
+        :title="t('teamsHub.byDepartment')"
+        :entries="railEntries"
+        :section-label="t('orgChart.title')"
+        :companies="railCompanies"
+        :selected="departmentFilter"
+        @select="(key) => (departmentFilter = key)"
+      >
+        <template #foot>
+          <router-link :to="{ name: 'organization' }" class="bz-rail__link">
+            <q-icon name="account_tree" size="16px" aria-hidden="true" />{{ t('orgChart.title') }}
+          </router-link>
+        </template>
+      </OrgTreeRail>
+
+      <section class="bz-panel bz-main" :aria-label="t('teamsHub.title')">
         <AppStatePanel
           v-if="pageState === 'partial'"
-          class="q-mb-md"
           variant="partial"
           dense
           :description="error"
@@ -77,257 +64,218 @@
           action-icon="refresh"
           @action="loadRows"
         />
-        <AppRegistryTable
-          :rows="paginatedTeams"
-          :columns="teamColumns"
-          :loading="loading"
-          row-key="id"
-          hide-pagination
-          :pagination="{ rowsPerPage: 0 }"
-        >
-          <template #header-cell-select="slotProps">
-            <q-th :props="slotProps">
-              <q-checkbox
-                dense
-                data-test="select-all"
-                :aria-label="t('shell.bulkBar.selectAllPage')"
-                :model-value="teamsPageAllSelected"
-                @update:model-value="toggleAllTeams"
-              />
-            </q-th>
-          </template>
-          <template #body-cell-select="slotProps">
-            <q-td :props="slotProps">
-              <q-checkbox
-                dense
-                :data-test="`row-select-${slotProps.row.id}`"
-                :aria-label="t('shell.bulkBar.selectRow', { name: slotProps.row.display_name || slotProps.row.id })"
-                :model-value="isTeamSelected(slotProps.row.id)"
-                @update:model-value="toggleTeamSelected(slotProps.row.id, $event)"
-              />
-            </q-td>
-          </template>
-          <template #body-cell-name="slotProps">
-            <q-td :props="slotProps">
-              <button
-                type="button"
-                class="registry-table-link app-registry-cell-primary"
-                @click="inspectTeam(slotProps.row)"
-              >
-                {{ slotProps.row.display_name }}
-              </button>
-              <div class="app-registry-cell-sub ellipsis">{{ slotProps.row.team_key }}</div>
-              <div v-if="teamDefinition(slotProps.row).description" class="app-registry-cell-desc ellipsis-2-lines">
-                {{ teamDefinition(slotProps.row).description }}
-              </div>
-            </q-td>
-          </template>
-          <template #body-cell-department="slotProps">
-            <q-td :props="slotProps">{{ departmentLabel(slotProps.row) }}</q-td>
-          </template>
-          <template #body-cell-mode="slotProps">
-            <q-td :props="slotProps">{{ teamModeLabel(teamDefinition(slotProps.row).mode) }}</q-td>
-          </template>
-          <template #body-cell-members="slotProps">
-            <q-td :props="slotProps" class="mono">{{ teamDefinition(slotProps.row).members.length }}</q-td>
-          </template>
-          <template #body-cell-status="slotProps">
-            <q-td :props="slotProps">
-              <div class="row items-center no-wrap q-gutter-xs">
-                <AppStatusChip :status="slotProps.row.status" />
-                <q-badge v-if="slotProps.row.has_active_run" color="positive" rounded>{{
-                  t('shell.registry.activeRun')
-                }}</q-badge>
-              </div>
-            </q-td>
-          </template>
-          <template #body-cell-updated_at="slotProps">
-            <q-td :props="slotProps" class="mono">{{ formatDate(slotProps.row.updated_at) }}</q-td>
-          </template>
-          <template #body-cell-actions="slotProps">
-            <q-td :props="slotProps">
-              <div class="app-registry-cell-actions">
+        <header class="bz-head">
+          <div class="bz-head__main">
+            <div class="org-heading">
+              <h2 class="org-heading__title">{{ departmentFilter ? currentDeptLabel : t('teamsHub.allTeams') }}</h2>
+            </div>
+            <p class="bz-head__desc">{{ t('teamsHub.subtitle') }}</p>
+          </div>
+        </header>
+
+        <CapStats :stats="stats" :label="t('teamsHub.statsLabel')" :active="statusFilter || 'all'" @pick="pickStat" />
+
+        <div class="cap-bar" role="search">
+          <q-input
+            v-model="search"
+            class="cap-bar__search"
+            dense
+            outlined
+            clearable
+            debounce="200"
+            :placeholder="t('teamsHub.searchPlaceholder')"
+            :aria-label="t('teamsHub.searchPlaceholder')"
+          >
+            <template #prepend><q-icon name="search" size="18px" /></template>
+          </q-input>
+          <div class="cap-seg" role="group" :aria-label="t('shell.registry.mode')">
+            <button type="button" :aria-pressed="!modeFilter" @click="modeFilter = ''">
+              {{ t('teamsHub.allModes') }}
+            </button>
+            <button
+              v-for="m in modeOptions"
+              :key="m.value"
+              type="button"
+              :aria-pressed="modeFilter === m.value"
+              :title="m.description"
+              @click="modeFilter = modeFilter === m.value ? '' : m.value"
+            >
+              {{ m.label }}
+            </button>
+          </div>
+          <span class="cap-bar__spacer" />
+          <q-toggle v-model="showOrchestrated" dense :label="t('teamsPage.showOrchestrated')">
+            <q-tooltip>{{ t('teamsPage.showOrchestratedHint') }}</q-tooltip>
+          </q-toggle>
+        </div>
+
+        <div class="bz-scroll">
+          <div v-if="paginatedTeams.length" class="cap-grid">
+            <CapCard
+              v-for="team in paginatedTeams"
+              :key="team.id"
+              :icon="modeIcon(parseDefinition(team).mode)"
+              :code="team.team_key"
+              :title="team.display_name"
+              :description="parseDefinition(team).description"
+              :status="teamStatus(team)"
+              :facts="teamFacts(team)"
+              :tags="teamTags(team)"
+              :selected="inspector.team.value?.id === team.id"
+              :checked="isTeamSelected(team.id)"
+              @open="inspector.inspect(team)"
+              @update:checked="(v) => toggleTeamSelected(team.id, v)"
+            >
+              <template #relation>
+                <span class="tm-avatars" :aria-label="t('teamsHub.memberCount', { n: memberAvatars(team).enabled })">
+                  <span
+                    v-for="m in memberAvatars(team).shown"
+                    :key="m.key"
+                    class="tm-avatar"
+                    :class="{ 'tm-avatar--off': !m.enabled }"
+                    :title="m.name"
+                    >{{ m.initial }}</span
+                  >
+                  <span v-if="memberAvatars(team).extra" class="tm-avatar tm-avatar--more"
+                    >+{{ memberAvatars(team).extra }}</span
+                  >
+                </span>
+              </template>
+              <template #actions>
                 <q-btn
                   flat
                   dense
-                  round
-                  icon="info"
+                  no-caps
                   color="primary"
-                  :aria-label="t('shell.registry.inspect')"
-                  @click="inspectTeam(slotProps.row)"
-                />
-                <q-btn
-                  flat
-                  dense
-                  round
-                  icon="format_list_bulleted"
-                  color="primary"
-                  :aria-label="t('shell.registry.runs')"
-                  @click="openRuns(slotProps.row)"
-                />
-                <q-btn
-                  flat
-                  dense
-                  round
                   icon="play_arrow"
-                  color="primary"
-                  :aria-label="t('shell.registry.runTest')"
-                  @click="openRunTest(slotProps.row)"
+                  :label="t('teamsHub.tryRun')"
+                  :disable="memberAvatars(team).enabled === 0"
+                  @click="openRunTest(team)"
                 />
-                <q-btn
-                  flat
-                  dense
-                  round
-                  icon="edit"
-                  color="primary"
-                  :aria-label="t('shell.registry.edit')"
-                  @click="openEdit(slotProps.row)"
-                />
-                <q-btn-dropdown flat dense round dropdown-icon="more_vert" :aria-label="t('shell.registry.actions')">
-                  <q-list dense>
-                    <q-item
-                      v-if="slotProps.row.has_active_run"
-                      v-close-popup
-                      clickable
-                      @click="openTeamObservatory(slotProps.row)"
-                    >
-                      <q-item-section>{{ t('shell.registry.observatory') }}</q-item-section>
-                    </q-item>
-                    <q-item v-close-popup clickable @click="duplicate(slotProps.row)">
-                      <q-item-section>{{ t('shell.registry.duplicate') }}</q-item-section>
-                    </q-item>
-                    <q-item
-                      v-if="canRetryTeam(slotProps.row)"
-                      v-close-popup
-                      clickable
-                      @click="retryTeam(slotProps.row)"
-                    >
-                      <q-item-section>{{ t('shell.registry.retry') }}</q-item-section>
-                    </q-item>
-                    <q-item
-                      v-if="!slotProps.row.readonly"
-                      v-close-popup
-                      clickable
-                      @click="confirmRemove(slotProps.row)"
-                    >
-                      <q-item-section class="text-negative">{{ t('shell.registry.remove') }}</q-item-section>
-                    </q-item>
-                  </q-list>
-                </q-btn-dropdown>
-              </div>
-            </q-td>
-          </template>
-        </AppRegistryTable>
-      </div>
+                <q-btn flat dense round size="sm" icon="more_horiz" :aria-label="t('orgChart.menu.more')">
+                  <q-menu anchor="bottom right" self="top right">
+                    <q-list dense class="org-menu">
+                      <q-item v-close-popup clickable @click="openEdit(team)">
+                        <q-item-section avatar><q-icon name="edit" size="18px" /></q-item-section>
+                        <q-item-section>{{ t('shell.registry.edit') }}</q-item-section>
+                      </q-item>
+                      <q-item v-close-popup clickable @click="openRuns(team)">
+                        <q-item-section avatar><q-icon name="format_list_bulleted" size="18px" /></q-item-section>
+                        <q-item-section>{{ t('shell.registry.runs') }}</q-item-section>
+                      </q-item>
+                      <q-item v-close-popup clickable @click="openOrchestrate(team)">
+                        <q-item-section avatar><q-icon name="account_tree" size="18px" /></q-item-section>
+                        <q-item-section>{{ t('teamsHub.orchestrate') }}</q-item-section>
+                      </q-item>
+                      <q-item v-if="team.has_active_run" v-close-popup clickable @click="openTeamObservatory(team)">
+                        <q-item-section avatar><q-icon name="monitor_heart" size="18px" /></q-item-section>
+                        <q-item-section>{{ t('shell.registry.observatory') }}</q-item-section>
+                      </q-item>
+                      <q-item v-close-popup clickable @click="duplicate(team)">
+                        <q-item-section avatar><q-icon name="content_copy" size="18px" /></q-item-section>
+                        <q-item-section>{{ t('shell.registry.duplicate') }}</q-item-section>
+                      </q-item>
+                      <q-item v-if="canRetryTeam(team)" v-close-popup clickable @click="retryTeam(team)">
+                        <q-item-section avatar><q-icon name="restart_alt" size="18px" /></q-item-section>
+                        <q-item-section>{{ t('shell.registry.retry') }}</q-item-section>
+                      </q-item>
+                      <template v-if="canRemoveTeam(team)">
+                        <q-separator />
+                        <q-item v-close-popup clickable class="org-menu__danger" @click="confirmRemove(team)">
+                          <q-item-section avatar><q-icon name="delete" size="18px" /></q-item-section>
+                          <q-item-section>{{ t('shell.registry.remove') }}</q-item-section>
+                        </q-item>
+                      </template>
+                    </q-list>
+                  </q-menu>
+                </q-btn>
+              </template>
+            </CapCard>
+          </div>
+          <div v-else class="org-empty">
+            <span>{{ t('teamsHub.noMatch') }}</span>
+            <q-btn
+              v-if="hiddenOrchestratedCount > 0"
+              flat
+              dense
+              no-caps
+              color="primary"
+              :label="t('teamsPage.hiddenOrchestrated', { count: hiddenOrchestratedCount })"
+              @click="showOrchestrated = true"
+            />
+            <q-btn flat dense no-caps color="primary" icon="add" :label="t('teamsHub.newTeam')" @click="openCreate" />
+          </div>
+
+          <footer v-if="pageMax > 1" class="tm-pager">
+            <q-select
+              v-model="pageSize"
+              dense
+              outlined
+              emit-value
+              map-options
+              class="tm-pager__size"
+              :label="t('teamsHub.pageSize')"
+              :options="[12, 24, 48].map((v) => ({ label: String(v), value: v }))"
+            />
+            <span class="bz-num">{{ currentPage }} / {{ pageMax }}</span>
+            <q-btn
+              round
+              dense
+              flat
+              icon="chevron_left"
+              :aria-label="t('teamsHub.prevPage')"
+              :disable="currentPage <= 1"
+              @click="currentPage = Math.max(1, currentPage - 1)"
+            />
+            <q-btn
+              round
+              dense
+              flat
+              icon="chevron_right"
+              :aria-label="t('teamsHub.nextPage')"
+              :disable="currentPage >= pageMax"
+              @click="currentPage = Math.min(pageMax, currentPage + 1)"
+            />
+          </footer>
+        </div>
+
+        <BulkActionBar
+          v-if="teamsSelectedCount > 0"
+          :count="teamsSelectedCount"
+          :total="totalFiltered"
+          :actions="teamsBulkActions"
+          :busy="teamsBulkBusy"
+          :error="teamsBulkError"
+          @run="runTeamsBulk"
+          @clear="clearTeamsSelection"
+        />
+      </section>
 
       <AppRegistryInspector
-        v-model="inspectorOpen"
-        :title="inspectedTeam?.display_name || t('shell.registry.inspect')"
-        :eyebrow="inspectedTeam ? `TEAM / ${inspectedTeam.team_key}` : undefined"
+        v-model="inspector.open.value"
+        :title="inspector.team.value?.display_name || t('shell.registry.inspect')"
+        :eyebrow="inspector.team.value ? `TEAM / ${inspector.team.value.team_key}` : undefined"
       >
-        <div v-if="inspectedTeam && inspectedDefinition" class="registry-inspector-stack">
-          <AppStatusChip :status="inspectedTeam.status" />
-          <p class="registry-inspector-description">
-            {{ inspectedDefinition.description || t('shell.registry.noDescription') }}
-          </p>
-          <dl class="registry-facts">
-            <div>
-              <dt>{{ t('shell.registry.identifier') }}</dt>
-              <dd class="mono">{{ inspectedTeam.team_key }}</dd>
-            </div>
-            <div>
-              <dt>{{ t('shell.registry.department') }}</dt>
-              <dd>{{ departmentLabel(inspectedTeam) }}</dd>
-            </div>
-            <div>
-              <dt>{{ t('shell.registry.mode') }}</dt>
-              <dd>{{ teamModeLabel(inspectedDefinition.mode) }}</dd>
-            </div>
-            <div>
-              <dt>{{ t('shell.registry.members') }}</dt>
-              <dd class="mono">{{ inspectedDefinition.members.length }}</dd>
-            </div>
-            <div>
-              <dt>{{ t('shell.registry.updatedAt') }}</dt>
-              <dd class="mono">{{ formatDate(inspectedTeam.updated_at) }}</dd>
-            </div>
-          </dl>
-          <section class="registry-inspector-section">
-            <h3>{{ t('shell.registry.members') }}</h3>
-            <ul class="registry-member-list">
-              <li v-for="member in inspectedDefinition.members" :key="`${member.agent_id}:${member.sort_order}`">
-                <span
-                  >{{ member.name || agentName(storeAgents, member.agent_id) }} · {{ teamRoleLabel(member.role) }}</span
-                >
-                <AppStatusChip :status="member.enabled ? 'enabled' : 'disabled'" />
-              </li>
-            </ul>
-          </section>
-          <div class="row q-gutter-sm">
-            <q-btn
-              outline
-              no-caps
-              color="primary"
-              icon="format_list_bulleted"
-              :label="t('shell.registry.runs')"
-              @click="openRuns(inspectedTeam)"
-            />
-            <q-btn
-              unelevated
-              no-caps
-              color="primary"
-              icon="edit"
-              :label="t('shell.registry.edit')"
-              @click="openEdit(inspectedTeam)"
-            />
-          </div>
-        </div>
+        <TeamDetail
+          v-if="inspector.team.value"
+          :team="inspector.team.value"
+          :definition="parseDefinition(inspector.team.value)"
+          :agents="storeAgents"
+          :department-label="departmentLabel(inspector.team.value)"
+          :lead="inspectedLead"
+          :kind-label="kindLabel(inspector.team.value)"
+          :runs="inspector.recentRuns.value"
+          :runs-loading="inspector.runsLoading.value"
+          :runs-error="inspector.runsError.value"
+          @run-test="openRunTest(inspector.team.value)"
+          @edit="openEdit(inspector.team.value)"
+          @runs="openRuns(inspector.team.value)"
+          @orchestrate="openOrchestrate(inspector.team.value)"
+          @open-agent="(a) => router.push({ name: 'agent-settings', params: { id: a.id } })"
+          @open-run="(runId: string) => openRun(inspector.team.value!, runId)"
+        />
       </AppRegistryInspector>
-    </div>
-
-    <BulkActionBar
-      v-if="teamsSelectedCount > 0"
-      :count="teamsSelectedCount"
-      :total="totalFiltered"
-      :actions="teamsBulkActions"
-      :busy="teamsBulkBusy"
-      :error="teamsBulkError"
-      @run="runTeamsBulk"
-      @clear="clearTeamsSelection"
-    />
-
-    <footer v-if="totalFiltered > 0" class="app-registry-pagination app-registry-pagination--card q-mt-md">
-      <div class="app-registry-pagination__summary">{{ totalFiltered }} 条</div>
-      <div class="app-registry-pagination__controls row items-center no-wrap">
-        <q-select
-          v-model="pageSize"
-          dense
-          outlined
-          emit-value
-          map-options
-          label="行"
-          :options="[12, 24, 48].map((v) => ({ label: String(v), value: v }))"
-          class="app-registry-pagination__page-size app-glass-control"
-        />
-        <span class="app-registry-pagination__page-label">第 {{ currentPage }} / {{ pageMax }} 页</span>
-        <q-btn
-          round
-          dense
-          flat
-          icon="chevron_left"
-          :disable="currentPage <= 1"
-          @click="currentPage = Math.max(1, currentPage - 1)"
-        />
-        <q-btn
-          round
-          dense
-          flat
-          icon="chevron_right"
-          :disable="currentPage >= pageMax"
-          @click="currentPage = Math.min(pageMax, currentPage + 1)"
-        />
-      </div>
-    </footer>
+    </template>
 
     <TeamEditorDialog
       v-model="editorOpen"
@@ -392,46 +340,43 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
-import AppPageHero from '../components/layout/AppPageHero.vue';
+import { computed, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
+import { useRouter } from 'vue-router';
+import { storeToRefs } from 'pinia';
 import AppRegistryInspector from '../components/layout/AppRegistryInspector.vue';
-import AppRegistryTable from '../components/layout/AppRegistryTable.vue';
 import AppStatePanel from '../components/common/AppStatePanel.vue';
-import AppStatusChip from '../components/common/AppStatusChip.vue';
 import BulkActionBar from '../components/common/BulkActionBar.vue';
+import CapCard from '../components/capability/CapCard.vue';
+import CapStats from '../components/capability/CapStats.vue';
+import type { CapFact, CapStat, CapStatus, CapTag, CapTone } from '../components/capability/capTypes';
+import OrgTreeRail from '../components/organization/OrgTreeRail.vue';
+import type { TreeRailCompany, TreeRailEntry } from '../components/organization/treeRail';
+import TeamDetail from '../components/teams/TeamDetail.vue';
 import TeamEditorDialog from '../components/teams/TeamEditorDialog.vue';
 import TeamRunsDialog from '../components/teams/TeamRunsDialog.vue';
 import TeamTestDialog from '../components/teams/TeamTestDialog.vue';
-import TeamToolbar from '../components/teams/TeamToolbar.vue';
-import { useTeamsPage } from '../features/teams/useTeamsPage';
+import {
+  agentName,
+  modeOptions,
+  parseDefinition,
+  teamModeLabel,
+  teamStatusMap,
+  UNCategorizedGroupId,
+} from '../components/teams/teamUtils';
+import { departmentPath, findNode } from '../features/organization/orgChart';
+import { useTeamInspector } from '../features/teams/useTeamInspector';
 import { useTeamsBulk } from '../features/teams/useTeamsBulk';
-import { REGISTRY_COL_W, registryCol, type RegistryTableColumn } from '../features/ui/registryTableColumns';
-import { useTeamsStore } from '../stores/teams';
-import { storeToRefs } from 'pinia';
-import { useI18n } from 'vue-i18n';
-import { agentName, formatDate, parseDefinition, teamModeLabel, teamRoleLabel } from '../components/teams/teamUtils';
+import { useTeamsPage } from '../features/teams/useTeamsPage';
 import type { Team } from '../features/teams/types';
+import { useTeamsStore } from '../stores/teams';
 import { resolvePageState } from './pageState';
 
 const { t } = useI18n();
-const inspectorOpen = ref(false);
-const inspectedTeam = ref<Team | null>(null);
-const inspectedDefinition = computed(() => (inspectedTeam.value ? parseDefinition(inspectedTeam.value) : null));
-
-function inspectTeam(team: Team) {
-  inspectedTeam.value = team;
-  inspectorOpen.value = true;
-}
-
-function teamDefinition(team: Team) {
-  return parseDefinition(team);
-}
-
-function canRetryTeam(team: Team) {
-  return ['failed', 'cancelled'].includes(team.status) && !team.readonly;
-}
+const router = useRouter();
 const teamsStore = useTeamsStore();
-const { agents: storeAgents } = storeToRefs(teamsStore);
+const { agents: storeAgents, teams: storeTeams } = storeToRefs(teamsStore);
+const inspector = useTeamInspector();
 
 const {
   isDark,
@@ -445,8 +390,15 @@ const {
   departmentFilter,
   showOrchestrated,
   hiddenOrchestratedCount,
+  taxonomyTree,
   departmentOptions,
-  teamGroups,
+  departmentRail,
+  unassignedCount,
+  departmentLabel,
+  departmentLeadId,
+  focusTeamId,
+  baseCount,
+  scopeTeams,
   paginatedTeams,
   currentPage,
   pageSize,
@@ -510,13 +462,11 @@ const {
 
 const {
   count: teamsSelectedCount,
-  pageAllSelected: teamsPageAllSelected,
   busy: teamsBulkBusy,
   error: teamsBulkError,
   actions: teamsBulkActions,
   isSelected: isTeamSelected,
   toggleRow: toggleTeamSelected,
-  toggleAll: toggleAllTeams,
   clear: clearTeamsSelection,
   run: runTeamsBulk,
 } = useTeamsBulk(paginatedTeams, loadRows);
@@ -526,45 +476,189 @@ watch([search, modeFilter, statusFilter, departmentFilter, showOrchestrated, cur
   clearTeamsSelection();
 });
 
+// 列表刷新后检视面板跟上最新数据；团队被删了就关掉。
+watch(storeTeams, (rows) => {
+  const current = inspector.team.value;
+  if (!current) return;
+  const fresh = rows.find((row) => row.id === current.id);
+  if (!fresh) inspector.close();
+  else if (fresh !== current) inspector.team.value = fresh;
+});
+
+// 从组织页带 ?team= 过来：数据到了就打开它的检视面板。
+watch([focusTeamId, storeTeams], ([id, rows]) => {
+  const team = id ? rows.find((row) => row.id === id) : undefined;
+  if (!team) return;
+  void inspector.inspect(team);
+  focusTeamId.value = '';
+});
+
 const pageState = computed(() =>
   resolvePageState({
     loading: loading.value,
     error: error.value,
-    count: paginatedTeams.value.length,
+    count: storeTeams.value.length,
     forbidden: forbidden.value,
   }),
 );
 
-const teamColumns = computed<RegistryTableColumn<Team>[]>(() => [
-  registryCol<Team>('select', '', 'id', 'left', REGISTRY_COL_W.select, { sortable: false }),
-  { name: 'name', cardRole: 'title', label: t('shell.registry.name'), field: 'display_name', align: 'left' },
-  {
-    name: 'department',
-    cardRole: 'meta',
-    label: t('shell.registry.department'),
-    field: 'taxonomy_industry_id',
-    align: 'left',
-  },
-  {
-    name: 'mode',
-    cardRole: 'meta',
-    label: t('shell.registry.mode'),
-    field: (row) => teamDefinition(row).mode,
-    align: 'left',
-  },
-  {
-    name: 'members',
-    cardRole: 'metric',
-    label: t('shell.registry.members'),
-    field: (row) => teamDefinition(row).members.length,
-    align: 'right',
-  },
-  { name: 'status', cardRole: 'status', label: t('shell.registry.status'), field: 'status', align: 'left' },
-  { name: 'updated_at', cardRole: 'meta', label: t('shell.registry.updatedAt'), field: 'updated_at', align: 'left' },
-  { name: 'actions', label: t('shell.registry.actions'), field: 'id', align: 'right' },
+// ——— 编制树：全部 / 未分部门 + 公司 → 有团队的部门 ———
+const railEntries = computed<TreeRailEntry[]>(() => [
+  { key: '', icon: 'apps', label: t('teamsHub.allTeams'), count: baseCount.value },
+  ...(unassignedCount.value || departmentFilter.value === UNCategorizedGroupId
+    ? [
+        {
+          key: UNCategorizedGroupId,
+          icon: 'help_outline',
+          label: t('teamsHub.unassigned'),
+          count: unassignedCount.value,
+        },
+      ]
+    : []),
 ]);
+const railCompanies = computed<TreeRailCompany[]>(() =>
+  departmentRail.value.map((g) => ({
+    id: g.id,
+    name: g.name,
+    enabled: true,
+    count: g.items.reduce((sum, d) => sum + d.count, 0),
+    departments: g.items.map((d) => ({ id: d.id, name: d.name, enabled: d.enabled, count: d.count })),
+  })),
+);
 
-function departmentLabel(team: Team) {
-  return teamGroups.value.find((group) => group.teams.some((candidate) => candidate.id === team.id))?.label || '—';
+const currentDeptLabel = computed(() => {
+  const f = departmentFilter.value;
+  if (f === UNCategorizedGroupId) return t('teamsHub.unassigned');
+  const node = findNode(taxonomyTree.value, f);
+  if (node?.level === 'company') return node.name;
+  return departmentPath(taxonomyTree.value, f) || t('teamsHub.allTeams');
+});
+
+// ——— 关键数：按当前部门范围数各状态，点了按状态筛，再点取消 ———
+const stats = computed<Array<CapStat & { clickable?: boolean }>>(() => {
+  const rows = scopeTeams.value;
+  const n = (...s: string[]) => rows.filter((team) => s.includes(team.status)).length;
+  const failed = n('failed', 'partial_failure');
+  return [
+    { key: 'all', label: t('teamsHub.stat.all'), value: rows.length, clickable: true },
+    {
+      key: 'running',
+      label: t('teamsHub.stat.running'),
+      value: n('running'),
+      tone: n('running') ? 'running' : undefined,
+      clickable: true,
+    },
+    { key: 'pending', label: t('teamsHub.stat.pending'), value: n('pending'), clickable: true },
+    {
+      key: 'failed',
+      label: t('teamsHub.stat.failed'),
+      value: failed,
+      tone: failed ? 'alert' : undefined,
+      clickable: true,
+    },
+    { key: 'completed', label: t('teamsHub.stat.completed'), value: n('completed'), clickable: true },
+  ];
+});
+
+function pickStat(key: string) {
+  statusFilter.value = key === 'all' || statusFilter.value === key ? '' : key;
+}
+
+// ——— 团队卡 ———
+const MODE_ICON: Record<string, string> = {
+  sequential: 'trending_flat',
+  parallel: 'call_split',
+  coordinator: 'account_tree',
+  critic_loop: 'sync',
+};
+const modeIcon = (mode: string) => MODE_ICON[String(mode || '').toLowerCase()] ?? 'hub';
+
+const STATUS_TONE: Record<string, CapTone> = {
+  running: 'running',
+  pending: 'pending',
+  completed: 'ok',
+  active: 'ok',
+  partial_failure: 'watch',
+  interrupted: 'watch',
+  failed: 'alert',
+  cancelled: 'off',
+  archived: 'off',
+};
+
+function teamStatus(team: Team): CapStatus {
+  return { tone: STATUS_TONE[team.status] ?? 'off', label: teamStatusMap[team.status]?.label ?? team.status };
+}
+
+function teamFacts(team: Team): CapFact[] {
+  const def = parseDefinition(team);
+  const dept = departmentLabel(team);
+  return [
+    { label: t('shell.registry.mode'), value: teamModeLabel(def.mode) },
+    { label: t('shell.registry.members'), value: def.members.filter((m) => m.enabled !== false).length },
+    {
+      label: t('shell.registry.department'),
+      value: dept ? dept.split(' / ').pop()! : t('teamsHub.unassigned'),
+      hint: dept || undefined,
+    },
+  ];
+}
+
+function teamTags(team: Team): CapTag[] {
+  const tags: CapTag[] = [];
+  const kind = kindLabel(team);
+  if (kind) tags.push({ label: kind, tone: 'watch' });
+  if (team.has_active_run) tags.push({ label: t('shell.registry.activeRun'), tone: 'running' });
+  return tags;
+}
+
+const MAX_AVATARS = 5;
+function memberAvatars(team: Team) {
+  const members = [...parseDefinition(team).members]
+    .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+    .map((m, i) => {
+      const name = m.name || agentName(storeAgents.value, m.agent_id);
+      return {
+        key: `${m.agent_id}:${i}`,
+        name,
+        initial: name.trim().slice(0, 1).toUpperCase() || '?',
+        enabled: m.enabled !== false,
+      };
+    });
+  return {
+    shown: members.slice(0, MAX_AVATARS),
+    extra: Math.max(0, members.length - MAX_AVATARS),
+    enabled: members.filter((m) => m.enabled).length,
+  };
+}
+
+const inspectedLead = computed(() => {
+  const team = inspector.team.value;
+  const id = team ? departmentLeadId(team) : '';
+  return (id && storeAgents.value.find((a) => a.id === id)) || null;
+});
+
+function kindLabel(team: Team) {
+  if (team.readonly || team.kind === 'system_builtin') return t('teamsHub.kind.builtin');
+  if (team.kind === 'ecosystem_preset') return t('teamsHub.kind.preset');
+  if (String(team.spirit_session_id || '').trim()) return t('teamsHub.kind.orchestrated');
+  return '';
+}
+
+// 与后端状态机一致：失败 / 取消 / 部分失败都能重置为待执行。
+function canRetryTeam(team: Team) {
+  return ['failed', 'cancelled', 'partial_failure'].includes(team.status) && !team.readonly;
+}
+
+// 后端拒删：系统内置、预设（要走行业包卸载）、默认团队、只读团队——菜单里就不给这个选项。
+function canRemoveTeam(team: Team) {
+  return !team.readonly && !team.is_default && team.kind !== 'system_builtin' && team.kind !== 'ecosystem_preset';
+}
+
+function openOrchestrate(team: Team) {
+  void router.push({ name: 'team-orchestrate', params: { teamId: team.id } });
+}
+
+function openRun(team: Team, runId: string) {
+  void router.push({ name: 'team-run-observatory', params: { teamId: team.id, runId } });
 }
 </script>

@@ -75,6 +75,9 @@ export interface UseAgentSettingsPersistenceDeps {
   loadSkillSlugOptions: () => Promise<void>;
   loadSkillTagOptions: () => Promise<void>;
   loadCodeExecutorCapabilities: () => Promise<void>;
+
+  /** 加载或保存成功后调用：页面据此重置「未保存改动」基线 */
+  onClean?: () => void;
 }
 
 export function useAgentSettingsPersistence(deps: UseAgentSettingsPersistenceDeps) {
@@ -121,6 +124,7 @@ export function useAgentSettingsPersistence(deps: UseAgentSettingsPersistenceDep
     await deps.primeThumbnailCache();
     void deps.refreshFileTokenEstimates(deps.form.id);
     modelChanged.value = false;
+    deps.onClean?.();
     return true;
   }
 
@@ -180,6 +184,7 @@ export function useAgentSettingsPersistence(deps: UseAgentSettingsPersistenceDep
       await deps.primeThumbnailCache();
       void deps.refreshFileTokenEstimates(deps.form.id);
       modelChanged.value = false;
+      deps.onClean?.();
       deps.$q.notify({ type: 'positive', message: '已保存' });
     } catch (e) {
       deps.$q.notify({ type: 'negative', message: e instanceof Error ? e.message : '保存失败' });

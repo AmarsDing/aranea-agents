@@ -7,7 +7,6 @@ vi.mock('../../features/agents/api', () => ({
   deleteAgent: vi.fn().mockResolvedValue(undefined),
   toggleAgentFavorite: vi.fn(),
   checkAgentKey: vi.fn(),
-  listAgentCreators: vi.fn().mockResolvedValue([]),
   listAgentTemplates: vi.fn().mockResolvedValue([]),
   duplicateAgent: vi.fn(),
   updateAgent: vi.fn(),
@@ -47,6 +46,7 @@ describe('useAgentsPageStore', () => {
     expect(store.agents[0].id).toBe('a1');
     expect(store.total).toBe(2);
     expect(store.listLoading).toBe(false);
+    expect(listAgentsPaged).toHaveBeenCalledWith({ limit: 1000, offset: 0 });
   });
 
   it('loadAgentList sets listLoading to false even on error', async () => {
@@ -97,38 +97,6 @@ describe('useAgentsPageStore', () => {
 
     await expect(store.toggleAgentFavorite('a1')).rejects.toThrow('fail');
     expect(store.agents[0].is_favorite).toBe(false);
-  });
-
-  it('reorderAgents arranges agents by given ids order', () => {
-    const store = useAgentsPageStore();
-    store.agents = [
-      { id: 'a1', display_name: 'Agent 1' },
-      { id: 'a2', display_name: 'Agent 2' },
-      { id: 'a3', display_name: 'Agent 3' },
-    ] as any;
-
-    store.reorderAgents(['a3', 'a1']);
-
-    expect(store.agents.map((a) => a.id)).toEqual(['a3', 'a1', 'a2']);
-  });
-
-  it('resetListFiltersAfterCreate resets all filters and page', () => {
-    const store = useAgentsPageStore();
-    store.keyword = 'test';
-    store.selectedStatus = 'active';
-    store.selectedProvider = 'openai';
-    store.selectedTaxonomy = 'cat-1';
-    store.selectedCreator = 'user-1';
-    store.page = 3;
-
-    store.resetListFiltersAfterCreate();
-
-    expect(store.keyword).toBe('');
-    expect(store.selectedStatus).toBeNull();
-    expect(store.selectedProvider).toBeNull();
-    expect(store.selectedTaxonomy).toBeNull();
-    expect(store.selectedCreator).toBeNull();
-    expect(store.page).toBe(1);
   });
 
   it('removeListedAgent deletes then reloads list', async () => {

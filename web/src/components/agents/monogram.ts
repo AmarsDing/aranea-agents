@@ -1,31 +1,8 @@
 /**
- * Monogram 工具函数
- *
- * 取 key 的大写首字母作为"icon"视觉锚点，
- * 颜色由 key 字符的简单 hash 映射到色板。
- * 共享于 TaxonomyIndustryCard 等组件。
+ * Monogram：取 key 的前两个字母大写作视觉锚点（组织架构的公司页签在用）。
  */
 
-const PALETTES = ['indigo', 'rose', 'sky', 'emerald', 'amber', 'violet'] as const;
-
-/** 根据 key hash 选择色板索引（0..5），供类名修饰符复用 */
-export function monoPaletteIndexForKey(key: string): number {
-  let h = 0;
-  for (let i = 0; i < key.length; i++) {
-    h = (h * 31 + key.charCodeAt(i)) | 0;
-  }
-  return Math.abs(h) % PALETTES.length;
-}
-
-/** 根据 key hash 选择渐变色板，从 CSS 变量读取颜色值 */
-export function monoBgForKey(key: string): string {
-  const idx = monoPaletteIndexForKey(key);
-  const s = getComputedStyle(document.documentElement).getPropertyValue(`--palette-industry-${idx}-start`).trim();
-  const e = getComputedStyle(document.documentElement).getPropertyValue(`--palette-industry-${idx}-end`).trim();
-  return `linear-gradient(135deg, ${s} 0%, ${e} 100%)`;
-}
-
-/** 提取 key 前 2 个字母大写作为 monogram */
+/** 提取 key 前 2 个字母大写作为 monogram；key 没有字母时退回名称前两个字。 */
 export function monoLettersForKey(key: string, fallback: string): string {
   const cleaned = key.replace(/[^a-zA-Z]/g, '').toUpperCase();
   if (cleaned.length >= 2) return cleaned.slice(0, 2);

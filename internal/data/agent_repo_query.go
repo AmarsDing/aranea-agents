@@ -46,7 +46,8 @@ func (r *agentRepo) categoryPositionIDsForFilter(ctx context.Context, categoryID
 		if err != nil {
 			return nil, entErrToBizErr(err, "AGENT")
 		}
-		return ids, nil
+		// 部门主管（dept_lead）的 position_id 就是部门节点本身，要一并算进来
+		return append([]string{node.ID}, ids...), nil
 	case "company":
 		deptIDs, err := r.data.RW().Read(ctx).Organization.Query().
 			Where(
@@ -59,7 +60,7 @@ func (r *agentRepo) categoryPositionIDsForFilter(ctx context.Context, categoryID
 			return nil, entErrToBizErr(err, "AGENT")
 		}
 		if len(deptIDs) == 0 {
-			return []string{}, nil
+			return []string{node.ID}, nil
 		}
 		posIDs, err := r.data.RW().Read(ctx).Organization.Query().
 			Where(
@@ -71,7 +72,9 @@ func (r *agentRepo) categoryPositionIDsForFilter(ctx context.Context, categoryID
 		if err != nil {
 			return nil, entErrToBizErr(err, "AGENT")
 		}
-		return posIDs, nil
+		// 连同公司节点、各部门节点（部门主管挂在部门上）
+		out := append([]string{node.ID}, deptIDs...)
+		return append(out, posIDs...), nil
 	default:
 		return []string{}, nil
 	}
@@ -397,7 +400,15 @@ func (r *agentRepo) ClearPositionByDepartment(ctx context.Context, deptID string
 	for _, p := range positions {
 		positionIDs = append(positionIDs, p.ID)
 	}
-	// Clear position_id for agents in those positions
+	return r.ClearPositionByIDs(ctx, positionIDs)
+}
+
+// ClearPositionByIDs clears position_id for agents seated on the given positions.
+// Used when a single position is deleted (biz agentPositionIDClearer).
+func (r *agentRepo) ClearPositionByIDs(ctx context.Context, positionIDs []string) (int, error) {
+	if len(positionIDs) == 0 || r.data == nil {
+		return 0, nil
+	}
 	n, err := r.data.RW().Write(ctx).Agent.Update().
 		Where(
 			agent.PositionIDIn(positionIDs...),

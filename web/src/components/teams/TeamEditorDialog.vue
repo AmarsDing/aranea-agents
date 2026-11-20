@@ -129,8 +129,9 @@
                   outlined
                   emit-value
                   map-options
-                  clearable
+                  :clearable="!editingId"
                   :label="t('domains.teamEditor.department')"
+                  :hint="editingId && form.taxonomy_industry_id ? t('teamsHub.departmentLockedHint') : undefined"
                   :options="departmentOptions"
                 />
                 <q-input
@@ -670,7 +671,8 @@ async function onSaveClick() {
 const isSpiritTeam = computed(() => String(form.value.spirit_session_id || '').trim() !== '');
 
 // ── Status display (readonly; transitions via lifecycle / RetryTeam RPC) ──
-const canRetryStatus = computed(() => ['failed', 'cancelled'].includes(form.value.status));
+// 后端状态机 recover：failed / cancelled / partial_failure → pending
+const canRetryStatus = computed(() => ['failed', 'cancelled', 'partial_failure'].includes(form.value.status));
 
 // ── Compile preview (delegated to composable) ──
 const { compileResult, compileLoading, compileError, compileIssues } = useTeamCompilePreview(

@@ -121,7 +121,9 @@ func (r *agentRepo) UpdateAgentPromptFile(ctx context.Context, f biz.AgentPrompt
 	if f.ID == "" || f.AgentID == "" {
 		return biz.AgentPromptFile{}, apierror.BadRequest("AGENT", "id and agent_id are required")
 	}
+	// 文件 id 必须属于路径里的 agent：否则可以借自己的 agent 改写别人（含内置）的提示文件
 	update := r.data.RW().Write(ctx).AgentPromptFile.UpdateOneID(f.ID).
+		Where(agentpromptfile.AgentIDEQ(f.AgentID)).
 		SetUpdatedAt(nowRFC3339())
 	if strings.TrimSpace(f.Name) != "" {
 		update = update.SetFileName(strings.TrimSpace(f.Name))
@@ -146,8 +148,14 @@ func (r *agentRepo) DeleteAgentPromptFile(ctx context.Context, agentID, id strin
 	if agentID == "" || id == "" {
 		return apierror.BadRequest("AGENT", "agent_id and id are required")
 	}
-	_, err := r.data.RW().Write(ctx).AgentPromptFile.Delete().
+	n, err := r.data.RW().Write(ctx).AgentPromptFile.Delete().
 		Where(agentpromptfile.IDEQ(id), agentpromptfile.AgentIDEQ(agentID)).
 		Exec(ctx)
-	return entErrToBizErr(err, "AGENT")
+	if err != nil {
+		return entErrToBizErr(err, "AGENT")
+	}
+	if n == 0 {
+		return shared.ErrNotFound
+	}
+	return nil
 }
