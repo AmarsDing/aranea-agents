@@ -52,7 +52,10 @@ export function isChatQueueFullError(err: unknown): boolean {
     const resp = (nested as { response?: { status?: number; data?: { reason?: unknown } } }).response;
     const reason = String(resp?.data?.reason ?? '');
     if (reason.includes('CHAT_QUEUE_FULL')) return true;
-    if (resp?.status === 429 && /chat\/enqueue/.test(String((nested as { config?: { url?: string } }).config?.url ?? ''))) {
+    if (
+      resp?.status === 429 &&
+      /chat\/enqueue/.test(String((nested as { config?: { url?: string } }).config?.url ?? ''))
+    ) {
       return true;
     }
   }
@@ -138,6 +141,16 @@ export async function stopGeneration(sessionId: string): Promise<boolean> {
     return !!data?.stopped;
   } catch (err) {
     wrapChatError(err, 'stopGeneration failed');
+  }
+}
+
+/** 重跑会话里上一轮失败 / 中断的回合（找到最后一条用户消息重新入队）。 */
+export async function retrySession(sessionId: string): Promise<boolean> {
+  try {
+    const data = await chatService.RetrySession({ sessionId });
+    return !!data?.retried;
+  } catch (err) {
+    wrapChatError(err, 'retrySession failed');
   }
 }
 

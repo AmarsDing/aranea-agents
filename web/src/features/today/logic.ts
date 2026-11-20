@@ -108,6 +108,8 @@ export function buildTimeline(input: {
   const nowMs = now.getTime();
   const out: TimelineEntry[] = [];
   for (const ev of input.events) {
+    // 时间轴只放「要做的」：工作记录、已取消的计划不进
+    if (ev.kind === 'log' || ev.status === 'cancelled') continue;
     const start = parseMs(ev.start_at);
     if (!inDay(start, now)) continue;
     const end = parseMs(ev.end_at);
@@ -191,6 +193,10 @@ export type DelegatedRow = {
   assigneeId?: string;
   /** 卡住的原因是「等我回复」（不是失败） */
   waiting?: boolean;
+  /** 承载会话的原始态势：queued / running / waiting / failed / completed / cancelled（读不到为空） */
+  situation?: string;
+  /** 会话说可以重试上一轮（失败 / 中断时） */
+  retryAvailable?: boolean;
 };
 
 /** 交办任务的最小字段（与 agentbridge CodingTask 同名，便于直接传入）。 */
@@ -282,6 +288,7 @@ export type SituationInput = {
   status: string;
   updated_at?: string;
   current_step_summary?: string;
+  retry_available?: boolean;
 };
 
 // 等人介入、失败、被取消都需要我回去看一眼，归到「卡住了」。
@@ -324,6 +331,8 @@ export function classifyOfficeDelegated(
       assigneeKind: task.assignee_kind,
       assigneeId: task.assignee_id,
       waiting: situation?.status === 'waiting',
+      situation: situation?.status ?? '',
+      retryAvailable: Boolean(situation?.retry_available),
     });
   }
   return sortDelegated(out);

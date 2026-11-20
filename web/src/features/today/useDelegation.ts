@@ -176,6 +176,45 @@ export async function followUp(
   }
 }
 
+/**
+ * 派出去以后又给任务加了附件：≤10MB 的传成承载会话的产物，再发一句「补充了附件：…」带上它们，
+ * 执行者才拿得到。返回错误文案，成功返回空串；没有能转的文件时什么也不做。
+ */
+export async function forwardFiles(
+  run: { sessionId?: string; assigneeKind?: string; assigneeId?: string },
+  files: readonly File[],
+  recipients: readonly Recipient[],
+  label: string,
+): Promise<string> {
+  const sendable = files.filter((file) => file.size <= ARTIFACT_MAX_BYTES);
+  if (!run.sessionId || !sendable.length) return '';
+  const agent =
+    run.assigneeKind === 'agent' ? recipients.find((r) => r.kind === 'agent' && r.id === run.assigneeId) : null;
+  try {
+    const ids: string[] = [];
+    for (const file of sendable) {
+      const meta = await uploadArtifact({
+        session_id: run.sessionId,
+        name: file.name,
+        mime_type: file.type || 'application/octet-stream',
+        data_base64: await readFileAsBase64(file),
+      });
+      ids.push(meta.id);
+    }
+    const ack = await sendMessage({
+      session_id: run.sessionId,
+      agent_key: agent?.key,
+      team_id: run.assigneeKind === 'team' ? run.assigneeId : undefined,
+      content: `${label}${sendable.map((f) => f.name).join('、')}`,
+      request_id: `pending-user-${randomUUID()}`,
+      options: { attachments: ids.map((id) => ({ id })) },
+    });
+    return ack.status === 'accepted' || ack.status === 'queued' ? '' : ack.status;
+  } catch (err) {
+    return errorText(err);
+  }
+}
+
 export async function delegate(recipient: Recipient, text: string): Promise<DelegateOutcome> {
   const content = text.trim();
   const title = commandTitle(content);

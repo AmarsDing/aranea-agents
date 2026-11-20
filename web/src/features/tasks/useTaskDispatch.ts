@@ -6,7 +6,7 @@ import { ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { OfficeTaskRow } from '../office/types';
 import type { Recipient } from '../today/command';
-import { dispatchTask, followUp, useRecipients, type DelegateOutcome } from '../today/useDelegation';
+import { dispatchTask, followUp, forwardFiles, useRecipients, type DelegateOutcome } from '../today/useDelegation';
 
 const shared = useRecipients();
 const loading = ref<Promise<void> | null>(null);
@@ -48,12 +48,20 @@ export function useTaskDispatch() {
     return followUp(run, text, shared.recipients.value);
   }
 
+  function sendFiles(
+    run: { sessionId?: string; assigneeKind?: string; assigneeId?: string },
+    files: readonly File[],
+  ): Promise<string> {
+    return forwardFiles(run, files, shared.recipients.value, t('taskBoard.msg.moreFiles'));
+  }
+
   return {
     recipients: shared.recipients,
     recipientsStatus: shared.status,
     ensureRecipients,
     dispatch,
     sendFollowUp,
+    sendFiles,
   };
 }
 

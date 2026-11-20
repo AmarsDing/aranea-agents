@@ -31,6 +31,7 @@ function row(over: Partial<InboxItemRow>): InboxItemRow {
     actions: ['approve', 'reject'],
     reject_requires_note: true,
     link: '/approvals',
+    context_json: '',
     ...over,
   };
 }
@@ -47,6 +48,10 @@ function event(over: Partial<OfficeEventRow>): OfficeEventRow {
     timezone: '',
     reminder_minutes: 0,
     source: 'manual',
+    kind: 'plan',
+    status: 'todo',
+    all_day: false,
+    outcome: '',
     ...over,
   };
 }
@@ -115,6 +120,16 @@ describe('buildTimeline', () => {
     ]);
     expect(entries[3]?.inboxId).toBe('hitl:1');
     expect(entries[0]?.to).toBe('/schedule');
+  });
+
+  it('leaves work logs and cancelled plans off the timeline', () => {
+    const entries = buildTimeline({
+      events: [event({ id: 'log', kind: 'log' }), event({ id: 'off', status: 'cancelled' }), event({ id: 'keep' })],
+      inbox: [],
+      cron: [],
+      now: NOW,
+    });
+    expect(entries.map((e) => e.id)).toEqual(['event:keep']);
   });
 
   it('marks an event past only after it ends, and drops other days', () => {

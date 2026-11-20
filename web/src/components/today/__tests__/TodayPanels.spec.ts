@@ -38,6 +38,7 @@ const row = (id: string, extra: Partial<InboxItemRow>): InboxItemRow => ({
   actions: ['approve'],
   reject_requires_note: false,
   link: '',
+  context_json: '',
   ...extra,
 });
 
@@ -106,6 +107,12 @@ describe('工作台今日 · 最新邮件与任务两张卡', () => {
       received_at: '',
       task_ref: 't1',
       has_attachments: false,
+      to: '',
+      cc: '',
+      seen: true,
+      flagged: false,
+      archived: false,
+      folder: 'inbox',
     };
     const ok = mount(TodayMail, {
       props: { mails: [mail], total: 9, status: 'ok' },
@@ -120,7 +127,7 @@ describe('工作台今日 · 最新邮件与任务两张卡', () => {
     expect(text('ok')).toContain('还没有邮件');
   });
 
-  it('同一个任务组件按生命周期分两块：我的任务只列待办（输入框沉底），进行中列我在做的和 AI 在做的', () => {
+  it('同一个任务组件按生命周期分两块：我的任务只列待办（新任务在底部指令窗里写），进行中列我在做的和 AI 在做的', () => {
     const row = (id: string, status: string) => ({
       id,
       title: id,
@@ -158,18 +165,17 @@ describe('工作台今日 · 最新邮件与任务两张卡', () => {
       aiTasks: [],
       delegatedStatus: 'ok' as const,
       now: new Date('2026-11-20T08:00:00Z'),
-      add: async () => ({ error: '', task: null }),
-      addNote: async () => '',
     };
     const mountPart = (part: 'tasks' | 'delegated') =>
       mount(TodayTasks, {
         props: { ...base, part },
-        global: { plugins: [i18n], stubs: { ...stubs, TaskComposer: true, TaskRecipientMenu: true } },
+        global: { plugins: [i18n], stubs: { ...stubs, TaskRecipientMenu: true } },
       });
     const mine = mountPart('tasks');
     expect(mine.text()).toContain('我的任务');
     expect(mine.findAll('.tk-card__title').map((el) => el.text())).toEqual(['写周报']);
-    expect(mine.find('task-composer-stub').exists()).toBe(true);
+    expect(mine.find('textarea').exists()).toBe(false);
+    expect(mine.find('[aria-label="新任务（在底部指令窗里写）"]').exists()).toBe(true);
     const doing = mountPart('delegated');
     expect(doing.text()).toContain('进行中');
     expect(doing.findAll('.tk-card__title').map((el) => el.text())).toEqual(['竞品分析', '改合同']);

@@ -63,8 +63,6 @@
           @dispatch="onDispatch"
           @undo="onUndo"
           @dismiss-note="side.dismissNote($event.id)"
-          @created="side.refresh()"
-          @say="say"
         />
       </div>
       <div class="today-side">
@@ -94,6 +92,7 @@
       :now="now"
       @close="detailId = ''"
       @changed="side.refresh()"
+      @updated="lastDetail = $event"
       @say="say"
     />
   </q-page>
@@ -106,7 +105,7 @@ import TodayInbox from '../components/today/TodayInbox.vue';
 import TodayMail from '../components/today/TodayMail.vue';
 import TodayTasks from '../components/today/TodayTasks.vue';
 import TodayTimeline from '../components/today/TodayTimeline.vue';
-import TaskDetailDrawer from '../components/tasks/TaskDetailDrawer.vue';
+import TaskDetailDrawer from '../features/tasks/components/TaskDetailDrawer.vue';
 import type { InboxAction, InboxItemRow } from '../features/approval/api';
 import type { OfficeTaskRow } from '../features/office/types';
 import type { BoardColumn } from '../features/tasks/board';
@@ -230,8 +229,6 @@ const taskProps = computed(() => ({
   aiTasks: side.aiTasks.value,
   delegatedStatus: side.delegatedStatus.value,
   now: now.value,
-  add: side.addTask,
-  addNote: side.addNote,
 }));
 
 // ——— 任务详情抽屉：按 id 记，列表刷新后跟着拿最新那一行 ———

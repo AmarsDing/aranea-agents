@@ -10,6 +10,8 @@ import type { CommandIntent, Recipient } from './command';
 import { delegate } from './useDelegation';
 
 export const COMMAND_DONE_EVENT = 'aranea:command-done';
+/** 页面请壳层打开指令面板并带上一句话（detail 是那句话）；如会话中心的「交给精灵助手接着做」 */
+export const OPEN_COMMAND_EVENT = 'aranea:open-command';
 
 export type CommandRequest =
   | { intent: Exclude<CommandIntent, 'delegate'>; text: string }

@@ -1,20 +1,25 @@
 <template>
   <!--
     今日页的两块任务（数据与任务页同源，按生命周期分）：
-      part=tasks    我的任务 = 待办（列表在上，输入框沉底；随手记录收在列表下面）
+      part=tasks    我的任务 = 待办（随手记录收在列表下面；新任务在底部指令窗里写，标题旁的 + 把它打开）
       part=delegated 进行中 = 我在做的 + AI 在做 / 卡住 / 做完待验收的（有在跑的就每 10 秒对一次账）
   -->
-  <section class="today-tasks" :class="{ 'today-tasks--compose': part === 'tasks' }">
+  <section class="today-tasks">
     <template v-if="part === 'tasks'">
       <header class="today-panel__head">
         <h2 class="today-panel__title">
           {{ t('today.tasks.title') }}
           <span class="today-panel__count">{{ todo.length }}</span>
         </h2>
-        <router-link class="today-link" to="/tasks">{{ t('today.delegated.viewAll') }}</router-link>
+        <span class="today-panel__acts">
+          <q-btn flat dense round size="sm" icon="add" :aria-label="t('taskBoard.addInDock')" @click="openDock">
+            <q-tooltip>{{ t('taskBoard.addInDock') }}</q-tooltip>
+          </q-btn>
+          <router-link class="today-link" to="/tasks">{{ t('today.delegated.viewAll') }}</router-link>
+        </span>
       </header>
 
-      <div class="today-tasks__scroll">
+      <div>
         <p v-if="tasksStatus === 'error'" class="today-note today-note--danger" role="alert">
           {{ t('today.tasks.failed') }}
         </p>
@@ -49,13 +54,6 @@
           </ul>
         </details>
       </div>
-
-      <TaskComposer
-        :add="add"
-        :add-note="addNote"
-        @created="emit('created', $event)"
-        @say="(text, error, link) => emit('say', text, error, link)"
-      />
     </template>
 
     <template v-else>
@@ -109,9 +107,9 @@
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import TaskCard from '../tasks/TaskCard.vue';
-import TaskComposer from '../tasks/TaskComposer.vue';
 import type { OfficeTaskRow } from '../../features/office/types';
 import { sortMyTasks, type BoardColumn } from '../../features/tasks/board';
+import { OPEN_DOCK_EVENT } from '../../features/tasks/quickAdd';
 import type { Recipient } from '../../features/today/command';
 import type { DelegatedRow } from '../../features/today/logic';
 import type { BlockStatus } from '../../features/today/useTodaySide';
@@ -135,8 +133,6 @@ const props = defineProps<{
   aiTasks: OfficeTaskRow[];
   delegatedStatus: BlockStatus;
   now: Date;
-  add: (title: string, dueAt?: string) => Promise<{ error: string; task: OfficeTaskRow | null }>;
-  addNote: (text: string) => Promise<string>;
 }>();
 
 const emit = defineEmits<{
@@ -148,8 +144,6 @@ const emit = defineEmits<{
   dismissNote: [note: OfficeTaskRow];
   /** 待验收的验收通过 */
   accept: [row: DelegatedRow];
-  created: [task: OfficeTaskRow];
-  say: [text: string, error: boolean, link?: string];
 }>();
 
 const { t } = useI18n();
@@ -159,6 +153,11 @@ const todo = computed(() => sorted.value.filter((task) => task.status !== 'doing
 const doing = computed(() => sorted.value.filter((task) => task.status === 'doing'));
 const visibleRuns = computed(() => props.delegated.slice(0, MAX_RUN_ROWS));
 const running = computed(() => props.delegated.some((row) => row.state === 'running'));
+
+/** 新任务在底部指令窗里写：+ 只负责把它展开并聚焦 */
+function openDock() {
+  window.dispatchEvent(new CustomEvent(OPEN_DOCK_EVENT));
+}
 
 const byId = computed(() => new Map(props.aiTasks.map((task) => [task.id, task])));
 function aiTask(row: DelegatedRow): OfficeTaskRow | null {
