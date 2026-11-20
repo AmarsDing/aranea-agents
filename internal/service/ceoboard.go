@@ -40,7 +40,6 @@ import (
 	"aranea-agents/internal/biz/ceoboard"
 	"aranea-agents/internal/biz/ceoboard/adapter"
 	"aranea-agents/internal/biz/ceoboard/agg"
-	"aranea-agents/internal/biz/ceoboard/bizview"
 	"aranea-agents/internal/biz/ceoboard/registry"
 	"aranea-agents/internal/biz/ceoboard/store"
 	"aranea-agents/internal/data/ent"
@@ -60,9 +59,6 @@ type CeoboardService struct {
 
 	exportMu     sync.Mutex
 	exportActive bool
-
-	bizOnce sync.Once
-	bizView *bizview.Builder
 }
 
 // NewCeoboardService 装配驾驶舱 service;rt 为 nil 时返回 nil(装配层跳过注册)。

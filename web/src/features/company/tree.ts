@@ -1,17 +1,29 @@
+import { formatUsdCompact } from '../usage/moneyFormat';
+
 /**
- * 公司树（经营看板 V2 首屏）的纯函数：把组织树、Agent 名册、收件箱、交办、
- * 定时任务收敛成「我 → 总经理 Agent → 部门 → 岗位」四层。
+ * 看板总览（一张图管全部公司）的纯函数：把组织树、Agent 名册、收件箱、交办登记、
+ * 定时任务、今日用量收敛成「我 → 公司（含总经理 Agent）→ 部门 → Agent」。
+ *
+ * 每个节点讲同一件事——电商闭环「建议 → 拍板 → 动手 → 验收」落到系统里的真实对象：
+ *   waiting  等你拍板：收件箱里由这个节点的 Agent 提出的事
+ *   running  在做：交给这个节点 Agent 的事，执行中
+ *   stuck    卡住：交办的事停在等待 / 失败 / 取消
+ *   review   待验收：交办的事做完了，等你验收
+ * 外加「今天谁跑过」（最近会话或今日用量）和今日 AI 花费。
  *
  * 口径：
- * - 只用已有数据，不估不造：没有来源的东西（收入、目标等）这里没有字段。
- * - 部门/岗位状态只有四种，按严重程度取最重的一种：
- *     attention  有事要我处理，或有 Agent 最近一次运行失败
- *     ok         今天有 Agent 跑过
+ * - 只用已有数据，不估不造：收入、目标这类经营数字没有来源，这里没有字段。
+ * - 节点状态四种，按严重程度取最重的一种：
+ *     attention  有事等我（拍板 / 验收），或有事卡住、有 Agent 最近一次运行失败
+ *     ok         今天有 Agent 跑过，或有事在做
  *     idle       有 Agent 在岗，但今天没动静
  *     empty      没有 Agent 在岗
  */
 
 export type NodeState = 'attention' | 'ok' | 'idle' | 'empty';
+export type WorkState = 'running' | 'stuck' | 'review';
+/** 读取失败的补充来源（页面据此说明哪些数字不可信） */
+export type PartialSource = 'inbox' | 'delegated' | 'cron' | 'usage' | 'signals';
 
 export type OrgTreeInput = {
   node?: {
@@ -31,7 +43,7 @@ export type AgentInput = {
   id: string;
   agent_key: string;
   display_name: string;
-  /** 所挂岗位（组织树 position 节点 id） */
+  /** 所挂岗位（组织树 position 节点 id；部门负责人可能直接挂部门节点） */
   taxonomy_position_id?: string;
   status?: string;
   last_run_status?: string;
@@ -39,60 +51,127 @@ export type AgentInput = {
   deleted_at?: string;
 };
 
-export type InboxInput = { agent_key: string; due_at: string; risk_level: string };
-export type DelegatedInput = { assignee_kind: string; assignee_id: string };
+export type InboxInput = {
+  id: string;
+  title: string;
+  agent_key: string;
+  due_at: string;
+  risk_level: string;
+  link?: string;
+};
+/** 一条交办：已按承载会话的执行态归成三态（见 today/logic 的 classifyOfficeDelegated） */
+export type WorkInput = {
+  id: string;
+  title: string;
+  assignee_kind: string;
+  assignee_id: string;
+  state: WorkState;
+  at: string;
+  to: string;
+};
 export type CronInput = { agentId: string; nextRunAt: string };
+export type UsageInput = { agentId: string; calls: number; costMicro: number };
 
-export type TreeAgent = {
+export type Loop = { waiting: number; running: number; stuck: number; review: number };
+
+export type BoardAgent = {
   id: string;
   key: string;
   name: string;
+  /** 岗位名；部门负责人直接挂部门时为空 */
+  position: string;
   failed: boolean;
   ranToday: boolean;
   lastRunAt: string;
-};
-
-export type PositionLeaf = {
-  id: string;
-  name: string;
-  agents: TreeAgent[];
+  nextRunAt: string;
+  calls: number;
+  costMicro: number;
   state: NodeState;
-  /** 等我处理的事项里，由这个岗位的 Agent 提出的条数 */
-  waiting: number;
-  failed: number;
+  loop: Loop;
+  waitingItems: InboxInput[];
+  workItems: WorkInput[];
 };
 
-export type DeptNode = {
-  id: string;
-  name: string;
-  lead: TreeAgent | null;
-  /** 配置了负责人 id 但名册里找不到（被删或无权查看） */
-  leadMissing: boolean;
+type Rollup = {
   agentCount: number;
   activeToday: number;
   failed: number;
-  waiting: number;
-  /** 我交办出去、还没结掉的任务里，派给这个部门 Agent 的条数 */
-  delegated: number;
+  calls: number;
+  costMicro: number;
+  loop: Loop;
   state: NodeState;
   lastRunAt: string;
   nextRunAt: string;
-  positions: PositionLeaf[];
+  waitingItems: InboxInput[];
+  workItems: WorkInput[];
 };
 
-export type CompanyTree = {
-  companies: { id: string; name: string }[];
-  company: { id: string; name: string } | null;
-  me: { waiting: number; highRisk: number; earliestDue: string };
-  /** 总经理 Agent；公司节点没有指定时为 null */
-  ceo: TreeAgent | null;
+export type DeptNode = Rollup & {
+  id: string;
+  name: string;
+  lead: BoardAgent | null;
+  /** 配置了负责人 id 但名册里找不到（被删或无权查看） */
+  leadMissing: boolean;
+  positions: number;
+  emptyPositions: number;
+  /** 有问题的排前面，其次今天跑过的；同档保持组织树里的顺序 */
+  agents: BoardAgent[];
+};
+
+/** 总经理的巡视与汇报（只有后端 org-graph 给得出；前端回落拼装时没有）。 */
+export type GmStatus = {
+  /** 巡视 / 汇报两条定时任务至少一条在启用 */
+  enabled: boolean;
+  lastPatrolAt: string;
+  nextPatrolAt: string;
+  lastReport?: {
+    runId: string;
+    at: string;
+    conclusion: string;
+    reasons: string[];
+    /** model = 总经理的模型写的；rule = 模型没回答，按规则生成 */
+    writer: string;
+    acked: boolean;
+  };
+  nextReportAt: string;
+};
+
+export type CompanyNode = Rollup & {
+  id: string;
+  name: string;
+  /** 总经理 Agent；公司节点没有指定或名册里找不到时为 null */
+  ceo: BoardAgent | null;
   ceoConfigured: boolean;
   depts: DeptNode[];
-  totals: { agents: number; activeToday: number; failed: number; unassigned: number };
+  gm?: GmStatus;
+};
+
+/** 收件箱里总经理的汇报来源：要读的，不算「等你拍板」（与后端 org-graph 同一口径）。 */
+export const GM_REPORT_SOURCE = 'gm_report';
+
+export type Board = {
+  companies: CompanyNode[];
+  me: {
+    loop: Loop;
+    highRisk: number;
+    earliestDue: string;
+    /** 全部等我拍板的事（含归不到任何公司的） */
+    waitingItems: InboxInput[];
+    workItems: WorkInput[];
+    /** 归不到任何公司的待办（来源不带 Agent，或 Agent 不在组织里） */
+    unattributed: number;
+    /** 名册里有、但没挂到任何公司的 Agent */
+    unassigned: number;
+    agentCount: number;
+    activeToday: number;
+    calls: number;
+    costMicro: number;
+  };
 };
 
 const STATE_RANK: Record<NodeState, number> = { attention: 0, ok: 1, idle: 2, empty: 3 };
 const FAILED = /fail|error/i;
+const EMPTY_LOOP: Loop = { waiting: 0, running: 0, stuck: 0, review: 0 };
 
 function ms(iso: string | undefined): number {
   if (!iso) return NaN;
@@ -128,10 +207,11 @@ export function companyLeadId(metadataJson: string | undefined): string {
   }
 }
 
-function stateOf(agentCount: number, activeToday: number, failed: number, waiting: number): NodeState {
-  if (agentCount === 0) return waiting > 0 ? 'attention' : 'empty';
-  if (failed > 0 || waiting > 0) return 'attention';
-  return activeToday > 0 ? 'ok' : 'idle';
+function stateOf(agentCount: number, activeToday: number, failed: number, loop: Loop): NodeState {
+  const needsMe = loop.waiting + loop.stuck + loop.review > 0;
+  if (agentCount === 0) return needsMe ? 'attention' : 'empty';
+  if (failed > 0 || needsMe) return 'attention';
+  return activeToday > 0 || loop.running > 0 ? 'ok' : 'idle';
 }
 
 function alive(node: OrgTreeInput['node']): boolean {
@@ -156,149 +236,197 @@ function collect(root: OrgTreeInput, level: string): OrgTreeInput[] {
   return out.sort(bySortThenName);
 }
 
-export function buildCompanyTree(input: {
+/** 一组 Agent（按 id 去重后）汇总成节点口径。 */
+function rollup(members: readonly BoardAgent[]): Rollup {
+  const loop = { ...EMPTY_LOOP };
+  const waitingItems: InboxInput[] = [];
+  const workItems: WorkInput[] = [];
+  let activeToday = 0;
+  let failed = 0;
+  let calls = 0;
+  let costMicro = 0;
+  let lastRunAt = '';
+  let nextRunAt = '';
+  for (const a of members) {
+    loop.waiting += a.loop.waiting;
+    loop.running += a.loop.running;
+    loop.stuck += a.loop.stuck;
+    loop.review += a.loop.review;
+    waitingItems.push(...a.waitingItems);
+    workItems.push(...a.workItems);
+    if (a.ranToday) activeToday += 1;
+    if (a.failed) failed += 1;
+    calls += a.calls;
+    costMicro += a.costMicro;
+    lastRunAt = later(lastRunAt, a.lastRunAt);
+    nextRunAt = earlier(nextRunAt, a.nextRunAt);
+  }
+  return {
+    agentCount: members.length,
+    activeToday,
+    failed,
+    calls,
+    costMicro,
+    loop,
+    state: stateOf(members.length, activeToday, failed, loop),
+    lastRunAt,
+    nextRunAt,
+    waitingItems,
+    workItems,
+  };
+}
+
+function uniq(list: readonly (BoardAgent | null | undefined)[]): BoardAgent[] {
+  const seen = new Map<string, BoardAgent>();
+  for (const a of list) if (a && !seen.has(a.id)) seen.set(a.id, a);
+  return [...seen.values()];
+}
+
+export function buildBoard(input: {
   orgTree: readonly OrgTreeInput[];
   agents: readonly AgentInput[];
   inbox: readonly InboxInput[];
   inboxTotal: number;
-  delegated: readonly DelegatedInput[];
+  work: readonly WorkInput[];
   cron: readonly CronInput[];
-  /** 选中的公司；为空或找不到时取第一家 */
-  companyId: string;
+  usage: readonly UsageInput[];
   now: Date;
-}): CompanyTree {
+}): Board {
   const { now } = input;
-  const companyNodes = input.orgTree.filter((n) => alive(n.node) && n.node?.level === 'company').sort(bySortThenName);
-  const companies = companyNodes.map((n) => ({ id: n.node?.id ?? '', name: n.node?.name ?? '' }));
-  const root = companyNodes.find((n) => n.node?.id === input.companyId) ?? companyNodes[0];
 
-  const agents = input.agents.filter((a) => a.id && !a.deleted_at);
-  const toTreeAgent = (a: AgentInput): TreeAgent => ({
-    id: a.id,
-    key: a.agent_key,
-    name: a.display_name || a.agent_key,
-    failed: FAILED.test(a.last_run_status ?? ''),
-    ranToday: sameDay(a.last_run_at, now),
-    lastRunAt: a.last_run_at ?? '',
-  });
-  const byId = new Map(agents.map((a) => [a.id, a]));
-  const byPosition = new Map<string, TreeAgent[]>();
-  for (const a of agents) {
-    const pos = a.taxonomy_position_id?.trim();
-    if (!pos) continue;
-    byPosition.set(pos, [...(byPosition.get(pos) ?? []), toTreeAgent(a)]);
-  }
-
-  const waitingByKey = new Map<string, number>();
+  const waitingByKey = new Map<string, InboxInput[]>();
   let highRisk = 0;
   let earliestDue = '';
   for (const item of input.inbox) {
-    if (item.agent_key) waitingByKey.set(item.agent_key, (waitingByKey.get(item.agent_key) ?? 0) + 1);
+    if (item.agent_key) waitingByKey.set(item.agent_key, [...(waitingByKey.get(item.agent_key) ?? []), item]);
     if (item.risk_level === 'high') highRisk += 1;
     earliestDue = earlier(earliestDue, item.due_at);
   }
-  const delegatedById = new Map<string, number>();
-  for (const task of input.delegated) {
-    if (task.assignee_kind !== 'agent' || !task.assignee_id) continue;
-    delegatedById.set(task.assignee_id, (delegatedById.get(task.assignee_id) ?? 0) + 1);
+  const workById = new Map<string, WorkInput[]>();
+  for (const w of input.work) {
+    if (w.assignee_kind !== 'agent' || !w.assignee_id) continue;
+    workById.set(w.assignee_id, [...(workById.get(w.assignee_id) ?? []), w]);
   }
   const nextRunById = new Map<string, string>();
   for (const job of input.cron) {
     if (!job.agentId || !(ms(job.nextRunAt) >= now.getTime())) continue;
     nextRunById.set(job.agentId, earlier(nextRunById.get(job.agentId) ?? '', job.nextRunAt));
   }
+  const usageById = new Map(input.usage.map((u) => [u.agentId, u]));
 
-  const me = { waiting: Math.max(input.inboxTotal, input.inbox.length), highRisk, earliestDue };
-  if (!root) {
-    return {
-      companies,
-      company: null,
-      me,
-      ceo: null,
-      ceoConfigured: false,
-      depts: [],
-      totals: { agents: 0, activeToday: 0, failed: 0, unassigned: 0 },
+  // 岗位 id → 岗位名，部门负责人可能直接挂部门节点（名为空）
+  const positionName = new Map<string, string>();
+  const index = (node: OrgTreeInput) => {
+    if (node.node?.level === 'position' && node.node.id) positionName.set(node.node.id, node.node.name ?? '');
+    for (const child of node.children ?? []) index(child);
+  };
+  input.orgTree.forEach(index);
+
+  const agentById = new Map<string, BoardAgent>();
+  const byPosition = new Map<string, BoardAgent[]>();
+  for (const a of input.agents) {
+    if (!a.id || a.deleted_at) continue;
+    const waitingItems = waitingByKey.get(a.agent_key) ?? [];
+    const workItems = workById.get(a.id) ?? [];
+    const use = usageById.get(a.id);
+    const failed = FAILED.test(a.last_run_status ?? '');
+    const loop: Loop = {
+      waiting: waitingItems.length,
+      running: workItems.filter((w) => w.state === 'running').length,
+      stuck: workItems.filter((w) => w.state === 'stuck').length,
+      review: workItems.filter((w) => w.state === 'review').length,
     };
+    const ranToday = sameDay(a.last_run_at, now) || (use?.calls ?? 0) > 0;
+    const pos = a.taxonomy_position_id?.trim() ?? '';
+    const agent: BoardAgent = {
+      id: a.id,
+      key: a.agent_key,
+      name: a.display_name || a.agent_key,
+      position: positionName.get(pos) ?? '',
+      failed,
+      ranToday,
+      lastRunAt: a.last_run_at ?? '',
+      nextRunAt: nextRunById.get(a.id) ?? '',
+      calls: use?.calls ?? 0,
+      costMicro: use?.costMicro ?? 0,
+      state: stateOf(1, ranToday ? 1 : 0, failed ? 1 : 0, loop),
+      loop,
+      waitingItems,
+      workItems,
+    };
+    agentById.set(a.id, agent);
+    if (pos) byPosition.set(pos, [...(byPosition.get(pos) ?? []), agent]);
   }
 
   const placed = new Set<string>();
-  const depts: DeptNode[] = collect(root, 'department').map((dept) => {
-    const positions: PositionLeaf[] = collect(dept, 'position').map((pos) => {
-      const list = byPosition.get(pos.node?.id ?? '') ?? [];
-      for (const a of list) placed.add(a.id);
-      const waiting = list.reduce((sum, a) => sum + (waitingByKey.get(a.key) ?? 0), 0);
-      const failed = list.filter((a) => a.failed).length;
-      const active = list.filter((a) => a.ranToday).length;
+  const companyNodes = input.orgTree.filter((n) => alive(n.node) && n.node?.level === 'company').sort(bySortThenName);
+  const companies: CompanyNode[] = companyNodes.map((root) => {
+    const depts: DeptNode[] = collect(root, 'department').map((dept) => {
+      const positions = collect(dept, 'position');
+      const onPositions = positions.flatMap((p) => byPosition.get(p.node?.id ?? '') ?? []);
+      // 有的 Agent（如自动建的部门负责人）直接挂在部门节点上，不经过岗位。
+      const onDept = byPosition.get(dept.node?.id ?? '') ?? [];
+      const leadId = dept.node?.deptLeadAgentId?.trim() ?? '';
+      const lead = leadId ? (agentById.get(leadId) ?? null) : null;
+      const members = uniq([lead, ...onDept, ...onPositions]);
+      for (const a of members) placed.add(a.id);
+      const order = new Map(members.map((a, i) => [a.id, i]));
       return {
-        id: pos.node?.id ?? '',
-        name: pos.node?.name ?? '',
-        agents: list,
-        state: stateOf(list.length, active, failed, waiting),
-        waiting,
-        failed,
+        id: dept.node?.id ?? '',
+        name: dept.node?.name ?? '',
+        lead,
+        leadMissing: Boolean(leadId) && !lead,
+        positions: positions.length,
+        emptyPositions: positions.filter((p) => !(byPosition.get(p.node?.id ?? '') ?? []).length).length,
+        agents: [...members].sort(
+          (a, b) => STATE_RANK[a.state] - STATE_RANK[b.state] || (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0),
+        ),
+        ...rollup(members),
       };
     });
-    const leadId = dept.node?.deptLeadAgentId?.trim() ?? '';
-    const leadRow = leadId ? byId.get(leadId) : undefined;
-    const lead = leadRow ? toTreeAgent(leadRow) : null;
-    if (lead) placed.add(lead.id);
-    // 负责人可能不挂本部门岗位：部门口径 = 岗位上的 Agent ∪ 负责人，按 id 去重。
-    const members = new Map<string, TreeAgent>();
-    for (const pos of positions) for (const a of pos.agents) members.set(a.id, a);
-    // 有的 Agent（如自动建的部门负责人）直接挂在部门节点上，不经过岗位。
-    for (const a of byPosition.get(dept.node?.id ?? '') ?? []) {
-      members.set(a.id, a);
-      placed.add(a.id);
-    }
-    if (lead) members.set(lead.id, lead);
-    const all = [...members.values()];
-    const failed = all.filter((a) => a.failed).length;
-    const activeToday = all.filter((a) => a.ranToday).length;
-    const waiting = all.reduce((sum, a) => sum + (waitingByKey.get(a.key) ?? 0), 0);
+    const ceoId = companyLeadId(root.node?.metadataJson);
+    const ceo = ceoId ? (agentById.get(ceoId) ?? null) : null;
+    if (ceo) placed.add(ceo.id);
     return {
-      id: dept.node?.id ?? '',
-      name: dept.node?.name ?? '',
-      lead,
-      leadMissing: Boolean(leadId) && !lead,
-      agentCount: all.length,
-      activeToday,
-      failed,
-      waiting,
-      delegated: all.reduce((sum, a) => sum + (delegatedById.get(a.id) ?? 0), 0),
-      state: stateOf(all.length, activeToday, failed, waiting),
-      lastRunAt: all.reduce((latest, a) => later(latest, a.lastRunAt), ''),
-      nextRunAt: all.reduce((soonest, a) => earlier(soonest, nextRunById.get(a.id) ?? ''), ''),
-      // 有问题的岗位排前面，其次人多的；同档保持组织树里的顺序。
-      positions: positions
-        .map((p, index) => ({ p, index }))
-        .sort(
-          (a, b) =>
-            STATE_RANK[a.p.state] - STATE_RANK[b.p.state] || b.p.agents.length - a.p.agents.length || a.index - b.index,
-        )
-        .map(({ p }) => p),
+      id: root.node?.id ?? '',
+      name: root.node?.name ?? '',
+      ceo,
+      ceoConfigured: Boolean(ceoId),
+      depts,
+      ...rollup(uniq([ceo, ...depts.flatMap((d) => d.agents)])),
     };
   });
 
-  const ceoId = companyLeadId(root.node?.metadataJson);
-  const ceoRow = ceoId ? byId.get(ceoId) : undefined;
-  if (ceoRow) placed.add(ceoRow.id);
-  // 多公司时名册是全工作区的：只有一家公司才能说「其余都是未编组」。
-  const unassigned = companies.length === 1 ? agents.filter((a) => !placed.has(a.id)).length : 0;
-
+  const inCompany = uniq(companies.flatMap((c) => [c.ceo, ...c.depts.flatMap((d) => d.agents)]));
+  const all = rollup(inCompany);
+  const attributed = new Set(inCompany.flatMap((a) => a.waitingItems.map((i) => i.id)));
+  const allWork = input.work;
   return {
     companies,
-    company: { id: root.node?.id ?? '', name: root.node?.name ?? '' },
-    me,
-    ceo: ceoRow ? toTreeAgent(ceoRow) : null,
-    ceoConfigured: Boolean(ceoId),
-    depts,
-    totals: {
-      agents: depts.reduce((sum, d) => sum + d.agentCount, 0) + (ceoRow ? 1 : 0),
-      activeToday: depts.reduce((sum, d) => sum + d.activeToday, 0),
-      failed: depts.reduce((sum, d) => sum + d.failed, 0),
-      unassigned,
+    me: {
+      loop: {
+        waiting: Math.max(input.inboxTotal, input.inbox.length),
+        running: allWork.filter((w) => w.state === 'running').length,
+        stuck: allWork.filter((w) => w.state === 'stuck').length,
+        review: allWork.filter((w) => w.state === 'review').length,
+      },
+      highRisk,
+      earliestDue,
+      waitingItems: [...input.inbox],
+      workItems: [...allWork],
+      unattributed: input.inbox.filter((i) => !attributed.has(i.id)).length,
+      unassigned: [...agentById.keys()].filter((id) => !placed.has(id)).length,
+      agentCount: all.agentCount,
+      activeToday: all.activeToday,
+      calls: all.calls,
+      costMicro: all.costMicro,
     },
   };
+}
+
+/** 今日花费：0 就写 $0，不写一串零；其余同用量页的紧凑美元格式。 */
+export function money(micro: number): string {
+  return micro > 0 ? formatUsdCompact(micro) : '$0';
 }
 
 /** HH:mm；不是今天则带上月-日。无效时间返回空串。 */

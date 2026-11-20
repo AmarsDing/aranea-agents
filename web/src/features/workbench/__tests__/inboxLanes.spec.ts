@@ -17,6 +17,7 @@ function row(id: string, over: Partial<InboxItemRow> = {}): InboxItemRow {
     actions: ['approve', 'reject'],
     reject_requires_note: true,
     link: '/approvals',
+    context_json: '',
     ...over,
   };
 }

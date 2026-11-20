@@ -66,6 +66,8 @@ type InboxDeps struct {
 	Review      *ReviewService
 	Teams       *TeamService
 	Cron        *CronService
+	// GMCronRuns 核销总经理汇报（「知道了」）；为 nil 时总经理汇报来源不注册。
+	GMCronRuns  GMCronStore
 	nowOverride func() time.Time // 测试注入
 }
 
@@ -95,6 +97,9 @@ func NewInboxAggregator(d InboxDeps) *inbox.Aggregator {
 	}
 	if d.Cron != nil {
 		sources = append(sources, &inboxCronSource{deps: d})
+	}
+	if d.Cron != nil && d.GMCronRuns != nil {
+		sources = append(sources, &inboxGMReportSource{cron: d.Cron.uc, store: d.GMCronRuns})
 	}
 	return inbox.NewAggregator(sources...)
 }

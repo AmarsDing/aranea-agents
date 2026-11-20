@@ -1,70 +1,44 @@
-// 公司树（/ceo/company，看板 › 总览）：类名 co- 前缀，取值只走 --nt-* 令牌。
-// 版面（照设计稿，一屏）：一行结论；树直接画在页面上（我 → 总经理 Agent → 部门横排 → 岗位竖排）；
-// 树下面一条是选中节点的详情，右边给指令窗留位。宽度不到 1100 时改成普通的上下排，整页滚动。
-// 样稿：E:\teamwork\docs\aranea-agents\design\assets\2026-11-18-blueprint\index.html#kb
+// 看板 › 总览（/ceo/company）：一张图管全部公司。类名 kb- 前缀，取值只走 --nt-* 令牌。
+// 版面：画布占满整页（没有结论行、没有底部详情条）；我 → 各公司横排（总经理在公司卡里）→ 部门竖排 → Agent 竖排。
+// 点节点时右侧出检视栏，画布让出位置；宽度不够时画布自己横向滚动，页面不出横向滚动条。
 @import "./_nt-tokens.css"
 
-.co-page
+.kb-page
   display: flex
-  flex-direction: column
-  gap: var(--nt-space-3)
-  // q-page 自带 min-height = 视口减顶栏；height: 0 让它成为确定高度，树才能在里面滚动
+  gap: var(--nt-space-4)
+  // q-page 自带 min-height = 视口减顶栏；height: 0 让它成为确定高度，画布才能在里面滚动
   height: 0
-  padding: var(--nt-space-4) var(--nt-space-page)
+  // 底部给页面正中的指令半圆按钮留位
+  padding: var(--nt-space-3) var(--nt-space-page) max(var(--nt-space-3), var(--app-dock-space, 0px))
   color: var(--nt-text-1)
   font-family: var(--nt-font-sans)
   font-size: var(--nt-fs-body)
 
-.co-mono
+.kb-mono
   font-family: var(--nt-font-mono)
   font-variant-numeric: tabular-nums
 
-// ——— 一行结论 ———
-.co-head
-  display: flex
-  align-items: center
-  gap: var(--nt-space-3)
-
-.co-head__line
-  flex: 1
-  min-width: 0
-  margin: 0
+.kb-sr
+  position: absolute
+  width: 1px
+  height: 1px
   overflow: hidden
-  color: var(--nt-text-0)
-  font-size: var(--nt-fs-title)
-  font-weight: 600
-  text-overflow: ellipsis
+  clip-path: inset(50%)
   white-space: nowrap
 
-.co-head__name
-  margin-right: var(--nt-space-2)
-  color: var(--nt-text-2)
-  font-size: var(--nt-fs-panel)
-  font-weight: 400
-
-.co-head__company
-  width: 200px
-
-.co-head__fresh
-  color: var(--nt-text-3)
-  font-size: var(--nt-fs-caption)
-  white-space: nowrap
-
-.co-note
+.kb-note
+  align-self: flex-start
   margin: 0
   padding: var(--nt-space-2) var(--nt-space-3)
   border: 1px dashed var(--nt-border-2)
   border-radius: var(--nt-radius-m)
   color: var(--nt-text-2)
 
-.co-note--warn
-  border-color: var(--nt-warn)
-
-.co-note--danger
+.kb-note--danger
   border-color: var(--nt-danger)
   color: var(--nt-danger)
 
-.co-link
+.kb-link
   padding: 0
   background: none
   border: 0
@@ -77,16 +51,36 @@
   &:hover
     text-decoration: underline
 
-// ——— 树 ———
-.co-tree
+.kb-node:focus-visible,
+.kb-dept__body:focus-visible,
+.kb-agent:focus-visible,
+.kb-fold:focus-visible,
+.kb-folded:focus-visible,
+.kb-insp__item:focus-visible,
+.kb-link:focus-visible
+  outline: var(--focus-ring)
+  outline-offset: 2px
+
+// ——— 画布与树 ———
+.kb-canvas
+  position: relative
+  flex: 1
+  min-width: 0
+  overflow: auto
+  scrollbar-width: thin
+  scrollbar-color: var(--nt-border-2) transparent
+
+.kb-tree
   position: relative
   display: flex
-  flex: 1
   flex-direction: column
-  min-height: 0
-  overflow: auto
+  align-items: center
+  width: 100%
+  // 公司多到放不下时，树按每列最窄宽度撑开，由画布横向滚动
+  min-width: min-content
+  padding-bottom: var(--nt-space-6)
 
-.co-wires
+.kb-wires
   position: absolute
   inset: 0
   width: 100%
@@ -96,23 +90,25 @@
 
   path
     fill: none
-    stroke-width: 1.5
+    stroke-width: 1.6
     stroke-linecap: round
-    opacity: 0.78
+    stroke-linejoin: round
+    opacity: 0.82
 
-.co-tree > :not(svg)
+.kb-tree > :not(svg)
   position: relative
-  flex: none
 
-.co-node
+// ——— 节点通用 ———
+.kb-node
   display: flex
   flex-direction: column
-  gap: var(--nt-space-1)
+  gap: var(--nt-space-2)
   min-width: 0
-  padding: var(--nt-space-3)
-  background: var(--nt-bg-1)
+  padding: var(--nt-space-3) var(--nt-space-4)
+  background: var(--nt-glass-panel)
   border: 1px solid var(--nt-border-1)
   border-radius: var(--nt-radius-l)
+  box-shadow: var(--nt-shadow-depth)
   color: inherit
   font: inherit
   text-align: left
@@ -126,29 +122,24 @@
     border-color: var(--nt-accent)
     box-shadow: var(--nt-glow-accent)
 
-.co-node:focus-visible,
-.co-leaf:focus-visible,
-.co-link:focus-visible,
-.co-detail__agent:focus-visible
-  outline: var(--focus-ring)
-  outline-offset: 2px
-
-.co-node__row
+.kb-row
   display: flex
   align-items: center
   gap: var(--nt-space-2)
   min-width: 0
 
-.co-node__row--figure
+.kb-row--figure
   align-items: baseline
 
-.co-node__main
+.kb-node__main
   display: flex
   flex: 1
   flex-direction: column
   min-width: 0
 
-.co-node__name
+.kb-node__name
+  flex: 1
+  min-width: 0
   overflow: hidden
   color: var(--nt-text-0)
   font-size: var(--nt-fs-title)
@@ -157,29 +148,31 @@
   text-overflow: ellipsis
   white-space: nowrap
 
-.co-node__sub
+.kb-node__sub
   overflow: hidden
   color: var(--nt-text-2)
   font-size: var(--nt-fs-caption)
   text-overflow: ellipsis
   white-space: nowrap
 
-// 我：琥珀色——只有这里需要人
-.co-me
+// ——— 我：琥珀色，只有这里需要人 ———
+.kb-me
   flex-direction: row
   align-items: center
-  align-self: center
-  gap: var(--nt-space-3)
-  width: min(400px, 100%)
-  margin-top: auto
-  border-color: color-mix(in srgb, var(--nt-warn) 60%, transparent)
-  background: linear-gradient(180deg, color-mix(in srgb, var(--nt-warn) 10%, transparent), color-mix(in srgb, var(--nt-warn) 3%, transparent))
-  box-shadow: 0 0 28px color-mix(in srgb, var(--nt-warn) 14%, transparent)
+  gap: var(--nt-space-4)
+  width: min(820px, 100%)
+  margin-top: var(--nt-space-2)
+  border-color: color-mix(in srgb, var(--nt-warn) 55%, transparent)
+  background: linear-gradient(180deg, color-mix(in srgb, var(--nt-warn) 11%, transparent), color-mix(in srgb, var(--nt-warn) 3%, transparent)), var(--nt-glass-panel)
 
   &:hover
     border-color: var(--nt-warn)
 
-.co-me__av
+  .kb-loop
+    flex: none
+    width: 340px
+
+.kb-me__av
   display: grid
   flex: none
   place-items: center
@@ -189,152 +182,142 @@
   background: var(--nt-warn)
   color: var(--nt-on-accent)
   font-weight: 700
+  box-shadow: var(--nt-glow-warn)
 
-.co-me__badge
+.kb-me__cost
+  display: grid
   flex: none
-  padding: 0 var(--nt-space-3)
-  border-radius: var(--nt-radius-s)
-  background: var(--nt-warn)
-  color: var(--nt-on-accent)
-  font-size: var(--nt-fs-panel)
-  font-weight: 700
-  line-height: 30px
+  justify-items: end
 
-// 我和总经理之间：两条弧线，两侧各一个说明
-.co-lens
-  display: grid
-  grid-template-columns: minmax(0, 1fr) 92px minmax(0, 1fr)
-  align-items: center
-  width: 100%
-  min-height: 56px
-  flex: 1 1 56px
-  max-height: 84px
+  b
+    color: var(--nt-text-0)
+    font-size: var(--nt-fs-title)
+    font-weight: 600
 
-.co-lab
+  small
+    color: var(--nt-text-3)
+    font-size: var(--nt-fs-micro)
+
+// ——— 闭环四格 ———
+.kb-loop
   display: grid
+  grid-template-columns: repeat(4, minmax(0, 1fr))
+  gap: 1px
+  margin: 0
+  overflow: hidden
+  background: var(--nt-border-0)
+  border: 1px solid var(--nt-border-0)
+  border-radius: var(--nt-radius-m)
+
+.kb-loop__cell
+  display: flex
+  flex-direction: column-reverse
+  justify-content: flex-end
   padding: var(--nt-space-1) var(--nt-space-2)
-  // 用画布底色挡住穿过标签的连线
-  background: var(--nt-bg-0)
-  border: 1px solid var(--nt-border-1)
-  border-radius: var(--nt-radius-s)
-  font-size: var(--nt-fs-micro)
-  line-height: 1.5
-  white-space: nowrap
+  background: var(--nt-data-inset)
 
-  b
-    color: var(--nt-accent)
-    font-weight: 400
+  dt
+    overflow: hidden
+    color: var(--nt-text-3)
+    font-size: var(--nt-fs-micro)
+    text-overflow: ellipsis
+    white-space: nowrap
 
-  span
-    color: var(--nt-text-2)
+  dd
+    margin: 0
+    color: var(--nt-text-3)
+    font-size: var(--nt-fs-title)
+    font-weight: 600
+    line-height: 1.3
 
-.co-lab__hot
-  color: var(--nt-warn) !important
+.kb-loop--sm .kb-loop__cell dd
+  font-size: var(--nt-fs-panel)
 
-.co-lab--down
-  justify-self: end
+.kb-loop__cell--waiting dd
+  color: var(--nt-warn)
 
-  b
-    color: var(--nt-warn)
+.kb-loop__cell--running dd
+  color: var(--nt-run)
 
-.co-lab--up
-  grid-column: 3
-  justify-self: start
+.kb-loop__cell--stuck dd
+  color: var(--nt-danger)
 
-  b
-    color: var(--nt-run)
+.kb-loop__cell--review dd
+  color: var(--nt-accent)
 
-// 总经理：冰青描边
-.co-ceo
-  flex-direction: row
-  align-items: center
-  align-self: center
-  gap: var(--nt-space-3)
-  width: min(520px, 100%)
-  border: 1.5px solid color-mix(in srgb, var(--nt-accent) 70%, transparent)
-  background: linear-gradient(180deg, color-mix(in srgb, var(--nt-accent) 9%, transparent), color-mix(in srgb, var(--nt-accent) 2%, transparent))
-  box-shadow: 0 0 32px color-mix(in srgb, var(--nt-accent) 16%, transparent)
-
-.co-node--unset
-  border-style: dashed
-  box-shadow: none
-
-.co-radar
-  position: relative
-  flex: none
-  width: 44px
-  height: 44px
-  border: 1px solid color-mix(in srgb, var(--nt-accent) 55%, transparent)
-  border-radius: var(--nt-radius-pill)
-  background: radial-gradient(circle, transparent 0 30%, color-mix(in srgb, var(--nt-accent) 32%, transparent) 31% 34%, transparent 35% 62%, color-mix(in srgb, var(--nt-accent) 24%, transparent) 63% 66%, transparent 67%)
-
-  &::after
-    content: ''
-    position: absolute
-    top: 50%
-    left: 50%
-    width: 5px
-    height: 5px
-    margin: -2.5px
-    border-radius: inherit
-    background: var(--nt-accent)
-
-// 今天跑过才转
-.co-radar--on::before
-  content: ''
-  position: absolute
-  inset: 0
-  border-radius: inherit
-  background: conic-gradient(color-mix(in srgb, var(--nt-accent) 55%, transparent), transparent 30%)
-  animation: co-sweep 4s linear infinite
-
-@keyframes co-sweep
-  to
-    transform: rotate(360deg)
-
-// 部门：标签一排、卡片一排，共用同一套列，所以标签正好在卡片正上方
-.co-cols
+// ——— 公司列：标签、公司卡、部门竖排，共用一列，所以标签正好在卡片正上方 ———
+.kb-cols
   display: grid
-  grid-template-columns: repeat(var(--co-cols), minmax(170px, 260px))
-  justify-content: center
-  gap: 0 var(--nt-space-4)
-  // 部门多到放不下时这一排比容器宽：从左边排起、横向滚动；放得下时居中
-  width: max-content
-  min-width: 100%
-
-.co-fan
-  align-items: end
-  flex: 1 1 92px
-  min-height: 92px
-  max-height: 132px
-  padding-bottom: var(--nt-space-2)
-
-  .co-lab
-    justify-self: center
-
-.co-depts
+  // 每列最窄 240px：右侧检视栏打开时四家公司在 1440 宽下仍放得下，不出横向滚动条
+  grid-template-columns: repeat(var(--kb-cols), minmax(240px, 1fr))
+  gap: 0 var(--nt-space-5)
   align-items: start
-  margin-bottom: auto
+  width: 100%
 
-.co-dept
+.kb-col
+  --kb-wire: color-mix(in srgb, var(--kb-c) 60%, var(--nt-bg-0))
+  display: flex
+  flex-direction: column
   min-width: 0
 
-.co-node--dept
+.kb-lab
+  display: grid
+  align-self: center
+  justify-items: center
+  margin-top: var(--nt-space-12)
+  padding: var(--nt-space-1) var(--nt-space-3)
+  // 用画布底色挡住穿过标签的连线
+  background: var(--nt-bg-0)
+  border: 1px solid color-mix(in srgb, var(--kb-c) 45%, transparent)
+  border-radius: var(--nt-radius-s)
+  color: var(--nt-run)
+  font-size: var(--nt-fs-micro)
+  line-height: 1.6
+  white-space: nowrap
+
+  span + span
+    color: var(--nt-text-2)
+
+.kb-lab__hot
+  color: var(--nt-warn) !important
+
+.kb-co
+  position: relative
+  margin-top: var(--nt-space-4)
+
+.kb-co__body
   width: 100%
+  border-top: 2px solid var(--kb-c)
 
-  &:hover,
+  > .kb-row:first-child
+    padding-right: var(--nt-space-8)
+
+  &:hover
+    border-color: color-mix(in srgb, var(--kb-c) 70%, transparent)
+    border-top-color: var(--kb-c)
+
   &[aria-pressed='true']
-    border-color: var(--co-c)
-    box-shadow: 0 0 0 1px var(--co-c), 0 0 26px color-mix(in srgb, var(--co-c) 30%, transparent)
+    border-color: var(--kb-c)
+    box-shadow: 0 0 0 1px var(--kb-c), 0 0 28px color-mix(in srgb, var(--kb-c) 28%, transparent)
 
-.co-dept__mark
+.kb-co--attention .kb-co__body:not([aria-pressed='true'])
+  box-shadow: var(--nt-shadow-depth), 0 0 0 1px color-mix(in srgb, var(--nt-warn) 35%, transparent)
+
+.kb-co__mark
   flex: none
-  width: 8px
-  height: 8px
+  width: 10px
+  height: 10px
   border-radius: var(--nt-radius-pill)
-  background: var(--co-c)
+  background: var(--kb-c)
+  box-shadow: 0 0 10px var(--kb-c)
 
-.co-figure
+.kb-co__cost
+  margin-left: auto
+  color: var(--nt-text-2)
+  font-size: var(--nt-fs-caption)
+  white-space: nowrap
+
+.kb-figure
   color: var(--nt-text-0)
   font-size: var(--nt-fs-hero)
   font-weight: 600
@@ -345,95 +328,287 @@
     font-size: var(--nt-fs-panel)
     font-weight: 400
 
-// 岗位：一根竖线从部门卡左下角垂下来，每个岗位一个接点
-.co-leaves
+// 总经理：一行，雷达图标今天跑过才转
+.kb-ceo
+  padding: var(--nt-space-1) var(--nt-space-2)
+  background: color-mix(in srgb, var(--nt-accent) 7%, transparent)
+  border: 1px solid color-mix(in srgb, var(--nt-accent) 28%, transparent)
+  border-radius: var(--nt-radius-m)
+
+.kb-ceo--unset
+  border-style: dashed
+  background: none
+
+.kb-ceo__name
+  flex: 1
+  min-width: 0
+
+.kb-ceo__time
+  flex: none
+
+.kb-radar
   position: relative
+  flex: none
+  width: 22px
+  height: 22px
+  overflow: hidden
+  border: 1px solid color-mix(in srgb, var(--nt-accent) 55%, transparent)
+  border-radius: var(--nt-radius-pill)
+  background: radial-gradient(circle, transparent 0 34%, color-mix(in srgb, var(--nt-accent) 35%, transparent) 35% 40%, transparent 41%)
+
+  &::after
+    content: ''
+    position: absolute
+    top: 50%
+    left: 50%
+    width: 4px
+    height: 4px
+    margin: -2px
+    border-radius: inherit
+    background: var(--nt-accent)
+
+.kb-radar--on::before
+  content: ''
+  position: absolute
+  inset: 0
+  border-radius: inherit
+  background: conic-gradient(color-mix(in srgb, var(--nt-accent) 60%, transparent), transparent 30%)
+  animation: kb-sweep 4s linear infinite
+
+@keyframes kb-sweep
+  to
+    transform: rotate(360deg)
+
+// 收放按钮
+.kb-fold
+  position: absolute
+  top: var(--nt-space-2)
+  right: var(--nt-space-2)
   display: grid
-  gap: var(--nt-space-1)
+  place-items: center
+  width: 28px
+  height: 28px
+  padding: 0
+  background: none
+  border: 1px solid transparent
+  border-radius: var(--nt-radius-s)
+  color: var(--nt-text-2)
+  cursor: pointer
+
+  &:hover
+    background: var(--nt-bg-2)
+    border-color: var(--nt-border-1)
+    color: var(--nt-text-0)
+
+.kb-fold--sm
+  position: static
+  flex: none
+  margin-right: var(--nt-space-1)
+
+.kb-folded
+  align-self: flex-start
   margin: var(--nt-space-2) 0 0 var(--nt-space-3)
-  padding: 0 0 0 var(--nt-space-3)
-  border-left: 1.5px solid color-mix(in srgb, var(--co-c) 55%, transparent)
+  padding: var(--nt-space-1) var(--nt-space-3)
+  background: none
+  border: 1px dashed var(--kb-wire)
+  border-radius: var(--nt-radius-m)
+  color: var(--nt-text-2)
+  font: inherit
+  font-size: var(--nt-fs-caption)
+  cursor: pointer
+
+  &:hover
+    color: var(--nt-text-0)
+    border-color: var(--kb-c)
+
+// ——— 竖线串起部门 / Agent：每一行自己画一段竖线和一个圆角拐弯，最后一行只画拐弯 ———
+.kb-spine
+  margin: 0
+  padding: 0 0 0 var(--nt-space-6)
   list-style: none
 
-.co-leaf
+.kb-branch
+  --kb-pad: var(--nt-space-1)
+  --kb-mid: 20px
   position: relative
+  padding-top: var(--kb-pad)
+
+  &:first-child
+    --kb-pad: var(--nt-space-2)
+
+  &::before,
+  &::after
+    content: ''
+    position: absolute
+    top: 0
+    left: calc(var(--nt-space-3) - var(--nt-space-6))
+    border-left: 1.5px solid var(--kb-wire)
+
+  &::before
+    bottom: 0
+
+  &::after
+    width: 10px
+    height: calc(var(--kb-pad) + var(--kb-mid))
+    border-bottom: 1.5px solid var(--kb-wire)
+    border-bottom-left-radius: var(--nt-radius-m)
+
+  &:last-child::before
+    display: none
+
+.kb-spine--agents
+  .kb-branch
+    --kb-mid: 17px
+
+    &:first-child
+      --kb-pad: var(--nt-space-1)
+
+.kb-empty
+  color: var(--nt-text-3)
+  font-size: var(--nt-fs-caption)
+
+  &::after
+    height: calc(var(--kb-pad) + 10px)
+
+// 部门行
+.kb-dept
+  display: flex
+  align-items: center
+  min-height: 40px
+  background: var(--nt-data-raised)
+  border: 1px solid var(--nt-border-0)
+  border-radius: var(--nt-radius-m)
+  transition: border-color var(--nt-transition), background-color var(--nt-transition)
+
+  &:hover
+    border-color: color-mix(in srgb, var(--kb-c) 60%, transparent)
+
+  &:has(> .kb-dept__body[aria-pressed='true'])
+    border-color: var(--kb-c)
+    background: var(--nt-bg-2)
+    box-shadow: 0 0 0 1px var(--kb-c)
+
+.kb-dept--attention
+  border-color: color-mix(in srgb, var(--nt-warn) 55%, transparent)
+
+.kb-dept--empty
+  border-style: dashed
+  background: none
+
+  .kb-dept__name
+    color: var(--nt-text-2)
+
+.kb-dept__body
+  display: flex
+  flex: 1
+  align-items: center
+  gap: var(--nt-space-2)
+  min-width: 0
+  min-height: 38px
+  padding: 0 var(--nt-space-2) 0 var(--nt-space-3)
+  background: none
+  border: 0
+  border-radius: var(--nt-radius-m)
+  color: inherit
+  font: inherit
+  text-align: left
+  cursor: pointer
+
+.kb-dept__name
+  flex: 1
+  min-width: 0
+  overflow: hidden
+  color: var(--nt-text-0)
+  font-size: var(--nt-fs-panel)
+  font-weight: 500
+  text-overflow: ellipsis
+  white-space: nowrap
+
+.kb-dept__fig
+  flex: none
+  min-width: 40px
+  color: var(--nt-text-2)
+  font-size: var(--nt-fs-caption)
+  text-align: right
+
+// Agent 行
+.kb-agent
   display: flex
   align-items: center
   gap: var(--nt-space-2)
   width: 100%
   min-height: 34px
   padding: 0 var(--nt-space-2)
-  background: var(--nt-bg-1)
-  border: 1px solid var(--nt-border-0)
-  border-radius: var(--nt-radius-m)
+  background: var(--nt-data-inset)
+  border: 1px solid transparent
+  border-radius: var(--nt-radius-s)
   color: inherit
   font: inherit
   text-align: left
   cursor: pointer
   transition: border-color var(--nt-transition), background-color var(--nt-transition)
 
-  &::before
-    content: ''
-    position: absolute
-    top: 50%
-    left: calc(-1 * var(--nt-space-3) - 4px)
-    width: 6px
-    height: 6px
-    margin-top: -3px
-    border-radius: var(--nt-radius-pill)
-    background: var(--co-c)
-
-  &:hover,
-  &[aria-pressed='true']
-    border-color: var(--co-c)
+  &:hover
     background: var(--nt-bg-2)
+    border-color: var(--nt-border-1)
 
-.co-leaf__name
+  &[aria-pressed='true']
+    background: var(--nt-bg-2)
+    border-color: var(--kb-c)
+
+.kb-agent__main
+  display: flex
   flex: 1
+  align-items: baseline
+  gap: var(--nt-space-2)
+  min-width: 0
+
+.kb-agent__name
+  flex: 0 1 auto
   min-width: 0
   overflow: hidden
   color: var(--nt-text-0)
-  font-size: var(--nt-fs-panel)
+  font-size: var(--nt-fs-caption)
   text-overflow: ellipsis
   white-space: nowrap
 
-.co-leaf__val
+.kb-agent__pos
+  min-width: 0
+  overflow: hidden
+  color: var(--nt-text-3)
+  font-size: var(--nt-fs-micro)
+  text-overflow: ellipsis
+  white-space: nowrap
+
+.kb-agent__val
   flex: none
   color: var(--nt-text-2)
-  font-size: var(--nt-fs-caption)
+  font-size: var(--nt-fs-micro)
 
-// 要人看一眼的岗位：琥珀描边；空岗：虚线
-.co-leaf--hot
-  border-color: color-mix(in srgb, var(--nt-warn) 75%, transparent)
-
-  .co-leaf__val
-    color: var(--nt-warn)
-
-.co-leaf--empty
-  border-style: dashed
+.kb-agent__val--hot
+  color: var(--nt-warn)
 
 // ——— 状态（点 + 文字，不只靠颜色） ———
-.co-dot
+.kb-dot
   flex: none
   width: 8px
   height: 8px
   border-radius: var(--nt-radius-pill)
   background: var(--nt-text-3)
 
-.co-dot--ok
+.kb-dot--ok
   background: var(--nt-success)
+  box-shadow: 0 0 6px var(--nt-success)
 
-.co-dot--attention
-  background: var(--nt-danger)
-
-.co-dot--idle
+.kb-dot--attention
   background: var(--nt-warn)
+  box-shadow: 0 0 6px var(--nt-warn)
 
-.co-dot--empty
+.kb-dot--empty
   background: transparent
   border: 1px solid var(--nt-text-3)
 
-.co-state
+.kb-state
   flex: none
   padding: 0 var(--nt-space-2)
   border: 1px solid currentColor
@@ -443,36 +618,69 @@
   line-height: 1.6
   white-space: nowrap
 
-.co-state--ok
+.kb-state--ok
   color: var(--nt-success)
 
-.co-state--attention
-  color: var(--nt-danger)
-
-.co-state--idle
+.kb-state--attention
   color: var(--nt-warn)
 
-// ——— 树下面一条：选中节点的详情；右边给右下角的指令窗留位 ———
-.co-detail
-  display: grid
+.kb-badge
   flex: none
-  grid-template-columns: minmax(180px, 1.1fr) minmax(0, 1fr) minmax(0, 1.2fr) auto
-  gap: var(--nt-space-4)
-  align-items: start
-  max-height: 150px
-  margin-right: var(--app-dock-w, 0px)
-  padding: var(--nt-space-3) var(--nt-space-4)
-  overflow-y: auto
-  background: var(--nt-bg-1)
+  padding: 0 var(--nt-space-1)
+  background: color-mix(in srgb, currentColor 12%, transparent)
+  border: 1px solid color-mix(in srgb, currentColor 55%, transparent)
+  border-radius: var(--nt-radius-s)
+  font-size: var(--nt-fs-micro)
+  line-height: 1.6
+  white-space: nowrap
+
+.kb-badge--waiting
+  color: var(--nt-warn)
+
+.kb-badge--review
+  color: var(--nt-accent)
+
+.kb-badge--stuck,
+.kb-badge--failed
+  color: var(--nt-danger)
+
+.kb-badge--running
+  color: var(--nt-run)
+
+// ——— 右侧检视 ———
+.kb-insp
+  display: flex
+  flex: none
+  flex-direction: column
+  width: min(400px, 38vw)
+  min-height: 0
+  overflow: hidden
+  background: var(--nt-glass-panel)
   border: 1px solid var(--nt-border-1)
   border-radius: var(--nt-radius-l)
+  box-shadow: var(--nt-shadow-depth)
 
-.co-detail__head
+.kb-insp__head
   display: flex
   align-items: center
   gap: var(--nt-space-2)
+  padding: var(--nt-space-3) var(--nt-space-3) var(--nt-space-3) var(--nt-space-4)
+  border-bottom: 1px solid var(--nt-border-0)
 
-.co-detail__title
+.kb-insp__titles
+  display: flex
+  flex: 1
+  flex-direction: column
+  min-width: 0
+
+.kb-insp__kicker
+  overflow: hidden
+  color: var(--nt-text-3)
+  font-size: var(--nt-fs-micro)
+  text-overflow: ellipsis
+  white-space: nowrap
+
+.kb-insp__title
   margin: 0
   overflow: hidden
   color: var(--nt-text-0)
@@ -482,12 +690,26 @@
   text-overflow: ellipsis
   white-space: nowrap
 
-.co-detail__now
-  margin: var(--nt-space-1) 0 0
+  // 只是程序把焦点放到这里，标题本身不可操作
+  &:focus
+    outline: none
+
+.kb-insp__body
+  display: grid
+  flex: 1
+  align-content: start
+  gap: var(--nt-space-4)
+  min-height: 0
+  padding: var(--nt-space-4)
+  overflow-y: auto
+
+.kb-insp__now
+  max-width: 72ch
+  margin: 0
   color: var(--nt-text-1)
   font-size: var(--nt-fs-panel)
 
-.co-detail__facts
+.kb-insp__facts
   display: grid
   grid-template-columns: auto 1fr
   gap: var(--nt-space-1) var(--nt-space-3)
@@ -501,60 +723,113 @@
     margin: 0
     color: var(--nt-text-1)
 
-.co-detail__agents
+.kb-insp__actions
+  display: flex
+  flex-wrap: wrap
+  gap: var(--nt-space-2)
+
+.kb-insp__sec
+  h3
+    margin: 0 0 var(--nt-space-2)
+    color: var(--nt-text-2)
+    font-size: var(--nt-fs-caption)
+    font-weight: 600
+
+// 总经理最近汇报：结论一句 + 理由列表（正文限 72ch）
+.kb-insp__report
+  padding: var(--nt-space-2) var(--nt-space-3)
+  background: var(--nt-data-inset)
+  border-radius: var(--nt-radius-s)
+
+.kb-insp__report-conclusion
+  max-width: 72ch
+  margin: 0 0 var(--nt-space-1)
+  color: var(--nt-text-1)
+  font-size: var(--nt-fs-caption)
+  font-weight: 600
+
+.kb-insp__reasons
+  max-width: 72ch
+  margin: 0 0 var(--nt-space-1)
+  padding-left: var(--nt-space-4)
+  color: var(--nt-text-2)
+  font-size: var(--nt-fs-caption)
+
+.kb-insp__report-meta
+  display: flex
+  flex-wrap: wrap
+  gap: var(--nt-space-2)
+  margin: 0
+  color: var(--nt-text-3)
+  font-size: var(--nt-fs-micro)
+
+.kb-insp__list
+  display: grid
+  gap: 2px
   margin: 0
   padding: 0
   list-style: none
 
-.co-detail__agent
+.kb-insp__item
   display: flex
   align-items: center
   gap: var(--nt-space-2)
-  min-height: 28px
-  padding: 0 var(--nt-space-1)
+  width: 100%
+  min-height: 34px
+  padding: 0 var(--nt-space-2)
+  background: var(--nt-data-inset)
+  border: 0
   border-radius: var(--nt-radius-s)
   color: inherit
+  font: inherit
+  text-align: left
   text-decoration: none
+  cursor: pointer
 
   &:hover
     background: var(--nt-accent-soft)
 
-.co-detail__agent-name
+.kb-insp__item-title
   flex: 1
   min-width: 0
   overflow: hidden
+  color: var(--nt-text-1)
+  font-size: var(--nt-fs-caption)
   text-overflow: ellipsis
   white-space: nowrap
 
-.co-detail__agent-time
+.kb-insp__item-meta
+  flex: none
   color: var(--nt-text-3)
-  font-size: var(--nt-fs-caption)
+  font-size: var(--nt-fs-micro)
 
-.co-detail__actions
-  display: flex
-  flex-direction: column
-  gap: var(--nt-space-2)
+.kb-insp__item-meta--hot
+  color: var(--nt-warn)
 
-@media (max-width: 1099px)
-  .co-page
+.kb-insp__foot
+  max-width: 72ch
+  margin: 0
+  color: var(--nt-text-3)
+  font-size: var(--nt-fs-micro)
+
+@media (max-width: 799px)
+  .kb-page
+    flex-direction: column
     height: auto
 
-  .co-tree
+  .kb-canvas
     overflow-x: auto
     overflow-y: visible
 
-  .co-detail
-    grid-template-columns: minmax(0, 1fr)
-    max-height: none
-    margin-right: 0
-
-@media (max-width: 559px)
-  .co-head
+  .kb-me
     flex-wrap: wrap
 
-  .co-head__line
-    white-space: normal
+    .kb-loop
+      width: 100%
+
+  .kb-insp
+    width: auto
 
 @media (prefers-reduced-motion: reduce)
-  .co-radar--on::before
+  .kb-radar--on::before
     animation: none

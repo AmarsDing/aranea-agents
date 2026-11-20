@@ -260,6 +260,14 @@ func (s *ApprovalCenterService) WithInbox(agg *inbox.Aggregator) *ApprovalCenter
 	return s
 }
 
+// InboxAggregator 供看板聚合读同一份收件箱口径（可为 nil）。
+func (s *ApprovalCenterService) InboxAggregator() *inbox.Aggregator {
+	if s == nil {
+		return nil
+	}
+	return s.inbox
+}
+
 func (s *ApprovalCenterService) inboxOrErr() (*inbox.Aggregator, error) {
 	if s == nil || s.inbox == nil {
 		return nil, apierror.Unavailable(apierror.DomainApproval, "inbox is not configured")

@@ -25,6 +25,7 @@ const (
 	KindConfirm   = "confirm"   // 确认执行（工具确认）
 	KindReview    = "review"    // 验收
 	KindException = "exception" // 异常待处理
+	KindReport    = "report"    // 汇报：只需读过点「知道了」，不算拍板
 )
 
 // 风险级（与 approval 包、proto RiskLevel 同名小写）。

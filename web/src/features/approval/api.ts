@@ -221,6 +221,8 @@ export type InboxItemRow = {
   actions: InboxAction[];
   reject_requires_note: boolean;
   link: string;
+  /** 来源特定上下文（JSON 文本，仅展示用；如排期草案的条目与时间） */
+  context_json: string;
 };
 
 export type InboxListResult = {
@@ -250,6 +252,7 @@ function wireToInboxItem(raw: Record<string, unknown>): InboxItemRow {
     actions: actions.map(String).filter((a): a is InboxAction => INBOX_ACTIONS.has(a)),
     reject_requires_note: Boolean(raw.rejectRequiresNote ?? raw.reject_requires_note ?? false),
     link: String(raw.link ?? ''),
+    context_json: String(raw.contextJson ?? raw.context_json ?? ''),
   };
 }
 
