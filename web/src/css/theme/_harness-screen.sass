@@ -1,0 +1,730 @@
+// Harness「大屏显示」（/overview）：类名 hs- 前缀，取值只走 --nt-* 令牌（材质别名 --ov-* 来自 _overview.sass 的 .ov-page）。
+// 版面（一屏）：页头一行 → 五张数字卡 → 两排图卡（模型消耗｜工具消耗｜积分与额度；费用与调用趋势｜执行任务量）。
+// 宽度不到 1200 或高度不到 640 时改成上下排、整页滚动；卡片内容多时在卡片里滚动。
+
+.hs-page
+  display: flex
+  flex-direction: column
+  gap: var(--nt-space-3)
+  // 与今日页同一个办法：高度取 q-page 的 min-height（视口减顶栏），子块按比例分
+  height: 0
+  padding: var(--nt-space-3) var(--nt-space-page) var(--nt-space-4)
+
+.hs-num
+  font-family: var(--nt-font-mono)
+  font-variant-numeric: tabular-nums
+
+.hs-bar
+  position: relative
+  display: flex
+  align-items: center
+  gap: var(--nt-space-3)
+  flex-shrink: 0
+
+.hs-bar__note
+  font-size: var(--nt-fs-caption)
+  color: var(--nt-text-3)
+
+.hs-bar__updated
+  margin-left: auto
+  font-size: var(--nt-fs-caption)
+  color: var(--nt-text-3)
+
+.hs-error
+  flex-shrink: 0
+
+// ——— 五张数字卡 ———
+.hs-kpis
+  position: relative
+  display: grid
+  grid-template-columns: repeat(5, minmax(0, 1fr))
+  gap: var(--nt-space-3)
+  flex-shrink: 0
+
+.hs-kpi.ov-tile
+  +ov-panel
+  padding: var(--nt-space-3) var(--nt-space-4)
+
+.hs-kpi .ov-tile__label
+  font-size: var(--nt-fs-panel)
+
+.hs-kpi .ov-tile__value
+  font-size: calc(var(--nt-fs-hero) * 1.25)
+
+.hs-kpi .ov-tile__caption
+  font-size: var(--nt-fs-caption)
+
+.hs-kpi .ov-tile__spark
+  height: 28px
+
+// 环比放到右上角（数字那一行只留数字，窄的时候不换行）；左边色条已经表示状态，不再要右上圆点
+.hs-kpi .ov-tile__dot
+  display: none
+
+.hs-kpi .ov-tile__delta
+  position: absolute
+  top: var(--nt-space-3)
+  right: var(--nt-space-4)
+
+// ——— 图卡网格 ———
+.hs-grid
+  position: relative
+  flex: 1
+  min-height: 0
+  display: grid
+  grid-template-columns: repeat(12, minmax(0, 1fr))
+  grid-template-rows: minmax(0, 1.12fr) minmax(0, 1fr)
+  gap: var(--nt-space-3)
+
+.hs-grid__share
+  grid-column: span 5
+
+.hs-grid__tools
+  grid-column: span 4
+
+// 积分是主看项：占右侧整列（两排高），趋势和任务量分下排剩下的 9 列
+.hs-grid__quota
+  grid-column: span 3
+  grid-row: span 2
+
+.hs-grid__trend
+  grid-column: span 5
+
+.hs-grid__task
+  grid-column: span 4
+
+.hs-panel
+  +ov-panel
+  display: flex
+  flex-direction: column
+  min-width: 0
+  min-height: 0
+  padding: var(--nt-space-3) var(--nt-space-4)
+  overflow: hidden
+
+.hs-head
+  display: flex
+  align-items: center
+  gap: var(--nt-space-2)
+  min-width: 0
+  margin-bottom: var(--nt-space-3)
+  flex-shrink: 0
+
+.hs-head__icon
+  display: grid
+  place-items: center
+  width: 28px
+  height: 28px
+  flex-shrink: 0
+  border-radius: var(--nt-radius-m)
+  border: 1px solid color-mix(in srgb, var(--nt-accent) 34%, transparent)
+  background: color-mix(in srgb, var(--nt-accent) 10%, transparent)
+  color: var(--nt-accent)
+
+.hs-head__title
+  margin: 0
+  font-size: var(--nt-fs-title)
+  font-weight: 700
+  line-height: 1.3
+  color: var(--nt-text-1)
+  white-space: nowrap
+
+.hs-head__cap
+  min-width: 0
+  overflow: hidden
+  text-overflow: ellipsis
+  white-space: nowrap
+  font-size: var(--nt-fs-caption)
+  color: var(--nt-text-3)
+
+.hs-head__tail
+  margin-left: auto
+  flex-shrink: 0
+
+// 「明细」链接：没有别的尾部元素时自己靠右，有就跟在后面
+.hs-head__link
+  margin-left: auto
+  flex-shrink: 0
+  color: var(--nt-text-2)
+
+.hs-head__tail + .hs-head__link
+  margin-left: 0
+
+.hs-empty
+  flex: 1
+  display: grid
+  place-items: center
+  text-align: center
+  color: var(--nt-text-3)
+  font-size: var(--nt-fs-body)
+
+.hs-chart
+  width: 100%
+  height: 100%
+
+.hs-legend
+  display: inline-flex
+  align-items: center
+  gap: var(--nt-space-1)
+  font-size: var(--nt-fs-micro)
+  color: var(--nt-text-3)
+
+.hs-legend__swatch
+  display: inline-block
+  width: 8px
+  height: 8px
+  flex-shrink: 0
+  border-radius: var(--nt-radius-pill)
+
+.hs-legend .hs-legend__swatch:not(:first-child)
+  margin-left: var(--nt-space-2)
+
+// 分类色：与 hsCharts.ts 的 seriesColors() 同一组令牌、同一顺序
+@for $i from 1 through 6
+  .hs-dot--#{$i},
+  .hs-fill--#{$i}
+    background: var(--nt-line-#{$i})
+
+// ——— 模型消耗：环图 + 排名 ———
+.hs-share__body
+  flex: 1
+  min-height: 0
+  display: grid
+  grid-template-columns: minmax(130px, 0.85fr) minmax(0, 1.5fr)
+  gap: var(--nt-space-4)
+  align-items: center
+
+.hs-share__donut
+  position: relative
+  height: 100%
+  min-height: 130px
+
+.hs-share__donut .hs-chart
+  position: absolute
+  inset: 0
+
+.hs-share__center
+  position: absolute
+  inset: 0
+  display: flex
+  flex-direction: column
+  align-items: center
+  justify-content: center
+  pointer-events: none
+
+.hs-share__total
+  font-size: var(--nt-fs-hero)
+  font-weight: 700
+  color: var(--nt-text-0)
+
+.hs-share__total-cap
+  font-size: var(--nt-fs-caption)
+  color: var(--nt-text-3)
+
+.hs-share__list
+  list-style: none
+  margin: 0
+  padding: 0
+  max-height: 100%
+  overflow: auto
+  display: flex
+  flex-direction: column
+  gap: var(--nt-space-2)
+
+.hs-share__row
+  display: grid
+  grid-template-columns: 10px minmax(0, 1fr) auto auto
+  grid-template-areas: "dot name pct cost" ". bar bar meta"
+  align-items: center
+  column-gap: var(--nt-space-2)
+  row-gap: 3px
+
+.hs-dot
+  grid-area: dot
+  width: 10px
+  height: 10px
+  border-radius: var(--nt-radius-pill)
+
+.hs-share__name
+  grid-area: name
+  overflow: hidden
+  text-overflow: ellipsis
+  white-space: nowrap
+  font-size: var(--nt-fs-body)
+  color: var(--nt-text-1)
+
+.hs-share__pct
+  grid-area: pct
+  font-size: var(--nt-fs-caption)
+  color: var(--nt-text-2)
+
+.hs-share__cost
+  grid-area: cost
+  min-width: 4.5rem
+  text-align: right
+  font-size: var(--nt-fs-body)
+  font-weight: 700
+  color: var(--nt-text-1)
+
+.hs-share__cost--unpriced
+  font-weight: 400
+  color: var(--nt-warn)
+
+.hs-share__meta
+  grid-area: meta
+  text-align: right
+  white-space: nowrap
+  font-size: var(--nt-fs-micro)
+  color: var(--nt-text-3)
+
+.hs-share__bar
+  grid-area: bar
+  height: 4px
+  border-radius: var(--nt-radius-pill)
+  background: color-mix(in srgb, var(--nt-border-1) 60%, transparent)
+  overflow: hidden
+
+.hs-share__bar > i
+  display: block
+  height: 100%
+  border-radius: inherit
+
+// ——— 工具消耗：横向条（成功 / 失败 / 拦截 / 其他） ———
+.hs-tools__list
+  list-style: none
+  margin: 0
+  padding: 0
+  flex: 1
+  min-height: 0
+  overflow: auto
+  display: flex
+  flex-direction: column
+  justify-content: space-around
+  gap: var(--nt-space-1)
+
+.hs-tools__row
+  display: grid
+  grid-template-columns: minmax(64px, 8.5rem) minmax(0, 1fr) 4rem 3.5rem
+  align-items: center
+  gap: var(--nt-space-2)
+
+.hs-tools__name
+  overflow: hidden
+  text-overflow: ellipsis
+  white-space: nowrap
+  font-size: var(--nt-fs-body)
+  color: var(--nt-text-1)
+
+.hs-tools__track
+  height: 10px
+  border-radius: var(--nt-radius-pill)
+  background: color-mix(in srgb, var(--nt-border-1) 45%, transparent)
+
+.hs-tools__bar
+  display: flex
+  height: 100%
+  border-radius: inherit
+  overflow: hidden
+
+.hs-tools__bar > i
+  display: block
+  flex-basis: 0
+  height: 100%
+
+.hs-seg--ok
+  background: var(--nt-accent-2)
+
+.hs-seg--fail
+  background: var(--nt-danger)
+
+.hs-seg--block
+  background: var(--nt-warn)
+
+.hs-seg--other
+  background: color-mix(in srgb, var(--nt-text-3) 55%, transparent)
+
+.hs-tools__calls
+  text-align: right
+  font-size: var(--nt-fs-body)
+  font-weight: 700
+  color: var(--nt-text-1)
+
+.hs-tools__fail
+  text-align: right
+  font-size: var(--nt-fs-caption)
+  color: var(--nt-text-3)
+
+// ——— 积分与额度：预算 + 每个平台一行（剩余、已用条、终端额度窗口；手填平台带编辑）———
+.hs-credit__list
+  list-style: none
+  margin: 0
+  padding: 0
+  flex: 1
+  min-height: 0
+  overflow: auto
+  display: flex
+  flex-direction: column
+
+.hs-credit__row
+  display: grid
+  grid-template-columns: minmax(0, 1fr) auto auto
+  grid-template-areas: "who value edit" "meters meters meters"
+  align-items: center
+  column-gap: var(--nt-space-2)
+  padding: var(--nt-space-3) 0
+  border-bottom: 1px solid var(--nt-border-1)
+
+.hs-credit__row:last-child
+  border-bottom: none
+
+.hs-credit__who
+  grid-area: who
+  display: flex
+  flex-direction: column
+  min-width: 0
+
+.hs-credit__title
+  overflow: hidden
+  text-overflow: ellipsis
+  white-space: nowrap
+  font-size: var(--nt-fs-body)
+  font-weight: 600
+  color: var(--nt-text-1)
+
+.hs-credit__sub
+  overflow: hidden
+  text-overflow: ellipsis
+  white-space: nowrap
+  font-size: var(--nt-fs-micro)
+  color: var(--nt-text-3)
+
+.hs-credit__value
+  grid-area: value
+  font-size: var(--nt-fs-body)
+  font-weight: 700
+  white-space: nowrap
+  color: var(--nt-text-1)
+
+.hs-credit__value.hs-tone--warn
+  color: var(--nt-warn)
+
+.hs-credit__value.hs-tone--danger
+  color: var(--nt-danger)
+
+.hs-credit__row--missing .hs-credit__value
+  font-weight: 400
+  color: var(--nt-text-3)
+
+.hs-credit__edit
+  grid-area: edit
+  color: var(--nt-text-2)
+  // 按钮保留全站 36px 点击区，但不撑高行（上下各让 6px 进行距）
+  margin-block: -6px
+
+.hs-credit__meters
+  grid-area: meters
+  display: flex
+  align-items: center
+  gap: var(--nt-space-2)
+  min-width: 0
+  // 间距只放在有条的行上：空的第二行不该占高度
+  margin-top: 3px
+
+.hs-credit__bar
+  flex: 1
+  min-width: 40px
+  height: 6px
+  border-radius: var(--nt-radius-pill)
+  background: color-mix(in srgb, var(--nt-border-1) 60%, transparent)
+  overflow: hidden
+
+.hs-credit__bar > i
+  display: block
+  height: 100%
+  border-radius: inherit
+
+// 已用条：数据色；≥70% 琥珀、≥90% 红
+.hs-meter--ok,
+.hs-meter--neutral
+  background: var(--nt-accent-2)
+
+.hs-meter--warn
+  background: var(--nt-warn)
+
+.hs-meter--danger
+  background: var(--nt-danger)
+
+// 近 30 天剩余走势：数据色，往下走就是在消耗
+.hs-credit__spark
+  flex-shrink: 0
+  width: 72px
+  height: 18px
+  color: var(--nt-accent-2)
+
+.hs-credit__sub--stale
+  color: var(--nt-warn)
+
+.hs-credit__win
+  flex-shrink: 0
+  padding: 0 var(--nt-space-2)
+  border-radius: var(--nt-radius-pill)
+  border: 1px solid var(--nt-border-1)
+  font-size: var(--nt-fs-micro)
+  color: var(--nt-text-2)
+
+.hs-credit__win.hs-tone--warn
+  color: var(--nt-warn)
+  border-color: color-mix(in srgb, var(--nt-warn) 45%, transparent)
+
+.hs-credit__win.hs-tone--danger
+  color: var(--nt-danger)
+  border-color: color-mix(in srgb, var(--nt-danger) 45%, transparent)
+
+.hs-quota__note
+  margin: var(--nt-space-1) 0 0
+  font-size: var(--nt-fs-caption)
+  line-height: 1.5
+  color: var(--nt-text-3)
+
+// 手填积分表单
+.hs-credit-form
+  display: flex
+  flex-direction: column
+  gap: var(--nt-space-3)
+
+.hs-credit-form__pair
+  display: grid
+  grid-template-columns: repeat(2, minmax(0, 1fr))
+  gap: var(--nt-space-3)
+
+.hs-credit-form__error
+  margin: 0
+  font-size: var(--nt-fs-caption)
+  color: var(--nt-danger)
+
+// 触屏：编辑按钮至少 44px
+@media (pointer: coarse)
+  .hs-credit__edit
+    min-width: 44px
+    min-height: 44px
+
+// ——— 趋势 ———
+.hs-trend__chart
+  flex: 1
+  min-height: 0
+
+// ——— 执行任务量（次要）———
+.hs-task__stats
+  display: grid
+  grid-template-columns: repeat(3, minmax(0, 1fr))
+  gap: var(--nt-space-2)
+  flex-shrink: 0
+
+.hs-task__stat
+  display: flex
+  flex-direction: column
+  gap: 2px
+  min-width: 0
+  padding: var(--nt-space-2) var(--nt-space-3)
+  border-radius: var(--nt-radius-m)
+  border: 1px solid var(--nt-border-1)
+  background: var(--ov-data)
+
+.hs-task__stat-value
+  font-size: var(--nt-fs-num-lg)
+  font-weight: 700
+  white-space: nowrap
+  color: var(--nt-text-1)
+
+.hs-task__stat-label
+  overflow: hidden
+  text-overflow: ellipsis
+  white-space: nowrap
+  font-size: var(--nt-fs-micro)
+  color: var(--nt-text-3)
+
+.hs-tone--ok .hs-task__stat-value
+  color: var(--nt-success)
+
+.hs-tone--warn .hs-task__stat-value
+  color: var(--nt-warn)
+
+.hs-tone--danger .hs-task__stat-value
+  color: var(--nt-danger)
+
+.hs-task__dist
+  flex: 1
+  min-height: 0
+  display: flex
+  flex-direction: column
+  justify-content: center
+  gap: var(--nt-space-2)
+
+.hs-task__dist-head
+  display: flex
+  justify-content: space-between
+  font-size: var(--nt-fs-caption)
+  color: var(--nt-text-2)
+
+.hs-task__stack
+  display: flex
+  gap: 2px
+  height: 12px
+  border-radius: var(--nt-radius-pill)
+  overflow: hidden
+
+.hs-task__stack > i
+  display: block
+  flex-basis: 0
+  min-width: 0
+
+.hs-task__legend
+  list-style: none
+  margin: 0
+  padding: 0
+  display: grid
+  grid-template-columns: repeat(auto-fill, minmax(7rem, 1fr))
+  gap: var(--nt-space-1) var(--nt-space-3)
+  font-size: var(--nt-fs-caption)
+  color: var(--nt-text-2)
+
+.hs-task__legend li
+  display: flex
+  align-items: center
+  gap: var(--nt-space-2)
+
+.hs-task__legend li > span:last-child
+  margin-left: auto
+  color: var(--nt-text-1)
+
+.hs-st--running
+  background: var(--nt-run)
+
+.hs-st--waiting
+  background: var(--nt-warn)
+
+.hs-st--queued
+  background: color-mix(in srgb, var(--nt-text-3) 70%, transparent)
+
+.hs-st--failed
+  background: var(--nt-danger)
+
+.hs-st--completed
+  background: var(--nt-success)
+
+// ——— 笔记本宽度（1200–1599）：仍是一屏，收紧字号与排名行（占比条让位给 Token / 次数） ———
+@media (max-width: 1599px)
+  .hs-kpi .ov-tile__value
+    font-size: var(--nt-fs-hero)
+
+  .hs-share__body
+    grid-template-columns: minmax(100px, 0.6fr) minmax(0, 1.4fr)
+    gap: var(--nt-space-3)
+
+  .hs-share__total
+    font-size: var(--nt-fs-title)
+
+  .hs-share__row
+    grid-template-areas: "dot name pct cost" ". meta meta meta"
+
+  .hs-share__meta
+    text-align: left
+
+  .hs-share__bar
+    display: none
+
+  .hs-tools__row
+    grid-template-columns: minmax(56px, 6rem) minmax(0, 1fr) 3.2rem 3rem
+
+  .hs-task__stat
+    padding: var(--nt-space-2)
+
+  .hs-task__stat-value
+    font-size: var(--nt-fs-title)
+
+// ——— 矮屏（高度不到 900）：去掉数字卡里的小走势，行距收紧，让下面两排图卡多一点高度 ———
+@media (max-height: 899px)
+  .hs-page,
+  .hs-grid,
+  .hs-kpis
+    gap: var(--nt-space-2)
+
+  .hs-page
+    padding-top: var(--nt-space-2)
+    padding-bottom: var(--nt-space-2)
+
+  .hs-kpi .ov-tile__spark
+    display: none
+
+  .hs-head
+    margin-bottom: var(--nt-space-2)
+
+  .hs-panel
+    padding: var(--nt-space-2) var(--nt-space-3)
+
+  .hs-share__list
+    gap: var(--nt-space-1)
+
+  // Token / 次数这一行让位（环图悬停仍能看到）
+  .hs-share__meta,
+  .hs-share__bar
+    display: none
+
+  .hs-tools__list
+    gap: 0
+
+  // 积分行只留名称、数值和已用条；套餐与备注悬停在名称上能看到（title）
+  .hs-credit__row
+    padding: 2px 0
+
+  .hs-credit__sub
+    display: none
+
+// ——— 窄屏 / 矮屏：改成上下排，整页滚动 ———
+@media (max-width: 1199px), (max-height: 639px)
+  .hs-page
+    height: auto
+
+  .hs-kpis
+    grid-template-columns: repeat(3, minmax(0, 1fr))
+
+  .hs-grid
+    grid-template-columns: repeat(2, minmax(0, 1fr))
+    grid-template-rows: none
+
+  .hs-grid > *
+    grid-column: span 1
+    min-height: 280px
+
+  .hs-grid__share,
+  .hs-grid__trend
+    grid-column: 1 / -1
+
+  .hs-grid__quota
+    grid-row: auto
+
+@media (max-width: 799px)
+  .hs-kpis,
+  .hs-grid
+    grid-template-columns: minmax(0, 1fr)
+
+  .hs-share__body
+    grid-template-columns: minmax(0, 1fr)
+
+  .hs-share__donut
+    height: 180px
+
+@media (max-width: 559px)
+  .hs-bar
+    flex-wrap: wrap
+
+  .hs-tools__row
+    grid-template-columns: minmax(0, 1fr) 3.5rem
+    row-gap: var(--nt-space-1)
+
+  .hs-tools__track
+    grid-column: 1 / -1
+    grid-row: 2
+
+  .hs-tools__fail
+    display: none

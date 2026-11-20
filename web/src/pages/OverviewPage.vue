@@ -1,300 +1,152 @@
 <template>
-  <q-page class="app-standard-page ov-page">
-    <div class="ov-page__shell">
-      <q-banner v-if="error" class="ov-error" role="alert">
-        <template #avatar>
-          <q-icon name="warning" size="18px" />
-        </template>
-        {{ t('overviewPage.v2.loadFailed') }}: {{ error }}
-        <template #action>
-          <q-btn flat dense :label="t('overviewPage.v2.refresh')" @click="onRefresh" />
-        </template>
-      </q-banner>
-
-      <OverviewVerdictBanner
-        class="ov-page__sticky"
-        :verdict="verdict"
-        :headline="headline"
-        :subline="subline"
-        :chips="chips"
-        :updated-at="updatedAtClock"
-        :stale="stale"
-        :loading="loading || attentionLoading"
-        @refresh="onRefresh"
-      >
-        <template #filters>
-          <q-select
-            :model-value="filters.range"
-            dense
-            outlined
-            emit-value
-            map-options
-            :label="t('overviewPage.filterRange')"
-            :options="rangeOptions"
-            class="ov-filter"
-            @update:model-value="(v) => setRange(String(v))"
-          />
-          <q-select
-            :model-value="filters.provider_code || undefined"
-            dense
-            outlined
-            emit-value
-            map-options
-            clearable
-            :label="t('overviewPage.filterProvider')"
-            :options="providerOptions"
-            class="ov-filter ov-filter--wide"
-            @update:model-value="(v) => setProvider(v ? String(v) : '')"
-          />
-        </template>
-      </OverviewVerdictBanner>
-
-      <OverviewDomainCards :cards="domainCards" />
-
-      <!-- 设计稿：费用消耗是主体，需要处理的事在右边 -->
-      <div class="ov-mainrow">
-        <OverviewCostBoard
-          :available="!!page.overview.value"
-          :cost-value-usd="costValueUsd"
-          :cost-delta="costDelta"
-          :budget="budget"
-          :unpriced-count="unpricedRows.length"
-          :top-bars="topModelBars"
-          :agent-bars="topAgentBars"
-          :cache="cacheView"
-          :terminals="terminals"
-          @drill="onTileDrill"
-        />
-        <OverviewAttentionQueue
-          :lanes="board.lanes"
-          :loading="loading || attentionLoading"
-          @drill="onDrillItem"
-          @refresh="onRefresh"
-        />
-      </div>
-
-      <div class="ov-workrow">
-        <OverviewTaskBoard
-          :items="taskSituations.items.value"
-          :total="taskSituations.total.value"
-          :limit="taskSituations.limit.value"
-          :offset="taskSituations.offset.value"
-          :loading="taskSituations.loading.value"
-          :error="taskSituations.error.value"
-          :query="taskSituations.query.value"
-          @refresh="taskSituations.refresh"
-          @filter="taskSituations.setQuery"
-          @page="(offset) => taskSituations.setQuery({ offset })"
-          @page-size="(limit) => taskSituations.setQuery({ limit, offset: 0 })"
-          @drill="onTaskDrill"
-          @create="onTaskCreate"
-        />
-        <div class="ov-workrow__rail">
-          <AppWorkspaceLaunchpad :label="t('uiSystem.launchpad.label')" :items="launchpadItems" />
-        </div>
-      </div>
-
-      <OverviewRedStrip
-        :model-tiles="modelTiles"
-        :run-tiles="runTiles"
-        :run-window="runnerWindowMinutes"
-        :run-window-options="runnerWindowOptions"
-        @update:run-window="onRunWindow"
-        @drill="onTileDrill"
+  <!--
+    Harness · 大屏显示（2026-11-19 由「基座总览」改成）：一屏放下，主看各模型 / 各工具的消耗、费用、积分与额度，
+    次看执行任务量。设计见 docs/aranea-agents/design/2026-11-17-三大模块重设计/04-Harness系统.md §4.1（v3）。
+  -->
+  <q-page class="app-standard-page ov-page hs-page">
+    <div class="hs-bar">
+      <q-btn-toggle
+        :model-value="range"
+        dense
+        no-caps
+        unelevated
+        toggle-color="primary"
+        :options="rangeOptions"
+        :aria-label="t('harnessScreen.rangeAria')"
+        @update:model-value="setRange"
       />
+      <span class="hs-bar__note">{{ t('harnessScreen.utcNote', { time: dayStartLocal }) }}</span>
+      <span class="hs-bar__updated" aria-live="polite">
+        {{ updatedAt ? t('harnessScreen.updated', { time: clock(updatedAt) }) : t('harnessScreen.loading') }}
+      </span>
+      <q-btn
+        flat
+        round
+        dense
+        icon="refresh"
+        :loading="loading"
+        :aria-label="t('harnessScreen.refresh')"
+        @click="refresh"
+      />
+    </div>
 
-      <OverviewTrendBoard
+    <q-banner v-if="error" class="ov-error hs-error" role="alert">
+      {{ t('harnessScreen.loadFailed') }}: {{ error }}
+    </q-banner>
+
+    <div class="hs-kpis">
+      <OverviewStatTile
+        v-for="k in kpis"
+        :key="k.key"
+        class="hs-kpi"
+        :label="k.label"
+        :value="k.value"
+        :caption="k.caption"
+        :delta="k.delta"
+        :delta-good-when-negative="k.deltaGoodWhenNegative"
+        :tone="k.tone"
+        :spark="k.spark"
+        :clickable="!!k.to"
+        @drill="k.to && router.push(k.to)"
+      />
+    </div>
+
+    <div class="hs-grid">
+      <HsShareBoard
+        v-model:mode="mode"
+        :to="links.usage"
+        class="hs-grid__share"
+        :rows="shares.rows"
+        :by-cost="shares.byCost"
+        :total="totalCost"
+      />
+      <HsToolBoard class="hs-grid__tools" :rows="tools" :to="links.tools" />
+      <HsCreditBoard
+        class="hs-grid__quota"
+        :rows="creditList"
+        :loading="credits === undefined"
+        :unavailable="credits === null"
+        @edit="onEditCredit"
+      />
+      <HsTrendBoard
+        :to="links.usage"
+        class="hs-grid__trend"
         :labels="trendLabels"
         :calls="trendCalls"
-        :failures="trendFailures"
         :costs-usd="trendCosts"
-        :granularity="trendGranularity"
+        :hourly="range === 'today'"
       />
-
-      <OverviewOrgBoard
-        :inventory-available="inventoryAvailable"
-        :usage-available="!!page.overview.value"
-        :orgs="inventory.orgs"
-        :teams="inventory.teams"
-        :agents-total="inventory.agentsTotal"
-        :agents-enabled="inventory.agentsEnabled"
-        :worst-agents="worstAgentRows"
-        @drill="router.push('/agents')"
-      />
-
-      <OverviewFreshnessFooter :sources="footSources" :notes="footNotes" />
+      <HsTaskBoard class="hs-grid__task" :stats="runStats" :bars="taskBars" :total="taskTotal" :to="links.tasks" />
     </div>
+
+    <HsCreditDialog v-model="editOpen" :form="editForm" :saving="saving" :error="saveError" @save="onSaveCredit" />
   </q-page>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { ref } from 'vue';
 import { useRouter } from 'vue-router';
-import { useOverviewPage } from '../features/usage/useOverviewPage';
-import { useOverviewView } from '../features/usage/useOverviewView';
-import { useAttentionBoard } from '../features/usage/useAttentionBoard';
-import { useTerminalUsage } from '../features/usage/useTerminalUsage';
-import { useHarnessCounts } from '../features/usage/useHarnessCounts';
-import { useInboxBadge } from '../features/today/useInboxBadge';
-import { buildNavDomains } from '../config/navDomains';
-import { useNavStore } from '../stores/nav';
-import { useTaskSituations } from '../features/session/useTaskSituations';
-import { workspaceLocationQuery } from '../features/chat/taskWorkspaceNavigation';
-import type { TaskSituationItem } from '../features/session/types';
-import type { AttentionItem } from '../features/usage/types';
-import OverviewVerdictBanner from '../components/overview/OverviewVerdictBanner.vue';
-import OverviewTaskBoard from '../components/overview/OverviewTaskBoard.vue';
-import OverviewAttentionQueue from '../components/overview/OverviewAttentionQueue.vue';
-import OverviewRedStrip from '../components/overview/OverviewRedStrip.vue';
-import OverviewCostBoard from '../components/overview/OverviewCostBoard.vue';
-import OverviewDomainCards from '../components/overview/OverviewDomainCards.vue';
-import type { OvDomainCard } from '../components/overview/ovTypes';
-import OverviewTrendBoard from '../components/overview/OverviewTrendBoard.vue';
-import OverviewOrgBoard from '../components/overview/OverviewOrgBoard.vue';
-import OverviewFreshnessFooter from '../components/overview/OverviewFreshnessFooter.vue';
-import AppWorkspaceLaunchpad from '../components/layout/AppWorkspaceLaunchpad.vue';
-import { workspaceShortcuts } from '../config/workspaceShortcuts';
+import { useHarnessScreen } from '../features/usage/useHarnessScreen';
+import OverviewStatTile from '../components/overview/OverviewStatTile.vue';
+import HsShareBoard from '../components/screen/HsShareBoard.vue';
+import HsToolBoard from '../components/screen/HsToolBoard.vue';
+import HsCreditBoard from '../components/screen/HsCreditBoard.vue';
+import HsCreditDialog from '../components/screen/HsCreditDialog.vue';
+import HsTrendBoard from '../components/screen/HsTrendBoard.vue';
+import HsTaskBoard from '../components/screen/HsTaskBoard.vue';
+import type { HsCreditForm } from '../components/screen/hsTypes';
 
-const router = useRouter();
-const page = useOverviewPage();
 const {
   t,
   error,
   loading,
-  filters,
+  updatedAt,
+  range,
   rangeOptions,
-  providerOptions,
   setRange,
-  setProvider,
-  trendGranularity,
-  costDelta,
-  unpricedRows,
-  topModelBars,
-  topAgentBars,
-  runnerWindowMinutes,
-  runnerWindowOptions,
-  loadRunnerMetrics,
-  inventory,
-  inventoryAvailable,
-  refreshAll,
-} = page;
-
-const launchpadItems = computed(() =>
-  workspaceShortcuts.map((item) => ({
-    ...item,
-    title: t(`uiSystem.launchpad.${item.key}.title`),
-    description: t(`uiSystem.launchpad.${item.key}.description`),
-    action: t('uiSystem.launchpad.start'),
-  })),
-);
-
-const { board, loading: attentionLoading, refresh: refreshAttention } = useAttentionBoard();
-// 没有运行台权限就不发请求，免得弹一条 403 提示
-const nav = useNavStore();
-const { terminals, refresh: refreshTerminals } = useTerminalUsage(() => nav.isPathVisible('/fleet'));
-const { counts, refresh: refreshCounts } = useHarnessCounts(nav.isPathVisible);
-const { count: inboxCount } = useInboxBadge();
-
-// 五张领域卡：导航里 Harness 模块的五个领域（看不到的领域不出卡），数字来自各自的接口
-const domainCards = computed<OvDomainCard[]>(() => {
-  const c = counts.value;
-  const inv = inventoryAvailable.value ? inventory.value : null;
-  const summary = page.rangeSummary.value;
-  const facts: Record<string, OvDomainCard['facts']> = {
-    agents: [
-      { label: 'Agent', value: inv ? `${inv.agentsEnabled} / ${inv.agentsTotal}` : undefined },
-      { label: t('overviewPage.v2.fact.teams'), value: inv?.teams },
-      { label: t('overviewPage.v2.fact.orgs'), value: inv?.orgs },
-    ],
-    orchestrate: [
-      { label: t('overviewPage.v2.fact.graphs'), value: c.graphs },
-      { label: t('overviewPage.v2.fact.cron'), value: c.cron },
-    ],
-    capability: [
-      { label: t('overviewPage.v2.fact.tools'), value: c.tools },
-      { label: t('overviewPage.v2.fact.skills'), value: c.skills },
-      { label: 'MCP', value: c.mcp },
-    ],
-    connect: [
-      { label: t('overviewPage.v2.fact.channels'), value: c.channels },
-      { label: t('overviewPage.v2.fact.credentials'), value: c.credentials },
-    ],
-    ops: [
-      { label: t('overviewPage.v2.fact.calls'), value: summary?.call_count },
-      {
-        label: t('overviewPage.v2.fact.successRate'),
-        value: summary && summary.call_count > 0 ? `${Math.round(summary.success_rate * 100)}%` : undefined,
-      },
-      { label: t('overviewPage.v2.fact.waiting'), value: inboxCount.value },
-    ],
-  };
-  return buildNavDomains(nav.isPathVisible)
-    .filter((domain) => domain.module === 'harness' && facts[domain.key])
-    .map((domain) => ({
-      key: domain.key,
-      icon: domain.icon,
-      title: t(domain.labelKey),
-      question: t(`overviewPage.v2.domainQ.${domain.key}`),
-      to: domain.primaries[0].to,
-      facts: facts[domain.key],
-    }));
-});
-const taskSituations = useTaskSituations();
-const {
-  verdict,
-  headline,
-  subline,
-  chips,
-  updatedAtClock,
-  stale,
-  modelTiles,
-  runTiles,
-  costValueUsd,
-  budget,
-  cacheView,
+  refresh,
+  mode,
+  kpis,
+  shares,
+  totalCost,
+  tools,
+  creditList,
+  credits,
+  creditForm,
+  saveCredit,
   trendLabels,
+  dayStartLocal,
+  links,
   trendCalls,
-  trendFailures,
   trendCosts,
-  worstAgentRows,
-  footSources,
-  footNotes,
-} = useOverviewView(page, board);
+  runStats,
+  taskBars,
+  taskTotal,
+} = useHarnessScreen();
+const router = useRouter();
 
-// —— 交互（路由下钻全部收在 Page 层） ——
-function onRefresh() {
-  void refreshAll();
-  void refreshAttention();
-  void refreshTerminals();
-  void refreshCounts();
-  void taskSituations.refresh();
+const clock = (d: Date) => d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+// —— 手填平台积分 ——
+const editOpen = ref(false);
+const editForm = ref<HsCreditForm>(creditForm('claude'));
+const saving = ref(false);
+const saveError = ref('');
+function onEditCredit(platform: string) {
+  editForm.value = creditForm(platform);
+  saveError.value = '';
+  editOpen.value = true;
 }
-function onTaskDrill(item: TaskSituationItem) {
-  const query = workspaceLocationQuery({
-    sessionId: item.session_id,
-    taskId: item.task_id,
-    stepId: item.current_step_id,
-  });
-  query.from = router.currentRoute.value.fullPath;
-  void router.push({ path: '/task-workspace', query });
-}
-function onTaskCreate() {
-  void router.push('/chat');
-}
-function onRunWindow(v: number) {
-  runnerWindowMinutes.value = v;
-  void loadRunnerMetrics();
-}
-function onDrillItem(item: AttentionItem) {
-  if (item.to) void router.push(item.to);
-}
-function onTileDrill(key: string) {
-  if (key === 'unpriced') {
-    void router.push('/models');
-    return;
-  }
-  if (key === 'calls' || key === 'callSuccessRate' || key === 'burnRate' || key === 'detail') {
-    void router.push('/usage/events');
+async function onSaveCredit(form: HsCreditForm) {
+  saving.value = true;
+  saveError.value = '';
+  try {
+    await saveCredit(form);
+    editOpen.value = false;
+  } catch (err) {
+    saveError.value = err instanceof Error ? err.message : String(err);
+  } finally {
+    saving.value = false;
   }
 }
 </script>

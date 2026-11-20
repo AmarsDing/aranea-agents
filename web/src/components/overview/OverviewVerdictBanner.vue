@@ -1,34 +1,22 @@
 <template>
+  <!--
+    基座总览顶部一条：左边四个信号（告警 / 失败运行 / 调用异常 / 积压与审批），右边筛选与刷新。
+    2026-11-19 去掉了大标题结论、说明句、「实时」和更新时间（用户：页顶这类状态行浪费空间）；
+    整体状态只留顶缘一道色线（绿 / 琥珀 / 红）。
+  -->
   <div class="ov-verdict" :class="`ov-verdict--${verdict}`">
-    <div class="ov-verdict__main">
-      <span class="ov-verdict__seat" aria-hidden="true">
-        <span class="ov-verdict__beacon" />
+    <div class="ov-verdict__chips">
+      <span
+        v-for="chip in chips"
+        :key="chip.key"
+        class="ov-verdict__chip"
+        :class="`ov-verdict__chip--${chip.severity}`"
+      >
+        <q-icon :name="chip.icon" size="13px" />
+        {{ chip.label }}
       </span>
-      <div class="ov-verdict__text">
-        <div class="ov-verdict__eyebrow">{{ t('overviewPage.v2.deckEyebrow') }}</div>
-        <div class="ov-verdict__headline">{{ headline }}</div>
-        <div class="ov-verdict__sub">{{ subline }}</div>
-      </div>
-      <div class="ov-verdict__chips">
-        <span
-          v-for="chip in chips"
-          :key="chip.key"
-          class="ov-verdict__chip"
-          :class="`ov-verdict__chip--${chip.severity}`"
-        >
-          <q-icon :name="chip.icon" size="13px" />
-          {{ chip.label }}
-        </span>
-      </div>
     </div>
     <div class="ov-verdict__side">
-      <span class="ov-verdict__live" :class="{ 'ov-verdict__live--stale': stale }">
-        <span class="ov-verdict__live-dot" aria-hidden="true" />
-        {{ t(stale ? 'uiSystem.overview.dataIncomplete' : 'overviewPage.v2.live') }}
-      </span>
-      <span v-if="updatedAt" class="ov-verdict__updated">{{
-        t('overviewPage.v2.updatedAt', { time: updatedAt })
-      }}</span>
       <slot name="filters" />
       <q-btn
         flat
@@ -51,15 +39,10 @@ import type { OvVerdict, OvVerdictChip } from './ovTypes';
 withDefaults(
   defineProps<{
     verdict: OvVerdict;
-    headline: string;
-    subline: string;
     chips: OvVerdictChip[];
-    /** 预格式化的时间文本（'—' 或非空）。 */
-    updatedAt?: string;
-    stale?: boolean;
     loading?: boolean;
   }>(),
-  { updatedAt: '', stale: false, loading: false },
+  { loading: false },
 );
 
 defineEmits<{ refresh: [] }>();

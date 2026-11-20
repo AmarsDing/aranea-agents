@@ -390,6 +390,12 @@ export async function getModelUsageOverview(query: ModelUsageQuery = {}): Promis
   return overviewToLegacy(raw);
 }
 
+/** 按 Agent 汇总的用量（花费从高到低，接口最多 200 行）。 */
+export async function listTopAgentUsage(query: ModelUsageQuery = {}): Promise<ModelUsageBreakdownRow[]> {
+  const raw = await usage.ListTopAgents(queryToKratos(query));
+  return (raw.items ?? []).map(breakdownFromUnknown);
+}
+
 export async function listModelUsageTrends(query: ModelUsageQuery = {}): Promise<ModelUsageTrendPoint[]> {
   const raw = (await usage.ListUsageTrends(queryToKratos(query))) as ListUsageTrendsResponse;
   const items = raw.items ?? [];
