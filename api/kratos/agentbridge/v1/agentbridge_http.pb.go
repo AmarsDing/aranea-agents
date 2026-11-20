@@ -21,6 +21,7 @@ var _ = binding.EncodeURL
 const _ = http.SupportPackageIsVersion1
 
 const OperationAgentBridgeServiceCancelTask = "/kratos.agentbridge.v1.AgentBridgeService/CancelTask"
+const OperationAgentBridgeServiceDeleteAgent = "/kratos.agentbridge.v1.AgentBridgeService/DeleteAgent"
 const OperationAgentBridgeServiceDeleteProject = "/kratos.agentbridge.v1.AgentBridgeService/DeleteProject"
 const OperationAgentBridgeServiceDispatchTask = "/kratos.agentbridge.v1.AgentBridgeService/DispatchTask"
 const OperationAgentBridgeServiceGetTask = "/kratos.agentbridge.v1.AgentBridgeService/GetTask"
@@ -35,6 +36,7 @@ const OperationAgentBridgeServiceUpsertProject = "/kratos.agentbridge.v1.AgentBr
 
 type AgentBridgeServiceHTTPServer interface {
 	CancelTask(context.Context, *CancelTaskRequest) (*CodingTask, error)
+	DeleteAgent(context.Context, *DeleteAgentRequest) (*emptypb.Empty, error)
 	DeleteProject(context.Context, *DeleteProjectRequest) (*emptypb.Empty, error)
 	// DispatchTask 03 P0：工作台直发 / 步骤事件回放 / 验收
 	DispatchTask(context.Context, *DispatchTaskRequest) (*DispatchTaskResponse, error)
@@ -46,7 +48,7 @@ type AgentBridgeServiceHTTPServer interface {
 	ListTasks(context.Context, *ListTasksRequest) (*ListTasksResponse, error)
 	ProbeAgent(context.Context, *ProbeAgentRequest) (*ProbeAgentResponse, error)
 	ReviewTask(context.Context, *ReviewTaskRequest) (*CodingTask, error)
-	// UpsertAgent 工具注册管理（删除经 enabled=false，M1 不提供物理删除）
+	// UpsertAgent 工具注册管理。有任务记录的工具只能停用（enabled=false），保住历史；从没跑过任务的可以删除（登记错了、重复了）
 	UpsertAgent(context.Context, *UpsertAgentRequest) (*CodingAgent, error)
 	// UpsertProject 项目目录注册管理
 	UpsertProject(context.Context, *UpsertProjectRequest) (*CodingProject, error)
@@ -56,6 +58,7 @@ func RegisterAgentBridgeServiceHTTPServer(s *http.Server, srv AgentBridgeService
 	r := s.Route("/")
 	r.POST("/v1/agentbridge/agents", _AgentBridgeService_UpsertAgent0_HTTP_Handler(srv))
 	r.GET("/v1/agentbridge/agents", _AgentBridgeService_ListAgents1_HTTP_Handler(srv))
+	r.DELETE("/v1/agentbridge/agents/{agent_key}", _AgentBridgeService_DeleteAgent1_HTTP_Handler(srv))
 	r.POST("/v1/agentbridge/agents/probe", _AgentBridgeService_ProbeAgent0_HTTP_Handler(srv))
 	r.POST("/v1/agentbridge/projects", _AgentBridgeService_UpsertProject0_HTTP_Handler(srv))
 	r.GET("/v1/agentbridge/projects", _AgentBridgeService_ListProjects0_HTTP_Handler(srv))
@@ -105,6 +108,28 @@ func _AgentBridgeService_ListAgents1_HTTP_Handler(srv AgentBridgeServiceHTTPServ
 			return err
 		}
 		reply := out.(*ListAgentsResponse)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _AgentBridgeService_DeleteAgent1_HTTP_Handler(srv AgentBridgeServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in DeleteAgentRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationAgentBridgeServiceDeleteAgent)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.DeleteAgent(ctx, req.(*DeleteAgentRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*emptypb.Empty)
 		return ctx.Result(200, reply)
 	}
 }
@@ -331,6 +356,7 @@ func _AgentBridgeService_ReviewTask0_HTTP_Handler(srv AgentBridgeServiceHTTPServ
 
 type AgentBridgeServiceHTTPClient interface {
 	CancelTask(ctx context.Context, req *CancelTaskRequest, opts ...http.CallOption) (rsp *CodingTask, err error)
+	DeleteAgent(ctx context.Context, req *DeleteAgentRequest, opts ...http.CallOption) (rsp *emptypb.Empty, err error)
 	DeleteProject(ctx context.Context, req *DeleteProjectRequest, opts ...http.CallOption) (rsp *emptypb.Empty, err error)
 	// DispatchTask 03 P0：工作台直发 / 步骤事件回放 / 验收
 	DispatchTask(ctx context.Context, req *DispatchTaskRequest, opts ...http.CallOption) (rsp *DispatchTaskResponse, err error)
@@ -342,7 +368,7 @@ type AgentBridgeServiceHTTPClient interface {
 	ListTasks(ctx context.Context, req *ListTasksRequest, opts ...http.CallOption) (rsp *ListTasksResponse, err error)
 	ProbeAgent(ctx context.Context, req *ProbeAgentRequest, opts ...http.CallOption) (rsp *ProbeAgentResponse, err error)
 	ReviewTask(ctx context.Context, req *ReviewTaskRequest, opts ...http.CallOption) (rsp *CodingTask, err error)
-	// UpsertAgent 工具注册管理（删除经 enabled=false，M1 不提供物理删除）
+	// UpsertAgent 工具注册管理。有任务记录的工具只能停用（enabled=false），保住历史；从没跑过任务的可以删除（登记错了、重复了）
 	UpsertAgent(ctx context.Context, req *UpsertAgentRequest, opts ...http.CallOption) (rsp *CodingAgent, err error)
 	// UpsertProject 项目目录注册管理
 	UpsertProject(ctx context.Context, req *UpsertProjectRequest, opts ...http.CallOption) (rsp *CodingProject, err error)
@@ -363,6 +389,19 @@ func (c *AgentBridgeServiceHTTPClientImpl) CancelTask(ctx context.Context, in *C
 	opts = append(opts, http.Operation(OperationAgentBridgeServiceCancelTask))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *AgentBridgeServiceHTTPClientImpl) DeleteAgent(ctx context.Context, in *DeleteAgentRequest, opts ...http.CallOption) (*emptypb.Empty, error) {
+	var out emptypb.Empty
+	pattern := "/v1/agentbridge/agents/{agent_key}"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationAgentBridgeServiceDeleteAgent))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "DELETE", path, nil, &out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -488,7 +527,7 @@ func (c *AgentBridgeServiceHTTPClientImpl) ReviewTask(ctx context.Context, in *R
 	return &out, nil
 }
 
-// UpsertAgent 工具注册管理（删除经 enabled=false，M1 不提供物理删除）
+// UpsertAgent 工具注册管理。有任务记录的工具只能停用（enabled=false），保住历史；从没跑过任务的可以删除（登记错了、重复了）
 func (c *AgentBridgeServiceHTTPClientImpl) UpsertAgent(ctx context.Context, in *UpsertAgentRequest, opts ...http.CallOption) (*CodingAgent, error) {
 	var out CodingAgent
 	pattern := "/v1/agentbridge/agents"

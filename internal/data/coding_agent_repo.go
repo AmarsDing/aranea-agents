@@ -245,3 +245,14 @@ func (r *codingAgentRepo) saveAgentExtras(ctx context.Context, workspace, key st
 	_, err := db.ExecContext(ctx, r.data.Dialect().RenumberPlaceholders(q), args...)
 	return err
 }
+
+// Delete 物理删除一条编码工具登记（icon / 能力等扩展列在同一行，一并删掉）。
+func (r *codingAgentRepo) Delete(ctx context.Context, workspace, key string) error {
+	if workspace == "" {
+		workspace = "default"
+	}
+	_, err := r.data.RW().Write(ctx).CodingAgent.Delete().
+		Where(codingagent.WorkspaceEQ(workspace), codingagent.AgentKeyEQ(key)).
+		Exec(ctx)
+	return entErrToBizErr(err, apierror.DomainAgentBridge)
+}

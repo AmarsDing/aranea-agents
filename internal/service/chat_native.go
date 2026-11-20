@@ -47,6 +47,11 @@ func (s *ChatService) RunCronTurn(ctx context.Context, sessionID, content, teamI
 	return s.orch.RunCronTurn(ctx, sessionID, content, teamID)
 }
 
+// RunCronReport implements GMChat (总经理定时汇报).
+func (s *ChatService) RunCronReport(ctx context.Context, agentID, userID, title, content string, timeout time.Duration) (string, string, error) {
+	return s.orch.RunCronReport(ctx, agentID, userID, title, content, timeout)
+}
+
 // hydratedAgent loads and returns an Agent by ID.
 func (s *ChatService) hydratedAgent(ctx context.Context, agentID string) (biz.Agent, error) {
 	return s.orch.hydratedAgent(ctx, agentID)

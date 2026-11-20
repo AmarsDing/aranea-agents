@@ -9,6 +9,8 @@ type AgentRepo interface {
 	List(ctx context.Context, workspace string) ([]*CodingAgent, error)
 	Upsert(ctx context.Context, agent *CodingAgent) error
 	UpdateProbe(ctx context.Context, id string, ok bool, errMsg string) error
+	// Delete 物理删除一条登记；调用方负责先确认它没有任务记录
+	Delete(ctx context.Context, workspace, key string) error
 }
 
 // ProjectRepo 项目目录注册表读写。

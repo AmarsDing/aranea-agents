@@ -1,5 +1,6 @@
 <template>
-  <q-page
+  <component
+    :is="embedded ? 'div' : 'q-page'"
     class="app-page-cream chat-page chat-workspace-shell fit column no-wrap"
     :class="{
       'chat-workspace-shell--compact': compact,
@@ -20,7 +21,7 @@
     </div>
 
     <slot name="dialogs" />
-  </q-page>
+  </component>
 </template>
 
 <script setup lang="ts">
@@ -31,9 +32,12 @@ import { useI18n } from 'vue-i18n';
 withDefaults(
   defineProps<{
     compact?: boolean;
+    /** 嵌在别的页面里时不用 q-page 外壳 */
+    embedded?: boolean;
   }>(),
   {
     compact: true,
+    embedded: false,
   },
 );
 

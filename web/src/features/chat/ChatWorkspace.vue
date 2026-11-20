@@ -1,6 +1,11 @@
 <!-- Container: approved because both chat pages share session, sender and confirmation orchestration. -->
 <template>
-  <q-page v-if="!coreReady" class="app-standard-page flex flex-center" data-workspace-bootstrap>
+  <component
+    :is="embedded ? 'div' : 'q-page'"
+    v-if="!coreReady"
+    class="app-standard-page flex flex-center"
+    data-workspace-bootstrap
+  >
     <q-banner v-if="coreLoadError" class="app-page-error-banner" role="alert">
       <template #avatar><q-icon name="cloud_off" /></template>
       {{ coreLoadError }}
@@ -13,10 +18,11 @@
       /></template>
     </q-banner>
     <q-spinner-dots v-else size="40px" color="primary" :aria-label="layout.t('uiSystem.loadingWorkspace')" />
-  </q-page>
+  </component>
   <component
     :is="taskMode ? TaskWorkspaceShell : ChatWorkspaceShell"
     v-else
+    :embedded="embedded"
     :pane="taskPane"
     :session-title="session.selectedSessionForUi?.title"
     :reading-expanded="readingExpanded && contextTab === 'artifacts' && taskContextOpen"
@@ -32,7 +38,7 @@
     @return-chat="returnToMobileChat"
   >
     <ChatEntitySidebar
-      v-if="!taskMode || taskNavigation === 'members'"
+      v-if="!embedded && (!taskMode || taskNavigation === 'members')"
       :class="{ 'task-navigation': taskMode }"
       :search="layout.search"
       :open="taskMode || layout.leftOpen"
@@ -70,7 +76,7 @@
     />
 
     <ChatSideToggle
-      v-if="!taskMode"
+      v-if="!taskMode && !embedded"
       :open="layout.leftOpen"
       :icon="layout.leftOpen ? 'chevron_left' : 'chevron_right'"
       :aria-label="layout.t('chat.collapseList')"
@@ -125,9 +131,15 @@
           :query="situationQuery"
           :title="layout.t('taskWorkspace.progressTitle')"
           :subtitle="layout.t('taskWorkspace.progressSubtitle')"
-          :empty-title="layout.t(session.selectedSessionForUi ? 'taskWorkspace.noTasksTitle' : 'taskWorkspace.noSessionTitle')"
-          :empty-hint="layout.t(session.selectedSessionForUi ? 'taskWorkspace.noTasksHint' : 'taskWorkspace.noSessionHint')"
-          :create-label="layout.t(session.selectedSessionForUi ? 'taskWorkspace.startTask' : 'taskWorkspace.selectSession')"
+          :empty-title="
+            layout.t(session.selectedSessionForUi ? 'taskWorkspace.noTasksTitle' : 'taskWorkspace.noSessionTitle')
+          "
+          :empty-hint="
+            layout.t(session.selectedSessionForUi ? 'taskWorkspace.noTasksHint' : 'taskWorkspace.noSessionHint')
+          "
+          :create-label="
+            layout.t(session.selectedSessionForUi ? 'taskWorkspace.startTask' : 'taskWorkspace.selectSession')
+          "
           expandable
           :expanded-task-ids="situationExpandedTaskIds"
           @create="onSituationEmptyAction"
@@ -282,7 +294,7 @@
     />
 
     <ChatSideToggle
-      v-if="!taskMode"
+      v-if="!taskMode && !embedded"
       :open="layout.rightOpen"
       :icon="layout.rightOpen ? 'chevron_right' : 'chevron_left'"
       :aria-label="layout.t('chat.collapseSession')"
@@ -290,7 +302,7 @@
     />
 
     <ChatSessionSidebar
-      v-if="taskMode ? taskNavigation === 'sessions' : !showSessionTree"
+      v-if="!embedded && (taskMode ? taskNavigation === 'sessions' : !showSessionTree)"
       :class="{ 'task-navigation': taskMode }"
       :open="taskMode || layout.rightOpen"
       :sessions="session.displaySessions"
@@ -318,7 +330,7 @@
       @search="session.onSessionListSearch"
     />
     <SessionTreeSidebar
-      v-else-if="!taskMode || taskNavigation === 'tree'"
+      v-else-if="!embedded && (!taskMode || taskNavigation === 'tree')"
       :class="{ 'task-navigation': taskMode }"
       :tree-nodes="session.sessionTree.spiritTreeNodes"
       :active-session-id="session.selectedSessionForUi?.id ?? ''"
@@ -495,7 +507,11 @@ import type { Agent } from '../agents/types';
 import type { ArtifactMeta, ArtifactTextQuote } from '../artifact/types';
 import type { TaskSituationItem } from '../session/types';
 
-const props = withDefaults(defineProps<{ taskMode?: boolean }>(), { taskMode: false });
+// embedded：嵌在会话中心的详情里，只留对话区（不要页面外壳和左右两栏），会话由地址里的 session / agent 决定
+const props = withDefaults(defineProps<{ taskMode?: boolean; embedded?: boolean }>(), {
+  taskMode: false,
+  embedded: false,
+});
 const route = useRoute();
 const router = useRouter();
 const taskContextVisible = ref(false);

@@ -304,6 +304,50 @@ func (x *UpsertAgentRequest) GetDefaultAutonomy() string {
 	return ""
 }
 
+type DeleteAgentRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	AgentKey      string                 `protobuf:"bytes,1,opt,name=agent_key,json=agentKey,proto3" json:"agent_key,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeleteAgentRequest) Reset() {
+	*x = DeleteAgentRequest{}
+	mi := &file_kratos_agentbridge_v1_agentbridge_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteAgentRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteAgentRequest) ProtoMessage() {}
+
+func (x *DeleteAgentRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_agentbridge_v1_agentbridge_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteAgentRequest.ProtoReflect.Descriptor instead.
+func (*DeleteAgentRequest) Descriptor() ([]byte, []int) {
+	return file_kratos_agentbridge_v1_agentbridge_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *DeleteAgentRequest) GetAgentKey() string {
+	if x != nil {
+		return x.AgentKey
+	}
+	return ""
+}
+
 type ListAgentsResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Items         []*CodingAgent         `protobuf:"bytes,1,rep,name=items,proto3" json:"items,omitempty"`
@@ -313,7 +357,7 @@ type ListAgentsResponse struct {
 
 func (x *ListAgentsResponse) Reset() {
 	*x = ListAgentsResponse{}
-	mi := &file_kratos_agentbridge_v1_agentbridge_proto_msgTypes[2]
+	mi := &file_kratos_agentbridge_v1_agentbridge_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -325,7 +369,7 @@ func (x *ListAgentsResponse) String() string {
 func (*ListAgentsResponse) ProtoMessage() {}
 
 func (x *ListAgentsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_agentbridge_v1_agentbridge_proto_msgTypes[2]
+	mi := &file_kratos_agentbridge_v1_agentbridge_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -338,7 +382,7 @@ func (x *ListAgentsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListAgentsResponse.ProtoReflect.Descriptor instead.
 func (*ListAgentsResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_agentbridge_v1_agentbridge_proto_rawDescGZIP(), []int{2}
+	return file_kratos_agentbridge_v1_agentbridge_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *ListAgentsResponse) GetItems() []*CodingAgent {
@@ -357,7 +401,7 @@ type ProbeAgentRequest struct {
 
 func (x *ProbeAgentRequest) Reset() {
 	*x = ProbeAgentRequest{}
-	mi := &file_kratos_agentbridge_v1_agentbridge_proto_msgTypes[3]
+	mi := &file_kratos_agentbridge_v1_agentbridge_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -369,7 +413,7 @@ func (x *ProbeAgentRequest) String() string {
 func (*ProbeAgentRequest) ProtoMessage() {}
 
 func (x *ProbeAgentRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_agentbridge_v1_agentbridge_proto_msgTypes[3]
+	mi := &file_kratos_agentbridge_v1_agentbridge_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -382,7 +426,7 @@ func (x *ProbeAgentRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProbeAgentRequest.ProtoReflect.Descriptor instead.
 func (*ProbeAgentRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_agentbridge_v1_agentbridge_proto_rawDescGZIP(), []int{3}
+	return file_kratos_agentbridge_v1_agentbridge_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *ProbeAgentRequest) GetAgentKey() string {
@@ -402,7 +446,7 @@ type ProbeAgentResponse struct {
 
 func (x *ProbeAgentResponse) Reset() {
 	*x = ProbeAgentResponse{}
-	mi := &file_kratos_agentbridge_v1_agentbridge_proto_msgTypes[4]
+	mi := &file_kratos_agentbridge_v1_agentbridge_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -414,7 +458,7 @@ func (x *ProbeAgentResponse) String() string {
 func (*ProbeAgentResponse) ProtoMessage() {}
 
 func (x *ProbeAgentResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_agentbridge_v1_agentbridge_proto_msgTypes[4]
+	mi := &file_kratos_agentbridge_v1_agentbridge_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -427,7 +471,7 @@ func (x *ProbeAgentResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProbeAgentResponse.ProtoReflect.Descriptor instead.
 func (*ProbeAgentResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_agentbridge_v1_agentbridge_proto_rawDescGZIP(), []int{4}
+	return file_kratos_agentbridge_v1_agentbridge_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *ProbeAgentResponse) GetOk() bool {
@@ -459,7 +503,7 @@ type CodingProject struct {
 
 func (x *CodingProject) Reset() {
 	*x = CodingProject{}
-	mi := &file_kratos_agentbridge_v1_agentbridge_proto_msgTypes[5]
+	mi := &file_kratos_agentbridge_v1_agentbridge_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -471,7 +515,7 @@ func (x *CodingProject) String() string {
 func (*CodingProject) ProtoMessage() {}
 
 func (x *CodingProject) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_agentbridge_v1_agentbridge_proto_msgTypes[5]
+	mi := &file_kratos_agentbridge_v1_agentbridge_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -484,7 +528,7 @@ func (x *CodingProject) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CodingProject.ProtoReflect.Descriptor instead.
 func (*CodingProject) Descriptor() ([]byte, []int) {
-	return file_kratos_agentbridge_v1_agentbridge_proto_rawDescGZIP(), []int{5}
+	return file_kratos_agentbridge_v1_agentbridge_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *CodingProject) GetId() string {
@@ -540,7 +584,7 @@ type UpsertProjectRequest struct {
 
 func (x *UpsertProjectRequest) Reset() {
 	*x = UpsertProjectRequest{}
-	mi := &file_kratos_agentbridge_v1_agentbridge_proto_msgTypes[6]
+	mi := &file_kratos_agentbridge_v1_agentbridge_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -552,7 +596,7 @@ func (x *UpsertProjectRequest) String() string {
 func (*UpsertProjectRequest) ProtoMessage() {}
 
 func (x *UpsertProjectRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_agentbridge_v1_agentbridge_proto_msgTypes[6]
+	mi := &file_kratos_agentbridge_v1_agentbridge_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -565,7 +609,7 @@ func (x *UpsertProjectRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpsertProjectRequest.ProtoReflect.Descriptor instead.
 func (*UpsertProjectRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_agentbridge_v1_agentbridge_proto_rawDescGZIP(), []int{6}
+	return file_kratos_agentbridge_v1_agentbridge_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *UpsertProjectRequest) GetName() string {
@@ -598,7 +642,7 @@ type ListProjectsResponse struct {
 
 func (x *ListProjectsResponse) Reset() {
 	*x = ListProjectsResponse{}
-	mi := &file_kratos_agentbridge_v1_agentbridge_proto_msgTypes[7]
+	mi := &file_kratos_agentbridge_v1_agentbridge_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -610,7 +654,7 @@ func (x *ListProjectsResponse) String() string {
 func (*ListProjectsResponse) ProtoMessage() {}
 
 func (x *ListProjectsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_agentbridge_v1_agentbridge_proto_msgTypes[7]
+	mi := &file_kratos_agentbridge_v1_agentbridge_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -623,7 +667,7 @@ func (x *ListProjectsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListProjectsResponse.ProtoReflect.Descriptor instead.
 func (*ListProjectsResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_agentbridge_v1_agentbridge_proto_rawDescGZIP(), []int{7}
+	return file_kratos_agentbridge_v1_agentbridge_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *ListProjectsResponse) GetItems() []*CodingProject {
@@ -642,7 +686,7 @@ type DeleteProjectRequest struct {
 
 func (x *DeleteProjectRequest) Reset() {
 	*x = DeleteProjectRequest{}
-	mi := &file_kratos_agentbridge_v1_agentbridge_proto_msgTypes[8]
+	mi := &file_kratos_agentbridge_v1_agentbridge_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -654,7 +698,7 @@ func (x *DeleteProjectRequest) String() string {
 func (*DeleteProjectRequest) ProtoMessage() {}
 
 func (x *DeleteProjectRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_agentbridge_v1_agentbridge_proto_msgTypes[8]
+	mi := &file_kratos_agentbridge_v1_agentbridge_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -667,7 +711,7 @@ func (x *DeleteProjectRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteProjectRequest.ProtoReflect.Descriptor instead.
 func (*DeleteProjectRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_agentbridge_v1_agentbridge_proto_rawDescGZIP(), []int{8}
+	return file_kratos_agentbridge_v1_agentbridge_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *DeleteProjectRequest) GetId() string {
@@ -708,7 +752,7 @@ type CodingTask struct {
 
 func (x *CodingTask) Reset() {
 	*x = CodingTask{}
-	mi := &file_kratos_agentbridge_v1_agentbridge_proto_msgTypes[9]
+	mi := &file_kratos_agentbridge_v1_agentbridge_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -720,7 +764,7 @@ func (x *CodingTask) String() string {
 func (*CodingTask) ProtoMessage() {}
 
 func (x *CodingTask) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_agentbridge_v1_agentbridge_proto_msgTypes[9]
+	mi := &file_kratos_agentbridge_v1_agentbridge_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -733,7 +777,7 @@ func (x *CodingTask) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CodingTask.ProtoReflect.Descriptor instead.
 func (*CodingTask) Descriptor() ([]byte, []int) {
-	return file_kratos_agentbridge_v1_agentbridge_proto_rawDescGZIP(), []int{9}
+	return file_kratos_agentbridge_v1_agentbridge_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *CodingTask) GetId() string {
@@ -889,7 +933,7 @@ type ListTasksRequest struct {
 
 func (x *ListTasksRequest) Reset() {
 	*x = ListTasksRequest{}
-	mi := &file_kratos_agentbridge_v1_agentbridge_proto_msgTypes[10]
+	mi := &file_kratos_agentbridge_v1_agentbridge_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -901,7 +945,7 @@ func (x *ListTasksRequest) String() string {
 func (*ListTasksRequest) ProtoMessage() {}
 
 func (x *ListTasksRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_agentbridge_v1_agentbridge_proto_msgTypes[10]
+	mi := &file_kratos_agentbridge_v1_agentbridge_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -914,7 +958,7 @@ func (x *ListTasksRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListTasksRequest.ProtoReflect.Descriptor instead.
 func (*ListTasksRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_agentbridge_v1_agentbridge_proto_rawDescGZIP(), []int{10}
+	return file_kratos_agentbridge_v1_agentbridge_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *ListTasksRequest) GetSessionId() string {
@@ -947,7 +991,7 @@ type ListTasksResponse struct {
 
 func (x *ListTasksResponse) Reset() {
 	*x = ListTasksResponse{}
-	mi := &file_kratos_agentbridge_v1_agentbridge_proto_msgTypes[11]
+	mi := &file_kratos_agentbridge_v1_agentbridge_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -959,7 +1003,7 @@ func (x *ListTasksResponse) String() string {
 func (*ListTasksResponse) ProtoMessage() {}
 
 func (x *ListTasksResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_agentbridge_v1_agentbridge_proto_msgTypes[11]
+	mi := &file_kratos_agentbridge_v1_agentbridge_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -972,7 +1016,7 @@ func (x *ListTasksResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListTasksResponse.ProtoReflect.Descriptor instead.
 func (*ListTasksResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_agentbridge_v1_agentbridge_proto_rawDescGZIP(), []int{11}
+	return file_kratos_agentbridge_v1_agentbridge_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *ListTasksResponse) GetItems() []*CodingTask {
@@ -991,7 +1035,7 @@ type GetTaskRequest struct {
 
 func (x *GetTaskRequest) Reset() {
 	*x = GetTaskRequest{}
-	mi := &file_kratos_agentbridge_v1_agentbridge_proto_msgTypes[12]
+	mi := &file_kratos_agentbridge_v1_agentbridge_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1003,7 +1047,7 @@ func (x *GetTaskRequest) String() string {
 func (*GetTaskRequest) ProtoMessage() {}
 
 func (x *GetTaskRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_agentbridge_v1_agentbridge_proto_msgTypes[12]
+	mi := &file_kratos_agentbridge_v1_agentbridge_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1016,7 +1060,7 @@ func (x *GetTaskRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetTaskRequest.ProtoReflect.Descriptor instead.
 func (*GetTaskRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_agentbridge_v1_agentbridge_proto_rawDescGZIP(), []int{12}
+	return file_kratos_agentbridge_v1_agentbridge_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *GetTaskRequest) GetId() string {
@@ -1035,7 +1079,7 @@ type CancelTaskRequest struct {
 
 func (x *CancelTaskRequest) Reset() {
 	*x = CancelTaskRequest{}
-	mi := &file_kratos_agentbridge_v1_agentbridge_proto_msgTypes[13]
+	mi := &file_kratos_agentbridge_v1_agentbridge_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1047,7 +1091,7 @@ func (x *CancelTaskRequest) String() string {
 func (*CancelTaskRequest) ProtoMessage() {}
 
 func (x *CancelTaskRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_agentbridge_v1_agentbridge_proto_msgTypes[13]
+	mi := &file_kratos_agentbridge_v1_agentbridge_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1060,7 +1104,7 @@ func (x *CancelTaskRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CancelTaskRequest.ProtoReflect.Descriptor instead.
 func (*CancelTaskRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_agentbridge_v1_agentbridge_proto_rawDescGZIP(), []int{13}
+	return file_kratos_agentbridge_v1_agentbridge_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *CancelTaskRequest) GetId() string {
@@ -1085,7 +1129,7 @@ type DispatchTaskRequest struct {
 
 func (x *DispatchTaskRequest) Reset() {
 	*x = DispatchTaskRequest{}
-	mi := &file_kratos_agentbridge_v1_agentbridge_proto_msgTypes[14]
+	mi := &file_kratos_agentbridge_v1_agentbridge_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1097,7 +1141,7 @@ func (x *DispatchTaskRequest) String() string {
 func (*DispatchTaskRequest) ProtoMessage() {}
 
 func (x *DispatchTaskRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_agentbridge_v1_agentbridge_proto_msgTypes[14]
+	mi := &file_kratos_agentbridge_v1_agentbridge_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1110,7 +1154,7 @@ func (x *DispatchTaskRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DispatchTaskRequest.ProtoReflect.Descriptor instead.
 func (*DispatchTaskRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_agentbridge_v1_agentbridge_proto_rawDescGZIP(), []int{14}
+	return file_kratos_agentbridge_v1_agentbridge_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *DispatchTaskRequest) GetSessionId() string {
@@ -1160,7 +1204,7 @@ type ProjectCandidate struct {
 
 func (x *ProjectCandidate) Reset() {
 	*x = ProjectCandidate{}
-	mi := &file_kratos_agentbridge_v1_agentbridge_proto_msgTypes[15]
+	mi := &file_kratos_agentbridge_v1_agentbridge_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1172,7 +1216,7 @@ func (x *ProjectCandidate) String() string {
 func (*ProjectCandidate) ProtoMessage() {}
 
 func (x *ProjectCandidate) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_agentbridge_v1_agentbridge_proto_msgTypes[15]
+	mi := &file_kratos_agentbridge_v1_agentbridge_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1185,7 +1229,7 @@ func (x *ProjectCandidate) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProjectCandidate.ProtoReflect.Descriptor instead.
 func (*ProjectCandidate) Descriptor() ([]byte, []int) {
-	return file_kratos_agentbridge_v1_agentbridge_proto_rawDescGZIP(), []int{15}
+	return file_kratos_agentbridge_v1_agentbridge_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *ProjectCandidate) GetId() string {
@@ -1226,7 +1270,7 @@ type DispatchTaskResponse struct {
 
 func (x *DispatchTaskResponse) Reset() {
 	*x = DispatchTaskResponse{}
-	mi := &file_kratos_agentbridge_v1_agentbridge_proto_msgTypes[16]
+	mi := &file_kratos_agentbridge_v1_agentbridge_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1238,7 +1282,7 @@ func (x *DispatchTaskResponse) String() string {
 func (*DispatchTaskResponse) ProtoMessage() {}
 
 func (x *DispatchTaskResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_agentbridge_v1_agentbridge_proto_msgTypes[16]
+	mi := &file_kratos_agentbridge_v1_agentbridge_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1251,7 +1295,7 @@ func (x *DispatchTaskResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DispatchTaskResponse.ProtoReflect.Descriptor instead.
 func (*DispatchTaskResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_agentbridge_v1_agentbridge_proto_rawDescGZIP(), []int{16}
+	return file_kratos_agentbridge_v1_agentbridge_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *DispatchTaskResponse) GetTask() *CodingTask {
@@ -1285,7 +1329,7 @@ type CodingTaskEvent struct {
 
 func (x *CodingTaskEvent) Reset() {
 	*x = CodingTaskEvent{}
-	mi := &file_kratos_agentbridge_v1_agentbridge_proto_msgTypes[17]
+	mi := &file_kratos_agentbridge_v1_agentbridge_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1297,7 +1341,7 @@ func (x *CodingTaskEvent) String() string {
 func (*CodingTaskEvent) ProtoMessage() {}
 
 func (x *CodingTaskEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_agentbridge_v1_agentbridge_proto_msgTypes[17]
+	mi := &file_kratos_agentbridge_v1_agentbridge_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1310,7 +1354,7 @@ func (x *CodingTaskEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CodingTaskEvent.ProtoReflect.Descriptor instead.
 func (*CodingTaskEvent) Descriptor() ([]byte, []int) {
-	return file_kratos_agentbridge_v1_agentbridge_proto_rawDescGZIP(), []int{17}
+	return file_kratos_agentbridge_v1_agentbridge_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *CodingTaskEvent) GetId() string {
@@ -1373,7 +1417,7 @@ type ListTaskEventsRequest struct {
 
 func (x *ListTaskEventsRequest) Reset() {
 	*x = ListTaskEventsRequest{}
-	mi := &file_kratos_agentbridge_v1_agentbridge_proto_msgTypes[18]
+	mi := &file_kratos_agentbridge_v1_agentbridge_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1385,7 +1429,7 @@ func (x *ListTaskEventsRequest) String() string {
 func (*ListTaskEventsRequest) ProtoMessage() {}
 
 func (x *ListTaskEventsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_agentbridge_v1_agentbridge_proto_msgTypes[18]
+	mi := &file_kratos_agentbridge_v1_agentbridge_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1398,7 +1442,7 @@ func (x *ListTaskEventsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListTaskEventsRequest.ProtoReflect.Descriptor instead.
 func (*ListTaskEventsRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_agentbridge_v1_agentbridge_proto_rawDescGZIP(), []int{18}
+	return file_kratos_agentbridge_v1_agentbridge_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *ListTaskEventsRequest) GetTaskId() string {
@@ -1431,7 +1475,7 @@ type ListTaskEventsResponse struct {
 
 func (x *ListTaskEventsResponse) Reset() {
 	*x = ListTaskEventsResponse{}
-	mi := &file_kratos_agentbridge_v1_agentbridge_proto_msgTypes[19]
+	mi := &file_kratos_agentbridge_v1_agentbridge_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1443,7 +1487,7 @@ func (x *ListTaskEventsResponse) String() string {
 func (*ListTaskEventsResponse) ProtoMessage() {}
 
 func (x *ListTaskEventsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_agentbridge_v1_agentbridge_proto_msgTypes[19]
+	mi := &file_kratos_agentbridge_v1_agentbridge_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1456,7 +1500,7 @@ func (x *ListTaskEventsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListTaskEventsResponse.ProtoReflect.Descriptor instead.
 func (*ListTaskEventsResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_agentbridge_v1_agentbridge_proto_rawDescGZIP(), []int{19}
+	return file_kratos_agentbridge_v1_agentbridge_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *ListTaskEventsResponse) GetItems() []*CodingTaskEvent {
@@ -1479,7 +1523,7 @@ type ReviewTaskRequest struct {
 
 func (x *ReviewTaskRequest) Reset() {
 	*x = ReviewTaskRequest{}
-	mi := &file_kratos_agentbridge_v1_agentbridge_proto_msgTypes[20]
+	mi := &file_kratos_agentbridge_v1_agentbridge_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1491,7 +1535,7 @@ func (x *ReviewTaskRequest) String() string {
 func (*ReviewTaskRequest) ProtoMessage() {}
 
 func (x *ReviewTaskRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_agentbridge_v1_agentbridge_proto_msgTypes[20]
+	mi := &file_kratos_agentbridge_v1_agentbridge_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1504,7 +1548,7 @@ func (x *ReviewTaskRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReviewTaskRequest.ProtoReflect.Descriptor instead.
 func (*ReviewTaskRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_agentbridge_v1_agentbridge_proto_rawDescGZIP(), []int{20}
+	return file_kratos_agentbridge_v1_agentbridge_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *ReviewTaskRequest) GetId() string {
@@ -1569,7 +1613,9 @@ const file_kratos_agentbridge_v1_agentbridge_proto_rawDesc = "" +
 	" \x01(\tR\x0fdefaultAutonomy\x1a6\n" +
 	"\bEnvEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"N\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"7\n" +
+	"\x12DeleteAgentRequest\x12!\n" +
+	"\tagent_key\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\bagentKey\"N\n" +
 	"\x12ListAgentsResponse\x128\n" +
 	"\x05items\x18\x01 \x03(\v2\".kratos.agentbridge.v1.CodingAgentR\x05items\"6\n" +
 	"\x11ProbeAgentRequest\x12!\n" +
@@ -1666,12 +1712,14 @@ const file_kratos_agentbridge_v1_agentbridge_proto_rawDesc = "" +
 	"\x11ReviewTaskRequest\x12\x14\n" +
 	"\x02id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\x02id\x12\x1c\n" +
 	"\x06action\x18\x02 \x01(\tB\x04\xe2A\x01\x02R\x06action\x12\x18\n" +
-	"\acomment\x18\x03 \x01(\tR\acomment2\xf5\r\n" +
+	"\acomment\x18\x03 \x01(\tR\acomment2\x87\x0f\n" +
 	"\x12AgentBridgeService\x12\x92\x01\n" +
 	"\vUpsertAgent\x12).kratos.agentbridge.v1.UpsertAgentRequest\x1a\".kratos.agentbridge.v1.CodingAgent\"4\xca\xf3\x18\x0f\n" +
 	"\rcoding.manage\x82\xd3\xe4\x93\x02\x1b:\x01*\"\x16/v1/agentbridge/agents\x12u\n" +
 	"\n" +
-	"ListAgents\x12\x16.google.protobuf.Empty\x1a).kratos.agentbridge.v1.ListAgentsResponse\"$\xca\xf3\x18\x02\x10\x01\x82\xd3\xe4\x93\x02\x18\x12\x16/v1/agentbridge/agents\x12\x9d\x01\n" +
+	"ListAgents\x12\x16.google.protobuf.Empty\x1a).kratos.agentbridge.v1.ListAgentsResponse\"$\xca\xf3\x18\x02\x10\x01\x82\xd3\xe4\x93\x02\x18\x12\x16/v1/agentbridge/agents\x12\x8f\x01\n" +
+	"\vDeleteAgent\x12).kratos.agentbridge.v1.DeleteAgentRequest\x1a\x16.google.protobuf.Empty\"=\xca\xf3\x18\x0f\n" +
+	"\rcoding.manage\x82\xd3\xe4\x93\x02$*\"/v1/agentbridge/agents/{agent_key}\x12\x9d\x01\n" +
 	"\n" +
 	"ProbeAgent\x12(.kratos.agentbridge.v1.ProbeAgentRequest\x1a).kratos.agentbridge.v1.ProbeAgentResponse\":\xca\xf3\x18\x0f\n" +
 	"\rcoding.manage\x82\xd3\xe4\x93\x02!:\x01*\"\x1c/v1/agentbridge/agents/probe\x12\x9a\x01\n" +
@@ -1705,68 +1753,71 @@ func file_kratos_agentbridge_v1_agentbridge_proto_rawDescGZIP() []byte {
 	return file_kratos_agentbridge_v1_agentbridge_proto_rawDescData
 }
 
-var file_kratos_agentbridge_v1_agentbridge_proto_msgTypes = make([]protoimpl.MessageInfo, 23)
+var file_kratos_agentbridge_v1_agentbridge_proto_msgTypes = make([]protoimpl.MessageInfo, 24)
 var file_kratos_agentbridge_v1_agentbridge_proto_goTypes = []any{
 	(*CodingAgent)(nil),            // 0: kratos.agentbridge.v1.CodingAgent
 	(*UpsertAgentRequest)(nil),     // 1: kratos.agentbridge.v1.UpsertAgentRequest
-	(*ListAgentsResponse)(nil),     // 2: kratos.agentbridge.v1.ListAgentsResponse
-	(*ProbeAgentRequest)(nil),      // 3: kratos.agentbridge.v1.ProbeAgentRequest
-	(*ProbeAgentResponse)(nil),     // 4: kratos.agentbridge.v1.ProbeAgentResponse
-	(*CodingProject)(nil),          // 5: kratos.agentbridge.v1.CodingProject
-	(*UpsertProjectRequest)(nil),   // 6: kratos.agentbridge.v1.UpsertProjectRequest
-	(*ListProjectsResponse)(nil),   // 7: kratos.agentbridge.v1.ListProjectsResponse
-	(*DeleteProjectRequest)(nil),   // 8: kratos.agentbridge.v1.DeleteProjectRequest
-	(*CodingTask)(nil),             // 9: kratos.agentbridge.v1.CodingTask
-	(*ListTasksRequest)(nil),       // 10: kratos.agentbridge.v1.ListTasksRequest
-	(*ListTasksResponse)(nil),      // 11: kratos.agentbridge.v1.ListTasksResponse
-	(*GetTaskRequest)(nil),         // 12: kratos.agentbridge.v1.GetTaskRequest
-	(*CancelTaskRequest)(nil),      // 13: kratos.agentbridge.v1.CancelTaskRequest
-	(*DispatchTaskRequest)(nil),    // 14: kratos.agentbridge.v1.DispatchTaskRequest
-	(*ProjectCandidate)(nil),       // 15: kratos.agentbridge.v1.ProjectCandidate
-	(*DispatchTaskResponse)(nil),   // 16: kratos.agentbridge.v1.DispatchTaskResponse
-	(*CodingTaskEvent)(nil),        // 17: kratos.agentbridge.v1.CodingTaskEvent
-	(*ListTaskEventsRequest)(nil),  // 18: kratos.agentbridge.v1.ListTaskEventsRequest
-	(*ListTaskEventsResponse)(nil), // 19: kratos.agentbridge.v1.ListTaskEventsResponse
-	(*ReviewTaskRequest)(nil),      // 20: kratos.agentbridge.v1.ReviewTaskRequest
-	nil,                            // 21: kratos.agentbridge.v1.CodingAgent.EnvEntry
-	nil,                            // 22: kratos.agentbridge.v1.UpsertAgentRequest.EnvEntry
-	(*emptypb.Empty)(nil),          // 23: google.protobuf.Empty
+	(*DeleteAgentRequest)(nil),     // 2: kratos.agentbridge.v1.DeleteAgentRequest
+	(*ListAgentsResponse)(nil),     // 3: kratos.agentbridge.v1.ListAgentsResponse
+	(*ProbeAgentRequest)(nil),      // 4: kratos.agentbridge.v1.ProbeAgentRequest
+	(*ProbeAgentResponse)(nil),     // 5: kratos.agentbridge.v1.ProbeAgentResponse
+	(*CodingProject)(nil),          // 6: kratos.agentbridge.v1.CodingProject
+	(*UpsertProjectRequest)(nil),   // 7: kratos.agentbridge.v1.UpsertProjectRequest
+	(*ListProjectsResponse)(nil),   // 8: kratos.agentbridge.v1.ListProjectsResponse
+	(*DeleteProjectRequest)(nil),   // 9: kratos.agentbridge.v1.DeleteProjectRequest
+	(*CodingTask)(nil),             // 10: kratos.agentbridge.v1.CodingTask
+	(*ListTasksRequest)(nil),       // 11: kratos.agentbridge.v1.ListTasksRequest
+	(*ListTasksResponse)(nil),      // 12: kratos.agentbridge.v1.ListTasksResponse
+	(*GetTaskRequest)(nil),         // 13: kratos.agentbridge.v1.GetTaskRequest
+	(*CancelTaskRequest)(nil),      // 14: kratos.agentbridge.v1.CancelTaskRequest
+	(*DispatchTaskRequest)(nil),    // 15: kratos.agentbridge.v1.DispatchTaskRequest
+	(*ProjectCandidate)(nil),       // 16: kratos.agentbridge.v1.ProjectCandidate
+	(*DispatchTaskResponse)(nil),   // 17: kratos.agentbridge.v1.DispatchTaskResponse
+	(*CodingTaskEvent)(nil),        // 18: kratos.agentbridge.v1.CodingTaskEvent
+	(*ListTaskEventsRequest)(nil),  // 19: kratos.agentbridge.v1.ListTaskEventsRequest
+	(*ListTaskEventsResponse)(nil), // 20: kratos.agentbridge.v1.ListTaskEventsResponse
+	(*ReviewTaskRequest)(nil),      // 21: kratos.agentbridge.v1.ReviewTaskRequest
+	nil,                            // 22: kratos.agentbridge.v1.CodingAgent.EnvEntry
+	nil,                            // 23: kratos.agentbridge.v1.UpsertAgentRequest.EnvEntry
+	(*emptypb.Empty)(nil),          // 24: google.protobuf.Empty
 }
 var file_kratos_agentbridge_v1_agentbridge_proto_depIdxs = []int32{
-	21, // 0: kratos.agentbridge.v1.CodingAgent.env:type_name -> kratos.agentbridge.v1.CodingAgent.EnvEntry
-	22, // 1: kratos.agentbridge.v1.UpsertAgentRequest.env:type_name -> kratos.agentbridge.v1.UpsertAgentRequest.EnvEntry
+	22, // 0: kratos.agentbridge.v1.CodingAgent.env:type_name -> kratos.agentbridge.v1.CodingAgent.EnvEntry
+	23, // 1: kratos.agentbridge.v1.UpsertAgentRequest.env:type_name -> kratos.agentbridge.v1.UpsertAgentRequest.EnvEntry
 	0,  // 2: kratos.agentbridge.v1.ListAgentsResponse.items:type_name -> kratos.agentbridge.v1.CodingAgent
-	5,  // 3: kratos.agentbridge.v1.ListProjectsResponse.items:type_name -> kratos.agentbridge.v1.CodingProject
-	9,  // 4: kratos.agentbridge.v1.ListTasksResponse.items:type_name -> kratos.agentbridge.v1.CodingTask
-	9,  // 5: kratos.agentbridge.v1.DispatchTaskResponse.task:type_name -> kratos.agentbridge.v1.CodingTask
-	15, // 6: kratos.agentbridge.v1.DispatchTaskResponse.candidates:type_name -> kratos.agentbridge.v1.ProjectCandidate
-	17, // 7: kratos.agentbridge.v1.ListTaskEventsResponse.items:type_name -> kratos.agentbridge.v1.CodingTaskEvent
+	6,  // 3: kratos.agentbridge.v1.ListProjectsResponse.items:type_name -> kratos.agentbridge.v1.CodingProject
+	10, // 4: kratos.agentbridge.v1.ListTasksResponse.items:type_name -> kratos.agentbridge.v1.CodingTask
+	10, // 5: kratos.agentbridge.v1.DispatchTaskResponse.task:type_name -> kratos.agentbridge.v1.CodingTask
+	16, // 6: kratos.agentbridge.v1.DispatchTaskResponse.candidates:type_name -> kratos.agentbridge.v1.ProjectCandidate
+	18, // 7: kratos.agentbridge.v1.ListTaskEventsResponse.items:type_name -> kratos.agentbridge.v1.CodingTaskEvent
 	1,  // 8: kratos.agentbridge.v1.AgentBridgeService.UpsertAgent:input_type -> kratos.agentbridge.v1.UpsertAgentRequest
-	23, // 9: kratos.agentbridge.v1.AgentBridgeService.ListAgents:input_type -> google.protobuf.Empty
-	3,  // 10: kratos.agentbridge.v1.AgentBridgeService.ProbeAgent:input_type -> kratos.agentbridge.v1.ProbeAgentRequest
-	6,  // 11: kratos.agentbridge.v1.AgentBridgeService.UpsertProject:input_type -> kratos.agentbridge.v1.UpsertProjectRequest
-	23, // 12: kratos.agentbridge.v1.AgentBridgeService.ListProjects:input_type -> google.protobuf.Empty
-	8,  // 13: kratos.agentbridge.v1.AgentBridgeService.DeleteProject:input_type -> kratos.agentbridge.v1.DeleteProjectRequest
-	10, // 14: kratos.agentbridge.v1.AgentBridgeService.ListTasks:input_type -> kratos.agentbridge.v1.ListTasksRequest
-	12, // 15: kratos.agentbridge.v1.AgentBridgeService.GetTask:input_type -> kratos.agentbridge.v1.GetTaskRequest
-	13, // 16: kratos.agentbridge.v1.AgentBridgeService.CancelTask:input_type -> kratos.agentbridge.v1.CancelTaskRequest
-	14, // 17: kratos.agentbridge.v1.AgentBridgeService.DispatchTask:input_type -> kratos.agentbridge.v1.DispatchTaskRequest
-	18, // 18: kratos.agentbridge.v1.AgentBridgeService.ListTaskEvents:input_type -> kratos.agentbridge.v1.ListTaskEventsRequest
-	20, // 19: kratos.agentbridge.v1.AgentBridgeService.ReviewTask:input_type -> kratos.agentbridge.v1.ReviewTaskRequest
-	0,  // 20: kratos.agentbridge.v1.AgentBridgeService.UpsertAgent:output_type -> kratos.agentbridge.v1.CodingAgent
-	2,  // 21: kratos.agentbridge.v1.AgentBridgeService.ListAgents:output_type -> kratos.agentbridge.v1.ListAgentsResponse
-	4,  // 22: kratos.agentbridge.v1.AgentBridgeService.ProbeAgent:output_type -> kratos.agentbridge.v1.ProbeAgentResponse
-	5,  // 23: kratos.agentbridge.v1.AgentBridgeService.UpsertProject:output_type -> kratos.agentbridge.v1.CodingProject
-	7,  // 24: kratos.agentbridge.v1.AgentBridgeService.ListProjects:output_type -> kratos.agentbridge.v1.ListProjectsResponse
-	23, // 25: kratos.agentbridge.v1.AgentBridgeService.DeleteProject:output_type -> google.protobuf.Empty
-	11, // 26: kratos.agentbridge.v1.AgentBridgeService.ListTasks:output_type -> kratos.agentbridge.v1.ListTasksResponse
-	9,  // 27: kratos.agentbridge.v1.AgentBridgeService.GetTask:output_type -> kratos.agentbridge.v1.CodingTask
-	9,  // 28: kratos.agentbridge.v1.AgentBridgeService.CancelTask:output_type -> kratos.agentbridge.v1.CodingTask
-	16, // 29: kratos.agentbridge.v1.AgentBridgeService.DispatchTask:output_type -> kratos.agentbridge.v1.DispatchTaskResponse
-	19, // 30: kratos.agentbridge.v1.AgentBridgeService.ListTaskEvents:output_type -> kratos.agentbridge.v1.ListTaskEventsResponse
-	9,  // 31: kratos.agentbridge.v1.AgentBridgeService.ReviewTask:output_type -> kratos.agentbridge.v1.CodingTask
-	20, // [20:32] is the sub-list for method output_type
-	8,  // [8:20] is the sub-list for method input_type
+	24, // 9: kratos.agentbridge.v1.AgentBridgeService.ListAgents:input_type -> google.protobuf.Empty
+	2,  // 10: kratos.agentbridge.v1.AgentBridgeService.DeleteAgent:input_type -> kratos.agentbridge.v1.DeleteAgentRequest
+	4,  // 11: kratos.agentbridge.v1.AgentBridgeService.ProbeAgent:input_type -> kratos.agentbridge.v1.ProbeAgentRequest
+	7,  // 12: kratos.agentbridge.v1.AgentBridgeService.UpsertProject:input_type -> kratos.agentbridge.v1.UpsertProjectRequest
+	24, // 13: kratos.agentbridge.v1.AgentBridgeService.ListProjects:input_type -> google.protobuf.Empty
+	9,  // 14: kratos.agentbridge.v1.AgentBridgeService.DeleteProject:input_type -> kratos.agentbridge.v1.DeleteProjectRequest
+	11, // 15: kratos.agentbridge.v1.AgentBridgeService.ListTasks:input_type -> kratos.agentbridge.v1.ListTasksRequest
+	13, // 16: kratos.agentbridge.v1.AgentBridgeService.GetTask:input_type -> kratos.agentbridge.v1.GetTaskRequest
+	14, // 17: kratos.agentbridge.v1.AgentBridgeService.CancelTask:input_type -> kratos.agentbridge.v1.CancelTaskRequest
+	15, // 18: kratos.agentbridge.v1.AgentBridgeService.DispatchTask:input_type -> kratos.agentbridge.v1.DispatchTaskRequest
+	19, // 19: kratos.agentbridge.v1.AgentBridgeService.ListTaskEvents:input_type -> kratos.agentbridge.v1.ListTaskEventsRequest
+	21, // 20: kratos.agentbridge.v1.AgentBridgeService.ReviewTask:input_type -> kratos.agentbridge.v1.ReviewTaskRequest
+	0,  // 21: kratos.agentbridge.v1.AgentBridgeService.UpsertAgent:output_type -> kratos.agentbridge.v1.CodingAgent
+	3,  // 22: kratos.agentbridge.v1.AgentBridgeService.ListAgents:output_type -> kratos.agentbridge.v1.ListAgentsResponse
+	24, // 23: kratos.agentbridge.v1.AgentBridgeService.DeleteAgent:output_type -> google.protobuf.Empty
+	5,  // 24: kratos.agentbridge.v1.AgentBridgeService.ProbeAgent:output_type -> kratos.agentbridge.v1.ProbeAgentResponse
+	6,  // 25: kratos.agentbridge.v1.AgentBridgeService.UpsertProject:output_type -> kratos.agentbridge.v1.CodingProject
+	8,  // 26: kratos.agentbridge.v1.AgentBridgeService.ListProjects:output_type -> kratos.agentbridge.v1.ListProjectsResponse
+	24, // 27: kratos.agentbridge.v1.AgentBridgeService.DeleteProject:output_type -> google.protobuf.Empty
+	12, // 28: kratos.agentbridge.v1.AgentBridgeService.ListTasks:output_type -> kratos.agentbridge.v1.ListTasksResponse
+	10, // 29: kratos.agentbridge.v1.AgentBridgeService.GetTask:output_type -> kratos.agentbridge.v1.CodingTask
+	10, // 30: kratos.agentbridge.v1.AgentBridgeService.CancelTask:output_type -> kratos.agentbridge.v1.CodingTask
+	17, // 31: kratos.agentbridge.v1.AgentBridgeService.DispatchTask:output_type -> kratos.agentbridge.v1.DispatchTaskResponse
+	20, // 32: kratos.agentbridge.v1.AgentBridgeService.ListTaskEvents:output_type -> kratos.agentbridge.v1.ListTaskEventsResponse
+	10, // 33: kratos.agentbridge.v1.AgentBridgeService.ReviewTask:output_type -> kratos.agentbridge.v1.CodingTask
+	21, // [21:34] is the sub-list for method output_type
+	8,  // [8:21] is the sub-list for method input_type
 	8,  // [8:8] is the sub-list for extension type_name
 	8,  // [8:8] is the sub-list for extension extendee
 	0,  // [0:8] is the sub-list for field type_name
@@ -1783,7 +1834,7 @@ func file_kratos_agentbridge_v1_agentbridge_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kratos_agentbridge_v1_agentbridge_proto_rawDesc), len(file_kratos_agentbridge_v1_agentbridge_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   23,
+			NumMessages:   24,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

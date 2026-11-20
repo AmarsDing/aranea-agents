@@ -1145,9 +1145,10 @@ export function useChatWorkspace() {
       contextBreakdown,
       displayMessages,
       sessionRevision,
+      // 还没选会话时没有连接可言：返回 undefined，界面不报「连接已断开」
       wsConnected: computed(() => {
         const sid = selectedSessionForUi.value?.id;
-        return sid ? runtimeStore.isWsConnected(sid) : false;
+        return sid ? runtimeStore.isWsConnected(sid) : undefined;
       }),
       wsReplaying: streamManager.wsReplaying,
       reconnectError: streamManager.reconnectError,

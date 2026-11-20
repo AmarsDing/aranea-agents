@@ -1,0 +1,1542 @@
+// 工作台 › 对话：会话中心（/chat）。类名 cc- 前缀，取值只走 --nt-* 令牌。
+// 版式照样稿 v2：docs/aranea-agents/design/assets/2026-11-19-conversation-center/index.html
+// 两栏：任务列表 432px · 任务详情；一屏，列表和对话在各自栏里滚动。
+@import "./_nt-tokens.css"
+
+.cc-page
+  display: grid
+  grid-template-columns: 432px minmax(0, 1fr)
+  gap: var(--nt-space-3)
+  // 高度跟着 q-page 的 min-height 走（一屏），里面各自滚动
+  height: 0
+  padding: var(--nt-space-3) var(--nt-space-4) var(--nt-space-4)
+  color: var(--nt-text-1)
+  font-family: var(--nt-font-sans)
+  font-size: var(--nt-fs-body)
+
+.cc-sr
+  position: absolute
+  width: 1px
+  height: 1px
+  overflow: hidden
+  clip: rect(0 0 0 0)
+  white-space: nowrap
+
+.cc-num
+  font-family: var(--nt-font-mono)
+  font-variant-numeric: tabular-nums
+
+.cc-num--warn
+  color: var(--nt-warn)
+
+.cc-num--run
+  color: var(--nt-run)
+
+.cc-panel
+  position: relative
+  display: flex
+  flex-direction: column
+  min-width: 0
+  min-height: 0
+  overflow: hidden
+  background: var(--nt-glass-panel)
+  border: 1px solid var(--nt-glass-border)
+  border-radius: var(--nt-radius-l)
+  box-shadow: inset 0 1px 0 var(--nt-glass-highlight), var(--nt-shadow-depth)
+  backdrop-filter: var(--nt-glass-filter)
+
+// ——— 执行者小方块：页面上唯一的「彩色」，状态色另算 ———
+.cc-glyph
+  display: grid
+  flex: none
+  place-items: center
+  width: 24px
+  height: 24px
+  border-radius: var(--nt-radius-m)
+  background: var(--nt-tile-hover)
+  color: var(--nt-text-1)
+  font: 700 9.5px/1 var(--nt-font-mono)
+  letter-spacing: 0.02em
+
+.cc-glyph--xs
+  width: 20px
+  height: 20px
+  border-radius: var(--nt-radius-s)
+  font-size: 8.5px
+
+.cc-glyph--lg
+  width: 30px
+  height: 30px
+  font-size: 11px
+
+.cc-glyph--cc
+  background: color-mix(in srgb, var(--nt-line-1) 20%, var(--nt-bg-1))
+  color: var(--nt-line-1)
+
+.cc-glyph--cx
+  background: color-mix(in srgb, var(--nt-line-2) 20%, var(--nt-bg-1))
+  color: var(--nt-line-2)
+
+.cc-glyph--wb
+  background: color-mix(in srgb, var(--nt-line-5) 20%, var(--nt-bg-1))
+  color: var(--nt-line-5)
+
+.cc-glyph--ds
+  background: color-mix(in srgb, var(--nt-line-3) 18%, var(--nt-bg-1))
+  color: var(--nt-line-3)
+
+.cc-glyph--gk
+  background: color-mix(in srgb, var(--nt-line-4) 18%, var(--nt-bg-1))
+  color: var(--nt-line-4)
+
+.cc-glyph--ag
+  background: color-mix(in srgb, var(--nt-accent) 14%, var(--nt-bg-1))
+  color: var(--nt-accent)
+  font: 600 11px/1 var(--nt-font-sans)
+
+.cc-glyph--me
+  background: var(--nt-bg-2)
+  color: var(--nt-text-1)
+  font: 600 11px/1 var(--nt-font-sans)
+
+// ——— 状态：琥珀等你、青绿进行中、红失败；完成 / 空闲不着色 ———
+.cc-pill
+  display: inline-flex
+  flex: none
+  align-items: center
+  gap: 5px
+  height: 20px
+  padding: 0 var(--nt-space-2)
+  border-radius: var(--nt-radius-pill)
+  background: var(--nt-tile-bg)
+  color: var(--nt-text-3)
+  font-size: var(--nt-fs-micro)
+  white-space: nowrap
+
+  &::before
+    width: 6px
+    height: 6px
+    border-radius: 50%
+    background: currentColor
+    content: ''
+
+.cc-pill--waiting
+  background: color-mix(in srgb, var(--nt-warn) 13%, transparent)
+  color: var(--nt-warn)
+
+.cc-pill--running
+  background: color-mix(in srgb, var(--nt-run) 12%, transparent)
+  color: var(--nt-run)
+
+.cc-pill--failed
+  background: color-mix(in srgb, var(--nt-danger) 13%, transparent)
+  color: var(--nt-danger)
+
+.cc-dot,
+.cc-sd
+  flex: none
+  width: 8px
+  height: 8px
+  border-radius: 50%
+  box-shadow: inset 0 0 0 1.5px var(--nt-border-2)
+
+.cc-sd
+  width: 7px
+  height: 7px
+
+.cc-dot--waiting,
+.cc-sd--waiting
+  background: var(--nt-warn)
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--nt-warn) 18%, transparent)
+
+.cc-dot--running,
+.cc-sd--running
+  background: var(--nt-run)
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--nt-run) 18%, transparent)
+  animation: cc-pulse 1.4s ease-in-out infinite
+
+.cc-dot--failed,
+.cc-sd--failed
+  background: var(--nt-danger)
+  box-shadow: none
+
+@keyframes cc-pulse
+  50%
+    opacity: 0.35
+
+// ——— 左：任务列表 ———
+.cc-lh
+  padding: var(--nt-space-3) var(--nt-space-3) 0
+
+.cc-search
+  display: flex
+  align-items: center
+  gap: var(--nt-space-2)
+  height: 36px
+  padding: 0 var(--nt-space-2)
+  background: var(--nt-field-bg)
+  border: 1px solid var(--nt-field-border)
+  border-radius: var(--nt-radius-m)
+  color: var(--nt-text-3)
+  transition: border-color var(--nt-transition), box-shadow var(--nt-transition)
+
+  &:focus-within
+    border-color: var(--nt-accent)
+    box-shadow: 0 0 0 3px var(--nt-accent-soft)
+
+  input
+    flex: 1
+    min-width: 0
+    background: none
+    border: 0
+    outline: 0
+    color: var(--nt-text-0)
+    font: inherit
+
+    &::placeholder
+      color: var(--nt-text-3)
+
+    &:focus-visible
+      outline: 0 !important
+
+  kbd
+    padding: 0 var(--nt-space-1)
+    border: 1px solid var(--nt-border-1)
+    border-radius: var(--nt-radius-s)
+    font: var(--nt-fs-micro) var(--nt-font-mono)
+
+.cc-views
+  display: flex
+  align-items: center
+  gap: 2px
+  margin: var(--nt-space-2) calc(var(--nt-space-1) * -1) 0
+  border-bottom: 1px solid var(--nt-border-0)
+
+  > button
+    position: relative
+    display: inline-flex
+    align-items: center
+    gap: 5px
+    padding: 6px var(--nt-space-2) 9px
+    background: none
+    border: 0
+    color: var(--nt-text-2)
+    font: inherit
+    font-size: var(--nt-fs-panel)
+    cursor: pointer
+
+    &:hover
+      color: var(--nt-text-0)
+
+    .cc-num
+      color: var(--nt-text-3)
+      font-size: var(--nt-fs-micro)
+
+    .cc-num--warn
+      color: var(--nt-warn)
+
+    .cc-num--run
+      color: var(--nt-run)
+
+  .cc-views--on
+    color: var(--nt-text-0)
+    font-weight: 600
+
+    &::after
+      position: absolute
+      right: var(--nt-space-2)
+      bottom: -1px
+      left: var(--nt-space-2)
+      height: 2px
+      border-radius: 2px
+      background: var(--nt-accent)
+      content: ''
+
+.cc-views__more
+  margin-left: auto
+  color: var(--nt-text-2)
+  font-size: var(--nt-fs-panel)
+
+.cc-fl
+  display: flex
+  flex-wrap: wrap
+  align-items: center
+  gap: var(--nt-space-1) 2px
+  padding: var(--nt-space-2) 0 var(--nt-space-2)
+
+.cc-xf
+  display: inline-flex
+  align-items: center
+  gap: 3px
+  height: 28px
+  padding: 0 6px 0 3px
+  background: none
+  border: 1px solid transparent
+  border-radius: var(--nt-radius-pill)
+  color: var(--nt-text-2)
+  font: var(--nt-fs-micro) var(--nt-font-mono)
+  cursor: pointer
+  transition: background var(--nt-transition), border-color var(--nt-transition), opacity var(--nt-transition)
+
+  &:hover
+    background: var(--nt-tile-hover)
+    color: var(--nt-text-0)
+
+.cc-xf--on
+  background: var(--nt-accent-soft)
+  border-color: var(--nt-accent-border)
+  color: var(--nt-text-0)
+
+.cc-fl--on .cc-xf:not(.cc-xf--on)
+  opacity: 0.5
+
+.cc-xf--off
+  padding-right: 3px
+  opacity: 0.4
+  cursor: help
+
+  &:hover
+    background: none
+
+.cc-fl__tools
+  display: flex
+  gap: 2px
+  margin-left: auto
+
+.cc-sel
+  position: relative
+  display: grid
+  place-items: center
+  width: 30px
+  height: 28px
+  border-radius: var(--nt-radius-m)
+  color: var(--nt-text-2)
+
+  &:hover,
+  &:focus-within
+    background: var(--nt-tile-hover)
+    color: var(--nt-text-0)
+
+  &:focus-within
+    outline: var(--focus-ring)
+    outline-offset: 1px
+
+  select
+    position: absolute
+    inset: 0
+    width: 100%
+    opacity: 0
+    cursor: pointer
+
+    option
+      background: var(--nt-bg-2)
+      color: var(--nt-text-1)
+
+.cc-sel--on
+  color: var(--nt-accent)
+
+.cc-chips
+  display: flex
+  flex-wrap: wrap
+  gap: 6px
+  padding-bottom: var(--nt-space-2)
+
+.cc-chip
+  display: inline-flex
+  align-items: center
+  gap: var(--nt-space-1)
+  height: 22px
+  padding: 0 var(--nt-space-1) 0 var(--nt-space-2)
+  border-radius: var(--nt-radius-pill)
+  background: var(--nt-tile-hover)
+  color: var(--nt-text-1)
+  font-size: var(--nt-fs-caption)
+
+  button
+    display: grid
+    place-items: center
+    width: 16px
+    height: 16px
+    padding: 0
+    background: none
+    border: 0
+    border-radius: 50%
+    color: var(--nt-text-3)
+    cursor: pointer
+
+    &:hover
+      color: var(--nt-text-0)
+
+.cc-warn
+  margin: 0 0 var(--nt-space-2)
+  color: var(--nt-warn)
+  font-size: var(--nt-fs-caption)
+
+.cc-lb
+  flex: 1
+  min-height: 0
+  overflow-y: auto
+  padding: 0 var(--nt-space-2) var(--nt-space-3)
+  border-top: 1px solid var(--nt-border-1)
+
+.cc-grp
+  position: sticky
+  top: 0
+  z-index: 1
+  display: flex
+  align-items: center
+  gap: 6px
+  margin: 0 calc(var(--nt-space-2) * -1)
+  padding: var(--nt-space-3) var(--nt-space-4) 6px
+  background: linear-gradient(var(--nt-bg-1) 72%, transparent)
+  color: var(--nt-text-3)
+  font-size: var(--nt-fs-caption)
+
+  b
+    color: var(--nt-text-2)
+    font-weight: 600
+
+.cc-row
+  position: relative
+  display: grid
+  grid-template-columns: 18px minmax(0, 1fr)
+  gap: 0 var(--nt-space-2)
+  padding: 10px var(--nt-space-3) 10px 10px
+  border-radius: var(--nt-radius-m)
+  cursor: pointer
+  transition: background var(--nt-transition)
+
+  & + .cc-row
+    margin-top: 2px
+
+  &:hover
+    background: var(--nt-tile-hover)
+
+.cc-row--on
+  background: var(--nt-accent-soft)
+
+  &::before
+    position: absolute
+    top: 10px
+    bottom: 10px
+    left: 0
+    width: 3px
+    border-radius: 0 3px 3px 0
+    background: var(--nt-accent)
+    content: ''
+
+.cc-row--picked
+  background: color-mix(in srgb, var(--nt-accent) 11%, transparent)
+
+.cc-row__lead
+  position: relative
+  display: grid
+  place-items: start center
+  padding-top: 6px
+
+.cc-row__check
+  position: absolute
+  top: 1px
+  left: -2px
+  width: 18px
+  height: 18px
+  margin: 0
+  opacity: 0
+  accent-color: var(--nt-accent)
+  cursor: pointer
+
+  &:focus-visible
+    opacity: 1
+
+.cc-row:hover .cc-row__check,
+.cc-list--picking .cc-row__check
+  opacity: 1
+
+.cc-row:hover .cc-dot,
+.cc-list--picking .cc-dot
+  visibility: hidden
+
+.cc-row__main
+  min-width: 0
+
+.cc-row__top
+  display: flex
+  align-items: baseline
+  gap: var(--nt-space-2)
+  min-width: 0
+
+.cc-row__title
+  flex: 1
+  min-width: 0
+  overflow: hidden
+  color: var(--nt-text-0)
+  font-size: var(--nt-fs-body)
+  font-weight: 600
+  text-overflow: ellipsis
+  white-space: nowrap
+
+.cc-row__pin
+  flex: none
+  color: var(--nt-warn)
+
+.cc-row__time
+  flex: none
+  color: var(--nt-text-3)
+  font-size: var(--nt-fs-micro)
+
+.cc-row__line
+  margin-top: 2px
+  overflow: hidden
+  color: var(--nt-text-2)
+  font-size: var(--nt-fs-caption)
+  text-overflow: ellipsis
+  white-space: nowrap
+
+.cc-row__line--wait
+  color: var(--nt-warn)
+
+.cc-row__line--fail
+  color: var(--nt-danger)
+
+.cc-row__foot
+  display: flex
+  align-items: center
+  gap: var(--nt-space-2)
+  min-width: 0
+  margin-top: 7px
+  color: var(--nt-text-3)
+  font-size: var(--nt-fs-micro)
+
+.cc-stack
+  display: inline-flex
+  align-items: center
+  gap: 3px
+
+.cc-stack__more
+  color: var(--nt-text-3)
+
+.cc-row__meta
+  flex: 1
+  min-width: 0
+  overflow: hidden
+  text-overflow: ellipsis
+  white-space: nowrap
+
+.cc-empty
+  margin: var(--nt-space-6) var(--nt-space-2)
+  padding: var(--nt-space-5)
+  background: var(--nt-tile-bg)
+  border: 1px dashed var(--nt-border-1)
+  border-radius: var(--nt-radius-m)
+  color: var(--nt-text-3)
+  text-align: center
+
+  p
+    margin: 0 0 var(--nt-space-2)
+
+    &:last-child
+      margin-bottom: 0
+
+.cc-empty--detail
+  margin: auto
+  max-width: 360px
+
+.cc-batch
+  display: flex
+  align-items: center
+  gap: var(--nt-space-1)
+  margin: 0 var(--nt-space-2) var(--nt-space-2)
+  padding: var(--nt-space-1) var(--nt-space-2)
+  background: var(--nt-glass-bg)
+  border: 1px solid var(--nt-accent-border)
+  border-radius: var(--nt-radius-l)
+  box-shadow: var(--nt-shadow-depth)
+
+  b
+    margin-right: auto
+    padding-left: var(--nt-space-1)
+    color: var(--nt-text-0)
+    font-size: var(--nt-fs-panel)
+
+// ——— 右：任务详情 ———
+.cc-detail
+  display: flex
+  flex: 1
+  flex-direction: column
+  min-height: 0
+
+.cc-th
+  padding: var(--nt-space-4) var(--nt-space-5) var(--nt-space-3)
+
+.cc-th__row
+  display: flex
+  align-items: center
+  gap: var(--nt-space-2)
+
+.cc-th__title
+  flex: 1
+  min-width: 0
+  margin: 0
+  overflow: hidden
+  color: var(--nt-text-0)
+  font-size: 19px
+  font-weight: 600
+  line-height: 1.35
+  text-overflow: ellipsis
+  white-space: nowrap
+
+.cc-th__acts
+  display: flex
+  align-items: center
+  gap: 2px
+
+.cc-th__next
+  margin-right: var(--nt-space-1)
+
+.cc-th__del:hover
+  color: var(--nt-danger)
+
+.cc-th__meta
+  display: flex
+  flex-wrap: wrap
+  align-items: center
+  gap: var(--nt-space-1) 14px
+  margin-top: var(--nt-space-2)
+  color: var(--nt-text-3)
+  font-size: var(--nt-fs-caption)
+
+  > span
+    display: inline-flex
+    align-items: center
+    gap: 5px
+
+  b
+    color: var(--nt-text-1)
+    font-weight: 400
+
+.cc-origin
+  padding: 1px var(--nt-space-2)
+  border-radius: var(--nt-radius-pill)
+  background: var(--nt-tile-hover)
+  color: var(--nt-text-2)
+
+.cc-prog
+  display: flex
+  align-items: baseline
+  gap: 10px
+  margin-top: var(--nt-space-3)
+  padding: 10px var(--nt-space-3)
+  background: var(--nt-tile-bg)
+  border-radius: var(--nt-radius-m)
+
+.cc-prog__k
+  flex: none
+  color: var(--nt-text-3)
+  font-size: var(--nt-fs-caption)
+
+.cc-prog__v
+  display: -webkit-box
+  overflow: hidden
+  color: var(--nt-text-1)
+  font-size: var(--nt-fs-panel)
+  -webkit-box-orient: vertical
+  -webkit-line-clamp: 2
+
+// 执行链：这件事先后交给了谁
+.cc-chain
+  padding: 0 var(--nt-space-5) var(--nt-space-3)
+  border-bottom: 1px solid var(--nt-border-1)
+
+.cc-chain__head
+  display: flex
+  align-items: center
+  gap: var(--nt-space-2)
+  margin-bottom: var(--nt-space-2)
+  color: var(--nt-text-3)
+  font-size: var(--nt-fs-caption)
+
+  b
+    color: var(--nt-text-2)
+    font-weight: 600
+
+.cc-track
+  display: flex
+  align-items: stretch
+  overflow-x: auto
+  padding: 2px 2px 6px
+
+.cc-node
+  display: grid
+  flex: none
+  grid-template-columns: auto minmax(0, 1fr)
+  align-content: center
+  gap: 2px var(--nt-space-2)
+  width: 220px
+  padding: 9px 10px
+  background: var(--nt-tile-bg)
+  border: 1px solid var(--nt-border-0)
+  border-radius: var(--nt-radius-m)
+  color: inherit
+  font: inherit
+  text-align: left
+  cursor: pointer
+  transition: background var(--nt-transition), border-color var(--nt-transition)
+
+  &:hover
+    background: var(--nt-tile-hover)
+    border-color: var(--nt-border-1)
+
+  > .cc-glyph
+    grid-row: 1 / 3
+    align-self: center
+
+.cc-node--on,
+.cc-node--on:hover
+  background: var(--nt-accent-soft)
+  border-color: var(--nt-accent-border)
+
+.cc-node__who
+  display: flex
+  align-items: center
+  gap: 6px
+  min-width: 0
+  overflow: hidden
+  color: var(--nt-text-0)
+  font-size: var(--nt-fs-caption)
+  font-weight: 600
+  text-overflow: ellipsis
+  white-space: nowrap
+
+.cc-node__what
+  overflow: hidden
+  color: var(--nt-text-2)
+  font-size: var(--nt-fs-caption)
+  text-overflow: ellipsis
+  white-space: nowrap
+
+.cc-node__meta
+  grid-column: 2
+  color: var(--nt-text-3)
+  font: var(--nt-fs-micro) var(--nt-font-mono)
+
+.cc-link
+  display: grid
+  flex: none
+  place-items: center
+  width: 26px
+  color: var(--nt-text-3)
+
+.cc-par
+  display: flex
+  flex: none
+  flex-direction: column
+  gap: var(--nt-space-1)
+  width: 200px
+  padding: 6px
+  border: 1px dashed var(--nt-border-1)
+  border-radius: var(--nt-radius-m)
+
+.cc-par__label
+  padding: 0 var(--nt-space-1)
+  color: var(--nt-text-3)
+  font-size: var(--nt-fs-micro)
+
+.cc-node--mini
+  grid-template-columns: auto minmax(0, 1fr) auto
+  align-items: center
+  width: auto
+  padding: 5px var(--nt-space-2)
+
+  > .cc-glyph
+    grid-row: auto
+
+// 当前查看的这次执行
+.cc-xbar
+  display: flex
+  align-items: center
+  gap: 10px
+  padding: 10px var(--nt-space-5) 0
+  border-bottom: 1px solid var(--nt-border-0)
+
+.cc-xbar__who
+  display: flex
+  flex: 1
+  align-items: center
+  gap: var(--nt-space-2)
+  min-width: 0
+  padding-bottom: var(--nt-space-2)
+  color: var(--nt-text-2)
+  font-size: var(--nt-fs-caption)
+
+  > span
+    overflow: hidden
+    text-overflow: ellipsis
+    white-space: nowrap
+
+  b
+    color: var(--nt-text-0)
+
+.cc-dtabs
+  display: flex
+  gap: 2px
+
+  button
+    position: relative
+    padding: var(--nt-space-1) 10px var(--nt-space-2)
+    background: none
+    border: 0
+    color: var(--nt-text-2)
+    font: inherit
+    font-size: var(--nt-fs-panel)
+    cursor: pointer
+
+  .cc-dtabs--on
+    color: var(--nt-text-0)
+    font-weight: 600
+
+    &::after
+      position: absolute
+      right: 10px
+      bottom: 0
+      left: 10px
+      height: 2px
+      border-radius: 2px
+      background: var(--nt-accent)
+      content: ''
+
+.cc-detail__talk
+  display: flex
+  flex: 1
+  flex-direction: column
+  min-height: 0
+
+// 嵌入的对话引擎：撑满详情剩下的高度，去掉它自己的底色
+.cc-chat
+  display: flex
+  flex: 1
+  flex-direction: column
+  min-height: 0
+
+  .chat-workspace-shell
+    min-height: 0
+    background: none
+
+.cc-info
+  flex: 1
+  overflow-y: auto
+  padding: var(--nt-space-4) var(--nt-space-5)
+
+.cc-kpis
+  display: grid
+  grid-template-columns: repeat(4, minmax(0, 1fr))
+  gap: var(--nt-space-2)
+  max-width: 820px
+  margin-bottom: var(--nt-space-4)
+
+.cc-kpi
+  padding: 10px var(--nt-space-3)
+  background: var(--nt-tile-bg)
+  border-radius: var(--nt-radius-m)
+
+  span
+    display: block
+    color: var(--nt-text-3)
+    font-size: var(--nt-fs-micro)
+
+  b
+    color: var(--nt-text-0)
+    font: 600 var(--nt-fs-title) var(--nt-font-mono)
+
+.cc-dl
+  display: grid
+  grid-template-columns: 120px minmax(0, 1fr)
+  gap: 9px var(--nt-space-4)
+  max-width: 820px
+  margin: 0
+
+  dt
+    color: var(--nt-text-3)
+    font-size: var(--nt-fs-caption)
+
+  dd
+    margin: 0
+    color: var(--nt-text-1)
+    overflow-wrap: anywhere
+
+// ——— 编码工具桥 / 运行台终端的执行视图 ———
+.cc-xview
+  display: flex
+  flex: 1
+  flex-direction: column
+  min-height: 0
+
+.cc-xview__body
+  flex: 1
+  min-height: 0
+  overflow-y: auto
+  padding: var(--nt-space-4) var(--nt-space-5)
+
+.cc-xview__in
+  max-width: 820px
+  margin: 0 auto
+
+.cc-xview__term
+  flex: 1
+  min-height: 0
+  margin: var(--nt-space-2) var(--nt-space-3) 0
+  border-radius: var(--nt-radius-m)
+  overflow: hidden
+
+.cc-xview__dock
+  display: flex
+  align-items: center
+  gap: var(--nt-space-2)
+  padding: var(--nt-space-2) var(--nt-space-5) var(--nt-space-3)
+  border-top: 1px solid var(--nt-border-0)
+
+.cc-xview__note
+  margin-right: auto
+  color: var(--nt-text-3)
+  font-size: var(--nt-fs-caption)
+
+.cc-xview__empty
+  margin: var(--nt-space-6) auto
+  color: var(--nt-text-3)
+
+.cc-turn
+  display: grid
+  grid-template-columns: 24px minmax(0, 1fr)
+  gap: 10px
+  margin-bottom: var(--nt-space-4)
+
+.cc-turn__who
+  margin-bottom: 3px
+  color: var(--nt-text-3)
+  font-size: var(--nt-fs-caption)
+
+  b
+    color: var(--nt-text-0)
+    font-size: var(--nt-fs-panel)
+
+.cc-turn__text
+  color: var(--nt-text-1)
+  overflow-wrap: anywhere
+  white-space: pre-wrap
+
+.cc-turn--me .cc-turn__text
+  padding: var(--nt-space-2) var(--nt-space-3)
+  background: var(--nt-accent-soft)
+  border-radius: var(--nt-radius-m)
+  color: var(--nt-text-0)
+
+.cc-tools
+  border-radius: var(--nt-radius-m)
+  background: var(--nt-data-bg)
+
+  summary
+    padding: 6px 10px
+    color: var(--nt-text-2)
+    font-size: var(--nt-fs-caption)
+    cursor: pointer
+
+  ol
+    margin: 0
+    padding: 0 var(--nt-space-3) var(--nt-space-2) 34px
+    color: var(--nt-text-2)
+    font: var(--nt-fs-micro)/1.9 var(--nt-font-mono)
+
+    b
+      color: var(--nt-text-1)
+
+.cc-ask
+  padding: var(--nt-space-3) 14px
+  background: color-mix(in srgb, var(--nt-warn) 7%, transparent)
+  border: 1px solid color-mix(in srgb, var(--nt-warn) 40%, transparent)
+  border-radius: var(--nt-radius-m)
+
+.cc-ask__q
+  color: var(--nt-text-0)
+
+  code
+    color: var(--nt-warn)
+    font: var(--nt-fs-caption) var(--nt-font-mono)
+
+.cc-ask__acts
+  display: flex
+  gap: 6px
+  margin-top: 10px
+
+.cc-err
+  padding: var(--nt-space-2) var(--nt-space-3)
+  background: color-mix(in srgb, var(--nt-danger) 8%, transparent)
+  border-left: 2px solid var(--nt-danger)
+  border-radius: 0 var(--nt-radius-s) var(--nt-radius-s) 0
+  color: var(--nt-text-1)
+  font: var(--nt-fs-caption)/1.6 var(--nt-font-mono)
+  white-space: pre-wrap
+
+.cc-plan
+  padding: var(--nt-space-2) var(--nt-space-3)
+  border: 1px dashed var(--nt-border-1)
+  border-radius: var(--nt-radius-m)
+
+  b
+    color: var(--nt-text-2)
+    font-size: var(--nt-fs-caption)
+
+.cc-live
+  color: var(--nt-run)
+  font-size: var(--nt-fs-caption)
+
+// ——— 新任务 / 交给下一位（右栏面板，07 §12.3）———
+.cc-np
+  display: flex
+  flex: 1
+  flex-direction: column
+  min-height: 0
+
+.cc-np__h
+  display: flex
+  align-items: center
+  gap: 10px
+  padding: 18px var(--nt-space-5) var(--nt-space-3)
+  border-bottom: 1px solid var(--nt-border-0)
+
+  h2
+    margin: 0
+    color: var(--nt-text-0)
+    font-size: var(--nt-fs-hero)
+    font-weight: 600
+    line-height: 1.3
+
+  small
+    min-width: 0
+    overflow: hidden
+    color: var(--nt-text-3)
+    font-size: var(--nt-fs-caption)
+    text-overflow: ellipsis
+    white-space: nowrap
+
+.cc-np__close
+  margin-left: auto
+
+.cc-np__body
+  flex: 1
+  min-height: 0
+  overflow-y: auto
+  padding: var(--nt-space-1) var(--nt-space-5) var(--nt-space-4)
+
+.cc-np__in
+  max-width: 860px
+  margin: 0 auto
+
+.cc-st
+  padding: 14px 0 var(--nt-space-1)
+
+.cc-st__k
+  display: flex
+  align-items: center
+  gap: var(--nt-space-2)
+  margin-bottom: var(--nt-space-2)
+  color: var(--nt-text-0)
+  font-size: var(--nt-fs-panel)
+  font-weight: 600
+
+  i
+    display: grid
+    place-items: center
+    width: 20px
+    height: 20px
+    border-radius: var(--nt-radius-pill)
+    background: var(--nt-accent-soft)
+    color: var(--nt-accent)
+    font: 600 var(--nt-fs-micro) var(--nt-font-mono)
+    font-style: normal
+
+  span
+    color: var(--nt-text-3)
+    font-size: var(--nt-fs-caption)
+    font-weight: 400
+
+.cc-field
+  display: block
+  width: 100%
+  min-height: 76px
+  padding: 10px var(--nt-space-3)
+  resize: vertical
+  background: var(--nt-field-bg)
+  border: 1px solid var(--nt-field-border)
+  border-radius: var(--nt-radius-m)
+  color: var(--nt-text-0)
+  font: inherit
+  line-height: 1.6
+
+  &::placeholder
+    color: var(--nt-text-3)
+
+  &:focus
+    outline: 0
+    border-color: var(--nt-accent)
+    box-shadow: 0 0 0 3px var(--nt-accent-soft)
+
+.cc-drop
+  display: flex
+  align-items: center
+  gap: var(--nt-space-2)
+  padding: 10px var(--nt-space-3)
+  border: 1px dashed var(--nt-border-2)
+  border-radius: var(--nt-radius-m)
+  color: var(--nt-text-2)
+
+.cc-drop__tip
+  margin-left: auto
+  color: var(--nt-text-3)
+  font-size: var(--nt-fs-caption)
+
+.cc-np__mini
+  border: 1px solid var(--nt-border-1)
+
+.cc-mats
+  display: grid
+  gap: 6px
+  margin: var(--nt-space-2) 0 0
+  padding: 0
+  list-style: none
+
+.cc-mat
+  display: grid
+  grid-template-columns: 20px auto minmax(0, 1fr) auto 32px
+  align-items: center
+  gap: 10px
+  min-height: 40px
+  padding: 4px 10px
+  background: var(--nt-data-bg)
+  border-radius: var(--nt-radius-m)
+
+  input[type='checkbox']
+    margin: 0
+    accent-color: var(--nt-accent)
+
+.cc-mat--row
+  grid-template-columns: auto minmax(0, 1fr) auto auto
+
+.cc-mat__ic
+  display: grid
+  place-items: center
+  min-width: 30px
+  height: 26px
+  padding: 0 4px
+  border-radius: var(--nt-radius-s)
+  background: var(--nt-tile-hover)
+  color: var(--nt-text-2)
+  font: 600 9px var(--nt-font-mono)
+
+.cc-mat__n
+  min-width: 0
+  overflow: hidden
+  color: var(--nt-text-0)
+  text-overflow: ellipsis
+  white-space: nowrap
+
+  small
+    margin-left: var(--nt-space-2)
+    color: var(--nt-text-3)
+    font-size: var(--nt-fs-caption)
+
+.cc-mat__bad
+  color: var(--nt-danger) !important
+
+.cc-mat__s
+  color: var(--nt-text-3)
+  font-size: var(--nt-fs-caption)
+
+.cc-mat__acts
+  display: flex
+  gap: 2px
+
+.cc-mat--off .cc-mat__n
+  color: var(--nt-text-3)
+  text-decoration: line-through
+
+.cc-np__note
+  margin: var(--nt-space-2) 0 0
+  color: var(--nt-text-3)
+  font-size: var(--nt-fs-caption)
+
+.cc-np__warn
+  margin: var(--nt-space-2) 0 0
+  padding: var(--nt-space-2) var(--nt-space-3)
+  background: color-mix(in srgb, var(--nt-warn) 8%, transparent)
+  border-left: 2px solid var(--nt-warn)
+  border-radius: 0 var(--nt-radius-s) var(--nt-radius-s) 0
+  color: var(--nt-text-1)
+  font-size: var(--nt-fs-caption)
+
+.cc-who
+  display: grid
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr))
+  gap: var(--nt-space-2)
+
+.cc-who__c
+  display: grid
+  grid-template-columns: auto minmax(0, 1fr)
+  align-content: start
+  gap: 2px 10px
+  min-height: 74px
+  padding: 10px var(--nt-space-3)
+  background: var(--nt-tile-bg)
+  border: 1px solid var(--nt-border-0)
+  border-radius: var(--nt-radius-m)
+  color: inherit
+  font: inherit
+  text-align: left
+  cursor: pointer
+  transition: background var(--nt-transition), border-color var(--nt-transition)
+
+  &:hover:not(:disabled)
+    background: var(--nt-tile-hover)
+    border-color: var(--nt-border-1)
+
+  &:disabled
+    cursor: not-allowed
+    opacity: 0.5
+
+  > .cc-glyph,
+  > .cc-who__ico
+    grid-row: 1 / 3
+
+  b
+    display: flex
+    align-items: center
+    gap: 6px
+    min-width: 0
+    overflow: hidden
+    color: var(--nt-text-0)
+    font-size: var(--nt-fs-panel)
+    text-overflow: ellipsis
+    white-space: nowrap
+
+  small
+    color: var(--nt-text-2)
+    font-size: var(--nt-fs-caption)
+    line-height: 1.45
+
+.cc-who__c--on,
+.cc-who__c--on:hover:not(:disabled)
+  background: var(--nt-accent-soft)
+  border-color: var(--nt-accent-border)
+
+.cc-who__ico
+  display: grid
+  place-items: center
+  width: 30px
+  height: 30px
+  border-radius: var(--nt-radius-m)
+  background: var(--nt-tile-hover)
+  color: var(--nt-text-2)
+
+.cc-tag
+  padding: 0 6px
+  border-radius: var(--nt-radius-pill)
+  background: color-mix(in srgb, var(--nt-success) 14%, transparent)
+  color: var(--nt-success)
+  font-size: var(--nt-fs-micro)
+  font-weight: 600
+
+.cc-sub
+  display: flex
+  flex-wrap: wrap
+  align-items: center
+  gap: var(--nt-space-2)
+  margin-top: 10px
+  padding: 10px var(--nt-space-3)
+  background: var(--nt-tile-bg)
+  border-radius: var(--nt-radius-m)
+
+  hr
+    flex-basis: 100%
+    height: 0
+    margin: 0
+    border: 0
+
+.cc-sub__k
+  color: var(--nt-text-3)
+  font-size: var(--nt-fs-caption)
+
+.cc-sub__gap
+  margin-left: var(--nt-space-2)
+
+.cc-sub__search
+  width: 240px
+  height: 32px
+
+.cc-opt
+  display: inline-flex
+  align-items: center
+  gap: 7px
+  min-height: 32px
+  padding: 0 10px
+  background: var(--nt-data-bg)
+  border: 1px solid var(--nt-border-0)
+  border-radius: var(--nt-radius-m)
+  color: var(--nt-text-1)
+  font: inherit
+  cursor: pointer
+
+  &:hover:not(:disabled)
+    border-color: var(--nt-border-1)
+    color: var(--nt-text-0)
+
+  &:disabled
+    cursor: not-allowed
+    opacity: 0.45
+
+  small
+    color: var(--nt-text-3)
+    font-size: var(--nt-fs-micro)
+
+.cc-opt--on,
+.cc-opt--on:hover:not(:disabled)
+  background: var(--nt-accent-soft)
+  border-color: var(--nt-accent-border)
+  color: var(--nt-text-0)
+
+  small
+    color: var(--nt-success)
+
+.cc-np__sel
+  height: 32px
+  max-width: 280px
+  padding: 0 var(--nt-space-2)
+  background: var(--nt-field-bg)
+  border: 1px solid var(--nt-field-border)
+  border-radius: var(--nt-radius-m)
+  color: var(--nt-text-0)
+  font: inherit
+
+.cc-chipset
+  display: flex
+  flex-wrap: wrap
+  gap: var(--nt-space-2)
+
+.cc-pv
+  margin-top: 14px
+  border: 1px solid var(--nt-border-0)
+  border-radius: var(--nt-radius-m)
+
+  summary
+    display: flex
+    align-items: center
+    gap: 6px
+    padding: 9px var(--nt-space-3)
+    color: var(--nt-text-2)
+    font-size: var(--nt-fs-caption)
+    list-style: none
+    cursor: pointer
+
+    &::-webkit-details-marker
+      display: none
+
+  &[open] summary .q-icon
+    rotate: 90deg
+
+  pre
+    margin: 0
+    padding: var(--nt-space-3) 14px
+    background: var(--nt-data-bg)
+    border-top: 1px solid var(--nt-border-0)
+    border-radius: 0 0 var(--nt-radius-m) var(--nt-radius-m)
+    color: var(--nt-text-1)
+    font: var(--nt-fs-body)/1.7 var(--nt-font-sans)
+    white-space: pre-wrap
+    overflow-wrap: anywhere
+
+.cc-np__f
+  display: flex
+  align-items: center
+  gap: 10px
+  padding: var(--nt-space-3) var(--nt-space-5) var(--nt-space-4)
+  border-top: 1px solid var(--nt-border-1)
+
+.cc-np__what
+  flex: 1
+  min-width: 0
+  margin: 0
+  color: var(--nt-text-2)
+  font-size: var(--nt-fs-caption)
+  line-height: 1.5
+
+.cc-np__err
+  color: var(--nt-danger)
+
+// 执行链上的交接单小标签
+.cc-link--hand
+  position: relative
+  width: 84px
+
+.cc-hand
+  position: absolute
+  top: calc(50% + 10px)
+  left: 50%
+  translate: -50% 0
+  padding: 0 6px
+  background: var(--nt-data-bg)
+  border: 1px solid var(--nt-border-1)
+  border-radius: var(--nt-radius-pill)
+  color: var(--nt-text-2)
+  font: var(--nt-fs-micro)/18px var(--nt-font-sans)
+  white-space: nowrap
+  cursor: pointer
+
+  &:hover
+    border-color: var(--nt-accent-border)
+    color: var(--nt-text-0)
+
+.cc-hand-dlg
+  width: min(680px, calc(100vw - 32px))
+  max-width: none !important
+
+  h3
+    margin: 0 0 6px
+    color: var(--nt-text-0)
+    font-size: var(--nt-fs-title)
+
+  p
+    margin: 0 0 10px
+    color: var(--nt-text-3)
+    font-size: var(--nt-fs-caption)
+
+  pre
+    max-height: 52vh
+    margin: 0
+    overflow: auto
+    padding: var(--nt-space-3) 14px
+    background: var(--nt-data-bg)
+    border-radius: var(--nt-radius-m)
+    color: var(--nt-text-1)
+    font: var(--nt-fs-body)/1.7 var(--nt-font-sans)
+    white-space: pre-wrap
+    overflow-wrap: anywhere
+
+// 待你验收
+.cc-review
+  margin-top: var(--nt-space-3)
+  padding: var(--nt-space-3) 14px
+  background: color-mix(in srgb, var(--nt-warn) 7%, transparent)
+  border: 1px solid color-mix(in srgb, var(--nt-warn) 40%, transparent)
+  border-radius: var(--nt-radius-m)
+
+  p
+    margin: 0 0 var(--nt-space-2)
+    color: var(--nt-text-0)
+
+    span
+      display: block
+      color: var(--nt-text-2)
+      font-size: var(--nt-fs-caption)
+
+.cc-review__acts
+  display: flex
+  flex-wrap: wrap
+  gap: var(--nt-space-2)
+
+// 资料页签
+.cc-files
+  flex: 1
+  min-height: 0
+  overflow-y: auto
+  padding: var(--nt-space-4) var(--nt-space-5)
+
+.cc-files__in
+  max-width: 820px
+  margin: 0 auto
+
+.cc-files__sect
+  margin: 0 0 var(--nt-space-2)
+  color: var(--nt-text-2)
+  font-size: var(--nt-fs-caption)
+  font-weight: 600
+
+.cc-files__sect--gap
+  margin-top: var(--nt-space-5)
+
+.cc-files__note
+  padding: var(--nt-space-3)
+  background: var(--nt-tile-bg)
+  border: 1px dashed var(--nt-border-1)
+  border-radius: var(--nt-radius-m)
+  color: var(--nt-text-2)
+
+.cc-files__note--sm
+  margin: 6px 0 0
+  padding: 6px var(--nt-space-3)
+  font-size: var(--nt-fs-caption)
+
+.cc-og
+  margin-bottom: var(--nt-space-4)
+
+.cc-og__h
+  display: flex
+  align-items: center
+  gap: var(--nt-space-2)
+  margin-bottom: var(--nt-space-2)
+  color: var(--nt-text-3)
+  font-size: var(--nt-fs-caption)
+
+  b
+    color: var(--nt-text-0)
+    font-size: var(--nt-fs-panel)
+
+.cc-og__say
+  margin: 0 0 6px
+  padding: var(--nt-space-2) var(--nt-space-3)
+  background: var(--nt-tile-bg)
+  border-radius: var(--nt-radius-m)
+  color: var(--nt-text-1)
+  white-space: pre-wrap
+
+.cc-og__say--fail
+  border-left: 2px solid var(--nt-danger)
+
+// 把文件拖到页面上
+.cc-dropall
+  position: fixed
+  inset: 0
+  z-index: 70
+  display: grid
+  place-items: center
+  background: color-mix(in srgb, var(--nt-bg-1) 70%, transparent)
+  pointer-events: none
+
+  div
+    padding: 28px 40px
+    background: var(--nt-glass-panel)
+    border: 2px dashed var(--nt-accent-border)
+    border-radius: var(--nt-radius-l)
+    color: var(--nt-text-0)
+    font-size: var(--nt-fs-title)
+
+// ——— 响应式（断点 1399 / 1099 / 799）———
+@media (max-width: 1399px)
+  .cc-page
+    grid-template-columns: 380px minmax(0, 1fr)
+
+  .cc-node
+    width: 196px
+
+@media (max-width: 1099px)
+  .cc-page
+    grid-template-columns: 320px minmax(0, 1fr)
+
+@media (max-width: 799px)
+  .cc-page
+    grid-template-columns: minmax(0, 1fr)
+    height: auto
+
+  .cc-panel
+    min-height: 70vh
+
+@media (prefers-reduced-motion: reduce)
+  .cc-dot--running,
+  .cc-sd--running
+    animation: none

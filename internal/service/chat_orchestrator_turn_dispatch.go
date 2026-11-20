@@ -143,6 +143,41 @@ func (o *ChatOrchestrator) RunEvalAgentTurn(ctx context.Context, agentID, input 
 	return asst.ContentMarkdown, nil
 }
 
+// RunCronReport 在一个新的定时会话里让 agent 回答 content，返回会话 id 与回答原文
+// （总经理定时汇报用；会话归 userID，走 agent 自己的模型、提示词、脱敏闸与用量记账）。
+// 回合没完成时 reply 为空、err 为 nil，由调用方回落。
+func (o *ChatOrchestrator) RunCronReport(ctx context.Context, agentID, userID, title, content string, timeout time.Duration) (string, string, error) {
+	if o == nil || o.td().Sessions == nil {
+		return "", "", apierror.Internal(apierror.DomainChat, "chat service not configured")
+	}
+	runCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	sess, err := o.td().Sessions.Create(runCtx, biz.Session{
+		ID:         uuid.NewString(),
+		AgentID:    strings.TrimSpace(agentID),
+		OwnerType:  "agent",
+		Title:      title,
+		DialogMode: "cron",
+		Status:     "active",
+		UserID:     userID,
+	})
+	if err != nil {
+		return "", "", err
+	}
+	tr, err := o.Execute(runCtx, biz.TurnInput{
+		SessionID:   sess.ID,
+		Content:     content,
+		EntryConfig: biz.TurnEntryPointConfig{EntryPoint: biz.EntryPointCron, AllowQueue: false},
+	})
+	if err != nil {
+		return sess.ID, "", err
+	}
+	if tr.Outcome != biz.TurnOutcomeCompleted {
+		return sess.ID, "", nil
+	}
+	return sess.ID, tr.AssistantMsg.ContentMarkdown, nil
+}
+
 // RunCronTurn dispatches a cron-triggered turn via the unified TurnExecutor.
 func (o *ChatOrchestrator) RunCronTurn(ctx context.Context, sessionID, content, teamID string) (userMsgID, agentMsgID string, err error) {
 	input := biz.TurnInput{

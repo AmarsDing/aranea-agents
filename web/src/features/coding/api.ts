@@ -32,6 +32,11 @@ export async function upsertCodingAgent(req: UpsertAgentRequest): Promise<Coding
   return bridge.UpsertAgent(req);
 }
 
+/** 删除一条编码工具登记；跑过任务的工具后端会拒绝（只能停用） */
+export async function deleteCodingAgent(agentKey: string): Promise<void> {
+  await bridge.DeleteAgent({ agentKey });
+}
+
 export async function probeCodingAgent(agentKey: string) {
   return bridge.ProbeAgent({ agentKey });
 }
@@ -67,13 +72,15 @@ export async function cancelCodingTask(id: string): Promise<CodingTask> {
 }
 
 export async function dispatchCodingTask(req: {
+  /** 留痕会话：进度 / 终态通知发到这里，会话中心据此把任务挂到对应的任务下 */
+  sessionId?: string;
   agentKey?: string;
   projectQuery: string;
   prompt: string;
   origin?: string;
 }): Promise<DispatchTaskResponse> {
   return bridge.DispatchTask({
-    sessionId: undefined,
+    sessionId: req.sessionId || undefined,
     agentKey: req.agentKey || undefined,
     projectQuery: req.projectQuery,
     prompt: req.prompt,
@@ -81,11 +88,7 @@ export async function dispatchCodingTask(req: {
   });
 }
 
-export async function listCodingTaskEvents(
-  taskId: string,
-  afterSeq = 0,
-  limit = 200,
-): Promise<CodingTaskEvent[]> {
+export async function listCodingTaskEvents(taskId: string, afterSeq = 0, limit = 200): Promise<CodingTaskEvent[]> {
   const res = await bridge.ListTaskEvents({ taskId, afterSeq, limit });
   return res.items ?? [];
 }

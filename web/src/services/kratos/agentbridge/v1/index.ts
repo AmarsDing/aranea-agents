@@ -45,6 +45,12 @@ export type UpsertAgentRequest = {
   defaultAutonomy: string | undefined;
 };
 
+export type DeleteAgentRequest = {
+  //
+  // Behaviors: REQUIRED
+  agentKey: string | undefined;
+};
+
 export type ListAgentsResponse = {
   items: CodingAgent[] | undefined;
 };
@@ -207,9 +213,10 @@ export type ReviewTaskRequest = {
 // 触发执行——manage/dispatch 两档收严（内置表授予 sysadmin coding.*）；
 // 读面（List*/Get*）与 tool 域自服务先例一致，显式 authenticated 默认登录可见。
 export interface AgentBridgeService {
-  // 工具注册管理（删除经 enabled=false，M1 不提供物理删除）
+  // 工具注册管理。有任务记录的工具只能停用（enabled=false），保住历史；从没跑过任务的可以删除（登记错了、重复了）
   UpsertAgent(request: UpsertAgentRequest): Promise<CodingAgent>;
   ListAgents(request: wellKnownEmpty): Promise<ListAgentsResponse>;
+  DeleteAgent(request: DeleteAgentRequest): Promise<wellKnownEmpty>;
   ProbeAgent(request: ProbeAgentRequest): Promise<ProbeAgentResponse>;
   // 项目目录注册管理
   UpsertProject(request: UpsertProjectRequest): Promise<CodingProject>;
@@ -270,6 +277,26 @@ export function createAgentBridgeServiceClient(
         service: "AgentBridgeService",
         method: "ListAgents",
       }) as Promise<ListAgentsResponse>;
+    },
+    DeleteAgent(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      if (!request.agentKey) {
+        throw new Error("missing required field request.agent_key");
+      }
+      const path = `v1/agentbridge/agents/${request.agentKey}`; // eslint-disable-line quotes
+      const body = null;
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "DELETE",
+        body,
+      }, {
+        service: "AgentBridgeService",
+        method: "DeleteAgent",
+      }) as Promise<wellKnownEmpty>;
     },
     ProbeAgent(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/agentbridge/agents/probe`; // eslint-disable-line quotes

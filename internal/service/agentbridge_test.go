@@ -75,6 +75,11 @@ func (f *abFakeAgents) UpdateProbe(_ context.Context, id string, ok bool, errMsg
 	return nil
 }
 
+func (f *abFakeAgents) Delete(_ context.Context, workspace, key string) error {
+	delete(f.byKey, workspace+"/"+key)
+	return nil
+}
+
 type abFakeProjects struct {
 	byName map[string]*agentbridge.CodingProject
 }

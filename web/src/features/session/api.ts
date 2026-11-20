@@ -355,6 +355,7 @@ export async function createSession(payload: {
   default_model?: string;
   workspace_id?: string;
   user_id?: string;
+  metadata_json?: string;
 }): Promise<Session> {
   const data = await sessionApi.CreateSession({
     ownerType: payload.owner_type,
@@ -367,7 +368,7 @@ export async function createSession(payload: {
     workspaceId: payload.workspace_id,
     userId: payload.user_id,
     tagsJson: undefined,
-    metadataJson: undefined,
+    metadataJson: payload.metadata_json,
   });
   return kratosSessionToLegacy(data);
 }
@@ -474,6 +475,21 @@ export async function updateSessionTitle(id: string, title: string): Promise<Ses
     tagsJson: undefined,
     visibility: undefined,
     metadataJson: undefined,
+    dialogMode: undefined,
+    defaultProvider: undefined,
+    defaultModel: undefined,
+  });
+  return kratosSessionToLegacy(data);
+}
+
+/** 只改 metadata_json（整段替换；要保留别的键先用原值合并） */
+export async function updateSessionMetadata(id: string, metadataJson: string): Promise<Session> {
+  const data = await sessionApi.UpdateSession({
+    id,
+    title: undefined,
+    tagsJson: undefined,
+    visibility: undefined,
+    metadataJson,
     dialogMode: undefined,
     defaultProvider: undefined,
     defaultModel: undefined,

@@ -9,6 +9,7 @@ import (
 	"aranea-agents/internal/biz/agentbridge"
 	"aranea-agents/pkg/apierror"
 
+	kerrors "github.com/go-kratos/kratos/v2/errors"
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
 )
 
@@ -55,6 +56,11 @@ func (a *AgentBridgeAPI) UpsertAgent(ctx context.Context, req *v1.UpsertAgentReq
 			return nil, apierror.BadRequest(apierror.DomainAgentBridge, "liveness_override_json is not valid JSON")
 		}
 		agent.LivenessOverride = ov
+	}
+	// 列表接口把密钥类 env 掩码成 "***" 返回；前端编辑或启停时会原样回传。
+	// 落库是整体覆盖 env，所以这里把仍是掩码的值换回库里的旧值，否则一次启停就把真实密钥写成 "***"。
+	if err := a.restoreMaskedEnv(ctx, agent); err != nil {
+		return nil, err
 	}
 	// E9/M4 §B: known keys（codebuddy/workbuddy 归一 / claude_code / codex / deepseek / grok）
 	// fill argv when omitted.
@@ -294,6 +300,64 @@ func maskAgentEnv(env map[string]string) map[string]string {
 		}
 	}
 	return out
+}
+
+// DeleteAgent 删除一条编码工具登记。跑过任务的工具不删（任务历史要能对上工具），只能停用。
+func (a *AgentBridgeAPI) DeleteAgent(ctx context.Context, req *v1.DeleteAgentRequest) (*emptypb.Empty, error) {
+	key := strings.TrimSpace(req.GetAgentKey())
+	if key == "" {
+		return nil, apierror.BadRequest(apierror.DomainAgentBridge, "agent_key is required")
+	}
+	if _, err := a.svc.agents.GetByKey(ctx, agentBridgeWorkspace, key); err != nil {
+		return nil, err
+	}
+	tasks, err := a.svc.ListRecentTasks(ctx, 1, key)
+	if err != nil {
+		return nil, err
+	}
+	if len(tasks) > 0 {
+		return nil, apierror.Conflict(apierror.DomainAgentBridge, "这个编码工具已经有任务记录，删除会让历史任务对不上工具；请改为停用")
+	}
+	if err := a.svc.agents.Delete(ctx, agentBridgeWorkspace, key); err != nil {
+		return nil, err
+	}
+	return &emptypb.Empty{}, nil
+}
+
+// maskedEnvValue 是 maskAgentEnv 给密钥类 env 的占位值。
+const maskedEnvValue = "***"
+
+// restoreMaskedEnv 把入参里仍是掩码占位的密钥值换回库里的旧值；库里没有这个键时丢掉该键
+// （不能把 "***" 当真实值写进去）。没有掩码值时不读库。
+func (a *AgentBridgeAPI) restoreMaskedEnv(ctx context.Context, agent *agentbridge.CodingAgent) error {
+	hasMask := false
+	for k, v := range agent.Env {
+		if v == maskedEnvValue && isSensitiveEnvKey(k) {
+			hasMask = true
+			break
+		}
+	}
+	if !hasMask {
+		return nil
+	}
+	var stored map[string]string
+	if old, err := a.svc.agents.GetByKey(ctx, agent.Workspace, agent.AgentKey); err == nil && old != nil {
+		stored = old.Env
+	} else if err != nil && !kerrors.IsNotFound(err) {
+		return err
+	}
+	env := make(map[string]string, len(agent.Env))
+	for k, v := range agent.Env {
+		if v == maskedEnvValue && isSensitiveEnvKey(k) {
+			if prev, ok := stored[k]; ok {
+				env[k] = prev
+			}
+			continue
+		}
+		env[k] = v
+	}
+	agent.Env = env
+	return nil
 }
 
 // isSensitiveEnvKey 判定密钥形态键：KEY/TOKEN/SECRET/PASSWORD/CREDENTIAL（大小写不敏感）。

@@ -51,6 +51,8 @@ func (m *mockAgentRepo) UpdateProbe(_ context.Context, id string, ok bool, errMs
 	return nil
 }
 
+func (m *mockAgentRepo) Delete(context.Context, string, string) error { return nil }
+
 type mockProjectRepo struct {
 	byName map[string]*CodingProject
 }

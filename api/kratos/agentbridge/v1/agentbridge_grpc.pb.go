@@ -22,6 +22,7 @@ const _ = grpc.SupportPackageIsVersion9
 const (
 	AgentBridgeService_UpsertAgent_FullMethodName    = "/kratos.agentbridge.v1.AgentBridgeService/UpsertAgent"
 	AgentBridgeService_ListAgents_FullMethodName     = "/kratos.agentbridge.v1.AgentBridgeService/ListAgents"
+	AgentBridgeService_DeleteAgent_FullMethodName    = "/kratos.agentbridge.v1.AgentBridgeService/DeleteAgent"
 	AgentBridgeService_ProbeAgent_FullMethodName     = "/kratos.agentbridge.v1.AgentBridgeService/ProbeAgent"
 	AgentBridgeService_UpsertProject_FullMethodName  = "/kratos.agentbridge.v1.AgentBridgeService/UpsertProject"
 	AgentBridgeService_ListProjects_FullMethodName   = "/kratos.agentbridge.v1.AgentBridgeService/ListProjects"
@@ -43,9 +44,10 @@ const (
 // 触发执行——manage/dispatch 两档收严（内置表授予 sysadmin coding.*）；
 // 读面（List*/Get*）与 tool 域自服务先例一致，显式 authenticated 默认登录可见。
 type AgentBridgeServiceClient interface {
-	// 工具注册管理（删除经 enabled=false，M1 不提供物理删除）
+	// 工具注册管理。有任务记录的工具只能停用（enabled=false），保住历史；从没跑过任务的可以删除（登记错了、重复了）
 	UpsertAgent(ctx context.Context, in *UpsertAgentRequest, opts ...grpc.CallOption) (*CodingAgent, error)
 	ListAgents(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ListAgentsResponse, error)
+	DeleteAgent(ctx context.Context, in *DeleteAgentRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	ProbeAgent(ctx context.Context, in *ProbeAgentRequest, opts ...grpc.CallOption) (*ProbeAgentResponse, error)
 	// 项目目录注册管理
 	UpsertProject(ctx context.Context, in *UpsertProjectRequest, opts ...grpc.CallOption) (*CodingProject, error)
@@ -83,6 +85,16 @@ func (c *agentBridgeServiceClient) ListAgents(ctx context.Context, in *emptypb.E
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ListAgentsResponse)
 	err := c.cc.Invoke(ctx, AgentBridgeService_ListAgents_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *agentBridgeServiceClient) DeleteAgent(ctx context.Context, in *DeleteAgentRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, AgentBridgeService_DeleteAgent_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -198,9 +210,10 @@ func (c *agentBridgeServiceClient) ReviewTask(ctx context.Context, in *ReviewTas
 // 触发执行——manage/dispatch 两档收严（内置表授予 sysadmin coding.*）；
 // 读面（List*/Get*）与 tool 域自服务先例一致，显式 authenticated 默认登录可见。
 type AgentBridgeServiceServer interface {
-	// 工具注册管理（删除经 enabled=false，M1 不提供物理删除）
+	// 工具注册管理。有任务记录的工具只能停用（enabled=false），保住历史；从没跑过任务的可以删除（登记错了、重复了）
 	UpsertAgent(context.Context, *UpsertAgentRequest) (*CodingAgent, error)
 	ListAgents(context.Context, *emptypb.Empty) (*ListAgentsResponse, error)
+	DeleteAgent(context.Context, *DeleteAgentRequest) (*emptypb.Empty, error)
 	ProbeAgent(context.Context, *ProbeAgentRequest) (*ProbeAgentResponse, error)
 	// 项目目录注册管理
 	UpsertProject(context.Context, *UpsertProjectRequest) (*CodingProject, error)
@@ -229,6 +242,9 @@ func (UnimplementedAgentBridgeServiceServer) UpsertAgent(context.Context, *Upser
 }
 func (UnimplementedAgentBridgeServiceServer) ListAgents(context.Context, *emptypb.Empty) (*ListAgentsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListAgents not implemented")
+}
+func (UnimplementedAgentBridgeServiceServer) DeleteAgent(context.Context, *DeleteAgentRequest) (*emptypb.Empty, error) {
+	return nil, status.Error(codes.Unimplemented, "method DeleteAgent not implemented")
 }
 func (UnimplementedAgentBridgeServiceServer) ProbeAgent(context.Context, *ProbeAgentRequest) (*ProbeAgentResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ProbeAgent not implemented")
@@ -313,6 +329,24 @@ func _AgentBridgeService_ListAgents_Handler(srv interface{}, ctx context.Context
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(AgentBridgeServiceServer).ListAgents(ctx, req.(*emptypb.Empty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AgentBridgeService_DeleteAgent_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteAgentRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentBridgeServiceServer).DeleteAgent(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AgentBridgeService_DeleteAgent_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentBridgeServiceServer).DeleteAgent(ctx, req.(*DeleteAgentRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -511,6 +545,10 @@ var AgentBridgeService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListAgents",
 			Handler:    _AgentBridgeService_ListAgents_Handler,
+		},
+		{
+			MethodName: "DeleteAgent",
+			Handler:    _AgentBridgeService_DeleteAgent_Handler,
 		},
 		{
 			MethodName: "ProbeAgent",

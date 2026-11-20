@@ -34,6 +34,39 @@ func TestAgentBridgeAPI_UpsertAgentDefaultLaunch(t *testing.T) {
 	}
 }
 
+// 列表返回的密钥 env 是 "***"；前端启停 / 编辑时原样回传，不能把真实密钥覆盖成占位值。
+func TestAgentBridgeAPI_UpsertKeepsMaskedSecrets(t *testing.T) {
+	e := newABSvcEnv()
+	ctx := context.Background()
+	if _, err := e.api.UpsertAgent(ctx, &v1.UpsertAgentRequest{
+		AgentKey: "shim", Command: "@self", Enabled: true,
+		Env: map[string]string{"OPENAI_API_KEY": "sk-real", "BASE_URL": "https://a"},
+	}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	listed, err := e.api.ListAgents(ctx, nil)
+	if err != nil || listed.Items[0].Env["OPENAI_API_KEY"] != "***" {
+		t.Fatalf("list must mask secret: %+v %v", listed, err)
+	}
+	// 启停：把列表里拿到的（已掩码）env 原样回传，同时改一个普通键、加一个新密钥、带一个库里没有的掩码键
+	if _, err := e.api.UpsertAgent(ctx, &v1.UpsertAgentRequest{
+		AgentKey: "shim", Command: "@self", Enabled: false,
+		Env: map[string]string{"OPENAI_API_KEY": "***", "BASE_URL": "https://b", "NEW_TOKEN": "t-1", "GHOST_KEY": "***"},
+	}); err != nil {
+		t.Fatalf("toggle: %v", err)
+	}
+	stored := e.agents.byKey[agentBridgeWorkspace+"/shim"].Env
+	if stored["OPENAI_API_KEY"] != "sk-real" {
+		t.Fatalf("secret overwritten: %+v", stored)
+	}
+	if stored["BASE_URL"] != "https://b" || stored["NEW_TOKEN"] != "t-1" {
+		t.Fatalf("plain / new values not applied: %+v", stored)
+	}
+	if _, ok := stored["GHOST_KEY"]; ok {
+		t.Fatalf("masked placeholder without a stored value must be dropped: %+v", stored)
+	}
+}
+
 func TestAgentBridgeAPI_UpsertAndListAgents(t *testing.T) {
 	e := newABSvcEnv()
 	agent, err := e.api.UpsertAgent(context.Background(), &v1.UpsertAgentRequest{
@@ -209,4 +242,33 @@ func TestAgentBridgeAPI_GetAndCancelTask(t *testing.T) {
 	}
 	close(release)
 	e.bus.waitNoticeType(t, "coding_task_cancelled", 1)
+}
+
+// 没跑过任务的登记可以删；有任务记录的只能停用（删了历史任务就对不上工具）。
+func TestAgentBridgeAPI_DeleteAgentGuardsHistory(t *testing.T) {
+	e := newABSvcEnv()
+	ctx := context.Background()
+	for _, key := range []string{"typo", "used"} {
+		if _, err := e.api.UpsertAgent(ctx, &v1.UpsertAgentRequest{AgentKey: key, Command: "x", Enabled: true}); err != nil {
+			t.Fatalf("seed %s: %v", key, err)
+		}
+	}
+	if _, err := e.api.DeleteAgent(ctx, &v1.DeleteAgentRequest{AgentKey: "typo"}); err != nil {
+		t.Fatalf("delete unused: %v", err)
+	}
+	if _, ok := e.agents.byKey[agentBridgeWorkspace+"/typo"]; ok {
+		t.Fatal("unused agent should be gone")
+	}
+	if err := e.tasks.Create(ctx, &agentbridge.CodingTask{ID: "t1", AgentID: "agent-used"}); err != nil {
+		t.Fatalf("seed task: %v", err)
+	}
+	if _, err := e.api.DeleteAgent(ctx, &v1.DeleteAgentRequest{AgentKey: "used"}); err == nil {
+		t.Fatal("agent with task history must not be deleted")
+	}
+	if _, ok := e.agents.byKey[agentBridgeWorkspace+"/used"]; !ok {
+		t.Fatal("agent with history must survive")
+	}
+	if _, err := e.api.DeleteAgent(ctx, &v1.DeleteAgentRequest{AgentKey: "missing"}); err == nil {
+		t.Fatal("unknown agent must error")
+	}
 }

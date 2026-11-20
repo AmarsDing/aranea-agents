@@ -50,6 +50,10 @@ message UpsertAgentRequest {
   string default_autonomy = 10;
 }
 
+message DeleteAgentRequest {
+  string agent_key = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
 message ListAgentsResponse {
   repeated CodingAgent items = 1;
 }
@@ -190,7 +194,7 @@ message ReviewTaskRequest {
 // 触发执行——manage/dispatch 两档收严（内置表授予 sysadmin coding.*）；
 // 读面（List*/Get*）与 tool 域自服务先例一致，显式 authenticated 默认登录可见。
 service AgentBridgeService {
-  // 工具注册管理（删除经 enabled=false，M1 不提供物理删除）
+  // 工具注册管理。有任务记录的工具只能停用（enabled=false），保住历史；从没跑过任务的可以删除（登记错了、重复了）
   rpc UpsertAgent(UpsertAgentRequest) returns (CodingAgent) {
     option (aranea.auth.v1.requirement) = {permission: "coding.manage"};
     option (google.api.http) = {
@@ -201,6 +205,10 @@ service AgentBridgeService {
   rpc ListAgents(google.protobuf.Empty) returns (ListAgentsResponse) {
     option (aranea.auth.v1.requirement) = {authenticated: true};
     option (google.api.http) = {get: "/v1/agentbridge/agents"};
+  }
+  rpc DeleteAgent(DeleteAgentRequest) returns (google.protobuf.Empty) {
+    option (aranea.auth.v1.requirement) = {permission: "coding.manage"};
+    option (google.api.http) = {delete: "/v1/agentbridge/agents/{agent_key}"};
   }
   rpc ProbeAgent(ProbeAgentRequest) returns (ProbeAgentResponse) {
     option (aranea.auth.v1.requirement) = {permission: "coding.manage"};
