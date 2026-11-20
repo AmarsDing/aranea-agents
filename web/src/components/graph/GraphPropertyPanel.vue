@@ -79,6 +79,7 @@
             dense
             outlined
             :label="t('graphs.fieldFuncRefFull')"
+            :hint="selectedNode.type === 'function' ? t('graphs.fieldFuncRefHint') : undefined"
             @update:model-value="(v: string | number | null) => updateNodeField('funcRef', String(v ?? ''))"
           />
         </div>
@@ -104,6 +105,7 @@
                 dense
                 outlined
                 :label="t('graphs.fieldCondFuncRef')"
+                :hint="t('graphs.fieldCondFuncRefHint')"
                 @update:model-value="(v: string | number | null) => updateCondFuncRef(ceIdx, String(v ?? ''))"
               />
               <div v-for="(target, label) in ce.pathMap" :key="label" class="row q-col-gutter-xs items-center q-mb-xs">

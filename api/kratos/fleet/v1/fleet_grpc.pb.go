@@ -47,6 +47,8 @@ const (
 	FleetService_ListEvents_FullMethodName       = "/kratos.fleet.v1.FleetService/ListEvents"
 	FleetService_MarkEventsRead_FullMethodName   = "/kratos.fleet.v1.FleetService/MarkEventsRead"
 	FleetService_GetUsage_FullMethodName         = "/kratos.fleet.v1.FleetService/GetUsage"
+	FleetService_ListCredits_FullMethodName      = "/kratos.fleet.v1.FleetService/ListCredits"
+	FleetService_SetCredit_FullMethodName        = "/kratos.fleet.v1.FleetService/SetCredit"
 	FleetService_CreateRun_FullMethodName        = "/kratos.fleet.v1.FleetService/CreateRun"
 	FleetService_ListRuns_FullMethodName         = "/kratos.fleet.v1.FleetService/ListRuns"
 	FleetService_GetRun_FullMethodName           = "/kratos.fleet.v1.FleetService/GetRun"
@@ -89,6 +91,8 @@ type FleetServiceClient interface {
 	ListEvents(ctx context.Context, in *ListEventsRequest, opts ...grpc.CallOption) (*ListEventsResponse, error)
 	MarkEventsRead(ctx context.Context, in *MarkEventsReadRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	GetUsage(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*GetUsageResponse, error)
+	ListCredits(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ListCreditsResponse, error)
+	SetCredit(ctx context.Context, in *SetCreditRequest, opts ...grpc.CallOption) (*PlatformCredit, error)
 	CreateRun(ctx context.Context, in *CreateRunRequest, opts ...grpc.CallOption) (*Run, error)
 	ListRuns(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ListRunsResponse, error)
 	GetRun(ctx context.Context, in *RunIdRequest, opts ...grpc.CallOption) (*GetRunResponse, error)
@@ -378,6 +382,26 @@ func (c *fleetServiceClient) GetUsage(ctx context.Context, in *emptypb.Empty, op
 	return out, nil
 }
 
+func (c *fleetServiceClient) ListCredits(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ListCreditsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListCreditsResponse)
+	err := c.cc.Invoke(ctx, FleetService_ListCredits_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *fleetServiceClient) SetCredit(ctx context.Context, in *SetCreditRequest, opts ...grpc.CallOption) (*PlatformCredit, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(PlatformCredit)
+	err := c.cc.Invoke(ctx, FleetService_SetCredit_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *fleetServiceClient) CreateRun(ctx context.Context, in *CreateRunRequest, opts ...grpc.CallOption) (*Run, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(Run)
@@ -499,6 +523,8 @@ type FleetServiceServer interface {
 	ListEvents(context.Context, *ListEventsRequest) (*ListEventsResponse, error)
 	MarkEventsRead(context.Context, *MarkEventsReadRequest) (*emptypb.Empty, error)
 	GetUsage(context.Context, *emptypb.Empty) (*GetUsageResponse, error)
+	ListCredits(context.Context, *emptypb.Empty) (*ListCreditsResponse, error)
+	SetCredit(context.Context, *SetCreditRequest) (*PlatformCredit, error)
 	CreateRun(context.Context, *CreateRunRequest) (*Run, error)
 	ListRuns(context.Context, *emptypb.Empty) (*ListRunsResponse, error)
 	GetRun(context.Context, *RunIdRequest) (*GetRunResponse, error)
@@ -598,6 +624,12 @@ func (UnimplementedFleetServiceServer) MarkEventsRead(context.Context, *MarkEven
 }
 func (UnimplementedFleetServiceServer) GetUsage(context.Context, *emptypb.Empty) (*GetUsageResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetUsage not implemented")
+}
+func (UnimplementedFleetServiceServer) ListCredits(context.Context, *emptypb.Empty) (*ListCreditsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListCredits not implemented")
+}
+func (UnimplementedFleetServiceServer) SetCredit(context.Context, *SetCreditRequest) (*PlatformCredit, error) {
+	return nil, status.Error(codes.Unimplemented, "method SetCredit not implemented")
 }
 func (UnimplementedFleetServiceServer) CreateRun(context.Context, *CreateRunRequest) (*Run, error) {
 	return nil, status.Error(codes.Unimplemented, "method CreateRun not implemented")
@@ -1133,6 +1165,42 @@ func _FleetService_GetUsage_Handler(srv interface{}, ctx context.Context, dec fu
 	return interceptor(ctx, in, info, handler)
 }
 
+func _FleetService_ListCredits_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(emptypb.Empty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(FleetServiceServer).ListCredits(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: FleetService_ListCredits_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(FleetServiceServer).ListCredits(ctx, req.(*emptypb.Empty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _FleetService_SetCredit_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SetCreditRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(FleetServiceServer).SetCredit(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: FleetService_SetCredit_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(FleetServiceServer).SetCredit(ctx, req.(*SetCreditRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _FleetService_CreateRun_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(CreateRunRequest)
 	if err := dec(in); err != nil {
@@ -1409,6 +1477,14 @@ var FleetService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetUsage",
 			Handler:    _FleetService_GetUsage_Handler,
+		},
+		{
+			MethodName: "ListCredits",
+			Handler:    _FleetService_ListCredits_Handler,
+		},
+		{
+			MethodName: "SetCredit",
+			Handler:    _FleetService_SetCredit_Handler,
 		},
 		{
 			MethodName: "CreateRun",

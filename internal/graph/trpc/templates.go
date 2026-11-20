@@ -28,6 +28,8 @@ type TemplateEdge struct {
 	ToNode   string `json:"to_node"`
 	Type     string `json:"type"`
 	Label    string `json:"label,omitempty"`
+	// RouteField 只用于 conditional 边：按这个状态字段的值选分支（state.route:<字段>）。
+	RouteField string `json:"route_field,omitempty"`
 }
 
 var builtinTemplates = []GraphTemplate{
@@ -71,8 +73,8 @@ var builtinTemplates = []GraphTemplate{
 		},
 		Edges: []TemplateEdge{
 			{FromNode: "submit", ToNode: "review", Type: "runtime"},
-			{FromNode: "review", ToNode: "approved", Type: "conditional", Label: "approved"},
-			{FromNode: "review", ToNode: "rejected", Type: "conditional", Label: "rejected"},
+			{FromNode: "review", ToNode: "approved", Type: "conditional", Label: "approved", RouteField: "review_result"},
+			{FromNode: "review", ToNode: "rejected", Type: "conditional", Label: "rejected", RouteField: "review_result"},
 			{FromNode: "approved", ToNode: "result", Type: "runtime"},
 			{FromNode: "rejected", ToNode: "result", Type: "runtime"},
 		},
@@ -126,14 +128,15 @@ var builtinTemplates = []GraphTemplate{
 		Edges: []TemplateEdge{
 			{FromNode: "generate", ToNode: "evaluate", Type: "runtime"},
 			{FromNode: "evaluate", ToNode: "route", Type: "runtime"},
-			{FromNode: "route", ToNode: "final", Type: "conditional", Label: "approved"},
-			{FromNode: "route", ToNode: "generate", Type: "conditional", Label: "revision"},
+			{FromNode: "route", ToNode: "final", Type: "conditional", Label: "approved", RouteField: "verdict"},
+			{FromNode: "route", ToNode: "generate", Type: "conditional", Label: "revision", RouteField: "verdict"},
 		},
 		StateFields: []StateFieldDef{
 			{Name: "input", Type: "string", Reducer: ReducerDefault},
 			{Name: "output", Type: "string", Reducer: ReducerDefault},
 			{Name: "score", Type: "float64", Reducer: ReducerDefault},
 			{Name: "iteration", Type: "int", Reducer: ReducerDefault},
+			{Name: "verdict", Type: "string", Reducer: ReducerDefault},
 		},
 	},
 	{
@@ -153,9 +156,9 @@ var builtinTemplates = []GraphTemplate{
 		},
 		Edges: []TemplateEdge{
 			{FromNode: "classify", ToNode: "router", Type: "runtime"},
-			{FromNode: "router", ToNode: "handler_a", Type: "conditional", Label: "type_a"},
-			{FromNode: "router", ToNode: "handler_b", Type: "conditional", Label: "type_b"},
-			{FromNode: "router", ToNode: "handler_c", Type: "conditional", Label: "type_c"},
+			{FromNode: "router", ToNode: "handler_a", Type: "conditional", Label: "type_a", RouteField: "category"},
+			{FromNode: "router", ToNode: "handler_b", Type: "conditional", Label: "type_b", RouteField: "category"},
+			{FromNode: "router", ToNode: "handler_c", Type: "conditional", Label: "type_c", RouteField: "category"},
 			{FromNode: "handler_a", ToNode: "done", Type: "runtime"},
 			{FromNode: "handler_b", ToNode: "done", Type: "runtime"},
 			{FromNode: "handler_c", ToNode: "done", Type: "runtime"},
@@ -241,17 +244,25 @@ func TemplateToBuildConfig(tmpl GraphTemplate) GraphBuildConfig {
 			Type:        tn.Type,
 			Description: tn.Description,
 		}
+		// 模板只给骨架：函数节点先挂透传占位，建出来就能跑通，用户再换成真实函数或 Agent。
+		if tn.Type == biz.NodeTypeFunction {
+			nodes[i].FuncRef = biz.SkipNodeFuncRef
+		}
 	}
 
 	edges := make([]EdgeDef, 0)
 	var condEdges []biz.ConditionalEdgeDef
 
 	routePathMaps := make(map[string]map[string]string)
+	routeFields := make(map[string]string)
 
 	for _, te := range tmpl.Edges {
 		if te.Type == "conditional" {
 			if _, ok := routePathMaps[te.FromNode]; !ok {
 				routePathMaps[te.FromNode] = make(map[string]string)
+			}
+			if te.RouteField != "" {
+				routeFields[te.FromNode] = te.RouteField
 			}
 			label := te.Label
 			if label == "" {
@@ -264,10 +275,11 @@ func TemplateToBuildConfig(tmpl GraphTemplate) GraphBuildConfig {
 	}
 
 	for from, pathMap := range routePathMaps {
-		condEdges = append(condEdges, biz.ConditionalEdgeDef{
-			From:    from,
-			PathMap: pathMap,
-		})
+		ce := biz.ConditionalEdgeDef{From: from, PathMap: pathMap}
+		if f := routeFields[from]; f != "" {
+			ce.CondFuncRef = StateRouteCondFuncPrefix + f
+		}
+		condEdges = append(condEdges, ce)
 	}
 
 	stateFields := make([]StateFieldDef, len(tmpl.StateFields))

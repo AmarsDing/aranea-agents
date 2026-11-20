@@ -5,6 +5,10 @@ import type { Agent } from '../agents/types';
 import type { Team } from '../teams/types';
 import type { PlatformResource, PlatformResourceInput } from '../platform/types';
 import type { CronTaskRun, CronTaskRunPage, CronTaskRunQuery } from './types';
+import * as fleetApi from '../fleet/api';
+import type { Automation, Project } from '../fleet/api';
+
+export type { Automation as FleetAutomation, Project as FleetProject } from '../fleet/api';
 
 export type { PlatformResource, PlatformResourceInput } from '../platform/types';
 import type { CronTask as WireCronTask, CronTaskRun as WireCronTaskRun } from '../../services/kratos/cron/v1/index';
@@ -124,6 +128,27 @@ export async function listCronTaskRuns(query: CronTaskRunQuery = {}): Promise<Cr
 export async function resolveCronTaskRun(runId: string): Promise<number> {
   const res = await cron.ResolveCronTaskRun({ id: runId });
   return Number(res.resolved ?? 0);
+}
+
+/**
+ * 运行台（fleet）的自动化也是「到点叫起来」的一类定时：定时任务页一并列出，编辑仍在运行台。
+ * 后端在容器里跑、或没有编码工具权限时接口不可用，返回 null（页面不显示这一组，不报错）。
+ */
+export async function listFleetAutomations(): Promise<{ items: Automation[]; projects: Project[] } | null> {
+  try {
+    const [items, projects] = await Promise.all([fleetApi.listAutomations(), fleetApi.listProjects()]);
+    return { items, projects };
+  } catch {
+    return null;
+  }
+}
+
+export async function setFleetAutomationEnabled(a: Automation, enabled: boolean): Promise<Automation> {
+  return fleetApi.upsertAutomation({ ...a, enabled });
+}
+
+export async function runFleetAutomationNow(id: string): Promise<Automation> {
+  return fleetApi.runAutomationNow(id);
 }
 
 export async function listCronAgents(): Promise<Agent[]> {

@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"sync/atomic"
 
@@ -229,7 +230,51 @@ func (u *Usecase) UpdateTask(ctx context.Context, id string, patch TaskPatch) (T
 	if err := ValidateTaskConfig(merged.ConfigJSON); err != nil {
 		return Task{}, err
 	}
+	// 调度变了、或从停用改回启用：旧的 next_run_at 已不代表新计划（否则会按旧时间再跑一次，
+	// 或一启用就补跑停用期间错过的那次），清掉让 runner 下一个 tick 按新计划重算。
+	if scheduleChanged(cur.ConfigJSON, merged.ConfigJSON) || (!cur.Enabled && merged.Enabled) {
+		merged.MetadataJSON = clearNextRunAt(merged.MetadataJSON)
+	}
 	return u.repo.UpdateCronTask(ctx, merged)
+}
+
+// scheduleKeys 是 config_json 里决定「什么时候跑」的字段。
+var scheduleKeys = []string{"schedule_type", "cron_expression", "interval_seconds", "run_at", "timezone"}
+
+func scheduleChanged(before, after string) bool {
+	a, b := map[string]any{}, map[string]any{}
+	_ = json.Unmarshal([]byte(defaultObject(before)), &a)
+	_ = json.Unmarshal([]byte(defaultObject(after)), &b)
+	for _, k := range scheduleKeys {
+		if fmt.Sprint(a[k]) != fmt.Sprint(b[k]) {
+			return true
+		}
+	}
+	return false
+}
+
+// clearNextRunAt 去掉 metadata 里的 next_run_at；解析失败原样返回（不因为清缓存丢统计）。
+func clearNextRunAt(raw string) string {
+	meta := map[string]any{}
+	if err := json.Unmarshal([]byte(defaultObject(raw)), &meta); err != nil {
+		return raw
+	}
+	if _, ok := meta["next_run_at"]; !ok {
+		return raw
+	}
+	delete(meta, "next_run_at")
+	out, err := json.Marshal(meta)
+	if err != nil {
+		return raw
+	}
+	return string(out)
+}
+
+func defaultObject(raw string) string {
+	if strings.TrimSpace(raw) == "" {
+		return "{}"
+	}
+	return raw
 }
 
 // DeleteTask removes a cron task.
@@ -329,21 +374,22 @@ func ValidateTaskConfig(configJSON string) error {
 			return apierror.BadRequest("CRON", "config_json target_type must be a string")
 		}
 		switch s {
-		case "agent", "team", "model_registry_sync", "mvp_rss_ingest":
-			// valid — mvp_rss_ingest pulls RSS into Content Inbox (ops path)
+		case "agent", "team", "model_registry_sync", "mvp_rss_ingest", "gm_patrol", "gm_report":
+			// valid — mvp_rss_ingest pulls RSS into Content Inbox (ops path);
+			// gm_patrol / gm_report 是看板总经理 Agent 的巡视与汇报（03-看板 §14）
 		default:
-			return apierror.BadRequest("CRON", "config_json target_type must be one of: agent, team, model_registry_sync, mvp_rss_ingest")
+			return apierror.BadRequest("CRON", "config_json target_type must be one of: agent, team, model_registry_sync, mvp_rss_ingest, gm_patrol, gm_report")
 		}
 	}
-	// Validate cron_expression field if present
-	if cronExpr, ok := cfg["cron_expression"]; ok {
-		s, ok := cronExpr.(string)
-		if !ok {
-			return apierror.BadRequest("CRON", "config_json cron_expression must be a string")
-		}
-		if strings.TrimSpace(s) == "" {
-			return apierror.BadRequest("CRON", "config_json cron_expression cannot be empty")
-		}
+	// cron_expression 只对 schedule_type=cron 有意义；其余类型（含缺省的 interval）带空串是表单常态，
+	// 此前一律拒绝空串，导致界面上「每隔 / 一次」类任务根本存不进去。
+	expr, hasExpr := cfg["cron_expression"]
+	exprStr, isStr := expr.(string)
+	if hasExpr && !isStr {
+		return apierror.BadRequest("CRON", "config_json cron_expression must be a string")
+	}
+	if st, _ := cfg["schedule_type"].(string); st == "cron" && strings.TrimSpace(exprStr) == "" {
+		return apierror.BadRequest("CRON", "config_json cron_expression cannot be empty")
 	}
 	return nil
 }

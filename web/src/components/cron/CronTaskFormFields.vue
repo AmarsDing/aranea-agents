@@ -32,7 +32,20 @@
     <CronTaskFormTargetFields v-model:form="form" :agents="agents" :teams="teams" />
     <CronTaskFormScheduleFields v-model:form="form" />
 
-    <q-input v-model="form.timezone" class="cron-field" dense outlined label="时区" placeholder="Asia/Shanghai" />
+    <!-- 时区名写错后端会静默按 UTC 跑，给常用项可选，仍允许手填 -->
+    <q-select
+      v-model="form.timezone"
+      class="cron-field"
+      dense
+      outlined
+      use-input
+      fill-input
+      hide-selected
+      new-value-mode="add-unique"
+      label="时区"
+      :options="TIMEZONES"
+      @input-value="(v: string) => (form.timezone = v)"
+    />
     <q-input
       v-model.number="form.retry_max_attempts"
       class="cron-field"
@@ -83,6 +96,16 @@ defineEmits<{
 }>();
 
 const form = defineModel<CronTaskFormValue>('form', { required: true });
+
+const TIMEZONES = [
+  'Asia/Shanghai',
+  'UTC',
+  'Asia/Tokyo',
+  'Asia/Singapore',
+  'Europe/London',
+  'America/New_York',
+  'America/Los_Angeles',
+];
 
 const formRef = ref<QForm>();
 

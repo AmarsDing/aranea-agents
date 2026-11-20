@@ -1,12 +1,22 @@
 <template>
   <div class="fleet-auto">
     <header class="fleet-auto__bar">
-      <h2>自动化</h2>
       <span class="fleet-auto__sub"
-        >按计划在项目上启动 agent 执行一段提示：夜间升依赖、每周分拣、定期清理不稳定测试。</span
+        >按计划在项目上启动编码 agent 执行一段提示：夜间升依赖、每周分拣、定期清理不稳定测试。给 Agent / Team
+        发消息的定时任务在「定时任务」页，两边的任务那里都能看到。</span
       >
       <q-space />
-      <q-btn dense unelevated no-caps color="primary" icon="add" label="新建" @click="edit()" />
+      <q-btn
+        dense
+        unelevated
+        no-caps
+        no-wrap
+        color="primary"
+        icon="add"
+        label="新建"
+        class="fleet-auto__new"
+        @click="edit()"
+      />
     </header>
 
     <table class="fleet-auto__table">
@@ -33,7 +43,10 @@
               {{ agentLabel(a.agent) }} · {{ a.worktreeMode === 'new' ? '每次新建 worktree' : '主检出' }}
             </div>
           </td>
-          <td class="mono">{{ a.schedule }}</td>
+          <td>
+            {{ describeFleetSchedule(a.schedule) }}
+            <div class="fleet-auto__muted mono">{{ a.schedule }}</div>
+          </td>
           <td class="mono">{{ fmt(a.nextRunAt) }}</td>
           <td>
             <span class="mono">{{ fmt(a.lastRunAt) }}</span>
@@ -157,6 +170,7 @@ import { Dialog, Notify } from 'quasar';
 import * as api from '../api';
 import type { Automation } from '../api';
 import { useFleet } from '../useFleet';
+import { describeFleetSchedule } from '../../../components/cron/cronTaskUtils';
 
 const { state, availableAgents, agentLabel, refreshWorkspaces, refreshTerminals } = useFleet();
 const SCHEDULES = ['every 6h', 'daily 02:00', 'weekdays 09:30', 'weekly mon 09:00'];
@@ -236,8 +250,12 @@ async function save() {
 }
 
 async function toggle(a: Automation, enabled: boolean) {
-  await api.upsertAutomation({ ...a, enabled });
-  await load();
+  try {
+    await api.upsertAutomation({ ...a, enabled });
+    await load();
+  } catch (e) {
+    Notify.create({ type: 'negative', message: api.errText(e) });
+  }
 }
 
 async function runNow(a: Automation) {
@@ -257,12 +275,16 @@ function remove(a: Automation) {
     cancel: true,
     ok: { label: '删除', color: 'negative' },
   }).onOk(async () => {
-    await api.deleteAutomation(a.id);
-    await load();
+    try {
+      await api.deleteAutomation(a.id);
+      await load();
+    } catch (e) {
+      Notify.create({ type: 'negative', message: api.errText(e) });
+    }
   });
 }
 
-onMounted(load);
+onMounted(() => void load().catch((e) => Notify.create({ type: 'negative', message: api.errText(e) })));
 </script>
 
 <style scoped lang="sass">
@@ -279,13 +301,14 @@ onMounted(load);
   align-items: center
   gap: var(--nt-space-3)
   margin-bottom: var(--nt-space-3)
-  h2
-    margin: 0
-    font-size: var(--nt-fs-title)
-    color: var(--nt-text-0)
 .fleet-auto__sub
+  flex: 1 1 auto
+  min-width: 0
+  max-width: 72ch
   color: var(--nt-text-3)
   font-size: var(--nt-fs-caption)
+.fleet-auto__new
+  flex: none
 .fleet-auto__table
   width: 100%
   border-collapse: collapse

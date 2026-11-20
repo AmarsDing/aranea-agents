@@ -17,6 +17,10 @@ type memCronExecRepo struct {
 	runs  map[string]biz.CronTaskRun
 }
 
+func (m *memCronExecRepo) ResolveCronTaskFailures(context.Context, string, string) (biz.CronTaskRun, int, error) {
+	return biz.CronTaskRun{}, 0, nil
+}
+
 func newMemCronExecRepo() *memCronExecRepo {
 	return &memCronExecRepo{
 		tasks: map[string]biz.CronTask{

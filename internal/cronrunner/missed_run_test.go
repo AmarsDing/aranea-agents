@@ -117,6 +117,10 @@ func (m *missedFakeRepo) UpdateCronTaskRun(_ context.Context, id, status, finish
 	return nil
 }
 
+func (m *missedFakeRepo) ResolveCronTaskFailures(context.Context, string, string) (biz.CronTaskRun, int, error) {
+	return biz.CronTaskRun{}, 0, nil
+}
+
 func missedTaskMeta(t *testing.T, meta cronTaskMetadata) string {
 	t.Helper()
 	raw, err := json.Marshal(meta)
@@ -184,6 +188,7 @@ func TestRunDue_SkipsMissedBeyondGrace(t *testing.T) {
 	r := NewRunner(Deps{Cron: repo, RegistrySyncAgent: syncAgent}, loggateway.NewNoop()).WithTickInterval(time.Minute)
 
 	r.runDue(context.Background())
+	r.waitRunning()
 
 	if syncAgent.calls != 0 {
 		t.Fatalf("missed run must not dispatch, got %d dispatches", syncAgent.calls)
@@ -229,6 +234,7 @@ func TestRunDue_MissedWithinGraceExecutes(t *testing.T) {
 	r := NewRunner(Deps{Cron: repo, RegistrySyncAgent: syncAgent}, loggateway.NewNoop()).WithTickInterval(time.Minute)
 
 	r.runDue(context.Background())
+	r.waitRunning()
 
 	if syncAgent.calls != 1 {
 		t.Fatalf("within-grace run must dispatch exactly once, got %d", syncAgent.calls)
@@ -251,6 +257,7 @@ func TestRunDue_OnceTaskExemptFromGrace(t *testing.T) {
 	r := NewRunner(Deps{Cron: repo, RegistrySyncAgent: syncAgent}, loggateway.NewNoop()).WithTickInterval(time.Minute)
 
 	r.runDue(context.Background())
+	r.waitRunning()
 
 	if syncAgent.calls != 1 {
 		t.Fatalf("once task must execute even when overdue, got %d dispatches", syncAgent.calls)
@@ -275,6 +282,7 @@ func TestRunDue_GraceAbsentCatchesUp(t *testing.T) {
 	r := NewRunner(Deps{Cron: repo, RegistrySyncAgent: syncAgent}, loggateway.NewNoop()).WithTickInterval(time.Minute)
 
 	r.runDue(context.Background())
+	r.waitRunning()
 
 	if syncAgent.calls != 1 {
 		t.Fatalf("legacy behavior must catch up when grace unset, got %d dispatches", syncAgent.calls)
@@ -329,6 +337,7 @@ func TestRunDue_UnevaluableConfigFoldsAndNeverDies(t *testing.T) {
 
 	for i := 0; i < maxDeadFailures+2; i++ {
 		r.runDue(context.Background())
+		r.waitRunning()
 	}
 
 	if len(repo.runs) != 1 {

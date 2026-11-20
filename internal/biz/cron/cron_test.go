@@ -142,8 +142,13 @@ func TestValidateTaskConfig(t *testing.T) {
 		{"target_type not string rejected", `{"target_type":123}`, true},
 		{"target_type invalid value rejected", `{"target_type":"invalid"}`, true},
 		{"cron_expression not string rejected", `{"cron_expression":123}`, true},
-		{"cron_expression empty string rejected", `{"cron_expression":""}`, true},
-		{"cron_expression whitespace only rejected", `{"cron_expression":"  "}`, true},
+		{"cron schedule with empty expression rejected", `{"schedule_type":"cron","cron_expression":""}`, true},
+		{"cron schedule with whitespace expression rejected", `{"schedule_type":"cron","cron_expression":"  "}`, true},
+		{"cron schedule without expression rejected", `{"schedule_type":"cron"}`, true},
+		// 表单对「每隔 / 一次」也会带上空的 cron_expression；调度器不看它，不能因此拒绝保存
+		{"interval schedule with empty expression passes", `{"schedule_type":"interval","interval_seconds":900,"cron_expression":""}`, false},
+		{"default (interval) schedule with empty expression passes", `{"cron_expression":""}`, false},
+		{"once schedule with empty expression passes", `{"schedule_type":"once","run_at":"2026-12-01T09:00:00","cron_expression":""}`, false},
 		{"valid cron_expression passes", `{"cron_expression":"*/5 * * * *"}`, false},
 		{"json without target_type or cron_expression passes", `{"other":"field"}`, false},
 	}

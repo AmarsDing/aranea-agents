@@ -10,6 +10,11 @@ import {
   listCronTaskRuns,
   triggerCronTask,
   resetCronTaskFailures,
+  listFleetAutomations,
+  setFleetAutomationEnabled,
+  runFleetAutomationNow,
+  type FleetAutomation,
+  type FleetProject,
   type PlatformResource,
   type PlatformResourceInput,
 } from '../../features/cron/api';
@@ -81,6 +86,33 @@ export const useCronStore = defineStore('cron', () => {
     return triggerCronTask(id);
   }
 
+  /** 某个任务最近几次执行（详情栏用；与执行记录弹窗的分页 runs 互不干扰）。含已忽略的失败。 */
+  const recentRuns = ref<CronTaskRun[]>([]);
+  async function loadRecentRuns(taskId: string, size = 8) {
+    const result = await listCronTaskRuns({ cron_task_id: taskId, page: 1, page_size: size, include_resolved: true });
+    recentRuns.value = result.items;
+    return result;
+  }
+
+  /** 运行台自动化；null = 接口不可用（不显示这一组）。 */
+  const automations = ref<FleetAutomation[] | null>(null);
+  const fleetProjects = ref<FleetProject[]>([]);
+  async function loadAutomations() {
+    const res = await listFleetAutomations();
+    automations.value = res?.items ?? null;
+    fleetProjects.value = res?.projects ?? [];
+  }
+  async function toggleAutomation(a: FleetAutomation, enabled: boolean) {
+    const updated = await setFleetAutomationEnabled(a, enabled);
+    automations.value = (automations.value ?? []).map((x) => (x.id === a.id ? updated : x));
+    return updated;
+  }
+  async function runAutomation(id: string) {
+    const updated = await runFleetAutomationNow(id);
+    automations.value = (automations.value ?? []).map((x) => (x.id === id ? updated : x));
+    return updated;
+  }
+
   async function resetFailures(id: string) {
     const updated = await resetCronTaskFailures(id);
     tasks.value = tasks.value.map((t) => (t.id === id ? updated : t));
@@ -103,5 +135,12 @@ export const useCronStore = defineStore('cron', () => {
     removeTask,
     triggerTask,
     resetFailures,
+    recentRuns,
+    loadRecentRuns,
+    automations,
+    fleetProjects,
+    loadAutomations,
+    toggleAutomation,
+    runAutomation,
   };
 });

@@ -3,6 +3,7 @@ package graph
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 
 	"aranea-agents/internal/biz"
@@ -64,7 +65,29 @@ func (r *Registry) RegisterCondFuncInstance(name string, fn any) {
 	r.condFuncs[name] = func() (any, error) { return fn, nil }
 }
 
+// StateRouteCondFuncPrefix 是内置条件函数：`state.route:<字段>` 取该状态字段的值作为
+// 分支键（对应 PathMap 的 key）。不进注册表，任何 Registry 都能解析。
+const StateRouteCondFuncPrefix = "state.route:"
+
+func stateRouteCondFunc(field string) trpcgraph.ConditionalFunc {
+	return func(_ context.Context, state trpcgraph.State) (string, error) {
+		v, ok := state[field]
+		key := ""
+		if ok && v != nil {
+			key = strings.TrimSpace(fmt.Sprint(v))
+		}
+		if key == "" {
+			return "", apierror.BadRequest(apierror.DomainGraph,
+				fmt.Sprintf("graph: 状态字段 %q 为空，无法选择分支（执行时在初始状态里给它一个分支名）", field))
+		}
+		return key, nil
+	}
+}
+
 func (r *Registry) GetCondFunc(name string) (any, error) {
+	if field, ok := strings.CutPrefix(name, StateRouteCondFuncPrefix); ok && strings.TrimSpace(field) != "" {
+		return stateRouteCondFunc(strings.TrimSpace(field)), nil
+	}
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	factory, ok := r.condFuncs[name]

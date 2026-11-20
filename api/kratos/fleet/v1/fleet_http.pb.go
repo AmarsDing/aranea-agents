@@ -37,6 +37,7 @@ const OperationFleetServiceGetUsage = "/kratos.fleet.v1.FleetService/GetUsage"
 const OperationFleetServiceKillTerminal = "/kratos.fleet.v1.FleetService/KillTerminal"
 const OperationFleetServiceListAgentPresets = "/kratos.fleet.v1.FleetService/ListAgentPresets"
 const OperationFleetServiceListAutomations = "/kratos.fleet.v1.FleetService/ListAutomations"
+const OperationFleetServiceListCredits = "/kratos.fleet.v1.FleetService/ListCredits"
 const OperationFleetServiceListEvents = "/kratos.fleet.v1.FleetService/ListEvents"
 const OperationFleetServiceListNotes = "/kratos.fleet.v1.FleetService/ListNotes"
 const OperationFleetServiceListProjects = "/kratos.fleet.v1.FleetService/ListProjects"
@@ -50,6 +51,7 @@ const OperationFleetServiceRestartTerminal = "/kratos.fleet.v1.FleetService/Rest
 const OperationFleetServiceRunAutomationNow = "/kratos.fleet.v1.FleetService/RunAutomationNow"
 const OperationFleetServiceSendInput = "/kratos.fleet.v1.FleetService/SendInput"
 const OperationFleetServiceSendNotes = "/kratos.fleet.v1.FleetService/SendNotes"
+const OperationFleetServiceSetCredit = "/kratos.fleet.v1.FleetService/SetCredit"
 const OperationFleetServiceStageFiles = "/kratos.fleet.v1.FleetService/StageFiles"
 const OperationFleetServiceStopRun = "/kratos.fleet.v1.FleetService/StopRun"
 const OperationFleetServiceUnstageFiles = "/kratos.fleet.v1.FleetService/UnstageFiles"
@@ -75,6 +77,7 @@ type FleetServiceHTTPServer interface {
 	KillTerminal(context.Context, *TerminalIdRequest) (*Terminal, error)
 	ListAgentPresets(context.Context, *emptypb.Empty) (*ListAgentPresetsResponse, error)
 	ListAutomations(context.Context, *emptypb.Empty) (*ListAutomationsResponse, error)
+	ListCredits(context.Context, *emptypb.Empty) (*ListCreditsResponse, error)
 	ListEvents(context.Context, *ListEventsRequest) (*ListEventsResponse, error)
 	ListNotes(context.Context, *ListNotesRequest) (*ListNotesResponse, error)
 	ListProjects(context.Context, *emptypb.Empty) (*ListProjectsResponse, error)
@@ -88,6 +91,7 @@ type FleetServiceHTTPServer interface {
 	RunAutomationNow(context.Context, *AutomationIdRequest) (*Automation, error)
 	SendInput(context.Context, *SendInputRequest) (*emptypb.Empty, error)
 	SendNotes(context.Context, *SendNotesRequest) (*SendNotesResponse, error)
+	SetCredit(context.Context, *SetCreditRequest) (*PlatformCredit, error)
 	StageFiles(context.Context, *GitPathsRequest) (*GitOpResponse, error)
 	StopRun(context.Context, *RunIdRequest) (*Run, error)
 	UnstageFiles(context.Context, *GitPathsRequest) (*GitOpResponse, error)
@@ -125,6 +129,8 @@ func RegisterFleetServiceHTTPServer(s *http.Server, srv FleetServiceHTTPServer) 
 	r.GET("/v1/fleet/events", _FleetService_ListEvents1_HTTP_Handler(srv))
 	r.POST("/v1/fleet/events/read", _FleetService_MarkEventsRead0_HTTP_Handler(srv))
 	r.GET("/v1/fleet/usage", _FleetService_GetUsage0_HTTP_Handler(srv))
+	r.GET("/v1/fleet/credits", _FleetService_ListCredits0_HTTP_Handler(srv))
+	r.PUT("/v1/fleet/credits/{platform}", _FleetService_SetCredit0_HTTP_Handler(srv))
 	r.POST("/v1/fleet/runs", _FleetService_CreateRun0_HTTP_Handler(srv))
 	r.GET("/v1/fleet/runs", _FleetService_ListRuns1_HTTP_Handler(srv))
 	r.GET("/v1/fleet/runs/{id}", _FleetService_GetRun1_HTTP_Handler(srv))
@@ -745,6 +751,50 @@ func _FleetService_GetUsage0_HTTP_Handler(srv FleetServiceHTTPServer) func(ctx h
 	}
 }
 
+func _FleetService_ListCredits0_HTTP_Handler(srv FleetServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in emptypb.Empty
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationFleetServiceListCredits)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.ListCredits(ctx, req.(*emptypb.Empty))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*ListCreditsResponse)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _FleetService_SetCredit0_HTTP_Handler(srv FleetServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in SetCreditRequest
+		if err := ctx.Bind(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationFleetServiceSetCredit)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.SetCredit(ctx, req.(*SetCreditRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*PlatformCredit)
+		return ctx.Result(200, reply)
+	}
+}
+
 func _FleetService_CreateRun0_HTTP_Handler(srv FleetServiceHTTPServer) func(ctx http.Context) error {
 	return func(ctx http.Context) error {
 		var in CreateRunRequest
@@ -964,6 +1014,7 @@ type FleetServiceHTTPClient interface {
 	KillTerminal(ctx context.Context, req *TerminalIdRequest, opts ...http.CallOption) (rsp *Terminal, err error)
 	ListAgentPresets(ctx context.Context, req *emptypb.Empty, opts ...http.CallOption) (rsp *ListAgentPresetsResponse, err error)
 	ListAutomations(ctx context.Context, req *emptypb.Empty, opts ...http.CallOption) (rsp *ListAutomationsResponse, err error)
+	ListCredits(ctx context.Context, req *emptypb.Empty, opts ...http.CallOption) (rsp *ListCreditsResponse, err error)
 	ListEvents(ctx context.Context, req *ListEventsRequest, opts ...http.CallOption) (rsp *ListEventsResponse, err error)
 	ListNotes(ctx context.Context, req *ListNotesRequest, opts ...http.CallOption) (rsp *ListNotesResponse, err error)
 	ListProjects(ctx context.Context, req *emptypb.Empty, opts ...http.CallOption) (rsp *ListProjectsResponse, err error)
@@ -977,6 +1028,7 @@ type FleetServiceHTTPClient interface {
 	RunAutomationNow(ctx context.Context, req *AutomationIdRequest, opts ...http.CallOption) (rsp *Automation, err error)
 	SendInput(ctx context.Context, req *SendInputRequest, opts ...http.CallOption) (rsp *emptypb.Empty, err error)
 	SendNotes(ctx context.Context, req *SendNotesRequest, opts ...http.CallOption) (rsp *SendNotesResponse, err error)
+	SetCredit(ctx context.Context, req *SetCreditRequest, opts ...http.CallOption) (rsp *PlatformCredit, err error)
 	StageFiles(ctx context.Context, req *GitPathsRequest, opts ...http.CallOption) (rsp *GitOpResponse, err error)
 	StopRun(ctx context.Context, req *RunIdRequest, opts ...http.CallOption) (rsp *Run, err error)
 	UnstageFiles(ctx context.Context, req *GitPathsRequest, opts ...http.CallOption) (rsp *GitOpResponse, err error)
@@ -1214,6 +1266,19 @@ func (c *FleetServiceHTTPClientImpl) ListAutomations(ctx context.Context, in *em
 	return &out, nil
 }
 
+func (c *FleetServiceHTTPClientImpl) ListCredits(ctx context.Context, in *emptypb.Empty, opts ...http.CallOption) (*ListCreditsResponse, error) {
+	var out ListCreditsResponse
+	pattern := "/v1/fleet/credits"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationFleetServiceListCredits))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 func (c *FleetServiceHTTPClientImpl) ListEvents(ctx context.Context, in *ListEventsRequest, opts ...http.CallOption) (*ListEventsResponse, error) {
 	var out ListEventsResponse
 	pattern := "/v1/fleet/events"
@@ -1377,6 +1442,19 @@ func (c *FleetServiceHTTPClientImpl) SendNotes(ctx context.Context, in *SendNote
 	opts = append(opts, http.Operation(OperationFleetServiceSendNotes))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *FleetServiceHTTPClientImpl) SetCredit(ctx context.Context, in *SetCreditRequest, opts ...http.CallOption) (*PlatformCredit, error) {
+	var out PlatformCredit
+	pattern := "/v1/fleet/credits/{platform}"
+	path := binding.EncodeURL(pattern, in, false)
+	opts = append(opts, http.Operation(OperationFleetServiceSetCredit))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "PUT", path, in, &out, opts...)
 	if err != nil {
 		return nil, err
 	}

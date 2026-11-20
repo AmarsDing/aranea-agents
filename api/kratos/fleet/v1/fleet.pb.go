@@ -3020,6 +3020,303 @@ func (x *GetUsageResponse) GetItems() []*AgentUsage {
 	return nil
 }
 
+type PlatformCredit struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Platform      string                 `protobuf:"bytes,1,opt,name=platform,proto3" json:"platform,omitempty"`     // deepseek | codex | claude | codebuddy | qoder | trae | cursor
+	Source        string                 `protobuf:"bytes,2,opt,name=source,proto3" json:"source,omitempty"`         // auto | manual
+	Plan          string                 `protobuf:"bytes,3,opt,name=plan,proto3" json:"plan,omitempty"`             // 套餐名
+	Total         float64                `protobuf:"fixed64,4,opt,name=total,proto3" json:"total,omitempty"`         // 本期总额度；-1 = 未知
+	Remaining     float64                `protobuf:"fixed64,5,opt,name=remaining,proto3" json:"remaining,omitempty"` // 剩余；-1 = 未知
+	Unit          string                 `protobuf:"bytes,6,opt,name=unit,proto3" json:"unit,omitempty"`             // CNY | USD | credits
+	Unlimited     bool                   `protobuf:"varint,7,opt,name=unlimited,proto3" json:"unlimited,omitempty"`
+	UpdatedAt     string                 `protobuf:"bytes,8,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"` // 自动 = 取数时间；手填 = 登记时间；空 = 还没有数据
+	Note          string                 `protobuf:"bytes,9,opt,name=note,proto3" json:"note,omitempty"`                            // 取不到的原因或备注
+	History       []*CreditPoint         `protobuf:"bytes,10,rep,name=history,proto3" json:"history,omitempty"`                     // 近 30 天每个 UTC 日最后一次的剩余，按日期升序
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PlatformCredit) Reset() {
+	*x = PlatformCredit{}
+	mi := &file_kratos_fleet_v1_fleet_proto_msgTypes[45]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PlatformCredit) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PlatformCredit) ProtoMessage() {}
+
+func (x *PlatformCredit) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_fleet_v1_fleet_proto_msgTypes[45]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PlatformCredit.ProtoReflect.Descriptor instead.
+func (*PlatformCredit) Descriptor() ([]byte, []int) {
+	return file_kratos_fleet_v1_fleet_proto_rawDescGZIP(), []int{45}
+}
+
+func (x *PlatformCredit) GetPlatform() string {
+	if x != nil {
+		return x.Platform
+	}
+	return ""
+}
+
+func (x *PlatformCredit) GetSource() string {
+	if x != nil {
+		return x.Source
+	}
+	return ""
+}
+
+func (x *PlatformCredit) GetPlan() string {
+	if x != nil {
+		return x.Plan
+	}
+	return ""
+}
+
+func (x *PlatformCredit) GetTotal() float64 {
+	if x != nil {
+		return x.Total
+	}
+	return 0
+}
+
+func (x *PlatformCredit) GetRemaining() float64 {
+	if x != nil {
+		return x.Remaining
+	}
+	return 0
+}
+
+func (x *PlatformCredit) GetUnit() string {
+	if x != nil {
+		return x.Unit
+	}
+	return ""
+}
+
+func (x *PlatformCredit) GetUnlimited() bool {
+	if x != nil {
+		return x.Unlimited
+	}
+	return false
+}
+
+func (x *PlatformCredit) GetUpdatedAt() string {
+	if x != nil {
+		return x.UpdatedAt
+	}
+	return ""
+}
+
+func (x *PlatformCredit) GetNote() string {
+	if x != nil {
+		return x.Note
+	}
+	return ""
+}
+
+func (x *PlatformCredit) GetHistory() []*CreditPoint {
+	if x != nil {
+		return x.History
+	}
+	return nil
+}
+
+// 某个 UTC 日最后一次记下的剩余（自动取数或手填时记）。
+type CreditPoint struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Date          string                 `protobuf:"bytes,1,opt,name=date,proto3" json:"date,omitempty"` // YYYY-MM-DD（UTC）
+	Remaining     float64                `protobuf:"fixed64,2,opt,name=remaining,proto3" json:"remaining,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CreditPoint) Reset() {
+	*x = CreditPoint{}
+	mi := &file_kratos_fleet_v1_fleet_proto_msgTypes[46]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreditPoint) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreditPoint) ProtoMessage() {}
+
+func (x *CreditPoint) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_fleet_v1_fleet_proto_msgTypes[46]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreditPoint.ProtoReflect.Descriptor instead.
+func (*CreditPoint) Descriptor() ([]byte, []int) {
+	return file_kratos_fleet_v1_fleet_proto_rawDescGZIP(), []int{46}
+}
+
+func (x *CreditPoint) GetDate() string {
+	if x != nil {
+		return x.Date
+	}
+	return ""
+}
+
+func (x *CreditPoint) GetRemaining() float64 {
+	if x != nil {
+		return x.Remaining
+	}
+	return 0
+}
+
+type ListCreditsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Items         []*PlatformCredit      `protobuf:"bytes,1,rep,name=items,proto3" json:"items,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListCreditsResponse) Reset() {
+	*x = ListCreditsResponse{}
+	mi := &file_kratos_fleet_v1_fleet_proto_msgTypes[47]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListCreditsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListCreditsResponse) ProtoMessage() {}
+
+func (x *ListCreditsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_fleet_v1_fleet_proto_msgTypes[47]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListCreditsResponse.ProtoReflect.Descriptor instead.
+func (*ListCreditsResponse) Descriptor() ([]byte, []int) {
+	return file_kratos_fleet_v1_fleet_proto_rawDescGZIP(), []int{47}
+}
+
+func (x *ListCreditsResponse) GetItems() []*PlatformCredit {
+	if x != nil {
+		return x.Items
+	}
+	return nil
+}
+
+type SetCreditRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Platform      string                 `protobuf:"bytes,1,opt,name=platform,proto3" json:"platform,omitempty"`
+	Plan          string                 `protobuf:"bytes,2,opt,name=plan,proto3" json:"plan,omitempty"`
+	Total         float64                `protobuf:"fixed64,3,opt,name=total,proto3" json:"total,omitempty"`
+	Remaining     float64                `protobuf:"fixed64,4,opt,name=remaining,proto3" json:"remaining,omitempty"`
+	Unit          string                 `protobuf:"bytes,5,opt,name=unit,proto3" json:"unit,omitempty"`
+	Note          string                 `protobuf:"bytes,6,opt,name=note,proto3" json:"note,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SetCreditRequest) Reset() {
+	*x = SetCreditRequest{}
+	mi := &file_kratos_fleet_v1_fleet_proto_msgTypes[48]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SetCreditRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SetCreditRequest) ProtoMessage() {}
+
+func (x *SetCreditRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_fleet_v1_fleet_proto_msgTypes[48]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SetCreditRequest.ProtoReflect.Descriptor instead.
+func (*SetCreditRequest) Descriptor() ([]byte, []int) {
+	return file_kratos_fleet_v1_fleet_proto_rawDescGZIP(), []int{48}
+}
+
+func (x *SetCreditRequest) GetPlatform() string {
+	if x != nil {
+		return x.Platform
+	}
+	return ""
+}
+
+func (x *SetCreditRequest) GetPlan() string {
+	if x != nil {
+		return x.Plan
+	}
+	return ""
+}
+
+func (x *SetCreditRequest) GetTotal() float64 {
+	if x != nil {
+		return x.Total
+	}
+	return 0
+}
+
+func (x *SetCreditRequest) GetRemaining() float64 {
+	if x != nil {
+		return x.Remaining
+	}
+	return 0
+}
+
+func (x *SetCreditRequest) GetUnit() string {
+	if x != nil {
+		return x.Unit
+	}
+	return ""
+}
+
+func (x *SetCreditRequest) GetNote() string {
+	if x != nil {
+		return x.Note
+	}
+	return ""
+}
+
 type Run struct {
 	state                 protoimpl.MessageState `protogen:"open.v1"`
 	Id                    string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
@@ -3040,7 +3337,7 @@ type Run struct {
 
 func (x *Run) Reset() {
 	*x = Run{}
-	mi := &file_kratos_fleet_v1_fleet_proto_msgTypes[45]
+	mi := &file_kratos_fleet_v1_fleet_proto_msgTypes[49]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3052,7 +3349,7 @@ func (x *Run) String() string {
 func (*Run) ProtoMessage() {}
 
 func (x *Run) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_fleet_v1_fleet_proto_msgTypes[45]
+	mi := &file_kratos_fleet_v1_fleet_proto_msgTypes[49]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3065,7 +3362,7 @@ func (x *Run) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Run.ProtoReflect.Descriptor instead.
 func (*Run) Descriptor() ([]byte, []int) {
-	return file_kratos_fleet_v1_fleet_proto_rawDescGZIP(), []int{45}
+	return file_kratos_fleet_v1_fleet_proto_rawDescGZIP(), []int{49}
 }
 
 func (x *Run) GetId() string {
@@ -3175,7 +3472,7 @@ type Task struct {
 
 func (x *Task) Reset() {
 	*x = Task{}
-	mi := &file_kratos_fleet_v1_fleet_proto_msgTypes[46]
+	mi := &file_kratos_fleet_v1_fleet_proto_msgTypes[50]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3187,7 +3484,7 @@ func (x *Task) String() string {
 func (*Task) ProtoMessage() {}
 
 func (x *Task) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_fleet_v1_fleet_proto_msgTypes[46]
+	mi := &file_kratos_fleet_v1_fleet_proto_msgTypes[50]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3200,7 +3497,7 @@ func (x *Task) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Task.ProtoReflect.Descriptor instead.
 func (*Task) Descriptor() ([]byte, []int) {
-	return file_kratos_fleet_v1_fleet_proto_rawDescGZIP(), []int{46}
+	return file_kratos_fleet_v1_fleet_proto_rawDescGZIP(), []int{50}
 }
 
 func (x *Task) GetId() string {
@@ -3329,7 +3626,7 @@ type Message struct {
 
 func (x *Message) Reset() {
 	*x = Message{}
-	mi := &file_kratos_fleet_v1_fleet_proto_msgTypes[47]
+	mi := &file_kratos_fleet_v1_fleet_proto_msgTypes[51]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3341,7 +3638,7 @@ func (x *Message) String() string {
 func (*Message) ProtoMessage() {}
 
 func (x *Message) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_fleet_v1_fleet_proto_msgTypes[47]
+	mi := &file_kratos_fleet_v1_fleet_proto_msgTypes[51]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3354,7 +3651,7 @@ func (x *Message) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Message.ProtoReflect.Descriptor instead.
 func (*Message) Descriptor() ([]byte, []int) {
-	return file_kratos_fleet_v1_fleet_proto_rawDescGZIP(), []int{47}
+	return file_kratos_fleet_v1_fleet_proto_rawDescGZIP(), []int{51}
 }
 
 func (x *Message) GetId() string {
@@ -3461,7 +3758,7 @@ type CreateRunRequest struct {
 
 func (x *CreateRunRequest) Reset() {
 	*x = CreateRunRequest{}
-	mi := &file_kratos_fleet_v1_fleet_proto_msgTypes[48]
+	mi := &file_kratos_fleet_v1_fleet_proto_msgTypes[52]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3473,7 +3770,7 @@ func (x *CreateRunRequest) String() string {
 func (*CreateRunRequest) ProtoMessage() {}
 
 func (x *CreateRunRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_fleet_v1_fleet_proto_msgTypes[48]
+	mi := &file_kratos_fleet_v1_fleet_proto_msgTypes[52]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3486,7 +3783,7 @@ func (x *CreateRunRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateRunRequest.ProtoReflect.Descriptor instead.
 func (*CreateRunRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_fleet_v1_fleet_proto_rawDescGZIP(), []int{48}
+	return file_kratos_fleet_v1_fleet_proto_rawDescGZIP(), []int{52}
 }
 
 func (x *CreateRunRequest) GetProjectId() string {
@@ -3533,7 +3830,7 @@ type ListRunsResponse struct {
 
 func (x *ListRunsResponse) Reset() {
 	*x = ListRunsResponse{}
-	mi := &file_kratos_fleet_v1_fleet_proto_msgTypes[49]
+	mi := &file_kratos_fleet_v1_fleet_proto_msgTypes[53]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3545,7 +3842,7 @@ func (x *ListRunsResponse) String() string {
 func (*ListRunsResponse) ProtoMessage() {}
 
 func (x *ListRunsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_fleet_v1_fleet_proto_msgTypes[49]
+	mi := &file_kratos_fleet_v1_fleet_proto_msgTypes[53]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3558,7 +3855,7 @@ func (x *ListRunsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListRunsResponse.ProtoReflect.Descriptor instead.
 func (*ListRunsResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_fleet_v1_fleet_proto_rawDescGZIP(), []int{49}
+	return file_kratos_fleet_v1_fleet_proto_rawDescGZIP(), []int{53}
 }
 
 func (x *ListRunsResponse) GetItems() []*Run {
@@ -3577,7 +3874,7 @@ type RunIdRequest struct {
 
 func (x *RunIdRequest) Reset() {
 	*x = RunIdRequest{}
-	mi := &file_kratos_fleet_v1_fleet_proto_msgTypes[50]
+	mi := &file_kratos_fleet_v1_fleet_proto_msgTypes[54]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3589,7 +3886,7 @@ func (x *RunIdRequest) String() string {
 func (*RunIdRequest) ProtoMessage() {}
 
 func (x *RunIdRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_fleet_v1_fleet_proto_msgTypes[50]
+	mi := &file_kratos_fleet_v1_fleet_proto_msgTypes[54]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3602,7 +3899,7 @@ func (x *RunIdRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RunIdRequest.ProtoReflect.Descriptor instead.
 func (*RunIdRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_fleet_v1_fleet_proto_rawDescGZIP(), []int{50}
+	return file_kratos_fleet_v1_fleet_proto_rawDescGZIP(), []int{54}
 }
 
 func (x *RunIdRequest) GetId() string {
@@ -3623,7 +3920,7 @@ type GetRunResponse struct {
 
 func (x *GetRunResponse) Reset() {
 	*x = GetRunResponse{}
-	mi := &file_kratos_fleet_v1_fleet_proto_msgTypes[51]
+	mi := &file_kratos_fleet_v1_fleet_proto_msgTypes[55]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3635,7 +3932,7 @@ func (x *GetRunResponse) String() string {
 func (*GetRunResponse) ProtoMessage() {}
 
 func (x *GetRunResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_fleet_v1_fleet_proto_msgTypes[51]
+	mi := &file_kratos_fleet_v1_fleet_proto_msgTypes[55]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3648,7 +3945,7 @@ func (x *GetRunResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetRunResponse.ProtoReflect.Descriptor instead.
 func (*GetRunResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_fleet_v1_fleet_proto_rawDescGZIP(), []int{51}
+	return file_kratos_fleet_v1_fleet_proto_rawDescGZIP(), []int{55}
 }
 
 func (x *GetRunResponse) GetRun() *Run {
@@ -3682,7 +3979,7 @@ type AnswerRequest struct {
 
 func (x *AnswerRequest) Reset() {
 	*x = AnswerRequest{}
-	mi := &file_kratos_fleet_v1_fleet_proto_msgTypes[52]
+	mi := &file_kratos_fleet_v1_fleet_proto_msgTypes[56]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3694,7 +3991,7 @@ func (x *AnswerRequest) String() string {
 func (*AnswerRequest) ProtoMessage() {}
 
 func (x *AnswerRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_fleet_v1_fleet_proto_msgTypes[52]
+	mi := &file_kratos_fleet_v1_fleet_proto_msgTypes[56]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3707,7 +4004,7 @@ func (x *AnswerRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AnswerRequest.ProtoReflect.Descriptor instead.
 func (*AnswerRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_fleet_v1_fleet_proto_rawDescGZIP(), []int{52}
+	return file_kratos_fleet_v1_fleet_proto_rawDescGZIP(), []int{56}
 }
 
 func (x *AnswerRequest) GetMessageId() string {
@@ -3746,7 +4043,7 @@ type Automation struct {
 
 func (x *Automation) Reset() {
 	*x = Automation{}
-	mi := &file_kratos_fleet_v1_fleet_proto_msgTypes[53]
+	mi := &file_kratos_fleet_v1_fleet_proto_msgTypes[57]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3758,7 +4055,7 @@ func (x *Automation) String() string {
 func (*Automation) ProtoMessage() {}
 
 func (x *Automation) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_fleet_v1_fleet_proto_msgTypes[53]
+	mi := &file_kratos_fleet_v1_fleet_proto_msgTypes[57]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3771,7 +4068,7 @@ func (x *Automation) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Automation.ProtoReflect.Descriptor instead.
 func (*Automation) Descriptor() ([]byte, []int) {
-	return file_kratos_fleet_v1_fleet_proto_rawDescGZIP(), []int{53}
+	return file_kratos_fleet_v1_fleet_proto_rawDescGZIP(), []int{57}
 }
 
 func (x *Automation) GetId() string {
@@ -3881,7 +4178,7 @@ type ListAutomationsResponse struct {
 
 func (x *ListAutomationsResponse) Reset() {
 	*x = ListAutomationsResponse{}
-	mi := &file_kratos_fleet_v1_fleet_proto_msgTypes[54]
+	mi := &file_kratos_fleet_v1_fleet_proto_msgTypes[58]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3893,7 +4190,7 @@ func (x *ListAutomationsResponse) String() string {
 func (*ListAutomationsResponse) ProtoMessage() {}
 
 func (x *ListAutomationsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_fleet_v1_fleet_proto_msgTypes[54]
+	mi := &file_kratos_fleet_v1_fleet_proto_msgTypes[58]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3906,7 +4203,7 @@ func (x *ListAutomationsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListAutomationsResponse.ProtoReflect.Descriptor instead.
 func (*ListAutomationsResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_fleet_v1_fleet_proto_rawDescGZIP(), []int{54}
+	return file_kratos_fleet_v1_fleet_proto_rawDescGZIP(), []int{58}
 }
 
 func (x *ListAutomationsResponse) GetItems() []*Automation {
@@ -3925,7 +4222,7 @@ type UpsertAutomationRequest struct {
 
 func (x *UpsertAutomationRequest) Reset() {
 	*x = UpsertAutomationRequest{}
-	mi := &file_kratos_fleet_v1_fleet_proto_msgTypes[55]
+	mi := &file_kratos_fleet_v1_fleet_proto_msgTypes[59]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3937,7 +4234,7 @@ func (x *UpsertAutomationRequest) String() string {
 func (*UpsertAutomationRequest) ProtoMessage() {}
 
 func (x *UpsertAutomationRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_fleet_v1_fleet_proto_msgTypes[55]
+	mi := &file_kratos_fleet_v1_fleet_proto_msgTypes[59]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3950,7 +4247,7 @@ func (x *UpsertAutomationRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpsertAutomationRequest.ProtoReflect.Descriptor instead.
 func (*UpsertAutomationRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_fleet_v1_fleet_proto_rawDescGZIP(), []int{55}
+	return file_kratos_fleet_v1_fleet_proto_rawDescGZIP(), []int{59}
 }
 
 func (x *UpsertAutomationRequest) GetAutomation() *Automation {
@@ -3969,7 +4266,7 @@ type AutomationIdRequest struct {
 
 func (x *AutomationIdRequest) Reset() {
 	*x = AutomationIdRequest{}
-	mi := &file_kratos_fleet_v1_fleet_proto_msgTypes[56]
+	mi := &file_kratos_fleet_v1_fleet_proto_msgTypes[60]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3981,7 +4278,7 @@ func (x *AutomationIdRequest) String() string {
 func (*AutomationIdRequest) ProtoMessage() {}
 
 func (x *AutomationIdRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_fleet_v1_fleet_proto_msgTypes[56]
+	mi := &file_kratos_fleet_v1_fleet_proto_msgTypes[60]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3994,7 +4291,7 @@ func (x *AutomationIdRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AutomationIdRequest.ProtoReflect.Descriptor instead.
 func (*AutomationIdRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_fleet_v1_fleet_proto_rawDescGZIP(), []int{56}
+	return file_kratos_fleet_v1_fleet_proto_rawDescGZIP(), []int{60}
 }
 
 func (x *AutomationIdRequest) GetId() string {
@@ -4255,7 +4552,32 @@ const file_kratos_fleet_v1_fleet_proto_rawDesc = "" +
 	"updated_at\x18\x04 \x01(\tR\tupdatedAt\x12\x1a\n" +
 	"\bsessions\x18\x05 \x01(\x03R\bsessions\"E\n" +
 	"\x10GetUsageResponse\x121\n" +
-	"\x05items\x18\x01 \x03(\v2\x1b.kratos.fleet.v1.AgentUsageR\x05items\"\xef\x02\n" +
+	"\x05items\x18\x01 \x03(\v2\x1b.kratos.fleet.v1.AgentUsageR\x05items\"\xa9\x02\n" +
+	"\x0ePlatformCredit\x12\x1a\n" +
+	"\bplatform\x18\x01 \x01(\tR\bplatform\x12\x16\n" +
+	"\x06source\x18\x02 \x01(\tR\x06source\x12\x12\n" +
+	"\x04plan\x18\x03 \x01(\tR\x04plan\x12\x14\n" +
+	"\x05total\x18\x04 \x01(\x01R\x05total\x12\x1c\n" +
+	"\tremaining\x18\x05 \x01(\x01R\tremaining\x12\x12\n" +
+	"\x04unit\x18\x06 \x01(\tR\x04unit\x12\x1c\n" +
+	"\tunlimited\x18\a \x01(\bR\tunlimited\x12\x1d\n" +
+	"\n" +
+	"updated_at\x18\b \x01(\tR\tupdatedAt\x12\x12\n" +
+	"\x04note\x18\t \x01(\tR\x04note\x126\n" +
+	"\ahistory\x18\n" +
+	" \x03(\v2\x1c.kratos.fleet.v1.CreditPointR\ahistory\"?\n" +
+	"\vCreditPoint\x12\x12\n" +
+	"\x04date\x18\x01 \x01(\tR\x04date\x12\x1c\n" +
+	"\tremaining\x18\x02 \x01(\x01R\tremaining\"L\n" +
+	"\x13ListCreditsResponse\x125\n" +
+	"\x05items\x18\x01 \x03(\v2\x1f.kratos.fleet.v1.PlatformCreditR\x05items\"\x9e\x01\n" +
+	"\x10SetCreditRequest\x12\x1a\n" +
+	"\bplatform\x18\x01 \x01(\tR\bplatform\x12\x12\n" +
+	"\x04plan\x18\x02 \x01(\tR\x04plan\x12\x14\n" +
+	"\x05total\x18\x03 \x01(\x01R\x05total\x12\x1c\n" +
+	"\tremaining\x18\x04 \x01(\x01R\tremaining\x12\x12\n" +
+	"\x04unit\x18\x05 \x01(\tR\x04unit\x12\x12\n" +
+	"\x04note\x18\x06 \x01(\tR\x04note\"\xef\x02\n" +
 	"\x03Run\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1c\n" +
 	"\tobjective\x18\x02 \x01(\tR\tobjective\x12\x1d\n" +
@@ -4360,7 +4682,7 @@ const file_kratos_fleet_v1_fleet_proto_rawDesc = "" +
 	"automation\x18\x01 \x01(\v2\x1b.kratos.fleet.v1.AutomationR\n" +
 	"automation\"%\n" +
 	"\x13AutomationIdRequest\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\tR\x02id2\xb2'\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id2\xbb)\n" +
 	"\fFleetService\x12\x82\x01\n" +
 	"\x10ListAgentPresets\x12\x16.google.protobuf.Empty\x1a).kratos.fleet.v1.ListAgentPresetsResponse\"+\xca\xf3\x18\x0f\n" +
 	"\rcoding.manage\x82\xd3\xe4\x93\x02\x12\x12\x10/v1/fleet/agents\x12|\n" +
@@ -4420,7 +4742,11 @@ const file_kratos_fleet_v1_fleet_proto_rawDesc = "" +
 	"\x0eMarkEventsRead\x12&.kratos.fleet.v1.MarkEventsReadRequest\x1a\x16.google.protobuf.Empty\"3\xca\xf3\x18\x0f\n" +
 	"\rcoding.manage\x82\xd3\xe4\x93\x02\x1a:\x01*\"\x15/v1/fleet/events/read\x12q\n" +
 	"\bGetUsage\x12\x16.google.protobuf.Empty\x1a!.kratos.fleet.v1.GetUsageResponse\"*\xca\xf3\x18\x0f\n" +
-	"\rcoding.manage\x82\xd3\xe4\x93\x02\x11\x12\x0f/v1/fleet/usage\x12r\n" +
+	"\rcoding.manage\x82\xd3\xe4\x93\x02\x11\x12\x0f/v1/fleet/usage\x12y\n" +
+	"\vListCredits\x12\x16.google.protobuf.Empty\x1a$.kratos.fleet.v1.ListCreditsResponse\",\xca\xf3\x18\x0f\n" +
+	"\rcoding.manage\x82\xd3\xe4\x93\x02\x13\x12\x11/v1/fleet/credits\x12\x8b\x01\n" +
+	"\tSetCredit\x12!.kratos.fleet.v1.SetCreditRequest\x1a\x1f.kratos.fleet.v1.PlatformCredit\":\xca\xf3\x18\x0f\n" +
+	"\rcoding.manage\x82\xd3\xe4\x93\x02!:\x01*\x1a\x1c/v1/fleet/credits/{platform}\x12r\n" +
 	"\tCreateRun\x12!.kratos.fleet.v1.CreateRunRequest\x1a\x14.kratos.fleet.v1.Run\",\xca\xf3\x18\x0f\n" +
 	"\rcoding.manage\x82\xd3\xe4\x93\x02\x13:\x01*\"\x0e/v1/fleet/runs\x12p\n" +
 	"\bListRuns\x12\x16.google.protobuf.Empty\x1a!.kratos.fleet.v1.ListRunsResponse\")\xca\xf3\x18\x0f\n" +
@@ -4453,7 +4779,7 @@ func file_kratos_fleet_v1_fleet_proto_rawDescGZIP() []byte {
 	return file_kratos_fleet_v1_fleet_proto_rawDescData
 }
 
-var file_kratos_fleet_v1_fleet_proto_msgTypes = make([]protoimpl.MessageInfo, 57)
+var file_kratos_fleet_v1_fleet_proto_msgTypes = make([]protoimpl.MessageInfo, 61)
 var file_kratos_fleet_v1_fleet_proto_goTypes = []any{
 	(*AgentPreset)(nil),              // 0: kratos.fleet.v1.AgentPreset
 	(*ListAgentPresetsResponse)(nil), // 1: kratos.fleet.v1.ListAgentPresetsResponse
@@ -4500,19 +4826,23 @@ var file_kratos_fleet_v1_fleet_proto_goTypes = []any{
 	(*UsageWindow)(nil),              // 42: kratos.fleet.v1.UsageWindow
 	(*AgentUsage)(nil),               // 43: kratos.fleet.v1.AgentUsage
 	(*GetUsageResponse)(nil),         // 44: kratos.fleet.v1.GetUsageResponse
-	(*Run)(nil),                      // 45: kratos.fleet.v1.Run
-	(*Task)(nil),                     // 46: kratos.fleet.v1.Task
-	(*Message)(nil),                  // 47: kratos.fleet.v1.Message
-	(*CreateRunRequest)(nil),         // 48: kratos.fleet.v1.CreateRunRequest
-	(*ListRunsResponse)(nil),         // 49: kratos.fleet.v1.ListRunsResponse
-	(*RunIdRequest)(nil),             // 50: kratos.fleet.v1.RunIdRequest
-	(*GetRunResponse)(nil),           // 51: kratos.fleet.v1.GetRunResponse
-	(*AnswerRequest)(nil),            // 52: kratos.fleet.v1.AnswerRequest
-	(*Automation)(nil),               // 53: kratos.fleet.v1.Automation
-	(*ListAutomationsResponse)(nil),  // 54: kratos.fleet.v1.ListAutomationsResponse
-	(*UpsertAutomationRequest)(nil),  // 55: kratos.fleet.v1.UpsertAutomationRequest
-	(*AutomationIdRequest)(nil),      // 56: kratos.fleet.v1.AutomationIdRequest
-	(*emptypb.Empty)(nil),            // 57: google.protobuf.Empty
+	(*PlatformCredit)(nil),           // 45: kratos.fleet.v1.PlatformCredit
+	(*CreditPoint)(nil),              // 46: kratos.fleet.v1.CreditPoint
+	(*ListCreditsResponse)(nil),      // 47: kratos.fleet.v1.ListCreditsResponse
+	(*SetCreditRequest)(nil),         // 48: kratos.fleet.v1.SetCreditRequest
+	(*Run)(nil),                      // 49: kratos.fleet.v1.Run
+	(*Task)(nil),                     // 50: kratos.fleet.v1.Task
+	(*Message)(nil),                  // 51: kratos.fleet.v1.Message
+	(*CreateRunRequest)(nil),         // 52: kratos.fleet.v1.CreateRunRequest
+	(*ListRunsResponse)(nil),         // 53: kratos.fleet.v1.ListRunsResponse
+	(*RunIdRequest)(nil),             // 54: kratos.fleet.v1.RunIdRequest
+	(*GetRunResponse)(nil),           // 55: kratos.fleet.v1.GetRunResponse
+	(*AnswerRequest)(nil),            // 56: kratos.fleet.v1.AnswerRequest
+	(*Automation)(nil),               // 57: kratos.fleet.v1.Automation
+	(*ListAutomationsResponse)(nil),  // 58: kratos.fleet.v1.ListAutomationsResponse
+	(*UpsertAutomationRequest)(nil),  // 59: kratos.fleet.v1.UpsertAutomationRequest
+	(*AutomationIdRequest)(nil),      // 60: kratos.fleet.v1.AutomationIdRequest
+	(*emptypb.Empty)(nil),            // 61: google.protobuf.Empty
 }
 var file_kratos_fleet_v1_fleet_proto_depIdxs = []int32{
 	0,  // 0: kratos.fleet.v1.ListAgentPresetsResponse.items:type_name -> kratos.fleet.v1.AgentPreset
@@ -4528,89 +4858,95 @@ var file_kratos_fleet_v1_fleet_proto_depIdxs = []int32{
 	38, // 10: kratos.fleet.v1.ListEventsResponse.items:type_name -> kratos.fleet.v1.Event
 	42, // 11: kratos.fleet.v1.AgentUsage.windows:type_name -> kratos.fleet.v1.UsageWindow
 	43, // 12: kratos.fleet.v1.GetUsageResponse.items:type_name -> kratos.fleet.v1.AgentUsage
-	45, // 13: kratos.fleet.v1.ListRunsResponse.items:type_name -> kratos.fleet.v1.Run
-	45, // 14: kratos.fleet.v1.GetRunResponse.run:type_name -> kratos.fleet.v1.Run
-	46, // 15: kratos.fleet.v1.GetRunResponse.tasks:type_name -> kratos.fleet.v1.Task
-	47, // 16: kratos.fleet.v1.GetRunResponse.messages:type_name -> kratos.fleet.v1.Message
-	53, // 17: kratos.fleet.v1.ListAutomationsResponse.items:type_name -> kratos.fleet.v1.Automation
-	53, // 18: kratos.fleet.v1.UpsertAutomationRequest.automation:type_name -> kratos.fleet.v1.Automation
-	57, // 19: kratos.fleet.v1.FleetService.ListAgentPresets:input_type -> google.protobuf.Empty
-	57, // 20: kratos.fleet.v1.FleetService.ListProjects:input_type -> google.protobuf.Empty
-	4,  // 21: kratos.fleet.v1.FleetService.AddProject:input_type -> kratos.fleet.v1.AddProjectRequest
-	5,  // 22: kratos.fleet.v1.FleetService.ListRefs:input_type -> kratos.fleet.v1.ListRefsRequest
-	8,  // 23: kratos.fleet.v1.FleetService.ListWorkspaces:input_type -> kratos.fleet.v1.ListWorkspacesRequest
-	10, // 24: kratos.fleet.v1.FleetService.CreateWorkspace:input_type -> kratos.fleet.v1.CreateWorkspaceRequest
-	11, // 25: kratos.fleet.v1.FleetService.UpdateWorkspace:input_type -> kratos.fleet.v1.UpdateWorkspaceRequest
-	12, // 26: kratos.fleet.v1.FleetService.DeleteWorkspace:input_type -> kratos.fleet.v1.DeleteWorkspaceRequest
-	15, // 27: kratos.fleet.v1.FleetService.ListTerminals:input_type -> kratos.fleet.v1.ListTerminalsRequest
-	17, // 28: kratos.fleet.v1.FleetService.CreateTerminal:input_type -> kratos.fleet.v1.CreateTerminalRequest
-	18, // 29: kratos.fleet.v1.FleetService.KillTerminal:input_type -> kratos.fleet.v1.TerminalIdRequest
-	18, // 30: kratos.fleet.v1.FleetService.RestartTerminal:input_type -> kratos.fleet.v1.TerminalIdRequest
-	18, // 31: kratos.fleet.v1.FleetService.CloseTerminal:input_type -> kratos.fleet.v1.TerminalIdRequest
-	19, // 32: kratos.fleet.v1.FleetService.SendInput:input_type -> kratos.fleet.v1.SendInputRequest
-	20, // 33: kratos.fleet.v1.FleetService.GetDiff:input_type -> kratos.fleet.v1.DiffRequest
-	26, // 34: kratos.fleet.v1.FleetService.ListNotes:input_type -> kratos.fleet.v1.ListNotesRequest
-	28, // 35: kratos.fleet.v1.FleetService.UpsertNote:input_type -> kratos.fleet.v1.UpsertNoteRequest
-	29, // 36: kratos.fleet.v1.FleetService.DeleteNote:input_type -> kratos.fleet.v1.NoteIdRequest
-	30, // 37: kratos.fleet.v1.FleetService.SendNotes:input_type -> kratos.fleet.v1.SendNotesRequest
-	34, // 38: kratos.fleet.v1.FleetService.GetGitStatus:input_type -> kratos.fleet.v1.WorkspaceIdRequest
-	35, // 39: kratos.fleet.v1.FleetService.StageFiles:input_type -> kratos.fleet.v1.GitPathsRequest
-	35, // 40: kratos.fleet.v1.FleetService.UnstageFiles:input_type -> kratos.fleet.v1.GitPathsRequest
-	36, // 41: kratos.fleet.v1.FleetService.Commit:input_type -> kratos.fleet.v1.CommitRequest
-	34, // 42: kratos.fleet.v1.FleetService.Push:input_type -> kratos.fleet.v1.WorkspaceIdRequest
-	39, // 43: kratos.fleet.v1.FleetService.ListEvents:input_type -> kratos.fleet.v1.ListEventsRequest
-	41, // 44: kratos.fleet.v1.FleetService.MarkEventsRead:input_type -> kratos.fleet.v1.MarkEventsReadRequest
-	57, // 45: kratos.fleet.v1.FleetService.GetUsage:input_type -> google.protobuf.Empty
-	48, // 46: kratos.fleet.v1.FleetService.CreateRun:input_type -> kratos.fleet.v1.CreateRunRequest
-	57, // 47: kratos.fleet.v1.FleetService.ListRuns:input_type -> google.protobuf.Empty
-	50, // 48: kratos.fleet.v1.FleetService.GetRun:input_type -> kratos.fleet.v1.RunIdRequest
-	50, // 49: kratos.fleet.v1.FleetService.StopRun:input_type -> kratos.fleet.v1.RunIdRequest
-	52, // 50: kratos.fleet.v1.FleetService.AnswerQuestion:input_type -> kratos.fleet.v1.AnswerRequest
-	57, // 51: kratos.fleet.v1.FleetService.ListAutomations:input_type -> google.protobuf.Empty
-	55, // 52: kratos.fleet.v1.FleetService.UpsertAutomation:input_type -> kratos.fleet.v1.UpsertAutomationRequest
-	56, // 53: kratos.fleet.v1.FleetService.DeleteAutomation:input_type -> kratos.fleet.v1.AutomationIdRequest
-	56, // 54: kratos.fleet.v1.FleetService.RunAutomationNow:input_type -> kratos.fleet.v1.AutomationIdRequest
-	1,  // 55: kratos.fleet.v1.FleetService.ListAgentPresets:output_type -> kratos.fleet.v1.ListAgentPresetsResponse
-	3,  // 56: kratos.fleet.v1.FleetService.ListProjects:output_type -> kratos.fleet.v1.ListProjectsResponse
-	2,  // 57: kratos.fleet.v1.FleetService.AddProject:output_type -> kratos.fleet.v1.Project
-	6,  // 58: kratos.fleet.v1.FleetService.ListRefs:output_type -> kratos.fleet.v1.ListRefsResponse
-	9,  // 59: kratos.fleet.v1.FleetService.ListWorkspaces:output_type -> kratos.fleet.v1.ListWorkspacesResponse
-	7,  // 60: kratos.fleet.v1.FleetService.CreateWorkspace:output_type -> kratos.fleet.v1.Workspace
-	7,  // 61: kratos.fleet.v1.FleetService.UpdateWorkspace:output_type -> kratos.fleet.v1.Workspace
-	13, // 62: kratos.fleet.v1.FleetService.DeleteWorkspace:output_type -> kratos.fleet.v1.DeleteWorkspaceResponse
-	16, // 63: kratos.fleet.v1.FleetService.ListTerminals:output_type -> kratos.fleet.v1.ListTerminalsResponse
-	14, // 64: kratos.fleet.v1.FleetService.CreateTerminal:output_type -> kratos.fleet.v1.Terminal
-	14, // 65: kratos.fleet.v1.FleetService.KillTerminal:output_type -> kratos.fleet.v1.Terminal
-	14, // 66: kratos.fleet.v1.FleetService.RestartTerminal:output_type -> kratos.fleet.v1.Terminal
-	57, // 67: kratos.fleet.v1.FleetService.CloseTerminal:output_type -> google.protobuf.Empty
-	57, // 68: kratos.fleet.v1.FleetService.SendInput:output_type -> google.protobuf.Empty
-	24, // 69: kratos.fleet.v1.FleetService.GetDiff:output_type -> kratos.fleet.v1.DiffResponse
-	27, // 70: kratos.fleet.v1.FleetService.ListNotes:output_type -> kratos.fleet.v1.ListNotesResponse
-	25, // 71: kratos.fleet.v1.FleetService.UpsertNote:output_type -> kratos.fleet.v1.Note
-	57, // 72: kratos.fleet.v1.FleetService.DeleteNote:output_type -> google.protobuf.Empty
-	31, // 73: kratos.fleet.v1.FleetService.SendNotes:output_type -> kratos.fleet.v1.SendNotesResponse
-	33, // 74: kratos.fleet.v1.FleetService.GetGitStatus:output_type -> kratos.fleet.v1.GitStatus
-	37, // 75: kratos.fleet.v1.FleetService.StageFiles:output_type -> kratos.fleet.v1.GitOpResponse
-	37, // 76: kratos.fleet.v1.FleetService.UnstageFiles:output_type -> kratos.fleet.v1.GitOpResponse
-	37, // 77: kratos.fleet.v1.FleetService.Commit:output_type -> kratos.fleet.v1.GitOpResponse
-	37, // 78: kratos.fleet.v1.FleetService.Push:output_type -> kratos.fleet.v1.GitOpResponse
-	40, // 79: kratos.fleet.v1.FleetService.ListEvents:output_type -> kratos.fleet.v1.ListEventsResponse
-	57, // 80: kratos.fleet.v1.FleetService.MarkEventsRead:output_type -> google.protobuf.Empty
-	44, // 81: kratos.fleet.v1.FleetService.GetUsage:output_type -> kratos.fleet.v1.GetUsageResponse
-	45, // 82: kratos.fleet.v1.FleetService.CreateRun:output_type -> kratos.fleet.v1.Run
-	49, // 83: kratos.fleet.v1.FleetService.ListRuns:output_type -> kratos.fleet.v1.ListRunsResponse
-	51, // 84: kratos.fleet.v1.FleetService.GetRun:output_type -> kratos.fleet.v1.GetRunResponse
-	45, // 85: kratos.fleet.v1.FleetService.StopRun:output_type -> kratos.fleet.v1.Run
-	47, // 86: kratos.fleet.v1.FleetService.AnswerQuestion:output_type -> kratos.fleet.v1.Message
-	54, // 87: kratos.fleet.v1.FleetService.ListAutomations:output_type -> kratos.fleet.v1.ListAutomationsResponse
-	53, // 88: kratos.fleet.v1.FleetService.UpsertAutomation:output_type -> kratos.fleet.v1.Automation
-	57, // 89: kratos.fleet.v1.FleetService.DeleteAutomation:output_type -> google.protobuf.Empty
-	53, // 90: kratos.fleet.v1.FleetService.RunAutomationNow:output_type -> kratos.fleet.v1.Automation
-	55, // [55:91] is the sub-list for method output_type
-	19, // [19:55] is the sub-list for method input_type
-	19, // [19:19] is the sub-list for extension type_name
-	19, // [19:19] is the sub-list for extension extendee
-	0,  // [0:19] is the sub-list for field type_name
+	46, // 13: kratos.fleet.v1.PlatformCredit.history:type_name -> kratos.fleet.v1.CreditPoint
+	45, // 14: kratos.fleet.v1.ListCreditsResponse.items:type_name -> kratos.fleet.v1.PlatformCredit
+	49, // 15: kratos.fleet.v1.ListRunsResponse.items:type_name -> kratos.fleet.v1.Run
+	49, // 16: kratos.fleet.v1.GetRunResponse.run:type_name -> kratos.fleet.v1.Run
+	50, // 17: kratos.fleet.v1.GetRunResponse.tasks:type_name -> kratos.fleet.v1.Task
+	51, // 18: kratos.fleet.v1.GetRunResponse.messages:type_name -> kratos.fleet.v1.Message
+	57, // 19: kratos.fleet.v1.ListAutomationsResponse.items:type_name -> kratos.fleet.v1.Automation
+	57, // 20: kratos.fleet.v1.UpsertAutomationRequest.automation:type_name -> kratos.fleet.v1.Automation
+	61, // 21: kratos.fleet.v1.FleetService.ListAgentPresets:input_type -> google.protobuf.Empty
+	61, // 22: kratos.fleet.v1.FleetService.ListProjects:input_type -> google.protobuf.Empty
+	4,  // 23: kratos.fleet.v1.FleetService.AddProject:input_type -> kratos.fleet.v1.AddProjectRequest
+	5,  // 24: kratos.fleet.v1.FleetService.ListRefs:input_type -> kratos.fleet.v1.ListRefsRequest
+	8,  // 25: kratos.fleet.v1.FleetService.ListWorkspaces:input_type -> kratos.fleet.v1.ListWorkspacesRequest
+	10, // 26: kratos.fleet.v1.FleetService.CreateWorkspace:input_type -> kratos.fleet.v1.CreateWorkspaceRequest
+	11, // 27: kratos.fleet.v1.FleetService.UpdateWorkspace:input_type -> kratos.fleet.v1.UpdateWorkspaceRequest
+	12, // 28: kratos.fleet.v1.FleetService.DeleteWorkspace:input_type -> kratos.fleet.v1.DeleteWorkspaceRequest
+	15, // 29: kratos.fleet.v1.FleetService.ListTerminals:input_type -> kratos.fleet.v1.ListTerminalsRequest
+	17, // 30: kratos.fleet.v1.FleetService.CreateTerminal:input_type -> kratos.fleet.v1.CreateTerminalRequest
+	18, // 31: kratos.fleet.v1.FleetService.KillTerminal:input_type -> kratos.fleet.v1.TerminalIdRequest
+	18, // 32: kratos.fleet.v1.FleetService.RestartTerminal:input_type -> kratos.fleet.v1.TerminalIdRequest
+	18, // 33: kratos.fleet.v1.FleetService.CloseTerminal:input_type -> kratos.fleet.v1.TerminalIdRequest
+	19, // 34: kratos.fleet.v1.FleetService.SendInput:input_type -> kratos.fleet.v1.SendInputRequest
+	20, // 35: kratos.fleet.v1.FleetService.GetDiff:input_type -> kratos.fleet.v1.DiffRequest
+	26, // 36: kratos.fleet.v1.FleetService.ListNotes:input_type -> kratos.fleet.v1.ListNotesRequest
+	28, // 37: kratos.fleet.v1.FleetService.UpsertNote:input_type -> kratos.fleet.v1.UpsertNoteRequest
+	29, // 38: kratos.fleet.v1.FleetService.DeleteNote:input_type -> kratos.fleet.v1.NoteIdRequest
+	30, // 39: kratos.fleet.v1.FleetService.SendNotes:input_type -> kratos.fleet.v1.SendNotesRequest
+	34, // 40: kratos.fleet.v1.FleetService.GetGitStatus:input_type -> kratos.fleet.v1.WorkspaceIdRequest
+	35, // 41: kratos.fleet.v1.FleetService.StageFiles:input_type -> kratos.fleet.v1.GitPathsRequest
+	35, // 42: kratos.fleet.v1.FleetService.UnstageFiles:input_type -> kratos.fleet.v1.GitPathsRequest
+	36, // 43: kratos.fleet.v1.FleetService.Commit:input_type -> kratos.fleet.v1.CommitRequest
+	34, // 44: kratos.fleet.v1.FleetService.Push:input_type -> kratos.fleet.v1.WorkspaceIdRequest
+	39, // 45: kratos.fleet.v1.FleetService.ListEvents:input_type -> kratos.fleet.v1.ListEventsRequest
+	41, // 46: kratos.fleet.v1.FleetService.MarkEventsRead:input_type -> kratos.fleet.v1.MarkEventsReadRequest
+	61, // 47: kratos.fleet.v1.FleetService.GetUsage:input_type -> google.protobuf.Empty
+	61, // 48: kratos.fleet.v1.FleetService.ListCredits:input_type -> google.protobuf.Empty
+	48, // 49: kratos.fleet.v1.FleetService.SetCredit:input_type -> kratos.fleet.v1.SetCreditRequest
+	52, // 50: kratos.fleet.v1.FleetService.CreateRun:input_type -> kratos.fleet.v1.CreateRunRequest
+	61, // 51: kratos.fleet.v1.FleetService.ListRuns:input_type -> google.protobuf.Empty
+	54, // 52: kratos.fleet.v1.FleetService.GetRun:input_type -> kratos.fleet.v1.RunIdRequest
+	54, // 53: kratos.fleet.v1.FleetService.StopRun:input_type -> kratos.fleet.v1.RunIdRequest
+	56, // 54: kratos.fleet.v1.FleetService.AnswerQuestion:input_type -> kratos.fleet.v1.AnswerRequest
+	61, // 55: kratos.fleet.v1.FleetService.ListAutomations:input_type -> google.protobuf.Empty
+	59, // 56: kratos.fleet.v1.FleetService.UpsertAutomation:input_type -> kratos.fleet.v1.UpsertAutomationRequest
+	60, // 57: kratos.fleet.v1.FleetService.DeleteAutomation:input_type -> kratos.fleet.v1.AutomationIdRequest
+	60, // 58: kratos.fleet.v1.FleetService.RunAutomationNow:input_type -> kratos.fleet.v1.AutomationIdRequest
+	1,  // 59: kratos.fleet.v1.FleetService.ListAgentPresets:output_type -> kratos.fleet.v1.ListAgentPresetsResponse
+	3,  // 60: kratos.fleet.v1.FleetService.ListProjects:output_type -> kratos.fleet.v1.ListProjectsResponse
+	2,  // 61: kratos.fleet.v1.FleetService.AddProject:output_type -> kratos.fleet.v1.Project
+	6,  // 62: kratos.fleet.v1.FleetService.ListRefs:output_type -> kratos.fleet.v1.ListRefsResponse
+	9,  // 63: kratos.fleet.v1.FleetService.ListWorkspaces:output_type -> kratos.fleet.v1.ListWorkspacesResponse
+	7,  // 64: kratos.fleet.v1.FleetService.CreateWorkspace:output_type -> kratos.fleet.v1.Workspace
+	7,  // 65: kratos.fleet.v1.FleetService.UpdateWorkspace:output_type -> kratos.fleet.v1.Workspace
+	13, // 66: kratos.fleet.v1.FleetService.DeleteWorkspace:output_type -> kratos.fleet.v1.DeleteWorkspaceResponse
+	16, // 67: kratos.fleet.v1.FleetService.ListTerminals:output_type -> kratos.fleet.v1.ListTerminalsResponse
+	14, // 68: kratos.fleet.v1.FleetService.CreateTerminal:output_type -> kratos.fleet.v1.Terminal
+	14, // 69: kratos.fleet.v1.FleetService.KillTerminal:output_type -> kratos.fleet.v1.Terminal
+	14, // 70: kratos.fleet.v1.FleetService.RestartTerminal:output_type -> kratos.fleet.v1.Terminal
+	61, // 71: kratos.fleet.v1.FleetService.CloseTerminal:output_type -> google.protobuf.Empty
+	61, // 72: kratos.fleet.v1.FleetService.SendInput:output_type -> google.protobuf.Empty
+	24, // 73: kratos.fleet.v1.FleetService.GetDiff:output_type -> kratos.fleet.v1.DiffResponse
+	27, // 74: kratos.fleet.v1.FleetService.ListNotes:output_type -> kratos.fleet.v1.ListNotesResponse
+	25, // 75: kratos.fleet.v1.FleetService.UpsertNote:output_type -> kratos.fleet.v1.Note
+	61, // 76: kratos.fleet.v1.FleetService.DeleteNote:output_type -> google.protobuf.Empty
+	31, // 77: kratos.fleet.v1.FleetService.SendNotes:output_type -> kratos.fleet.v1.SendNotesResponse
+	33, // 78: kratos.fleet.v1.FleetService.GetGitStatus:output_type -> kratos.fleet.v1.GitStatus
+	37, // 79: kratos.fleet.v1.FleetService.StageFiles:output_type -> kratos.fleet.v1.GitOpResponse
+	37, // 80: kratos.fleet.v1.FleetService.UnstageFiles:output_type -> kratos.fleet.v1.GitOpResponse
+	37, // 81: kratos.fleet.v1.FleetService.Commit:output_type -> kratos.fleet.v1.GitOpResponse
+	37, // 82: kratos.fleet.v1.FleetService.Push:output_type -> kratos.fleet.v1.GitOpResponse
+	40, // 83: kratos.fleet.v1.FleetService.ListEvents:output_type -> kratos.fleet.v1.ListEventsResponse
+	61, // 84: kratos.fleet.v1.FleetService.MarkEventsRead:output_type -> google.protobuf.Empty
+	44, // 85: kratos.fleet.v1.FleetService.GetUsage:output_type -> kratos.fleet.v1.GetUsageResponse
+	47, // 86: kratos.fleet.v1.FleetService.ListCredits:output_type -> kratos.fleet.v1.ListCreditsResponse
+	45, // 87: kratos.fleet.v1.FleetService.SetCredit:output_type -> kratos.fleet.v1.PlatformCredit
+	49, // 88: kratos.fleet.v1.FleetService.CreateRun:output_type -> kratos.fleet.v1.Run
+	53, // 89: kratos.fleet.v1.FleetService.ListRuns:output_type -> kratos.fleet.v1.ListRunsResponse
+	55, // 90: kratos.fleet.v1.FleetService.GetRun:output_type -> kratos.fleet.v1.GetRunResponse
+	49, // 91: kratos.fleet.v1.FleetService.StopRun:output_type -> kratos.fleet.v1.Run
+	51, // 92: kratos.fleet.v1.FleetService.AnswerQuestion:output_type -> kratos.fleet.v1.Message
+	58, // 93: kratos.fleet.v1.FleetService.ListAutomations:output_type -> kratos.fleet.v1.ListAutomationsResponse
+	57, // 94: kratos.fleet.v1.FleetService.UpsertAutomation:output_type -> kratos.fleet.v1.Automation
+	61, // 95: kratos.fleet.v1.FleetService.DeleteAutomation:output_type -> google.protobuf.Empty
+	57, // 96: kratos.fleet.v1.FleetService.RunAutomationNow:output_type -> kratos.fleet.v1.Automation
+	59, // [59:97] is the sub-list for method output_type
+	21, // [21:59] is the sub-list for method input_type
+	21, // [21:21] is the sub-list for extension type_name
+	21, // [21:21] is the sub-list for extension extendee
+	0,  // [0:21] is the sub-list for field type_name
 }
 
 func init() { file_kratos_fleet_v1_fleet_proto_init() }
@@ -4625,7 +4961,7 @@ func file_kratos_fleet_v1_fleet_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kratos_fleet_v1_fleet_proto_rawDesc), len(file_kratos_fleet_v1_fleet_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   57,
+			NumMessages:   61,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

@@ -3,6 +3,22 @@
     <div class="fleet-shell">
       <FleetSidebar />
       <main class="fleet-main">
+        <!-- 视图切换放在内容区顶部一行：左栏只留「项目 → worktree」树，不再上下挤两套导航 -->
+        <nav class="fleet-tabs" aria-label="运行台视图">
+          <button
+            v-for="v in viewTabs"
+            :key="v.view"
+            type="button"
+            class="fleet-tabs__item"
+            :class="{ 'is-active': state.view === v.view }"
+            :aria-current="state.view === v.view ? 'page' : undefined"
+            @click="state.view = v.view"
+          >
+            <q-icon :name="v.icon" size="16px" />
+            <span>{{ v.label }}</span>
+            <span v-if="v.badge" class="fleet-tabs__badge mono" :class="{ 'is-warn': v.warn }">{{ v.badge }}</span>
+          </button>
+        </nav>
         <template v-if="state.view === 'workspace'">
           <div v-if="state.error" class="fleet-main__empty" role="alert">
             <q-icon name="cloud_off" size="32px" />
@@ -83,8 +99,9 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, watch } from 'vue';
+import { useRoute } from 'vue-router';
 import { copyToClipboard, Notify } from 'quasar';
-import { useFleet } from '../features/fleet/useFleet';
+import { useFleet, type FleetView } from '../features/fleet/useFleet';
 import FleetSidebar from '../features/fleet/components/FleetSidebar.vue';
 import FleetPaneNode from '../features/fleet/components/FleetPaneNode.vue';
 import FleetFeed from '../features/fleet/components/FleetFeed.vue';
@@ -105,7 +122,32 @@ const {
   refreshAll,
   startPolling,
   stopPolling,
+  selectWorkspace,
 } = useFleet();
+
+const needsYou = computed(() => state.terminals.filter((t) => t.status === 'needs_input').length);
+const runningRuns = computed(
+  () =>
+    state.terminals.filter((t) => t.role === 'coordinator' && t.status !== 'exited' && t.status !== 'failed').length,
+);
+const viewTabs = computed<{ view: FleetView; icon: string; label: string; badge?: number; warn?: boolean }[]>(() => [
+  { view: 'workspace', icon: 'terminal', label: ws.value ? `工作区 · ${ws.value.name}` : '工作区' },
+  { view: 'feed', icon: 'notifications', label: '动态', badge: state.unread },
+  { view: 'board', icon: 'view_kanban', label: 'Agent 看板', badge: needsYou.value, warn: needsYou.value > 0 },
+  // 叫「协调任务」而不是「编排」：外层领域已经叫编排，同名会以为是一回事
+  { view: 'runs', icon: 'account_tree', label: '协调任务', badge: runningRuns.value },
+  { view: 'automations', icon: 'schedule', label: '自动化' },
+]);
+
+// 从别处直达：/fleet?view=automations（定时任务页「在运行台编辑」）、/fleet?ws=<worktree>
+const route = useRoute();
+function applyRouteQuery() {
+  const view = String(route.query.view ?? '');
+  const wsId = String(route.query.ws ?? '');
+  if (wsId) selectWorkspace(wsId);
+  else if (viewTabs.value.some((v) => v.view === view)) state.view = view as FleetView;
+}
+watch(() => [route.query.view, route.query.ws], applyRouteQuery);
 
 // 布局在 watcher 里按需创建（computed 里不做写操作）。
 watch(
@@ -132,6 +174,7 @@ function onKey(e: KeyboardEvent) {
 }
 
 onMounted(() => {
+  applyRouteQuery();
   startPolling();
   // 捕获阶段监听：Quasar 按钮加载中会拦掉冒泡的键盘事件，焦点停在上面时快捷键会失灵。
   window.addEventListener('keydown', onKey, true);
@@ -162,6 +205,51 @@ onBeforeUnmount(() => {
   flex-direction: column
   min-width: 0
   min-height: 0
+.fleet-tabs
+  display: flex
+  flex: none
+  align-items: stretch
+  gap: var(--nt-space-1)
+  min-height: 40px
+  padding: 0 var(--nt-space-3)
+  overflow-x: auto
+  border-bottom: 1px solid var(--nt-border-1)
+  background: var(--nt-bg-1)
+.fleet-tabs__item
+  display: inline-flex
+  align-items: center
+  gap: var(--nt-space-1)
+  max-width: 280px
+  padding: 0 var(--nt-space-3)
+  border: 0
+  border-bottom: 2px solid transparent
+  background: transparent
+  color: var(--nt-text-2)
+  font-size: var(--nt-fs-caption)
+  white-space: nowrap
+  cursor: pointer
+  span:not(.fleet-tabs__badge)
+    overflow: hidden
+    text-overflow: ellipsis
+  &:hover
+    color: var(--nt-text-0)
+  &.is-active
+    border-bottom-color: var(--nt-accent)
+    color: var(--nt-accent)
+  &:focus-visible
+    outline: 2px solid var(--nt-accent)
+    outline-offset: -2px
+.fleet-tabs__badge
+  min-width: 18px
+  padding: 0 var(--nt-space-1)
+  border-radius: var(--nt-radius-pill)
+  background: var(--nt-bg-3)
+  color: var(--nt-text-1)
+  font-size: var(--nt-fs-micro)
+  text-align: center
+  &.is-warn
+    background: var(--nt-warn)
+    color: var(--nt-ink-inverse)
 .fleet-wsbar
   display: flex
   align-items: center

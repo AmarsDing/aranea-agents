@@ -8,6 +8,11 @@
     </div>
 
     <template v-if="execution">
+      <!-- 失败原因此前只在执行历史列表里出现，监控页看不到为什么失败 -->
+      <div v-if="execution.errorMessage" class="graph-run-sidebar__error" role="alert">
+        <q-icon name="error_outline" size="16px" />
+        <span>{{ execution.errorMessage }}</span>
+      </div>
       <div class="graph-run-sidebar__section q-gutter-sm">
         <div class="text-caption app-text-secondary">{{ t('graphs.runSidebarExecId') }}</div>
         <div class="graph-run-sidebar__mono">{{ execution.executionId }}</div>

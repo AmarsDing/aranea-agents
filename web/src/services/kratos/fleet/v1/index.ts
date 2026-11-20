@@ -309,6 +309,38 @@ export type GetUsageResponse = {
   items: AgentUsage[] | undefined;
 };
 
+export type PlatformCredit = {
+  platform: string | undefined;
+  source: string | undefined;
+  plan: string | undefined;
+  total: number | undefined;
+  remaining: number | undefined;
+  unit: string | undefined;
+  unlimited: boolean | undefined;
+  updatedAt: string | undefined;
+  note: string | undefined;
+  history: CreditPoint[] | undefined;
+};
+
+// 某个 UTC 日最后一次记下的剩余（自动取数或手填时记）。
+export type CreditPoint = {
+  date: string | undefined;
+  remaining: number | undefined;
+};
+
+export type ListCreditsResponse = {
+  items: PlatformCredit[] | undefined;
+};
+
+export type SetCreditRequest = {
+  platform: string | undefined;
+  plan: string | undefined;
+  total: number | undefined;
+  remaining: number | undefined;
+  unit: string | undefined;
+  note: string | undefined;
+};
+
 export type Run = {
   id: string | undefined;
   objective: string | undefined;
@@ -442,6 +474,8 @@ export interface FleetService {
   ListEvents(request: ListEventsRequest): Promise<ListEventsResponse>;
   MarkEventsRead(request: MarkEventsReadRequest): Promise<wellKnownEmpty>;
   GetUsage(request: wellKnownEmpty): Promise<GetUsageResponse>;
+  ListCredits(request: wellKnownEmpty): Promise<ListCreditsResponse>;
+  SetCredit(request: SetCreditRequest): Promise<PlatformCredit>;
   CreateRun(request: CreateRunRequest): Promise<Run>;
   ListRuns(request: wellKnownEmpty): Promise<ListRunsResponse>;
   GetRun(request: RunIdRequest): Promise<GetRunResponse>;
@@ -989,6 +1023,43 @@ export function createFleetServiceClient(
         service: "FleetService",
         method: "GetUsage",
       }) as Promise<GetUsageResponse>;
+    },
+    ListCredits(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      const path = `v1/fleet/credits`; // eslint-disable-line quotes
+      const body = null;
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "FleetService",
+        method: "ListCredits",
+      }) as Promise<ListCreditsResponse>;
+    },
+    SetCredit(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      if (!request.platform) {
+        throw new Error("missing required field request.platform");
+      }
+      const path = `v1/fleet/credits/${request.platform}`; // eslint-disable-line quotes
+      const body = JSON.stringify(request);
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "PUT",
+        body,
+      }, {
+        service: "FleetService",
+        method: "SetCredit",
+      }) as Promise<PlatformCredit>;
     },
     CreateRun(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/fleet/runs`; // eslint-disable-line quotes

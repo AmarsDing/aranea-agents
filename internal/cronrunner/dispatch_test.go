@@ -3,6 +3,7 @@ package cronrunner
 import (
 	"context"
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -27,7 +28,7 @@ func TestDispatchCronTask_ModelRegistrySync_Success(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
-	if res != (cronDispatchResult{}) {
+	if !reflect.DeepEqual(res, cronDispatchResult{}) {
 		t.Fatalf("expected zero result, got %+v", res)
 	}
 }
@@ -45,7 +46,7 @@ func TestDispatchCronTask_ModelRegistrySync_Error(t *testing.T) {
 	if !errors.Is(err, syncErr) {
 		t.Fatalf("expected syncErr, got %v", err)
 	}
-	if res != (cronDispatchResult{}) {
+	if !reflect.DeepEqual(res, cronDispatchResult{}) {
 		t.Fatalf("expected zero result, got %+v", res)
 	}
 }
@@ -62,7 +63,7 @@ func TestDispatchCronTask_ModelRegistrySync_NilAgent(t *testing.T) {
 	if !strings.Contains(err.Error(), "model registry sync agent not available") {
 		t.Fatalf("unexpected error message: %v", err)
 	}
-	if res != (cronDispatchResult{}) {
+	if !reflect.DeepEqual(res, cronDispatchResult{}) {
 		t.Fatalf("expected zero result, got %+v", res)
 	}
 }
@@ -97,5 +98,33 @@ func TestEnsureCronSession_ReusesStateSessionID(t *testing.T) {
 	}
 	if state.sessID != "sess-already-created" {
 		t.Fatalf("state.sessID should be unchanged, got %q", state.sessID)
+	}
+}
+
+type mockGMRunner struct {
+	target string
+}
+
+func (m *mockGMRunner) RunGM(_ context.Context, _ biz.CronTask, target string) (string, map[string]any, error) {
+	m.target = target
+	return "sess-gm", map[string]any{"gm": map[string]any{"kind": "report"}}, nil
+}
+
+func TestDispatchCronTask_GMReport(t *testing.T) {
+	task := biz.CronTask{ID: "t-gm", ConfigJSON: `{"target_type":"gm_report","company_id":"co","message":"m"}`}
+	cfg := cronTaskConfig{TargetType: "gm_report", Message: "m"}
+
+	if _, err := NewRunner(Deps{}, loggateway.NewNoop()).dispatchCronTask(context.Background(), task, cfg, nil); err == nil {
+		t.Fatal("gm target without a GM runner must fail")
+	}
+
+	gm := &mockGMRunner{}
+	r := NewRunner(Deps{}, loggateway.NewNoop()).WithGM(gm)
+	res, err := r.dispatchCronTask(context.Background(), task, cfg, nil)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if gm.target != "gm_report" || res.SessionID != "sess-gm" || res.Output["gm"] == nil {
+		t.Fatalf("unexpected dispatch: target=%q res=%+v", gm.target, res)
 	}
 }

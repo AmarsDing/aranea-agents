@@ -35,7 +35,7 @@
     outlined
     label="Cron 表达式 *"
     placeholder="0 * * * *"
-    hint="标准 5 字段 cron: 分 时 日 月 周"
+    :hint="cronHint"
     :rules="[cronExpressionRule]"
   />
   <template v-if="form.schedule_type === 'once'">
@@ -77,8 +77,20 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue';
 import type { CronTaskFormValue } from '../../features/cron/types';
-import { cronExpressionRule, cronPositiveMinutesRule, cronScheduleToggleOptions } from './cronTaskUtils';
+import {
+  cronExpressionRule,
+  cronPositiveMinutesRule,
+  cronScheduleToggleOptions,
+  describeCronExpression,
+} from './cronTaskUtils';
 
 const form = defineModel<CronTaskFormValue>('form', { required: true });
+
+// 边输边翻译：看得懂就直接告诉用户「工作日 08:30」，看不懂再给字段顺序提示
+const cronHint = computed(() => {
+  const text = describeCronExpression(form.value.cron_expression);
+  return text ? `= ${text}（按所选时区）` : '5 个字段：分 时 日 月 周，例如 30 8 * * 1-5 = 工作日 08:30';
+});
 </script>

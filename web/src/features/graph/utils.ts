@@ -45,7 +45,9 @@ export function formatTime(dateStr: string): string {
 }
 
 export function relativeTime(dateStr: string): string {
-  const diff = Date.now() - new Date(dateStr).getTime();
+  const ts = new Date(dateStr).getTime();
+  if (!dateStr || Number.isNaN(ts) || ts <= 0) return '—';
+  const diff = Date.now() - ts;
   const minutes = Math.floor(diff / 60000);
   if (minutes < 1) return '刚刚';
   if (minutes < 60) return `${minutes}分钟前`;

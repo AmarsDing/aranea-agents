@@ -1,7 +1,6 @@
 <template>
   <div class="fleet-board">
     <header class="fleet-board__bar">
-      <h2>Agent 看板</h2>
       <q-input
         v-model="q"
         dense

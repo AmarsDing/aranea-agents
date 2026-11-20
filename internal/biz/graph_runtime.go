@@ -93,10 +93,11 @@ type GraphTemplateNodeRef struct {
 
 // GraphTemplateEdgeRef describes an edge within a graph template.
 type GraphTemplateEdgeRef struct {
-	FromNode string `json:"from_node"`
-	ToNode   string `json:"to_node"`
-	Type     string `json:"type"`
-	Label    string `json:"label,omitempty"`
+	FromNode   string `json:"from_node"`
+	ToNode     string `json:"to_node"`
+	Type       string `json:"type"`
+	Label      string `json:"label,omitempty"`
+	RouteField string `json:"route_field,omitempty"` // conditional 边按哪个状态字段选分支
 }
 
 // GraphRawEvent carries the raw event payload from the runtime.

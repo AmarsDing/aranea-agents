@@ -83,6 +83,7 @@ body.body--dark
   align-items: center
   gap: 8px
   flex-wrap: wrap
+  margin-bottom: 12px
 
 .graphs-filter-bar__search
   min-width: 200px
@@ -90,7 +91,7 @@ body.body--dark
   flex: 1
 
 .graphs-filter-bar__select
-  min-width: 130px
+  min-width: 120px
 
 // 窄屏：搜索独占一行，下拉与排序均分第二行，避免横向挤压
 @media (max-width: 720px)
@@ -102,9 +103,10 @@ body.body--dark
     flex: 1 1 0
     min-width: 0
 
+// 列数跟着宽度走：详情栏收起时卡片铺满，打开时自动少一列
 .graphs-grid
   display: grid
-  grid-template-columns: repeat(3, 1fr)
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr))
   gap: 14px
   align-items: stretch
 
@@ -1064,6 +1066,20 @@ body:not(.body--dark) .graph-card--add:hover
   letter-spacing: 0.08em
   color: var(--color-text-secondary)
 
+.graph-run-sidebar__error
+  display: flex
+  align-items: flex-start
+  gap: 6px
+  margin: 0 0 12px
+  padding: 8px 10px
+  border: 1px solid color-mix(in srgb, var(--nt-danger) 45%, transparent)
+  border-radius: 8px
+  background: color-mix(in srgb, var(--nt-danger) 10%, transparent)
+  color: var(--nt-danger)
+  font-size: 12px
+  line-height: 1.5
+  word-break: break-word
+
 .graph-run-sidebar__mono,
 .graph-checkpoint-panel__mono,
 .graph-time-travel-panel__mono,
@@ -1866,7 +1882,13 @@ body:not(.body--dark) .graph-card--selected
 .graph-detail-panel
   width: 340px
   flex-shrink: 0
-  border-left: 1px solid var(--glass-border)
+  margin-left: 14px
+  align-self: flex-start
+  position: sticky
+  top: 0
+  max-height: calc(100vh - 140px)
+  border: 1px solid var(--glass-border)
+  border-radius: 12px
   background: var(--glass-surface)
   backdrop-filter: blur(var(--glass-blur-default))
   display: flex
@@ -2344,8 +2366,8 @@ body:not(.body--dark) .graph-detail-panel__status--ready
 
   .graph-detail-panel
     width: 100%
-    border-left: none
-    border-top: 1px solid var(--glass-border)
+    margin: 12px 0 0
+    position: static
     max-height: 50vh
 
 // ============================================================

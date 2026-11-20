@@ -567,6 +567,53 @@ export async function getUsage(): Promise<AgentUsage[]> {
   }));
 }
 
+/** 平台积分。total / remaining 为 -1 表示未知；updatedAt 为空表示还没有数据（手填平台没登记过）。 */
+export interface PlatformCredit {
+  platform: string;
+  source: 'auto' | 'manual';
+  plan: string;
+  total: number;
+  remaining: number;
+  unit: string;
+  unlimited: boolean;
+  updatedAt: string;
+  note: string;
+  /** 近 30 天每个 UTC 日最后一次的剩余，日期升序。 */
+  history: Array<{ date: string; remaining: number }>;
+}
+
+function creditFrom(r: Raw): PlatformCredit {
+  return {
+    platform: s(r.platform),
+    source: s(r.source) === 'manual' ? 'manual' : 'auto',
+    plan: s(r.plan),
+    // 0 在 JSON 里会被省略，未知固定是 -1，所以缺省按 0 读
+    total: n(r.total),
+    remaining: n(r.remaining),
+    unit: s(r.unit),
+    unlimited: b(r.unlimited),
+    updatedAt: s(r.updatedAt),
+    note: s(r.note),
+    history: raws(r.history as Raw[] | undefined).map((p) => ({ date: s(p.date), remaining: n(p.remaining) })),
+  };
+}
+
+export async function listCredits(): Promise<PlatformCredit[]> {
+  const res = await api.ListCredits({});
+  return raws(res.items).map(creditFrom);
+}
+
+export async function setCredit(i: {
+  platform: string;
+  plan: string;
+  total: number;
+  remaining: number;
+  unit: string;
+  note: string;
+}): Promise<PlatformCredit> {
+  return creditFrom((await api.SetCredit(i)) as unknown as Raw);
+}
+
 export async function createRun(i: {
   projectId: string;
   workspaceId?: string;

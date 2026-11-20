@@ -427,6 +427,42 @@ func (s *FleetService) GetUsage(ctx context.Context, _ *emptypb.Empty) (*v1.GetU
 	return out, nil
 }
 
+func creditPB(c fleet.PlatformCredit) *v1.PlatformCredit {
+	out := &v1.PlatformCredit{Platform: c.Platform, Source: c.Source, Plan: c.Plan, Total: c.Total, Remaining: c.Remaining,
+		Unit: c.Unit, Unlimited: c.Unlimited, UpdatedAt: c.UpdatedAt, Note: c.Note}
+	for _, p := range c.History {
+		out.History = append(out.History, &v1.CreditPoint{Date: p.Date, Remaining: p.Remaining})
+	}
+	return out
+}
+
+func (s *FleetService) ListCredits(ctx context.Context, _ *emptypb.Empty) (*v1.ListCreditsResponse, error) {
+	if err := s.guard(ctx); err != nil {
+		return nil, err
+	}
+	items, err := s.uc.ListCredits(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := &v1.ListCreditsResponse{}
+	for _, c := range items {
+		out.Items = append(out.Items, creditPB(c))
+	}
+	return out, nil
+}
+
+func (s *FleetService) SetCredit(ctx context.Context, req *v1.SetCreditRequest) (*v1.PlatformCredit, error) {
+	if err := s.guard(ctx); err != nil {
+		return nil, err
+	}
+	c, err := s.uc.SetCredit(ctx, fleet.PlatformCredit{Platform: req.Platform, Plan: req.Plan, Total: req.Total,
+		Remaining: req.Remaining, Unit: req.Unit, Note: req.Note})
+	if err != nil {
+		return nil, err
+	}
+	return creditPB(c), nil
+}
+
 // ---------- 编排 ----------
 
 func runPB(r fleet.Run) *v1.Run {

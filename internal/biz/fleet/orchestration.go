@@ -257,11 +257,19 @@ func (u *Usecase) maybeWake(terminalID string) {
 }
 
 // onWorkerExit：worker 没汇报就退出，按失败处理并通知协调者。
+// 协调者自己退出（崩溃、被关掉）时编排没人推进了：标为已停止，不再显示「进行中」。
 func (u *Usecase) onWorkerExit(info TerminalInfo) {
+	ctx := u.ctx
+	if info.Role == "coordinator" && info.RunID != "" {
+		if run, ok, _ := getDoc[Run](ctx, u.store, kindRun, info.RunID); ok && run.Status == RunRunning && run.CoordinatorTerminalID == info.ID {
+			run.Status, run.UpdatedAt = RunStopped, nowString()
+			_ = putDoc(ctx, u.store, kindRun, run.ID, run)
+		}
+		return
+	}
 	if info.Role != "worker" || info.TaskID == "" {
 		return
 	}
-	ctx := u.ctx
 	t, ok, _ := getDoc[Task](ctx, u.store, kindTask, info.TaskID)
 	if !ok || t.Status != TaskDispatched || t.WorkerTerminalID != info.ID {
 		return

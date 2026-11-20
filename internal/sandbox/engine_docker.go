@@ -182,6 +182,9 @@ func (e *DockerEngine) Create(ctx context.Context, sandboxID string, p Profile, 
 		"--cap-drop", "ALL",
 		"--security-opt", "no-new-privileges",
 		"--stop-timeout=5",
+		// Pin log rotation: a daemon whose default driver is `local` otherwise
+		// fails the workspace baseline (json-file + max-size/max-file).
+		"--log-driver", "json-file", "--log-opt", "max-size=20m", "--log-opt", "max-file=2",
 		// Anonymous volume for artifact output: writable under --read-only and
 		// preserved for `docker cp` collection; removed by rm -v. Path matches
 		// the M32 agent-facing contract (/workspace/out).

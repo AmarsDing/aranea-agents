@@ -4,9 +4,9 @@
       <q-btn flat dense round icon="arrow_back" @click="goBack" />
       <div class="graph-workbench__toolbar-meta">
         <div class="graph-run-page__title">{{ graphDef.name || '执行监控' }}</div>
-        <div class="graph-workbench__subtitle">
-          {{ displayStatus }}
-          <span v-if="streamConnected"> · 实时</span>
+        <!-- 状态已有右侧状态签，这里不再重复原始英文状态码 -->
+        <div v-if="execution?.executionId" class="graph-workbench__subtitle mono">
+          {{ execution.executionId.slice(0, 8) }}
         </div>
       </div>
       <q-space />

@@ -1,84 +1,142 @@
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
+import { useRouter } from 'vue-router';
 import { storeToRefs } from 'pinia';
 import { useQuasar } from 'quasar';
 import { confirm } from '../../composables/useAppConfirm';
 
 import { parseCronConfig, parseCronMetadata } from './api';
 import type { PlatformResourceInput } from '../platform/types';
-import type { CronFailureSummary, CronTaskConfig, CronTaskMetadata, CronTaskRow } from './types';
-import { CRON_TASK_TABLE_COLUMNS, CRON_RUN_TABLE_COLUMNS } from './cronTableUi';
+import type { CronTaskConfig, CronTaskMetadata, CronTaskRow } from './types';
+import { CRON_RUN_TABLE_COLUMNS } from './cronTableUi';
 import { useCronStore } from '../../stores/cron';
-import { formatCronDate } from '../../components/cron/cronTaskUtils';
+import { formatCronDate, formatCronShort } from '../../components/cron/cronTaskUtils';
 import { isForbiddenApiError } from '../../utils/kratosError';
+import { cronItem, fleetItem, sortScheduleItems, type ScheduleItem, type ScheduleState } from './scheduleItems';
+
+export type ScheduleKindFilter = '' | 'cron' | 'fleet';
 
 export function useCronTasksPage() {
   const $q = useQuasar();
   const { t } = useI18n();
+  const router = useRouter();
   const cronStore = useCronStore();
-  const { tasks: rows, agents, teams, runs, runsTotal } = storeToRefs(cronStore);
+  const {
+    tasks: rows,
+    agents,
+    teams,
+    runs,
+    runsTotal,
+    recentRuns,
+    automations,
+    fleetProjects,
+  } = storeToRefs(cronStore);
 
   const loading = ref(false);
   const error = ref('');
   /** 403 / PERMISSION_DENIED：页面渲染 forbidden 态，不提供重试。 */
   const forbidden = ref(false);
   const search = ref('');
-  const statusFilter = ref('');
+  const stateFilter = ref<'' | ScheduleState>('');
+  const kindFilter = ref<ScheduleKindFilter>('');
   const editorOpen = ref(false);
   const editingRow = ref<CronTaskRow | null>(null);
-  const savingId = ref('');
-  const triggeringId = ref('');
+  const busyKey = ref('');
   const formSubmitting = ref(false);
   const formServerError = ref('');
 
-  const columns = CRON_TASK_TABLE_COLUMNS;
-  const statusOptions = [
-    { label: '运行中', value: 'active' },
-    { label: '已暂停', value: 'paused' },
-    { label: '已失败', value: 'dead' },
-  ];
-  const page = ref(1);
-  const pageSize = ref(12);
-  const filteredRows = computed(() => {
-    const keyword = search.value.trim().toLowerCase();
-    return rows.value.filter((row) => {
-      const cfg = config(row);
-      if (statusFilter.value === 'active' && !(row.enabled && row.status !== 'dead')) return false;
-      if (statusFilter.value === 'paused' && !(!row.enabled && row.status !== 'dead')) return false;
-      if (statusFilter.value === 'dead' && row.status !== 'dead') return false;
-      if (!keyword) return true;
-      return [
-        row.key,
-        row.name,
-        row.description,
-        cfg.schedule_type,
-        cfg.cron_expression,
-        cfg.message,
-        targetLabel(row),
-      ].some((value) =>
-        String(value || '')
-          .toLowerCase()
-          .includes(keyword),
-      );
-    });
-  });
-  // 与 filteredRows 同口径：汇总行两个数字都描述当前筛选结果，避免「筛出 1 条却显示全局 N 个启用」的误读
-  const activeCount = computed(() => filteredRows.value.filter((row) => row.enabled).length);
-  const pageMax = computed(() => Math.max(1, Math.ceil(filteredRows.value.length / pageSize.value)));
-  const pagedRows = computed(() => {
-    const start = (page.value - 1) * pageSize.value;
-    return filteredRows.value.slice(start, start + pageSize.value);
-  });
+  // ---------- 统一列表 ----------
 
-  watch([search, statusFilter], () => {
-    page.value = 1;
+  const items = computed<ScheduleItem[]>(() => [
+    ...rows.value.map((r) => cronItem(r, agents.value, teams.value)),
+    ...(automations.value ?? []).map((a) => fleetItem(a, fleetProjects.value)),
+  ]);
+  const hasFleet = computed(() => automations.value !== null);
+
+  /** 先按来源 + 关键字筛，状态计数基于这一层（点状态筛选不会让其它状态的数变成 0）。 */
+  const baseRows = computed(() => {
+    const keyword = search.value.trim().toLowerCase();
+    return items.value.filter(
+      (it) => (!kindFilter.value || it.kind === kindFilter.value) && (!keyword || it.searchText.includes(keyword)),
+    );
   });
+  const stateCounts = computed(() => {
+    const c = { active: 0, paused: 0, dead: 0 } as Record<ScheduleState, number>;
+    for (const it of baseRows.value) c[it.state]++;
+    return c;
+  });
+  const visibleItems = computed(() =>
+    sortScheduleItems(baseRows.value.filter((it) => !stateFilter.value || it.state === stateFilter.value)),
+  );
+
+  // ---------- 选中与详情 ----------
+
+  const selectedKey = ref('');
+  const selected = computed(() => items.value.find((it) => it.key === selectedKey.value) ?? null);
+  const selectedRow = computed(() =>
+    selected.value?.kind === 'cron' ? (rows.value.find((r) => r.id === selected.value?.id) ?? null) : null,
+  );
+  const selectedAutomation = computed(() =>
+    selected.value?.kind === 'fleet'
+      ? ((automations.value ?? []).find((a) => a.id === selected.value?.id) ?? null)
+      : null,
+  );
+  const runsLoadingRecent = ref(false);
+
+  function select(key: string) {
+    selectedKey.value = selectedKey.value === key ? '' : key;
+  }
+
+  async function loadRecent() {
+    const row = selectedRow.value;
+    if (!row) return;
+    runsLoadingRecent.value = true;
+    try {
+      await cronStore.loadRecentRuns(row.id);
+    } catch (err) {
+      console.warn('[cron] recent runs load failed', err);
+    } finally {
+      runsLoadingRecent.value = false;
+    }
+  }
+  watch(
+    () => selectedRow.value?.id,
+    (id) => {
+      recentRuns.value = [];
+      if (id) void loadRecent();
+    },
+  );
 
   onMounted(() => void loadAll());
+
+  // 上次 / 下次时间由调度器在后台写（新建或改计划后约 1 分钟内算出）：页面可见时每分钟静默刷新一次列表。
+  // 编辑中不刷，免得表单底下的数据跳动；失败不提示，下一轮再试。
+  const quietTimer = setInterval(() => {
+    if (document.hidden || editorOpen.value || loading.value) return;
+    void Promise.all([cronStore.loadTasks(), cronStore.loadAutomations()]).catch(() => undefined);
+  }, 60_000);
+  onBeforeUnmount(() => clearInterval(quietTimer));
 
   watch(editorOpen, (open) => {
     if (open) formServerError.value = '';
   });
+
+  async function loadAll() {
+    loading.value = true;
+    error.value = '';
+    forbidden.value = false;
+    try {
+      await Promise.all([cronStore.loadAll(), cronStore.loadAutomations()]);
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : '加载定时任务失败';
+      forbidden.value = isForbiddenApiError(err);
+    } finally {
+      loading.value = false;
+    }
+    if (selectedRow.value) void loadRecent();
+  }
+
+  // ---------- 定时任务：增删改与执行 ----------
 
   async function onFormSubmit(payload: PlatformResourceInput) {
     formServerError.value = '';
@@ -87,7 +145,8 @@ export function useCronTasksPage() {
       if (editingRow.value) {
         await cronStore.editTask(editingRow.value.id, payload);
       } else {
-        await cronStore.addTask(payload);
+        const created = await cronStore.addTask(payload);
+        selectedKey.value = `cron:${created.id}`;
       }
       editorOpen.value = false;
       $q.notify({ type: 'positive', message: '定时任务已保存' });
@@ -96,20 +155,6 @@ export function useCronTasksPage() {
       $q.notify({ type: 'negative', message: formServerError.value });
     } finally {
       formSubmitting.value = false;
-    }
-  }
-
-  async function loadAll() {
-    loading.value = true;
-    error.value = '';
-    forbidden.value = false;
-    try {
-      await cronStore.loadAll();
-    } catch (err) {
-      error.value = err instanceof Error ? err.message : '加载定时任务失败';
-      forbidden.value = isForbiddenApiError(err);
-    } finally {
-      loading.value = false;
     }
   }
 
@@ -123,15 +168,15 @@ export function useCronTasksPage() {
     editorOpen.value = true;
   }
 
-  async function toggleRow(row: CronTaskRow, enabled: boolean) {
-    savingId.value = row.id;
+  async function toggleTask(row: CronTaskRow, enabled: boolean) {
+    busyKey.value = `cron:${row.id}`;
     try {
       await cronStore.editTask(row.id, { enabled, status: enabled ? 'active' : 'paused' });
-      $q.notify({ type: 'positive', message: enabled ? '任务已启用' : '任务已暂停' });
+      $q.notify({ type: 'positive', message: enabled ? '任务已启用，下次时间按计划重新计算' : '任务已暂停' });
     } catch (err) {
       $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '更新失败' });
     } finally {
-      savingId.value = '';
+      busyKey.value = '';
     }
   }
 
@@ -144,11 +189,76 @@ export function useCronTasksPage() {
     if (!ok) return;
     try {
       await cronStore.removeTask(row.id);
+      if (selectedKey.value === `cron:${row.id}`) selectedKey.value = '';
       $q.notify({ type: 'positive', message: '任务已删除' });
     } catch (err) {
       $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '删除失败' });
     }
   }
+
+  async function resetDeadTask(row: CronTaskRow) {
+    busyKey.value = `cron:${row.id}`;
+    try {
+      await cronStore.resetFailures(row.id);
+      $q.notify({ type: 'positive', message: '失败计数已清零，任务恢复运行' });
+    } catch (err) {
+      $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '重置失败' });
+    } finally {
+      busyKey.value = '';
+    }
+  }
+
+  async function runNow(row: CronTaskRow) {
+    busyKey.value = `cron:${row.id}`;
+    try {
+      const run = await cronStore.triggerTask(row.id);
+      $q.notify({
+        type: run.status === 'failure' ? 'negative' : 'info',
+        message: run.status === 'failure' ? run.error_message || '执行失败' : '已开始执行，结果会出现在右侧最近执行里',
+      });
+      selectedKey.value = `cron:${row.id}`;
+      await loadAll();
+    } catch (err) {
+      $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '触发失败' });
+    } finally {
+      busyKey.value = '';
+    }
+  }
+
+  // ---------- 运行台自动化 ----------
+
+  async function toggleAutomationItem(id: string, enabled: boolean) {
+    const a = (automations.value ?? []).find((x) => x.id === id);
+    if (!a) return;
+    busyKey.value = `fleet:${id}`;
+    try {
+      await cronStore.toggleAutomation(a, enabled);
+      $q.notify({ type: 'positive', message: enabled ? '自动化已启用' : '自动化已暂停' });
+    } catch (err) {
+      $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '更新失败' });
+    } finally {
+      busyKey.value = '';
+    }
+  }
+
+  async function runAutomationItem(id: string) {
+    busyKey.value = `fleet:${id}`;
+    try {
+      const a = await cronStore.runAutomation(id);
+      const failed = a.lastStatus.startsWith('failed');
+      $q.notify({ type: failed ? 'negative' : 'positive', message: failed ? a.lastStatus : '已在运行台启动 agent' });
+    } catch (err) {
+      $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '启动失败' });
+    } finally {
+      busyKey.value = '';
+    }
+  }
+
+  function openInFleet(workspaceId = '') {
+    void router.push({ name: 'fleet', query: workspaceId ? { ws: workspaceId } : { view: 'automations' } });
+  }
+
+  // ---------- 全部执行记录（弹窗，服务端分页） ----------
 
   const runsOpen = ref(false);
   const runsTaskId = ref('');
@@ -166,9 +276,8 @@ export function useCronTasksPage() {
     { label: '跳过', value: 'skipped' },
     // 新键走 i18n（check-i18n 不新增违例）；存量硬编码标签属既有 baseline，不在本改动迁移
     { label: t('common.status.skippedMissed'), value: 'skipped_missed' },
-    { label: '待执行', value: 'pending' },
+    { label: '执行中', value: 'pending' },
   ];
-  // 服务端分页：runs 即当前页数据，total 来自后端 count
   const runsPageMax = computed(() => Math.max(1, Math.ceil(runsTotal.value / runsPageSize.value)));
   const runsPaged = runs;
 
@@ -193,6 +302,8 @@ export function useCronTasksPage() {
         status: runsStatus.value || undefined,
         page: runsPage.value,
         page_size: runsPageSize.value,
+        // 历史要看全：在工作台告警里「忽略」过的失败也照常列出（带已忽略标记）
+        include_resolved: true,
       });
     } catch (err) {
       runsError.value = err instanceof Error ? err.message : '加载执行历史失败';
@@ -220,75 +331,6 @@ export function useCronTasksPage() {
     void loadRuns();
   }
 
-  async function resetDeadTask(row: CronTaskRow) {
-    savingId.value = row.id;
-    try {
-      await cronStore.resetFailures(row.id);
-      $q.notify({ type: 'positive', message: '失败计数已重置，任务恢复运行' });
-    } catch (err) {
-      $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '重置失败' });
-    } finally {
-      savingId.value = '';
-    }
-  }
-
-  async function runNow(row: CronTaskRow) {
-    triggeringId.value = row.id;
-    try {
-      const run = await cronStore.triggerTask(row.id);
-      if (run.status === 'pending') {
-        await loadAll();
-        $q.notify({ type: 'info', message: '任务已提交，请在执行历史中查看进度' });
-        openRuns(row);
-        return;
-      }
-      await loadAll();
-      $q.notify({
-        type: run.status === 'success' ? 'positive' : 'negative',
-        message: run.status === 'success' ? '执行成功' : run.error_message || '执行失败',
-      });
-    } catch (err) {
-      $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '触发失败' });
-    } finally {
-      triggeringId.value = '';
-    }
-  }
-
-  function scheduleLabel(row: CronTaskRow) {
-    const cfg = config(row);
-    if (cfg.schedule_type === 'cron') return `cron: ${cfg.cron_expression || '-'}`;
-    if (cfg.schedule_type === 'once') return `once @ ${formatCronDate(cfg.run_at)}`;
-    return `每 ${Math.max(1, Math.round((cfg.interval_seconds || 0) / 60))} 分钟`;
-  }
-
-  function agentLabel(agentId: string) {
-    if (!agentId) return '未指定';
-    const agent = agents.value.find((item) => item.id === agentId);
-    return agent?.display_name || agent?.agent_key || agentId;
-  }
-
-  function teamLabel(teamId: string) {
-    const team = teams.value.find((item) => item.id === teamId);
-    return team?.display_name || team?.team_key || teamId || '未知 Team';
-  }
-
-  function targetLabel(row: CronTaskRow) {
-    const cfg = config(row);
-    if (cfg.target_type === 'team' || cfg.team_id) return `Team: ${teamLabel(cfg.team_id || '')}`;
-    return `Agent: ${agentLabel(row.agent_id)}`;
-  }
-
-  function statusColor(row: CronTaskRow) {
-    if (!row.enabled || row.status === 'paused') return 'grey';
-    if (row.status === 'dead') return 'negative';
-    return 'positive';
-  }
-
-  function recentFailures(row: CronTaskRow): CronFailureSummary[] {
-    const failures = metadata(row).recent_failures;
-    return Array.isArray(failures) ? failures : [];
-  }
-
   function config(row: CronTaskRow): CronTaskConfig {
     return parseCronConfig(row);
   }
@@ -305,36 +347,39 @@ export function useCronTasksPage() {
     error,
     forbidden,
     search,
-    statusFilter,
+    stateFilter,
+    kindFilter,
+    hasFleet,
+    items,
+    stateCounts,
+    visibleItems,
+    selectedKey,
+    selected,
+    selectedRow,
+    selectedAutomation,
+    recentRuns,
+    runsLoadingRecent,
+    select,
     editorOpen,
     editingRow,
-    savingId,
-    triggeringId,
+    busyKey,
     formSubmitting,
     formServerError,
-    columns,
-    statusOptions,
-    activeCount,
-    filteredRows,
-    pagedRows,
-    page,
-    pageSize,
-    pageMax,
     loadAll,
     onFormSubmit,
     openCreate,
     openEdit,
-    toggleRow,
+    toggleTask,
     confirmDelete,
-    openRuns,
     resetDeadTask,
     runNow,
-    scheduleLabel,
-    targetLabel,
-    statusColor,
-    recentFailures,
+    toggleAutomationItem,
+    runAutomationItem,
+    openInFleet,
+    config,
     metadata,
     formatCronDate,
+    formatCronShort,
     runsOpen,
     runs,
     runsTotal,
@@ -349,6 +394,7 @@ export function useCronTasksPage() {
     runsPageSize,
     runsPageMax,
     runsPaged,
+    openRuns,
     loadRuns,
     onRunsTaskChange,
     onRunsStatusChange,

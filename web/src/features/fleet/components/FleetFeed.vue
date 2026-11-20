@@ -1,7 +1,6 @@
 <template>
   <div class="fleet-feed">
     <header class="fleet-feed__bar">
-      <h2>动态</h2>
       <q-input v-model="q" dense outlined clearable class="fleet-feed__search" placeholder="筛选" />
       <q-space />
       <q-btn

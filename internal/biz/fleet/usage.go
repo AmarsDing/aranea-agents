@@ -28,6 +28,7 @@ type fileUsage struct {
 	points  []usagePoint
 	limits  map[string]limitInfo // codex: primary/secondary
 	limitAt int64
+	codex   *codexRateLimits // codex: 同一行快照里的 plan_type 与 credits
 }
 
 type limitInfo struct {
@@ -89,6 +90,7 @@ func scanUsage(root string, now time.Time, parse lineParser) (AgentUsage, bool) 
 	var tok5, tok7, sessions int64
 	var limits map[string]limitInfo
 	var limitAt int64
+	var codex *codexRateLimits
 	seen := map[string]bool{}
 	_ = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil || d.IsDir() || !strings.HasSuffix(path, ".jsonl") {
@@ -119,11 +121,11 @@ func scanUsage(root string, now time.Time, parse lineParser) (AgentUsage, bool) 
 			sessions++
 		}
 		if fu.limits != nil && fu.limitAt > limitAt {
-			limits, limitAt = fu.limits, fu.limitAt
+			limits, limitAt, codex = fu.limits, fu.limitAt, fu.codex
 		}
 		return nil
 	})
-	res := AgentUsage{UpdatedAt: now.UTC().Format(time.RFC3339), Sessions: sessions}
+	res := AgentUsage{UpdatedAt: now.UTC().Format(time.RFC3339), Sessions: sessions, codexLimits: codex, codexAt: limitAt}
 	res.Windows = []UsageWindow{{Label: "5h", Tokens: tok5, Percent: -1}, {Label: "7d", Tokens: tok7, Percent: -1}}
 	// 额度窗口按日志里的 window_minutes 对号入座；已过重置时间的百分比作废（窗口已清零）。
 	for _, key := range []string{"primary", "secondary"} {
@@ -166,6 +168,9 @@ func parseUsageFile(path string, parse lineParser, seen map[string]bool) *fileUs
 				}
 				if lim != nil {
 					fu.limits, fu.limitAt = lim, p.at
+					if rl, ok := codexRateLimitsOf(line); ok {
+						fu.codex = &rl
+					}
 				}
 			}
 		}

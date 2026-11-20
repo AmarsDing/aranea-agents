@@ -297,6 +297,51 @@ func TestCmdShimAgentLaunches(t *testing.T) {
 	waitFor(t, "shim output", 20*time.Second, func() bool { return strings.Contains(s.ReadText(20), "shim-started-ok") })
 }
 
+// 后端自用的凭据不进终端；用户自己的模型 key 和 PATH 照常继承；fleetctl 的三件套重新注入。
+func TestTerminalEnvStripsBackendSecrets(t *testing.T) {
+	strip := []string{
+		"KRATOS_AUTH_SECRET", "KRATOS_ARTIFACT_SIGN_KEY", "ARANEA_TWINOPENAPI_TOKEN", "ARANEA_PG_DSN",
+		"Aranea_Pg_Password", // 变量名大小写不敏感
+		"TWIN_API_KEY", "SPEECH_TTS_API_KEY", "ARTIFACT_S3_SECRET_KEY", "EMBEDDING_API_KEY",
+		"INFINITY_RERANK_API_KEY", "EVAL_MEMORY_TOKEN", "PGPASSWORD",
+	}
+	keep := []string{"ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GITHUB_TOKEN", "HTTPS_PROXY"}
+	for _, k := range append(append([]string{}, strip...), keep...) {
+		t.Setenv(k, "v-"+k)
+	}
+	t.Setenv("ARANEA_FLEET_TOKEN", "stale") // 后端自己若跑在某个终端里，旧令牌不能漏下去
+
+	cliDir := t.TempDir()
+	u := &Usecase{opts: Options{ServerURL: "http://127.0.0.1:8810/", CLIDir: cliDir}}
+	got := map[string][]string{}
+	for _, kv := range u.terminalEnv("term-1", "tok-1") {
+		k, v, _ := strings.Cut(kv, "=")
+		got[strings.ToUpper(k)] = append(got[strings.ToUpper(k)], v)
+	}
+
+	for _, k := range strip {
+		if v, ok := got[strings.ToUpper(k)]; ok {
+			t.Errorf("%s 不该进终端，却拿到 %v", k, v)
+		}
+	}
+	for _, k := range keep {
+		if v := got[k]; len(v) != 1 || v[0] != "v-"+k {
+			t.Errorf("%s 应原样保留，实际 %v", k, v)
+		}
+	}
+	if p := got["PATH"]; len(p) != 1 || !strings.HasPrefix(p[0], cliDir+string(os.PathListSeparator)) {
+		t.Errorf("PATH 应保留并前置 fleetctl 目录，实际 %v", p)
+	}
+	for k, want := range map[string]string{
+		"ARANEA_FLEET_URL": "http://127.0.0.1:8810/v1/fleet/cli", "ARANEA_FLEET_TOKEN": "tok-1", "ARANEA_FLEET_TERMINAL": "term-1",
+		"TERM": "xterm-256color",
+	} {
+		if v := got[k]; len(v) != 1 || v[0] != want {
+			t.Errorf("%s 应为 %q，实际 %v", k, want, v)
+		}
+	}
+}
+
 func TestUsageLimitWindows(t *testing.T) {
 	line := []byte(`{"timestamp":"2026-11-16T14:53:43.039Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"total_tokens":1200}},"rate_limits":{"primary":{"used_percent":45.0,"window_minutes":43200,"resets_at":4102444800},"secondary":null}}}`)
 	p, lim, ok := parseCodexLine(line, nil)
@@ -511,5 +556,23 @@ func TestShellTerminalAndOrchestrationCLI(t *testing.T) {
 	}
 	if out, err := u.HandleCLI(ctx, cs.token, "done", map[string]string{"summary": "ok"}); err != nil || !strings.Contains(out, "完成") {
 		t.Fatalf("done: %s %v", out, err)
+	}
+}
+
+// 协调者自己退出：编排标为已停止；别的终端退出不动它。
+func TestCoordinatorExitStopsRun(t *testing.T) {
+	u := newTestUsecase(t, gitInit(t))
+	ctx := context.Background()
+	run := Run{ID: "run_x", Status: RunRunning, CoordinatorTerminalID: "term_c", CreatedAt: nowString()}
+	if err := putDoc(ctx, u.store, kindRun, run.ID, run); err != nil {
+		t.Fatal(err)
+	}
+	u.onWorkerExit(TerminalInfo{ID: "term_other", Role: "coordinator", RunID: run.ID})
+	if got, _, _ := getDoc[Run](ctx, u.store, kindRun, run.ID); got.Status != RunRunning {
+		t.Fatalf("unrelated terminal changed run to %s", got.Status)
+	}
+	u.onWorkerExit(TerminalInfo{ID: "term_c", Role: "coordinator", RunID: run.ID})
+	if got, _, _ := getDoc[Run](ctx, u.store, kindRun, run.ID); got.Status != RunStopped {
+		t.Fatalf("run status = %s, want stopped", got.Status)
 	}
 }

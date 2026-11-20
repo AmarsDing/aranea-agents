@@ -296,6 +296,11 @@ func buildFromResolvedWithNodeAgents(ctx context.Context, rbc *resolvedBuildConf
 	}
 
 	for _, ce := range rbc.condEdges {
+		// 上游 AddConditionalEdges 对 nil 直接 panic；没绑定条件函数时改成可读的 400。
+		if ce.CondFunc == nil {
+			return nil, nil, nil, apierror.BadRequest(apierror.DomainGraph,
+				fmt.Sprintf("graph: conditional edge from %q has no condition function (cond_func_ref)", ce.From))
+		}
 		sg.AddConditionalEdges(ce.From, ce.CondFunc, ce.PathMap)
 	}
 

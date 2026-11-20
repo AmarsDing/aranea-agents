@@ -345,6 +345,42 @@ message GetUsageResponse {
   repeated AgentUsage items = 1;
 }
 
+// ---------- 平台积分 ----------
+// 自动（auto）：deepseek 走官方余额接口、codex 读本机日志；
+// 手填（manual）：claude / codebuddy / qoder / trae / cursor 没有可合规调用的接口，由用户登记。
+
+message PlatformCredit {
+  string platform = 1;       // deepseek | codex | claude | codebuddy | qoder | trae | cursor
+  string source = 2;         // auto | manual
+  string plan = 3;           // 套餐名
+  double total = 4;          // 本期总额度；-1 = 未知
+  double remaining = 5;      // 剩余；-1 = 未知
+  string unit = 6;           // CNY | USD | credits
+  bool unlimited = 7;
+  string updated_at = 8;     // 自动 = 取数时间；手填 = 登记时间；空 = 还没有数据
+  string note = 9;           // 取不到的原因或备注
+  repeated CreditPoint history = 10; // 近 30 天每个 UTC 日最后一次的剩余，按日期升序
+}
+
+// 某个 UTC 日最后一次记下的剩余（自动取数或手填时记）。
+message CreditPoint {
+  string date = 1;           // YYYY-MM-DD（UTC）
+  double remaining = 2;
+}
+
+message ListCreditsResponse {
+  repeated PlatformCredit items = 1;
+}
+
+message SetCreditRequest {
+  string platform = 1;
+  string plan = 2;
+  double total = 3;
+  double remaining = 4;
+  string unit = 5;
+  string note = 6;
+}
+
 // ---------- 协调者编排 ----------
 
 message Run {
@@ -569,6 +605,16 @@ service FleetService {
   rpc GetUsage(google.protobuf.Empty) returns (GetUsageResponse) {
     option (aranea.auth.v1.requirement) = {permission: "coding.manage"};
     option (google.api.http) = {get: "/v1/fleet/usage"};
+  }
+
+  rpc ListCredits(google.protobuf.Empty) returns (ListCreditsResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "coding.manage"};
+    option (google.api.http) = {get: "/v1/fleet/credits"};
+  }
+
+  rpc SetCredit(SetCreditRequest) returns (PlatformCredit) {
+    option (aranea.auth.v1.requirement) = {permission: "coding.manage"};
+    option (google.api.http) = {put: "/v1/fleet/credits/{platform}" body: "*"};
   }
 
   rpc CreateRun(CreateRunRequest) returns (Run) {

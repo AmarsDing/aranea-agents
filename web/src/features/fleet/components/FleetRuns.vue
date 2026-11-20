@@ -2,7 +2,7 @@
   <div class="fleet-runs">
     <aside class="fleet-runs__list">
       <header class="fleet-runs__bar">
-        <h2>编排</h2>
+        <span class="fleet-runs__count">{{ runs.length }} 个协调任务</span>
         <q-space />
         <q-btn dense unelevated no-caps color="primary" icon="add" label="新建" @click="openNew" />
       </header>
@@ -23,13 +23,13 @@
         </div>
       </button>
       <div v-if="runs.length === 0" class="fleet-runs__empty">
-        还没有编排。把一个大目标交给协调者 agent，它会拆任务、在各自的 worktree 里派 worker，并把结果收回来。
+        还没有协调任务。把一个大目标交给协调者 agent，它会拆任务、在各自的 worktree 里派 worker，并把结果收回来。
       </div>
     </aside>
 
     <section class="fleet-runs__detail">
       <template v-if="creating">
-        <h3>新建编排</h3>
+        <h3>新建协调任务</h3>
         <div class="fleet-runs__form">
           <q-select
             v-model="form.projectId"
@@ -203,14 +203,14 @@
         </ol>
       </template>
 
-      <div v-else class="fleet-runs__empty">选择左侧一个编排，或新建一个。</div>
+      <div v-else class="fleet-runs__empty">选择左侧一个协调任务，或新建一个。</div>
     </section>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
-import { Notify } from 'quasar';
+import { Dialog, Notify } from 'quasar';
 import * as api from '../api';
 import type { Run, RunDetail, Task } from '../api';
 import { ago, useFleet } from '../useFleet';
@@ -291,10 +291,22 @@ async function create() {
   }
 }
 
-async function stop() {
-  if (!detail.value) return;
-  await api.stopRun(detail.value.run.id);
-  await Promise.all([load(), refreshTerminals()]);
+function stop() {
+  const run = detail.value?.run;
+  if (!run) return;
+  Dialog.create({
+    title: '停止这个协调任务？',
+    message: '会结束协调者和仍在干活的 worker 终端（终端标签保留，可以看输出）。已经提交到各分支的改动不受影响。',
+    cancel: { label: '取消', flat: true },
+    ok: { label: '停止', color: 'negative', unelevated: true },
+  }).onOk(async () => {
+    try {
+      await api.stopRun(run.id);
+      await Promise.all([load(), refreshTerminals()]);
+    } catch (e) {
+      Notify.create({ type: 'negative', message: api.errText(e) });
+    }
+  });
 }
 
 async function answer(messageId: string, text: string) {
@@ -342,10 +354,9 @@ onBeforeUnmount(() => timer && clearInterval(timer));
 .fleet-runs__bar
   display: flex
   align-items: center
-  h2
-    margin: 0
-    font-size: var(--nt-fs-title)
-    color: var(--nt-text-0)
+.fleet-runs__count
+  color: var(--nt-text-3)
+  font-size: var(--nt-fs-caption)
 .fleet-run
   display: flex
   flex-direction: column

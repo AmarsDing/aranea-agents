@@ -99,6 +99,9 @@ func (r *Runner) finalizeRun(
 		"agent_message_id": outcome.result.AgentMessageID,
 		"run_id":           outcome.result.SessionID,
 	}
+	for k, v := range outcome.result.Output {
+		output[k] = v
+	}
 	if outcome.foldBase > 0 {
 		output["fold_count"] = outcome.foldBase + 1
 	}
@@ -285,7 +288,11 @@ func (r *Runner) recordPreExecuteOutcome(ctx context.Context, task biz.CronTask,
 	default:
 		status = "failure"
 	}
-	unlock := r.lockTask(task.ID)
+	// 只在调度 tick 里调用：任务正在被执行就留给下个 tick，不在这里等（会卡住所有任务）。
+	unlock, locked := r.taskMu.tryLock(task.ID)
+	if !locked {
+		return
+	}
 	defer unlock()
 
 	// C-26：预执行簿记也走跨实例租约——多实例同时灾后恢复时由持有者记账，

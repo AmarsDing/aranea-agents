@@ -72,7 +72,10 @@ function wireGraph(g: Record<string, unknown> | null | undefined): GraphDefiniti
     version: (g?.version as number) ?? 0,
     sortOrder: (g?.sortOrder as number) ?? 0,
     createdAt: (g?.createdAt as string) ?? '',
-    updatedAt: (g?.updatedAt as string) ?? '',
+    // 早期种子写入的模板图 updated_at 是零值（0001-01-01），列表会显示「24664 个月前」；退回创建时间。
+    updatedAt: String(g?.updatedAt ?? '').startsWith('0001-')
+      ? ((g?.createdAt as string) ?? '')
+      : ((g?.updatedAt as string) ?? ''),
     teamId: (g?.teamId as string) ?? '',
     isTemplate: (g?.isTemplate as boolean) ?? false,
     verificationGates: (g?.verificationGates as string) ?? '',

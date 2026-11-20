@@ -209,6 +209,10 @@ type AgentUsage struct {
 	Source    string
 	UpdatedAt string
 	Sessions  int64
+
+	// 最近一次 Codex 额度快照里的套餐与积分（只有 codex 有），给平台积分用，不进 /v1/fleet/usage。
+	codexLimits *codexRateLimits
+	codexAt     int64
 }
 
 // 存储里的记录种类。

@@ -273,12 +273,31 @@ func validateTopology(def *GraphBuildConfig, result *ValidationResult) {
 }
 
 func validateNodeRefs(def *GraphBuildConfig, reg *Registry, result *ValidationResult) {
+	// 与 node_wiring 的建图口径对齐：存库的函数节点没有 FuncRef，执行时必然报
+	// 「requires Func or orchestration.skip FuncRef」，校验这一步就要拦下。
+	for _, n := range def.Nodes {
+		if normalizeNodeType(n.Type) == biz.NodeTypeFunction && strings.TrimSpace(n.FuncRef) == "" {
+			result.AddError(ValidationErrFuncRefNotFound, n.ID, "func_ref",
+				fmt.Sprintf("函数节点 %q 没有绑定函数：填写函数引用，或填 %q 作为透传占位", n.ID, biz.SkipNodeFuncRef))
+		}
+	}
+	// 同理：条件边没有条件函数，运行时选不出分支（建图直接报错）。
+	for _, ce := range def.ConditionalEdges {
+		if strings.TrimSpace(ce.CondFuncRef) == "" {
+			result.AddError(ValidationErrCondFuncNotFound, ce.From, "cond_func_ref",
+				fmt.Sprintf("节点 %q 的条件分支没有绑定条件函数，运行时无法选择走哪条分支", ce.From))
+		}
+	}
 	if reg == nil {
 		return
 	}
 	for _, n := range def.Nodes {
 		switch normalizeNodeType(n.Type) {
 		case "llm", "tool", "tools", "task", "review", "agent", "router":
+			continue
+		}
+		// 透传占位是内置 sentinel，不进 Registry（见 Registry.ResolveNodeDef）。
+		if strings.TrimSpace(n.FuncRef) == biz.SkipNodeFuncRef {
 			continue
 		}
 		if n.FuncRef != "" {

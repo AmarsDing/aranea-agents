@@ -321,3 +321,31 @@ func (r *cronRepo) ResolveCronTaskFailures(ctx context.Context, runID, actor str
 	}
 	return updated, n, nil
 }
+
+// CronTaskKeyExists 报告 task_key 是否已被占用（含已软删除的任务：被删过的不重建）。
+// 总经理巡视补建定时任务用（service.GMCronStore），不进 biz.CronRepo。
+func (r *cronRepo) CronTaskKeyExists(ctx context.Context, taskKey string) (bool, error) {
+	return r.data.RW().Read(ctx).CronTask.Query().Where(crontask.TaskKeyEQ(taskKey)).Exist(ctx)
+}
+
+// ResolveCronTaskRunsThrough 核销 runID 所属任务里同状态、不晚于它的全部未核销运行
+// （总经理汇报的「知道了」：读到这条，更早的也算读过；之后的新汇报不受影响）。
+func (r *cronRepo) ResolveCronTaskRunsThrough(ctx context.Context, runID, status, actor string) (int, error) {
+	run, err := r.data.RW().Read(ctx).CronTaskRun.Query().Where(crontaskrun.IDEQ(runID)).Only(ctx)
+	if err != nil {
+		if ent.IsNotFound(err) {
+			return 0, biz.ErrCronNotFound
+		}
+		return 0, err
+	}
+	return r.data.RW().Write(ctx).CronTaskRun.Update().
+		Where(
+			crontaskrun.TaskIDEQ(run.TaskID),
+			crontaskrun.StatusEQ(status),
+			crontaskrun.ResolvedAtEQ(""),
+			crontaskrun.CreatedAtLTE(run.CreatedAt),
+		).
+		SetResolvedAt(nowRFC3339()).
+		SetResolvedBy(actor).
+		Save(ctx)
+}

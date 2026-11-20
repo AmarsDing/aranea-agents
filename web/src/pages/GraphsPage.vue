@@ -1,25 +1,76 @@
 <template>
   <q-page :class="['app-standard-page graphs-page', { 'is-dark': isDark }]">
-    <AppPageHero :kicker="t('graphs.kicker')" :title="t('graphs.title')" :subtitle="t('graphs.subtitle')">
-      <template #actions>
-        <q-btn
-          outline
-          rounded
-          icon="dashboard"
-          :label="t('graphs.createFromTemplate')"
-          class="q-mr-sm"
-          @click="templateDialogOpen = true"
-        />
-        <q-btn
-          class="graphs-page__create-btn"
-          rounded
-          unelevated
-          icon="add"
-          :label="t('graphs.createGraph')"
-          @click="openCreate"
-        />
-      </template>
-    </AppPageHero>
+    <!-- 页名在顶栏面包屑里，这里不再单占一行页头：筛选在左、操作在右，一行放下 -->
+    <section class="graphs-filter-bar" :aria-label="t('graphs.title')">
+      <q-input
+        v-model="searchQuery"
+        dense
+        outlined
+        :placeholder="t('graphs.searchPlaceholder')"
+        class="graphs-filter-bar__search"
+      >
+        <template #prepend><q-icon name="search" /></template>
+        <template v-if="searchQuery" #append
+          ><q-icon name="close" class="cursor-pointer" @click="searchQuery = ''"
+        /></template>
+      </q-input>
+      <q-select
+        v-model="engineFilter"
+        :options="ENGINE_FILTER_OPTIONS"
+        dense
+        outlined
+        emit-value
+        map-options
+        class="graphs-filter-bar__select"
+      />
+      <q-select
+        v-model="teamFilter"
+        :options="TEAM_FILTER_OPTIONS"
+        dense
+        outlined
+        emit-value
+        map-options
+        class="graphs-filter-bar__select"
+        data-test="graphs-team-filter"
+      />
+      <q-select
+        v-model="sortKey"
+        :options="SORT_OPTIONS"
+        dense
+        outlined
+        emit-value
+        map-options
+        class="graphs-filter-bar__select"
+      />
+      <q-btn
+        flat
+        dense
+        round
+        :icon="sortOrder === 'asc' ? 'arrow_upward' : 'arrow_downward'"
+        :aria-label="sortOrder === 'asc' ? t('graphs.sortAsc') : t('graphs.sortDesc')"
+        @click="sortOrder = sortOrder === 'asc' ? 'desc' : 'asc'"
+      >
+        <q-tooltip>{{ sortOrder === 'asc' ? t('graphs.sortAsc') : t('graphs.sortDesc') }}</q-tooltip>
+      </q-btn>
+      <q-toggle
+        v-model="showOrchestrated"
+        dense
+        :label="t('graphs.showOrchestrated')"
+        data-test="graphs-show-orchestrated"
+      >
+        <q-tooltip>{{ t('graphs.showOrchestratedHint') }}</q-tooltip>
+      </q-toggle>
+      <q-space />
+      <q-btn
+        flat
+        dense
+        no-caps
+        icon="dashboard"
+        :label="t('graphs.createFromTemplate')"
+        @click="templateDialogOpen = true"
+      />
+      <q-btn unelevated dense no-caps color="primary" icon="add" :label="t('graphs.createGraph')" @click="openCreate" />
+    </section>
 
     <!-- 五态：已有列表但刷新失败 → 局部失败横幅，列表照常渲染 -->
     <AppStatePanel
@@ -49,68 +100,6 @@
 
     <div class="graphs-page__body">
       <div class="graphs-page__list">
-        <section class="graphs-filter-bar q-mt-md">
-          <q-input
-            v-model="searchQuery"
-            dense
-            outlined
-            :placeholder="t('graphs.searchPlaceholder')"
-            class="graphs-filter-bar__search"
-          >
-            <template #prepend><q-icon name="search" /></template>
-            <template v-if="searchQuery" #append
-              ><q-icon name="close" class="cursor-pointer" @click="searchQuery = ''"
-            /></template>
-          </q-input>
-          <q-select
-            v-model="engineFilter"
-            :options="ENGINE_FILTER_OPTIONS"
-            dense
-            outlined
-            emit-value
-            map-options
-            class="graphs-filter-bar__select"
-          />
-          <q-select
-            v-model="teamFilter"
-            :options="TEAM_FILTER_OPTIONS"
-            dense
-            outlined
-            emit-value
-            map-options
-            class="graphs-filter-bar__select"
-            data-test="graphs-team-filter"
-          />
-          <q-select
-            v-model="sortKey"
-            :options="SORT_OPTIONS"
-            dense
-            outlined
-            emit-value
-            map-options
-            class="graphs-filter-bar__select"
-          />
-          <q-btn-toggle
-            v-model="sortOrder"
-            no-caps
-            flat
-            dense
-            toggle-color="primary"
-            :options="[
-              { value: 'asc', icon: 'arrow_upward' },
-              { value: 'desc', icon: 'arrow_downward' },
-            ]"
-          />
-          <q-toggle
-            v-model="showOrchestrated"
-            dense
-            :label="t('graphs.showOrchestrated')"
-            data-test="graphs-show-orchestrated"
-          >
-            <q-tooltip>{{ t('graphs.showOrchestratedHint') }}</q-tooltip>
-          </q-toggle>
-        </section>
-
         <div
           v-if="!showOrchestrated && hiddenOrchestratedCount > 0"
           class="q-mt-sm row items-center no-wrap rounded-borders q-px-sm q-py-xs text-caption app-text-secondary graphs-page__hint-banner"
@@ -195,31 +184,34 @@
         >
           <template #item="{ element: graph }">
             <q-card
-
               flat
               :class="[
                 'graph-card',
                 `graph-card--status-${cardStatus(graph)}`,
                 { 'is-dark': isDark, 'graph-card--selected': selectedGraphId === graph.id },
               ]"
+              :title="t('graphs.cardOpenHint')"
               @click="selectGraph(graph.id)"
+              @dblclick="openEditor(graph.id)"
               @contextmenu="onCardContextMenu($event, graph)"
             >
               <div class="graph-card__inner">
                 <div class="row items-center justify-between no-wrap">
                   <h3 class="graph-card__name col min-width-0 ellipsis">{{ graph.name }}</h3>
-                  <span :class="['graph-card__status', `graph-card__status--${cardStatus(graph)}`]">
+                  <!-- 「就绪」对每张有节点的卡都一样，等于没说；只标还空着的草稿 -->
+                  <span
+                    v-if="cardStatus(graph) === 'draft'"
+                    :class="['graph-card__status', `graph-card__status--${cardStatus(graph)}`]"
+                  >
                     <i class="graph-card__status-dot" />{{ t(GRAPH_CARD_STATUS_LABEL_KEYS[cardStatus(graph)]) }}
                   </span>
                 </div>
                 <div v-if="(graph.nodes?.length ?? 0) > 0" class="graph-card__chips">
-                  <span
-                    v-for="chip in compositionChips(graph).chips"
-                    :key="chip.type"
-                    class="graph-card__chip"
-                    :title="t(NODE_TYPE_STYLES[chip.type as NodeType]?.labelKey ?? '')"
-                  >
-                    <i class="graph-card__chip-dot" :class="`graph-card__chip-dot--${chip.type}`" />{{ chip.count }}
+                  <span v-for="chip in compositionChips(graph).chips" :key="chip.type" class="graph-card__chip">
+                    <i class="graph-card__chip-dot" :class="`graph-card__chip-dot--${chip.type}`" />{{
+                      t(NODE_TYPE_STYLES[chip.type as NodeType]?.labelKey ?? '')
+                    }}
+                    {{ chip.count }}
                   </span>
                   <span v-if="compositionChips(graph).overflow > 0" class="graph-card__chip graph-card__chip--overflow"
                     >+{{ compositionChips(graph).overflow }}</span
@@ -274,7 +266,9 @@
         </div>
       </div>
 
+      <!-- 只在选中卡片时出现，不再常驻一块「点卡片看详情」的占位 -->
       <GraphDetailPanel
+        v-if="selectedGraph"
         :graph="selectedGraph"
         :is-dark="isDark"
         :node-counts="selectedGraphNodeCounts"
@@ -364,7 +358,6 @@ import { computed, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import draggable from 'vuedraggable';
 import AppDialog from '../components/common/AppDialog.vue';
-import AppPageHero from '../components/layout/AppPageHero.vue';
 import AppStatePanel from '../components/common/AppStatePanel.vue';
 import GraphRunDialog from '../components/graph/GraphRunDialog.vue';
 import GraphDetailPanel from '../components/graph/GraphDetailPanel.vue';

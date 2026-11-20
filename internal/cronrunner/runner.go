@@ -74,6 +74,8 @@ type Deps struct {
 	MonitorBus        contract.MonitorBus // typed monitor bus (cron.dead_letter)
 	Chat              CronChatRunner
 	RegistrySyncAgent CronRegistrySyncAgent
+	// GM 执行总经理巡视 / 汇报（内置目标 gm_patrol / gm_report）；装配晚于 Runner，经 WithGM 注入。
+	GM CronGMRunner
 	// DB is optional. When set (Postgres), Runner uses pg_try_advisory_lock
 	// for cross-instance exclusive task execution (C-26).
 	DB *sql.DB
@@ -81,6 +83,24 @@ type Deps struct {
 
 type CronRegistrySyncAgent interface {
 	RunSync(ctx context.Context) error
+}
+
+// CronGMRunner 执行总经理巡视 / 汇报（*service.GMRunner 实现），返回承载会话 id 与要并进运行记录的输出。
+type CronGMRunner interface {
+	RunGM(ctx context.Context, task biz.CronTask, target string) (sessionID string, output map[string]any, err error)
+}
+
+// cronGMSeeder 可选：Start 时给每家有总经理的公司补建巡视 / 汇报任务。
+type cronGMSeeder interface {
+	EnsureGMTasks(ctx context.Context)
+}
+
+// WithGM 注入总经理执行器（看板服务装配在 Runner 之后，Start 之前）。
+func (r *Runner) WithGM(gm CronGMRunner) *Runner {
+	if r != nil {
+		r.deps.GM = gm
+	}
+	return r
 }
 
 // Runner executes due cron_task rows on an interval (ported from pkg/backend CronRunner).
@@ -91,6 +111,42 @@ type Runner struct {
 	taskMu       taskMutexRegistry
 	lease        taskLease
 	tickInterval time.Duration
+	running      inflightSet // 正在执行的定时触发：下个 tick 不重复触发，也不误记错过补跑
+}
+
+// inflightSet 记录正在执行的任务；wg 让测试能等这一批执行跑完。
+type inflightSet struct {
+	mu  sync.Mutex
+	ids map[string]bool
+	wg  sync.WaitGroup
+}
+
+// tryStart 登记任务开始执行；已在执行返回 false。
+func (s *inflightSet) tryStart(id string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.ids[id] {
+		return false
+	}
+	if s.ids == nil {
+		s.ids = map[string]bool{}
+	}
+	s.ids[id] = true
+	s.wg.Add(1)
+	return true
+}
+
+func (s *inflightSet) done(id string) {
+	s.mu.Lock()
+	delete(s.ids, id)
+	s.mu.Unlock()
+	s.wg.Done()
+}
+
+func (s *inflightSet) has(id string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.ids[id]
 }
 
 func NewRunner(deps Deps, lg loggateway.Logger) *Runner {
@@ -162,6 +218,10 @@ func (r *Runner) Start(ctx context.Context, interval time.Duration) {
 	r.tickInterval = interval
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
+	r.sweepStalePending(ctx, time.Now().UTC())
+	if seeder, ok := r.deps.GM.(cronGMSeeder); ok {
+		seeder.EnsureGMTasks(ctx)
+	}
 	r.runDue(ctx)
 	for {
 		select {
@@ -214,6 +274,10 @@ func (r *Runner) runDue(ctx context.Context) {
 			}
 			continue
 		}
+		// 上一次定时触发还在跑（含重试退避）：下次时间尚未翻页，这里不能再触发、也不能记成错过。
+		if r.running.has(task.ID) {
+			continue
+		}
 		// 宕机补跑宽限（H10/orca dispatch-refusal）：周期任务滞后超过 grace+2×tick 时
 		// 记 skipped_missed 并直接翻页（finalizeRun 内 advance NextRunAt），不补跑。
 		// once 任务豁免：一次性任务错过窗口仍应补跑，由用户显式处置。
@@ -241,7 +305,45 @@ func (r *Runner) runDue(ctx context.Context) {
 				event.P("job_type", cronTargetType(cfg)),
 				event.P("trigger", "schedule"))
 		}
-		r.executeTask(ctx, task, cfg, meta, now, "schedule")
+		// 每个到期任务各跑各的：此前在 tick 里串行执行（失败重试退避长达 12 分钟多），
+		// 一个失败的任务会让其它任务整段时间既不执行、也算不出下次时间。
+		if !r.running.tryStart(task.ID) {
+			continue
+		}
+		task, cfg, meta := task, cfg, meta
+		safego.Go(ctx, "cron.scheduled_run", func() {
+			defer r.running.done(task.ID)
+			r.executeTask(ctx, task, cfg, meta, now, "schedule")
+		})
+	}
+}
+
+// waitRunning 等本轮发出的定时执行跑完（测试用；生产路径不等）。
+func (r *Runner) waitRunning() { r.running.wg.Wait() }
+
+// stalePendingAfter：执行行停在 pending 超过这么久，视为进程重启时被打断（手动触发上限 30 分钟，
+// 定时执行含重试退避也远低于此），留着会在界面上永远显示「执行中」。
+const stalePendingAfter = 2 * time.Hour
+
+const stalePendingMessage = "执行中断：服务重启时这次执行还没结束，没有拿到结果"
+
+// sweepStalePending 启动时把被打断的 pending 执行行收尾为 failure（只改执行行，不动任务的
+// 连续失败计数，不会因此进死信）。
+func (r *Runner) sweepStalePending(ctx context.Context, now time.Time) {
+	runs, _, err := r.deps.Cron.ListCronTaskRuns(ctx, biz.CronTaskRunQuery{Status: "pending", Limit: 500, IncludeResolved: true})
+	if err != nil {
+		r.lg.Warn("扫描中断的定时任务执行失败", loggateway.StepID("cron.sweep_pending"), loggateway.Err(err))
+		return
+	}
+	finished := now.Format(time.RFC3339)
+	for _, run := range runs {
+		started, perr := time.Parse(time.RFC3339, strutil.FirstNonEmpty(run.StartedAt, run.CreatedAt))
+		if perr != nil || now.Sub(started) < stalePendingAfter {
+			continue
+		}
+		if uerr := r.deps.Cron.UpdateCronTaskRun(ctx, run.ID, "failure", finished, defaultJSON(run.OutputJSON), stalePendingMessage); uerr != nil {
+			r.lg.Warn("收尾中断的定时任务执行失败", loggateway.Str("run_id", run.ID), loggateway.Err(uerr))
+		}
 	}
 }
 
@@ -394,6 +496,8 @@ type cronDispatchResult struct {
 	SessionID      string
 	UserMessageID  string
 	AgentMessageID string
+	// Output 并进运行记录的 output_json（内置目标的执行结果，如总经理巡视的 gm 段）。
+	Output map[string]any
 }
 
 func (r *Runner) dispatchCronTask(ctx context.Context, task biz.CronTask, cfg cronTaskConfig, state *cronDispatchState) (cronDispatchResult, error) {
@@ -407,6 +511,15 @@ func (r *Runner) dispatchCronTask(ctx context.Context, task biz.CronTask, cfg cr
 			return cronDispatchResult{}, err
 		}
 		return cronDispatchResult{}, nil
+	case "gm_patrol", "gm_report":
+		if r.deps.GM == nil {
+			return cronDispatchResult{}, validationErr("gm runner not available")
+		}
+		sessID, out, err := r.deps.GM.RunGM(ctx, task, targetType)
+		if err != nil {
+			return cronDispatchResult{}, err
+		}
+		return cronDispatchResult{SessionID: sessID, Output: out}, nil
 	case "mvp_rss_ingest":
 		if len(cfg.FeedURLs) == 0 {
 			return cronDispatchResult{}, validationErr("feed_urls required for mvp_rss_ingest")
@@ -536,8 +649,11 @@ func (r *Runner) persistMetadata(ctx context.Context, task biz.CronTask, meta cr
 		r.lg.Warn("marshal metadata failed", loggateway.Str("task_id", task.ID), loggateway.Err(err))
 		return
 	}
-	// Acquire per-task lock to avoid racing with finalizeRun on the same task.
-	unlock := r.lockTask(task.ID)
+	// Per-task lock avoids racing with finalizeRun; tick 路径不等锁（任务在跑就留给下个 tick）。
+	unlock, ok := r.taskMu.tryLock(task.ID)
+	if !ok {
+		return
+	}
 	defer unlock()
 	// Reload task to avoid overwriting concurrent updates (e.g. from TriggerTask).
 	current, err := r.deps.Cron.GetCronTask(ctx, task.ID)

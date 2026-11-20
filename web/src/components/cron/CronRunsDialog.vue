@@ -1,5 +1,5 @@
 <template>
-  <AppDialog v-model="modelOpen" title="执行历史" size="xl" persistent>
+  <AppDialog v-model="modelOpen" title="执行记录" size="xl">
     <div class="row q-gutter-sm q-mb-md items-center">
       <q-select
         :model-value="taskId"

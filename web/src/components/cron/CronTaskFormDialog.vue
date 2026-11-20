@@ -7,7 +7,7 @@
   <AppDialog
     :model-value="modelValue"
     :title="row ? '编辑定时任务' : '创建定时任务'"
-    subtitle="安排定期 Agent 任务，计划字段会保存到 config_json。"
+    subtitle="到点把一句话发给指定的 Agent 或 Team，执行结果记在执行记录里。"
     persistent
     :loading="Boolean(submitting)"
     @update:model-value="$emit('update:modelValue', $event)"

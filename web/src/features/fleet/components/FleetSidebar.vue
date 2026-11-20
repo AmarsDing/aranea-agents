@@ -6,21 +6,6 @@
       <kbd class="mono">Ctrl J</kbd>
     </button>
 
-    <nav class="fleet-side__nav">
-      <button
-        v-for="n in navs"
-        :key="n.view"
-        type="button"
-        class="fleet-side__navitem"
-        :class="{ 'is-active': state.view === n.view }"
-        @click="state.view = n.view"
-      >
-        <q-icon :name="n.icon" size="18px" />
-        <span>{{ n.label }}</span>
-        <span v-if="n.badge" class="fleet-side__badge" :class="{ 'is-warn': n.warn }">{{ n.badge }}</span>
-      </button>
-    </nav>
-
     <div class="fleet-side__head">
       <span>项目</span>
       <q-space />
@@ -156,11 +141,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue';
+import { reactive, ref } from 'vue';
 import { Dialog, Notify } from 'quasar';
 import * as api from '../api';
 import type { Workspace } from '../api';
-import { ago, useFleet, type FleetView } from '../useFleet';
+import { ago, useFleet } from '../useFleet';
 import StatusGlyph from './StatusGlyph.vue';
 
 const {
@@ -181,18 +166,6 @@ const addOpen = ref(false);
 const addPath = ref('');
 const addName = ref('');
 const adding = ref(false);
-
-const needsYou = computed(() => state.terminals.filter((t) => t.status === 'needs_input').length);
-const runningRuns = computed(
-  () => state.terminals.filter((t) => t.role === 'coordinator' && t.status !== 'exited').length,
-);
-
-const navs = computed<{ view: FleetView; icon: string; label: string; badge?: number; warn?: boolean }[]>(() => [
-  { view: 'feed', icon: 'notifications', label: '动态', badge: state.unread },
-  { view: 'board', icon: 'view_kanban', label: 'Agent 看板', badge: needsYou.value, warn: needsYou.value > 0 },
-  { view: 'runs', icon: 'account_tree', label: '编排', badge: runningRuns.value },
-  { view: 'automations', icon: 'schedule', label: '自动化' },
-]);
 
 function visibleWorkspaces(projectId: string): Workspace[] {
   const q = filter.value.trim().toLowerCase();
@@ -231,24 +204,24 @@ async function doAdd() {
   }
 }
 
+// 改名 / 置顶 / 归档失败时此前没有任何提示（Promise 被吞），这里统一报错。
+async function patch(w: Workspace, p: Parameters<typeof api.updateWorkspace>[1]) {
+  try {
+    await api.updateWorkspace(w.id, p);
+    await refreshWorkspaces();
+  } catch (e) {
+    Notify.create({ type: 'negative', message: api.errText(e) });
+  }
+}
+
 function rename(w: Workspace) {
-  Dialog.create({ title: '重命名', prompt: { model: w.name, type: 'text' }, cancel: true }).onOk(
-    async (name: string) => {
-      await api.updateWorkspace(w.id, { name });
-      await refreshWorkspaces();
-    },
-  );
+  Dialog.create({ title: '重命名', prompt: { model: w.name, type: 'text' }, cancel: true }).onOk((name: string) => {
+    if (name.trim() && name.trim() !== w.name) void patch(w, { name: name.trim() });
+  });
 }
 
-async function togglePin(w: Workspace) {
-  await api.updateWorkspace(w.id, { pinned: !w.pinned });
-  await refreshWorkspaces();
-}
-
-async function toggleArchive(w: Workspace) {
-  await api.updateWorkspace(w.id, { archived: !w.archived });
-  await refreshWorkspaces();
-}
+const togglePin = (w: Workspace) => patch(w, { pinned: !w.pinned });
+const toggleArchive = (w: Workspace) => patch(w, { archived: !w.archived });
 
 function remove(w: Workspace) {
   Dialog.create({
@@ -276,8 +249,8 @@ function remove(w: Workspace) {
 .fleet-side
   display: flex
   flex-direction: column
-  width: 300px
-  min-width: 240px
+  width: 260px
+  min-width: 220px
   height: 100%
   border-right: 1px solid var(--nt-border-1)
   background: var(--nt-bg-1)
@@ -305,43 +278,6 @@ function remove(w: Workspace) {
   &:focus-visible
     outline: 2px solid var(--nt-accent)
     outline-offset: 2px
-.fleet-side__nav
-  display: flex
-  flex-direction: column
-  padding: 0 var(--nt-space-2)
-.fleet-side__navitem
-  display: flex
-  align-items: center
-  gap: var(--nt-space-2)
-  min-height: 34px
-  padding: 0 var(--nt-space-2)
-  border: 0
-  border-radius: var(--nt-radius-s)
-  background: transparent
-  color: var(--nt-text-1)
-  font-size: var(--nt-fs-body)
-  text-align: left
-  cursor: pointer
-  &:hover
-    background: var(--nt-bg-2)
-  &.is-active
-    background: var(--nt-accent-soft)
-    color: var(--nt-accent)
-  &:focus-visible
-    outline: 2px solid var(--nt-accent)
-    outline-offset: 2px
-.fleet-side__badge
-  margin-left: auto
-  min-width: 20px
-  padding: 0 var(--nt-space-1)
-  border-radius: var(--nt-radius-pill)
-  background: var(--nt-bg-3)
-  color: var(--nt-text-1)
-  font-size: var(--nt-fs-micro)
-  text-align: center
-  &.is-warn
-    background: var(--nt-warn)
-    color: var(--nt-ink-inverse)
 .fleet-side__head
   display: flex
   align-items: center

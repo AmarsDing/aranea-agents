@@ -5,7 +5,8 @@ export type CronTaskStatus = 'active' | 'paused' | 'dead' | string;
 export type CronRunStatus = 'pending' | 'success' | 'failure' | 'skipped' | string;
 
 export type CronTaskConfig = {
-  target_type?: 'agent' | 'team';
+  /** agent | team | 系统目标（model_registry_sync、mvp_rss_ingest） */
+  target_type?: string;
   team_id?: string;
   schedule_type?: CronScheduleType;
   cron_expression?: string;
@@ -38,7 +39,8 @@ export type CronTaskFormValue = {
   name: string;
   display_name: string;
   description: string;
-  target_type: 'agent' | 'team';
+  /** agent | team | 系统目标（只读，见 CRON_SYSTEM_TARGETS） */
+  target_type: string;
   agent_id: string;
   team_id: string;
   schedule_type: CronScheduleType;
@@ -85,3 +87,6 @@ export type CronTaskRunPage = {
   items: CronTaskRun[];
   total: number;
 };
+
+/** 运行台自动化 / 项目：定时任务页一并列出（组件从这里取类型，不直接碰 api 模块）。 */
+export type { Automation as FleetAutomation, Project as FleetProject } from '../fleet/api';

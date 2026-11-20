@@ -17,7 +17,7 @@ func convertGraphTemplate(t graphtrpc.GraphTemplate) biz.GraphTemplateRef {
 	edges := make([]biz.GraphTemplateEdgeRef, len(t.Edges))
 	for i, e := range t.Edges {
 		edges[i] = biz.GraphTemplateEdgeRef{
-			FromNode: e.FromNode, ToNode: e.ToNode, Type: e.Type, Label: e.Label,
+			FromNode: e.FromNode, ToNode: e.ToNode, Type: e.Type, Label: e.Label, RouteField: e.RouteField,
 		}
 	}
 	stateFields := make([]biz.StateFieldDef, len(t.StateFields))
@@ -41,7 +41,7 @@ func revertGraphTemplate(t biz.GraphTemplateRef) graphtrpc.GraphTemplate {
 	edges := make([]graphtrpc.TemplateEdge, len(t.Edges))
 	for i, e := range t.Edges {
 		edges[i] = graphtrpc.TemplateEdge{
-			FromNode: e.FromNode, ToNode: e.ToNode, Type: e.Type, Label: e.Label,
+			FromNode: e.FromNode, ToNode: e.ToNode, Type: e.Type, Label: e.Label, RouteField: e.RouteField,
 		}
 	}
 	stateFields := make([]graphtrpc.StateFieldDef, len(t.StateFields))

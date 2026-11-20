@@ -517,12 +517,48 @@ func (u *Usecase) startTerminal(w Workspace, spec sessionSpec) (TerminalInfo, er
 	return s.Info(), nil
 }
 
+// backendEnvPrefixes 是后端自己读的环境变量命名空间，整段不传给运行台终端：
+// agent 命令行由模型驱动，不该拿到平台自己的凭据（会话签名密钥、对外门面令牌、
+// 数据库口令、对象存储 / 语音 / 向量服务的密钥）。
+//
+// 按「本仓库自创的前缀」剔除，而不是按 *_KEY / *_TOKEN 后缀：后缀会误伤用户自己的
+// ANTHROPIC_API_KEY、OPENAI_API_KEY、GITHUB_TOKEN（agent 命令行靠它们干活）；前缀则把
+// 以后新加的 ARANEA_XXX_SECRET 也一并盖住。新增后端密钥变量请用这些前缀，否则补到这里。
+//
+// shortcut: 厂商标准名（OPENAI / GOOGLE / DEEPSEEK / XAI / TAVILY / SERPAPI / E2B / COHERE 的
+// *_API_KEY）后端也读，但从名字分不出是给后端配的还是用户自己的，照常保留；
+// 要隔离就得让后端只从配置文件取这些 key。
+var backendEnvPrefixes = []string{
+	"KRATOS_",    // KRATOS_AUTH_SECRET、KRATOS_ARTIFACT_SIGN_KEY、KRATOS_KNOWLEDGE_EMBED_API_KEY
+	"ARANEA_",    // ARANEA_TWINOPENAPI_TOKEN / _CALLERS、ARANEA_PG_DSN / _PASSWORD、ARANEA_TOKEN；ARANEA_FLEET_* 由 terminalEnv 重新注入
+	"TWIN_",      // TWIN_API_KEY
+	"SPEECH_",    // SPEECH_ASR_* / SPEECH_TTS_* 的 API_KEY、ACCESS_KEY、APP_KEY
+	"ARTIFACT_",  // ARTIFACT_S3_* / ARTIFACT_COS_* 的密钥对
+	"EMBEDDING_", // EMBEDDING_API_KEY
+	"INFINITY_",  // INFINITY_RERANK_API_KEY
+	"EVAL_",      // EVAL_MEMORY_TOKEN、EVAL_MEDIA_VLM_API_KEY
+}
+
+// isBackendEnv 判断变量名（已转大写）是否属于后端自用。
+func isBackendEnv(k string) bool {
+	// PGPASSWORD 没有专属前缀，但 launcher 把它当平台库口令读，并原样带进后端环境。
+	if k == "PGPASSWORD" {
+		return true
+	}
+	for _, p := range backendEnvPrefixes {
+		if strings.HasPrefix(k, p) {
+			return true
+		}
+	}
+	return false
+}
+
 func (u *Usecase) terminalEnv(id, token string) []string {
 	env := make([]string, 0, len(os.Environ())+6)
 	sep := string(os.PathListSeparator)
 	for _, kv := range os.Environ() {
 		k := strings.ToUpper(strings.SplitN(kv, "=", 2)[0])
-		if k == "TERM" || k == "COLORTERM" || strings.HasPrefix(k, "ARANEA_FLEET_") || k == "KRATOS_AUTH_SECRET" {
+		if k == "TERM" || k == "COLORTERM" || isBackendEnv(k) {
 			continue
 		}
 		if k == "PATH" && u.opts.CLIDir != "" {
