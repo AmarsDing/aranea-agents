@@ -53,11 +53,12 @@ type registration struct {
 // 与 permission_arch_test.go sensitiveDomains 同源两份:
 // 插件漏配→架构测试红;架构测试漏配→生成期不报但测试也不查——改动域清单
 // 时两处同步)。2026-11-18 补录 fleet(Harness 多任务运行台:起终端即主机
-// 命令执行面)。
+// 命令执行面)。2026-11-19 补录 Harness › 连接四域:a2a(含联邦)、channel、gateway(出站推送)、
+// model_catalog——此前全部默认「登录即可」,任何登录用户能增删改通道 / 推送 / 远程 Agent。
 // protoc 参数以逗号分隔键值对,故 domains 覆盖参数用分号分隔,默认清单免参。
 var defaultSensitiveDomains = []string{
-	"admin", "agentbridge", "approval", "ceoboard", "computeruse", "credential",
-	"cron", "fleet", "github", "llm_provider_model", "monitor", "office", "review",
+	"a2a", "admin", "agentbridge", "approval", "ceoboard", "channel", "computeruse", "credential",
+	"cron", "fleet", "gateway", "github", "llm_provider_model", "model_catalog", "monitor", "office", "review",
 	"sandbox", "secops", "self_improvement", "system_setting", "tool", "usage",
 }
 

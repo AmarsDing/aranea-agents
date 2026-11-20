@@ -99,6 +99,9 @@ type ServiceRegistry struct {
 	// Fleet 是 Harness 多任务运行台（/v1/fleet/*，复刻 Orca：worktree + agent 终端
 	// + diff 批注 + 编排 + 自动化）。
 	Fleet *service.FleetService
+	// Board 是看板总览的常驻只读聚合（/v1/ceoboard/org-graph、/v1/ceoboard/company，
+	// 不跟驾驶舱运行时开关；03-看板 §14）。
+	Board *service.BoardService
 }
 
 // NewServiceRegistry assembles all services into a single registry for Wire injection.
@@ -167,6 +170,7 @@ func NewServiceRegistry(
 	secops *service.SecopsService,
 	gitHubPanel *service.GitHubPanelService,
 	fleetSvc *service.FleetService,
+	boardSvc *service.BoardService,
 ) *ServiceRegistry {
 	// 正在触发的平台告警进统一收件箱（运行与治理审查 P1）。
 	// shortcut: 本应在 cmd/admin provideInboxDeps 里注入，2026-11-19 wire 因其他会话在制的 provider 无法重新生成，
@@ -236,5 +240,6 @@ func NewServiceRegistry(
 		Secops:             secops,
 		GitHubPanel:        gitHubPanel,
 		Fleet:              fleetSvc,
+		Board:              boardSvc,
 	}
 }

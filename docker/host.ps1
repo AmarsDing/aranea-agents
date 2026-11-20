@@ -242,6 +242,8 @@ switch ($Action) {
     $env:CODE_EXECUTOR_BACKEND = 'docker'
     $env:CODE_EXECUTOR_DOCKER_IMAGE = 'python:3.11-slim'
     $env:ARANEA_WORKSPACE_ROOT = 'E:\teamwork\temp\aranea-agents\runtime\workspace'
+    # 宿主机模式就是单机本地部署：打开制品所在文件夹、资料页「用本机程序打开」和建库选本机文件夹
+    $env:FEATURES_LOCAL_REVEAL_ENABLED = 'true'
     New-Item -ItemType Directory -Force $env:ARANEA_WORKSPACE_ROOT | Out-Null
     # 工作目录必须是仓库根：internal\scenario、configs\workflows、data\ 都按相对路径找。
     # 相对路径不含空格，交给 cmd 做重定向可以不加引号。

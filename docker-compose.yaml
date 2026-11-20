@@ -5,7 +5,8 @@
 # 服务端口：8810(HTTP)/9910(gRPC)/8812(WS) 按 PORT-PLAN 部署版 1:1 映射宿主机
 # 使用：
 #   构建+启动：powershell -ExecutionPolicy Bypass -File docker/dev-up.ps1
-#   仅启动：  docker compose up -d（需仓库根 .env 提供 ARANEA_PG_PASSWORD）
+#   仅启动：  docker compose up -d（需仓库根 .env 提供 ARANEA_PG_PASSWORD、
+#             KRATOS_AUTH_SECRET、ARANEA_TWINOPENAPI_TOKEN、TWIN_API_KEY）
 #   停止：    docker compose down（共享中间件数据不在本项目卷内，不受影响）
 
 name: aranea
@@ -20,20 +21,21 @@ services:
       # 本 kratos 版本的 env source 不会覆盖嵌套键（DATA__POSTGRES__SOURCE 实测无效，2026-11-10），
       # 因此口令只在 configs/config.yaml 单点维护，不在此重复声明。
       # 与 app 便携部署版 start-all.ps1 保持一致：DB 中已签发的 JWT/PAT 均由该密钥签名，
-      # 更换会导致既有会话全部失效；生产部署必须改为随机 ≥32 字节密钥
-      KRATOS_AUTH_SECRET: "aranea-portable-dev-secret-32chars!!"
+      # 更换会导致既有会话全部失效；生产部署必须改为随机 ≥32 字节密钥。
+      # 取值只放仓库根 .env（已 gitignore），不写进本文件；缺失时 compose 直接报错。
+      KRATOS_AUTH_SECRET: "${KRATOS_AUTH_SECRET:?缺少 KRATOS_AUTH_SECRET，请写入仓库根 .env}"
       DEPLOY_ENV: "dev"
       DAO_VECTOR_PGVECTOR: "1"
       TZ: "Asia/Shanghai"
       # TwinMonitor OpenAPI 兼容门面机器 token（/api/v1/*，自校验 Bearer）；
       # 与 TwinMonitor aiops ai_aranea_instances.api_token（AES 加密落库）成对；
       # 生产部署必须更换为随机值并同步轮换 TwinMonitor 侧凭据
-      ARANEA_TWINOPENAPI_TOKEN: "twin_fdfee1b8c9443c5338a781bd9a4e73074916333b631dad51"
+      ARANEA_TWINOPENAPI_TOKEN: "${ARANEA_TWINOPENAPI_TOKEN:?缺少 ARANEA_TWINOPENAPI_TOKEN，请写入仓库根 .env}"
       # TwinOps 工具集（internal/tools/twinops，方案10 §三）：经宿主机回环访问
       # TwinMonitor Gateway 与 gns3_agent。TWIN_API_KEY 为 gateway 服务账号
       # （aranea-ops-dept, id=1），轮换时同步更新本值。
       TWIN_GATEWAY_URL: "http://host.docker.internal:8000"
-      TWIN_API_KEY: "twk_d2b2d33fb9372478f0256e182f71a1ea167a17b6cf4fee2705b9549f5dec4d83"
+      TWIN_API_KEY: "${TWIN_API_KEY:?缺少 TWIN_API_KEY，请写入仓库根 .env}"
       GNS3_AGENT_URL: "http://host.docker.internal:18081"
       # outboundguard 精确主机放行（AR-SSRF 例外）：容器→宿主机合法私网目标，
       # 当前用于宿主机 Recordly MCP（host.docker.internal:8951）。精确匹配无通配，

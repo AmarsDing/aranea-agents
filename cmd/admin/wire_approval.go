@@ -76,16 +76,18 @@ func provideInboxDeps(
 	review *service.ReviewService,
 	teams *service.TeamService,
 	cron *service.CronService,
+	gmStore service.GMCronStore,
 ) service.InboxDeps {
 	return service.InboxDeps{
-		Bridge:    bridge,
-		Agents:    agents,
-		SkillEvo:  skillEvo,
-		Schedule:  schedule,
-		Chat:      chat,
-		Decisions: decisions,
-		Review:    review,
-		Teams:     teams,
-		Cron:      cron,
+		Bridge:     bridge,
+		Agents:     agents,
+		SkillEvo:   skillEvo,
+		Schedule:   schedule,
+		Chat:       chat,
+		Decisions:  decisions,
+		Review:     review,
+		Teams:      teams,
+		Cron:       cron,
+		GMCronRuns: gmStore,
 	}
 }

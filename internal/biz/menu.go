@@ -60,6 +60,10 @@ const (
 	permCeoboardView = "ceoboard.view" // /ceo/overview、/ceo/oncall
 	// E 阶段 W1a：凭据管理（高敏收窄仅 sysadmin，矩阵见 pkg/auth/permissions.go）。
 	permCredentialManage = "credential.manage" // /credentials
+	// 2026-11-19：连接领域三页的 rpc 已在 permission_registry_gen.go 硬判，菜单同码对齐（矩阵授予 sysadmin）。
+	permChannelManage = "channel.manage" // /channels
+	permWebhookManage = "webhook.manage" // /webhooks
+	permA2AManage     = "a2a.manage"     // /a2a
 	// E 阶段 W1b：统一审批中心（页面/聚合读走 approval.review；风险矩阵写走
 	// approval.policy，菜单不接——矩阵编辑嵌在 /approvals 页内按rpc硬判显隐）。
 	permApprovalReview = "approval.review" // /approvals
@@ -72,6 +76,9 @@ const (
 	// /mail 不出现在 GET /v1/auth/menus，前端按白名单过滤后整项隐藏、直达也被
 	// routeAccess 判为 menu 拒绝（页面与路由实际存在）。
 	permOfficeMail = "office.mail" // /mail
+	// 运行台：fleet 全部 rpc 硬判 coding.manage（终端等同在后端主机执行命令），
+	// 内置矩阵经 coding.* 授予 sysadmin；菜单同码，避免「可见但全 403」。
+	permCodingManage = "coding.manage" // /fleet
 )
 
 // NavigationCatalog 返回侧栏菜单目录（显示顺序即数组顺序）。
@@ -94,6 +101,7 @@ func NavigationCatalog() []MenuGroup {
 				{Key: "usageEvents", Path: "/usage/events", Icon: "receipt_long", LabelKey: "menu.usageEvents", Permission: permUsageRead},
 				{Key: "chat", Path: "/chat", Icon: "chat", LabelKey: "menu.chat"},
 				{Key: "codingTasks", Path: "/coding-tasks", Icon: "terminal", LabelKey: "menu.codingTasks"},
+				{Key: "fleet", Path: "/fleet", Icon: "hub", LabelKey: "menu.fleet", Permission: permCodingManage},
 				{Key: "companion", Path: "/companion", Icon: "record_voice_over", LabelKey: "menu.companion"},
 				{Key: "sessions", Path: "/sessions", Icon: "history", LabelKey: "menu.sessions", Exact: false},
 				{Key: "memory", Path: "/memory", Icon: "psychology", LabelKey: "menu.memory", Exact: false, Permission: permMemoryRead},
@@ -114,7 +122,7 @@ func NavigationCatalog() []MenuGroup {
 			LabelKey: "menu.groupModels",
 			Items: []MenuEntry{
 				{Key: "models", Path: "/models", Icon: "model_training", LabelKey: "menu.models"},
-				{Key: "channels", Path: "/channels", Icon: "hub", LabelKey: "menu.channels"},
+				{Key: "channels", Path: "/channels", Icon: "hub", LabelKey: "menu.channels", Permission: permChannelManage},
 			},
 		},
 		{
@@ -130,9 +138,9 @@ func NavigationCatalog() []MenuGroup {
 				{Key: "experienceReports", Path: "/skills/experience-reports", Icon: "assessment", LabelKey: "menu.experienceReports"},
 				{Key: "plugins", Path: "/plugins", Icon: "tune", LabelKey: "menu.plugins"},
 				{Key: "hooks", Path: "/hooks", Icon: "link", LabelKey: "menu.hooks"},
-				{Key: "webhooks", Path: "/webhooks", Icon: "webhook", LabelKey: "menu.webhooks"},
+				{Key: "webhooks", Path: "/webhooks", Icon: "webhook", LabelKey: "menu.webhooks", Permission: permWebhookManage},
 				{Key: "credentials", Path: "/credentials", Icon: "key", LabelKey: "menu.credentials", Permission: permCredentialManage},
-				{Key: "a2a", Path: "/a2a", Icon: "swap_horiz", LabelKey: "menu.a2a"},
+				{Key: "a2a", Path: "/a2a", Icon: "swap_horiz", LabelKey: "menu.a2a", Permission: permA2AManage},
 			},
 		},
 		{

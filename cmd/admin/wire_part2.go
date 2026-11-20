@@ -88,6 +88,9 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.SelfImprovement, *co
 		// Harness 多任务运行台（fleet，复刻 Orca）。
 		provideFleetUsecase,
 		provideFleetService,
+		// 看板总览：org-graph / 经营快照 + 总经理巡视汇报（03-看板 §14）。
+		provideGMCronStore,
+		provideBoardService,
 		// E 阶段 W1c office 套件（日程/通知/apps/ical/提醒，拍板 K-1..K-5）。
 		provideOfficeRepo,
 		provideScheduleDraftReader,

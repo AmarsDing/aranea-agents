@@ -133,7 +133,7 @@ func NewHTTPServer(c *conf.Server, s *ServiceRegistry, wsSrv *WSServer, voiceSrv
 	// Custom routes MUST be registered before proto services so that exact
 	// paths (e.g. /v1/artifacts/download) take priority over wildcard
 	// patterns (e.g. /v1/artifacts/{id}).
-	registerCustomRoutes(srv, s.ChannelIngress, s.Artifact, s.Knowledge, s.A2APublic, s.SystemSetting, s.EcosystemPreset, s.AGUICompat, s.OpenAISession, s.A2AExtension, s.TwinOpenAPI, s.ConfigGraph, s.Diagnostics, s.Ceoboard)
+	registerCustomRoutes(srv, s.ChannelIngress, s.Artifact, s.Knowledge, s.A2APublic, s.SystemSetting, s.EcosystemPreset, s.AGUICompat, s.OpenAISession, s.A2AExtension, s.TwinOpenAPI, s.ConfigGraph, s.Diagnostics, s.Ceoboard, s.Board)
 	registerMVPMediaRoutes(srv)
 	// Harness 多任务运行台：终端 WebSocket + fleetctl 入口（非 proto，见 fleet_ws.go）。
 	if s.Fleet != nil {
@@ -242,6 +242,9 @@ func registerProtoServices(srv *kratoshttp.Server, s *ServiceRegistry) {
 //   - /webhooks/{channel_key}: third-party webhook callbacks with varying path segments
 //   - /v1/artifacts/download: signed download with direct response writer access
 //   - /v1/knowledge/documents/{id}/asset: raw file streaming (G2-B6, Range/inline media)
+//   - /v1/knowledge/local-dirs (GET/POST) + /v1/knowledge/documents/{id}/open-local:
+//     工作台 › 资料 P1 的本机动作（列 / 建本机文件夹、用默认程序打开），只在
+//     FEATURES_LOCAL_REVEAL_ENABLED 时注册，handler 内只放管理员；打开只放文档类扩展名
 //   - /v1/knowledge/documents/{id}/autolink-preview|autolink: confirm-then-apply outgoing wikilinks
 //   - /v1/knowledge/collections/{id}/health|experts|writeback-pending: SP7 G7/G8 + pending gate
 //   - /v1/knowledge/search/asof + /v1/knowledge/vaults/{id}/graph/asof:
@@ -266,6 +269,10 @@ func registerProtoServices(srv *kratoshttp.Server, s *ServiceRegistry) {
 //     保留字符时无法经 HTTP 网关寻址；permission 注册表键必须存在于 proto
 //     （arch 测试硬约束），故 ceoboard.view 在 handler 内硬判。不在 no-auth
 //     前缀内，JWT 过滤器照常被验。
+//   - /v1/ceoboard/org-graph + /v1/ceoboard/company: 看板总览只读 JSON BFF
+//     （03-看板 §14）。挂在常驻 BoardService 上，不跟驾驶舱运行时开关（运行时
+//     关着时 company 原来 404）；不改 ceoboard.proto，ceoboard.view 在 handler
+//     内硬判（同 event?uid=），JWT 过滤器照常被验。
 //
 // All custom routes are explicitly documented here for auditability. New bypass routes
 // MUST be added to this centralized block with justification comments.
@@ -284,6 +291,7 @@ func registerCustomRoutes(
 	configGraphSvc *service.ConfigGraphService,
 	diagnosticsSvc *service.DiagnosticsService,
 	ceoboardSvc *service.CeoboardService,
+	boardSvc *service.BoardService,
 ) {
 	// GET /v1/system/info — CLI info endpoint; requires auth (not in noAuthPaths).
 	if systemSettingSvc != nil {
@@ -292,6 +300,8 @@ func registerCustomRoutes(
 	if channelIngress != nil {
 		auth.RegisterWebhookPath("/webhooks/")
 		srv.Route("/").POST("/webhooks/{channel_key}", channelIngress.FeishuWebhookHTTP())
+		// 微信公众号接入时先用 GET + echostr 校验地址，同一个处理器按平台分支
+		srv.Route("/").GET("/webhooks/{channel_key}", channelIngress.FeishuWebhookHTTP())
 	}
 	if ceoboardSvc != nil {
 		// 见上方 custom-route 清单：X-CEO-Key 机器入口，receiver 自备校验。
@@ -308,11 +318,15 @@ func registerCustomRoutes(
 			ceoboardSvc.GetEventByUIDHTTP(ctx.Response(), ctx.Request())
 			return nil
 		})
-		// GET /v1/ceoboard/company：电商经营业务快照（只读 JSON BFF）。
-		// 既有 12 个 ceoboard RPC 不动；该路由的 ceoboard.view 在 handler 内硬判，
-		// 与 GetEventByUIDHTTP 同一套鉴权语义。
+	}
+	if boardSvc != nil {
+		// 见上方 custom-route 清单：看板总览只读 BFF，ceoboard.view 在 handler 内硬判。
 		srv.Route("/").GET("/v1/ceoboard/company", func(ctx kratoshttp.Context) error {
-			ceoboardSvc.CompanyViewHTTP(ctx.Response(), ctx.Request())
+			boardSvc.CompanyViewHTTP(ctx.Response(), ctx.Request())
+			return nil
+		})
+		srv.Route("/").GET("/v1/ceoboard/org-graph", func(ctx kratoshttp.Context) error {
+			boardSvc.OrgGraphHTTP(ctx.Response(), ctx.Request())
 			return nil
 		})
 	}
@@ -339,6 +353,22 @@ func registerCustomRoutes(
 			knowledgeSvc.ServeDocumentAsset(ctx.Response(), ctx.Request(), ctx.Vars().Get("id"))
 			return nil
 		})
+		// 工作台 › 资料 P1：建库向导列 / 建本机文件夹、用本机程序打开。和 /v1/system/reveal
+		// 同属单机本地部署功能，同一个开关（FEATURES_LOCAL_REVEAL_ENABLED），只给管理员。
+		if conf.LocalRevealEnabled() {
+			srv.Route("/").GET("/v1/knowledge/local-dirs", func(ctx kratoshttp.Context) error {
+				knowledgeSvc.ServeLocalDirs(ctx.Response(), ctx.Request())
+				return nil
+			})
+			srv.Route("/").POST("/v1/knowledge/local-dirs", func(ctx kratoshttp.Context) error {
+				knowledgeSvc.ServeCreateLocalDir(ctx.Response(), ctx.Request())
+				return nil
+			})
+			srv.Route("/").POST("/v1/knowledge/documents/{id}/open-local", func(ctx kratoshttp.Context) error {
+				knowledgeSvc.ServeOpenLocal(ctx.Response(), ctx.Request(), ctx.Vars().Get("id"))
+				return nil
+			})
+		}
 		// US-39：出链成链预览/确认（custom JSON，避免 make api）。
 		srv.Route("/").GET("/v1/knowledge/documents/{id}/autolink-preview", func(ctx kratoshttp.Context) error {
 			knowledgeSvc.ServeAutolinkPreview(ctx.Response(), ctx.Request(), ctx.Vars().Get("id"))

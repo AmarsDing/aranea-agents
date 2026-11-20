@@ -17,17 +17,22 @@ import (
 // 命令执行面，manage/dispatch 收严、读面 authenticated）。
 // 2026-11-18 补录 fleet（Harness 多任务运行台：起终端 = 主机命令执行面，
 // 读写全部 coding.manage）。
+// 2026-11-19 补录 Harness › 连接四域（a2a 含联邦、channel、gateway 出站推送、model_catalog）。
 var sensitiveDomains = []string{
+	"a2a",
 	"admin",
 	"agentbridge",
 	"approval",
 	"ceoboard",
+	"channel",
 	"computeruse",
 	"credential",
 	"cron",
 	"fleet",
+	"gateway",
 	"github",
 	"llm_provider_model",
+	"model_catalog",
 	"monitor",
 	"office",
 	"review",

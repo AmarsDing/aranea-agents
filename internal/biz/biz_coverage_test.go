@@ -215,7 +215,7 @@ func TestTeamUsecase_Duplicate(t *testing.T) {
 	ctx := context.Background()
 
 	team, _ := uc.Create(ctx, biz.Team{TeamKey: "orig", DisplayName: "Orig"})
-	copy, err := uc.Duplicate(ctx, team.ID)
+	copy, err := uc.Duplicate(ctx, team.ID, "")
 	if err != nil {
 		t.Fatalf("duplicate: %v", err)
 	}
@@ -236,9 +236,13 @@ func TestTeamUsecase_Duplicate_BuiltinBecomesUserOwned(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create builtin: %v", err)
 	}
-	copy, err := uc.Duplicate(ctx, builtin.ID)
+	// The shared preset (workspace "") is copied into the caller's workspace so the caller can edit it.
+	copy, err := uc.Duplicate(ctx, builtin.ID, "ws-a")
 	if err != nil {
 		t.Fatalf("duplicate: %v", err)
+	}
+	if copy.WorkspaceID != "ws-a" {
+		t.Errorf("duplicate workspace = %q, want ws-a", copy.WorkspaceID)
 	}
 	if copy.Kind != "user" {
 		t.Errorf("duplicate kind = %q, want user", copy.Kind)

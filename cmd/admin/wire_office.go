@@ -165,7 +165,7 @@ func provideOfficeMailAccountUsecase(repo *data.OfficeMailRepo, crypto *biz.Cred
 // provideOfficeMailSyncUsecase 同步编排（dialer 默认真实 IMAP；mock 由
 // 测试注入，不经 wire）。
 func provideOfficeMailSyncUsecase(repo *data.OfficeMailRepo, crypto *biz.CredentialCrypto, audit office.MailAuditSink, lg loggateway.Logger) *office.MailSyncUsecase {
-	return office.NewMailSyncUsecase(repo, repo, crypto, nil, audit, lg)
+	return office.NewMailSyncUsecase(repo, repo, crypto, nil, audit, lg).WithAttachments(repo)
 }
 
 func provideOfficeMailMessageUsecase(repo *data.OfficeMailRepo, knowledge office.MailKnowledgeSink, lg loggateway.Logger) *office.MailMessageUsecase {

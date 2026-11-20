@@ -233,3 +233,6 @@ web/*.log
 web/*-out.txt
 web/vitest-result.json
 /tmp*/
+
+# graphify 知识图谱产物（应落 E:/teamwork/temp/<project>/generated，见工作区 AGENTS.md 第 9 节）
+graphify-out/

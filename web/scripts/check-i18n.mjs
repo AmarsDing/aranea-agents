@@ -63,6 +63,9 @@ const LOCALES = [
     extras: [
       { path: path.resolve(SRC_DIR, 'i18n/locales/ui-shell.ts'), prefix: 'shell' },
       { path: path.resolve(SRC_DIR, 'i18n/locales/ui-domains.ts'), prefix: 'domains' },
+      { path: path.resolve(SRC_DIR, 'i18n/locales/ui-connect.ts'), prefix: 'connect' },
+      { path: path.resolve(SRC_DIR, 'i18n/locales/ui-capability.ts'), prefix: 'cap' },
+      { path: path.resolve(SRC_DIR, 'i18n/locales/ui-library.ts'), prefix: 'library' },
     ],
   },
   {
@@ -71,6 +74,9 @@ const LOCALES = [
     extras: [
       { path: path.resolve(SRC_DIR, 'i18n/locales/ui-shell.ts'), prefix: 'shell' },
       { path: path.resolve(SRC_DIR, 'i18n/locales/ui-domains.ts'), prefix: 'domains' },
+      { path: path.resolve(SRC_DIR, 'i18n/locales/ui-connect.ts'), prefix: 'connect' },
+      { path: path.resolve(SRC_DIR, 'i18n/locales/ui-capability.ts'), prefix: 'cap' },
+      { path: path.resolve(SRC_DIR, 'i18n/locales/ui-library.ts'), prefix: 'library' },
     ],
   },
 ];

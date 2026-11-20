@@ -11,6 +11,28 @@ package middleware
 // 认证/授权要求。按 域/service/rpc 字典序排列(确定性输出)。
 func registerGeneratedPermissions(r *PermissionRegistry) {
 
+	// ── a2a ──
+	requireRPC(r, "a2a", "A2AService", "DeleteRemoteAgent", "DELETE", "/v1/a2a/remote-agents/{id}", "a2a.manage")
+	requireAuthenticatedRPC(r, "a2a", "A2AService", "Discover", "GET", "/v1/a2a/discover")
+	requireRPC(r, "a2a", "A2AService", "DiscoverRemoteAgent", "POST", "/v1/a2a/remote-discover", "a2a.manage")
+	requireRPC(r, "a2a", "A2AService", "GatewayDiscover", "GET", "/v1/a2a/gateway/discover", "a2a.manage")
+	requireAuthenticatedRPC(r, "a2a", "A2AService", "GetA2AConfig", "GET", "/v1/a2a/config")
+	requireAuthenticatedRPC(r, "a2a", "A2AService", "GetAgentCard", "GET", "/v1/a2a/agents/{agent_id}/card")
+	requireRPC(r, "a2a", "A2AService", "Invoke", "POST", "/v1/a2a/invoke", "a2a.manage")
+	requireRPC(r, "a2a", "A2AService", "ListAudit", "GET", "/v1/a2a/audit", "a2a.manage")
+	requireRPC(r, "a2a", "A2AService", "ListRemoteAgents", "GET", "/v1/a2a/remote-agents", "a2a.manage")
+	requireRPC(r, "a2a", "A2AService", "RegisterRemoteAgent", "POST", "/v1/a2a/remote-agents", "a2a.manage")
+	requireRPC(r, "a2a", "A2AService", "UpdateAgentCard", "PUT", "/v1/a2a/agents/{agent_id}/card", "a2a.manage")
+	requireRPC(r, "a2a", "FederationService", "DeleteFederationOrg", "DELETE", "/v1/a2a/federation/orgs/{id}", "a2a.manage")
+	requireRPC(r, "a2a", "FederationService", "DiscoverFederationAgents", "GET", "/v1/a2a/federation/agents", "a2a.manage")
+	requireRPC(r, "a2a", "FederationService", "InvokeFederatedAgent", "POST", "/v1/a2a/federation/invoke", "a2a.manage")
+	requireRPC(r, "a2a", "FederationService", "ListFederationOrgs", "GET", "/v1/a2a/federation/orgs", "a2a.manage")
+	requireRPC(r, "a2a", "FederationService", "QueryFederationAuditLogs", "GET", "/v1/a2a/federation/audits", "a2a.manage")
+	requireRPC(r, "a2a", "FederationService", "RegisterFederationOrg", "POST", "/v1/a2a/federation/orgs", "a2a.manage")
+	requireRPC(r, "a2a", "FederationService", "SetFederationTrustLevel", "PUT", "/v1/a2a/federation/orgs/{id}/trust", "a2a.manage")
+	requireRPC(r, "a2a", "FederationService", "SyncFederationOrgCards", "POST", "/v1/a2a/federation/orgs/{id}/sync", "a2a.manage")
+	requireRPC(r, "a2a", "FederationService", "UpsertFederationPolicy", "POST", "/v1/a2a/federation/policies", "a2a.manage")
+
 	// ── admin ──
 	requireAuthenticatedRPC(r, "admin", "AdminService", "ChangePassword", "POST", "/v1/users/change-password")
 	requireRPC(r, "admin", "AdminService", "CreateAdmin", "POST", "/v1/admins/create", "user.write")
@@ -25,6 +47,7 @@ func registerGeneratedPermissions(r *PermissionRegistry) {
 
 	// ── agentbridge ──
 	requireRPC(r, "agentbridge", "AgentBridgeService", "CancelTask", "POST", "/v1/agentbridge/tasks/{id}/cancel", "coding.dispatch")
+	requireRPC(r, "agentbridge", "AgentBridgeService", "DeleteAgent", "DELETE", "/v1/agentbridge/agents/{agent_key}", "coding.manage")
 	requireRPC(r, "agentbridge", "AgentBridgeService", "DeleteProject", "DELETE", "/v1/agentbridge/projects/{id}", "coding.manage")
 	requireRPC(r, "agentbridge", "AgentBridgeService", "DispatchTask", "POST", "/v1/agentbridge/tasks", "coding.dispatch")
 	requireAuthenticatedRPC(r, "agentbridge", "AgentBridgeService", "GetTask", "GET", "/v1/agentbridge/tasks/{id}")
@@ -59,6 +82,23 @@ func registerGeneratedPermissions(r *PermissionRegistry) {
 	requireRPC(r, "ceoboard", "CeoboardService", "ListDeadLetters", "GET", "/v1/ceoboard/deadletters", "ceoboard.ops")
 	requireRPC(r, "ceoboard", "CeoboardService", "ListEvents", "GET", "/v1/ceoboard/events", "ceoboard.view")
 	requireRPC(r, "ceoboard", "CeoboardService", "ReplayDeadLetter", "POST", "/v1/ceoboard/deadletters/{id}/replay", "ceoboard.ops")
+
+	// ── channel ──
+	requireRPC(r, "channel", "ChannelService", "CreateChannel", "POST", "/v1/channels", "channel.manage")
+	requireRPC(r, "channel", "ChannelService", "DeleteChannel", "DELETE", "/v1/channels/{id}", "channel.manage")
+	requireRPC(r, "channel", "ChannelService", "DeleteChannelCredential", "DELETE", "/v1/channels/{channel_id}/credentials/{credential_key}", "channel.manage")
+	requireAuthenticatedRPC(r, "channel", "ChannelService", "GetChannel", "GET", "/v1/channels/{id}")
+	requireRPC(r, "channel", "ChannelService", "ListChannelCredentials", "GET", "/v1/channels/{id}/credentials", "channel.manage")
+	requireRPC(r, "channel", "ChannelService", "ListChannelDeliveries", "GET", "/v1/channels/{id}/deliveries", "channel.manage")
+	requireRPC(r, "channel", "ChannelService", "ListChannelTurnJobs", "GET", "/v1/channels/{id}/turn-jobs", "channel.manage")
+	requireAuthenticatedRPC(r, "channel", "ChannelService", "ListChannelTypes", "GET", "/v1/channels/catalog")
+	requireAuthenticatedRPC(r, "channel", "ChannelService", "ListChannels", "GET", "/v1/channels")
+	requireRPC(r, "channel", "ChannelService", "TestChannel", "POST", "/v1/channels/{id}/test", "channel.manage")
+	requireRPC(r, "channel", "ChannelService", "ToggleChannel", "POST", "/v1/channels/{id}/toggle", "channel.manage")
+	requireRPC(r, "channel", "ChannelService", "UpdateChannel", "PATCH", "/v1/channels/{id}", "channel.manage")
+	requireRPC(r, "channel", "ChannelService", "UpsertChannelCredentials", "PUT", "/v1/channels/{channel_id}/credentials", "channel.manage")
+	requireRPC(r, "channel", "ChannelService", "WechatILinkLogin", "POST", "/v1/channels/{channel_id}/wechat-ilink/login", "channel.manage")
+	requireRPC(r, "channel", "ChannelService", "WechatILinkPoll", "POST", "/v1/channels/{channel_id}/wechat-ilink/poll", "channel.manage")
 
 	// ── computeruse ──
 	requireRPC(r, "computeruse", "ComputerUseService", "GetComputerUseStatus", "GET", "/v1/computeruse/status", "tool.exec")
@@ -103,6 +143,7 @@ func registerGeneratedPermissions(r *PermissionRegistry) {
 	requireRPC(r, "fleet", "FleetService", "KillTerminal", "POST", "/v1/fleet/terminals/{id}/kill", "coding.manage")
 	requireRPC(r, "fleet", "FleetService", "ListAgentPresets", "GET", "/v1/fleet/agents", "coding.manage")
 	requireRPC(r, "fleet", "FleetService", "ListAutomations", "GET", "/v1/fleet/automations", "coding.manage")
+	requireRPC(r, "fleet", "FleetService", "ListCredits", "GET", "/v1/fleet/credits", "coding.manage")
 	requireRPC(r, "fleet", "FleetService", "ListEvents", "GET", "/v1/fleet/events", "coding.manage")
 	requireRPC(r, "fleet", "FleetService", "ListNotes", "GET", "/v1/fleet/workspaces/{workspace_id}/notes", "coding.manage")
 	requireRPC(r, "fleet", "FleetService", "ListProjects", "GET", "/v1/fleet/projects", "coding.manage")
@@ -116,12 +157,20 @@ func registerGeneratedPermissions(r *PermissionRegistry) {
 	requireRPC(r, "fleet", "FleetService", "RunAutomationNow", "POST", "/v1/fleet/automations/{id}/run", "coding.manage")
 	requireRPC(r, "fleet", "FleetService", "SendInput", "POST", "/v1/fleet/terminals/{id}/input", "coding.manage")
 	requireRPC(r, "fleet", "FleetService", "SendNotes", "POST", "/v1/fleet/workspaces/{workspace_id}/notes/send", "coding.manage")
+	requireRPC(r, "fleet", "FleetService", "SetCredit", "PUT", "/v1/fleet/credits/{platform}", "coding.manage")
 	requireRPC(r, "fleet", "FleetService", "StageFiles", "POST", "/v1/fleet/workspaces/{workspace_id}/git/stage", "coding.manage")
 	requireRPC(r, "fleet", "FleetService", "StopRun", "POST", "/v1/fleet/runs/{id}/stop", "coding.manage")
 	requireRPC(r, "fleet", "FleetService", "UnstageFiles", "POST", "/v1/fleet/workspaces/{workspace_id}/git/unstage", "coding.manage")
 	requireRPC(r, "fleet", "FleetService", "UpdateWorkspace", "PATCH", "/v1/fleet/workspaces/{id}", "coding.manage")
 	requireRPC(r, "fleet", "FleetService", "UpsertAutomation", "POST", "/v1/fleet/automations", "coding.manage")
 	requireRPC(r, "fleet", "FleetService", "UpsertNote", "POST", "/v1/fleet/notes", "coding.manage")
+
+	// ── gateway ──
+	requireRPC(r, "gateway", "GatewayService", "CreateWebhook", "POST", "/v1/gateway/webhooks", "webhook.manage")
+	requireRPC(r, "gateway", "GatewayService", "DeleteWebhook", "DELETE", "/v1/gateway/webhooks/{id}", "webhook.manage")
+	requireRPC(r, "gateway", "GatewayService", "ListWebhooks", "GET", "/v1/gateway/webhooks", "webhook.manage")
+	requireRPC(r, "gateway", "GatewayService", "TestWebhook", "POST", "/v1/gateway/webhooks/{id}/test", "webhook.manage")
+	requireRPC(r, "gateway", "GatewayService", "UpdateWebhook", "PUT", "/v1/gateway/webhooks/{id}", "webhook.manage")
 
 	// ── github ──
 	requireRPC(r, "github", "GitHubPanelService", "GetRepoHealth", "GET", "/v1/github/health", "github.view")
@@ -141,6 +190,21 @@ func registerGeneratedPermissions(r *PermissionRegistry) {
 	requireRPC(r, "llm_provider_model", "LlmProviderModelService", "RevealProviderModelCredentials", "GET", "/v1/llm-provider-models/{id}/credentials", "secops.policy")
 	requireRPC(r, "llm_provider_model", "LlmProviderModelService", "UpdateProviderModel", "PATCH", "/v1/llm-provider-models/{id}", "model.route")
 	requireRPC(r, "llm_provider_model", "LlmProviderModelService", "ValidateProviderPair", "POST", "/v1/agents/validate-model", "model.route")
+
+	// ── model_catalog ──
+	requireRPC(r, "model_catalog", "ModelCatalogService", "ApplyProviderMigration", "POST", "/v1/model-catalog/apply-migration", "model.route")
+	requireAuthenticatedRPC(r, "model_catalog", "ModelCatalogService", "GetCatalogProviderLogo", "GET", "/v1/model-catalog/logos/{provider_id}")
+	requireAuthenticatedRPC(r, "model_catalog", "ModelCatalogService", "GetModelCatalogPolicy", "GET", "/v1/model-catalog/policy")
+	requireAuthenticatedRPC(r, "model_catalog", "ModelCatalogService", "GetModelCatalogRaw", "GET", "/v1/model-catalog/raw")
+	requireAuthenticatedRPC(r, "model_catalog", "ModelCatalogService", "GetModelCatalogStatus", "GET", "/v1/model-catalog/status")
+	requireAuthenticatedRPC(r, "model_catalog", "ModelCatalogService", "GetProviderMigrationRules", "GET", "/v1/model-catalog/provider-migration")
+	requireAuthenticatedRPC(r, "model_catalog", "ModelCatalogService", "ListCatalogModels", "GET", "/v1/model-catalog/providers/{provider_id}/models")
+	requireAuthenticatedRPC(r, "model_catalog", "ModelCatalogService", "ListCatalogProviders", "GET", "/v1/model-catalog/providers")
+	requireAuthenticatedRPC(r, "model_catalog", "ModelCatalogService", "ListModelCatalogSyncLogs", "GET", "/v1/model-catalog/sync-logs")
+	requireAuthenticatedRPC(r, "model_catalog", "ModelCatalogService", "PreviewMigration", "POST", "/v1/model-catalog/preview-migration")
+	requireAuthenticatedRPC(r, "model_catalog", "ModelCatalogService", "SearchCatalogRaw", "GET", "/v1/model-catalog/raw/search")
+	requireRPC(r, "model_catalog", "ModelCatalogService", "SyncModelCatalog", "POST", "/v1/model-catalog/sync", "model.route")
+	requireRPC(r, "model_catalog", "ModelCatalogService", "UpdateModelCatalogPolicy", "PUT", "/v1/model-catalog/policy", "model.route")
 
 	// ── monitor ──
 	requireRPC(r, "monitor", "MonitorService", "DeleteAuditLogs", "DELETE", "/v1/monitor/audit-logs", "system.monitor")
@@ -175,9 +239,11 @@ func registerGeneratedPermissions(r *PermissionRegistry) {
 	requireRPC(r, "office", "OfficeMailService", "DeleteMessage", "DELETE", "/v1/office/mail/messages/{id}", "office.mail")
 	requireAuthenticatedRPC(r, "office", "OfficeMailService", "DeleteOfficeTask", "DELETE", "/v1/office/tasks/{id}")
 	requireAuthenticatedRPC(r, "office", "OfficeMailService", "DeleteOfficeTaskFile", "DELETE", "/v1/office/task-files/{id}")
+	requireRPC(r, "office", "OfficeMailService", "DetectProvider", "GET", "/v1/office/mail/providers:detect", "office.mail")
 	requireAuthenticatedRPC(r, "office", "OfficeMailService", "DownloadOfficeTaskFile", "GET", "/v1/office/task-files/{id}")
-	requireRPC(r, "office", "OfficeMailService", "ExportEml", "GET", "/v1/office/mail/messages/{id}:exportEml", "office.mail")
+	requireRPC(r, "office", "OfficeMailService", "ExportEml", "GET", "/v1/office/mail/messages/{id}/eml", "office.mail")
 	requireRPC(r, "office", "OfficeMailService", "GetAttachment", "GET", "/v1/office/mail/attachments/{id}/download", "office.mail")
+	requireRPC(r, "office", "OfficeMailService", "GetMailboxSummary", "GET", "/v1/office/mail/summary", "office.mail")
 	requireRPC(r, "office", "OfficeMailService", "GetMessage", "GET", "/v1/office/mail/messages/{id}", "office.mail")
 	requireRPC(r, "office", "OfficeMailService", "ImportEml", "POST", "/v1/office/mail:importEml", "office.mail")
 	requireRPC(r, "office", "OfficeMailService", "ListAccounts", "GET", "/v1/office/mail/accounts", "office.mail")
@@ -185,10 +251,14 @@ func registerGeneratedPermissions(r *PermissionRegistry) {
 	requireRPC(r, "office", "OfficeMailService", "ListMessages", "GET", "/v1/office/mail/messages", "office.mail")
 	requireAuthenticatedRPC(r, "office", "OfficeMailService", "ListOfficeTaskFiles", "GET", "/v1/office/tasks/{task_id}/files")
 	requireAuthenticatedRPC(r, "office", "OfficeMailService", "ListOfficeTasks", "GET", "/v1/office/tasks")
+	requireRPC(r, "office", "OfficeMailService", "ListProviders", "GET", "/v1/office/mail/providers", "office.mail")
 	requireRPC(r, "office", "OfficeMailService", "MailToTask", "POST", "/v1/office/mail/messages/{id}:toTask", "office.mail")
+	requireRPC(r, "office", "OfficeMailService", "MarkMessages", "POST", "/v1/office/mail/messages:mark", "office.mail")
+	requireRPC(r, "office", "OfficeMailService", "SaveDraft", "POST", "/v1/office/mail/drafts", "office.mail")
 	requireRPC(r, "office", "OfficeMailService", "SendMail", "POST", "/v1/office/mail:send", "office.mail")
 	requireAuthenticatedRPC(r, "office", "OfficeMailService", "SetOfficeTaskStatus", "POST", "/v1/office/tasks/{id}:setStatus")
 	requireRPC(r, "office", "OfficeMailService", "SyncAccount", "POST", "/v1/office/mail/accounts/{id}/sync", "office.mail")
+	requireRPC(r, "office", "OfficeMailService", "TestAccount", "POST", "/v1/office/mail/accounts:test", "office.mail")
 	requireRPC(r, "office", "OfficeMailService", "TriggerDigest", "POST", "/v1/office/mail/digest:trigger", "office.mail")
 	requireRPC(r, "office", "OfficeMailService", "UpdateAccount", "PATCH", "/v1/office/mail/accounts/{id}", "office.mail")
 	requireAuthenticatedRPC(r, "office", "OfficeMailService", "UpdateOfficeTask", "PATCH", "/v1/office/tasks/{id}")
@@ -318,4 +388,4 @@ var generatedPublicRPCs = []string{
 	"/kratos.office.v1.OfficeScheduleService/GetICalFeed",
 }
 
-// 统计:permission=206 authenticated=49 public=4
+// 统计:permission=252 authenticated=65 public=4

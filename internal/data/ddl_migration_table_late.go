@@ -711,6 +711,19 @@ var ddlMigrationsLate = []ddlMigration{
 	// 文档存 worktree/批注/动态/编排/自动化记录，主键 (kind,id)。终端进程
 	// 是运行态不落库。幂等 IF NOT EXISTS。
 	{Version: 20261332, Name: "fleet_records", SQL: "sql/migrations/20261332_fleet_records.sql"},
+	// 20261333 office_events_plan_log（工作台 › 日程 P1）：office_events 增
+	// kind（plan|log）/status（todo|doing|done|cancelled）/all_day/outcome，
+	// 日程成为「计划 + 工作内容」两本账；log 与全天不参与 409 重叠检测，
+	// 提醒只扫未完成的计划。存量行默认值即原语义。幂等 IF NOT EXISTS。
+	{Version: 20261333, Name: "office_events_plan_log", SQL: "sql/migrations/20261333_office_events_plan_log.sql"},
+	// 20261334 office_mail_p1（工作台 › 邮件 P1）：账号增发件地址 / 服务商 /
+	// SMTP / 连接状态 / 首次同步范围；邮件增收件人抄送、已读星标归档、文件夹
+	// （inbox|sent|drafts）、清洗后 HTML、Message-ID/References。uid 改存 IMAP
+	// UID，唯一索引收窄为收件箱同步行（已发送/草稿 uid=0）。存量邮件按已读入列。
+	{Version: 20261334, Name: "office_mail_p1", SQL: "sql/migrations/20261334_office_mail_p1.sql"},
+	// 20261335 gateway_webhook_workspace（Harness › 连接 P0）：出站推送按工作区隔离——
+	// 原表无 workspace，任一工作区的运行事件推给所有工作区的订阅。存量行空串按 default 对待。
+	{Version: 20261335, Name: "gateway_webhook_workspace", SQL: "sql/migrations/20261335_gateway_webhook_workspace.sql"},
 	// 20261336 office_task_lifecycle（工作台任务生命周期）：office_tasks 增 session_id
 	//（AI 执行的承载会话，存量交办行从 source_ref 回填）与 due_at；status 扩为
 	// open|doing|done；新表 office_task_files（BYTEA 附件，任务删除级联）。幂等。

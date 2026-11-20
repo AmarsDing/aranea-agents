@@ -41,6 +41,9 @@ var builtinRolePermissions = map[string][]string{
 		// 审批矩阵写、GitHub watch 管理、发文审批决议同档。
 		"credential.manage", "approval.policy", "github.manage",
 		"review.view", "review.decide",
+		// 2026-11-19：Harness › 连接——通道、出站推送、跨实例协作（A2A + 联邦）的管理面，
+		// 此前默认登录即可增删改；与凭据管理同档只给运维总管。
+		"channel.manage", "webhook.manage", "a2a.manage",
 	},
 	"secadmin": {
 		"knowledge.classify",
