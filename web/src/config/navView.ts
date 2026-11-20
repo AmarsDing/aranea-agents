@@ -55,6 +55,15 @@ const RUN_ENTRIES: NavLeaf[] = [
   },
 ];
 
+// 健康与告警（2026-11-19 从监控页拆出）：前端派生入口，可见性跟随 /monitor/logs
+const HEALTH_ENTRY: NavLeaf = {
+  to: '/monitor/health',
+  icon: 'health_and_safety',
+  labelKey: 'ops.nav.health',
+  derived: true,
+  derivedFrom: '/monitor/logs',
+};
+
 const SECTION_DEFS: Record<string, SectionDef[]> = {
   'menu.groupWorkspace': [
     {
@@ -111,7 +120,12 @@ const SECTION_DEFS: Record<string, SectionDef[]> = {
     { key: 'quality', labelKey: 'shell.nav.section.quality', paths: ['/evaluation'] },
   ],
   'menu.groupOps': [
-    { key: 'schedule', labelKey: 'shell.nav.section.schedule', paths: ['/cron', '/monitor/live', '/monitor/logs'] },
+    {
+      key: 'schedule',
+      labelKey: 'shell.nav.section.schedule',
+      paths: ['/cron', '/monitor/live', '/monitor/logs'],
+      derived: [HEALTH_ENTRY],
+    },
     { key: 'improve', labelKey: 'shell.nav.section.improve', paths: ['/self-improvement', '/settings'] },
   ],
 };

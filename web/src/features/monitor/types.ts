@@ -223,3 +223,23 @@ export type SelfCheckReport = {
   finished_at: string;
   duration_ms: number;
 };
+
+/** 运行时自愈统计（GET /v1/monitor/heal-stats）。 */
+export type HealStats = {
+  total: number;
+  success_rate: number;
+  top_fail_rules: Array<{ rule_id: string; count: number }>;
+};
+
+/** 一次自愈记录（GET /v1/monitor/heal-records）。 */
+export type HealRecord = {
+  id: string;
+  rule_id: string;
+  trigger_type: string;
+  fix_action_type: string;
+  status: string;
+  reason: string;
+  session_id: string;
+  trace_id: string;
+  created_at: string;
+};

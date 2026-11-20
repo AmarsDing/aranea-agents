@@ -154,10 +154,11 @@ export const routes: RouteRecordRaw[] = [
         meta: { titleKey: 'menu.ceoOverview', breadcrumb: false, uiLayout: 'immersive', uiVisual: 'deck' },
       },
       {
+        // 流程健康（2026-11-19 由值班视图重排，归 Harness › 运行与治理）：标准页面骨架
         path: 'ceo/oncall',
         name: 'ceo-oncall',
         component: () => import('../pages/CeoOncallPage.vue'),
-        meta: { titleKey: 'menu.ceoOncall', breadcrumb: false, uiLayout: 'immersive', uiVisual: 'deck' },
+        meta: { titleKey: 'ops.nav.flows' },
       },
       {
         path: 'ecommerce-loop',
@@ -193,7 +194,7 @@ export const routes: RouteRecordRaw[] = [
         path: 'usage/events',
         name: 'usage-events',
         component: () => import('../pages/UsageEventsPage.vue'),
-        meta: { titleKey: 'menu.usageEvents' },
+        meta: { titleKey: 'ops.nav.usage' },
       },
       { path: 'usage/quotas', redirect: { name: 'agents' } },
       {
@@ -397,7 +398,7 @@ export const routes: RouteRecordRaw[] = [
         path: 'hooks',
         name: 'hooks',
         component: () => import('../pages/HooksPage.vue'),
-        meta: { titleKey: 'menu.hooks' },
+        meta: { titleKey: 'ops.nav.hooks' },
       },
       {
         path: 'hooks/deliveries',
@@ -433,7 +434,7 @@ export const routes: RouteRecordRaw[] = [
         path: 'evaluation',
         name: 'evaluation',
         component: () => import('../pages/EvaluationPage.vue'),
-        meta: { titleKey: 'menu.evaluation' },
+        meta: { titleKey: 'ops.nav.evaluation' },
       },
       {
         path: 'a2a',
@@ -466,23 +467,32 @@ export const routes: RouteRecordRaw[] = [
         meta: { titleKey: 'menu.cron' },
       },
       {
-        // 原作战总台（连线图、花名册、日志流）：属于系统运行视图，归运行监控。
+        // 实时运转（2026-11-19 取代原作战总台）：正在跑的事、实时动态、在岗；与运行与治理其余各页同一套页面骨架
         path: 'monitor/live',
         name: 'monitor-live',
-        component: () => import('../pages/WorkbenchCockpitPage.vue'),
-        meta: { titleKey: 'menu.monitorLive', breadcrumb: false, uiLayout: 'immersive', uiVisual: 'deck' },
+        component: () => import('../pages/MonitorLivePage.vue'),
+        meta: { titleKey: 'ops.nav.live' },
+      },
+      {
+        // 健康与告警（2026-11-19 从 monitor/logs 拆出）：自检、运行指标、告警与规则、运行时自愈
+        path: 'monitor/health',
+        name: 'monitor-health',
+        component: () => import('../pages/MonitorHealthPage.vue'),
+        meta: { titleKey: 'ops.nav.health' },
       },
       {
         path: 'monitor/logs',
         name: 'monitor-logs',
+        // 旧链接 ?tab=usage / ?tab=alerts 的内容已挪到健康与告警
+        beforeEnter: (to) => (['usage', 'alerts'].includes(String(to.query.tab)) ? { path: '/monitor/health' } : true),
         component: () => import('../pages/MonitorPage.vue'),
-        meta: { titleKey: 'menu.monitor' },
+        meta: { titleKey: 'ops.nav.traces' },
       },
       {
         path: 'self-improvement',
         name: 'self-improvement',
         component: () => import('../pages/SelfImprovementPage.vue'),
-        meta: { titleKey: 'menu.selfImprovement' },
+        meta: { titleKey: 'ops.nav.selfImprovement' },
       },
       {
         path: 'settings',

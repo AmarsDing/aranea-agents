@@ -6,7 +6,9 @@ import { useUsageStore } from '../../stores/usage';
 import { usePlatformStore } from '../../stores/platform';
 import { useAgentsCatalogStore } from '../../stores/agents/catalog';
 import { useTeamsStore } from '../../stores/teams';
-import type { ModelUsageQuery } from './types';
+import type { ModelUsageOverview, ModelUsageQuery } from './types';
+import { getModelUsageOverview } from './api';
+import { useFailureReasons } from './useFailureReasons';
 import { formatUsdFromMicro } from './moneyFormat';
 import { downloadBlob } from '../../composables/useFileDownload';
 import { prompt } from '../../composables/useAppPrompt';
@@ -20,7 +22,8 @@ export const DEFAULT_PURGE_RETAIN_DAYS = 30;
 const PURGE_RETAIN_DAYS = [7, 30, 90, 365];
 
 /** 用量事件状态枚举（label 复用 AppStatusChip 的 i18n 元数据） */
-const USAGE_EVENT_STATUSES = ['success', 'error', 'failed', 'timeout', 'cancelled'];
+// 与后端 NormalizeStatus 的规范值一致（error 归一为 failed，单列出来只会筛出同一批）
+const USAGE_EVENT_STATUSES = ['success', 'failed', 'timeout', 'cancelled'];
 
 type FilterOption = { label: string; value: string };
 
@@ -41,11 +44,30 @@ export function useUsageEventsPage() {
   /** Purge retention is independent of the list filter `range` (e.g. 24h must not mean 24 days). */
   const retainDays = ref(DEFAULT_PURGE_RETAIN_DAYS);
 
-  const rangeOptions = [
-    { label: '24h', value: '24h' },
-    { label: '7d', value: '7d' },
-    { label: '30d', value: '30d' },
-  ];
+  // 取值必须是后端认识的 today / 7d / 30d / month；此前的「24h」后端不认识，会被当成 30 天
+  const rangeOptions = computed(() => [
+    { label: t('ops.usage.range.today'), value: 'today' },
+    { label: t('ops.usage.range.7d'), value: '7d' },
+    { label: t('ops.usage.range.30d'), value: '30d' },
+    { label: t('ops.usage.range.month'), value: 'month' },
+  ]);
+
+  // ── 汇总：同一组筛选下的费用、调用、Token、按日趋势、按模型 / Agent 排行（GET /v1/usage/overview）──
+  const failures = useFailureReasons();
+  const summary = ref<ModelUsageOverview | null>(null);
+  const summaryError = ref('');
+  const summaryLoading = ref(false);
+  async function loadSummary() {
+    summaryLoading.value = true;
+    try {
+      summary.value = await getModelUsageOverview(filterQuery());
+      summaryError.value = '';
+    } catch (reason) {
+      summaryError.value = reason instanceof Error ? reason.message : t('uiSystem.operations.loadFailed');
+    } finally {
+      summaryLoading.value = false;
+    }
+  }
   const statusOptions = computed(() =>
     USAGE_EVENT_STATUSES.map((v) => ({
       label: t(appStatusMeta(v)?.labelKey ?? 'common.status.unknown'),
@@ -220,8 +242,16 @@ export function useUsageEventsPage() {
   async function purgeEvents() {
     const deleted = await usageStore.purgeEvents(retainDays.value);
     page.value = 1;
-    await load();
+    await Promise.all([load(), loadSummary(), failures.load(filterQuery())]);
     return deleted;
+  }
+
+  /** 筛选变了：明细回到第 1 页，汇总一起重算。 */
+  function reloadAll() {
+    page.value = 1;
+    void load();
+    void loadSummary();
+    void failures.load(filterQuery());
   }
 
   function formatMoney(value?: number) {
@@ -278,9 +308,8 @@ export function useUsageEventsPage() {
   }
 
   function resetFilters() {
-    filters.value = { range: '7d' };
-    page.value = 1;
-    void load();
+    filters.value = { range: filters.value.range || '7d' };
+    reloadAll();
   }
 
   return {
@@ -308,6 +337,11 @@ export function useUsageEventsPage() {
     onProviderFilterChange,
     purging,
     load,
+    reloadAll,
+    summary,
+    summaryError,
+    summaryLoading,
+    failures,
     exportCsv,
     purgeEvents,
     onPurgeConfirm,

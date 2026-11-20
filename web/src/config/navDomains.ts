@@ -125,13 +125,15 @@ export const NAV_DOMAIN_DEFS: DomainDef[] = [
     module: 'harness',
     icon: 'monitor_heart',
     primaries: [
-      { path: '/monitor/live' },
-      { path: '/monitor/logs' },
-      { path: '/ceo/oncall' },
-      { path: '/usage/events' },
-      { path: '/evaluation' },
-      { path: '/self-improvement' },
-      { path: '/hooks', children: ['/hooks/deliveries'] },
+      // 2026-11-19 重排：按「回答什么问题」改名，监控页拆成健康与告警 + 追踪与日志（04-Harness系统.md §12）
+      { path: '/monitor/live', labelKey: 'ops.nav.live' },
+      { path: '/monitor/health' },
+      { path: '/monitor/logs', labelKey: 'ops.nav.traces' },
+      { path: '/ceo/oncall', labelKey: 'ops.nav.flows' },
+      { path: '/usage/events', labelKey: 'ops.nav.usage' },
+      { path: '/evaluation', labelKey: 'ops.nav.evaluation' },
+      { path: '/self-improvement', labelKey: 'ops.nav.selfImprovement' },
+      { path: '/hooks', labelKey: 'ops.nav.hooks', children: ['/hooks/deliveries'] },
     ],
   },
   // ——— 壳层：模块栏底部的应用、设置 ———

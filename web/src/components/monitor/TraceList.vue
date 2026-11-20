@@ -5,11 +5,8 @@
 -->
 <template>
   <q-card flat bordered class="monitor-card trace-list">
+    <!-- 标题由页签承担（追踪与日志 › 运行追踪），这里只留搜索与实时状态 -->
     <q-card-section class="trace-list__head row items-center justify-between no-wrap">
-      <div>
-        <div class="text-h6 text-weight-bold">{{ t('monitorPage.traces.title') }}</div>
-        <div class="text-caption trace-list__subtitle">{{ t('monitorPage.traces.subtitle') }}</div>
-      </div>
       <div class="row items-center q-gutter-sm no-wrap">
         <q-input
           :model-value="keyword"
@@ -80,6 +77,7 @@
         :columns="columns"
         row-key="id"
         :loading="loading"
+        filter=""
         hide-pagination
         :pagination="{ rowsPerPage: 0 }"
         @row-click="onRowClick"
@@ -301,7 +299,8 @@ const domainOptions = computed(() => {
   );
   return TRACE_DOMAIN_FILTERS.map((value) => ({
     value,
-    label: value === '' ? t('monitorPage.traces.filterAll') : traceDomainLabel(t, value) || value,
+    // 默认视图排除系统 / 技能内部运行，叫「全部」会误导，改叫「业务运行」
+    label: value === '' ? t('ops.traces.businessRuns') : traceDomainLabel(t, value) || value,
     count: value === '' ? allCount : (counts[value] ?? 0),
   }));
 });

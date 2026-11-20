@@ -5,6 +5,8 @@ import type {
   AuditLog,
   AuditQuery,
   CodeExecutorCapability,
+  HealRecord,
+  HealStats,
   MonitorEventsQuery,
   MonitorTraceDetail,
   MonitorTraceListResult,
@@ -524,4 +526,35 @@ export async function listSelfCheckReports(limit = 20, offset = 0): Promise<Pagi
   const res = await monitor.ListSelfCheckReports({ limit, offset });
   const items = ((res as { items?: unknown[] }).items ?? []).map(selfCheckReportFromWire);
   return { items, total: Number((res as { total?: number }).total ?? items.length) };
+}
+
+export async function getHealStats(): Promise<HealStats> {
+  const r = obj(await monitor.GetHealStats({}));
+  const top = (r.topFailRules ?? []) as unknown[];
+  return {
+    total: Number(r.totalHeals ?? 0),
+    success_rate: Number(r.successRate ?? 0),
+    top_fail_rules: top.map((x) => ({ rule_id: String(obj(x).ruleId ?? ''), count: Number(obj(x).count ?? 0) })),
+  };
+}
+
+export async function listHealRecords(limit = 10): Promise<PaginatedResult<HealRecord>> {
+  const res = obj(
+    await monitor.ListHealRecords({ limit, offset: 0, ruleId: undefined, status: undefined, sessionId: undefined }),
+  );
+  const items = ((res.items ?? []) as unknown[]).map((raw) => {
+    const r = obj(raw);
+    return {
+      id: String(r.id ?? ''),
+      rule_id: String(r.ruleId ?? ''),
+      trigger_type: String(r.triggerType ?? ''),
+      fix_action_type: String(r.fixActionType ?? ''),
+      status: String(r.status ?? ''),
+      reason: String(r.reason ?? ''),
+      session_id: String(r.sessionId ?? ''),
+      trace_id: String(r.traceId ?? ''),
+      created_at: String(r.createdAt ?? ''),
+    };
+  });
+  return { items, total: Number(res.total ?? items.length) };
 }

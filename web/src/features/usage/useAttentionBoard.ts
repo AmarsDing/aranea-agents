@@ -59,7 +59,7 @@ export function useAttentionBoard() {
             threshold: formatMetric(rule.threshold, metric.unit),
           }),
           occurred_at: metric.evaluated_at ?? '',
-          to: { path: '/monitor/logs', query: { tab: 'alerts' } },
+          to: { path: '/monitor/health' },
         },
       ];
     });

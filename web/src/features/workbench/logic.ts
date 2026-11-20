@@ -253,6 +253,7 @@ const INBOX_SOURCE_LANE: Record<string, YouItem['lane']> = {
   opportunity: 'listing',
   dead_letter: 'alerts',
   cron_failure: 'alerts',
+  monitor_alert: 'alerts',
 };
 
 /** 展示层沿用的来源标签（告警筛选 dead/cron、审批类别名等） */
@@ -262,6 +263,7 @@ const INBOX_SOURCE_TAG: Record<string, string> = {
   opportunity: 'opportunity',
   dead_letter: 'dead',
   cron_failure: 'cron',
+  monitor_alert: 'alert',
 };
 
 /** 未列出的来源一律归审批 lane（七类审批及未来新增类别）。 */

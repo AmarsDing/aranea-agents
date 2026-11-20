@@ -1,18 +1,13 @@
 <template>
-  <q-page class="app-standard-page app-registry-page hooks-page">
-    <AppPageHero :kicker="t('hooksPage.kicker')" :title="t('hooksPage.title')" :subtitle="t('hooksPage.subtitle')">
+  <!--
+    Harness › 运行与治理 › Hook 规则（2026-11-19 重排）：在生命周期节点上挂的护栏。
+    投递记录走顶部子页签，不再在页头重复一个按钮；阻断 / 出错记录在插件运行记录里。
+  -->
+  <q-page class="app-standard-page app-registry-page op-page hooks-page">
+    <AppPageHero :title="t('ops.nav.hooks')" :subtitle="t('ops.hooks.hint')">
       <template #actions>
-        <q-btn outline rounded no-caps icon="send" :label="t('hooksPage.btnDeliveries')" to="/hooks/deliveries" />
-        <q-btn outline rounded no-caps icon="history" :label="t('hooksPage.btnPluginRuns')" to="/plugins/runs" />
-        <q-btn
-          color="primary"
-          rounded
-          unelevated
-          no-caps
-          icon="add"
-          :label="t('hooksPage.btnCreate')"
-          @click="openCreate"
-        />
+        <q-btn flat no-caps icon="history" :label="t('ops.hooks.blocked')" to="/plugins/runs" />
+        <q-btn color="primary" unelevated no-caps icon="add" :label="t('hooksPage.btnCreate')" @click="openCreate" />
       </template>
     </AppPageHero>
 
@@ -64,13 +59,14 @@
     />
     <AppStatePanel v-else-if="pageState === 'forbidden'" class="q-mb-md" variant="forbidden" />
     <AppStatePanel v-else-if="pageState === 'loading'" variant="loading" :rows="4" />
-    <AppStatePanel
+    <OpsGuide
       v-else-if="pageState === 'empty'"
-      variant="empty"
-      :title="t('hooksPage.emptyList')"
+      data-state="empty"
       icon="webhook"
+      :title="t('ops.hooks.guide.title')"
+      :description="t('ops.hooks.guide.desc')"
+      :steps="[t('ops.hooks.guide.step1'), t('ops.hooks.guide.step2'), t('ops.hooks.guide.step3')]"
       :action-label="t('hooksPage.btnCreate')"
-      action-icon="add"
       @action="openCreate"
     />
 
@@ -115,13 +111,7 @@
     >
       <div class="q-gutter-md app-form-wide">
         <div class="app-form-field-grid app-form-field-grid--2col">
-          <q-input
-            v-model="form.key"
-            dense
-            outlined
-            :label="t('hooksPage.fieldKey')"
-            :disable="Boolean(editingId)"
-          />
+          <q-input v-model="form.key" dense outlined :label="t('hooksPage.fieldKey')" :disable="Boolean(editingId)" />
           <q-input v-model="form.name" dense outlined :label="t('hooksPage.fieldName')" />
           <q-toggle v-model="form.enabled" :label="t('hooksPage.fieldEnabled')" />
         </div>
@@ -156,6 +146,7 @@
 import { computed } from 'vue';
 import AppDialog from '../components/common/AppDialog.vue';
 import AppStatePanel from '../components/common/AppStatePanel.vue';
+import OpsGuide from '../components/ops/OpsGuide.vue';
 import AppPageHero from '../components/layout/AppPageHero.vue';
 import AppPageToolbar from '../components/layout/AppPageToolbar.vue';
 import AppRegistryPagination from '../components/layout/AppRegistryPagination.vue';

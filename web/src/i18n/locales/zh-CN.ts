@@ -7774,7 +7774,7 @@ export default {
       '开启后，平台将自动观察运行信号（错误聚类 / 性能瓶颈 / 评估退化 / 测试失败），生成补丁并在治理规则约束下验证与应用。',
     disabledConfigTitle: '在后端配置文件 configs/config.yaml 中添加以下内容并重启服务：',
     disabledConfigSnippet:
-      'self_improvement:\n  enabled: true\n  sandbox:\n    repo_root: <平台仓库根目录，如 f:\\aranea-agents>',
+      'self_improvement:\n  enabled: true\n  sandbox:\n    repo_root: ""  # 留空 = 后端工作目录（宿主机模式下就是仓库根）',
     disabledRecheck: '重新检测',
     prereqTitle: '前置条件未满足，闭环暂不会真正运行：',
     prereqLlm: '未配置默认 Refine LLM（系统设置），归因 / 修补 / 评审阶段将无法执行',
@@ -8153,6 +8153,7 @@ export default {
       opportunity: '上架确认',
       dead_letter: '任务死信',
       cron_failure: '定时任务失败',
+      monitor_alert: '平台告警',
     },
     timeline: {
       title: '今日时间线',

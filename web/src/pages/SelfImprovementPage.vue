@@ -1,10 +1,10 @@
 <template>
-  <q-page class="app-standard-page app-registry-page self-improvement-page">
-    <AppPageHero
-      :kicker="t('selfImprovementPage.kicker')"
-      :title="t('selfImprovementPage.title')"
-      :subtitle="t('selfImprovementPage.subtitle')"
-    >
+  <!--
+    Harness › 运行与治理 › 自我改进（2026-11-19 重排）：平台自身的补丁闭环。
+    未启用时给开启引导 + 三项前置条件的实时核对（开关 / 归因模型 / 仓库目录），不只贴一段配置。
+  -->
+  <q-page class="app-standard-page app-registry-page op-page self-improvement-page">
+    <AppPageHero :title="t('ops.nav.selfImprovement')" :subtitle="t('selfImprovementPage.subtitle')">
       <template #actions>
         <!-- 风险规则是流水线治理配置，功能未启用时无意义（GetRiskRules 亦 503） -->
         <q-btn
@@ -17,40 +17,51 @@
           @click="openRulesDialog"
         />
         <q-btn
-          unelevated
-          rounded
-          no-caps
+          flat
+          round
+          dense
           icon="refresh"
-          :label="t('selfImprovementPage.refresh')"
+          :aria-label="t('selfImprovementPage.refresh')"
           :loading="loading"
           @click="loadRows"
         />
       </template>
     </AppPageHero>
 
-    <!-- 功能未启用空态（P5.5）：503 SELF_IMPROVEMENT → 开启指引 + 重新检测 -->
-    <q-card v-if="featureDisabled" flat class="app-registry-empty app-empty-state-center">
-      <q-card-section class="column items-center text-center q-pa-xl">
-        <q-avatar size="72px" color="grey-6" text-color="white" icon="precision_manufacturing" />
-        <div class="text-h6 q-mt-md">{{ t('selfImprovementPage.disabledTitle') }}</div>
-        <div class="text-body2 text-grey-7 q-mt-sm si-disabled-desc">
-          {{ t('selfImprovementPage.disabledDesc') }}
-        </div>
-        <div class="text-body2 text-grey-8 q-mt-lg">{{ t('selfImprovementPage.disabledConfigTitle') }}</div>
-        <pre class="si-disabled-config q-mt-sm">{{ t('selfImprovementPage.disabledConfigSnippet') }}</pre>
+    <!-- 功能未启用：说明 + 三项前置条件逐项核对（数据来自 GET /v1/self-improvement/status） -->
+    <OpsGuide
+      v-if="featureDisabled"
+      data-state="empty"
+      icon="precision_manufacturing"
+      :title="t('selfImprovementPage.disabledTitle')"
+      :description="t('selfImprovementPage.disabledDesc')"
+    >
+      <ul class="op-list" :aria-label="t('ops.si.prereq')">
+        <li v-for="c in prereqs" :key="c.key" class="op-row">
+          <span class="op-dot" :class="c.ok ? 'op-dot--ok' : 'op-dot--alert'" aria-hidden="true" />
+          <span class="op-row__main">
+            <span class="op-row__title">{{ c.label }}</span>
+            <span class="op-row__sub op-num">{{ c.detail }}</span>
+          </span>
+          <span class="op-tag" :class="c.ok ? 'op-tag--ok' : 'op-tag--alert'">
+            {{ c.ok ? t('ops.si.ready') : t('ops.si.missing') }}
+          </span>
+        </li>
+      </ul>
+      <p class="op-note">{{ t('selfImprovementPage.disabledConfigTitle') }}</p>
+      <pre class="si-disabled-config">{{ t('selfImprovementPage.disabledConfigSnippet') }}</pre>
+      <template #actions>
         <q-btn
-          unelevated
-          rounded
+          outline
           no-caps
           color="primary"
           icon="refresh"
-          class="q-mt-lg"
           :label="t('selfImprovementPage.disabledRecheck')"
           :loading="loading"
           @click="recheckAction"
         />
-      </q-card-section>
-    </q-card>
+      </template>
+    </OpsGuide>
 
     <template v-else>
       <OutcomeStatsPanel :stats="outcomeStats" :failed="statsFailed" class="q-mb-md" />
@@ -151,11 +162,7 @@
       </q-banner>
 
       <!-- 五态：首屏加载无数据 → 骨架面板 -->
-      <AppStatePanel
-        v-if="loading && !errorMessage && rows.length === 0"
-        variant="loading"
-        :rows="5"
-      />
+      <AppStatePanel v-if="loading && !errorMessage && rows.length === 0" variant="loading" :rows="5" />
 
       <!-- 五态：成功但无数据 → 空态 -->
       <AppStatePanel
@@ -325,6 +332,7 @@ import { useI18n } from 'vue-i18n';
 import AppPageHero from '../components/layout/AppPageHero.vue';
 import AppPageToolbar from '../components/layout/AppPageToolbar.vue';
 import AppStatePanel from '../components/common/AppStatePanel.vue';
+import OpsGuide from '../components/ops/OpsGuide.vue';
 import AppRegistryTable from '../components/layout/AppRegistryTable.vue';
 import AppRegistryPagination from '../components/layout/AppRegistryPagination.vue';
 import OutcomeStatsPanel from '../components/self-improvement/OutcomeStatsPanel.vue';
@@ -392,20 +400,44 @@ const {
 } = useSelfImprovementPage();
 
 const columns = computed(() => createSIRunColumns(t));
+/** 闭环真正能跑的三个前提，逐项核对（未启用时也能读到状态） */
+const prereqs = computed(() => {
+  const s = statusInfo.value;
+  return [
+    {
+      key: 'switch',
+      label: t('ops.si.switch'),
+      detail: 'self_improvement.enabled',
+      ok: s?.enabled === true,
+    },
+    {
+      key: 'llm',
+      label: t('ops.si.llm'),
+      detail: s?.refineLlmConfigured ? `${s.refineLlmProvider} / ${s.refineLlmModel}` : t('ops.si.llmMissing'),
+      ok: s?.refineLlmConfigured === true,
+    },
+    {
+      key: 'repo',
+      label: t('ops.si.repo'),
+      detail: s?.repoRoot || t('ops.si.repoCwd'),
+      ok: s?.repoRootValid === true,
+    },
+  ];
+});
+
 const emptyDescription = computed(
   () => `${t('selfImprovementPage.emptyHint')} ${t('selfImprovementPage.emptySignalHint')}`,
 );
 </script>
 
 <style scoped lang="sass">
-.si-disabled-desc
-  max-width: 560px
-
 .si-disabled-config
   margin: 0
   padding: 12px 16px
   border-radius: 8px
-  background: var(--surface-muted)
+  background: var(--nt-data-inset)
+  color: var(--nt-text-1)
+  font-family: var(--nt-font-mono)
   font-size: 12px
   line-height: 1.6
   text-align: left

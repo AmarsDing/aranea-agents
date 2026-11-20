@@ -92,10 +92,7 @@ export function useEvaluationPage() {
   const datasetChanged = computed(() => {
     const hashes = comparisons.value.map((c) => c.dataset_hash).filter((h) => h);
     const versions = comparisons.value.map((c) => c.dataset_version).filter((v) => v);
-    return (
-      (hashes.length > 1 && new Set(hashes).size > 1) ||
-      (versions.length > 1 && new Set(versions).size > 1)
-    );
+    return (hashes.length > 1 && new Set(hashes).size > 1) || (versions.length > 1 && new Set(versions).size > 1);
   });
   const { gateOpen, gateLoading, gateSaving, gateForm, openGate, saveGate } = useEvaluationGate();
   const { openMonitorTab } = useMonitorRunNavigation();
@@ -136,14 +133,6 @@ export function useEvaluationPage() {
   const runColumns = EVAL_RUN_TABLE_COLUMNS;
   const resultColumns = EVAL_RESULT_TABLE_COLUMNS;
   const caseColumns = EVAL_CASE_TABLE_COLUMNS;
-
-  function runStatusColor(status: string) {
-    if (status === 'completed') return 'positive';
-    if (status === 'failed') return 'negative';
-    if (status === 'running') return 'warning';
-    if (status === 'cancelled') return 'grey';
-    return 'grey';
-  }
 
   async function loadAgentOptions() {
     await evaluationStore.loadAgentOptions();
@@ -339,7 +328,10 @@ export function useEvaluationPage() {
       editDatasetOpen.value = false;
       $q.notify({ type: 'positive', message: t('evaluationPage.datasetUpdated') });
     } catch (e) {
-      $q.notify({ type: 'negative', message: e instanceof Error ? e.message : t('evaluationPage.datasetUpdateFailed') });
+      $q.notify({
+        type: 'negative',
+        message: e instanceof Error ? e.message : t('evaluationPage.datasetUpdateFailed'),
+      });
     } finally {
       createLoading.value = false;
     }
@@ -857,7 +849,6 @@ export function useEvaluationPage() {
     runForm,
     runColumns,
     resultColumns,
-    runStatusColor,
     loadDatasets,
     selectDataset,
     submitCreate,

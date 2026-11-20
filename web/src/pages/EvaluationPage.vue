@@ -1,39 +1,33 @@
 <template>
-  <q-page class="app-standard-page app-registry-page evaluation-page">
-    <AppPageHero
-      kicker="EvalSet / metrics"
-      title="评估管理"
-      subtitle="EvalSet + FrameworkBridge（LLM UserSim / 扩展指标 / 趋势对比已接入）。"
-    >
+  <!--
+    Harness › 运行与治理 › 质量评估（2026-11-19 重排）：回答「质量有没有退化」。
+    数据集（用例）→ 选 Agent 跑评估 → 看得分、失败归类与趋势 → 发布门禁把关上线。
+  -->
+  <q-page class="app-standard-page app-registry-page op-page evaluation-page">
+    <AppPageHero :title="$t('ops.evaluation.title')" :subtitle="$t('ops.evaluation.hint')">
       <template #actions>
-        <q-btn color="primary" rounded unelevated no-caps icon="add" :label="$t('evaluationPage.createDataset')" @click="createOpen = true" />
         <q-btn
-          outline
-          rounded
-          no-caps
           color="primary"
-          icon="gavel"
-          :label="$t('evaluationPage.gateOpen')"
-          @click="openGate"
+          unelevated
+          no-caps
+          icon="add"
+          :label="$t('evaluationPage.createDataset')"
+          @click="createOpen = true"
         />
+        <q-btn flat no-caps icon="gavel" :label="$t('evaluationPage.gateOpen')" @click="openGate" />
         <q-btn
-          outline
-          rounded
-          no-caps
-          color="primary"
+          flat
+          round
+          dense
           icon="refresh"
-          label="刷新"
+          :aria-label="$t('ops.common.refresh')"
           :loading="loading"
           @click="loadDatasets"
         />
       </template>
     </AppPageHero>
 
-    <AppStatePanel
-      v-if="pageState === 'loading'"
-      variant="loading"
-      :rows="4"
-    />
+    <AppStatePanel v-if="pageState === 'loading'" variant="loading" :rows="4" />
     <AppStatePanel
       v-else-if="pageState === 'error'"
       variant="error"
@@ -42,17 +36,20 @@
       action-icon="refresh"
       @action="loadDatasets"
     />
-    <AppStatePanel
-      v-else-if="pageState === 'forbidden'"
-      variant="forbidden"
-    />
-    <AppStatePanel
+    <AppStatePanel v-else-if="pageState === 'forbidden'" variant="forbidden" />
+    <OpsGuide
       v-else-if="pageState === 'empty'"
-      variant="empty"
-      title="暂无评估数据集"
-      description="新建一个 EvalSet 后即可补充用例、启动评估。"
+      data-state="empty"
+      icon="fact_check"
+      :title="$t('ops.evaluation.guide.title')"
+      :description="$t('ops.evaluation.guide.desc')"
+      :steps="[
+        $t('ops.evaluation.guide.step1'),
+        $t('ops.evaluation.guide.step2'),
+        $t('ops.evaluation.guide.step3'),
+        $t('ops.evaluation.guide.step4'),
+      ]"
       :action-label="$t('evaluationPage.createDataset')"
-      action-icon="add"
       @action="createOpen = true"
     />
 
@@ -82,7 +79,16 @@
               <div class="text-h6">{{ selectedDataset.name }}</div>
               <div class="text-caption text-grey-7">{{ selectedDataset.description || '无描述' }}</div>
             </div>
+            <!-- 主操作只留「启动评估」与「用例」，其余收进「更多」 -->
             <div class="app-actions-bar app-actions-bar--start">
+              <q-btn
+                unelevated
+                no-caps
+                color="primary"
+                icon="play_arrow"
+                :label="$t('ops.evaluation.run')"
+                @click="runOpen = true"
+              />
               <q-btn
                 outline
                 no-caps
@@ -91,32 +97,29 @@
                 :label="$t('evaluationPage.manageCases')"
                 @click="openCases"
               />
-              <q-btn
-                outline
-                no-caps
-                color="primary"
-                icon="history"
-                :label="$t('evaluationPage.manageVersions')"
-                @click="openVersions"
-              />
-              <q-btn
-                outline
-                no-caps
-                color="primary"
-                icon="edit"
-                :label="$t('evaluationPage.editDataset')"
-                @click="openEditDataset"
-              />
-              <q-btn
-                outline
-                no-caps
-                color="primary"
-                icon="upload_file"
-                :label="$t('evaluationPage.uploadCases')"
-                @click="uploadOpen = true"
-              />
-              <q-btn outline no-caps color="primary" icon="play_arrow" label="启动评估" @click="runOpen = true" />
-              <q-btn flat no-caps color="negative" icon="delete" label="删除" @click="confirmDeleteDataset" />
+              <q-btn flat round dense icon="more_vert" :aria-label="$t('ops.common.more')">
+                <q-menu anchor="bottom right" self="top right">
+                  <q-list dense>
+                    <q-item v-close-popup clickable @click="uploadOpen = true">
+                      <q-item-section avatar><q-icon name="upload_file" /></q-item-section>
+                      <q-item-section>{{ $t('evaluationPage.uploadCases') }}</q-item-section>
+                    </q-item>
+                    <q-item v-close-popup clickable @click="openVersions">
+                      <q-item-section avatar><q-icon name="history" /></q-item-section>
+                      <q-item-section>{{ $t('evaluationPage.manageVersions') }}</q-item-section>
+                    </q-item>
+                    <q-item v-close-popup clickable @click="openEditDataset">
+                      <q-item-section avatar><q-icon name="edit" /></q-item-section>
+                      <q-item-section>{{ $t('evaluationPage.editDataset') }}</q-item-section>
+                    </q-item>
+                    <q-separator />
+                    <q-item v-close-popup clickable class="text-negative" @click="confirmDeleteDataset">
+                      <q-item-section avatar><q-icon name="delete" /></q-item-section>
+                      <q-item-section>{{ $t('ops.evaluation.deleteDataset') }}</q-item-section>
+                    </q-item>
+                  </q-list>
+                </q-menu>
+              </q-btn>
             </div>
           </q-card-section>
           <q-separator />
@@ -139,9 +142,9 @@
               </template>
               <template #body-cell-status="props">
                 <q-td :props="props">
-                  <q-chip dense :color="runStatusColor(props.row.status)" text-color="white" size="sm">{{
-                    props.row.status
-                  }}</q-chip>
+                  <span class="op-tag" :class="`op-tag--${runTone(props.row.status)}`">{{
+                    runLabel(props.row.status)
+                  }}</span>
                 </q-td>
               </template>
               <template #body-cell-actions="props">
@@ -250,13 +253,13 @@
     />
     <evaluation-cases-dialog
       v-model:open="casesOpen"
+      v-model:edit-input="caseEditInput"
+      v-model:edit-expected="caseEditExpected"
       :rows="cases"
       :columns="caseColumns"
       :loading="casesLoading"
       :saving="casesSaving"
       :edit-id="caseEditId"
-      v-model:edit-input="caseEditInput"
-      v-model:edit-expected="caseEditExpected"
       @edit="startEditCase"
       @remove="confirmDeleteCase"
       @save="saveCase"
@@ -336,6 +339,7 @@ import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import AppPageHero from '../components/layout/AppPageHero.vue';
 import AppStatePanel from '../components/common/AppStatePanel.vue';
+import OpsGuide from '../components/ops/OpsGuide.vue';
 import AppRegistryTable from '../components/layout/AppRegistryTable.vue';
 import AppRegistryPagination from '../components/layout/AppRegistryPagination.vue';
 import EvaluationAnalyticsPanel from '../components/evaluation/EvaluationAnalyticsPanel.vue';
@@ -351,7 +355,19 @@ import EvaluationVersionsDialog from '../components/evaluation/EvaluationVersion
 import { useEvaluationPage } from '../features/evaluation/useEvaluationPage';
 import { resolvePageState } from './pageState';
 
-const { t } = useI18n();
+const { t, te } = useI18n();
+
+/** 运行状态：中文标签 + 语义色（原来是英文原值 + 实心彩块） */
+function runTone(status: string) {
+  if (status === 'completed') return 'ok';
+  if (status === 'failed') return 'alert';
+  if (status === 'running' || status === 'pending') return 'run';
+  return 'off';
+}
+function runLabel(status: string) {
+  const key = `ops.evaluation.status.${status}`;
+  return te(key) ? t(key) : status;
+}
 
 const {
   datasets,
@@ -386,7 +402,6 @@ const {
   runForm,
   runColumns,
   resultColumns,
-  runStatusColor,
   loadDatasets,
   selectDataset,
   submitCreate,

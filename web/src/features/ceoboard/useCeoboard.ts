@@ -9,6 +9,7 @@
 import { onMounted, onUnmounted, ref } from 'vue';
 import { i18n } from '../../i18n';
 import { createCeoboardService } from '../../services';
+import { parseKratosApiError } from '../../utils/kratosError';
 import { fetchCompanySnapshot } from './company';
 import { normalizeNodeDetail, normalizeOverview } from './normalize';
 import type { CompanySnapshot, NodeDetail, Overview } from './types';
@@ -24,20 +25,21 @@ export function useCeoboard() {
   const ov = ref<Overview | null>(null);
   const snap = ref<CompanySnapshot | null>(null);
   const err = ref('');
+  /** 后端没有启用流程看板（配置里 ceoboard 一节未打开，路由不存在 → 404）：页面显示接入引导，不当成故障。 */
+  const notConfigured = ref(false);
   const snapErr = ref('');
   const drawer = ref<NodeDetail | null>(null);
   let timer: number | undefined;
 
   async function refresh() {
     // 两个数据源互不阻塞：流程总览失败不影响经营快照展示，反之亦然。
-    const [ovRes, snapRes] = await Promise.allSettled([
-      svc.GetOverview({}),
-      fetchCompanySnapshot(),
-    ]);
+    const [ovRes, snapRes] = await Promise.allSettled([svc.GetOverview({}), fetchCompanySnapshot()]);
     if (ovRes.status === 'fulfilled') {
       ov.value = normalizeOverview(ovRes.value);
       err.value = '';
+      notConfigured.value = false;
     } else {
+      notConfigured.value = parseKratosApiError(ovRes.reason).status === 404;
       err.value = i18n.global.t('ceoboard.page.backendUnreachable', { msg: errMessage(ovRes.reason) });
     }
     if (snapRes.status === 'fulfilled') {
@@ -84,5 +86,5 @@ export function useCeoboard() {
     if (timer !== undefined) window.clearInterval(timer);
   });
 
-  return { ov, snap, err, snapErr, drawer, refresh, openNode, closeDrawer };
+  return { ov, snap, err, snapErr, notConfigured, drawer, refresh, openNode, closeDrawer };
 }

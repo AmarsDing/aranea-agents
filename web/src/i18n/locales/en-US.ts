@@ -7918,7 +7918,7 @@ export default {
       'Once enabled, the platform automatically observes runtime signals (error clusters / perf bottlenecks / eval regressions / test failures), generates patches, and verifies + applies them under governance rules.',
     disabledConfigTitle: 'Add the following to the backend configs/config.yaml and restart the service:',
     disabledConfigSnippet:
-      'self_improvement:\n  enabled: true\n  sandbox:\n    repo_root: <platform repo root, e.g. f:\\aranea-agents>',
+      'self_improvement:\n  enabled: true\n  sandbox:\n    repo_root: ""  # empty = backend working directory (the repo root in host mode)',
     disabledRecheck: 'Re-check',
     prereqTitle: 'Prerequisites not met — the loop will not actually run:',
     prereqLlm: 'Default Refine LLM is not configured (System Settings); diagnose / patch / critic stages will fail',
@@ -8304,6 +8304,7 @@ export default {
       opportunity: 'Listing confirmation',
       dead_letter: 'Dead letter',
       cron_failure: 'Scheduled job failure',
+      monitor_alert: 'Platform alert',
     },
     timeline: {
       title: 'Today',

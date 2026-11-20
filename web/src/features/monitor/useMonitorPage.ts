@@ -6,7 +6,6 @@ import { useI18n } from 'vue-i18n';
 import { useMonitorStore } from '../../stores/monitor';
 import type { AuditQuery, MonitorTrace } from './types';
 import { AUDIT_DEFAULT_PAGE_SIZE } from '../constants/queryLimits';
-import { useRunnerMetrics } from './useRunnerMetrics';
 import { useMonitorRunNavigation } from './useMonitorRunNavigation';
 import { useMonitorRealtimeEvents } from './useMonitorRealtimeEvents';
 import { useMonitorTraceFlow } from './useMonitorTraceFlow';
@@ -14,16 +13,17 @@ import { useMonitorLogStreamPanel } from './useMonitorLogStreamPanel';
 import { useMonitorTraces } from './useMonitorTraces';
 import { useMonitorRunsLive } from './useMonitorRunsLive';
 
-const VALID_TABS = ['usage', 'alerts', 'audit', 'events', 'traces', 'logs', 'desktop'] as const;
+// 追踪与日志（2026-11-19）：原 usage / alerts 两个页签挪到「健康与告警」(/monitor/health)，旧链接由路由转过去
+const VALID_TABS = ['traces', 'events', 'logs', 'audit', 'desktop'] as const;
 
 export function useMonitorPage() {
   const route = useRoute();
   const router = useRouter();
   const { t } = useI18n();
   const monitorStore = useMonitorStore();
-  const { auditLogs, auditTotal, selfCheckReports, selfCheckLoading, selfCheckTriggering } = storeToRefs(monitorStore);
-  const initialTab = String(route.query.tab || 'usage');
-  const tab = ref(VALID_TABS.includes(initialTab as (typeof VALID_TABS)[number]) ? initialTab : 'usage');
+  const { auditLogs, auditTotal } = storeToRefs(monitorStore);
+  const initialTab = String(route.query.tab || 'traces');
+  const tab = ref(VALID_TABS.includes(initialTab as (typeof VALID_TABS)[number]) ? initialTab : 'traces');
   const highlightUsageEventId = ref(String(route.query.usage_event_id || '').trim());
   const loadingAudit = ref(false);
   const error = ref('');
@@ -34,14 +34,6 @@ export function useMonitorPage() {
 
   const loading = computed(() => loadingAudit.value || realtimeEvents.historyLoading.value || runs.loading.value);
 
-  // ── Runner Metrics (was in MonitorRunnerMetrics.vue) ──
-  const {
-    runnerMetrics,
-    runnerLoading,
-    windowMinutes: runnerWindowMinutes,
-    reload: reloadRunnerMetrics,
-    runnerError,
-  } = useRunnerMetrics(60);
   const { openRunsTab } = useMonitorRunNavigation();
 
   // ── Realtime Events (pulse 条 + 历史表，见 useMonitorRealtimeEvents) ──
@@ -51,17 +43,6 @@ export function useMonitorPage() {
   const traceDetail = ref<MonitorTrace | null>(null);
   const traceDetailOpen = ref(false);
   const traceFlow = useMonitorTraceFlow(traceDetail, traceDetailOpen);
-
-  // ── SelfCheck ──
-  const selfCheckLatestReport = computed(() => selfCheckReports.value[0] ?? null);
-
-  function loadSelfCheckReports() {
-    void monitorStore.loadSelfCheckReports();
-  }
-
-  function triggerSelfCheckAction() {
-    void monitorStore.triggerSelfCheckAction();
-  }
 
   // ── Log Stream (was in LogStreamPanel.vue) ──
   const logStream = useMonitorLogStreamPanel();
@@ -80,9 +61,20 @@ export function useMonitorPage() {
     else if (tab.value === 'traces') void runs.refresh();
   }
 
-  onMounted(() => {
-    void loadAll();
+  /**
+   * 下钻进来的定位参数：trace / trace_id（运行 ID）、session（会话 ID）、status（只看某种状态）。
+   * 运行 ID 与会话 ID 都走关键词（服务端关键词匹配 trace_key 与 session_id）；带运行 ID 时找到就直接打开详情。
+   */
+  const deepTrace = String(route.query.trace || route.query.trace_id || '').trim();
+  const deepSession = String(route.query.session || '').trim();
+  if (deepTrace || deepSession) runs.keyword.value = deepTrace || deepSession;
+  if (route.query.status) runs.status.value = String(route.query.status);
+
+  onMounted(async () => {
     refreshTimer = setInterval(refreshActiveTab, autoRefreshMs);
+    await loadAll();
+    const hit = deepTrace ? runs.rows.value.find((r) => r.id === deepTrace) : undefined;
+    if (hit) void traceFlow.openTraceDetail(hit);
   });
 
   onUnmounted(() => {
@@ -94,7 +86,7 @@ export function useMonitorPage() {
 
   watch(tab, async (value) => {
     if (!VALID_TABS.includes(value as (typeof VALID_TABS)[number])) {
-      tab.value = 'usage';
+      tab.value = 'traces';
       return;
     }
     await router.replace({ query: { ...route.query, tab: value } });
@@ -124,7 +116,7 @@ export function useMonitorPage() {
   async function loadAll() {
     error.value = '';
     try {
-      await Promise.all([loadAudit(), loadEvents(), runs.refresh(), reloadRunnerMetrics()]);
+      await Promise.all([loadAudit(), loadEvents(), runs.refresh()]);
     } catch (err) {
       error.value = err instanceof Error ? err.message : '加载监控数据失败';
     }
@@ -191,7 +183,7 @@ export function useMonitorPage() {
     auditRows: auditLogs,
     auditTotal,
     loadingAudit,
-    error: computed(() => error.value || runnerError.value || realtimeEvents.historyError.value),
+    error: computed(() => error.value || realtimeEvents.historyError.value),
     loading,
     loadAll,
     loadAudit,
@@ -211,11 +203,6 @@ export function useMonitorPage() {
     runsLiveState: runsLive.state,
     loadTraces: runs.refresh,
     resetTraceFilters: runs.resetFilters,
-    // Runner metrics
-    runnerMetrics,
-    runnerLoading,
-    runnerWindowMinutes,
-    reloadRunnerMetrics,
     openRunsTab,
     // Realtime events (pulse + history + actions，含 openChatSession/openLinkedRun)
     ...realtimeEvents,
@@ -225,12 +212,6 @@ export function useMonitorPage() {
     traceDetailOpen,
     // Log stream
     ...logStream,
-    // SelfCheck
-    selfCheckLoading,
-    selfCheckTriggering,
-    selfCheckLatestReport,
-    loadSelfCheckReports,
-    triggerSelfCheckAction,
     // Notify & confirm
     notify,
     confirmClearEvents,

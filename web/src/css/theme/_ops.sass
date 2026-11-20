@@ -1,0 +1,547 @@
+// Harness › 运行与治理（实时运转 / 健康与告警 / 追踪与日志 / 流程健康 / 用量成本 / 质量评估 / 自我改进 / Hook 规则）共用版式。
+// 类名 op- 前缀，取值只走 --nt-* 令牌；材质与「连接」领域（cx-）、今日页一致：毛玻璃面板 + 淡描边 + 顶缘内高光。
+// 版式：一行页头 → 四格状态 → 面板栅格；面板里是一条一块的行，空态是虚线取景框。
+@import "./_nt-tokens.css"
+// 材质令牌 --nt-glass-panel / --nt-tile-* 来自 2026-11-19 的面板材质调整；带回退值，皮肤没这几个令牌时退到 glass-bg / data-raised / accent-soft。
+
+.op-page
+  // 借用概览页的趋势图组件（OverviewTrendBoard）时，它要的材质别名在这里给出，取值与 op-panel 一致
+  --ov-shell: var(--nt-glass-panel, var(--nt-glass-bg))
+  --ov-shell-border: var(--nt-glass-border)
+  --ov-hairline: var(--nt-border-1)
+  --ov-inset: var(--nt-data-inset)
+  --ov-series-calls: var(--nt-info)
+  --ov-series-cost: var(--nt-ai)
+  display: flex
+  flex-direction: column
+  gap: var(--nt-space-4)
+  padding-bottom: max(var(--nt-space-5), var(--app-dock-space, 0px))
+
+.op-num
+  font-family: var(--nt-font-mono)
+  font-variant-numeric: tabular-nums
+
+// ——— 四格状态：标签 / 大数 / 一句话；顶缘一道语义色 ———
+.op-kpis
+  display: grid
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr))
+  gap: var(--nt-space-3)
+
+.op-kpi
+  --op-tone: var(--nt-accent)
+  position: relative
+  display: flex
+  flex-direction: column
+  gap: 2px
+  min-width: 0
+  padding: var(--nt-space-3) var(--nt-space-4)
+  background: var(--nt-glass-panel, var(--nt-glass-bg))
+  border: 1px solid var(--nt-glass-border)
+  border-radius: var(--nt-radius-m)
+  box-shadow: inset 0 1px 0 var(--nt-glass-highlight)
+  font: inherit
+  text-align: left
+
+  &::before
+    position: absolute
+    top: -1px
+    right: var(--nt-space-4)
+    left: var(--nt-space-4)
+    height: 3px
+    border-radius: 0 0 var(--nt-radius-s) var(--nt-radius-s)
+    background: var(--op-tone)
+    content: ''
+
+  &--ok
+    --op-tone: var(--nt-success)
+
+  &--watch
+    --op-tone: var(--nt-warn)
+
+  &--alert
+    --op-tone: var(--nt-danger)
+
+  &--off
+    --op-tone: var(--nt-text-3)
+
+  &__label
+    color: var(--nt-text-2)
+    font-size: var(--nt-fs-caption)
+
+  &__value
+    color: var(--nt-text-0)
+    font-size: var(--nt-fs-num-lg)
+    font-weight: 600
+    line-height: 1.3
+
+  &__sub
+    overflow: hidden
+    color: var(--nt-text-3)
+    font-size: var(--nt-fs-caption)
+    text-overflow: ellipsis
+    white-space: nowrap
+
+// 可点的状态格（点了筛选或跳转）
+button.op-kpi
+  color: inherit
+  cursor: pointer
+  transition: background var(--nt-transition), border-color var(--nt-transition)
+
+  &:hover
+    background: var(--nt-tile-hover, var(--nt-accent-soft))
+
+  &.is-active
+    background: var(--nt-accent-soft)
+    border-color: var(--nt-accent-border)
+
+  &:focus-visible
+    outline: 2px solid var(--nt-focus-ring, var(--nt-accent))
+    outline-offset: 4px
+
+// ——— 栅格 ———
+.op-grid
+  display: grid
+  grid-template-columns: repeat(2, minmax(0, 1fr))
+  gap: var(--nt-space-4)
+  align-items: start
+
+.op-grid--health
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr)
+
+.op-grid--wide-left
+  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr)
+
+// ——— 面板 ———
+.op-panel
+  min-width: 0
+  padding: var(--nt-space-panel)
+  background: var(--nt-glass-panel, var(--nt-glass-bg))
+  border: 1px solid var(--nt-glass-border)
+  border-radius: var(--nt-radius-l)
+  box-shadow: inset 0 1px 0 var(--nt-glass-highlight), var(--nt-shadow-depth)
+  backdrop-filter: var(--nt-glass-filter)
+
+.op-panel__head
+  display: flex
+  flex-wrap: wrap
+  align-items: center
+  gap: var(--nt-space-2) var(--nt-space-3)
+  margin: 0 0 var(--nt-space-3)
+  padding-bottom: var(--nt-space-3)
+  border-bottom: 1px solid var(--nt-border-1)
+
+.op-panel__title
+  margin: 0
+  color: var(--nt-text-1)
+  font-size: var(--nt-fs-title)
+  font-weight: 600
+  line-height: 1.4
+
+.op-panel__count
+  margin-left: var(--nt-space-2)
+  color: var(--nt-text-3)
+  font-weight: 400
+
+.op-panel__meta
+  margin-left: auto
+  color: var(--nt-text-3)
+  font-size: var(--nt-fs-caption)
+
+.op-panel__sub
+  margin: var(--nt-space-4) 0 var(--nt-space-2)
+  color: var(--nt-text-2)
+  font-size: var(--nt-fs-caption)
+  font-weight: 600
+
+// 嵌进面板的旧组件（矩阵、规则编辑）去掉它们自己的外框，只留面板一层
+.op-matrix.metrics-matrix
+  margin: 0
+
+.op-panel > .monitor-alert-rules-page,
+.op-panel .q-card
+  background: transparent
+  box-shadow: none
+
+// ——— 行 ———
+.op-list
+  display: flex
+  flex-direction: column
+  gap: var(--nt-space-2)
+  margin: 0
+  padding: 0
+  list-style: none
+
+.op-row
+  display: flex
+  align-items: center
+  gap: var(--nt-space-3)
+  min-height: 44px
+  padding: var(--nt-space-2) var(--nt-space-3)
+  background: var(--nt-tile-bg, var(--nt-data-raised))
+  border: 1px solid var(--nt-border-0)
+  border-radius: var(--nt-radius-m)
+
+button.op-row,
+a.op-row
+  width: 100%
+  color: inherit
+  font: inherit
+  text-align: left
+  text-decoration: none
+  cursor: pointer
+  transition: background var(--nt-transition), border-color var(--nt-transition)
+
+  &:hover
+    background: var(--nt-tile-hover, var(--nt-accent-soft))
+    border-color: var(--nt-border-1)
+
+  &:focus-visible
+    outline: 2px solid var(--nt-focus-ring, var(--nt-accent))
+    outline-offset: 2px
+
+.op-row__main
+  display: flex
+  flex: 1
+  flex-direction: column
+  min-width: 0
+
+.op-row__title
+  overflow: hidden
+  color: var(--nt-text-1)
+  text-overflow: ellipsis
+  white-space: nowrap
+
+.op-row__sub
+  overflow: hidden
+  color: var(--nt-text-3)
+  font-size: var(--nt-fs-caption)
+  text-overflow: ellipsis
+  white-space: nowrap
+
+.op-row__time
+  flex: none
+  color: var(--nt-text-3)
+  font-size: var(--nt-fs-caption)
+
+.op-row__num
+  flex: none
+  min-width: 64px
+  color: var(--nt-text-1)
+  text-align: right
+
+// 排行行：名称下面一道占比条（相对第一名）
+.op-share__bar
+  display: block
+  height: 4px
+  margin-top: var(--nt-space-1)
+  overflow: hidden
+  border-radius: 999px
+  background: var(--nt-border-0)
+
+  > i
+    display: block
+    height: 100%
+    border-radius: inherit
+    background: var(--nt-accent)
+
+// 明细筛选：一行排开，放不下换行，不横向滚动
+.op-filters
+  display: flex
+  flex-wrap: wrap
+  align-items: center
+  gap: var(--nt-space-2)
+  margin-bottom: var(--nt-space-3)
+
+  &__field
+    flex: 1 1 128px
+    min-width: 120px
+    max-width: 180px
+
+// 失败原因：涉及的 Agent（可点进设置）排在说明下面
+.op-fail__agents
+  display: flex
+  flex-wrap: wrap
+  gap: var(--nt-space-1) var(--nt-space-3)
+  margin-top: var(--nt-space-1)
+
+// ——— 状态点 / 小标 ———
+.op-dot
+  flex: none
+  width: 8px
+  height: 8px
+  border-radius: 999px
+  background: var(--nt-text-3)
+
+  &--ok
+    background: var(--nt-success)
+
+  &--watch
+    background: var(--nt-warn)
+
+  &--alert
+    background: var(--nt-danger)
+
+  &--run
+    background: var(--nt-accent)
+    box-shadow: 0 0 0 3px var(--nt-accent-soft)
+
+.op-tag
+  display: inline-flex
+  flex: none
+  align-items: center
+  gap: var(--nt-space-1)
+  padding: 0 var(--nt-space-2)
+  background: color-mix(in srgb, currentColor 14%, transparent)
+  border: 1px solid color-mix(in srgb, currentColor 30%, transparent)
+  border-radius: var(--nt-radius-s)
+  color: var(--nt-text-2)
+  font-size: var(--nt-fs-caption)
+  line-height: 20px
+  white-space: nowrap
+
+  &--ok
+    color: var(--nt-success)
+
+  &--watch
+    color: var(--nt-warn)
+
+  &--alert
+    color: var(--nt-danger)
+
+  &--run
+    color: var(--nt-accent)
+
+  &--off
+    color: var(--nt-text-3)
+
+.op-chips
+  display: flex
+  flex-wrap: wrap
+  gap: var(--nt-space-2)
+  margin: 0
+  padding: 0
+  list-style: none
+
+// ——— 提示与空态 ———
+.op-note
+  margin: 0 0 var(--nt-space-2)
+  color: var(--nt-text-3)
+  font-size: var(--nt-fs-caption)
+
+  &--danger
+    color: var(--nt-danger)
+
+  &--warn
+    color: var(--nt-warn)
+
+.op-empty
+  margin: 0
+  padding: var(--nt-space-5) var(--nt-space-4)
+  background: var(--nt-tile-bg, var(--nt-data-raised))
+  border: 1px dashed var(--nt-border-1)
+  border-radius: var(--nt-radius-m)
+  color: var(--nt-text-3)
+  text-align: center
+
+// ——— 实时运转 ———
+.op-col
+  display: flex
+  flex-direction: column
+  gap: var(--nt-space-4)
+  min-width: 0
+
+.op-link
+  color: var(--nt-accent)
+  font-size: var(--nt-fs-caption)
+  text-decoration: none
+
+  &:hover
+    text-decoration: underline
+
+  &:focus-visible
+    outline: 2px solid var(--nt-focus-ring, var(--nt-accent))
+    outline-offset: 4px
+
+a.op-kpi
+  color: inherit
+  text-decoration: none
+  transition: background var(--nt-transition), border-color var(--nt-transition)
+
+  &:hover
+    background: var(--nt-tile-hover, var(--nt-accent-soft))
+    border-color: var(--nt-border-1)
+
+  &:focus-visible
+    outline: 2px solid var(--nt-focus-ring, var(--nt-accent))
+    outline-offset: 4px
+
+.op-kpi--run
+  --op-tone: var(--nt-accent)
+
+.op-live-ws
+  display: inline-flex
+  align-items: center
+  gap: var(--nt-space-2)
+  color: var(--nt-text-2)
+  font-size: var(--nt-fs-caption)
+
+  &.is-off
+    color: var(--nt-danger)
+
+// 实时动态：等宽时间 + 谁 + 一句话；只在面板里滚
+.op-feed__list
+  display: flex
+  flex-direction: column
+  max-height: 420px
+  margin: 0
+  padding: 0
+  overflow-y: auto
+  list-style: none
+
+.op-feed__line
+  display: grid
+  grid-template-columns: auto auto minmax(0, 1fr)
+  gap: var(--nt-space-2)
+  align-items: baseline
+  padding: var(--nt-space-1) 0
+  border-bottom: 1px solid var(--nt-border-0)
+  font-size: var(--nt-fs-caption)
+
+  &--you .op-feed__text
+    color: var(--nt-success)
+
+  &--gold .op-feed__text
+    color: var(--nt-warn)
+
+  &--error .op-feed__text
+    color: var(--nt-danger)
+
+.op-feed__time
+  color: var(--nt-text-3)
+
+.op-feed__who
+  color: var(--nt-accent)
+  white-space: nowrap
+
+.op-feed__text
+  overflow: hidden
+  color: var(--nt-text-1)
+  text-overflow: ellipsis
+  white-space: nowrap
+
+// 在岗：部门一行，干活中的 Agent 以小标列出
+.op-dept__agents
+  display: flex
+  flex-wrap: wrap
+  gap: var(--nt-space-1)
+  margin-top: var(--nt-space-1)
+
+// 流程健康 › 流程页签：沿用经营驾驶舱的泳道组件，一列排开
+.op-flows
+  display: flex
+  flex-direction: column
+  gap: var(--nt-space-3)
+
+// ——— 空态 / 未接入引导（OpsGuide）———
+.op-guide
+  display: flex
+  flex-direction: column
+  gap: var(--nt-space-4)
+  padding: var(--nt-space-5)
+  background: var(--nt-glass-panel, var(--nt-glass-bg))
+  border: 1px solid var(--nt-glass-border)
+  border-radius: var(--nt-radius-l)
+
+  &__head
+    display: flex
+    align-items: flex-start
+    gap: var(--nt-space-4)
+
+  &__icon
+    display: grid
+    flex: none
+    place-items: center
+    width: 44px
+    height: 44px
+    border: 1px solid var(--nt-accent-border)
+    border-radius: var(--nt-radius-m)
+    background: var(--nt-accent-soft)
+    color: var(--nt-accent)
+
+  &__title
+    margin: 0
+    color: var(--nt-text-0)
+    font-size: var(--nt-fs-title)
+    font-weight: 600
+    line-height: 1.4
+
+  &__desc
+    max-width: 72ch
+    margin: var(--nt-space-1) 0 0
+    color: var(--nt-text-2)
+    line-height: 1.6
+
+  &__steps
+    display: grid
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr))
+    gap: var(--nt-space-3)
+    margin: 0
+    padding: 0
+    list-style: none
+
+    li
+      display: flex
+      align-items: flex-start
+      gap: var(--nt-space-2)
+      padding: var(--nt-space-3)
+      background: var(--nt-tile-bg, var(--nt-data-raised))
+      border-radius: var(--nt-radius-m)
+      color: var(--nt-text-1)
+      line-height: 1.5
+
+  &__num
+    display: grid
+    flex: none
+    place-items: center
+    width: 22px
+    height: 22px
+    border: 1px solid var(--nt-accent-border)
+    border-radius: var(--nt-radius-pill)
+    color: var(--nt-accent)
+    font-family: var(--nt-font-mono)
+    font-size: var(--nt-fs-micro)
+
+  &__actions
+    display: flex
+    flex-wrap: wrap
+    align-items: center
+    gap: var(--nt-space-3)
+
+// ——— 页内页签（追踪与日志、流程健康）：一行文字页签，选中下面一道冰青 ———
+.op-tabs.q-tabs
+  border-bottom: 1px solid var(--nt-border-1)
+
+  .q-tab
+    min-height: 40px
+    padding: 0 var(--nt-space-4)
+    color: var(--nt-text-2)
+
+  .q-tab--active
+    color: var(--nt-text-0)
+
+.op-tab-panels.q-tab-panels
+  background: transparent
+
+  > .q-panel-parent > .q-panel > .q-tab-panel
+    padding: var(--nt-space-4) 0 0
+
+// ——— 窄屏 ———
+@media (max-width: 799px)
+  .op-guide
+    padding: var(--nt-space-4)
+
+@media (max-width: 1099px)
+  .op-grid,
+  .op-grid--health,
+  .op-grid--wide-left
+    grid-template-columns: minmax(0, 1fr)
