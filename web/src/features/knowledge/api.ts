@@ -72,6 +72,7 @@ function mapCollection(raw: unknown): KnowledgeCollection {
     sync_state: pickStr(r, 'sync_state', 'syncState'),
     last_sync_at: pickStr(r, 'last_sync_at', 'lastSyncAt'),
     vault_backend: pickStr(r, 'vault_backend', 'vaultBackend'),
+    space: pickStr(r, 'space', 'space'),
   };
 }
 
@@ -177,8 +178,47 @@ export async function createCollection(input: CreateCollectionInput): Promise<Kn
     embeddingModel: input.embedding_model ?? '',
     rootPath: input.root_path,
     vaultBackend: input.vault_backend ?? 'team',
+    space: input.space ?? '',
   });
   return mapCollection(raw);
+}
+
+/** 工作台 › 资料：把资料库挪到「我的资料 / 公司资料」。 */
+export async function updateCollectionSpace(id: string, space: 'mine' | 'company'): Promise<KnowledgeCollection> {
+  return mapCollection(await svc.UpdateCollectionSpace({ id, space }));
+}
+
+// ---------- 本机动作（工作台 › 资料 P1；后端开 FEATURES_LOCAL_REVEAL_ENABLED 才有这几个路由，只给管理员） ----------
+
+export type LocalDirListing = {
+  /** 当前目录；空 = 根层（主目录 + 各盘符） */
+  path: string;
+  /** 上一级；空 = 回到根层 */
+  parent: string;
+  dirs: Array<{ name: string; path: string }>;
+};
+
+/** listLocalDirs 列后端所在机器的文件夹（建库向导选本机文件夹）。 */
+export async function listLocalDirs(path = ''): Promise<LocalDirListing> {
+  const res = await kratosApi.get('/v1/knowledge/local-dirs', { params: { path }, skipErrorNotify: true });
+  const r = asRecord(res.data);
+  const dirs = Array.isArray(r.dirs) ? r.dirs.map(asRecord) : [];
+  return {
+    path: pickStr(r, 'path', 'path'),
+    parent: pickStr(r, 'parent', 'parent'),
+    dirs: dirs.map((d) => ({ name: pickStr(d, 'name', 'name'), path: pickStr(d, 'path', 'path') })),
+  };
+}
+
+/** createLocalDir 在本机 parent 下新建一个文件夹，返回新路径。 */
+export async function createLocalDir(parent: string, name: string): Promise<string> {
+  const res = await kratosApi.post('/v1/knowledge/local-dirs', { parent, name }, { skipErrorNotify: true });
+  return pickStr(asRecord(res.data), 'path', 'path');
+}
+
+/** openDocumentLocally 用本机默认程序打开资料库里的文件。412/400/501/404 由调用方改成下载。 */
+export async function openDocumentLocally(id: string): Promise<void> {
+  await kratosApi.post(`/v1/knowledge/documents/${encodeURIComponent(id)}/open-local`, {}, { skipErrorNotify: true });
 }
 
 export async function deleteCollection(id: string): Promise<void> {

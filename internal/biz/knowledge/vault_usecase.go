@@ -79,6 +79,10 @@ func (u *Usecase) CreateVault(ctx context.Context, in Collection) (Collection, e
 	default:
 		return Collection{}, ErrInvalidVaultBackend
 	}
+	in.Space = strings.TrimSpace(in.Space)
+	if in.Space != "" && !ValidSpace(in.Space) {
+		return Collection{}, apierror.BadRequest("KNOWLEDGE", "space must be mine or company: %q", in.Space)
+	}
 	in.EmbeddingModel = strings.TrimSpace(in.EmbeddingModel)
 	if in.EmbeddingModel != "" && in.Dim <= 0 {
 		in.Dim = 1536
@@ -93,6 +97,29 @@ func (u *Usecase) CreateVault(ctx context.Context, in Collection) (Collection, e
 		in.SyncState = "active"
 	}
 	return u.collections.CreateCollection(ctx, in)
+}
+
+// collectionSpaceWriter 改资料库空间的可选端口：不放进 CollectionRepo，免得每个测试替身都要补实现。
+type collectionSpaceWriter interface {
+	UpdateCollectionSpace(ctx context.Context, id, space string) error
+}
+
+// UpdateCollectionSpace 把资料库挪到「我的资料 / 公司资料」（工作台 › 资料 P1），返回更新后的库。
+func (u *Usecase) UpdateCollectionSpace(ctx context.Context, id, space string) (Collection, error) {
+	if err := u.requireRepo(); err != nil {
+		return Collection{}, err
+	}
+	if !ValidSpace(space) {
+		return Collection{}, apierror.BadRequest("KNOWLEDGE", "space must be mine or company: %q", space)
+	}
+	w, ok := u.collections.(collectionSpaceWriter)
+	if !ok {
+		return Collection{}, apierror.Unavailable("KNOWLEDGE", "collection space not supported")
+	}
+	if err := w.UpdateCollectionSpace(ctx, id, space); err != nil {
+		return Collection{}, err
+	}
+	return u.collections.GetCollection(ctx, id)
 }
 
 // ── Vault 同步（P1-3）：SyncEngine/SyncApplier 的 usecase 入口 ────────────────

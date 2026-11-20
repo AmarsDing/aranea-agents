@@ -110,7 +110,14 @@ func stripTagsFallback(raw string) string {
 // 解析层（parser.PDFToMarkdown，G-05 起步），解析失败或零文本时回退 trpc
 // reader 纯文本链路；docx 走 trpc reader；legacy 二进制 .doc 明确拒绝并给
 // 出转换指引。
-func extractOfficeText(ctx context.Context, raw []byte, source, mimeType string) (string, error) {
+func extractOfficeText(ctx context.Context, raw []byte, source, mimeType string) (text string, err error) {
+	// 第三方解析库遇到残缺文件会 panic（docxlib 缺 word/_rels 时空指针）；不接住的话，
+	// 本机资料库的同步循环会整个退出，文件夹里后面的文件都不再入库。按解析失败处理。
+	defer func() {
+		if r := recover(); r != nil {
+			text, err = "", fmt.Errorf("parse document %q: malformed file (%v)", source, r)
+		}
+	}()
 	ext := strings.ToLower(filepath.Ext(source))
 	switch ext {
 	case ".xlsx":
@@ -142,7 +149,7 @@ func extractOfficeText(ctx context.Context, raw []byte, source, mimeType string)
 		b.WriteString(d.Content)
 		b.WriteByte('\n')
 	}
-	text := strings.TrimSpace(b.String())
+	text = strings.TrimSpace(b.String())
 	if text == "" {
 		return "", fmt.Errorf("empty content extracted from %q", source)
 	}

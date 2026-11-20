@@ -55,6 +55,7 @@ const OperationKnowledgeServiceReembedDocuments = "/kratos.knowledge.v1.Knowledg
 const OperationKnowledgeServiceReindexVault = "/kratos.knowledge.v1.KnowledgeService/ReindexVault"
 const OperationKnowledgeServiceResolveGovernanceProposal = "/kratos.knowledge.v1.KnowledgeService/ResolveGovernanceProposal"
 const OperationKnowledgeServiceSearch = "/kratos.knowledge.v1.KnowledgeService/Search"
+const OperationKnowledgeServiceUpdateCollectionSpace = "/kratos.knowledge.v1.KnowledgeService/UpdateCollectionSpace"
 const OperationKnowledgeServiceUpdateDocumentContent = "/kratos.knowledge.v1.KnowledgeService/UpdateDocumentContent"
 const OperationKnowledgeServiceUpdateEmbedderConfig = "/kratos.knowledge.v1.KnowledgeService/UpdateEmbedderConfig"
 
@@ -161,6 +162,7 @@ type KnowledgeServiceHTTPServer interface {
 	ResolveGovernanceProposal(context.Context, *ResolveGovernanceProposalRequest) (*ResolveGovernanceProposalResponse, error)
 	// Search Search
 	Search(context.Context, *SearchRequest) (*SearchResponse, error)
+	UpdateCollectionSpace(context.Context, *UpdateCollectionSpaceRequest) (*KnowledgeCollection, error)
 	// UpdateDocumentContent UpdateDocumentContent saves editor body back to the vault file (G2-B5):
 	// frontmatter preserved, CAS via base_hash; conflict still writes (disk copy
 	// backed up to trash) and returns conflict=true. Triggers immediate reindex.
@@ -174,6 +176,7 @@ func RegisterKnowledgeServiceHTTPServer(s *http.Server, srv KnowledgeServiceHTTP
 	r.GET("/v1/knowledge/collections/{id}", _KnowledgeService_GetCollection0_HTTP_Handler(srv))
 	r.GET("/v1/knowledge/collections", _KnowledgeService_ListCollections0_HTTP_Handler(srv))
 	r.DELETE("/v1/knowledge/collections/{id}", _KnowledgeService_DeleteCollection0_HTTP_Handler(srv))
+	r.PATCH("/v1/knowledge/collections/{id}/space", _KnowledgeService_UpdateCollectionSpace0_HTTP_Handler(srv))
 	r.POST("/v1/knowledge/documents", _KnowledgeService_IngestDocument0_HTTP_Handler(srv))
 	r.GET("/v1/knowledge/documents", _KnowledgeService_ListDocuments0_HTTP_Handler(srv))
 	r.GET("/v1/knowledge/documents/{id}/content", _KnowledgeService_GetDocumentContent0_HTTP_Handler(srv))
@@ -291,6 +294,31 @@ func _KnowledgeService_DeleteCollection0_HTTP_Handler(srv KnowledgeServiceHTTPSe
 			return err
 		}
 		reply := out.(*emptypb.Empty)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _KnowledgeService_UpdateCollectionSpace0_HTTP_Handler(srv KnowledgeServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in UpdateCollectionSpaceRequest
+		if err := ctx.Bind(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationKnowledgeServiceUpdateCollectionSpace)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.UpdateCollectionSpace(ctx, req.(*UpdateCollectionSpaceRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*KnowledgeCollection)
 		return ctx.Result(200, reply)
 	}
 }
@@ -1176,6 +1204,7 @@ type KnowledgeServiceHTTPClient interface {
 	ResolveGovernanceProposal(ctx context.Context, req *ResolveGovernanceProposalRequest, opts ...http.CallOption) (rsp *ResolveGovernanceProposalResponse, err error)
 	// Search Search
 	Search(ctx context.Context, req *SearchRequest, opts ...http.CallOption) (rsp *SearchResponse, err error)
+	UpdateCollectionSpace(ctx context.Context, req *UpdateCollectionSpaceRequest, opts ...http.CallOption) (rsp *KnowledgeCollection, err error)
 	// UpdateDocumentContent UpdateDocumentContent saves editor body back to the vault file (G2-B5):
 	// frontmatter preserved, CAS via base_hash; conflict still writes (disk copy
 	// backed up to trash) and returns conflict=true. Triggers immediate reindex.
@@ -1707,6 +1736,19 @@ func (c *KnowledgeServiceHTTPClientImpl) Search(ctx context.Context, in *SearchR
 	opts = append(opts, http.Operation(OperationKnowledgeServiceSearch))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *KnowledgeServiceHTTPClientImpl) UpdateCollectionSpace(ctx context.Context, in *UpdateCollectionSpaceRequest, opts ...http.CallOption) (*KnowledgeCollection, error) {
+	var out KnowledgeCollection
+	pattern := "/v1/knowledge/collections/{id}/space"
+	path := binding.EncodeURL(pattern, in, false)
+	opts = append(opts, http.Operation(OperationKnowledgeServiceUpdateCollectionSpace))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "PATCH", path, in, &out, opts...)
 	if err != nil {
 		return nil, err
 	}

@@ -257,6 +257,7 @@ func (s *KnowledgeService) CreateCollection(ctx context.Context, req *v1.CreateC
 		EmbeddingModel: model,
 		RootPath:       req.GetRootPath(),
 		VaultBackend:   backend,
+		Space:          strings.TrimSpace(req.GetSpace()),
 	}
 	// P0-2（2026-08-21）：dim 快照取当前 embedder 实际维度，禁止落入 biz 层
 	// 1536 兜底——运行中建库若快照与 embedder 维度不一致（如 bge-m3=1024），
@@ -288,6 +289,22 @@ func (s *KnowledgeService) CreateCollection(ctx context.Context, req *v1.CreateC
 		s.vaultSync.StartVault(c)
 	}
 	return toProtoCollection(c), nil
+}
+
+// UpdateCollectionSpace 把资料库挪到「我的资料 / 公司资料」（工作台 › 资料 P1）。
+func (s *KnowledgeService) UpdateCollectionSpace(ctx context.Context, req *v1.UpdateCollectionSpaceRequest) (*v1.KnowledgeCollection, error) {
+	c, err := s.uc.GetCollection(ctx, req.GetId())
+	if err != nil {
+		return nil, err
+	}
+	if err := s.assertCollectionMutateAccess(ctx, c); err != nil {
+		return nil, err
+	}
+	updated, err := s.uc.UpdateCollectionSpace(ctx, c.ID, strings.TrimSpace(req.GetSpace()))
+	if err != nil {
+		return nil, err
+	}
+	return toProtoCollection(updated), nil
 }
 
 // GetCollection returns one collection.
@@ -1302,6 +1319,7 @@ func toProtoCollection(c biz.KnowledgeCollection) *v1.KnowledgeCollection {
 		LastSyncAt: c.LastSyncAt,
 		// SP1-F 存储后端维度（local / team）。
 		VaultBackend: c.VaultBackend,
+		Space:        bizknowledge.EffectiveSpace(c),
 	}
 }
 

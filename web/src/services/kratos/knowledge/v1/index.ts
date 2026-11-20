@@ -22,6 +22,9 @@ export type KnowledgeCollection = {
   // SP1-F: storage backend dimension. local = filesystem source of truth
   // (root_path set); team = Postgres source of truth (root_path empty).
   vaultBackend: string | undefined;
+  // 工作台 › 资料：资料库所在空间 mine（我的资料）| company（公司资料）。
+  // 未登记的存量库按后端归：team → company，其余 → mine。
+  space: string | undefined;
 };
 
 // KnowledgeDocument is one source document ingested into a collection.
@@ -95,6 +98,17 @@ export type CreateCollectionRequest = {
   embeddingModel: string | undefined;
   rootPath: string | undefined;
   vaultBackend: string | undefined;
+  space: string | undefined;
+};
+
+// UpdateCollectionSpaceRequest 把资料库挪到「我的资料 / 公司资料」（工作台 › 资料）。
+export type UpdateCollectionSpaceRequest = {
+  //
+  // Behaviors: REQUIRED
+  id: string | undefined;
+  //
+  // Behaviors: REQUIRED
+  space: string | undefined;
 };
 
 export type GetCollectionRequest = {
@@ -736,6 +750,7 @@ export interface KnowledgeService {
   GetCollection(request: GetCollectionRequest): Promise<KnowledgeCollection>;
   ListCollections(request: ListCollectionsRequest): Promise<ListCollectionsResponse>;
   DeleteCollection(request: DeleteCollectionRequest): Promise<wellKnownEmpty>;
+  UpdateCollectionSpace(request: UpdateCollectionSpaceRequest): Promise<KnowledgeCollection>;
   // Documents
   IngestDocument(request: IngestDocumentRequest): Promise<KnowledgeDocument>;
   ListDocuments(request: ListDocumentsRequest): Promise<ListDocumentsResponse>;
@@ -931,6 +946,26 @@ export function createKnowledgeServiceClient(
         service: "KnowledgeService",
         method: "DeleteCollection",
       }) as Promise<wellKnownEmpty>;
+    },
+    UpdateCollectionSpace(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      if (!request.id) {
+        throw new Error("missing required field request.id");
+      }
+      const path = `v1/knowledge/collections/${request.id}/space`; // eslint-disable-line quotes
+      const body = JSON.stringify(request);
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "PATCH",
+        body,
+      }, {
+        service: "KnowledgeService",
+        method: "UpdateCollectionSpace",
+      }) as Promise<KnowledgeCollection>;
     },
     IngestDocument(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/knowledge/documents`; // eslint-disable-line quotes

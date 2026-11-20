@@ -1,0 +1,735 @@
+// 工作台 › 资料（/knowledge）。类名 lb- 前缀，取值只走 --nt-* 令牌。
+// 版式照样稿：docs/aranea-agents/design/assets/2026-11-19-workbench-pages/index.html#page=docs
+// 三栏：空间与目录 236 · 文件列表 · 预览 420；一屏，各栏自己滚。
+@import "./_nt-tokens.css"
+
+.lb-page
+  display: grid
+  grid-template-columns: 236px minmax(0, 1fr) 420px
+  gap: var(--nt-space-3)
+  height: 0
+  padding: var(--nt-space-3) var(--nt-space-4) var(--nt-space-4)
+  color: var(--nt-text-1)
+  font-family: var(--nt-font-sans)
+  font-size: var(--nt-fs-body)
+
+.lb-full
+  grid-column: 1 / -1
+  align-self: start
+
+.lb-mono
+  font-family: var(--nt-font-mono)
+  font-variant-numeric: tabular-nums
+
+.lb-sp
+  flex: 1
+
+.lb-sr
+  position: absolute
+  width: 1px
+  height: 1px
+  overflow: hidden
+  clip: rect(0 0 0 0)
+  white-space: nowrap
+
+.lb-hint
+  margin: 0
+  color: var(--nt-text-3)
+  font-size: var(--nt-fs-caption)
+  line-height: 1.6
+
+.lb-panel
+  position: relative
+  display: flex
+  flex-direction: column
+  min-width: 0
+  min-height: 0
+  overflow: hidden
+  background: var(--nt-glass-panel)
+  border: 1px solid var(--nt-glass-border)
+  border-radius: var(--nt-radius-l)
+  box-shadow: inset 0 1px 0 var(--nt-glass-highlight), var(--nt-shadow-depth)
+  backdrop-filter: var(--nt-glass-filter)
+
+.lb-sect
+  display: flex
+  align-items: center
+  gap: 4px
+  margin: var(--nt-space-4) 0 6px
+  color: var(--nt-text-3)
+  font-size: var(--nt-fs-micro)
+  letter-spacing: 0.04em
+
+.lb-chip
+  display: inline-flex
+  align-items: center
+  height: 20px
+  padding: 0 7px
+  background: var(--nt-tile-hover)
+  border-radius: var(--nt-radius-pill)
+  color: var(--nt-text-2)
+  font-size: var(--nt-fs-micro)
+  white-space: nowrap
+
+.lb-danger
+  color: var(--nt-danger)
+
+// ——— 文件类型色块：DOC 蓝、XLS 绿、PDF 红、PPT 橙、MD 灰、图片紫 ———
+.lb-fi
+  display: grid
+  flex: none
+  place-items: center
+  width: 26px
+  height: 30px
+  background: color-mix(in srgb, var(--nt-text-3) 40%, var(--nt-bg-1))
+  border-radius: var(--nt-radius-s)
+  color: var(--nt-text-0)
+  font: 700 var(--nt-fs-micro) var(--nt-font-mono)
+  letter-spacing: 0.02em
+
+.lb-fi--sm
+  width: 20px
+  height: 24px
+  font-size: 7px
+
+.lb-fi--doc
+  background: color-mix(in srgb, var(--nt-line-2) 55%, var(--nt-bg-1))
+
+.lb-fi--xls
+  background: color-mix(in srgb, var(--nt-line-5) 55%, var(--nt-bg-1))
+
+.lb-fi--pdf
+  background: color-mix(in srgb, var(--nt-danger) 55%, var(--nt-bg-1))
+
+.lb-fi--ppt
+  background: color-mix(in srgb, var(--nt-line-1) 55%, var(--nt-bg-1))
+
+.lb-fi--img
+  background: color-mix(in srgb, var(--nt-line-4) 55%, var(--nt-bg-1))
+
+.lb-fi--folder
+  width: 28px
+  height: 22px
+  background: color-mix(in srgb, var(--nt-line-3) 50%, var(--nt-bg-1))
+
+// ——— 左：空间卡片 + 目录树 ———
+.lb-nav
+  padding: var(--nt-space-3) 10px
+  overflow-y: auto
+
+.lb-space
+  display: grid
+  grid-template-columns: 30px minmax(0, 1fr)
+  gap: 1px 10px
+  width: 100%
+  margin-bottom: 6px
+  padding: 9px 10px
+  background: var(--nt-tile-bg)
+  border: 1px solid var(--nt-border-1)
+  border-radius: var(--nt-radius-m)
+  color: inherit
+  font: inherit
+  text-align: left
+  cursor: pointer
+  transition: background var(--nt-transition), border-color var(--nt-transition)
+
+  &:hover
+    background: var(--nt-tile-hover)
+
+  b
+    color: var(--nt-text-0)
+    font-size: var(--nt-fs-panel)
+
+  small
+    display: -webkit-box
+    overflow: hidden
+    color: var(--nt-text-3)
+    font-size: var(--nt-fs-caption)
+    line-height: 1.5
+    -webkit-box-orient: vertical
+    -webkit-line-clamp: 2
+
+.lb-space--on,
+.lb-space--on:hover
+  background: var(--nt-accent-soft)
+  border-color: var(--nt-accent-border)
+
+.lb-space__ic
+  display: grid
+  grid-row: 1 / 3
+  place-items: center
+  width: 30px
+  height: 30px
+  background: var(--nt-bg-2)
+  border-radius: var(--nt-radius-m)
+  color: var(--nt-accent)
+
+.lb-tree
+  display: flex
+  flex-direction: column
+  gap: 1px
+
+.lb-tree__empty
+  padding: 4px 8px
+
+.lb-tn
+  position: relative
+  display: flex
+  align-items: center
+  min-height: 30px
+  border-radius: var(--nt-radius-s)
+
+  &:hover
+    background: var(--nt-tile-hover)
+
+.lb-tn--on,
+.lb-tn--on:hover
+  background: var(--nt-accent-soft)
+
+  .lb-tn__label
+    color: var(--nt-text-0)
+
+.lb-tn__tog
+  display: grid
+  flex: none
+  place-items: center
+  width: 22px
+  height: 22px
+  padding: 0
+  background: none
+  border: 0
+  border-radius: var(--nt-radius-s)
+  color: var(--nt-text-3)
+  cursor: pointer
+
+.lb-tn__tog--hide
+  visibility: hidden
+
+.lb-tn__label
+  display: flex
+  flex: 1
+  align-items: center
+  gap: 6px
+  min-width: 0
+  min-height: 30px
+  padding: 0 30px 0 2px
+  background: none
+  border: 0
+  color: var(--nt-text-1)
+  font: inherit
+  text-align: left
+  cursor: pointer
+
+  span
+    overflow: hidden
+    text-overflow: ellipsis
+    white-space: nowrap
+
+.lb-tn__ic
+  flex: none
+  color: var(--nt-text-3)
+
+.lb-tn__more
+  position: absolute
+  right: 2px
+  opacity: 0
+  transition: opacity var(--nt-transition)
+
+.lb-tn:hover .lb-tn__more,
+.lb-tn:focus-within .lb-tn__more
+  opacity: 1
+
+.lb-nav__new
+  align-self: flex-start
+  margin-top: var(--nt-space-2)
+  color: var(--nt-accent)
+
+.lb-nav__kb
+  display: inline-flex
+  align-items: center
+  gap: 6px
+  margin-top: auto
+  padding: var(--nt-space-3) 6px 2px
+  color: var(--nt-text-3)
+  font-size: var(--nt-fs-caption)
+  text-decoration: none
+
+  &:hover
+    color: var(--nt-accent)
+
+// ——— 中：文件列表 ———
+.lb-fl--drop
+  border-color: var(--nt-accent-border)
+  box-shadow: inset 0 0 0 2px var(--nt-accent-soft), var(--nt-shadow-depth)
+
+.lb-fl__bar
+  display: flex
+  flex: none
+  align-items: center
+  gap: var(--nt-space-2)
+  min-height: 48px
+  padding: var(--nt-space-2) var(--nt-space-4)
+  border-bottom: 1px solid var(--nt-border-1)
+
+.lb-bc
+  display: flex
+  align-items: center
+  gap: 2px
+  min-width: 0
+  overflow: hidden
+  color: var(--nt-text-2)
+  white-space: nowrap
+
+.lb-bc__seg
+  padding: 2px 4px
+  background: none
+  border: 0
+  border-radius: var(--nt-radius-s)
+  color: inherit
+  font: inherit
+  font-size: var(--nt-fs-panel)
+  cursor: pointer
+
+  &:hover
+    color: var(--nt-text-0)
+
+  &:last-of-type
+    color: var(--nt-text-0)
+    font-weight: 600
+
+.lb-where
+  overflow: hidden
+  max-width: 45%
+  color: var(--nt-text-3)
+  font-size: var(--nt-fs-caption)
+  text-overflow: ellipsis
+  white-space: nowrap
+
+.lb-fl__tools
+  display: flex
+  flex: none
+  align-items: center
+  gap: var(--nt-space-3)
+  padding: var(--nt-space-3) var(--nt-space-4)
+
+.lb-fl__search
+  flex: 1
+  min-width: 0
+
+.lb-fl__new
+  flex: none
+
+.lb-fl__state
+  margin: var(--nt-space-6) var(--nt-space-4)
+
+.lb-tbl
+  flex: 1
+  min-height: 0
+  padding: 0 var(--nt-space-2) var(--nt-space-3)
+  overflow-y: auto
+
+.lb-tbl__note
+  padding: var(--nt-space-3) 10px
+
+.lb-th,
+.lb-tr
+  display: grid
+  grid-template-columns: minmax(0, 1fr) 112px 76px 84px
+  gap: 10px
+  align-items: center
+  padding: 0 10px
+
+.lb-th
+  position: sticky
+  top: 0
+  z-index: 1
+  height: 30px
+  background: var(--nt-data-bg)
+  color: var(--nt-text-3)
+  font-size: var(--nt-fs-caption)
+
+.lb-tr
+  width: 100%
+  min-height: 42px
+  background: none
+  border: 0
+  border-radius: var(--nt-radius-m)
+  color: inherit
+  font: inherit
+  text-align: left
+  cursor: pointer
+
+  & + .lb-tr
+    margin-top: 1px
+
+  &:hover
+    background: var(--nt-tile-hover)
+
+.lb-tr--on,
+.lb-tr--on:hover
+  background: var(--nt-accent-soft)
+
+.lb-tr__nm
+  display: flex
+  align-items: center
+  gap: 10px
+  min-width: 0
+  color: var(--nt-text-0)
+
+.lb-tr__name
+  overflow: hidden
+  text-overflow: ellipsis
+  white-space: nowrap
+
+.lb-tr__up
+  color: var(--nt-text-3)
+
+.lb-tr__c
+  color: var(--nt-text-2)
+  font-size: var(--nt-fs-caption)
+
+.lb-st
+  display: inline-flex
+  align-items: center
+  gap: 4px
+  color: var(--nt-success)
+
+.lb-st--pending,
+.lb-st--indexing
+  color: var(--nt-info)
+
+.lb-st--error
+  color: var(--nt-warn)
+
+.lb-res
+  display: flex
+  flex-direction: column
+  gap: 4px
+  width: 100%
+  margin-bottom: 6px
+  padding: 10px 12px
+  background: var(--nt-tile-bg)
+  border: 1px solid transparent
+  border-radius: var(--nt-radius-m)
+  color: inherit
+  font: inherit
+  text-align: left
+  cursor: pointer
+
+  &:hover
+    background: var(--nt-tile-hover)
+
+.lb-res--on,
+.lb-res--on:hover
+  border-color: var(--nt-accent-border)
+  background: var(--nt-accent-soft)
+
+.lb-res__t
+  display: flex
+  align-items: center
+  gap: 8px
+  color: var(--nt-text-0)
+  font-size: var(--nt-fs-panel)
+  font-weight: 600
+
+.lb-res__n
+  overflow: hidden
+  text-overflow: ellipsis
+  white-space: nowrap
+
+.lb-res__p
+  color: var(--nt-text-2)
+  line-height: 1.6
+
+.lb-res__m
+  color: var(--nt-text-3)
+  font-size: var(--nt-fs-caption)
+
+.lb-drop
+  position: absolute
+  inset: 0
+  z-index: 2
+  display: flex
+  flex-direction: column
+  align-items: center
+  justify-content: center
+  gap: var(--nt-space-2)
+  background: var(--nt-scrim-light)
+  color: var(--nt-text-0)
+  font-size: var(--nt-fs-panel)
+  pointer-events: none
+
+// ——— 右：预览 ———
+.lb-pv__pick
+  margin: auto var(--nt-space-4)
+
+.lb-pv__head
+  flex: none
+  padding: var(--nt-space-4) var(--nt-space-4) var(--nt-space-3)
+  border-bottom: 1px solid var(--nt-border-1)
+
+.lb-pv__name
+  display: flex
+  align-items: center
+  gap: 10px
+
+  b
+    flex: 1
+    min-width: 0
+    overflow: hidden
+    color: var(--nt-text-0)
+    font-size: var(--nt-fs-title)
+    text-overflow: ellipsis
+    white-space: nowrap
+
+.lb-pv__path
+  margin-top: 6px
+  color: var(--nt-text-3)
+  font-size: var(--nt-fs-caption)
+  line-height: 1.6
+  word-break: break-all
+
+.lb-pv__acts
+  display: flex
+  flex-wrap: wrap
+  align-items: center
+  gap: 4px
+  margin-top: var(--nt-space-2)
+
+.lb-pv__btn
+  padding: 0 8px
+
+.lb-pv__body
+  display: flex
+  flex: 1
+  flex-direction: column
+  min-height: 0
+  padding: var(--nt-space-3) var(--nt-space-4) var(--nt-space-4)
+  overflow-y: auto
+
+.lb-pv__frame
+  flex: none
+  width: 100%
+  height: 520px
+  background: var(--nt-data-inset)
+  border: 1px solid var(--nt-border-1)
+  border-radius: var(--nt-radius-m)
+
+.lb-pv__img
+  display: block
+  max-width: 100%
+  max-height: 520px
+  margin: 0 auto
+  border-radius: var(--nt-radius-m)
+
+.lb-pv__text
+  margin-top: var(--nt-space-2)
+  padding: var(--nt-space-3) var(--nt-space-4)
+  max-height: 520px
+  overflow-y: auto
+  background: var(--nt-data-inset)
+  border: 1px solid var(--nt-border-1)
+  border-radius: var(--nt-radius-m)
+  color: var(--nt-text-1)
+  line-height: 1.75
+  white-space: pre-wrap
+  word-break: break-word
+
+// 压过 NotePreview 作用域样式里的 flex: 1（类 + data-v 属性），否则内容下面空一大块
+.lb-pv .lb-pv__body .lb-pv__md
+  flex: none
+  overflow: visible
+  padding: var(--nt-space-2) 0
+
+.lb-pv__editor
+  flex: 1
+  min-height: 360px
+
+.lb-pv__ai
+  margin: 0
+  padding: 10px 12px
+  background: var(--nt-tile-bg)
+  border: 1px solid var(--nt-border-1)
+  border-radius: var(--nt-radius-m)
+  color: var(--nt-text-1)
+  line-height: 1.7
+
+.lb-kv
+  display: grid
+  grid-template-columns: 64px minmax(0, 1fr)
+  gap: 7px 10px
+  margin: 4px 0 0
+
+  dt
+    color: var(--nt-text-3)
+
+  dd
+    margin: 0
+    color: var(--nt-text-1)
+
+.lb-tags
+  display: flex
+  flex-wrap: wrap
+  gap: 4px
+
+// ——— 文件夹浏览（建库向导、移动） ———
+.lb-fb
+  border: 1px solid var(--nt-border-1)
+  border-radius: var(--nt-radius-m)
+  background: var(--nt-data-inset)
+
+.lb-fb__bar
+  display: flex
+  align-items: center
+  gap: var(--nt-space-2)
+  padding: 4px var(--nt-space-2)
+  border-bottom: 1px solid var(--nt-border-1)
+
+.lb-fb__path
+  overflow: hidden
+  color: var(--nt-text-2)
+  font-size: var(--nt-fs-caption)
+  text-overflow: ellipsis
+  white-space: nowrap
+
+.lb-fb__list
+  height: 240px
+  padding: 4px
+  overflow-y: auto
+
+.lb-fb__item
+  display: flex
+  align-items: center
+  gap: 8px
+  width: 100%
+  min-height: 32px
+  padding: 0 8px
+  background: none
+  border: 0
+  border-radius: var(--nt-radius-s)
+  color: var(--nt-text-1)
+  font: inherit
+  text-align: left
+  cursor: pointer
+
+  &:hover
+    background: var(--nt-tile-hover)
+
+  .q-icon:first-child
+    color: color-mix(in srgb, var(--nt-line-3) 80%, var(--nt-text-1))
+
+.lb-fb__go
+  margin-left: auto
+  color: var(--nt-text-3)
+
+.lb-fb__empty
+  padding: var(--nt-space-3)
+
+// ——— 新建资料库向导 ———
+.lb-wz
+  display: flex
+  flex-direction: column
+  gap: var(--nt-space-3)
+
+.lb-wz__label
+  color: var(--nt-text-2)
+  font-size: var(--nt-fs-caption)
+
+.lb-wz__cards
+  display: grid
+  grid-template-columns: 1fr 1fr
+  gap: var(--nt-space-2)
+
+.lb-wz__card
+  display: grid
+  grid-template-columns: 24px minmax(0, 1fr)
+  gap: 2px 10px
+  align-items: center
+  padding: 12px
+  background: var(--nt-tile-bg)
+  border: 1px solid var(--nt-border-1)
+  border-radius: var(--nt-radius-m)
+  color: inherit
+  font: inherit
+  text-align: left
+  cursor: pointer
+
+  .q-icon
+    grid-row: 1 / 3
+    color: var(--nt-accent)
+
+  b
+    color: var(--nt-text-0)
+
+  small
+    color: var(--nt-text-3)
+    font-size: var(--nt-fs-caption)
+    line-height: 1.5
+
+  &:hover
+    background: var(--nt-tile-hover)
+
+.lb-wz__card--on,
+.lb-wz__card--on:hover
+  background: var(--nt-accent-soft)
+  border-color: var(--nt-accent-border)
+
+.lb-wz__row
+  display: flex
+  align-items: center
+  gap: var(--nt-space-2)
+
+.lb-wz__grow
+  flex: 1
+
+.lb-wz__chosen
+  display: flex
+  align-items: center
+  gap: 6px
+  margin: 0
+  color: var(--nt-success)
+  font-size: var(--nt-fs-caption)
+  word-break: break-all
+
+.lb-wz__err
+  margin: var(--nt-space-2) 0 0
+  color: var(--nt-danger)
+  font-size: var(--nt-fs-caption)
+
+@media (max-width: 1399px)
+  .lb-page
+    grid-template-columns: 210px minmax(0, 1fr) 360px
+
+// 1099 以下：预览挪到下面，整页可滚
+@media (max-width: 1099px)
+  .lb-page
+    grid-template-columns: 200px minmax(0, 1fr)
+    height: auto
+
+  .lb-nav,
+  .lb-fl
+    max-height: 70vh
+
+  .lb-pv
+    grid-column: 1 / -1
+    min-height: 420px
+
+// 799 以下：一栏
+@media (max-width: 799px)
+  .lb-page
+    grid-template-columns: minmax(0, 1fr)
+    padding: var(--nt-space-2)
+
+  .lb-nav
+    max-height: none
+
+  .lb-th,
+  .lb-tr
+    grid-template-columns: minmax(0, 1fr) 76px
+
+  .lb-th > :nth-child(n + 3),
+  .lb-tr > :nth-child(n + 3)
+    display: none
+
+  .lb-wz__cards
+    grid-template-columns: 1fr

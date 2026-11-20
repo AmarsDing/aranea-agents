@@ -30,6 +30,9 @@ message KnowledgeCollection {
   // SP1-F: storage backend dimension. local = filesystem source of truth
   // (root_path set); team = Postgres source of truth (root_path empty).
   string vault_backend = 15;  // local | team
+  // 工作台 › 资料：资料库所在空间 mine（我的资料）| company（公司资料）。
+  // 未登记的存量库按后端归：team → company，其余 → mine。
+  string space = 16;
 }
 
 // KnowledgeDocument is one source document ingested into a collection.
@@ -103,6 +106,13 @@ message CreateCollectionRequest {
   string embedding_model = 3;
   string root_path = 4;       // required when vault_backend = local; must be empty when team
   string vault_backend = 5;   // local (default) | team
+  string space = 6;           // mine | company；空 = 按后端归（team → company，其余 → mine）
+}
+
+// UpdateCollectionSpaceRequest 把资料库挪到「我的资料 / 公司资料」（工作台 › 资料）。
+message UpdateCollectionSpaceRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+  string space = 2 [(google.api.field_behavior) = REQUIRED];  // mine | company
 }
 
 message GetCollectionRequest {
@@ -677,6 +687,12 @@ service KnowledgeService {
   rpc DeleteCollection(DeleteCollectionRequest) returns (google.protobuf.Empty) {
     option (google.api.http) = {
       delete: "/v1/knowledge/collections/{id}"
+    };
+  }
+  rpc UpdateCollectionSpace(UpdateCollectionSpaceRequest) returns (KnowledgeCollection) {
+    option (google.api.http) = {
+      patch: "/v1/knowledge/collections/{id}/space"
+      body: "*"
     };
   }
 

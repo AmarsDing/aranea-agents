@@ -35,9 +35,31 @@ type Collection struct {
 	// VaultBackend 存储后端维度（SP1-F）：VaultBackendLocal / VaultBackendTeam。
 	// local：文件系统即真相源，RootPath 必填；team：PG 即真相源，RootPath 必须为空。
 	VaultBackend string
-	CreatedAt    string
-	UpdatedAt    string
+	// Space 资料库所在空间（工作台 › 资料）：SpaceMine / SpaceCompany；空 = 未登记，见 EffectiveSpace。
+	Space     string
+	CreatedAt string
+	UpdatedAt string
 }
+
+// 资料库空间（工作台 › 资料 P1）。
+const (
+	SpaceMine    = "mine"
+	SpaceCompany = "company"
+)
+
+// EffectiveSpace 未登记空间的存量库按后端归：team（PG 团队库）→ 公司，其余 → 我的。
+func EffectiveSpace(c Collection) string {
+	if c.Space == SpaceMine || c.Space == SpaceCompany {
+		return c.Space
+	}
+	if c.VaultBackend == VaultBackendTeam {
+		return SpaceCompany
+	}
+	return SpaceMine
+}
+
+// ValidSpace 可写入的空间取值。
+func ValidSpace(s string) bool { return s == SpaceMine || s == SpaceCompany }
 
 // VaultBackend 存储后端取值（SP1-F，设计 S6）。
 const (
@@ -342,8 +364,8 @@ var (
 	// ErrClassificationInvalid 密级越界（合法域 0..5；0=未标，L1-L5 语义随
 	// secops classification_labels 标签体系，D6 L-3 embedding 闸读取）。
 	ErrClassificationInvalid = apierror.BadRequest("KNOWLEDGE", "classification must be between 0 and 5")
-	ErrDimensionMismatch      = apierror.BadRequest("KNOWLEDGE", "embedding dimension mismatch")
-	ErrEmbeddingEmpty         = apierror.BadRequest("KNOWLEDGE", "embedding is empty")
+	ErrDimensionMismatch     = apierror.BadRequest("KNOWLEDGE", "embedding dimension mismatch")
+	ErrEmbeddingEmpty        = apierror.BadRequest("KNOWLEDGE", "embedding is empty")
 	// ErrMoveDimensionMismatch 目标库与源库 dim 不一致，禁止跨库移动（向量维度不兼容）。
 	ErrMoveDimensionMismatch = apierror.Conflict("KNOWLEDGE", "target collection embedding dimension differs; re-ingest the document instead of moving")
 	// ErrCollectionSemanticConflict 语义层已被并发请求绑定（B2 守卫式 UPDATE 未生效）。

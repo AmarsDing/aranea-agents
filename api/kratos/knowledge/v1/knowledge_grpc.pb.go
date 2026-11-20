@@ -24,6 +24,7 @@ const (
 	KnowledgeService_GetCollection_FullMethodName              = "/kratos.knowledge.v1.KnowledgeService/GetCollection"
 	KnowledgeService_ListCollections_FullMethodName            = "/kratos.knowledge.v1.KnowledgeService/ListCollections"
 	KnowledgeService_DeleteCollection_FullMethodName           = "/kratos.knowledge.v1.KnowledgeService/DeleteCollection"
+	KnowledgeService_UpdateCollectionSpace_FullMethodName      = "/kratos.knowledge.v1.KnowledgeService/UpdateCollectionSpace"
 	KnowledgeService_IngestDocument_FullMethodName             = "/kratos.knowledge.v1.KnowledgeService/IngestDocument"
 	KnowledgeService_ListDocuments_FullMethodName              = "/kratos.knowledge.v1.KnowledgeService/ListDocuments"
 	KnowledgeService_GetDocumentContent_FullMethodName         = "/kratos.knowledge.v1.KnowledgeService/GetDocumentContent"
@@ -68,6 +69,7 @@ type KnowledgeServiceClient interface {
 	GetCollection(ctx context.Context, in *GetCollectionRequest, opts ...grpc.CallOption) (*KnowledgeCollection, error)
 	ListCollections(ctx context.Context, in *ListCollectionsRequest, opts ...grpc.CallOption) (*ListCollectionsResponse, error)
 	DeleteCollection(ctx context.Context, in *DeleteCollectionRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	UpdateCollectionSpace(ctx context.Context, in *UpdateCollectionSpaceRequest, opts ...grpc.CallOption) (*KnowledgeCollection, error)
 	// Documents
 	IngestDocument(ctx context.Context, in *IngestDocumentRequest, opts ...grpc.CallOption) (*KnowledgeDocument, error)
 	ListDocuments(ctx context.Context, in *ListDocumentsRequest, opts ...grpc.CallOption) (*ListDocumentsResponse, error)
@@ -214,6 +216,16 @@ func (c *knowledgeServiceClient) DeleteCollection(ctx context.Context, in *Delet
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(emptypb.Empty)
 	err := c.cc.Invoke(ctx, KnowledgeService_DeleteCollection_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *knowledgeServiceClient) UpdateCollectionSpace(ctx context.Context, in *UpdateCollectionSpaceRequest, opts ...grpc.CallOption) (*KnowledgeCollection, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(KnowledgeCollection)
+	err := c.cc.Invoke(ctx, KnowledgeService_UpdateCollectionSpace_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -559,6 +571,7 @@ type KnowledgeServiceServer interface {
 	GetCollection(context.Context, *GetCollectionRequest) (*KnowledgeCollection, error)
 	ListCollections(context.Context, *ListCollectionsRequest) (*ListCollectionsResponse, error)
 	DeleteCollection(context.Context, *DeleteCollectionRequest) (*emptypb.Empty, error)
+	UpdateCollectionSpace(context.Context, *UpdateCollectionSpaceRequest) (*KnowledgeCollection, error)
 	// Documents
 	IngestDocument(context.Context, *IngestDocumentRequest) (*KnowledgeDocument, error)
 	ListDocuments(context.Context, *ListDocumentsRequest) (*ListDocumentsResponse, error)
@@ -682,6 +695,9 @@ func (UnimplementedKnowledgeServiceServer) ListCollections(context.Context, *Lis
 }
 func (UnimplementedKnowledgeServiceServer) DeleteCollection(context.Context, *DeleteCollectionRequest) (*emptypb.Empty, error) {
 	return nil, status.Error(codes.Unimplemented, "method DeleteCollection not implemented")
+}
+func (UnimplementedKnowledgeServiceServer) UpdateCollectionSpace(context.Context, *UpdateCollectionSpaceRequest) (*KnowledgeCollection, error) {
+	return nil, status.Error(codes.Unimplemented, "method UpdateCollectionSpace not implemented")
 }
 func (UnimplementedKnowledgeServiceServer) IngestDocument(context.Context, *IngestDocumentRequest) (*KnowledgeDocument, error) {
 	return nil, status.Error(codes.Unimplemented, "method IngestDocument not implemented")
@@ -871,6 +887,24 @@ func _KnowledgeService_DeleteCollection_Handler(srv interface{}, ctx context.Con
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(KnowledgeServiceServer).DeleteCollection(ctx, req.(*DeleteCollectionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _KnowledgeService_UpdateCollectionSpace_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpdateCollectionSpaceRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(KnowledgeServiceServer).UpdateCollectionSpace(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: KnowledgeService_UpdateCollectionSpace_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(KnowledgeServiceServer).UpdateCollectionSpace(ctx, req.(*UpdateCollectionSpaceRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1491,6 +1525,10 @@ var KnowledgeService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "DeleteCollection",
 			Handler:    _KnowledgeService_DeleteCollection_Handler,
+		},
+		{
+			MethodName: "UpdateCollectionSpace",
+			Handler:    _KnowledgeService_UpdateCollectionSpace_Handler,
 		},
 		{
 			MethodName: "IngestDocument",

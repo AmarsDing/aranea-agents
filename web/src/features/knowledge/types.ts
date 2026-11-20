@@ -18,6 +18,8 @@ export type KnowledgeCollection = {
   last_sync_at: string;
   /** SP1-F：存储后端维度。local（文件系统真相源）| team（PG 真相源）。 */
   vault_backend: string;
+  /** 工作台 › 资料：mine（我的资料）| company（公司资料）；旧后端不返回时为空。 */
+  space?: string;
 };
 
 export type KnowledgeDocument = {
@@ -189,6 +191,8 @@ export type CreateCollectionInput = {
   /** local 挂载目录；team 托管库为空。 */
   root_path: string;
   vault_backend?: 'team' | 'local';
+  /** 工作台 › 资料：放进哪个空间；空 = 按后端归。 */
+  space?: 'mine' | 'company';
 };
 
 export type IngestDocumentInput = {

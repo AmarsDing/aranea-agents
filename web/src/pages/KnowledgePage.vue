@@ -46,11 +46,14 @@
       v-else-if="pageState === 'empty'"
       class="q-ma-sm flex-none"
       variant="empty"
-      title="暂无知识库"
-      description="新建一个知识库后即可上传文档与建设图谱。"
-      action-label="新建知识库"
+      icon="menu_book"
+      :title="t('knowledgePage.noLibraryTitle')"
+      :description="t('knowledgePage.noLibraryDesc')"
+      :action-label="t('knowledgePage.noLibraryAction')"
       action-icon="add"
+      :secondary-label="t('knowledgePage.noLibraryArtifacts')"
       @action="openCreateCollection"
+      @secondary="router.push('/artifacts')"
     />
 
     <template v-else>
@@ -251,7 +254,7 @@
 // SP2-8：薄壳页面——持有 composable（页面级状态）+ 装配 KnowledgeWorkbench / 全屏图谱 / 设置浮层 / 既有对话框。
 // 旧 Tab 管理后台（浏览/图谱/设置三页签）已退役，职责分别由工作台、全屏覆盖图谱、设置浮层吸收。
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { useQuasar } from 'quasar';
 import { useI18n } from 'vue-i18n';
 import AppDialog from '../components/common/AppDialog.vue';
@@ -393,6 +396,7 @@ const workbench = createKnowledgeWorkbench(
     : undefined,
 );
 const route = useRoute();
+const router = useRouter();
 const workbenchRef = ref<InstanceType<typeof KnowledgeWorkbench> | null>(null);
 useKnowledgeDraftGuard(workbench, () => workbenchRef.value?.flushPendingContent());
 

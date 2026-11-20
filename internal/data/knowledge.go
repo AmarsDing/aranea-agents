@@ -38,21 +38,34 @@ func (r *knowledgeRepo) CreateCollection(ctx context.Context, c biz.KnowledgeCol
 	now := time.Now().UTC().Format(time.RFC3339)
 	q := `INSERT INTO knowledge_collections
 		(id, name, description, embedding_model, dim, status, document_count, chunk_count, workspace,
-		 root_path, sync_state, vault_backend, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,0,0,$7,$8,$9,$10,$11,$11)
+		 root_path, sync_state, vault_backend, space, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,0,0,$7,$8,$9,$10,$12,$11,$11)
 		RETURNING id, name, description, embedding_model, dim, status, document_count, chunk_count, workspace,
-		          root_path, sync_state, vault_backend, COALESCE(to_char(last_sync_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),''),
+		          root_path, sync_state, vault_backend, space, COALESCE(to_char(last_sync_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),''),
 		          to_char(created_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
 		          to_char(updated_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"')`
 	row := r.data.Postgres().QueryRowContext(ctx, q,
-		c.ID, c.Name, c.Description, c.EmbeddingModel, c.Dim, c.Status, c.Workspace, c.RootPath, c.SyncState, c.VaultBackend, now)
+		c.ID, c.Name, c.Description, c.EmbeddingModel, c.Dim, c.Status, c.Workspace, c.RootPath, c.SyncState, c.VaultBackend, now, c.Space)
 	return scanCollection(row)
+}
+
+// UpdateCollectionSpace 改资料库所在空间（工作台 › 资料）。不存在返回 NotFound。
+func (r *knowledgeRepo) UpdateCollectionSpace(ctx context.Context, id, space string) error {
+	res, err := r.data.Postgres().ExecContext(ctx,
+		`UPDATE knowledge_collections SET space = $2, updated_at = NOW() WHERE id = $1`, id, space)
+	if err != nil {
+		return entErrToBizErr(err, "knowledge")
+	}
+	if n, err := res.RowsAffected(); err == nil && n == 0 {
+		return apierror.NotFound("knowledge", "collection not found: %s", id)
+	}
+	return nil
 }
 
 func (r *knowledgeRepo) GetCollection(ctx context.Context, id string) (biz.KnowledgeCollection, error) {
 
 	q := `SELECT id, name, description, embedding_model, dim, status, document_count, chunk_count, workspace,
-		         root_path, sync_state, vault_backend, COALESCE(to_char(last_sync_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),''),
+		         root_path, sync_state, vault_backend, space, COALESCE(to_char(last_sync_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),''),
 		         to_char(created_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
 		         to_char(updated_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"')
 		  FROM knowledge_collections WHERE id = $1`
@@ -67,7 +80,7 @@ func (r *knowledgeRepo) GetCollection(ctx context.Context, id string) (biz.Knowl
 
 func (r *knowledgeRepo) GetCollectionByName(ctx context.Context, workspace, name string) (biz.KnowledgeCollection, error) {
 	q := `SELECT id, name, description, embedding_model, dim, status, document_count, chunk_count, workspace,
-		         root_path, sync_state, vault_backend, COALESCE(to_char(last_sync_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),''),
+		         root_path, sync_state, vault_backend, space, COALESCE(to_char(last_sync_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),''),
 		         to_char(created_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
 		         to_char(updated_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"')
 		  FROM knowledge_collections WHERE workspace = $1 AND name = $2`
@@ -82,7 +95,7 @@ func (r *knowledgeRepo) ListCollections(ctx context.Context, workspace string, l
 		return nil, 0, entErrToBizErr(err, "knowledge")
 	}
 	q := `SELECT id, name, description, embedding_model, dim, status, document_count, chunk_count, workspace,
-		         root_path, sync_state, vault_backend, COALESCE(to_char(last_sync_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),''),
+		         root_path, sync_state, vault_backend, space, COALESCE(to_char(last_sync_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),''),
 		         to_char(created_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
 		         to_char(updated_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"')
 		  FROM knowledge_collections WHERE workspace = $1 OR workspace = '' OR $1 = ''
@@ -157,7 +170,7 @@ func scanCollection(row scannable) (biz.KnowledgeCollection, error) {
 	var c biz.KnowledgeCollection
 	err := row.Scan(&c.ID, &c.Name, &c.Description, &c.EmbeddingModel, &c.Dim,
 		&c.Status, &c.DocumentCount, &c.ChunkCount, &c.Workspace,
-		&c.RootPath, &c.SyncState, &c.VaultBackend, &c.LastSyncAt, &c.CreatedAt, &c.UpdatedAt)
+		&c.RootPath, &c.SyncState, &c.VaultBackend, &c.Space, &c.LastSyncAt, &c.CreatedAt, &c.UpdatedAt)
 	return c, entErrToBizErr(err, "knowledge")
 }
 
