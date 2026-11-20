@@ -5,7 +5,8 @@
 //
 // 做法同深空皮肤：不动从共享源同步来的 _nt-tokens.css，也不动存量 _css-vars-*.sass，
 // 只在这一层覆盖取值。回退 = 在 app-theme.sass 里把这一行换回 skin-deepspace。
-// 取值：底色取 intro 的实测值（画布 #0b3a6f、壳层 #0a3260），不要凭感觉加深。
+// 取值：起初取 intro 的实测值（画布 #0b3a6f、壳层 #0a3260）；2026-11-19 用户反馈「整体太蓝、耀眼」，
+//   画布压暗并降饱和到深海蓝灰（#0d2541），描边整体减弱，业务面板改半透明毛玻璃（--nt-glass-panel）。
 //   - 面板比画布略亮（intro 的卡片是「画布 + 3.5% 白」），所以三、四级文字比样稿略提亮，
 //     保证在 --nt-bg-2 上仍有 4.5:1；涨色同理。
 //   - 颜色分工：冰青 = 可操作；琥珀 = 要人处理、边界、焦点环；青绿 = 运行中；淡紫 = AI 内容；钢蓝 = 数据。
@@ -14,18 +15,18 @@
 
 // ——— 深色（默认档） ———
 html:root
-  --nt-bg-0: #0b3a6f
-  --nt-bg-1: #0e3d72
-  --nt-bg-2: #124173
-  --nt-bg-3: #18487b
-  --nt-shell: #0a3260
-  --nt-border-0: rgba(190, 220, 255, 0.14)
-  --nt-border-1: rgba(190, 220, 255, 0.3)
-  --nt-border-2: rgba(190, 220, 255, 0.55)
-  --nt-text-0: #e8f3ff
-  --nt-text-1: #b8d4f0
-  --nt-text-2: #9ac0e3
-  --nt-text-3: #8ab3d8
+  --nt-bg-0: #0d2541
+  --nt-bg-1: #122c4a
+  --nt-bg-2: #173454
+  --nt-bg-3: #1d3d5f
+  --nt-shell: #0a1f37
+  --nt-border-0: rgba(180, 210, 240, 0.08)
+  --nt-border-1: rgba(180, 210, 240, 0.15)
+  --nt-border-2: rgba(180, 210, 240, 0.28)
+  --nt-text-0: #eaf2fa
+  --nt-text-1: #c9d8e8
+  --nt-text-2: #a6bdd4
+  --nt-text-3: #92aac4
   --nt-accent: #75e4ff
   --nt-accent-2: #7c9cff
   --nt-on-accent: #082d51
@@ -41,17 +42,27 @@ html:root
   --nt-run: #63e6e2
   --nt-up: #ff8f9c
   --nt-down: #7fe3a0
-  // 材质：壳层用略深的蓝，面板近不透明
-  --nt-glass-bg: rgba(10, 50, 96, 0.92)
-  --nt-glass-border: rgba(190, 220, 255, 0.3)
-  --nt-glass-highlight: rgba(232, 243, 255, 0.05)
-  --nt-glass-filter: blur(10px)
-  --nt-data-bg: #082d55
-  --nt-data-raised: #0c3766
-  --nt-data-inset: #07284c
-  --nt-scrim: rgba(2, 15, 33, 0.62)
-  --nt-scrim-light: rgba(2, 15, 33, 0.46)
-  --nt-shadow-depth: 0 12px 36px rgba(2, 15, 33, 0.5)
+  // 材质：浮层（弹出、指令入口）用较实的玻璃；业务面板用通透的毛玻璃（底下透出网格与环境光）
+  --nt-glass-bg: rgba(14, 36, 62, 0.82)
+  --nt-glass-border: rgba(190, 220, 255, 0.14)
+  --nt-glass-highlight: rgba(255, 255, 255, 0.07)
+  --nt-glass-filter: blur(18px) saturate(140%)
+  --nt-glass-panel: linear-gradient(160deg, rgba(160, 200, 240, 0.1), rgba(160, 200, 240, 0.035) 60%)
+  // 面板里的小块（列表行、时间条、字段格）：比面板再亮一点，给内容分出边界
+  --nt-tile-bg: rgba(170, 205, 245, 0.045)
+  --nt-tile-hover: rgba(170, 205, 245, 0.08)
+  // 输入框：比面板暗一级的凹槽，描边只留一圈很淡的线
+  --nt-field-bg: rgba(3, 12, 26, 0.34)
+  --nt-field-border: rgba(180, 210, 240, 0.12)
+  // 指挥舱页底下的环境光：毛玻璃要有东西可透
+  --nt-ambient-a: rgba(117, 228, 255, 0.07)
+  --nt-ambient-b: rgba(150, 125, 255, 0.07)
+  --nt-data-bg: #0b2139
+  --nt-data-raised: #102a46
+  --nt-data-inset: #091c32
+  --nt-scrim: rgba(2, 10, 22, 0.62)
+  --nt-scrim-light: rgba(2, 10, 22, 0.46)
+  --nt-shadow-depth: 0 10px 30px rgba(2, 10, 22, 0.38)
   --nt-glow-soft: 0 0 20px rgba(117, 228, 255, 0.08)
   --nt-glow-accent: 0 0 14px rgba(117, 228, 255, 0.26)
   --nt-glow-danger: 0 0 14px rgba(255, 138, 150, 0.32)
@@ -146,6 +157,13 @@ html body:not(.body--dark)
   --nt-glass-bg: rgba(255, 255, 255, 0.94)
   --nt-glass-border: #dde3ec
   --nt-glass-highlight: rgba(255, 255, 255, 0.6)
+  --nt-glass-panel: linear-gradient(rgba(255, 255, 255, 0.86), rgba(255, 255, 255, 0.78))
+  --nt-tile-bg: #f5f7fb
+  --nt-tile-hover: #edf1f7
+  --nt-field-bg: #f5f7fb
+  --nt-field-border: #d5dce7
+  --nt-ambient-a: rgba(7, 134, 163, 0.06)
+  --nt-ambient-b: rgba(109, 79, 214, 0.05)
   --nt-data-bg: #ffffff
   --nt-data-raised: #f1f4f9
   --nt-data-inset: #f3f5f9

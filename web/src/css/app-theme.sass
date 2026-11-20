@@ -22,10 +22,26 @@
 @import ./theme/ceoboard
 // 概览页 V3 视觉层（异常驱动运维台）：类名 ov- 前缀，取值只走 --nt-* 令牌
 @import ./theme/overview
+// Harness 大屏显示（/overview）：用到 overview 的 ov-panel 材质，必须排在它后面
+@import ./theme/harness-screen
 // 工作台「今日」页（/workbench）：类名 today- 前缀，取值只走 --nt-* 令牌
 @import ./theme/today
+// 工作台「对话」会话中心（/chat）：类名 cc- 前缀，取值只走 --nt-* 令牌
+@import ./theme/conversations
+// 工作台「日程」（/schedule）：类名 sch- 前缀，取值只走 --nt-* 令牌
+@import ./theme/schedule
+// 工作台「邮件」（/mail）：类名 ml- 前缀，取值只走 --nt-* 令牌
+@import ./theme/mail
+// 工作台「资料」（/knowledge）：类名 lb- 前缀，取值只走 --nt-* 令牌
+@import ./theme/library
+// Harness › 编制 › Agent 管理（/agents）：类名 ar- 前缀，取值只走 --nt-* 令牌
+@import ./theme/agent-roster
+// Harness › 连接五页（模型/通道/凭据/出站推送/跨实例协作）：类名 cx- 前缀，取值只走 --nt-* 令牌
+@import ./theme/connect
 // Harness › 运行与治理（实时运转/健康与告警/追踪与日志/流程健康/用量成本/质量评估/自我改进/Hook）：类名 op- 前缀
 @import ./theme/ops
+// Harness 编制：组织架构（/settings/organization，org-）与 Team 管理（/team，tm-），取值只走 --nt-* 令牌
+@import ./theme/org-team
 // 全局地基：状态面板/面包屑/命令面板/侧栏分组/无障碍兜底
 @import ./theme/ui-states
 // M95 实体卡片材质：兼容旧类名，统一表面与边框，不使用扫描/跟随高光
@@ -34,6 +50,8 @@
 @import ./theme/company
 // 登记页列表的视图条与卡片视图（AppRegistryTable）
 @import ./theme/registry-cards
+// Harness › 能力 六个目录页（工具 / 技能 / 插件 / MCP / 编码工具 / 记忆）：类名 cap- 前缀
+@import ./theme/capability
 // 蓝图皮肤（aranea 先行试点，2026-11-18 起取代深空皮肤）：只覆盖令牌取值；换回 skin-deepspace 即回退
 @import ./theme/skin-blueprint
 // 科幻层：侧栏、卡片、控件、页面壳的全站外观；排在皮肤之后，去掉这一行即回退

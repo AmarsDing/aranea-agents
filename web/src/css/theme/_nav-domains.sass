@@ -273,6 +273,37 @@ html body .app-domain-tabs__row
   &::-webkit-scrollbar
     display: none
 
+// Harness：只有子页签（或什么都没有）时，子页签在左、页面操作靠右；两样都没有时整行收起
+html body .app-domain-tabs--sub
+  flex-wrap: nowrap
+
+  .app-domain-tabs__sub
+    flex: 1 1 auto
+    min-width: 0
+
+  .app-domain-tabs__actions
+    order: 1
+    margin-left: auto
+    padding: var(--nt-space-2) 0
+
+  &:not(:has(.app-domain-tabs__sub)):has(> .app-domain-tabs__actions:empty)
+    display: none
+
+// 页面放进来的操作（见 AppDomainTabs 的 #app-tab-actions）：紧凑按钮、下拉，没有内容时不占位
+html body .app-domain-tabs__actions
+  display: flex
+  align-items: center
+  gap: var(--nt-space-2)
+
+  &:empty
+    display: none
+
+  .q-btn
+    min-height: 30px
+
+  .q-field
+    width: 200px
+
 html body .app-domain-tabs__list,
 html body .app-domain-tabs__sub
   display: flex
@@ -348,56 +379,99 @@ html body .app-domain-tabs__subtab--active
   border-color: var(--nt-accent-border)
   color: var(--nt-text-0)
 
-// ——— 右下角指令窗：默认打开，可以收起成一个按钮 ———
-html body .app-dock
+// ——— 指令入口：平时是贴在页面底边正中的半圆按钮，点开向上展开成输入框 ———
+// 居中在内容区里：--app-dock-offset 是左侧常驻栏的宽度，由 MainLayout 传进来
+html body .app-dock__tab,
+html body .app-dock__panel
   position: fixed
-  right: var(--nt-space-6)
-  bottom: var(--nt-space-5)
+  left: calc(50% + var(--app-dock-offset, 0px) / 2)
   z-index: 2000
-  width: 340px
-  max-width: calc(100vw - 32px)
-  background: var(--nt-bg-2)
+  translate: -50% 0
+  background: var(--nt-glass-bg)
+  backdrop-filter: var(--nt-glass-filter)
+
+html body .app-dock__tab
+  bottom: 0
+  display: grid
+  place-items: center
+  width: 64px
+  height: 32px
+  padding: 6px 0 0
   border: 1px solid var(--nt-accent-border)
-  border-radius: var(--nt-radius-l)
-  box-shadow: var(--nt-shadow-depth)
+  border-bottom: 0
+  border-radius: var(--nt-radius-pill) var(--nt-radius-pill) 0 0
+  color: var(--nt-accent)
+  box-shadow: var(--nt-glow-soft)
+  cursor: pointer
+  transition: box-shadow var(--nt-transition), background-color var(--nt-transition), color var(--nt-transition)
 
-html body .app-dock__head
+  &:hover
+    background: color-mix(in srgb, var(--nt-accent) 16%, var(--nt-glass-bg))
+    box-shadow: var(--nt-glow-accent)
+    color: var(--nt-text-0)
+
+  &:focus-visible
+    outline: var(--focus-ring)
+    outline-offset: 2px
+
+// 展开后：悬浮在内容上的一条磨砂玻璃输入条（不占版面）。半透明底 + 玻璃光泽渐变 + 顶缘内高光，
+// 淡描边，聚焦时描边点亮、外发光；带附件时上面多一行小图，圆角从胶囊收成 12。
+html body .app-dock__panel
+  bottom: var(--nt-space-4)
   display: flex
-  align-items: center
-  gap: var(--nt-space-2)
-  padding: var(--nt-space-2) var(--nt-space-2) 0 var(--nt-space-3)
-  color: var(--nt-text-0)
-  font-size: var(--nt-fs-body)
-  font-weight: 600
+  flex-direction: column
+  gap: var(--nt-space-1)
+  width: min(600px, calc(100vw - 32px))
+  padding: var(--nt-space-1)
+  background: var(--nt-glass-panel), color-mix(in srgb, var(--nt-glass-bg) 62%, transparent)
+  border: 1px solid var(--nt-glass-border)
+  border-radius: var(--nt-radius-pill)
+  box-shadow: inset 0 1px 0 var(--nt-glass-highlight), var(--nt-shadow-depth), var(--nt-glow-soft)
+  transform-origin: 50% 100%
+  transition: border-color var(--nt-transition), box-shadow var(--nt-transition)
 
-  .q-icon:first-child
-    color: var(--nt-accent)
-
-  kbd
-    margin-left: auto
-    padding: 0 var(--nt-space-1)
-    border: 1px solid var(--nt-border-1)
-    border-radius: var(--nt-radius-s)
-    color: var(--nt-text-2)
-    font: var(--nt-fs-micro) var(--nt-font-mono)
-
-html body .app-dock__form
-  display: flex
-  align-items: center
-  gap: var(--nt-space-2)
-  margin: var(--nt-space-2) var(--nt-space-3) var(--nt-space-3)
-  padding: var(--nt-space-1) var(--nt-space-1) var(--nt-space-1) var(--nt-space-3)
-  background: var(--nt-data-inset)
-  border: 1px solid var(--nt-border-1)
-  border-radius: var(--nt-radius-m)
+  &:focus
+    outline: 0
 
   &:focus-within
     border-color: var(--nt-accent-border)
+    box-shadow: inset 0 1px 0 var(--nt-glass-highlight), var(--nt-shadow-depth), var(--nt-glow-accent)
+
+html body .app-dock__panel--files
+  border-radius: var(--nt-radius-l)
+
+html body .app-dock__panel--drag
+  border-style: dashed
+  border-color: var(--nt-accent)
+
+// 展开：从底边升起；收回：沉回底边
+html body .app-dock-enter-active,
+html body .app-dock-leave-active
+  transition: opacity 0.18s ease, transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1)
+
+html body .app-dock-enter-from,
+html body .app-dock-leave-to
+  opacity: 0
+  transform: translateY(24px) scale(0.96)
+
+@media (prefers-reduced-motion: reduce)
+  html body .app-dock-enter-active,
+  html body .app-dock-leave-active
+    transition: none
+
+// 一行：回形针 | 输入 | 发送 | 收起。输入框本身透明，玻璃条就是输入框
+html body .app-dock__form
+  display: flex
+  align-items: center
+  gap: var(--nt-space-1)
+  margin: 0
+  padding: 0 0 0 var(--nt-space-1)
 
   input
     flex: 1
     min-width: 0
-    height: 32px
+    height: 36px
+    padding: 0 var(--nt-space-1)
     background: none
     border: 0
     outline: 0
@@ -408,11 +482,99 @@ html body .app-dock__form
     &::placeholder
       color: var(--nt-text-3)
 
-html body .app-dock-fab
-  position: fixed
-  right: var(--nt-space-6)
-  bottom: var(--nt-space-5)
-  z-index: 2000
+html body .app-dock__tool,
+html body .app-dock__collapse
+  flex: none
+  color: var(--nt-text-2)
+
+  &:hover
+    color: var(--nt-text-0)
+
+html body .app-dock__send
+  flex: none
+
+// 附件缩略图：平铺在输入条上方一行，图片给 28px 小图，其他文件给图标 + 短名；多了横向滚
+html body .app-dock__files
+  display: flex
+  gap: var(--nt-space-1)
+  min-width: 0
+  margin: 0
+  padding: var(--nt-space-1) var(--nt-space-2) 0
+  overflow-x: auto
+  list-style: none
+
+html body .app-dock__file
+  position: relative
+  display: inline-flex
+  flex: none
+  align-items: center
+  gap: 4px
+  height: 28px
+  max-width: 140px
+  padding: 0 var(--nt-space-2)
+  background: var(--nt-accent-soft)
+  border: 1px solid var(--nt-accent-border)
+  border-radius: var(--nt-radius-s)
+  color: var(--nt-text-1)
+  font-size: var(--nt-fs-micro)
+
+  &:hover .app-dock__file-x,
+  &:focus-within .app-dock__file-x
+    opacity: 1
+
+html body .app-dock__file--img
+  width: 28px
+  padding: 0
+  overflow: hidden
+
+  img
+    width: 100%
+    height: 100%
+    object-fit: cover
+
+html body .app-dock__file-name
+  overflow: hidden
+  text-overflow: ellipsis
+  white-space: nowrap
+
+html body .app-dock__file-x
+  position: absolute
+  top: -1px
+  right: -1px
+  display: grid
+  place-items: center
+  width: 16px
+  height: 16px
+  padding: 0
+  background: var(--nt-bg-1)
+  border: 1px solid var(--nt-border-2)
+  border-radius: var(--nt-radius-pill)
+  color: var(--nt-text-2)
+  opacity: 0
+  cursor: pointer
+  transition: opacity var(--nt-transition)
+
+  &:hover
+    color: var(--nt-danger)
+
+  &:focus-visible
+    opacity: 1
+    outline: var(--focus-ring)
+    outline-offset: 1px
+
+html body .app-dock__drop
+  position: absolute
+  inset: 0
+  display: grid
+  place-items: center
+  margin: 0
+  background: var(--nt-scrim-light)
+  border-radius: inherit
+  color: var(--nt-accent)
+  pointer-events: none
+
+html body .app-dock__picker
+  display: none
 
 @media (max-width: 799px)
   html body .app-topbar__date,
@@ -422,3 +584,8 @@ html body .app-dock-fab
 
   html body .app-topbar__cmd
     width: auto
+
+  html body .app-dock__tab
+    width: 88px
+    height: 44px
+    padding-top: 8px

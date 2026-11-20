@@ -204,21 +204,22 @@ html body .app-sidebar-divider
     height: 44px
     min-height: 44px
 
-// ——— 4. 卡片：玻璃壳 + 沿圆角的发光描边（仅悬停 / 聚焦） ———
-html body .q-card,
-html body .app-pane-card,
-html body .app-page-toolbar
+// ——— 4. 卡片：半透明毛玻璃 + 淡描边 + 顶缘一道内高光（发光描边仅悬停 / 聚焦） ———
+// 选择器带 :root，权重压过 _ui-controls 的 body.body--dark .q-card（它排在本文件之后）
+html:root body .q-card,
+html:root body .app-pane-card,
+html:root body .app-page-toolbar
   position: relative
-  background: var(--glass-surface)
-  border: 1px solid var(--nt-border-1)
+  background: var(--nt-glass-panel)
+  border: 1px solid var(--nt-glass-border)
   border-radius: var(--nt-radius-l)
   box-shadow: inset 0 1px 0 var(--nt-glass-highlight)
-  backdrop-filter: blur(var(--glass-blur-default))
+  backdrop-filter: var(--nt-glass-filter)
   transition: border-color var(--nt-transition), box-shadow var(--nt-transition), transform var(--nt-transition)
 
-html body .q-card:hover,
-html body .q-card:focus-within,
-html body .app-pane-card:hover
+html:root body .q-card:hover,
+html:root body .q-card:focus-within,
+html:root body .app-pane-card:hover
   border-color: var(--nt-border-2)
 
 // 可点击的整卡：悬停点亮轮廓并微抬，顶缘掠过一道光（单次，不循环）
@@ -283,15 +284,46 @@ html body .q-btn.bg-primary:not(.q-btn--outline):not(.q-btn--flat):not(.disabled
 html body .q-btn.bg-negative:not(.q-btn--outline):not(.q-btn--flat):not(.disabled):hover
   box-shadow: var(--nt-glow-danger)
 
-// 输入：暗底内嵌，聚焦时描边点亮并外发一圈柔光
-html body .q-field--outlined .q-field__control,
-html body .q-field--filled .q-field__control
-  background: var(--nt-data-inset)
+// 输入（文本框、下拉、日期等 q-field）：比面板暗一级的凹槽，描边只留一圈很淡的线；
+// 悬停描边略亮，聚焦换冰青描边并外发一圈柔光。不再用 Quasar 默认的亮白描边。
+// 选择器带 :root，权重压过 _ui-controls（它排在本文件之后）
+html:root body .q-field--outlined .q-field__control,
+html:root body .q-field--filled .q-field__control
+  background: var(--nt-field-bg)
   border-radius: var(--nt-radius-m)
+  box-shadow: none
+  transition: box-shadow var(--nt-transition)
 
-html body .q-field--outlined.q-field--focused .q-field__control,
-html body .q-field--filled.q-field--focused .q-field__control
-  box-shadow: 0 0 0 3px var(--nt-focus-ring)
+  &::before
+    background: none
+    border: 1px solid var(--nt-field-border)
+    border-radius: inherit
+
+  &:hover::before
+    border-color: var(--nt-border-2)
+
+html:root body .q-field--outlined.q-field--highlighted .q-field__control,
+html:root body .q-field--filled.q-field--highlighted .q-field__control
+  box-shadow: 0 0 0 3px var(--nt-accent-soft)
+
+html:root body .q-field--outlined.q-field--highlighted .q-field__control::after
+  border-width: 1px
+  border-color: var(--nt-accent)
+
+// 输入框的焦点由外面这一圈冰青描边 + 柔光表示；里面的原生 input 不再被全局兜底规则
+// （_ui-controls 的 :where(...):focus-visible，带 !important）另画一个方框
+.q-field__native:focus-visible,
+.q-field__input:focus-visible,
+.app-dock__form input:focus-visible
+  outline: 0 !important
+
+// 复选框：圆角小方块，未选时的边框不刺眼
+html:root body .q-checkbox__bg
+  border-width: 1.5px
+  border-radius: var(--nt-radius-s)
+
+html:root body .q-checkbox__inner--falsy
+  color: var(--nt-text-3)
 
 // 页签：选中项下方一条发光轨
 html body .q-tabs
@@ -314,16 +346,31 @@ html body .q-tabs
     background: var(--nt-accent)
     box-shadow: var(--nt-glow-accent)
 
-// 分段切换：一条暗槽，选中块点亮
-html body .q-btn-toggle
-  padding: 2px
-  background: var(--nt-data-inset)
-  border: 1px solid var(--nt-border-1)
+// 分段切换（q-btn-toggle）：一条暗槽，选中块铺一层冰青底。
+// 去掉 outline 模式下每个按钮自己的描边——它和外面的槽叠成「框里套框」
+html:root body .q-btn-toggle
+  gap: 2px
+  padding: 3px
+  background: var(--nt-field-bg)
+  border: 1px solid var(--nt-field-border)
   border-radius: var(--nt-radius-m)
   box-shadow: none
 
   .q-btn
     border-radius: var(--nt-radius-s)
+    color: var(--nt-text-2)
+
+    &::before
+      border: 0
+      box-shadow: none
+
+    &:hover
+      color: var(--nt-text-0)
+
+  .q-btn[aria-pressed='true']
+    background: var(--nt-accent-hover)
+    box-shadow: inset 0 0 0 1px var(--nt-accent-border)
+    color: var(--nt-accent)
 
 // 表格：数据区不透明，表头小号等宽，悬停整行点亮
 html body .q-table__container

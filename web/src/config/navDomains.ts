@@ -107,6 +107,8 @@ export const NAV_DOMAIN_DEFS: DomainDef[] = [
       { path: '/mcp-servers' },
       { path: '/settings/coding-tools' },
       { path: '/memory' },
+      // 知识层（双链、图谱、治理）从工作台 › 资料挪过来（10-资料.md D5）
+      { path: '/knowledge/notes' },
     ],
   },
   {

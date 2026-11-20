@@ -20,7 +20,6 @@ import { sessionsTableColumns } from '../../../components/sessions/sessionUi';
 import { EVOLUTION_SUGGESTION_TABLE_COLUMNS } from '../../../components/skills/evolutionSuggestionTableUi';
 import { createSkillRunsTableColumns, SKILL_TABLE_COLUMNS } from '../../../components/skills/skillTableUi';
 import { toolAuditsTableColumns, toolRunsTableColumns, toolTableColumns } from '../../../components/tools/toolUi';
-import { createWebhookColumns } from '../../../components/webhooks/webhookTableUi';
 import {
   A2A_AUDIT_TABLE_COLUMNS,
   A2A_CARD_TABLE_COLUMNS,
@@ -48,7 +47,6 @@ const OBJECT_REGISTRIES: Record<string, readonly object[]> = {
   channels: channelTableColumns(t),
   hooks: createHooksTableColumns(t),
   hooksAgent: createHooksAgentTableColumns(t),
-  webhooks: createWebhookColumns(t),
   providerModels: PROVIDER_MODEL_TABLE_COLUMNS,
   platformResources: PLATFORM_RESOURCE_TABLE_COLUMNS,
   sessions: sessionsTableColumns,

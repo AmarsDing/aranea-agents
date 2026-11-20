@@ -229,7 +229,8 @@
     </q-page-container>
 
     <GlobalCommandPalette v-model="paletteOpen" :seed="paletteSeed" />
-    <AppCommandDock v-if="showDock" @submit="openPalette" />
+    <!-- 指令窗只管记任务 / 派给 AI；跳转与搜索走顶栏 Ctrl K 指令面板 -->
+    <AppCommandDock v-if="showDock" :style="{ '--app-dock-offset': `${dockOffset}px` }" />
     <!-- 全站唯一命令式确认框宿主：各页统一走 useAppConfirm 的 confirm()。 -->
     <AppConfirmHost />
     <!-- 全站唯一命令式输入框宿主：表单 prompt / 单选选择器统一走 useAppPrompt 的 prompt()。 -->
@@ -274,6 +275,7 @@ import AppPromptHost from '../components/common/AppPromptHost.vue';
 import GlobalCommandPalette from '../components/layout/GlobalCommandPalette.vue';
 import { useOfficeNotifications } from '../features/office/useOfficeNotifications';
 import { useInboxBadge } from '../features/today/useInboxBadge';
+import { OPEN_COMMAND_EVENT } from '../features/today/useCommandRunner';
 import PairingQrDialog from '../components/mobile/PairingQrDialog.vue';
 import ArtifactPreviewDialog from '../components/artifact/ArtifactPreviewDialog.vue';
 import { useArtifactStore } from '../stores/artifact';
@@ -469,6 +471,8 @@ const activeNavPath = computed(() => navTrail.value?.item.to ?? '');
 const showBreadcrumbs = computed(() => route.meta.breadcrumb !== false);
 // 指令窗：全屏类页面（对话、实时运转等）底部有自己的输入区，不去挡它
 const showDock = computed(() => pageLayout.value !== 'immersive' && pageLayout.value !== 'canvas');
+// 指令入口居中在内容区（去掉左侧常驻栏后的宽度）里，而不是整个窗口里
+const dockOffset = computed(() => ($q.screen.lt.md || !drawerOpen.value ? 0 : showDrail.value ? 292 : 68));
 const pageLayout = computed(() => resolveUiLayout(route.meta.uiLayout));
 // 视觉档位：指挥舱（deck）保留光效与网格底，其余为安静的工作区
 const pageVisual = computed(() => resolveUiVisual(route.meta.uiVisual));
@@ -482,12 +486,15 @@ watch(
   { immediate: true },
 );
 
+const onOpenCommand = (event: Event) => openPalette(String((event as CustomEvent<string>).detail ?? ''));
 onMounted(() => {
   window.addEventListener('keydown', onGlobalKeydown);
+  window.addEventListener(OPEN_COMMAND_EVENT, onOpenCommand);
 });
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onGlobalKeydown);
+  window.removeEventListener(OPEN_COMMAND_EVENT, onOpenCommand);
 });
 
 function onGlobalKeydown(event: KeyboardEvent) {

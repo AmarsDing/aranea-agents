@@ -111,7 +111,7 @@ export const routes: RouteRecordRaw[] = [
         path: 'overview',
         name: 'overview',
         component: () => import('../pages/OverviewPage.vue'),
-        meta: { titleKey: 'menu.overview', breadcrumb: false, uiLayout: 'immersive', uiVisual: 'deck' },
+        meta: { titleKey: 'shell.nav.tab.harnessHome', breadcrumb: false, uiLayout: 'immersive', uiVisual: 'deck' },
       },
       {
         // 路由级无权限兜底：菜单白名单不含目标入口（或缺少 meta.permission 声明的权限码）时落到这里。
@@ -200,8 +200,9 @@ export const routes: RouteRecordRaw[] = [
       {
         path: 'chat',
         name: 'chat',
-        component: () => import('../pages/ChatPage.vue'),
-        meta: { titleKey: 'menu.chat', breadcrumb: false, uiLayout: 'immersive' },
+        // 会话中心（2026-11-19 起取代原来的单栏对话页；对话引擎以嵌入方式留在详情里）
+        component: () => import('../pages/ConversationCenterPage.vue'),
+        meta: { titleKey: 'menu.chat', breadcrumb: false, uiLayout: 'immersive', uiVisual: 'deck' },
       },
       {
         path: 'task-workspace',
@@ -426,10 +427,18 @@ export const routes: RouteRecordRaw[] = [
         meta: { titleKey: 'menu.credentials' },
       },
       {
+        // 工作台 › 资料（10-资料.md P1）：我的 / 公司两个空间的文件资料库
         path: 'knowledge',
         name: 'knowledge',
+        component: () => import('../pages/LibraryPage.vue'),
+        meta: { titleKey: 'shell.nav.tab.library' },
+      },
+      {
+        // 原笔记工作台（双链、图谱、治理）挪到 Harness › 能力 › 知识库；可见性跟随 /knowledge
+        path: 'knowledge/notes',
+        name: 'knowledge-notes',
         component: () => import('../pages/KnowledgePage.vue'),
-        meta: { titleKey: 'menu.knowledge' },
+        meta: { titleKey: 'shell.nav.knowledgeBase' },
       },
       {
         path: 'artifacts',

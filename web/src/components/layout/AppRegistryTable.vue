@@ -226,6 +226,8 @@ const props = withDefaults(
      * table = 固定表格，不出视图条（明细、日志、嵌在别处的小表）。
      */
     view?: 'auto' | 'table';
+    /** 服务端分页时的总条数；不传就按当前页的行数计 */
+    total?: number;
   }>(),
   {
     shell: true,
@@ -243,6 +245,7 @@ const props = withDefaults(
     emptyActionLabel: '',
     emptyActionIcon: '',
     view: 'auto',
+    total: undefined,
   },
 );
 
@@ -279,7 +282,9 @@ onMounted(() => {
   const root = instance?.proxy?.$el as HTMLElement | undefined;
   embedded.value = Boolean(root?.closest?.('.q-dialog, .q-menu, .q-drawer--right'));
   const page = root?.closest?.('.q-page');
-  pageHasSearch.value = Boolean(page?.querySelector('.app-page-toolbar input, .app-page-toolbar__search'));
+  pageHasSearch.value = Boolean(
+    page?.querySelector('.app-page-toolbar input, .app-page-toolbar__search, .cap-bar__search'),
+  );
 });
 const pageLevel = computed(() => props.view === 'auto' && !props.dataShell && !embedded.value);
 const cardsAvailable = computed(() => pageLevel.value && !slots.body && cardColumns.value.length > 0);
@@ -301,7 +306,8 @@ function setMode(next: RegistryViewMode) {
 }
 
 const quick = ref('');
-const totalCount = computed(() => rows.value.length);
+// 服务端分页时父级传 total（全部条数），否则只能数到当前这一页
+const totalCount = computed(() => props.total ?? rows.value.length);
 const shownCount = computed(() => quickFilterRows(rows.value, quick.value, cardColumns.value).length);
 
 const hasSelection = computed(() => {

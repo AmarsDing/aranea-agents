@@ -47,9 +47,10 @@ html body .app-page-container[data-visual='workspace']
   .app-registry-card--selected
     background: var(--nt-bg-1)
 
-// ——— 指挥舱档：在科幻层之上再提一点存在感 ———
+// ——— 指挥舱档：网格底 + 左上冰青、右下淡紫两团环境光（给毛玻璃面板透；不再在顶部打一束强光）———
 html body.body--dark .app-page-container[data-visual='deck']
-  background-image: radial-gradient(ellipse 1200px 420px at 50% -120px, var(--nt-accent-hover), transparent 70%), linear-gradient(var(--scifi-grid) 1px, transparent 1px), linear-gradient(90deg, var(--scifi-grid) 1px, transparent 1px)
+  background-image: radial-gradient(ellipse 900px 600px at 6% -8%, var(--nt-ambient-a), transparent 70%), radial-gradient(ellipse 1000px 700px at 100% 108%, var(--nt-ambient-b), transparent 70%), linear-gradient(var(--scifi-grid) 1px, transparent 1px), linear-gradient(90deg, var(--scifi-grid) 1px, transparent 1px)
+  background-size: auto, auto, 48px 48px, 48px 48px
 
 // ——— 中文标签：不用全大写、不拉宽字距、不用等宽字体 ———
 // 等宽只留给数字、编号与时间；这些标签里大多是中文，拉宽字距只会显得松散。

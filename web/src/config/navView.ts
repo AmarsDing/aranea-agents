@@ -64,6 +64,15 @@ const TASKS_ENTRY: NavLeaf = {
   derivedFrom: '/workbench',
 };
 
+// 知识库（双链、图谱、治理）：/knowledge 改成工作台 › 资料后，原笔记工作台挪到这里，可见性跟随 /knowledge
+const KNOWLEDGE_BASE_ENTRY: NavLeaf = {
+  to: '/knowledge/notes',
+  icon: 'hub',
+  labelKey: 'shell.nav.knowledgeBase',
+  derived: true,
+  derivedFrom: '/knowledge',
+};
+
 // 健康与告警（2026-11-19 从监控页拆出）：前端派生入口，可见性跟随 /monitor/logs
 const HEALTH_ENTRY: NavLeaf = {
   to: '/monitor/health',
@@ -126,7 +135,12 @@ const SECTION_DEFS: Record<string, SectionDef[]> = {
     },
   ],
   'menu.groupKnowledge': [
-    { key: 'assets', labelKey: 'shell.nav.section.assets', paths: ['/knowledge', '/artifacts'] },
+    {
+      key: 'assets',
+      labelKey: 'shell.nav.section.assets',
+      paths: ['/knowledge', '/artifacts'],
+      derived: [KNOWLEDGE_BASE_ENTRY],
+    },
     { key: 'quality', labelKey: 'shell.nav.section.quality', paths: ['/evaluation'] },
   ],
   'menu.groupOps': [

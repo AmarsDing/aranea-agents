@@ -1097,10 +1097,15 @@ body.body--dark .chat-page .chat-q-message--streaming .chat-message-bubble--rece
     animation: none
     opacity: 0.6
 
-@media (max-width: 900px)
-  :root
+// 对话页两侧栏：宽度不到 1600 时收窄，把地方让给中间的对话区。
+// 这两个变量挂在 body 的明暗主题类上，要用同样的选择器才盖得住（原先写在 :root 上不生效）。
+@media (max-width: 1599px)
+  html body.body--dark,
+  html body:not(.body--dark)
     --chat-side-left-width: 240px
     --chat-side-right-width: 320px
+
+@media (max-width: 900px)
   .chat-toolbar-actions
     justify-content: flex-start
 

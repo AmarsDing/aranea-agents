@@ -22,11 +22,11 @@ describe('整站布局属主', () => {
     expect(resolveUiVisual(undefined)).toBe('workspace');
     expect(resolveUiVisual('deck')).toBe('deck');
     expect(resolveUiVisual('other')).toBe('workspace');
-    for (const name of ['workbench', 'overview', 'ceo-company', 'ceo-overview']) {
+    for (const name of ['workbench', 'overview', 'ceo-company', 'ceo-overview', 'chat']) {
       expect(routeByName(name)?.meta?.uiVisual, name).toBe('deck');
     }
     // 运行与治理各页（含实时运转、流程健康）2026-11-19 起统一用标准页面骨架
-    for (const name of ['agents', 'tools', 'plugins', 'settings', 'chat', 'monitor-live', 'ceo-oncall']) {
+    for (const name of ['agents', 'tools', 'plugins', 'settings', 'monitor-live', 'ceo-oncall']) {
       expect(resolveUiVisual(routeByName(name)?.meta?.uiVisual), name).toBe('workspace');
     }
   });

@@ -56,7 +56,7 @@ export const sideNavGroups: NavGroup[] = [
     labelKey: 'menu.groupModels',
     items: [
       { to: '/models', icon: 'model_training', labelKey: 'menu.models' },
-      { to: '/channels', icon: 'hub', labelKey: 'menu.channels' },
+      { to: '/channels', icon: 'hub', labelKey: 'menu.channels', permission: 'channel.manage' },
     ],
   },
   {
@@ -71,9 +71,9 @@ export const sideNavGroups: NavGroup[] = [
       { to: '/skills/experience-reports', icon: 'assessment', labelKey: 'menu.experienceReports' },
       { to: '/plugins', icon: 'tune', labelKey: 'menu.plugins' },
       { to: '/hooks', icon: 'link', labelKey: 'menu.hooks' },
-      { to: '/webhooks', icon: 'webhook', labelKey: 'menu.webhooks' },
+      { to: '/webhooks', icon: 'webhook', labelKey: 'menu.webhooks', permission: 'webhook.manage' },
       { to: '/credentials', icon: 'key', labelKey: 'menu.credentials', permission: 'credential.manage' },
-      { to: '/a2a', icon: 'swap_horiz', labelKey: 'menu.a2a' },
+      { to: '/a2a', icon: 'swap_horiz', labelKey: 'menu.a2a', permission: 'a2a.manage' },
     ],
   },
   {
