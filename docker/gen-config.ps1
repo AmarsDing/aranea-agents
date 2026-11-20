@@ -61,7 +61,8 @@ $t = $t.Replace('127.0.0.1:6379', 'redis:6379').Replace('localhost:6379', 'redis
 # 3) 日志路径
 $t = $t.Replace('"./bin/logs"', '"/app/logs"').Replace('./bin/logs', '/app/logs')
 # 4) self_improvement 沙箱仓库根（容器内无宿主机路径）
-$t = $t.Replace('"f:\\aranea-agents"', '""')
+# 不认具体路径（仓库搬过家：f:\aranea-agents → f:\myproject\aranea-agents → E:\teamwork\aranea-agents），一律清空
+$t = [regex]::Replace($t, '(?m)^(\s*repo_root:\s*)"[^"]*"', '$1""')
 
 [IO.File]::WriteAllText($dst, $t, (New-Object System.Text.UTF8Encoding($false)))
 Write-Host "overlay 配置已生成: $dst" -ForegroundColor Green

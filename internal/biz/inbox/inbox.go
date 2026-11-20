@@ -105,19 +105,24 @@ type Aggregator struct {
 func NewAggregator(sources ...Source) *Aggregator {
 	a := &Aggregator{sources: make(map[string]Source, len(sources))}
 	for _, s := range sources {
-		if s == nil {
-			continue
-		}
-		name := s.Name()
-		if name == "" || strings.Contains(name, ":") {
-			continue
-		}
-		if _, dup := a.sources[name]; !dup {
-			a.order = append(a.order, name)
-		}
-		a.sources[name] = s
+		a.Register(s)
 	}
 	return a
+}
+
+// Register 追加一个来源（规则同 NewAggregator）。只在启动装配阶段调用，聚合器开始服务后不再改动。
+func (a *Aggregator) Register(s Source) {
+	if a == nil || s == nil {
+		return
+	}
+	name := s.Name()
+	if name == "" || strings.Contains(name, ":") {
+		return
+	}
+	if _, dup := a.sources[name]; !dup {
+		a.order = append(a.order, name)
+	}
+	a.sources[name] = s
 }
 
 // Sources 返回已注册来源名（注册顺序）。

@@ -164,6 +164,7 @@ func (s *AgentBridgeService) DispatchTaskWithOrigin(ctx context.Context, session
 	}
 	agentKeyResolved, projectName := s.resolveNames(res.Task.Workspace, res.Task.AgentID, res.Task.ProjectID)
 	h.bind(res.Task.ID, agentKeyResolved, projectName)
+	ctx = taskTraceCtx(ctx, res.Task.ID)
 	s.emitter(ctx, sessionID).LogDone("agentbridge.task.dispatch", "编程任务已派发",
 		event.P("task_id", res.Task.ID),
 		event.P("agent_key", agentKeyResolved),
@@ -294,7 +295,7 @@ func (s *AgentBridgeService) OnTaskTerminal(t *agentbridge.CodingTask) {
 		"session_id":   t.SessionID,
 		"status":       string(t.Status),
 	}
-	ctx := context.Background()
+	ctx := taskTraceCtx(context.Background(), t.ID)
 	switch t.Status {
 	case agentbridge.StatusDone:
 		meta["summary"] = t.Summary
@@ -426,6 +427,16 @@ func (s *AgentBridgeService) publish(e biz.Event) {
 		return
 	}
 	s.bus.Publish(context.Background(), e)
+}
+
+// taskTraceCtx 让同一个编程任务的流程日志（派发、进程、完成 / 失败 / 取消）落在同一条追踪上（验收是事后的人工动作，单独一条）：
+// 追踪 ID 取任务 ID 去掉连字符（正好是 32 位十六进制）。否则每条日志各起一条追踪，
+// 「运行追踪」里一个任务会变成好几条只有一步的「运行」。
+func taskTraceCtx(ctx context.Context, taskID string) context.Context {
+	if taskID == "" {
+		return ctx
+	}
+	return event.ContextWithTraceID(ctx, strings.ReplaceAll(taskID, "-", ""))
 }
 
 func (s *AgentBridgeService) emitter(ctx context.Context, sessionID string) *event.TraceEmitter {

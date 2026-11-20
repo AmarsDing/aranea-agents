@@ -168,6 +168,10 @@ func NewServiceRegistry(
 	gitHubPanel *service.GitHubPanelService,
 	fleetSvc *service.FleetService,
 ) *ServiceRegistry {
+	// 正在触发的平台告警进统一收件箱（运行与治理审查 P1）。
+	// shortcut: 本应在 cmd/admin provideInboxDeps 里注入，2026-11-19 wire 因其他会话在制的 provider 无法重新生成，
+	// 先在这里（手写、同时拿得到两个服务的装配点）挂上；下次重新生成 wire 时挪回 provideInboxDeps。
+	approvalCenter.RegisterInboxSource(service.NewInboxAlertSource(monitorSvc))
 	return &ServiceRegistry{
 		Admin:              admin,
 		Avatar:             avatar,

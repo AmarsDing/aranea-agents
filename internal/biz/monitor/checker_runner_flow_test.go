@@ -37,10 +37,13 @@ type runnerFlowStubProjector struct {
 	hasEver bool
 }
 
-func (s *runnerFlowStubProjector) TraceCount() int        { return 0 }
-func (s *runnerFlowStubProjector) Started() bool          { return s.started }
-func (s *runnerFlowStubProjector) LastEventAt() time.Time { return s.lastAt }
-func (s *runnerFlowStubProjector) HasEverProcessed() bool { return s.hasEver }
+// LastRunnerFlowAt：没处理过运行事件时返回零值（与真实投影器一致）
+func (s *runnerFlowStubProjector) LastRunnerFlowAt() time.Time {
+	if !s.hasEver {
+		return time.Time{}
+	}
+	return s.lastAt
+}
 
 func TestRunnerCompletionFlowChecker_NilDeps(t *testing.T) {
 	c := monitor.NewRunnerCompletionFlowChecker(nil, nil)

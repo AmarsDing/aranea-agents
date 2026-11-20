@@ -35,13 +35,19 @@ const defaultRunnerCompletionFlowWindow = 30 * time.Minute
 // is healthy (Passed) and must not alert on low-traffic deployments.
 type RunnerCompletionFlowChecker struct {
 	repo      RunnerCompletionRepo
-	projector TraceProjectorHealthChecker
+	projector RunnerFlowActivity
 	window    time.Duration
+}
+
+// RunnerFlowActivity 报告最近一次对话 / 团队运行事件的时间（不是任意流程日志：
+// 自检自己也写系统日志，拿它当「有运行」会让空闲的系统每次自检都判失败）。
+type RunnerFlowActivity interface {
+	LastRunnerFlowAt() time.Time
 }
 
 // NewRunnerCompletionFlowChecker creates the checker. A zero window falls
 // back to the default (30 minutes).
-func NewRunnerCompletionFlowChecker(repo RunnerCompletionRepo, projector TraceProjectorHealthChecker) *RunnerCompletionFlowChecker {
+func NewRunnerCompletionFlowChecker(repo RunnerCompletionRepo, projector RunnerFlowActivity) *RunnerCompletionFlowChecker {
 	return &RunnerCompletionFlowChecker{repo: repo, projector: projector, window: defaultRunnerCompletionFlowWindow}
 }
 
@@ -66,13 +72,13 @@ func (c *RunnerCompletionFlowChecker) Check(ctx context.Context) types.SelfCheck
 		window = defaultRunnerCompletionFlowWindow
 	}
 
-	recentFlow := c.projector.HasEverProcessed() && !c.projector.LastEventAt().IsZero() &&
-		now.Sub(c.projector.LastEventAt()) <= window
+	lastRunFlow := c.projector.LastRunnerFlowAt()
+	recentFlow := !lastRunFlow.IsZero() && now.Sub(lastRunFlow) <= window
 
 	result.Details = map[string]any{
 		"window_sec":         int(window.Seconds()),
 		"recent_flow":        recentFlow,
-		"last_flow_event_at": c.projector.LastEventAt(),
+		"last_flow_event_at": lastRunFlow,
 	}
 
 	rows, err := c.repo.ListRecentRunnerCompletions(ctx, window, 1)

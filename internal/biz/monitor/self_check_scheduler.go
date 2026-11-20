@@ -32,6 +32,9 @@ type SelfCheckReportRepo interface {
 }
 
 // SelfCheckScheduler orchestrates periodic self-checks across all registered checkers.
+// selfCheckStartupGrace 是进程启动到首次自检之间的等待。
+const selfCheckStartupGrace = 30 * time.Second
+
 type SelfCheckScheduler struct {
 	checkers  []SelfChecker
 	repairers []SelfCheckRepairer
@@ -114,7 +117,16 @@ func (s *SelfCheckScheduler) Start(ctx context.Context) {
 	ticker := time.NewTicker(s.interval)
 	defer ticker.Stop()
 
-	// Run once immediately on start
+	// 首次自检等各后台 worker（追踪投影器、告警评估）起来再跑：启动瞬间就跑会把「还没启动」
+	// 记成失败，每次重启都留下一份假的「异常」报告（2026-11-19 运行与治理复核）。
+	select {
+	case <-ctx.Done():
+		s.mu.Lock()
+		s.running = false
+		s.mu.Unlock()
+		return
+	case <-time.After(selfCheckStartupGrace):
+	}
 	s.RunOnce(ctx)
 
 	for {

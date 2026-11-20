@@ -82,13 +82,16 @@ func TestMonitorTracesWhereKeywordAndExcludeInternal(t *testing.T) {
 			t.Fatalf("keyword display-name EXISTS missing %q: %q", want, where)
 		}
 	}
-	if len(args) != 9 {
-		t.Fatalf("keyword args = %v, want 9 like patterns", args)
+	if len(args) != 10 {
+		t.Fatalf("keyword args = %v, want 9 like patterns + exact session_id", args)
 	}
-	for _, a := range args {
+	for _, a := range args[:9] {
 		if a != "%gpt%" {
 			t.Fatalf("keyword should be trimmed and wrapped, got %v", a)
 		}
+	}
+	if args[9] != "gpt" || !strings.Contains(where, "session_id = ?") {
+		t.Fatalf("keyword should also match session_id exactly, got %v / %q", args[9], where)
 	}
 
 	// 组合：status + exclude_internal + keyword 同时生效。

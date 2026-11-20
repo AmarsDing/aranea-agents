@@ -583,3 +583,17 @@ func TestEventBusRepairer_Repair(t *testing.T) {
 		t.Errorf("expected success, got %v", outcome)
 	}
 }
+
+type fakeWSCounter struct{ n int }
+
+func (f fakeWSCounter) CountGlobalMonitorConns() int { return f.n }
+
+// 没人打开监控页（0 个连接）不是故障，不应让健康页挂黄灯。
+func TestWebSocketChecker_NoViewersPasses(t *testing.T) {
+	for _, n := range []int{0, 3} {
+		result := monitor.NewWebSocketChecker(fakeWSCounter{n: n}).Check(context.Background())
+		if result.Status != types.SelfCheckStatusPassed {
+			t.Errorf("connections=%d: expected passed, got %s (%s)", n, result.Status, result.Message)
+		}
+	}
+}

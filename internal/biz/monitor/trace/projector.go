@@ -22,6 +22,8 @@ type TraceProjector struct {
 
 	mu     sync.Mutex
 	traces map[string]*activeTrace
+	// closed 记最近收尾的追踪：之后到达的同 ID 事件（如进程退出日志）只补 span，不重开、不覆盖结果
+	closed map[string]time.Time
 
 	// started records whether Start() has been invoked. Combined with
 	// lastEventUnixNano it lets the self-check distinguish idle (never
@@ -29,6 +31,10 @@ type TraceProjector struct {
 	// events but hasn't recently).
 	started           atomic.Bool
 	lastEventUnixNano atomic.Int64
+	// lastRunnerFlowUnixNano 只记对话 / 团队运行（会写 runner.completion 的两个域）的事件时间。
+	// runner_completion_flow 自检据此判断「有运行却没有完成记录」；用 lastEventUnixNano 会把
+	// 自检自己写的系统日志也算成运行，空闲时必然误报。
+	lastRunnerFlowUnixNano atomic.Int64
 
 	// upsertWarnInterval throttles the per-span upsert-failure Warn. When
 	// the repo is down (e.g. PG connection lost), every span event fails and
@@ -53,6 +59,11 @@ type activeTrace struct {
 	teamID    string
 	name      string
 	createdAt time.Time
+	// lastAt / lastStep：最近一条事件的时间与步骤，非运行域据此在空闲后收尾
+	lastAt   time.Time
+	lastStep string
+	// openTask：见过 *.task.dispatch，属于有明确结束事件的任务，不按空闲收尾
+	openTask  bool
 	spanCount int
 	errCount  int
 	tokens    int64
@@ -88,6 +99,7 @@ func NewTraceProjector(repo Writer, lg loggateway.Logger, usageRepo UsageRepo, b
 		buses:     seen,
 		lg:        lg,
 		traces:    make(map[string]*activeTrace),
+		closed:    make(map[string]time.Time),
 
 		upsertWarnInterval: defaultUpsertWarnInterval,
 
@@ -98,6 +110,17 @@ func NewTraceProjector(repo Writer, lg loggateway.Logger, usageRepo UsageRepo, b
 }
 
 const traceActiveTTL = 10 * time.Minute
+
+// idleCloseAfter：没有 runner.completion 的域（agentbridge、graph、skill、a2a…）空闲这么久就收尾，
+// 按看到的事件给出完成 / 失败 / 取消，而不是一直挂着「运行中」、最后被扫成「中断」。
+const idleCloseAfter = 2 * time.Minute
+
+// runnerDomains 由 RecordRunnerCompletion → OnRunnerCompletion 收尾的域；其余域靠空闲收尾。
+var runnerDomains = map[string]bool{"chat": true, "team": true}
+
+// systemDomain 的流程日志（自检、WebSocket 断线、定时任务分发、启动关闭…）是基础设施事件不是运行，
+// 不建追踪；它们仍然写进日志文件，在「追踪与日志 › 日志」里能看到。
+const systemDomain = "system"
 
 // defaultUpsertWarnInterval is the default throttle window for the per-span
 // upsert-failure Warn (see TraceProjector.upsertWarnInterval).
@@ -133,6 +156,7 @@ func (p *TraceProjector) Start(ctx context.Context) {
 			case <-ctx.Done():
 				return
 			case <-cleanupTicker.C:
+				p.closeIdleTraces(ctx)
 				p.evictStaleTraces()
 			}
 		}
@@ -147,7 +171,60 @@ func (p *TraceProjector) evictStaleTraces() {
 			delete(p.traces, id)
 		}
 	}
+	for id, at := range p.closed {
+		if now.Sub(at) > traceActiveTTL {
+			delete(p.closed, id)
+		}
+	}
 	p.mu.Unlock()
+}
+
+// closeIdleTraces 给非运行域里空闲超过 idleCloseAfter 的追踪收尾。
+func (p *TraceProjector) closeIdleTraces(ctx context.Context) {
+	type closing struct {
+		id, status string
+		durationMs int64
+	}
+	var due []closing
+	now := time.Now()
+	p.mu.Lock()
+	for id, at := range p.traces {
+		if runnerDomains[at.name] || at.openTask || now.Sub(at.lastAt) < idleCloseAfter {
+			continue
+		}
+		due = append(due, closing{id: id, status: idleCloseStatus(at), durationMs: at.lastAt.Sub(at.createdAt).Milliseconds()})
+	}
+	p.mu.Unlock()
+	for _, c := range due {
+		p.OnRunnerCompletion(ctx, c.id, c.status, c.durationMs)
+	}
+}
+
+// terminalStatus：任务类流程的明确结束步骤（*.task.done / failed / cancelled）对应的结果；不是结束步骤返回空。
+func terminalStatus(stepID string) string {
+	s := strings.ToLower(stepID)
+	switch {
+	case strings.HasSuffix(s, ".task.done"):
+		return "ok"
+	case strings.HasSuffix(s, ".task.failed"):
+		return "error"
+	case strings.HasSuffix(s, ".task.cancelled"):
+		return "cancelled"
+	default:
+		return ""
+	}
+}
+
+// idleCloseStatus：出过错 → error；最后一步是取消 → cancelled；否则 ok。
+func idleCloseStatus(at *activeTrace) string {
+	switch {
+	case at.errCount > 0:
+		return "error"
+	case strings.HasSuffix(strings.ToLower(at.lastStep), ".cancelled"):
+		return "cancelled"
+	default:
+		return "ok"
+	}
 }
 
 func (p *TraceProjector) subscribeBus(ctx context.Context, name string, bus contract.MonitorBus, opts contract.MonitorSubscribeOptions) {
@@ -183,6 +260,13 @@ func (p *TraceProjector) handle(ctx context.Context, ev contract.MonitorEvent) {
 	if traceID == "" {
 		return
 	}
+	domain := metaStr(m, "domain")
+	if domain == systemDomain {
+		return
+	}
+	if runnerDomains[domain] {
+		p.lastRunnerFlowUnixNano.Store(time.Now().UnixNano())
+	}
 
 	sessionID := coalesceStr(metaStr(m, "session_id"), ev.SessionID)
 	runID := metaStr(m, "run_id")
@@ -193,13 +277,17 @@ func (p *TraceProjector) handle(ctx context.Context, ev contract.MonitorEvent) {
 	teamID := metaStr(m, "team_id")
 	stepID := metaStr(m, "step_id")
 	flowPhase := metaStr(m, "flow_phase")
-	domain := metaStr(m, "domain")
 
 	if agentID == "" && agentKey != "" {
 		agentID = agentKey
 	}
 
-	p.ensureTrace(ctx, traceID, sessionID, runID, agentID, provider, model, teamID, domain)
+	p.mu.Lock()
+	_, alreadyClosed := p.closed[traceID]
+	p.mu.Unlock()
+	if !alreadyClosed {
+		p.ensureTrace(ctx, traceID, sessionID, runID, agentID, provider, model, teamID, domain)
+	}
 
 	kind := spanKindFromStep(stepID, domain)
 	if kind == "" {
@@ -270,8 +358,14 @@ func (p *TraceProjector) handle(ctx context.Context, ev contract.MonitorEvent) {
 	}
 
 	p.mu.Lock()
-	if at, ok := p.traces[traceID]; ok {
+	at, live := p.traces[traceID]
+	if live {
 		at.spanCount++
+		at.lastAt = time.Now()
+		at.lastStep = stepID
+		if strings.HasSuffix(strings.ToLower(stepID), ".task.dispatch") {
+			at.openTask = true
+		}
 		if flowPhase == "done" || flowPhase == "error" {
 			if pt, ok := m["prompt_tokens"]; ok {
 				switch v := pt.(type) {
@@ -295,7 +389,17 @@ func (p *TraceProjector) handle(ctx context.Context, ev contract.MonitorEvent) {
 			}
 		}
 	}
+	var closeStatus string
+	var closeMs int64
+	if live && !runnerDomains[domain] {
+		if closeStatus = terminalStatus(stepID); closeStatus != "" {
+			closeMs = at.lastAt.Sub(at.createdAt).Milliseconds()
+		}
+	}
 	p.mu.Unlock()
+	if closeStatus != "" {
+		p.OnRunnerCompletion(ctx, traceID, closeStatus, closeMs)
+	}
 }
 
 // BackfillTraces ensures trace schema and evicts stale traces to refresh the projector state.
@@ -342,6 +446,18 @@ func (p *TraceProjector) LastEventAt() time.Time {
 	return time.Unix(0, ns).UTC()
 }
 
+// LastRunnerFlowAt 是最近一条对话 / 团队运行事件的时间；零值表示进程启动以来没有过。
+func (p *TraceProjector) LastRunnerFlowAt() time.Time {
+	if p == nil {
+		return time.Time{}
+	}
+	ns := p.lastRunnerFlowUnixNano.Load()
+	if ns == 0 {
+		return time.Time{}
+	}
+	return time.Unix(0, ns).UTC()
+}
+
 // HasEverProcessed reports whether the projector has received at least
 // one envelope since it was started. It is the boolean counterpart of
 // LastEventAt and lets callers cheaply distinguish "fresh / never seen
@@ -370,6 +486,7 @@ func (p *TraceProjector) OnRunnerCompletion(ctx context.Context, traceID, status
 		costUsd = at.costUsd
 		delete(p.traces, traceID)
 	}
+	p.closed[traceID] = time.Now()
 	p.mu.Unlock()
 
 	if status == "error" && errCount == 0 {
@@ -462,6 +579,7 @@ func (p *TraceProjector) ensureTrace(ctx context.Context, traceID, sessionID, ru
 		teamID:    teamID,
 		name:      domain,
 		createdAt: time.Now(),
+		lastAt:    time.Now(),
 	}
 	p.traces[traceID] = at
 	p.mu.Unlock()

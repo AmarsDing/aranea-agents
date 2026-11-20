@@ -85,8 +85,10 @@ func monitorTracesWhere(q biz.MonitorTracesQuery, d Dialect, omit traceWhereOmit
 			" OR EXISTS (SELECT 1 FROM sessions ks WHERE ks.id = monitor_traces.session_id AND ks.deleted_at = '' AND ks.title LIKE ?"+esc+")"+
 			" OR EXISTS (SELECT 1 FROM teams kt WHERE (kt.id = monitor_traces.team_id OR kt.team_key = monitor_traces.team_id) AND kt.deleted_at = '' AND kt.display_name LIKE ?"+esc+")"+
 			" OR EXISTS (SELECT 1 FROM sessions ks2 JOIN agents ka2 ON (ka2.id = ks2.agent_id OR ka2.agent_key = ks2.agent_id)"+
-			" WHERE ks2.id = monitor_traces.session_id AND ks2.deleted_at = '' AND ka2.deleted_at = '' AND ka2.display_name LIKE ?"+esc+"))")
-		args = append(args, like, like, like, like, like, like, like, like, like)
+			" WHERE ks2.id = monitor_traces.session_id AND ks2.deleted_at = '' AND ka2.deleted_at = '' AND ka2.display_name LIKE ?"+esc+")"+
+			// 会话 ID 精确匹配：评估结果、事件流下钻带的是会话 ID
+			" OR session_id = ?)")
+		args = append(args, like, like, like, like, like, like, like, like, like, kw)
 	}
 	if len(parts) == 0 {
 		return "", args

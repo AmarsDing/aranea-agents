@@ -412,9 +412,10 @@ func (c *WebSocketChecker) Check(ctx context.Context) types.SelfCheckResult {
 	count := c.counter.CountGlobalMonitorConns()
 	result.Details = map[string]any{"monitor_connections": count}
 
+	// 没人打开监控页就是 0 个连接，这不是故障；以前判「关注」，没人看时健康页就挂着黄灯。
 	if count == 0 {
-		result.Status = types.SelfCheckStatusWarning
-		result.Message = "no active WebSocket monitor connections"
+		result.Status = types.SelfCheckStatusPassed
+		result.Message = "websocket idle (no monitor viewers connected)"
 		return result
 	}
 

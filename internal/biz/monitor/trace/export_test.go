@@ -145,3 +145,17 @@ func (a *FlowFileAppender) RotatingFilePaths() []string {
 	}
 	return paths
 }
+
+func (p *TraceProjector) CloseIdleTracesExposed(ctx context.Context) {
+	p.closeIdleTraces(ctx)
+}
+
+// AgeTraceForTest 把一条在途追踪的创建与最近事件时间往前推 d，用来测空闲收尾。
+func (p *TraceProjector) AgeTraceForTest(traceID string, d time.Duration) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if at, ok := p.traces[traceID]; ok {
+		at.createdAt = at.createdAt.Add(-d)
+		at.lastAt = at.lastAt.Add(-d)
+	}
+}
