@@ -27,6 +27,20 @@ func (_u *GatewayWebhookUpdate) Where(ps ...predicate.GatewayWebhook) *GatewayWe
 	return _u
 }
 
+// SetWorkspaceID sets the "workspace_id" field.
+func (_u *GatewayWebhookUpdate) SetWorkspaceID(v string) *GatewayWebhookUpdate {
+	_u.mutation.SetWorkspaceID(v)
+	return _u
+}
+
+// SetNillableWorkspaceID sets the "workspace_id" field if the given value is not nil.
+func (_u *GatewayWebhookUpdate) SetNillableWorkspaceID(v *string) *GatewayWebhookUpdate {
+	if v != nil {
+		_u.SetWorkspaceID(*v)
+	}
+	return _u
+}
+
 // SetName sets the "name" field.
 func (_u *GatewayWebhookUpdate) SetName(v string) *GatewayWebhookUpdate {
 	_u.mutation.SetName(v)
@@ -173,6 +187,11 @@ func (_u *GatewayWebhookUpdate) ExecX(ctx context.Context) {
 
 // check runs all checks and user-defined validators on the builder.
 func (_u *GatewayWebhookUpdate) check() error {
+	if v, ok := _u.mutation.WorkspaceID(); ok {
+		if err := gatewaywebhook.WorkspaceIDValidator(v); err != nil {
+			return &ValidationError{Name: "workspace_id", err: fmt.Errorf(`ent: validator failed for field "GatewayWebhook.workspace_id": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.Name(); ok {
 		if err := gatewaywebhook.NameValidator(v); err != nil {
 			return &ValidationError{Name: "name", err: fmt.Errorf(`ent: validator failed for field "GatewayWebhook.name": %w`, err)}
@@ -202,6 +221,9 @@ func (_u *GatewayWebhookUpdate) sqlSave(ctx context.Context) (_node int, err err
 				ps[i](selector)
 			}
 		}
+	}
+	if value, ok := _u.mutation.WorkspaceID(); ok {
+		_spec.SetField(gatewaywebhook.FieldWorkspaceID, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.Name(); ok {
 		_spec.SetField(gatewaywebhook.FieldName, field.TypeString, value)
@@ -245,6 +267,20 @@ type GatewayWebhookUpdateOne struct {
 	fields   []string
 	hooks    []Hook
 	mutation *GatewayWebhookMutation
+}
+
+// SetWorkspaceID sets the "workspace_id" field.
+func (_u *GatewayWebhookUpdateOne) SetWorkspaceID(v string) *GatewayWebhookUpdateOne {
+	_u.mutation.SetWorkspaceID(v)
+	return _u
+}
+
+// SetNillableWorkspaceID sets the "workspace_id" field if the given value is not nil.
+func (_u *GatewayWebhookUpdateOne) SetNillableWorkspaceID(v *string) *GatewayWebhookUpdateOne {
+	if v != nil {
+		_u.SetWorkspaceID(*v)
+	}
+	return _u
 }
 
 // SetName sets the "name" field.
@@ -406,6 +442,11 @@ func (_u *GatewayWebhookUpdateOne) ExecX(ctx context.Context) {
 
 // check runs all checks and user-defined validators on the builder.
 func (_u *GatewayWebhookUpdateOne) check() error {
+	if v, ok := _u.mutation.WorkspaceID(); ok {
+		if err := gatewaywebhook.WorkspaceIDValidator(v); err != nil {
+			return &ValidationError{Name: "workspace_id", err: fmt.Errorf(`ent: validator failed for field "GatewayWebhook.workspace_id": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.Name(); ok {
 		if err := gatewaywebhook.NameValidator(v); err != nil {
 			return &ValidationError{Name: "name", err: fmt.Errorf(`ent: validator failed for field "GatewayWebhook.name": %w`, err)}
@@ -452,6 +493,9 @@ func (_u *GatewayWebhookUpdateOne) sqlSave(ctx context.Context) (_node *GatewayW
 				ps[i](selector)
 			}
 		}
+	}
+	if value, ok := _u.mutation.WorkspaceID(); ok {
+		_spec.SetField(gatewaywebhook.FieldWorkspaceID, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.Name(); ok {
 		_spec.SetField(gatewaywebhook.FieldName, field.TypeString, value)

@@ -1682,6 +1682,7 @@ var (
 	// GatewayWebhooksColumns holds the columns for the "gateway_webhooks" table.
 	GatewayWebhooksColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString, Unique: true, Size: 64},
+		{Name: "workspace_id", Type: field.TypeString, Size: 64, Default: ""},
 		{Name: "name", Type: field.TypeString, Size: 256},
 		{Name: "url", Type: field.TypeString, Size: 2048},
 		{Name: "event_types_json", Type: field.TypeString, Size: 2147483647, Default: "[]"},

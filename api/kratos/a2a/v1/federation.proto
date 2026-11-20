@@ -2,6 +2,7 @@ syntax = "proto3";
 
 package kratos.a2a.v1;
 
+import "aranea/auth/v1/requirement.proto";
 import "google/api/annotations.proto";
 import "google/api/field_behavior.proto";
 import "google/protobuf/empty.proto";
@@ -170,6 +171,7 @@ message QueryFederationAuditLogsResponse {
 service FederationService {
   // RegisterFederationOrg creates or updates an org (upsert by domain).
   rpc RegisterFederationOrg(RegisterFederationOrgRequest) returns (FederationOrg) {
+    option (aranea.auth.v1.requirement) = {permission: "a2a.manage"};
     option (google.api.http) = {
       post: "/v1/a2a/federation/orgs"
       body: "*"
@@ -178,6 +180,7 @@ service FederationService {
 
   // ListFederationOrgs lists all registered orgs.
   rpc ListFederationOrgs(ListFederationOrgsRequest) returns (ListFederationOrgsResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "a2a.manage"};
     option (google.api.http) = {
       get: "/v1/a2a/federation/orgs"
     };
@@ -186,6 +189,7 @@ service FederationService {
   // DeleteFederationOrg removes an org; remote agents are only disassociated
   // (org_id cleared), not cascade-deleted.
   rpc DeleteFederationOrg(DeleteFederationOrgRequest) returns (google.protobuf.Empty) {
+    option (aranea.auth.v1.requirement) = {permission: "a2a.manage"};
     option (google.api.http) = {
       delete: "/v1/a2a/federation/orgs/{id}"
     };
@@ -193,6 +197,7 @@ service FederationService {
 
   // SetFederationTrustLevel sets the trust level of an org.
   rpc SetFederationTrustLevel(SetFederationTrustLevelRequest) returns (FederationOrg) {
+    option (aranea.auth.v1.requirement) = {permission: "a2a.manage"};
     option (google.api.http) = {
       put: "/v1/a2a/federation/orgs/{id}/trust"
       body: "*"
@@ -202,6 +207,7 @@ service FederationService {
   // SyncFederationOrgCards manually pulls the org's remote agent cards into
   // the directory cache (FED-F7).
   rpc SyncFederationOrgCards(SyncFederationOrgCardsRequest) returns (SyncFederationOrgCardsResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "a2a.manage"};
     option (google.api.http) = {
       post: "/v1/a2a/federation/orgs/{id}/sync"
     };
@@ -209,6 +215,7 @@ service FederationService {
 
   // UpsertFederationPolicy configures the call policy for one org pair.
   rpc UpsertFederationPolicy(UpsertFederationPolicyRequest) returns (FederationPolicy) {
+    option (aranea.auth.v1.requirement) = {permission: "a2a.manage"};
     option (google.api.http) = {
       post: "/v1/a2a/federation/policies"
       body: "*"
@@ -218,6 +225,7 @@ service FederationService {
   // DiscoverFederationAgents searches the federation directory (cached cards,
   // no live pull); filters by capability and/or org_id.
   rpc DiscoverFederationAgents(DiscoverFederationAgentsRequest) returns (DiscoverFederationAgentsResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "a2a.manage"};
     option (google.api.http) = {
       get: "/v1/a2a/federation/agents"
     };
@@ -226,6 +234,7 @@ service FederationService {
   // InvokeFederatedAgent invokes a remote agent of a federated org through
   // the governance chain (trust -> policy -> quota -> audit -> invoke).
   rpc InvokeFederatedAgent(InvokeFederatedAgentRequest) returns (InvokeFederatedAgentResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "a2a.manage"};
     option (google.api.http) = {
       post: "/v1/a2a/federation/invoke"
       body: "*"
@@ -234,6 +243,7 @@ service FederationService {
 
   // QueryFederationAuditLogs queries audit entries with filters + pagination.
   rpc QueryFederationAuditLogs(QueryFederationAuditLogsRequest) returns (QueryFederationAuditLogsResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "a2a.manage"};
     option (google.api.http) = {
       get: "/v1/a2a/federation/audits"
     };

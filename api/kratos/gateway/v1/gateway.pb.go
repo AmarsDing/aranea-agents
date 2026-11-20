@@ -7,6 +7,7 @@
 package v1
 
 import (
+	_ "aranea-agents/api/aranea/auth/v1"
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
@@ -595,7 +596,7 @@ var File_kratos_gateway_v1_gateway_proto protoreflect.FileDescriptor
 
 const file_kratos_gateway_v1_gateway_proto_rawDesc = "" +
 	"\n" +
-	"\x1fkratos/gateway/v1/gateway.proto\x12\x11kratos.gateway.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x1bgoogle/protobuf/empty.proto\"\xd8\x02\n" +
+	"\x1fkratos/gateway/v1/gateway.proto\x12\x11kratos.gateway.v1\x1a aranea/auth/v1/requirement.proto\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x1bgoogle/protobuf/empty.proto\"\xd8\x02\n" +
 	"\aWebhook\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x10\n" +
@@ -655,13 +656,18 @@ const file_kratos_gateway_v1_gateway_proto_rawDesc = "" +
 	"statusCode\x12\x14\n" +
 	"\x05error\x18\x03 \x01(\tR\x05error\x12\x1f\n" +
 	"\vduration_ms\x18\x04 \x01(\x03R\n" +
-	"durationMs2\x81\x05\n" +
-	"\x0eGatewayService\x12u\n" +
-	"\rCreateWebhook\x12'.kratos.gateway.v1.CreateWebhookRequest\x1a\x1a.kratos.gateway.v1.Webhook\"\x1f\x82\xd3\xe4\x93\x02\x19:\x01*\"\x14/v1/gateway/webhooks\x12}\n" +
-	"\fListWebhooks\x12&.kratos.gateway.v1.ListWebhooksRequest\x1a'.kratos.gateway.v1.ListWebhooksResponse\"\x1c\x82\xd3\xe4\x93\x02\x16\x12\x14/v1/gateway/webhooks\x12z\n" +
-	"\rUpdateWebhook\x12'.kratos.gateway.v1.UpdateWebhookRequest\x1a\x1a.kratos.gateway.v1.Webhook\"$\x82\xd3\xe4\x93\x02\x1e:\x01*\x1a\x19/v1/gateway/webhooks/{id}\x12s\n" +
-	"\rDeleteWebhook\x12'.kratos.gateway.v1.DeleteWebhookRequest\x1a\x16.google.protobuf.Empty\"!\x82\xd3\xe4\x93\x02\x1b*\x19/v1/gateway/webhooks/{id}\x12\x87\x01\n" +
-	"\vTestWebhook\x12%.kratos.gateway.v1.TestWebhookRequest\x1a&.kratos.gateway.v1.TestWebhookResponse\")\x82\xd3\xe4\x93\x02#:\x01*\"\x1e/v1/gateway/webhooks/{id}/testBA\n" +
+	"durationMs2\xe9\x05\n" +
+	"\x0eGatewayService\x12\x89\x01\n" +
+	"\rCreateWebhook\x12'.kratos.gateway.v1.CreateWebhookRequest\x1a\x1a.kratos.gateway.v1.Webhook\"3\xca\xf3\x18\x10\n" +
+	"\x0ewebhook.manage\x82\xd3\xe4\x93\x02\x19:\x01*\"\x14/v1/gateway/webhooks\x12\x91\x01\n" +
+	"\fListWebhooks\x12&.kratos.gateway.v1.ListWebhooksRequest\x1a'.kratos.gateway.v1.ListWebhooksResponse\"0\xca\xf3\x18\x10\n" +
+	"\x0ewebhook.manage\x82\xd3\xe4\x93\x02\x16\x12\x14/v1/gateway/webhooks\x12\x8e\x01\n" +
+	"\rUpdateWebhook\x12'.kratos.gateway.v1.UpdateWebhookRequest\x1a\x1a.kratos.gateway.v1.Webhook\"8\xca\xf3\x18\x10\n" +
+	"\x0ewebhook.manage\x82\xd3\xe4\x93\x02\x1e:\x01*\x1a\x19/v1/gateway/webhooks/{id}\x12\x87\x01\n" +
+	"\rDeleteWebhook\x12'.kratos.gateway.v1.DeleteWebhookRequest\x1a\x16.google.protobuf.Empty\"5\xca\xf3\x18\x10\n" +
+	"\x0ewebhook.manage\x82\xd3\xe4\x93\x02\x1b*\x19/v1/gateway/webhooks/{id}\x12\x9b\x01\n" +
+	"\vTestWebhook\x12%.kratos.gateway.v1.TestWebhookRequest\x1a&.kratos.gateway.v1.TestWebhookResponse\"=\xca\xf3\x18\x10\n" +
+	"\x0ewebhook.manage\x82\xd3\xe4\x93\x02#:\x01*\"\x1e/v1/gateway/webhooks/{id}/testBA\n" +
 	"\x15api.kratos.gateway.v1P\x01Z&aranea-agents/api/kratos/gateway/v1;v1b\x06proto3"
 
 var (

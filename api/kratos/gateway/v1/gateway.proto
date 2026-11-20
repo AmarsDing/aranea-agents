@@ -2,6 +2,7 @@ syntax = "proto3";
 
 package kratos.gateway.v1;
 
+import "aranea/auth/v1/requirement.proto";
 import "google/api/annotations.proto";
 import "google/api/field_behavior.proto";
 import "google/protobuf/empty.proto";
@@ -71,18 +72,23 @@ message TestWebhookResponse {
 
 service GatewayService {
   rpc CreateWebhook(CreateWebhookRequest) returns (Webhook) {
+    option (aranea.auth.v1.requirement) = {permission: "webhook.manage"};
     option (google.api.http) = { post: "/v1/gateway/webhooks" body: "*" };
   }
   rpc ListWebhooks(ListWebhooksRequest) returns (ListWebhooksResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "webhook.manage"};
     option (google.api.http) = { get: "/v1/gateway/webhooks" };
   }
   rpc UpdateWebhook(UpdateWebhookRequest) returns (Webhook) {
+    option (aranea.auth.v1.requirement) = {permission: "webhook.manage"};
     option (google.api.http) = { put: "/v1/gateway/webhooks/{id}" body: "*" };
   }
   rpc DeleteWebhook(DeleteWebhookRequest) returns (google.protobuf.Empty) {
+    option (aranea.auth.v1.requirement) = {permission: "webhook.manage"};
     option (google.api.http) = { delete: "/v1/gateway/webhooks/{id}" };
   }
   rpc TestWebhook(TestWebhookRequest) returns (TestWebhookResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "webhook.manage"};
     option (google.api.http) = { post: "/v1/gateway/webhooks/{id}/test" body: "*" };
   }
 }

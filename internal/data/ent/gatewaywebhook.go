@@ -16,6 +16,8 @@ type GatewayWebhook struct {
 	config `json:"-"`
 	// ID of the ent.
 	ID string `json:"id,omitempty"`
+	// WorkspaceID holds the value of the "workspace_id" field.
+	WorkspaceID string `json:"workspace_id,omitempty"`
 	// Name holds the value of the "name" field.
 	Name string `json:"name,omitempty"`
 	// URL holds the value of the "url" field.
@@ -42,7 +44,7 @@ func (*GatewayWebhook) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case gatewaywebhook.FieldEnabled:
 			values[i] = new(sql.NullBool)
-		case gatewaywebhook.FieldID, gatewaywebhook.FieldName, gatewaywebhook.FieldURL, gatewaywebhook.FieldEventTypesJSON, gatewaywebhook.FieldSecret, gatewaywebhook.FieldHeadersJSON, gatewaywebhook.FieldCreatedAt, gatewaywebhook.FieldUpdatedAt:
+		case gatewaywebhook.FieldID, gatewaywebhook.FieldWorkspaceID, gatewaywebhook.FieldName, gatewaywebhook.FieldURL, gatewaywebhook.FieldEventTypesJSON, gatewaywebhook.FieldSecret, gatewaywebhook.FieldHeadersJSON, gatewaywebhook.FieldCreatedAt, gatewaywebhook.FieldUpdatedAt:
 			values[i] = new(sql.NullString)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -64,6 +66,12 @@ func (_m *GatewayWebhook) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field id", values[i])
 			} else if value.Valid {
 				_m.ID = value.String
+			}
+		case gatewaywebhook.FieldWorkspaceID:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field workspace_id", values[i])
+			} else if value.Valid {
+				_m.WorkspaceID = value.String
 			}
 		case gatewaywebhook.FieldName:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -149,6 +157,9 @@ func (_m *GatewayWebhook) String() string {
 	var builder strings.Builder
 	builder.WriteString("GatewayWebhook(")
 	builder.WriteString(fmt.Sprintf("id=%v, ", _m.ID))
+	builder.WriteString("workspace_id=")
+	builder.WriteString(_m.WorkspaceID)
+	builder.WriteString(", ")
 	builder.WriteString("name=")
 	builder.WriteString(_m.Name)
 	builder.WriteString(", ")

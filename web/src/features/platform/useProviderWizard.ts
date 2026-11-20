@@ -447,7 +447,9 @@ export function useProviderWizard(deps: {
       catalog.catalogProviderId.value = resolvedCatalogId;
       await catalog.ensureCatalogLoaded();
       await catalog.loadCatalogModels(resolvedCatalogId, '', true);
-      catalog.applyProviderRuntimeFields(resolvedCatalogId);
+      // 只有目录托管的条目才用目录的 provider_type / variant 覆盖；自定义条目（如 Anthropic、Gemini）
+      // 按代码查目录时会落到默认的 openai 档，打开编辑再保存就被静默改成 OpenAI。
+      if (config.catalog_managed) catalog.applyProviderRuntimeFields(resolvedCatalogId);
     }
     Object.assign(providerHAForm, {
       haMode: (config.ha_mode || '') as ProviderHAForm['haMode'],

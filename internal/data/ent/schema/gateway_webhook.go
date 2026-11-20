@@ -21,6 +21,8 @@ func (GatewayWebhook) Annotations() []schema.Annotation {
 func (GatewayWebhook) Fields() []ent.Field {
 	return []ent.Field{
 		field.String("id").Immutable().Unique().MaxLen(64),
+		// 归属工作区：空串 = 存量行，按 default 工作区对待（与 workspace.AssertWorkspace 一致）。
+		field.String("workspace_id").Default("").MaxLen(64),
 		field.String("name").MaxLen(256),
 		field.String("url").MaxLen(2048),
 		field.Text("event_types_json").Default("[]"),

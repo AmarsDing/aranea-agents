@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"aranea-agents/internal/workspace"
 	"aranea-agents/pkg/outboundwebhook"
 	"aranea-agents/pkg/safego"
 	"aranea-agents/pkg/webhookurl"
@@ -57,11 +58,32 @@ func webhookURLHost(raw string) string {
 	return u.Host
 }
 
-// Dispatch fans out one event to enabled webhooks that subscribe to eventType.
+// webhookSessionWorkspaceResolver 由仓储实现：按会话查它的归属工作区。
+// 运行 / 工作流事件常在后台 ctx 里发出，ctx 不带租户，只能按会话认。
+type webhookSessionWorkspaceResolver interface {
+	SessionWorkspaceID(ctx context.Context, sessionID string) (string, bool)
+}
+
+// eventWorkspace 认定一次事件属于哪个工作区：会话 → ctx 上显式的租户 → default。
+func (d *WebhookDispatcher) eventWorkspace(ctx context.Context, ctxWS, sessionID string) string {
+	if r, ok := d.repo.(webhookSessionWorkspaceResolver); ok && strings.TrimSpace(sessionID) != "" {
+		if ws, found := r.SessionWorkspaceID(ctx, sessionID); found {
+			return effectiveWebhookWorkspace(ws)
+		}
+	}
+	if ctxWS != "" && ctxWS != workspace.SystemWorkspaceID {
+		return ctxWS
+	}
+	return workspace.DefaultWorkspaceID
+}
+
+// Dispatch fans out one event to the enabled webhooks of the event's own workspace
+// that subscribe to eventType（不再推给其他工作区的订阅）。
 func (d *WebhookDispatcher) Dispatch(ctx context.Context, eventType, runID, sessionID, status string, data map[string]any) {
 	if d == nil || d.repo == nil || strings.TrimSpace(eventType) == "" {
 		return
 	}
+	ctxWS, _ := workspace.FromContext(ctx)
 	safego.Go(ctx, "gateway.webhook.dispatch", func() {
 		// Budget: 3 attempts × 10 s HTTP timeout + 1.5 s sleep = ~31.5 s worst case.
 		// Use 60 s so the third retry is never cancelled by the context itself.
@@ -95,7 +117,11 @@ func (d *WebhookDispatcher) Dispatch(ctx context.Context, eventType, runID, sess
 			}
 			return
 		}
+		eventWS := d.eventWorkspace(bg, ctxWS, sessionID)
 		for _, cfg := range configs {
+			if effectiveWebhookWorkspace(cfg.WorkspaceID) != eventWS {
+				continue
+			}
 			if !WebhookSubscribes(cfg.EventTypesJSON, eventType) {
 				continue
 			}

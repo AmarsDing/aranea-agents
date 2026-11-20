@@ -63,6 +63,11 @@ func IDContainsFold(id string) predicate.GatewayWebhook {
 	return predicate.GatewayWebhook(sql.FieldContainsFold(FieldID, id))
 }
 
+// WorkspaceID applies equality check predicate on the "workspace_id" field. It's identical to WorkspaceIDEQ.
+func WorkspaceID(v string) predicate.GatewayWebhook {
+	return predicate.GatewayWebhook(sql.FieldEQ(FieldWorkspaceID, v))
+}
+
 // Name applies equality check predicate on the "name" field. It's identical to NameEQ.
 func Name(v string) predicate.GatewayWebhook {
 	return predicate.GatewayWebhook(sql.FieldEQ(FieldName, v))
@@ -101,6 +106,71 @@ func CreatedAt(v string) predicate.GatewayWebhook {
 // UpdatedAt applies equality check predicate on the "updated_at" field. It's identical to UpdatedAtEQ.
 func UpdatedAt(v string) predicate.GatewayWebhook {
 	return predicate.GatewayWebhook(sql.FieldEQ(FieldUpdatedAt, v))
+}
+
+// WorkspaceIDEQ applies the EQ predicate on the "workspace_id" field.
+func WorkspaceIDEQ(v string) predicate.GatewayWebhook {
+	return predicate.GatewayWebhook(sql.FieldEQ(FieldWorkspaceID, v))
+}
+
+// WorkspaceIDNEQ applies the NEQ predicate on the "workspace_id" field.
+func WorkspaceIDNEQ(v string) predicate.GatewayWebhook {
+	return predicate.GatewayWebhook(sql.FieldNEQ(FieldWorkspaceID, v))
+}
+
+// WorkspaceIDIn applies the In predicate on the "workspace_id" field.
+func WorkspaceIDIn(vs ...string) predicate.GatewayWebhook {
+	return predicate.GatewayWebhook(sql.FieldIn(FieldWorkspaceID, vs...))
+}
+
+// WorkspaceIDNotIn applies the NotIn predicate on the "workspace_id" field.
+func WorkspaceIDNotIn(vs ...string) predicate.GatewayWebhook {
+	return predicate.GatewayWebhook(sql.FieldNotIn(FieldWorkspaceID, vs...))
+}
+
+// WorkspaceIDGT applies the GT predicate on the "workspace_id" field.
+func WorkspaceIDGT(v string) predicate.GatewayWebhook {
+	return predicate.GatewayWebhook(sql.FieldGT(FieldWorkspaceID, v))
+}
+
+// WorkspaceIDGTE applies the GTE predicate on the "workspace_id" field.
+func WorkspaceIDGTE(v string) predicate.GatewayWebhook {
+	return predicate.GatewayWebhook(sql.FieldGTE(FieldWorkspaceID, v))
+}
+
+// WorkspaceIDLT applies the LT predicate on the "workspace_id" field.
+func WorkspaceIDLT(v string) predicate.GatewayWebhook {
+	return predicate.GatewayWebhook(sql.FieldLT(FieldWorkspaceID, v))
+}
+
+// WorkspaceIDLTE applies the LTE predicate on the "workspace_id" field.
+func WorkspaceIDLTE(v string) predicate.GatewayWebhook {
+	return predicate.GatewayWebhook(sql.FieldLTE(FieldWorkspaceID, v))
+}
+
+// WorkspaceIDContains applies the Contains predicate on the "workspace_id" field.
+func WorkspaceIDContains(v string) predicate.GatewayWebhook {
+	return predicate.GatewayWebhook(sql.FieldContains(FieldWorkspaceID, v))
+}
+
+// WorkspaceIDHasPrefix applies the HasPrefix predicate on the "workspace_id" field.
+func WorkspaceIDHasPrefix(v string) predicate.GatewayWebhook {
+	return predicate.GatewayWebhook(sql.FieldHasPrefix(FieldWorkspaceID, v))
+}
+
+// WorkspaceIDHasSuffix applies the HasSuffix predicate on the "workspace_id" field.
+func WorkspaceIDHasSuffix(v string) predicate.GatewayWebhook {
+	return predicate.GatewayWebhook(sql.FieldHasSuffix(FieldWorkspaceID, v))
+}
+
+// WorkspaceIDEqualFold applies the EqualFold predicate on the "workspace_id" field.
+func WorkspaceIDEqualFold(v string) predicate.GatewayWebhook {
+	return predicate.GatewayWebhook(sql.FieldEqualFold(FieldWorkspaceID, v))
+}
+
+// WorkspaceIDContainsFold applies the ContainsFold predicate on the "workspace_id" field.
+func WorkspaceIDContainsFold(v string) predicate.GatewayWebhook {
+	return predicate.GatewayWebhook(sql.FieldContainsFold(FieldWorkspaceID, v))
 }
 
 // NameEQ applies the EQ predicate on the "name" field.

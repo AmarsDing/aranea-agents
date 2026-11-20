@@ -144,7 +144,13 @@ func (t *tool) Call(ctx context.Context, args []byte) (any, error) {
 			"expires_at": expiresAt,
 		}, nil
 	}
-	res, err := t.executor.LoginExecute(ctx, cred.Site, firstNonEmpty(in.URL, cred.URL), cred.Username, secret)
+	// 登录页只能在凭据自己的站点上：Agent 传来的 URL 主机对不上就用凭据登记的地址，
+	// 否则模型改个参数就能把密码填到别的网站。
+	loginURL := firstNonEmpty(cred.URL, "https://"+cred.Site)
+	if u := strings.TrimSpace(in.URL); u != "" && biz.NormalizeCredentialSite(u) == cred.Site {
+		loginURL = u
+	}
+	res, err := t.executor.LoginExecute(ctx, cred.Site, loginURL, cred.Username, secret)
 	if err != nil {
 		return nil, err
 	}

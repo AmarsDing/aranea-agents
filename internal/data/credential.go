@@ -2,6 +2,7 @@ package data
 
 import (
 	"context"
+	"strings"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/ent"
@@ -77,8 +78,9 @@ func scopeCredentialWorkspace(q *ent.CredentialQuery, workspaceID string) *ent.C
 func (r *credentialRepo) ListCredentials(ctx context.Context, workspaceID string, q biz.CredentialListQuery) ([]biz.Credential, int64, error) {
 	query := r.data.RW().Read(ctx).Credential.Query()
 	query = scopeCredentialWorkspace(query, workspaceID)
-	if q.Site != "" {
-		query = query.Where(credential.SiteEQ(q.Site))
+	if site := strings.TrimSpace(q.Site); site != "" {
+		// 管理页是搜索框：按包含匹配（不分大小写），不要求输入完整的规范化站点
+		query = query.Where(credential.SiteContainsFold(site))
 	}
 	total, err := query.Clone().Count(ctx)
 	if err != nil {
@@ -216,8 +218,8 @@ func (r *credentialRepo) ListCredentialExecutions(ctx context.Context, workspace
 	if q.CredentialID > 0 {
 		query = query.Where(credentialexecution.CredentialIDEQ(q.CredentialID))
 	}
-	if q.Site != "" {
-		query = query.Where(credentialexecution.SiteEQ(q.Site))
+	if site := strings.TrimSpace(q.Site); site != "" {
+		query = query.Where(credentialexecution.SiteContainsFold(site))
 	}
 	total, err := query.Clone().Count(ctx)
 	if err != nil {

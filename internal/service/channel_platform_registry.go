@@ -102,10 +102,9 @@ func outboundDingtalk(ctx context.Context, h *ChannelIngress, _ biz.Channel, cre
 }
 
 func outboundWecom(ctx context.Context, h *ChannelIngress, _ biz.Channel, creds []biz.ChannelCredential, payload biz.ChannelOutboundPayload) error {
-	webhookURL, err := resolveCredentialPlain(ctx, h.channels, creds, "webhook_url")
-	if err != nil {
-		return err
-	}
+	// 智能机器人回复走消息里带的 response_url；webhook_url 只是没有 response_url 时的兜底，
+	// 目录与表单都不收这个字段，查不到不能当失败（否则每条回复都重试到死信）。
+	webhookURL, _ := resolveCredentialPlain(ctx, h.channels, creds, "webhook_url")
 	target := payload.Extra["response_url"]
 	return (&wecom.TextSender{WebhookURL: webhookURL, HTTP: h.http}).SendText(ctx, target, payload.Text)
 }
@@ -294,6 +293,9 @@ func (h *ChannelIngress) sendOutboundPayload(ctx context.Context, channelID stri
 	chRow, err := h.channels.Get(ctx, channelID)
 	if err != nil {
 		return err
+	}
+	if !chRow.Enabled {
+		return apierror.BadRequest("CHANNEL", "channel %s is disabled; outbound message not sent", chRow.Key)
 	}
 	creds, err := h.channels.ListCredentialsRaw(ctx, channelID)
 	if err != nil {

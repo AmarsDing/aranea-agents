@@ -98,14 +98,10 @@ async function load() {
   loading.value = true;
   error.value = '';
   try {
-    const [deliveries, { agents }] = await Promise.all([
-      channelsStore.loadDeliveries(props.channelId, 30),
-      channelsStore.routingAgents.length > 0
-        ? Promise.resolve({ agents: channelsStore.routingAgents })
-        : channelsStore.loadRoutingOptions(),
-    ]);
-    rows.value = deliveries;
-    agentCache.value = agents;
+    rows.value = await channelsStore.loadDeliveries(props.channelId, 30);
+    // Agent 名称只是装饰：名册读不到时照样显示投递记录（列里退回显示 ID）
+    if (channelsStore.routingAgents.length > 0) agentCache.value = channelsStore.routingAgents;
+    else void channelsStore.loadRoutingOptions().then((r) => (agentCache.value = r.agents)).catch(() => undefined);
   } catch (err) {
     error.value = err instanceof Error ? err.message : t('channelEditor.loadFailed');
   } finally {

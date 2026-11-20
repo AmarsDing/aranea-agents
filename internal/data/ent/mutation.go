@@ -52778,6 +52778,7 @@ type GatewayWebhookMutation struct {
 	op               Op
 	typ              string
 	id               *string
+	workspace_id     *string
 	name             *string
 	url              *string
 	event_types_json *string
@@ -52894,6 +52895,42 @@ func (m *GatewayWebhookMutation) IDs(ctx context.Context) ([]string, error) {
 	default:
 		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
 	}
+}
+
+// SetWorkspaceID sets the "workspace_id" field.
+func (m *GatewayWebhookMutation) SetWorkspaceID(s string) {
+	m.workspace_id = &s
+}
+
+// WorkspaceID returns the value of the "workspace_id" field in the mutation.
+func (m *GatewayWebhookMutation) WorkspaceID() (r string, exists bool) {
+	v := m.workspace_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldWorkspaceID returns the old "workspace_id" field's value of the GatewayWebhook entity.
+// If the GatewayWebhook object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GatewayWebhookMutation) OldWorkspaceID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldWorkspaceID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldWorkspaceID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldWorkspaceID: %w", err)
+	}
+	return oldValue.WorkspaceID, nil
+}
+
+// ResetWorkspaceID resets all changes to the "workspace_id" field.
+func (m *GatewayWebhookMutation) ResetWorkspaceID() {
+	m.workspace_id = nil
 }
 
 // SetName sets the "name" field.
@@ -53218,7 +53255,10 @@ func (m *GatewayWebhookMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GatewayWebhookMutation) Fields() []string {
-	fields := make([]string, 0, 8)
+	fields := make([]string, 0, 9)
+	if m.workspace_id != nil {
+		fields = append(fields, gatewaywebhook.FieldWorkspaceID)
+	}
 	if m.name != nil {
 		fields = append(fields, gatewaywebhook.FieldName)
 	}
@@ -53251,6 +53291,8 @@ func (m *GatewayWebhookMutation) Fields() []string {
 // schema.
 func (m *GatewayWebhookMutation) Field(name string) (ent.Value, bool) {
 	switch name {
+	case gatewaywebhook.FieldWorkspaceID:
+		return m.WorkspaceID()
 	case gatewaywebhook.FieldName:
 		return m.Name()
 	case gatewaywebhook.FieldURL:
@@ -53276,6 +53318,8 @@ func (m *GatewayWebhookMutation) Field(name string) (ent.Value, bool) {
 // database failed.
 func (m *GatewayWebhookMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
 	switch name {
+	case gatewaywebhook.FieldWorkspaceID:
+		return m.OldWorkspaceID(ctx)
 	case gatewaywebhook.FieldName:
 		return m.OldName(ctx)
 	case gatewaywebhook.FieldURL:
@@ -53301,6 +53345,13 @@ func (m *GatewayWebhookMutation) OldField(ctx context.Context, name string) (ent
 // type.
 func (m *GatewayWebhookMutation) SetField(name string, value ent.Value) error {
 	switch name {
+	case gatewaywebhook.FieldWorkspaceID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetWorkspaceID(v)
+		return nil
 	case gatewaywebhook.FieldName:
 		v, ok := value.(string)
 		if !ok {
@@ -53406,6 +53457,9 @@ func (m *GatewayWebhookMutation) ClearField(name string) error {
 // It returns an error if the field is not defined in the schema.
 func (m *GatewayWebhookMutation) ResetField(name string) error {
 	switch name {
+	case gatewaywebhook.FieldWorkspaceID:
+		m.ResetWorkspaceID()
+		return nil
 	case gatewaywebhook.FieldName:
 		m.ResetName()
 		return nil

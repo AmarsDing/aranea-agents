@@ -2,10 +2,10 @@ import { computed, ref, watch, type ComputedRef, type Ref } from 'vue';
 import { useQuasar } from 'quasar';
 import type { PlatformResource, PlatformResourceName } from './types';
 import { errorMessage, getConfig, getCategories } from './providerUtils';
+import { providerHasApiKey } from '../../components/platform/providerModelUi';
 import { usePlatformStore } from '../../stores/platform';
 import { confirm } from '../../composables/useAppConfirm';
 import { useProviderTrendDialog } from '../usage/useProviderTrendDialog';
-import { listProviderModelsPaged } from './api';
 
 export function useProviderList(deps: {
   resource: ComputedRef<PlatformResourceName>;
@@ -18,12 +18,15 @@ export function useProviderList(deps: {
   const rows = ref<PlatformResource[]>([]);
   const total = ref(0);
   const loading = ref(false);
+  const loaded = ref(false);
   /** 列表加载失败信息（五态：错误态/局部失败横幅据此渲染）。 */
   const loadError = ref('');
   const keyword = ref('');
   const page = ref(1);
   const rowsPerPage = ref(20);
   const providerTypeFilter = ref<string[]>([]);
+  /** 关键数条的筛选：'' | enabled | nokey | disabled */
+  const stateFilter = ref('');
 
   const credentialEncryptionAvailable = computed(() => platformStore.credentialEncryptionAvailable);
 
@@ -73,17 +76,13 @@ export function useProviderList(deps: {
   const trendRow = ref<PlatformResource | null>(null);
   const providerTrend = useProviderTrendDialog(trendDialogOpen, trendRow);
 
+  // shortcut: 模型目录整表读回（接口不带分页参数即返回全量），在前端搜索 / 筛选 / 分页：
+  // 原先服务端分页 + 只在当前页上按类型筛，总数和页数对不上；模型上千条时再把类型和状态筛选做进 List 接口。
   const filteredRows = computed(() => {
-    if (deps.isProviderResource.value) {
-      // Server already applied search; optional type filter on the current page.
-      let list = rows.value;
-      if (providerTypeFilter.value.length) {
-        const allowed = new Set(providerTypeFilter.value.map((v) => v.toLowerCase()));
-        list = list.filter((row) => allowed.has((getConfig(row).provider_type || 'openai').toLowerCase()));
-      }
-      return list;
-    }
     let list = rows.value;
+    if (stateFilter.value === 'enabled') list = list.filter((row) => row.enabled);
+    else if (stateFilter.value === 'disabled') list = list.filter((row) => !row.enabled);
+    else if (stateFilter.value === 'nokey') list = list.filter((row) => row.enabled && !providerHasApiKey(getConfig(row)));
     if (providerTypeFilter.value.length) {
       const allowed = new Set(providerTypeFilter.value.map((v) => v.toLowerCase()));
       list = list.filter((row) => allowed.has((getConfig(row).provider_type || 'openai').toLowerCase()));
@@ -104,16 +103,8 @@ export function useProviderList(deps: {
     );
   });
 
-  const pageCount = computed(() => {
-    if (deps.isProviderResource.value) {
-      return Math.max(1, Math.ceil(Math.max(0, total.value) / rowsPerPage.value));
-    }
-    return Math.max(1, Math.ceil(filteredRows.value.length / rowsPerPage.value));
-  });
+  const pageCount = computed(() => Math.max(1, Math.ceil(filteredRows.value.length / rowsPerPage.value)));
   const pagedProviderRows = computed(() => {
-    if (deps.isProviderResource.value) {
-      return filteredRows.value;
-    }
     const start = (page.value - 1) * rowsPerPage.value;
     return filteredRows.value.slice(start, start + rowsPerPage.value);
   });
@@ -123,21 +114,11 @@ export function useProviderList(deps: {
     loading.value = true;
     loadError.value = '';
     try {
-      if (deps.isProviderResource.value) {
-        const result = await listProviderModelsPaged({
-          page: page.value,
-          page_size: rowsPerPage.value,
-          search: keyword.value,
-        });
-        rows.value = result.items;
-        total.value = result.total;
-        if (page.value > pageCount.value) page.value = pageCount.value;
-        if (platformStore.credentialEncryptionAvailable === null) {
-          void platformStore.loadCredentialStatus();
-        }
-      } else {
-        rows.value = await platformStore.loadResource(deps.resource.value);
-        total.value = rows.value.length;
+      rows.value = await platformStore.loadResource(deps.resource.value);
+      total.value = rows.value.length;
+      loaded.value = true;
+      if (deps.isProviderResource.value && platformStore.credentialEncryptionAvailable === null) {
+        void platformStore.loadCredentialStatus();
       }
     } catch (error) {
       loadError.value = errorMessage(error) || '加载资源列表失败';
@@ -147,29 +128,11 @@ export function useProviderList(deps: {
     }
   }
 
-  let skipNextPageWatch = false;
-  watch([keyword, providerTypeFilter], () => {
-    if (!deps.isProviderResource.value) {
-      page.value = 1;
-      return;
-    }
-    if (page.value !== 1) {
-      skipNextPageWatch = true;
-      page.value = 1;
-    }
-    void loadRows();
+  watch([keyword, providerTypeFilter, stateFilter, rowsPerPage], () => {
+    page.value = 1;
   });
-  watch([page, rowsPerPage], () => {
-    if (!deps.isProviderResource.value) return;
-    if (skipNextPageWatch) {
-      skipNextPageWatch = false;
-      return;
-    }
-    void loadRows();
-  });
-  watch(filteredRows, () => {
-    if (deps.isProviderResource.value) return;
-    if (page.value > pageCount.value) page.value = pageCount.value;
+  watch(pageCount, (max) => {
+    if (page.value > max) page.value = max;
   });
 
   async function toggleEnabled(row: PlatformResource, enabled: boolean) {
@@ -200,7 +163,6 @@ export function useProviderList(deps: {
       rows.value = rows.value.filter((item) => item.id !== row.id);
       total.value = Math.max(0, total.value - 1);
       $q.notify({ type: 'positive', message: '已删除' });
-      if (deps.isProviderResource.value) await loadRows();
     } catch (error) {
       $q.notify({ type: 'negative', message: errorMessage(error) || '删除失败' });
     }
@@ -220,12 +182,15 @@ export function useProviderList(deps: {
     page,
     rowsPerPage,
     providerTypeFilter,
+    stateFilter,
+    loaded,
     filteredRows,
     pageCount,
     pagedProviderRows,
     loadRows,
     toggleEnabled,
     confirmRemoveRow,
+    removeRow,
     openTrend,
     listKeyState,
     toggleListKeyReveal,

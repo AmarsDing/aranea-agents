@@ -190,16 +190,19 @@ func mergeHACandidateSecrets(cur, pat map[string]any) {
 	if !ok || len(patCands) == 0 {
 		return
 	}
-	curByName := map[string]map[string]any{}
+	// 候选按「名称 + 地址」认人：只有同一个端点才沿用已存的密钥，
+	// 不再按下标兜底（新增 / 改名 / 换地址的候选会拿到别人的密钥并发往新地址）。
+	candKey := func(m map[string]any) string {
+		return strings.TrimSpace(asString(m["name"])) + "|" +
+			strings.ToLower(strings.TrimRight(strings.TrimSpace(asString(m["base_url"])), "/"))
+	}
+	curByKey := map[string]map[string]any{}
 	for _, item := range curCands {
 		cm, ok := item.(map[string]any)
 		if !ok {
 			continue
 		}
-		name := strings.TrimSpace(asString(cm["name"]))
-		if name != "" {
-			curByName[name] = cm
-		}
+		curByKey[candKey(cm)] = cm
 	}
 	for i, item := range patCands {
 		cm, ok := item.(map[string]any)
@@ -209,15 +212,7 @@ func mergeHACandidateSecrets(cur, pat map[string]any) {
 		if hasNonEmptyString(cm, "api_key") {
 			continue
 		}
-		var src map[string]any
-		name := strings.TrimSpace(asString(cm["name"]))
-		if name != "" {
-			src = curByName[name]
-		}
-		if src == nil && i < len(curCands) {
-			src, _ = curCands[i].(map[string]any)
-		}
-		if src != nil {
+		if src := curByKey[candKey(cm)]; src != nil {
 			copySecretField(src, cm, "api_key_enc")
 			delete(cm, "api_key")
 		}

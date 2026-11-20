@@ -1,0 +1,274 @@
+// Harness › 连接（模型 / 通道 / 凭据 / 出站推送 / 跨实例协作）五页。类名 cx- 前缀，取值只走 --nt-* 令牌。
+// 骨架、关键数条、筛选条、构件卡、边界说明沿用 Harness › 能力 的 cap- 构件（_capability.sass），
+// 这里只补连接领域自己的：空态引导与起点网格、构件卡网格 + 常驻检视面板的双栏、检视面板里的事实表与流水。
+@import "./_nt-tokens.css"
+
+
+.cx-num
+  font-family: var(--nt-font-mono)
+  font-variant-numeric: tabular-nums
+
+// ——— 空态引导 ———
+.cx-guide
+  display: flex
+  flex-direction: column
+  gap: var(--nt-space-4)
+  padding: var(--nt-space-5)
+  background: var(--nt-glass-panel)
+  border: 1px solid var(--nt-glass-border)
+  border-radius: var(--nt-radius-l)
+
+  &__head
+    display: flex
+    align-items: flex-start
+    gap: var(--nt-space-4)
+
+  &__icon
+    display: grid
+    flex: none
+    place-items: center
+    width: 44px
+    height: 44px
+    border: 1px solid var(--nt-accent-border)
+    border-radius: var(--nt-radius-m)
+    background: var(--nt-accent-soft)
+    color: var(--nt-accent)
+
+  &__title
+    margin: 0
+    color: var(--nt-text-0)
+    font-size: var(--nt-fs-title)
+    font-weight: 600
+    line-height: 1.4
+
+  &__desc
+    max-width: 72ch
+    margin: var(--nt-space-1) 0 0
+    color: var(--nt-text-2)
+    line-height: 1.6
+
+  &__steps
+    display: grid
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr))
+    gap: var(--nt-space-3)
+    margin: 0
+    padding: 0
+    list-style: none
+
+    li
+      display: flex
+      align-items: flex-start
+      gap: var(--nt-space-2)
+      padding: var(--nt-space-3)
+      background: var(--nt-tile-bg)
+      border-radius: var(--nt-radius-m)
+      color: var(--nt-text-1)
+      line-height: 1.5
+
+  &__num
+    display: grid
+    flex: none
+    place-items: center
+    width: 22px
+    height: 22px
+    border: 1px solid var(--nt-accent-border)
+    border-radius: var(--nt-radius-pill)
+    color: var(--nt-accent)
+    font-family: var(--nt-font-mono)
+    font-size: var(--nt-fs-micro)
+
+  &__actions
+    display: flex
+    flex-wrap: wrap
+    align-items: center
+    gap: var(--nt-space-3)
+
+// 起点网格（平台 / 供应商 / 事件模板）：点一个直接带着它去新建
+.cx-picks
+  display: flex
+  flex-direction: column
+  gap: var(--nt-space-3)
+
+  &__group
+    display: flex
+    flex-direction: column
+    gap: var(--nt-space-2)
+
+  &__group-title
+    color: var(--nt-text-3)
+    font-size: var(--nt-fs-caption)
+
+  &__grid
+    display: grid
+    grid-template-columns: repeat(auto-fill, minmax(190px, 1fr))
+    gap: var(--nt-space-2)
+
+.cx-pick
+  display: flex
+  align-items: center
+  gap: var(--nt-space-3)
+  min-height: 52px
+  padding: var(--nt-space-2) var(--nt-space-3)
+  background: var(--nt-tile-bg)
+  border: 1px solid var(--nt-border-1)
+  border-radius: var(--nt-radius-m)
+  color: var(--nt-text-1)
+  font: inherit
+  text-align: left
+  cursor: pointer
+  transition: border-color var(--nt-transition), background var(--nt-transition)
+
+  &:hover
+    border-color: var(--nt-accent-border)
+    background: var(--nt-tile-hover)
+
+  &__text
+    display: flex
+    flex-direction: column
+    min-width: 0
+
+  &__name
+    overflow: hidden
+    color: var(--nt-text-0)
+    font-weight: 600
+    text-overflow: ellipsis
+    white-space: nowrap
+
+  &__sub
+    overflow: hidden
+    color: var(--nt-text-3)
+    font-size: var(--nt-fs-caption)
+    text-overflow: ellipsis
+    white-space: nowrap
+
+// ——— 列表 + 检视面板 ———
+.cx-workspace
+  display: grid
+  grid-template-columns: minmax(0, 1fr)
+  gap: var(--nt-space-4)
+  align-items: start
+
+  &__main
+    display: flex
+    flex-direction: column
+    gap: var(--nt-space-3)
+    min-width: 0
+
+@media (min-width: 1440px)
+  .cx-workspace--inspecting
+    grid-template-columns: minmax(0, 1fr) minmax(360px, 400px)
+
+// 检视面板里的分区、事实表、关系列表
+.cx-inspect
+  display: flex
+  flex-direction: column
+  gap: var(--nt-space-4)
+
+  &__lead
+    display: flex
+    align-items: center
+    gap: var(--nt-space-2)
+    flex-wrap: wrap
+
+  &__desc
+    margin: 0
+    color: var(--nt-text-2)
+    line-height: 1.6
+
+  &__section
+    display: flex
+    flex-direction: column
+    gap: var(--nt-space-2)
+    padding-top: var(--nt-space-3)
+    border-top: 1px solid var(--nt-border-0)
+
+  &__section-title
+    display: flex
+    align-items: center
+    justify-content: space-between
+    gap: var(--nt-space-2)
+    margin: 0
+    color: var(--nt-text-0)
+    font-size: var(--nt-fs-body)
+    font-weight: 600
+
+  &__empty
+    margin: 0
+    color: var(--nt-text-3)
+    font-size: var(--nt-fs-caption)
+
+  &__actions
+    display: flex
+    flex-wrap: wrap
+    gap: var(--nt-space-2)
+
+.cx-facts
+  display: flex
+  flex-direction: column
+  gap: var(--nt-space-2)
+  margin: 0
+
+  > div
+    display: grid
+    grid-template-columns: minmax(84px, 0.36fr) minmax(0, 1fr)
+    align-items: baseline
+    gap: var(--nt-space-3)
+
+  dt
+    color: var(--nt-text-3)
+    font-size: var(--nt-fs-caption)
+
+  dd
+    display: flex
+    align-items: center
+    justify-content: flex-end
+    gap: var(--nt-space-1)
+    min-width: 0
+    margin: 0
+    color: var(--nt-text-1)
+    overflow-wrap: anywhere
+    text-align: right
+
+.cx-rows
+  display: flex
+  flex-direction: column
+  margin: 0
+  padding: 0
+  list-style: none
+
+  li
+    display: flex
+    align-items: center
+    gap: var(--nt-space-2)
+    min-height: 34px
+    padding: var(--nt-space-1) 0
+    border-bottom: 1px solid var(--nt-border-0)
+    color: var(--nt-text-1)
+    font-size: var(--nt-fs-caption)
+
+  &__main
+    flex: 1
+    min-width: 0
+    overflow: hidden
+    text-overflow: ellipsis
+    white-space: nowrap
+
+  &__side
+    flex: none
+    color: var(--nt-text-3)
+    font-family: var(--nt-font-mono)
+    font-size: var(--nt-fs-micro)
+    font-variant-numeric: tabular-nums
+
+.cx-code
+  padding: var(--nt-space-2) var(--nt-space-3)
+  border-radius: var(--nt-radius-s)
+  background: var(--nt-data-inset)
+  color: var(--nt-text-1)
+  font-family: var(--nt-font-mono)
+  font-size: var(--nt-fs-caption)
+  overflow-wrap: anywhere
+
+@media (max-width: 799px)
+  .cx-guide
+    padding: var(--nt-space-4)

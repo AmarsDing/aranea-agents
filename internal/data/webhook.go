@@ -8,6 +8,8 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/ent"
 	"aranea-agents/internal/data/ent/gatewaywebhook"
+	"aranea-agents/internal/data/ent/session"
+	"aranea-agents/internal/workspace"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 
@@ -46,6 +48,7 @@ func entToWebhook(lg loggateway.Logger, e *ent.GatewayWebhook) biz.WebhookConfig
 	}
 	return biz.WebhookConfig{
 		ID:             e.ID,
+		WorkspaceID:    e.WorkspaceID,
 		Name:           e.Name,
 		URL:            e.URL,
 		EventTypesJSON: e.EventTypesJSON,
@@ -79,6 +82,7 @@ func (r *webhookRepo) Create(ctx context.Context, w biz.WebhookConfig) (biz.Webh
 	w.UpdatedAt = now
 	row, err := r.data.RW().Write(ctx).GatewayWebhook.Create().
 		SetID(w.ID).
+		SetWorkspaceID(w.WorkspaceID).
 		SetName(w.Name).
 		SetURL(w.URL).
 		SetEventTypesJSON(w.EventTypesJSON).
@@ -117,6 +121,14 @@ func (r *webhookRepo) List(ctx context.Context) ([]biz.WebhookConfig, error) {
 
 func (r *webhookRepo) webhookListQuery(ctx context.Context, q biz.WebhookListQuery) *ent.GatewayWebhookQuery {
 	pq := r.data.RW().Read(ctx).GatewayWebhook.Query()
+	if ws := strings.TrimSpace(q.WorkspaceID); ws != "" {
+		if ws == workspace.DefaultWorkspaceID {
+			// 存量行没有工作区，归 default
+			pq = pq.Where(gatewaywebhook.WorkspaceIDIn(ws, ""))
+		} else {
+			pq = pq.Where(gatewaywebhook.WorkspaceIDEQ(ws))
+		}
+	}
 	if s := strings.TrimSpace(q.Search); s != "" {
 		pq = pq.Where(gatewaywebhook.Or(
 			gatewaywebhook.NameContainsFold(s),
@@ -180,6 +192,18 @@ func (r *webhookRepo) Update(ctx context.Context, w biz.WebhookConfig) (biz.Webh
 		return biz.WebhookConfig{}, err
 	}
 	return entToWebhook(r.data.lg, row), nil
+}
+
+// SessionWorkspaceID 供出站推送分发认定事件归属：会话查不到返回 false。
+func (r *webhookRepo) SessionWorkspaceID(ctx context.Context, sessionID string) (string, bool) {
+	row, err := r.data.RW().Read(ctx).Session.Query().
+		Where(session.IDEQ(strings.TrimSpace(sessionID))).
+		Select(session.FieldWorkspaceID).
+		Only(ctx)
+	if err != nil {
+		return "", false
+	}
+	return row.WorkspaceID, true
 }
 
 func (r *webhookRepo) Delete(ctx context.Context, id string) error {

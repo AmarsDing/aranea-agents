@@ -606,14 +606,23 @@ func mergeInspectConfigJSON(cfg string, in *InspectMerge) error {
 	if in.ProviderType == "" {
 		in.ProviderType = c.ProviderType
 	}
+	// 调用方自己填了别的地址时，已存的密钥不能跟着发过去：inspect 只要 model.route，
+	// 看密钥要 secops.policy，否则改个地址就能把密钥送到任意主机。
+	sameEndpoint := in.APIBaseURL == "" || sameInspectBaseURL(in.APIBaseURL, c.APIBaseURL)
 	if in.APIBaseURL == "" {
 		in.APIBaseURL = c.APIBaseURL
 	}
-	if in.APIKey == "" {
-		in.APIKey = c.APIKey
-	}
 	if in.Variant == "" {
 		in.Variant = c.Variant
+	}
+	if in.AWSRegion == "" {
+		in.AWSRegion = c.AWSRegion
+	}
+	if !sameEndpoint {
+		return nil
+	}
+	if in.APIKey == "" {
+		in.APIKey = c.APIKey
 	}
 	if in.SecretID == "" {
 		in.SecretID = c.SecretID
@@ -621,10 +630,12 @@ func mergeInspectConfigJSON(cfg string, in *InspectMerge) error {
 	if in.SecretKey == "" {
 		in.SecretKey = c.SecretKey
 	}
-	if in.AWSRegion == "" {
-		in.AWSRegion = c.AWSRegion
-	}
 	return nil
+}
+
+func sameInspectBaseURL(a, b string) bool {
+	norm := func(v string) string { return strings.ToLower(strings.TrimRight(strings.TrimSpace(v), "/")) }
+	return norm(a) == norm(b)
 }
 
 func parsePricingConfig(configJSON string) (providerPricingConfig, error) {

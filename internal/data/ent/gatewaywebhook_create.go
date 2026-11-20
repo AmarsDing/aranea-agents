@@ -22,6 +22,20 @@ type GatewayWebhookCreate struct {
 	conflict []sql.ConflictOption
 }
 
+// SetWorkspaceID sets the "workspace_id" field.
+func (_c *GatewayWebhookCreate) SetWorkspaceID(v string) *GatewayWebhookCreate {
+	_c.mutation.SetWorkspaceID(v)
+	return _c
+}
+
+// SetNillableWorkspaceID sets the "workspace_id" field if the given value is not nil.
+func (_c *GatewayWebhookCreate) SetNillableWorkspaceID(v *string) *GatewayWebhookCreate {
+	if v != nil {
+		_c.SetWorkspaceID(*v)
+	}
+	return _c
+}
+
 // SetName sets the "name" field.
 func (_c *GatewayWebhookCreate) SetName(v string) *GatewayWebhookCreate {
 	_c.mutation.SetName(v)
@@ -159,6 +173,10 @@ func (_c *GatewayWebhookCreate) ExecX(ctx context.Context) {
 
 // defaults sets the default values of the builder before save.
 func (_c *GatewayWebhookCreate) defaults() {
+	if _, ok := _c.mutation.WorkspaceID(); !ok {
+		v := gatewaywebhook.DefaultWorkspaceID
+		_c.mutation.SetWorkspaceID(v)
+	}
 	if _, ok := _c.mutation.EventTypesJSON(); !ok {
 		v := gatewaywebhook.DefaultEventTypesJSON
 		_c.mutation.SetEventTypesJSON(v)
@@ -187,6 +205,14 @@ func (_c *GatewayWebhookCreate) defaults() {
 
 // check runs all checks and user-defined validators on the builder.
 func (_c *GatewayWebhookCreate) check() error {
+	if _, ok := _c.mutation.WorkspaceID(); !ok {
+		return &ValidationError{Name: "workspace_id", err: errors.New(`ent: missing required field "GatewayWebhook.workspace_id"`)}
+	}
+	if v, ok := _c.mutation.WorkspaceID(); ok {
+		if err := gatewaywebhook.WorkspaceIDValidator(v); err != nil {
+			return &ValidationError{Name: "workspace_id", err: fmt.Errorf(`ent: validator failed for field "GatewayWebhook.workspace_id": %w`, err)}
+		}
+	}
 	if _, ok := _c.mutation.Name(); !ok {
 		return &ValidationError{Name: "name", err: errors.New(`ent: missing required field "GatewayWebhook.name"`)}
 	}
@@ -267,6 +293,10 @@ func (_c *GatewayWebhookCreate) createSpec() (*GatewayWebhook, *sqlgraph.CreateS
 		_node.ID = id
 		_spec.ID.Value = id
 	}
+	if value, ok := _c.mutation.WorkspaceID(); ok {
+		_spec.SetField(gatewaywebhook.FieldWorkspaceID, field.TypeString, value)
+		_node.WorkspaceID = value
+	}
 	if value, ok := _c.mutation.Name(); ok {
 		_spec.SetField(gatewaywebhook.FieldName, field.TypeString, value)
 		_node.Name = value
@@ -306,7 +336,7 @@ func (_c *GatewayWebhookCreate) createSpec() (*GatewayWebhook, *sqlgraph.CreateS
 // of the `INSERT` statement. For example:
 //
 //	client.GatewayWebhook.Create().
-//		SetName(v).
+//		SetWorkspaceID(v).
 //		OnConflict(
 //			// Update the row with the new values
 //			// the was proposed for insertion.
@@ -315,7 +345,7 @@ func (_c *GatewayWebhookCreate) createSpec() (*GatewayWebhook, *sqlgraph.CreateS
 //		// Override some of the fields with custom
 //		// update values.
 //		Update(func(u *ent.GatewayWebhookUpsert) {
-//			SetName(v+v).
+//			SetWorkspaceID(v+v).
 //		}).
 //		Exec(ctx)
 func (_c *GatewayWebhookCreate) OnConflict(opts ...sql.ConflictOption) *GatewayWebhookUpsertOne {
@@ -350,6 +380,18 @@ type (
 		*sql.UpdateSet
 	}
 )
+
+// SetWorkspaceID sets the "workspace_id" field.
+func (u *GatewayWebhookUpsert) SetWorkspaceID(v string) *GatewayWebhookUpsert {
+	u.Set(gatewaywebhook.FieldWorkspaceID, v)
+	return u
+}
+
+// UpdateWorkspaceID sets the "workspace_id" field to the value that was provided on create.
+func (u *GatewayWebhookUpsert) UpdateWorkspaceID() *GatewayWebhookUpsert {
+	u.SetExcluded(gatewaywebhook.FieldWorkspaceID)
+	return u
+}
 
 // SetName sets the "name" field.
 func (u *GatewayWebhookUpsert) SetName(v string) *GatewayWebhookUpsert {
@@ -493,6 +535,20 @@ func (u *GatewayWebhookUpsertOne) Update(set func(*GatewayWebhookUpsert)) *Gatew
 		set(&GatewayWebhookUpsert{UpdateSet: update})
 	}))
 	return u
+}
+
+// SetWorkspaceID sets the "workspace_id" field.
+func (u *GatewayWebhookUpsertOne) SetWorkspaceID(v string) *GatewayWebhookUpsertOne {
+	return u.Update(func(s *GatewayWebhookUpsert) {
+		s.SetWorkspaceID(v)
+	})
+}
+
+// UpdateWorkspaceID sets the "workspace_id" field to the value that was provided on create.
+func (u *GatewayWebhookUpsertOne) UpdateWorkspaceID() *GatewayWebhookUpsertOne {
+	return u.Update(func(s *GatewayWebhookUpsert) {
+		s.UpdateWorkspaceID()
+	})
 }
 
 // SetName sets the "name" field.
@@ -743,7 +799,7 @@ func (_c *GatewayWebhookCreateBulk) ExecX(ctx context.Context) {
 //		// Override some of the fields with custom
 //		// update values.
 //		Update(func(u *ent.GatewayWebhookUpsert) {
-//			SetName(v+v).
+//			SetWorkspaceID(v+v).
 //		}).
 //		Exec(ctx)
 func (_c *GatewayWebhookCreateBulk) OnConflict(opts ...sql.ConflictOption) *GatewayWebhookUpsertBulk {
@@ -820,6 +876,20 @@ func (u *GatewayWebhookUpsertBulk) Update(set func(*GatewayWebhookUpsert)) *Gate
 		set(&GatewayWebhookUpsert{UpdateSet: update})
 	}))
 	return u
+}
+
+// SetWorkspaceID sets the "workspace_id" field.
+func (u *GatewayWebhookUpsertBulk) SetWorkspaceID(v string) *GatewayWebhookUpsertBulk {
+	return u.Update(func(s *GatewayWebhookUpsert) {
+		s.SetWorkspaceID(v)
+	})
+}
+
+// UpdateWorkspaceID sets the "workspace_id" field to the value that was provided on create.
+func (u *GatewayWebhookUpsertBulk) UpdateWorkspaceID() *GatewayWebhookUpsertBulk {
+	return u.Update(func(s *GatewayWebhookUpsert) {
+		s.UpdateWorkspaceID()
+	})
 }
 
 // SetName sets the "name" field.

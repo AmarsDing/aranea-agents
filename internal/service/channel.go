@@ -190,6 +190,29 @@ func (s *ChannelService) runtimeMetadataPatch(channelID string) string {
 	return string(b)
 }
 
+// stripRuntimeMetadata 去掉 runtime_* 键：它们是读接口按当前长连接状态临时叠加的，
+// 编辑器会把整段 metadata 原样回存，存下来后断线了列表仍显示「已连接」。
+func stripRuntimeMetadata(raw string) string {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" || !strings.Contains(trimmed, "runtime_") {
+		return raw
+	}
+	var m map[string]any
+	if err := json.Unmarshal([]byte(trimmed), &m); err != nil {
+		return raw // 格式问题交给原有校验报错
+	}
+	for k := range m {
+		if strings.HasPrefix(k, "runtime_") {
+			delete(m, k)
+		}
+	}
+	b, err := json.Marshal(m)
+	if err != nil {
+		return raw
+	}
+	return string(b)
+}
+
 func bizTypeItemToProto(it biz.ChannelTypeItem) (*v1.ChannelTypeItem, error) {
 	cfg, err := json.Marshal(it.ConfigSchema)
 	if err != nil {
@@ -442,7 +465,7 @@ func (s *ChannelService) CreateChannel(ctx context.Context, req *v1.CreateChanne
 		Enabled:      req.GetEnabled(),
 		SortOrder:    int(req.GetSortOrder()),
 		ConfigJSON:   req.GetConfigJson(),
-		MetadataJSON: req.GetMetadataJson(),
+		MetadataJSON: stripRuntimeMetadata(req.GetMetadataJson()),
 	}
 	// P2-B: tenant isolation — tenant caller creates tenant-private channel;
 	// system caller (cron/admin) creates shared channel (workspace_id="").
@@ -477,7 +500,7 @@ func (s *ChannelService) UpdateChannel(ctx context.Context, req *v1.UpdateChanne
 	enabled := req.GetEnabled()
 	sortOrder := int(req.GetSortOrder())
 	configJSON := req.GetConfigJson()
-	metadataJSON := req.GetMetadataJson()
+	metadataJSON := stripRuntimeMetadata(req.GetMetadataJson())
 	c, err := s.uc.Update(ctx, req.GetId(), biz.ChannelUpdateOptions{
 		Key:          &key,
 		Name:         &name,

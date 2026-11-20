@@ -262,12 +262,12 @@ func (_q *GatewayWebhookQuery) Clone() *GatewayWebhookQuery {
 // Example:
 //
 //	var v []struct {
-//		Name string `json:"name,omitempty"`
+//		WorkspaceID string `json:"workspace_id,omitempty"`
 //		Count int `json:"count,omitempty"`
 //	}
 //
 //	client.GatewayWebhook.Query().
-//		GroupBy(gatewaywebhook.FieldName).
+//		GroupBy(gatewaywebhook.FieldWorkspaceID).
 //		Aggregate(ent.Count()).
 //		Scan(ctx, &v)
 func (_q *GatewayWebhookQuery) GroupBy(field string, fields ...string) *GatewayWebhookGroupBy {
@@ -285,11 +285,11 @@ func (_q *GatewayWebhookQuery) GroupBy(field string, fields ...string) *GatewayW
 // Example:
 //
 //	var v []struct {
-//		Name string `json:"name,omitempty"`
+//		WorkspaceID string `json:"workspace_id,omitempty"`
 //	}
 //
 //	client.GatewayWebhook.Query().
-//		Select(gatewaywebhook.FieldName).
+//		Select(gatewaywebhook.FieldWorkspaceID).
 //		Scan(ctx, &v)
 func (_q *GatewayWebhookQuery) Select(fields ...string) *GatewayWebhookSelect {
 	_q.ctx.Fields = append(_q.ctx.Fields, fields...)

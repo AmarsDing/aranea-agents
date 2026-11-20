@@ -7,6 +7,7 @@
 package v1
 
 import (
+	_ "aranea-agents/api/aranea/auth/v1"
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
@@ -2017,7 +2018,7 @@ var File_kratos_channel_v1_channel_proto protoreflect.FileDescriptor
 
 const file_kratos_channel_v1_channel_proto_rawDesc = "" +
 	"\n" +
-	"\x1fkratos/channel/v1/channel.proto\x12\x11kratos.channel.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x1bgoogle/protobuf/empty.proto\"\x94\x04\n" +
+	"\x1fkratos/channel/v1/channel.proto\x12\x11kratos.channel.v1\x1a aranea/auth/v1/requirement.proto\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x1bgoogle/protobuf/empty.proto\"\x94\x04\n" +
 	"\aChannel\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1a\n" +
 	"\bresource\x18\x02 \x01(\tR\bresource\x12\x10\n" +
@@ -2204,24 +2205,36 @@ const file_kratos_channel_v1_channel_proto_rawDesc = "" +
 	"\x0eqrcode_session\x18\x02 \x01(\tB\x04\xe2A\x01\x02R\rqrcodeSession\"V\n" +
 	"\x17WechatILinkPollResponse\x12\x16\n" +
 	"\x06status\x18\x01 \x01(\tR\x06status\x12#\n" +
-	"\rerror_message\x18\x02 \x01(\tR\ferrorMessage2\xb4\x10\n" +
-	"\x0eChannelService\x12u\n" +
-	"\x10ListChannelTypes\x12\x16.google.protobuf.Empty\x1a+.kratos.channel.v1.ListChannelTypesResponse\"\x1c\x82\xd3\xe4\x93\x02\x16\x12\x14/v1/channels/catalog\x12u\n" +
-	"\fListChannels\x12&.kratos.channel.v1.ListChannelsRequest\x1a'.kratos.channel.v1.ListChannelsResponse\"\x14\x82\xd3\xe4\x93\x02\x0e\x12\f/v1/channels\x12i\n" +
+	"\rerror_message\x18\x02 \x01(\tR\ferrorMessage2\xba\x12\n" +
+	"\x0eChannelService\x12{\n" +
+	"\x10ListChannelTypes\x12\x16.google.protobuf.Empty\x1a+.kratos.channel.v1.ListChannelTypesResponse\"\"\xca\xf3\x18\x02\x10\x01\x82\xd3\xe4\x93\x02\x16\x12\x14/v1/channels/catalog\x12{\n" +
+	"\fListChannels\x12&.kratos.channel.v1.ListChannelsRequest\x1a'.kratos.channel.v1.ListChannelsResponse\"\x1a\xca\xf3\x18\x02\x10\x01\x82\xd3\xe4\x93\x02\x0e\x12\f/v1/channels\x12o\n" +
 	"\n" +
-	"GetChannel\x12$.kratos.channel.v1.GetChannelRequest\x1a\x1a.kratos.channel.v1.Channel\"\x19\x82\xd3\xe4\x93\x02\x13\x12\x11/v1/channels/{id}\x12m\n" +
-	"\rCreateChannel\x12'.kratos.channel.v1.CreateChannelRequest\x1a\x1a.kratos.channel.v1.Channel\"\x17\x82\xd3\xe4\x93\x02\x11:\x01*\"\f/v1/channels\x12r\n" +
-	"\rUpdateChannel\x12'.kratos.channel.v1.UpdateChannelRequest\x1a\x1a.kratos.channel.v1.Channel\"\x1c\x82\xd3\xe4\x93\x02\x16:\x01*2\x11/v1/channels/{id}\x12k\n" +
-	"\rDeleteChannel\x12'.kratos.channel.v1.DeleteChannelRequest\x1a\x16.google.protobuf.Empty\"\x19\x82\xd3\xe4\x93\x02\x13*\x11/v1/channels/{id}\x12y\n" +
-	"\rToggleChannel\x12'.kratos.channel.v1.ToggleChannelRequest\x1a\x1a.kratos.channel.v1.Channel\"#\x82\xd3\xe4\x93\x02\x1d:\x01*\"\x18/v1/channels/{id}/toggle\x12}\n" +
-	"\vTestChannel\x12%.kratos.channel.v1.TestChannelRequest\x1a$.kratos.channel.v1.ChannelTestResult\"!\x82\xd3\xe4\x93\x02\x1b:\x01*\"\x16/v1/channels/{id}/test\x12\x98\x01\n" +
-	"\x16ListChannelCredentials\x12$.kratos.channel.v1.GetChannelRequest\x1a1.kratos.channel.v1.ListChannelCredentialsResponse\"%\x82\xd3\xe4\x93\x02\x1f\x12\x1d/v1/channels/{id}/credentials\x12\xb3\x01\n" +
-	"\x18UpsertChannelCredentials\x122.kratos.channel.v1.UpsertChannelCredentialsRequest\x1a1.kratos.channel.v1.ListChannelCredentialsResponse\"0\x82\xd3\xe4\x93\x02*:\x01*\x1a%/v1/channels/{channel_id}/credentials\x12\xa4\x01\n" +
-	"\x17DeleteChannelCredential\x121.kratos.channel.v1.DeleteChannelCredentialRequest\x1a\x16.google.protobuf.Empty\">\x82\xd3\xe4\x93\x028*6/v1/channels/{channel_id}/credentials/{credential_key}\x12\xa0\x01\n" +
-	"\x15ListChannelDeliveries\x12/.kratos.channel.v1.ListChannelDeliveriesRequest\x1a0.kratos.channel.v1.ListChannelDeliveriesResponse\"$\x82\xd3\xe4\x93\x02\x1e\x12\x1c/v1/channels/{id}/deliveries\x12\x99\x01\n" +
-	"\x13ListChannelTurnJobs\x12-.kratos.channel.v1.ListChannelTurnJobsRequest\x1a..kratos.channel.v1.ListChannelTurnJobsResponse\"#\x82\xd3\xe4\x93\x02\x1d\x12\x1b/v1/channels/{id}/turn-jobs\x12\xa4\x01\n" +
-	"\x10WechatILinkLogin\x12*.kratos.channel.v1.WechatILinkLoginRequest\x1a+.kratos.channel.v1.WechatILinkLoginResponse\"7\x82\xd3\xe4\x93\x021:\x01*\",/v1/channels/{channel_id}/wechat-ilink/login\x12\xa0\x01\n" +
-	"\x0fWechatILinkPoll\x12).kratos.channel.v1.WechatILinkPollRequest\x1a*.kratos.channel.v1.WechatILinkPollResponse\"6\x82\xd3\xe4\x93\x020:\x01*\"+/v1/channels/{channel_id}/wechat-ilink/pollBA\n" +
+	"GetChannel\x12$.kratos.channel.v1.GetChannelRequest\x1a\x1a.kratos.channel.v1.Channel\"\x1f\xca\xf3\x18\x02\x10\x01\x82\xd3\xe4\x93\x02\x13\x12\x11/v1/channels/{id}\x12\x81\x01\n" +
+	"\rCreateChannel\x12'.kratos.channel.v1.CreateChannelRequest\x1a\x1a.kratos.channel.v1.Channel\"+\xca\xf3\x18\x10\n" +
+	"\x0echannel.manage\x82\xd3\xe4\x93\x02\x11:\x01*\"\f/v1/channels\x12\x86\x01\n" +
+	"\rUpdateChannel\x12'.kratos.channel.v1.UpdateChannelRequest\x1a\x1a.kratos.channel.v1.Channel\"0\xca\xf3\x18\x10\n" +
+	"\x0echannel.manage\x82\xd3\xe4\x93\x02\x16:\x01*2\x11/v1/channels/{id}\x12\x7f\n" +
+	"\rDeleteChannel\x12'.kratos.channel.v1.DeleteChannelRequest\x1a\x16.google.protobuf.Empty\"-\xca\xf3\x18\x10\n" +
+	"\x0echannel.manage\x82\xd3\xe4\x93\x02\x13*\x11/v1/channels/{id}\x12\x8d\x01\n" +
+	"\rToggleChannel\x12'.kratos.channel.v1.ToggleChannelRequest\x1a\x1a.kratos.channel.v1.Channel\"7\xca\xf3\x18\x10\n" +
+	"\x0echannel.manage\x82\xd3\xe4\x93\x02\x1d:\x01*\"\x18/v1/channels/{id}/toggle\x12\x91\x01\n" +
+	"\vTestChannel\x12%.kratos.channel.v1.TestChannelRequest\x1a$.kratos.channel.v1.ChannelTestResult\"5\xca\xf3\x18\x10\n" +
+	"\x0echannel.manage\x82\xd3\xe4\x93\x02\x1b:\x01*\"\x16/v1/channels/{id}/test\x12\xac\x01\n" +
+	"\x16ListChannelCredentials\x12$.kratos.channel.v1.GetChannelRequest\x1a1.kratos.channel.v1.ListChannelCredentialsResponse\"9\xca\xf3\x18\x10\n" +
+	"\x0echannel.manage\x82\xd3\xe4\x93\x02\x1f\x12\x1d/v1/channels/{id}/credentials\x12\xc7\x01\n" +
+	"\x18UpsertChannelCredentials\x122.kratos.channel.v1.UpsertChannelCredentialsRequest\x1a1.kratos.channel.v1.ListChannelCredentialsResponse\"D\xca\xf3\x18\x10\n" +
+	"\x0echannel.manage\x82\xd3\xe4\x93\x02*:\x01*\x1a%/v1/channels/{channel_id}/credentials\x12\xb8\x01\n" +
+	"\x17DeleteChannelCredential\x121.kratos.channel.v1.DeleteChannelCredentialRequest\x1a\x16.google.protobuf.Empty\"R\xca\xf3\x18\x10\n" +
+	"\x0echannel.manage\x82\xd3\xe4\x93\x028*6/v1/channels/{channel_id}/credentials/{credential_key}\x12\xb4\x01\n" +
+	"\x15ListChannelDeliveries\x12/.kratos.channel.v1.ListChannelDeliveriesRequest\x1a0.kratos.channel.v1.ListChannelDeliveriesResponse\"8\xca\xf3\x18\x10\n" +
+	"\x0echannel.manage\x82\xd3\xe4\x93\x02\x1e\x12\x1c/v1/channels/{id}/deliveries\x12\xad\x01\n" +
+	"\x13ListChannelTurnJobs\x12-.kratos.channel.v1.ListChannelTurnJobsRequest\x1a..kratos.channel.v1.ListChannelTurnJobsResponse\"7\xca\xf3\x18\x10\n" +
+	"\x0echannel.manage\x82\xd3\xe4\x93\x02\x1d\x12\x1b/v1/channels/{id}/turn-jobs\x12\xb8\x01\n" +
+	"\x10WechatILinkLogin\x12*.kratos.channel.v1.WechatILinkLoginRequest\x1a+.kratos.channel.v1.WechatILinkLoginResponse\"K\xca\xf3\x18\x10\n" +
+	"\x0echannel.manage\x82\xd3\xe4\x93\x021:\x01*\",/v1/channels/{channel_id}/wechat-ilink/login\x12\xb4\x01\n" +
+	"\x0fWechatILinkPoll\x12).kratos.channel.v1.WechatILinkPollRequest\x1a*.kratos.channel.v1.WechatILinkPollResponse\"J\xca\xf3\x18\x10\n" +
+	"\x0echannel.manage\x82\xd3\xe4\x93\x020:\x01*\"+/v1/channels/{channel_id}/wechat-ilink/pollBA\n" +
 	"\x15api.kratos.channel.v1P\x01Z&aranea-agents/api/kratos/channel/v1;v1b\x06proto3"
 
 var (

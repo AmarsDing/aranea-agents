@@ -11,6 +11,8 @@ const (
 	Label = "gateway_webhook"
 	// FieldID holds the string denoting the id field in the database.
 	FieldID = "id"
+	// FieldWorkspaceID holds the string denoting the workspace_id field in the database.
+	FieldWorkspaceID = "workspace_id"
 	// FieldName holds the string denoting the name field in the database.
 	FieldName = "name"
 	// FieldURL holds the string denoting the url field in the database.
@@ -34,6 +36,7 @@ const (
 // Columns holds all SQL columns for gatewaywebhook fields.
 var Columns = []string{
 	FieldID,
+	FieldWorkspaceID,
 	FieldName,
 	FieldURL,
 	FieldEventTypesJSON,
@@ -55,6 +58,10 @@ func ValidColumn(column string) bool {
 }
 
 var (
+	// DefaultWorkspaceID holds the default value on creation for the "workspace_id" field.
+	DefaultWorkspaceID string
+	// WorkspaceIDValidator is a validator for the "workspace_id" field. It is called by the builders before save.
+	WorkspaceIDValidator func(string) error
 	// NameValidator is a validator for the "name" field. It is called by the builders before save.
 	NameValidator func(string) error
 	// URLValidator is a validator for the "url" field. It is called by the builders before save.
@@ -83,6 +90,11 @@ type OrderOption func(*sql.Selector)
 // ByID orders the results by the id field.
 func ByID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldID, opts...).ToFunc()
+}
+
+// ByWorkspaceID orders the results by the workspace_id field.
+func ByWorkspaceID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldWorkspaceID, opts...).ToFunc()
 }
 
 // ByName orders the results by the name field.

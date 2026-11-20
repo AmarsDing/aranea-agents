@@ -353,6 +353,7 @@ const props = defineProps<{
   catalog: ChannelTypeItem[];
   row: ChannelRow | null;
   credentials: ChannelCredential[];
+  initialType?: string;
 }>();
 
 const emit = defineEmits<{

@@ -7,6 +7,7 @@
 package v1
 
 import (
+	_ "aranea-agents/api/aranea/auth/v1"
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
@@ -1767,7 +1768,7 @@ var File_kratos_model_catalog_v1_model_catalog_proto protoreflect.FileDescriptor
 
 const file_kratos_model_catalog_v1_model_catalog_proto_rawDesc = "" +
 	"\n" +
-	"+kratos/model_catalog/v1/model_catalog.proto\x12\x17kratos.model_catalog.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1bgoogle/protobuf/empty.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xa3\x01\n" +
+	"+kratos/model_catalog/v1/model_catalog.proto\x12\x17kratos.model_catalog.v1\x1a aranea/auth/v1/requirement.proto\x1a\x1cgoogle/api/annotations.proto\x1a\x1bgoogle/protobuf/empty.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xa3\x01\n" +
 	"\x12ModelCatalogPolicy\x12\x1d\n" +
 	"\n" +
 	"source_url\x18\x01 \x01(\tR\tsourceUrl\x12\x1f\n" +
@@ -1922,21 +1923,24 @@ const file_kratos_model_catalog_v1_model_catalog_proto_rawDesc = "" +
 	"\x02ok\x18\x01 \x01(\bR\x02ok\x12\x18\n" +
 	"\amessage\x18\x02 \x01(\tR\amessage\x12E\n" +
 	"\x06totals\x18\x03 \x01(\v2-.kratos.model_catalog.v1.MigrationPreviewItemR\x06totals\x12\x16\n" +
-	"\x06errors\x18\x04 \x03(\tR\x06errors2\x95\x10\n" +
-	"\x13ModelCatalogService\x12~\n" +
-	"\x15GetModelCatalogStatus\x12\x16.google.protobuf.Empty\x1a+.kratos.model_catalog.v1.ModelCatalogStatus\" \x82\xd3\xe4\x93\x02\x1a\x12\x18/v1/model-catalog/status\x12~\n" +
-	"\x15GetModelCatalogPolicy\x12\x16.google.protobuf.Empty\x1a+.kratos.model_catalog.v1.ModelCatalogPolicy\" \x82\xd3\xe4\x93\x02\x1a\x12\x18/v1/model-catalog/policy\x12\xa6\x01\n" +
-	"\x18UpdateModelCatalogPolicy\x128.kratos.model_catalog.v1.UpdateModelCatalogPolicyRequest\x1a+.kratos.model_catalog.v1.ModelCatalogPolicy\"#\x82\xd3\xe4\x93\x02\x1d:\x01*\x1a\x18/v1/model-catalog/policy\x12\xa8\x01\n" +
-	"\x14ListCatalogProviders\x124.kratos.model_catalog.v1.ListCatalogProvidersRequest\x1a5.kratos.model_catalog.v1.ListCatalogProvidersResponse\"#\x82\xd3\xe4\x93\x02\x1d\x12\x1b/v1/model-catalog/providers\x12\xb4\x01\n" +
-	"\x11ListCatalogModels\x121.kratos.model_catalog.v1.ListCatalogModelsRequest\x1a2.kratos.model_catalog.v1.ListCatalogModelsResponse\"8\x82\xd3\xe4\x93\x022\x120/v1/model-catalog/providers/{provider_id}/models\x12}\n" +
-	"\x12GetModelCatalogRaw\x12\x16.google.protobuf.Empty\x1a0.kratos.model_catalog.v1.ModelCatalogRawResponse\"\x1d\x82\xd3\xe4\x93\x02\x17\x12\x15/v1/model-catalog/raw\x12\x9d\x01\n" +
-	"\x10SearchCatalogRaw\x120.kratos.model_catalog.v1.SearchCatalogRawRequest\x1a1.kratos.model_catalog.v1.SearchCatalogRawResponse\"$\x82\xd3\xe4\x93\x02\x1e\x12\x1c/v1/model-catalog/raw/search\x12\xb4\x01\n" +
-	"\x18ListModelCatalogSyncLogs\x128.kratos.model_catalog.v1.ListModelCatalogSyncLogsRequest\x1a9.kratos.model_catalog.v1.ListModelCatalogSyncLogsResponse\"#\x82\xd3\xe4\x93\x02\x1d\x12\x1b/v1/model-catalog/sync-logs\x12\x9a\x01\n" +
-	"\x10SyncModelCatalog\x120.kratos.model_catalog.v1.SyncModelCatalogRequest\x1a1.kratos.model_catalog.v1.SyncModelCatalogResponse\"!\x82\xd3\xe4\x93\x02\x1b:\x01*\"\x16/v1/model-catalog/sync\x12\x8d\x01\n" +
-	"\x10PreviewMigration\x12\x16.google.protobuf.Empty\x1a1.kratos.model_catalog.v1.PreviewMigrationResponse\".\x82\xd3\xe4\x93\x02(:\x01*\"#/v1/model-catalog/preview-migration\x12\xb8\x01\n" +
-	"\x16GetCatalogProviderLogo\x126.kratos.model_catalog.v1.GetCatalogProviderLogoRequest\x1a7.kratos.model_catalog.v1.GetCatalogProviderLogoResponse\"-\x82\xd3\xe4\x93\x02'\x12%/v1/model-catalog/logos/{provider_id}\x12\x97\x01\n" +
-	"\x16ApplyProviderMigration\x12\x16.google.protobuf.Empty\x1a7.kratos.model_catalog.v1.ApplyProviderMigrationResponse\",\x82\xd3\xe4\x93\x02&:\x01*\"!/v1/model-catalog/apply-migration\x12\x9a\x01\n" +
-	"\x19GetProviderMigrationRules\x12\x16.google.protobuf.Empty\x1a7.kratos.model_catalog.v1.ProviderMigrationRulesResponse\",\x82\xd3\xe4\x93\x02&\x12$/v1/model-catalog/provider-migrationBM\n" +
+	"\x06errors\x18\x04 \x03(\tR\x06errors2\x87\x11\n" +
+	"\x13ModelCatalogService\x12\x84\x01\n" +
+	"\x15GetModelCatalogStatus\x12\x16.google.protobuf.Empty\x1a+.kratos.model_catalog.v1.ModelCatalogStatus\"&\xca\xf3\x18\x02\x10\x01\x82\xd3\xe4\x93\x02\x1a\x12\x18/v1/model-catalog/status\x12\x84\x01\n" +
+	"\x15GetModelCatalogPolicy\x12\x16.google.protobuf.Empty\x1a+.kratos.model_catalog.v1.ModelCatalogPolicy\"&\xca\xf3\x18\x02\x10\x01\x82\xd3\xe4\x93\x02\x1a\x12\x18/v1/model-catalog/policy\x12\xb7\x01\n" +
+	"\x18UpdateModelCatalogPolicy\x128.kratos.model_catalog.v1.UpdateModelCatalogPolicyRequest\x1a+.kratos.model_catalog.v1.ModelCatalogPolicy\"4\xca\xf3\x18\r\n" +
+	"\vmodel.route\x82\xd3\xe4\x93\x02\x1d:\x01*\x1a\x18/v1/model-catalog/policy\x12\xae\x01\n" +
+	"\x14ListCatalogProviders\x124.kratos.model_catalog.v1.ListCatalogProvidersRequest\x1a5.kratos.model_catalog.v1.ListCatalogProvidersResponse\")\xca\xf3\x18\x02\x10\x01\x82\xd3\xe4\x93\x02\x1d\x12\x1b/v1/model-catalog/providers\x12\xba\x01\n" +
+	"\x11ListCatalogModels\x121.kratos.model_catalog.v1.ListCatalogModelsRequest\x1a2.kratos.model_catalog.v1.ListCatalogModelsResponse\">\xca\xf3\x18\x02\x10\x01\x82\xd3\xe4\x93\x022\x120/v1/model-catalog/providers/{provider_id}/models\x12\x83\x01\n" +
+	"\x12GetModelCatalogRaw\x12\x16.google.protobuf.Empty\x1a0.kratos.model_catalog.v1.ModelCatalogRawResponse\"#\xca\xf3\x18\x02\x10\x01\x82\xd3\xe4\x93\x02\x17\x12\x15/v1/model-catalog/raw\x12\xa3\x01\n" +
+	"\x10SearchCatalogRaw\x120.kratos.model_catalog.v1.SearchCatalogRawRequest\x1a1.kratos.model_catalog.v1.SearchCatalogRawResponse\"*\xca\xf3\x18\x02\x10\x01\x82\xd3\xe4\x93\x02\x1e\x12\x1c/v1/model-catalog/raw/search\x12\xba\x01\n" +
+	"\x18ListModelCatalogSyncLogs\x128.kratos.model_catalog.v1.ListModelCatalogSyncLogsRequest\x1a9.kratos.model_catalog.v1.ListModelCatalogSyncLogsResponse\")\xca\xf3\x18\x02\x10\x01\x82\xd3\xe4\x93\x02\x1d\x12\x1b/v1/model-catalog/sync-logs\x12\xab\x01\n" +
+	"\x10SyncModelCatalog\x120.kratos.model_catalog.v1.SyncModelCatalogRequest\x1a1.kratos.model_catalog.v1.SyncModelCatalogResponse\"2\xca\xf3\x18\r\n" +
+	"\vmodel.route\x82\xd3\xe4\x93\x02\x1b:\x01*\"\x16/v1/model-catalog/sync\x12\x93\x01\n" +
+	"\x10PreviewMigration\x12\x16.google.protobuf.Empty\x1a1.kratos.model_catalog.v1.PreviewMigrationResponse\"4\xca\xf3\x18\x02\x10\x01\x82\xd3\xe4\x93\x02(:\x01*\"#/v1/model-catalog/preview-migration\x12\xbe\x01\n" +
+	"\x16GetCatalogProviderLogo\x126.kratos.model_catalog.v1.GetCatalogProviderLogoRequest\x1a7.kratos.model_catalog.v1.GetCatalogProviderLogoResponse\"3\xca\xf3\x18\x02\x10\x01\x82\xd3\xe4\x93\x02'\x12%/v1/model-catalog/logos/{provider_id}\x12\xa8\x01\n" +
+	"\x16ApplyProviderMigration\x12\x16.google.protobuf.Empty\x1a7.kratos.model_catalog.v1.ApplyProviderMigrationResponse\"=\xca\xf3\x18\r\n" +
+	"\vmodel.route\x82\xd3\xe4\x93\x02&:\x01*\"!/v1/model-catalog/apply-migration\x12\xa0\x01\n" +
+	"\x19GetProviderMigrationRules\x12\x16.google.protobuf.Empty\x1a7.kratos.model_catalog.v1.ProviderMigrationRulesResponse\"2\xca\xf3\x18\x02\x10\x01\x82\xd3\xe4\x93\x02&\x12$/v1/model-catalog/provider-migrationBM\n" +
 	"\x1bapi.kratos.model_catalog.v1P\x01Z,aranea-agents/api/kratos/model_catalog/v1;v1b\x06proto3"
 
 var (

@@ -7,6 +7,7 @@
 package v1
 
 import (
+	_ "aranea-agents/api/aranea/auth/v1"
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
@@ -1465,7 +1466,7 @@ var File_kratos_a2a_v1_a2a_proto protoreflect.FileDescriptor
 
 const file_kratos_a2a_v1_a2a_proto_rawDesc = "" +
 	"\n" +
-	"\x17kratos/a2a/v1/a2a.proto\x12\rkratos.a2a.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x1bgoogle/protobuf/empty.proto\"\x9f\x01\n" +
+	"\x17kratos/a2a/v1/a2a.proto\x12\rkratos.a2a.v1\x1a aranea/auth/v1/requirement.proto\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x1bgoogle/protobuf/empty.proto\"\x9f\x01\n" +
 	"\rA2ACapability\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12 \n" +
 	"\vdescription\x18\x02 \x01(\tR\vdescription\x12*\n" +
@@ -1593,21 +1594,36 @@ const file_kratos_a2a_v1_a2a_proto_rawDesc = "" +
 	"\x06offset\x18\x04 \x01(\x05R\x06offset\"]\n" +
 	"\x11ListAuditResponse\x122\n" +
 	"\x05items\x18\x01 \x03(\v2\x1c.kratos.a2a.v1.A2AAuditEntryR\x05items\x12\x14\n" +
-	"\x05total\x18\x02 \x01(\x05R\x05total2\xab\n" +
+	"\x05total\x18\x02 \x01(\x05R\x05total2\xbe\v\n" +
 	"\n" +
+	"A2AService\x12k\n" +
+	"\bDiscover\x12\x1e.kratos.a2a.v1.DiscoverRequest\x1a\x1f.kratos.a2a.v1.DiscoverResponse\"\x1e\xca\xf3\x18\x02\x10\x01\x82\xd3\xe4\x93\x02\x12\x12\x10/v1/a2a/discover\x12v\n" +
+	"\x06Invoke\x12\x1f.kratos.a2a.v1.A2AInvokeRequest\x1a .kratos.a2a.v1.A2AInvokeResponse\")\xca\xf3\x18\f\n" +
 	"\n" +
-	"A2AService\x12e\n" +
-	"\bDiscover\x12\x1e.kratos.a2a.v1.DiscoverRequest\x1a\x1f.kratos.a2a.v1.DiscoverResponse\"\x18\x82\xd3\xe4\x93\x02\x12\x12\x10/v1/a2a/discover\x12f\n" +
-	"\x06Invoke\x12\x1f.kratos.a2a.v1.A2AInvokeRequest\x1a .kratos.a2a.v1.A2AInvokeResponse\"\x19\x82\xd3\xe4\x93\x02\x13:\x01*\"\x0e/v1/a2a/invoke\x12\x80\x01\n" +
-	"\x0fUpdateAgentCard\x12%.kratos.a2a.v1.UpdateAgentCardRequest\x1a\x1b.kratos.a2a.v1.A2AAgentCard\")\x82\xd3\xe4\x93\x02#:\x01*\x1a\x1e/v1/a2a/agents/{agent_id}/card\x12w\n" +
-	"\fGetAgentCard\x12\".kratos.a2a.v1.GetAgentCardRequest\x1a\x1b.kratos.a2a.v1.A2AAgentCard\"&\x82\xd3\xe4\x93\x02 \x12\x1e/v1/a2a/agents/{agent_id}/card\x12e\n" +
-	"\tListAudit\x12\x1f.kratos.a2a.v1.ListAuditRequest\x1a .kratos.a2a.v1.ListAuditResponse\"\x15\x82\xd3\xe4\x93\x02\x0f\x12\r/v1/a2a/audit\x12\x81\x01\n" +
-	"\x13RegisterRemoteAgent\x12).kratos.a2a.v1.RegisterRemoteAgentRequest\x1a\x1d.kratos.a2a.v1.A2ARemoteAgent\" \x82\xd3\xe4\x93\x02\x1a:\x01*\"\x15/v1/a2a/remote-agents\x12\x82\x01\n" +
-	"\x10ListRemoteAgents\x12&.kratos.a2a.v1.ListRemoteAgentsRequest\x1a'.kratos.a2a.v1.ListRemoteAgentsResponse\"\x1d\x82\xd3\xe4\x93\x02\x17\x12\x15/v1/a2a/remote-agents\x12x\n" +
-	"\x11DeleteRemoteAgent\x12'.kratos.a2a.v1.DeleteRemoteAgentRequest\x1a\x16.google.protobuf.Empty\"\"\x82\xd3\xe4\x93\x02\x1c*\x1a/v1/a2a/remote-agents/{id}\x12\x81\x01\n" +
-	"\x13DiscoverRemoteAgent\x12).kratos.a2a.v1.DiscoverRemoteAgentRequest\x1a\x1b.kratos.a2a.v1.A2AAgentCard\"\"\x82\xd3\xe4\x93\x02\x1c:\x01*\"\x17/v1/a2a/remote-discover\x12\x82\x01\n" +
-	"\x0fGatewayDiscover\x12%.kratos.a2a.v1.GatewayDiscoverRequest\x1a&.kratos.a2a.v1.GatewayDiscoverResponse\" \x82\xd3\xe4\x93\x02\x1a\x12\x18/v1/a2a/gateway/discover\x12_\n" +
-	"\fGetA2AConfig\x12\x16.google.protobuf.Empty\x1a\x1f.kratos.a2a.v1.A2ARuntimeConfig\"\x16\x82\xd3\xe4\x93\x02\x10\x12\x0e/v1/a2a/configB9\n" +
+	"a2a.manage\x82\xd3\xe4\x93\x02\x13:\x01*\"\x0e/v1/a2a/invoke\x12\x90\x01\n" +
+	"\x0fUpdateAgentCard\x12%.kratos.a2a.v1.UpdateAgentCardRequest\x1a\x1b.kratos.a2a.v1.A2AAgentCard\"9\xca\xf3\x18\f\n" +
+	"\n" +
+	"a2a.manage\x82\xd3\xe4\x93\x02#:\x01*\x1a\x1e/v1/a2a/agents/{agent_id}/card\x12}\n" +
+	"\fGetAgentCard\x12\".kratos.a2a.v1.GetAgentCardRequest\x1a\x1b.kratos.a2a.v1.A2AAgentCard\",\xca\xf3\x18\x02\x10\x01\x82\xd3\xe4\x93\x02 \x12\x1e/v1/a2a/agents/{agent_id}/card\x12u\n" +
+	"\tListAudit\x12\x1f.kratos.a2a.v1.ListAuditRequest\x1a .kratos.a2a.v1.ListAuditResponse\"%\xca\xf3\x18\f\n" +
+	"\n" +
+	"a2a.manage\x82\xd3\xe4\x93\x02\x0f\x12\r/v1/a2a/audit\x12\x91\x01\n" +
+	"\x13RegisterRemoteAgent\x12).kratos.a2a.v1.RegisterRemoteAgentRequest\x1a\x1d.kratos.a2a.v1.A2ARemoteAgent\"0\xca\xf3\x18\f\n" +
+	"\n" +
+	"a2a.manage\x82\xd3\xe4\x93\x02\x1a:\x01*\"\x15/v1/a2a/remote-agents\x12\x92\x01\n" +
+	"\x10ListRemoteAgents\x12&.kratos.a2a.v1.ListRemoteAgentsRequest\x1a'.kratos.a2a.v1.ListRemoteAgentsResponse\"-\xca\xf3\x18\f\n" +
+	"\n" +
+	"a2a.manage\x82\xd3\xe4\x93\x02\x17\x12\x15/v1/a2a/remote-agents\x12\x88\x01\n" +
+	"\x11DeleteRemoteAgent\x12'.kratos.a2a.v1.DeleteRemoteAgentRequest\x1a\x16.google.protobuf.Empty\"2\xca\xf3\x18\f\n" +
+	"\n" +
+	"a2a.manage\x82\xd3\xe4\x93\x02\x1c*\x1a/v1/a2a/remote-agents/{id}\x12\x91\x01\n" +
+	"\x13DiscoverRemoteAgent\x12).kratos.a2a.v1.DiscoverRemoteAgentRequest\x1a\x1b.kratos.a2a.v1.A2AAgentCard\"2\xca\xf3\x18\f\n" +
+	"\n" +
+	"a2a.manage\x82\xd3\xe4\x93\x02\x1c:\x01*\"\x17/v1/a2a/remote-discover\x12\x92\x01\n" +
+	"\x0fGatewayDiscover\x12%.kratos.a2a.v1.GatewayDiscoverRequest\x1a&.kratos.a2a.v1.GatewayDiscoverResponse\"0\xca\xf3\x18\f\n" +
+	"\n" +
+	"a2a.manage\x82\xd3\xe4\x93\x02\x1a\x12\x18/v1/a2a/gateway/discover\x12e\n" +
+	"\fGetA2AConfig\x12\x16.google.protobuf.Empty\x1a\x1f.kratos.a2a.v1.A2ARuntimeConfig\"\x1c\xca\xf3\x18\x02\x10\x01\x82\xd3\xe4\x93\x02\x10\x12\x0e/v1/a2a/configB9\n" +
 	"\x11api.kratos.a2a.v1P\x01Z\"aranea-agents/api/kratos/a2a/v1;v1b\x06proto3"
 
 var (

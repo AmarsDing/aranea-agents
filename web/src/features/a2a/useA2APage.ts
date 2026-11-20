@@ -167,10 +167,11 @@ export function useA2APage() {
     }
   }
 
-  async function submitRemoteRegister(input: RegisterRemoteAgentInput) {
+  /** 注册成功返回 true；失败时表单保留，调用方据此决定是否清空 */
+  async function submitRemoteRegister(input: RegisterRemoteAgentInput): Promise<boolean> {
     if (!input.remote_url?.trim()) {
       $q.notify({ type: 'warning', message: '请填写远程 URL' });
-      return;
+      return false;
     }
     remoteRegisterLoading.value = true;
     try {
@@ -179,8 +180,10 @@ export function useA2APage() {
       $q.notify({ type: 'positive', message: '远程 Agent 已注册' });
       await loadRemote();
       await loadDiscover();
+      return true;
     } catch (e) {
       $q.notify({ type: 'negative', message: e instanceof Error ? e.message : '注册失败' });
+      return false;
     } finally {
       remoteRegisterLoading.value = false;
     }

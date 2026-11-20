@@ -6,7 +6,7 @@ export const WEBHOOK_EVENT_TYPES = [
   { value: 'run.cancelled', labelKey: 'webhooksPage.eventRunCancelled' },
   { value: 'graph.task.status', labelKey: 'webhooksPage.eventGraphTaskStatus' },
   { value: 'opportunity.created', labelKey: 'webhooksPage.eventOpportunityCreated' },
-  { value: 'theme.digest', labelKey: 'webhooksPage.eventThemeDigest' },
+  // theme.digest 后端没有任何地方发出（EmitThemeDigest 无调用方），不再提供订阅，免得订了收不到
 ] as const;
 
 export type WebhookEventType = (typeof WEBHOOK_EVENT_TYPES)[number]['value'];

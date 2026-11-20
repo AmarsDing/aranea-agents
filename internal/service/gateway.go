@@ -160,9 +160,12 @@ func (s *GatewayService) UpdateWebhook(ctx context.Context, req *v1.UpdateWebhoo
 		}
 		return nil, err
 	}
-	// Return the plaintext secret on update so the caller can confirm the new value.
-	// Subsequent list/get responses will mask it (HK-08 / P1-5).
-	return webhookToProtoWithSecret(w), nil
+	// 只有这次请求换了新密钥才回显明文，供调用方确认；改名、开关等其余更新一律打码，
+	// 否则每次切换启用都会把密钥原样送回浏览器（HK-08 / P1-5）。
+	if strings.TrimSpace(req.GetSecret()) != "" {
+		return webhookToProtoWithSecret(w), nil
+	}
+	return webhookToProto(w), nil
 }
 
 func (s *GatewayService) DeleteWebhook(ctx context.Context, req *v1.DeleteWebhookRequest) (*emptypb.Empty, error) {

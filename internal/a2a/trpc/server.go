@@ -4,12 +4,15 @@ import (
 	"net/http"
 	"strings"
 
+	a2apkg "aranea-agents/internal/a2a"
 	"aranea-agents/internal/biz"
 
 	a2aprotocol "trpc.group/trpc-go/trpc-a2a-go/server"
 	trpcrunner "trpc.group/trpc-go/trpc-agent-go/runner"
 	a2atrpcserver "trpc.group/trpc-go/trpc-agent-go/server/a2a"
 )
+
+const publicUserIDHeader = "X-User-ID"
 
 // BuildA2AEndpointServer exposes a catalog LLM agent via the A2A HTTP protocol.
 func BuildA2AEndpointServer(runner trpcrunner.Runner, ag biz.Agent, card biz.A2AAgentCard, publicURL string, streaming bool) (http.Handler, error) {
@@ -20,6 +23,11 @@ func BuildA2AEndpointServer(runner trpcrunner.Runner, ag biz.Agent, card biz.A2A
 	srv, err := a2atrpcserver.New(
 		a2atrpcserver.WithRunner(runner),
 		a2atrpcserver.WithAgentCard(protocolCard),
+		a2atrpcserver.WithUserIDHeader(publicUserIDHeader),
+		// 公开端点免登录：上游默认照单全收 X-User-ID，任何人都能冒用别人的会话与记忆。
+		// 与 Extension 端点同一道闸：未经舰队签名的非匿名身份头先剥离，回落成匿名主体。
+		a2atrpcserver.WithPreAuthA2AMiddleware(a2apkg.NewSignedIdentityPreAuthMiddleware(
+			a2apkg.IdentityHMACSecretFromEnv(), publicUserIDHeader, protocolCard.URL)),
 	)
 	if err != nil {
 		return nil, err

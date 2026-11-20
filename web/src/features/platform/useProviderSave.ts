@@ -29,6 +29,9 @@ export function useProviderSave(deps: {
     const existingConfig = editingRow ? getConfig(editingRow) : {};
     const nextApiKey = deps.providerForm.api_key.trim();
     const config: ProviderConfig = {
+      // 以已存配置为底：表单不认识的键（重试、熔断、缓存、预算、capabilities 等）原样保留，
+      // 否则后端把补丁当新底（只拷回密钥），保存一次就静默丢掉这些设置。
+      ...existingConfig,
       provider_type: deps.providerForm.provider_type,
       variant: deps.providerForm.provider_type === 'openai' ? deps.providerForm.variant : undefined,
       provider_display_name: deps.providerForm.provider_display_name.trim(),
@@ -126,7 +129,9 @@ export function useProviderSave(deps: {
       return;
     }
 
-    if (deps.editingId.value && !deps.providerIdentityChanged.value) {
+    // 预检查走 validate-model，只认已启用的条目：停用中的模型跳过，否则停用状态下永远存不了
+    const editingEnabled = deps.rows.value.find((row) => row.id === deps.editingId.value)?.enabled ?? true;
+    if (deps.editingId.value && !deps.providerIdentityChanged.value && editingEnabled) {
       const pre = await platformStore.checkModel(code, model);
       if (!pre.ok) {
         $q.notify({

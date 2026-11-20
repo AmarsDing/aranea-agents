@@ -103,13 +103,13 @@ func personalQQTypeItem() ChannelTypeItem {
 }
 
 func lineTypeItem() ChannelTypeItem {
-	item := channelTypeItem("line", "LINE", "海外", "webhook", "LINE Messaging API Webhook；line-bot-sdk-go", 75, true, true, true)
+	item := channelTypeItem("line", "LINE", "海外", "webhook", "LINE Messaging API Webhook；line-bot-sdk-go", 75, true, false, true)
 	item.ReceiveModes = []string{"webhook"}
 	return item
 }
 
 func mattermostTypeItem() ChannelTypeItem {
-	item := channelTypeItem("mattermost", "Mattermost", "开源协作", "websocket", "Mattermost WebSocket + REST API v4；自部署", 85, true, true, true)
+	item := channelTypeItem("mattermost", "Mattermost", "开源协作", "websocket", "Mattermost WebSocket + REST API v4；自部署", 85, true, false, true)
 	item.ReceiveModes = []string{"webhook", "websocket"}
 	return item
 }

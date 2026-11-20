@@ -2,6 +2,7 @@ syntax = "proto3";
 
 package kratos.channel.v1;
 
+import "aranea/auth/v1/requirement.proto";
 import "google/api/annotations.proto";
 import "google/api/field_behavior.proto";
 import "google/protobuf/empty.proto";
@@ -222,66 +223,81 @@ message WechatILinkPollResponse {
 
 service ChannelService {
   rpc ListChannelTypes(google.protobuf.Empty) returns (ListChannelTypesResponse) {
+    option (aranea.auth.v1.requirement) = {authenticated: true};
     option (google.api.http) = {get: "/v1/channels/catalog"};
   }
   rpc ListChannels(ListChannelsRequest) returns (ListChannelsResponse) {
+    option (aranea.auth.v1.requirement) = {authenticated: true};
     option (google.api.http) = {get: "/v1/channels"};
   }
   rpc GetChannel(GetChannelRequest) returns (Channel) {
+    option (aranea.auth.v1.requirement) = {authenticated: true};
     option (google.api.http) = {get: "/v1/channels/{id}"};
   }
   rpc CreateChannel(CreateChannelRequest) returns (Channel) {
+    option (aranea.auth.v1.requirement) = {permission: "channel.manage"};
     option (google.api.http) = {
       post: "/v1/channels"
       body: "*"
     };
   }
   rpc UpdateChannel(UpdateChannelRequest) returns (Channel) {
+    option (aranea.auth.v1.requirement) = {permission: "channel.manage"};
     option (google.api.http) = {
       patch: "/v1/channels/{id}"
       body: "*"
     };
   }
   rpc DeleteChannel(DeleteChannelRequest) returns (google.protobuf.Empty) {
+    option (aranea.auth.v1.requirement) = {permission: "channel.manage"};
     option (google.api.http) = {delete: "/v1/channels/{id}"};
   }
   rpc ToggleChannel(ToggleChannelRequest) returns (Channel) {
+    option (aranea.auth.v1.requirement) = {permission: "channel.manage"};
     option (google.api.http) = {
       post: "/v1/channels/{id}/toggle"
       body: "*"
     };
   }
   rpc TestChannel(TestChannelRequest) returns (ChannelTestResult) {
+    option (aranea.auth.v1.requirement) = {permission: "channel.manage"};
     option (google.api.http) = {
       post: "/v1/channels/{id}/test"
       body: "*"
     };
   }
   rpc ListChannelCredentials(GetChannelRequest) returns (ListChannelCredentialsResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "channel.manage"};
     option (google.api.http) = {get: "/v1/channels/{id}/credentials"};
   }
   rpc UpsertChannelCredentials(UpsertChannelCredentialsRequest) returns (ListChannelCredentialsResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "channel.manage"};
     option (google.api.http) = {
       put: "/v1/channels/{channel_id}/credentials"
       body: "*"
     };
   }
   rpc DeleteChannelCredential(DeleteChannelCredentialRequest) returns (google.protobuf.Empty) {
+    option (aranea.auth.v1.requirement) = {permission: "channel.manage"};
     option (google.api.http) = {delete: "/v1/channels/{channel_id}/credentials/{credential_key}"};
   }
   rpc ListChannelDeliveries(ListChannelDeliveriesRequest) returns (ListChannelDeliveriesResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "channel.manage"};
     option (google.api.http) = {get: "/v1/channels/{id}/deliveries"};
   }
   rpc ListChannelTurnJobs(ListChannelTurnJobsRequest) returns (ListChannelTurnJobsResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "channel.manage"};
     option (google.api.http) = {get: "/v1/channels/{id}/turn-jobs"};
   }
   rpc WechatILinkLogin(WechatILinkLoginRequest) returns (WechatILinkLoginResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "channel.manage"};
     option (google.api.http) = {
       post: "/v1/channels/{channel_id}/wechat-ilink/login"
       body: "*"
     };
   }
   rpc WechatILinkPoll(WechatILinkPollRequest) returns (WechatILinkPollResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "channel.manage"};
     option (google.api.http) = {
       post: "/v1/channels/{channel_id}/wechat-ilink/poll"
       body: "*"

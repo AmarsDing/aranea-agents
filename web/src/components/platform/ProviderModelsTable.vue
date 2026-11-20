@@ -67,6 +67,9 @@
               >
                 <q-tooltip>未配置定价，用量监控费用将显示为 0</q-tooltip>
               </q-icon>
+              <span v-if="usedBy" class="provider-tag" :class="{ 'provider-tag--category': (usedBy(props.row) ?? 0) > 0 }">
+                {{ usedByLabel(props.row) }}
+              </span>
             </div>
           </div>
         </div>
@@ -174,41 +177,22 @@
             aria-label="启用模型"
             @update:model-value="$emit('toggleEnabled', props.row, Boolean($event))"
           />
-          <q-btn
-            flat
-            dense
-            round
-            size="sm"
-            icon="query_stats"
-            color="secondary"
-            class="provider-action-btn"
-            :aria-label="`查看 ${props.row.name} 趋势`"
-            @click="$emit('trend', props.row)"
-          >
-            <q-tooltip>历史趋势</q-tooltip>
+          <!-- 开关 + 更多；编辑、趋势、删除收进菜单，点卡片看详情 -->
+          <q-btn flat dense round size="sm" icon="more_horiz" class="provider-action-btn" :aria-label="t('connect.common.more')">
+            <q-menu anchor="bottom right" self="top right">
+              <q-list dense>
+                <q-item v-close-popup clickable @click="$emit('edit', props.row)">
+                  <q-item-section>{{ t('connect.common.edit') }}</q-item-section>
+                </q-item>
+                <q-item v-close-popup clickable @click="$emit('trend', props.row)">
+                  <q-item-section>{{ t('connect.models.trend') }}</q-item-section>
+                </q-item>
+                <q-item v-close-popup clickable @click="$emit('delete', props.row)">
+                  <q-item-section class="text-negative">{{ t('connect.common.remove') }}</q-item-section>
+                </q-item>
+              </q-list>
+            </q-menu>
           </q-btn>
-          <q-btn
-            flat
-            dense
-            round
-            size="sm"
-            icon="edit"
-            color="primary"
-            class="provider-action-btn"
-            :aria-label="`编辑 ${props.row.name}`"
-            @click="$emit('edit', props.row)"
-          />
-          <q-btn
-            flat
-            dense
-            round
-            size="sm"
-            icon="delete"
-            color="negative"
-            class="provider-action-btn provider-action-btn--danger"
-            :aria-label="`删除 ${props.row.name}`"
-            @click="$emit('delete', props.row)"
-          />
         </div>
       </q-td>
     </template>
@@ -216,6 +200,7 @@
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n';
 import AppRegistryTable from '../layout/AppRegistryTable.vue';
 import ProviderLogo from './ProviderLogo.vue';
 import type { PlatformResource } from '../../features/platform/types';
@@ -246,7 +231,7 @@ import {
 type ListKeyEntry = { visible: boolean; revealing: boolean; value: string };
 
 // F-03 fix: fetchProviderLogoSvg now passed via props instead of direct Store access
-withDefaults(
+const props = withDefaults(
   defineProps<{
     rows: PlatformResource[];
     loading: boolean;
@@ -254,6 +239,8 @@ withDefaults(
     shell?: boolean;
     listKeyState: (id: string) => ListKeyEntry;
     fetchProviderLogoSvg: (id: string) => Promise<string>;
+    /** 被几个 Agent 使用；null = 读不到 */
+    usedBy?: (row: PlatformResource) => number | null;
   }>(),
   {
     saving: false,
@@ -268,6 +255,14 @@ defineEmits<{
   edit: [row: PlatformResource];
   delete: [row: PlatformResource];
 }>();
+
+const { t } = useI18n();
+
+function usedByLabel(row: PlatformResource): string {
+  const n = props.usedBy?.(row) ?? null;
+  if (n === null) return t('connect.models.usedByUnknown');
+  return n > 0 ? t('connect.models.usedBy', { count: n }) : t('connect.models.usedByNone');
+}
 
 function rowConfig(row: PlatformResource) {
   return getProviderConfig(row);

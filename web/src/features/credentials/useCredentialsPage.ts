@@ -26,25 +26,39 @@ export function useCredentialsPage() {
 
   // ---- 凭据列表 ----
   const rows = ref<CredentialRow[]>([]);
-  const total = ref(0);
   const loading = ref(false);
+  const loaded = ref(false);
   const error = ref('');
   /** 列表接口 403：页面据此渲染 forbidden 态（无重试）。 */
   const forbidden = ref(false);
   const siteFilter = ref('');
+  const sensitivityFilter = ref('');
   const page = ref(1);
-  const pageSize = ref(20);
-  const pageMax = computed(() => Math.max(1, Math.ceil(Math.max(0, total.value) / pageSize.value)));
+  const pageSize = ref(24);
+
+  // shortcut: 一次读回至多 200 条（接口上限），在前端筛选/分页，关键数才准；超过 200 条时改回服务端分页 + 计数
+  const filteredRows = computed(() => {
+    const q = siteFilter.value.trim().toLowerCase();
+    return rows.value.filter((row) => {
+      if (sensitivityFilter.value && row.sensitivity !== sensitivityFilter.value) return false;
+      return !q || [row.site, row.name, row.username].some((v) => v.toLowerCase().includes(q));
+    });
+  });
+  const total = computed(() => filteredRows.value.length);
+  const pageMax = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)));
+  const pagedRows = computed(() =>
+    filteredRows.value.slice((page.value - 1) * pageSize.value, page.value * pageSize.value),
+  );
+  const highCount = computed(() => rows.value.filter((row) => row.sensitivity === 'high').length);
 
   async function loadRows() {
     error.value = '';
     forbidden.value = false;
     loading.value = true;
     try {
-      const res = await listCredentials({ site: siteFilter.value, page: page.value, pageSize: pageSize.value });
+      const res = await listCredentials({ page: 1, pageSize: 200 });
       rows.value = res.items;
-      total.value = res.total;
-      if (page.value > pageMax.value) page.value = pageMax.value;
+      loaded.value = true;
     } catch (e) {
       forbidden.value = isForbiddenApiError(e);
       error.value = e instanceof Error ? e.message : String(e);
@@ -53,21 +67,38 @@ export function useCredentialsPage() {
     }
   }
 
-  let skipNextPageWatch = false;
-  watch(siteFilter, () => {
-    if (page.value !== 1) {
-      skipNextPageWatch = true;
-      page.value = 1;
-    }
-    void loadRows();
+  watch([siteFilter, sensitivityFilter, pageSize], () => {
+    page.value = 1;
   });
-  watch([page, pageSize], () => {
-    if (skipNextPageWatch) {
-      skipNextPageWatch = false;
-      return;
-    }
-    void loadRows();
+  watch(pageMax, (max) => {
+    if (page.value > max) page.value = max;
   });
+
+  // ---- 检视面板：选中凭据的元数据 + 它最近的执行 ----
+  const inspectedId = ref('');
+  const inspected = computed(() => rows.value.find((row) => row.id === inspectedId.value) ?? null);
+  const inspectorOpen = computed({
+    get: () => inspected.value !== null,
+    set: (open: boolean) => {
+      if (!open) inspectedId.value = '';
+    },
+  });
+  const inspectedExecs = ref<CredentialExecutionRow[]>([]);
+  const inspectedExecsLoading = ref(false);
+
+  async function inspect(row: CredentialRow) {
+    inspectedId.value = row.id;
+    inspectedExecs.value = [];
+    inspectedExecsLoading.value = true;
+    try {
+      const res = await listCredentialExecutions({ credential_id: row.id, page: 1, pageSize: 8 });
+      if (inspectedId.value === row.id) inspectedExecs.value = res.items;
+    } catch {
+      // 审计要 audit.read；没有权限或读失败时这一块显示为空，不影响凭据本身
+    } finally {
+      inspectedExecsLoading.value = false;
+    }
+  }
 
   // ---- 新建 / 编辑 ----
   const editorOpen = ref(false);
@@ -142,12 +173,13 @@ export function useCredentialsPage() {
   async function confirmDelete(row: CredentialRow) {
     const ok = await confirm({
       title: t('credentialsPage.confirmDeleteTitle'),
-      message: t('credentialsPage.confirmDeleteMessage', { name: row.name, site: row.site }),
+      message: t('connect.credentials.deleteMessage', { name: row.name, site: row.site }),
       tone: 'danger',
     });
     if (!ok) return;
     try {
       await deleteCredential(row.id);
+      if (inspectedId.value === row.id) inspectedId.value = '';
       $q.notify({ type: 'positive', message: t('credentialsPage.notifyDeleted') });
       await loadRows();
     } catch (e) {
@@ -246,13 +278,22 @@ export function useCredentialsPage() {
     rows,
     total,
     loading,
+    loaded,
     error,
     forbidden,
     siteFilter,
+    sensitivityFilter,
+    highCount,
     page,
     pageSize,
     pageMax,
+    pagedRows,
     loadRows,
+    inspected,
+    inspectorOpen,
+    inspectedExecs,
+    inspectedExecsLoading,
+    inspect,
     editorOpen,
     editingId,
     saving,

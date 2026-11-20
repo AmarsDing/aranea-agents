@@ -2,6 +2,7 @@ syntax = "proto3";
 
 package kratos.model_catalog.v1;
 
+import "aranea/auth/v1/requirement.proto";
 import "google/api/annotations.proto";
 import "google/protobuf/empty.proto";
 import "google/protobuf/timestamp.proto";
@@ -13,54 +14,67 @@ option java_package = "api.kratos.model_catalog.v1";
 // ModelCatalogService manages the local models.dev catalog cache and sync policy.
 service ModelCatalogService {
   rpc GetModelCatalogStatus(google.protobuf.Empty) returns (ModelCatalogStatus) {
+    option (aranea.auth.v1.requirement) = {authenticated: true};
     option (google.api.http) = { get: "/v1/model-catalog/status" };
   }
   rpc GetModelCatalogPolicy(google.protobuf.Empty) returns (ModelCatalogPolicy) {
+    option (aranea.auth.v1.requirement) = {authenticated: true};
     option (google.api.http) = { get: "/v1/model-catalog/policy" };
   }
   rpc UpdateModelCatalogPolicy(UpdateModelCatalogPolicyRequest) returns (ModelCatalogPolicy) {
+    option (aranea.auth.v1.requirement) = {permission: "model.route"};
     option (google.api.http) = {
       put: "/v1/model-catalog/policy"
       body: "*"
     };
   }
   rpc ListCatalogProviders(ListCatalogProvidersRequest) returns (ListCatalogProvidersResponse) {
+    option (aranea.auth.v1.requirement) = {authenticated: true};
     option (google.api.http) = { get: "/v1/model-catalog/providers" };
   }
   rpc ListCatalogModels(ListCatalogModelsRequest) returns (ListCatalogModelsResponse) {
+    option (aranea.auth.v1.requirement) = {authenticated: true};
     option (google.api.http) = { get: "/v1/model-catalog/providers/{provider_id}/models" };
   }
   rpc GetModelCatalogRaw(google.protobuf.Empty) returns (ModelCatalogRawResponse) {
+    option (aranea.auth.v1.requirement) = {authenticated: true};
     option (google.api.http) = { get: "/v1/model-catalog/raw" };
   }
   rpc SearchCatalogRaw(SearchCatalogRawRequest) returns (SearchCatalogRawResponse) {
+    option (aranea.auth.v1.requirement) = {authenticated: true};
     option (google.api.http) = { get: "/v1/model-catalog/raw/search" };
   }
   rpc ListModelCatalogSyncLogs(ListModelCatalogSyncLogsRequest) returns (ListModelCatalogSyncLogsResponse) {
+    option (aranea.auth.v1.requirement) = {authenticated: true};
     option (google.api.http) = { get: "/v1/model-catalog/sync-logs" };
   }
   rpc SyncModelCatalog(SyncModelCatalogRequest) returns (SyncModelCatalogResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "model.route"};
     option (google.api.http) = {
       post: "/v1/model-catalog/sync"
       body: "*"
     };
   }
   rpc PreviewMigration(google.protobuf.Empty) returns (PreviewMigrationResponse) {
+    option (aranea.auth.v1.requirement) = {authenticated: true};
     option (google.api.http) = {
       post: "/v1/model-catalog/preview-migration"
       body: "*"
     };
   }
   rpc GetCatalogProviderLogo(GetCatalogProviderLogoRequest) returns (GetCatalogProviderLogoResponse) {
+    option (aranea.auth.v1.requirement) = {authenticated: true};
     option (google.api.http) = { get: "/v1/model-catalog/logos/{provider_id}" };
   }
   rpc ApplyProviderMigration(google.protobuf.Empty) returns (ApplyProviderMigrationResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "model.route"};
     option (google.api.http) = {
       post: "/v1/model-catalog/apply-migration"
       body: "*"
     };
   }
   rpc GetProviderMigrationRules(google.protobuf.Empty) returns (ProviderMigrationRulesResponse) {
+    option (aranea.auth.v1.requirement) = {authenticated: true};
     option (google.api.http) = { get: "/v1/model-catalog/provider-migration" };
   }
 }

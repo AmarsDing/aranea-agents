@@ -24,6 +24,9 @@ type LlmProviderModelService struct {
 }
 
 func NewLlmProviderModelService(uc *biz.LlmProviderModelUsecase, mon *biz.MonitorUsecase, lg loggateway.Logger) *LlmProviderModelService {
+	// 停用模型、换密钥、改地址或 HA 后，已构建缓存里的 Agent 还拿着旧配置（缓存键只看 Agent 自己的更新时间），
+	// 与工具 / 技能 / MCP 一样，模型目录一变就让全部 Agent 重建。
+	uc.OnCatalogChange(invalidateAllAgentBuildCaches)
 	return &LlmProviderModelService{uc: uc, mon: mon, lg: lg}
 }
 

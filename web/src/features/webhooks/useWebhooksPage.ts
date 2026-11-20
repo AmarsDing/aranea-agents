@@ -2,11 +2,12 @@ import { computed, onMounted, ref, watch } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useI18n } from 'vue-i18n';
 import { useQuasar } from 'quasar';
-import { WEBHOOK_SECRET_MASK, type WebhookRow } from './types';
-import { testWebhook } from './api';
+import { WEBHOOK_EVENT_TYPES, WEBHOOK_SECRET_MASK, type WebhookRow } from './types';
+import { testWebhook, type WebhookTestResult } from './api';
 import { useWebhooksStore } from '../../stores/webhooks';
 import { isForbiddenApiError } from '../../utils/kratosError';
 import { confirm } from '../../composables/useAppConfirm';
+import type { CapStat } from '../../components/capability/capTypes';
 
 interface WebhookDialogExposed {
   reset: () => void;
@@ -14,28 +15,78 @@ interface WebhookDialogExposed {
   getPayload: () => Partial<WebhookRow> | null;
 }
 
+export function parseWebhookEvents(json: string): string[] {
+  if (!json?.trim()) return [];
+  try {
+    const parsed = JSON.parse(json);
+    return Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
 export function useWebhooksPage() {
   const { t } = useI18n();
   const $q = useQuasar();
   const webhooksStore = useWebhooksStore();
-  const { webhooks: storeRows, total, loading: storeLoading } = storeToRefs(webhooksStore);
-  const loading = storeLoading;
+  const { webhooks: storeRows, loading } = storeToRefs(webhooksStore);
   const saving = ref(false);
   const error = ref('');
   /** 列表接口 403：页面据此渲染 forbidden 态（无重试）。 */
   const forbidden = ref(false);
+  const loaded = ref(false);
   const search = ref('');
+  const stateFilter = ref('');
   const page = ref(1);
-  const pageSize = ref(20);
+  const pageSize = ref(24);
   const editorOpen = ref(false);
   const editingId = ref('');
   const busyId = ref('');
   const testingId = ref('');
   const dialogRef = ref<WebhookDialogExposed | null>(null);
+  const inspectedId = ref('');
+  /** 本次打开页面以来每条推送最近一次测试的结果（后端不存投递记录，只能看这一次的） */
+  const lastTest = ref<Record<string, WebhookTestResult>>({});
 
-  const filteredRows = computed(() => storeRows.value);
-  const pagedRows = computed(() => storeRows.value);
-  const pageMax = computed(() => Math.max(1, Math.ceil(Math.max(0, total.value) / pageSize.value)));
+  // shortcut: 出站推送一般只有个位数，整表读回在前端筛选/分页，状态条的数才准；上百条时改回服务端分页 + 计数接口
+  const filteredRows = computed(() => {
+    const q = search.value.trim().toLowerCase();
+    return storeRows.value.filter((row) => {
+      if (stateFilter.value === 'enabled' && !row.enabled) return false;
+      if (stateFilter.value === 'disabled' && row.enabled) return false;
+      return !q || row.name.toLowerCase().includes(q) || row.url.toLowerCase().includes(q);
+    });
+  });
+  const total = computed(() => filteredRows.value.length);
+  const pageMax = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)));
+  const pagedRows = computed(() =>
+    filteredRows.value.slice((page.value - 1) * pageSize.value, page.value * pageSize.value),
+  );
+
+  const stats = computed<Array<CapStat & { clickable: boolean }>>(() => {
+    const all = storeRows.value.length;
+    const on = storeRows.value.filter((row) => row.enabled).length;
+    return [
+      { key: '', label: t('connect.common.all'), value: all, clickable: true },
+      { key: 'enabled', label: t('connect.common.enabled'), value: on, tone: 'ok', clickable: true },
+      { key: 'disabled', label: t('connect.common.disabled'), value: all - on, tone: 'off', clickable: true },
+    ];
+  });
+
+  const inspected = computed(() => storeRows.value.find((row) => row.id === inspectedId.value) ?? null);
+  const inspectorOpen = computed({
+    get: () => inspected.value !== null,
+    set: (open: boolean) => {
+      if (!open) inspectedId.value = '';
+    },
+  });
+
+  watch([search, stateFilter, pageSize], () => {
+    page.value = 1;
+  });
+  watch(pageMax, (max) => {
+    if (page.value > max) page.value = max;
+  });
 
   // 仅做格式预检（http/https + 可解析）；公网/内网可达性由后端 SSRF 守卫裁决，
   // 其报错信息会经 saveWebhook 的 catch 原样提示，避免前后端规则不一致误拦合法地址。
@@ -52,33 +103,18 @@ export function useWebhooksPage() {
     error.value = '';
     forbidden.value = false;
     try {
-      await webhooksStore.loadWebhooks({
-        page: page.value,
-        page_size: pageSize.value,
-        search: search.value,
-      });
-      if (page.value > pageMax.value) page.value = pageMax.value;
+      await webhooksStore.loadWebhooks();
+      loaded.value = true;
     } catch (e) {
       forbidden.value = isForbiddenApiError(e);
       error.value = e instanceof Error ? e.message : String(e);
     }
   }
 
-  let skipNextPageWatch = false;
-  watch(search, () => {
-    if (page.value !== 1) {
-      skipNextPageWatch = true;
-      page.value = 1;
-    }
-    void loadRows();
-  });
-  watch([page, pageSize], () => {
-    if (skipNextPageWatch) {
-      skipNextPageWatch = false;
-      return;
-    }
-    void loadRows();
-  });
+  function eventLabel(evt: string): string {
+    const found = WEBHOOK_EVENT_TYPES.find((et) => et.value === evt);
+    return found ? t(found.labelKey) : evt;
+  }
 
   function openCreate() {
     editingId.value = '';
@@ -92,6 +128,10 @@ export function useWebhooksPage() {
     editorOpen.value = true;
   }
 
+  function inspect(row: WebhookRow) {
+    inspectedId.value = row.id;
+  }
+
   async function saveWebhook() {
     const payload = dialogRef.value?.getPayload();
     if (!payload || !payload.name?.trim() || !payload.url?.trim()) {
@@ -102,14 +142,7 @@ export function useWebhooksPage() {
       $q.notify({ type: 'warning', message: t('webhooksPage.notifyUrlInvalid') });
       return;
     }
-    let eventTypes: unknown[] = [];
-    try {
-      const parsed = JSON.parse(payload.event_types_json ?? '[]');
-      if (Array.isArray(parsed)) eventTypes = parsed;
-    } catch {
-      /* fall through to the empty check below */
-    }
-    if (eventTypes.length === 0) {
+    if (parseWebhookEvents(payload.event_types_json ?? '[]').length === 0) {
       $q.notify({ type: 'warning', message: t('webhooksPage.notifyEventTypesRequired') });
       return;
     }
@@ -127,6 +160,7 @@ export function useWebhooksPage() {
         await webhooksStore.saveWebhook(editingId.value, body);
       } else {
         const created = await webhooksStore.addWebhook(body);
+        inspectedId.value = created.id;
         if (created.secret && created.secret !== WEBHOOK_SECRET_MASK) {
           showSecretReveal(created.secret);
         }
@@ -156,21 +190,14 @@ export function useWebhooksPage() {
     testingId.value = row.id;
     try {
       const res = await testWebhook(row.id);
-      if (res.success) {
-        $q.notify({
-          type: 'positive',
-          message: t('webhooksPage.notifyTestSuccess', {
-            status: res.status_code,
-            duration: res.duration_ms,
-          }),
-        });
-      } else {
-        $q.notify({
-          type: 'negative',
-          timeout: 8000,
-          message: t('webhooksPage.notifyTestFailed', { error: res.error || `HTTP ${res.status_code}` }),
-        });
-      }
+      lastTest.value = { ...lastTest.value, [row.id]: res };
+      $q.notify({
+        type: res.success ? 'positive' : 'negative',
+        timeout: res.success ? 3000 : 8000,
+        message: res.success
+          ? t('webhooksPage.notifyTestSuccess', { status: res.status_code, duration: res.duration_ms })
+          : t('webhooksPage.notifyTestFailed', { error: res.error || `HTTP ${res.status_code}` }),
+      });
     } catch (e) {
       $q.notify({ type: 'negative', message: e instanceof Error ? e.message : String(e) });
     } finally {
@@ -181,14 +208,18 @@ export function useWebhooksPage() {
   async function confirmDelete(row: WebhookRow) {
     const ok = await confirm({
       title: t('webhooksPage.confirmDeleteTitle'),
-      message: t('webhooksPage.confirmDeleteMessage', { name: row.name }),
+      message: t('connect.webhooks.deleteMessage', {
+        name: row.name,
+        url: row.url,
+        events: parseWebhookEvents(row.event_types_json).map(eventLabel).join('、') || t('connect.common.none'),
+      }),
       tone: 'danger',
     });
     if (!ok) return;
     try {
       await webhooksStore.removeWebhook(row.id);
+      if (inspectedId.value === row.id) inspectedId.value = '';
       $q.notify({ type: 'positive', message: t('webhooksPage.notifyDeleted') });
-      await loadRows();
     } catch (e) {
       $q.notify({ type: 'negative', message: e instanceof Error ? e.message : String(e) });
     }
@@ -214,11 +245,15 @@ export function useWebhooksPage() {
 
   return {
     t,
+    rows: storeRows,
+    loaded,
     loading,
     saving,
     error,
     forbidden,
     search,
+    stateFilter,
+    stats,
     editorOpen,
     editingId,
     busyId,
@@ -230,9 +265,14 @@ export function useWebhooksPage() {
     filteredRows,
     pagedRows,
     pageMax,
+    inspected,
+    inspectorOpen,
+    lastTest,
+    eventLabel,
     loadRows,
     openCreate,
     openEdit,
+    inspect,
     saveWebhook,
     toggleEnabled,
     testRow,

@@ -384,23 +384,25 @@ func (u *CredentialUsecase) RecordExecution(ctx context.Context, e CredentialExe
 
 // DecideExecution 是执行面的策略裁决单点（V-3）：
 //  1. site 命中高敏清单 → denied_sensitivity（高敏默认拒绝，不经四档流转）。
-//  2. 站点无凭据 → denied_no_credential。
+//  2. 站点无凭据 → denied_no_credential；凭据本身标了高敏 → denied_sensitivity。
 //  3. 其余 → allowed（approval-policy 四档挂接在工具层：默认关/高风险/需确认，
 //     工具被禁用时工具层先拒，不会走到这里）。
 //
 // 每次调用（含拒绝）落审计。返回凭据元数据供后续 Reveal 使用。
 func (u *CredentialUsecase) DecideExecution(ctx context.Context, site, action string, actor ExecutionActor) (Credential, string, error) {
 	norm := NormalizeCredentialSite(site)
+	var credID int64 // 找到凭据后补上，审计才能按凭据反查
 	audit := func(verdict, reason string) {
 		u.RecordExecution(ctx, CredentialExecution{
-			Site:      norm,
-			Action:    action,
-			ActorType: actorTypeOrDefault(actor.ActorType),
-			ActorKey:  actor.ActorKey,
-			AgentID:   actor.AgentID,
-			SessionID: actor.SessionID,
-			Verdict:   verdict,
-			Reason:    reason,
+			CredentialID: credID,
+			Site:         norm,
+			Action:       action,
+			ActorType:    actorTypeOrDefault(actor.ActorType),
+			ActorKey:     actor.ActorKey,
+			AgentID:      actor.AgentID,
+			SessionID:    actor.SessionID,
+			Verdict:      verdict,
+			Reason:       reason,
 		})
 	}
 	if action != CredentialActionLoginExecute && action != CredentialActionTokenIssue {
@@ -419,6 +421,12 @@ func (u *CredentialUsecase) DecideExecution(ctx context.Context, site, action st
 	if err != nil {
 		audit(CredentialVerdictDeniedNoCredential, "no credential for site")
 		return Credential{}, CredentialVerdictDeniedNoCredential, apierror.NotFound("CREDENTIAL", "no credential for site")
+	}
+	credID = cred.ID
+	// 凭据自己标了高敏（管理员手动标或建时命中清单）同样默认拒绝，不只看全局清单
+	if cred.Sensitivity == CredentialSensitivityHigh {
+		audit(CredentialVerdictDeniedSensitivity, "credential is marked high-sensitivity")
+		return Credential{}, CredentialVerdictDeniedSensitivity, apierror.Forbidden("CREDENTIAL", "credential is marked high-sensitivity; execution denied by policy")
 	}
 	audit(CredentialVerdictAllowed, "")
 	return cred, CredentialVerdictAllowed, nil

@@ -66,12 +66,9 @@ export function formatChannelDate(value: string): string {
   return new Date(value).toLocaleString();
 }
 
+// 入站只认 /webhooks/{channel_key}（internal/server/http.go；webhook.path 后端只校验非空、不参与路由），
+// 回调地址一律按标识拼，旧数据里自定义的 path 不再采用，免得给出收不到消息的地址。
 export function channelWebhookPath(row: ChannelRow): string {
-  const cfg = channelConfig(row);
-  const configured = String(cfg.webhook?.path ?? '').trim();
-  if (configured) {
-    return configured.startsWith('/') ? configured : `/${configured}`;
-  }
   const key = String(row.key || '').trim();
   return key ? `/webhooks/${key}` : '';
 }

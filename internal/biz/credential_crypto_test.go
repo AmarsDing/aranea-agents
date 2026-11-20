@@ -161,8 +161,8 @@ func TestMergeConfigJSONForUpdate_NilCurrentWithPatch(t *testing.T) {
 }
 
 func TestMergeConfigJSONForUpdate_PreservesHACandidateSecrets(t *testing.T) {
-	cur := `{"api_key_enc":"enc-main","ha_candidates":[{"name":"fallback","api_key_enc":"enc-ha"}]}`
-	patch := `{"ha_candidates":[{"name":"fallback","base_url":"https://fallback.example.com"}]}`
+	cur := `{"api_key_enc":"enc-main","ha_candidates":[{"name":"fallback","base_url":"https://fallback.example.com","api_key_enc":"enc-ha"}]}`
+	patch := `{"ha_candidates":[{"name":"fallback","base_url":"https://fallback.example.com/"}]}`
 	out, err := mergeConfigJSONForUpdate(cur, patch)
 	if err != nil {
 		t.Fatal(err)
@@ -184,6 +184,25 @@ func TestMergeConfigJSONForUpdate_PreservesHACandidateSecrets(t *testing.T) {
 	}
 	if _, ok := cm["api_key"]; ok {
 		t.Fatal("patch should not introduce plaintext api_key in ha_candidates")
+	}
+}
+
+// 换了地址或新增的候选不能沿用别的候选已存的密钥（否则密钥被发往新地址）。
+func TestMergeConfigJSONForUpdate_HACandidateSecretNotCarriedToNewEndpoint(t *testing.T) {
+	cur := `{"ha_candidates":[{"name":"fallback","base_url":"https://fallback.example.com","api_key_enc":"enc-ha"}]}`
+	patch := `{"ha_candidates":[{"name":"fallback","base_url":"https://other.example.net"},{"name":"new","base_url":"https://fallback.example.com"}]}`
+	out, err := mergeConfigJSONForUpdate(cur, patch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m map[string]any
+	if err := json.Unmarshal([]byte(out), &m); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range m["ha_candidates"].([]any) {
+		if enc := c.(map[string]any)["api_key_enc"]; enc != nil {
+			t.Fatalf("candidate %v inherited a stored key it does not own", c)
+		}
 	}
 }
 

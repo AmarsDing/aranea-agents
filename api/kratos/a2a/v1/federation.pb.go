@@ -7,6 +7,7 @@
 package v1
 
 import (
+	_ "aranea-agents/api/aranea/auth/v1"
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
@@ -1284,7 +1285,7 @@ var File_kratos_a2a_v1_federation_proto protoreflect.FileDescriptor
 
 const file_kratos_a2a_v1_federation_proto_rawDesc = "" +
 	"\n" +
-	"\x1ekratos/a2a/v1/federation.proto\x12\rkratos.a2a.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x1bgoogle/protobuf/empty.proto\x1a\x17kratos/a2a/v1/a2a.proto\"\xad\x02\n" +
+	"\x1ekratos/a2a/v1/federation.proto\x12\rkratos.a2a.v1\x1a aranea/auth/v1/requirement.proto\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x1bgoogle/protobuf/empty.proto\x1a\x17kratos/a2a/v1/a2a.proto\"\xad\x02\n" +
 	"\rFederationOrg\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x16\n" +
@@ -1395,18 +1396,35 @@ const file_kratos_a2a_v1_federation_proto_rawDesc = "" +
 	"\x06offset\x18\x06 \x01(\x05R\x06offset\"s\n" +
 	" QueryFederationAuditLogsResponse\x129\n" +
 	"\x05items\x18\x01 \x03(\v2#.kratos.a2a.v1.FederationAuditEntryR\x05items\x12\x14\n" +
-	"\x05total\x18\x02 \x01(\x05R\x05total2\xd0\n" +
+	"\x05total\x18\x02 \x01(\x05R\x05total2\xe1\v\n" +
+	"\x11FederationService\x12\x96\x01\n" +
+	"\x15RegisterFederationOrg\x12+.kratos.a2a.v1.RegisterFederationOrgRequest\x1a\x1c.kratos.a2a.v1.FederationOrg\"2\xca\xf3\x18\f\n" +
 	"\n" +
-	"\x11FederationService\x12\x86\x01\n" +
-	"\x15RegisterFederationOrg\x12+.kratos.a2a.v1.RegisterFederationOrgRequest\x1a\x1c.kratos.a2a.v1.FederationOrg\"\"\x82\xd3\xe4\x93\x02\x1c:\x01*\"\x17/v1/a2a/federation/orgs\x12\x8a\x01\n" +
-	"\x12ListFederationOrgs\x12(.kratos.a2a.v1.ListFederationOrgsRequest\x1a).kratos.a2a.v1.ListFederationOrgsResponse\"\x1f\x82\xd3\xe4\x93\x02\x19\x12\x17/v1/a2a/federation/orgs\x12~\n" +
-	"\x13DeleteFederationOrg\x12).kratos.a2a.v1.DeleteFederationOrgRequest\x1a\x16.google.protobuf.Empty\"$\x82\xd3\xe4\x93\x02\x1e*\x1c/v1/a2a/federation/orgs/{id}\x12\x95\x01\n" +
-	"\x17SetFederationTrustLevel\x12-.kratos.a2a.v1.SetFederationTrustLevelRequest\x1a\x1c.kratos.a2a.v1.FederationOrg\"-\x82\xd3\xe4\x93\x02':\x01*\x1a\"/v1/a2a/federation/orgs/{id}/trust\x12\xa0\x01\n" +
-	"\x16SyncFederationOrgCards\x12,.kratos.a2a.v1.SyncFederationOrgCardsRequest\x1a-.kratos.a2a.v1.SyncFederationOrgCardsResponse\")\x82\xd3\xe4\x93\x02#\"!/v1/a2a/federation/orgs/{id}/sync\x12\x8f\x01\n" +
-	"\x16UpsertFederationPolicy\x12,.kratos.a2a.v1.UpsertFederationPolicyRequest\x1a\x1f.kratos.a2a.v1.FederationPolicy\"&\x82\xd3\xe4\x93\x02 :\x01*\"\x1b/v1/a2a/federation/policies\x12\x9e\x01\n" +
-	"\x18DiscoverFederationAgents\x12..kratos.a2a.v1.DiscoverFederationAgentsRequest\x1a/.kratos.a2a.v1.DiscoverFederationAgentsResponse\"!\x82\xd3\xe4\x93\x02\x1b\x12\x19/v1/a2a/federation/agents\x12\x95\x01\n" +
-	"\x14InvokeFederatedAgent\x12*.kratos.a2a.v1.InvokeFederatedAgentRequest\x1a+.kratos.a2a.v1.InvokeFederatedAgentResponse\"$\x82\xd3\xe4\x93\x02\x1e:\x01*\"\x19/v1/a2a/federation/invoke\x12\x9e\x01\n" +
-	"\x18QueryFederationAuditLogs\x12..kratos.a2a.v1.QueryFederationAuditLogsRequest\x1a/.kratos.a2a.v1.QueryFederationAuditLogsResponse\"!\x82\xd3\xe4\x93\x02\x1b\x12\x19/v1/a2a/federation/auditsB9\n" +
+	"a2a.manage\x82\xd3\xe4\x93\x02\x1c:\x01*\"\x17/v1/a2a/federation/orgs\x12\x9a\x01\n" +
+	"\x12ListFederationOrgs\x12(.kratos.a2a.v1.ListFederationOrgsRequest\x1a).kratos.a2a.v1.ListFederationOrgsResponse\"/\xca\xf3\x18\f\n" +
+	"\n" +
+	"a2a.manage\x82\xd3\xe4\x93\x02\x19\x12\x17/v1/a2a/federation/orgs\x12\x8e\x01\n" +
+	"\x13DeleteFederationOrg\x12).kratos.a2a.v1.DeleteFederationOrgRequest\x1a\x16.google.protobuf.Empty\"4\xca\xf3\x18\f\n" +
+	"\n" +
+	"a2a.manage\x82\xd3\xe4\x93\x02\x1e*\x1c/v1/a2a/federation/orgs/{id}\x12\xa5\x01\n" +
+	"\x17SetFederationTrustLevel\x12-.kratos.a2a.v1.SetFederationTrustLevelRequest\x1a\x1c.kratos.a2a.v1.FederationOrg\"=\xca\xf3\x18\f\n" +
+	"\n" +
+	"a2a.manage\x82\xd3\xe4\x93\x02':\x01*\x1a\"/v1/a2a/federation/orgs/{id}/trust\x12\xb0\x01\n" +
+	"\x16SyncFederationOrgCards\x12,.kratos.a2a.v1.SyncFederationOrgCardsRequest\x1a-.kratos.a2a.v1.SyncFederationOrgCardsResponse\"9\xca\xf3\x18\f\n" +
+	"\n" +
+	"a2a.manage\x82\xd3\xe4\x93\x02#\"!/v1/a2a/federation/orgs/{id}/sync\x12\x9f\x01\n" +
+	"\x16UpsertFederationPolicy\x12,.kratos.a2a.v1.UpsertFederationPolicyRequest\x1a\x1f.kratos.a2a.v1.FederationPolicy\"6\xca\xf3\x18\f\n" +
+	"\n" +
+	"a2a.manage\x82\xd3\xe4\x93\x02 :\x01*\"\x1b/v1/a2a/federation/policies\x12\xae\x01\n" +
+	"\x18DiscoverFederationAgents\x12..kratos.a2a.v1.DiscoverFederationAgentsRequest\x1a/.kratos.a2a.v1.DiscoverFederationAgentsResponse\"1\xca\xf3\x18\f\n" +
+	"\n" +
+	"a2a.manage\x82\xd3\xe4\x93\x02\x1b\x12\x19/v1/a2a/federation/agents\x12\xa5\x01\n" +
+	"\x14InvokeFederatedAgent\x12*.kratos.a2a.v1.InvokeFederatedAgentRequest\x1a+.kratos.a2a.v1.InvokeFederatedAgentResponse\"4\xca\xf3\x18\f\n" +
+	"\n" +
+	"a2a.manage\x82\xd3\xe4\x93\x02\x1e:\x01*\"\x19/v1/a2a/federation/invoke\x12\xae\x01\n" +
+	"\x18QueryFederationAuditLogs\x12..kratos.a2a.v1.QueryFederationAuditLogsRequest\x1a/.kratos.a2a.v1.QueryFederationAuditLogsResponse\"1\xca\xf3\x18\f\n" +
+	"\n" +
+	"a2a.manage\x82\xd3\xe4\x93\x02\x1b\x12\x19/v1/a2a/federation/auditsB9\n" +
 	"\x11api.kratos.a2a.v1P\x01Z\"aranea-agents/api/kratos/a2a/v1;v1b\x06proto3"
 
 var (

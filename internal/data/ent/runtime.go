@@ -3081,38 +3081,44 @@ func init() {
 	flowlogevent.IDValidator = flowlogeventDescID.Validators[0].(func(string) error)
 	gatewaywebhookFields := schema.GatewayWebhook{}.Fields()
 	_ = gatewaywebhookFields
+	// gatewaywebhookDescWorkspaceID is the schema descriptor for workspace_id field.
+	gatewaywebhookDescWorkspaceID := gatewaywebhookFields[1].Descriptor()
+	// gatewaywebhook.DefaultWorkspaceID holds the default value on creation for the workspace_id field.
+	gatewaywebhook.DefaultWorkspaceID = gatewaywebhookDescWorkspaceID.Default.(string)
+	// gatewaywebhook.WorkspaceIDValidator is a validator for the "workspace_id" field. It is called by the builders before save.
+	gatewaywebhook.WorkspaceIDValidator = gatewaywebhookDescWorkspaceID.Validators[0].(func(string) error)
 	// gatewaywebhookDescName is the schema descriptor for name field.
-	gatewaywebhookDescName := gatewaywebhookFields[1].Descriptor()
+	gatewaywebhookDescName := gatewaywebhookFields[2].Descriptor()
 	// gatewaywebhook.NameValidator is a validator for the "name" field. It is called by the builders before save.
 	gatewaywebhook.NameValidator = gatewaywebhookDescName.Validators[0].(func(string) error)
 	// gatewaywebhookDescURL is the schema descriptor for url field.
-	gatewaywebhookDescURL := gatewaywebhookFields[2].Descriptor()
+	gatewaywebhookDescURL := gatewaywebhookFields[3].Descriptor()
 	// gatewaywebhook.URLValidator is a validator for the "url" field. It is called by the builders before save.
 	gatewaywebhook.URLValidator = gatewaywebhookDescURL.Validators[0].(func(string) error)
 	// gatewaywebhookDescEventTypesJSON is the schema descriptor for event_types_json field.
-	gatewaywebhookDescEventTypesJSON := gatewaywebhookFields[3].Descriptor()
+	gatewaywebhookDescEventTypesJSON := gatewaywebhookFields[4].Descriptor()
 	// gatewaywebhook.DefaultEventTypesJSON holds the default value on creation for the event_types_json field.
 	gatewaywebhook.DefaultEventTypesJSON = gatewaywebhookDescEventTypesJSON.Default.(string)
 	// gatewaywebhookDescSecret is the schema descriptor for secret field.
-	gatewaywebhookDescSecret := gatewaywebhookFields[4].Descriptor()
+	gatewaywebhookDescSecret := gatewaywebhookFields[5].Descriptor()
 	// gatewaywebhook.DefaultSecret holds the default value on creation for the secret field.
 	gatewaywebhook.DefaultSecret = gatewaywebhookDescSecret.Default.(string)
 	// gatewaywebhook.SecretValidator is a validator for the "secret" field. It is called by the builders before save.
 	gatewaywebhook.SecretValidator = gatewaywebhookDescSecret.Validators[0].(func(string) error)
 	// gatewaywebhookDescHeadersJSON is the schema descriptor for headers_json field.
-	gatewaywebhookDescHeadersJSON := gatewaywebhookFields[5].Descriptor()
+	gatewaywebhookDescHeadersJSON := gatewaywebhookFields[6].Descriptor()
 	// gatewaywebhook.DefaultHeadersJSON holds the default value on creation for the headers_json field.
 	gatewaywebhook.DefaultHeadersJSON = gatewaywebhookDescHeadersJSON.Default.(string)
 	// gatewaywebhookDescEnabled is the schema descriptor for enabled field.
-	gatewaywebhookDescEnabled := gatewaywebhookFields[6].Descriptor()
+	gatewaywebhookDescEnabled := gatewaywebhookFields[7].Descriptor()
 	// gatewaywebhook.DefaultEnabled holds the default value on creation for the enabled field.
 	gatewaywebhook.DefaultEnabled = gatewaywebhookDescEnabled.Default.(bool)
 	// gatewaywebhookDescCreatedAt is the schema descriptor for created_at field.
-	gatewaywebhookDescCreatedAt := gatewaywebhookFields[7].Descriptor()
+	gatewaywebhookDescCreatedAt := gatewaywebhookFields[8].Descriptor()
 	// gatewaywebhook.DefaultCreatedAt holds the default value on creation for the created_at field.
 	gatewaywebhook.DefaultCreatedAt = gatewaywebhookDescCreatedAt.Default.(string)
 	// gatewaywebhookDescUpdatedAt is the schema descriptor for updated_at field.
-	gatewaywebhookDescUpdatedAt := gatewaywebhookFields[8].Descriptor()
+	gatewaywebhookDescUpdatedAt := gatewaywebhookFields[9].Descriptor()
 	// gatewaywebhook.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	gatewaywebhook.DefaultUpdatedAt = gatewaywebhookDescUpdatedAt.Default.(string)
 	// gatewaywebhookDescID is the schema descriptor for id field.

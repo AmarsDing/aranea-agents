@@ -46,6 +46,8 @@ type EditorProps = {
   catalog: ChannelTypeItem[];
   row: ChannelRow | null;
   credentials: ChannelCredential[];
+  /** 新建时预选的平台（从空态的平台网格点进来） */
+  initialType?: string;
 };
 
 export function useChannelEditorForm(
@@ -130,14 +132,8 @@ export function useChannelEditorForm(
   });
   const webhookPreview = computed(() => {
     if (!selectedCatalog.value?.supports_webhook) return '';
-    const path = webhookPath.value.trim();
-    const normalized = path
-      ? path.startsWith('/')
-        ? path
-        : `/${path}`
-      : form.key.trim()
-        ? `/webhooks/${form.key.trim()}`
-        : '';
+    // 与 channelUi.channelWebhookPath 同口径：入站只按标识路由
+    const normalized = form.key.trim() ? `/webhooks/${form.key.trim()}` : '';
     if (!normalized) return '';
     return buildChannelWebhookURL(normalized, { public_webhook_origin: publicWebhookOrigin.value });
   });
@@ -301,7 +297,7 @@ export function useChannelEditorForm(
     const row = props.row;
     const cfg = parseJSON<ChannelConfig>(row?.config_json, {});
     const metadata = parseJSON<ChannelMetadata>(row?.metadata_json, {});
-    selectedType.value = cfg.type || props.catalog[0]?.type || '';
+    selectedType.value = cfg.type || props.initialType || props.catalog[0]?.type || '';
     const item = props.catalog.find((entry) => entry.type === selectedType.value);
     receiveMode.value = cfg.receive_mode || item?.receive_modes[0] || 'webhook';
     webhookPath.value = String(cfg.webhook?.path ?? '');

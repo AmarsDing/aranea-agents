@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"aranea-agents/internal/workspace"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/webhookurl"
 
@@ -27,7 +28,9 @@ const (
 
 // WebhookConfig is one outbound callback target for run lifecycle events.
 type WebhookConfig struct {
-	ID             string
+	ID string
+	// WorkspaceID 归属工作区；空串 = 存量行，按 default 工作区对待。
+	WorkspaceID    string
 	Name           string
 	URL            string
 	EventTypesJSON string
@@ -36,6 +39,26 @@ type WebhookConfig struct {
 	Enabled        bool
 	CreatedAt      string
 	UpdatedAt      string
+}
+
+// effectiveWebhookWorkspace：存量行没有工作区，与 workspace.AssertWorkspace 一样按 default 算。
+func effectiveWebhookWorkspace(ws string) string {
+	if strings.TrimSpace(ws) == "" {
+		return workspace.DefaultWorkspaceID
+	}
+	return ws
+}
+
+// webhookCallerWorkspace 返回调用方只能看到的工作区；system 调用方（后台任务）返回 "" = 不过滤。
+func webhookCallerWorkspace(ctx context.Context) string {
+	if workspace.IsSystem(ctx) {
+		return ""
+	}
+	return workspace.IDFromContext(ctx)
+}
+
+func webhookVisibleTo(w WebhookConfig, callerWS string) bool {
+	return callerWS == "" || effectiveWebhookWorkspace(w.WorkspaceID) == callerWS
 }
 
 // WebhookUpdatePatch carries partial webhook fields; nil Enabled preserves the current value.
@@ -51,9 +74,11 @@ type WebhookUpdatePatch struct {
 
 // WebhookListQuery is the pagination/filter input for admin webhook lists.
 type WebhookListQuery struct {
-	Search string
-	Limit  int
-	Offset int
+	// WorkspaceID 非空时只列这个工作区（default 含存量空串行）；空 = 不过滤（system）。
+	WorkspaceID string
+	Search      string
+	Limit       int
+	Offset      int
 }
 
 // WebhookListResult is a page of webhooks plus the filter-scoped total.
@@ -121,6 +146,9 @@ func (uc *WebhookUsecase) Create(ctx context.Context, w WebhookConfig) (WebhookC
 	if w.Headers == nil {
 		w.Headers = map[string]string{}
 	}
+	if !workspace.IsSystem(ctx) {
+		w.WorkspaceID = workspace.IDFromContext(ctx)
+	}
 	now := time.Now().UTC().Format(time.RFC3339)
 	w.CreatedAt = now
 	w.UpdatedAt = now
@@ -131,14 +159,33 @@ func (uc *WebhookUsecase) Get(ctx context.Context, id string) (WebhookConfig, er
 	if strings.TrimSpace(id) == "" {
 		return WebhookConfig{}, apierror.BadRequest("GATEWAY", "id is required")
 	}
-	return uc.reader.Get(ctx, id)
+	w, err := uc.reader.Get(ctx, id)
+	if err != nil {
+		return WebhookConfig{}, err
+	}
+	if !webhookVisibleTo(w, webhookCallerWorkspace(ctx)) {
+		// 别的工作区的推送一律当不存在，不暴露 id 是否有效
+		return WebhookConfig{}, apierror.NotFound("GATEWAY", "webhook not found")
+	}
+	return w, nil
 }
 
 func (uc *WebhookUsecase) List(ctx context.Context) ([]WebhookConfig, error) {
 	if uc == nil || uc.reader == nil {
 		return nil, apierror.Internal("GATEWAY", "webhook repository not configured")
 	}
-	return uc.reader.List(ctx)
+	all, err := uc.reader.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	callerWS := webhookCallerWorkspace(ctx)
+	out := make([]WebhookConfig, 0, len(all))
+	for _, w := range all {
+		if webhookVisibleTo(w, callerWS) {
+			out = append(out, w)
+		}
+	}
+	return out, nil
 }
 
 // ListPaged returns a page of webhooks for the admin registry UI.
@@ -155,6 +202,7 @@ func (uc *WebhookUsecase) ListPaged(ctx context.Context, q WebhookListQuery) (We
 	if q.Offset < 0 {
 		q.Offset = 0
 	}
+	q.WorkspaceID = webhookCallerWorkspace(ctx)
 	return uc.reader.ListPaged(ctx, q)
 }
 
@@ -165,7 +213,7 @@ func (uc *WebhookUsecase) Update(ctx context.Context, patch WebhookUpdatePatch) 
 	if strings.TrimSpace(patch.ID) == "" {
 		return WebhookConfig{}, apierror.BadRequest("GATEWAY", "id is required")
 	}
-	cur, err := uc.reader.Get(ctx, patch.ID)
+	cur, err := uc.Get(ctx, patch.ID)
 	if err != nil {
 		return WebhookConfig{}, err
 	}
@@ -190,6 +238,9 @@ func (uc *WebhookUsecase) Update(ctx context.Context, patch WebhookUpdatePatch) 
 func (uc *WebhookUsecase) Delete(ctx context.Context, id string) error {
 	if strings.TrimSpace(id) == "" {
 		return apierror.BadRequest("GATEWAY", "id is required")
+	}
+	if _, err := uc.Get(ctx, id); err != nil {
+		return err
 	}
 	return uc.writer.Delete(ctx, id)
 }
@@ -265,7 +316,8 @@ func (uc *WebhookUsecase) ensureNameUnique(ctx context.Context, name, excludeID 
 	if name == "" || uc.reader == nil {
 		return nil
 	}
-	items, err := uc.reader.List(ctx)
+	// 名称只在本工作区内唯一
+	items, err := uc.List(ctx)
 	if err != nil {
 		return err
 	}
@@ -332,7 +384,7 @@ func RunStatusToWebhookEvent(status string) string {
 		return WebhookEventRunCompleted
 	case "failed":
 		return WebhookEventRunFailed
-	case "cancelled":
+	case "cancelled", "canceled": // 运行状态两种拼写都有（event_bus_callback_consumer 按 canceled 判终态）
 		return WebhookEventRunCancelled
 	default:
 		return ""
