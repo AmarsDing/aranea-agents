@@ -15,7 +15,17 @@ export type OfficeEventRow = {
   timezone: string;
   reminder_minutes: number;
   source: OfficeEventSource;
+  /** 日程 P1：plan 计划（打算做的）| log 工作内容（已经做了的） */
+  kind: OfficeEventKind;
+  /** todo 未开始 | doing 进行中 | done 已完成 | cancelled 已取消；逾期不存，按结束时间算 */
+  status: OfficeEventStatus;
+  all_day: boolean;
+  /** 完成情况 / 结果 */
+  outcome: string;
 };
+
+export type OfficeEventKind = 'plan' | 'log';
+export type OfficeEventStatus = 'todo' | 'doing' | 'done' | 'cancelled';
 
 export type OfficeNotificationRow = {
   id: string;
@@ -59,6 +69,56 @@ export type MailAccountRow = {
   last_uid: number;
   /** RFC3339；空串 = 从未同步。 */
   last_sync_at: string;
+  /** 发件地址 */
+  email: string;
+  /** 服务商预设键（qq / exmail / 163 …）；手动填为空 */
+  provider: string;
+  smtp_host: string;
+  smtp_port: number;
+  smtp_tls: MailTlsMode | 'TLS_MODE_UNSPECIFIED';
+  /** '' 未检查 | ok | auth_failed | unreachable */
+  status: '' | 'ok' | 'auth_failed' | 'unreachable' | string;
+  /** dns | unreachable | tls | auth | protocol */
+  last_error: string;
+};
+
+/** 邮件页视图（左栏）。 */
+export type MailView = 'inbox' | 'unread' | 'flagged' | 'task' | 'attachments' | 'sent' | 'drafts' | 'archived';
+
+export type MailboxSummaryRow = {
+  inbox_unread: number;
+  flagged: number;
+  task: number;
+  attachments: number;
+  sent: number;
+  drafts: number;
+  archived: number;
+  /** 账号 id → 收件箱未读 */
+  accounts: Record<string, number>;
+};
+
+export type MailProviderRow = {
+  found: boolean;
+  key: string;
+  name: string;
+  imap_host: string;
+  imap_port: number;
+  imap_tls: MailTlsMode;
+  smtp_host: string;
+  smtp_port: number;
+  smtp_tls: MailTlsMode;
+  /** false = 要 OAuth 登录，暂不支持 */
+  supported: boolean;
+  detected_by: '' | 'domain' | 'mx' | string;
+};
+
+export type MailTestResult = {
+  imap_ok: boolean;
+  imap_error: string;
+  inbox_count: number;
+  smtp_ok: boolean;
+  smtp_error: string;
+  smtp_skipped: boolean;
 };
 
 export type MailMessageRow = {
@@ -71,6 +131,14 @@ export type MailMessageRow = {
   received_at: string;
   task_ref: string;
   has_attachments: boolean;
+  /** 收件人 / 抄送（解码后原文） */
+  to: string;
+  cc: string;
+  seen: boolean;
+  flagged: boolean;
+  archived: boolean;
+  /** inbox | sent | drafts */
+  folder: string;
 };
 
 export type MailAttachmentRow = {

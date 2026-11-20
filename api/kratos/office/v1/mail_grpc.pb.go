@@ -36,6 +36,12 @@ const (
 	OfficeMailService_MailToTask_FullMethodName             = "/kratos.office.v1.OfficeMailService/MailToTask"
 	OfficeMailService_AttachmentToKnowledge_FullMethodName  = "/kratos.office.v1.OfficeMailService/AttachmentToKnowledge"
 	OfficeMailService_SendMail_FullMethodName               = "/kratos.office.v1.OfficeMailService/SendMail"
+	OfficeMailService_SaveDraft_FullMethodName              = "/kratos.office.v1.OfficeMailService/SaveDraft"
+	OfficeMailService_GetMailboxSummary_FullMethodName      = "/kratos.office.v1.OfficeMailService/GetMailboxSummary"
+	OfficeMailService_MarkMessages_FullMethodName           = "/kratos.office.v1.OfficeMailService/MarkMessages"
+	OfficeMailService_DetectProvider_FullMethodName         = "/kratos.office.v1.OfficeMailService/DetectProvider"
+	OfficeMailService_ListProviders_FullMethodName          = "/kratos.office.v1.OfficeMailService/ListProviders"
+	OfficeMailService_TestAccount_FullMethodName            = "/kratos.office.v1.OfficeMailService/TestAccount"
 	OfficeMailService_TriggerDigest_FullMethodName          = "/kratos.office.v1.OfficeMailService/TriggerDigest"
 	OfficeMailService_ListOfficeTasks_FullMethodName        = "/kratos.office.v1.OfficeMailService/ListOfficeTasks"
 	OfficeMailService_CreateOfficeTask_FullMethodName       = "/kratos.office.v1.OfficeMailService/CreateOfficeTask"
@@ -66,11 +72,18 @@ type OfficeMailServiceClient interface {
 	GetAttachment(ctx context.Context, in *GetAttachmentRequest, opts ...grpc.CallOption) (*httpbody.HttpBody, error)
 	ImportEml(ctx context.Context, in *ImportEmlRequest, opts ...grpc.CallOption) (*MailMessage, error)
 	// ExportEml 补齐现状缺口（workbench 只有导入）。
+	// 路径不用 {id}:exportEml：会被先注册的 GET messages/{id} 整段吞掉，导出永远 404。
 	ExportEml(ctx context.Context, in *ExportEmlRequest, opts ...grpc.CallOption) (*httpbody.HttpBody, error)
 	MailToTask(ctx context.Context, in *MailToTaskRequest, opts ...grpc.CallOption) (*MailToTaskResponse, error)
 	AttachmentToKnowledge(ctx context.Context, in *AttachmentToKnowledgeRequest, opts ...grpc.CallOption) (*AttachmentToKnowledgeResponse, error)
-	// SendMail F2 占位：实现随高风险闸同批（E-2）。
+	// SendMail 发信（邮件 P1）：只给登录用户在页面上用；智能体没有发信工具。
 	SendMail(ctx context.Context, in *SendMailRequest, opts ...grpc.CallOption) (*SendMailResponse, error)
+	SaveDraft(ctx context.Context, in *SaveDraftRequest, opts ...grpc.CallOption) (*SaveDraftResponse, error)
+	GetMailboxSummary(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*MailboxSummary, error)
+	MarkMessages(ctx context.Context, in *MarkMessagesRequest, opts ...grpc.CallOption) (*MarkMessagesResponse, error)
+	DetectProvider(ctx context.Context, in *DetectProviderRequest, opts ...grpc.CallOption) (*MailProviderInfo, error)
+	ListProviders(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ListProvidersResponse, error)
+	TestAccount(ctx context.Context, in *TestAccountRequest, opts ...grpc.CallOption) (*TestAccountResponse, error)
 	TriggerDigest(ctx context.Context, in *TriggerDigestRequest, opts ...grpc.CallOption) (*TriggerDigestResponse, error)
 	// 个人任务（工作台「我的任务」）：只读写调用者本人的任务，仅需登录。
 	ListOfficeTasks(ctx context.Context, in *ListOfficeTasksRequest, opts ...grpc.CallOption) (*ListOfficeTasksResponse, error)
@@ -246,6 +259,66 @@ func (c *officeMailServiceClient) SendMail(ctx context.Context, in *SendMailRequ
 	return out, nil
 }
 
+func (c *officeMailServiceClient) SaveDraft(ctx context.Context, in *SaveDraftRequest, opts ...grpc.CallOption) (*SaveDraftResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SaveDraftResponse)
+	err := c.cc.Invoke(ctx, OfficeMailService_SaveDraft_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *officeMailServiceClient) GetMailboxSummary(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*MailboxSummary, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(MailboxSummary)
+	err := c.cc.Invoke(ctx, OfficeMailService_GetMailboxSummary_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *officeMailServiceClient) MarkMessages(ctx context.Context, in *MarkMessagesRequest, opts ...grpc.CallOption) (*MarkMessagesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(MarkMessagesResponse)
+	err := c.cc.Invoke(ctx, OfficeMailService_MarkMessages_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *officeMailServiceClient) DetectProvider(ctx context.Context, in *DetectProviderRequest, opts ...grpc.CallOption) (*MailProviderInfo, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(MailProviderInfo)
+	err := c.cc.Invoke(ctx, OfficeMailService_DetectProvider_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *officeMailServiceClient) ListProviders(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ListProvidersResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListProvidersResponse)
+	err := c.cc.Invoke(ctx, OfficeMailService_ListProviders_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *officeMailServiceClient) TestAccount(ctx context.Context, in *TestAccountRequest, opts ...grpc.CallOption) (*TestAccountResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(TestAccountResponse)
+	err := c.cc.Invoke(ctx, OfficeMailService_TestAccount_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *officeMailServiceClient) TriggerDigest(ctx context.Context, in *TriggerDigestRequest, opts ...grpc.CallOption) (*TriggerDigestResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(TriggerDigestResponse)
@@ -373,11 +446,18 @@ type OfficeMailServiceServer interface {
 	GetAttachment(context.Context, *GetAttachmentRequest) (*httpbody.HttpBody, error)
 	ImportEml(context.Context, *ImportEmlRequest) (*MailMessage, error)
 	// ExportEml 补齐现状缺口（workbench 只有导入）。
+	// 路径不用 {id}:exportEml：会被先注册的 GET messages/{id} 整段吞掉，导出永远 404。
 	ExportEml(context.Context, *ExportEmlRequest) (*httpbody.HttpBody, error)
 	MailToTask(context.Context, *MailToTaskRequest) (*MailToTaskResponse, error)
 	AttachmentToKnowledge(context.Context, *AttachmentToKnowledgeRequest) (*AttachmentToKnowledgeResponse, error)
-	// SendMail F2 占位：实现随高风险闸同批（E-2）。
+	// SendMail 发信（邮件 P1）：只给登录用户在页面上用；智能体没有发信工具。
 	SendMail(context.Context, *SendMailRequest) (*SendMailResponse, error)
+	SaveDraft(context.Context, *SaveDraftRequest) (*SaveDraftResponse, error)
+	GetMailboxSummary(context.Context, *emptypb.Empty) (*MailboxSummary, error)
+	MarkMessages(context.Context, *MarkMessagesRequest) (*MarkMessagesResponse, error)
+	DetectProvider(context.Context, *DetectProviderRequest) (*MailProviderInfo, error)
+	ListProviders(context.Context, *emptypb.Empty) (*ListProvidersResponse, error)
+	TestAccount(context.Context, *TestAccountRequest) (*TestAccountResponse, error)
 	TriggerDigest(context.Context, *TriggerDigestRequest) (*TriggerDigestResponse, error)
 	// 个人任务（工作台「我的任务」）：只读写调用者本人的任务，仅需登录。
 	ListOfficeTasks(context.Context, *ListOfficeTasksRequest) (*ListOfficeTasksResponse, error)
@@ -447,6 +527,24 @@ func (UnimplementedOfficeMailServiceServer) AttachmentToKnowledge(context.Contex
 }
 func (UnimplementedOfficeMailServiceServer) SendMail(context.Context, *SendMailRequest) (*SendMailResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method SendMail not implemented")
+}
+func (UnimplementedOfficeMailServiceServer) SaveDraft(context.Context, *SaveDraftRequest) (*SaveDraftResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method SaveDraft not implemented")
+}
+func (UnimplementedOfficeMailServiceServer) GetMailboxSummary(context.Context, *emptypb.Empty) (*MailboxSummary, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetMailboxSummary not implemented")
+}
+func (UnimplementedOfficeMailServiceServer) MarkMessages(context.Context, *MarkMessagesRequest) (*MarkMessagesResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method MarkMessages not implemented")
+}
+func (UnimplementedOfficeMailServiceServer) DetectProvider(context.Context, *DetectProviderRequest) (*MailProviderInfo, error) {
+	return nil, status.Error(codes.Unimplemented, "method DetectProvider not implemented")
+}
+func (UnimplementedOfficeMailServiceServer) ListProviders(context.Context, *emptypb.Empty) (*ListProvidersResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListProviders not implemented")
+}
+func (UnimplementedOfficeMailServiceServer) TestAccount(context.Context, *TestAccountRequest) (*TestAccountResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method TestAccount not implemented")
 }
 func (UnimplementedOfficeMailServiceServer) TriggerDigest(context.Context, *TriggerDigestRequest) (*TriggerDigestResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method TriggerDigest not implemented")
@@ -772,6 +870,114 @@ func _OfficeMailService_SendMail_Handler(srv interface{}, ctx context.Context, d
 	return interceptor(ctx, in, info, handler)
 }
 
+func _OfficeMailService_SaveDraft_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SaveDraftRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OfficeMailServiceServer).SaveDraft(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: OfficeMailService_SaveDraft_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OfficeMailServiceServer).SaveDraft(ctx, req.(*SaveDraftRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _OfficeMailService_GetMailboxSummary_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(emptypb.Empty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OfficeMailServiceServer).GetMailboxSummary(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: OfficeMailService_GetMailboxSummary_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OfficeMailServiceServer).GetMailboxSummary(ctx, req.(*emptypb.Empty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _OfficeMailService_MarkMessages_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(MarkMessagesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OfficeMailServiceServer).MarkMessages(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: OfficeMailService_MarkMessages_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OfficeMailServiceServer).MarkMessages(ctx, req.(*MarkMessagesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _OfficeMailService_DetectProvider_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DetectProviderRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OfficeMailServiceServer).DetectProvider(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: OfficeMailService_DetectProvider_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OfficeMailServiceServer).DetectProvider(ctx, req.(*DetectProviderRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _OfficeMailService_ListProviders_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(emptypb.Empty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OfficeMailServiceServer).ListProviders(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: OfficeMailService_ListProviders_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OfficeMailServiceServer).ListProviders(ctx, req.(*emptypb.Empty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _OfficeMailService_TestAccount_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(TestAccountRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OfficeMailServiceServer).TestAccount(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: OfficeMailService_TestAccount_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OfficeMailServiceServer).TestAccount(ctx, req.(*TestAccountRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _OfficeMailService_TriggerDigest_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(TriggerDigestRequest)
 	if err := dec(in); err != nil {
@@ -1036,6 +1242,30 @@ var OfficeMailService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SendMail",
 			Handler:    _OfficeMailService_SendMail_Handler,
+		},
+		{
+			MethodName: "SaveDraft",
+			Handler:    _OfficeMailService_SaveDraft_Handler,
+		},
+		{
+			MethodName: "GetMailboxSummary",
+			Handler:    _OfficeMailService_GetMailboxSummary_Handler,
+		},
+		{
+			MethodName: "MarkMessages",
+			Handler:    _OfficeMailService_MarkMessages_Handler,
+		},
+		{
+			MethodName: "DetectProvider",
+			Handler:    _OfficeMailService_DetectProvider_Handler,
+		},
+		{
+			MethodName: "ListProviders",
+			Handler:    _OfficeMailService_ListProviders_Handler,
+		},
+		{
+			MethodName: "TestAccount",
+			Handler:    _OfficeMailService_TestAccount_Handler,
 		},
 		{
 			MethodName: "TriggerDigest",

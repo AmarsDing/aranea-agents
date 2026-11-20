@@ -9,11 +9,17 @@ import type {
   ICalTokenRow,
   MailAccountRow,
   MailAttachmentRow,
+  MailboxSummaryRow,
   MailMessageRow,
+  MailProviderRow,
+  MailTestResult,
   MailTlsMode,
+  MailView,
   OfficeAppRow,
+  OfficeEventKind,
   OfficeEventRow,
   OfficeEventSource,
+  OfficeEventStatus,
   OfficeNotificationRow,
   OfficeTaskFileRow,
   OfficeTaskRow,
@@ -35,6 +41,10 @@ function wireToEvent(raw: Record<string, unknown>): OfficeEventRow {
     timezone: String(raw.timezone ?? ''),
     reminder_minutes: Number(raw.reminderMinutes ?? raw.reminder_minutes ?? 0),
     source: String(raw.source ?? '') as OfficeEventSource,
+    kind: (String(raw.kind ?? '') || 'plan') as OfficeEventKind,
+    status: (String(raw.status ?? '') || 'todo') as OfficeEventStatus,
+    all_day: Boolean(raw.allDay ?? raw.all_day ?? false),
+    outcome: String(raw.outcome ?? ''),
   };
 }
 
@@ -53,6 +63,10 @@ export type EventInput = {
   timezone: string;
   reminder_minutes: number;
   task_ref?: string;
+  kind?: OfficeEventKind;
+  status?: OfficeEventStatus;
+  all_day?: boolean;
+  outcome?: string;
 };
 
 export async function createEvent(input: EventInput): Promise<OfficeEventRow> {
@@ -64,6 +78,10 @@ export async function createEvent(input: EventInput): Promise<OfficeEventRow> {
     timezone: input.timezone,
     reminderMinutes: input.reminder_minutes,
     taskRef: input.task_ref ?? '',
+    kind: input.kind ?? 'plan',
+    status: input.status ?? 'todo',
+    allDay: input.all_day ?? false,
+    outcome: input.outcome ?? '',
   });
   return wireToEvent(res as Record<string, unknown>);
 }
@@ -77,6 +95,26 @@ export async function updateEvent(id: string, input: EventInput): Promise<Office
     endAt: input.end_at,
     timezone: input.timezone,
     reminderMinutes: input.reminder_minutes,
+    // 有 presence 的字段：给了就改（含清空），不给不改
+    kind: input.kind,
+    status: input.status,
+    allDay: input.all_day,
+    outcome: input.outcome,
+  });
+  return wireToEvent(res as Record<string, unknown>);
+}
+
+/** 只改状态（如点一下「进行中 → 已完成」）。后端每次都会应用提醒分钟数（0 = 关提醒），所以把原值带上。 */
+export async function setEventStatus(ev: OfficeEventRow, status: OfficeEventStatus): Promise<OfficeEventRow> {
+  const res = await createOfficeScheduleService().UpdateEvent({
+    id: ev.id,
+    title: ev.title,
+    // note 不传 = 不改（传空串会清空说明）
+    startAt: undefined,
+    endAt: undefined,
+    timezone: '',
+    reminderMinutes: ev.reminder_minutes,
+    status,
   });
   return wireToEvent(res as Record<string, unknown>);
 }
@@ -210,6 +248,13 @@ function wireToMailAccount(raw: Record<string, unknown>): MailAccountRow {
     username: String(raw.username ?? ''),
     last_uid: Number(raw.lastUid ?? raw.last_uid ?? 0),
     last_sync_at: String(raw.lastSyncAt ?? raw.last_sync_at ?? ''),
+    email: String(raw.email ?? ''),
+    provider: String(raw.provider ?? ''),
+    smtp_host: String(raw.smtpHost ?? raw.smtp_host ?? ''),
+    smtp_port: Number(raw.smtpPort ?? raw.smtp_port ?? 0),
+    smtp_tls: String(raw.smtpTls ?? raw.smtp_tls ?? 'TLS_MODE_UNSPECIFIED') as MailAccountRow['smtp_tls'],
+    status: String(raw.status ?? ''),
+    last_error: String(raw.lastError ?? raw.last_error ?? ''),
   };
 }
 
@@ -223,6 +268,12 @@ function wireToMailMessage(raw: Record<string, unknown>): MailMessageRow {
     received_at: String(raw.receivedAt ?? raw.received_at ?? ''),
     task_ref: String(raw.taskRef ?? raw.task_ref ?? ''),
     has_attachments: Boolean(raw.hasAttachments ?? raw.has_attachments ?? false),
+    to: String(raw.to ?? ''),
+    cc: String(raw.cc ?? ''),
+    seen: Boolean(raw.seen ?? false),
+    flagged: Boolean(raw.flagged ?? false),
+    archived: Boolean(raw.archived ?? false),
+    folder: String(raw.folder ?? 'inbox') || 'inbox',
   };
 }
 
@@ -250,6 +301,13 @@ export type MailAccountInput = {
   username: string;
   /** 创建必填；编辑留空 = 不轮换密码。 */
   password: string;
+  email?: string;
+  provider?: string;
+  smtp_host?: string;
+  smtp_port?: number;
+  smtp_tls?: MailTlsMode;
+  /** 首次只同步这天之后的（RFC3339）；空 = 全部（只在创建时有效） */
+  sync_since?: string;
 };
 
 export async function createMailAccount(input: MailAccountInput): Promise<MailAccountRow> {
@@ -260,7 +318,13 @@ export async function createMailAccount(input: MailAccountInput): Promise<MailAc
     tlsMode: input.tls_mode,
     username: input.username,
     password: input.password,
-  });
+    email: input.email ?? '',
+    provider: input.provider ?? '',
+    smtpHost: input.smtp_host ?? '',
+    smtpPort: input.smtp_port ?? 0,
+    smtpTls: input.smtp_tls,
+    syncSince: input.sync_since || undefined,
+  } as never);
   return wireToMailAccount(res as Record<string, unknown>);
 }
 
@@ -273,19 +337,170 @@ export async function updateMailAccount(id: string, input: MailAccountInput): Pr
     tlsMode: input.tls_mode,
     username: input.username,
     password: input.password,
-  });
+    email: input.email ?? '',
+    provider: input.provider ?? '',
+    smtpHost: input.smtp_host ?? '',
+    smtpPort: input.smtp_port ?? 0,
+    smtpTls: input.smtp_tls,
+  } as never);
   return wireToMailAccount(res as Record<string, unknown>);
+}
+
+function wireToProvider(raw: Record<string, unknown>): MailProviderRow {
+  return {
+    found: Boolean(raw.found ?? false),
+    key: String(raw.key ?? ''),
+    name: String(raw.name ?? ''),
+    imap_host: String(raw.imapHost ?? ''),
+    imap_port: Number(raw.imapPort ?? 0),
+    imap_tls: String(raw.imapTls ?? 'TLS_MODE_TLS') as MailTlsMode,
+    smtp_host: String(raw.smtpHost ?? ''),
+    smtp_port: Number(raw.smtpPort ?? 0),
+    smtp_tls: String(raw.smtpTls ?? 'TLS_MODE_TLS') as MailTlsMode,
+    supported: Boolean(raw.supported ?? false),
+    detected_by: String(raw.detectedBy ?? ''),
+  };
+}
+
+/** 向导第 1 步：按邮箱地址认服务商（域名，认不出再查 MX）。 */
+export async function detectMailProvider(email: string): Promise<MailProviderRow> {
+  const res = await createOfficeMailService().DetectProvider({ email });
+  return wireToProvider(res as Record<string, unknown>);
+}
+
+export async function listMailProviders(): Promise<MailProviderRow[]> {
+  const res = await createOfficeMailService().ListProviders({});
+  return (res.items ?? []).map((row) => wireToProvider(row as Record<string, unknown>));
+}
+
+/** 测连接：传 id 测已保存的账号；否则测向导里还没保存的配置。 */
+export async function testMailAccount(input: { id: string } | MailAccountInput): Promise<MailTestResult> {
+  const svc = createOfficeMailService();
+  const res = (
+    'id' in input
+      ? await svc.TestAccount({ id: input.id } as never)
+      : await svc.TestAccount({
+          id: '',
+          host: input.host,
+          port: input.port,
+          tlsMode: input.tls_mode,
+          username: input.username,
+          password: input.password,
+          smtpHost: input.smtp_host ?? '',
+          smtpPort: input.smtp_port ?? 0,
+          smtpTls: input.smtp_tls,
+        } as never)
+  ) as Record<string, unknown>;
+  return {
+    imap_ok: Boolean(res.imapOk ?? false),
+    imap_error: String(res.imapError ?? ''),
+    inbox_count: Number(res.inboxCount ?? 0),
+    smtp_ok: Boolean(res.smtpOk ?? false),
+    smtp_error: String(res.smtpError ?? ''),
+    smtp_skipped: Boolean(res.smtpSkipped ?? false),
+  };
+}
+
+export async function getMailboxSummary(): Promise<MailboxSummaryRow> {
+  const res = (await createOfficeMailService().GetMailboxSummary({})) as Record<string, unknown>;
+  const accounts: Record<string, number> = {};
+  for (const a of Array.isArray(res.accounts) ? res.accounts : []) {
+    const rec = a as Record<string, unknown>;
+    accounts[String(rec.accountId ?? '')] = Number(rec.unread ?? 0);
+  }
+  return {
+    inbox_unread: Number(res.inboxUnread ?? 0),
+    flagged: Number(res.flagged ?? 0),
+    task: Number(res.task ?? 0),
+    attachments: Number(res.attachments ?? 0),
+    sent: Number(res.sent ?? 0),
+    drafts: Number(res.drafts ?? 0),
+    archived: Number(res.archived ?? 0),
+    accounts,
+  };
+}
+
+/** 批量标已读 / 星标 / 归档；不传 = 不改。 */
+export async function markMailMessages(
+  ids: string[],
+  mark: { seen?: boolean; flagged?: boolean; archived?: boolean },
+): Promise<number> {
+  const res = await createOfficeMailService().MarkMessages({ ids, ...mark });
+  return Number(res.updated ?? 0);
+}
+
+/** File / Blob → base64（proto bytes 字段的线格式）。 */
+export async function blobToBase64(blob: Blob): Promise<string> {
+  const buf = new Uint8Array(await blob.arrayBuffer());
+  let bin = '';
+  const step = 0x8000;
+  for (let i = 0; i < buf.length; i += step) {
+    bin += String.fromCharCode(...buf.subarray(i, i + step));
+  }
+  return btoa(bin);
+}
+
+export type MailOutgoingInput = {
+  account_id: string;
+  to: string;
+  cc: string;
+  subject: string;
+  body: string;
+  reply_to_id?: string;
+  forward_of_id?: string;
+  draft_id?: string;
+  /** 新加的附件（已有草稿 / 转发的附件由服务端带上） */
+  files: File[];
+};
+
+async function outgoingWire(input: MailOutgoingInput) {
+  const attachments = await Promise.all(
+    input.files.map(async (f) => ({
+      filename: f.name,
+      contentType: f.type || 'application/octet-stream',
+      content: await blobToBase64(f),
+    })),
+  );
+  return {
+    accountId: input.account_id,
+    to: input.to,
+    cc: input.cc,
+    subject: input.subject,
+    body: input.body,
+    replyToId: input.reply_to_id ?? '',
+    forwardOfId: input.forward_of_id ?? '',
+    draftId: input.draft_id ?? '',
+    attachments,
+  };
+}
+
+/** 发信：发出后存进「已发送」；从草稿发出会删掉草稿。返回已发送那封的 id。 */
+export async function sendMail(input: MailOutgoingInput): Promise<string> {
+  const res = await createOfficeMailService().SendMail(await outgoingWire(input));
+  return String(res.sendId ?? '');
+}
+
+/** 存草稿（draft_id 有 = 替换旧草稿）。返回新草稿 id。 */
+export async function saveMailDraft(input: MailOutgoingInput): Promise<string> {
+  const res = await createOfficeMailService().SaveDraft(await outgoingWire(input));
+  return String(res.draftId ?? '');
 }
 
 export async function deleteMailAccount(id: string): Promise<void> {
   await createOfficeMailService().DeleteAccount({ id });
 }
 
+/** 首次同步动辄几十秒：用长超时；真超时了服务端也会同步完（不随请求取消）。 */
 export async function syncMailAccount(id: string): Promise<{ imported: number; skipped: number }> {
-  const res = await createOfficeMailService().SyncAccount({ id });
+  const res = await kratosApi.post(
+    `/v1/office/mail/accounts/${encodeURIComponent(id)}/sync`,
+    {},
+    { timeout: KRATOS_API_LONG_TIMEOUT_MS },
+  );
+  const d = (res.data ?? {}) as Record<string, unknown>;
   return {
-    imported: Number(res.importedCount ?? (res as unknown as Record<string, unknown>).imported_count ?? 0),
-    skipped: Number(res.skippedCount ?? (res as unknown as Record<string, unknown>).skipped_count ?? 0),
+    imported: Number(d.importedCount ?? d.imported_count ?? 0),
+    skipped: Number(d.skippedCount ?? d.skipped_count ?? 0),
   };
 }
 
@@ -296,6 +511,8 @@ export type MailMessageListResult = {
 
 export async function listMailMessages(query: {
   accountId?: string;
+  view?: MailView;
+  keyword?: string;
   page?: number;
   pageSize?: number;
 }): Promise<MailMessageListResult> {
@@ -304,6 +521,8 @@ export async function listMailMessages(query: {
     quadrant: '',
     page: query.page ?? 1,
     pageSize: query.pageSize ?? 20,
+    view: query.view ?? 'inbox',
+    keyword: query.keyword ?? '',
   });
   return {
     items: (res.items ?? []).map((row) => wireToMailMessage(row as Record<string, unknown>)),
@@ -311,11 +530,14 @@ export async function listMailMessages(query: {
   };
 }
 
-export async function getMailMessage(id: string): Promise<{ message: MailMessageRow; body: string }> {
+export async function getMailMessage(
+  id: string,
+): Promise<{ message: MailMessageRow; body: string; body_html: string }> {
   const res = await createOfficeMailService().GetMessage({ id });
   return {
     message: wireToMailMessage((res.message ?? {}) as Record<string, unknown>),
     body: String(res.body ?? ''),
+    body_html: String((res as Record<string, unknown>).bodyHtml ?? ''),
   };
 }
 
@@ -332,19 +554,24 @@ export async function listMailAttachments(messageId: string): Promise<MailAttach
  * 附件下载：服务端 HttpBody 以原始字节流出（非 JSON base64），走 blob
  * （与 knowledge fetchDocumentAsset 同模式）；仅一次性 objectURL。
  */
-export async function downloadMailAttachment(att: MailAttachmentRow): Promise<void> {
+export async function fetchMailAttachment(att: MailAttachmentRow): Promise<Blob> {
   const res = await kratosApi.get(`/v1/office/mail/attachments/${encodeURIComponent(att.id)}/download`, {
     responseType: 'blob',
+    timeout: KRATOS_API_LONG_TIMEOUT_MS,
   });
-  const blob = res.data as Blob;
-  const url = URL.createObjectURL(blob);
+  return res.data as Blob;
+}
+
+export async function downloadMailAttachment(att: MailAttachmentRow): Promise<void> {
+  const url = URL.createObjectURL(await fetchMailAttachment(att));
   const a = document.createElement('a');
   a.href = url;
   a.download = att.filename || 'attachment';
   document.body.appendChild(a);
   a.click();
   a.remove();
-  URL.revokeObjectURL(url);
+  // 点完立刻 revoke，Firefox / Safari 会把下载取消掉
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
 export async function attachmentToKnowledge(id: string, classification: number): Promise<string> {
@@ -352,14 +579,15 @@ export async function attachmentToKnowledge(id: string, classification: number):
   return String(res.knowledgeDocId ?? (res as unknown as Record<string, unknown>).knowledge_doc_id ?? '');
 }
 
-export async function importMailEml(eml: string): Promise<MailMessageRow> {
-  const res = await createOfficeMailService().ImportEml({ eml });
+/** .eml 导入：proto bytes 字段要 base64（原来直接传文本，服务端解不开）。 */
+export async function importMailEml(file: Blob): Promise<MailMessageRow> {
+  const res = await createOfficeMailService().ImportEml({ eml: await blobToBase64(file) });
   return wireToMailMessage(res as Record<string, unknown>);
 }
 
 /** 导出 .eml 原文（HttpBody 原始字节 → Blob 保存）。 */
 export async function exportMailEml(msg: MailMessageRow): Promise<void> {
-  const res = await kratosApi.get(`/v1/office/mail/messages/${encodeURIComponent(msg.id)}:exportEml`, {
+  const res = await kratosApi.get(`/v1/office/mail/messages/${encodeURIComponent(msg.id)}/eml`, {
     responseType: 'blob',
   });
   const blob = res.data as Blob;

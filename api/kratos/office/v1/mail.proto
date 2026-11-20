@@ -27,8 +27,11 @@ option java_package = "api.kratos.office.v1";
 //   - 补齐现状缺口：账号更新/删除、邮件删除、.eml 导出；
 //   - mailToTask 契约修正：workbench 前端未带 space_id 必 400，新版
 //     workspace 由服务端从调用者上下文解析（统一任务中心落位后接线）；
-//   - E-2 发信（SMTP）为 F2 项：proto 先占位，实现随高风险闸同批；
+//   - E-2 发信（SMTP）：邮件 P1 实现（09-邮件.md §4）——只有登录用户在页面上点
+//     「发送」才发，智能体没有发信工具，AI 起草（P2）只产草稿；
 //   - E-3 四象限分拣为 F2 项：quadrant 字段先占位。
+// 邮件 P1 增量：添加邮箱向导（服务商识别 + 测试连接）、已读 / 星标 / 归档、
+// 视图 + 关键字搜索、收件人 / 抄送、清洗后的 HTML 正文、草稿。
 // ============================================================================
 
 enum TlsMode {
@@ -50,6 +53,14 @@ message MailAccount {
   int64 last_uid = 8;
   google.protobuf.Timestamp last_sync_at = 9; // 从未同步留空
   google.protobuf.Timestamp created_at = 10;
+  string email = 11;      // 发件地址
+  string provider = 12;   // 服务商预设键（qq / exmail / 163 …），手动填为空
+  string smtp_host = 13;  // 空 = 没配发信
+  int32 smtp_port = 14;
+  TlsMode smtp_tls = 15;
+  string status = 16;     // '' 未检查 | ok | auth_failed | unreachable
+  string last_error = 17; // 错误类别：dns | unreachable | tls | auth | protocol
+  google.protobuf.Timestamp sync_since = 18; // 首次同步从这天开始；空 = 全部
 }
 
 message CreateAccountRequest {
@@ -59,6 +70,12 @@ message CreateAccountRequest {
   TlsMode tls_mode = 4 [(google.api.field_behavior) = REQUIRED];
   string username = 5 [(google.api.field_behavior) = REQUIRED];
   string password = 6 [(google.api.field_behavior) = REQUIRED]; // 写后即弃
+  string email = 7;      // 空 = 用户名是邮箱时取用户名
+  string provider = 8;   // 预设键；smtp_host 空时按它补 SMTP
+  string smtp_host = 9;
+  int32 smtp_port = 10;  // 0 = 按 smtp_tls 默认（465 / 587）
+  TlsMode smtp_tls = 11;
+  google.protobuf.Timestamp sync_since = 12; // 首次只同步这天之后的；空 = 全部
 }
 
 message UpdateAccountRequest {
@@ -69,6 +86,11 @@ message UpdateAccountRequest {
   TlsMode tls_mode = 5;
   string username = 6;
   string password = 7; // 非空 = 轮换
+  string email = 8;
+  string provider = 9;
+  string smtp_host = 10;
+  int32 smtp_port = 11;
+  TlsMode smtp_tls = 12;
 }
 
 message GetAccountRequest {
@@ -104,13 +126,22 @@ message MailMessage {
   string quadrant = 9;    // F2 四象限：urgent-important 等，未分拣为空
   bool has_attachments = 10;
   google.protobuf.Timestamp created_at = 11;
+  string to = 12;       // 收件人（解码后原文）
+  string cc = 13;
+  bool seen = 14;
+  bool flagged = 15;
+  bool archived = 16;
+  string folder = 17;   // inbox | sent | drafts
 }
 
 message ListMessagesRequest {
   string account_id = 1; // 空 = 全部账号聚合
-  string quadrant = 2;   // 可选过滤（F2）
+  string quadrant = 2;   // 旧口径，已不用
   int32 page = 3;
   int32 page_size = 4; // <=0 默认 50，>200 截 200
+  // 视图：inbox（默认）| unread | flagged | task | attachments | sent | drafts | archived
+  string view = 5;
+  string keyword = 6; // 主题、发件人、收件人、抄送、正文、附件名
 }
 
 message ListMessagesResponse {
@@ -126,6 +157,104 @@ message GetMessageRequest {
 message MailMessageDetail {
   MailMessage message = 1;
   string body = 2; // text/plain 优先（平移 parseMailRaw 语义）
+  string body_html = 3; // 入库时清洗过；外链图片在 data-mail-src 上，前端点「显示图片」才换回 src
+}
+
+// MailboxSummary 左栏计数。
+message MailboxSummary {
+  int64 inbox_unread = 1;
+  int64 flagged = 2;
+  int64 task = 3;
+  int64 attachments = 4;
+  int64 sent = 5;
+  int64 drafts = 6;
+  int64 archived = 7;
+  repeated MailAccountUnread accounts = 8;
+}
+
+message MailAccountUnread {
+  string account_id = 1;
+  int64 unread = 2;
+}
+
+// MarkMessagesRequest 批量标记；不传 = 不改。已读 / 星标会尽力回写到邮箱服务器。
+message MarkMessagesRequest {
+  repeated string ids = 1 [(google.api.field_behavior) = REQUIRED];
+  optional bool seen = 2;
+  optional bool flagged = 3;
+  optional bool archived = 4;
+}
+
+message MarkMessagesResponse {
+  int64 updated = 1;
+}
+
+// MailProviderInfo 服务商预设（授权码怎么生成的说明在前端文案里，按 key 取）。
+message MailProviderInfo {
+  bool found = 1;
+  string key = 2;
+  string name = 3;
+  string imap_host = 4;
+  int32 imap_port = 5;
+  TlsMode imap_tls = 6;
+  string smtp_host = 7;
+  int32 smtp_port = 8;
+  TlsMode smtp_tls = 9;
+  bool supported = 10;     // false = 要 OAuth（暂不支持）
+  string detected_by = 11; // domain | mx
+}
+
+message DetectProviderRequest {
+  string email = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message ListProvidersResponse {
+  repeated MailProviderInfo items = 1;
+}
+
+// TestAccountRequest 测连接：给 id = 测已保存的账号（并记账号状态）；
+// 不给 id = 测向导里还没保存的配置（口令只在这次调用里用）。
+message TestAccountRequest {
+  string id = 1;
+  string host = 2;
+  int32 port = 3;
+  TlsMode tls_mode = 4;
+  string username = 5;
+  string password = 6;
+  string smtp_host = 7;
+  int32 smtp_port = 8;
+  TlsMode smtp_tls = 9;
+}
+
+message TestAccountResponse {
+  bool imap_ok = 1;
+  string imap_error = 2; // dns | unreachable | tls | auth | protocol
+  int32 inbox_count = 3;
+  bool smtp_ok = 4;
+  string smtp_error = 5;
+  bool smtp_skipped = 6; // 没配发信服务器
+}
+
+message OutgoingAttachment {
+  string filename = 1;
+  string content_type = 2;
+  bytes content = 3;
+}
+
+message SaveDraftRequest {
+  string draft_id = 1; // 空 = 新草稿；有 = 替换（旧草稿的附件会带过来）
+  string account_id = 2 [(google.api.field_behavior) = REQUIRED];
+  string to = 3;
+  string cc = 4;
+  string subject = 5;
+  string body = 6;
+  string reply_to_id = 7;
+  string forward_of_id = 8;
+  repeated OutgoingAttachment attachments = 9;
+}
+
+message SaveDraftResponse {
+  string draft_id = 1;
 }
 
 message DeleteMessageRequest {
@@ -182,17 +311,21 @@ message AttachmentToKnowledgeResponse {
   string knowledge_doc_id = 1;
 }
 
-// SendMailRequest F2：SMTP 发信（高风险闸+确认卡，E-2）。proto 先占位。
+// SendMailRequest SMTP 发信（邮件 P1）。发出后存一份到「已发送」，从草稿发出会删掉草稿。
 message SendMailRequest {
   string account_id = 1 [(google.api.field_behavior) = REQUIRED];
-  string to = 2 [(google.api.field_behavior) = REQUIRED];
-  string subject = 3 [(google.api.field_behavior) = REQUIRED];
-  string body = 4;
-  string in_reply_to = 5; // 回复场景
+  string to = 2 [(google.api.field_behavior) = REQUIRED]; // 逗号 / 分号分隔，可带名字
+  string subject = 3;
+  string body = 4; // 纯文本
+  string reply_to_id = 5; // 回复的本地邮件 id（带 In-Reply-To / References）
+  string cc = 6;
+  string forward_of_id = 7; // 转发的本地邮件 id（带上原附件）
+  string draft_id = 8;      // 从草稿发出（带上草稿里的附件，发完删草稿）
+  repeated OutgoingAttachment attachments = 9;
 }
 
 message SendMailResponse {
-  string send_id = 1; // 发送审计锚
+  string send_id = 1; // 「已发送」里那封信的 id
 }
 
 // OfficeTask 个人任务（负责人是调用者本人；邮件转任务与手工新建同表）。
@@ -365,9 +498,10 @@ service OfficeMailService {
     };
   }
   // ExportEml 补齐现状缺口（workbench 只有导入）。
+  // 路径不用 {id}:exportEml：会被先注册的 GET messages/{id} 整段吞掉，导出永远 404。
   rpc ExportEml(ExportEmlRequest) returns (google.api.HttpBody) {
     option (aranea.auth.v1.requirement) = {permission: "office.mail"};
-    option (google.api.http) = {get: "/v1/office/mail/messages/{id}:exportEml"};
+    option (google.api.http) = {get: "/v1/office/mail/messages/{id}/eml"};
   }
   rpc MailToTask(MailToTaskRequest) returns (MailToTaskResponse) {
     option (aranea.auth.v1.requirement) = {permission: "office.mail"};
@@ -383,11 +517,44 @@ service OfficeMailService {
       body: "*"
     };
   }
-  // SendMail F2 占位：实现随高风险闸同批（E-2）。
+  // SendMail 发信（邮件 P1）：只给登录用户在页面上用；智能体没有发信工具。
   rpc SendMail(SendMailRequest) returns (SendMailResponse) {
     option (aranea.auth.v1.requirement) = {permission: "office.mail"};
     option (google.api.http) = {
       post: "/v1/office/mail:send"
+      body: "*"
+    };
+  }
+  rpc SaveDraft(SaveDraftRequest) returns (SaveDraftResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "office.mail"};
+    option (google.api.http) = {
+      post: "/v1/office/mail/drafts"
+      body: "*"
+    };
+  }
+  rpc GetMailboxSummary(google.protobuf.Empty) returns (MailboxSummary) {
+    option (aranea.auth.v1.requirement) = {permission: "office.mail"};
+    option (google.api.http) = {get: "/v1/office/mail/summary"};
+  }
+  rpc MarkMessages(MarkMessagesRequest) returns (MarkMessagesResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "office.mail"};
+    option (google.api.http) = {
+      post: "/v1/office/mail/messages:mark"
+      body: "*"
+    };
+  }
+  rpc DetectProvider(DetectProviderRequest) returns (MailProviderInfo) {
+    option (aranea.auth.v1.requirement) = {permission: "office.mail"};
+    option (google.api.http) = {get: "/v1/office/mail/providers:detect"};
+  }
+  rpc ListProviders(google.protobuf.Empty) returns (ListProvidersResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "office.mail"};
+    option (google.api.http) = {get: "/v1/office/mail/providers"};
+  }
+  rpc TestAccount(TestAccountRequest) returns (TestAccountResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "office.mail"};
+    option (google.api.http) = {
+      post: "/v1/office/mail/accounts:test"
       body: "*"
     };
   }

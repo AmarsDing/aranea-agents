@@ -3,6 +3,7 @@ package data
 import (
 	"context"
 	"database/sql"
+	"strings"
 	"time"
 
 	"aranea-agents/internal/biz/office"
@@ -51,18 +52,23 @@ func (r *OfficeMailRepo) writeDB(ctx context.Context) (execer, error) {
 
 // ---------- 账号 ----------
 
-const officeMailAccountCols = `id, workspace_id, user_id, name, host, port, tls_mode, username, password_enc, last_uid, last_sync_at, created_at, updated_at`
+const officeMailAccountCols = `id, workspace_id, user_id, name, host, port, tls_mode, username, password_enc, last_uid, last_sync_at, created_at, updated_at, email, provider, smtp_host, smtp_port, smtp_tls, status, last_error, sync_since`
 
 func scanOfficeMailAccount(row interface{ Scan(...any) error }) (*office.MailAccount, error) {
 	var a office.MailAccount
-	var lastSync sql.NullTime
+	var lastSync, since sql.NullTime
 	if err := row.Scan(&a.ID, &a.WorkspaceID, &a.UserID, &a.Name, &a.Host, &a.Port,
-		&a.TLSMode, &a.Username, &a.PasswordEnc, &a.LastUID, &lastSync, &a.CreatedAt, &a.UpdatedAt); err != nil {
+		&a.TLSMode, &a.Username, &a.PasswordEnc, &a.LastUID, &lastSync, &a.CreatedAt, &a.UpdatedAt,
+		&a.Email, &a.Provider, &a.SMTPHost, &a.SMTPPort, &a.SMTPTLS, &a.Status, &a.LastError, &since); err != nil {
 		return nil, err
 	}
 	if lastSync.Valid {
 		t := lastSync.Time
 		a.LastSyncAt = &t
+	}
+	if since.Valid {
+		t := since.Time
+		a.SyncSince = &t
 	}
 	return &a, nil
 }
@@ -73,9 +79,10 @@ func (r *OfficeMailRepo) CreateMailAccount(ctx context.Context, a *office.MailAc
 		return err
 	}
 	_, err = db.ExecContext(ctx, r.data.Dialect().RenumberPlaceholders(
-		`INSERT INTO office_mail_accounts (`+officeMailAccountCols+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`),
+		`INSERT INTO office_mail_accounts (`+officeMailAccountCols+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`),
 		a.ID, a.WorkspaceID, a.UserID, a.Name, a.Host, a.Port, a.TLSMode, a.Username,
-		a.PasswordEnc, a.LastUID, a.LastSyncAt, a.CreatedAt, a.UpdatedAt)
+		a.PasswordEnc, a.LastUID, a.LastSyncAt, a.CreatedAt, a.UpdatedAt,
+		a.Email, a.Provider, a.SMTPHost, a.SMTPPort, a.SMTPTLS, a.Status, a.LastError, a.SyncSince)
 	return err
 }
 
@@ -85,9 +92,11 @@ func (r *OfficeMailRepo) UpdateMailAccount(ctx context.Context, a *office.MailAc
 		return err
 	}
 	res, err := db.ExecContext(ctx, r.data.Dialect().RenumberPlaceholders(
-		`UPDATE office_mail_accounts SET name=?, host=?, port=?, tls_mode=?, username=?, password_enc=?, updated_at=NOW()
+		`UPDATE office_mail_accounts SET name=?, host=?, port=?, tls_mode=?, username=?, password_enc=?,
+		 email=?, provider=?, smtp_host=?, smtp_port=?, smtp_tls=?, updated_at=NOW()
 		 WHERE id=? AND user_id=?`),
-		a.Name, a.Host, a.Port, a.TLSMode, a.Username, a.PasswordEnc, a.ID, a.UserID)
+		a.Name, a.Host, a.Port, a.TLSMode, a.Username, a.PasswordEnc,
+		a.Email, a.Provider, a.SMTPHost, a.SMTPPort, a.SMTPTLS, a.ID, a.UserID)
 	if err != nil {
 		return err
 	}
@@ -178,6 +187,17 @@ func (r *OfficeMailRepo) ListAllMailAccounts(ctx context.Context) ([]*office.Mai
 	return out, rows.Err()
 }
 
+// UpdateMailAccountStatus 记最近一次连接结果。
+func (r *OfficeMailRepo) UpdateMailAccountStatus(ctx context.Context, id, status, lastErr string) error {
+	db, err := r.writeDB(ctx)
+	if err != nil {
+		return err
+	}
+	_, err = db.ExecContext(ctx, r.data.Dialect().RenumberPlaceholders(
+		`UPDATE office_mail_accounts SET status=?, last_error=? WHERE id=?`), status, lastErr, id)
+	return err
+}
+
 func (r *OfficeMailRepo) UpdateMailSyncCursor(ctx context.Context, id string, lastUID int64, at time.Time) error {
 	db, err := r.writeDB(ctx)
 	if err != nil {
@@ -191,18 +211,23 @@ func (r *OfficeMailRepo) UpdateMailSyncCursor(ctx context.Context, id string, la
 
 // ---------- 邮件 ----------
 
-const officeMailMessageCols = `id, workspace_id, user_id, account_id, uid, subject, sender, body, snippet, received_at, classification, quadrant, task_ref, created_at`
+const officeMailMessageCols = `id, workspace_id, user_id, account_id, uid, subject, sender, body, snippet, received_at, classification, quadrant, task_ref, created_at, to_addrs, cc_addrs, seen, flagged, archived_at, folder, body_html, message_id_hdr, references_hdr`
 
 func scanOfficeMailMessage(row interface{ Scan(...any) error }) (*office.MailMessage, error) {
 	var m office.MailMessage
-	var receivedAt sql.NullTime
+	var receivedAt, archivedAt sql.NullTime
 	if err := row.Scan(&m.ID, &m.WorkspaceID, &m.UserID, &m.AccountID, &m.UID, &m.Subject,
-		&m.Sender, &m.Body, &m.Snippet, &receivedAt, &m.Classification, &m.Quadrant, &m.TaskRef, &m.CreatedAt); err != nil {
+		&m.Sender, &m.Body, &m.Snippet, &receivedAt, &m.Classification, &m.Quadrant, &m.TaskRef, &m.CreatedAt,
+		&m.To, &m.Cc, &m.Seen, &m.Flagged, &archivedAt, &m.Folder, &m.BodyHTML, &m.MessageIDHdr, &m.ReferencesHdr); err != nil {
 		return nil, err
 	}
 	if receivedAt.Valid {
 		t := receivedAt.Time
 		m.ReceivedAt = &t
+	}
+	if archivedAt.Valid {
+		t := archivedAt.Time
+		m.ArchivedAt = &t
 	}
 	return &m, nil
 }
@@ -211,10 +236,11 @@ func scanOfficeMailMessage(row interface{ Scan(...any) error }) (*office.MailMes
 // inserted=false 表示 (account_id,uid) 幂等命中。
 func (r *OfficeMailRepo) insertMailMessageOn(ctx context.Context, db execer, m *office.MailMessage) (bool, error) {
 	res, err := db.ExecContext(ctx, r.data.Dialect().RenumberPlaceholders(
-		`INSERT INTO office_mail_messages (`+officeMailMessageCols+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-		 ON CONFLICT (account_id, uid) WHERE account_id <> '' DO NOTHING`),
+		`INSERT INTO office_mail_messages (`+officeMailMessageCols+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+		 ON CONFLICT (account_id, uid) WHERE account_id <> '' AND folder = 'inbox' DO NOTHING`),
 		m.ID, m.WorkspaceID, m.UserID, m.AccountID, m.UID, m.Subject, m.Sender,
-		m.Body, m.Snippet, m.ReceivedAt, m.Classification, m.Quadrant, m.TaskRef, m.CreatedAt)
+		m.Body, m.Snippet, m.ReceivedAt, m.Classification, m.Quadrant, m.TaskRef, m.CreatedAt,
+		m.To, m.Cc, m.Seen, m.Flagged, m.ArchivedAt, mailFolderOrInbox(m.Folder), m.BodyHTML, m.MessageIDHdr, m.ReferencesHdr)
 	if err != nil {
 		return false, err
 	}
@@ -257,6 +283,192 @@ func (r *OfficeMailRepo) InsertMessageWithAttachmentsTx(ctx context.Context, m *
 		return nil
 	})
 	return inserted, err
+}
+
+func mailFolderOrInbox(f string) string {
+	if f == "" {
+		return office.MailFolderInbox
+	}
+	return f
+}
+
+// mailViewWhere 视图 → WHERE 片段（只拼常量，不拼用户输入）。
+func mailViewWhere(view string) string {
+	const inbox = `folder='inbox' AND archived_at IS NULL`
+	switch view {
+	case office.MailViewUnread:
+		return inbox + ` AND seen=FALSE`
+	case office.MailViewFlagged:
+		return `flagged=TRUE AND folder<>'drafts'`
+	case office.MailViewTask:
+		return `task_ref<>''`
+	case office.MailViewAttachments:
+		return `folder<>'drafts' AND EXISTS (SELECT 1 FROM office_mail_attachments a WHERE a.message_id=office_mail_messages.id)`
+	case office.MailViewSent:
+		return `folder='sent'`
+	case office.MailViewDrafts:
+		return `folder='drafts'`
+	case office.MailViewArchived:
+		return `archived_at IS NOT NULL`
+	default:
+		return inbox
+	}
+}
+
+// QueryMailMessages 邮件页列表：视图 + 账号 + 关键字（主题 / 发件人 / 收件人 / 抄送 / 正文 / 附件名）。
+func (r *OfficeMailRepo) QueryMailMessages(ctx context.Context, userID string, q office.MailQuery) ([]*office.MailMessage, int64, error) {
+	db, err := r.readDB(ctx)
+	if err != nil {
+		return nil, 0, err
+	}
+	where := `user_id=? AND ` + mailViewWhere(q.View)
+	args := []any{userID}
+	if q.AccountID != "" {
+		where += ` AND account_id=?`
+		args = append(args, q.AccountID)
+	}
+	if q.Keyword != "" {
+		like := "%" + escapeMailLike(q.Keyword) + "%"
+		where += ` AND (subject ILIKE ? OR sender ILIKE ? OR to_addrs ILIKE ? OR cc_addrs ILIKE ? OR body ILIKE ?
+		 OR EXISTS (SELECT 1 FROM office_mail_attachments a WHERE a.message_id=office_mail_messages.id AND a.filename ILIKE ?))`
+		args = append(args, like, like, like, like, like, like)
+	}
+	var total int64
+	if _, err := scanOne(ctx, db, r.data.Dialect().RenumberPlaceholders(
+		`SELECT count(*) FROM office_mail_messages WHERE `+where), args, &total); err != nil {
+		return nil, 0, err
+	}
+	qargs := append(append([]any{}, args...), q.PageSize, (q.Page-1)*q.PageSize)
+	rows, err := db.QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(
+		`SELECT `+officeMailMessageCols+` FROM office_mail_messages WHERE `+where+`
+		 ORDER BY received_at DESC NULLS LAST, created_at DESC LIMIT ? OFFSET ?`), qargs...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+	out := make([]*office.MailMessage, 0)
+	for rows.Next() {
+		m, err := scanOfficeMailMessage(rows)
+		if err != nil {
+			return nil, 0, err
+		}
+		m.Body, m.BodyHTML = "", "" // 列表不带正文
+		out = append(out, m)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, err
+	}
+	if err := r.fillHasAttachments(ctx, db, out); err != nil {
+		return nil, 0, err
+	}
+	return out, total, nil
+}
+
+// escapeMailLike 关键字里的 % _ 和反斜杠按字面量匹配（PG 默认转义符是反斜杠）。
+func escapeMailLike(s string) string {
+	return strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(s)
+}
+
+// CountMailbox 左栏计数（一趟聚合）+ 各账号收件箱未读。
+func (r *OfficeMailRepo) CountMailbox(ctx context.Context, userID string) (*office.MailboxCounts, error) {
+	db, err := r.readDB(ctx)
+	if err != nil {
+		return nil, err
+	}
+	c := &office.MailboxCounts{AccountUnread: map[string]int64{}}
+	if _, err := scanOne(ctx, db, r.data.Dialect().RenumberPlaceholders(`SELECT
+		 count(*) FILTER (WHERE `+mailViewWhere(office.MailViewUnread)+`),
+		 count(*) FILTER (WHERE `+mailViewWhere(office.MailViewFlagged)+`),
+		 count(*) FILTER (WHERE `+mailViewWhere(office.MailViewTask)+`),
+		 count(*) FILTER (WHERE `+mailViewWhere(office.MailViewAttachments)+`),
+		 count(*) FILTER (WHERE `+mailViewWhere(office.MailViewSent)+`),
+		 count(*) FILTER (WHERE `+mailViewWhere(office.MailViewDrafts)+`),
+		 count(*) FILTER (WHERE `+mailViewWhere(office.MailViewArchived)+`)
+		 FROM office_mail_messages WHERE user_id=?`), []any{userID},
+		&c.InboxUnread, &c.Flagged, &c.Task, &c.Attachments, &c.Sent, &c.Drafts, &c.Archived); err != nil {
+		return nil, err
+	}
+	rows, err := db.QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(
+		`SELECT account_id, count(*) FROM office_mail_messages
+		 WHERE user_id=? AND account_id<>'' AND `+mailViewWhere(office.MailViewUnread)+` GROUP BY account_id`), userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id string
+		var n int64
+		if err := rows.Scan(&id, &n); err != nil {
+			return nil, err
+		}
+		c.AccountUnread[id] = n
+	}
+	return c, rows.Err()
+}
+
+// MarkMailMessages 批量标记（只改调用者自己的信）。
+func (r *OfficeMailRepo) MarkMailMessages(ctx context.Context, userID string, ids []string, mk office.MailMark) (int64, error) {
+	db, err := r.writeDB(ctx)
+	if err != nil {
+		return 0, err
+	}
+	var sets []string
+	var args []any
+	if mk.Seen != nil {
+		sets = append(sets, `seen=?`)
+		args = append(args, *mk.Seen)
+	}
+	if mk.Flagged != nil {
+		sets = append(sets, `flagged=?`)
+		args = append(args, *mk.Flagged)
+	}
+	if mk.Archived != nil {
+		if *mk.Archived {
+			sets = append(sets, `archived_at=COALESCE(archived_at, NOW())`)
+		} else {
+			sets = append(sets, `archived_at=NULL`)
+		}
+	}
+	if len(sets) == 0 || len(ids) == 0 {
+		return 0, nil
+	}
+	marks := strings.TrimSuffix(strings.Repeat("?,", len(ids)), ",")
+	args = append(args, userID)
+	for _, id := range ids {
+		args = append(args, id)
+	}
+	res, err := db.ExecContext(ctx, r.data.Dialect().RenumberPlaceholders(
+		`UPDATE office_mail_messages SET `+strings.Join(sets, ", ")+` WHERE user_id=? AND id IN (`+marks+`)`), args...)
+	if err != nil {
+		return 0, err
+	}
+	n, _ := res.RowsAffected()
+	return n, nil
+}
+
+// SaveMailDraftTx 单事务：删旧草稿（只删 drafts 文件夹里的）→ 插新草稿和附件。
+func (r *OfficeMailRepo) SaveMailDraftTx(ctx context.Context, userID, replaceID string, m *office.MailMessage) error {
+	return r.data.ExecInTx(ctx, func(txCtx context.Context) error {
+		db := r.data.RWDB().WriteDB(txCtx)
+		if db == nil {
+			return apierror.Internal(office.DomainOffice, "repository unavailable")
+		}
+		if replaceID != "" {
+			if _, err := db.ExecContext(txCtx, r.data.Dialect().RenumberPlaceholders(
+				`DELETE FROM office_mail_messages WHERE id=? AND user_id=? AND folder='drafts'`), replaceID, userID); err != nil {
+				return err
+			}
+		}
+		if _, err := r.insertMailMessageOn(txCtx, db, m); err != nil {
+			return err
+		}
+		for _, a := range m.Attachments {
+			if err := r.insertMailAttachmentOn(txCtx, db, a); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
 
 // ListMailMessages 本人邮件分页（received_at NULLS LAST 倒序 + created_at 倒序

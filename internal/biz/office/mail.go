@@ -82,7 +82,31 @@ type MailAccount struct {
 	LastSyncAt  *time.Time
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
+	// 邮件 P1：发件地址、服务商预设键、SMTP（用同一组用户名 / 授权码）、
+	// 连接状态（'' 未检查 | ok | auth_failed | unreachable）、首次同步范围。
+	Email     string
+	Provider  string
+	SMTPHost  string
+	SMTPPort  int
+	SMTPTLS   string
+	Status    string
+	LastError string // 错误类别（见 MailErrKind*），不存上游原文
+	SyncSince *time.Time
 }
+
+// 账号连接状态。
+const (
+	MailStatusOK          = "ok"
+	MailStatusAuthFailed  = "auth_failed"
+	MailStatusUnreachable = "unreachable"
+)
+
+// 邮件文件夹。
+const (
+	MailFolderInbox  = "inbox"
+	MailFolderSent   = "sent"
+	MailFolderDrafts = "drafts"
+)
 
 // MailMessage 邮件（Snippet 写时物化：正文前 200 字符，列表免读全文）。
 type MailMessage struct {
@@ -100,6 +124,16 @@ type MailMessage struct {
 	Quadrant       string // E-3 预留
 	TaskRef        string // 转任务回写
 	CreatedAt      time.Time
+	// 邮件 P1
+	To         string // 收件人（解码后的地址列表原文，逗号分隔）
+	Cc         string
+	Seen       bool
+	Flagged    bool
+	ArchivedAt *time.Time
+	Folder     string // inbox | sent | drafts（空按 inbox）
+	BodyHTML   string // 入库前已清洗（sanitizeMailHTML）
+	MessageIDHdr  string
+	ReferencesHdr string
 	// HasAttachments 列表物化标记（附件数>0），DB 不存列、查询聚出。
 	HasAttachments bool
 	// Attachments 仅同步/导入事务内随邮件携带；查询路径经 AttachmentRepo。
@@ -178,6 +212,8 @@ type MailAccountRepo interface {
 	ListAllMailAccounts(ctx context.Context) ([]*MailAccount, error)
 	// UpdateMailSyncCursor 同步成功后置 last_uid/last_sync_at。
 	UpdateMailSyncCursor(ctx context.Context, id string, lastUID int64, at time.Time) error
+	// UpdateMailAccountStatus 记录最近一次连接结果（同步 / 测试）。
+	UpdateMailAccountStatus(ctx context.Context, id, status, lastErr string) error
 }
 
 // MailMessageRepo 邮件仓储。
@@ -204,6 +240,55 @@ type MailMessageRepo interface {
 	// SearchMailMessages 本人邮件关键词检索（subject/sender/body ILIKE），
 	// agent mail.search 工具读口；按 received_at 倒序限量。
 	SearchMailMessages(ctx context.Context, userID, query string, limit int) ([]*MailMessage, error)
+	// QueryMailMessages 邮件页列表：视图 + 账号 + 关键字（主题、发件人、收件人、
+	// 正文、附件名），按时间倒序分页。
+	QueryMailMessages(ctx context.Context, userID string, q MailQuery) ([]*MailMessage, int64, error)
+	// CountMailbox 左栏各视图计数 + 各账号收件箱未读数。
+	CountMailbox(ctx context.Context, userID string) (*MailboxCounts, error)
+	// MarkMailMessages 批量标已读 / 星标 / 归档（nil = 不改）；返回改到的行数。
+	MarkMailMessages(ctx context.Context, userID string, ids []string, m MailMark) (int64, error)
+	// SaveMailDraftTx 单事务：删掉旧草稿（replaceID 非空时）再插入新草稿（含附件）。
+	SaveMailDraftTx(ctx context.Context, userID, replaceID string, m *MailMessage) error
+}
+
+// 邮件页视图。
+const (
+	MailViewInbox       = "inbox"       // 收件箱（未归档）
+	MailViewUnread      = "unread"      // 收件箱未读
+	MailViewFlagged     = "flagged"     // 星标（不含草稿）
+	MailViewTask        = "task"        // 已转任务
+	MailViewAttachments = "attachments" // 有附件
+	MailViewSent        = "sent"
+	MailViewDrafts      = "drafts"
+	MailViewArchived    = "archived"
+)
+
+// MailQuery 邮件页列表查询。
+type MailQuery struct {
+	View      string // 空 = inbox
+	AccountID string
+	Keyword   string
+	Page      int
+	PageSize  int
+}
+
+// MailboxCounts 左栏计数。
+type MailboxCounts struct {
+	InboxUnread  int64
+	Flagged      int64
+	Task         int64
+	Attachments  int64
+	Sent         int64
+	Drafts       int64
+	Archived     int64
+	AccountUnread map[string]int64
+}
+
+// MailMark 批量标记（nil = 不改）。
+type MailMark struct {
+	Seen     *bool
+	Flagged  *bool
+	Archived *bool
 }
 
 // MailAttachmentRepo 附件仓储。

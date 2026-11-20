@@ -146,9 +146,9 @@ func (f *mailFakeRepos) InsertMessageWithAttachmentsTx(_ context.Context, m *Mai
 		f.failUID[m.UID] = n - 1
 		return false, fmt.Errorf("injected insert failure uid=%d", m.UID)
 	}
-	if m.AccountID != "" {
+	if m.AccountID != "" && mailFolderIs(m, MailFolderInbox) {
 		for _, cur := range f.messages {
-			if cur.AccountID == m.AccountID && cur.UID == m.UID {
+			if cur.AccountID == m.AccountID && cur.UID == m.UID && mailFolderIs(cur, MailFolderInbox) {
 				return false, nil // 幂等命中
 			}
 		}
@@ -543,8 +543,8 @@ func startMockIMAPServer(t *testing.T) *mockimap.Server {
 // ============================================================================
 
 // TestMailSync_FirstSyncAndIdempotent 验收 #1+#2：首同步导入 3 封（encoded-word
-// 中文主题解码、附件字节保真）；二次同步幂等全命中（imported=0 skipped=3）；
-// 游标 last_uid=3。
+// 中文主题解码、附件字节保真）；游标 last_uid=3。邮件 P1 起按 UID 增量：
+// 二次同步只问游标之后的 UID，没有新信就什么都不抓（imported=0 skipped=0）。
 func TestMailSync_FirstSyncAndIdempotent(t *testing.T) {
 	srv := startMockIMAPServer(t)
 	repo := newMailFakeRepos()
@@ -632,8 +632,8 @@ func TestMailSync_FirstSyncAndIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("second sync: %v", err)
 	}
-	if imported != 0 || skipped != 3 {
-		t.Fatalf("second sync imported=%d skipped=%d, want 0/3", imported, skipped)
+	if imported != 0 || skipped != 0 {
+		t.Fatalf("second sync imported=%d skipped=%d, want 0/0 (incremental)", imported, skipped)
 	}
 }
 
@@ -792,6 +792,66 @@ func TestMailImapIdleWaitTimeout(t *testing.T) {
 	}
 	if gotNew {
 		t.Fatal("gotNew should be false on timeout")
+	}
+}
+
+// TestMailImapLoginSendsID 网易邮箱登录后要先报 ID 才能 SELECT；口令错要在登录这步就报错。
+func TestMailImapLoginSendsID(t *testing.T) {
+	srv := startMockIMAPServer(t)
+	host, portStr, _ := net.SplitHostPort(srv.Addr())
+	port, _ := strconv.Atoi(portStr)
+	cli, err := DialMailIMAP(context.Background(), host, port, MailTLSNone)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer cli.Close()
+	if err := cli.Login("someone@126.com", `pa"ss\word`); err != nil {
+		t.Fatalf("login: %v", err)
+	}
+	if n, err := cli.SelectInbox(); err != nil || n != 3 {
+		t.Fatalf("select after ID: n=%d err=%v", n, err)
+	}
+
+	bad, err := DialMailIMAP(context.Background(), host, port, MailTLSNone)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer bad.Close()
+	if err := bad.Login("someone@126.com", "wrong-password"); err == nil {
+		t.Fatal("wrong password should fail at LOGIN")
+	}
+}
+
+// TestMailImapFetchKeepsUnread 同步取信不能把服务器上的信标成已读；FLAGS 在原文后面也要读到。
+func TestMailImapFetchKeepsUnread(t *testing.T) {
+	srv := startMockIMAPServer(t)
+	host, portStr, _ := net.SplitHostPort(srv.Addr())
+	port, _ := strconv.Atoi(portStr)
+	cli, err := DialMailIMAP(context.Background(), host, port, MailTLSNone)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer cli.Close()
+	if err := cli.Login("test@local", "x"); err != nil {
+		t.Fatalf("login: %v", err)
+	}
+	if _, err := cli.SelectInbox(); err != nil {
+		t.Fatalf("select: %v", err)
+	}
+	for i := 0; i < 2; i++ {
+		raw, flags, err := cli.FetchUID(1)
+		if err != nil || !strings.Contains(string(raw), "Weekly sync notes") {
+			t.Fatalf("fetch #%d: err=%v raw=%q", i, err, raw)
+		}
+		if strings.Contains(flags, `\Seen`) || srv.Mailbox().Seen(1) {
+			t.Fatalf("fetch #%d marked the message read on the server (flags=%q)", i, flags)
+		}
+	}
+	if err := cli.StoreFlags(2, true, `\Seen`); err != nil {
+		t.Fatalf("store: %v", err)
+	}
+	if _, flags, err := cli.FetchUID(2); err != nil || flags != `\Seen` {
+		t.Fatalf("flags after the literal not parsed: flags=%q err=%v", flags, err)
 	}
 }
 

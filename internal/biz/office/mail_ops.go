@@ -41,6 +41,12 @@ var ErrMailClassificationInvalid = apierror.BadRequest(DomainOffice, "classifica
 // ErrMailEmlEmpty .eml 导入内容为空。
 var ErrMailEmlEmpty = apierror.BadRequest(DomainOffice, "eml payload is empty")
 
+// ErrMailViewInvalid 邮件页视图不认识。
+var ErrMailViewInvalid = apierror.BadRequest(DomainOffice, "unknown mail view")
+
+// ErrMailTooManyIDs 批量操作一次最多 500 封。
+var ErrMailTooManyIDs = apierror.BadRequest(DomainOffice, "too many messages in one batch (max 500)")
+
 // MailMessageUsecase 邮件操作面。
 type MailMessageUsecase struct {
 	messages    MailMessageRepo
@@ -70,6 +76,48 @@ func (u *MailMessageUsecase) List(ctx context.Context, userID, accountID, quadra
 		pageSize = 200
 	}
 	return u.messages.ListMailMessages(ctx, userID, accountID, quadrant, page, pageSize)
+}
+
+// Query 邮件页列表（视图 + 账号 + 关键字）。
+func (u *MailMessageUsecase) Query(ctx context.Context, userID string, q MailQuery) ([]*MailMessage, int64, error) {
+	if q.Page <= 0 {
+		q.Page = 1
+	}
+	if q.PageSize <= 0 {
+		q.PageSize = 50
+	}
+	if q.PageSize > 200 {
+		q.PageSize = 200
+	}
+	switch q.View {
+	case "":
+		q.View = MailViewInbox
+	case MailViewInbox, MailViewUnread, MailViewFlagged, MailViewTask, MailViewAttachments,
+		MailViewSent, MailViewDrafts, MailViewArchived:
+	default:
+		return nil, 0, ErrMailViewInvalid
+	}
+	q.Keyword = strings.TrimSpace(q.Keyword)
+	if len([]rune(q.Keyword)) > 200 {
+		q.Keyword = string([]rune(q.Keyword)[:200])
+	}
+	return u.messages.QueryMailMessages(ctx, userID, q)
+}
+
+// Counts 左栏计数。
+func (u *MailMessageUsecase) Counts(ctx context.Context, userID string) (*MailboxCounts, error) {
+	return u.messages.CountMailbox(ctx, userID)
+}
+
+// Mark 批量标已读 / 星标 / 归档（一次最多 500 封）。
+func (u *MailMessageUsecase) Mark(ctx context.Context, userID string, ids []string, m MailMark) (int64, error) {
+	if len(ids) == 0 || (m.Seen == nil && m.Flagged == nil && m.Archived == nil) {
+		return 0, nil
+	}
+	if len(ids) > 500 {
+		return 0, ErrMailTooManyIDs
+	}
+	return u.messages.MarkMailMessages(ctx, userID, ids, m)
 }
 
 func (u *MailMessageUsecase) Get(ctx context.Context, id, userID string) (*MailMessage, error) {
@@ -131,6 +179,13 @@ func (u *MailMessageUsecase) ImportEml(ctx context.Context, userID, workspaceID 
 		Snippet:     mailSnippet(body),
 		ReceivedAt:  &receivedAt,
 		CreatedAt:   now,
+		To:            m.To,
+		Cc:            m.Cc,
+		Seen:          true, // 自己拖进来的，按已读
+		Folder:        MailFolderInbox,
+		BodyHTML:      m.HTML,
+		MessageIDHdr:  m.MessageID,
+		ReferencesHdr: m.References,
 	}
 	for _, a := range m.Attachments {
 		msg.Attachments = append(msg.Attachments, &MailAttachment{

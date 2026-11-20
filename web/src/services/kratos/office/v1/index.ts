@@ -135,6 +135,14 @@ export type MailAccount = {
   lastUid: number | undefined;
   lastSyncAt: wellKnownTimestamp | undefined;
   createdAt: wellKnownTimestamp | undefined;
+  email: string | undefined;
+  provider: string | undefined;
+  smtpHost: string | undefined;
+  smtpPort: number | undefined;
+  smtpTls: TlsMode | undefined;
+  status: string | undefined;
+  lastError: string | undefined;
+  syncSince: wellKnownTimestamp | undefined;
 };
 
 export type CreateAccountRequest = {
@@ -152,6 +160,12 @@ export type CreateAccountRequest = {
   //
   // Behaviors: REQUIRED
   password: string | undefined;
+  email: string | undefined;
+  provider: string | undefined;
+  smtpHost: string | undefined;
+  smtpPort: number | undefined;
+  smtpTls: TlsMode | undefined;
+  syncSince: wellKnownTimestamp | undefined;
 };
 
 export type UpdateAccountRequest = {
@@ -164,6 +178,11 @@ export type UpdateAccountRequest = {
   tlsMode: TlsMode | undefined;
   username: string | undefined;
   password: string | undefined;
+  email: string | undefined;
+  provider: string | undefined;
+  smtpHost: string | undefined;
+  smtpPort: number | undefined;
+  smtpTls: TlsMode | undefined;
 };
 
 export type GetAccountRequest = {
@@ -205,6 +224,12 @@ export type MailMessage = {
   quadrant: string | undefined;
   hasAttachments: boolean | undefined;
   createdAt: wellKnownTimestamp | undefined;
+  to: string | undefined;
+  cc: string | undefined;
+  seen: boolean | undefined;
+  flagged: boolean | undefined;
+  archived: boolean | undefined;
+  folder: string | undefined;
 };
 
 export type ListMessagesRequest = {
@@ -212,6 +237,9 @@ export type ListMessagesRequest = {
   quadrant: string | undefined;
   page: number | undefined;
   pageSize: number | undefined;
+  // 视图：inbox（默认）| unread | flagged | task | attachments | sent | drafts | archived
+  view: string | undefined;
+  keyword: string | undefined;
 };
 
 export type ListMessagesResponse = {
@@ -229,6 +257,110 @@ export type GetMessageRequest = {
 export type MailMessageDetail = {
   message: MailMessage | undefined;
   body: string | undefined;
+  bodyHtml: string | undefined;
+};
+
+// MailboxSummary 左栏计数。
+export type MailboxSummary = {
+  inboxUnread: number | undefined;
+  flagged: number | undefined;
+  task: number | undefined;
+  attachments: number | undefined;
+  sent: number | undefined;
+  drafts: number | undefined;
+  archived: number | undefined;
+  accounts: MailAccountUnread[] | undefined;
+};
+
+export type MailAccountUnread = {
+  accountId: string | undefined;
+  unread: number | undefined;
+};
+
+// MarkMessagesRequest 批量标记；不传 = 不改。已读 / 星标会尽力回写到邮箱服务器。
+export type MarkMessagesRequest = {
+  //
+  // Behaviors: REQUIRED
+  ids: string[] | undefined;
+  seen?: boolean;
+  flagged?: boolean;
+  archived?: boolean;
+};
+
+export type MarkMessagesResponse = {
+  updated: number | undefined;
+};
+
+// MailProviderInfo 服务商预设（授权码怎么生成的说明在前端文案里，按 key 取）。
+export type MailProviderInfo = {
+  found: boolean | undefined;
+  key: string | undefined;
+  name: string | undefined;
+  imapHost: string | undefined;
+  imapPort: number | undefined;
+  imapTls: TlsMode | undefined;
+  smtpHost: string | undefined;
+  smtpPort: number | undefined;
+  smtpTls: TlsMode | undefined;
+  supported: boolean | undefined;
+  detectedBy: string | undefined;
+};
+
+export type DetectProviderRequest = {
+  //
+  // Behaviors: REQUIRED
+  email: string | undefined;
+};
+
+export type ListProvidersResponse = {
+  items: MailProviderInfo[] | undefined;
+};
+
+// TestAccountRequest 测连接：给 id = 测已保存的账号（并记账号状态）；
+// 不给 id = 测向导里还没保存的配置（口令只在这次调用里用）。
+export type TestAccountRequest = {
+  id: string | undefined;
+  host: string | undefined;
+  port: number | undefined;
+  tlsMode: TlsMode | undefined;
+  username: string | undefined;
+  password: string | undefined;
+  smtpHost: string | undefined;
+  smtpPort: number | undefined;
+  smtpTls: TlsMode | undefined;
+};
+
+export type TestAccountResponse = {
+  imapOk: boolean | undefined;
+  imapError: string | undefined;
+  inboxCount: number | undefined;
+  smtpOk: boolean | undefined;
+  smtpError: string | undefined;
+  smtpSkipped: boolean | undefined;
+};
+
+export type OutgoingAttachment = {
+  filename: string | undefined;
+  contentType: string | undefined;
+  content: string | undefined;
+};
+
+export type SaveDraftRequest = {
+  draftId: string | undefined;
+  //
+  // Behaviors: REQUIRED
+  accountId: string | undefined;
+  to: string | undefined;
+  cc: string | undefined;
+  subject: string | undefined;
+  body: string | undefined;
+  replyToId: string | undefined;
+  forwardOfId: string | undefined;
+  attachments: OutgoingAttachment[] | undefined;
+};
+
+export type SaveDraftResponse = {
+  draftId: string | undefined;
 };
 
 export type DeleteMessageRequest = {
@@ -299,7 +431,7 @@ export type AttachmentToKnowledgeResponse = {
   knowledgeDocId: string | undefined;
 };
 
-// SendMailRequest F2：SMTP 发信（高风险闸+确认卡，E-2）。proto 先占位。
+// SendMailRequest SMTP 发信（邮件 P1）。发出后存一份到「已发送」，从草稿发出会删掉草稿。
 export type SendMailRequest = {
   //
   // Behaviors: REQUIRED
@@ -307,11 +439,13 @@ export type SendMailRequest = {
   //
   // Behaviors: REQUIRED
   to: string | undefined;
-  //
-  // Behaviors: REQUIRED
   subject: string | undefined;
   body: string | undefined;
-  inReplyTo: string | undefined;
+  replyToId: string | undefined;
+  cc: string | undefined;
+  forwardOfId: string | undefined;
+  draftId: string | undefined;
+  attachments: OutgoingAttachment[] | undefined;
 };
 
 export type SendMailResponse = {
@@ -461,11 +595,18 @@ export interface OfficeMailService {
   GetAttachment(request: GetAttachmentRequest): Promise<googleapi_HttpBody>;
   ImportEml(request: ImportEmlRequest): Promise<MailMessage>;
   // ExportEml 补齐现状缺口（workbench 只有导入）。
+  // 路径不用 {id}:exportEml：会被先注册的 GET messages/{id} 整段吞掉，导出永远 404。
   ExportEml(request: ExportEmlRequest): Promise<googleapi_HttpBody>;
   MailToTask(request: MailToTaskRequest): Promise<MailToTaskResponse>;
   AttachmentToKnowledge(request: AttachmentToKnowledgeRequest): Promise<AttachmentToKnowledgeResponse>;
-  // SendMail F2 占位：实现随高风险闸同批（E-2）。
+  // SendMail 发信（邮件 P1）：只给登录用户在页面上用；智能体没有发信工具。
   SendMail(request: SendMailRequest): Promise<SendMailResponse>;
+  SaveDraft(request: SaveDraftRequest): Promise<SaveDraftResponse>;
+  GetMailboxSummary(request: wellKnownEmpty): Promise<MailboxSummary>;
+  MarkMessages(request: MarkMessagesRequest): Promise<MarkMessagesResponse>;
+  DetectProvider(request: DetectProviderRequest): Promise<MailProviderInfo>;
+  ListProviders(request: wellKnownEmpty): Promise<ListProvidersResponse>;
+  TestAccount(request: TestAccountRequest): Promise<TestAccountResponse>;
   TriggerDigest(request: TriggerDigestRequest): Promise<TriggerDigestResponse>;
   // 个人任务（工作台「我的任务」）：只读写调用者本人的任务，仅需登录。
   ListOfficeTasks(request: ListOfficeTasksRequest): Promise<ListOfficeTasksResponse>;
@@ -597,6 +738,12 @@ export function createOfficeMailServiceClient(
       if (request.pageSize) {
         queryParams.push(`pageSize=${encodeURIComponent(request.pageSize.toString())}`)
       }
+      if (request.view) {
+        queryParams.push(`view=${encodeURIComponent(request.view.toString())}`)
+      }
+      if (request.keyword) {
+        queryParams.push(`keyword=${encodeURIComponent(request.keyword.toString())}`)
+      }
       let uri = path;
       if (queryParams.length > 0) {
         uri += `?${queryParams.join("&")}`
@@ -711,7 +858,7 @@ export function createOfficeMailServiceClient(
       if (!request.id) {
         throw new Error("missing required field request.id");
       }
-      const path = `v1/office/mail/messages/${request.id}:exportEml`; // eslint-disable-line quotes
+      const path = `v1/office/mail/messages/${request.id}/eml`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
       let uri = path;
@@ -783,6 +930,111 @@ export function createOfficeMailServiceClient(
         service: "OfficeMailService",
         method: "SendMail",
       }) as Promise<SendMailResponse>;
+    },
+    SaveDraft(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      const path = `v1/office/mail/drafts`; // eslint-disable-line quotes
+      const body = JSON.stringify(request);
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "OfficeMailService",
+        method: "SaveDraft",
+      }) as Promise<SaveDraftResponse>;
+    },
+    GetMailboxSummary(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      const path = `v1/office/mail/summary`; // eslint-disable-line quotes
+      const body = null;
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "OfficeMailService",
+        method: "GetMailboxSummary",
+      }) as Promise<MailboxSummary>;
+    },
+    MarkMessages(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      const path = `v1/office/mail/messages:mark`; // eslint-disable-line quotes
+      const body = JSON.stringify(request);
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "OfficeMailService",
+        method: "MarkMessages",
+      }) as Promise<MarkMessagesResponse>;
+    },
+    DetectProvider(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      const path = `v1/office/mail/providers:detect`; // eslint-disable-line quotes
+      const body = null;
+      const queryParams: string[] = [];
+      if (request.email) {
+        queryParams.push(`email=${encodeURIComponent(request.email.toString())}`)
+      }
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "OfficeMailService",
+        method: "DetectProvider",
+      }) as Promise<MailProviderInfo>;
+    },
+    ListProviders(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      const path = `v1/office/mail/providers`; // eslint-disable-line quotes
+      const body = null;
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "OfficeMailService",
+        method: "ListProviders",
+      }) as Promise<ListProvidersResponse>;
+    },
+    TestAccount(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      const path = `v1/office/mail/accounts:test`; // eslint-disable-line quotes
+      const body = JSON.stringify(request);
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "OfficeMailService",
+        method: "TestAccount",
+      }) as Promise<TestAccountResponse>;
     },
     TriggerDigest(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/office/mail/digest:trigger`; // eslint-disable-line quotes
@@ -1174,6 +1426,11 @@ export type OfficeEvent = {
   source: string | undefined;
   createdAt: wellKnownTimestamp | undefined;
   updatedAt: wellKnownTimestamp | undefined;
+  // 日程 P1（08-日程.md）：计划 + 工作内容两本账。
+  kind: string | undefined;
+  status: string | undefined;
+  allDay: boolean | undefined;
+  outcome: string | undefined;
 };
 
 export type CreateEventRequest = {
@@ -1190,6 +1447,10 @@ export type CreateEventRequest = {
   timezone: string | undefined;
   reminderMinutes: number | undefined;
   taskRef: string | undefined;
+  kind: string | undefined;
+  status: string | undefined;
+  allDay: boolean | undefined;
+  outcome: string | undefined;
 };
 
 export type UpdateEventRequest = {
@@ -1197,11 +1458,16 @@ export type UpdateEventRequest = {
   // Behaviors: REQUIRED
   id: string | undefined;
   title: string | undefined;
-  note: string | undefined;
+  note?: string;
   startAt: wellKnownTimestamp | undefined;
   endAt: wellKnownTimestamp | undefined;
   timezone: string | undefined;
   reminderMinutes: number | undefined;
+  // 以下有 presence：不传 = 不改；传空串 / false = 清空（如去掉完成情况、取消全天）
+  kind?: string;
+  status?: string;
+  allDay?: boolean;
+  outcome?: string;
 };
 
 export type GetEventRequest = {

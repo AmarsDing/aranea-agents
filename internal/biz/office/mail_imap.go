@@ -26,11 +26,9 @@ import (
 	"bufio"
 	"context"
 	"crypto/tls"
-	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
-	"mime"
-	"mime/multipart"
 	"net"
 	"net/textproto"
 	"strconv"
@@ -46,6 +44,14 @@ type MailImapMessage struct {
 	Date        time.Time
 	Body        string
 	Attachments []MailImapAttachment
+	// 邮件 P1
+	To         string
+	Cc         string
+	HTML       string // 已清洗
+	MessageID  string
+	References string
+	Seen       bool // 服务器上的 \Seen（抓取时带回）
+	Flagged    bool // 服务器上的 \Flagged
 }
 
 // MailImapAttachment 解析后的附件。
@@ -53,6 +59,7 @@ type MailImapAttachment struct {
 	Filename    string
 	ContentType string
 	Content     []byte
+	ContentID   string // 正文里 <img src="cid:..."> 引用的内嵌图片（解析时用，不落库）
 }
 
 // MailImapClient 是同步/IDLE 消费的最小连接口（测试可注入 mock 直连实现）。
@@ -63,6 +70,12 @@ type MailImapClient interface {
 	SelectInbox() (int, error)
 	// FetchRaw 抓取第 seq 封 RFC822 原文。
 	FetchRaw(seq int) ([]byte, error)
+	// SearchUIDs UID SEARCH（criteria 如 "UID 101:*"、"SINCE 1-Nov-2026"、"ALL"）。
+	SearchUIDs(criteria string) ([]int, error)
+	// FetchUID 按 IMAP UID 抓原文，并带回 FLAGS 原文（如 `\Seen \Flagged`）。
+	FetchUID(uid int) (raw []byte, flags string, err error)
+	// StoreFlags 给 UID 加 / 去标记（flag 如 `\Seen`）。
+	StoreFlags(uid int, add bool, flag string) error
 	// IdleWait IDLE 等待推送；返回 (新邮件总数, 是否有新邮件)。
 	IdleWait(timeout time.Duration) (int, bool, error)
 	Close()
@@ -70,6 +83,9 @@ type MailImapClient interface {
 
 // MailImapDialer 建连工厂（wire 默认 DialMailIMAP；测试注入 mock）。
 type MailImapDialer func(ctx context.Context, host string, port int, tlsMode string) (MailImapClient, error)
+
+// errMailIdleUnsupported 服务器拒绝 IDLE（网易 126/163 就不支持），这类账号只靠轮询收信。
+var errMailIdleUnsupported = errors.New("imap IDLE refused")
 
 // imapLiteralCap 字面量上限（16MB，E-4 同值）。
 const imapLiteralCap = 1 << 24
@@ -156,9 +172,16 @@ func (c *mailImapConn) readUntilTagged(tag string) (string, error) {
 }
 
 func (c *mailImapConn) Login(username, password string) error {
-	q := func(s string) string { return `"` + strings.ReplaceAll(s, `"`, `\"`) + `"` }
-	_, err := c.cmd("LOGIN " + q(username) + " " + q(password))
-	return err
+	q := func(s string) string {
+		return `"` + strings.ReplaceAll(strings.ReplaceAll(s, `\`, `\\`), `"`, `\"`) + `"`
+	}
+	if _, err := c.cmd("LOGIN " + q(username) + " " + q(password)); err != nil {
+		return err
+	}
+	// 网易（163/126/yeah/企业邮）不认没报 ID（RFC 2971）的客户端：登录成功，SELECT 却回
+	// "Unsafe Login"。不支持 ID 的服务器回 BAD，忽略即可。
+	_, _ = c.cmd(`ID ("name" "aranea" "version" "1.0" "vendor" "aranea")`)
+	return nil
 }
 
 func (c *mailImapConn) SelectInbox() (int, error) {
@@ -177,122 +200,110 @@ func (c *mailImapConn) SelectInbox() (int, error) {
 }
 
 // FetchRaw 抓取第 seq 封邮件完整 RFC822 原文（按字面量声明字节数精确截取）。
+// 取信一律 BODY.PEEK[]：RFC822 / BODY[] 会让服务器顺带置 \Seen（RFC 3501 §6.4.5），
+// 同步一次就把手机上没看的信全变成已读。
 func (c *mailImapConn) FetchRaw(seq int) ([]byte, error) {
-	resp, err := c.cmd(fmt.Sprintf("FETCH %d (RFC822)", seq))
+	resp, err := c.cmd(fmt.Sprintf("FETCH %d (BODY.PEEK[])", seq))
 	if err != nil {
 		return nil, err
 	}
-	idx := strings.Index(resp, "{")
-	if idx < 0 {
-		return nil, fmt.Errorf("imap FETCH response has no literal")
-	}
-	end := strings.Index(resp[idx:], "}")
-	if end < 0 {
-		return nil, fmt.Errorf("imap FETCH literal malformed")
-	}
-	n, err := strconv.Atoi(resp[idx+1 : idx+end])
+	return imapFetchLiteral(resp)
+}
+
+// SearchUIDs 发 UID SEARCH，收 "* SEARCH 1 2 3"。
+func (c *mailImapConn) SearchUIDs(criteria string) ([]int, error) {
+	resp, err := c.cmd("UID SEARCH " + criteria)
 	if err != nil {
-		return nil, fmt.Errorf("imap FETCH literal length: %w", err)
+		return nil, err
 	}
-	nl := strings.Index(resp[idx:], "\n")
-	if nl < 0 {
-		return nil, fmt.Errorf("imap FETCH response missing newline")
+	var out []int
+	for _, line := range strings.Split(resp, "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(strings.ToUpper(line), "* SEARCH") {
+			continue
+		}
+		for _, f := range strings.Fields(line[len("* SEARCH"):]) {
+			if n, err := strconv.Atoi(f); err == nil {
+				out = append(out, n)
+			}
+		}
 	}
-	start := idx + nl + 1
-	if start+n > len(resp) {
-		return nil, fmt.Errorf("imap FETCH literal truncated: declared %d got %d", n, len(resp)-start)
+	return out, nil
+}
+
+// FetchUID 按 UID 抓 FLAGS + 原文（BODY.PEEK[]，不改服务器上的已读状态）。
+func (c *mailImapConn) FetchUID(uid int) ([]byte, string, error) {
+	resp, err := c.cmd(fmt.Sprintf("UID FETCH %d (FLAGS BODY.PEEK[])", uid))
+	if err != nil {
+		return nil, "", err
+	}
+	start, n, err := imapLiteralBounds(resp)
+	if err != nil {
+		return nil, "", err
+	}
+	// FLAGS 可能在字面量前，也可能在后（服务器不保证顺序）；字面量里的正文不能拿来找
+	flags, ok := imapFlagsIn(resp[:start])
+	if !ok {
+		flags, _ = imapFlagsIn(resp[start+n:])
+	}
+	return []byte(resp[start : start+n]), flags, nil
+}
+
+// StoreFlags UID STORE +/-FLAGS.SILENT。
+func (c *mailImapConn) StoreFlags(uid int, add bool, flag string) error {
+	op := "-"
+	if add {
+		op = "+"
+	}
+	_, err := c.cmd(fmt.Sprintf("UID STORE %d %sFLAGS.SILENT (%s)", uid, op, flag))
+	return err
+}
+
+// imapFlagsIn 取 s 里 FLAGS (...) 括号中的内容。
+func imapFlagsIn(s string) (string, bool) {
+	i := strings.Index(strings.ToUpper(s), "FLAGS (")
+	if i < 0 {
+		return "", false
+	}
+	rest := s[i+len("FLAGS ("):]
+	if j := strings.Index(rest, ")"); j >= 0 {
+		return rest[:j], true
+	}
+	return "", false
+}
+
+// imapFetchLiteral 按字面量 {N} 声明的字节数截出邮件原文。
+func imapFetchLiteral(resp string) ([]byte, error) {
+	start, n, err := imapLiteralBounds(resp)
+	if err != nil {
+		return nil, err
 	}
 	return []byte(resp[start : start+n]), nil
 }
 
-// ParseMailRaw 解析正文与附件（multipart 递归；base64 解码；
-// encoded-word 主题/发件人；text/plain 优先）。
-func ParseMailRaw(raw []byte) *MailImapMessage {
-	msg := new(MailImapMessage)
-	hdrEnd := strings.Index(string(raw), "\r\n\r\n")
-	if hdrEnd < 0 {
-		hdrEnd = strings.Index(string(raw), "\n\n")
+// imapLiteralBounds 第一个字面量 {N} 的起点与长度。
+func imapLiteralBounds(resp string) (int, int, error) {
+	idx := strings.Index(resp, "{")
+	if idx < 0 {
+		return 0, 0, fmt.Errorf("imap FETCH response has no literal")
 	}
-	if hdrEnd < 0 {
-		msg.Body = string(raw)
-		msg.Date = time.Now()
-		return msg
+	end := strings.Index(resp[idx:], "}")
+	if end < 0 {
+		return 0, 0, fmt.Errorf("imap FETCH literal malformed")
 	}
-	hdrBlob := string(raw[:hdrEnd])
-	dec := new(mime.WordDecoder)
-	for _, line := range strings.Split(hdrBlob, "\n") {
-		line = strings.TrimRight(line, "\r")
-		if strings.HasPrefix(line, " ") || strings.HasPrefix(line, "\t") {
-			continue
-		}
-		if k, v, ok := strings.Cut(line, ":"); ok {
-			v = strings.TrimSpace(v)
-			switch strings.ToLower(k) {
-			case "subject":
-				msg.Subject, _ = dec.DecodeHeader(v)
-			case "from":
-				msg.Sender, _ = dec.DecodeHeader(v)
-			case "date":
-				if t, err := time.Parse(time.RFC1123Z, v); err == nil {
-					msg.Date = t
-				} else if t, err := time.Parse("Mon, 2 Jan 2006 15:04:05 -0700", v); err == nil {
-					msg.Date = t
-				}
-			}
-		}
+	n, err := strconv.Atoi(resp[idx+1 : idx+end])
+	if err != nil {
+		return 0, 0, fmt.Errorf("imap FETCH literal length: %w", err)
 	}
-	if msg.Date.IsZero() {
-		msg.Date = time.Now()
+	nl := strings.Index(resp[idx:], "\n")
+	if nl < 0 {
+		return 0, 0, fmt.Errorf("imap FETCH response missing newline")
 	}
-	body := raw[hdrEnd:]
-	body = []byte(strings.TrimLeft(string(body), "\r\n"))
-
-	ctLine := mailHeaderValue(hdrBlob, "Content-Type")
-	mediaType, params, err := mime.ParseMediaType(ctLine)
-	if err != nil || !strings.HasPrefix(strings.ToLower(mediaType), "multipart/") {
-		msg.Body = string(body)
-		return msg
+	start := idx + nl + 1
+	if start+n > len(resp) {
+		return 0, 0, fmt.Errorf("imap FETCH literal truncated: declared %d got %d", n, len(resp)-start)
 	}
-	mr := multipart.NewReader(strings.NewReader(string(body)), params["boundary"])
-	for {
-		part, err := mr.NextPart()
-		if err != nil {
-			break
-		}
-		data, err := io.ReadAll(part)
-		if err != nil {
-			continue
-		}
-		if strings.EqualFold(part.Header.Get("Content-Transfer-Encoding"), "base64") {
-			if dec2, err := base64.StdEncoding.DecodeString(strings.TrimSpace(string(data))); err == nil {
-				data = dec2
-			}
-		}
-		disp := part.Header.Get("Content-Disposition")
-		fn := part.FileName()
-		if strings.HasPrefix(strings.ToLower(disp), "attachment") || fn != "" {
-			pct := part.Header.Get("Content-Type")
-			if pct == "" {
-				pct = "application/octet-stream"
-			}
-			msg.Attachments = append(msg.Attachments, MailImapAttachment{Filename: fn, ContentType: pct, Content: data})
-			continue
-		}
-		if strings.HasPrefix(strings.ToLower(part.Header.Get("Content-Type")), "text/plain") || msg.Body == "" {
-			msg.Body = strings.TrimSpace(string(data))
-		}
-	}
-	return msg
-}
-
-func mailHeaderValue(hdr, key string) string {
-	for _, line := range strings.Split(hdr, "\n") {
-		line = strings.TrimRight(line, "\r")
-		if k, v, ok := strings.Cut(line, ":"); ok && strings.EqualFold(strings.TrimSpace(k), key) {
-			return strings.TrimSpace(v)
-		}
-	}
-	return ""
+	return start, n, nil
 }
 
 // IdleWait 发送 IDLE 并等待新邮件推送；timeout 到点无推送则正常 DONE 退出。
@@ -308,7 +319,7 @@ func (c *mailImapConn) IdleWait(timeout time.Duration) (int, bool, error) {
 		return 0, false, err
 	}
 	if !strings.HasPrefix(line, "+") {
-		return 0, false, fmt.Errorf("imap IDLE refused: %s", line)
+		return 0, false, fmt.Errorf("%w: %s", errMailIdleUnsupported, line)
 	}
 	_ = c.conn.SetReadDeadline(time.Now().Add(timeout))
 	gotNew := false

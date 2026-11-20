@@ -3,7 +3,8 @@
 //
 // 支持：CAPABILITY / LOGIN / SELECT / LIST / SEARCH / FETCH (RFC822) /
 // UID FETCH / APPEND（模拟新邮件送达）/ IDLE（真实推送 * n EXISTS）/
-// NOOP / LOGOUT。账号任意非空即可登录。
+// ID / NOOP / LOGOUT。账号任意非空即可登录；口令含 "wrong" 时拒绝（测登录失败），
+// 用户名是 @126.com / @163.com 时学网易：没报 ID 就 SELECT，回 "Unsafe Login"。
 //
 // 除 IMAP 协议口外提供 HTTP 控制口（EnableControl）：POST /inject
 // （body=原始 .eml 字节 → 追加邮箱并触发 IDLE 推送，供 bash 冒烟经
@@ -29,6 +30,19 @@ type Mailbox struct {
 	mu   sync.Mutex
 	msgs [][]byte
 	subs map[chan int]struct{}
+	seen map[int]bool // 学真实服务器：取 RFC822 / BODY[]（非 PEEK）会顺带置 \Seen
+}
+
+// Seen 第 i 封是否带 \Seen。
+func (m *Mailbox) Seen(i int) bool { m.mu.Lock(); defer m.mu.Unlock(); return m.seen[i] }
+
+func (m *Mailbox) setSeen(i int, v bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.seen == nil {
+		m.seen = map[int]bool{}
+	}
+	m.seen[i] = v
 }
 
 // NewMailbox 建仓并播三封种子邮件：纯文本 / 带 base64 附件（budget.txt）/
@@ -177,6 +191,7 @@ func handleConn(conn net.Conn, mb *Mailbox) {
 	w := bufio.NewWriter(conn)
 	imapWrite(w, "* OK MockIMAP4rev1 ready")
 	selected := false
+	netease, sentID := false, false
 	for {
 		line, err := r.ReadString('\n')
 		if err != nil {
@@ -205,8 +220,21 @@ func handleConn(conn net.Conn, mb *Mailbox) {
 				imapWrite(w, tag+" BAD empty credentials")
 				continue
 			}
+			if strings.Contains(args, "wrong") {
+				imapWrite(w, tag+" NO [AUTHENTICATIONFAILED] Invalid credentials")
+				continue
+			}
+			netease = strings.Contains(args, "@126.com") || strings.Contains(args, "@163.com")
 			imapWrite(w, tag+" OK LOGIN completed")
+		case "ID":
+			sentID = true
+			imapWrite(w, `* ID ("name" "MockIMAP")`)
+			imapWrite(w, tag+" OK ID completed")
 		case "SELECT", "EXAMINE":
+			if netease && !sentID {
+				imapWrite(w, tag+" NO SELECT Unsafe Login. Please contact kefu@188.com for help")
+				continue
+			}
 			imapWrite(w, fmt.Sprintf("* %d EXISTS", mb.Count()))
 			imapWrite(w, "* OK [READ-WRITE] SELECT completed")
 			imapWrite(w, tag+" OK SELECT completed")
@@ -233,6 +261,22 @@ func handleConn(conn net.Conn, mb *Mailbox) {
 				fetchCmd = strings.ToUpper(args[:sp3])
 				args = strings.TrimSpace(args[sp3+1:])
 			}
+			// UID 与序号相同（mock 从不删信）。
+			if verb == "UID" && fetchCmd == "SEARCH" {
+				imapWrite(w, "* SEARCH "+strings.Join(uidSearch(args, mb.Count()), " "))
+				imapWrite(w, tag+" OK SEARCH completed")
+				continue
+			}
+			if verb == "UID" && fetchCmd == "STORE" {
+				// "<uid> +FLAGS.SILENT (\Seen)"：只记 \Seen
+				if f := strings.Fields(args); len(f) >= 3 && strings.Contains(args, `\Seen`) {
+					if uid, err := strconv.Atoi(f[0]); err == nil {
+						mb.setSeen(uid, strings.HasPrefix(f[1], "+"))
+					}
+				}
+				imapWrite(w, tag+" OK STORE completed")
+				continue
+			}
 			if fetchCmd != "FETCH" {
 				imapWrite(w, tag+" BAD unsupported UID subcommand")
 				continue
@@ -253,9 +297,17 @@ func handleConn(conn net.Conn, mb *Mailbox) {
 				continue
 			}
 			raw := mb.get(seq)
-			imapWrite(w, fmt.Sprintf("* %d FETCH (UID %d RFC822.SIZE %d RFC822 {%d}", seq, seq, len(raw), len(raw)))
+			if !strings.Contains(strings.ToUpper(args), "PEEK") {
+				mb.setSeen(seq, true)
+			}
+			flags := ""
+			if mb.Seen(seq) {
+				flags = `\Seen`
+			}
+			imapWrite(w, fmt.Sprintf("* %d FETCH (UID %d RFC822.SIZE %d BODY[] {%d}", seq, seq, len(raw), len(raw)))
 			_, _ = w.Write(raw)
-			imapWrite(w, ")")
+			// FLAGS 放在原文后面：真实服务器不保证 FLAGS 在字面量之前
+			imapWrite(w, " FLAGS ("+flags+"))")
 			imapWrite(w, tag+" OK FETCH completed")
 		case "APPEND":
 			// APPEND INBOX {N}
@@ -312,6 +364,26 @@ func handleConn(conn net.Conn, mb *Mailbox) {
 			imapWrite(w, tag+" BAD unsupported: "+verb)
 		}
 	}
+}
+
+// uidSearch 支持 "UID a:*"（照真实服务器：没有 >=a 的也回最大那个）和其他条件（一律全部）。
+func uidSearch(args string, n int) []string {
+	lo := 1
+	if f := strings.Fields(args); len(f) == 2 && strings.EqualFold(f[0], "UID") {
+		if a, _, ok := strings.Cut(f[1], ":"); ok {
+			if v, err := strconv.Atoi(a); err == nil {
+				lo = v
+			}
+		}
+	}
+	var ids []string
+	for i := lo; i <= n; i++ {
+		ids = append(ids, strconv.Itoa(i))
+	}
+	if len(ids) == 0 && n > 0 {
+		ids = append(ids, strconv.Itoa(n))
+	}
+	return ids
 }
 
 func readFull(r *bufio.Reader, buf []byte) (int, error) {

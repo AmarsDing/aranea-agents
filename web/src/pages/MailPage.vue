@@ -1,318 +1,452 @@
 <template>
-  <q-page class="app-standard-page mail-page">
-    <AppPageHero :kicker="t('mailPage.kicker')" :title="t('mailPage.title')" :subtitle="t('mailPage.subtitle')">
-      <template #actions>
+  <!-- 工作台 › 邮件：三栏（视图与账户 · 列表 · 阅读），设计 docs/aranea-agents/design/2026-11-17-三大模块重设计/09-邮件.md §3 -->
+  <q-page class="app-standard-page ml-page" :class="{ 'ml-page--reading': !!selectedId }">
+    <Teleport defer to="#app-tab-actions">
+      <q-btn
+        flat
+        dense
+        round
+        icon="refresh"
+        :title="t('mailPage.refresh')"
+        :aria-label="t('mailPage.refresh')"
+        :loading="refreshing"
+        @click="refreshAll"
+      />
+    </Teleport>
+
+    <AppStatePanel v-if="forbidden" class="ml-forbidden" variant="forbidden" />
+
+    <template v-else>
+      <!-- ============ 左：写邮件 / 视图 / 账户 ============ -->
+      <nav class="ml-panel ml-nav" :aria-label="t('mailPage.navAria')">
         <q-btn
-          flat
-          rounded
+          unelevated
           no-caps
-          icon="refresh"
-          :label="t('mailPage.btnRefresh')"
-          :loading="listLoading"
-          @click="loadAll"
+          color="primary"
+          icon="edit"
+          class="ml-nav__compose"
+          :label="t('mailPage.compose')"
+          @click="startCompose('new')"
         />
-        <q-btn flat rounded no-caps icon="upload_file" :label="t('mailPage.btnImport')" @click="importEmlFile" />
-        <q-btn
-          flat
-          rounded
-          no-caps
-          icon="alternate_email"
-          :label="t('mailPage.btnAccounts')"
-          @click="accountsOpen = true"
-        />
-      </template>
-    </AppPageHero>
-
-    <q-banner v-if="pageError" rounded class="app-page-error-banner q-mb-md" role="alert">
-      {{ pageError }}
-      <template #action>
-        <q-btn flat dense :label="t('mailPage.retry')" @click="loadAll" />
-      </template>
-    </q-banner>
-
-    <!-- 账号过滤条 -->
-    <div v-if="accounts.length" class="mail-filter row items-center q-gutter-xs">
-      <q-chip
-        clickable
-        :outline="filterAccount !== ''"
-        :color="filterAccount === '' ? 'primary' : void 0"
-        :text-color="filterAccount === '' ? 'white' : undefined"
-        @click="setFilter('')"
-      >
-        {{ t('mailPage.filterAll') }}
-      </q-chip>
-      <q-chip
-        v-for="acc in accounts"
-        :key="acc.id"
-        clickable
-        :outline="filterAccount !== acc.id"
-        :color="filterAccount === acc.id ? 'primary' : void 0"
-        :text-color="filterAccount === acc.id ? 'white' : undefined"
-        @click="setFilter(acc.id)"
-      >
-        {{ acc.name || acc.username }}
-      </q-chip>
-    </div>
-
-    <div class="mail-main">
-      <!-- 列表 -->
-      <section class="mail-list" :class="{ 'mail-list--hidden': Boolean(detail) && $q.screen.lt.md }">
-        <div v-if="!listLoading && !messages.length" class="mail-empty text-caption">
-          {{ t('mailPage.empty') }}
-        </div>
-        <q-card
-          v-for="m in messages"
-          :key="m.id"
-          flat
-          bordered
-          class="mail-item"
-          :class="{ 'mail-item--active': detail?.message.id === m.id }"
-          clickable
-          @click="openMessage(m.id)"
+        <button
+          v-for="v in VIEWS"
+          :key="v"
+          type="button"
+          class="ml-nv"
+          :class="{ 'ml-nv--on': view === v && !accountFilter }"
+          :aria-current="view === v && !accountFilter ? 'page' : undefined"
+          @click="setView(v)"
         >
-          <q-card-section class="mail-item__inner">
-            <div class="mail-item__top">
-              <span class="mail-item__sender ellipsis">{{ m.sender || t('mailPage.unknownSender') }}</span>
-              <span class="mail-item__time mono">{{ fmtTime(m.received_at) }}</span>
-            </div>
-            <div class="mail-item__subject ellipsis">{{ m.subject || t('mailPage.noSubject') }}</div>
-            <div class="mail-item__snippet ellipsis-2-lines">{{ m.snippet }}</div>
-            <div class="mail-item__meta row items-center q-gutter-xs">
-              <q-icon v-if="m.has_attachments" name="attach_file" size="16px" class="mail-item__meta-icon" />
-              <q-chip v-if="m.task_ref" dense size="sm" color="primary" text-color="white" class="mail-item__taskref">
-                {{ t('mailPage.taskLinked') }}
-              </q-chip>
-            </div>
-          </q-card-section>
-        </q-card>
+          <q-icon :name="VIEW_ICON[v]" size="18px" aria-hidden="true" />
+          <span>{{ t(`mailPage.view.${v}`) }}</span>
+          <span v-if="viewCount(v)" class="ml-nv__n ml-num">{{ viewCount(v) }}</span>
+        </button>
 
-        <div v-if="total > pageSize" class="mail-pager row items-center justify-between">
+        <div class="ml-sect">{{ t('mailPage.accounts') }}</div>
+        <div v-for="a in accounts" :key="a.id" class="ml-acct">
+          <button
+            type="button"
+            class="ml-nv"
+            :class="{ 'ml-nv--on': accountFilter === a.id }"
+            :title="a.email || a.username"
+            @click="setAccount(a.id)"
+          >
+            <span class="ml-dot" :class="`ml-dot--${dotOf(a)}`" aria-hidden="true" />
+            <span class="ml-nv__name">{{ a.name || a.email || a.username }}</span>
+            <span v-if="a.status === 'auth_failed' || a.status === 'unreachable'" class="ml-nv__n ml-nv__n--bad">
+              {{ t(`mailPage.status.${a.status}`) }}
+            </span>
+            <span v-else-if="summary?.accounts[a.id]" class="ml-nv__n ml-num">{{ summary?.accounts[a.id] }}</span>
+          </button>
           <q-btn
             flat
             dense
-            no-caps
-            icon="chevron_left"
-            :label="t('mailPage.prevPage')"
-            :disable="page <= 1"
-            @click="gotoPage(page - 1)"
+            round
+            size="sm"
+            icon="more_horiz"
+            class="ml-acct__more"
+            :aria-label="t('mailPage.accountMenu', { name: a.name })"
+          >
+            <q-menu anchor="bottom right" self="top right">
+              <q-list dense>
+                <q-item v-close-popup clickable @click="syncAccount(a)">
+                  <q-item-section>{{ t('mailPage.syncNow') }}</q-item-section>
+                </q-item>
+                <q-item v-close-popup clickable @click="testAccount(a)">
+                  <q-item-section>{{ t('mailPage.testConn') }}</q-item-section>
+                </q-item>
+                <q-item v-close-popup clickable @click="editAccount(a)">
+                  <q-item-section>{{ t('mailPage.editAccount') }}</q-item-section>
+                </q-item>
+                <q-item v-close-popup clickable class="text-negative" @click="removeAccount(a)">
+                  <q-item-section>{{ t('mailPage.deleteAccount') }}</q-item-section>
+                </q-item>
+              </q-list>
+            </q-menu>
+          </q-btn>
+        </div>
+        <button type="button" class="ml-nv ml-nv--add" @click="addAccount">
+          <q-icon name="add" size="18px" aria-hidden="true" />
+          <span>{{ t('mailPage.addAccount') }}</span>
+        </button>
+
+        <div class="ml-sect">{{ t('mailPage.alsoCan') }}</div>
+        <p class="ml-hint ml-nav__hint">{{ t('mailPage.dropHint') }}</p>
+        <q-btn
+          flat
+          dense
+          no-caps
+          icon="upload_file"
+          class="ml-nav__import"
+          :label="t('mailPage.importEml')"
+          @click="emlPicker?.click()"
+        />
+        <input ref="emlPicker" type="file" accept=".eml,message/rfc822" multiple class="ml-sr" @change="onEmlPicked" />
+      </nav>
+
+      <!-- ============ 中：搜索 + 列表 ============ -->
+      <section
+        class="ml-panel ml-list"
+        :class="{ 'ml-list--drop': dragging }"
+        :aria-label="t('mailPage.listAria')"
+        @dragover.prevent="onDragOver"
+        @dragleave="dragging = false"
+        @drop.prevent="onDrop"
+      >
+        <div class="ml-list__head">
+          <div class="ml-list__bar">
+            <label class="ml-search">
+              <q-icon name="search" size="18px" aria-hidden="true" />
+              <span class="ml-sr">{{ t('mailPage.search') }}</span>
+              <input
+                ref="searchInput"
+                v-model="keyword"
+                type="search"
+                :placeholder="t('mailPage.searchPlaceholder')"
+                @keydown.esc="keyword = ''"
+              />
+            </label>
+            <q-btn
+              flat
+              dense
+              round
+              icon="edit"
+              class="ml-list__compose"
+              :aria-label="t('mailPage.compose')"
+              @click="startCompose('new')"
+            />
+          </div>
+          <div class="ml-list__bar">
+            <q-select
+              v-model="narrowView"
+              class="ml-list__viewsel"
+              dense
+              borderless
+              emit-value
+              map-options
+              :options="narrowOptions"
+              :aria-label="t('mailPage.navAria')"
+            />
+            <q-btn-toggle
+              v-if="view === 'inbox' || view === 'unread'"
+              :model-value="view"
+              dense
+              no-caps
+              unelevated
+              toggle-color="primary"
+              :options="segOptions"
+              :aria-label="t('mailPage.view.inbox')"
+              @update:model-value="setView"
+            />
+            <span class="ml-sp" />
+            <span class="ml-hint ml-num">{{ t('mailPage.totalN', { n: total }) }}</span>
+          </div>
+        </div>
+
+        <div ref="listBody" class="ml-list__body" :aria-busy="listLoading" @scroll="onListScroll">
+          <q-linear-progress
+            v-if="listLoading && !rows.length"
+            indeterminate
+            color="primary"
+            class="ml-list__progress"
           />
-          <span class="mail-pager__info mono">{{ page }} / {{ totalPages }}</span>
-          <q-btn
-            flat
+          <AppStatePanel
+            v-if="listError"
             dense
-            no-caps
-            icon-right="chevron_right"
-            :label="t('mailPage.nextPage')"
-            :disable="page >= totalPages"
-            @click="gotoPage(page + 1)"
+            variant="partial"
+            :description="listError"
+            :action-label="t('mailPage.retry')"
+            action-icon="refresh"
+            @action="loadList(true)"
           />
+          <div v-if="!accounts.length && !rows.length && !listLoading" class="ml-empty">
+            <q-icon name="alternate_email" size="32px" aria-hidden="true" />
+            <p class="ml-empty__title">{{ t('mailPage.noAccountTitle') }}</p>
+            <p class="ml-hint">{{ t('mailPage.noAccountDesc') }}</p>
+            <q-btn
+              unelevated
+              no-caps
+              color="primary"
+              icon="add"
+              :label="t('mailPage.addAccount')"
+              @click="addAccount"
+            />
+          </div>
+          <div v-else-if="!rows.length && !listLoading && !listError" class="ml-empty">
+            <q-icon :name="keyword ? 'search_off' : 'drafts'" size="32px" aria-hidden="true" />
+            <p class="ml-empty__title">{{ keyword ? t('mailPage.noMatch') : t(`mailPage.empty.${view}`) }}</p>
+          </div>
+
+          <template v-for="g in groups" :key="g.key">
+            <div class="ml-group">{{ t(`mailPage.group.${g.key}`) }}</div>
+            <button
+              v-for="m in g.rows"
+              :key="m.id"
+              type="button"
+              class="ml-msg"
+              :class="{ 'ml-msg--unread': !m.seen, 'ml-msg--on': m.id === selectedId }"
+              :aria-current="m.id === selectedId ? 'true' : undefined"
+              @click="openMessage(m)"
+            >
+              <span class="ml-av" :class="`ml-av--${avatarTone(counterpart(m))}`" aria-hidden="true">{{
+                initial(counterpart(m))
+              }}</span>
+              <span class="ml-msg__main">
+                <span class="ml-msg__top">
+                  <span class="ml-msg__from">{{ listWho(m) }}</span>
+                  <q-icon
+                    v-if="m.flagged"
+                    name="star"
+                    size="14px"
+                    class="ml-star"
+                    :aria-label="t('mailPage.flagged')"
+                  />
+                  <span class="ml-msg__time ml-num">{{ listTime(m.received_at, now) }}</span>
+                </span>
+                <span class="ml-msg__subj">{{ m.subject || t('mailPage.noSubject') }}</span>
+                <span class="ml-msg__snip">{{ m.snippet }}</span>
+                <span v-if="m.has_attachments || m.task_ref || accounts.length > 1" class="ml-msg__chips">
+                  <span v-if="m.has_attachments" class="ml-chip"
+                    ><q-icon name="attach_file" size="13px" aria-hidden="true" />{{
+                      t('mailPage.hasAttachments')
+                    }}</span
+                  >
+                  <span v-if="m.task_ref" class="ml-chip">{{ t('mailPage.taskLinked') }}</span>
+                  <span v-if="accounts.length > 1 && accountName(m.account_id)" class="ml-msg__acct">{{
+                    accountName(m.account_id)
+                  }}</span>
+                </span>
+              </span>
+            </button>
+          </template>
+          <div v-if="loadingMore" class="ml-hint ml-list__more">{{ t('mailPage.loading') }}</div>
         </div>
       </section>
 
-      <!-- 阅读窗 -->
-      <section v-if="detail" class="mail-reader">
-        <q-card flat bordered class="mail-reader__card">
-          <q-card-section class="mail-reader__head">
-            <div class="row items-start justify-between no-wrap">
-              <div class="col">
-                <div class="mail-reader__subject">{{ detail.message.subject || t('mailPage.noSubject') }}</div>
-                <div class="mail-reader__from">
-                  <span class="ellipsis">{{ detail.message.sender }}</span>
-                  <span class="mono mail-reader__time">{{ fmtTime(detail.message.received_at) }}</span>
-                </div>
-              </div>
-              <q-btn flat dense round icon="close" :aria-label="t('mailPage.closeReader')" @click="detail = null" />
+      <!-- ============ 右：阅读 ============ -->
+      <section class="ml-panel ml-read" :aria-label="t('mailPage.readAria')">
+        <div v-if="!detail" class="ml-empty ml-empty--read">
+          <q-icon name="mark_email_read" size="36px" aria-hidden="true" />
+          <p class="ml-hint">{{ detailLoading ? t('mailPage.loading') : t('mailPage.pickMessage') }}</p>
+        </div>
+        <template v-else>
+          <header class="ml-read__head">
+            <q-btn
+              flat
+              dense
+              round
+              icon="arrow_back"
+              class="ml-read__back"
+              :aria-label="t('mailPage.back')"
+              @click="closeReader"
+            />
+            <h2 class="ml-read__subj">{{ detail.message.subject || t('mailPage.noSubject') }}</h2>
+            <div class="ml-read__who">
+              <span class="ml-av ml-av--lg" :class="`ml-av--${avatarTone(detail.message.sender)}`" aria-hidden="true">
+                {{ initial(detail.message.sender) }}
+              </span>
+              <span class="ml-read__name">
+                <b>{{ displayName(detail.message.sender) || t('mailPage.unknownSender') }}</b>
+                <span class="ml-read__addr ml-num">{{ parseAddr(detail.message.sender).address }}</span>
+              </span>
+              <span class="ml-read__time ml-num">{{ fullTime(detail.message.received_at) }}</span>
+              <span class="ml-read__to">
+                <template v-if="detail.message.to">{{ t('mailPage.sentTo', { to: detail.message.to }) }}</template>
+                <template v-if="detail.message.cc"> · {{ t('mailPage.ccTo', { cc: detail.message.cc }) }}</template>
+                <template v-if="accountName(detail.message.account_id)">
+                  · {{ accountName(detail.message.account_id) }}</template
+                >
+              </span>
             </div>
-          </q-card-section>
-          <q-separator />
-          <q-card-section class="mail-reader__body">{{ detail.body || t('mailPage.emptyBody') }}</q-card-section>
+          </header>
 
-          <template v-if="attachments.length">
-            <q-separator />
-            <q-card-section class="mail-reader__atts">
-              <div class="mail-reader__atts-title">{{ t('mailPage.attachments', { n: attachments.length }) }}</div>
-              <div v-for="a in attachments" :key="a.id" class="mail-att row items-center no-wrap">
-                <q-icon name="insert_drive_file" size="20px" class="mail-att__icon" />
-                <div class="mail-att__meta col">
-                  <div class="mail-att__name ellipsis">{{ a.filename }}</div>
-                  <div class="mail-att__size mono">{{ a.content_type }} · {{ fmtSize(a.size) }}</div>
+          <div class="ml-read__body">
+            <div class="ml-read__in">
+              <MailHtmlView v-if="detail.body_html" :html="detail.body_html" :title="detail.message.subject" />
+              <div v-else class="ml-letter">{{ detail.body || t('mailPage.emptyBody') }}</div>
+
+              <div v-if="attachments.length" class="ml-atts">
+                <div v-for="a in attachments" :key="a.id" class="ml-att">
+                  <span
+                    class="ml-att__ic ml-num"
+                    :class="`ml-att__ic--${fileBadge(a.filename, a.content_type).toLowerCase()}`"
+                  >
+                    {{ fileBadge(a.filename, a.content_type) }}
+                  </span>
+                  <button
+                    type="button"
+                    class="ml-att__n"
+                    :aria-label="t('mailPage.previewName', { name: a.filename })"
+                    @click="openPreview(a)"
+                  >
+                    <b :title="a.filename">{{ a.filename }}</b>
+                    <span class="ml-num">{{ fileSize(a.size) }}</span>
+                  </button>
+                  <q-btn
+                    flat
+                    dense
+                    round
+                    size="sm"
+                    icon="download"
+                    :aria-label="t('mailPage.downloadName', { name: a.filename })"
+                    @click="downloadAtt(a)"
+                  />
+                  <q-btn
+                    flat
+                    dense
+                    round
+                    size="sm"
+                    :icon="a.knowledge_doc_id ? 'library_add_check' : 'library_add'"
+                    :disable="!!a.knowledge_doc_id"
+                    :aria-label="
+                      a.knowledge_doc_id
+                        ? t('mailPage.inKnowledge')
+                        : t('mailPage.toKnowledgeName', { name: a.filename })
+                    "
+                    @click="askClassification(a)"
+                  />
                 </div>
-                <q-btn
-                  v-if="a.knowledge_doc_id"
-                  flat
-                  dense
-                  no-caps
-                  disable
-                  icon="inventory_2"
-                  :label="t('mailPage.inKnowledge')"
-                  class="mail-att__btn"
-                />
-                <q-btn
-                  v-else
-                  flat
-                  dense
-                  no-caps
-                  icon="inventory_2"
-                  :label="t('mailPage.toKnowledge')"
-                  class="mail-att__btn"
-                  @click="askClassification(a)"
-                />
-                <q-btn flat dense round icon="download" :aria-label="t('mailPage.download')" @click="downloadAtt(a)" />
               </div>
-            </q-card-section>
-          </template>
+            </div>
+          </div>
 
-          <q-separator />
-          <q-card-actions align="right" class="mail-reader__actions">
-            <q-btn flat no-caps icon="task_alt" :label="t('mailPage.toTask')" :loading="acting" @click="toTask" />
-            <q-btn flat no-caps icon="download" :label="t('mailPage.exportEml')" @click="exportEml" />
+          <footer class="ml-read__bar">
+            <template v-if="detail.message.folder !== 'drafts'">
+              <q-btn
+                unelevated
+                no-caps
+                color="primary"
+                icon="reply"
+                :label="t('mailPage.reply')"
+                @click="startCompose('reply')"
+              />
+              <q-btn flat no-caps icon="reply_all" :label="t('mailPage.replyAll')" @click="startCompose('replyAll')" />
+              <q-btn flat no-caps icon="forward" :label="t('mailPage.forward')" @click="startCompose('forward')" />
+            </template>
+            <span class="ml-sp" />
             <q-btn
               flat
               no-caps
-              color="negative"
-              icon="delete_outline"
-              :label="t('mailPage.delete')"
-              @click="confirmDeleteMessage"
+              icon="task_alt"
+              :label="detail.message.task_ref ? t('mailPage.taskLinked') : t('mailPage.toTask')"
+              :disable="!!detail.message.task_ref || acting"
+              @click="toTask"
             />
-          </q-card-actions>
-        </q-card>
+            <q-btn
+              flat
+              dense
+              round
+              :icon="detail.message.flagged ? 'star' : 'star_border'"
+              :class="{ 'ml-star': detail.message.flagged }"
+              :aria-pressed="detail.message.flagged"
+              :aria-label="t('mailPage.flag')"
+              :title="t('mailPage.flag')"
+              @click="toggleFlag"
+            />
+            <q-btn
+              flat
+              dense
+              round
+              :icon="detail.message.archived ? 'unarchive' : 'archive'"
+              :aria-label="detail.message.archived ? t('mailPage.unarchive') : t('mailPage.archive')"
+              :title="detail.message.archived ? t('mailPage.unarchive') : t('mailPage.archive')"
+              @click="toggleArchive"
+            />
+            <q-btn flat dense round icon="more_horiz" :aria-label="t('mailPage.more')">
+              <q-menu anchor="top right" self="bottom right">
+                <q-list dense>
+                  <q-item v-close-popup clickable @click="markUnread">
+                    <q-item-section>{{ t('mailPage.markUnread') }}</q-item-section>
+                  </q-item>
+                  <q-item v-close-popup clickable @click="exportEml">
+                    <q-item-section>{{ t('mailPage.exportEml') }}</q-item-section>
+                  </q-item>
+                </q-list>
+              </q-menu>
+            </q-btn>
+            <q-btn
+              flat
+              dense
+              round
+              icon="delete_outline"
+              color="negative"
+              :aria-label="t('mailPage.delete')"
+              :title="t('mailPage.delete')"
+              @click="removeMessage"
+            />
+          </footer>
+        </template>
+
+        <MailComposer
+          v-if="compose"
+          :key="composeKey"
+          :seed="compose"
+          :accounts="accounts"
+          :default-account-id="accountFilter"
+          @close="compose = null"
+          @changed="onComposeChanged"
+        />
       </section>
+    </template>
 
-      <section
-        v-else-if="!listLoading && messages.length && $q.screen.gt.sm"
-        class="mail-reader mail-reader--placeholder"
-      >
-        <div class="mail-empty text-caption">{{ t('mailPage.pickMessage') }}</div>
-      </section>
-    </div>
+    <MailAccountWizard v-model="wizardOpen" :account="wizardAccount" @saved="onAccountSaved" />
 
-    <!-- ============ 账号管理 ============ -->
-    <AppDialog v-model="accountsOpen" size="md" :title="t('mailPage.accountsTitle')">
-      <div v-if="!accounts.length" class="text-caption mail-empty">
-        {{ t('mailPage.accountsEmpty') }}
-      </div>
-      <q-list v-else separator>
-        <q-item v-for="acc in accounts" :key="acc.id">
-          <q-item-section>
-            <q-item-label>{{ acc.name || acc.username }}</q-item-label>
-            <q-item-label caption class="mono"
-              >{{ acc.username }}@{{ acc.host }}:{{ acc.port }} · {{ acc.tls_mode }}</q-item-label
-            >
-            <q-item-label caption>
-              {{ t('mailPage.lastSync') }}:
-              <span class="mono">{{ acc.last_sync_at ? fmtTime(acc.last_sync_at) : t('mailPage.neverSynced') }}</span>
-            </q-item-label>
-          </q-item-section>
-          <q-item-section side>
-            <div class="row no-wrap items-center">
-              <q-btn
-                flat
-                dense
-                no-caps
-                icon="sync"
-                :label="t('mailPage.syncNow')"
-                :loading="syncingId === acc.id"
-                @click="syncAccount(acc)"
-              />
-              <q-btn flat dense round icon="edit" :aria-label="t('mailPage.edit')" @click="openAccountEdit(acc)" />
-              <q-btn
-                flat
-                dense
-                round
-                icon="delete_outline"
-                :aria-label="t('mailPage.delete')"
-                @click="confirmDeleteAccount(acc)"
-              />
-            </div>
-          </q-item-section>
-        </q-item>
-      </q-list>
-      <template #actions>
-        <q-btn
-          unelevated
-          dense
-          rounded
-          no-caps
-          color="primary"
-          icon="add"
-          :label="t('mailPage.btnNewAccount')"
-          @click="openAccountCreate"
-        />
-        <q-btn flat no-caps :label="t('mailPage.close')" @click="accountsOpen = false" />
-      </template>
-    </AppDialog>
-
-    <!-- ============ 账号新建/编辑 ============ -->
-    <AppDialog
-      v-model="accountEditorOpen"
-      persistent
-      size="sm"
-      :title="editingAccountId ? t('mailPage.accountEditTitle') : t('mailPage.accountCreateTitle')"
-    >
-      <div class="q-gutter-md">
-        <q-banner v-if="accountEditorError" rounded class="app-page-error-banner" role="alert">
-          {{ accountEditorError }}
-        </q-banner>
-        <q-input v-model="accountForm.name" outlined dense :label="t('mailPage.fieldName')" autofocus />
-        <div class="row q-gutter-md">
-          <q-input
-            v-model="accountForm.host"
-            class="col"
-            outlined
-            dense
-            :label="t('mailPage.fieldHost')"
-            hint="imap.example.com"
+    <AppDialog v-model="previewOpen" size="xl" position="standard" :title="preview?.att.filename ?? ''">
+      <div class="ml-pv" aria-live="polite">
+        <q-inner-loading :showing="previewLoading" />
+        <template v-if="preview">
+          <img v-if="preview.kind === 'image'" class="ml-pv__img" :src="preview.url" :alt="preview.att.filename" />
+          <iframe
+            v-else-if="preview.kind === 'pdf'"
+            class="ml-pv__frame"
+            :src="preview.url"
+            :title="preview.att.filename"
           />
-          <q-input
-            v-model.number="accountForm.port"
-            class="col-4"
-            outlined
-            dense
-            type="number"
-            :label="t('mailPage.fieldPort')"
+          <!-- 空 sandbox：附件里的脚本、表单、跳转一律不动 -->
+          <iframe
+            v-else-if="preview.kind === 'html'"
+            class="ml-pv__frame ml-pv__frame--paper"
+            sandbox=""
+            :srcdoc="preview.html"
+            :title="preview.att.filename"
           />
-        </div>
-        <q-select
-          v-model="accountForm.tls_mode"
-          outlined
-          dense
-          :options="tlsOptions"
-          :label="t('mailPage.fieldTls')"
-          emit-value
-          map-options
-        />
-        <q-input
-          v-model="accountForm.username"
-          outlined
-          dense
-          :label="t('mailPage.fieldUsername')"
-          autocomplete="off"
-        />
-        <q-input
-          v-model="accountForm.password"
-          outlined
-          dense
-          type="password"
-          :label="t('mailPage.fieldPassword')"
-          :hint="editingAccountId ? t('mailPage.fieldPasswordEditHint') : t('mailPage.fieldPasswordHint')"
-          autocomplete="new-password"
-        />
+          <pre v-else-if="preview.kind === 'text'" class="ml-pv__text">{{ preview.text }}</pre>
+          <p v-else class="ml-hint">{{ t('mailPage.previewNone') }}</p>
+        </template>
       </div>
       <template #actions>
-        <q-btn flat no-caps :label="t('mailPage.cancel')" @click="accountEditorOpen = false" />
         <q-btn
+          v-if="preview"
           unelevated
           no-caps
           color="primary"
-          :label="t('mailPage.save')"
-          :loading="savingAccount"
-          :disable="!accountFormValid"
-          @click="saveAccount"
+          icon="download"
+          :label="t('mailPage.download')"
+          @click="downloadAtt(preview.att)"
         />
       </template>
     </AppDialog>
 
-    <!-- ============ 附件入知识库（密级选择） ============ -->
     <AppDialog v-model="classificationOpen" persistent size="sm" :title="t('mailPage.classifyTitle')">
       <q-option-group v-model="classification" :options="classificationOptions" color="primary" type="radio" />
       <template #actions>
@@ -327,172 +461,456 @@
         />
       </template>
     </AppDialog>
-
-    <input ref="emlInput" type="file" accept=".eml,message/rfc822" class="mail-hidden-input" @change="onEmlPicked" />
   </q-page>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useQuasar } from 'quasar';
-import { confirm } from '../composables/useAppConfirm';
+import { useRoute } from 'vue-router';
 import AppDialog from '../components/common/AppDialog.vue';
-import AppPageHero from '../components/layout/AppPageHero.vue';
+import AppStatePanel from '../components/common/AppStatePanel.vue';
+import { confirm } from '../composables/useAppConfirm';
+import { isForbiddenApiError } from '../utils/kratosError';
 import {
   attachmentToKnowledge,
-  createMailAccount,
   deleteMailAccount,
   deleteMailMessage,
   downloadMailAttachment,
   exportMailEml,
+  fetchMailAttachment,
+  getMailboxSummary,
   getMailMessage,
   importMailEml,
   listMailAccounts,
   listMailAttachments,
   listMailMessages,
   mailToTask,
+  markMailMessages,
   syncMailAccount,
-  updateMailAccount,
+  testMailAccount,
 } from '../features/office/api';
-import type { MailAccountRow, MailAttachmentRow, MailMessageRow, MailTlsMode } from '../features/office/types';
+import type {
+  MailAccountRow,
+  MailAttachmentRow,
+  MailboxSummaryRow,
+  MailMessageRow,
+  MailView,
+} from '../features/office/types';
+import MailAccountWizard from '../features/mail/components/MailAccountWizard.vue';
+import MailComposer from '../features/mail/components/MailComposer.vue';
+import MailHtmlView from '../features/mail/components/MailHtmlView.vue';
+import {
+  attachmentSrcdoc,
+  avatarTone,
+  displayName,
+  fileBadge,
+  fileSize,
+  fullTime,
+  groupByDate,
+  initial,
+  listTime,
+  parseAddr,
+  previewKind,
+  splitAddrs,
+  type AttachmentPreviewKind,
+  type ComposeKind,
+  type ComposeSeed,
+} from '../features/mail/model';
 
 const { t } = useI18n();
 const $q = useQuasar();
+const route = useRoute();
 
-// ---------- 账号 ----------
+const VIEWS: MailView[] = ['inbox', 'flagged', 'task', 'attachments', 'sent', 'drafts', 'archived'];
+const VIEW_ICON: Record<MailView, string> = {
+  inbox: 'inbox',
+  unread: 'mark_email_unread',
+  flagged: 'star_border',
+  task: 'task_alt',
+  attachments: 'attach_file',
+  sent: 'send',
+  drafts: 'drafts',
+  archived: 'archive',
+};
+const PAGE = 50;
 
 const accounts = ref<MailAccountRow[]>([]);
-const accountsOpen = ref(false);
-const syncingId = ref('');
-
-// ---------- 列表 ----------
-
-const messages = ref<MailMessageRow[]>([]);
+const summary = ref<MailboxSummaryRow | null>(null);
+const view = ref<MailView>('inbox');
+const accountFilter = ref('');
+const keyword = ref('');
+const rows = ref<MailMessageRow[]>([]);
 const total = ref(0);
 const page = ref(1);
-const pageSize = 20;
 const listLoading = ref(false);
-const pageError = ref('');
-const filterAccount = ref('');
+const loadingMore = ref(false);
+const listError = ref('');
+const forbidden = ref(false);
+const refreshing = ref(false);
+const now = ref(new Date());
 
-const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize)));
+// ---------- 加载 ----------
 
 async function loadAccounts() {
   accounts.value = await listMailAccounts();
 }
 
-async function loadMessages() {
-  listLoading.value = true;
-  pageError.value = '';
+async function loadSummary() {
   try {
-    const res = await listMailMessages({ accountId: filterAccount.value, page: page.value, pageSize });
-    messages.value = res.items;
+    summary.value = await getMailboxSummary();
+  } catch {
+    summary.value = null;
+  }
+}
+
+let listSeq = 0;
+async function loadList(reset: boolean) {
+  const seq = ++listSeq;
+  if (reset) {
+    page.value = 1;
+    listLoading.value = true;
+  } else {
+    loadingMore.value = true;
+  }
+  listError.value = '';
+  try {
+    const res = await listMailMessages({
+      view: view.value,
+      accountId: accountFilter.value,
+      keyword: keyword.value.trim(),
+      page: page.value,
+      pageSize: PAGE,
+    });
+    if (seq !== listSeq) return;
+    rows.value = reset ? res.items : [...rows.value, ...res.items];
     total.value = res.total;
+    now.value = new Date();
   } catch (e) {
-    pageError.value = e instanceof Error ? e.message : String(e);
+    if (seq !== listSeq) return;
+    forbidden.value = isForbiddenApiError(e);
+    listError.value = e instanceof Error ? e.message : String(e);
   } finally {
-    listLoading.value = false;
+    if (seq === listSeq) {
+      listLoading.value = false;
+      loadingMore.value = false;
+    }
   }
 }
 
-async function loadAll() {
+async function refreshAll() {
+  refreshing.value = true;
   try {
-    await loadAccounts();
-  } catch (e) {
-    pageError.value = e instanceof Error ? e.message : String(e);
+    await Promise.all([loadAccounts().catch(() => undefined), loadSummary(), loadList(true)]);
+  } finally {
+    refreshing.value = false;
   }
-  await loadMessages();
 }
 
-onMounted(() => void loadAll());
-
-function setFilter(id: string) {
-  if (filterAccount.value === id) return;
-  filterAccount.value = id;
-  page.value = 1;
-  void loadMessages();
+function onListScroll(ev: Event) {
+  const el = ev.target as HTMLElement;
+  if (loadingMore.value || listLoading.value || rows.value.length >= total.value) return;
+  if (el.scrollTop + el.clientHeight > el.scrollHeight - 240) {
+    page.value += 1;
+    void loadList(false);
+  }
 }
 
-function gotoPage(p: number) {
-  if (p < 1 || p > totalPages.value) return;
-  page.value = p;
-  void loadMessages();
+let searchTimer: ReturnType<typeof setTimeout> | undefined;
+watch(keyword, () => {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => void loadList(true), 300);
+});
+
+// 新信由后台 IDLE 同步进库；页面开着时每分钟刷新一次计数和第一页（只在页面可见、没在搜索时）。
+let pollTimer: ReturnType<typeof setInterval> | undefined;
+onMounted(() => {
+  void refreshAll();
+  // ?message=<id>：从任务「来自邮件」跳过来，直接打开那封信
+  const linked = route.query.message;
+  if (typeof linked === 'string' && linked)
+    void openMessage({ id: linked, folder: 'inbox', has_attachments: true } as MailMessageRow);
+  pollTimer = setInterval(() => {
+    if (document.visibilityState !== 'visible' || keyword.value || page.value > 1) return;
+    void loadSummary();
+    void loadList(true);
+  }, 60_000);
+});
+onBeforeUnmount(() => {
+  clearInterval(pollTimer);
+  clearTimeout(searchTimer);
+});
+
+// ---------- 视图 / 账户 ----------
+
+function setView(v: MailView) {
+  view.value = v;
+  accountFilter.value = '';
+  void loadList(true);
 }
 
-// ---------- 阅读窗 ----------
+function setAccount(id: string) {
+  accountFilter.value = accountFilter.value === id ? '' : id;
+  view.value = 'inbox';
+  void loadList(true);
+}
 
-const detail = ref<{ message: MailMessageRow; body: string } | null>(null);
+function viewCount(v: MailView): number {
+  const s = summary.value;
+  if (!s) return 0;
+  return {
+    inbox: s.inbox_unread,
+    unread: s.inbox_unread,
+    flagged: s.flagged,
+    task: s.task,
+    attachments: s.attachments,
+    sent: 0,
+    drafts: s.drafts,
+    archived: 0,
+  }[v];
+}
+
+const segOptions = computed(() => [
+  { value: 'inbox', label: t('mailPage.segAll') },
+  {
+    value: 'unread',
+    label: summary.value?.inbox_unread
+      ? t('mailPage.segUnreadN', { n: summary.value.inbox_unread })
+      : t('mailPage.segUnread'),
+  },
+]);
+
+// 窄屏（左栏收起）时，视图改成列表头上的下拉
+const narrowOptions = computed(() => [
+  ...VIEWS.map((v) => ({ value: `view:${v}`, label: t(`mailPage.view.${v}`) })),
+  ...accounts.value.map((a) => ({ value: `acct:${a.id}`, label: a.name || a.email })),
+]);
+const narrowView = computed({
+  get: () =>
+    accountFilter.value ? `acct:${accountFilter.value}` : `view:${view.value === 'unread' ? 'inbox' : view.value}`,
+  set: (v: string) => (v.startsWith('acct:') ? setAccount(v.slice(5)) : setView(v.slice(5) as MailView)),
+});
+
+function dotOf(a: MailAccountRow): string {
+  if (a.status === 'ok') return 'ok';
+  if (a.status === 'auth_failed' || a.status === 'unreachable') return 'bad';
+  return 'unknown';
+}
+
+function accountName(id: string): string {
+  const a = accounts.value.find((x) => x.id === id);
+  return a ? a.name || a.email : '';
+}
+
+const groups = computed(() => groupByDate(rows.value, now.value));
+
+/** 列表里那一位：收件箱看发件人，已发送 / 草稿看收件人。 */
+function counterpart(m: MailMessageRow): string {
+  return m.folder === 'sent' || m.folder === 'drafts' ? (splitAddrs(m.to)[0] ?? '') : m.sender;
+}
+
+function listWho(m: MailMessageRow): string {
+  if (m.folder === 'drafts')
+    return m.to ? t('mailPage.draftTo', { to: displayName(counterpart(m)) }) : t('mailPage.draftNoTo');
+  if (m.folder === 'sent') return t('mailPage.sentToShort', { to: displayName(counterpart(m)) });
+  return displayName(m.sender) || t('mailPage.unknownSender');
+}
+
+// ---------- 阅读 ----------
+
+const selectedId = ref('');
+const detail = ref<{ message: MailMessageRow; body: string; body_html: string } | null>(null);
+const detailLoading = ref(false);
 const attachments = ref<MailAttachmentRow[]>([]);
 const acting = ref(false);
 
-async function openMessage(id: string) {
+function patchRow(id: string, patch: Partial<MailMessageRow>) {
+  const r = rows.value.find((x) => x.id === id);
+  if (r) Object.assign(r, patch);
+  if (detail.value?.message.id === id) Object.assign(detail.value.message, patch);
+}
+
+async function openMessage(m: MailMessageRow) {
+  if (m.folder === 'drafts') {
+    await openDraft(m);
+    return;
+  }
+  selectedId.value = m.id;
+  detailLoading.value = true;
+  detail.value = null;
+  attachments.value = [];
   try {
-    detail.value = await getMailMessage(id);
-    attachments.value = await listMailAttachments(id);
+    const [d, atts] = await Promise.all([
+      getMailMessage(m.id),
+      m.has_attachments ? listMailAttachments(m.id) : Promise.resolve([]),
+    ]);
+    if (selectedId.value !== m.id) return;
+    detail.value = d;
+    attachments.value = atts;
+    if (!d.message.seen) {
+      patchRow(m.id, { seen: true });
+      if (summary.value && d.message.folder === 'inbox' && !d.message.archived) {
+        summary.value.inbox_unread = Math.max(0, summary.value.inbox_unread - 1);
+        const acc = summary.value.accounts[d.message.account_id];
+        if (acc) summary.value.accounts[d.message.account_id] = acc - 1;
+      }
+      void markMailMessages([m.id], { seen: true }).catch(() => undefined);
+    }
   } catch (e) {
-    pageError.value = e instanceof Error ? e.message : String(e);
+    $q.notify({ type: 'negative', message: e instanceof Error ? e.message : String(e) });
+  } finally {
+    detailLoading.value = false;
+  }
+}
+
+function closeReader() {
+  selectedId.value = '';
+  detail.value = null;
+}
+
+async function toggleFlag() {
+  const m = detail.value?.message;
+  if (!m) return;
+  const flagged = !m.flagged;
+  patchRow(m.id, { flagged });
+  try {
+    await markMailMessages([m.id], { flagged });
+    void loadSummary();
+  } catch (e) {
+    patchRow(m.id, { flagged: !flagged });
+    $q.notify({ type: 'negative', message: e instanceof Error ? e.message : String(e) });
+  }
+}
+
+async function toggleArchive() {
+  const m = detail.value?.message;
+  if (!m) return;
+  const archived = !m.archived;
+  try {
+    await markMailMessages([m.id], { archived });
+    $q.notify({ message: archived ? t('mailPage.archived') : t('mailPage.unarchived') });
+    nextAfterRemove(m.id);
+    void loadSummary();
+  } catch (e) {
+    $q.notify({ type: 'negative', message: e instanceof Error ? e.message : String(e) });
+  }
+}
+
+async function markUnread() {
+  const m = detail.value?.message;
+  if (!m) return;
+  await markMailMessages([m.id], { seen: false });
+  patchRow(m.id, { seen: false });
+  closeReader();
+  void loadSummary();
+}
+
+/** 归档 / 删除后从列表拿掉，并顺手打开下一封。 */
+function nextAfterRemove(id: string) {
+  const i = rows.value.findIndex((x) => x.id === id);
+  if (i >= 0) {
+    rows.value.splice(i, 1);
+    total.value = Math.max(0, total.value - 1);
+  }
+  const next = rows.value[i] ?? rows.value[i - 1];
+  if (next) void openMessage(next);
+  else closeReader();
+}
+
+async function removeMessage() {
+  const m = detail.value?.message;
+  if (!m) return;
+  const ok = await confirm({
+    title: t('mailPage.deleteTitle'),
+    message: t('mailPage.deleteBody', { subject: m.subject || t('mailPage.noSubject') }),
+    tone: 'danger',
+    confirmLabel: t('mailPage.delete'),
+  });
+  if (!ok) return;
+  try {
+    await deleteMailMessage(m.id);
+    nextAfterRemove(m.id);
+    void loadSummary();
+  } catch (e) {
+    $q.notify({ type: 'negative', message: e instanceof Error ? e.message : String(e) });
   }
 }
 
 async function toTask() {
-  if (!detail.value) return;
+  const m = detail.value?.message;
+  if (!m) return;
   acting.value = true;
   try {
-    const taskRef = await mailToTask(detail.value.message.id, '');
-    detail.value = { ...detail.value, message: { ...detail.value.message, task_ref: taskRef } };
-    const m = messages.value.find((x) => x.id === detail.value?.message.id);
-    if (m) m.task_ref = taskRef;
-    $q.notify({ type: 'positive', message: t('mailPage.toTaskDone', { ref: taskRef }) });
+    const taskRef = await mailToTask(m.id, '');
+    patchRow(m.id, { task_ref: taskRef });
+    $q.notify({ type: 'positive', message: t('mailPage.toTaskDone') });
+    void loadSummary();
   } catch (e) {
-    pageError.value = e instanceof Error ? e.message : String(e);
+    $q.notify({ type: 'negative', message: e instanceof Error ? e.message : String(e) });
   } finally {
     acting.value = false;
   }
 }
 
 async function exportEml() {
-  if (!detail.value) return;
-  try {
-    await exportMailEml(detail.value.message);
-  } catch (e) {
-    pageError.value = e instanceof Error ? e.message : String(e);
-  }
+  if (detail.value) await exportMailEml(detail.value.message);
 }
-
-async function confirmDeleteMessage() {
-  if (!detail.value) return;
-  const id = detail.value.message.id;
-  const ok = await confirm({
-    title: t('mailPage.deleteMessageTitle'),
-    message: t('mailPage.deleteMessageBody'),
-    tone: 'danger',
-  });
-  if (!ok) return;
-  try {
-    await deleteMailMessage(id);
-    detail.value = null;
-    attachments.value = [];
-    await loadMessages();
-  } catch (e) {
-    pageError.value = e instanceof Error ? e.message : String(e);
-  }
-}
-
-// ---------- 附件 ----------
 
 async function downloadAtt(a: MailAttachmentRow) {
   try {
     await downloadMailAttachment(a);
   } catch (e) {
-    pageError.value = e instanceof Error ? e.message : String(e);
+    $q.notify({ type: 'negative', message: e instanceof Error ? e.message : String(e) });
   }
 }
+
+type AttachmentPreview = {
+  att: MailAttachmentRow;
+  kind: AttachmentPreviewKind;
+  url: string;
+  html: string;
+  text: string;
+};
+const previewOpen = ref(false);
+const previewLoading = ref(false);
+const preview = ref<AttachmentPreview | null>(null);
+const PREVIEW_TEXT_MAX = 1 << 20;
+
+/** 在页面里打开附件：图片 / PDF / HTML / 文本直接看，其他类型给下载。 */
+async function openPreview(a: MailAttachmentRow) {
+  const kind = previewKind(a.filename, a.content_type);
+  preview.value = { att: a, kind, url: '', html: '', text: '' };
+  previewOpen.value = true;
+  if (kind === 'none') return;
+  previewLoading.value = true;
+  try {
+    let blob = await fetchMailAttachment(a);
+    if (preview.value?.att.id !== a.id) return;
+    if (kind === 'pdf' && blob.type !== 'application/pdf') blob = new Blob([blob], { type: 'application/pdf' });
+    if (kind === 'image' || kind === 'pdf') {
+      preview.value = { ...preview.value, url: URL.createObjectURL(blob) };
+    } else {
+      const text = new TextDecoder('utf-8').decode(await blob.slice(0, PREVIEW_TEXT_MAX).arrayBuffer());
+      preview.value = kind === 'html' ? { ...preview.value, html: attachmentSrcdoc(text) } : { ...preview.value, text };
+    }
+  } catch (e) {
+    previewOpen.value = false;
+    $q.notify({ type: 'negative', message: e instanceof Error ? e.message : String(e) });
+  } finally {
+    previewLoading.value = false;
+  }
+}
+
+watch(previewOpen, (open) => {
+  if (open) return;
+  if (preview.value?.url) URL.revokeObjectURL(preview.value.url);
+  preview.value = null;
+});
 
 const classificationOpen = ref(false);
 const classification = ref(1);
 const classifyingAtt = ref<MailAttachmentRow | null>(null);
-
 const classificationOptions = computed(() => [
   { label: t('mailPage.classifyL1'), value: 1 },
   { label: t('mailPage.classifyL2'), value: 2 },
@@ -509,322 +927,205 @@ async function doToKnowledge() {
   if (!classifyingAtt.value) return;
   acting.value = true;
   try {
-    const docId = await attachmentToKnowledge(classifyingAtt.value.id, classification.value);
-    classifyingAtt.value.knowledge_doc_id = docId;
+    classifyingAtt.value.knowledge_doc_id = await attachmentToKnowledge(classifyingAtt.value.id, classification.value);
     classificationOpen.value = false;
     $q.notify({ type: 'positive', message: t('mailPage.toKnowledgeDone') });
   } catch (e) {
-    pageError.value = e instanceof Error ? e.message : String(e);
+    $q.notify({ type: 'negative', message: e instanceof Error ? e.message : String(e) });
   } finally {
     acting.value = false;
   }
 }
 
-// ---------- 账号编辑 ----------
+// ---------- 写信 ----------
 
-const accountEditorOpen = ref(false);
-const accountEditorError = ref('');
-const savingAccount = ref(false);
-const editingAccountId = ref('');
+const compose = ref<ComposeSeed | null>(null);
+const composeKey = ref(0);
 
-const accountForm = ref({
-  name: '',
-  host: '',
-  port: 993,
-  tls_mode: 'TLS_MODE_TLS' as MailTlsMode,
-  username: '',
-  password: '',
-});
-
-const tlsOptions = computed(() => [
-  { label: 'TLS', value: 'TLS_MODE_TLS' },
-  { label: 'STARTTLS', value: 'TLS_MODE_STARTTLS' },
-  { label: t('mailPage.tlsNone'), value: 'TLS_MODE_NONE' },
-]);
-
-const accountFormValid = computed(() => {
-  const f = accountForm.value;
-  if (!f.host.trim() || !f.username.trim() || !(f.port > 0)) return false;
-  // 创建必须带密码；编辑留空 = 不轮换。
-  if (!editingAccountId.value && !f.password) return false;
-  return true;
-});
-
-function openAccountCreate() {
-  editingAccountId.value = '';
-  accountEditorError.value = '';
-  accountForm.value = { name: '', host: '', port: 993, tls_mode: 'TLS_MODE_TLS', username: '', password: '' };
-  accountEditorOpen.value = true;
+function startCompose(kind: ComposeKind) {
+  const d = detail.value;
+  if (kind !== 'new' && !d) return;
+  composeKey.value += 1;
+  compose.value =
+    kind === 'new' || !d
+      ? { kind: 'new' }
+      : { kind, message: d.message, body: d.body, carried: kind === 'forward' ? attachments.value : [] };
 }
 
-function openAccountEdit(acc: MailAccountRow) {
-  editingAccountId.value = acc.id;
-  accountEditorError.value = '';
-  accountForm.value = {
-    name: acc.name,
-    host: acc.host,
-    port: acc.port || 993,
-    tls_mode: acc.tls_mode,
-    username: acc.username,
-    password: '',
-  };
-  accountEditorOpen.value = true;
-}
-
-async function saveAccount() {
-  savingAccount.value = true;
-  accountEditorError.value = '';
-  const input = {
-    name: accountForm.value.name.trim(),
-    host: accountForm.value.host.trim(),
-    port: accountForm.value.port,
-    tls_mode: accountForm.value.tls_mode,
-    username: accountForm.value.username.trim(),
-    password: accountForm.value.password,
-  };
+async function openDraft(m: MailMessageRow) {
   try {
-    if (editingAccountId.value) {
-      await updateMailAccount(editingAccountId.value, input);
+    const [d, atts] = await Promise.all([
+      getMailMessage(m.id),
+      m.has_attachments ? listMailAttachments(m.id) : Promise.resolve([]),
+    ]);
+    composeKey.value += 1;
+    compose.value = { kind: 'draft', message: d.message, body: d.body, carried: atts };
+  } catch (e) {
+    $q.notify({ type: 'negative', message: e instanceof Error ? e.message : String(e) });
+  }
+}
+
+function onComposeChanged() {
+  void loadSummary();
+  if (view.value === 'sent' || view.value === 'drafts') void loadList(true);
+}
+
+// ---------- 账户 ----------
+
+const wizardOpen = ref(false);
+const wizardAccount = ref<MailAccountRow | null>(null);
+
+function addAccount() {
+  wizardAccount.value = null;
+  wizardOpen.value = true;
+}
+
+function editAccount(a: MailAccountRow) {
+  wizardAccount.value = a;
+  wizardOpen.value = true;
+}
+
+async function onAccountSaved(a: MailAccountRow, isNew: boolean) {
+  await loadAccounts();
+  if (isNew) {
+    $q.notify({ message: t('mailPage.syncStarted', { name: a.name }) });
+    await syncAccount(a);
+  }
+}
+
+async function syncAccount(a: MailAccountRow) {
+  try {
+    const r = await syncMailAccount(a.id);
+    $q.notify({ type: 'positive', message: t('mailPage.syncDone', { n: r.imported }) });
+  } catch (e) {
+    // 超时不算失败：服务端不随请求取消，会在后台同步完
+    if ((e as { code?: string }).code === 'ECONNABORTED') {
+      $q.notify({ type: 'info', message: t('mailPage.syncSlow', { name: a.name }), timeout: 6000 });
     } else {
-      await createMailAccount(input);
+      $q.notify({ type: 'negative', message: t('mailPage.syncFailed', { name: a.name }) });
+      console.warn('mail sync failed', e);
     }
-    accountEditorOpen.value = false;
-    accountForm.value.password = '';
-    await loadAccounts();
-  } catch (e) {
-    accountEditorError.value = e instanceof Error ? e.message : String(e);
   } finally {
-    savingAccount.value = false;
+    await Promise.all([loadAccounts().catch(() => undefined), loadSummary(), loadList(true)]);
   }
 }
 
-async function syncAccount(acc: MailAccountRow) {
-  syncingId.value = acc.id;
-  pageError.value = '';
+async function testAccount(a: MailAccountRow) {
   try {
-    const r = await syncMailAccount(acc.id);
-    $q.notify({ type: 'positive', message: t('mailPage.syncDone', { imported: r.imported, skipped: r.skipped }) });
-    await loadAccounts();
-    await loadMessages();
+    const r = await testMailAccount({ id: a.id });
+    const parts = [
+      r.imap_ok
+        ? t('mailPage.testImapOk', { n: r.inbox_count })
+        : t('mailPage.testImapBad', { why: t(`mailPage.err.${r.imap_error || 'protocol'}`) }),
+      r.smtp_skipped
+        ? t('mailPage.wizSmtpSkipped')
+        : r.smtp_ok
+          ? t('mailPage.testSmtpOk')
+          : t('mailPage.testSmtpBad', { why: t(`mailPage.err.${r.smtp_error || 'protocol'}`) }),
+    ];
+    $q.notify({
+      type: r.imap_ok && (r.smtp_ok || r.smtp_skipped) ? 'positive' : 'warning',
+      message: parts.join('；'),
+      timeout: 6000,
+    });
   } catch (e) {
-    // 上游 IMAP 失败服务端已审计；此处仅呈现通用错误。
-    pageError.value = e instanceof Error ? e.message : String(e);
+    $q.notify({ type: 'negative', message: e instanceof Error ? e.message : String(e) });
   } finally {
-    syncingId.value = '';
+    void loadAccounts().catch(() => undefined);
   }
 }
 
-async function confirmDeleteAccount(acc: MailAccountRow) {
+async function removeAccount(a: MailAccountRow) {
   const ok = await confirm({
     title: t('mailPage.deleteAccountTitle'),
-    message: t('mailPage.deleteAccountBody', { name: acc.name || acc.username }),
+    message: t('mailPage.deleteAccountBody', { name: a.name || a.email }),
     tone: 'danger',
+    confirmLabel: t('mailPage.deleteAccount'),
   });
   if (!ok) return;
   try {
-    await deleteMailAccount(acc.id);
-    if (filterAccount.value === acc.id) {
-      filterAccount.value = '';
-      page.value = 1;
+    await deleteMailAccount(a.id);
+    if (accountFilter.value === a.id) accountFilter.value = '';
+    await refreshAll();
+  } catch (e) {
+    $q.notify({ type: 'negative', message: e instanceof Error ? e.message : String(e) });
+  }
+}
+
+// ---------- .eml 导入（拖进列表 / 选文件） ----------
+
+const dragging = ref(false);
+const emlPicker = ref<HTMLInputElement | null>(null);
+
+function onDragOver(ev: DragEvent) {
+  if (ev.dataTransfer?.types.includes('Files')) dragging.value = true;
+}
+
+async function importFiles(files: File[]) {
+  const emls = files.filter((f) => /\.eml$/i.test(f.name) || f.type === 'message/rfc822');
+  if (!emls.length) {
+    $q.notify({ type: 'warning', message: t('mailPage.dropOnlyEml') });
+    return;
+  }
+  let ok = 0;
+  for (const f of emls) {
+    try {
+      await importMailEml(f);
+      ok += 1;
+    } catch (e) {
+      $q.notify({ type: 'negative', message: `${f.name}: ${e instanceof Error ? e.message : String(e)}` });
     }
-    if (detail.value?.message.account_id === acc.id) detail.value = null;
-    await loadAccounts();
-    await loadMessages();
-  } catch (e) {
-    pageError.value = e instanceof Error ? e.message : String(e);
   }
+  if (ok) $q.notify({ type: 'positive', message: t('mailPage.imported', { n: ok }) });
+  await Promise.all([loadSummary(), loadList(true)]);
 }
 
-// ---------- .eml 导入 ----------
-
-const emlInput = ref<HTMLInputElement | null>(null);
-
-function importEmlFile() {
-  emlInput.value?.click();
+function onDrop(ev: DragEvent) {
+  dragging.value = false;
+  void importFiles(Array.from(ev.dataTransfer?.files ?? []));
 }
 
-async function onEmlPicked(ev: Event) {
+function onEmlPicked(ev: Event) {
   const input = ev.target as HTMLInputElement;
-  const file = input.files?.[0];
+  const files = Array.from(input.files ?? []);
   input.value = '';
-  if (!file) return;
-  try {
-    const text = await file.text();
-    await importMailEml(text);
-    $q.notify({ type: 'positive', message: t('mailPage.importDone') });
-    await loadMessages();
-  } catch (e) {
-    pageError.value = e instanceof Error ? e.message : String(e);
-  }
+  void importFiles(files);
 }
 
-// ---------- 呈现辅助 ----------
+// ---------- 键盘：J/K 上下、R 回复、A 全部回复、F 转发、E 归档、# 删除、/ 搜索、C 写邮件 ----------
 
-function fmtTime(iso: string): string {
-  if (!iso) return '—';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
+const searchInput = ref<HTMLInputElement | null>(null);
+const listBody = ref<HTMLElement | null>(null);
 
-function fmtSize(n: number): string {
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-  return `${(n / 1024 / 1024).toFixed(1)} MB`;
+function onKey(e: KeyboardEvent) {
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  const el = e.target as HTMLElement | null;
+  if (el && (el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName))) return;
+  if (compose.value || document.querySelector('.q-dialog')) return;
+  const i = rows.value.findIndex((x) => x.id === selectedId.value);
+  const go = (n: number) => {
+    const r = rows.value[n];
+    if (r) {
+      void openMessage(r);
+      listBody.value?.querySelectorAll('.ml-msg')[n]?.scrollIntoView({ block: 'nearest' });
+    }
+  };
+  const act: Record<string, () => void> = {
+    j: () => go(i + 1),
+    k: () => go(Math.max(0, i - 1)),
+    r: () => startCompose('reply'),
+    a: () => startCompose('replyAll'),
+    f: () => startCompose('forward'),
+    e: () => void toggleArchive(),
+    '#': () => void removeMessage(),
+    '/': () => searchInput.value?.focus(),
+    c: () => startCompose('new'),
+  };
+  const fn = act[e.key.toLowerCase()];
+  if (!fn) return;
+  e.preventDefault();
+  fn();
 }
+onMounted(() => window.addEventListener('keydown', onKey));
+onBeforeUnmount(() => window.removeEventListener('keydown', onKey));
 </script>
-
-<style scoped lang="sass">
-// 令牌只取 --nt-*（AGENTS.md §6）；时间/大小等数字一律等宽 + tabular-nums。
-.mono
-  font-family: var(--nt-font-mono)
-  font-variant-numeric: tabular-nums
-
-.mail-filter
-  margin-bottom: 12px
-
-.mail-main
-  display: flex
-  gap: 16px
-  align-items: flex-start
-
-.mail-list
-  flex: 0 0 360px
-  min-width: 0
-
-.mail-reader
-  flex: 1
-  min-width: 0
-
-.mail-reader--placeholder
-  display: flex
-  align-items: center
-  justify-content: center
-  min-height: 240px
-  border: 1px dashed var(--nt-border-1)
-  border-radius: 12px
-
-@media (max-width: 799px)
-  .mail-main
-    flex-direction: column
-  .mail-list
-    flex: 1 1 auto
-    width: 100%
-  .mail-list--hidden
-    display: none
-
-.mail-empty
-  color: var(--nt-text-2)
-  padding: 48px 0
-  text-align: center
-
-.mail-item
-  background: var(--nt-bg-1)
-  border-color: var(--nt-border-1)
-  border-radius: 8px
-  margin-bottom: 8px
-  cursor: pointer
-
-.mail-item--active
-  border-color: var(--nt-accent)
-
-.mail-item__inner
-  padding: 12px 16px
-
-.mail-item__top
-  display: flex
-  justify-content: space-between
-  align-items: baseline
-  gap: 8px
-
-.mail-item__sender
-  font-size: 13px
-  color: var(--nt-text-1)
-  min-width: 0
-
-.mail-item__time
-  font-size: 12px
-  color: var(--nt-text-2)
-  flex-shrink: 0
-
-.mail-item__subject
-  font-weight: 600
-  margin-top: 2px
-
-.mail-item__snippet
-  font-size: 12px
-  color: var(--nt-text-2)
-  margin-top: 2px
-
-.mail-item__meta
-  margin-top: 6px
-  min-height: 20px
-
-.mail-item__meta-icon
-  color: var(--nt-text-2)
-
-.mail-pager
-  padding: 8px 0
-
-.mail-pager__info
-  font-size: 12px
-  color: var(--nt-text-2)
-
-.mail-reader__card
-  background: var(--nt-bg-1)
-  border-color: var(--nt-border-1)
-  border-radius: 12px
-
-.mail-reader__subject
-  font-size: 16px
-  font-weight: 600
-
-.mail-reader__from
-  display: flex
-  gap: 12px
-  align-items: baseline
-  font-size: 13px
-  color: var(--nt-text-1)
-  margin-top: 4px
-
-.mail-reader__time
-  font-size: 12px
-  color: var(--nt-text-2)
-
-.mail-reader__body
-  white-space: pre-wrap
-  word-break: break-word
-  font-size: 13px
-  line-height: 1.7
-  min-height: 120px
-
-.mail-reader__atts-title
-  font-size: 13px
-  font-weight: 600
-  color: var(--nt-text-1)
-  margin-bottom: 8px
-
-.mail-att
-  gap: 8px
-  padding: 6px 0
-
-.mail-att__icon
-  color: var(--nt-text-2)
-
-.mail-att__name
-  font-size: 13px
-
-.mail-att__size
-  font-size: 12px
-  color: var(--nt-text-2)
-
-.mail-att__btn
-  flex-shrink: 0
-
-.mail-account-editor
-  min-width: min(520px, 94vw)
-
-.mail-hidden-input
-  display: none
-</style>

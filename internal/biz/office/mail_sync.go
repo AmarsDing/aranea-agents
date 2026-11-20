@@ -2,7 +2,9 @@ package office
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -35,13 +37,16 @@ type MailAuditSink interface {
 
 // MailSyncUsecase 同步编排。
 type MailSyncUsecase struct {
-	accounts MailAccountRepo
-	messages MailMessageRepo
-	crypto   MailSecretCrypto
-	dialer   MailImapDialer
-	audit    MailAuditSink // nil=不记审计
-	lg       loggateway.Logger
-	now      func() time.Time
+	accounts    MailAccountRepo
+	messages    MailMessageRepo
+	attachments MailAttachmentRepo // 转发带原附件用；nil 时转发不带附件
+	crypto      MailSecretCrypto
+	dialer      MailImapDialer
+	smtpDialer  MailSmtpDialer
+	mxLookup    MailMXLookup
+	audit       MailAuditSink // nil=不记审计
+	lg          loggateway.Logger
+	now         func() time.Time
 }
 
 func NewMailSyncUsecase(accounts MailAccountRepo, messages MailMessageRepo, crypto MailSecretCrypto, dialer MailImapDialer, audit MailAuditSink, lg loggateway.Logger) *MailSyncUsecase {
@@ -51,7 +56,13 @@ func NewMailSyncUsecase(accounts MailAccountRepo, messages MailMessageRepo, cryp
 	if lg == nil {
 		lg = loggateway.NewNoop()
 	}
-	return &MailSyncUsecase{accounts: accounts, messages: messages, crypto: crypto, dialer: dialer, audit: audit, lg: lg, now: time.Now}
+	return &MailSyncUsecase{accounts: accounts, messages: messages, crypto: crypto, dialer: dialer, smtpDialer: DialMailSMTP, audit: audit, lg: lg, now: time.Now}
+}
+
+// WithAttachments 装上附件仓储（转发时带原附件）。
+func (u *MailSyncUsecase) WithAttachments(repo MailAttachmentRepo) *MailSyncUsecase {
+	u.attachments = repo
+	return u
 }
 
 // Sync 手动/兜底同步一个账号（属主隔离：id+userID）。返回 (新导入, 幂等命中)。
@@ -70,46 +81,104 @@ func (u *MailSyncUsecase) Sync(ctx context.Context, accountID, userID string) (i
 	return imported, skipped, nil
 }
 
+// mailConnect 解密口令 → 建连 → 登录；失败时返回错误类别（用来记账号状态）。
+func (u *MailSyncUsecase) mailConnect(ctx context.Context, acc *MailAccount, password string) (MailImapClient, string, error) {
+	cli, err := u.dialer(ctx, acc.Host, acc.Port, acc.TLSMode)
+	if err != nil {
+		return nil, classifyMailDialErr(err), ErrMailUpstream.WithCause(fmt.Errorf("dial: %w", err))
+	}
+	if err := cli.Login(acc.Username, password); err != nil {
+		cli.Close()
+		return nil, MailErrKindAuth, ErrMailUpstream.WithCause(fmt.Errorf("login: %w", err))
+	}
+	return cli, "", nil
+}
+
+func (u *MailSyncUsecase) markAccountStatus(ctx context.Context, acc *MailAccount, kind string) {
+	status, lastErr := MailStatusOK, ""
+	if kind != "" {
+		status, lastErr = mailStatusForKind(kind), kind
+	}
+	if acc.Status == status && acc.LastError == lastErr {
+		return
+	}
+	if err := u.accounts.UpdateMailAccountStatus(ctx, acc.ID, status, lastErr); err != nil {
+		u.lg.Warn("mail account status update failed", loggateway.Err(err))
+		return
+	}
+	acc.Status, acc.LastError = status, lastErr
+}
+
 // syncOne 进程内同步（IDLE 推送后复用；属主已由调用方解析）。
+// 按 IMAP UID 增量：首次按 sync_since（空 = 全部），之后只取游标之后的 UID；
+// 抓取时带回 \Seen / \Flagged，手机上读过的信进来就是已读。
+// shortcut: 服务器换了 UIDVALIDITY（邮箱重建）没处理，出现时清掉账号游标重同步即可。
 func (u *MailSyncUsecase) syncOne(ctx context.Context, acc *MailAccount) (int, int, error) {
 	password, err := u.crypto.DecryptSecret(ctx, acc.PasswordEnc)
 	if err != nil {
 		return 0, 0, ErrMailUpstream.WithCause(fmt.Errorf("decrypt account password: %w", err))
 	}
-	cli, err := u.dialer(ctx, acc.Host, acc.Port, acc.TLSMode)
+	cli, kind, err := u.mailConnect(ctx, acc, password)
 	if err != nil {
-		return 0, 0, ErrMailUpstream.WithCause(fmt.Errorf("dial: %w", err))
+		u.markAccountStatus(ctx, acc, kind)
+		return 0, 0, err
 	}
 	defer cli.Close()
-	if err := cli.Login(acc.Username, password); err != nil {
-		return 0, 0, ErrMailUpstream.WithCause(fmt.Errorf("login: %w", err))
-	}
-	exists, err := cli.SelectInbox()
-	if err != nil {
+	if _, err := cli.SelectInbox(); err != nil {
+		u.markAccountStatus(ctx, acc, MailErrKindProtocol)
 		return 0, 0, ErrMailUpstream.WithCause(fmt.Errorf("select inbox: %w", err))
 	}
+	criteria := "ALL"
+	switch {
+	case acc.LastUID > 0:
+		criteria = fmt.Sprintf("UID %d:*", acc.LastUID+1)
+	case acc.SyncSince != nil:
+		criteria = "SINCE " + acc.SyncSince.Format("2-Jan-2006")
+	}
+	uids, err := cli.SearchUIDs(criteria)
+	if err != nil {
+		u.markAccountStatus(ctx, acc, MailErrKindProtocol)
+		return 0, 0, ErrMailUpstream.WithCause(fmt.Errorf("search: %w", err))
+	}
+	sort.Ints(uids)
 	imported, skipped := 0, 0
-	for seq := 1; seq <= exists; seq++ {
-		raw, err := cli.FetchRaw(seq)
+	maxUID := acc.LastUID
+	for _, uid := range uids {
+		if int64(uid) <= acc.LastUID {
+			continue // "n:*" 在没有新信时也会回最大的那个 UID
+		}
+		raw, flags, err := cli.FetchUID(uid)
 		if err != nil {
-			return imported, skipped, ErrMailUpstream.WithCause(fmt.Errorf("fetch %d: %w", seq, err))
+			return imported, skipped, ErrMailUpstream.WithCause(fmt.Errorf("fetch uid %d: %w", uid, err))
 		}
 		m := ParseMailRaw(raw)
-		msg := mailMessageFromImap(acc, seq, m, u.now)
+		m.Seen = strings.Contains(flags, `\Seen`)
+		m.Flagged = strings.Contains(flags, `\Flagged`)
+		msg := mailMessageFromImap(acc, uid, m, u.now)
 		inserted, err := u.messages.InsertMessageWithAttachmentsTx(ctx, msg)
 		if err != nil {
 			// 邮件+附件同生共死：整体未提交，下个同步周期可重试。
-			return imported, skipped, fmt.Errorf("insert message seq=%d: %w", seq, err)
+			return imported, skipped, fmt.Errorf("insert message uid=%d: %w", uid, err)
+		}
+		if int64(uid) > maxUID {
+			maxUID = int64(uid)
 		}
 		if !inserted {
 			skipped++
-			continue
+		} else {
+			imported++
 		}
-		imported++
+		// 每 20 封存一次游标：大邮箱首次同步被打断，下次接着来，不用从头再下
+		if (imported+skipped)%20 == 0 {
+			if err := u.accounts.UpdateMailSyncCursor(ctx, acc.ID, maxUID, u.now()); err != nil {
+				return imported, skipped, fmt.Errorf("update sync cursor: %w", err)
+			}
+		}
 	}
-	if err := u.accounts.UpdateMailSyncCursor(ctx, acc.ID, int64(exists), u.now()); err != nil {
+	if err := u.accounts.UpdateMailSyncCursor(ctx, acc.ID, maxUID, u.now()); err != nil {
 		return imported, skipped, fmt.Errorf("update sync cursor: %w", err)
 	}
+	u.markAccountStatus(ctx, acc, "")
 	return imported, skipped, nil
 }
 
@@ -132,6 +201,14 @@ func mailMessageFromImap(acc *MailAccount, seq int, m *MailImapMessage, now func
 		Snippet:     mailSnippet(body),
 		ReceivedAt:  &receivedAt,
 		CreatedAt:   now(),
+		To:            m.To,
+		Cc:            m.Cc,
+		Seen:          m.Seen,
+		Flagged:       m.Flagged,
+		Folder:        MailFolderInbox,
+		BodyHTML:      m.HTML,
+		MessageIDHdr:  m.MessageID,
+		ReferencesHdr: m.References,
 	}
 	for _, a := range m.Attachments {
 		msg.Attachments = append(msg.Attachments, &MailAttachment{
@@ -266,6 +343,11 @@ func (s *MailIdleSupervisor) idleLoop(ctx context.Context, acc *MailAccount) {
 		}
 		err := s.idleOnce(ctx, acc)
 		if ctx.Err() != nil {
+			return
+		}
+		if errors.Is(err, errMailIdleUnsupported) {
+			// 不再反复登录试 IDLE：pollAll 每 5 分钟收一次
+			s.lg.Info("mail idle: server has no IDLE, polling only", loggateway.Str("account_id", acc.ID))
 			return
 		}
 		if err != nil {

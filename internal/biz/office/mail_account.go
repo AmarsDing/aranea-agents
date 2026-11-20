@@ -42,6 +42,9 @@ func (u *MailAccountUsecase) Create(ctx context.Context, a *MailAccount, plainPa
 	if a.Port <= 0 {
 		a.Port = defaultMailPort(mode)
 	}
+	if err := normalizeMailAccountSMTP(a); err != nil {
+		return nil, err
+	}
 	enc, err := u.crypto.EncryptSecret(ctx, plainPassword)
 	if err != nil {
 		return nil, err
@@ -84,6 +87,24 @@ func (u *MailAccountUsecase) Update(ctx context.Context, id, userID string, patc
 		}
 		cur.TLSMode = mode
 	}
+	if v := strings.TrimSpace(patch.Email); v != "" {
+		cur.Email = v
+	}
+	if v := strings.TrimSpace(patch.Provider); v != "" {
+		cur.Provider = v
+	}
+	if v := strings.TrimSpace(patch.SMTPHost); v != "" {
+		cur.SMTPHost = v
+	}
+	if patch.SMTPPort > 0 {
+		cur.SMTPPort = patch.SMTPPort
+	}
+	if v := strings.TrimSpace(patch.SMTPTLS); v != "" {
+		cur.SMTPTLS = v
+	}
+	if err := normalizeMailAccountSMTP(cur); err != nil {
+		return nil, err
+	}
 	if strings.TrimSpace(plainPassword) != "" {
 		enc, err := u.crypto.EncryptSecret(ctx, plainPassword)
 		if err != nil {
@@ -120,6 +141,41 @@ func normalizeMailTLSMode(mode string) (string, error) {
 		return MailTLSNone, nil
 	}
 	return "", ErrMailTLSModeInvalid
+}
+
+// normalizeMailAccountSMTP 发件地址缺省取用户名（是邮箱时）；SMTP 没填时按服务商预设补；
+// SMTP 端口按加密方式补默认（tls 465 / starttls 587 / none 25）。
+func normalizeMailAccountSMTP(a *MailAccount) error {
+	a.Email = strings.TrimSpace(a.Email)
+	if a.Email == "" && strings.Contains(a.Username, "@") {
+		a.Email = a.Username
+	}
+	a.SMTPHost = strings.TrimSpace(a.SMTPHost)
+	if a.SMTPHost == "" {
+		if p, ok := MailPresetByKey(a.Provider); ok {
+			a.SMTPHost, a.SMTPPort, a.SMTPTLS = p.SMTPHost, p.SMTPPort, p.SMTPTLS
+		}
+	}
+	if a.SMTPHost == "" {
+		a.SMTPTLS, a.SMTPPort = "", 0
+		return nil
+	}
+	mode, err := normalizeMailTLSMode(a.SMTPTLS)
+	if err != nil {
+		return err
+	}
+	a.SMTPTLS = mode
+	if a.SMTPPort <= 0 {
+		switch mode {
+		case MailTLSTLS:
+			a.SMTPPort = 465
+		case MailTLSStartTLS:
+			a.SMTPPort = 587
+		default:
+			a.SMTPPort = 25
+		}
+	}
+	return nil
 }
 
 func defaultMailPort(mode string) int {

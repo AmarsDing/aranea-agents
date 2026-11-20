@@ -26,7 +26,8 @@ import (
 //     任何出参不含明文/密文（MailAccount proto 无 password 字段，验收 #6）；
 //   - IMAP 上游故障统一映 502（OFFICE_MAIL_UPSTREAM），上游原文不进响应
 //     （防凭据/邮箱内部结构泄漏），明细在审计；
-//   - SendMail 为 F2 占位（E-2 高风险闸同批），当前一律 412 拒绝。
+//   - SendMail（邮件 P1）：只有登录用户在页面上点「发送」才走到这里；智能体没有
+//     发信工具。审计只记收件人个数和附件数，不记地址。
 type OfficeMailService struct {
 	v1.UnimplementedOfficeMailServiceServer
 	accounts *office.MailAccountUsecase
@@ -75,6 +76,21 @@ func mailTLSModeToProto(m string) v1.TlsMode {
 	}
 }
 
+// smtpTLSFromProto SMTP 加密方式：没指定时留空（按服务商预设或默认补）。
+func smtpTLSFromProto(m v1.TlsMode) string {
+	if m == v1.TlsMode_TLS_MODE_UNSPECIFIED {
+		return ""
+	}
+	return mailTLSModeFromProto(m)
+}
+
+func smtpTLSToProto(m string) v1.TlsMode {
+	if m == "" {
+		return v1.TlsMode_TLS_MODE_UNSPECIFIED
+	}
+	return mailTLSModeToProto(m)
+}
+
 // mailAccountToProto 出参永不携带 PasswordEnc（proto 无该字段，双保险）。
 func mailAccountToProto(a *office.MailAccount) *v1.MailAccount {
 	out := &v1.MailAccount{
@@ -87,9 +103,19 @@ func mailAccountToProto(a *office.MailAccount) *v1.MailAccount {
 		Username:    a.Username,
 		LastUid:     a.LastUID,
 		CreatedAt:   timestamppb.New(a.CreatedAt),
+		Email:       a.Email,
+		Provider:    a.Provider,
+		SmtpHost:    a.SMTPHost,
+		SmtpPort:    int32(a.SMTPPort),
+		SmtpTls:     smtpTLSToProto(a.SMTPTLS),
+		Status:      a.Status,
+		LastError:   a.LastError,
 	}
 	if a.LastSyncAt != nil {
 		out.LastSyncAt = timestamppb.New(*a.LastSyncAt)
+	}
+	if a.SyncSince != nil {
+		out.SyncSince = timestamppb.New(*a.SyncSince)
 	}
 	return out
 }
@@ -123,11 +149,25 @@ func (s *OfficeMailService) CreateAccount(ctx context.Context, req *v1.CreateAcc
 		Port:        int(req.GetPort()),
 		TLSMode:     mailTLSModeFromProto(req.GetTlsMode()),
 		Username:    req.GetUsername(),
+		Email:       req.GetEmail(),
+		Provider:    req.GetProvider(),
+		SMTPHost:    req.GetSmtpHost(),
+		SMTPPort:    int(req.GetSmtpPort()),
+		SMTPTLS:     smtpTLSFromProto(req.GetSmtpTls()),
+		SyncSince:   tsPtr(req.GetSyncSince()),
 	}, req.GetPassword())
 	if err != nil {
 		return nil, mailErr(err)
 	}
 	return mailAccountToProto(a), nil
+}
+
+func tsPtr(ts *timestamppb.Timestamp) *time.Time {
+	if ts == nil {
+		return nil
+	}
+	t := ts.AsTime()
+	return &t
 }
 
 func (s *OfficeMailService) UpdateAccount(ctx context.Context, req *v1.UpdateAccountRequest) (*v1.MailAccount, error) {
@@ -141,6 +181,11 @@ func (s *OfficeMailService) UpdateAccount(ctx context.Context, req *v1.UpdateAcc
 		Port:     int(req.GetPort()),
 		TLSMode:  mailTLSModeFromProto(req.GetTlsMode()),
 		Username: req.GetUsername(),
+		Email:    req.GetEmail(),
+		Provider: req.GetProvider(),
+		SMTPHost: req.GetSmtpHost(),
+		SMTPPort: int(req.GetSmtpPort()),
+		SMTPTLS:  smtpTLSFromProto(req.GetSmtpTls()),
 	}, req.GetPassword())
 	if err != nil {
 		return nil, mailErr(err)
@@ -164,7 +209,8 @@ func (s *OfficeMailService) SyncAccount(ctx context.Context, req *v1.SyncAccount
 	if err != nil {
 		return nil, mailErr(err)
 	}
-	imported, skipped, err := s.syncer.Sync(ctx, req.GetId(), userID)
+	// 首次同步常常超过前端等待时间：前端放弃不能把同步一起掐断（否则游标不落、下次从头再下）
+	imported, skipped, err := s.syncer.Sync(context.WithoutCancel(ctx), req.GetId(), userID)
 	if err != nil {
 		return nil, mailErr(err)
 	}
@@ -185,6 +231,12 @@ func mailMessageToProto(m *office.MailMessage) *v1.MailMessage {
 		Quadrant:       m.Quadrant,
 		HasAttachments: m.HasAttachments,
 		CreatedAt:      timestamppb.New(m.CreatedAt),
+		To:             m.To,
+		Cc:             m.Cc,
+		Seen:           m.Seen,
+		Flagged:        m.Flagged,
+		Archived:       m.ArchivedAt != nil,
+		Folder:         m.Folder,
 	}
 	if m.ReceivedAt != nil {
 		out.ReceivedAt = m.ReceivedAt.UTC().Format(time.RFC3339)
@@ -197,7 +249,10 @@ func (s *OfficeMailService) ListMessages(ctx context.Context, req *v1.ListMessag
 	if err != nil {
 		return nil, mailErr(err)
 	}
-	items, total, err := s.messages.List(ctx, userID, req.GetAccountId(), req.GetQuadrant(), int(req.GetPage()), int(req.GetPageSize()))
+	items, total, err := s.messages.Query(ctx, userID, office.MailQuery{
+		View: req.GetView(), AccountID: req.GetAccountId(), Keyword: req.GetKeyword(),
+		Page: int(req.GetPage()), PageSize: int(req.GetPageSize()),
+	})
 	if err != nil {
 		return nil, mailErr(err)
 	}
@@ -217,7 +272,7 @@ func (s *OfficeMailService) GetMessage(ctx context.Context, req *v1.GetMessageRe
 	if err != nil {
 		return nil, mailErr(err)
 	}
-	return &v1.MailMessageDetail{Message: mailMessageToProto(m), Body: m.Body}, nil
+	return &v1.MailMessageDetail{Message: mailMessageToProto(m), Body: m.Body, BodyHtml: m.BodyHTML}, nil
 }
 
 func (s *OfficeMailService) DeleteMessage(ctx context.Context, req *v1.DeleteMessageRequest) (*emptypb.Empty, error) {
@@ -325,11 +380,164 @@ func (s *OfficeMailService) AttachmentToKnowledge(ctx context.Context, req *v1.A
 	return &v1.AttachmentToKnowledgeResponse{KnowledgeDocId: docID}, nil
 }
 
-// ---------- 发信（F2 占位） / 摘要 ----------
+// ---------- 发信 / 草稿 / 计数 / 标记 / 向导 ----------
 
-// SendMail F2 占位（E-2：SMTP 发信随高风险闸同批）：一律 412 拒绝，诚实不装。
-func (s *OfficeMailService) SendMail(_ context.Context, _ *v1.SendMailRequest) (*v1.SendMailResponse, error) {
-	return nil, apierror.ToKratos(apierror.FailedPrecondition(office.DomainOffice, "mail send is an F2 item pending the high-risk approval gate"))
+func outgoingAttachments(in []*v1.OutgoingAttachment) []office.MailOutgoingAttachment {
+	out := make([]office.MailOutgoingAttachment, 0, len(in))
+	for _, a := range in {
+		out = append(out, office.MailOutgoingAttachment{Filename: a.GetFilename(), ContentType: a.GetContentType(), Content: a.GetContent()})
+	}
+	return out
+}
+
+// SendMail SMTP 发信（邮件 P1）。
+func (s *OfficeMailService) SendMail(ctx context.Context, req *v1.SendMailRequest) (*v1.SendMailResponse, error) {
+	userID, _, err := officeSubject(ctx)
+	if err != nil {
+		return nil, mailErr(err)
+	}
+	id, err := s.syncer.Send(ctx, userID, &office.MailOutgoing{
+		AccountID: req.GetAccountId(), To: req.GetTo(), Cc: req.GetCc(), Subject: req.GetSubject(), Body: req.GetBody(),
+		ReplyToID: req.GetReplyToId(), ForwardOfID: req.GetForwardOfId(), DraftID: req.GetDraftId(),
+		Attachments: outgoingAttachments(req.GetAttachments()),
+	})
+	if err != nil {
+		return nil, mailErr(err)
+	}
+	return &v1.SendMailResponse{SendId: id}, nil
+}
+
+func (s *OfficeMailService) SaveDraft(ctx context.Context, req *v1.SaveDraftRequest) (*v1.SaveDraftResponse, error) {
+	userID, _, err := officeSubject(ctx)
+	if err != nil {
+		return nil, mailErr(err)
+	}
+	id, err := s.syncer.SaveDraft(ctx, userID, &office.MailOutgoing{
+		AccountID: req.GetAccountId(), To: req.GetTo(), Cc: req.GetCc(), Subject: req.GetSubject(), Body: req.GetBody(),
+		ReplyToID: req.GetReplyToId(), ForwardOfID: req.GetForwardOfId(), DraftID: req.GetDraftId(),
+		Attachments: outgoingAttachments(req.GetAttachments()),
+	})
+	if err != nil {
+		return nil, mailErr(err)
+	}
+	return &v1.SaveDraftResponse{DraftId: id}, nil
+}
+
+func (s *OfficeMailService) GetMailboxSummary(ctx context.Context, _ *emptypb.Empty) (*v1.MailboxSummary, error) {
+	userID, _, err := officeSubject(ctx)
+	if err != nil {
+		return nil, mailErr(err)
+	}
+	c, err := s.messages.Counts(ctx, userID)
+	if err != nil {
+		return nil, mailErr(err)
+	}
+	out := &v1.MailboxSummary{
+		InboxUnread: c.InboxUnread, Flagged: c.Flagged, Task: c.Task, Attachments: c.Attachments,
+		Sent: c.Sent, Drafts: c.Drafts, Archived: c.Archived,
+	}
+	for id, n := range c.AccountUnread {
+		out.Accounts = append(out.Accounts, &v1.MailAccountUnread{AccountId: id, Unread: n})
+	}
+	return out, nil
+}
+
+// MarkMessages 批量标记；已读 / 星标在后台尽力回写到邮箱服务器（不阻塞响应）。
+func (s *OfficeMailService) MarkMessages(ctx context.Context, req *v1.MarkMessagesRequest) (*v1.MarkMessagesResponse, error) {
+	userID, _, err := officeSubject(ctx)
+	if err != nil {
+		return nil, mailErr(err)
+	}
+	mark := office.MailMark{Seen: req.Seen, Flagged: req.Flagged, Archived: req.Archived}
+	n, err := s.messages.Mark(ctx, userID, req.GetIds(), mark)
+	if err != nil {
+		return nil, mailErr(err)
+	}
+	if n > 0 && (mark.Seen != nil || mark.Flagged != nil) {
+		ids := append([]string(nil), req.GetIds()...)
+		go func() {
+			pctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), time.Minute)
+			defer cancel()
+			s.syncer.PushFlags(pctx, userID, ids, mark)
+		}()
+	}
+	return &v1.MarkMessagesResponse{Updated: n}, nil
+}
+
+func mailPresetToProto(p *office.MailProviderPreset, how string) *v1.MailProviderInfo {
+	if p == nil {
+		return &v1.MailProviderInfo{Found: false}
+	}
+	return &v1.MailProviderInfo{
+		Found: true, Key: p.Key, Name: p.Name,
+		ImapHost: p.IMAPHost, ImapPort: int32(p.IMAPPort), ImapTls: mailTLSModeToProto(p.IMAPTLS),
+		SmtpHost: p.SMTPHost, SmtpPort: int32(p.SMTPPort), SmtpTls: mailTLSModeToProto(p.SMTPTLS),
+		Supported: p.Supported, DetectedBy: how,
+	}
+}
+
+func (s *OfficeMailService) DetectProvider(ctx context.Context, req *v1.DetectProviderRequest) (*v1.MailProviderInfo, error) {
+	if _, _, err := officeSubject(ctx); err != nil {
+		return nil, mailErr(err)
+	}
+	p, how := s.syncer.DetectProvider(ctx, req.GetEmail())
+	return mailPresetToProto(p, how), nil
+}
+
+func (s *OfficeMailService) ListProviders(ctx context.Context, _ *emptypb.Empty) (*v1.ListProvidersResponse, error) {
+	if _, _, err := officeSubject(ctx); err != nil {
+		return nil, mailErr(err)
+	}
+	all := office.MailProviderPresets()
+	out := &v1.ListProvidersResponse{Items: make([]*v1.MailProviderInfo, 0, len(all))}
+	for i := range all {
+		out.Items = append(out.Items, mailPresetToProto(&all[i], ""))
+	}
+	return out, nil
+}
+
+// TestAccount 测连接：有 id 测已保存的账号；没有 id 测向导里的配置。
+func (s *OfficeMailService) TestAccount(ctx context.Context, req *v1.TestAccountRequest) (*v1.TestAccountResponse, error) {
+	userID, _, err := officeSubject(ctx)
+	if err != nil {
+		return nil, mailErr(err)
+	}
+	var res *office.MailConnTest
+	if req.GetId() != "" {
+		if res, err = s.syncer.TestSaved(ctx, req.GetId(), userID); err != nil {
+			return nil, mailErr(err)
+		}
+	} else {
+		if req.GetHost() == "" || req.GetUsername() == "" || req.GetPassword() == "" {
+			return nil, mailErr(office.ErrMailHostRequired)
+		}
+		mode := mailTLSModeFromProto(req.GetTlsMode())
+		port := int(req.GetPort())
+		if port <= 0 {
+			port = 993
+			if mode != office.MailTLSTLS {
+				port = 143
+			}
+		}
+		acc := &office.MailAccount{
+			Host: req.GetHost(), Port: port, TLSMode: mode, Username: req.GetUsername(),
+			SMTPHost: req.GetSmtpHost(), SMTPPort: int(req.GetSmtpPort()), SMTPTLS: smtpTLSFromProto(req.GetSmtpTls()),
+		}
+		if acc.SMTPHost != "" && acc.SMTPPort <= 0 {
+			acc.SMTPPort = 465
+			if acc.SMTPTLS == office.MailTLSStartTLS {
+				acc.SMTPPort = 587
+			}
+		}
+		if acc.SMTPHost != "" && acc.SMTPTLS == "" {
+			acc.SMTPTLS = office.MailTLSTLS
+		}
+		res = s.syncer.TestConnection(ctx, acc, req.GetPassword())
+	}
+	return &v1.TestAccountResponse{
+		ImapOk: res.IMAPOK, ImapError: res.IMAPErr, InboxCount: int32(res.InboxCount),
+		SmtpOk: res.SMTPOK, SmtpError: res.SMTPErr, SmtpSkipped: res.SMTPSkipped,
+	}, nil
 }
 
 // TriggerDigest 手动触发摘要（验收 #8 入口；since 空=默认 24h 窗口）。
