@@ -79,6 +79,7 @@
             </li>
           </ul>
           <p v-if="isCode && materials.length" class="cc-np__note">{{ t('cc.compose.pathNote') }}</p>
+          <p v-if="pick === 'flow' && materials.length" class="cc-np__note">{{ t('cc.compose.flowNoFiles') }}</p>
           <p v-if="capWarn" class="cc-np__warn" role="alert">{{ capWarn }}</p>
         </section>
 
@@ -98,7 +99,7 @@
               :disabled="c.disabled"
               @click="pick = c.key"
             >
-              <q-icon v-if="c.key === 'run'" name="account_tree" size="18px" class="cc-who__ico" aria-hidden="true" />
+              <q-icon v-if="c.icon" :name="c.icon" size="18px" class="cc-who__ico" aria-hidden="true" />
               <CcGlyph v-else :executor="c.glyph" :name="c.mono" size="lg" />
               <b
                 >{{ c.title }}<span v-if="c.key === 'spirit'" class="cc-tag">{{ t('cc.compose.recommended') }}</span></b
@@ -118,7 +119,11 @@
                 :placeholder="t('cc.compose.searchPeople', { n: people.length })"
               />
             </label>
-            <span class="cc-sub__k">{{ t(who ? 'cc.compose.matches' : 'cc.compose.recent') }}</span>
+            <select v-if="depts.length" v-model="dept" class="cc-np__sel" :aria-label="t('cc.compose.dept')">
+              <option value="">{{ t('cc.compose.deptAll') }}</option>
+              <option v-for="d in depts" :key="d.value" :value="d.value">{{ d.label }}</option>
+            </select>
+            <span class="cc-sub__k">{{ t(who || dept ? 'cc.compose.matches' : 'cc.compose.recent') }}</span>
             <button
               v-for="p in shownPeople"
               :key="`${p.kind}:${p.id}`"
@@ -131,6 +136,28 @@
               <CcGlyph :executor="`${p.kind}:${p.id}`" :name="p.name" size="xs" />{{ p.name }}
             </button>
             <span v-if="!shownPeople.length" class="cc-sub__k">{{ t('cc.compose.noPeople') }}</span>
+          </div>
+
+          <div v-if="pick === 'flow'" class="cc-sub">
+            <span class="cc-sub__k">{{ t('cc.compose.flow') }}</span>
+            <select v-if="flows.length" v-model="flowSel" class="cc-np__sel" :aria-label="t('cc.compose.flow')">
+              <option v-for="g in flows" :key="g.id" :value="g.id" :title="g.description">{{ g.name }}</option>
+            </select>
+            <span v-if="!flows.length" class="cc-sub__k">{{ t('cc.compose.noFlows') }}</span>
+            <small v-else-if="flow?.description" class="cc-sub__k">{{ flow.description }}</small>
+            <template v-if="flowFields.length">
+              <hr />
+              <label v-for="name in flowFields" :key="name" class="cc-search cc-sub__search">
+                <span class="cc-sub__k">{{ name }}</span>
+                <input
+                  v-model.trim="flowState[name]"
+                  type="text"
+                  autocomplete="off"
+                  :aria-label="t('cc.compose.flowField', { name })"
+                  :placeholder="t('cc.compose.flowField', { name })"
+                />
+              </label>
+            </template>
           </div>
 
           <div v-if="pick === 'tool'" class="cc-sub">
@@ -151,18 +178,15 @@
             </button>
             <span v-if="!toolOptions.length" class="cc-sub__k">{{ t('cc.compose.noTools') }}</span>
             <hr />
-            <span class="cc-sub__k">{{
-              t(toolMode === 'direct' ? 'cc.compose.project' : 'cc.compose.workspace')
-            }}</span>
-            <select
-              v-model="where"
-              class="cc-np__sel"
-              :aria-label="t(toolMode === 'direct' ? 'cc.compose.project' : 'cc.compose.workspace')"
-            >
+            <span class="cc-sub__k">{{ t('cc.compose.workdir') }}</span>
+            <select v-model="where" class="cc-np__sel" :aria-label="t('cc.compose.workdir')">
               <option v-for="o in whereOptions" :key="o.value" :value="o.value" :title="o.title">{{ o.label }}</option>
             </select>
             <span v-if="!whereOptions.length" class="cc-sub__k">{{ t('cc.compose.noProjects') }}</span>
-            <template v-if="canFleet">
+            <code v-else-if="wherePick" class="cc-sub__path cc-num" :title="wherePick.title">{{
+              wherePick.title
+            }}</code>
+            <template v-if="canFleet && pro">
               <span class="cc-sub__k cc-sub__gap">{{ t('cc.compose.way') }}</span>
               <button
                 type="button"
@@ -186,10 +210,11 @@
           </div>
 
           <div v-if="pick === 'run'" class="cc-sub">
-            <span class="cc-sub__k">{{ t('cc.compose.workspace') }}</span>
-            <select v-model="where" class="cc-np__sel" :aria-label="t('cc.compose.workspace')">
-              <option v-for="o in whereOptions" :key="o.value" :value="o.value">{{ o.label }}</option>
+            <span class="cc-sub__k">{{ t('cc.compose.workdir') }}</span>
+            <select v-model="where" class="cc-np__sel" :aria-label="t('cc.compose.workdir')">
+              <option v-for="o in whereOptions" :key="o.value" :value="o.value" :title="o.title">{{ o.label }}</option>
             </select>
+            <code v-if="wherePick" class="cc-sub__path cc-num" :title="wherePick.title">{{ wherePick.title }}</code>
             <span class="cc-sub__k cc-sub__gap">{{ t('cc.compose.coordinator') }}</span>
             <button
               v-for="o in toolOptions"
@@ -239,7 +264,7 @@
           </div>
         </section>
 
-        <details class="cc-pv" :open="isCode || mode === 'handoff'">
+        <details v-if="pro || mode === 'handoff'" class="cc-pv" :open="isCode || mode === 'handoff'">
           <summary>
             <q-icon name="chevron_right" size="16px" aria-hidden="true" />{{
               t('cc.compose.preview', { who: targetName })
@@ -293,7 +318,14 @@ import {
   modelSupportsFileInput,
   modelSupportsImageInput,
 } from '../../chat/modelCapabilities';
-import { listCodingAgents, listCodingProjects } from '../../coding/api';
+import { listCodingAgents, listCodingProjects, upsertCodingProject } from '../../coding/api';
+import { listGraphs } from '../../graph/api';
+import { listCollections } from '../../knowledge/api';
+import type { KnowledgeCollection } from '../../knowledge/types';
+import type { GraphDefinition } from '../../graph/types';
+import { listPlatformResourceTree } from '../../platform/api';
+import type { PlatformResourceTreeNode } from '../../platform/types';
+import { useProMode } from '../../prefs/proMode';
 import type { AgentPreset, Workspace } from '../../fleet/api';
 import { createOfficeTask } from '../../office/api';
 import { SPIRIT_AGENT_KEY } from '../../spirit/types';
@@ -301,6 +333,7 @@ import { listTeams } from '../../teams/api';
 import type { Team } from '../../teams/types';
 import type { CodingAgent, CodingProject, ProjectCandidate } from '../../../services/kratos/agentbridge/v1';
 import { parseKratosApiError } from '../../../utils/kratosError';
+import { LIB_PREFIX, deptOptions, flowInputs, samePath, type AssignPick } from '../assign';
 import {
   DELIVERABLES,
   buildHandText,
@@ -311,20 +344,22 @@ import {
   type HandLabels,
 } from '../handoff';
 import { flat, toolKey, toolName, type ConvTask } from '../model';
-import { dispatchTask, type Material, type Target } from '../useTaskDispatch';
+import { dispatchTask, executorKey, type Material, type Target } from '../useTaskDispatch';
 import type { ExecOutputs } from '../useTaskFiles';
 
-export type ComposerPick = 'spirit' | 'agent' | 'tool' | 'run';
+export type ComposerPick = AssignPick;
 
 const props = defineProps<{
   mode: 'new' | 'handoff';
   task?: ConvTask;
+  /** 打开时预填的「要办什么」（从指令条、别的页面带过来） */
+  text?: string;
   /** 打开时带进来的文件（拖到页面上） */
   files?: File[];
   to?: ComposerPick;
   /** 退回重做：输入框预填「退回意见」 */
   reject?: boolean;
-  /** 预选的执行者：`agent:<id>` / `team:<id>` / 工具键（cc、cx…） */
+  /** 预选的执行者：`agent:<id>` / `team:<id>` / `flow:<graphId>` / 工具键（cc、cx…） */
   prefer?: string;
   /** 最近用过的执行者（`agent:<id>` / `team:<id>`），按最近排 */
   recent: string[];
@@ -334,7 +369,9 @@ const props = defineProps<{
   presets: AgentPreset[];
   workspaces: Workspace[];
 }>();
-const emit = defineEmits<{ close: []; sent: [r: { anchorId: string; sessionId: string }] }>();
+const emit = defineEmits<{ close: []; sent: [r: { anchorId: string; sessionId: string; executor: string }] }>();
+// 专业模式才摆出「直接执行 / 开终端」和交接单预览；否则按默认（直接执行）走
+const { pro } = useProMode();
 const { t } = useI18n();
 
 const LAST_WHERE = 'cc.compose.where';
@@ -347,18 +384,38 @@ const readLast = () => {
 };
 
 // ——— 可选的执行者 ———
-type Person = { kind: 'agent' | 'team'; id: string; key: string; name: string; provider: string; model: string };
+type Person = {
+  kind: 'agent' | 'team';
+  id: string;
+  key: string;
+  name: string;
+  provider: string;
+  model: string;
+  /** 挂在组织树的哪个节点上（团队没有） */
+  node: string;
+};
 const agents = ref<Agent[]>([]);
 const teams = ref<Team[]>([]);
 const codingAgents = ref<CodingAgent[]>([]);
 const codingProjects = ref<CodingProject[]>([]);
+const graphs = ref<GraphDefinition[]>([]);
+const orgTree = ref<PlatformResourceTreeNode[]>([]);
+const libraries = ref<KnowledgeCollection[]>([]);
 onMounted(async () => {
-  const [a, tm, ca, cp] = await Promise.allSettled([
+  // 资料里的本机资料库：还没登记成工作目录的也列出来，选了发出时自动登记
+  void listCollections({ limit: 200 })
+    .then((r) => (libraries.value = r.items.filter((c) => c.vault_backend === 'local' && c.root_path)))
+    .catch(() => undefined);
+  const [a, tm, ca, cp, gs, org] = await Promise.allSettled([
     listAgents({ limit: 500 }),
     listTeams(),
     listCodingAgents(),
     listCodingProjects(),
+    listGraphs(100),
+    listPlatformResourceTree('organization'),
   ]);
+  if (gs.status === 'fulfilled') graphs.value = gs.value.items;
+  if (org.status === 'fulfilled') orgTree.value = org.value;
   if (a.status === 'fulfilled') agents.value = a.value;
   if (tm.status === 'fulfilled') teams.value = tm.value;
   if (ca.status === 'fulfilled') codingAgents.value = ca.value;
@@ -375,6 +432,7 @@ const people = computed<Person[]>(() => [
       name: a.display_name || a.agent_key,
       provider: a.provider,
       model: a.model,
+      node: a.taxonomy_position_id,
     })),
   ...teams.value
     .filter((x) => x.id && x.status !== 'inactive')
@@ -385,12 +443,20 @@ const people = computed<Person[]>(() => [
       name: x.display_name || x.team_key,
       provider: '',
       model: '',
+      node: '',
     })),
 ]);
 const who = ref('');
+// 按组织找人：公司 › 部门（组织树读不到就只剩搜索）
+const depts = computed(() => deptOptions(orgTree.value));
+const dept = ref('');
 const shownPeople = computed(() => {
   const q = who.value.toLowerCase();
-  if (q) return people.value.filter((p) => `${p.name} ${p.key}`.toLowerCase().includes(q)).slice(0, 12);
+  const nodes = depts.value.find((d) => d.value === dept.value)?.nodes;
+  if (q || nodes)
+    return people.value
+      .filter((p) => (!nodes || nodes.has(p.node)) && (!q || `${p.name} ${p.key}`.toLowerCase().includes(q)))
+      .slice(0, nodes ? 40 : 12);
   const recent = props.recent
     .map((r) => people.value.find((p) => `${p.kind}:${p.id}` === r))
     .filter((p): p is Person => Boolean(p));
@@ -403,7 +469,7 @@ const latest = computed(() =>
 );
 const text = ref(
   props.mode !== 'handoff'
-    ? ''
+    ? (props.text ?? '')
     : props.reject
       ? t('cc.compose.prefillReject')
       : latest.value?.status === 'failed'
@@ -431,6 +497,20 @@ const pick = ref<ComposerPick>(props.to ?? 'spirit');
 const sel = ref<Person | null>(null);
 const toolMode = ref<'direct' | 'terminal'>('direct');
 const toolSel = ref('');
+// 流程：模板不能直接执行，只列正式的流程
+const flows = computed(() => graphs.value.filter((g) => g.id && !g.isTemplate));
+const flowSel = ref('');
+const flowState = ref<Record<string, string>>({});
+const flow = computed(() => flows.value.find((g) => g.id === flowSel.value));
+const flowFields = computed(() => flowInputs(flow.value?.stateFields ?? []));
+watch(
+  flows,
+  (list) => {
+    if (list.some((g) => g.id === flowSel.value)) return;
+    flowSel.value = (list.find((g) => `flow:${g.id}` === props.prefer) ?? list[0])?.id ?? '';
+  },
+  { immediate: true },
+);
 const where = ref(readLast());
 const deliver = ref<Deliverable[]>([...(props.task?.deliver ?? [])]);
 const busy = ref(false);
@@ -457,13 +537,30 @@ const toolOptions = computed(() =>
           why: a.lastProbeError ?? '',
         })),
 );
-const whereOptions = computed(() =>
-  useFleetTools.value
+// 工作目录：登记过的目录本身排前（工具就在这个目录里干活）；运行台另有按任务建的隔离副本（改动在副本的分支上）；
+// 资料里还没登记的本机资料库排最后，选了发出时自动登记。
+const whereOptions = computed(() => {
+  const known = useFleetTools.value
     ? props.workspaces
         .filter((w) => w.status === 'ready' && !w.archived)
-        .map((w) => ({ value: w.id, label: w.branch ? `${w.name} · ${w.branch}` : w.name, title: w.path }))
-    : codingProjects.value.filter((p) => p.name).map((p) => ({ value: p.name!, label: p.name!, title: p.path ?? '' })),
-);
+        .sort((a, b) => Number(b.kind === 'primary') - Number(a.kind === 'primary'))
+        .map((w) => ({
+          value: w.id,
+          label: w.kind === 'primary' ? w.name : t('cc.compose.copyOf', { name: w.name, branch: w.branch }),
+          title: w.path,
+        }))
+    : codingProjects.value.filter((p) => p.name).map((p) => ({ value: p.name!, label: p.name!, title: p.path ?? '' }));
+  const paths = [...codingProjects.value.map((p) => p.path ?? ''), ...known.map((o) => o.title)];
+  const fresh = libraries.value
+    .filter((c) => !paths.some((p) => samePath(p, c.root_path)))
+    .map((c) => ({
+      value: `${LIB_PREFIX}${c.id}`,
+      label: t('cc.compose.fromLibrary', { name: c.name }),
+      title: c.root_path,
+    }));
+  return [...known, ...fresh];
+});
+const wherePick = computed(() => whereOptions.value.find((o) => o.value === where.value));
 watch(
   toolOptions,
   (opts) => {
@@ -491,7 +588,15 @@ watch(
 
 const toolLabel = computed(() => toolOptions.value.find((o) => o.key === toolSel.value)?.name ?? '');
 const cards = computed(() => {
-  const out: { key: ComposerPick; glyph: string; mono: string; title: string; sub: string; disabled?: boolean }[] = [
+  const out: {
+    key: ComposerPick;
+    glyph: string;
+    mono: string;
+    title: string;
+    sub: string;
+    icon?: string;
+    disabled?: boolean;
+  }[] = [
     {
       key: 'spirit',
       glyph: 'agent:spirit',
@@ -508,6 +613,14 @@ const cards = computed(() => {
       sub: sel.value ? sel.value.model || t('cc.compose.teamSub') : t('cc.compose.peopleSub'),
     },
     {
+      key: 'flow',
+      glyph: 'flow',
+      mono: '',
+      icon: 'schema',
+      title: pick.value === 'flow' && flow.value ? flow.value.name : t('cc.compose.flows'),
+      sub: t('cc.compose.flowsSub'),
+    },
+    {
       key: 'tool',
       glyph: pick.value === 'tool' && toolSel.value ? toolKey(toolSel.value) : 'cc',
       mono: toolLabel.value,
@@ -516,7 +629,14 @@ const cards = computed(() => {
     },
   ];
   if (props.canFleet)
-    out.push({ key: 'run', glyph: 'run', mono: '', title: t('cc.compose.run'), sub: t('cc.compose.runSub') });
+    out.push({
+      key: 'run',
+      glyph: 'run',
+      mono: '',
+      icon: 'account_tree',
+      title: t('cc.compose.run'),
+      sub: t('cc.compose.runSub'),
+    });
   return out;
 });
 
@@ -527,12 +647,18 @@ const target = computed<Target | null>(() => {
       : null;
   if (pick.value === 'agent')
     return sel.value ? { kind: sel.value.kind, id: sel.value.id, key: sel.value.key, name: sel.value.name } : null;
+  if (pick.value === 'flow') {
+    if (!flow.value || flowFields.value.some((k) => !flowState.value[k])) return null;
+    const state = Object.fromEntries(flowFields.value.map((k) => [k, flowState.value[k]!]));
+    const inputKeys = ['user_input', ...(flow.value.stateFields.some((x) => x.name === 'input') ? ['input'] : [])];
+    return { kind: 'flow', graphId: flow.value.id, name: flow.value.name, inputKeys, state };
+  }
   if (!toolSel.value || !where.value) return null;
   if (pick.value === 'run') {
     const ws = props.workspaces.find((w) => w.id === where.value);
-    if (!ws) return null;
+    if (!ws && !where.value.startsWith(LIB_PREFIX)) return null;
     const name = t('cc.compose.runName', { who: toolLabel.value });
-    return { kind: 'run', preset: toolSel.value, name, projectId: ws.projectId, workspaceId: ws.id };
+    return { kind: 'run', preset: toolSel.value, name, projectId: ws?.projectId ?? '', workspaceId: ws?.id ?? '' };
   }
   return toolMode.value === 'terminal'
     ? { kind: 'terminal', preset: toolSel.value, name: toolLabel.value, workspaceId: where.value }
@@ -540,7 +666,7 @@ const target = computed<Target | null>(() => {
 });
 const targetName = computed(() => target.value?.name ?? t('cc.compose.nobody'));
 const isCode = computed(() => pick.value === 'tool' || pick.value === 'run');
-const whereLabel = computed(() => whereOptions.value.find((o) => o.value === where.value)?.label ?? where.value);
+const whereLabel = computed(() => wherePick.value?.title || wherePick.value?.label || where.value);
 
 const materials = computed<Material[]>(() => [
   ...carry.value.filter((m) => m.on).map((m) => ({ meta: m.meta })),
@@ -608,10 +734,18 @@ const what = computed(() => {
   const n = materials.value.length;
   const tail = t(deliver.value.length ? 'cc.compose.whatReview' : 'cc.compose.whatDone');
   const x = target.value;
-  if (!x) return t(pick.value === 'agent' ? 'cc.compose.whatPickPerson' : 'cc.compose.whatPickTool');
+  if (!x)
+    return t(
+      pick.value === 'agent'
+        ? 'cc.compose.whatPickPerson'
+        : pick.value === 'flow'
+          ? 'cc.compose.whatPickFlow'
+          : 'cc.compose.whatPickTool',
+    );
   const mats = n ? t('cc.compose.whatMats', { n }) : '';
   if (pick.value === 'spirit') return t('cc.compose.whatSpirit', { mats }) + tail;
   if (x.kind === 'agent' || x.kind === 'team') return t('cc.compose.whatPerson', { who: x.name, mats }) + tail;
+  if (x.kind === 'flow') return t('cc.compose.whatFlow', { who: x.name }) + tail;
   const paths = n ? t('cc.compose.whatPaths', { n }) : '';
   if (x.kind === 'run') return t('cc.compose.whatRun', { who: toolLabel.value, where: whereLabel.value, paths }) + tail;
   if (x.kind === 'terminal')
@@ -644,6 +778,26 @@ function toggleDeliver(d: Deliverable) {
   deliver.value = deliver.value.includes(d) ? deliver.value.filter((x) => x !== d) : [...deliver.value, d];
 }
 
+/** 选的是资料里还没登记的本机资料库：先登记成工作目录，再把目标换成登记后的目录本身 */
+async function registerLibrary(x: Target): Promise<Target> {
+  const lib = libraries.value.find((c) => `${LIB_PREFIX}${c.id}` === where.value);
+  if (!lib || (x.kind !== 'tool' && x.kind !== 'terminal' && x.kind !== 'run')) return x;
+  const taken = new Set(codingProjects.value.map((p) => p.name));
+  let name = lib.name;
+  for (let n = 2; taken.has(name); n++) name = `${lib.name} (${n})`;
+  const p = await upsertCodingProject({ name, path: lib.root_path, description: lib.description });
+  codingProjects.value = [...codingProjects.value, p];
+  // 登记后用目录本身（运行台里是这个项目的主检出），不是隔离副本
+  const primary = `primary-${p.id ?? ''}`;
+  if (x.kind === 'tool') {
+    where.value = p.name ?? name;
+    return { ...x, project: where.value };
+  }
+  where.value = primary;
+  if (x.kind === 'terminal') return { ...x, workspaceId: primary };
+  return { ...x, projectId: p.id ?? '', workspaceId: primary };
+}
+
 async function send() {
   if (!canSend.value || !target.value) return;
   if (props.mode === 'new' && !spirit.value) {
@@ -654,17 +808,28 @@ async function send() {
   error.value = '';
   candidates.value = [];
   const { title, body } = props.mode === 'new' ? splitTitle(text.value) : { title: props.task!.title, body: '' };
+  let to = target.value;
+  if (where.value.startsWith(LIB_PREFIX)) {
+    try {
+      to = await registerLibrary(to);
+    } catch (err) {
+      busy.value = false;
+      error.value = t('cc.compose.err.register', { msg: parseKratosApiError(err).message });
+      return;
+    }
+  }
   const res = await dispatchTask({
     mode: props.mode,
     title: title || t('cc.compose.untitled'),
     body,
-    target: target.value,
+    target: to,
     materials: materials.value,
     deliver: deliver.value,
     buildHand,
     spiritId: spirit.value?.id ?? '',
     recordTitle: t('cc.compose.recordTitle', { title }),
     anchorId: props.mode === 'handoff' ? props.task?.anchorId : undefined,
+    officeId: props.mode === 'handoff' ? props.task?.officeId : undefined,
   });
   busy.value = false;
   if (res.ok) {
@@ -679,7 +844,7 @@ async function send() {
       type: res.registered ? 'positive' : 'warning',
       message: t(res.registered ? 'cc.compose.sent' : 'cc.compose.sentNotRegistered', { who: targetName.value }),
     });
-    emit('sent', { anchorId: res.anchorId, sessionId: res.sessionId });
+    emit('sent', { anchorId: res.anchorId, sessionId: res.sessionId, executor: executorKey(to) });
     return;
   }
   if (res.candidates?.length) {

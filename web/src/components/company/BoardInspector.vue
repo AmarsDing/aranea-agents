@@ -41,7 +41,7 @@
       <div class="kb-insp__actions">
         <q-btn
           v-for="(action, index) in detail.actions"
-          :key="action.to"
+          :key="action.to ?? action.label"
           no-caps
           dense
           :unelevated="index === 0"
@@ -49,6 +49,7 @@
           color="primary"
           :label="action.label"
           :to="action.to"
+          @click="action.run?.()"
         />
       </div>
 
@@ -131,6 +132,7 @@
 import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import BoardLoop from './BoardLoop.vue';
+import { openAssign } from '../../features/conversations/assign';
 import type { OpsAnomaly } from '../../features/ceoboard/types';
 import {
   money,
@@ -159,7 +161,8 @@ type Detail = {
   now: string;
   loop: Loop;
   facts: Fact[];
-  actions: { label: string; to: string }[];
+  /** to = 跳转；run = 当场做（打开交办面板） */
+  actions: { label: string; to?: string; run?: () => void }[];
   waiting: InboxInput[];
   work: WorkInput[];
   signals: Signal[];
@@ -335,6 +338,7 @@ function agentDetail(co: CompanyNode, d: DeptNode | undefined, a: BoardAgent): D
       },
     ],
     actions: [
+      { label: t('company.assignTo'), run: () => openAssign({ to: 'agent', prefer: `agent:${a.id}` }) },
       { label: t('company.openChat'), to: chat(a.id) },
       ...(a.loop.waiting > 0 ? [{ label: t('company.goDecide'), to: '/workbench' }] : []),
       { label: t('company.agentSettings'), to: `/agents/${encodeURIComponent(a.id)}/settings` },

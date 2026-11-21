@@ -50,7 +50,7 @@ describe('指令窗直接记任务', () => {
     api.createOfficeTask.mockResolvedValue(task({ title: '整理周报' }));
     api.uploadTaskFile.mockResolvedValueOnce({}).mockRejectedValueOnce(new Error('boom'));
     const assigned = task({ title: '整理周报', assignee_kind: 'agent', session_id: 's1' });
-    const dispatch = vi.fn(async () => ({ ok: true as const, link: '/chat?session=s1', task: assigned }));
+    const dispatch = vi.fn(async () => ({ ok: true as const, link: '/tasks/list?session=s1', task: assigned }));
     const heard: unknown[] = [];
     const listener = (e: Event) => heard.push((e as CustomEvent).detail);
     window.addEventListener(COMMAND_DONE_EVENT, listener);
@@ -66,7 +66,7 @@ describe('指令窗直接记任务', () => {
     expect(outcome).toMatchObject({
       ok: true,
       kind: 'delegate',
-      link: '/chat?session=s1',
+      link: '/tasks/list?session=s1',
       failedFiles: ['b.png（boom）'],
     });
     expect(heard).toEqual([{ intent: 'delegate', task: assigned }]);

@@ -108,9 +108,7 @@ export function useGraphsPage() {
   const sortOrder = ref('desc');
 
   /** 默认被隔离的编排产物图数量（提示横幅用，先于搜索/筛选统计）。 */
-  const hiddenOrchestratedCount = computed(
-    () => rows.value.filter((g) => isOrchestratedOwned(g)).length,
-  );
+  const hiddenOrchestratedCount = computed(() => rows.value.filter((g) => isOrchestratedOwned(g)).length);
 
   const filteredRows = computed(() => {
     let list = rows.value.slice();
@@ -214,7 +212,7 @@ export function useGraphsPage() {
 
   async function executeRun() {
     if (!runDialogGraph.value) return;
-    await graphExecute.executeRun(runDialogGraph.value.id);
+    await graphExecute.executeRun(runDialogGraph.value.id, { name: runDialogGraph.value.name });
   }
 
   async function duplicateGraph(graph: GraphDefinition) {

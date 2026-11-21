@@ -3,6 +3,7 @@
 //   交给下一位：挂在任务原来的锚点会话下（资料袋，或旧任务的承载会话）。
 //   智能体 / 团队：新开一段会话（metadata 带 cc_task + 交接单），资料复制过去作为附件随第一句发出。
 //   编码工具 / 运行台：资料给本机绝对路径（宿主机模式下产物就在本机磁盘），交接单作为提示。
+//   流程（Graph）：交接单作为流程的输入（user_input，流程声明了 input 字段就也写进去），必填的状态字段随初始状态带上；资料只写名字。
 import { getArtifact, uploadArtifact } from '../artifact/api';
 import { readFileAsBase64 } from '../artifact/fileBase64';
 import { ARTIFACT_MAX_BYTES } from '../artifact/limits';
@@ -10,18 +11,28 @@ import type { ArtifactMeta } from '../artifact/types';
 import { sendMessage } from '../chat/api';
 import { dispatchCodingTask } from '../coding/api';
 import { createRun, createTerminal } from '../fleet/api';
-import { createOfficeTask } from '../office/api';
+import { executeGraph } from '../graph/api';
+import { addOfficeTaskExecution, createOfficeTask, type OfficeTaskExecutionKind } from '../office/api';
 import { createSession, deleteSession, getSession, updateSessionMetadata } from '../session/api';
 import type { ProjectCandidate } from '../../services/kratos/agentbridge/v1';
 import { parseKratosApiError } from '../../utils/kratosError';
 import { randomUUID } from '../../utils/uuid';
 import { isAbsPath, mergeMeta, parseMeta, type CcLink, type Deliverable } from './handoff';
+import { toolKey } from './model';
 
 export type Target =
   | { kind: 'agent' | 'team'; id: string; key: string; name: string }
   | { kind: 'tool'; agentKey: string; name: string; project: string }
   | { kind: 'terminal'; preset: string; name: string; workspaceId: string }
-  | { kind: 'run'; preset: string; name: string; projectId: string; workspaceId: string };
+  | { kind: 'run'; preset: string; name: string; projectId: string; workspaceId: string }
+  | {
+      kind: 'flow';
+      graphId: string;
+      name: string;
+      /** 交接单写进哪些状态键：运行时的 user_input，加上流程自己声明的 input */
+      inputKeys: string[];
+      state: Record<string, string>;
+    };
 
 /** 一份资料：刚选的本机文件，或任务里已有的文件（资料袋 / 前面交出来的） */
 export type Material = { file: File } | { meta: ArtifactMeta };
@@ -41,6 +52,8 @@ export interface DispatchInput {
   recordTitle: string;
   /** 交接：任务的锚点会话；为空（任务里没有会话）就新建一个资料袋，成为新任务 */
   anchorId?: string;
+  /** 交接：任务的工作台登记；有它，这次执行直接挂到任务下 */
+  officeId?: string;
 }
 
 export type DispatchErrorCode = 'no_local_path' | 'too_large' | 'not_sent' | 'failed';
@@ -80,10 +93,32 @@ async function copy(meta: ArtifactMeta, sessionId: string): Promise<ArtifactMeta
   });
 }
 
+// 会话 metadata 里这份关系是旧口径的回落（正式口径是任务 ↔ 执行关联表）：执行已经发出去了，记不上不算派活失败
 async function link(anchorId: string, item: CcLink) {
-  const s = await getSession(anchorId);
-  const links = parseMeta(s.metadata_json).cc_links ?? [];
-  await updateSessionMetadata(anchorId, mergeMeta(s.metadata_json, { cc_links: [...links, item] }));
+  try {
+    const s = await getSession(anchorId);
+    const links = parseMeta(s.metadata_json).cc_links ?? [];
+    await updateSessionMetadata(anchorId, mergeMeta(s.metadata_json, { cc_links: [...links, item] }));
+  } catch (err) {
+    console.warn('[cc] dispatched but not noted on the anchor session', err);
+  }
+}
+
+/** 工作台登记里的执行对象：同事 / 团队；流程；运行台的一个编码工具；几个工具一起做 */
+function assigneeOf(target: Target): { assigneeKind: 'agent' | 'team' | 'tool' | 'run' | 'flow'; assigneeId: string } {
+  if (target.kind === 'flow') return { assigneeKind: 'flow', assigneeId: target.graphId };
+  if (target.kind === 'tool') return { assigneeKind: 'tool', assigneeId: target.agentKey };
+  if (target.kind === 'terminal') return { assigneeKind: 'tool', assigneeId: target.preset };
+  if (target.kind === 'run') return { assigneeKind: 'run', assigneeId: target.preset };
+  return { assigneeKind: target.kind, assigneeId: target.id };
+}
+
+/** 执行者键：与会话中心 Execution.executor 同一套写法 */
+export function executorKey(target: Target): string {
+  if (target.kind === 'flow') return `flow:${target.graphId}`;
+  if (target.kind === 'tool') return toolKey(target.agentKey);
+  if (target.kind === 'terminal' || target.kind === 'run') return toolKey(target.preset);
+  return `${target.kind}:${target.id}`;
 }
 
 export async function dispatchTask(input: DispatchInput): Promise<DispatchOutcome> {
@@ -91,6 +126,8 @@ export async function dispatchTask(input: DispatchInput): Promise<DispatchOutcom
   let anchor = input.anchorId ?? '';
   let createdRecord = false;
   let sessionId = '';
+  // 这次派出去的那条记录：登记到任务 ↔ 执行关联表（任务页、看板、会话中心都按它认）
+  let sent: { kind: OfficeTaskExecutionKind; ref_id: string; hand: string } | null = null;
   try {
     if (!anchor) {
       const rec = await createSession({
@@ -126,7 +163,18 @@ export async function dispatchTask(input: DispatchInput): Promise<DispatchOutcom
         request_id: `pending-user-${randomUUID()}`,
         options: attachments.length ? { attachments } : undefined,
       });
+      sent = { kind: 'session', ref_id: s.id, hand };
       if (ack.status !== 'accepted' && ack.status !== 'queued') throw new DispatchError('not_sent', ack.status);
+    } else if (target.kind === 'flow') {
+      // shortcut: 流程不收附件，资料只在交接单里列名字；等任务 ↔ 执行关联表（P1）和流程输入表单（P3）
+      const hand = input.buildHand(stored.map((a) => ({ name: a.name })));
+      const run = await executeGraph(target.graphId, anchor, {
+        ...Object.fromEntries(target.inputKeys.map((k) => [k, hand])),
+        ...target.state,
+      });
+      if (!run.executionId) throw new DispatchError('failed', run.status);
+      sent = { kind: 'graph_execution', ref_id: run.executionId, hand };
+      await link(anchor, { kind: 'flow', id: run.executionId, hand, graphId: target.graphId, name: target.name });
     } else {
       const mats = stored.map((a) => ({ name: a.name, path: a.storage_uri }));
       if (mats.some((m) => !isAbsPath(m.path))) throw new DispatchError('no_local_path');
@@ -142,6 +190,7 @@ export async function dispatchTask(input: DispatchInput): Promise<DispatchOutcom
           if (createdRecord) await deleteSession(anchor).catch(() => undefined);
           return { ok: false, code: 'failed', message: '', candidates: res.candidates ?? [] };
         }
+        sent = { kind: 'coding_task', ref_id: res.task.id, hand };
       } else if (target.kind === 'terminal') {
         const term = await createTerminal({
           workspaceId: target.workspaceId,
@@ -149,6 +198,7 @@ export async function dispatchTask(input: DispatchInput): Promise<DispatchOutcom
           prompt: hand,
           title: input.title,
         });
+        sent = { kind: 'fleet_terminal', ref_id: term.id, hand };
         await link(anchor, { kind: 'terminal', id: term.id, hand });
       } else if (target.kind === 'run') {
         const run = await createRun({
@@ -158,30 +208,39 @@ export async function dispatchTask(input: DispatchInput): Promise<DispatchOutcom
           agent: target.preset,
           fullAccess: false,
         });
+        sent = { kind: 'fleet_run', ref_id: run.id, hand };
         await link(anchor, { kind: 'run', id: run.id, hand });
       }
     }
   } catch (err) {
     // 一位都没派出去：撤掉刚建的资料袋（进回收站），免得留下空任务
-    if (createdRecord && !sessionId) await deleteSession(anchor).catch(() => undefined);
+    if (createdRecord && !sessionId && !sent) await deleteSession(anchor).catch(() => undefined);
     if (err instanceof DispatchError) return { ok: false, code: err.code, message: err.message };
     return { ok: false, code: 'failed', message: parseKratosApiError(err).message || String(err) };
   }
 
   // 新任务登记到工作台交办（「任务」页签的交办中能看到）；登记失败不影响已经派出去的事
   let registered = !createdRecord;
+  let officeId = input.officeId ?? '';
   if (createdRecord) {
     try {
-      const person = target.kind === 'agent' || target.kind === 'team';
-      await createOfficeTask(input.title, input.body, {
+      const row = await createOfficeTask(input.title, input.body, {
         sessionId: anchor,
-        assigneeKind: target.kind === 'team' ? 'team' : 'agent',
-        assigneeId: person ? target.id : input.spiritId,
+        ...assigneeOf(target),
         assigneeName: target.name,
       });
+      officeId = row.id;
       registered = true;
     } catch (err) {
       console.warn('[cc] dispatched but not registered', err);
+    }
+  }
+  // 挂到任务下。挂不上不影响已经派出去的事：会话 metadata 里还记着一份（旧口径），会话中心照样认得
+  if (officeId && sent) {
+    try {
+      await addOfficeTaskExecution(officeId, { ...sent, executor: executorKey(target), executor_name: target.name });
+    } catch (err) {
+      console.warn('[cc] dispatched but execution not linked to the task', err);
     }
   }
   return { ok: true, anchorId: anchor, sessionId, registered };

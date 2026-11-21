@@ -62,7 +62,12 @@ describe('三个模块与领域', () => {
       '/knowledge',
     ]);
     expect(workbench?.primaries[0].children.map((c) => c.to)).toEqual(['/approvals']);
-    expect(workbench?.primaries[1].children.map((c) => c.to)).toEqual(['/coding-tasks']);
+    // 编码任务 2026-11-21 起在任务的列表视图里看，原页面挪到 Harness › 编排 › 运行台 下面
+    expect(workbench?.primaries[1].children).toEqual([]);
+    const fleet = buildNavDomains(all)
+      .find((d) => d.key === 'orchestrate')
+      ?.primaries.find((p) => p.to === '/fleet');
+    expect(fleet?.children.map((c) => c.to)).toEqual(['/coding-tasks']);
     expect(workbench?.primaries[2].children.map((c) => c.to)).toEqual(['/task-workspace', '/sessions', '/companion']);
   });
 

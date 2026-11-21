@@ -5,11 +5,14 @@
 export const DELIVERABLES = ['say', 'doc', 'sheet', 'code'] as const;
 export type Deliverable = (typeof DELIVERABLES)[number];
 
-/** 运行台的终端 / 编排没有地方记「属于哪个任务」，挂在任务锚点会话的 metadata 里 */
+/** 运行台的终端 / 编排、流程的一次运行没有地方记「属于哪个任务」，挂在任务锚点会话的 metadata 里 */
 export interface CcLink {
-  kind: 'terminal' | 'run';
+  kind: 'terminal' | 'run' | 'flow';
   id: string;
   hand: string;
+  /** 流程：哪个流程、叫什么（运行记录里没有名字） */
+  graphId?: string;
+  name?: string;
 }
 
 /** 会话 metadata_json 里会话中心用到的键；其余键原样保留 */

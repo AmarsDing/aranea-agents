@@ -83,7 +83,7 @@ describe('AppCommandDock', () => {
     });
     const wrapper = setup();
     await openDock(wrapper);
-    // 一行里只有：回形针、输入、发送、收起（没有标题、说明、添加按钮）
+    // 一行里只有：回形针、输入、发送、展开交办面板、收起（没有标题、说明、添加按钮）
     expect(wrapper.find('.app-dock__head').exists()).toBe(false);
     expect(wrapper.find('.app-dock__hint').exists()).toBe(false);
     expect(wrapper.find('.app-dock__add').exists()).toBe(false);
@@ -106,6 +106,27 @@ describe('AppCommandDock', () => {
     await wrapper.find('form').trigger('submit');
     await flushPromises();
     expect(quick.quickAdd).toHaveBeenLastCalledWith('整理一下', [file], expect.anything());
+    expect(wrapper.findAll('.app-dock__file')).toHaveLength(0);
+  });
+
+  it('expand hands the typed text and files to the assign panel and clears the bar', async () => {
+    const seen: unknown[] = [];
+    const onOpen = (e: Event) => seen.push((e as CustomEvent).detail);
+    window.addEventListener('aranea:open-assign', onOpen);
+    const wrapper = setup();
+    await openDock(wrapper);
+    const file = new File(['x'], '数据.csv', { type: 'text/csv' });
+    const picker = wrapper.find('input[type="file"]');
+    Object.defineProperty(picker.element, 'files', { value: [file], configurable: true });
+    await picker.trigger('change');
+    await wrapper.find('input[type="text"]').setValue(' 核对账单 ');
+    await wrapper.find('.app-dock__assign').trigger('click');
+    window.removeEventListener('aranea:open-assign', onOpen);
+
+    // 测试里的按钮桩会把点击转两次，只看第一次带过去的内容
+    expect(seen[0]).toEqual({ text: '核对账单', files: [file] });
+    expect(quick.quickAdd).not.toHaveBeenCalled();
+    expect((wrapper.find('input[type="text"]').element as HTMLInputElement).value).toBe('');
     expect(wrapper.findAll('.app-dock__file')).toHaveLength(0);
   });
 

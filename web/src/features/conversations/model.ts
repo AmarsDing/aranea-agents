@@ -4,11 +4,13 @@
 //   P1 只用现成接口：本平台会话、工作台交办登记、编码工具桥任务、运行台编排与终端；在前端拼装。
 import type { CodingTask } from '../../services/kratos/agentbridge/v1';
 import type { AgentPreset, RunDetail, Terminal, Workspace } from '../fleet/api';
+import type { GraphExecution } from '../graph/types';
+import type { OfficeTaskExecutionRow } from '../office/api';
 import type { OfficeTaskRow } from '../office/types';
 import type { Session } from '../session/types';
 import { parseMeta, type CcLink, type Deliverable } from './handoff';
 
-export type ExecKind = 'session' | 'bridge' | 'terminal';
+export type ExecKind = 'session' | 'bridge' | 'terminal' | 'flow';
 export type ExecStatus = 'waiting' | 'running' | 'failed' | 'done' | 'idle';
 export type Bucket = 'active' | 'archived' | 'deleted';
 export type TaskOrigin = 'office' | 'run' | 'auto';
@@ -27,7 +29,7 @@ export interface Execution {
   id: string;
   kind: ExecKind;
   refId: string;
-  /** 执行者：编码工具用工具键（cc / cx / wb / ds / gk / 其他工具 id），本平台用 `agent:<id>` / `team:<id>` */
+  /** 执行者：编码工具用工具键（cc / cx / wb / ds / gk / 其他工具 id），本平台用 `agent:<id>` / `team:<id>`，流程用 `flow:<graphId>` */
   executor: string;
   executorName: string;
   what: string;
@@ -81,6 +83,10 @@ export interface Sources {
   terminals: Terminal[];
   presets: AgentPreset[];
   workspaces: Workspace[];
+  /** 交办面板派出的流程运行（逐个读的详情）；没读到的不显示 */
+  flows?: GraphExecution[];
+  /** 任务 ↔ 执行关联表：哪条记录属于哪个工作台任务（P1 起的正式口径；没有行的老数据走 metadata） */
+  executions?: OfficeTaskExecutionRow[];
 }
 
 // ——— 执行者 ———
@@ -105,9 +111,13 @@ export const KNOWN_TOOLS = ['cc', 'cx', 'wb', 'ds', 'gk'] as const;
 export const toolKey = (raw: string) => TOOL_KEYS[raw] ?? raw;
 export const toolName = (key: string, presets: AgentPreset[] = []) =>
   TOOL_NAMES[key] ?? presets.find((p) => p.id === key)?.label ?? key;
-/** 执行者筛选用的分组：本平台智能体 / 团队都归「ag」 */
+/** 执行者筛选用的分组：本平台智能体 / 团队都归「ag」，各个流程都归「flow」 */
 export const executorGroup = (executor: string) =>
-  executor.startsWith('agent:') || executor.startsWith('team:') ? 'ag' : executor;
+  executor.startsWith('agent:') || executor.startsWith('team:')
+    ? 'ag'
+    : executor.startsWith('flow:')
+      ? 'flow'
+      : executor;
 
 // ——— 各来源 → 执行 ———
 const n = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
@@ -246,6 +256,44 @@ export function fromTerminal(t: Terminal, src: Pick<Sources, 'presets' | 'worksp
   };
 }
 
+/** 流程的一次运行。名字记在派出时的链接上（运行记录里没有） */
+export function fromFlow(x: GraphExecution, link: Pick<CcLink, 'hand' | 'name'>): Execution {
+  const status: ExecStatus =
+    x.status === 'running' || x.status === 'pending'
+      ? 'running'
+      : x.status === 'interrupted'
+        ? 'waiting'
+        : x.status === 'failed'
+          ? 'failed'
+          : x.status === 'completed'
+            ? 'done'
+            : 'idle';
+  return {
+    id: `flow:${x.executionId}`,
+    kind: 'flow',
+    refId: x.executionId,
+    executor: `flow:${x.graphId}`,
+    executorName: link.name || x.graphId,
+    what: x.currentNode || x.interruptNode || '',
+    model: '',
+    status,
+    reason: status === 'waiting' ? 'input' : '',
+    detail: x.errorMessage,
+    start: x.startedAt,
+    last: x.finishedAt || x.steps[x.steps.length - 1]?.timestamp || x.startedAt,
+    turns: 0,
+    tokens: 0,
+    costUsd: 0,
+    bucket: 'active',
+    pinned: false,
+    agentId: '',
+    workspaceId: '',
+    parentSessionId: x.sessionId,
+    project: '',
+    hand: link.hand,
+  };
+}
+
 // ——— 拼成任务 ———
 const byStart = (a: Execution, b: Execution) => a.start.localeCompare(b.start);
 const stepStart = (x: Execution | Execution[]) => (Array.isArray(x) ? (x[0]?.start ?? '') : x.start);
@@ -289,7 +337,33 @@ export function buildTasks(src: Sources): ConvTask[] {
     return chain;
   };
 
-  // 0. 先认领「跟进」：交给下一位时新开的会话（cc_task），以及记在锚点会话上的终端 / 编排（cc_links）
+  // 0a. 关联表里登记过的执行，直接挂到所属的工作台任务下（任务在已加载范围里才认领，否则留给后面的口径）
+  const officeIds = new Set(src.officeTasks.map((o) => o.id));
+  const byOffice = new Map<string, ConvTask['chain']>();
+  for (const row of src.executions ?? []) {
+    if (!officeIds.has(row.task_id)) continue;
+    let steps: ConvTask['chain'] = [];
+    if (row.kind === 'session') {
+      const e = take(sessions.get(row.ref_id));
+      if (e) steps = [{ ...e, hand: row.hand || e.hand }, ...kidsOf(e.refId)];
+    } else if (row.kind === 'coding_task') {
+      const e = take(bridge.find((b) => b.refId === row.ref_id));
+      if (e) steps = [e];
+    } else if (row.kind === 'fleet_terminal') {
+      const e = take(terminals.get(row.ref_id));
+      if (e) steps = [{ ...e, hand: row.hand }];
+    } else if (row.kind === 'fleet_run') {
+      const rd = src.runs.find((r) => r.run.id === row.ref_id);
+      if (rd) steps = runChain(rd, row.hand);
+    } else if (row.kind === 'graph_execution') {
+      const x = src.flows?.find((r) => r.executionId === row.ref_id);
+      const e = x ? take(fromFlow(x, { hand: row.hand, name: row.executor_name })) : null;
+      if (e) steps = [e];
+    }
+    if (steps.length) byOffice.set(row.task_id, [...(byOffice.get(row.task_id) ?? []), ...steps]);
+  }
+
+  // 0b. 再认领「跟进」的旧口径：交给下一位时新开的会话（cc_task），以及记在锚点会话上的终端 / 编排（cc_links）
   const followers = [...sessions.values()]
     .filter((e) => meta.get(e.refId)?.cc_task)
     .map(take)
@@ -300,6 +374,10 @@ export function buildTasks(src: Sources): ConvTask[] {
       if (link.kind === 'terminal') {
         const e = take(terminals.get(link.id));
         if (e) linked.push({ anchor: s.id, steps: [{ ...e, hand: link.hand }] });
+      } else if (link.kind === 'flow') {
+        const x = src.flows?.find((r) => r.executionId === link.id);
+        const e = x ? take(fromFlow(x, link)) : null;
+        if (e) linked.push({ anchor: s.id, steps: [e] });
       } else {
         const rd = src.runs.find((r) => r.run.id === link.id);
         const steps = rd ? runChain(rd, link.hand) : [];
@@ -344,6 +422,25 @@ export function buildTasks(src: Sources): ConvTask[] {
         officeId: ot.id,
         officeDone: ot.status === 'done',
       });
+  }
+
+  // 2b. 关联表认领的执行挂回各自的任务；任务还没有条目（没有承载会话的登记）就建一个
+  for (const [officeId, steps] of byOffice) {
+    const t = tasks.find((x) => x.officeId === officeId);
+    if (t) t.chain.push(...steps);
+    else {
+      const ot = src.officeTasks.find((o) => o.id === officeId)!;
+      tasks.push({
+        id: `office:${ot.id}`,
+        title: ot.title,
+        origin: 'office',
+        project: '',
+        chain: steps,
+        anchorId: ot.session_id || ot.source_ref || undefined,
+        officeId: ot.id,
+        officeDone: ot.status === 'done',
+      });
+    }
   }
 
   // 3. 运行台编排：任务 = Run

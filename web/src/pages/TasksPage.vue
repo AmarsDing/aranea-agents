@@ -17,6 +17,10 @@
       }}</router-link>
     </p>
 
+    <Teleport defer to="#app-tab-actions">
+      <TaskViewToggle />
+    </Teleport>
+
     <div class="tk-board">
       <section
         v-for="col in BOARD_COLUMNS"
@@ -34,9 +38,9 @@
               <span class="tk-live" aria-hidden="true" />{{ t('taskBoard.live') }}
             </span>
           </h2>
-          <router-link v-if="col === 'doing'" class="today-link" to="/coding-tasks">
+          <button v-if="col === 'doing'" type="button" class="today-link" @click="openAssign({ to: 'tool' })">
             {{ t('tasksPage.newCoding') }}
-          </router-link>
+          </button>
           <q-btn
             v-if="col === 'todo'"
             flat
@@ -44,10 +48,10 @@
             round
             size="sm"
             icon="add"
-            :aria-label="t('taskBoard.addInDock')"
-            @click="openDock"
+            :aria-label="t('taskBoard.newTask')"
+            @click="openAssign()"
           >
-            <q-tooltip>{{ t('taskBoard.addInDock') }}</q-tooltip>
+            <q-tooltip>{{ t('taskBoard.newTask') }}</q-tooltip>
           </q-btn>
         </header>
 
@@ -110,6 +114,7 @@ import { useI18n } from 'vue-i18n';
 import { useRoute, useRouter } from 'vue-router';
 import draggable from 'vuedraggable';
 import TaskCard from '../components/tasks/TaskCard.vue';
+import TaskViewToggle from '../components/tasks/TaskViewToggle.vue';
 import TaskDetailDrawer from '../features/tasks/components/TaskDetailDrawer.vue';
 import { listOfficeTasks, setOfficeTaskStatus } from '../features/office/api';
 import type { OfficeTaskRow } from '../features/office/types';
@@ -121,7 +126,7 @@ import {
   type BoardColumn,
   type BoardItem,
 } from '../features/tasks/board';
-import { OPEN_DOCK_EVENT } from '../features/tasks/quickAdd';
+import { openAssign } from '../features/conversations/assign';
 import { useTaskDispatch } from '../features/tasks/useTaskDispatch';
 import type { Recipient } from '../features/today/command';
 import { COMMAND_DONE_EVENT, type CommandDoneDetail } from '../features/today/useCommandRunner';
@@ -288,11 +293,6 @@ watch(detailTask, (task) => {
 const detailRun = computed(
   () => side.delegated.value.find((row) => row.officeTaskId && row.officeTaskId === detailId.value) ?? null,
 );
-
-/** 新任务在底部指令窗里写：+ 只负责把它展开并聚焦 */
-function openDock() {
-  window.dispatchEvent(new CustomEvent(OPEN_DOCK_EVENT));
-}
 
 function openItem(item: BoardItem) {
   if (item.task) detailId.value = item.task.id;

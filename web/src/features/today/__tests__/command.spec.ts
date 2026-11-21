@@ -78,8 +78,8 @@ describe('commandTitle', () => {
 
 describe('sessionLink', () => {
   it('points at the chat session of the recipient', () => {
-    expect(sessionLink({ kind: 'agent', id: 'ag 1' }, 's/1')).toBe('/chat?session=s%2F1&agent=ag%201');
-    expect(sessionLink({ kind: 'team', id: 'tm-1' }, 's1')).toBe('/chat?session=s1&team=tm-1');
+    expect(sessionLink({ kind: 'agent', id: 'ag 1' }, 's/1')).toBe('/tasks/list?session=s%2F1&agent=ag%201');
+    expect(sessionLink({ kind: 'team', id: 'tm-1' }, 's1')).toBe('/tasks/list?session=s1&team=tm-1');
   });
 });
 

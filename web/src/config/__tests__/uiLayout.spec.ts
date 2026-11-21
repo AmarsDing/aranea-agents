@@ -22,7 +22,8 @@ describe('整站布局属主', () => {
     expect(resolveUiVisual(undefined)).toBe('workspace');
     expect(resolveUiVisual('deck')).toBe('deck');
     expect(resolveUiVisual('other')).toBe('workspace');
-    for (const name of ['workbench', 'overview', 'ceo-company', 'ceo-overview', 'chat']) {
+    // 任务的列表视图（原会话中心）是指挥舱；对话页 2026-11-21 起只做聊天，用工作区视觉
+    for (const name of ['workbench', 'overview', 'ceo-company', 'ceo-overview', 'task-list']) {
       expect(routeByName(name)?.meta?.uiVisual, name).toBe('deck');
     }
     // 运行与治理各页（含实时运转、流程健康）2026-11-19 起统一用标准页面骨架
@@ -32,7 +33,7 @@ describe('整站布局属主', () => {
   });
 
   it('并行面板和编排画布不会被标准页壳改形', () => {
-    for (const name of ['overview', 'ceo-overview', 'chat']) {
+    for (const name of ['overview', 'ceo-overview', 'chat', 'task-list']) {
       expect(routeByName(name)?.meta?.uiLayout, name).toBe('immersive');
     }
     for (const name of ['team-orchestrate', 'graph-editor-new', 'graph-editor']) {

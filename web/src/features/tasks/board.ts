@@ -149,3 +149,30 @@ export function fileIcon(name: string, contentType: string): string {
   if (['zip', 'rar', '7z', 'tar', 'gz'].includes(ext)) return 'folder_zip';
   return 'insert_drive_file';
 }
+
+/** 执行者图标：团队、流程、运行台的工具 / 编排、其余是同事（Agent） */
+export function assigneeIcon(kind: string | undefined): string {
+  if (kind === 'team') return 'groups';
+  if (kind === 'flow') return 'schema';
+  if (kind === 'run') return 'account_tree';
+  if (kind === 'tool') return 'terminal';
+  return 'smart_toy';
+}
+
+/**
+ * 不是从工作台下达、而是在 Harness 里直接发起后登记进来的任务：从哪发起的。
+ * 交办面板派给流程 / 编码工具的任务也是这几种执行对象，但它们带着资料袋会话，不算。
+ */
+export function harnessOrigin(
+  task: { assignee_kind?: string; session_id?: string } | null | undefined,
+): 'fleet' | 'flow' | '' {
+  if (!task || task.session_id) return '';
+  if (task.assignee_kind === 'flow') return 'flow';
+  if (task.assignee_kind === 'run' || task.assignee_kind === 'tool') return 'fleet';
+  return '';
+}
+
+/** 执行对象是一段可以直接对话的会话（同事 / 团队）；流程、编码工具、编排的过程不在会话里 */
+export function talksInSession(kind: string | undefined): boolean {
+  return kind === 'agent' || kind === 'team';
+}

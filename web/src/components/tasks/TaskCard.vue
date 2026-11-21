@@ -28,7 +28,7 @@
           {{ t(`taskBoard.state.${state}`) }}
         </span>
         <span v-if="run?.agentKey" class="tk-card__who">
-          <q-icon :name="run.assigneeKind === 'team' ? 'groups' : 'smart_toy'" size="12px" aria-hidden="true" />
+          <q-icon :name="assigneeIcon(run.assigneeKind)" size="12px" aria-hidden="true" />
           {{ run.agentKey }}
         </span>
         <span v-if="due" class="tk-due today-mono" :class="`tk-due--${due}`">
@@ -38,6 +38,7 @@
           <q-icon name="attach_file" size="12px" aria-hidden="true" />{{ task.file_count }}
         </span>
         <span v-if="task?.source === 'mail'" class="today-tag">{{ t('today.tasks.fromMail') }}</span>
+        <span v-if="origin" class="today-tag">{{ t(`taskBoard.origin.${origin}`) }}</span>
         <span v-if="!task && run" class="today-tag">{{ t('taskBoard.coding') }}</span>
         <span v-if="stamp" class="today-mono">{{ stamp }}</span>
       </span>
@@ -134,7 +135,15 @@
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { OfficeTaskRow } from '../../features/office/types';
-import { BOARD_COLUMNS, dueState, moveAction, type BoardColumn, type BoardItem } from '../../features/tasks/board';
+import {
+  BOARD_COLUMNS,
+  assigneeIcon,
+  dueState,
+  harnessOrigin,
+  moveAction,
+  type BoardColumn,
+  type BoardItem,
+} from '../../features/tasks/board';
 import type { Recipient } from '../../features/today/command';
 import { clock, dayOrClock, type DelegatedRow } from '../../features/today/logic';
 import TaskRecipientMenu from './TaskRecipientMenu.vue';
@@ -160,6 +169,8 @@ const { t } = useI18n();
 
 const run = computed(() => props.run ?? null);
 const title = computed(() => props.task?.title || run.value?.title || '');
+/** 在运行台 / 流程页直接发起后登记进来的任务，标一下从哪发起的 */
+const origin = computed(() => harnessOrigin(props.task));
 
 /** todo 待办 | doing 我在做 | running 运行中 | waiting 等你回复 | stuck 卡住了 | review 待验收 | done 已完成 */
 const state = computed(() => {

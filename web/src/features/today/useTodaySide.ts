@@ -6,6 +6,11 @@
  */
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { listCodingTasks } from '../coding/api';
+import { listRuns, listTerminals } from '../fleet/api';
+import { getGraphExecution } from '../graph/api';
+import { listOfficeTaskExecutions } from '../office/api';
+import { executionOverrides, pendingRefs, type ExecOverride } from '../tasks/execState';
+import type { CodingTask } from '../../services/kratos/agentbridge/v1';
 import { listCronTasks, parseCronMetadata } from '../cron/api';
 import {
   createOfficeTask,
@@ -116,6 +121,33 @@ export function useTodaySide(scope: 'all' | 'tasks' = 'all') {
     }
   }
 
+  /**
+   * 派给流程 / 编码工具 / 运行台的任务，进度不在承载会话里：按任务 ↔ 执行关联表去各自的记录读。
+   * 任何一步读不到都只是少一个结论，任务按「进行中」显示，不让整块报错。
+   */
+  async function loadExecOverrides(open: readonly OfficeTaskRow[], coding: readonly CodingTask[]) {
+    const none = new Map<string, ExecOverride>();
+    try {
+      const pending = pendingRefs(await listOfficeTaskExecutions(), new Set(open.map((t) => t.id)));
+      if (!pending.rows.length) return none;
+      const fleetOk = pending.needsFleet && can('coding.manage');
+      const [flows, terminals, runs] = await Promise.all([
+        Promise.allSettled(pending.flowIds.slice(0, 20).map((id) => getGraphExecution(id))),
+        fleetOk ? listTerminals().catch(() => []) : [],
+        fleetOk ? listRuns().catch(() => []) : [],
+      ]);
+      return executionOverrides(pending.rows, {
+        codingTasks: coding,
+        flows: flows.flatMap((r) => (r.status === 'fulfilled' && r.value.executionId ? [r.value] : [])),
+        terminals,
+        runs,
+      });
+    } catch (err) {
+      console.warn('[today] task executions load failed', err);
+      return none;
+    }
+  }
+
   async function loadDelegated() {
     const [coding, office] = await Promise.allSettled([
       listCodingTasks(DELEGATED_FETCH_LIMIT),
@@ -131,7 +163,13 @@ export function useTodaySide(scope: 'all' | 'tasks' = 'all') {
     if (coding.status === 'fulfilled') rows.push(...classifyDelegated(coding.value, new Date()));
     if (office.status === 'fulfilled') {
       aiTasks.value = office.value;
-      if (office.value.length > 0) rows.push(...classifyOfficeDelegated(office.value, await loadSituations()));
+      if (office.value.length > 0) {
+        const [situations, overrides] = await Promise.all([
+          loadSituations(),
+          loadExecOverrides(office.value, coding.status === 'fulfilled' ? coding.value : []),
+        ]);
+        rows.push(...classifyOfficeDelegated(office.value, situations, overrides));
+      }
     }
     delegated.value = sortDelegated(rows);
     delegatedStatus.value = 'ok';

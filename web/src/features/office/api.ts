@@ -762,10 +762,14 @@ export async function listOfficeTasks(
   return (res.items ?? []).map((row) => wireToTask(row as Record<string, unknown>));
 }
 
-/** 交办登记：记下这件事派给了谁、在哪个会话里跟进。 */
+/**
+ * 交办登记：记下这件事派给了谁、在哪个会话里跟进。
+ * agent / team 必须有承载会话；tool / run / flow（运行台的编码工具、几个工具一起做、流程）没有会话，
+ * sessionId 传空串，进度看任务的执行（listOfficeTaskExecutions）。
+ */
 export type OfficeTaskDelegation = {
   sessionId: string;
-  assigneeKind: 'agent' | 'team';
+  assigneeKind: 'agent' | 'team' | 'tool' | 'run' | 'flow';
   assigneeId: string;
   assigneeName: string;
 };
@@ -781,13 +785,75 @@ export async function createOfficeTask(
     title,
     body: body || undefined,
     source: delegation ? 'delegate' : kind === 'note' ? 'note' : undefined,
-    sourceRef: delegation?.sessionId,
+    sourceRef: delegation?.sessionId || undefined,
     assigneeKind: delegation?.assigneeKind,
     assigneeId: delegation?.assigneeId,
     assigneeName: delegation?.assigneeName,
     dueAt: dueAt || undefined,
   });
   return wireToTask(res as Record<string, unknown>);
+}
+
+/** 任务的一次执行：指向别处的一条记录（会话、流程运行、编码任务、运行台终端…），状态由各自的接口读 */
+export type OfficeTaskExecutionKind =
+  | 'session'
+  | 'team_run'
+  | 'graph_execution'
+  | 'coding_task'
+  | 'fleet_terminal'
+  | 'fleet_run'
+  | 'cron_run';
+
+export interface OfficeTaskExecutionRow {
+  id: string;
+  task_id: string;
+  kind: OfficeTaskExecutionKind;
+  ref_id: string;
+  /** agent:<id> / team:<id> / flow:<graphId> / 工具键 */
+  executor: string;
+  executor_name: string;
+  /** 派出时发给执行者的交接单原文 */
+  hand: string;
+  created_at: string;
+}
+
+function wireToExecution(raw: Record<string, unknown>): OfficeTaskExecutionRow {
+  return {
+    id: String(raw.id ?? ''),
+    task_id: String(raw.taskId ?? raw.task_id ?? ''),
+    kind: String(raw.kind ?? '') as OfficeTaskExecutionKind,
+    ref_id: String(raw.refId ?? raw.ref_id ?? ''),
+    executor: String(raw.executor ?? ''),
+    executor_name: String(raw.executorName ?? raw.executor_name ?? ''),
+    hand: String(raw.hand ?? ''),
+    created_at: String(raw.createdAt ?? raw.created_at ?? ''),
+  };
+}
+
+/** 不带 taskId = 本人全部任务的执行（按先后） */
+export async function listOfficeTaskExecutions(taskId = ''): Promise<OfficeTaskExecutionRow[]> {
+  const res = await createOfficeMailService().ListOfficeTaskExecutions({
+    taskId: taskId || undefined,
+    limit: undefined,
+  });
+  return (res.items ?? []).map((x) => wireToExecution(x as Record<string, unknown>));
+}
+
+/** 把一条执行记录挂到任务下；同一条重复挂是幂等的 */
+export async function addOfficeTaskExecution(
+  taskId: string,
+  e: Pick<OfficeTaskExecutionRow, 'kind' | 'ref_id'> &
+    Partial<Pick<OfficeTaskExecutionRow, 'executor' | 'executor_name' | 'hand'>>,
+): Promise<OfficeTaskExecutionRow> {
+  const res = await createOfficeMailService().AddOfficeTaskExecution({
+    taskId,
+    kind: e.kind,
+    refId: e.ref_id,
+    executor: e.executor || undefined,
+    executorName: e.executor_name || undefined,
+    hand: e.hand || undefined,
+  });
+  return wireToExecution(res as Record<string, unknown>);
 }
 
 export async function setOfficeTaskStatus(id: string, status: OfficeTaskStatus): Promise<OfficeTaskRow> {

@@ -52,7 +52,8 @@ export const NAV_DOMAIN_DEFS: DomainDef[] = [
     icon: 'space_dashboard',
     primaries: [
       { path: '/workbench', labelKey: 'shell.nav.tab.today', children: ['/approvals'] },
-      { path: '/tasks', children: ['/coding-tasks'] },
+      // 编码任务 2026-11-21 起在任务的列表视图里看（按执行者筛选）；原页面挪到 Harness › 运行台 下面
+      { path: '/tasks' },
       // 任务工作区是「带任务进展的对话」，归到对话下面
       { path: '/chat', labelKey: 'shell.nav.tab.chat', children: ['/task-workspace', '/sessions', '/companion'] },
       { path: '/schedule' },
@@ -91,7 +92,7 @@ export const NAV_DOMAIN_DEFS: DomainDef[] = [
     key: 'orchestrate',
     module: 'harness',
     icon: 'schema',
-    primaries: [{ path: '/graphs' }, { path: '/fleet' }, { path: '/cron' }],
+    primaries: [{ path: '/graphs' }, { path: '/fleet', children: ['/coding-tasks'] }, { path: '/cron' }],
   },
   {
     key: 'capability',

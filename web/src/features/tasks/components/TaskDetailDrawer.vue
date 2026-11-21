@@ -47,7 +47,7 @@
             {{ t(`taskBoard.state.${state}`) }}
           </span>
           <span v-if="assigned" class="tk-detail__who">
-            <q-icon :name="task.assignee_kind === 'team' ? 'groups' : 'smart_toy'" size="14px" aria-hidden="true" />
+            <q-icon :name="assigneeIcon(task.assignee_kind)" size="14px" aria-hidden="true" />
             {{ task.assignee_name || task.assignee_id }}
           </span>
           <span v-if="due" class="tk-due today-mono" :class="`tk-due--${due}`">
@@ -189,7 +189,7 @@
               :to="sessionTo"
             />
             <q-btn
-              v-if="state === 'running'"
+              v-if="state === 'running' && talks"
               outline
               dense
               no-caps
@@ -199,7 +199,7 @@
               @click="stop"
             />
             <q-btn
-              v-if="canRetry"
+              v-if="canRetry && talks"
               outline
               dense
               no-caps
@@ -228,7 +228,9 @@
               </q-menu>
             </q-btn>
           </div>
-          <form class="tk-exec__follow" @submit.prevent="sendFollow">
+          <!-- 流程 / 编码工具 / 编排的任务没有可以对话的会话：停下、换人、退回都在「打开过程」里做 -->
+          <p v-if="!talks" class="tk-detail__muted">{{ t('taskBoard.detail.noSession') }}</p>
+          <form v-else class="tk-exec__follow" @submit.prevent="sendFollow">
             <q-input
               v-model="follow"
               dense
@@ -471,7 +473,7 @@ import {
 import type { OfficeEventRow, OfficeTaskFileRow, OfficeTaskRow, OfficeTaskStatus } from '../../office/types';
 import type { Recipient } from '../../today/command';
 import { clock, dayOrClock, type DelegatedRow } from '../../today/logic';
-import { BOARD_COLUMNS, dueState, fileIcon, fileSize } from '../board';
+import { BOARD_COLUMNS, assigneeIcon, dueState, fileIcon, fileSize, talksInSession } from '../board';
 import { useTaskDispatch } from '../useTaskDispatch';
 
 const props = defineProps<{
@@ -513,6 +515,7 @@ const schedOpen = ref(false);
 let dragDepth = 0;
 
 const assigned = computed(() => Boolean(props.task?.assignee_kind));
+const talks = computed(() => talksInSession(props.task?.assignee_kind));
 
 /** todo 待办 | doing 我在做 | running AI 在做 | waiting 等你回复 | stuck 卡住了 | review 待验收 | done 已完成 */
 const state = computed(() => {
@@ -570,9 +573,9 @@ const updatedAt = computed(() => dayOrClock(props.run?.at || props.task?.updated
 
 const sessionTo = computed(() => {
   const task = props.task;
-  if (!task?.session_id) return '/chat';
+  if (!task?.session_id) return task ? { path: '/tasks/list', query: { task: `office:${task.id}` } } : '/tasks/list';
   const owner = task.assignee_kind === 'team' ? 'team' : 'agent';
-  return { path: '/chat', query: { session: task.session_id, [owner]: task.assignee_id } };
+  return { path: '/tasks/list', query: { session: task.session_id, [owner]: task.assignee_id } };
 });
 
 const runRef = computed(() => ({

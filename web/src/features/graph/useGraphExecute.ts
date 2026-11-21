@@ -2,6 +2,7 @@ import { ref } from 'vue';
 import type { Router } from 'vue-router';
 import { useQuasar } from 'quasar';
 import { useGraphStore } from '../../stores/graph';
+import { recordHarnessRun } from '../tasks/recordRun';
 
 /** Shared Graph run dialog + execute navigation (Graphs list + Editor). */
 export function useGraphExecute(router: Router) {
@@ -21,7 +22,8 @@ export function useGraphExecute(router: Router) {
     runDialogOpen.value = true;
   }
 
-  async function executeRun(graphId?: string) {
+  /** record：从流程列表正式运行时传流程名，这次运行会登记成一条工作台任务；编辑器里的试跑不传 */
+  async function executeRun(graphId?: string, record?: { name: string }) {
     const id = graphId ?? runTargetGraphId.value;
     if (!id) return;
     runLoading.value = true;
@@ -36,6 +38,15 @@ export function useGraphExecute(router: Router) {
         }
       }
       const result = await graphStore.runGraph(id, runSessionId.value, initialState);
+      if (record?.name && result.executionId)
+        void recordHarnessRun({
+          title: record.name,
+          body: runInitialState.value.trim(),
+          assigneeKind: 'flow',
+          assigneeId: id,
+          assigneeName: record.name,
+          exec: { kind: 'graph_execution', ref_id: result.executionId, executor: `flow:${id}` },
+        });
       runDialogOpen.value = false;
       $q.notify({ type: 'positive', message: `Graph 已开始执行：${result.executionId}` });
       await router.push({

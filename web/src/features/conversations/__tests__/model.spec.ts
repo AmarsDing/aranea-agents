@@ -96,6 +96,89 @@ describe('sessionStatus', () => {
   });
 });
 
+describe('flow runs', () => {
+  const flow = (over: Record<string, unknown> = {}) =>
+    ({
+      executionId: 'x1',
+      graphId: 'g1',
+      sessionId: 'rec',
+      status: 'running',
+      currentState: {},
+      steps: [],
+      interruptNode: '',
+      errorMessage: '',
+      currentNode: '审核',
+      lineageId: '',
+      startedAt: '2026-11-21T01:00:00Z',
+      finishedAt: '',
+      ...over,
+    }) as NonNullable<Sources['flows']>[number];
+  const record = session({
+    id: 'rec',
+    metadata_json: JSON.stringify({
+      cc_role: 'task_record',
+      cc_links: [{ kind: 'flow', id: 'x1', graphId: 'g1', name: '发版流程', hand: '【任务】发版' }],
+    }),
+  });
+
+  it('hangs a dispatched flow run under its task with the name and handoff from the link', () => {
+    const tasks = buildTasks(
+      src({
+        sessions: [record],
+        officeTasks: [office({ id: 'o1', title: '发版', source_ref: 'rec' })],
+        flows: [flow()],
+      }),
+    );
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0]).toMatchObject({ id: 'office:o1', title: '发版' });
+    expect(tasks[0]!.chain).toHaveLength(1);
+    expect(tasks[0]!.chain[0]).toMatchObject({
+      kind: 'flow',
+      refId: 'x1',
+      executor: 'flow:g1',
+      executorName: '发版流程',
+      status: 'running',
+      what: '审核',
+      hand: '【任务】发版',
+    });
+  });
+
+  it('builds a task from the execution table alone when the office task has no carrying session', () => {
+    // 流程页直接运行后登记的任务：没有会话、没有资料袋，只有关联表里的一行
+    const tasks = buildTasks(
+      src({
+        officeTasks: [
+          office({ id: 'o9', title: '月度复盘', source_ref: '', assignee_kind: 'flow', assignee_id: 'g1' }),
+        ],
+        flows: [flow({ status: 'completed' })],
+        executions: [
+          {
+            id: 'e1',
+            task_id: 'o9',
+            kind: 'graph_execution',
+            ref_id: 'x1',
+            executor: 'flow:g1',
+            executor_name: '发版流程',
+            hand: '',
+            created_at: '2026-11-21T01:00:00Z',
+          },
+        ],
+      }),
+    );
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0]).toMatchObject({ id: 'office:o9', title: '月度复盘', officeId: 'o9' });
+    expect(tasks[0]!.chain[0]).toMatchObject({ kind: 'flow', executorName: '发版流程', status: 'done' });
+  });
+
+  it('maps flow states and hides the task when the run could not be read', () => {
+    const one = (status: string) => buildTasks(src({ sessions: [record], flows: [flow({ status })] }))[0]!.chain[0];
+    expect(one('interrupted')).toMatchObject({ status: 'waiting', reason: 'input' });
+    expect(one('failed')).toMatchObject({ status: 'failed' });
+    expect(one('completed')).toMatchObject({ status: 'done' });
+    expect(buildTasks(src({ sessions: [record], flows: [] }))).toHaveLength(0);
+  });
+});
+
 describe('buildTasks', () => {
   it('groups a delegated task with its carrying session and the coding tasks it dispatched', () => {
     const tasks = buildTasks(

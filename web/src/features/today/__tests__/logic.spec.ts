@@ -257,9 +257,9 @@ describe('classifyOfficeDelegated', () => {
 
   it('links each row to its session and keeps ids distinct from coding tasks', () => {
     const [agent] = classifyOfficeDelegated([task('a', 's 1')], []);
-    expect(agent).toMatchObject({ id: 'office:a', agentKey: '内容组', to: '/chat?session=s%201&agent=agent-1' });
+    expect(agent).toMatchObject({ id: 'office:a', agentKey: '内容组', to: '/tasks/list?session=s%201&agent=agent-1' });
     const [team] = classifyOfficeDelegated([task('b', 's2', 'team')], []);
-    expect(team?.to).toBe('/chat?session=s2&team=team-1');
+    expect(team?.to).toBe('/tasks/list?session=s2&team=team-1');
     const [coding] = classifyDelegated([{ id: 'a', status: 'running', prompt: 'x' }], NOW);
     expect(coding).toMatchObject({ id: 'a', officeTaskId: '', to: '/coding-tasks?focus=a' });
   });
@@ -313,7 +313,7 @@ describe('任务生命周期（2026-11-20）', () => {
       waiting: true,
       sessionId: 's-9',
       detail: '等你确认语气',
-      to: '/chat?session=s-9&agent=agent-1',
+      to: '/tasks/list?session=s-9&agent=agent-1',
     });
   });
 });

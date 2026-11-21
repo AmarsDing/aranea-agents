@@ -200,9 +200,18 @@ export const routes: RouteRecordRaw[] = [
       {
         path: 'chat',
         name: 'chat',
-        // 会话中心（2026-11-19 起取代原来的单栏对话页；对话引擎以嵌入方式留在详情里）
+        // 只做聊天（2026-11-21 起）：问助手、问某位同事。带任务的过程在 /tasks/list。
+        component: () => import('../pages/ChatPage.vue'),
+        meta: { titleKey: 'menu.chat', breadcrumb: false, uiLayout: 'immersive' },
+        // 旧链接 /chat?task=<任务> 指的是任务，转到任务的列表视图
+        beforeEnter: (to) => (typeof to.query.task === 'string' ? { path: '/tasks/list', query: to.query } : true),
+      },
+      {
+        // 工作台 · 任务 · 列表视图：一件事交给了谁、做到哪（原会话中心，2026-11-19 起在 /chat，11-21 并入任务）
+        path: 'tasks/list',
+        name: 'task-list',
         component: () => import('../pages/ConversationCenterPage.vue'),
-        meta: { titleKey: 'menu.chat', breadcrumb: false, uiLayout: 'immersive', uiVisual: 'deck' },
+        meta: { titleKey: 'shell.nav.tab.tasks', breadcrumb: false, uiLayout: 'immersive', uiVisual: 'deck' },
       },
       {
         path: 'task-workspace',

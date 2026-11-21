@@ -214,6 +214,8 @@ import { Dialog, Notify } from 'quasar';
 import * as api from '../api';
 import type { Run, RunDetail, Task } from '../api';
 import { ago, useFleet } from '../useFleet';
+import { toolKey } from '../../conversations/model';
+import { recordHarnessRun } from '../../tasks/recordRun';
 import StatusGlyph from './StatusGlyph.vue';
 
 const { state, availableAgents, agentLabel, focusTerminal, selectWorkspace, refreshTerminals, refreshWorkspaces } =
@@ -278,7 +280,16 @@ function openNew() {
 async function create() {
   busy.value = true;
   try {
-    const r = await api.createRun({ ...form, objective: form.objective.trim() });
+    const objective = form.objective.trim();
+    const r = await api.createRun({ ...form, objective });
+    // 登记成工作台任务（不等它：登记不上不影响编排已经启动）
+    void recordHarnessRun({
+      title: objective,
+      assigneeKind: 'run',
+      assigneeId: form.agent,
+      assigneeName: `${agentLabel(form.agent)} 协调`,
+      exec: { kind: 'fleet_run', ref_id: r.id, executor: toolKey(form.agent), hand: objective },
+    });
     creating.value = false;
     form.objective = '';
     currentId.value = r.id;

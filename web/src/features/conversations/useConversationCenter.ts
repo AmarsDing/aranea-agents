@@ -5,7 +5,14 @@ import { listAgents } from '../agents/api';
 import { cancelCodingTask, listCodingTasks, reviewCodingTask } from '../coding/api';
 import { closeTerminal, getRun, listRuns, type RunDetail } from '../fleet/api';
 import { useFleet } from '../fleet/useFleet';
-import { listOfficeTasks, setOfficeTaskStatus } from '../office/api';
+import { cancelGraphExecution, getGraphExecution } from '../graph/api';
+import type { GraphExecution } from '../graph/types';
+import {
+  listOfficeTaskExecutions,
+  listOfficeTasks,
+  setOfficeTaskStatus,
+  type OfficeTaskExecutionRow,
+} from '../office/api';
 import {
   archiveSession,
   deleteSession,
@@ -22,7 +29,7 @@ import { COMMAND_DONE_EVENT } from '../today/useCommandRunner';
 import { useNavStore } from '../../stores/nav';
 import type { CodingTask } from '../../services/kratos/agentbridge/v1';
 import type { OfficeTaskRow } from '../office/types';
-import { mergeMeta } from './handoff';
+import { mergeMeta, parseMeta } from './handoff';
 import { buildTasks, flat, type Bucket, type ConvTask, type Execution } from './model';
 
 const POLL_MS = 30_000;
@@ -30,8 +37,10 @@ const SESSION_LIMIT = 200;
 const CODING_LIMIT = 100;
 /** 只展开最近的几次编排（每次要单独读一次详情） */
 const RUN_LIMIT = 10;
+/** 流程运行同样逐个读详情，只读最近派出的几次 */
+const FLOW_LIMIT = 20;
 
-export type SourceKey = 'sessions' | 'office' | 'coding' | 'fleet';
+export type SourceKey = 'sessions' | 'office' | 'coding' | 'fleet' | 'flow';
 
 export interface ActionResult {
   done: number;
@@ -51,6 +60,8 @@ export function useConversationCenter() {
   const officeTasks = ref<OfficeTaskRow[]>([]);
   const codingTasks = ref<CodingTask[]>([]);
   const runs = ref<RunDetail[]>([]);
+  const flows = ref<GraphExecution[]>([]);
+  const executions = ref<OfficeTaskExecutionRow[]>([]);
   const loaded = ref(false);
   const errors = ref<SourceKey[]>([]);
   /** 已归档 / 回收站的会话按需读（切到那两个视图或搜索时） */
@@ -67,6 +78,8 @@ export function useConversationCenter() {
       terminals: canFleet.value ? fleet.state.terminals : [],
       presets: fleet.state.presets,
       workspaces: fleet.state.workspaces,
+      flows: flows.value,
+      executions: executions.value,
     }),
   );
 
@@ -82,6 +95,28 @@ export function useConversationCenter() {
     const recent = (await listRuns()).slice(0, RUN_LIMIT);
     const details = await Promise.allSettled(recent.map((r) => getRun(r.id)));
     runs.value = details.flatMap((d) => (d.status === 'fulfilled' ? [d.value] : []));
+  }
+
+  /** 流程运行没有「按任务查」的接口：从已读到的会话 metadata 里找出派出过的运行，逐个读 */
+  async function loadFlows() {
+    const fromRows = [...executions.value]
+      .reverse()
+      .filter((e) => e.kind === 'graph_execution')
+      .map((e) => e.ref_id);
+    const fromMeta = [...sessions.values()]
+      .flat()
+      .sort((a, b) => b.updated_at.localeCompare(a.updated_at))
+      .flatMap((s) => parseMeta(s.metadata_json).cc_links ?? [])
+      .filter((l) => l.kind === 'flow')
+      .map((l) => l.id);
+    const ids = [...new Set([...fromRows, ...fromMeta])].slice(0, FLOW_LIMIT);
+    if (!ids.length) {
+      flows.value = [];
+      return true;
+    }
+    const got = await Promise.allSettled(ids.map((id) => getGraphExecution(id)));
+    flows.value = got.flatMap((d) => (d.status === 'fulfilled' && d.value.executionId ? [d.value] : []));
+    return got.every((d) => d.status === 'fulfilled');
   }
 
   let lastRefresh = 0;
@@ -100,9 +135,14 @@ export function useConversationCenter() {
       listCodingTasks(CODING_LIMIT)
         .then((rows) => (codingTasks.value = rows))
         .catch(() => failed.add('coding')),
+      // 关联表读不到（后端还是旧版）时退回 metadata 口径，不算读取失败
+      listOfficeTaskExecutions()
+        .then((rows) => (executions.value = rows))
+        .catch(() => undefined),
     ];
     if (canFleet.value) jobs.push(loadRuns().catch(() => failed.add('fleet')));
     await Promise.all(jobs);
+    if (!(await loadFlows().catch(() => false))) failed.add('flow');
     errors.value = [...failed];
     loaded.value = true;
   }
@@ -191,6 +231,7 @@ export function useConversationCenter() {
 
   async function stop(e: Execution) {
     if (e.kind === 'bridge') await cancelCodingTask(e.refId);
+    else if (e.kind === 'flow') await cancelGraphExecution(e.refId);
     await refresh();
   }
 

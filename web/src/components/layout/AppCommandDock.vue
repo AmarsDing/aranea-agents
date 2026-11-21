@@ -89,6 +89,19 @@
             dense
             round
             size="sm"
+            icon="open_in_full"
+            class="app-dock__tool app-dock__assign"
+            :aria-label="t('shell.nav.dockAssign')"
+            :disable="busy"
+            @click="openPanel"
+          >
+            <q-tooltip>{{ t('shell.nav.dockAssign') }}</q-tooltip>
+          </q-btn>
+          <q-btn
+            flat
+            dense
+            round
+            size="sm"
             icon="expand_more"
             class="app-dock__collapse"
             :aria-label="t('shell.nav.dockCollapse')"
@@ -126,6 +139,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useQuasar } from 'quasar';
 import { useI18n } from 'vue-i18n';
 import { useRouter } from 'vue-router';
+import { openAssign } from '../../features/conversations/assign';
 import { fileIcon, fileSize } from '../../features/tasks/board';
 import { acceptFiles, OPEN_DOCK_EVENT, quickAdd, quickAddPlan } from '../../features/tasks/quickAdd';
 import { useTaskDispatch } from '../../features/tasks/useTaskDispatch';
@@ -270,6 +284,13 @@ function onDrop(event: DragEvent) {
   dragging.value = false;
   addFiles(event.dataTransfer?.files);
   inputEl.value?.focus();
+}
+
+// 想选交给谁（同事、部门里的人、流程、编码工具）、选交回什么：带着已写的话和附件打开完整的交办面板
+function openPanel() {
+  openAssign({ text: text.value.trim(), files: files.value.map((item) => item.file) });
+  text.value = '';
+  clearFiles();
 }
 
 // ——— 发送：记进我的任务（@某 Agent 就建好立刻派给它；记：… 记成随手记录）———

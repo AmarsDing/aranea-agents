@@ -27,6 +27,13 @@ import { CHAT_SESSION_MAX_LIMIT, CHAT_SESSION_PAGE_SIZE } from '../../features/c
 
 export type TeamSessionRow = Session & { at: string };
 
+// 任务的资料袋会话（会话中心派活时建的，只放资料、挂执行）不是一段对话，聊天页的会话历史里不列。
+// shortcut: 按页过滤，命中多的一页会显得短；资料袋随任务 ↔ 执行关联表替换旧口径后一并去掉。
+const TASK_RECORD = /"cc_role"\s*:\s*"task_record"/;
+function withoutTaskRecords<T extends { items: Session[] }>(result: T): T {
+  return { ...result, items: result.items.filter((x) => !TASK_RECORD.test(x.metadata_json ?? '')) };
+}
+
 function mergeSessionMetrics<T extends Session>(session: T, patch: SessionContextPatch): T {
   return {
     ...session,
@@ -225,13 +232,15 @@ export const useChatSessionStore = defineStore('chatSession', () => {
         // 刷新已加载窗口：一次性取回覆盖当前已加载条数的首页，按 id 合并，
         // 保留已分页加载的更旧会话，避免 refresh 事件把列表截回第一页。
         const windowLimit = Math.min(Math.max(sessions.value.length, CHAT_SESSION_PAGE_SIZE), CHAT_SESSION_MAX_LIMIT);
-        const result = await searchSessions({
-          agent_id: agentId,
-          root_only: true,
-          keyword,
-          limit: windowLimit,
-          offset: 0,
-        });
+        const result = withoutTaskRecords(
+          await searchSessions({
+            agent_id: agentId,
+            root_only: true,
+            keyword,
+            limit: windowLimit,
+            offset: 0,
+          }),
+        );
         if (myGeneration !== _loadGeneration) return; // 已被后续切换作废
         const merged = new Map(sessions.value.map((session) => [session.id, session]));
         for (const row of result.items) {
@@ -254,13 +263,15 @@ export const useChatSessionStore = defineStore('chatSession', () => {
       }
 
       sessionsLoading.value = true;
-      const result = await searchSessions({
-        agent_id: agentId,
-        root_only: true,
-        keyword,
-        limit: CHAT_SESSION_PAGE_SIZE,
-        offset: 0,
-      });
+      const result = withoutTaskRecords(
+        await searchSessions({
+          agent_id: agentId,
+          root_only: true,
+          keyword,
+          limit: CHAT_SESSION_PAGE_SIZE,
+          offset: 0,
+        }),
+      );
       if (myGeneration !== _loadGeneration) return; // 已被后续切换作废
       sessions.value = sortSessionsForDisplay(result.items);
       sessionsTotal.value = result.total;
@@ -294,13 +305,15 @@ export const useChatSessionStore = defineStore('chatSession', () => {
     const myGeneration = _loadGeneration;
     sessionsLoadingMore.value = true;
     try {
-      const result = await searchSessions({
-        agent_id: agentId,
-        root_only: true,
-        keyword: sessionListKeyword.value.trim() || undefined,
-        limit: CHAT_SESSION_PAGE_SIZE,
-        offset: listOffset.value,
-      });
+      const result = withoutTaskRecords(
+        await searchSessions({
+          agent_id: agentId,
+          root_only: true,
+          keyword: sessionListKeyword.value.trim() || undefined,
+          limit: CHAT_SESSION_PAGE_SIZE,
+          offset: listOffset.value,
+        }),
+      );
       if (myGeneration !== _loadGeneration) return;
       // 并发删除可能导致空页：直接视为已到底，避免反复触发空请求
       listOffset.value = result.items.length > 0 ? listOffset.value + result.items.length : result.total;

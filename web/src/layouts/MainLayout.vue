@@ -231,6 +231,8 @@
     <GlobalCommandPalette v-model="paletteOpen" :seed="paletteSeed" />
     <!-- 指令窗只管记任务 / 派给 AI；跳转与搜索走顶栏 Ctrl K 指令面板 -->
     <AppCommandDock v-if="showDock" :style="{ '--app-dock-offset': `${dockOffset}px` }" />
+    <!-- 全站唯一的交办面板：指令条、任务页、看板节点打开的都是它 -->
+    <AssignDialog />
     <!-- 全站唯一命令式确认框宿主：各页统一走 useAppConfirm 的 confirm()。 -->
     <AppConfirmHost />
     <!-- 全站唯一命令式输入框宿主：表单 prompt / 单选选择器统一走 useAppPrompt 的 prompt()。 -->
@@ -264,6 +266,8 @@ import {
 } from '../config/navDomains';
 import AppDomainTabs from '../components/layout/AppDomainTabs.vue';
 import AppCommandDock from '../components/layout/AppCommandDock.vue';
+import AssignDialog from '../features/conversations/components/AssignDialog.vue';
+import { useProMode } from '../features/prefs/proMode';
 import { useAuthStore } from '../stores/auth';
 import { useNavStore } from '../stores/nav';
 import { useInboundNotificationStore } from '../stores/inboundNotifications';
@@ -453,7 +457,10 @@ const themeModes = [
   { value: 'light', icon: 'light_mode', labelKey: 'common.lightMode' },
   { value: 'dark', icon: 'dark_mode', labelKey: 'common.darkMode' },
 ] as const;
+const { pro: proMode, toggle: toggleProMode } = useProMode();
 const prefToggles = computed(() => [
+  // 专业模式：任务先看「过程」、带上轮数 / Token / 花费、交办面板展开高级项（只是个人显示偏好）
+  { icon: 'engineering', labelKey: 'shell.prefs.pro', on: proMode.value, toggle: toggleProMode },
   { icon: 'compress', labelKey: 'shell.prefs.density', on: a11yPrefs.density === 'compact', toggle: toggleDensity },
   {
     icon: 'visibility',

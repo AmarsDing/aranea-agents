@@ -156,6 +156,7 @@ export const uiShellZh = {
     dockSend: '发送：记进我的任务（回车）',
     dockWillNote: '发送：记成随手记录',
     dockCollapse: '收起指令窗',
+    dockAssign: '展开：选交给谁（同事、流程、编码工具）',
     dockFiles: '{n} 个附件',
     dockAdded: '已添加到我的任务',
     dockNoted: '已记一笔',
@@ -231,6 +232,7 @@ export const uiShellZh = {
   prefs: {
     title: '显示偏好',
     density: '紧凑密度',
+    pro: '专业模式（先看过程、显示花费）',
     colorvision: '色觉安全',
     motion: '减少动效',
   },
@@ -487,6 +489,7 @@ export const uiShellEn = {
     dockSend: 'Send: add to My tasks (Enter)',
     dockWillNote: 'Send: save as a note',
     dockCollapse: 'Collapse command window',
+    dockAssign: 'Expand: pick who does it (colleague, flow, coding tool)',
     dockFiles: '{n} files',
     dockAdded: 'Added to My tasks',
     dockNoted: 'Note saved',
@@ -562,6 +565,7 @@ export const uiShellEn = {
   prefs: {
     title: 'Display preferences',
     density: 'Compact density',
+    pro: 'Pro mode (process first, show cost)',
     colorvision: 'Color-vision safe',
     motion: 'Reduce motion',
   },

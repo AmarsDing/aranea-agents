@@ -301,6 +301,8 @@ const SITUATION_STUCK = new Set(['waiting', 'failed', 'cancelled']);
 export function classifyOfficeDelegated(
   tasks: readonly OfficeDelegatedInput[],
   situations: readonly SituationInput[],
+  /** 派给流程 / 编码工具 / 运行台的任务：承载会话没有态势时，用它最近一次执行的状态（features/tasks/execState.ts） */
+  overrides?: ReadonlyMap<string, { state: DelegatedState; waiting: boolean; detail: string; at: string }>,
 ): DelegatedRow[] {
   const latest = new Map<string, SituationInput>();
   for (const row of situations) {
@@ -312,7 +314,8 @@ export function classifyOfficeDelegated(
     if (!task.id) continue;
     const sessionId = task.session_id || task.source_ref;
     const situation = latest.get(sessionId);
-    let state: DelegatedState = 'running';
+    const over = situation ? undefined : overrides?.get(task.id);
+    let state: DelegatedState = over?.state ?? 'running';
     if (situation && SITUATION_STUCK.has(situation.status)) state = 'stuck';
     else if (situation?.status === 'completed') state = 'review';
     const owner = task.assignee_kind === 'team' ? 'team' : 'agent';
@@ -321,16 +324,16 @@ export function classifyOfficeDelegated(
       title: firstLine(task.title) || task.id,
       agentKey: task.assignee_name || task.assignee_id,
       state,
-      at: situation?.updated_at || task.created_at,
+      at: situation?.updated_at || over?.at || task.created_at,
       to: sessionId
-        ? `/chat?session=${encodeURIComponent(sessionId)}&${owner}=${encodeURIComponent(task.assignee_id)}`
-        : '/chat',
+        ? `/tasks/list?session=${encodeURIComponent(sessionId)}&${owner}=${encodeURIComponent(task.assignee_id)}`
+        : `/tasks/list?task=${encodeURIComponent(`office:${task.id}`)}`,
       officeTaskId: task.id,
-      detail: state === 'review' ? '' : firstLine(situation?.current_step_summary),
+      detail: state === 'review' ? '' : firstLine(situation?.current_step_summary || over?.detail),
       sessionId,
       assigneeKind: task.assignee_kind,
       assigneeId: task.assignee_id,
-      waiting: situation?.status === 'waiting',
+      waiting: situation?.status === 'waiting' || Boolean(over?.waiting),
       situation: situation?.status ?? '',
       retryAvailable: Boolean(situation?.retry_available),
     });

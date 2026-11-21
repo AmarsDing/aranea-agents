@@ -1,6 +1,6 @@
 <template>
   <!--
-    工作台 › 对话：会话中心（P1）。以任务为中心——一件事交给了哪些执行者（本平台智能体、编码工具），每次执行是一段会话。
+    工作台 › 任务 › 列表（2026-11-21 起从「对话」页签搬到这里，/tasks/list）。以任务为中心——一件事交给了哪些执行者（同事、流程、编码工具），每次执行是一段过程。
     左：任务列表（搜索、视图页签、执行者胶囊、项目 / 排序）；右：任务详情（执行链 + 当前执行的对话）。
     设计：docs/aranea-agents/design/2026-11-17-三大模块重设计/07-会话中心.md §10
   -->
@@ -12,6 +12,7 @@
     @drop.prevent="onDrop"
   >
     <Teleport defer to="#app-tab-actions">
+      <TaskViewToggle />
       <q-btn
         unelevated
         dense
@@ -259,6 +260,7 @@
         :exec-id="execId"
         :tab="tab"
         :busy="busy"
+        :pro="pro"
         @select-exec="selectExec"
         @tab="tab = $event"
         @handover="handover"
@@ -284,6 +286,7 @@
         </div>
         <CcBridgeView v-if="exec?.kind === 'bridge'" :exec="exec" @changed="cc.refresh" />
         <CcTerminalView v-else-if="exec?.kind === 'terminal'" :exec="exec" />
+        <CcFlowView v-else-if="exec?.kind === 'flow'" :exec="exec" @changed="cc.refresh" />
       </CcTaskDetail>
       <div v-else-if="!(composer && composerOpen)" class="cc-empty cc-empty--detail">
         <p>{{ t(cc.loaded.value ? 'cc.pickOne' : 'cc.loading') }}</p>
@@ -307,7 +310,10 @@ import { useI18n } from 'vue-i18n';
 import { useRoute, useRouter } from 'vue-router';
 import { Notify } from 'quasar';
 import ChatWorkspace from '../features/chat/ChatWorkspace.vue';
+import TaskViewToggle from '../components/tasks/TaskViewToggle.vue';
+import { useProMode } from '../features/prefs/proMode';
 import CcBridgeView from '../features/conversations/components/CcBridgeView.vue';
+import CcFlowView from '../features/conversations/components/CcFlowView.vue';
 import CcComposer, { type ComposerPick } from '../features/conversations/components/CcComposer.vue';
 import CcFilesView from '../features/conversations/components/CcFilesView.vue';
 import CcGlyph from '../components/conversations/CcGlyph.vue';
@@ -356,7 +362,10 @@ const project = ref('');
 const sort = ref<(typeof SORTS)[number]>('last');
 const selId = ref('');
 const execId = ref('');
-const tab = ref<DetailTab>('talk');
+const { pro } = useProMode();
+// 专业模式默认停在「过程」，否则停在「概况」
+const defaultTab = (): DetailTab => (pro.value ? 'process' : 'overview');
+const tab = ref<DetailTab>(defaultTab());
 const picked = ref(new Set<string>());
 const busy = ref(false);
 const chatMounted = ref(false);
@@ -403,7 +412,8 @@ const executors = computed(() => {
     const keys = new Set(flat(task).map((e) => executorGroup(e.executor)));
     for (const key of keys) {
       const e = flat(task).find((x) => executorGroup(x.executor) === key)!;
-      const item = seen.get(key) ?? { key, name: key === 'ag' ? t('cc.platform') : e.executorName, count: 0 };
+      const name = key === 'ag' ? t('cc.platform') : key === 'flow' ? t('cc.flow.group') : e.executorName;
+      const item = seen.get(key) ?? { key, name, count: 0 };
       item.count++;
       seen.set(key, item);
     }
@@ -476,7 +486,12 @@ function rowMeta(task: ConvTask) {
   const who = uniqueExecutors(task).length === 1 ? xs[0]!.executorName : t('cc.meta.execs', { n: xs.length });
   const turns = sumOf(task, 'turns');
   const cost = sumOf(task, 'costUsd');
-  return [who, task.project, turns ? t('cc.meta.turns', { n: turns }) : '', cost ? `$${cost.toFixed(2)}` : '']
+  return [
+    who,
+    task.project,
+    pro.value && turns ? t('cc.meta.turns', { n: turns }) : '',
+    pro.value && cost ? `$${cost.toFixed(2)}` : '',
+  ]
     .filter(Boolean)
     .join(' · ');
 }
@@ -486,7 +501,7 @@ function selectTask(id: string) {
   selId.value = id;
   const target = allTasks.value.find((x) => x.id === id);
   selectExec(target ? (defaultExecution(target)?.id ?? '') : '');
-  tab.value = 'talk';
+  tab.value = defaultTab();
 }
 function selectExec(id: string) {
   execId.value = id;
@@ -535,7 +550,8 @@ const stopLinkWatch = watch(
   async (ok) => {
     if (!ok || !linked) return;
     stopLinkWatch();
-    let found = allTasks.value.find((x) => flat(x).some((e) => e.id === `session:${linked}`));
+    // 派给流程 / 编码工具的任务，登记的会话是资料袋（不算一次执行）：按任务的锚点认
+    let found = allTasks.value.find((x) => x.anchorId === linked || flat(x).some((e) => e.id === `session:${linked}`));
     if (!found) {
       try {
         const s = await getSession(linked);
@@ -551,10 +567,29 @@ const stopLinkWatch = watch(
       view.value = 'all';
     }
     await nextTick();
-    selId.value = found.id;
-    selectExec(`session:${linked}`);
+    // 这段会话本身是一次执行就选它；否则（资料袋）选任务里该看的那次执行
+    if (flat(found).some((e) => e.id === `session:${linked}`)) {
+      selId.value = found.id;
+      selectExec(`session:${linked}`);
+    } else selectTask(found.id);
+    tab.value = 'process';
   },
 );
+
+// 从任务页、看板带着 ?task= 进来（没有承载会话的任务，如派给流程 / 运行台的）：选中这条任务
+const linkedTask = typeof route.query.task === 'string' ? route.query.task : '';
+if (linkedTask) {
+  const stop = watch(
+    () => cc.loaded.value && allTasks.value.some((x) => x.id === linkedTask),
+    async (ok) => {
+      if (!ok) return;
+      stop();
+      if (!visible.value.some((x) => x.id === linkedTask)) view.value = 'all';
+      await nextTick();
+      selectTask(linkedTask);
+    },
+  );
+}
 
 // ——— 操作 ———
 function report(kind: 'archive' | 'restore' | 'delete', r: ActionResult, undo?: () => void) {
@@ -597,6 +632,7 @@ async function deleteTasks(list: ConvTask[]) {
     n('terminal') ? t('cc.confirm.terminal', { n: n('terminal') }) : '',
     live ? t('cc.confirm.live', { n: live }) : '',
     n('bridge') ? t('cc.confirm.bridge', { n: n('bridge') }) : '',
+    n('flow') ? t('cc.confirm.flow', { n: n('flow') }) : '',
   ].filter(Boolean);
   const ok = await confirm({
     title: t('cc.confirm.title', { n: list.length, execs: xs.length }),
@@ -663,6 +699,8 @@ async function onSent(r: { anchorId: string; sessionId: string }) {
   await nextTick();
   selectTask(hit.id);
   if (r.sessionId && flat(hit).some((e) => e.id === `session:${r.sessionId}`)) selectExec(`session:${r.sessionId}`);
+  // 刚派出去：直接看它开始做
+  tab.value = 'process';
 }
 async function approve() {
   if (!task.value) return;
@@ -676,8 +714,8 @@ async function approve() {
 function reject() {
   const last = task.value ? [...flat(task.value)].sort((a, b) => a.last.localeCompare(b.last)).pop() : undefined;
   if (!last) return;
-  const person = executorGroup(last.executor) === 'ag';
-  openHandoff(person ? 'agent' : 'tool', { reject: true, prefer: last.executor });
+  const group = executorGroup(last.executor);
+  openHandoff(group === 'ag' ? 'agent' : group === 'flow' ? 'flow' : 'tool', { reject: true, prefer: last.executor });
 }
 
 // ——— 把文件拖到页面上：带着这些文件新建任务（新任务面板开着就加进去） ———
