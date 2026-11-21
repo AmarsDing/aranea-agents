@@ -34,6 +34,7 @@ type mailFakeRepos struct {
 	attachments map[string]*MailAttachment
 	tasks       map[string]*OfficeTask
 	taskFiles   map[string]*OfficeTaskFile
+	taskExecs   []*OfficeTaskExecution
 	failUID     map[int64]int // uid → 剩余注入失败次数
 	insertedSeq []int64       // 成功插入的 uid 轨迹（故障注入断言用）
 	blocked     map[string][]string

@@ -4343,6 +4343,335 @@ func (x *OfficeTaskFileRequest) GetId() string {
 	return ""
 }
 
+// OfficeTaskExecution 任务的一次执行：指向别处的一条记录，执行自己的状态由各自的接口读。
+type OfficeTaskExecution struct {
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	Id     string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	TaskId string                 `protobuf:"bytes,2,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
+	// session | team_run | graph_execution | coding_task | fleet_terminal | fleet_run | cron_run
+	Kind  string `protobuf:"bytes,3,opt,name=kind,proto3" json:"kind,omitempty"`
+	RefId string `protobuf:"bytes,4,opt,name=ref_id,json=refId,proto3" json:"ref_id,omitempty"`
+	// 执行者键：agent:<id> / team:<id> / flow:<graphId> / 工具键
+	Executor     string `protobuf:"bytes,5,opt,name=executor,proto3" json:"executor,omitempty"`
+	ExecutorName string `protobuf:"bytes,6,opt,name=executor_name,json=executorName,proto3" json:"executor_name,omitempty"`
+	// 派出时发给执行者的交接单原文
+	Hand          string                 `protobuf:"bytes,7,opt,name=hand,proto3" json:"hand,omitempty"`
+	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *OfficeTaskExecution) Reset() {
+	*x = OfficeTaskExecution{}
+	mi := &file_kratos_office_v1_mail_proto_msgTypes[62]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *OfficeTaskExecution) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*OfficeTaskExecution) ProtoMessage() {}
+
+func (x *OfficeTaskExecution) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_office_v1_mail_proto_msgTypes[62]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use OfficeTaskExecution.ProtoReflect.Descriptor instead.
+func (*OfficeTaskExecution) Descriptor() ([]byte, []int) {
+	return file_kratos_office_v1_mail_proto_rawDescGZIP(), []int{62}
+}
+
+func (x *OfficeTaskExecution) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *OfficeTaskExecution) GetTaskId() string {
+	if x != nil {
+		return x.TaskId
+	}
+	return ""
+}
+
+func (x *OfficeTaskExecution) GetKind() string {
+	if x != nil {
+		return x.Kind
+	}
+	return ""
+}
+
+func (x *OfficeTaskExecution) GetRefId() string {
+	if x != nil {
+		return x.RefId
+	}
+	return ""
+}
+
+func (x *OfficeTaskExecution) GetExecutor() string {
+	if x != nil {
+		return x.Executor
+	}
+	return ""
+}
+
+func (x *OfficeTaskExecution) GetExecutorName() string {
+	if x != nil {
+		return x.ExecutorName
+	}
+	return ""
+}
+
+func (x *OfficeTaskExecution) GetHand() string {
+	if x != nil {
+		return x.Hand
+	}
+	return ""
+}
+
+func (x *OfficeTaskExecution) GetCreatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return nil
+}
+
+type ListOfficeTaskExecutionsRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// 空 = 本人全部任务的执行
+	TaskId        string `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
+	Limit         int32  `protobuf:"varint,2,opt,name=limit,proto3" json:"limit,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListOfficeTaskExecutionsRequest) Reset() {
+	*x = ListOfficeTaskExecutionsRequest{}
+	mi := &file_kratos_office_v1_mail_proto_msgTypes[63]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListOfficeTaskExecutionsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListOfficeTaskExecutionsRequest) ProtoMessage() {}
+
+func (x *ListOfficeTaskExecutionsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_office_v1_mail_proto_msgTypes[63]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListOfficeTaskExecutionsRequest.ProtoReflect.Descriptor instead.
+func (*ListOfficeTaskExecutionsRequest) Descriptor() ([]byte, []int) {
+	return file_kratos_office_v1_mail_proto_rawDescGZIP(), []int{63}
+}
+
+func (x *ListOfficeTaskExecutionsRequest) GetTaskId() string {
+	if x != nil {
+		return x.TaskId
+	}
+	return ""
+}
+
+func (x *ListOfficeTaskExecutionsRequest) GetLimit() int32 {
+	if x != nil {
+		return x.Limit
+	}
+	return 0
+}
+
+type ListOfficeTaskExecutionsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Items         []*OfficeTaskExecution `protobuf:"bytes,1,rep,name=items,proto3" json:"items,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListOfficeTaskExecutionsResponse) Reset() {
+	*x = ListOfficeTaskExecutionsResponse{}
+	mi := &file_kratos_office_v1_mail_proto_msgTypes[64]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListOfficeTaskExecutionsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListOfficeTaskExecutionsResponse) ProtoMessage() {}
+
+func (x *ListOfficeTaskExecutionsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_office_v1_mail_proto_msgTypes[64]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListOfficeTaskExecutionsResponse.ProtoReflect.Descriptor instead.
+func (*ListOfficeTaskExecutionsResponse) Descriptor() ([]byte, []int) {
+	return file_kratos_office_v1_mail_proto_rawDescGZIP(), []int{64}
+}
+
+func (x *ListOfficeTaskExecutionsResponse) GetItems() []*OfficeTaskExecution {
+	if x != nil {
+		return x.Items
+	}
+	return nil
+}
+
+type AddOfficeTaskExecutionRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	TaskId        string                 `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
+	Kind          string                 `protobuf:"bytes,2,opt,name=kind,proto3" json:"kind,omitempty"`
+	RefId         string                 `protobuf:"bytes,3,opt,name=ref_id,json=refId,proto3" json:"ref_id,omitempty"`
+	Executor      string                 `protobuf:"bytes,4,opt,name=executor,proto3" json:"executor,omitempty"`
+	ExecutorName  string                 `protobuf:"bytes,5,opt,name=executor_name,json=executorName,proto3" json:"executor_name,omitempty"`
+	Hand          string                 `protobuf:"bytes,6,opt,name=hand,proto3" json:"hand,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AddOfficeTaskExecutionRequest) Reset() {
+	*x = AddOfficeTaskExecutionRequest{}
+	mi := &file_kratos_office_v1_mail_proto_msgTypes[65]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AddOfficeTaskExecutionRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AddOfficeTaskExecutionRequest) ProtoMessage() {}
+
+func (x *AddOfficeTaskExecutionRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_office_v1_mail_proto_msgTypes[65]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AddOfficeTaskExecutionRequest.ProtoReflect.Descriptor instead.
+func (*AddOfficeTaskExecutionRequest) Descriptor() ([]byte, []int) {
+	return file_kratos_office_v1_mail_proto_rawDescGZIP(), []int{65}
+}
+
+func (x *AddOfficeTaskExecutionRequest) GetTaskId() string {
+	if x != nil {
+		return x.TaskId
+	}
+	return ""
+}
+
+func (x *AddOfficeTaskExecutionRequest) GetKind() string {
+	if x != nil {
+		return x.Kind
+	}
+	return ""
+}
+
+func (x *AddOfficeTaskExecutionRequest) GetRefId() string {
+	if x != nil {
+		return x.RefId
+	}
+	return ""
+}
+
+func (x *AddOfficeTaskExecutionRequest) GetExecutor() string {
+	if x != nil {
+		return x.Executor
+	}
+	return ""
+}
+
+func (x *AddOfficeTaskExecutionRequest) GetExecutorName() string {
+	if x != nil {
+		return x.ExecutorName
+	}
+	return ""
+}
+
+func (x *AddOfficeTaskExecutionRequest) GetHand() string {
+	if x != nil {
+		return x.Hand
+	}
+	return ""
+}
+
+type OfficeTaskExecutionRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *OfficeTaskExecutionRequest) Reset() {
+	*x = OfficeTaskExecutionRequest{}
+	mi := &file_kratos_office_v1_mail_proto_msgTypes[66]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *OfficeTaskExecutionRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*OfficeTaskExecutionRequest) ProtoMessage() {}
+
+func (x *OfficeTaskExecutionRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_office_v1_mail_proto_msgTypes[66]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use OfficeTaskExecutionRequest.ProtoReflect.Descriptor instead.
+func (*OfficeTaskExecutionRequest) Descriptor() ([]byte, []int) {
+	return file_kratos_office_v1_mail_proto_rawDescGZIP(), []int{66}
+}
+
+func (x *OfficeTaskExecutionRequest) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
 type TriggerDigestRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Since         *timestamppb.Timestamp `protobuf:"bytes,1,opt,name=since,proto3" json:"since,omitempty"` // 空 = 默认昨夜今晨窗口
@@ -4352,7 +4681,7 @@ type TriggerDigestRequest struct {
 
 func (x *TriggerDigestRequest) Reset() {
 	*x = TriggerDigestRequest{}
-	mi := &file_kratos_office_v1_mail_proto_msgTypes[62]
+	mi := &file_kratos_office_v1_mail_proto_msgTypes[67]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4364,7 +4693,7 @@ func (x *TriggerDigestRequest) String() string {
 func (*TriggerDigestRequest) ProtoMessage() {}
 
 func (x *TriggerDigestRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_office_v1_mail_proto_msgTypes[62]
+	mi := &file_kratos_office_v1_mail_proto_msgTypes[67]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4377,7 +4706,7 @@ func (x *TriggerDigestRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TriggerDigestRequest.ProtoReflect.Descriptor instead.
 func (*TriggerDigestRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_office_v1_mail_proto_rawDescGZIP(), []int{62}
+	return file_kratos_office_v1_mail_proto_rawDescGZIP(), []int{67}
 }
 
 func (x *TriggerDigestRequest) GetSince() *timestamppb.Timestamp {
@@ -4397,7 +4726,7 @@ type TriggerDigestResponse struct {
 
 func (x *TriggerDigestResponse) Reset() {
 	*x = TriggerDigestResponse{}
-	mi := &file_kratos_office_v1_mail_proto_msgTypes[63]
+	mi := &file_kratos_office_v1_mail_proto_msgTypes[68]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4409,7 +4738,7 @@ func (x *TriggerDigestResponse) String() string {
 func (*TriggerDigestResponse) ProtoMessage() {}
 
 func (x *TriggerDigestResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_office_v1_mail_proto_msgTypes[63]
+	mi := &file_kratos_office_v1_mail_proto_msgTypes[68]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4422,7 +4751,7 @@ func (x *TriggerDigestResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TriggerDigestResponse.ProtoReflect.Descriptor instead.
 func (*TriggerDigestResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_office_v1_mail_proto_rawDescGZIP(), []int{63}
+	return file_kratos_office_v1_mail_proto_rawDescGZIP(), []int{68}
 }
 
 func (x *TriggerDigestResponse) GetMessageCount() int32 {
@@ -4810,6 +5139,30 @@ const file_kratos_office_v1_mail_proto_rawDesc = "" +
 	"\fcontent_type\x18\x03 \x01(\tR\vcontentType\x12\x18\n" +
 	"\acontent\x18\x04 \x01(\fR\acontent\"-\n" +
 	"\x15OfficeTaskFileRequest\x12\x14\n" +
+	"\x02id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\x02id\"\xf9\x01\n" +
+	"\x13OfficeTaskExecution\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x17\n" +
+	"\atask_id\x18\x02 \x01(\tR\x06taskId\x12\x12\n" +
+	"\x04kind\x18\x03 \x01(\tR\x04kind\x12\x15\n" +
+	"\x06ref_id\x18\x04 \x01(\tR\x05refId\x12\x1a\n" +
+	"\bexecutor\x18\x05 \x01(\tR\bexecutor\x12#\n" +
+	"\rexecutor_name\x18\x06 \x01(\tR\fexecutorName\x12\x12\n" +
+	"\x04hand\x18\a \x01(\tR\x04hand\x129\n" +
+	"\n" +
+	"created_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\"P\n" +
+	"\x1fListOfficeTaskExecutionsRequest\x12\x17\n" +
+	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12\x14\n" +
+	"\x05limit\x18\x02 \x01(\x05R\x05limit\"_\n" +
+	" ListOfficeTaskExecutionsResponse\x12;\n" +
+	"\x05items\x18\x01 \x03(\v2%.kratos.office.v1.OfficeTaskExecutionR\x05items\"\xca\x01\n" +
+	"\x1dAddOfficeTaskExecutionRequest\x12\x1d\n" +
+	"\atask_id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\x06taskId\x12\x18\n" +
+	"\x04kind\x18\x02 \x01(\tB\x04\xe2A\x01\x02R\x04kind\x12\x1b\n" +
+	"\x06ref_id\x18\x03 \x01(\tB\x04\xe2A\x01\x02R\x05refId\x12\x1a\n" +
+	"\bexecutor\x18\x04 \x01(\tR\bexecutor\x12#\n" +
+	"\rexecutor_name\x18\x05 \x01(\tR\fexecutorName\x12\x12\n" +
+	"\x04hand\x18\x06 \x01(\tR\x04hand\"2\n" +
+	"\x1aOfficeTaskExecutionRequest\x12\x14\n" +
 	"\x02id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\x02id\"H\n" +
 	"\x14TriggerDigestRequest\x120\n" +
 	"\x05since\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\x05since\"V\n" +
@@ -4820,7 +5173,7 @@ const file_kratos_office_v1_mail_proto_rawDesc = "" +
 	"\x14TLS_MODE_UNSPECIFIED\x10\x00\x12\x10\n" +
 	"\fTLS_MODE_TLS\x10\x01\x12\x15\n" +
 	"\x11TLS_MODE_STARTTLS\x10\x02\x12\x11\n" +
-	"\rTLS_MODE_NONE\x10\x032\xd0,\n" +
+	"\rTLS_MODE_NONE\x10\x032\xbc0\n" +
 	"\x11OfficeMailService\x12\x81\x01\n" +
 	"\fListAccounts\x12\x16.google.protobuf.Empty\x1a&.kratos.office.v1.ListAccountsResponse\"1\xca\xf3\x18\r\n" +
 	"\voffice.mail\x82\xd3\xe4\x93\x02\x1a\x12\x18/v1/office/mail/accounts\x12\x8c\x01\n" +
@@ -4892,7 +5245,10 @@ const file_kratos_office_v1_mail_proto_rawDesc = "" +
 	"\x13ListOfficeTaskFiles\x12,.kratos.office.v1.ListOfficeTaskFilesRequest\x1a-.kratos.office.v1.ListOfficeTaskFilesResponse\".\xca\xf3\x18\x02\x10\x01\x82\xd3\xe4\x93\x02\"\x12 /v1/office/tasks/{task_id}/files\x12\x9a\x01\n" +
 	"\x14UploadOfficeTaskFile\x12-.kratos.office.v1.UploadOfficeTaskFileRequest\x1a .kratos.office.v1.OfficeTaskFile\"1\xca\xf3\x18\x02\x10\x01\x82\xd3\xe4\x93\x02%:\x01*\" /v1/office/tasks/{task_id}/files\x12\x81\x01\n" +
 	"\x16DownloadOfficeTaskFile\x12'.kratos.office.v1.OfficeTaskFileRequest\x1a\x14.google.api.HttpBody\"(\xca\xf3\x18\x02\x10\x01\x82\xd3\xe4\x93\x02\x1c\x12\x1a/v1/office/task-files/{id}\x12\x81\x01\n" +
-	"\x14DeleteOfficeTaskFile\x12'.kratos.office.v1.OfficeTaskFileRequest\x1a\x16.google.protobuf.Empty\"(\xca\xf3\x18\x02\x10\x01\x82\xd3\xe4\x93\x02\x1c*\x1a/v1/office/task-files/{id}B?\n" +
+	"\x14DeleteOfficeTaskFile\x12'.kratos.office.v1.OfficeTaskFileRequest\x1a\x16.google.protobuf.Empty\"(\xca\xf3\x18\x02\x10\x01\x82\xd3\xe4\x93\x02\x1c*\x1a/v1/office/task-files/{id}\x12\xab\x01\n" +
+	"\x18ListOfficeTaskExecutions\x121.kratos.office.v1.ListOfficeTaskExecutionsRequest\x1a2.kratos.office.v1.ListOfficeTaskExecutionsResponse\"(\xca\xf3\x18\x02\x10\x01\x82\xd3\xe4\x93\x02\x1c\x12\x1a/v1/office/task-executions\x12\xa8\x01\n" +
+	"\x16AddOfficeTaskExecution\x12/.kratos.office.v1.AddOfficeTaskExecutionRequest\x1a%.kratos.office.v1.OfficeTaskExecution\"6\xca\xf3\x18\x02\x10\x01\x82\xd3\xe4\x93\x02*:\x01*\"%/v1/office/tasks/{task_id}/executions\x12\x90\x01\n" +
+	"\x19RemoveOfficeTaskExecution\x12,.kratos.office.v1.OfficeTaskExecutionRequest\x1a\x16.google.protobuf.Empty\"-\xca\xf3\x18\x02\x10\x01\x82\xd3\xe4\x93\x02!*\x1f/v1/office/task-executions/{id}B?\n" +
 	"\x14api.kratos.office.v1P\x01Z%aranea-agents/api/kratos/office/v1;v1b\x06proto3"
 
 var (
@@ -4908,91 +5264,96 @@ func file_kratos_office_v1_mail_proto_rawDescGZIP() []byte {
 }
 
 var file_kratos_office_v1_mail_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_kratos_office_v1_mail_proto_msgTypes = make([]protoimpl.MessageInfo, 64)
+var file_kratos_office_v1_mail_proto_msgTypes = make([]protoimpl.MessageInfo, 69)
 var file_kratos_office_v1_mail_proto_goTypes = []any{
-	(TlsMode)(0),                          // 0: kratos.office.v1.TlsMode
-	(*MailAccount)(nil),                   // 1: kratos.office.v1.MailAccount
-	(*CreateAccountRequest)(nil),          // 2: kratos.office.v1.CreateAccountRequest
-	(*UpdateAccountRequest)(nil),          // 3: kratos.office.v1.UpdateAccountRequest
-	(*GetAccountRequest)(nil),             // 4: kratos.office.v1.GetAccountRequest
-	(*DeleteAccountRequest)(nil),          // 5: kratos.office.v1.DeleteAccountRequest
-	(*ListAccountsResponse)(nil),          // 6: kratos.office.v1.ListAccountsResponse
-	(*SyncAccountRequest)(nil),            // 7: kratos.office.v1.SyncAccountRequest
-	(*SyncAccountResponse)(nil),           // 8: kratos.office.v1.SyncAccountResponse
-	(*MailMessage)(nil),                   // 9: kratos.office.v1.MailMessage
-	(*ListMessagesRequest)(nil),           // 10: kratos.office.v1.ListMessagesRequest
-	(*ListMessagesResponse)(nil),          // 11: kratos.office.v1.ListMessagesResponse
-	(*GetMessageRequest)(nil),             // 12: kratos.office.v1.GetMessageRequest
-	(*MailMessageDetail)(nil),             // 13: kratos.office.v1.MailMessageDetail
-	(*MailboxSummary)(nil),                // 14: kratos.office.v1.MailboxSummary
-	(*MailLabelCount)(nil),                // 15: kratos.office.v1.MailLabelCount
-	(*MailAccountUnread)(nil),             // 16: kratos.office.v1.MailAccountUnread
-	(*MarkMessagesRequest)(nil),           // 17: kratos.office.v1.MarkMessagesRequest
-	(*MarkAllReadRequest)(nil),            // 18: kratos.office.v1.MarkAllReadRequest
-	(*ListThreadRequest)(nil),             // 19: kratos.office.v1.ListThreadRequest
-	(*SuggestContactsRequest)(nil),        // 20: kratos.office.v1.SuggestContactsRequest
-	(*MailContact)(nil),                   // 21: kratos.office.v1.MailContact
-	(*SuggestContactsResponse)(nil),       // 22: kratos.office.v1.SuggestContactsResponse
-	(*BlockSenderRequest)(nil),            // 23: kratos.office.v1.BlockSenderRequest
-	(*BlockSenderResponse)(nil),           // 24: kratos.office.v1.BlockSenderResponse
-	(*ListBlockedSendersResponse)(nil),    // 25: kratos.office.v1.ListBlockedSendersResponse
-	(*MarkMessagesResponse)(nil),          // 26: kratos.office.v1.MarkMessagesResponse
-	(*PurgeMessagesRequest)(nil),          // 27: kratos.office.v1.PurgeMessagesRequest
-	(*PurgeMessagesResponse)(nil),         // 28: kratos.office.v1.PurgeMessagesResponse
-	(*MailProviderInfo)(nil),              // 29: kratos.office.v1.MailProviderInfo
-	(*DetectProviderRequest)(nil),         // 30: kratos.office.v1.DetectProviderRequest
-	(*ListProvidersResponse)(nil),         // 31: kratos.office.v1.ListProvidersResponse
-	(*TestAccountRequest)(nil),            // 32: kratos.office.v1.TestAccountRequest
-	(*TestAccountResponse)(nil),           // 33: kratos.office.v1.TestAccountResponse
-	(*OutgoingAttachment)(nil),            // 34: kratos.office.v1.OutgoingAttachment
-	(*SaveDraftRequest)(nil),              // 35: kratos.office.v1.SaveDraftRequest
-	(*SaveDraftResponse)(nil),             // 36: kratos.office.v1.SaveDraftResponse
-	(*DeleteMessageRequest)(nil),          // 37: kratos.office.v1.DeleteMessageRequest
-	(*MailAttachment)(nil),                // 38: kratos.office.v1.MailAttachment
-	(*ListAttachmentsRequest)(nil),        // 39: kratos.office.v1.ListAttachmentsRequest
-	(*ListAttachmentsResponse)(nil),       // 40: kratos.office.v1.ListAttachmentsResponse
-	(*GetAttachmentRequest)(nil),          // 41: kratos.office.v1.GetAttachmentRequest
-	(*ImportEmlRequest)(nil),              // 42: kratos.office.v1.ImportEmlRequest
-	(*ExportEmlRequest)(nil),              // 43: kratos.office.v1.ExportEmlRequest
-	(*MailToTaskRequest)(nil),             // 44: kratos.office.v1.MailToTaskRequest
-	(*MailToTaskResponse)(nil),            // 45: kratos.office.v1.MailToTaskResponse
-	(*AttachmentToKnowledgeRequest)(nil),  // 46: kratos.office.v1.AttachmentToKnowledgeRequest
-	(*AttachmentToKnowledgeResponse)(nil), // 47: kratos.office.v1.AttachmentToKnowledgeResponse
-	(*SendMailRequest)(nil),               // 48: kratos.office.v1.SendMailRequest
-	(*SendMailResponse)(nil),              // 49: kratos.office.v1.SendMailResponse
-	(*OfficeTask)(nil),                    // 50: kratos.office.v1.OfficeTask
-	(*ListOfficeTasksRequest)(nil),        // 51: kratos.office.v1.ListOfficeTasksRequest
-	(*ListOfficeTasksResponse)(nil),       // 52: kratos.office.v1.ListOfficeTasksResponse
-	(*CreateOfficeTaskRequest)(nil),       // 53: kratos.office.v1.CreateOfficeTaskRequest
-	(*SetOfficeTaskStatusRequest)(nil),    // 54: kratos.office.v1.SetOfficeTaskStatusRequest
-	(*UpdateOfficeTaskRequest)(nil),       // 55: kratos.office.v1.UpdateOfficeTaskRequest
-	(*AssignOfficeTaskRequest)(nil),       // 56: kratos.office.v1.AssignOfficeTaskRequest
-	(*DeleteOfficeTaskRequest)(nil),       // 57: kratos.office.v1.DeleteOfficeTaskRequest
-	(*OfficeTaskFile)(nil),                // 58: kratos.office.v1.OfficeTaskFile
-	(*ListOfficeTaskFilesRequest)(nil),    // 59: kratos.office.v1.ListOfficeTaskFilesRequest
-	(*ListOfficeTaskFilesResponse)(nil),   // 60: kratos.office.v1.ListOfficeTaskFilesResponse
-	(*UploadOfficeTaskFileRequest)(nil),   // 61: kratos.office.v1.UploadOfficeTaskFileRequest
-	(*OfficeTaskFileRequest)(nil),         // 62: kratos.office.v1.OfficeTaskFileRequest
-	(*TriggerDigestRequest)(nil),          // 63: kratos.office.v1.TriggerDigestRequest
-	(*TriggerDigestResponse)(nil),         // 64: kratos.office.v1.TriggerDigestResponse
-	(*timestamppb.Timestamp)(nil),         // 65: google.protobuf.Timestamp
-	(*emptypb.Empty)(nil),                 // 66: google.protobuf.Empty
-	(*httpbody.HttpBody)(nil),             // 67: google.api.HttpBody
+	(TlsMode)(0),                             // 0: kratos.office.v1.TlsMode
+	(*MailAccount)(nil),                      // 1: kratos.office.v1.MailAccount
+	(*CreateAccountRequest)(nil),             // 2: kratos.office.v1.CreateAccountRequest
+	(*UpdateAccountRequest)(nil),             // 3: kratos.office.v1.UpdateAccountRequest
+	(*GetAccountRequest)(nil),                // 4: kratos.office.v1.GetAccountRequest
+	(*DeleteAccountRequest)(nil),             // 5: kratos.office.v1.DeleteAccountRequest
+	(*ListAccountsResponse)(nil),             // 6: kratos.office.v1.ListAccountsResponse
+	(*SyncAccountRequest)(nil),               // 7: kratos.office.v1.SyncAccountRequest
+	(*SyncAccountResponse)(nil),              // 8: kratos.office.v1.SyncAccountResponse
+	(*MailMessage)(nil),                      // 9: kratos.office.v1.MailMessage
+	(*ListMessagesRequest)(nil),              // 10: kratos.office.v1.ListMessagesRequest
+	(*ListMessagesResponse)(nil),             // 11: kratos.office.v1.ListMessagesResponse
+	(*GetMessageRequest)(nil),                // 12: kratos.office.v1.GetMessageRequest
+	(*MailMessageDetail)(nil),                // 13: kratos.office.v1.MailMessageDetail
+	(*MailboxSummary)(nil),                   // 14: kratos.office.v1.MailboxSummary
+	(*MailLabelCount)(nil),                   // 15: kratos.office.v1.MailLabelCount
+	(*MailAccountUnread)(nil),                // 16: kratos.office.v1.MailAccountUnread
+	(*MarkMessagesRequest)(nil),              // 17: kratos.office.v1.MarkMessagesRequest
+	(*MarkAllReadRequest)(nil),               // 18: kratos.office.v1.MarkAllReadRequest
+	(*ListThreadRequest)(nil),                // 19: kratos.office.v1.ListThreadRequest
+	(*SuggestContactsRequest)(nil),           // 20: kratos.office.v1.SuggestContactsRequest
+	(*MailContact)(nil),                      // 21: kratos.office.v1.MailContact
+	(*SuggestContactsResponse)(nil),          // 22: kratos.office.v1.SuggestContactsResponse
+	(*BlockSenderRequest)(nil),               // 23: kratos.office.v1.BlockSenderRequest
+	(*BlockSenderResponse)(nil),              // 24: kratos.office.v1.BlockSenderResponse
+	(*ListBlockedSendersResponse)(nil),       // 25: kratos.office.v1.ListBlockedSendersResponse
+	(*MarkMessagesResponse)(nil),             // 26: kratos.office.v1.MarkMessagesResponse
+	(*PurgeMessagesRequest)(nil),             // 27: kratos.office.v1.PurgeMessagesRequest
+	(*PurgeMessagesResponse)(nil),            // 28: kratos.office.v1.PurgeMessagesResponse
+	(*MailProviderInfo)(nil),                 // 29: kratos.office.v1.MailProviderInfo
+	(*DetectProviderRequest)(nil),            // 30: kratos.office.v1.DetectProviderRequest
+	(*ListProvidersResponse)(nil),            // 31: kratos.office.v1.ListProvidersResponse
+	(*TestAccountRequest)(nil),               // 32: kratos.office.v1.TestAccountRequest
+	(*TestAccountResponse)(nil),              // 33: kratos.office.v1.TestAccountResponse
+	(*OutgoingAttachment)(nil),               // 34: kratos.office.v1.OutgoingAttachment
+	(*SaveDraftRequest)(nil),                 // 35: kratos.office.v1.SaveDraftRequest
+	(*SaveDraftResponse)(nil),                // 36: kratos.office.v1.SaveDraftResponse
+	(*DeleteMessageRequest)(nil),             // 37: kratos.office.v1.DeleteMessageRequest
+	(*MailAttachment)(nil),                   // 38: kratos.office.v1.MailAttachment
+	(*ListAttachmentsRequest)(nil),           // 39: kratos.office.v1.ListAttachmentsRequest
+	(*ListAttachmentsResponse)(nil),          // 40: kratos.office.v1.ListAttachmentsResponse
+	(*GetAttachmentRequest)(nil),             // 41: kratos.office.v1.GetAttachmentRequest
+	(*ImportEmlRequest)(nil),                 // 42: kratos.office.v1.ImportEmlRequest
+	(*ExportEmlRequest)(nil),                 // 43: kratos.office.v1.ExportEmlRequest
+	(*MailToTaskRequest)(nil),                // 44: kratos.office.v1.MailToTaskRequest
+	(*MailToTaskResponse)(nil),               // 45: kratos.office.v1.MailToTaskResponse
+	(*AttachmentToKnowledgeRequest)(nil),     // 46: kratos.office.v1.AttachmentToKnowledgeRequest
+	(*AttachmentToKnowledgeResponse)(nil),    // 47: kratos.office.v1.AttachmentToKnowledgeResponse
+	(*SendMailRequest)(nil),                  // 48: kratos.office.v1.SendMailRequest
+	(*SendMailResponse)(nil),                 // 49: kratos.office.v1.SendMailResponse
+	(*OfficeTask)(nil),                       // 50: kratos.office.v1.OfficeTask
+	(*ListOfficeTasksRequest)(nil),           // 51: kratos.office.v1.ListOfficeTasksRequest
+	(*ListOfficeTasksResponse)(nil),          // 52: kratos.office.v1.ListOfficeTasksResponse
+	(*CreateOfficeTaskRequest)(nil),          // 53: kratos.office.v1.CreateOfficeTaskRequest
+	(*SetOfficeTaskStatusRequest)(nil),       // 54: kratos.office.v1.SetOfficeTaskStatusRequest
+	(*UpdateOfficeTaskRequest)(nil),          // 55: kratos.office.v1.UpdateOfficeTaskRequest
+	(*AssignOfficeTaskRequest)(nil),          // 56: kratos.office.v1.AssignOfficeTaskRequest
+	(*DeleteOfficeTaskRequest)(nil),          // 57: kratos.office.v1.DeleteOfficeTaskRequest
+	(*OfficeTaskFile)(nil),                   // 58: kratos.office.v1.OfficeTaskFile
+	(*ListOfficeTaskFilesRequest)(nil),       // 59: kratos.office.v1.ListOfficeTaskFilesRequest
+	(*ListOfficeTaskFilesResponse)(nil),      // 60: kratos.office.v1.ListOfficeTaskFilesResponse
+	(*UploadOfficeTaskFileRequest)(nil),      // 61: kratos.office.v1.UploadOfficeTaskFileRequest
+	(*OfficeTaskFileRequest)(nil),            // 62: kratos.office.v1.OfficeTaskFileRequest
+	(*OfficeTaskExecution)(nil),              // 63: kratos.office.v1.OfficeTaskExecution
+	(*ListOfficeTaskExecutionsRequest)(nil),  // 64: kratos.office.v1.ListOfficeTaskExecutionsRequest
+	(*ListOfficeTaskExecutionsResponse)(nil), // 65: kratos.office.v1.ListOfficeTaskExecutionsResponse
+	(*AddOfficeTaskExecutionRequest)(nil),    // 66: kratos.office.v1.AddOfficeTaskExecutionRequest
+	(*OfficeTaskExecutionRequest)(nil),       // 67: kratos.office.v1.OfficeTaskExecutionRequest
+	(*TriggerDigestRequest)(nil),             // 68: kratos.office.v1.TriggerDigestRequest
+	(*TriggerDigestResponse)(nil),            // 69: kratos.office.v1.TriggerDigestResponse
+	(*timestamppb.Timestamp)(nil),            // 70: google.protobuf.Timestamp
+	(*emptypb.Empty)(nil),                    // 71: google.protobuf.Empty
+	(*httpbody.HttpBody)(nil),                // 72: google.api.HttpBody
 }
 var file_kratos_office_v1_mail_proto_depIdxs = []int32{
 	0,  // 0: kratos.office.v1.MailAccount.tls_mode:type_name -> kratos.office.v1.TlsMode
-	65, // 1: kratos.office.v1.MailAccount.last_sync_at:type_name -> google.protobuf.Timestamp
-	65, // 2: kratos.office.v1.MailAccount.created_at:type_name -> google.protobuf.Timestamp
+	70, // 1: kratos.office.v1.MailAccount.last_sync_at:type_name -> google.protobuf.Timestamp
+	70, // 2: kratos.office.v1.MailAccount.created_at:type_name -> google.protobuf.Timestamp
 	0,  // 3: kratos.office.v1.MailAccount.smtp_tls:type_name -> kratos.office.v1.TlsMode
-	65, // 4: kratos.office.v1.MailAccount.sync_since:type_name -> google.protobuf.Timestamp
+	70, // 4: kratos.office.v1.MailAccount.sync_since:type_name -> google.protobuf.Timestamp
 	0,  // 5: kratos.office.v1.CreateAccountRequest.tls_mode:type_name -> kratos.office.v1.TlsMode
 	0,  // 6: kratos.office.v1.CreateAccountRequest.smtp_tls:type_name -> kratos.office.v1.TlsMode
-	65, // 7: kratos.office.v1.CreateAccountRequest.sync_since:type_name -> google.protobuf.Timestamp
+	70, // 7: kratos.office.v1.CreateAccountRequest.sync_since:type_name -> google.protobuf.Timestamp
 	0,  // 8: kratos.office.v1.UpdateAccountRequest.tls_mode:type_name -> kratos.office.v1.TlsMode
 	0,  // 9: kratos.office.v1.UpdateAccountRequest.smtp_tls:type_name -> kratos.office.v1.TlsMode
 	1,  // 10: kratos.office.v1.ListAccountsResponse.items:type_name -> kratos.office.v1.MailAccount
-	65, // 11: kratos.office.v1.MailMessage.created_at:type_name -> google.protobuf.Timestamp
-	65, // 12: kratos.office.v1.MailMessage.send_at:type_name -> google.protobuf.Timestamp
+	70, // 11: kratos.office.v1.MailMessage.created_at:type_name -> google.protobuf.Timestamp
+	70, // 12: kratos.office.v1.MailMessage.send_at:type_name -> google.protobuf.Timestamp
 	9,  // 13: kratos.office.v1.ListMessagesResponse.items:type_name -> kratos.office.v1.MailMessage
 	9,  // 14: kratos.office.v1.MailMessageDetail.message:type_name -> kratos.office.v1.MailMessage
 	16, // 15: kratos.office.v1.MailboxSummary.accounts:type_name -> kratos.office.v1.MailAccountUnread
@@ -5006,99 +5367,107 @@ var file_kratos_office_v1_mail_proto_depIdxs = []int32{
 	34, // 23: kratos.office.v1.SaveDraftRequest.attachments:type_name -> kratos.office.v1.OutgoingAttachment
 	38, // 24: kratos.office.v1.ListAttachmentsResponse.items:type_name -> kratos.office.v1.MailAttachment
 	34, // 25: kratos.office.v1.SendMailRequest.attachments:type_name -> kratos.office.v1.OutgoingAttachment
-	65, // 26: kratos.office.v1.SendMailRequest.send_at:type_name -> google.protobuf.Timestamp
-	65, // 27: kratos.office.v1.OfficeTask.created_at:type_name -> google.protobuf.Timestamp
-	65, // 28: kratos.office.v1.OfficeTask.updated_at:type_name -> google.protobuf.Timestamp
-	65, // 29: kratos.office.v1.OfficeTask.due_at:type_name -> google.protobuf.Timestamp
+	70, // 26: kratos.office.v1.SendMailRequest.send_at:type_name -> google.protobuf.Timestamp
+	70, // 27: kratos.office.v1.OfficeTask.created_at:type_name -> google.protobuf.Timestamp
+	70, // 28: kratos.office.v1.OfficeTask.updated_at:type_name -> google.protobuf.Timestamp
+	70, // 29: kratos.office.v1.OfficeTask.due_at:type_name -> google.protobuf.Timestamp
 	50, // 30: kratos.office.v1.ListOfficeTasksResponse.items:type_name -> kratos.office.v1.OfficeTask
-	65, // 31: kratos.office.v1.CreateOfficeTaskRequest.due_at:type_name -> google.protobuf.Timestamp
-	65, // 32: kratos.office.v1.UpdateOfficeTaskRequest.due_at:type_name -> google.protobuf.Timestamp
-	65, // 33: kratos.office.v1.OfficeTaskFile.created_at:type_name -> google.protobuf.Timestamp
+	70, // 31: kratos.office.v1.CreateOfficeTaskRequest.due_at:type_name -> google.protobuf.Timestamp
+	70, // 32: kratos.office.v1.UpdateOfficeTaskRequest.due_at:type_name -> google.protobuf.Timestamp
+	70, // 33: kratos.office.v1.OfficeTaskFile.created_at:type_name -> google.protobuf.Timestamp
 	58, // 34: kratos.office.v1.ListOfficeTaskFilesResponse.items:type_name -> kratos.office.v1.OfficeTaskFile
-	65, // 35: kratos.office.v1.TriggerDigestRequest.since:type_name -> google.protobuf.Timestamp
-	66, // 36: kratos.office.v1.OfficeMailService.ListAccounts:input_type -> google.protobuf.Empty
-	2,  // 37: kratos.office.v1.OfficeMailService.CreateAccount:input_type -> kratos.office.v1.CreateAccountRequest
-	3,  // 38: kratos.office.v1.OfficeMailService.UpdateAccount:input_type -> kratos.office.v1.UpdateAccountRequest
-	5,  // 39: kratos.office.v1.OfficeMailService.DeleteAccount:input_type -> kratos.office.v1.DeleteAccountRequest
-	7,  // 40: kratos.office.v1.OfficeMailService.SyncAccount:input_type -> kratos.office.v1.SyncAccountRequest
-	10, // 41: kratos.office.v1.OfficeMailService.ListMessages:input_type -> kratos.office.v1.ListMessagesRequest
-	12, // 42: kratos.office.v1.OfficeMailService.GetMessage:input_type -> kratos.office.v1.GetMessageRequest
-	37, // 43: kratos.office.v1.OfficeMailService.DeleteMessage:input_type -> kratos.office.v1.DeleteMessageRequest
-	39, // 44: kratos.office.v1.OfficeMailService.ListAttachments:input_type -> kratos.office.v1.ListAttachmentsRequest
-	41, // 45: kratos.office.v1.OfficeMailService.GetAttachment:input_type -> kratos.office.v1.GetAttachmentRequest
-	42, // 46: kratos.office.v1.OfficeMailService.ImportEml:input_type -> kratos.office.v1.ImportEmlRequest
-	43, // 47: kratos.office.v1.OfficeMailService.ExportEml:input_type -> kratos.office.v1.ExportEmlRequest
-	44, // 48: kratos.office.v1.OfficeMailService.MailToTask:input_type -> kratos.office.v1.MailToTaskRequest
-	46, // 49: kratos.office.v1.OfficeMailService.AttachmentToKnowledge:input_type -> kratos.office.v1.AttachmentToKnowledgeRequest
-	48, // 50: kratos.office.v1.OfficeMailService.SendMail:input_type -> kratos.office.v1.SendMailRequest
-	35, // 51: kratos.office.v1.OfficeMailService.SaveDraft:input_type -> kratos.office.v1.SaveDraftRequest
-	66, // 52: kratos.office.v1.OfficeMailService.GetMailboxSummary:input_type -> google.protobuf.Empty
-	17, // 53: kratos.office.v1.OfficeMailService.MarkMessages:input_type -> kratos.office.v1.MarkMessagesRequest
-	18, // 54: kratos.office.v1.OfficeMailService.MarkAllRead:input_type -> kratos.office.v1.MarkAllReadRequest
-	19, // 55: kratos.office.v1.OfficeMailService.ListThread:input_type -> kratos.office.v1.ListThreadRequest
-	20, // 56: kratos.office.v1.OfficeMailService.SuggestContacts:input_type -> kratos.office.v1.SuggestContactsRequest
-	66, // 57: kratos.office.v1.OfficeMailService.ListBlockedSenders:input_type -> google.protobuf.Empty
-	23, // 58: kratos.office.v1.OfficeMailService.BlockSender:input_type -> kratos.office.v1.BlockSenderRequest
-	23, // 59: kratos.office.v1.OfficeMailService.UnblockSender:input_type -> kratos.office.v1.BlockSenderRequest
-	27, // 60: kratos.office.v1.OfficeMailService.PurgeMessages:input_type -> kratos.office.v1.PurgeMessagesRequest
-	30, // 61: kratos.office.v1.OfficeMailService.DetectProvider:input_type -> kratos.office.v1.DetectProviderRequest
-	66, // 62: kratos.office.v1.OfficeMailService.ListProviders:input_type -> google.protobuf.Empty
-	32, // 63: kratos.office.v1.OfficeMailService.TestAccount:input_type -> kratos.office.v1.TestAccountRequest
-	63, // 64: kratos.office.v1.OfficeMailService.TriggerDigest:input_type -> kratos.office.v1.TriggerDigestRequest
-	51, // 65: kratos.office.v1.OfficeMailService.ListOfficeTasks:input_type -> kratos.office.v1.ListOfficeTasksRequest
-	53, // 66: kratos.office.v1.OfficeMailService.CreateOfficeTask:input_type -> kratos.office.v1.CreateOfficeTaskRequest
-	54, // 67: kratos.office.v1.OfficeMailService.SetOfficeTaskStatus:input_type -> kratos.office.v1.SetOfficeTaskStatusRequest
-	55, // 68: kratos.office.v1.OfficeMailService.UpdateOfficeTask:input_type -> kratos.office.v1.UpdateOfficeTaskRequest
-	56, // 69: kratos.office.v1.OfficeMailService.AssignOfficeTask:input_type -> kratos.office.v1.AssignOfficeTaskRequest
-	57, // 70: kratos.office.v1.OfficeMailService.DeleteOfficeTask:input_type -> kratos.office.v1.DeleteOfficeTaskRequest
-	59, // 71: kratos.office.v1.OfficeMailService.ListOfficeTaskFiles:input_type -> kratos.office.v1.ListOfficeTaskFilesRequest
-	61, // 72: kratos.office.v1.OfficeMailService.UploadOfficeTaskFile:input_type -> kratos.office.v1.UploadOfficeTaskFileRequest
-	62, // 73: kratos.office.v1.OfficeMailService.DownloadOfficeTaskFile:input_type -> kratos.office.v1.OfficeTaskFileRequest
-	62, // 74: kratos.office.v1.OfficeMailService.DeleteOfficeTaskFile:input_type -> kratos.office.v1.OfficeTaskFileRequest
-	6,  // 75: kratos.office.v1.OfficeMailService.ListAccounts:output_type -> kratos.office.v1.ListAccountsResponse
-	1,  // 76: kratos.office.v1.OfficeMailService.CreateAccount:output_type -> kratos.office.v1.MailAccount
-	1,  // 77: kratos.office.v1.OfficeMailService.UpdateAccount:output_type -> kratos.office.v1.MailAccount
-	66, // 78: kratos.office.v1.OfficeMailService.DeleteAccount:output_type -> google.protobuf.Empty
-	8,  // 79: kratos.office.v1.OfficeMailService.SyncAccount:output_type -> kratos.office.v1.SyncAccountResponse
-	11, // 80: kratos.office.v1.OfficeMailService.ListMessages:output_type -> kratos.office.v1.ListMessagesResponse
-	13, // 81: kratos.office.v1.OfficeMailService.GetMessage:output_type -> kratos.office.v1.MailMessageDetail
-	66, // 82: kratos.office.v1.OfficeMailService.DeleteMessage:output_type -> google.protobuf.Empty
-	40, // 83: kratos.office.v1.OfficeMailService.ListAttachments:output_type -> kratos.office.v1.ListAttachmentsResponse
-	67, // 84: kratos.office.v1.OfficeMailService.GetAttachment:output_type -> google.api.HttpBody
-	9,  // 85: kratos.office.v1.OfficeMailService.ImportEml:output_type -> kratos.office.v1.MailMessage
-	67, // 86: kratos.office.v1.OfficeMailService.ExportEml:output_type -> google.api.HttpBody
-	45, // 87: kratos.office.v1.OfficeMailService.MailToTask:output_type -> kratos.office.v1.MailToTaskResponse
-	47, // 88: kratos.office.v1.OfficeMailService.AttachmentToKnowledge:output_type -> kratos.office.v1.AttachmentToKnowledgeResponse
-	49, // 89: kratos.office.v1.OfficeMailService.SendMail:output_type -> kratos.office.v1.SendMailResponse
-	36, // 90: kratos.office.v1.OfficeMailService.SaveDraft:output_type -> kratos.office.v1.SaveDraftResponse
-	14, // 91: kratos.office.v1.OfficeMailService.GetMailboxSummary:output_type -> kratos.office.v1.MailboxSummary
-	26, // 92: kratos.office.v1.OfficeMailService.MarkMessages:output_type -> kratos.office.v1.MarkMessagesResponse
-	26, // 93: kratos.office.v1.OfficeMailService.MarkAllRead:output_type -> kratos.office.v1.MarkMessagesResponse
-	11, // 94: kratos.office.v1.OfficeMailService.ListThread:output_type -> kratos.office.v1.ListMessagesResponse
-	22, // 95: kratos.office.v1.OfficeMailService.SuggestContacts:output_type -> kratos.office.v1.SuggestContactsResponse
-	25, // 96: kratos.office.v1.OfficeMailService.ListBlockedSenders:output_type -> kratos.office.v1.ListBlockedSendersResponse
-	24, // 97: kratos.office.v1.OfficeMailService.BlockSender:output_type -> kratos.office.v1.BlockSenderResponse
-	66, // 98: kratos.office.v1.OfficeMailService.UnblockSender:output_type -> google.protobuf.Empty
-	28, // 99: kratos.office.v1.OfficeMailService.PurgeMessages:output_type -> kratos.office.v1.PurgeMessagesResponse
-	29, // 100: kratos.office.v1.OfficeMailService.DetectProvider:output_type -> kratos.office.v1.MailProviderInfo
-	31, // 101: kratos.office.v1.OfficeMailService.ListProviders:output_type -> kratos.office.v1.ListProvidersResponse
-	33, // 102: kratos.office.v1.OfficeMailService.TestAccount:output_type -> kratos.office.v1.TestAccountResponse
-	64, // 103: kratos.office.v1.OfficeMailService.TriggerDigest:output_type -> kratos.office.v1.TriggerDigestResponse
-	52, // 104: kratos.office.v1.OfficeMailService.ListOfficeTasks:output_type -> kratos.office.v1.ListOfficeTasksResponse
-	50, // 105: kratos.office.v1.OfficeMailService.CreateOfficeTask:output_type -> kratos.office.v1.OfficeTask
-	50, // 106: kratos.office.v1.OfficeMailService.SetOfficeTaskStatus:output_type -> kratos.office.v1.OfficeTask
-	50, // 107: kratos.office.v1.OfficeMailService.UpdateOfficeTask:output_type -> kratos.office.v1.OfficeTask
-	50, // 108: kratos.office.v1.OfficeMailService.AssignOfficeTask:output_type -> kratos.office.v1.OfficeTask
-	66, // 109: kratos.office.v1.OfficeMailService.DeleteOfficeTask:output_type -> google.protobuf.Empty
-	60, // 110: kratos.office.v1.OfficeMailService.ListOfficeTaskFiles:output_type -> kratos.office.v1.ListOfficeTaskFilesResponse
-	58, // 111: kratos.office.v1.OfficeMailService.UploadOfficeTaskFile:output_type -> kratos.office.v1.OfficeTaskFile
-	67, // 112: kratos.office.v1.OfficeMailService.DownloadOfficeTaskFile:output_type -> google.api.HttpBody
-	66, // 113: kratos.office.v1.OfficeMailService.DeleteOfficeTaskFile:output_type -> google.protobuf.Empty
-	75, // [75:114] is the sub-list for method output_type
-	36, // [36:75] is the sub-list for method input_type
-	36, // [36:36] is the sub-list for extension type_name
-	36, // [36:36] is the sub-list for extension extendee
-	0,  // [0:36] is the sub-list for field type_name
+	70, // 35: kratos.office.v1.OfficeTaskExecution.created_at:type_name -> google.protobuf.Timestamp
+	63, // 36: kratos.office.v1.ListOfficeTaskExecutionsResponse.items:type_name -> kratos.office.v1.OfficeTaskExecution
+	70, // 37: kratos.office.v1.TriggerDigestRequest.since:type_name -> google.protobuf.Timestamp
+	71, // 38: kratos.office.v1.OfficeMailService.ListAccounts:input_type -> google.protobuf.Empty
+	2,  // 39: kratos.office.v1.OfficeMailService.CreateAccount:input_type -> kratos.office.v1.CreateAccountRequest
+	3,  // 40: kratos.office.v1.OfficeMailService.UpdateAccount:input_type -> kratos.office.v1.UpdateAccountRequest
+	5,  // 41: kratos.office.v1.OfficeMailService.DeleteAccount:input_type -> kratos.office.v1.DeleteAccountRequest
+	7,  // 42: kratos.office.v1.OfficeMailService.SyncAccount:input_type -> kratos.office.v1.SyncAccountRequest
+	10, // 43: kratos.office.v1.OfficeMailService.ListMessages:input_type -> kratos.office.v1.ListMessagesRequest
+	12, // 44: kratos.office.v1.OfficeMailService.GetMessage:input_type -> kratos.office.v1.GetMessageRequest
+	37, // 45: kratos.office.v1.OfficeMailService.DeleteMessage:input_type -> kratos.office.v1.DeleteMessageRequest
+	39, // 46: kratos.office.v1.OfficeMailService.ListAttachments:input_type -> kratos.office.v1.ListAttachmentsRequest
+	41, // 47: kratos.office.v1.OfficeMailService.GetAttachment:input_type -> kratos.office.v1.GetAttachmentRequest
+	42, // 48: kratos.office.v1.OfficeMailService.ImportEml:input_type -> kratos.office.v1.ImportEmlRequest
+	43, // 49: kratos.office.v1.OfficeMailService.ExportEml:input_type -> kratos.office.v1.ExportEmlRequest
+	44, // 50: kratos.office.v1.OfficeMailService.MailToTask:input_type -> kratos.office.v1.MailToTaskRequest
+	46, // 51: kratos.office.v1.OfficeMailService.AttachmentToKnowledge:input_type -> kratos.office.v1.AttachmentToKnowledgeRequest
+	48, // 52: kratos.office.v1.OfficeMailService.SendMail:input_type -> kratos.office.v1.SendMailRequest
+	35, // 53: kratos.office.v1.OfficeMailService.SaveDraft:input_type -> kratos.office.v1.SaveDraftRequest
+	71, // 54: kratos.office.v1.OfficeMailService.GetMailboxSummary:input_type -> google.protobuf.Empty
+	17, // 55: kratos.office.v1.OfficeMailService.MarkMessages:input_type -> kratos.office.v1.MarkMessagesRequest
+	18, // 56: kratos.office.v1.OfficeMailService.MarkAllRead:input_type -> kratos.office.v1.MarkAllReadRequest
+	19, // 57: kratos.office.v1.OfficeMailService.ListThread:input_type -> kratos.office.v1.ListThreadRequest
+	20, // 58: kratos.office.v1.OfficeMailService.SuggestContacts:input_type -> kratos.office.v1.SuggestContactsRequest
+	71, // 59: kratos.office.v1.OfficeMailService.ListBlockedSenders:input_type -> google.protobuf.Empty
+	23, // 60: kratos.office.v1.OfficeMailService.BlockSender:input_type -> kratos.office.v1.BlockSenderRequest
+	23, // 61: kratos.office.v1.OfficeMailService.UnblockSender:input_type -> kratos.office.v1.BlockSenderRequest
+	27, // 62: kratos.office.v1.OfficeMailService.PurgeMessages:input_type -> kratos.office.v1.PurgeMessagesRequest
+	30, // 63: kratos.office.v1.OfficeMailService.DetectProvider:input_type -> kratos.office.v1.DetectProviderRequest
+	71, // 64: kratos.office.v1.OfficeMailService.ListProviders:input_type -> google.protobuf.Empty
+	32, // 65: kratos.office.v1.OfficeMailService.TestAccount:input_type -> kratos.office.v1.TestAccountRequest
+	68, // 66: kratos.office.v1.OfficeMailService.TriggerDigest:input_type -> kratos.office.v1.TriggerDigestRequest
+	51, // 67: kratos.office.v1.OfficeMailService.ListOfficeTasks:input_type -> kratos.office.v1.ListOfficeTasksRequest
+	53, // 68: kratos.office.v1.OfficeMailService.CreateOfficeTask:input_type -> kratos.office.v1.CreateOfficeTaskRequest
+	54, // 69: kratos.office.v1.OfficeMailService.SetOfficeTaskStatus:input_type -> kratos.office.v1.SetOfficeTaskStatusRequest
+	55, // 70: kratos.office.v1.OfficeMailService.UpdateOfficeTask:input_type -> kratos.office.v1.UpdateOfficeTaskRequest
+	56, // 71: kratos.office.v1.OfficeMailService.AssignOfficeTask:input_type -> kratos.office.v1.AssignOfficeTaskRequest
+	57, // 72: kratos.office.v1.OfficeMailService.DeleteOfficeTask:input_type -> kratos.office.v1.DeleteOfficeTaskRequest
+	59, // 73: kratos.office.v1.OfficeMailService.ListOfficeTaskFiles:input_type -> kratos.office.v1.ListOfficeTaskFilesRequest
+	61, // 74: kratos.office.v1.OfficeMailService.UploadOfficeTaskFile:input_type -> kratos.office.v1.UploadOfficeTaskFileRequest
+	62, // 75: kratos.office.v1.OfficeMailService.DownloadOfficeTaskFile:input_type -> kratos.office.v1.OfficeTaskFileRequest
+	62, // 76: kratos.office.v1.OfficeMailService.DeleteOfficeTaskFile:input_type -> kratos.office.v1.OfficeTaskFileRequest
+	64, // 77: kratos.office.v1.OfficeMailService.ListOfficeTaskExecutions:input_type -> kratos.office.v1.ListOfficeTaskExecutionsRequest
+	66, // 78: kratos.office.v1.OfficeMailService.AddOfficeTaskExecution:input_type -> kratos.office.v1.AddOfficeTaskExecutionRequest
+	67, // 79: kratos.office.v1.OfficeMailService.RemoveOfficeTaskExecution:input_type -> kratos.office.v1.OfficeTaskExecutionRequest
+	6,  // 80: kratos.office.v1.OfficeMailService.ListAccounts:output_type -> kratos.office.v1.ListAccountsResponse
+	1,  // 81: kratos.office.v1.OfficeMailService.CreateAccount:output_type -> kratos.office.v1.MailAccount
+	1,  // 82: kratos.office.v1.OfficeMailService.UpdateAccount:output_type -> kratos.office.v1.MailAccount
+	71, // 83: kratos.office.v1.OfficeMailService.DeleteAccount:output_type -> google.protobuf.Empty
+	8,  // 84: kratos.office.v1.OfficeMailService.SyncAccount:output_type -> kratos.office.v1.SyncAccountResponse
+	11, // 85: kratos.office.v1.OfficeMailService.ListMessages:output_type -> kratos.office.v1.ListMessagesResponse
+	13, // 86: kratos.office.v1.OfficeMailService.GetMessage:output_type -> kratos.office.v1.MailMessageDetail
+	71, // 87: kratos.office.v1.OfficeMailService.DeleteMessage:output_type -> google.protobuf.Empty
+	40, // 88: kratos.office.v1.OfficeMailService.ListAttachments:output_type -> kratos.office.v1.ListAttachmentsResponse
+	72, // 89: kratos.office.v1.OfficeMailService.GetAttachment:output_type -> google.api.HttpBody
+	9,  // 90: kratos.office.v1.OfficeMailService.ImportEml:output_type -> kratos.office.v1.MailMessage
+	72, // 91: kratos.office.v1.OfficeMailService.ExportEml:output_type -> google.api.HttpBody
+	45, // 92: kratos.office.v1.OfficeMailService.MailToTask:output_type -> kratos.office.v1.MailToTaskResponse
+	47, // 93: kratos.office.v1.OfficeMailService.AttachmentToKnowledge:output_type -> kratos.office.v1.AttachmentToKnowledgeResponse
+	49, // 94: kratos.office.v1.OfficeMailService.SendMail:output_type -> kratos.office.v1.SendMailResponse
+	36, // 95: kratos.office.v1.OfficeMailService.SaveDraft:output_type -> kratos.office.v1.SaveDraftResponse
+	14, // 96: kratos.office.v1.OfficeMailService.GetMailboxSummary:output_type -> kratos.office.v1.MailboxSummary
+	26, // 97: kratos.office.v1.OfficeMailService.MarkMessages:output_type -> kratos.office.v1.MarkMessagesResponse
+	26, // 98: kratos.office.v1.OfficeMailService.MarkAllRead:output_type -> kratos.office.v1.MarkMessagesResponse
+	11, // 99: kratos.office.v1.OfficeMailService.ListThread:output_type -> kratos.office.v1.ListMessagesResponse
+	22, // 100: kratos.office.v1.OfficeMailService.SuggestContacts:output_type -> kratos.office.v1.SuggestContactsResponse
+	25, // 101: kratos.office.v1.OfficeMailService.ListBlockedSenders:output_type -> kratos.office.v1.ListBlockedSendersResponse
+	24, // 102: kratos.office.v1.OfficeMailService.BlockSender:output_type -> kratos.office.v1.BlockSenderResponse
+	71, // 103: kratos.office.v1.OfficeMailService.UnblockSender:output_type -> google.protobuf.Empty
+	28, // 104: kratos.office.v1.OfficeMailService.PurgeMessages:output_type -> kratos.office.v1.PurgeMessagesResponse
+	29, // 105: kratos.office.v1.OfficeMailService.DetectProvider:output_type -> kratos.office.v1.MailProviderInfo
+	31, // 106: kratos.office.v1.OfficeMailService.ListProviders:output_type -> kratos.office.v1.ListProvidersResponse
+	33, // 107: kratos.office.v1.OfficeMailService.TestAccount:output_type -> kratos.office.v1.TestAccountResponse
+	69, // 108: kratos.office.v1.OfficeMailService.TriggerDigest:output_type -> kratos.office.v1.TriggerDigestResponse
+	52, // 109: kratos.office.v1.OfficeMailService.ListOfficeTasks:output_type -> kratos.office.v1.ListOfficeTasksResponse
+	50, // 110: kratos.office.v1.OfficeMailService.CreateOfficeTask:output_type -> kratos.office.v1.OfficeTask
+	50, // 111: kratos.office.v1.OfficeMailService.SetOfficeTaskStatus:output_type -> kratos.office.v1.OfficeTask
+	50, // 112: kratos.office.v1.OfficeMailService.UpdateOfficeTask:output_type -> kratos.office.v1.OfficeTask
+	50, // 113: kratos.office.v1.OfficeMailService.AssignOfficeTask:output_type -> kratos.office.v1.OfficeTask
+	71, // 114: kratos.office.v1.OfficeMailService.DeleteOfficeTask:output_type -> google.protobuf.Empty
+	60, // 115: kratos.office.v1.OfficeMailService.ListOfficeTaskFiles:output_type -> kratos.office.v1.ListOfficeTaskFilesResponse
+	58, // 116: kratos.office.v1.OfficeMailService.UploadOfficeTaskFile:output_type -> kratos.office.v1.OfficeTaskFile
+	72, // 117: kratos.office.v1.OfficeMailService.DownloadOfficeTaskFile:output_type -> google.api.HttpBody
+	71, // 118: kratos.office.v1.OfficeMailService.DeleteOfficeTaskFile:output_type -> google.protobuf.Empty
+	65, // 119: kratos.office.v1.OfficeMailService.ListOfficeTaskExecutions:output_type -> kratos.office.v1.ListOfficeTaskExecutionsResponse
+	63, // 120: kratos.office.v1.OfficeMailService.AddOfficeTaskExecution:output_type -> kratos.office.v1.OfficeTaskExecution
+	71, // 121: kratos.office.v1.OfficeMailService.RemoveOfficeTaskExecution:output_type -> google.protobuf.Empty
+	80, // [80:122] is the sub-list for method output_type
+	38, // [38:80] is the sub-list for method input_type
+	38, // [38:38] is the sub-list for extension type_name
+	38, // [38:38] is the sub-list for extension extendee
+	0,  // [0:38] is the sub-list for field type_name
 }
 
 func init() { file_kratos_office_v1_mail_proto_init() }
@@ -5115,7 +5484,7 @@ func file_kratos_office_v1_mail_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kratos_office_v1_mail_proto_rawDesc), len(file_kratos_office_v1_mail_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   64,
+			NumMessages:   69,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

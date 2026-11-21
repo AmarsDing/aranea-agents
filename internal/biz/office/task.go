@@ -212,11 +212,28 @@ func (u *MailMessageUsecase) CreateTask(ctx context.Context, userID, workspaceID
 	return task, nil
 }
 
-// applyAssignee 校验并写入执行对象与承载会话。
+// 不经会话的执行对象：运行台的一个编码工具、几个工具一起做（编排）、一个流程。
+// 它们的进度不在会话里，在任务 ↔ 执行关联表指向的记录里，所以不要求承载会话。
+const (
+	OfficeAssigneeTool = "tool"
+	OfficeAssigneeRun  = "run"
+	OfficeAssigneeFlow = "flow"
+)
+
+// applyAssignee 校验并写入执行对象与承载会话。agent / team 必须带会话；tool / run / flow 可以没有。
 func applyAssignee(task *OfficeTask, in AssignOfficeTaskInput) error {
 	kind := strings.ToLower(strings.TrimSpace(in.Kind))
 	id, session := strings.TrimSpace(in.ID), strings.TrimSpace(in.SessionID)
-	if (kind != OfficeAssigneeAgent && kind != OfficeAssigneeTeam) || id == "" || session == "" {
+	switch kind {
+	case OfficeAssigneeAgent, OfficeAssigneeTeam:
+		if session == "" {
+			return ErrOfficeTaskAssigneeNeeded
+		}
+	case OfficeAssigneeTool, OfficeAssigneeRun, OfficeAssigneeFlow:
+	default:
+		return ErrOfficeTaskAssigneeNeeded
+	}
+	if id == "" {
 		return ErrOfficeTaskAssigneeNeeded
 	}
 	task.AssigneeKind, task.AssigneeID, task.SessionID = kind, id, session
@@ -371,4 +388,86 @@ func (u *MailMessageUsecase) DeleteTaskFile(ctx context.Context, id, userID stri
 		return ErrOfficeTaskFileNotFound
 	}
 	return u.tasks.DeleteOfficeTaskFile(ctx, id, userID)
+}
+
+// 任务的一次执行可以是哪几类记录（与迁移 20261341 的注释一致）。
+const (
+	OfficeExecSession       = "session"
+	OfficeExecTeamRun       = "team_run"
+	OfficeExecGraph         = "graph_execution"
+	OfficeExecCodingTask    = "coding_task"
+	OfficeExecFleetTerminal = "fleet_terminal"
+	OfficeExecFleetRun      = "fleet_run"
+	OfficeExecCronRun       = "cron_run"
+
+	officeTaskExecutionsListMax = 500
+	officeTaskHandMax           = 8000
+)
+
+var (
+	ErrOfficeTaskExecutionNotFound = apierror.NotFound(DomainOffice, "task execution not found")
+	ErrOfficeTaskExecutionKind     = apierror.BadRequest(DomainOffice, "unknown execution kind")
+	ErrOfficeTaskExecutionRef      = apierror.BadRequest(DomainOffice, "execution ref_id is required")
+)
+
+var officeExecKinds = map[string]bool{
+	OfficeExecSession: true, OfficeExecTeamRun: true, OfficeExecGraph: true, OfficeExecCodingTask: true,
+	OfficeExecFleetTerminal: true, OfficeExecFleetRun: true, OfficeExecCronRun: true,
+}
+
+// NewOfficeTaskExecutionInput 给任务挂一次执行。
+type NewOfficeTaskExecutionInput struct {
+	Kind, RefID, Executor, ExecutorName, Hand string
+}
+
+// ListTaskExecutions 列本人任务的执行；taskID 为空 = 全部任务（会话中心、任务页一次取全）。
+func (u *MailMessageUsecase) ListTaskExecutions(ctx context.Context, userID, taskID string, limit int) ([]*OfficeTaskExecution, error) {
+	taskID = strings.TrimSpace(taskID)
+	if taskID != "" {
+		if _, err := u.GetTask(ctx, taskID, userID); err != nil {
+			return nil, err
+		}
+	}
+	if limit <= 0 || limit > officeTaskExecutionsListMax {
+		limit = officeTaskExecutionsListMax
+	}
+	return u.tasks.ListOfficeTaskExecutions(ctx, userID, taskID, limit)
+}
+
+// AddTaskExecution 把别处的一条记录挂到本人任务下；同一条记录重复挂是幂等的。
+// 不校验 ref 指向的记录是否存在：它们分属会话、流程、编码工具桥、运行台，各有各的权限，
+// 读的时候由各自的接口把关，这里只是一条指针。
+func (u *MailMessageUsecase) AddTaskExecution(ctx context.Context, taskID, userID string, in NewOfficeTaskExecutionInput) (*OfficeTaskExecution, error) {
+	kind := strings.ToLower(strings.TrimSpace(in.Kind))
+	if !officeExecKinds[kind] {
+		return nil, ErrOfficeTaskExecutionKind
+	}
+	ref := strings.TrimSpace(in.RefID)
+	if ref == "" {
+		return nil, ErrOfficeTaskExecutionRef
+	}
+	task, err := u.GetTask(ctx, taskID, userID)
+	if err != nil {
+		return nil, err
+	}
+	return u.tasks.AddOfficeTaskExecution(ctx, &OfficeTaskExecution{
+		ID:           "ote_" + uuid.NewString(),
+		TaskID:       task.ID,
+		UserID:       userID,
+		Kind:         kind,
+		RefID:        clipRunes(ref, 200),
+		Executor:     clipRunes(strings.TrimSpace(in.Executor), 200),
+		ExecutorName: clipRunes(strings.TrimSpace(in.ExecutorName), 200),
+		Hand:         clipRunes(in.Hand, officeTaskHandMax),
+		CreatedAt:    u.now(),
+	})
+}
+
+// RemoveTaskExecution 把一次执行从任务下摘掉（不动执行本身）。
+func (u *MailMessageUsecase) RemoveTaskExecution(ctx context.Context, id, userID string) error {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return ErrOfficeTaskExecutionNotFound
+	}
+	return u.tasks.DeleteOfficeTaskExecution(ctx, id, userID)
 }

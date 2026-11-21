@@ -220,6 +220,61 @@ func (s *OfficeMailService) DeleteOfficeTaskFile(ctx context.Context, req *v1.Of
 	return &emptypb.Empty{}, nil
 }
 
+func officeTaskExecutionToProto(e *office.OfficeTaskExecution) *v1.OfficeTaskExecution {
+	return &v1.OfficeTaskExecution{
+		Id:           e.ID,
+		TaskId:       e.TaskID,
+		Kind:         e.Kind,
+		RefId:        e.RefID,
+		Executor:     e.Executor,
+		ExecutorName: e.ExecutorName,
+		Hand:         e.Hand,
+		CreatedAt:    timestamppb.New(e.CreatedAt),
+	}
+}
+
+func (s *OfficeMailService) ListOfficeTaskExecutions(ctx context.Context, req *v1.ListOfficeTaskExecutionsRequest) (*v1.ListOfficeTaskExecutionsResponse, error) {
+	userID, _, err := officeSubject(ctx)
+	if err != nil {
+		return nil, mailErr(err)
+	}
+	rows, err := s.messages.ListTaskExecutions(ctx, userID, req.GetTaskId(), int(req.GetLimit()))
+	if err != nil {
+		return nil, mailErr(err)
+	}
+	out := &v1.ListOfficeTaskExecutionsResponse{Items: make([]*v1.OfficeTaskExecution, 0, len(rows))}
+	for _, e := range rows {
+		out.Items = append(out.Items, officeTaskExecutionToProto(e))
+	}
+	return out, nil
+}
+
+func (s *OfficeMailService) AddOfficeTaskExecution(ctx context.Context, req *v1.AddOfficeTaskExecutionRequest) (*v1.OfficeTaskExecution, error) {
+	userID, _, err := officeSubject(ctx)
+	if err != nil {
+		return nil, mailErr(err)
+	}
+	e, err := s.messages.AddTaskExecution(ctx, req.GetTaskId(), userID, office.NewOfficeTaskExecutionInput{
+		Kind: req.GetKind(), RefID: req.GetRefId(), Executor: req.GetExecutor(),
+		ExecutorName: req.GetExecutorName(), Hand: req.GetHand(),
+	})
+	if err != nil {
+		return nil, mailErr(err)
+	}
+	return officeTaskExecutionToProto(e), nil
+}
+
+func (s *OfficeMailService) RemoveOfficeTaskExecution(ctx context.Context, req *v1.OfficeTaskExecutionRequest) (*emptypb.Empty, error) {
+	userID, _, err := officeSubject(ctx)
+	if err != nil {
+		return nil, mailErr(err)
+	}
+	if err := s.messages.RemoveTaskExecution(ctx, req.GetId(), userID); err != nil {
+		return nil, mailErr(err)
+	}
+	return &emptypb.Empty{}, nil
+}
+
 // bindOfficeTaskFileMultipart 把 multipart/form-data（字段 file）转成上传请求，
 // 省掉 JSON base64 的三分之一膨胀。task_id 来自路径，由 kratos 在解码后绑定。
 // 读满上限 +1 字节交给 biz 判超限，避免这里静默截断。

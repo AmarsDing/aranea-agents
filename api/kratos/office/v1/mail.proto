@@ -411,7 +411,8 @@ message OfficeTask {
   string status = 6; // open | doing | done
   google.protobuf.Timestamp created_at = 7;
   google.protobuf.Timestamp updated_at = 8;
-  // 负责人：assignee_kind 为空 = 本人；agent / team = 交办对象。
+  // 负责人：assignee_kind 为空 = 本人；agent / team = 交办对象（有承载会话）；
+  // tool / run / flow = 运行台的编码工具、几个工具一起做、流程（没有承载会话，进度看任务的执行）。
   string assignee_kind = 9;
   string assignee_id = 10;
   string assignee_name = 11; // 交办当时的显示名
@@ -438,7 +439,7 @@ message CreateOfficeTaskRequest {
   // mail 只能由邮件转任务产生，此处拒绝。
   string source = 3;
   string source_ref = 4;
-  string assignee_kind = 5; // agent | team
+  string assignee_kind = 5; // agent | team（须带会话）| tool | run | flow（不带会话）
   string assignee_id = 6;
   string assignee_name = 7;
   google.protobuf.Timestamp due_at = 8;
@@ -500,6 +501,44 @@ message UploadOfficeTaskFileRequest {
 }
 
 message OfficeTaskFileRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+// OfficeTaskExecution 任务的一次执行：指向别处的一条记录，执行自己的状态由各自的接口读。
+message OfficeTaskExecution {
+  string id = 1;
+  string task_id = 2;
+  // session | team_run | graph_execution | coding_task | fleet_terminal | fleet_run | cron_run
+  string kind = 3;
+  string ref_id = 4;
+  // 执行者键：agent:<id> / team:<id> / flow:<graphId> / 工具键
+  string executor = 5;
+  string executor_name = 6;
+  // 派出时发给执行者的交接单原文
+  string hand = 7;
+  google.protobuf.Timestamp created_at = 8;
+}
+
+message ListOfficeTaskExecutionsRequest {
+  // 空 = 本人全部任务的执行
+  string task_id = 1;
+  int32 limit = 2;
+}
+
+message ListOfficeTaskExecutionsResponse {
+  repeated OfficeTaskExecution items = 1;
+}
+
+message AddOfficeTaskExecutionRequest {
+  string task_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string kind = 2 [(google.api.field_behavior) = REQUIRED];
+  string ref_id = 3 [(google.api.field_behavior) = REQUIRED];
+  string executor = 4;
+  string executor_name = 5;
+  string hand = 6;
+}
+
+message OfficeTaskExecutionRequest {
   string id = 1 [(google.api.field_behavior) = REQUIRED];
 }
 
@@ -740,5 +779,22 @@ service OfficeMailService {
   rpc DeleteOfficeTaskFile(OfficeTaskFileRequest) returns (google.protobuf.Empty) {
     option (aranea.auth.v1.requirement) = {authenticated: true};
     option (google.api.http) = {delete: "/v1/office/task-files/{id}"};
+  }
+  // ListOfficeTaskExecutions 任务的执行；不带 task_id 时取本人全部任务的。
+  rpc ListOfficeTaskExecutions(ListOfficeTaskExecutionsRequest) returns (ListOfficeTaskExecutionsResponse) {
+    option (aranea.auth.v1.requirement) = {authenticated: true};
+    option (google.api.http) = {get: "/v1/office/task-executions"};
+  }
+  // AddOfficeTaskExecution 把一条执行记录挂到任务下；重复挂同一条是幂等的。
+  rpc AddOfficeTaskExecution(AddOfficeTaskExecutionRequest) returns (OfficeTaskExecution) {
+    option (aranea.auth.v1.requirement) = {authenticated: true};
+    option (google.api.http) = {
+      post: "/v1/office/tasks/{task_id}/executions"
+      body: "*"
+    };
+  }
+  rpc RemoveOfficeTaskExecution(OfficeTaskExecutionRequest) returns (google.protobuf.Empty) {
+    option (aranea.auth.v1.requirement) = {authenticated: true};
+    option (google.api.http) = {delete: "/v1/office/task-executions/{id}"};
   }
 }

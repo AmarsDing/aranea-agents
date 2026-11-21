@@ -219,3 +219,87 @@ func (r *OfficeMailRepo) DeleteOfficeTaskFile(ctx context.Context, id, userID st
 	}
 	return nil
 }
+
+const officeTaskExecutionCols = "id, task_id, user_id, kind, ref_id, executor, executor_name, hand, created_at"
+
+func scanOfficeTaskExecution(row officeTaskScanner, e *office.OfficeTaskExecution) error {
+	return row.Scan(&e.ID, &e.TaskID, &e.UserID, &e.Kind, &e.RefID, &e.Executor, &e.ExecutorName, &e.Hand, &e.CreatedAt)
+}
+
+func (r *OfficeMailRepo) ListOfficeTaskExecutions(ctx context.Context, userID, taskID string, limit int) ([]*office.OfficeTaskExecution, error) {
+	db, err := r.readDB(ctx)
+	if err != nil {
+		return nil, err
+	}
+	// 取最近的 limit 条，再按先后排回去（执行链按时间正序）
+	q := "SELECT " + officeTaskExecutionCols + " FROM office_task_executions WHERE user_id=?"
+	args := []any{userID}
+	if taskID != "" {
+		q += " AND task_id=?"
+		args = append(args, taskID)
+	}
+	q = "SELECT " + officeTaskExecutionCols + " FROM (" + q + " ORDER BY created_at DESC, id DESC LIMIT ?) t ORDER BY created_at, id"
+	args = append(args, limit)
+	rows, err := db.QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(q), args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]*office.OfficeTaskExecution, 0)
+	for rows.Next() {
+		var e office.OfficeTaskExecution
+		if err := scanOfficeTaskExecution(rows, &e); err != nil {
+			return nil, err
+		}
+		out = append(out, &e)
+	}
+	return out, rows.Err()
+}
+
+func (r *OfficeMailRepo) AddOfficeTaskExecution(ctx context.Context, e *office.OfficeTaskExecution) (*office.OfficeTaskExecution, error) {
+	db, err := r.writeDB(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := db.ExecContext(ctx, r.data.Dialect().RenumberPlaceholders(
+		"INSERT INTO office_task_executions ("+officeTaskExecutionCols+") VALUES (?,?,?,?,?,?,?,?,?) "+
+			"ON CONFLICT (task_id, kind, ref_id) DO NOTHING"),
+		e.ID, e.TaskID, e.UserID, e.Kind, e.RefID, e.Executor, e.ExecutorName, e.Hand, e.CreatedAt); err != nil {
+		return nil, err
+	}
+	// 已挂过时上面什么都没插：读回实际那一行（同一事务内可见）
+	rows, err := db.QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(
+		"SELECT "+officeTaskExecutionCols+" FROM office_task_executions WHERE task_id=? AND kind=? AND ref_id=?"),
+		e.TaskID, e.Kind, e.RefID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	if !rows.Next() {
+		if err := rows.Err(); err != nil {
+			return nil, err
+		}
+		return nil, office.ErrOfficeTaskExecutionNotFound
+	}
+	var got office.OfficeTaskExecution
+	if err := scanOfficeTaskExecution(rows, &got); err != nil {
+		return nil, err
+	}
+	return &got, nil
+}
+
+func (r *OfficeMailRepo) DeleteOfficeTaskExecution(ctx context.Context, id, userID string) error {
+	db, err := r.writeDB(ctx)
+	if err != nil {
+		return err
+	}
+	res, err := db.ExecContext(ctx, r.data.Dialect().RenumberPlaceholders(
+		"DELETE FROM office_task_executions WHERE id=? AND user_id=?"), id, userID)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return office.ErrOfficeTaskExecutionNotFound
+	}
+	return nil
+}

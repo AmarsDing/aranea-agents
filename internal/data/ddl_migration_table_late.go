@@ -741,4 +741,7 @@ var ddlMigrationsLate = []ddlMigration{
 	// 20261340 office_mail_more（工作台 › 邮件第二轮）：账号签名 / 存已发送；邮件标签、定时发送；
 	// Message-ID 去重索引；拒收名单表 office_mail_blocked。幂等。
 	{Version: 20261340, Name: "office_mail_more", SQL: "sql/migrations/20261340_office_mail_more.sql"},
+	// 20261341 office_task_executions（任务 ↔ 执行关联）：一个任务挂多次执行（会话、团队运行、流程运行、
+	// 编码任务、运行台终端 / 编排、定时任务一轮），取代记在会话 metadata 里的关系。任务删除级联。幂等。
+	{Version: 20261341, Name: "office_task_executions", SQL: "sql/migrations/20261341_office_task_executions.sql"},
 }

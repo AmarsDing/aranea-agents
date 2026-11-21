@@ -87,6 +87,45 @@ func (f *mailFakeRepos) DeleteOfficeTaskFile(_ context.Context, id, userID strin
 	return nil
 }
 
+func (f *mailFakeRepos) ListOfficeTaskExecutions(_ context.Context, userID, taskID string, limit int) ([]*OfficeTaskExecution, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make([]*OfficeTaskExecution, 0)
+	for _, e := range f.taskExecs {
+		if e.UserID == userID && (taskID == "" || e.TaskID == taskID) && len(out) < limit {
+			cp := *e
+			out = append(out, &cp)
+		}
+	}
+	return out, nil
+}
+
+func (f *mailFakeRepos) AddOfficeTaskExecution(_ context.Context, e *OfficeTaskExecution) (*OfficeTaskExecution, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, cur := range f.taskExecs {
+		if cur.TaskID == e.TaskID && cur.Kind == e.Kind && cur.RefID == e.RefID {
+			cp := *cur
+			return &cp, nil
+		}
+	}
+	cp := *e
+	f.taskExecs = append(f.taskExecs, &cp)
+	return e, nil
+}
+
+func (f *mailFakeRepos) DeleteOfficeTaskExecution(_ context.Context, id, userID string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for i, cur := range f.taskExecs {
+		if cur.ID == id && cur.UserID == userID {
+			f.taskExecs = append(f.taskExecs[:i], f.taskExecs[i+1:]...)
+			return nil
+		}
+	}
+	return ErrOfficeTaskExecutionNotFound
+}
+
 func newTaskTestUsecase() (*MailMessageUsecase, *mailFakeRepos) {
 	repo := newMailFakeRepos()
 	uc := NewMailMessageUsecase(repo, repo, repo, nil, nil)
@@ -230,5 +269,75 @@ func TestOfficeTaskFiles(t *testing.T) {
 	}
 	if rows, _ := uc.ListTaskFiles(ctx, task.ID, "u-1"); len(rows) != officeTaskFilesMax-1 {
 		t.Fatalf("after delete: %d", len(rows))
+	}
+}
+
+func TestTaskExecutions_AddListRemove(t *testing.T) {
+	u, _ := newTaskTestUsecase()
+	ctx := context.Background()
+	task, err := u.CreateTask(ctx, "u1", "w1", NewOfficeTaskInput{Title: "发版"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := u.AddTaskExecution(ctx, task.ID, "u1", NewOfficeTaskExecutionInput{Kind: "nope", RefID: "x"}); err != ErrOfficeTaskExecutionKind {
+		t.Fatalf("unknown kind: got %v", err)
+	}
+	if _, err := u.AddTaskExecution(ctx, task.ID, "u1", NewOfficeTaskExecutionInput{Kind: OfficeExecGraph}); err != ErrOfficeTaskExecutionRef {
+		t.Fatalf("empty ref: got %v", err)
+	}
+	if _, err := u.AddTaskExecution(ctx, task.ID, "u2", NewOfficeTaskExecutionInput{Kind: OfficeExecGraph, RefID: "x1"}); err != ErrOfficeTaskNotFound {
+		t.Fatalf("someone else's task: got %v", err)
+	}
+	in := NewOfficeTaskExecutionInput{Kind: " Graph_Execution ", RefID: "x1", Executor: "flow:g1", ExecutorName: "发版流程", Hand: "【任务】发版"}
+	first, err := u.AddTaskExecution(ctx, task.ID, "u1", in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.Kind != OfficeExecGraph || first.RefID != "x1" || first.Hand != "【任务】发版" {
+		t.Fatalf("stored row: %+v", first)
+	}
+	again, err := u.AddTaskExecution(ctx, task.ID, "u1", in)
+	if err != nil || again.ID != first.ID {
+		t.Fatalf("adding the same record twice must return the first row: %v %+v", err, again)
+	}
+	rows, err := u.ListTaskExecutions(ctx, "u1", "", 0)
+	if err != nil || len(rows) != 1 {
+		t.Fatalf("list all: %v %d", err, len(rows))
+	}
+	if rows, _ := u.ListTaskExecutions(ctx, "u2", "", 0); len(rows) != 0 {
+		t.Fatalf("other users must not see it: %d", len(rows))
+	}
+	if err := u.RemoveTaskExecution(ctx, first.ID, "u2"); err != ErrOfficeTaskExecutionNotFound {
+		t.Fatalf("remove by other user: got %v", err)
+	}
+	if err := u.RemoveTaskExecution(ctx, first.ID, "u1"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestCreateTask_SessionlessExecutors(t *testing.T) {
+	u, _ := newTaskTestUsecase()
+	ctx := context.Background()
+	for _, kind := range []string{OfficeAssigneeTool, OfficeAssigneeRun, OfficeAssigneeFlow} {
+		task, err := u.CreateTask(ctx, "u1", "w1", NewOfficeTaskInput{
+			Title: "发版", Source: OfficeTaskSourceDelegate, AssigneeKind: kind, AssigneeID: "x", AssigneeName: "发版流程",
+		})
+		if err != nil {
+			t.Fatalf("%s without a session must be accepted: %v", kind, err)
+		}
+		if task.AssigneeKind != kind || task.SessionID != "" || task.SourceRef != "" {
+			t.Fatalf("%s: stored %+v", kind, task)
+		}
+	}
+	// 交给同事 / 团队仍然必须有承载会话
+	if _, err := u.CreateTask(ctx, "u1", "w1", NewOfficeTaskInput{
+		Title: "发版", Source: OfficeTaskSourceDelegate, AssigneeKind: OfficeAssigneeAgent, AssigneeID: "a1",
+	}); err != ErrOfficeTaskAssigneeNeeded {
+		t.Fatalf("agent without a session: got %v", err)
+	}
+	if _, err := u.CreateTask(ctx, "u1", "w1", NewOfficeTaskInput{
+		Title: "发版", Source: OfficeTaskSourceDelegate, AssigneeKind: OfficeAssigneeFlow,
+	}); err != ErrOfficeTaskAssigneeNeeded {
+		t.Fatalf("flow without an id: got %v", err)
 	}
 }

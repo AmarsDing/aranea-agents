@@ -196,6 +196,20 @@ type OfficeTaskFile struct {
 	CreatedAt   time.Time
 }
 
+// OfficeTaskExecution 任务的一次执行：指向别处的一条记录（会话、流程运行、编码任务…），
+// 执行自己的状态不在这里。
+type OfficeTaskExecution struct {
+	ID           string
+	TaskID       string
+	UserID       string
+	Kind         string
+	RefID        string
+	Executor     string
+	ExecutorName string
+	Hand         string
+	CreatedAt    time.Time
+}
+
 // OfficeTaskFilter 任务列表过滤：Statuses / Sources 非空才过滤；Assigned 为 1 只要
 // 交办出去的（有执行对象），-1 只要本人负责的，0 不限。
 type OfficeTaskFilter struct {
@@ -371,6 +385,12 @@ type OfficeTaskRepo interface {
 	// GetOfficeTaskFile 装载含 Content；不存在或不属于 userID 返回 ErrOfficeTaskFileNotFound。
 	GetOfficeTaskFile(ctx context.Context, id, userID string) (*OfficeTaskFile, error)
 	DeleteOfficeTaskFile(ctx context.Context, id, userID string) error
+	// ListOfficeTaskExecutions 本人任务的执行；taskID 为空 = 全部任务，取最近 limit 条按先后排。
+	ListOfficeTaskExecutions(ctx context.Context, userID, taskID string, limit int) ([]*OfficeTaskExecution, error)
+	// AddOfficeTaskExecution 同一任务下同一条记录（kind+ref_id）已挂过时不重复插入，返回已有那行。
+	AddOfficeTaskExecution(ctx context.Context, e *OfficeTaskExecution) (*OfficeTaskExecution, error)
+	// DeleteOfficeTaskExecution 行不存在或不属于 userID 返回 ErrOfficeTaskExecutionNotFound。
+	DeleteOfficeTaskExecution(ctx context.Context, id, userID string) error
 }
 
 // ============================================================================

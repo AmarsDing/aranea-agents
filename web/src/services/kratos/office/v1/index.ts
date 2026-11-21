@@ -651,6 +651,52 @@ export type OfficeTaskFileRequest = {
   id: string | undefined;
 };
 
+// OfficeTaskExecution 任务的一次执行：指向别处的一条记录，执行自己的状态由各自的接口读。
+export type OfficeTaskExecution = {
+  id: string | undefined;
+  taskId: string | undefined;
+  // session | team_run | graph_execution | coding_task | fleet_terminal | fleet_run | cron_run
+  kind: string | undefined;
+  refId: string | undefined;
+  // 执行者键：agent:<id> / team:<id> / flow:<graphId> / 工具键
+  executor: string | undefined;
+  executorName: string | undefined;
+  // 派出时发给执行者的交接单原文
+  hand: string | undefined;
+  createdAt: wellKnownTimestamp | undefined;
+};
+
+export type ListOfficeTaskExecutionsRequest = {
+  // 空 = 本人全部任务的执行
+  taskId: string | undefined;
+  limit: number | undefined;
+};
+
+export type ListOfficeTaskExecutionsResponse = {
+  items: OfficeTaskExecution[] | undefined;
+};
+
+export type AddOfficeTaskExecutionRequest = {
+  //
+  // Behaviors: REQUIRED
+  taskId: string | undefined;
+  //
+  // Behaviors: REQUIRED
+  kind: string | undefined;
+  //
+  // Behaviors: REQUIRED
+  refId: string | undefined;
+  executor: string | undefined;
+  executorName: string | undefined;
+  hand: string | undefined;
+};
+
+export type OfficeTaskExecutionRequest = {
+  //
+  // Behaviors: REQUIRED
+  id: string | undefined;
+};
+
 export type TriggerDigestRequest = {
   since: wellKnownTimestamp | undefined;
 };
@@ -712,6 +758,11 @@ export interface OfficeMailService {
   // DownloadOfficeTaskFile 附件下载（HttpBody 原始字节直通）。
   DownloadOfficeTaskFile(request: OfficeTaskFileRequest): Promise<googleapi_HttpBody>;
   DeleteOfficeTaskFile(request: OfficeTaskFileRequest): Promise<wellKnownEmpty>;
+  // ListOfficeTaskExecutions 任务的执行；不带 task_id 时取本人全部任务的。
+  ListOfficeTaskExecutions(request: ListOfficeTaskExecutionsRequest): Promise<ListOfficeTaskExecutionsResponse>;
+  // AddOfficeTaskExecution 把一条执行记录挂到任务下；重复挂同一条是幂等的。
+  AddOfficeTaskExecution(request: AddOfficeTaskExecutionRequest): Promise<OfficeTaskExecution>;
+  RemoveOfficeTaskExecution(request: OfficeTaskExecutionRequest): Promise<wellKnownEmpty>;
 }
 
 export function createOfficeMailServiceClient(
@@ -1475,6 +1526,69 @@ export function createOfficeMailServiceClient(
       }, {
         service: "OfficeMailService",
         method: "DeleteOfficeTaskFile",
+      }) as Promise<wellKnownEmpty>;
+    },
+    ListOfficeTaskExecutions(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      const path = `v1/office/task-executions`; // eslint-disable-line quotes
+      const body = null;
+      const queryParams: string[] = [];
+      if (request.taskId) {
+        queryParams.push(`taskId=${encodeURIComponent(request.taskId.toString())}`)
+      }
+      if (request.limit) {
+        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`)
+      }
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "OfficeMailService",
+        method: "ListOfficeTaskExecutions",
+      }) as Promise<ListOfficeTaskExecutionsResponse>;
+    },
+    AddOfficeTaskExecution(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      if (!request.taskId) {
+        throw new Error("missing required field request.task_id");
+      }
+      const path = `v1/office/tasks/${request.taskId}/executions`; // eslint-disable-line quotes
+      const body = JSON.stringify(request);
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "OfficeMailService",
+        method: "AddOfficeTaskExecution",
+      }) as Promise<OfficeTaskExecution>;
+    },
+    RemoveOfficeTaskExecution(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      if (!request.id) {
+        throw new Error("missing required field request.id");
+      }
+      const path = `v1/office/task-executions/${request.id}`; // eslint-disable-line quotes
+      const body = null;
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "DELETE",
+        body,
+      }, {
+        service: "OfficeMailService",
+        method: "RemoveOfficeTaskExecution",
       }) as Promise<wellKnownEmpty>;
     },
   };
