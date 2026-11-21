@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"time"
 
 	v1 "aranea-agents/api/kratos/knowledge/v1"
 	"aranea-agents/internal/biz"
@@ -178,4 +179,67 @@ func toProtoKnowledgeLink(l biz.KnowledgeResolvedLink) *v1.KnowledgeLink {
 		Context:       l.Context,
 		Direction:     l.Direction,
 	}
+}
+
+// ---------- 回收站 / 历史版本（本机资料库 .aranea/trash） ----------
+
+func (s *KnowledgeService) vaultTrashCollection(ctx context.Context, id string, mutate bool) error {
+	col, err := s.uc.GetCollection(ctx, id)
+	if err != nil {
+		return err
+	}
+	if mutate {
+		return s.assertCollectionMutateAccess(ctx, col)
+	}
+	return s.assertCollectionAccess(ctx, col)
+}
+
+func (s *KnowledgeService) ListVaultTrash(ctx context.Context, req *v1.ListVaultTrashRequest) (*v1.ListVaultTrashResponse, error) {
+	if err := s.vaultTrashCollection(ctx, req.GetCollectionId(), false); err != nil {
+		return nil, err
+	}
+	items, err := s.uc.ListVaultTrash(ctx, req.GetCollectionId(), req.GetRelPath())
+	if err != nil {
+		return nil, err
+	}
+	out := &v1.ListVaultTrashResponse{Items: make([]*v1.VaultTrashItem, 0, len(items))}
+	for _, it := range items {
+		out.Items = append(out.Items, &v1.VaultTrashItem{
+			Path: it.Path, OrigPath: it.OrigPath, SizeBytes: it.SizeBytes, ModifiedAt: it.ModifiedAt.UTC().Format(time.RFC3339),
+		})
+	}
+	return out, nil
+}
+
+func (s *KnowledgeService) GetVaultTrashContent(ctx context.Context, req *v1.VaultTrashPathRequest) (*v1.VaultTrashContentResponse, error) {
+	if err := s.vaultTrashCollection(ctx, req.GetCollectionId(), false); err != nil {
+		return nil, err
+	}
+	content, err := s.uc.GetVaultTrashContent(ctx, req.GetCollectionId(), req.GetPath())
+	if err != nil {
+		return nil, err
+	}
+	return &v1.VaultTrashContentResponse{Content: content}, nil
+}
+
+func (s *KnowledgeService) RestoreVaultTrash(ctx context.Context, req *v1.VaultTrashPathRequest) (*v1.RestoreVaultTrashResponse, error) {
+	if err := s.vaultTrashCollection(ctx, req.GetCollectionId(), true); err != nil {
+		return nil, err
+	}
+	rel, err := s.uc.RestoreVaultTrash(ctx, req.GetCollectionId(), req.GetPath())
+	if err != nil {
+		return nil, err
+	}
+	return &v1.RestoreVaultTrashResponse{RelPath: rel}, nil
+}
+
+func (s *KnowledgeService) PurgeVaultTrash(ctx context.Context, req *v1.PurgeVaultTrashRequest) (*v1.PurgeVaultTrashResponse, error) {
+	if err := s.vaultTrashCollection(ctx, req.GetCollectionId(), true); err != nil {
+		return nil, err
+	}
+	n, err := s.uc.PurgeVaultTrash(ctx, req.GetCollectionId(), req.GetPaths())
+	if err != nil {
+		return nil, err
+	}
+	return &v1.PurgeVaultTrashResponse{Deleted: n}, nil
 }

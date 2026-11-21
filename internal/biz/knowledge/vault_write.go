@@ -326,6 +326,12 @@ func (u *Usecase) UpdateVaultDocumentContent(ctx context.Context, docID, content
 // 反映正文 [[ref]] 与目标实际路径的匹配关系）。
 // targetDir：""或"/" = vault 根目录。conflictPolicy 见 VaultFiler.Move。
 func (u *Usecase) MoveVaultDocumentToDir(ctx context.Context, docID, targetDir, conflictPolicy string) (Document, error) {
+	return u.RelocateVaultDocument(ctx, docID, &targetDir, "", conflictPolicy)
+}
+
+// RelocateVaultDocument 移动和 / 或改名：targetDir nil = 留在原目录；newName 空 = 不改名
+// （只能是文件名，不能带目录、不能是 .aranea）。冲突策略同 MoveVaultDocumentToDir。
+func (u *Usecase) RelocateVaultDocument(ctx context.Context, docID string, targetDir *string, newName, conflictPolicy string) (Document, error) {
 	if err := u.requireRepo(); err != nil {
 		return Document{}, err
 	}
@@ -336,16 +342,28 @@ func (u *Usecase) MoveVaultDocumentToDir(ctx context.Context, docID, targetDir, 
 	if err != nil {
 		return Document{}, err
 	}
-	// 目标目录归一：""或"/" = 根目录；其余 sanitize。
+	// 目标目录归一：""或"/" = 根目录；其余 sanitize。nil = 原目录。
 	dir := ""
-	if strings.TrimSpace(targetDir) != "/" && strings.TrimSpace(targetDir) != "" {
-		d, err := SanitizeRelPath(targetDir)
-		if err != nil {
-			return Document{}, err
+	if i := strings.LastIndex(doc.RelPath, "/"); i >= 0 {
+		dir = doc.RelPath[:i]
+	}
+	if targetDir != nil {
+		dir = ""
+		if strings.TrimSpace(*targetDir) != "/" && strings.TrimSpace(*targetDir) != "" {
+			d, err := SanitizeRelPath(*targetDir)
+			if err != nil {
+				return Document{}, err
+			}
+			dir = d
 		}
-		dir = d
 	}
 	name := doc.RelPath[strings.LastIndex(doc.RelPath, "/")+1:]
+	if nn := strings.TrimSpace(newName); nn != "" {
+		if strings.ContainsAny(nn, `/\:*?"<>|`) || nn == "." || nn == ".." || strings.HasPrefix(nn, ".aranea") {
+			return Document{}, apierror.BadRequest("knowledge", "invalid file name: %q", nn)
+		}
+		name = nn
+	}
 	newRel := name
 	if dir != "" {
 		newRel = dir + "/" + name

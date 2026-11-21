@@ -208,6 +208,53 @@ export type VaultTreeNode = {
   errorMessage: string | undefined;
 };
 
+// 资料库回收站 / 历史版本：本机资料库删掉的文件、改写前的旧版本都在 .aranea/trash 里。
+export type VaultTrashItem = {
+  path: string | undefined;
+  origPath: string | undefined;
+  sizeBytes: number | undefined;
+  modifiedAt: string | undefined;
+};
+
+export type ListVaultTrashRequest = {
+  //
+  // Behaviors: REQUIRED
+  collectionId: string | undefined;
+  relPath: string | undefined;
+};
+
+export type ListVaultTrashResponse = {
+  items: VaultTrashItem[] | undefined;
+};
+
+export type VaultTrashPathRequest = {
+  //
+  // Behaviors: REQUIRED
+  collectionId: string | undefined;
+  //
+  // Behaviors: REQUIRED
+  path: string | undefined;
+};
+
+export type RestoreVaultTrashResponse = {
+  relPath: string | undefined;
+};
+
+export type VaultTrashContentResponse = {
+  content: string | undefined;
+};
+
+export type PurgeVaultTrashRequest = {
+  //
+  // Behaviors: REQUIRED
+  collectionId: string | undefined;
+  paths: string[] | undefined;
+};
+
+export type PurgeVaultTrashResponse = {
+  deleted: number | undefined;
+};
+
 export type ListVaultTreeRequest = {
   //
   // Behaviors: REQUIRED
@@ -633,6 +680,9 @@ export type MoveDocumentToDirRequest = {
   // "overwrite"  = back up the existing target to .aranea/trash, then overwrite;
   // "rename"     = keep both, auto-rename the moved file to "name (2).ext".
   conflictPolicy: string | undefined;
+  // new_name: non-empty = also rename the file (a bare file name, no slashes); target_dir ""
+  // together with new_name keeps the current directory (rename in place).
+  newName: string | undefined;
 };
 
 // UpdateDocumentContentRequest saves the edited body back to the vault file (G2-B5).
@@ -778,6 +828,11 @@ export interface KnowledgeService {
   UpdateDocumentContent(request: UpdateDocumentContentRequest): Promise<UpdateDocumentContentResponse>;
   // Vault explorer (P3): lazy folder listing derived from document rel_paths.
   ListVaultTree(request: ListVaultTreeRequest): Promise<ListVaultTreeResponse>;
+  // 回收站 / 历史版本（本机资料库的 .aranea/trash）。
+  ListVaultTrash(request: ListVaultTrashRequest): Promise<ListVaultTrashResponse>;
+  GetVaultTrashContent(request: VaultTrashPathRequest): Promise<VaultTrashContentResponse>;
+  RestoreVaultTrash(request: VaultTrashPathRequest): Promise<RestoreVaultTrashResponse>;
+  PurgeVaultTrash(request: PurgeVaultTrashRequest): Promise<PurgeVaultTrashResponse>;
   // CreateVaultDir creates a directory inside the vault (G1-B2; idempotent).
   CreateVaultDir(request: CreateVaultDirRequest): Promise<wellKnownEmpty>;
   // CreateVaultDocument writes a template .md (frontmatter + empty heading) and
@@ -1192,6 +1247,92 @@ export function createKnowledgeServiceClient(
         service: "KnowledgeService",
         method: "ListVaultTree",
       }) as Promise<ListVaultTreeResponse>;
+    },
+    ListVaultTrash(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      if (!request.collectionId) {
+        throw new Error("missing required field request.collection_id");
+      }
+      const path = `v1/knowledge/vaults/${request.collectionId}/trash`; // eslint-disable-line quotes
+      const body = null;
+      const queryParams: string[] = [];
+      if (request.relPath) {
+        queryParams.push(`relPath=${encodeURIComponent(request.relPath.toString())}`)
+      }
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "KnowledgeService",
+        method: "ListVaultTrash",
+      }) as Promise<ListVaultTrashResponse>;
+    },
+    GetVaultTrashContent(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      if (!request.collectionId) {
+        throw new Error("missing required field request.collection_id");
+      }
+      const path = `v1/knowledge/vaults/${request.collectionId}/trash:content`; // eslint-disable-line quotes
+      const body = null;
+      const queryParams: string[] = [];
+      if (request.path) {
+        queryParams.push(`path=${encodeURIComponent(request.path.toString())}`)
+      }
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "KnowledgeService",
+        method: "GetVaultTrashContent",
+      }) as Promise<VaultTrashContentResponse>;
+    },
+    RestoreVaultTrash(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      if (!request.collectionId) {
+        throw new Error("missing required field request.collection_id");
+      }
+      const path = `v1/knowledge/vaults/${request.collectionId}/trash:restore`; // eslint-disable-line quotes
+      const body = JSON.stringify(request);
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "KnowledgeService",
+        method: "RestoreVaultTrash",
+      }) as Promise<RestoreVaultTrashResponse>;
+    },
+    PurgeVaultTrash(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      if (!request.collectionId) {
+        throw new Error("missing required field request.collection_id");
+      }
+      const path = `v1/knowledge/vaults/${request.collectionId}/trash:purge`; // eslint-disable-line quotes
+      const body = JSON.stringify(request);
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "KnowledgeService",
+        method: "PurgeVaultTrash",
+      }) as Promise<PurgeVaultTrashResponse>;
     },
     CreateVaultDir(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.collectionId) {

@@ -200,6 +200,45 @@ message VaultTreeNode {
   string error_message = 11;  // populated when status=error (parse failure reason)
 }
 
+// 资料库回收站 / 历史版本：本机资料库删掉的文件、改写前的旧版本都在 .aranea/trash 里。
+message VaultTrashItem {
+  string path = 1;      // trash 里的相对路径（恢复 / 彻底删除时传回）
+  string orig_path = 2; // 原来在资料库里的相对路径
+  int64 size_bytes = 3;
+  string modified_at = 4; // RFC3339：进回收站（被删 / 被改写）的时间
+}
+
+message ListVaultTrashRequest {
+  string collection_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string rel_path = 2; // 非空 = 只要这个文件的历史版本
+}
+
+message ListVaultTrashResponse {
+  repeated VaultTrashItem items = 1;
+}
+
+message VaultTrashPathRequest {
+  string collection_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string path = 2 [(google.api.field_behavior) = REQUIRED];
+}
+
+message RestoreVaultTrashResponse {
+  string rel_path = 1; // 恢复到的位置（原位置已有同名文件时自动改名）
+}
+
+message VaultTrashContentResponse {
+  string content = 1; // 文本内容（最多 1MB）
+}
+
+message PurgeVaultTrashRequest {
+  string collection_id = 1 [(google.api.field_behavior) = REQUIRED];
+  repeated string paths = 2; // 空 = 清空整个回收站
+}
+
+message PurgeVaultTrashResponse {
+  int64 deleted = 1;
+}
+
 message ListVaultTreeRequest {
   string collection_id = 1 [(google.api.field_behavior) = REQUIRED];
   // prefix selects the folder whose DIRECT children are returned; empty = root.
@@ -566,6 +605,9 @@ message MoveDocumentToDirRequest {
   //   "overwrite"  = back up the existing target to .aranea/trash, then overwrite;
   //   "rename"     = keep both, auto-rename the moved file to "name (2).ext".
   string conflict_policy = 3;
+  // new_name: non-empty = also rename the file (a bare file name, no slashes); target_dir ""
+  // together with new_name keeps the current directory (rename in place).
+  string new_name = 4;
 }
 
 // UpdateDocumentContentRequest saves the edited body back to the vault file (G2-B5).
@@ -771,6 +813,29 @@ service KnowledgeService {
   rpc ListVaultTree(ListVaultTreeRequest) returns (ListVaultTreeResponse) {
     option (google.api.http) = {
       get: "/v1/knowledge/vaults/{collection_id}/tree"
+    };
+  }
+  // 回收站 / 历史版本（本机资料库的 .aranea/trash）。
+  rpc ListVaultTrash(ListVaultTrashRequest) returns (ListVaultTrashResponse) {
+    option (google.api.http) = {
+      get: "/v1/knowledge/vaults/{collection_id}/trash"
+    };
+  }
+  rpc GetVaultTrashContent(VaultTrashPathRequest) returns (VaultTrashContentResponse) {
+    option (google.api.http) = {
+      get: "/v1/knowledge/vaults/{collection_id}/trash:content"
+    };
+  }
+  rpc RestoreVaultTrash(VaultTrashPathRequest) returns (RestoreVaultTrashResponse) {
+    option (google.api.http) = {
+      post: "/v1/knowledge/vaults/{collection_id}/trash:restore"
+      body: "*"
+    };
+  }
+  rpc PurgeVaultTrash(PurgeVaultTrashRequest) returns (PurgeVaultTrashResponse) {
+    option (google.api.http) = {
+      post: "/v1/knowledge/vaults/{collection_id}/trash:purge"
+      body: "*"
     };
   }
   // CreateVaultDir creates a directory inside the vault (G1-B2; idempotent).

@@ -458,6 +458,9 @@ func (f *VaultFiler) MoveToTrash(root, relPath string) (string, error) {
 	if err := os.Rename(target, trashPath); err != nil {
 		return "", apierror.Internal("knowledge", "vault: move to trash %s", rel).WithCause(err)
 	}
+	// rename 保留原 mtime；回收站按 mtime 显示「删除时间」，这里改成现在
+	now := time.Now()
+	_ = os.Chtimes(trashPath, now, now)
 	f.markSelfWrite(rel, "", true)
 	f.lg.Debug("vault doc moved to trash", loggateway.Str("rel_path", rel))
 	return trashPath, nil

@@ -1031,7 +1031,17 @@ func (s *KnowledgeService) MoveDocumentToDir(ctx context.Context, req *v1.MoveDo
 	if err := s.assertCollectionMutateAccess(ctx, col); err != nil {
 		return nil, err
 	}
-	moved, err := s.uc.MoveVaultDocumentToDir(ctx, req.GetId(), req.GetTargetDir(), req.GetConflictPolicy())
+	var moved bizknowledge.Document
+	if req.GetNewName() != "" {
+		// 改名：target_dir 空 = 留在原目录
+		var dir *string
+		if td := req.GetTargetDir(); td != "" {
+			dir = &td
+		}
+		moved, err = s.uc.RelocateVaultDocument(ctx, req.GetId(), dir, req.GetNewName(), req.GetConflictPolicy())
+	} else {
+		moved, err = s.uc.MoveVaultDocumentToDir(ctx, req.GetId(), req.GetTargetDir(), req.GetConflictPolicy())
+	}
 	if err != nil {
 		s.lg.Warn("库内移动知识文档失败",
 			loggateway.StepID("knowledge.document.move_to_dir_fail"),

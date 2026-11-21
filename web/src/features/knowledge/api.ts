@@ -337,9 +337,43 @@ export async function moveDocumentToDir(
   id: string,
   targetDir: string,
   conflictPolicy = '',
+  newName = '',
 ): Promise<KnowledgeDocument> {
-  const raw = await svc.MoveDocumentToDir({ id, targetDir, conflictPolicy });
+  const raw = await svc.MoveDocumentToDir({ id, targetDir, conflictPolicy, newName });
   return mapDocument(raw);
+}
+
+/** 改名（留在原目录）：本机资料库直接改磁盘上的文件名。 */
+export async function renameDocument(id: string, newName: string, conflictPolicy = ''): Promise<KnowledgeDocument> {
+  return moveDocumentToDir(id, '', conflictPolicy, newName);
+}
+
+export type VaultTrashItem = { path: string; orig_path: string; size_bytes: number; modified_at: string };
+
+/** 回收站 / 历史版本（本机资料库 .aranea/trash）；relPath 非空 = 只要这个文件的历史版本。 */
+export async function listVaultTrash(collectionId: string, relPath = ''): Promise<VaultTrashItem[]> {
+  const res = await svc.ListVaultTrash({ collectionId, relPath });
+  return (res.items ?? []).map((r) => ({
+    path: String(r.path ?? ''),
+    orig_path: String(r.origPath ?? ''),
+    size_bytes: Number(r.sizeBytes ?? 0),
+    modified_at: String(r.modifiedAt ?? ''),
+  }));
+}
+
+export async function getVaultTrashContent(collectionId: string, path: string): Promise<string> {
+  const res = await svc.GetVaultTrashContent({ collectionId, path });
+  return String(res.content ?? '');
+}
+
+export async function restoreVaultTrash(collectionId: string, path: string): Promise<string> {
+  const res = await svc.RestoreVaultTrash({ collectionId, path });
+  return String(res.relPath ?? '');
+}
+
+export async function purgeVaultTrash(collectionId: string, paths: string[] = []): Promise<number> {
+  const res = await svc.PurgeVaultTrash({ collectionId, paths });
+  return Number(res.deleted ?? 0);
 }
 
 // ---------- Vault explorer（P3 资源管理器） ----------
@@ -990,7 +1024,9 @@ export async function triggerSourceSync(id: string): Promise<void> {
 }
 
 export async function listSourceSyncRuns(id: string, limit = 50): Promise<SourceSyncRun[]> {
-  const data = asRecord((await kratosApi.get(`${connectorsBase}/${encodeURIComponent(id)}/runs`, { params: { limit } })).data);
+  const data = asRecord(
+    (await kratosApi.get(`${connectorsBase}/${encodeURIComponent(id)}/runs`, { params: { limit } })).data,
+  );
   const items = Array.isArray(data.items) ? data.items : [];
   return items.map(mapSourceRun);
 }
@@ -1011,11 +1047,16 @@ export async function listSourceCredentials(id: string): Promise<SourceCredentia
 }
 
 /** 凭据覆盖写（④：密钥本体只进不出；secret 空串=非法，后端硬拒）。 */
-export async function upsertSourceCredential(id: string, input: { credential_key: string; secret: string; status?: string }): Promise<SourceCredentialView> {
+export async function upsertSourceCredential(
+  id: string,
+  input: { credential_key: string; secret: string; status?: string },
+): Promise<SourceCredentialView> {
   const res = (await kratosApi.put(`${connectorsBase}/${encodeURIComponent(id)}/credential`, input)).data;
   return mapSourceCredential(res);
 }
 
 export async function deleteSourceCredential(id: string, credentialKey: string): Promise<void> {
-  await kratosApi.delete(`${connectorsBase}/${encodeURIComponent(id)}/credential`, { params: { credential_key: credentialKey } });
+  await kratosApi.delete(`${connectorsBase}/${encodeURIComponent(id)}/credential`, {
+    params: { credential_key: credentialKey },
+  });
 }

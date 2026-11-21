@@ -32,6 +32,7 @@ const OperationKnowledgeServiceGetCollection = "/kratos.knowledge.v1.KnowledgeSe
 const OperationKnowledgeServiceGetDocument = "/kratos.knowledge.v1.KnowledgeService/GetDocument"
 const OperationKnowledgeServiceGetDocumentContent = "/kratos.knowledge.v1.KnowledgeService/GetDocumentContent"
 const OperationKnowledgeServiceGetEmbedderConfig = "/kratos.knowledge.v1.KnowledgeService/GetEmbedderConfig"
+const OperationKnowledgeServiceGetVaultTrashContent = "/kratos.knowledge.v1.KnowledgeService/GetVaultTrashContent"
 const OperationKnowledgeServiceIngestDocument = "/kratos.knowledge.v1.KnowledgeService/IngestDocument"
 const OperationKnowledgeServiceListBlockBacklinks = "/kratos.knowledge.v1.KnowledgeService/ListBlockBacklinks"
 const OperationKnowledgeServiceListCollectionGraph = "/kratos.knowledge.v1.KnowledgeService/ListCollectionGraph"
@@ -44,16 +45,19 @@ const OperationKnowledgeServiceListEntityMergeSuggestions = "/kratos.knowledge.v
 const OperationKnowledgeServiceListGovernanceProposals = "/kratos.knowledge.v1.KnowledgeService/ListGovernanceProposals"
 const OperationKnowledgeServiceListRecentLinkUses = "/kratos.knowledge.v1.KnowledgeService/ListRecentLinkUses"
 const OperationKnowledgeServiceListUnlinkedMentions = "/kratos.knowledge.v1.KnowledgeService/ListUnlinkedMentions"
+const OperationKnowledgeServiceListVaultTrash = "/kratos.knowledge.v1.KnowledgeService/ListVaultTrash"
 const OperationKnowledgeServiceListVaultTree = "/kratos.knowledge.v1.KnowledgeService/ListVaultTree"
 const OperationKnowledgeServiceMergeKnowledgeEntities = "/kratos.knowledge.v1.KnowledgeService/MergeKnowledgeEntities"
 const OperationKnowledgeServiceMoveDocument = "/kratos.knowledge.v1.KnowledgeService/MoveDocument"
 const OperationKnowledgeServiceMoveDocumentToDir = "/kratos.knowledge.v1.KnowledgeService/MoveDocumentToDir"
 const OperationKnowledgeServicePromoteBlocks = "/kratos.knowledge.v1.KnowledgeService/PromoteBlocks"
+const OperationKnowledgeServicePurgeVaultTrash = "/kratos.knowledge.v1.KnowledgeService/PurgeVaultTrash"
 const OperationKnowledgeServiceRebuildKnowledgeIndex = "/kratos.knowledge.v1.KnowledgeService/RebuildKnowledgeIndex"
 const OperationKnowledgeServiceRecordLinkUse = "/kratos.knowledge.v1.KnowledgeService/RecordLinkUse"
 const OperationKnowledgeServiceReembedDocuments = "/kratos.knowledge.v1.KnowledgeService/ReembedDocuments"
 const OperationKnowledgeServiceReindexVault = "/kratos.knowledge.v1.KnowledgeService/ReindexVault"
 const OperationKnowledgeServiceResolveGovernanceProposal = "/kratos.knowledge.v1.KnowledgeService/ResolveGovernanceProposal"
+const OperationKnowledgeServiceRestoreVaultTrash = "/kratos.knowledge.v1.KnowledgeService/RestoreVaultTrash"
 const OperationKnowledgeServiceSearch = "/kratos.knowledge.v1.KnowledgeService/Search"
 const OperationKnowledgeServiceUpdateCollectionSpace = "/kratos.knowledge.v1.KnowledgeService/UpdateCollectionSpace"
 const OperationKnowledgeServiceUpdateDocumentContent = "/kratos.knowledge.v1.KnowledgeService/UpdateDocumentContent"
@@ -84,6 +88,7 @@ type KnowledgeServiceHTTPServer interface {
 	GetDocument(context.Context, *GetDocumentRequest) (*KnowledgeDocument, error)
 	GetDocumentContent(context.Context, *GetDocumentContentRequest) (*DocumentContent, error)
 	GetEmbedderConfig(context.Context, *GetEmbedderConfigRequest) (*EmbedderConfig, error)
+	GetVaultTrashContent(context.Context, *VaultTrashPathRequest) (*VaultTrashContentResponse, error)
 	// IngestDocument Documents
 	IngestDocument(context.Context, *IngestDocumentRequest) (*KnowledgeDocument, error)
 	// ListBlockBacklinks ListBlockBacklinks returns block-level inbound references (SP1-E): context
@@ -120,6 +125,8 @@ type KnowledgeServiceHTTPServer interface {
 	// ListUnlinkedMentions ListUnlinkedMentions returns documents that mention the target doc's name
 	// in plain text (outside [[wikilinks]]) without linking to it (P2-7).
 	ListUnlinkedMentions(context.Context, *ListUnlinkedMentionsRequest) (*ListUnlinkedMentionsResponse, error)
+	// ListVaultTrash 回收站 / 历史版本（本机资料库的 .aranea/trash）。
+	ListVaultTrash(context.Context, *ListVaultTrashRequest) (*ListVaultTrashResponse, error)
 	// ListVaultTree Vault explorer (P3): lazy folder listing derived from document rel_paths.
 	ListVaultTree(context.Context, *ListVaultTreeRequest) (*ListVaultTreeResponse, error)
 	// MergeKnowledgeEntities MergeKnowledgeEntities merges mergee entities into the keeper (G5-F B10)
@@ -136,6 +143,7 @@ type KnowledgeServiceHTTPServer interface {
 	// cascade candidates for references into private blocks, and immediate
 	// re-indexing of the target document so promoted content is searchable.
 	PromoteBlocks(context.Context, *PromoteBlocksRequest) (*PromoteBlocksResponse, error)
+	PurgeVaultTrash(context.Context, *PurgeVaultTrashRequest) (*PurgeVaultTrashResponse, error)
 	// RebuildKnowledgeIndex RebuildKnowledgeIndex rebuilds the block-level derived index (blocks/refs)
 	// for every document of the collection (SP1-H, US-29). Asynchronous and
 	// idempotent; 409 Conflict while a rebuild is already running for the same
@@ -160,6 +168,7 @@ type KnowledgeServiceHTTPServer interface {
 	// decision=applied approves the action; rejected dismisses it;
 	// keep_old/keep_new resolve fact-level conflicts by choosing which section to keep.
 	ResolveGovernanceProposal(context.Context, *ResolveGovernanceProposalRequest) (*ResolveGovernanceProposalResponse, error)
+	RestoreVaultTrash(context.Context, *VaultTrashPathRequest) (*RestoreVaultTrashResponse, error)
 	// Search Search
 	Search(context.Context, *SearchRequest) (*SearchResponse, error)
 	UpdateCollectionSpace(context.Context, *UpdateCollectionSpaceRequest) (*KnowledgeCollection, error)
@@ -188,6 +197,10 @@ func RegisterKnowledgeServiceHTTPServer(s *http.Server, srv KnowledgeServiceHTTP
 	r.POST("/v1/knowledge/collections/{collection_id}:enable-semantic", _KnowledgeService_EnableCollectionSemantic0_HTTP_Handler(srv))
 	r.PUT("/v1/knowledge/documents/{id}/content", _KnowledgeService_UpdateDocumentContent0_HTTP_Handler(srv))
 	r.GET("/v1/knowledge/vaults/{collection_id}/tree", _KnowledgeService_ListVaultTree0_HTTP_Handler(srv))
+	r.GET("/v1/knowledge/vaults/{collection_id}/trash", _KnowledgeService_ListVaultTrash0_HTTP_Handler(srv))
+	r.GET("/v1/knowledge/vaults/{collection_id}/trash:content", _KnowledgeService_GetVaultTrashContent0_HTTP_Handler(srv))
+	r.POST("/v1/knowledge/vaults/{collection_id}/trash:restore", _KnowledgeService_RestoreVaultTrash0_HTTP_Handler(srv))
+	r.POST("/v1/knowledge/vaults/{collection_id}/trash:purge", _KnowledgeService_PurgeVaultTrash0_HTTP_Handler(srv))
 	r.POST("/v1/knowledge/vaults/{collection_id}/dirs", _KnowledgeService_CreateVaultDir0_HTTP_Handler(srv))
 	r.POST("/v1/knowledge/vaults/{collection_id}/docs", _KnowledgeService_CreateVaultDocument0_HTTP_Handler(srv))
 	r.GET("/v1/knowledge/documents/{id}/links", _KnowledgeService_ListDocumentLinks0_HTTP_Handler(srv))
@@ -573,6 +586,100 @@ func _KnowledgeService_ListVaultTree0_HTTP_Handler(srv KnowledgeServiceHTTPServe
 			return err
 		}
 		reply := out.(*ListVaultTreeResponse)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _KnowledgeService_ListVaultTrash0_HTTP_Handler(srv KnowledgeServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in ListVaultTrashRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationKnowledgeServiceListVaultTrash)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.ListVaultTrash(ctx, req.(*ListVaultTrashRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*ListVaultTrashResponse)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _KnowledgeService_GetVaultTrashContent0_HTTP_Handler(srv KnowledgeServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in VaultTrashPathRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationKnowledgeServiceGetVaultTrashContent)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.GetVaultTrashContent(ctx, req.(*VaultTrashPathRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*VaultTrashContentResponse)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _KnowledgeService_RestoreVaultTrash0_HTTP_Handler(srv KnowledgeServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in VaultTrashPathRequest
+		if err := ctx.Bind(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationKnowledgeServiceRestoreVaultTrash)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.RestoreVaultTrash(ctx, req.(*VaultTrashPathRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*RestoreVaultTrashResponse)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _KnowledgeService_PurgeVaultTrash0_HTTP_Handler(srv KnowledgeServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in PurgeVaultTrashRequest
+		if err := ctx.Bind(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationKnowledgeServicePurgeVaultTrash)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.PurgeVaultTrash(ctx, req.(*PurgeVaultTrashRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*PurgeVaultTrashResponse)
 		return ctx.Result(200, reply)
 	}
 }
@@ -1126,6 +1233,7 @@ type KnowledgeServiceHTTPClient interface {
 	GetDocument(ctx context.Context, req *GetDocumentRequest, opts ...http.CallOption) (rsp *KnowledgeDocument, err error)
 	GetDocumentContent(ctx context.Context, req *GetDocumentContentRequest, opts ...http.CallOption) (rsp *DocumentContent, err error)
 	GetEmbedderConfig(ctx context.Context, req *GetEmbedderConfigRequest, opts ...http.CallOption) (rsp *EmbedderConfig, err error)
+	GetVaultTrashContent(ctx context.Context, req *VaultTrashPathRequest, opts ...http.CallOption) (rsp *VaultTrashContentResponse, err error)
 	// IngestDocument Documents
 	IngestDocument(ctx context.Context, req *IngestDocumentRequest, opts ...http.CallOption) (rsp *KnowledgeDocument, err error)
 	// ListBlockBacklinks ListBlockBacklinks returns block-level inbound references (SP1-E): context
@@ -1162,6 +1270,8 @@ type KnowledgeServiceHTTPClient interface {
 	// ListUnlinkedMentions ListUnlinkedMentions returns documents that mention the target doc's name
 	// in plain text (outside [[wikilinks]]) without linking to it (P2-7).
 	ListUnlinkedMentions(ctx context.Context, req *ListUnlinkedMentionsRequest, opts ...http.CallOption) (rsp *ListUnlinkedMentionsResponse, err error)
+	// ListVaultTrash 回收站 / 历史版本（本机资料库的 .aranea/trash）。
+	ListVaultTrash(ctx context.Context, req *ListVaultTrashRequest, opts ...http.CallOption) (rsp *ListVaultTrashResponse, err error)
 	// ListVaultTree Vault explorer (P3): lazy folder listing derived from document rel_paths.
 	ListVaultTree(ctx context.Context, req *ListVaultTreeRequest, opts ...http.CallOption) (rsp *ListVaultTreeResponse, err error)
 	// MergeKnowledgeEntities MergeKnowledgeEntities merges mergee entities into the keeper (G5-F B10)
@@ -1178,6 +1288,7 @@ type KnowledgeServiceHTTPClient interface {
 	// cascade candidates for references into private blocks, and immediate
 	// re-indexing of the target document so promoted content is searchable.
 	PromoteBlocks(ctx context.Context, req *PromoteBlocksRequest, opts ...http.CallOption) (rsp *PromoteBlocksResponse, err error)
+	PurgeVaultTrash(ctx context.Context, req *PurgeVaultTrashRequest, opts ...http.CallOption) (rsp *PurgeVaultTrashResponse, err error)
 	// RebuildKnowledgeIndex RebuildKnowledgeIndex rebuilds the block-level derived index (blocks/refs)
 	// for every document of the collection (SP1-H, US-29). Asynchronous and
 	// idempotent; 409 Conflict while a rebuild is already running for the same
@@ -1202,6 +1313,7 @@ type KnowledgeServiceHTTPClient interface {
 	// decision=applied approves the action; rejected dismisses it;
 	// keep_old/keep_new resolve fact-level conflicts by choosing which section to keep.
 	ResolveGovernanceProposal(ctx context.Context, req *ResolveGovernanceProposalRequest, opts ...http.CallOption) (rsp *ResolveGovernanceProposalResponse, err error)
+	RestoreVaultTrash(ctx context.Context, req *VaultTrashPathRequest, opts ...http.CallOption) (rsp *RestoreVaultTrashResponse, err error)
 	// Search Search
 	Search(ctx context.Context, req *SearchRequest, opts ...http.CallOption) (rsp *SearchResponse, err error)
 	UpdateCollectionSpace(ctx context.Context, req *UpdateCollectionSpaceRequest, opts ...http.CallOption) (rsp *KnowledgeCollection, err error)
@@ -1380,6 +1492,19 @@ func (c *KnowledgeServiceHTTPClientImpl) GetEmbedderConfig(ctx context.Context, 
 	pattern := "/v1/knowledge/embedder-config"
 	path := binding.EncodeURL(pattern, in, true)
 	opts = append(opts, http.Operation(OperationKnowledgeServiceGetEmbedderConfig))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *KnowledgeServiceHTTPClientImpl) GetVaultTrashContent(ctx context.Context, in *VaultTrashPathRequest, opts ...http.CallOption) (*VaultTrashContentResponse, error) {
+	var out VaultTrashContentResponse
+	pattern := "/v1/knowledge/vaults/{collection_id}/trash:content"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationKnowledgeServiceGetVaultTrashContent))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
 	if err != nil {
@@ -1568,6 +1693,20 @@ func (c *KnowledgeServiceHTTPClientImpl) ListUnlinkedMentions(ctx context.Contex
 	return &out, nil
 }
 
+// ListVaultTrash 回收站 / 历史版本（本机资料库的 .aranea/trash）。
+func (c *KnowledgeServiceHTTPClientImpl) ListVaultTrash(ctx context.Context, in *ListVaultTrashRequest, opts ...http.CallOption) (*ListVaultTrashResponse, error) {
+	var out ListVaultTrashResponse
+	pattern := "/v1/knowledge/vaults/{collection_id}/trash"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationKnowledgeServiceListVaultTrash))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 // ListVaultTree Vault explorer (P3): lazy folder listing derived from document rel_paths.
 func (c *KnowledgeServiceHTTPClientImpl) ListVaultTree(ctx context.Context, in *ListVaultTreeRequest, opts ...http.CallOption) (*ListVaultTreeResponse, error) {
 	var out ListVaultTreeResponse
@@ -1636,6 +1775,19 @@ func (c *KnowledgeServiceHTTPClientImpl) PromoteBlocks(ctx context.Context, in *
 	pattern := "/v1/knowledge/blocks/promote"
 	path := binding.EncodeURL(pattern, in, false)
 	opts = append(opts, http.Operation(OperationKnowledgeServicePromoteBlocks))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *KnowledgeServiceHTTPClientImpl) PurgeVaultTrash(ctx context.Context, in *PurgeVaultTrashRequest, opts ...http.CallOption) (*PurgeVaultTrashResponse, error) {
+	var out PurgeVaultTrashResponse
+	pattern := "/v1/knowledge/vaults/{collection_id}/trash:purge"
+	path := binding.EncodeURL(pattern, in, false)
+	opts = append(opts, http.Operation(OperationKnowledgeServicePurgeVaultTrash))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
 	if err != nil {
@@ -1720,6 +1872,19 @@ func (c *KnowledgeServiceHTTPClientImpl) ResolveGovernanceProposal(ctx context.C
 	pattern := "/v1/knowledge/governance-proposals/{id}:resolve"
 	path := binding.EncodeURL(pattern, in, false)
 	opts = append(opts, http.Operation(OperationKnowledgeServiceResolveGovernanceProposal))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *KnowledgeServiceHTTPClientImpl) RestoreVaultTrash(ctx context.Context, in *VaultTrashPathRequest, opts ...http.CallOption) (*RestoreVaultTrashResponse, error) {
+	var out RestoreVaultTrashResponse
+	pattern := "/v1/knowledge/vaults/{collection_id}/trash:restore"
+	path := binding.EncodeURL(pattern, in, false)
+	opts = append(opts, http.Operation(OperationKnowledgeServiceRestoreVaultTrash))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
 	if err != nil {

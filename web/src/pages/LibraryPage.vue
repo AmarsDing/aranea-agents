@@ -1,6 +1,6 @@
 <template>
   <!-- 工作台 › 资料：三栏（空间与目录 · 文件列表 · 预览），设计 docs/aranea-agents/design/2026-11-17-三大模块重设计/10-资料.md §3.2 -->
-  <q-page class="app-standard-page lb-page">
+  <q-page class="app-standard-page lb-page" :style="{ '--lb-list-w': `${listW}px` }">
     <Teleport defer to="#app-tab-actions">
       <q-btn
         flat
@@ -40,24 +40,62 @@
     <template v-else>
       <!-- ============ 左：空间 + 资料库与目录树 ============ -->
       <nav class="lb-panel lb-nav" :aria-label="t('library.nav.aria')">
-        <button
-          v-for="s in SPACES"
-          :key="s"
-          type="button"
-          class="lb-space"
-          :class="{ 'lb-space--on': space === s }"
-          :aria-pressed="space === s"
-          @click="switchSpace(s)"
-        >
-          <span class="lb-space__ic"><q-icon :name="s === 'mine' ? 'person' : 'groups'" size="18px" /></span>
-          <b>{{ t(`library.space.${s}`) }}</b>
-          <small
-            >{{ spaceCount(s) ? t('library.space.libCount', { n: spaceCount(s) }) : t('library.space.noLib') }} ·
-            {{ t(`library.space.${s}Hint`) }}</small
+        <!-- 空间：一行两个分段按钮，说明放悬停提示 -->
+        <div class="lb-spaces" role="group" :aria-label="t('library.nav.spaces')">
+          <button
+            v-for="s in SPACES"
+            :key="s"
+            type="button"
+            class="lb-space"
+            :class="{ 'lb-space--on': space === s }"
+            :aria-pressed="space === s"
+            @click="switchSpace(s)"
           >
-        </button>
+            <q-icon :name="s === 'mine' ? 'person' : 'groups'" size="16px" aria-hidden="true" />
+            <span>{{ t(`library.space.${s}`) }}</span>
+            <small class="lb-mono">{{ spaceCount(s) }}</small>
+            <q-tooltip>{{ t(`library.space.${s}Hint`) }}</q-tooltip>
+          </button>
+        </div>
 
-        <div class="lb-sect">{{ t(`library.space.${space}`) }}</div>
+        <!-- 快速访问：最近打开、收藏（记在本机） -->
+        <div class="lb-quick" role="group" :aria-label="t('library.quick.aria')">
+          <button
+            v-for="k in QUICK_KINDS"
+            :key="k"
+            type="button"
+            class="lb-tn__label lb-quick__btn"
+            :class="{ 'lb-quick__btn--on': quick === k }"
+            :aria-pressed="quick === k"
+            @click="openQuick(k)"
+          >
+            <q-icon
+              :name="k === 'recent' ? 'history' : 'star_border'"
+              size="16px"
+              class="lb-tn__ic"
+              aria-hidden="true"
+            />
+            <span>{{ t(`library.quick.${k}`) }}</span>
+            <small class="lb-mono lb-quick__n">{{ (k === 'recent' ? recent : favs).length || '' }}</small>
+          </button>
+        </div>
+
+        <div class="lb-sect">
+          {{ t(`library.space.${space}`) }}
+          <span class="lb-sp" />
+          <q-btn
+            flat
+            dense
+            round
+            size="sm"
+            icon="add"
+            class="lb-sect__btn"
+            :aria-label="t('library.nav.newLibrary')"
+            @click="wizardOpen = true"
+          >
+            <q-tooltip>{{ t('library.nav.newLibrary') }}</q-tooltip>
+          </q-btn>
+        </div>
         <div class="lb-tree" role="tree" :aria-label="t(`library.space.${space}`)">
           <div
             v-for="row in treeRows"
@@ -105,6 +143,9 @@
                       t('library.nav.moveTo', { space: t(`library.space.${otherSpace}`) })
                     }}</q-item-section>
                   </q-item>
+                  <q-item v-if="isLocalId(row.libId)" v-close-popup clickable @click="openTrash(row.libId)">
+                    <q-item-section>{{ t('library.trash.title') }}</q-item-section>
+                  </q-item>
                 </q-list>
               </q-menu>
             </q-btn>
@@ -112,15 +153,6 @@
           <p v-if="!spaceLibs.length" class="lb-hint lb-tree__empty">{{ t('library.space.noLib') }}</p>
         </div>
 
-        <q-btn
-          flat
-          no-caps
-          dense
-          icon="add"
-          class="lb-nav__new"
-          :label="t('library.nav.newLibrary')"
-          @click="wizardOpen = true"
-        />
         <router-link to="/knowledge/notes" class="lb-nav__kb" :title="t('library.nav.knowledgeBaseHint')">
           <q-icon name="hub" size="16px" aria-hidden="true" />{{ t('library.nav.knowledgeBase') }}
         </router-link>
@@ -139,21 +171,24 @@
         <div class="lb-fl__bar">
           <nav class="lb-bc" aria-label="breadcrumb">
             <template v-if="currentLib">
-              <button type="button" class="lb-bc__seg" @click="goDir('')">{{ currentLib.name }}</button>
+              <button
+                type="button"
+                class="lb-bc__seg"
+                :title="
+                  isLocalLibrary(currentLib)
+                    ? t('library.nav.localAt', { path: currentLib.root_path })
+                    : t('library.nav.teamStore')
+                "
+                @click="goDir('')"
+              >
+                {{ currentLib.name }}
+              </button>
               <template v-for="c in crumbs" :key="c.path">
                 <q-icon name="chevron_right" size="16px" aria-hidden="true" />
                 <button type="button" class="lb-bc__seg" @click="goDir(c.path)">{{ c.name }}</button>
               </template>
             </template>
           </nav>
-          <span class="lb-sp" />
-          <span v-if="currentLib" class="lb-where lb-mono" :title="currentLib.root_path">
-            {{
-              isLocalLibrary(currentLib)
-                ? t('library.nav.localAt', { path: currentLib.root_path })
-                : t('library.nav.teamStore')
-            }}
-          </span>
         </div>
 
         <div class="lb-fl__tools">
@@ -171,45 +206,172 @@
           >
             <template #prepend><q-icon name="search" size="18px" /></template>
           </q-input>
-          <q-toggle
-            v-model="semantic"
+          <q-btn
+            flat
             dense
-            :label="t('library.list.semantic')"
-            :title="t('library.list.semanticHint')"
-          />
-          <q-btn-dropdown
+            round
+            size="sm"
+            icon="psychology"
+            :color="semantic ? 'primary' : undefined"
+            :aria-pressed="semantic"
+            :aria-label="t('library.list.semantic')"
+            @click="semantic = !semantic"
+          >
+            <q-tooltip>{{ t('library.list.semanticHint') }}</q-tooltip>
+          </q-btn>
+          <q-btn
+            flat
+            dense
+            round
+            size="sm"
+            icon="filter_list"
+            :color="kindFilter ? 'primary' : undefined"
+            :aria-label="t('library.list.filter')"
+          >
+            <q-tooltip>{{ kindFilter ? t(`library.kind.${kindFilter}`) : t('library.list.filter') }}</q-tooltip>
+            <q-menu anchor="bottom right" self="top right">
+              <q-list dense>
+                <q-item
+                  v-for="k in FILTER_KINDS"
+                  :key="k || 'all'"
+                  v-close-popup
+                  clickable
+                  :active="kindFilter === k"
+                  @click="kindFilter = k"
+                >
+                  <q-item-section>{{ k ? t(`library.kind.${k}`) : t('library.kind.all') }}</q-item-section>
+                </q-item>
+              </q-list>
+            </q-menu>
+          </q-btn>
+          <q-btn
+            flat
+            dense
+            round
+            size="sm"
+            icon="checklist"
+            :color="selectMode ? 'primary' : undefined"
+            :aria-pressed="selectMode"
+            :aria-label="t('library.list.select')"
+            :disable="!currentLib"
+            @click="toggleSelectMode"
+          >
+            <q-tooltip>{{ t('library.list.select') }}</q-tooltip>
+          </q-btn>
+          <q-btn
             unelevated
-            no-caps
             dense
+            round
+            size="sm"
             color="primary"
             icon="add"
             class="lb-fl__new"
-            :label="t('library.list.new')"
+            :aria-label="t('library.list.new')"
             :disable="!currentLib"
           >
-            <q-list dense>
-              <q-item v-close-popup clickable :disable="!localLib" @click="openNameDialog('folder')">
-                <q-item-section avatar><q-icon name="create_new_folder" size="18px" /></q-item-section>
-                <q-item-section>
-                  <q-item-label>{{ t('library.list.newFolder') }}</q-item-label>
-                  <q-item-label v-if="!localLib" caption>{{ t('library.list.teamNoFolder') }}</q-item-label>
-                </q-item-section>
-              </q-item>
-              <q-item v-close-popup clickable :disable="!localLib" @click="openNameDialog('md')">
-                <q-item-section avatar><q-icon name="note_add" size="18px" /></q-item-section>
-                <q-item-section>{{ t('library.list.newMd') }}</q-item-section>
-              </q-item>
-              <q-item v-close-popup clickable @click="fileInput?.click()">
-                <q-item-section avatar><q-icon name="upload_file" size="18px" /></q-item-section>
-                <q-item-section>{{ t('library.list.upload') }}</q-item-section>
-              </q-item>
-            </q-list>
-          </q-btn-dropdown>
+            <q-tooltip>{{ t('library.list.newHint') }}</q-tooltip>
+            <q-menu anchor="bottom right" self="top right">
+              <q-list dense>
+                <q-item v-close-popup clickable :disable="!localLib" @click="openNameDialog('folder')">
+                  <q-item-section avatar><q-icon name="create_new_folder" size="18px" /></q-item-section>
+                  <q-item-section>
+                    <q-item-label>{{ t('library.list.newFolder') }}</q-item-label>
+                    <q-item-label v-if="!localLib" caption>{{ t('library.list.teamNoFolder') }}</q-item-label>
+                  </q-item-section>
+                </q-item>
+                <q-item v-close-popup clickable :disable="!localLib" @click="openNameDialog('md')">
+                  <q-item-section avatar><q-icon name="note_add" size="18px" /></q-item-section>
+                  <q-item-section>{{ t('library.list.newMd') }}</q-item-section>
+                </q-item>
+                <q-item v-close-popup clickable @click="fileInput?.click()">
+                  <q-item-section avatar><q-icon name="upload_file" size="18px" /></q-item-section>
+                  <q-item-section>{{ t('library.list.upload') }}</q-item-section>
+                </q-item>
+              </q-list>
+            </q-menu>
+          </q-btn>
           <input ref="fileInput" type="file" multiple class="lb-sr" tabindex="-1" @change="onPickFiles" />
+        </div>
+        <!-- 选择模式：点行勾选，批量下载 / 移动 / 删除 -->
+        <div v-if="selectMode" class="lb-bulk" role="toolbar" :aria-label="t('library.list.select')">
+          <span class="lb-hint lb-mono" aria-live="polite">{{ t('library.list.selectedN', { n: picked.size }) }}</span>
+          <span class="lb-sp" />
+          <q-btn
+            flat
+            dense
+            round
+            size="sm"
+            icon="download"
+            :disable="!picked.size || bulkBusy"
+            :aria-label="t('library.preview.download')"
+            @click="bulkDownload"
+          >
+            <q-tooltip>{{ t('library.preview.download') }}</q-tooltip>
+          </q-btn>
+          <q-btn
+            v-if="localLib"
+            flat
+            dense
+            round
+            size="sm"
+            icon="drive_file_move"
+            :disable="!picked.size || bulkBusy"
+            :aria-label="t('library.preview.move')"
+            @click="openMove(true)"
+          >
+            <q-tooltip>{{ t('library.preview.move') }}</q-tooltip>
+          </q-btn>
+          <q-btn
+            flat
+            dense
+            round
+            size="sm"
+            color="negative"
+            icon="delete_outline"
+            :disable="!picked.size || bulkBusy"
+            :aria-label="t('library.preview.remove')"
+            @click="bulkRemove"
+          >
+            <q-tooltip>{{ t('library.preview.remove') }}</q-tooltip>
+          </q-btn>
+          <q-btn
+            flat
+            dense
+            round
+            size="sm"
+            icon="close"
+            :aria-label="t('library.list.exitSelect')"
+            @click="toggleSelectMode"
+          >
+            <q-tooltip>{{ t('library.list.exitSelect') }}</q-tooltip>
+          </q-btn>
+        </div>
+
+        <!-- 快速访问列表 -->
+        <div v-if="quick" class="lb-tbl">
+          <p class="lb-hint lb-tbl__note">
+            {{ quickList.length ? t(`library.quick.${quick}Hint`) : t(`library.quick.${quick}Empty`) }}
+          </p>
+          <button
+            v-for="it in quickList"
+            :key="it.doc"
+            type="button"
+            class="lb-res"
+            :class="{ 'lb-res--on': it.doc === selectedDocId }"
+            @click="openQuickItem(it)"
+          >
+            <span class="lb-res__t">
+              <span class="lb-fi lb-fi--sm" :class="`lb-fi--${fileKind(it.name)}`" aria-hidden="true">{{
+                KIND_LABEL[fileKind(it.name)]
+              }}</span>
+              <span class="lb-res__n">{{ it.name }}</span>
+            </span>
+            <span class="lb-res__m">{{ quickWhere(it) }}</span>
+          </button>
         </div>
 
         <!-- 搜索结果：按文件聚合，跨两个空间 -->
-        <div v-if="q.trim()" class="lb-tbl" aria-live="polite">
+        <div v-else-if="q.trim()" class="lb-tbl" aria-live="polite">
           <q-linear-progress v-if="searching" indeterminate size="2px" color="primary" />
           <p v-else-if="searchError" class="lb-hint lb-tbl__note" role="alert">{{ searchError }}</p>
           <template v-else>
@@ -252,12 +414,33 @@
           @action="wizardOpen = true"
         />
 
-        <div v-else class="lb-tbl" role="table" :aria-label="t('library.list.aria')" :aria-busy="listLoading">
+        <div
+          v-else
+          ref="tableEl"
+          class="lb-tbl"
+          role="table"
+          :aria-label="t('library.list.aria')"
+          :aria-busy="listLoading"
+          @keydown="onListKey"
+        >
           <div class="lb-th" role="row">
-            <span role="columnheader">{{ t('library.list.colName') }}</span>
-            <span role="columnheader">{{ t('library.list.colModified') }}</span>
-            <span role="columnheader">{{ t('library.list.colSize') }}</span>
-            <span role="columnheader">{{ t('library.list.colStatus') }}</span>
+            <button
+              v-for="col in SORT_COLS"
+              :key="col"
+              type="button"
+              class="lb-th__btn"
+              role="columnheader"
+              :aria-sort="sortKey === col ? (sortAsc ? 'ascending' : 'descending') : 'none'"
+              @click="setSort(col)"
+            >
+              {{ t(`library.list.col${col === 'name' ? 'Name' : col === 'modified' ? 'Modified' : 'Size'}`) }}
+              <q-icon
+                v-if="sortKey === col"
+                :name="sortAsc ? 'arrow_upward' : 'arrow_downward'"
+                size="12px"
+                aria-hidden="true"
+              />
+            </button>
           </div>
           <q-linear-progress v-if="listLoading" indeterminate size="2px" color="primary" />
           <button v-if="prefix" type="button" class="lb-tr" role="row" @click="goDir(parentDir)">
@@ -270,31 +453,37 @@
             :key="n.kind + n.path + n.doc_id"
             type="button"
             class="lb-tr"
-            :class="{ 'lb-tr--on': n.kind === 'file' && n.doc_id === selectedDocId }"
+            :class="{
+              'lb-tr--on': n.kind === 'file' && (selectMode ? picked.has(n.doc_id) : n.doc_id === selectedDocId),
+            }"
             role="row"
-            :aria-selected="n.kind === 'file' ? n.doc_id === selectedDocId : undefined"
-            @click="openNode(n)"
+            :aria-selected="
+              n.kind === 'file' ? (selectMode ? picked.has(n.doc_id) : n.doc_id === selectedDocId) : undefined
+            "
+            @click="onRowClick(n)"
           >
             <span class="lb-tr__nm" role="cell">
+              <q-icon
+                v-if="selectMode && n.kind === 'file'"
+                :name="picked.has(n.doc_id) ? 'check_box' : 'check_box_outline_blank'"
+                size="18px"
+                class="lb-tr__ck"
+                aria-hidden="true"
+              />
               <span v-if="n.kind === 'dir'" class="lb-fi lb-fi--folder" aria-hidden="true" />
               <span v-else class="lb-fi" :class="`lb-fi--${fileKind(n.name)}`" aria-hidden="true">{{
                 KIND_LABEL[fileKind(n.name)]
               }}</span>
-              <span class="lb-tr__name">{{ n.name }}</span>
-            </span>
-            <span class="lb-tr__c lb-mono" role="cell">{{ n.updated_at ? listTime(n.updated_at, now) : '—' }}</span>
-            <span class="lb-tr__c lb-mono" role="cell">{{ n.kind === 'dir' ? '—' : fileSize(n.size_bytes) }}</span>
-            <span class="lb-tr__c" role="cell">
-              <span
-                v-if="n.kind === 'file'"
-                class="lb-st"
-                :class="`lb-st--${n.status}`"
-                :title="n.error_message || statusText(n.status)"
-              >
-                <q-icon :name="STATUS_ICON[n.status] ?? 'help_outline'" size="16px" aria-hidden="true" />
-                <span>{{ statusText(n.status) }}</span>
+              <span class="lb-tr__name" :title="n.name">{{ n.name }}</span>
+              <!-- 整理好的不标（满屏绿勾是噪音），只标整理中 / 出错 -->
+              <span v-if="n.kind === 'file' && n.status !== 'indexed'" class="lb-st" :class="`lb-st--${n.status}`">
+                <q-icon :name="STATUS_ICON[n.status] ?? 'help_outline'" size="14px" />
+                <span class="lb-sr">{{ statusText(n.status) }}</span>
+                <q-tooltip>{{ n.error_message || statusText(n.status) }}</q-tooltip>
               </span>
             </span>
+            <span class="lb-tr__c lb-mono" role="cell">{{ n.updated_at ? listTime(n.updated_at, now) : '—' }}</span>
+            <span class="lb-tr__c lb-mono" role="cell">{{ n.kind === 'dir' ? '' : fileSize(n.size_bytes) }}</span>
           </button>
           <AppStatePanel
             v-if="!listLoading && !sortedNodes.length"
@@ -311,6 +500,21 @@
         <div v-if="dragDepth > 0" class="lb-drop" aria-hidden="true">
           <q-icon name="upload" size="28px" />{{ t('library.list.dropHere', { dir: dirLabel }) }}
         </div>
+        <!-- 拖这条改列表宽度（← → 也能调） -->
+        <div
+          class="lb-split"
+          role="separator"
+          tabindex="0"
+          aria-orientation="vertical"
+          :aria-valuenow="listW"
+          :aria-valuemin="LIST_MIN"
+          :aria-valuemax="LIST_MAX"
+          :aria-label="t('library.list.resize')"
+          :title="t('library.list.resize')"
+          @pointerdown="startResize"
+          @keydown="onSplitKey"
+          @dblclick="setListW(LIST_DEFAULT)"
+        />
       </section>
 
       <!-- ============ 右：预览 ============ -->
@@ -318,12 +522,25 @@
         :node="selectedNode"
         :library="currentLib"
         :local-enabled="localEnabled"
-        @move="openMove"
+        :favorite="isFav"
+        @move="openMove(false)"
         @remove="removeSelected"
         @saved="loadNodes"
         @dirty="previewDirty = $event"
+        @favorite="toggleFavorite"
+        @rename="renameSelected"
+        @history="openHistory"
+        @visibility="setVisibility"
+        @copy-link="copyLink"
       />
     </template>
+
+    <LibraryTrashDialog
+      v-model="trashDlg.open"
+      :collection-id="trashDlg.lib"
+      :history="trashDlg.history"
+      @changed="afterTrashChange"
+    />
 
     <LibraryWizard
       v-model="wizardOpen"
@@ -367,7 +584,11 @@
     <!-- 移动到同一资料库的另一个文件夹 -->
     <AppDialog
       v-model="moveDlg.open"
-      :title="t('library.dialog.moveTitle', { name: selectedNode?.name ?? '' })"
+      :title="
+        moveDlg.bulk
+          ? t('library.dialog.moveTitleN', { n: picked.size })
+          : t('library.dialog.moveTitle', { name: selectedNode?.name ?? '' })
+      "
       size="md"
       position="standard"
       :loading="moveDlg.busy"
@@ -402,7 +623,7 @@
           no-caps
           color="primary"
           :loading="moveDlg.busy"
-          :disable="moveDlg.path === dirOf(selectedNode?.path ?? '')"
+          :disable="!moveDlg.bulk && moveDlg.path === dirOf(selectedNode?.path ?? '')"
           :label="t('library.dialog.moveHere')"
           @click="submitMove('')"
         />
@@ -438,6 +659,9 @@ import {
 import { inferUploadMime, readFileAsBase64 } from '../features/knowledge/knowledgeUploadCodec';
 import type { KnowledgeCollection, KnowledgeDocument, VaultTreeNode } from '../features/knowledge/types';
 import LibraryPreview from '../features/library/components/LibraryPreview.vue';
+import LibraryTrashDialog from '../features/library/components/LibraryTrashDialog.vue';
+import { prompt } from '../composables/useAppPrompt';
+import { renameDocument, updateDocumentVisibility, fetchDocumentAsset } from '../features/knowledge/api';
 import LibraryWizard from '../features/library/components/LibraryWizard.vue';
 import { fileSize, listTime } from '../features/mail/model';
 import {
@@ -454,6 +678,10 @@ import {
   validFileName,
   type LibrarySpace,
   type SearchHit,
+  pushRecent,
+  toggleFav,
+  type QuickItem,
+  type FileKind,
 } from '../features/library/model';
 
 const { t } = useI18n();
@@ -498,6 +726,7 @@ const docCache = new Map<string, KnowledgeDocument[]>();
 
 const nameDlg = reactive({ open: false, kind: 'folder' as 'folder' | 'md', name: '', busy: false, error: '' });
 const moveDlg = reactive({
+  bulk: false,
   open: false,
   path: '',
   dirs: [] as Array<{ name: string; path: string }>,
@@ -510,7 +739,52 @@ const otherSpace = computed<LibrarySpace>(() => (space.value === 'mine' ? 'compa
 const spaceLibs = computed(() => collections.value.filter((c) => spaceOf(c) === space.value));
 const currentLib = computed(() => collections.value.find((c) => c.id === libId.value) ?? null);
 const localLib = computed(() => !!currentLib.value && isLocalLibrary(currentLib.value));
-const sortedNodes = computed(() => sortNodes(nodes.value));
+// ——— 排序：点表头切换（文件夹始终在前） ———
+const SORT_COLS = ['name', 'modified', 'size'] as const;
+type SortKey = (typeof SORT_COLS)[number];
+const sortKey = ref<SortKey>('name');
+const sortAsc = ref(true);
+
+function setSort(col: SortKey) {
+  if (sortKey.value === col) sortAsc.value = !sortAsc.value;
+  else {
+    sortKey.value = col;
+    sortAsc.value = col === 'name'; // 时间、大小默认从新到旧、从大到小
+  }
+}
+
+const sortedNodes = computed(() => {
+  const all = sortNodes(nodes.value); // 默认：文件夹在前、名称升序
+  const base = kindFilter.value ? all.filter((n) => n.kind === 'dir' || fileKind(n.name) === kindFilter.value) : all;
+  const key = sortKey.value;
+  if (key === 'name' && sortAsc.value) return base;
+  const dir = sortAsc.value ? 1 : -1;
+  const time = (n: VaultTreeNode) => (n.updated_at ? Date.parse(n.updated_at) || 0 : 0);
+  const cmp = (a: VaultTreeNode, b: VaultTreeNode) =>
+    key === 'name'
+      ? a.name.localeCompare(b.name, undefined, { numeric: true })
+      : key === 'size'
+        ? (a.size_bytes || 0) - (b.size_bytes || 0)
+        : time(a) - time(b);
+  return [...base].sort((a, b) =>
+    a.kind !== b.kind ? (a.kind === 'dir' ? -1 : 1) : cmp(a, b) * dir || a.name.localeCompare(b.name),
+  );
+});
+
+// ——— 键盘：列表里 ↑ / ↓ 换文件（焦点跟着走），Enter 打开文件夹 ———
+const tableEl = ref<HTMLElement | null>(null);
+
+function onListKey(e: KeyboardEvent) {
+  if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+  const rows = Array.from(tableEl.value?.querySelectorAll<HTMLElement>('button.lb-tr') ?? []);
+  const i = rows.indexOf(document.activeElement as HTMLElement);
+  const next = rows[i < 0 ? 0 : i + (e.key === 'ArrowDown' ? 1 : -1)];
+  if (!next) return;
+  e.preventDefault();
+  next.focus();
+  const node = sortedNodes.value[rows.indexOf(next) - (prefix.value ? 1 : 0)];
+  if (node?.kind === 'file') void openNode(node);
+}
 const selectedNode = computed(
   () => nodes.value.find((n) => n.kind === 'file' && n.doc_id === selectedDocId.value) ?? null,
 );
@@ -642,6 +916,7 @@ async function loadNodes(quiet = false) {
 }
 
 async function selectLibrary(id: string, dir = '', fileId = '') {
+  if (!fileId) quick.value = '';
   if (!(await guardLeave())) return;
   const lib = collections.value.find((c) => c.id === id);
   if (lib) space.value = spaceOf(lib);
@@ -914,12 +1189,17 @@ async function browseMove(path: string) {
   }
 }
 
-function openMove() {
+function openMove(bulk: boolean) {
+  moveDlg.bulk = bulk;
   moveDlg.open = true;
-  void browseMove(dirOf(selectedNode.value?.path ?? ''));
+  void browseMove(bulk ? prefix.value : dirOf(selectedNode.value?.path ?? ''));
 }
 
 async function submitMove(policy: '' | 'overwrite' | 'rename') {
+  if (moveDlg.bulk) {
+    await bulkMove(policy);
+    return;
+  }
   const node = selectedNode.value;
   if (!node || !currentLib.value) return;
   moveDlg.busy = true;
@@ -937,6 +1217,308 @@ async function submitMove(policy: '' | 'overwrite' | 'rename') {
     else $q.notify({ type: 'negative', message: t('library.dialog.moveFailed') });
   } finally {
     moveDlg.busy = false;
+  }
+}
+
+// ——— 快速访问：最近打开 / 收藏（记在本机，换浏览器不带过去） ———
+const QUICK_KINDS = ['recent', 'fav'] as const;
+type QuickKind = (typeof QUICK_KINDS)[number];
+const RECENT_KEY = 'aranea.library.recent';
+const FAV_KEY = 'aranea.library.fav';
+
+function readList(key: string): QuickItem[] {
+  try {
+    const v = JSON.parse(localStorage.getItem(key) ?? '[]') as unknown;
+    return Array.isArray(v) ? (v as QuickItem[]).filter((x) => x && typeof x.doc === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+function writeList(key: string, list: QuickItem[]) {
+  try {
+    localStorage.setItem(key, JSON.stringify(list));
+  } catch {
+    // 存不了就只在这次打开里有效
+  }
+}
+
+const recent = ref<QuickItem[]>(readList(RECENT_KEY));
+const favs = ref<QuickItem[]>(readList(FAV_KEY));
+const quick = ref<'' | QuickKind>('');
+const quickList = computed(() => (quick.value === 'recent' ? recent.value : quick.value === 'fav' ? favs.value : []));
+const isFav = computed(() => !!selectedDocId.value && favs.value.some((x) => x.doc === selectedDocId.value));
+
+function quickItemOf(n: VaultTreeNode): QuickItem | null {
+  if (!currentLib.value) return null;
+  return { doc: n.doc_id, lib: currentLib.value.id, path: n.path, name: n.name, at: Date.now() };
+}
+
+watch(selectedNode, (n) => {
+  const it = n && quickItemOf(n);
+  if (!it) return;
+  recent.value = pushRecent(recent.value, it);
+  writeList(RECENT_KEY, recent.value);
+});
+
+function toggleFavorite() {
+  const it = selectedNode.value && quickItemOf(selectedNode.value);
+  if (!it) return;
+  favs.value = toggleFav(favs.value, it);
+  writeList(FAV_KEY, favs.value);
+}
+
+function openQuick(k: QuickKind) {
+  quick.value = quick.value === k ? '' : k;
+  q.value = '';
+}
+
+function quickWhere(it: QuickItem): string {
+  const lib = collections.value.find((c) => c.id === it.lib);
+  return [lib?.name ?? t('library.quick.gone'), dirOf(it.path).replace(/\/$/, '')].filter(Boolean).join(' / ');
+}
+
+async function openQuickItem(it: QuickItem) {
+  if (!collections.value.some((c) => c.id === it.lib)) {
+    $q.notify({ type: 'warning', message: t('library.quick.gone') });
+    return;
+  }
+  await selectLibrary(it.lib, dirOf(it.path), it.doc);
+}
+
+// ——— 类型筛选 ———
+const FILTER_KINDS: Array<'' | FileKind> = ['', 'doc', 'xls', 'ppt', 'pdf', 'md', 'img', 'txt', 'av', 'zip', 'file'];
+const kindFilter = ref<'' | FileKind>('');
+
+// ——— 选择模式与批量 ———
+const selectMode = ref(false);
+const picked = ref<Set<string>>(new Set());
+const bulkBusy = ref(false);
+
+function toggleSelectMode() {
+  selectMode.value = !selectMode.value;
+  picked.value = new Set();
+}
+
+function onRowClick(n: VaultTreeNode) {
+  if (!selectMode.value || n.kind !== 'file') {
+    void openNode(n);
+    return;
+  }
+  const next = new Set(picked.value);
+  if (next.has(n.doc_id)) next.delete(n.doc_id);
+  else next.add(n.doc_id);
+  picked.value = next;
+}
+
+const pickedNodes = computed(() => nodes.value.filter((n) => n.kind === 'file' && picked.value.has(n.doc_id)));
+
+async function bulkDownload() {
+  bulkBusy.value = true;
+  try {
+    for (const n of pickedNodes.value) {
+      const { blob, filename } = await fetchDocumentAsset(n.doc_id);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename || n.name;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 30_000);
+    }
+  } catch {
+    $q.notify({ type: 'negative', message: t('library.preview.loadFailed') });
+  } finally {
+    bulkBusy.value = false;
+  }
+}
+
+async function bulkRemove() {
+  const list = pickedNodes.value;
+  if (!list.length || !currentLib.value) return;
+  const ok = await confirm({
+    title: t('library.dialog.removeTitleN', { n: list.length }),
+    message: localLib.value ? t('library.dialog.removeLocal') : t('library.dialog.removeTeam'),
+    tone: 'danger',
+    confirmLabel: t('library.dialog.removeOk'),
+  });
+  if (!ok) return;
+  bulkBusy.value = true;
+  let done = 0;
+  for (const n of list) {
+    try {
+      await deleteDocument(n.doc_id);
+      done += 1;
+    } catch {
+      $q.notify({ type: 'negative', message: t('library.dialog.removeFailedName', { name: n.name }) });
+    }
+  }
+  bulkBusy.value = false;
+  $q.notify({ type: 'positive', message: t('library.dialog.removedN', { n: done }) });
+  if (picked.value.has(selectedDocId.value)) selectedDocId.value = '';
+  picked.value = new Set();
+  docCache.delete(currentLib.value.id);
+  syncQuery();
+  await loadNodes();
+}
+
+async function bulkMove(policy: '' | 'overwrite' | 'rename') {
+  if (!currentLib.value) return;
+  moveDlg.busy = true;
+  let done = 0;
+  let conflict = 0;
+  for (const n of pickedNodes.value) {
+    try {
+      await moveDocumentToDir(n.doc_id, moveDlg.path || '/', policy || 'rename');
+      done += 1;
+    } catch (e) {
+      if (parseKratosApiError(e).status === 409) conflict += 1;
+      else $q.notify({ type: 'negative', message: t('library.dialog.moveFailed') });
+    }
+  }
+  moveDlg.busy = false;
+  moveDlg.open = false;
+  $q.notify({
+    type: 'positive',
+    message: t('library.dialog.movedN', { n: done, dir: moveDlg.path || t('library.dialog.root') }),
+  });
+  if (conflict) $q.notify({ type: 'warning', message: t('library.dialog.moveConflict') });
+  picked.value = new Set();
+  docCache.delete(currentLib.value.id);
+  await loadNodes();
+}
+
+// ——— 改名 / 可见范围 / 复制链接 / 回收站与历史版本 ———
+async function renameSelected() {
+  const node = selectedNode.value;
+  if (!node || !currentLib.value) return;
+  const name = await prompt({
+    title: t('library.dialog.renameTitle'),
+    label: t('library.dialog.name'),
+    defaultValue: node.name,
+    required: true,
+    confirmLabel: t('library.preview.rename'),
+  });
+  const v = name?.trim() ?? '';
+  if (!v || v === node.name) return;
+  if (!validFileName(v)) {
+    $q.notify({ type: 'warning', message: t('library.dialog.invalidName') });
+    return;
+  }
+  try {
+    const doc = await renameDocument(node.doc_id, v);
+    $q.notify({ type: 'positive', message: t('library.dialog.renamed', { name: v }) });
+    docCache.delete(currentLib.value.id);
+    await selectLibrary(currentLib.value.id, prefix.value, doc.id || node.doc_id);
+  } catch (e) {
+    const err = parseKratosApiError(e);
+    $q.notify({ type: 'negative', message: err.status === 409 ? t('library.dialog.exists') : err.message });
+  }
+}
+
+async function setVisibility() {
+  const node = selectedNode.value;
+  if (!node) return;
+  const v = await prompt({
+    title: t('library.preview.visibility'),
+    message: t('library.visibility.hint'),
+    type: 'radio',
+    items: [
+      { label: t('library.visibility.collection'), value: 'collection' },
+      { label: t('library.visibility.private'), value: 'private' },
+    ],
+    confirmLabel: t('library.dialog.save'),
+  });
+  if (v !== 'collection' && v !== 'private') return;
+  try {
+    await updateDocumentVisibility(node.doc_id, v);
+    $q.notify({ type: 'positive', message: t(`library.visibility.done_${v}`) });
+  } catch (e) {
+    $q.notify({ type: 'negative', message: parseKratosApiError(e).message });
+  }
+}
+
+async function copyLink() {
+  const href = router.resolve({ path: '/knowledge', query: route.query }).href;
+  const url = new URL(href, window.location.href).toString();
+  try {
+    await navigator.clipboard.writeText(url);
+    $q.notify({ type: 'positive', message: t('library.preview.linkCopied') });
+  } catch {
+    $q.notify({ type: 'negative', message: t('library.preview.copyFailed') });
+  }
+}
+
+const trashDlg = reactive({
+  open: false,
+  lib: '',
+  history: null as null | { docId: string; relPath: string; name: string },
+});
+
+function isLocalId(id: string): boolean {
+  const c = collections.value.find((x) => x.id === id);
+  return !!c && isLocalLibrary(c);
+}
+
+function openTrash(lib: string) {
+  Object.assign(trashDlg, { open: true, lib, history: null });
+}
+
+function openHistory() {
+  const n = selectedNode.value;
+  if (!n || !currentLib.value) return;
+  Object.assign(trashDlg, {
+    open: true,
+    lib: currentLib.value.id,
+    history: { docId: n.doc_id, relPath: n.path, name: n.name },
+  });
+}
+
+async function afterTrashChange() {
+  docCache.clear();
+  await loadNodes();
+}
+
+// ——— 列表宽度：拖动右边那条（记在本机） ———
+const LIST_MIN = 220;
+const LIST_MAX = 640;
+const LIST_DEFAULT = 320;
+const LIST_KEY = 'aranea.library.listWidth';
+const listW = ref(
+  (() => {
+    try {
+      const v = Number(localStorage.getItem(LIST_KEY));
+      return v >= LIST_MIN && v <= LIST_MAX ? v : LIST_DEFAULT;
+    } catch {
+      return LIST_DEFAULT;
+    }
+  })(),
+);
+
+function setListW(v: number) {
+  listW.value = Math.min(LIST_MAX, Math.max(LIST_MIN, Math.round(v)));
+  try {
+    localStorage.setItem(LIST_KEY, String(listW.value));
+  } catch {
+    // 不记也行
+  }
+}
+
+function startResize(e: PointerEvent) {
+  const startX = e.clientX;
+  const startW = listW.value;
+  const move = (ev: PointerEvent) => setListW(startW + ev.clientX - startX);
+  const up = () => {
+    window.removeEventListener('pointermove', move);
+    window.removeEventListener('pointerup', up);
+  };
+  window.addEventListener('pointermove', move);
+  window.addEventListener('pointerup', up);
+  e.preventDefault();
+}
+
+function onSplitKey(e: KeyboardEvent) {
+  if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+    e.preventDefault();
+    setListW(listW.value + (e.key === 'ArrowLeft' ? -24 : 24));
   }
 }
 

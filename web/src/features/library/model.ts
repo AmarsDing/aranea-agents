@@ -224,3 +224,34 @@ export function mergeSearchHits(
   }
   return [...out.values()].sort((a, b) => Number(b.nameMatch) - Number(a.nameMatch) || b.score - a.score);
 }
+
+// ---------- 快速访问：最近打开 / 收藏（记在本机） ----------
+
+export type QuickItem = { doc: string; lib: string; path: string; name: string; at: number };
+
+/** 打开过的放最前，同一份去重，最多 max 条。 */
+export function pushRecent(list: QuickItem[], item: QuickItem, max = 20): QuickItem[] {
+  return [item, ...list.filter((x) => x.doc !== item.doc)].slice(0, max);
+}
+
+/** 收藏 / 取消收藏。 */
+export function toggleFav(list: QuickItem[], item: QuickItem): QuickItem[] {
+  return list.some((x) => x.doc === item.doc) ? list.filter((x) => x.doc !== item.doc) : [item, ...list].slice(0, 200);
+}
+
+// ---------- Markdown 目录 ----------
+
+/** 标题列表（跳过代码块里的 #）。第 k 个对应渲染结果里第 k 个 h1–h6。 */
+export function mdHeadings(md: string): Array<{ level: number; text: string }> {
+  const out: Array<{ level: number; text: string }> = [];
+  let fence = false;
+  for (const line of md.split('\n')) {
+    if (/^\s*(```|~~~)/.test(line)) {
+      fence = !fence;
+      continue;
+    }
+    const m = !fence && /^(#{1,6})\s+(.+?)\s*#*\s*$/.exec(line);
+    if (m) out.push({ level: m[1]!.length, text: m[2]! });
+  }
+  return out;
+}

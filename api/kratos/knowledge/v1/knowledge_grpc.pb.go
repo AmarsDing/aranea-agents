@@ -36,6 +36,10 @@ const (
 	KnowledgeService_EnableCollectionSemantic_FullMethodName   = "/kratos.knowledge.v1.KnowledgeService/EnableCollectionSemantic"
 	KnowledgeService_UpdateDocumentContent_FullMethodName      = "/kratos.knowledge.v1.KnowledgeService/UpdateDocumentContent"
 	KnowledgeService_ListVaultTree_FullMethodName              = "/kratos.knowledge.v1.KnowledgeService/ListVaultTree"
+	KnowledgeService_ListVaultTrash_FullMethodName             = "/kratos.knowledge.v1.KnowledgeService/ListVaultTrash"
+	KnowledgeService_GetVaultTrashContent_FullMethodName       = "/kratos.knowledge.v1.KnowledgeService/GetVaultTrashContent"
+	KnowledgeService_RestoreVaultTrash_FullMethodName          = "/kratos.knowledge.v1.KnowledgeService/RestoreVaultTrash"
+	KnowledgeService_PurgeVaultTrash_FullMethodName            = "/kratos.knowledge.v1.KnowledgeService/PurgeVaultTrash"
 	KnowledgeService_CreateVaultDir_FullMethodName             = "/kratos.knowledge.v1.KnowledgeService/CreateVaultDir"
 	KnowledgeService_CreateVaultDocument_FullMethodName        = "/kratos.knowledge.v1.KnowledgeService/CreateVaultDocument"
 	KnowledgeService_ListDocumentLinks_FullMethodName          = "/kratos.knowledge.v1.KnowledgeService/ListDocumentLinks"
@@ -97,6 +101,11 @@ type KnowledgeServiceClient interface {
 	UpdateDocumentContent(ctx context.Context, in *UpdateDocumentContentRequest, opts ...grpc.CallOption) (*UpdateDocumentContentResponse, error)
 	// Vault explorer (P3): lazy folder listing derived from document rel_paths.
 	ListVaultTree(ctx context.Context, in *ListVaultTreeRequest, opts ...grpc.CallOption) (*ListVaultTreeResponse, error)
+	// 回收站 / 历史版本（本机资料库的 .aranea/trash）。
+	ListVaultTrash(ctx context.Context, in *ListVaultTrashRequest, opts ...grpc.CallOption) (*ListVaultTrashResponse, error)
+	GetVaultTrashContent(ctx context.Context, in *VaultTrashPathRequest, opts ...grpc.CallOption) (*VaultTrashContentResponse, error)
+	RestoreVaultTrash(ctx context.Context, in *VaultTrashPathRequest, opts ...grpc.CallOption) (*RestoreVaultTrashResponse, error)
+	PurgeVaultTrash(ctx context.Context, in *PurgeVaultTrashRequest, opts ...grpc.CallOption) (*PurgeVaultTrashResponse, error)
 	// CreateVaultDir creates a directory inside the vault (G1-B2; idempotent).
 	CreateVaultDir(ctx context.Context, in *CreateVaultDirRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	// CreateVaultDocument writes a template .md (frontmatter + empty heading) and
@@ -336,6 +345,46 @@ func (c *knowledgeServiceClient) ListVaultTree(ctx context.Context, in *ListVaul
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ListVaultTreeResponse)
 	err := c.cc.Invoke(ctx, KnowledgeService_ListVaultTree_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *knowledgeServiceClient) ListVaultTrash(ctx context.Context, in *ListVaultTrashRequest, opts ...grpc.CallOption) (*ListVaultTrashResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListVaultTrashResponse)
+	err := c.cc.Invoke(ctx, KnowledgeService_ListVaultTrash_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *knowledgeServiceClient) GetVaultTrashContent(ctx context.Context, in *VaultTrashPathRequest, opts ...grpc.CallOption) (*VaultTrashContentResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(VaultTrashContentResponse)
+	err := c.cc.Invoke(ctx, KnowledgeService_GetVaultTrashContent_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *knowledgeServiceClient) RestoreVaultTrash(ctx context.Context, in *VaultTrashPathRequest, opts ...grpc.CallOption) (*RestoreVaultTrashResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RestoreVaultTrashResponse)
+	err := c.cc.Invoke(ctx, KnowledgeService_RestoreVaultTrash_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *knowledgeServiceClient) PurgeVaultTrash(ctx context.Context, in *PurgeVaultTrashRequest, opts ...grpc.CallOption) (*PurgeVaultTrashResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(PurgeVaultTrashResponse)
+	err := c.cc.Invoke(ctx, KnowledgeService_PurgeVaultTrash_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -599,6 +648,11 @@ type KnowledgeServiceServer interface {
 	UpdateDocumentContent(context.Context, *UpdateDocumentContentRequest) (*UpdateDocumentContentResponse, error)
 	// Vault explorer (P3): lazy folder listing derived from document rel_paths.
 	ListVaultTree(context.Context, *ListVaultTreeRequest) (*ListVaultTreeResponse, error)
+	// 回收站 / 历史版本（本机资料库的 .aranea/trash）。
+	ListVaultTrash(context.Context, *ListVaultTrashRequest) (*ListVaultTrashResponse, error)
+	GetVaultTrashContent(context.Context, *VaultTrashPathRequest) (*VaultTrashContentResponse, error)
+	RestoreVaultTrash(context.Context, *VaultTrashPathRequest) (*RestoreVaultTrashResponse, error)
+	PurgeVaultTrash(context.Context, *PurgeVaultTrashRequest) (*PurgeVaultTrashResponse, error)
 	// CreateVaultDir creates a directory inside the vault (G1-B2; idempotent).
 	CreateVaultDir(context.Context, *CreateVaultDirRequest) (*emptypb.Empty, error)
 	// CreateVaultDocument writes a template .md (frontmatter + empty heading) and
@@ -731,6 +785,18 @@ func (UnimplementedKnowledgeServiceServer) UpdateDocumentContent(context.Context
 }
 func (UnimplementedKnowledgeServiceServer) ListVaultTree(context.Context, *ListVaultTreeRequest) (*ListVaultTreeResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListVaultTree not implemented")
+}
+func (UnimplementedKnowledgeServiceServer) ListVaultTrash(context.Context, *ListVaultTrashRequest) (*ListVaultTrashResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListVaultTrash not implemented")
+}
+func (UnimplementedKnowledgeServiceServer) GetVaultTrashContent(context.Context, *VaultTrashPathRequest) (*VaultTrashContentResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetVaultTrashContent not implemented")
+}
+func (UnimplementedKnowledgeServiceServer) RestoreVaultTrash(context.Context, *VaultTrashPathRequest) (*RestoreVaultTrashResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method RestoreVaultTrash not implemented")
+}
+func (UnimplementedKnowledgeServiceServer) PurgeVaultTrash(context.Context, *PurgeVaultTrashRequest) (*PurgeVaultTrashResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method PurgeVaultTrash not implemented")
 }
 func (UnimplementedKnowledgeServiceServer) CreateVaultDir(context.Context, *CreateVaultDirRequest) (*emptypb.Empty, error) {
 	return nil, status.Error(codes.Unimplemented, "method CreateVaultDir not implemented")
@@ -1103,6 +1169,78 @@ func _KnowledgeService_ListVaultTree_Handler(srv interface{}, ctx context.Contex
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(KnowledgeServiceServer).ListVaultTree(ctx, req.(*ListVaultTreeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _KnowledgeService_ListVaultTrash_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListVaultTrashRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(KnowledgeServiceServer).ListVaultTrash(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: KnowledgeService_ListVaultTrash_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(KnowledgeServiceServer).ListVaultTrash(ctx, req.(*ListVaultTrashRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _KnowledgeService_GetVaultTrashContent_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(VaultTrashPathRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(KnowledgeServiceServer).GetVaultTrashContent(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: KnowledgeService_GetVaultTrashContent_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(KnowledgeServiceServer).GetVaultTrashContent(ctx, req.(*VaultTrashPathRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _KnowledgeService_RestoreVaultTrash_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(VaultTrashPathRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(KnowledgeServiceServer).RestoreVaultTrash(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: KnowledgeService_RestoreVaultTrash_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(KnowledgeServiceServer).RestoreVaultTrash(ctx, req.(*VaultTrashPathRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _KnowledgeService_PurgeVaultTrash_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PurgeVaultTrashRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(KnowledgeServiceServer).PurgeVaultTrash(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: KnowledgeService_PurgeVaultTrash_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(KnowledgeServiceServer).PurgeVaultTrash(ctx, req.(*PurgeVaultTrashRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1573,6 +1711,22 @@ var KnowledgeService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListVaultTree",
 			Handler:    _KnowledgeService_ListVaultTree_Handler,
+		},
+		{
+			MethodName: "ListVaultTrash",
+			Handler:    _KnowledgeService_ListVaultTrash_Handler,
+		},
+		{
+			MethodName: "GetVaultTrashContent",
+			Handler:    _KnowledgeService_GetVaultTrashContent_Handler,
+		},
+		{
+			MethodName: "RestoreVaultTrash",
+			Handler:    _KnowledgeService_RestoreVaultTrash_Handler,
+		},
+		{
+			MethodName: "PurgeVaultTrash",
+			Handler:    _KnowledgeService_PurgeVaultTrash_Handler,
 		},
 		{
 			MethodName: "CreateVaultDir",

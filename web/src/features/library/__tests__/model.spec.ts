@@ -5,11 +5,14 @@ import {
   dirOf,
   fileKind,
   localPathOf,
+  mdHeadings,
   mergeSearchHits,
   nameMatches,
   previewMode,
+  pushRecent,
   sortNodes,
   spaceOf,
+  toggleFav,
   validFileName,
 } from '../model';
 
@@ -86,5 +89,24 @@ describe('library model', () => {
     expect(hits[1]).toMatchObject({ nameMatch: false, snippet: '最高分片段', score: 0.9 });
     expect(nameMatches('服务', docs.get('d1')!)).toBe(true);
     expect(nameMatches('', docs.get('d1')!)).toBe(false);
+  });
+});
+
+describe('快速访问与目录', () => {
+  const it1 = { doc: 'a', lib: 'l', path: 'x/a.md', name: 'a.md', at: 1 };
+  const it2 = { doc: 'b', lib: 'l', path: 'b.md', name: 'b.md', at: 2 };
+  it('最近打开去重、最新在前、有上限', () => {
+    expect(pushRecent([it1, it2], { ...it1, at: 3 }).map((x) => x.doc)).toEqual(['a', 'b']);
+    expect(pushRecent([it1], it2, 1).map((x) => x.doc)).toEqual(['b']);
+  });
+  it('收藏切换', () => {
+    expect(toggleFav([], it1)).toHaveLength(1);
+    expect(toggleFav([it1, it2], it1).map((x) => x.doc)).toEqual(['b']);
+  });
+  it('Markdown 标题，跳过代码块', () => {
+    expect(mdHeadings('# 一\ntext\n```\n# 不是\n```\n### 三 ##\n')).toEqual([
+      { level: 1, text: '一' },
+      { level: 3, text: '三' },
+    ]);
   });
 });
