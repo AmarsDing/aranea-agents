@@ -3,59 +3,93 @@
     <q-card class="fleet-agents">
       <q-card-section class="fleet-agents__title">CLI 工具</q-card-section>
       <q-card-section class="fleet-agents__body">
+        <!-- 上手四步是先后顺序，用编号 -->
         <ol class="fleet-agents__steps">
           <li>
-            <b>安装</b>：一键装到 <span class="mono">{{ cliRoot || '（未配置）' }}</span
-            >，运行台自己找得到，不改系统 PATH。
-          </li>
-          <li><b>登录</b>：点「打开」在当前 worktree 里启动它，按提示登录（每家只需一次）。</li>
-          <li>
-            <b>权限</b>：选「自动改文件」或「完全放权」可让它不停下来问；默认逐项审批，确认框会在看板「等你」里给批准 /
-            拒绝按钮。
+            <b>安装</b>
+            <span
+              >一键装到 <span class="mono">{{ cliRoot || '（未配置）' }}</span
+              >，不改系统 PATH</span
+            >
           </li>
           <li>
-            <b>派活</b>：「加入编码工具」后，aranea 的 Agent、Graph 的 Agent 节点、工作台「派给
-            AI」都能把任务派给它，结果自动回流。
+            <b>登录</b>
+            <span>点「打开」在当前 worktree 里启动，按提示登录，每家一次</span>
+          </li>
+          <li>
+            <b>权限</b>
+            <span>「自动改文件」「完全放权」让它不停下来问；逐项审批时在看板「等你」里批准</span>
+          </li>
+          <li>
+            <b>派活</b>
+            <span>「接入编码工具」后，Agent、Graph、工作台都能派活给它，结果自动回流</span>
           </li>
         </ol>
         <p v-if="error" class="fleet-agents__error" role="alert">{{ error }}</p>
         <ul class="fleet-agents__list" aria-live="polite">
           <li v-for="p in items" :key="p.id" class="fleet-agents__item">
+            <!-- 头部两块：左边名称 + 一行状态（可截断），右边动作（不换行） -->
             <div class="fleet-agents__head">
-              <span class="fleet-agents__name">{{ p.label }}</span>
-              <span class="mono fleet-agents__cmd">{{ p.command }}</span>
-              <span class="fleet-agents__state" :class="`is-${stateKey(p)}`">{{ stateText(p) }}</span>
-              <span v-if="p.available" class="fleet-agents__state" :class="`is-ready-${p.readiness || 'unknown'}`">{{
-                readyText(p)
-              }}</span>
-              <q-space />
-              <q-btn
-                v-if="p.available"
-                dense
-                flat
-                no-caps
-                label="打开"
-                :disable="!state.currentWs"
-                :aria-label="`在当前 worktree 打开 ${p.label}`"
-                @click="openIn(p)"
-              />
-              <q-btn
-                v-if="p.install"
-                dense
-                no-caps
-                :unelevated="!p.available"
-                :outline="p.available"
-                :color="p.available ? undefined : 'primary'"
-                :label="p.available ? '重装' : '安装'"
-                :loading="p.installState === 'running'"
-                :aria-label="`${p.available ? '重装' : '安装'} ${p.label}`"
-                @click="install(p)"
-              />
-              <span v-else class="fleet-agents__manual">需手动安装</span>
+              <div class="fleet-agents__id">
+                <span class="fleet-agents__name">{{ p.label }}</span>
+                <span class="fleet-agents__meta">
+                  <span class="mono">{{ p.command }}</span> ·
+                  <span class="fleet-agents__state" :class="`is-${stateKey(p)}`">{{ stateText(p) }}</span>
+                  <template v-if="p.available">
+                    ·
+                    <span class="fleet-agents__state" :class="`is-ready-${p.readiness || 'unknown'}`">{{
+                      readyText(p)
+                    }}</span>
+                  </template>
+                </span>
+              </div>
+              <div class="fleet-agents__actions">
+                <span v-if="p.available && links[p.id]" class="fleet-agents__linked" :title="links[p.id]">
+                  <q-icon name="check_circle" size="14px" aria-hidden="true" />已接入编码工具
+                </span>
+                <q-btn
+                  v-else-if="p.available"
+                  dense
+                  flat
+                  no-caps
+                  color="primary"
+                  label="接入编码工具"
+                  :aria-label="`把 ${p.label} 接入编码工具`"
+                  @click="link(p)"
+                />
+                <q-btn
+                  v-if="p.available"
+                  dense
+                  flat
+                  no-caps
+                  label="打开"
+                  :disable="!state.currentWs"
+                  :aria-label="`在当前 worktree 打开 ${p.label}`"
+                  @click="openIn(p)"
+                />
+                <q-btn
+                  v-if="p.install"
+                  dense
+                  no-caps
+                  :unelevated="!p.available"
+                  :outline="p.available"
+                  :color="p.available ? undefined : 'primary'"
+                  :label="p.available ? '重装' : '安装'"
+                  :loading="p.installState === 'running'"
+                  :aria-label="`${p.available ? '重装' : '安装'} ${p.label}`"
+                  @click="install(p)"
+                />
+                <span v-else class="fleet-agents__manual">需手动安装</span>
+              </div>
             </div>
             <div v-if="p.available" class="mono fleet-agents__path">{{ p.resolvedPath }}</div>
-            <p v-if="p.available && p.readiness !== 'ready' && p.loginHint" class="fleet-agents__login">
-              登录：{{ p.loginHint }}
+            <!-- 运行台看到过登录框才用醒目色；没用过只是提示首次怎么登录 -->
+            <p
+              v-if="p.available && p.readiness !== 'ready' && p.loginHint"
+              class="fleet-agents__login"
+              :class="{ 'is-need': p.readiness === 'need_login' }"
+            >
+              {{ p.readiness === 'need_login' ? '要登录' : '首次使用' }}：{{ p.loginHint }}
             </p>
             <div v-if="p.available" class="fleet-agents__settings">
               <q-btn-toggle
@@ -84,17 +118,6 @@
                 :loading="saving === p.id"
                 :aria-label="`保存 ${p.label} 的设置`"
                 @click="save(p)"
-              />
-              <span v-if="links[p.id]" class="fleet-agents__linked">已加入编码工具（{{ links[p.id] }}）</span>
-              <q-btn
-                v-else
-                dense
-                flat
-                no-caps
-                color="primary"
-                label="加入编码工具"
-                :aria-label="`把 ${p.label} 加入编码工具`"
-                @click="link(p)"
               />
             </div>
             <q-expansion-item
@@ -232,8 +255,8 @@ onBeforeUnmount(stopPoll);
 
 <style scoped lang="sass">
 .fleet-agents
-  width: 760px
-  max-width: 94vw
+  width: 1120px
+  max-width: 96vw
   background: var(--nt-bg-2)
 .fleet-agents__title
   font-size: var(--nt-fs-panel)
@@ -243,41 +266,81 @@ onBeforeUnmount(stopPoll);
   display: flex
   flex-direction: column
   gap: var(--nt-space-3)
-  max-height: 72vh
+  max-height: 76vh
   overflow-y: auto
+// 四步一行（窄屏两列 / 一列），每步「编号 + 标题」一行、说明一行
 .fleet-agents__steps
-  max-width: 72ch
-  margin: 0
-  padding-left: var(--nt-space-5)
-  color: var(--nt-text-2)
-  font-size: var(--nt-fs-caption)
-  b
-    color: var(--nt-text-1)
-.fleet-agents__error
-  margin: 0
-  color: var(--nt-danger)
-  font-size: var(--nt-fs-caption)
-.fleet-agents__list
-  display: flex
-  flex-direction: column
+  display: grid
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr))
   gap: var(--nt-space-2)
   margin: 0
   padding: 0
   list-style: none
+  counter-reset: step
+  li
+    display: flex
+    flex-direction: column
+    gap: var(--nt-space-1)
+    padding: var(--nt-space-2) var(--nt-space-3)
+    border-radius: var(--nt-radius-m)
+    background: var(--nt-bg-1)
+    color: var(--nt-text-2)
+    font-size: var(--nt-fs-caption)
+    counter-increment: step
+  b
+    color: var(--nt-text-1)
+    &::before
+      content: counter(step) '. '
+      color: var(--nt-accent)
+.fleet-agents__error
+  margin: 0
+  color: var(--nt-danger)
+  font-size: var(--nt-fs-caption)
+// 宽屏两列，每张高度跟内容走，上沿对齐
+.fleet-agents__list
+  display: grid
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 480px), 1fr))
+  align-items: start
+  gap: var(--nt-space-3)
+  margin: 0
+  padding: 0
+  list-style: none
 .fleet-agents__item
-  padding: var(--nt-space-2) var(--nt-space-3)
+  display: flex
+  flex-direction: column
+  padding: var(--nt-space-3)
   border: 1px solid var(--nt-border-1)
   border-radius: var(--nt-radius-m)
   background: var(--nt-bg-1)
-.fleet-agents__head, .fleet-agents__settings
+.fleet-agents__head
+  display: flex
+  align-items: center
+  gap: var(--nt-space-2)
+.fleet-agents__id
+  display: flex
+  flex: 1
+  flex-direction: column
+  gap: 2px
+  min-width: 0
+.fleet-agents__meta
+  overflow: hidden
+  color: var(--nt-text-3)
+  font-size: var(--nt-fs-micro)
+  text-overflow: ellipsis
+  white-space: nowrap
+.fleet-agents__actions
+  display: flex
+  flex: none
+  align-items: center
+  gap: var(--nt-space-1)
+.fleet-agents__settings
   display: flex
   flex-wrap: wrap
   align-items: center
   gap: var(--nt-space-2)
-.fleet-agents__settings
   margin-top: var(--nt-space-2)
 .fleet-agents__args
-  flex: 1
+  flex: 1 1 160px
   min-width: 160px
 .fleet-agents__name
   color: var(--nt-text-1)
@@ -291,11 +354,16 @@ onBeforeUnmount(stopPoll);
 .fleet-agents__login
   max-width: 72ch
   margin: var(--nt-space-1) 0 0
-  color: var(--nt-warn)
+  color: var(--nt-text-3)
   font-size: var(--nt-fs-caption)
+  &.is-need
+    color: var(--nt-warn)
 .fleet-agents__linked
+  display: inline-flex
+  align-items: center
+  gap: var(--nt-space-1)
   color: var(--nt-success)
-  font-size: var(--nt-fs-micro)
+  font-size: var(--nt-fs-caption)
 .fleet-agents__state
   font-size: var(--nt-fs-micro)
   &.is-ok, &.is-ready-ready

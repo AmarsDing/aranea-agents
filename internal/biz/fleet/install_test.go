@@ -48,15 +48,25 @@ func TestCLIRootPresetsAndLookup(t *testing.T) {
 	if last := list[len(list)-1]; last.ID != "shell" || last.Command == "evil" {
 		t.Fatalf("shell must stay last and not be overridable: %+v", last)
 	}
+	t.Setenv("NPM_CONFIG_PREFIX", `C:\elsewhere`) // 用户环境里的设置不能漏进终端
 	u := &Usecase{opts: Options{CLIDir: `C:\fleetctl`}}
 	var path string
-	for _, kv := range u.terminalEnv("t1", "tok") {
+	prefixes := 0
+	env := strings.Join(u.terminalEnv("t1", "tok"), "\n")
+	for _, kv := range strings.Split(env, "\n") {
 		if strings.EqualFold(kv[:min(5, len(kv))], "PATH=") {
 			path = kv
+		}
+		if strings.HasPrefix(strings.ToLower(kv), "npm_config_prefix=") {
+			prefixes++
 		}
 	}
 	if !strings.Contains(path, filepath.Join(root, "npm")) || !strings.Contains(path, filepath.Join(root, "trae")) {
 		t.Fatalf("terminal PATH should include install dirs: %s", path)
+	}
+	// CLI 自更新（npm i -g）要落回 CLI 根目录，Claude 自动更新关掉
+	if prefixes != 1 || !strings.Contains(env, "npm_config_prefix="+filepath.Join(root, "npm")) || !strings.Contains(env, "DISABLE_AUTOUPDATER=1") {
+		t.Fatalf("terminal env should pin npm prefix to CLI root and disable Claude auto-update:\n%s", env)
 	}
 }
 

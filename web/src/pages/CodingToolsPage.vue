@@ -124,11 +124,11 @@
         />
       </section>
 
-      <!-- 运行台的终端清单：在本机 PATH 上找命令，和上面的 ACP 派发是两种接入方式 -->
-      <section class="cap-section" :aria-label="t('cap.coding.fleet.title')">
+      <!-- 命令行工具：运行台装好的命令行，一键接入成编码工具（派活在运行台终端里执行） -->
+      <section class="cap-section" :aria-label="t('cap.coding.cli.title')">
         <div class="cap-section__head">
-          <h2 class="cap-section__title">{{ t('cap.coding.fleet.title') }}</h2>
-          <p class="cap-section__hint">{{ t('cap.coding.fleet.hint') }}</p>
+          <h2 class="cap-section__title">{{ t('cap.coding.cli.title') }}</h2>
+          <p class="cap-section__hint">{{ t('cap.coding.cli.hint') }}</p>
           <q-btn
             flat
             dense
@@ -136,20 +136,62 @@
             color="primary"
             icon="open_in_new"
             :label="t('cap.coding.fleet.open')"
-            to="/fleet"
+            :to="{ path: '/fleet', query: { panel: 'cli' } }"
           />
         </div>
         <p v-if="presetsError" class="cap-section__hint">{{ t('cap.coding.fleet.unavailable') }}</p>
-        <ul v-else class="cap-chips" role="list">
-          <li v-for="p in terminalPresets" :key="p.id" class="cap-chip" :class="{ 'cap-chip--off': !p.available }">
-            <i class="cap-dot" :class="p.available ? 'cap-dot--ok' : 'cap-dot--off'" aria-hidden="true" />
-            <span>{{ p.label }}</span>
-            <code class="cap-mono">{{ p.command }}</code>
-            <span class="cap-chip__state">{{
-              p.available ? t('cap.coding.fleet.installed') : t('cap.coding.fleet.missing')
-            }}</span>
-          </li>
-        </ul>
+        <template v-else>
+          <ul class="cli-grid" role="list">
+            <li v-for="p in visibleCli" :key="p.id" class="cli-row" :class="{ 'cli-row--off': !p.available }">
+              <i class="cap-dot" :class="cliDot(p)" aria-hidden="true" />
+              <div class="cli-row__main">
+                <span class="cli-row__name">{{ p.label }}</span>
+                <span class="cli-row__meta">
+                  <code class="cap-mono">{{ p.command }}</code> · {{ cliState(p) }}
+                </span>
+              </div>
+              <q-btn
+                v-if="!p.available"
+                flat
+                dense
+                no-caps
+                size="sm"
+                color="primary"
+                :label="t('cap.coding.cli.install')"
+                :to="{ path: '/fleet', query: { panel: 'cli' } }"
+              />
+              <span v-else-if="linkedAgent(p)" class="cli-row__linked">
+                <q-icon name="check_circle" size="16px" aria-hidden="true" />{{ t('cap.coding.cli.connected') }}
+              </span>
+              <q-btn
+                v-else
+                dense
+                unelevated
+                no-caps
+                size="sm"
+                color="primary"
+                :label="t('cap.coding.cli.connect')"
+                :loading="connectingId === p.id"
+                :aria-label="`${t('cap.coding.cli.connect')} ${p.label}`"
+                @click="connectCli(p)"
+              />
+            </li>
+          </ul>
+          <p v-if="installedCli.length === 0" class="cap-section__hint">{{ t('cap.coding.cli.noneInstalled') }}</p>
+          <q-btn
+            v-if="missingCli.length"
+            flat
+            dense
+            no-caps
+            size="sm"
+            class="cli-toggle"
+            :icon="showMissing ? 'expand_less' : 'expand_more'"
+            :label="
+              showMissing ? t('cap.coding.cli.hideMissing') : t('cap.coding.cli.showMissing', { n: missingCli.length })
+            "
+            @click="showMissing = !showMissing"
+          />
+        </template>
       </section>
 
       <!-- 项目目录：可派发任务的本机目录白名单 -->
@@ -201,27 +243,74 @@
     </template>
 
     <!-- 编辑/新增工具对话框 -->
+    <!-- 表单页签有未保存输入才挡 Esc / 点外面关闭；命令行页签没有要丢的东西 -->
     <AppDialog
       v-model="editorOpen"
-      persistent
+      :persistent="!!editingAgent || addTab === 'custom'"
       size="xl"
       :title="editingAgent ? t('cap.coding.form.editTitle') : t('cap.coding.form.createTitle')"
-      :subtitle="t('cap.coding.form.subtitle')"
+      :subtitle="editingAgent || addTab === 'custom' ? t('cap.coding.form.subtitle') : t('cap.coding.cli.dialogHint')"
     >
-      <div v-if="!editingAgent" class="q-pb-sm">
+      <q-tabs
+        v-if="!editingAgent"
+        v-model="addTab"
+        dense
+        no-caps
+        align="left"
+        narrow-indicator
+        active-color="primary"
+        indicator-color="primary"
+        class="cli-tabs"
+      >
+        <q-tab name="cli" :label="t('cap.coding.addTabs.cli')" />
+        <q-tab name="custom" :label="t('cap.coding.addTabs.custom')" />
+      </q-tabs>
+      <div v-if="!editingAgent && addTab === 'cli'" class="cli-pick">
+        <ul v-if="connectableCli.length" class="cli-grid" role="list">
+          <li v-for="p in connectableCli" :key="p.id" class="cli-row">
+            <i class="cap-dot" :class="cliDot(p)" aria-hidden="true" />
+            <div class="cli-row__main">
+              <span class="cli-row__name">{{ p.label }}</span>
+              <span class="cli-row__meta">
+                <code class="cap-mono">{{ p.command }}</code> · {{ cliState(p) }}
+              </span>
+            </div>
+            <q-btn
+              dense
+              unelevated
+              no-caps
+              size="sm"
+              color="primary"
+              :label="t('cap.coding.cli.connect')"
+              :loading="connectingId === p.id"
+              :aria-label="`${t('cap.coding.cli.connect')} ${p.label}`"
+              @click="connectCli(p)"
+            />
+          </li>
+        </ul>
+        <p v-else class="cli-pick__hint">
+          {{ installedCli.length ? t('cap.coding.cli.allConnected') : t('cap.coding.cli.noneInstalled') }}
+        </p>
+      </div>
+      <div v-if="!editingAgent && addTab === 'custom'" class="q-pb-sm">
         <q-btn
           flat
           dense
+          no-caps
           color="primary"
           icon="auto_fix_high"
           :label="$t('codingTools.shimPresetLabel')"
           @click="applyBuiltinShimPreset"
         />
-        <div class="text-caption text-grey-6 q-mt-xs">
+        <div class="cli-pick__hint">
           {{ $t('codingTools.shimPresetHint') }}
         </div>
       </div>
-      <q-form class="app-form-field-grid app-form-field-grid--2col" @submit.prevent="saveAgent">
+      <q-form
+        v-if="editingAgent || addTab === 'custom'"
+        class="app-form-field-grid app-form-field-grid--2col"
+        @submit.prevent="saveAgent"
+      >
         <q-input
           v-model="form.agentKey"
           dense
@@ -320,6 +409,7 @@
       <template #actions>
         <q-btn flat rounded :label="t('cap.coding.form.cancel')" @click="editorOpen = false" />
         <q-btn
+          v-if="editingAgent || addTab === 'custom'"
           color="primary"
           rounded
           unelevated
@@ -456,7 +546,7 @@ import {
   upsertCodingProject,
 } from '../features/coding/api';
 import type { CodingAgent, CodingProject, ProjectCandidate } from '../features/coding/api';
-import { listPresets } from '../features/fleet/api';
+import { addToCodingTools, listPresets } from '../features/fleet/api';
 import type { AgentPreset } from '../features/fleet/api';
 import { isForbiddenApiError, parseKratosApiError } from '../utils/kratosError';
 
@@ -561,6 +651,37 @@ onMounted(() => void loadAll());
 const presets = ref<AgentPreset[]>([]);
 const presetsError = ref(false);
 const terminalPresets = computed(() => presets.value.filter((p) => p.id !== 'shell'));
+
+// ——— 命令行工具：运行台装好的命令行，一键接入（command 登记为 fleet:<工具 id>） ———
+const addTab = ref<'cli' | 'custom'>('cli');
+const showMissing = ref(false);
+const connectingId = ref('');
+const linkedAgent = (p: AgentPreset) => agents.value.find((a) => (a.command ?? '') === 'fleet:' + p.id);
+const installedCli = computed(() => terminalPresets.value.filter((p) => p.available));
+const missingCli = computed(() => terminalPresets.value.filter((p) => !p.available));
+const visibleCli = computed(() => [...installedCli.value, ...(showMissing.value ? missingCli.value : [])]);
+const connectableCli = computed(() => installedCli.value.filter((p) => !linkedAgent(p)));
+function cliState(p: AgentPreset): string {
+  return p.available ? t('cap.coding.cli.ready.' + (p.readiness || 'unknown')) : t('cap.coding.cli.ready.missing');
+}
+function cliDot(p: AgentPreset): string {
+  if (!p.available) return 'cap-dot--off';
+  if (p.readiness === 'ready') return 'cap-dot--ok';
+  return p.readiness ? 'cap-dot--watch' : 'cap-dot--pending';
+}
+async function connectCli(p: AgentPreset) {
+  connectingId.value = p.id;
+  try {
+    await addToCodingTools(p);
+    $q.notify({ type: 'positive', message: t('cap.coding.cli.connectedMsg', { name: p.label }) });
+    await loadAll();
+    if (connectableCli.value.length === 0) editorOpen.value = false;
+  } catch (err) {
+    $q.notify({ type: 'negative', message: parseKratosApiError(err).message || t('cap.coding.msg.saveFailed') });
+  } finally {
+    connectingId.value = '';
+  }
+}
 // 编码工具（ACP 派发）的 agentKey → 运行台终端清单里的同一个工具
 const FLEET_ID_BY_AGENT: Record<string, string> = {
   claude_code: 'claude',
@@ -607,11 +728,28 @@ const AUTONOMY_SHORT: Record<string, string> = {
 };
 
 function agentFacts(agent: CodingAgent): CapFact[] {
+  const cmd = agent.command ?? '';
+  // 运行台终端接入：真实权限由运行台里该工具的档位决定，显示「跟随运行台」而不是 ACP 的自治级别
+  if (cmd.startsWith('fleet:')) {
+    const mode = fleetPresetFor(agent)?.mode || 'manual';
+    return [
+      { label: t('cap.coding.access'), value: t('cap.coding.accessFleet') },
+      {
+        label: t('cap.coding.permission'),
+        value: t(`cap.coding.modes.${mode}`),
+        tone: mode === 'full' ? 'alert' : mode === 'auto_edit' ? 'watch' : undefined,
+      },
+      { label: t('cap.coding.capabilities'), value: (agent.capabilities ?? []).length },
+    ];
+  }
   const autonomy = agent.defaultAutonomy || 'readonly';
   const tone: CapTone | undefined = autonomy === 'full' ? 'alert' : autonomy === 'workspace' ? 'watch' : undefined;
   return [
+    {
+      label: t('cap.coding.access'),
+      value: t(cmd.trim() === '@self' ? 'cap.coding.accessShim' : 'cap.coding.accessAcp'),
+    },
     { label: t('cap.coding.autonomy'), value: t(`cap.coding.${AUTONOMY_SHORT[autonomy] ?? 'autonomyReadonly'}`), tone },
-    { label: t('cap.coding.capabilities'), value: (agent.capabilities ?? []).length },
     { label: t('cap.coding.env'), value: Object.keys(agent.env ?? {}).length },
   ];
 }
@@ -644,6 +782,7 @@ const stats = computed(() => {
 
 function openCreate() {
   editingAgent.value = null;
+  addTab.value = connectableCli.value.length ? 'cli' : 'custom';
   Object.assign(form, {
     agentKey: '',
     displayName: '',
@@ -897,3 +1036,69 @@ async function confirmDeleteProject(p: CodingProject) {
   }
 }
 </script>
+
+<style scoped lang="sass">
+// 命令行工具：三列紧凑行（宽屏自动增减列），每行一个状态点 + 名称 / 命令 · 状态 + 一个动作
+.cli-grid
+  display: grid
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr))
+  gap: var(--nt-space-2)
+  margin: 0
+  padding: 0
+  list-style: none
+.cli-row
+  display: flex
+  align-items: center
+  gap: var(--nt-space-3)
+  min-height: 52px
+  padding: var(--nt-space-2) var(--nt-space-3)
+  border: 1px solid var(--nt-border-1)
+  border-radius: var(--nt-radius-m)
+  background: var(--nt-tile-bg, var(--nt-bg-2))
+.cli-row--off
+  border-style: dashed
+  background: transparent
+.cli-row__main
+  display: flex
+  flex: 1
+  flex-direction: column
+  gap: 2px
+  min-width: 0
+.cli-row__name
+  overflow: hidden
+  color: var(--nt-text-1)
+  font-weight: 600
+  text-overflow: ellipsis
+  white-space: nowrap
+.cli-row--off .cli-row__name
+  color: var(--nt-text-2)
+  font-weight: 500
+.cli-row__meta
+  overflow: hidden
+  color: var(--nt-text-3)
+  font-size: var(--nt-fs-caption)
+  text-overflow: ellipsis
+  white-space: nowrap
+.cli-row__linked
+  display: inline-flex
+  flex: none
+  align-items: center
+  gap: var(--nt-space-1)
+  color: var(--nt-success)
+  font-size: var(--nt-fs-caption)
+.cli-toggle
+  align-self: flex-start
+  color: var(--nt-text-2)
+.cli-tabs
+  margin-bottom: var(--nt-space-3)
+  border-bottom: 1px solid var(--nt-border-1)
+.cli-pick
+  display: flex
+  flex-direction: column
+  gap: var(--nt-space-3)
+.cli-pick__hint
+  max-width: 72ch
+  margin: 0
+  color: var(--nt-text-2)
+  font-size: var(--nt-fs-caption)
+</style>

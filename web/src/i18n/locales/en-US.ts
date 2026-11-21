@@ -7727,7 +7727,7 @@ export default {
   codingTools: {
     shimPresetLabel: 'Fill template: OpenAI-compatible endpoint (built-in shim, nothing extra to install)',
     shimPresetHint:
-      'Set command to @self (the host process itself); endpoint/model/key var name go in args; inject the API key under "Environment variables" with the same var name.',
+      "Set command to {'@'}self (the host process itself); endpoint/model/key var name go in args; inject the API key under \"Environment variables\" with the same var name.",
   },
   spirit: {
     stepsComplete: '{completed} / {total} steps completed',

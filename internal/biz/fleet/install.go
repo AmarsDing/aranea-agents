@@ -138,7 +138,9 @@ func npmInstall(ctx context.Context, pkg, prefix string, out io.Writer) error {
 	if err := os.MkdirAll(prefix, 0o755); err != nil {
 		return err
 	}
-	cmd := exec.CommandContext(ctx, node, npmCLI, "install", "-g", "--prefix", prefix, "--no-fund", "--no-audit", "--loglevel=http", pkg+"@latest") // http 级日志当进度看
+	// 下载缓存也放进 CLI 根目录，不占 C 盘；http 级日志当进度看
+	cache := filepath.Join(filepath.Dir(prefix), ".npm-cache")
+	cmd := exec.CommandContext(ctx, node, npmCLI, "install", "-g", "--prefix", prefix, "--cache", cache, "--no-fund", "--no-audit", "--loglevel=http", pkg+"@latest")
 	cmd.Stdout, cmd.Stderr = out, out
 	return cmd.Run()
 }

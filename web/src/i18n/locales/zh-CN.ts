@@ -7589,7 +7589,7 @@ export default {
   codingTools: {
     shimPresetLabel: '填充模板：OpenAI 兼容端点（内置 shim，免装额外程序）',
     shimPresetHint:
-      'command 填 @self（宿主进程自身），端点/模型/key 变量名经参数传入；API key 在下方「环境变量」区按同名变量注入。',
+      "command 填 {'@'}self（宿主进程自身），端点/模型/key 变量名经参数传入；API key 在下方「环境变量」区按同名变量注入。",
   },
   spirit: {
     stepsComplete: '{completed} / {total} 步骤完成',

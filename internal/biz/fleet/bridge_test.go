@@ -63,6 +63,13 @@ func TestLaunchArgvModesAndSettings(t *testing.T) {
 			t.Fatalf("should reject %+v", bad)
 		}
 	}
+	// 上手状态落库：清掉内存后从库里读回
+	u.recordReadiness("codex", ReadyOK)
+	setReadiness("codex", "")
+	u.loadReadiness()
+	if AgentReadiness("codex") != ReadyOK {
+		t.Fatalf("readiness not restored from store: %q", AgentReadiness("codex"))
+	}
 	for screen, want := range map[string]string{
 		"Press any key to log in...":                                ReadyNeedLogin,
 		"请使用豆包移动端扫码并在手机上确认":                                         ReadyNeedLogin,

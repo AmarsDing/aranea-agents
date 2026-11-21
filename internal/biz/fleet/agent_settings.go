@@ -123,3 +123,26 @@ func classifyWaiting(screen string) string {
 	}
 	return ""
 }
+
+// 上手状态落库：后端重启后「能对话 / 要登录」不丢。
+const kindAgentReady = "agent_ready"
+
+type readyDoc struct {
+	ID    string `json:"id"`
+	State string `json:"state"`
+}
+
+func (u *Usecase) recordReadiness(id, state string) {
+	if AgentReadiness(id) == state {
+		return
+	}
+	setReadiness(id, state)
+	_ = putDoc(u.ctx, u.store, kindAgentReady, id, readyDoc{ID: id, State: state})
+}
+
+func (u *Usecase) loadReadiness() {
+	docs, _ := listDocs[readyDoc](u.ctx, u.store, kindAgentReady)
+	for _, d := range docs {
+		setReadiness(d.ID, d.State)
+	}
+}

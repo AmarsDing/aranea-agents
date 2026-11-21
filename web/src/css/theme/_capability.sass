@@ -884,3 +884,12 @@ html body .mem-agent-pick
   .cap-bar .cap-bar__search
     flex: 1 1 100%
     max-width: none
+
+  // 段落头：标题与按钮一行，说明换到下一行占满（窄屏不再被挤成一条细列）
+  .cap-section__head
+    flex-wrap: wrap
+    justify-content: space-between
+
+  .cap-section__hint
+    flex-basis: 100%
+    order: 3

@@ -75,6 +75,7 @@ func NewUsecase(store Store, projects ProjectSource, opts Options, lg loggateway
 		sessions: map[string]*Session{}, byToken: map[string]*Session{}, wake: map[string]bool{},
 		ctx: ctx, cancel: cancel,
 	}
+	u.loadReadiness()
 	safego.Go(ctx, "fleet-status-loop", u.statusLoop)
 	safego.Go(ctx, "fleet-automation-loop", u.automationLoop)
 	return u
@@ -577,7 +578,16 @@ func (u *Usecase) terminalEnv(id, token string) []string {
 				kv = kv[:5] + strings.Trim(pre, sep) + sep + kv[5:]
 			}
 		}
+		if k == "NPM_CONFIG_PREFIX" || k == "DISABLE_AUTOUPDATER" {
+			continue // 下面统一给
+		}
 		env = append(env, kv)
+	}
+	if root := CLIRoot(); root != "" {
+		// CLI 自更新（Claude Code、Gemini 等跑 npm i -g）默认装进 npm 的全局目录（C 盘），
+		// 与运行台用的不是同一份，还会每次启动重复更新（2026-11-20 实测 Claude 在 C 盘多出一份）。
+		// 让终端里的 npm 全局安装落到 CLI 根目录；Claude 的自动更新关掉，升级走「CLI 工具」里的重装。
+		env = append(env, "npm_config_prefix="+filepath.Join(root, "npm"), "DISABLE_AUTOUPDATER=1")
 	}
 	return append(env,
 		"TERM=xterm-256color", "COLORTERM=truecolor",
@@ -708,13 +718,13 @@ func (u *Usecase) onStatus(s *Session, old, next string) {
 	switch next {
 	case StatusDone:
 		if old == StatusWorking {
-			setReadiness(info.Agent, ReadyOK)
+			u.recordReadiness(info.Agent, ReadyOK)
 			u.addEvent(Event{Kind: EventAgentDone, Title: label + " 完成了一轮：" + wsName, Body: info.Preview, WorkspaceID: ws, TerminalID: info.ID, RunID: info.RunID})
 		}
 	case StatusNeedsInput:
 		// 上手状态：登录框一律记「要登录」；信任框只在还没对过话时记（对过话的工具换个目录弹信任框不算没就绪）
 		if st := classifyWaiting(s.ReadText(10)); st == ReadyNeedLogin || (st == ReadyNeedTrust && AgentReadiness(info.Agent) != ReadyOK) {
-			setReadiness(info.Agent, st)
+			u.recordReadiness(info.Agent, st)
 		}
 		u.addEvent(Event{Kind: EventNeedsInput, Title: label + " 在等你：" + wsName, Body: info.Preview, WorkspaceID: ws, TerminalID: info.ID, RunID: info.RunID})
 	case StatusExited, StatusFailed:

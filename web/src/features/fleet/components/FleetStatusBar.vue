@@ -50,12 +50,14 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue';
+import { useRoute } from 'vue-router';
 import type { AgentUsage } from '../api';
 import { useFleet } from '../useFleet';
 import FleetAgentsDialog from './FleetAgentsDialog.vue';
 
 const { state, agentLabel } = useFleet();
-const agentsOpen = ref(false);
+// 编码工具页「去安装」带 ?panel=cli 过来时直接打开 CLI 工具面板
+const agentsOpen = ref(useRoute().query.panel === 'cli');
 
 const working = computed(() => state.terminals.filter((t) => t.status === 'working').length);
 const needs = computed(() => state.terminals.filter((t) => t.status === 'needs_input').length);
