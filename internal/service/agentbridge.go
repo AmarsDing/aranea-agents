@@ -10,6 +10,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/biz/agentbridge"
 	"aranea-agents/internal/biz/decision"
+	"aranea-agents/internal/biz/fleet"
 	"aranea-agents/internal/event"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
@@ -338,6 +339,13 @@ func (s *AgentBridgeService) ProbeAgent(ctx context.Context, workspace, agentKey
 	agent, err := s.agents.GetByKey(ctx, workspace, agentKey)
 	if err != nil {
 		return err
+	}
+	if fleet.IsBridgeCommand(agent.Command) { // 运行台终端：不走 ACP 握手，查命令是否装好
+		p, ok := fleet.FindPreset(strings.TrimPrefix(strings.TrimSpace(agent.Command), fleet.BridgeCommandPrefix))
+		if !ok || !p.Available {
+			return s.agents.UpdateProbe(ctx, agent.ID, false, "not_installed: 运行台「CLI 工具」里还没装这个命令行")
+		}
+		return s.agents.UpdateProbe(ctx, agent.ID, true, "")
 	}
 	level, detail := acp.Probe(ctx, acp.SpawnOptions{
 		Command: resolveLaunchCommand(agent.Command),

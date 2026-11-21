@@ -81,11 +81,13 @@ func provideFleetUsecase(d *data.Data, projects agentbridge.ProjectRepo, c *conf
 	if store == nil {
 		return nil
 	}
-	return fleet.NewUsecase(store, fleetProjectSource{repo: projects}, fleet.Options{
+	uc := fleet.NewUsecase(store, fleetProjectSource{repo: projects}, fleet.Options{
 		WorktreeRoot: strings.TrimSpace(os.Getenv("ARANEA_FLEET_WORKTREE_ROOT")),
 		ServerURL:    fleetServerURL(c),
 		CLIDir:       strings.TrimSpace(os.Getenv("ARANEA_FLEET_CLI_DIR")),
 	}, lg)
+	service.SetFleetBridge(uc) // 编码工具里 fleet:<工具 id> 的 agent 在运行台终端里执行
+	return uc
 }
 
 // provideFleetService 装配 fleet.v1 服务。

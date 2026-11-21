@@ -573,13 +573,16 @@ const FLEET_ID_BY_AGENT: Record<string, string> = {
   opencode: 'opencode',
 };
 function fleetPresetFor(agent: CodingAgent): AgentPreset | undefined {
-  const id = FLEET_ID_BY_AGENT[agent.agentKey ?? ''];
+  // command 登记为 fleet:<工具 id> 的编码 agent 直接在运行台终端里执行
+  const cmd = agent.command ?? '';
+  const id = cmd.startsWith('fleet:') ? cmd.slice(6) : FLEET_ID_BY_AGENT[agent.agentKey ?? ''];
   return id ? presets.value.find((p) => p.id === id) : undefined;
 }
 function fleetLine(agent: CodingAgent): string {
   const p = fleetPresetFor(agent);
   if (!p) return '';
   if (!p.available) return t('cap.coding.fleet.lineMissing', { label: p.label, cmd: p.command });
+  if ((agent.command ?? '').startsWith('fleet:')) return t('cap.coding.fleet.lineViaFleet', { label: p.label });
   return agent.lastProbeOk
     ? t('cap.coding.fleet.lineBoth', { label: p.label })
     : t('cap.coding.fleet.lineTerminalOnly', { label: p.label, cmd: agent.command ?? '' });

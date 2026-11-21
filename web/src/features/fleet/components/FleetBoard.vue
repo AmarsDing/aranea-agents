@@ -18,24 +18,42 @@
           {{ col.label }}
           <span class="fleet-board__count">{{ col.items.length }}</span>
         </h3>
-        <button
-          v-for="t in col.items"
-          :key="t.id"
-          type="button"
-          class="fleet-card"
-          :class="`is-${col.key}`"
-          @click="focusTerminal(t.id)"
-        >
-          <div class="fleet-card__head">
-            <StatusGlyph :status="t.status" />
-            <span class="fleet-card__title">{{ t.title || agentLabel(t.agent) }}</span>
+        <div v-for="t in col.items" :key="t.id" class="fleet-card-wrap">
+          <button type="button" class="fleet-card" :class="`is-${col.key}`" @click="focusTerminal(t.id)">
+            <div class="fleet-card__head">
+              <StatusGlyph :status="t.status" />
+              <span class="fleet-card__title">{{ t.title || agentLabel(t.agent) }}</span>
+            </div>
+            <pre v-if="t.preview" class="fleet-card__preview">{{ t.preview }}</pre>
+            <div class="fleet-card__foot mono">
+              <span>{{ projectOf(t.workspaceId) }} / {{ wsName(t.workspaceId) }}</span>
+              <span>{{ agentLabel(t.agent) }} · {{ modeLabel(t.mode) }} · 运行 {{ ago(t.startedAt) }}</span>
+            </div>
+          </button>
+          <!-- 等你：直接在看板上作答（按该工具登记的批准 / 拒绝键原样送进终端） -->
+          <div v-if="t.status === 'needs_input'" class="fleet-card__actions">
+            <q-btn
+              dense
+              unelevated
+              no-caps
+              color="primary"
+              label="批准"
+              :loading="busy === t.id"
+              :aria-label="`批准：${t.title || agentLabel(t.agent)}`"
+              @click="answer(t, true)"
+            />
+            <q-btn
+              dense
+              outline
+              no-caps
+              label="拒绝"
+              :disable="busy === t.id"
+              :aria-label="`拒绝：${t.title || agentLabel(t.agent)}`"
+              @click="answer(t, false)"
+            />
+            <span class="fleet-card__hint">{{ keyHint(t.agent) }}；登录、菜单类请点卡片进终端处理</span>
           </div>
-          <pre v-if="t.preview" class="fleet-card__preview">{{ t.preview }}</pre>
-          <div class="fleet-card__foot mono">
-            <span>{{ projectOf(t.workspaceId) }} / {{ wsName(t.workspaceId) }}</span>
-            <span>{{ agentLabel(t.agent) }} · {{ ago(t.statusChangedAt || t.startedAt) }}</span>
-          </div>
-        </button>
+        </div>
         <div v-if="col.items.length === 0" class="fleet-board__empty">无</div>
       </section>
     </div>
@@ -44,12 +62,36 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue';
+import * as api from '../api';
 import type { Terminal } from '../api';
 import { ago, useFleet } from '../useFleet';
 import StatusGlyph from './StatusGlyph.vue';
 
-const { state, focusTerminal, agentLabel } = useFleet();
+const { state, focusTerminal, agentLabel, refreshTerminals } = useFleet();
 const q = ref('');
+const busy = ref('');
+
+const MODE_LABEL: Record<string, string> = { manual: '逐项审批', auto_edit: '自动改文件', full: '完全放权' };
+const modeLabel = (m: string) => MODE_LABEL[m] ?? '逐项审批';
+const ENTER = '\r';
+const ESC = '\u001b';
+const keyName = (k: string) => (k === ENTER ? '回车' : k === ESC ? 'Esc' : k);
+function keys(agent: string) {
+  const p = state.presets.find((x) => x.id === agent);
+  return { approve: p?.approveKey || ENTER, reject: p?.rejectKey || ESC };
+}
+const keyHint = (agent: string) => `按 ${keyName(keys(agent).approve)} / ${keyName(keys(agent).reject)}`;
+
+async function answer(t: Terminal, approve: boolean) {
+  busy.value = t.id;
+  try {
+    const k = keys(t.agent);
+    await api.sendInput(t.id, approve ? k.approve : k.reject, false, true);
+    await refreshTerminals();
+  } finally {
+    busy.value = '';
+  }
+}
 const showIdle = ref(false);
 
 const wsName = (id: string) => state.workspaces.find((w) => w.id === id)?.name ?? '';
@@ -150,6 +192,18 @@ const columns = computed(() => {
   color: var(--nt-text-3)
   font-size: var(--nt-fs-caption)
   text-align: center
+.fleet-card-wrap
+  display: flex
+  flex-direction: column
+  gap: var(--nt-space-1)
+.fleet-card__actions
+  display: flex
+  flex-wrap: wrap
+  align-items: center
+  gap: var(--nt-space-2)
+.fleet-card__hint
+  color: var(--nt-text-3)
+  font-size: var(--nt-fs-micro)
 .fleet-card
   display: flex
   flex-direction: column
@@ -182,7 +236,7 @@ const columns = computed(() => {
   text-overflow: ellipsis
   white-space: nowrap
 .fleet-card__preview
-  max-height: 60px
+  max-height: 96px
   margin: 0
   overflow: hidden
   color: var(--nt-text-2)

@@ -280,6 +280,7 @@ export const uiCapabilityZh = {
       lineBoth: '运行台里 {label} 终端也能用。',
       lineTerminalOnly: '运行台里可以直接开 {label} 终端；这里的派发要用 ACP 适配器（{cmd}），它还没装好。',
       lineMissing: '运行台里的 {label}（{cmd}）本机也没装。',
+      lineViaFleet: '派给它的任务在运行台的 {label} 终端里执行，过程可在运行台实时看到，确认框会回到这里请你批准。',
     },
     form: {
       createTitle: '添加编码工具',
@@ -652,6 +653,8 @@ export const uiCapabilityEn: typeof uiCapabilityZh = {
       lineTerminalOnly:
         'You can open a {label} terminal in the run console; dispatch here needs the ACP adapter ({cmd}), which is not ready.',
       lineMissing: '{label} ({cmd}) is not installed for the run console either.',
+      lineViaFleet:
+        'Tasks sent to it run in a {label} terminal in the run console; you can watch them live there, and confirmations come back here for approval.',
     },
     form: {
       createTitle: 'Add coding tool',

@@ -5,9 +5,12 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"aranea-agents/internal/agentbridge/acp"
 	"aranea-agents/internal/biz/agentbridge"
+	"aranea-agents/internal/biz/fleet"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/safego"
 )
 
@@ -33,8 +36,16 @@ func resolveLaunchCommand(command string) string {
 }
 
 // acpSessionFactory 是 agentbridge.SessionFactory 的生产实现：
-// 按 agent 注册信息 spawn ACP 子进程并完成 initialize 握手。
+// 按 agent 注册信息 spawn ACP 子进程并完成 initialize 握手；command 为 fleet:<工具 id> 的
+// 编码 agent 改在运行台终端里执行（见 fleet.BridgeSession）。
 type acpSessionFactory struct{}
+
+// fleetBridge 是运行台用例，由 provideFleetUsecase 装配时登记。不进 wire 图：会话工厂先于运行台构造，
+// 且 cmd/admin 的 wire 生成当前因既有漂移失败（2026-11-20 登记），改依赖关系就得手改 wire_gen。
+var fleetBridge atomic.Pointer[fleet.Usecase]
+
+// SetFleetBridge 登记运行台用例，fleet:<工具 id> 的编码 agent 由它执行。
+func SetFleetBridge(u *fleet.Usecase) { fleetBridge.Store(u) }
 
 // NewACPSessionFactory 构造 ACP 会话工厂（Wire 装配用）。
 func NewACPSessionFactory() agentbridge.SessionFactory {
@@ -44,6 +55,13 @@ func NewACPSessionFactory() agentbridge.SessionFactory {
 // Spawn 启动子进程 + initialize 握手。会话（session/new）延迟到
 // Prompt 时建立——cwd 在派发解析项目后才确定。
 func (acpSessionFactory) Spawn(ctx context.Context, agent *agentbridge.CodingAgent) (agentbridge.ACPSession, error) {
+	if fleet.IsBridgeCommand(agent.Command) {
+		fl := fleetBridge.Load()
+		if fl == nil {
+			return nil, apierror.Unavailable(apierror.DomainAgentBridge, "运行台不可用（数据层未就绪）")
+		}
+		return fl.NewBridgeSession(agent)
+	}
 	client, err := acp.Start(ctx, acp.SpawnOptions{
 		Command: resolveLaunchCommand(agent.Command),
 		Args:    agent.Args,

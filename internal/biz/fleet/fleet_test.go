@@ -286,7 +286,7 @@ func TestCmdShimAgentLaunches(t *testing.T) {
 	if err := os.WriteFile(shim, []byte("@echo off\r\necho shim-started-ok\r\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	argv := launchArgv(AgentPreset{ID: "fake", Command: "fakeagent", ResolvedPath: shim, FullAccessFlag: "--yolo"}, true)
+	argv := launchArgv(AgentPreset{ID: "fake", Command: "fakeagent", ResolvedPath: shim, FullAccessFlag: "--yolo"}, PermFull, nil)
 	if !filepath.IsAbs(argv[0]) || argv[1] != "/c" || argv[2] != shim || argv[3] != "--yolo" {
 		t.Fatalf("argv wrong: %v", argv)
 	}

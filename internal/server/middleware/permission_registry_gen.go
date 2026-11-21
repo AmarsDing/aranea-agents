@@ -140,6 +140,7 @@ func registerGeneratedPermissions(r *PermissionRegistry) {
 	requireRPC(r, "fleet", "FleetService", "GetGitStatus", "GET", "/v1/fleet/workspaces/{workspace_id}/git", "coding.manage")
 	requireRPC(r, "fleet", "FleetService", "GetRun", "GET", "/v1/fleet/runs/{id}", "coding.manage")
 	requireRPC(r, "fleet", "FleetService", "GetUsage", "GET", "/v1/fleet/usage", "coding.manage")
+	requireRPC(r, "fleet", "FleetService", "InstallAgent", "POST", "/v1/fleet/agents/{id}/install", "coding.manage")
 	requireRPC(r, "fleet", "FleetService", "KillTerminal", "POST", "/v1/fleet/terminals/{id}/kill", "coding.manage")
 	requireRPC(r, "fleet", "FleetService", "ListAgentPresets", "GET", "/v1/fleet/agents", "coding.manage")
 	requireRPC(r, "fleet", "FleetService", "ListAutomations", "GET", "/v1/fleet/automations", "coding.manage")
@@ -161,6 +162,7 @@ func registerGeneratedPermissions(r *PermissionRegistry) {
 	requireRPC(r, "fleet", "FleetService", "StageFiles", "POST", "/v1/fleet/workspaces/{workspace_id}/git/stage", "coding.manage")
 	requireRPC(r, "fleet", "FleetService", "StopRun", "POST", "/v1/fleet/runs/{id}/stop", "coding.manage")
 	requireRPC(r, "fleet", "FleetService", "UnstageFiles", "POST", "/v1/fleet/workspaces/{workspace_id}/git/unstage", "coding.manage")
+	requireRPC(r, "fleet", "FleetService", "UpdateAgentSetting", "POST", "/v1/fleet/agents/{id}/setting", "coding.manage")
 	requireRPC(r, "fleet", "FleetService", "UpdateWorkspace", "PATCH", "/v1/fleet/workspaces/{id}", "coding.manage")
 	requireRPC(r, "fleet", "FleetService", "UpsertAutomation", "POST", "/v1/fleet/automations", "coding.manage")
 	requireRPC(r, "fleet", "FleetService", "UpsertNote", "POST", "/v1/fleet/notes", "coding.manage")
@@ -388,4 +390,4 @@ var generatedPublicRPCs = []string{
 	"/kratos.office.v1.OfficeScheduleService/GetICalFeed",
 }
 
-// 统计:permission=252 authenticated=65 public=4
+// 统计:permission=254 authenticated=65 public=4

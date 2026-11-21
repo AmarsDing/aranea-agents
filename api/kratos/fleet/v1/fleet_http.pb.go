@@ -34,6 +34,7 @@ const OperationFleetServiceGetDiff = "/kratos.fleet.v1.FleetService/GetDiff"
 const OperationFleetServiceGetGitStatus = "/kratos.fleet.v1.FleetService/GetGitStatus"
 const OperationFleetServiceGetRun = "/kratos.fleet.v1.FleetService/GetRun"
 const OperationFleetServiceGetUsage = "/kratos.fleet.v1.FleetService/GetUsage"
+const OperationFleetServiceInstallAgent = "/kratos.fleet.v1.FleetService/InstallAgent"
 const OperationFleetServiceKillTerminal = "/kratos.fleet.v1.FleetService/KillTerminal"
 const OperationFleetServiceListAgentPresets = "/kratos.fleet.v1.FleetService/ListAgentPresets"
 const OperationFleetServiceListAutomations = "/kratos.fleet.v1.FleetService/ListAutomations"
@@ -55,6 +56,7 @@ const OperationFleetServiceSetCredit = "/kratos.fleet.v1.FleetService/SetCredit"
 const OperationFleetServiceStageFiles = "/kratos.fleet.v1.FleetService/StageFiles"
 const OperationFleetServiceStopRun = "/kratos.fleet.v1.FleetService/StopRun"
 const OperationFleetServiceUnstageFiles = "/kratos.fleet.v1.FleetService/UnstageFiles"
+const OperationFleetServiceUpdateAgentSetting = "/kratos.fleet.v1.FleetService/UpdateAgentSetting"
 const OperationFleetServiceUpdateWorkspace = "/kratos.fleet.v1.FleetService/UpdateWorkspace"
 const OperationFleetServiceUpsertAutomation = "/kratos.fleet.v1.FleetService/UpsertAutomation"
 const OperationFleetServiceUpsertNote = "/kratos.fleet.v1.FleetService/UpsertNote"
@@ -74,6 +76,7 @@ type FleetServiceHTTPServer interface {
 	GetGitStatus(context.Context, *WorkspaceIdRequest) (*GitStatus, error)
 	GetRun(context.Context, *RunIdRequest) (*GetRunResponse, error)
 	GetUsage(context.Context, *emptypb.Empty) (*GetUsageResponse, error)
+	InstallAgent(context.Context, *InstallAgentRequest) (*AgentPreset, error)
 	KillTerminal(context.Context, *TerminalIdRequest) (*Terminal, error)
 	ListAgentPresets(context.Context, *emptypb.Empty) (*ListAgentPresetsResponse, error)
 	ListAutomations(context.Context, *emptypb.Empty) (*ListAutomationsResponse, error)
@@ -95,6 +98,9 @@ type FleetServiceHTTPServer interface {
 	StageFiles(context.Context, *GitPathsRequest) (*GitOpResponse, error)
 	StopRun(context.Context, *RunIdRequest) (*Run, error)
 	UnstageFiles(context.Context, *GitPathsRequest) (*GitOpResponse, error)
+	// UpdateAgentSetting 后台安装一个 agent 命令行到 CLI 根目录，立即返回；进度看 ListAgentPresets 的 install_state / install_log。
+	// 设置某个工具的默认权限档位与附加启动参数（该工具此后启动的终端都按它来）。
+	UpdateAgentSetting(context.Context, *UpdateAgentSettingRequest) (*AgentPreset, error)
 	UpdateWorkspace(context.Context, *UpdateWorkspaceRequest) (*Workspace, error)
 	UpsertAutomation(context.Context, *UpsertAutomationRequest) (*Automation, error)
 	UpsertNote(context.Context, *UpsertNoteRequest) (*Note, error)
@@ -103,6 +109,8 @@ type FleetServiceHTTPServer interface {
 func RegisterFleetServiceHTTPServer(s *http.Server, srv FleetServiceHTTPServer) {
 	r := s.Route("/")
 	r.GET("/v1/fleet/agents", _FleetService_ListAgentPresets0_HTTP_Handler(srv))
+	r.POST("/v1/fleet/agents/{id}/setting", _FleetService_UpdateAgentSetting0_HTTP_Handler(srv))
+	r.POST("/v1/fleet/agents/{id}/install", _FleetService_InstallAgent0_HTTP_Handler(srv))
 	r.GET("/v1/fleet/projects", _FleetService_ListProjects1_HTTP_Handler(srv))
 	r.POST("/v1/fleet/projects", _FleetService_AddProject0_HTTP_Handler(srv))
 	r.GET("/v1/fleet/projects/{project_id}/refs", _FleetService_ListRefs0_HTTP_Handler(srv))
@@ -157,6 +165,56 @@ func _FleetService_ListAgentPresets0_HTTP_Handler(srv FleetServiceHTTPServer) fu
 			return err
 		}
 		reply := out.(*ListAgentPresetsResponse)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _FleetService_UpdateAgentSetting0_HTTP_Handler(srv FleetServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in UpdateAgentSettingRequest
+		if err := ctx.Bind(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationFleetServiceUpdateAgentSetting)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.UpdateAgentSetting(ctx, req.(*UpdateAgentSettingRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*AgentPreset)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _FleetService_InstallAgent0_HTTP_Handler(srv FleetServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in InstallAgentRequest
+		if err := ctx.Bind(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationFleetServiceInstallAgent)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.InstallAgent(ctx, req.(*InstallAgentRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*AgentPreset)
 		return ctx.Result(200, reply)
 	}
 }
@@ -1011,6 +1069,7 @@ type FleetServiceHTTPClient interface {
 	GetGitStatus(ctx context.Context, req *WorkspaceIdRequest, opts ...http.CallOption) (rsp *GitStatus, err error)
 	GetRun(ctx context.Context, req *RunIdRequest, opts ...http.CallOption) (rsp *GetRunResponse, err error)
 	GetUsage(ctx context.Context, req *emptypb.Empty, opts ...http.CallOption) (rsp *GetUsageResponse, err error)
+	InstallAgent(ctx context.Context, req *InstallAgentRequest, opts ...http.CallOption) (rsp *AgentPreset, err error)
 	KillTerminal(ctx context.Context, req *TerminalIdRequest, opts ...http.CallOption) (rsp *Terminal, err error)
 	ListAgentPresets(ctx context.Context, req *emptypb.Empty, opts ...http.CallOption) (rsp *ListAgentPresetsResponse, err error)
 	ListAutomations(ctx context.Context, req *emptypb.Empty, opts ...http.CallOption) (rsp *ListAutomationsResponse, err error)
@@ -1032,6 +1091,9 @@ type FleetServiceHTTPClient interface {
 	StageFiles(ctx context.Context, req *GitPathsRequest, opts ...http.CallOption) (rsp *GitOpResponse, err error)
 	StopRun(ctx context.Context, req *RunIdRequest, opts ...http.CallOption) (rsp *Run, err error)
 	UnstageFiles(ctx context.Context, req *GitPathsRequest, opts ...http.CallOption) (rsp *GitOpResponse, err error)
+	// UpdateAgentSetting 后台安装一个 agent 命令行到 CLI 根目录，立即返回；进度看 ListAgentPresets 的 install_state / install_log。
+	// 设置某个工具的默认权限档位与附加启动参数（该工具此后启动的终端都按它来）。
+	UpdateAgentSetting(ctx context.Context, req *UpdateAgentSettingRequest, opts ...http.CallOption) (rsp *AgentPreset, err error)
 	UpdateWorkspace(ctx context.Context, req *UpdateWorkspaceRequest, opts ...http.CallOption) (rsp *Workspace, err error)
 	UpsertAutomation(ctx context.Context, req *UpsertAutomationRequest, opts ...http.CallOption) (rsp *Automation, err error)
 	UpsertNote(ctx context.Context, req *UpsertNoteRequest, opts ...http.CallOption) (rsp *Note, err error)
@@ -1221,6 +1283,19 @@ func (c *FleetServiceHTTPClientImpl) GetUsage(ctx context.Context, in *emptypb.E
 	opts = append(opts, http.Operation(OperationFleetServiceGetUsage))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *FleetServiceHTTPClientImpl) InstallAgent(ctx context.Context, in *InstallAgentRequest, opts ...http.CallOption) (*AgentPreset, error) {
+	var out AgentPreset
+	pattern := "/v1/fleet/agents/{id}/install"
+	path := binding.EncodeURL(pattern, in, false)
+	opts = append(opts, http.Operation(OperationFleetServiceInstallAgent))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -1492,6 +1567,21 @@ func (c *FleetServiceHTTPClientImpl) UnstageFiles(ctx context.Context, in *GitPa
 	pattern := "/v1/fleet/workspaces/{workspace_id}/git/unstage"
 	path := binding.EncodeURL(pattern, in, false)
 	opts = append(opts, http.Operation(OperationFleetServiceUnstageFiles))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// UpdateAgentSetting 后台安装一个 agent 命令行到 CLI 根目录，立即返回；进度看 ListAgentPresets 的 install_state / install_log。
+// 设置某个工具的默认权限档位与附加启动参数（该工具此后启动的终端都按它来）。
+func (c *FleetServiceHTTPClientImpl) UpdateAgentSetting(ctx context.Context, in *UpdateAgentSettingRequest, opts ...http.CallOption) (*AgentPreset, error) {
+	var out AgentPreset
+	pattern := "/v1/fleet/agents/{id}/setting"
+	path := binding.EncodeURL(pattern, in, false)
+	opts = append(opts, http.Operation(OperationFleetServiceUpdateAgentSetting))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
 	if err != nil {

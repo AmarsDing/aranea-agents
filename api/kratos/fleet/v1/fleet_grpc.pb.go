@@ -20,44 +20,46 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	FleetService_ListAgentPresets_FullMethodName = "/kratos.fleet.v1.FleetService/ListAgentPresets"
-	FleetService_ListProjects_FullMethodName     = "/kratos.fleet.v1.FleetService/ListProjects"
-	FleetService_AddProject_FullMethodName       = "/kratos.fleet.v1.FleetService/AddProject"
-	FleetService_ListRefs_FullMethodName         = "/kratos.fleet.v1.FleetService/ListRefs"
-	FleetService_ListWorkspaces_FullMethodName   = "/kratos.fleet.v1.FleetService/ListWorkspaces"
-	FleetService_CreateWorkspace_FullMethodName  = "/kratos.fleet.v1.FleetService/CreateWorkspace"
-	FleetService_UpdateWorkspace_FullMethodName  = "/kratos.fleet.v1.FleetService/UpdateWorkspace"
-	FleetService_DeleteWorkspace_FullMethodName  = "/kratos.fleet.v1.FleetService/DeleteWorkspace"
-	FleetService_ListTerminals_FullMethodName    = "/kratos.fleet.v1.FleetService/ListTerminals"
-	FleetService_CreateTerminal_FullMethodName   = "/kratos.fleet.v1.FleetService/CreateTerminal"
-	FleetService_KillTerminal_FullMethodName     = "/kratos.fleet.v1.FleetService/KillTerminal"
-	FleetService_RestartTerminal_FullMethodName  = "/kratos.fleet.v1.FleetService/RestartTerminal"
-	FleetService_CloseTerminal_FullMethodName    = "/kratos.fleet.v1.FleetService/CloseTerminal"
-	FleetService_SendInput_FullMethodName        = "/kratos.fleet.v1.FleetService/SendInput"
-	FleetService_GetDiff_FullMethodName          = "/kratos.fleet.v1.FleetService/GetDiff"
-	FleetService_ListNotes_FullMethodName        = "/kratos.fleet.v1.FleetService/ListNotes"
-	FleetService_UpsertNote_FullMethodName       = "/kratos.fleet.v1.FleetService/UpsertNote"
-	FleetService_DeleteNote_FullMethodName       = "/kratos.fleet.v1.FleetService/DeleteNote"
-	FleetService_SendNotes_FullMethodName        = "/kratos.fleet.v1.FleetService/SendNotes"
-	FleetService_GetGitStatus_FullMethodName     = "/kratos.fleet.v1.FleetService/GetGitStatus"
-	FleetService_StageFiles_FullMethodName       = "/kratos.fleet.v1.FleetService/StageFiles"
-	FleetService_UnstageFiles_FullMethodName     = "/kratos.fleet.v1.FleetService/UnstageFiles"
-	FleetService_Commit_FullMethodName           = "/kratos.fleet.v1.FleetService/Commit"
-	FleetService_Push_FullMethodName             = "/kratos.fleet.v1.FleetService/Push"
-	FleetService_ListEvents_FullMethodName       = "/kratos.fleet.v1.FleetService/ListEvents"
-	FleetService_MarkEventsRead_FullMethodName   = "/kratos.fleet.v1.FleetService/MarkEventsRead"
-	FleetService_GetUsage_FullMethodName         = "/kratos.fleet.v1.FleetService/GetUsage"
-	FleetService_ListCredits_FullMethodName      = "/kratos.fleet.v1.FleetService/ListCredits"
-	FleetService_SetCredit_FullMethodName        = "/kratos.fleet.v1.FleetService/SetCredit"
-	FleetService_CreateRun_FullMethodName        = "/kratos.fleet.v1.FleetService/CreateRun"
-	FleetService_ListRuns_FullMethodName         = "/kratos.fleet.v1.FleetService/ListRuns"
-	FleetService_GetRun_FullMethodName           = "/kratos.fleet.v1.FleetService/GetRun"
-	FleetService_StopRun_FullMethodName          = "/kratos.fleet.v1.FleetService/StopRun"
-	FleetService_AnswerQuestion_FullMethodName   = "/kratos.fleet.v1.FleetService/AnswerQuestion"
-	FleetService_ListAutomations_FullMethodName  = "/kratos.fleet.v1.FleetService/ListAutomations"
-	FleetService_UpsertAutomation_FullMethodName = "/kratos.fleet.v1.FleetService/UpsertAutomation"
-	FleetService_DeleteAutomation_FullMethodName = "/kratos.fleet.v1.FleetService/DeleteAutomation"
-	FleetService_RunAutomationNow_FullMethodName = "/kratos.fleet.v1.FleetService/RunAutomationNow"
+	FleetService_ListAgentPresets_FullMethodName   = "/kratos.fleet.v1.FleetService/ListAgentPresets"
+	FleetService_UpdateAgentSetting_FullMethodName = "/kratos.fleet.v1.FleetService/UpdateAgentSetting"
+	FleetService_InstallAgent_FullMethodName       = "/kratos.fleet.v1.FleetService/InstallAgent"
+	FleetService_ListProjects_FullMethodName       = "/kratos.fleet.v1.FleetService/ListProjects"
+	FleetService_AddProject_FullMethodName         = "/kratos.fleet.v1.FleetService/AddProject"
+	FleetService_ListRefs_FullMethodName           = "/kratos.fleet.v1.FleetService/ListRefs"
+	FleetService_ListWorkspaces_FullMethodName     = "/kratos.fleet.v1.FleetService/ListWorkspaces"
+	FleetService_CreateWorkspace_FullMethodName    = "/kratos.fleet.v1.FleetService/CreateWorkspace"
+	FleetService_UpdateWorkspace_FullMethodName    = "/kratos.fleet.v1.FleetService/UpdateWorkspace"
+	FleetService_DeleteWorkspace_FullMethodName    = "/kratos.fleet.v1.FleetService/DeleteWorkspace"
+	FleetService_ListTerminals_FullMethodName      = "/kratos.fleet.v1.FleetService/ListTerminals"
+	FleetService_CreateTerminal_FullMethodName     = "/kratos.fleet.v1.FleetService/CreateTerminal"
+	FleetService_KillTerminal_FullMethodName       = "/kratos.fleet.v1.FleetService/KillTerminal"
+	FleetService_RestartTerminal_FullMethodName    = "/kratos.fleet.v1.FleetService/RestartTerminal"
+	FleetService_CloseTerminal_FullMethodName      = "/kratos.fleet.v1.FleetService/CloseTerminal"
+	FleetService_SendInput_FullMethodName          = "/kratos.fleet.v1.FleetService/SendInput"
+	FleetService_GetDiff_FullMethodName            = "/kratos.fleet.v1.FleetService/GetDiff"
+	FleetService_ListNotes_FullMethodName          = "/kratos.fleet.v1.FleetService/ListNotes"
+	FleetService_UpsertNote_FullMethodName         = "/kratos.fleet.v1.FleetService/UpsertNote"
+	FleetService_DeleteNote_FullMethodName         = "/kratos.fleet.v1.FleetService/DeleteNote"
+	FleetService_SendNotes_FullMethodName          = "/kratos.fleet.v1.FleetService/SendNotes"
+	FleetService_GetGitStatus_FullMethodName       = "/kratos.fleet.v1.FleetService/GetGitStatus"
+	FleetService_StageFiles_FullMethodName         = "/kratos.fleet.v1.FleetService/StageFiles"
+	FleetService_UnstageFiles_FullMethodName       = "/kratos.fleet.v1.FleetService/UnstageFiles"
+	FleetService_Commit_FullMethodName             = "/kratos.fleet.v1.FleetService/Commit"
+	FleetService_Push_FullMethodName               = "/kratos.fleet.v1.FleetService/Push"
+	FleetService_ListEvents_FullMethodName         = "/kratos.fleet.v1.FleetService/ListEvents"
+	FleetService_MarkEventsRead_FullMethodName     = "/kratos.fleet.v1.FleetService/MarkEventsRead"
+	FleetService_GetUsage_FullMethodName           = "/kratos.fleet.v1.FleetService/GetUsage"
+	FleetService_ListCredits_FullMethodName        = "/kratos.fleet.v1.FleetService/ListCredits"
+	FleetService_SetCredit_FullMethodName          = "/kratos.fleet.v1.FleetService/SetCredit"
+	FleetService_CreateRun_FullMethodName          = "/kratos.fleet.v1.FleetService/CreateRun"
+	FleetService_ListRuns_FullMethodName           = "/kratos.fleet.v1.FleetService/ListRuns"
+	FleetService_GetRun_FullMethodName             = "/kratos.fleet.v1.FleetService/GetRun"
+	FleetService_StopRun_FullMethodName            = "/kratos.fleet.v1.FleetService/StopRun"
+	FleetService_AnswerQuestion_FullMethodName     = "/kratos.fleet.v1.FleetService/AnswerQuestion"
+	FleetService_ListAutomations_FullMethodName    = "/kratos.fleet.v1.FleetService/ListAutomations"
+	FleetService_UpsertAutomation_FullMethodName   = "/kratos.fleet.v1.FleetService/UpsertAutomation"
+	FleetService_DeleteAutomation_FullMethodName   = "/kratos.fleet.v1.FleetService/DeleteAutomation"
+	FleetService_RunAutomationNow_FullMethodName   = "/kratos.fleet.v1.FleetService/RunAutomationNow"
 )
 
 // FleetServiceClient is the client API for FleetService service.
@@ -65,6 +67,10 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type FleetServiceClient interface {
 	ListAgentPresets(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ListAgentPresetsResponse, error)
+	// 后台安装一个 agent 命令行到 CLI 根目录，立即返回；进度看 ListAgentPresets 的 install_state / install_log。
+	// 设置某个工具的默认权限档位与附加启动参数（该工具此后启动的终端都按它来）。
+	UpdateAgentSetting(ctx context.Context, in *UpdateAgentSettingRequest, opts ...grpc.CallOption) (*AgentPreset, error)
+	InstallAgent(ctx context.Context, in *InstallAgentRequest, opts ...grpc.CallOption) (*AgentPreset, error)
 	ListProjects(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ListProjectsResponse, error)
 	AddProject(ctx context.Context, in *AddProjectRequest, opts ...grpc.CallOption) (*Project, error)
 	ListRefs(ctx context.Context, in *ListRefsRequest, opts ...grpc.CallOption) (*ListRefsResponse, error)
@@ -116,6 +122,26 @@ func (c *fleetServiceClient) ListAgentPresets(ctx context.Context, in *emptypb.E
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ListAgentPresetsResponse)
 	err := c.cc.Invoke(ctx, FleetService_ListAgentPresets_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *fleetServiceClient) UpdateAgentSetting(ctx context.Context, in *UpdateAgentSettingRequest, opts ...grpc.CallOption) (*AgentPreset, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AgentPreset)
+	err := c.cc.Invoke(ctx, FleetService_UpdateAgentSetting_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *fleetServiceClient) InstallAgent(ctx context.Context, in *InstallAgentRequest, opts ...grpc.CallOption) (*AgentPreset, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AgentPreset)
+	err := c.cc.Invoke(ctx, FleetService_InstallAgent_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -497,6 +523,10 @@ func (c *fleetServiceClient) RunAutomationNow(ctx context.Context, in *Automatio
 // for forward compatibility.
 type FleetServiceServer interface {
 	ListAgentPresets(context.Context, *emptypb.Empty) (*ListAgentPresetsResponse, error)
+	// 后台安装一个 agent 命令行到 CLI 根目录，立即返回；进度看 ListAgentPresets 的 install_state / install_log。
+	// 设置某个工具的默认权限档位与附加启动参数（该工具此后启动的终端都按它来）。
+	UpdateAgentSetting(context.Context, *UpdateAgentSettingRequest) (*AgentPreset, error)
+	InstallAgent(context.Context, *InstallAgentRequest) (*AgentPreset, error)
 	ListProjects(context.Context, *emptypb.Empty) (*ListProjectsResponse, error)
 	AddProject(context.Context, *AddProjectRequest) (*Project, error)
 	ListRefs(context.Context, *ListRefsRequest) (*ListRefsResponse, error)
@@ -546,6 +576,12 @@ type UnimplementedFleetServiceServer struct{}
 
 func (UnimplementedFleetServiceServer) ListAgentPresets(context.Context, *emptypb.Empty) (*ListAgentPresetsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListAgentPresets not implemented")
+}
+func (UnimplementedFleetServiceServer) UpdateAgentSetting(context.Context, *UpdateAgentSettingRequest) (*AgentPreset, error) {
+	return nil, status.Error(codes.Unimplemented, "method UpdateAgentSetting not implemented")
+}
+func (UnimplementedFleetServiceServer) InstallAgent(context.Context, *InstallAgentRequest) (*AgentPreset, error) {
+	return nil, status.Error(codes.Unimplemented, "method InstallAgent not implemented")
 }
 func (UnimplementedFleetServiceServer) ListProjects(context.Context, *emptypb.Empty) (*ListProjectsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListProjects not implemented")
@@ -693,6 +729,42 @@ func _FleetService_ListAgentPresets_Handler(srv interface{}, ctx context.Context
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(FleetServiceServer).ListAgentPresets(ctx, req.(*emptypb.Empty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _FleetService_UpdateAgentSetting_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpdateAgentSettingRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(FleetServiceServer).UpdateAgentSetting(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: FleetService_UpdateAgentSetting_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(FleetServiceServer).UpdateAgentSetting(ctx, req.(*UpdateAgentSettingRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _FleetService_InstallAgent_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(InstallAgentRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(FleetServiceServer).InstallAgent(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: FleetService_InstallAgent_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(FleetServiceServer).InstallAgent(ctx, req.(*InstallAgentRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1373,6 +1445,14 @@ var FleetService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListAgentPresets",
 			Handler:    _FleetService_ListAgentPresets_Handler,
+		},
+		{
+			MethodName: "UpdateAgentSetting",
+			Handler:    _FleetService_UpdateAgentSetting_Handler,
+		},
+		{
+			MethodName: "InstallAgent",
+			Handler:    _FleetService_InstallAgent_Handler,
 		},
 		{
 			MethodName: "ListProjects",

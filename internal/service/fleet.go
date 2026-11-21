@@ -67,14 +67,49 @@ func (s *FleetService) ListAgentPresets(ctx context.Context, _ *emptypb.Empty) (
 	if err := s.guard(ctx); err != nil {
 		return nil, err
 	}
-	out := &v1.ListAgentPresetsResponse{}
+	out := &v1.ListAgentPresetsResponse{CliRoot: fleet.CLIRoot()}
 	for _, p := range s.uc.ListPresets() {
-		out.Items = append(out.Items, &v1.AgentPreset{
-			Id: p.ID, Label: p.Label, Command: p.Command, Available: p.Available,
-			SupportsFullAccess: p.FullAccessFlag != "", FullAccessFlag: p.FullAccessFlag, ResolvedPath: p.ResolvedPath,
-		})
+		out.Items = append(out.Items, s.presetPB(ctx, p))
 	}
 	return out, nil
+}
+
+func (s *FleetService) presetPB(ctx context.Context, p fleet.AgentPreset) *v1.AgentPreset {
+	state, log := fleet.InstallStatus(p.ID)
+	set := s.uc.GetAgentSetting(ctx, p.ID)
+	return &v1.AgentPreset{
+		Id: p.ID, Label: p.Label, Command: p.Command, Available: p.Available,
+		SupportsFullAccess: p.FullAccessFlag != "", FullAccessFlag: p.FullAccessFlag, ResolvedPath: p.ResolvedPath,
+		Install: p.Install, InstallState: state, InstallLog: log,
+		AutoEditFlag: p.AutoEditFlag, ApproveKey: p.ApproveKey, RejectKey: p.RejectKey, LoginHint: p.LoginHint,
+		Readiness: fleet.AgentReadiness(p.ID), Mode: set.Mode, Args: set.Args,
+	}
+}
+
+func (s *FleetService) InstallAgent(ctx context.Context, req *v1.InstallAgentRequest) (*v1.AgentPreset, error) {
+	if err := s.guard(ctx); err != nil {
+		return nil, err
+	}
+	if err := s.uc.InstallAgent(req.GetId()); err != nil {
+		return nil, err
+	}
+	for _, p := range s.uc.ListPresets() {
+		if p.ID == req.GetId() {
+			return s.presetPB(ctx, p), nil
+		}
+	}
+	return &v1.AgentPreset{Id: req.GetId()}, nil
+}
+
+func (s *FleetService) UpdateAgentSetting(ctx context.Context, req *v1.UpdateAgentSettingRequest) (*v1.AgentPreset, error) {
+	if err := s.guard(ctx); err != nil {
+		return nil, err
+	}
+	if _, err := s.uc.SetAgentSetting(ctx, fleet.AgentSetting{ID: req.GetId(), Mode: req.GetMode(), Args: req.GetArgs()}); err != nil {
+		return nil, err
+	}
+	p, _ := fleet.FindPreset(req.GetId())
+	return s.presetPB(ctx, p), nil
 }
 
 func projectPB(p fleet.Project) *v1.Project {
@@ -183,7 +218,7 @@ func (s *FleetService) DeleteWorkspace(ctx context.Context, req *v1.DeleteWorksp
 
 func terminalPB(t fleet.TerminalInfo) *v1.Terminal {
 	return &v1.Terminal{
-		Id: t.ID, WorkspaceId: t.WorkspaceID, Agent: t.Agent, Title: t.Title, Status: t.Status, FullAccess: t.FullAccess,
+		Id: t.ID, WorkspaceId: t.WorkspaceID, Agent: t.Agent, Title: t.Title, Status: t.Status, FullAccess: t.FullAccess, Mode: t.Mode,
 		Pid: int32(t.PID), StartedAt: ts(t.StartedAt), ExitCode: int32(t.ExitCode), LastActivityAt: ts(t.LastActivityAt),
 		Preview: t.Preview, RunId: t.RunID, TaskId: t.TaskID, Role: t.Role, StatusChangedAt: ts(t.StatusChangedAt),
 	}
@@ -244,7 +279,7 @@ func (s *FleetService) SendInput(ctx context.Context, req *v1.SendInputRequest) 
 	if err := s.guard(ctx); err != nil {
 		return nil, err
 	}
-	return &emptypb.Empty{}, s.uc.SendInput(req.Id, req.Text, req.Submit)
+	return &emptypb.Empty{}, s.uc.SendInput(req.Id, req.Text, req.Submit, req.Raw)
 }
 
 // ---------- diff 与批注 ----------

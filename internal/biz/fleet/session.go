@@ -31,6 +31,9 @@ type sessionSpec struct {
 	Dir         string
 	Prompt      string
 	FullAccess  bool
+	Mode        string   // 权限档位（PermManual 等）；startTerminal 按 launchMode 定下来
+	Args        []string // 附加启动参数（工具设置或编码 agent 登记）
+	TrustKey    string   // 非空 = 屏幕出现目录信任框时自动按一次（只给运行台自己建的 worktree）
 	RunID       string
 	TaskID      string
 	Role        string
@@ -70,6 +73,7 @@ type Session struct {
 	title           string
 	firstOutput     bool
 	prompted        bool
+	trustSent       bool
 	pendingPrompt   string
 	exited          bool
 	killed          bool // 由人或运行台主动结束：不发「已退出」通知
@@ -105,7 +109,7 @@ func (s *Session) start(argv []string) error {
 	s.mu.Lock()
 	s.p, s.cmd, s.closePTY = p, cmd, closeOnce
 	s.startedAt, s.lastOutput, s.statusChangedAt = now, time.Time{}, now
-	s.exited, s.killed, s.exitCode, s.firstOutput, s.prompted = false, false, 0, false, false
+	s.exited, s.killed, s.exitCode, s.firstOutput, s.prompted, s.trustSent = false, false, 0, false, false, false
 	s.cols, s.rows = 120, 32
 	s.status = StatusStarting
 	if s.spec.Agent == "shell" || s.spec.Agent == "" {
@@ -152,7 +156,7 @@ func (s *Session) waitLoop(cmd *pty.Cmd, p pty.Pty, closePTY func()) {
 	}
 	s.exited, s.exitCode = true, code
 	old := s.status
-	if code == 0 {
+	if code == 0 || s.killed { // 人或运行台主动结束的不算异常（被杀进程的退出码非 0）
 		s.status = StatusExited
 	} else {
 		s.status = StatusFailed
@@ -299,9 +303,9 @@ func (s *Session) Info() TerminalInfo {
 	defer s.mu.Unlock()
 	return TerminalInfo{
 		ID: s.id, WorkspaceID: s.spec.WorkspaceID, Agent: s.spec.Agent, Title: s.displayTitle(),
-		Status: s.status, FullAccess: s.spec.FullAccess, PID: s.pid, StartedAt: s.startedAt,
+		Status: s.status, FullAccess: s.spec.FullAccess, Mode: s.spec.Mode, PID: s.pid, StartedAt: s.startedAt,
 		ExitCode: s.exitCode, LastActivityAt: s.lastOutput, StatusChangedAt: s.statusChangedAt,
-		Preview: previewLines(s.tail, 3), RunID: s.spec.RunID, TaskID: s.spec.TaskID, Role: s.spec.Role,
+		Preview: previewLines(s.tail, 5), RunID: s.spec.RunID, TaskID: s.spec.TaskID, Role: s.spec.Role,
 	}
 }
 
@@ -351,6 +355,10 @@ func (s *Session) tick(now time.Time) {
 		lines = lines[len(lines)-needsInputLines:]
 	}
 	needs := matchNeedsInput(strings.ToLower(strings.Join(lines, "\n")))
+	var trustKey string
+	if needs && s.spec.TrustKey != "" && !s.trustSent && classifyWaiting(strings.Join(lines, "\n")) == ReadyNeedTrust {
+		s.trustSent, trustKey = true, s.spec.TrustKey
+	}
 	spinning := titleSpinning(s.title)
 	echoOnly := now.Sub(s.lastInput) < 600*time.Millisecond && recent < 2000
 
@@ -382,10 +390,16 @@ func (s *Session) tick(now time.Time) {
 	if next != old {
 		s.status, s.statusChangedAt = next, now
 	}
-	if s.pendingPrompt != "" && (next == StatusIdle || next == StatusDone) && !needs {
+	// 首句提示等启动满 8 秒、安静 3 秒再发：Cursor CLI 输出停了还在后台初始化，启动约 5 秒时粘贴进去的回车会被吞掉，
+	// 7.5 秒后正常（2026-11-20 实测）
+	if s.pendingPrompt != "" && (next == StatusIdle || next == StatusDone) && !needs &&
+		quiet >= 3*time.Second && now.Sub(s.startedAt) >= 8*time.Second {
 		prompt, s.pendingPrompt = s.pendingPrompt, ""
 	}
 	s.mu.Unlock()
+	if trustKey != "" {
+		_ = s.Write([]byte(trustKey))
+	}
 	if prompt != "" {
 		_ = s.Paste(prompt, true)
 	}
@@ -482,10 +496,21 @@ var needsInputPatterns = []string{
 	"waiting for approval", "approve this", "requires approval", "❯ 1. yes", "› 1. yes",
 	// Claude Code 的选择框（信任目录等）：实测 2026-11-18，v2.1.318。
 	"enter to confirm", "i trust this folder",
+	// 以下取自 awslabs/cli-agent-orchestrator 各 provider 的等待字样（2026-11-20 核对）：
+	// Claude Code 工具权限框页脚、Codex 审批框、Cursor 目录信任、Grok 审批选项。
+	"esc to cancel · tab to amend", "↑/↓ to navigate", "command approval required",
+	"confirm folder trust", "yes, proceed", "no, reject",
+	// 2026-11-20 九家 CLI 实测：选择菜单页脚、目录信任、登录等待（Gemini / Codex / Qoder / Cursor / 豆包 / CodeBuddy）。
+	"enter to select", "enter select", "enter continue", "enter to login", "don't trust", "trust and continue",
+	"press any key to log in", "sign in to continue", "扫码",
+	// Cursor CLI 2026.11.19 的命令审批框与拒绝后的追问
+	"run this command?", "not in allowlist", "what to do instead",
 	"是否继续", "是否允许", "请确认",
 }
 
 func matchNeedsInput(text string) bool {
+	// 光标移动重绘会把一句话拆到几行（Qoder 的「Enter select」实测如此），先把空白归一
+	text = strings.Join(strings.Fields(text), " ")
 	for _, p := range needsInputPatterns {
 		if strings.Contains(text, p) {
 			return true

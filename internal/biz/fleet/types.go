@@ -88,6 +88,7 @@ type TerminalInfo struct {
 	Title           string
 	Status          string
 	FullAccess      bool
+	Mode            string
 	PID             int
 	StartedAt       time.Time
 	ExitCode        int

@@ -34,10 +34,31 @@ message AgentPreset {
   bool supports_full_access = 5;
   string full_access_flag = 6;
   string resolved_path = 7;
+  string install = 8;        // 一键安装方式：npm:<包名> | cursor | trae；空 = 不支持
+  string install_state = 9;  // 最近一次安装：running | ok | failed；空 = 没装过
+  string install_log = 10;   // 最近一次安装的日志尾部
+  string auto_edit_flag = 11; // 「自动改文件」档的原生参数；空 = 没有这一档
+  string approve_key = 12;    // 确认框里「批准」的按键；空 = 回车
+  string reject_key = 13;     // 确认框里「拒绝」的按键；空 = Esc
+  string login_hint = 14;     // 首次登录怎么做
+  string readiness = 15;      // 运行台最近看到的状态：need_login | need_trust | ready | 空（还没用过）
+  string mode = 16;           // 默认权限档位：manual | auto_edit | full
+  repeated string args = 17;  // 默认附加启动参数
+}
+
+message UpdateAgentSettingRequest {
+  string id = 1;
+  string mode = 2;           // manual | auto_edit | full
+  repeated string args = 3;  // 附加启动参数（不能含 shell 元字符）
 }
 
 message ListAgentPresetsResponse {
   repeated AgentPreset items = 1;
+  string cli_root = 2;       // 一键安装根目录（ARANEA_FLEET_CLI_ROOT）
+}
+
+message InstallAgentRequest {
+  string id = 1;
 }
 
 // ---------- 项目与 worktree ----------
@@ -146,6 +167,7 @@ message Terminal {
   string task_id = 13;
   string role = 14;          // coordinator | worker | ""
   string status_changed_at = 15;
+  string mode = 16;          // 实际启动用的权限档位：manual | auto_edit | full
 }
 
 message ListTerminalsRequest {
@@ -172,6 +194,7 @@ message SendInputRequest {
   string id = 1;
   string text = 2;
   bool submit = 3;           // 末尾补回车
+  bool raw = 4;              // 原样写入当按键（选确认框选项、Esc）；否则按粘贴送达
 }
 
 // ---------- diff 与批注 ----------
@@ -494,6 +517,18 @@ service FleetService {
   rpc ListAgentPresets(google.protobuf.Empty) returns (ListAgentPresetsResponse) {
     option (aranea.auth.v1.requirement) = {permission: "coding.manage"};
     option (google.api.http) = {get: "/v1/fleet/agents"};
+  }
+
+  // 后台安装一个 agent 命令行到 CLI 根目录，立即返回；进度看 ListAgentPresets 的 install_state / install_log。
+  // 设置某个工具的默认权限档位与附加启动参数（该工具此后启动的终端都按它来）。
+  rpc UpdateAgentSetting(UpdateAgentSettingRequest) returns (AgentPreset) {
+    option (aranea.auth.v1.requirement) = {permission: "coding.manage"};
+    option (google.api.http) = {post: "/v1/fleet/agents/{id}/setting" body: "*"};
+  }
+
+  rpc InstallAgent(InstallAgentRequest) returns (AgentPreset) {
+    option (aranea.auth.v1.requirement) = {permission: "coding.manage"};
+    option (google.api.http) = {post: "/v1/fleet/agents/{id}/install" body: "*"};
   }
 
   rpc ListProjects(google.protobuf.Empty) returns (ListProjectsResponse) {

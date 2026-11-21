@@ -499,14 +499,24 @@ func (u *Usecase) startTerminal(w Workspace, spec sessionSpec) (TerminalInfo, er
 		return TerminalInfo{}, apierror.BadRequest(domain, "unknown agent: "+spec.Agent)
 	}
 	if !preset.Available {
-		return TerminalInfo{}, apierror.FailedPrecondition(domain, preset.Label+" 未安装（PATH 上找不到 "+preset.Command+"）")
+		return TerminalInfo{}, apierror.FailedPrecondition(domain, preset.Label+" 未安装（找不到 "+preset.Command+"），可在「CLI 工具」里一键安装")
 	}
 	spec.Dir = w.Path
+	if spec.Agent != "shell" {
+		setting := u.GetAgentSetting(context.Background(), spec.Agent)
+		spec.Mode = launchMode(spec, setting)
+		if spec.Args == nil {
+			spec.Args = setting.Args
+		}
+		if w.Kind == KindWorktree { // 运行台自己建的 worktree：目录信任框自动过
+			spec.TrustKey = preset.TrustKey
+		}
+	}
 	id := uuid.NewString()
 	token := randomToken()
 	spec.Env = u.terminalEnv(id, token)
 	s := newSession(id, token, spec, u.onStatus)
-	if err := s.start(launchArgv(preset, spec.FullAccess)); err != nil {
+	if err := s.start(launchArgv(preset, spec.Mode, spec.Args)); err != nil {
 		return TerminalInfo{}, apierror.Internal(domain, "启动失败："+err.Error())
 	}
 	u.mu.Lock()
@@ -561,8 +571,11 @@ func (u *Usecase) terminalEnv(id, token string) []string {
 		if k == "TERM" || k == "COLORTERM" || isBackendEnv(k) {
 			continue
 		}
-		if k == "PATH" && u.opts.CLIDir != "" {
-			kv = kv[:5] + u.opts.CLIDir + sep + kv[5:]
+		if k == "PATH" {
+			// fleetctl 所在目录 + 一键安装目录排在前面，协调者派 worker 时也能找到装好的 agent
+			if pre := strings.Join(append([]string{u.opts.CLIDir}, cliDirs()...), sep); strings.Trim(pre, sep) != "" {
+				kv = kv[:5] + strings.Trim(pre, sep) + sep + kv[5:]
+			}
 		}
 		env = append(env, kv)
 	}
@@ -644,7 +657,7 @@ func (u *Usecase) RestartTerminal(id string) (TerminalInfo, error) {
 	s.mu.Lock()
 	s.buf = append(s.buf, []byte("\r\n\x1b[2m── 已重启 ──\x1b[0m\r\n")...)
 	s.mu.Unlock()
-	if err := s.start(launchArgv(preset, s.spec.FullAccess)); err != nil {
+	if err := s.start(launchArgv(preset, s.spec.Mode, s.spec.Args)); err != nil {
 		return TerminalInfo{}, apierror.Internal(domain, "重启失败："+err.Error())
 	}
 	return s.Info(), nil
@@ -673,11 +686,15 @@ func (u *Usecase) CloseTerminal(id string) error {
 	return nil
 }
 
-// SendInput 往终端里送一段文本；submit 时末尾补回车。
-func (u *Usecase) SendInput(id, text string, submit bool) error {
+// SendInput 往终端里送一段文本；submit 时末尾补回车。raw = 原样写入当按键（选确认框选项、Esc），
+// 否则走括号粘贴（agent 收到的是一段粘贴，按不了键）。
+func (u *Usecase) SendInput(id, text string, submit, raw bool) error {
 	s, ok := u.Session(id)
 	if !ok {
 		return apierror.NotFound(domain, "terminal not found")
+	}
+	if raw {
+		return s.Write([]byte(text))
 	}
 	return s.Paste(text, submit)
 }
@@ -691,9 +708,14 @@ func (u *Usecase) onStatus(s *Session, old, next string) {
 	switch next {
 	case StatusDone:
 		if old == StatusWorking {
+			setReadiness(info.Agent, ReadyOK)
 			u.addEvent(Event{Kind: EventAgentDone, Title: label + " 完成了一轮：" + wsName, Body: info.Preview, WorkspaceID: ws, TerminalID: info.ID, RunID: info.RunID})
 		}
 	case StatusNeedsInput:
+		// 上手状态：登录框一律记「要登录」；信任框只在还没对过话时记（对过话的工具换个目录弹信任框不算没就绪）
+		if st := classifyWaiting(s.ReadText(10)); st == ReadyNeedLogin || (st == ReadyNeedTrust && AgentReadiness(info.Agent) != ReadyOK) {
+			setReadiness(info.Agent, st)
+		}
 		u.addEvent(Event{Kind: EventNeedsInput, Title: label + " 在等你：" + wsName, Body: info.Preview, WorkspaceID: ws, TerminalID: info.ID, RunID: info.RunID})
 	case StatusExited, StatusFailed:
 		s.mu.Lock()
@@ -820,7 +842,7 @@ func (u *Usecase) SendNotes(ctx context.Context, workspaceID, terminalID, agent 
 			return "", 0, err
 		}
 		terminalID = info.ID
-	} else if err := u.SendInput(terminalID, prompt, true); err != nil {
+	} else if err := u.SendInput(terminalID, prompt, true, false); err != nil {
 		return "", 0, err
 	}
 	now := nowString()

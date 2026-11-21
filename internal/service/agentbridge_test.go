@@ -602,13 +602,13 @@ func TestAgentBridgeService_DispatchCandidatesNoEvents(t *testing.T) {
 
 func TestAgentBridgeService_ProbeAgent(t *testing.T) {
 	e := newABSvcEnv()
-	e.seedAgent("codebuddy")
+	e.seedAgent("codebuddy-not-installed")
 	e.seedAgent("ghost")
 
-	if err := e.svc.ProbeAgent(context.Background(), "default", "codebuddy"); err != nil {
+	if err := e.svc.ProbeAgent(context.Background(), "default", "codebuddy-not-installed"); err != nil {
 		t.Fatalf("probe: %v", err)
 	}
-	// L1：fake agent command = key（"codebuddy" 不存在于 PATH → not_installed）
+	// L1：fake agent command = key（用一定不存在的命令名：本机可能真装了 codebuddy → not_installed）
 	if len(e.agents.probes) != 1 || e.agents.probes[0].ok {
 		t.Fatalf("probe for nonexistent command must be ok=false: %+v", e.agents.probes)
 	}

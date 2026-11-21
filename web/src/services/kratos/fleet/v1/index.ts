@@ -10,10 +10,31 @@ export type AgentPreset = {
   supportsFullAccess: boolean | undefined;
   fullAccessFlag: string | undefined;
   resolvedPath: string | undefined;
+  install: string | undefined;
+  installState: string | undefined;
+  installLog: string | undefined;
+  autoEditFlag: string | undefined;
+  approveKey: string | undefined;
+  rejectKey: string | undefined;
+  loginHint: string | undefined;
+  readiness: string | undefined;
+  mode: string | undefined;
+  args: string[] | undefined;
+};
+
+export type UpdateAgentSettingRequest = {
+  id: string | undefined;
+  mode: string | undefined;
+  args: string[] | undefined;
 };
 
 export type ListAgentPresetsResponse = {
   items: AgentPreset[] | undefined;
+  cliRoot: string | undefined;
+};
+
+export type InstallAgentRequest = {
+  id: string | undefined;
 };
 
 export type Project = {
@@ -118,6 +139,7 @@ export type Terminal = {
   taskId: string | undefined;
   role: string | undefined;
   statusChangedAt: string | undefined;
+  mode: string | undefined;
 };
 
 export type ListTerminalsRequest = {
@@ -144,6 +166,7 @@ export type SendInputRequest = {
   id: string | undefined;
   text: string | undefined;
   submit: boolean | undefined;
+  raw: boolean | undefined;
 };
 
 export type DiffRequest = {
@@ -448,6 +471,10 @@ export type AutomationIdRequest = {
 
 export interface FleetService {
   ListAgentPresets(request: wellKnownEmpty): Promise<ListAgentPresetsResponse>;
+  // 后台安装一个 agent 命令行到 CLI 根目录，立即返回；进度看 ListAgentPresets 的 install_state / install_log。
+  // 设置某个工具的默认权限档位与附加启动参数（该工具此后启动的终端都按它来）。
+  UpdateAgentSetting(request: UpdateAgentSettingRequest): Promise<AgentPreset>;
+  InstallAgent(request: InstallAgentRequest): Promise<AgentPreset>;
   ListProjects(request: wellKnownEmpty): Promise<ListProjectsResponse>;
   AddProject(request: AddProjectRequest): Promise<Project>;
   ListRefs(request: ListRefsRequest): Promise<ListRefsResponse>;
@@ -515,6 +542,46 @@ export function createFleetServiceClient(
         service: "FleetService",
         method: "ListAgentPresets",
       }) as Promise<ListAgentPresetsResponse>;
+    },
+    UpdateAgentSetting(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      if (!request.id) {
+        throw new Error("missing required field request.id");
+      }
+      const path = `v1/fleet/agents/${request.id}/setting`; // eslint-disable-line quotes
+      const body = JSON.stringify(request);
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "FleetService",
+        method: "UpdateAgentSetting",
+      }) as Promise<AgentPreset>;
+    },
+    InstallAgent(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      if (!request.id) {
+        throw new Error("missing required field request.id");
+      }
+      const path = `v1/fleet/agents/${request.id}/install`; // eslint-disable-line quotes
+      const body = JSON.stringify(request);
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "FleetService",
+        method: "InstallAgent",
+      }) as Promise<AgentPreset>;
     },
     ListProjects(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/fleet/projects`; // eslint-disable-line quotes

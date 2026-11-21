@@ -1,6 +1,6 @@
 // Harness 多任务运行台的接口封装：生成客户端要求请求字段齐全、返回字段可能缺省，
 // 这里统一补齐并把返回值规整为不含 undefined 的类型，组件里不再逐处判空。
-import { createFleetService } from '../../services';
+import { createAgentBridgeService, createFleetService } from '../../services';
 
 const api = createFleetService();
 
@@ -15,7 +15,26 @@ export interface AgentPreset {
   command: string;
   available: boolean;
   supportsFullAccess: boolean;
+  resolvedPath: string;
+  /** 一键安装方式：npm:<包名> | cursor | trae；空 = 不支持 */
+  install: string;
+  /** 最近一次安装：running | ok | failed；空 = 没装过 */
+  installState: string;
+  installLog: string;
+  /** 「自动改文件」档的原生参数；空 = 没有这一档 */
+  autoEditFlag: string;
+  /** 确认框里批准 / 拒绝的按键；空 = 回车 / Esc */
+  approveKey: string;
+  rejectKey: string;
+  loginHint: string;
+  /** 运行台最近看到的状态：need_login | need_trust | ready | 空 */
+  readiness: string;
+  /** 默认权限档位：manual | auto_edit | full */
+  mode: PermissionMode;
+  args: string[];
 }
+
+export type PermissionMode = 'manual' | 'auto_edit' | 'full';
 
 export interface Project {
   id: string;
@@ -62,6 +81,7 @@ export interface Terminal {
   runId: string;
   taskId: string;
   role: string;
+  mode: string;
 }
 
 export interface DiffLine {
@@ -253,6 +273,7 @@ function toTerminal(r: Raw): Terminal {
     runId: s(r.runId),
     taskId: s(r.taskId),
     role: s(r.role),
+    mode: s(r.mode),
   };
 }
 
@@ -310,15 +331,70 @@ const raws = <T>(v: T[] | undefined) => arr(v) as unknown as Raw[];
 
 // ---------- 调用 ----------
 
-export async function listPresets(): Promise<AgentPreset[]> {
+const presetOf = (r: Raw): AgentPreset => ({
+  id: s(r.id),
+  label: s(r.label),
+  command: s(r.command),
+  available: b(r.available),
+  supportsFullAccess: b(r.supportsFullAccess),
+  resolvedPath: s(r.resolvedPath),
+  install: s(r.install),
+  installState: s(r.installState),
+  installLog: s(r.installLog),
+  autoEditFlag: s(r.autoEditFlag),
+  approveKey: s(r.approveKey),
+  rejectKey: s(r.rejectKey),
+  loginHint: s(r.loginHint),
+  readiness: s(r.readiness),
+  mode: (s(r.mode) || 'manual') as PermissionMode,
+  args: arr(r.args as string[] | undefined).map(s),
+});
+
+/** agent 清单与一键安装根目录。 */
+export async function listAgents(): Promise<{ items: AgentPreset[]; cliRoot: string }> {
   const res = await api.ListAgentPresets({});
-  return raws(res.items).map((r) => ({
-    id: s(r.id),
-    label: s(r.label),
-    command: s(r.command),
-    available: b(r.available),
-    supportsFullAccess: b(r.supportsFullAccess),
-  }));
+  return { items: raws(res.items).map(presetOf), cliRoot: s(res.cliRoot) };
+}
+
+export async function listPresets(): Promise<AgentPreset[]> {
+  return (await listAgents()).items;
+}
+
+/** 编码工具（agentbridge）里登记为「在运行台终端执行」的 agent：运行台工具 id → agent key。 */
+export async function listCodingToolLinks(): Promise<Record<string, string>> {
+  const res = await createAgentBridgeService().ListAgents({});
+  const out: Record<string, string> = {};
+  for (const a of res.items ?? []) {
+    const cmd = s(a.command);
+    if (cmd.startsWith('fleet:')) out[cmd.slice(6)] = s(a.agentKey);
+  }
+  return out;
+}
+
+/** 把运行台工具登记成编码工具：aranea 的 Agent（coding_* 工具）、Graph 的 Agent 节点、工作台「派给 AI」都能把活派给它。 */
+export async function addToCodingTools(p: AgentPreset): Promise<void> {
+  await createAgentBridgeService().UpsertAgent({
+    agentKey: `cli_${p.id}`,
+    displayName: p.label,
+    command: `fleet:${p.id}`,
+    args: [],
+    env: {},
+    enabled: true,
+    livenessOverrideJson: '',
+    iconUrl: '',
+    capabilities: ['read_workspace', 'write_workspace', 'exec_command'],
+    defaultAutonomy: '',
+  });
+}
+
+/** 保存某个工具的默认权限档位与附加启动参数。 */
+export async function updateAgentSetting(id: string, mode: PermissionMode, args: string[]): Promise<AgentPreset> {
+  return presetOf(raw(await api.UpdateAgentSetting({ id, mode, args })));
+}
+
+/** 后台安装，立即返回；进度看 listAgents 的 installState / installLog。 */
+export async function installAgent(id: string): Promise<AgentPreset> {
+  return presetOf(raw(await api.InstallAgent({ id })));
 }
 
 export async function listProjects(): Promise<Project[]> {
@@ -419,8 +495,9 @@ export async function restartTerminal(id: string): Promise<void> {
 export async function closeTerminal(id: string): Promise<void> {
   await api.CloseTerminal({ id });
 }
-export async function sendInput(id: string, text: string, submit = true): Promise<void> {
-  await api.SendInput({ id, text, submit });
+/** raw = 原样写入当按键（选确认框选项、Esc）；否则按粘贴送达。 */
+export async function sendInput(id: string, text: string, submit = true, raw = false): Promise<void> {
+  await api.SendInput({ id, text, submit, raw });
 }
 
 export async function getDiff(workspaceId: string, baseRef = ''): Promise<DiffResult> {

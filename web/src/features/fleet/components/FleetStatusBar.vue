@@ -32,6 +32,10 @@
     <button v-if="needs" type="button" class="fleet-status__count is-warn" @click="state.view = 'board'">
       <q-icon name="help" size="14px" /> {{ needs }} 个等你
     </button>
+    <button type="button" class="fleet-status__count fleet-status__tools" @click="agentsOpen = true">
+      <q-icon name="download" size="14px" /> CLI 工具
+    </button>
+    <FleetAgentsDialog v-model="agentsOpen" />
     <button
       type="button"
       class="fleet-status__bell"
@@ -45,11 +49,13 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import type { AgentUsage } from '../api';
 import { useFleet } from '../useFleet';
+import FleetAgentsDialog from './FleetAgentsDialog.vue';
 
 const { state, agentLabel } = useFleet();
+const agentsOpen = ref(false);
 
 const working = computed(() => state.terminals.filter((t) => t.status === 'working').length);
 const needs = computed(() => state.terminals.filter((t) => t.status === 'needs_input').length);
@@ -123,6 +129,16 @@ function usageTitle(u: AgentUsage): string {
   &.is-warn
     color: var(--nt-warn)
     cursor: pointer
+.fleet-status__tools
+  flex-shrink: 0
+  white-space: nowrap
+  color: var(--nt-text-1)
+  cursor: pointer
+  &:hover
+    color: var(--nt-accent)
+  &:focus-visible
+    outline: 2px solid var(--nt-accent)
+    outline-offset: 2px
 .fleet-status__bell
   position: relative
   display: inline-flex
