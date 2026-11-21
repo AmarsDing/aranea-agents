@@ -106,10 +106,39 @@ func (u *ICalUsecase) RenderFeed(ctx context.Context, token string, now time.Tim
 		if ev.Note != "" {
 			fmt.Fprintf(&b, "DESCRIPTION:%s\r\n", icalEscape(ev.Note))
 		}
+		if ev.Location != "" {
+			fmt.Fprintf(&b, "LOCATION:%s\r\n", icalEscape(ev.Location))
+		}
+		if ev.URL != "" {
+			fmt.Fprintf(&b, "URL:%s\r\n", strings.NewReplacer("\r", "", "\n", "").Replace(ev.URL))
+		}
+		// 重复系列导出一条带 RRULE 的（仓储范围查询对重复系列返回系列本身，不展开）
+		if ev.RRule != "" && ValidRRule(ev.RRule) {
+			fmt.Fprintf(&b, "RRULE:%s\r\n", strings.TrimPrefix(ev.RRule, "RRULE:"))
+			icalExDates(&b, ev)
+		}
 		b.WriteString("END:VEVENT\r\n")
 	}
 	b.WriteString("END:VCALENDAR\r\n")
 	return b.String(), nil
+}
+
+// icalExDates 跳过的日期写成 EXDATE（全天写 DATE，定时写那天那一刻的 UTC）。
+func icalExDates(b *strings.Builder, ev *Event) {
+	loc := locOrUTC(ev.Timezone)
+	st := ev.StartAt.In(loc)
+	for _, d := range strings.Split(ev.ExDates, ",") {
+		day, err := time.ParseInLocation("2006-01-02", strings.TrimSpace(d), loc)
+		if err != nil {
+			continue
+		}
+		if ev.AllDay {
+			fmt.Fprintf(b, "EXDATE;VALUE=DATE:%s\r\n", day.Format("20060102"))
+			continue
+		}
+		at := time.Date(day.Year(), day.Month(), day.Day(), st.Hour(), st.Minute(), st.Second(), 0, loc)
+		fmt.Fprintf(b, "EXDATE:%s\r\n", at.UTC().Format("20060102T150405Z"))
+	}
 }
 
 // icalEscape RFC 5545 §3.3.11 文本转义（反斜杠/分号/逗号/换行）。

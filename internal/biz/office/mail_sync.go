@@ -143,6 +143,7 @@ func (u *MailSyncUsecase) syncOne(ctx context.Context, acc *MailAccount) (int, i
 	sort.Ints(uids)
 	imported, skipped := 0, 0
 	maxUID := acc.LastUID
+	blocked := u.blockedSet(ctx, acc.UserID)
 	for _, uid := range uids {
 		if int64(uid) <= acc.LastUID {
 			continue // "n:*" 在没有新信时也会回最大的那个 UID
@@ -155,6 +156,9 @@ func (u *MailSyncUsecase) syncOne(ctx context.Context, acc *MailAccount) (int, i
 		m.Seen = strings.Contains(flags, `\Seen`)
 		m.Flagged = strings.Contains(flags, `\Flagged`)
 		msg := mailMessageFromImap(acc, uid, m, u.now)
+		if blocked[senderAddr(msg.Sender)] {
+			msg.Spam = true // 拒收名单里的发件人：直接进垃圾邮件
+		}
 		inserted, err := u.messages.InsertMessageWithAttachmentsTx(ctx, msg)
 		if err != nil {
 			// 邮件+附件同生共死：整体未提交，下个同步周期可重试。
@@ -178,6 +182,7 @@ func (u *MailSyncUsecase) syncOne(ctx context.Context, acc *MailAccount) (int, i
 	if err := u.accounts.UpdateMailSyncCursor(ctx, acc.ID, maxUID, u.now()); err != nil {
 		return imported, skipped, fmt.Errorf("update sync cursor: %w", err)
 	}
+	u.syncJunk(ctx, cli, acc)
 	u.markAccountStatus(ctx, acc, "")
 	return imported, skipped, nil
 }
@@ -313,6 +318,7 @@ func (s *MailIdleSupervisor) Start(ctx context.Context) {
 		}
 	}
 	rescan()
+	go s.housekeeping(ctx)
 	rescanTk := time.NewTicker(s.rescanInterval)
 	pollTk := time.NewTicker(s.pollInterval)
 	defer rescanTk.Stop()
@@ -328,6 +334,24 @@ func (s *MailIdleSupervisor) Start(ctx context.Context) {
 			rescan()
 		case <-pollTk.C:
 			s.pollAll(ctx)
+		}
+	}
+}
+
+// housekeeping 每分钟发到点的定时草稿；每小时清一次「已删除」里放满 30 天的信。
+func (s *MailIdleSupervisor) housekeeping(ctx context.Context) {
+	tk := time.NewTicker(time.Minute)
+	defer tk.Stop()
+	s.syncer.PurgeOldTrash(ctx)
+	for n := 1; ; n++ {
+		select {
+		case <-ctx.Done():
+			return
+		case <-tk.C:
+			s.syncer.SendDueDrafts(ctx)
+			if n%60 == 0 {
+				s.syncer.PurgeOldTrash(ctx)
+			}
 		}
 	}
 }

@@ -731,4 +731,14 @@ var ddlMigrationsLate = []ddlMigration{
 	// 20261337 knowledge_collection_space（工作台 › 资料 P1）：knowledge_collections 增 space
 	//（mine|company）。空串 = 未登记，按后端归（team→company，其余→mine），存量行不回填。幂等。
 	{Version: 20261337, Name: "knowledge_collection_space", SQL: "sql/migrations/20261337_knowledge_collection_space.sql"},
+	// 20261338 office_mail_trash_spam（工作台 › 邮件）：邮件增 trashed_at（已删除，可恢复）/
+	// spam（垃圾邮件）；folder 多 junk（服务器垃圾邮件文件夹同步来的，独立唯一索引）；
+	// 账号增 junk_last_uid 游标。幂等。
+	{Version: 20261338, Name: "office_mail_trash_spam", SQL: "sql/migrations/20261338_office_mail_trash_spam.sql"},
+	// 20261339 office_events_more（工作台 › 日程）：地点、会议链接、分类色、重复规则（RRULE 子集）与
+	// 跳过的日期；重复系列 reminded_at 记已提醒那次的开始时间。幂等。
+	{Version: 20261339, Name: "office_events_more", SQL: "sql/migrations/20261339_office_events_more.sql"},
+	// 20261340 office_mail_more（工作台 › 邮件第二轮）：账号签名 / 存已发送；邮件标签、定时发送；
+	// Message-ID 去重索引；拒收名单表 office_mail_blocked。幂等。
+	{Version: 20261340, Name: "office_mail_more", SQL: "sql/migrations/20261340_office_mail_more.sql"},
 }

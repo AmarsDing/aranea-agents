@@ -37,20 +37,17 @@
       </label>
       <label class="ml-cmp__row">
         <span class="ml-cmp__lab">{{ t('mailPage.to') }}</span>
-        <q-input
+        <MailAddressInput
           ref="toInput"
           v-model="to"
-          class="ml-cmp__field"
-          borderless
-          dense
           :placeholder="t('mailPage.toPlaceholder')"
-          :aria-label="t('mailPage.to')"
+          :label="t('mailPage.to')"
         />
         <q-btn v-if="!showCc" flat dense no-caps size="sm" :label="t('mailPage.addCc')" @click="showCc = true" />
       </label>
       <label v-if="showCc" class="ml-cmp__row">
         <span class="ml-cmp__lab">{{ t('mailPage.cc') }}</span>
-        <q-input v-model="cc" class="ml-cmp__field" borderless dense :aria-label="t('mailPage.cc')" />
+        <MailAddressInput v-model="cc" :label="t('mailPage.cc')" />
       </label>
       <label class="ml-cmp__row">
         <span class="ml-cmp__lab">{{ t('mailPage.subject') }}</span>
@@ -58,7 +55,21 @@
       </label>
     </div>
 
+    <q-editor
+      v-if="rich"
+      v-model="html"
+      class="ml-cmp__rich"
+      flat
+      min-height="12rem"
+      :toolbar="[
+        ['bold', 'italic', 'underline', 'strike'],
+        ['unordered', 'ordered', 'quote'],
+        ['link', 'removeFormat'],
+      ]"
+      :placeholder="t('mailPage.bodyPlaceholder')"
+    />
     <textarea
+      v-else
       ref="bodyInput"
       v-model="body"
       class="ml-cmp__body"
@@ -86,35 +97,104 @@
       </span>
     </div>
 
-    <footer class="ml-cmp__foot">
+    <!-- 撤销发送：点了发送先等几秒，期间可以撤回（Gmail 的做法，代替原来的二次确认框） -->
+    <div v-if="undoLeft > 0" class="ml-cmp__undo" role="status" aria-live="polite">
+      <q-icon name="schedule_send" size="18px" aria-hidden="true" />
+      <span>{{ t('mailPage.sendingIn', { n: undoLeft }) }}</span>
+      <span class="ml-sp" />
+      <q-btn flat dense no-caps color="primary" :label="t('mailPage.undoSend')" @click="cancelSend" />
+    </div>
+    <div v-if="scheduleOpen" class="ml-cmp__sched">
+      <span class="ml-hint">{{ t('mailPage.scheduleAt') }}</span>
       <q-btn
+        v-for="p in schedulePresets"
+        :key="p.label"
+        flat
+        dense
+        no-caps
+        size="sm"
+        :label="p.label"
+        @click="scheduleAt = p.value"
+      />
+      <input v-model="scheduleAt" type="datetime-local" class="ml-cmp__dt" :aria-label="t('mailPage.scheduleAt')" />
+      <q-btn
+        unelevated
+        dense
+        no-caps
+        color="primary"
+        :label="t('mailPage.scheduleConfirm')"
+        :disable="!scheduleValid || !canSend"
+        :loading="sending"
+        @click="sendScheduled"
+      />
+      <q-btn flat dense round size="sm" icon="close" :aria-label="t('mailPage.close')" @click="scheduleOpen = false" />
+    </div>
+
+    <footer class="ml-cmp__foot">
+      <q-btn-dropdown
+        split
         unelevated
         no-caps
         color="primary"
         icon="send"
         :label="t('mailPage.send')"
-        :loading="sending"
-        :disable="!canSend"
+        :loading="sending && undoLeft === 0"
+        :disable="!canSend || undoLeft > 0"
         @click="send"
-      />
+      >
+        <q-list dense>
+          <q-item v-close-popup clickable @click="openSchedule">
+            <q-item-section avatar><q-icon name="schedule_send" size="18px" /></q-item-section>
+            <q-item-section>{{ t('mailPage.scheduleSend') }}</q-item-section>
+          </q-item>
+        </q-list>
+      </q-btn-dropdown>
       <q-btn flat no-caps :label="t('mailPage.saveDraft')" :loading="saving" :disable="!accountId" @click="saveDraft" />
-      <q-btn flat dense round icon="attach_file" :aria-label="t('mailPage.attach')" @click="filePicker?.click()" />
+      <q-btn flat dense round icon="attach_file" :aria-label="t('mailPage.attach')" @click="filePicker?.click()">
+        <q-tooltip>{{ t('mailPage.attach') }}</q-tooltip>
+      </q-btn>
+      <q-btn
+        flat
+        dense
+        round
+        icon="folder_open"
+        :aria-label="t('mailPage.attachLibrary')"
+        @click="libPickerOpen = true"
+      >
+        <q-tooltip>{{ t('mailPage.attachLibrary') }}</q-tooltip>
+      </q-btn>
+      <q-btn
+        flat
+        dense
+        round
+        icon="format_color_text"
+        :color="rich ? 'primary' : undefined"
+        :aria-pressed="rich"
+        :aria-label="t('mailPage.richText')"
+        @click="toggleRich"
+      >
+        <q-tooltip>{{ t('mailPage.richText') }}</q-tooltip>
+      </q-btn>
       <input ref="filePicker" type="file" multiple class="ml-sr" @change="onFiles" />
       <span class="ml-sp" />
       <span class="ml-hint">{{ t('mailPage.sendHint') }}</span>
     </footer>
+    <LibraryFilePicker v-model="libPickerOpen" @picked="addFiles" />
   </section>
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useQuasar } from 'quasar';
 import { confirm } from '../../../composables/useAppConfirm';
 import { saveMailDraft, sendMail } from '../../office/api';
+import LibraryFilePicker from '../../library/components/LibraryFilePicker.vue';
+import MailAddressInput from './MailAddressInput.vue';
 import type { MailAccountRow, MailAttachmentRow } from '../../office/types';
 import {
   fileSize,
+  fullTime,
   parseAddr,
   prefixedSubject,
   quotedOriginal,
@@ -166,6 +246,9 @@ const saving = ref(false);
 const error = ref('');
 const savedAt = ref('');
 const showCc = ref(false);
+const rich = ref(false);
+const html = ref('');
+const libPickerOpen = ref(false);
 let savedSnapshot = '';
 
 if (msg && kind === 'draft') {
@@ -187,9 +270,19 @@ if (msg && kind === 'draft') {
   });
 }
 showCc.value = !!cc.value;
+if (kind !== 'draft') {
+  const sig = props.accounts.find((a) => a.id === accountId.value)?.signature?.trim();
+  // 新写的放最后；回复 / 转发放在引用原文前面
+  if (sig) body.value = msg ? `\n\n-- \n${sig}${body.value}` : `${body.value}\n\n-- \n${sig}`;
+}
+// 草稿是带格式的：用格式编辑器接着写
+if (kind === 'draft' && props.seed.bodyHtml) {
+  rich.value = true;
+  html.value = props.seed.bodyHtml;
+}
 
 const snapshot = () =>
-  JSON.stringify([accountId.value, to.value, cc.value, subject.value, body.value, files.value.length]);
+  JSON.stringify([accountId.value, to.value, cc.value, subject.value, body.value, html.value, files.value.length]);
 savedSnapshot = snapshot();
 
 const heading = computed(
@@ -209,7 +302,7 @@ const kindIcon = computed(
 const recipients = computed(() => [...splitAddrs(to.value), ...splitAddrs(cc.value)]);
 const canSend = computed(() => !!accountId.value && splitAddrs(to.value).length > 0 && !sending.value);
 
-const toInput = ref<{ focus: () => void } | null>(null);
+const toInput = ref<InstanceType<typeof MailAddressInput> | null>(null);
 const bodyInput = ref<HTMLTextAreaElement | null>(null);
 const filePicker = ref<HTMLInputElement | null>(null);
 
@@ -227,6 +320,10 @@ function onFiles(ev: Event) {
   const input = ev.target as HTMLInputElement;
   const picked = Array.from(input.files ?? []);
   input.value = '';
+  addFiles(picked);
+}
+
+function addFiles(picked: File[]) {
   const total =
     [...files.value, ...picked].reduce((n, f) => n + f.size, 0) + carried.value.reduce((n, a) => n + a.size, 0);
   if (total > MAX_TOTAL) {
@@ -236,13 +333,37 @@ function onFiles(ev: Event) {
   files.value.push(...picked);
 }
 
-function input() {
+/** 纯文本 ↔ 带格式切换：内容跟着转过去。 */
+function toggleRich() {
+  if (rich.value) {
+    body.value = htmlToText(html.value);
+  } else {
+    html.value = textToHtml(body.value);
+  }
+  rich.value = !rich.value;
+}
+
+function textToHtml(text: string): string {
+  const d = document.createElement('div');
+  d.textContent = text;
+  return d.innerHTML.replace(/\n/g, '<br>');
+}
+
+function htmlToText(h: string): string {
+  const d = document.createElement('div');
+  d.innerHTML = h.replace(/<br\s*\/?>/gi, '\n').replace(/<\/(p|div|li|blockquote)>/gi, '\n');
+  return (d.textContent ?? '').replace(/\n{3,}/g, '\n\n').trim();
+}
+
+function input(sendAt = '') {
   return {
     account_id: accountId.value,
     to: to.value,
     cc: cc.value,
     subject: subject.value,
-    body: body.value,
+    body: rich.value ? htmlToText(html.value) : body.value,
+    body_html: rich.value ? html.value : '',
+    send_at: sendAt,
     reply_to_id: msg && (kind === 'reply' || kind === 'replyAll') ? msg.id : '',
     forward_of_id: msg && kind === 'forward' && !draftId.value ? msg.id : '',
     draft_id: draftId.value,
@@ -263,29 +384,79 @@ async function send() {
     error.value = t('mailPage.badRecipient', { addr: bad });
     return;
   }
-  const ok = await confirm({
-    title: t('mailPage.confirmSendTitle'),
-    message: t('mailPage.confirmSendBody', {
-      to: splitAddrs(to.value).length,
-      cc: splitAddrs(cc.value).length,
-      files: files.value.length + carried.value.length,
-    }),
-    tone: 'primary',
-    confirmLabel: t('mailPage.send'),
-  });
-  if (!ok) return;
   sending.value = true;
   error.value = '';
+  undoLeft.value = UNDO_SECONDS;
+  undoTimer = setInterval(() => {
+    undoLeft.value -= 1;
+    if (undoLeft.value <= 0) {
+      clearInterval(undoTimer);
+      void reallySend('');
+    }
+  }, 1000);
+}
+
+const UNDO_SECONDS = 5;
+const undoLeft = ref(0);
+let undoTimer: ReturnType<typeof setInterval> | undefined;
+onBeforeUnmount(() => clearInterval(undoTimer));
+
+function cancelSend() {
+  clearInterval(undoTimer);
+  undoLeft.value = 0;
+  sending.value = false;
+  $q.notify({ message: t('mailPage.sendUndone') });
+}
+
+async function reallySend(sendAt: string) {
+  undoLeft.value = 0;
+  sending.value = true;
   try {
-    await sendMail(input());
-    $q.notify({ type: 'positive', message: t('mailPage.sent') });
-    emit('changed', 'sent');
+    await sendMail(input(sendAt));
+    $q.notify({
+      type: 'positive',
+      message: sendAt ? t('mailPage.scheduled', { at: fullTime(sendAt) }) : t('mailPage.sent'),
+    });
+    emit('changed', sendAt ? 'saved' : 'sent');
     emit('close');
   } catch (e) {
     error.value = errText(e);
   } finally {
     sending.value = false;
   }
+}
+
+// ---------- 定时发送 ----------
+
+const scheduleOpen = ref(false);
+const scheduleAt = ref('');
+
+/** datetime-local 的值（本地时间，到分钟）。 */
+function localValue(d: Date): string {
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+const schedulePresets = computed(() => {
+  const now = new Date();
+  const at = (days: number, h: number) => new Date(now.getFullYear(), now.getMonth(), now.getDate() + days, h, 0);
+  const monday = (8 - now.getDay()) % 7 || 7;
+  return [
+    { label: t('mailPage.schedTomorrow8'), value: localValue(at(1, 8)) },
+    { label: t('mailPage.schedTomorrow14'), value: localValue(at(1, 14)) },
+    { label: t('mailPage.schedMonday8'), value: localValue(at(monday, 8)) },
+  ];
+});
+const scheduleValid = computed(() => !!scheduleAt.value && new Date(scheduleAt.value).getTime() > Date.now() + 60_000);
+
+function openSchedule() {
+  scheduleAt.value = schedulePresets.value[0]?.value ?? '';
+  scheduleOpen.value = true;
+}
+
+async function sendScheduled() {
+  if (!scheduleValid.value || !canSend.value) return;
+  await reallySend(new Date(scheduleAt.value).toISOString());
 }
 
 async function saveDraft() {

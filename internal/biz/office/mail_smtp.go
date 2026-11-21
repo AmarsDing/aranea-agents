@@ -150,6 +150,9 @@ type MailOutgoing struct {
 	ForwardOfID string // 转发的本地邮件 id（带上原附件）
 	DraftID     string // 从草稿发出时，发完删掉草稿
 	Attachments []MailOutgoingAttachment
+	BodyHTML    string     // 带格式的正文（同时发纯文本 Body）；空 = 纯文本
+	SendAt      *time.Time // 晚于现在 = 存成定时草稿
+	References  string     // 定时草稿到点发出时：草稿里存的 References（原信可能已删）
 }
 
 // MailOutgoingAttachment 随信附件。
@@ -213,9 +216,9 @@ func displayMailAddrs(addrs []*mail.Address) string {
 	return strings.Join(s, ", ")
 }
 
-// buildOutgoingMail 组 RFC822：纯文本正文 base64；有附件时 multipart/mixed。
-// 附件名用带引号的 encoded-word（国内客户端认这个）。
-func buildOutgoingMail(from *mail.Address, to, cc []*mail.Address, subject, body, messageID, inReplyTo, references string, atts []MailOutgoingAttachment, now time.Time) []byte {
+// buildOutgoingMail 组 RFC822：纯文本正文 base64；有 HTML 时 multipart/alternative（纯文本 + HTML）；
+// 有附件时外面再包 multipart/mixed。附件名用带引号的 encoded-word（国内客户端认这个）。
+func buildOutgoingMail(from *mail.Address, to, cc []*mail.Address, subject, body, bodyHTML, messageID, inReplyTo, references string, atts []MailOutgoingAttachment, now time.Time) []byte {
 	var b bytes.Buffer
 	h := func(k, v string) { b.WriteString(k + ": " + v + "\r\n") }
 	h("From", from.String())
@@ -234,8 +237,18 @@ func buildOutgoingMail(from *mail.Address, to, cc []*mail.Address, subject, body
 	}
 	h("MIME-Version", "1.0")
 	textPart := func() {
-		b.WriteString("Content-Type: text/plain; charset=utf-8\r\nContent-Transfer-Encoding: base64\r\n\r\n")
+		if bodyHTML == "" {
+			b.WriteString("Content-Type: text/plain; charset=utf-8\r\nContent-Transfer-Encoding: base64\r\n\r\n")
+			writeWrappedBase64(&b, []byte(body))
+			return
+		}
+		alt := "aranea-alt-" + strings.ReplaceAll(uuid.NewString(), "-", "")
+		b.WriteString(`Content-Type: multipart/alternative; boundary="` + alt + "\"\r\n\r\n")
+		b.WriteString("--" + alt + "\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Transfer-Encoding: base64\r\n\r\n")
 		writeWrappedBase64(&b, []byte(body))
+		b.WriteString("\r\n--" + alt + "\r\nContent-Type: text/html; charset=utf-8\r\nContent-Transfer-Encoding: base64\r\n\r\n")
+		writeWrappedBase64(&b, []byte(bodyHTML))
+		b.WriteString("\r\n--" + alt + "--\r\n")
 	}
 	if len(atts) == 0 {
 		textPart()

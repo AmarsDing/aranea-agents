@@ -52,14 +52,15 @@ func (r *OfficeMailRepo) writeDB(ctx context.Context) (execer, error) {
 
 // ---------- 账号 ----------
 
-const officeMailAccountCols = `id, workspace_id, user_id, name, host, port, tls_mode, username, password_enc, last_uid, last_sync_at, created_at, updated_at, email, provider, smtp_host, smtp_port, smtp_tls, status, last_error, sync_since`
+const officeMailAccountCols = `id, workspace_id, user_id, name, host, port, tls_mode, username, password_enc, last_uid, last_sync_at, created_at, updated_at, email, provider, smtp_host, smtp_port, smtp_tls, status, last_error, sync_since, junk_last_uid, signature, save_sent`
 
 func scanOfficeMailAccount(row interface{ Scan(...any) error }) (*office.MailAccount, error) {
 	var a office.MailAccount
 	var lastSync, since sql.NullTime
 	if err := row.Scan(&a.ID, &a.WorkspaceID, &a.UserID, &a.Name, &a.Host, &a.Port,
 		&a.TLSMode, &a.Username, &a.PasswordEnc, &a.LastUID, &lastSync, &a.CreatedAt, &a.UpdatedAt,
-		&a.Email, &a.Provider, &a.SMTPHost, &a.SMTPPort, &a.SMTPTLS, &a.Status, &a.LastError, &since); err != nil {
+		&a.Email, &a.Provider, &a.SMTPHost, &a.SMTPPort, &a.SMTPTLS, &a.Status, &a.LastError, &since,
+		&a.JunkLastUID, &a.Signature, &a.SaveSent); err != nil {
 		return nil, err
 	}
 	if lastSync.Valid {
@@ -79,10 +80,11 @@ func (r *OfficeMailRepo) CreateMailAccount(ctx context.Context, a *office.MailAc
 		return err
 	}
 	_, err = db.ExecContext(ctx, r.data.Dialect().RenumberPlaceholders(
-		`INSERT INTO office_mail_accounts (`+officeMailAccountCols+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`),
+		`INSERT INTO office_mail_accounts (`+officeMailAccountCols+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`),
 		a.ID, a.WorkspaceID, a.UserID, a.Name, a.Host, a.Port, a.TLSMode, a.Username,
 		a.PasswordEnc, a.LastUID, a.LastSyncAt, a.CreatedAt, a.UpdatedAt,
-		a.Email, a.Provider, a.SMTPHost, a.SMTPPort, a.SMTPTLS, a.Status, a.LastError, a.SyncSince)
+		a.Email, a.Provider, a.SMTPHost, a.SMTPPort, a.SMTPTLS, a.Status, a.LastError, a.SyncSince,
+		a.JunkLastUID, a.Signature, a.SaveSent)
 	return err
 }
 
@@ -93,10 +95,10 @@ func (r *OfficeMailRepo) UpdateMailAccount(ctx context.Context, a *office.MailAc
 	}
 	res, err := db.ExecContext(ctx, r.data.Dialect().RenumberPlaceholders(
 		`UPDATE office_mail_accounts SET name=?, host=?, port=?, tls_mode=?, username=?, password_enc=?,
-		 email=?, provider=?, smtp_host=?, smtp_port=?, smtp_tls=?, updated_at=NOW()
+		 email=?, provider=?, smtp_host=?, smtp_port=?, smtp_tls=?, signature=?, save_sent=?, updated_at=NOW()
 		 WHERE id=? AND user_id=?`),
 		a.Name, a.Host, a.Port, a.TLSMode, a.Username, a.PasswordEnc,
-		a.Email, a.Provider, a.SMTPHost, a.SMTPPort, a.SMTPTLS, a.ID, a.UserID)
+		a.Email, a.Provider, a.SMTPHost, a.SMTPPort, a.SMTPTLS, a.Signature, a.SaveSent, a.ID, a.UserID)
 	if err != nil {
 		return err
 	}
@@ -209,16 +211,27 @@ func (r *OfficeMailRepo) UpdateMailSyncCursor(ctx context.Context, id string, la
 	return err
 }
 
+func (r *OfficeMailRepo) UpdateMailJunkCursor(ctx context.Context, id string, lastUID int64) error {
+	db, err := r.writeDB(ctx)
+	if err != nil {
+		return err
+	}
+	_, err = db.ExecContext(ctx, r.data.Dialect().RenumberPlaceholders(
+		`UPDATE office_mail_accounts SET junk_last_uid=?, updated_at=NOW() WHERE id=?`), lastUID, id)
+	return err
+}
+
 // ---------- 邮件 ----------
 
-const officeMailMessageCols = `id, workspace_id, user_id, account_id, uid, subject, sender, body, snippet, received_at, classification, quadrant, task_ref, created_at, to_addrs, cc_addrs, seen, flagged, archived_at, folder, body_html, message_id_hdr, references_hdr`
+const officeMailMessageCols = `id, workspace_id, user_id, account_id, uid, subject, sender, body, snippet, received_at, classification, quadrant, task_ref, created_at, to_addrs, cc_addrs, seen, flagged, archived_at, folder, body_html, message_id_hdr, references_hdr, trashed_at, spam, labels, send_at`
 
 func scanOfficeMailMessage(row interface{ Scan(...any) error }) (*office.MailMessage, error) {
 	var m office.MailMessage
-	var receivedAt, archivedAt sql.NullTime
+	var receivedAt, archivedAt, trashedAt, sendAt sql.NullTime
 	if err := row.Scan(&m.ID, &m.WorkspaceID, &m.UserID, &m.AccountID, &m.UID, &m.Subject,
 		&m.Sender, &m.Body, &m.Snippet, &receivedAt, &m.Classification, &m.Quadrant, &m.TaskRef, &m.CreatedAt,
-		&m.To, &m.Cc, &m.Seen, &m.Flagged, &archivedAt, &m.Folder, &m.BodyHTML, &m.MessageIDHdr, &m.ReferencesHdr); err != nil {
+		&m.To, &m.Cc, &m.Seen, &m.Flagged, &archivedAt, &m.Folder, &m.BodyHTML, &m.MessageIDHdr, &m.ReferencesHdr,
+		&trashedAt, &m.Spam, &m.Labels, &sendAt); err != nil {
 		return nil, err
 	}
 	if receivedAt.Valid {
@@ -229,18 +242,28 @@ func scanOfficeMailMessage(row interface{ Scan(...any) error }) (*office.MailMes
 		t := archivedAt.Time
 		m.ArchivedAt = &t
 	}
+	if trashedAt.Valid {
+		t := trashedAt.Time
+		m.TrashedAt = &t
+	}
+	if sendAt.Valid {
+		t := sendAt.Time
+		m.SendAt = &t
+	}
 	return &m, nil
 }
 
 // insertMailMessageOn 在指定 execer（可为事务内连接）插入邮件；返回
-// inserted=false 表示 (account_id,uid) 幂等命中。
+// inserted=false 表示幂等命中（收件箱、垃圾邮件文件夹各有 (account_id,uid) 部分唯一索引，
+// 不指定冲突目标，两个索引都当仲裁）。
 func (r *OfficeMailRepo) insertMailMessageOn(ctx context.Context, db execer, m *office.MailMessage) (bool, error) {
 	res, err := db.ExecContext(ctx, r.data.Dialect().RenumberPlaceholders(
-		`INSERT INTO office_mail_messages (`+officeMailMessageCols+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-		 ON CONFLICT (account_id, uid) WHERE account_id <> '' AND folder = 'inbox' DO NOTHING`),
+		`INSERT INTO office_mail_messages (`+officeMailMessageCols+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+		 ON CONFLICT DO NOTHING`),
 		m.ID, m.WorkspaceID, m.UserID, m.AccountID, m.UID, m.Subject, m.Sender,
 		m.Body, m.Snippet, m.ReceivedAt, m.Classification, m.Quadrant, m.TaskRef, m.CreatedAt,
-		m.To, m.Cc, m.Seen, m.Flagged, m.ArchivedAt, mailFolderOrInbox(m.Folder), m.BodyHTML, m.MessageIDHdr, m.ReferencesHdr)
+		m.To, m.Cc, m.Seen, m.Flagged, m.ArchivedAt, mailFolderOrInbox(m.Folder), m.BodyHTML, m.MessageIDHdr, m.ReferencesHdr,
+		m.TrashedAt, m.Spam, m.Labels, m.SendAt)
 	if err != nil {
 		return false, err
 	}
@@ -266,6 +289,18 @@ func (r *OfficeMailRepo) InsertMessageWithAttachmentsTx(ctx context.Context, m *
 		db := r.data.RWDB().WriteDB(txCtx)
 		if db == nil {
 			return apierror.Internal(office.DomainOffice, "repository unavailable")
+		}
+		// 同一账户收件箱 / 垃圾箱里已有同一 Message-ID 的信（在别处或这边挪过文件夹，换了 UID）：跳过
+		if m.AccountID != "" && m.MessageIDHdr != "" && (m.Folder == "" || m.Folder == office.MailFolderInbox || m.Folder == office.MailFolderJunk) {
+			var dup int
+			if _, err := scanOne(txCtx, db, r.data.Dialect().RenumberPlaceholders(
+				`SELECT count(*) FROM office_mail_messages WHERE account_id=? AND message_id_hdr=? AND folder IN ('inbox','junk')`),
+				[]any{m.AccountID, m.MessageIDHdr}, &dup); err != nil {
+				return err
+			}
+			if dup > 0 {
+				return nil
+			}
 		}
 		ok, err := r.insertMailMessageOn(txCtx, db, m)
 		if err != nil {
@@ -293,23 +328,30 @@ func mailFolderOrInbox(f string) string {
 }
 
 // mailViewWhere 视图 → WHERE 片段（只拼常量，不拼用户输入）。
+// 已删除、垃圾邮件各是一个独立视图，别的视图都不列它们；垃圾邮件文件夹同步来的信被点了
+// 「不是垃圾邮件」后（spam=FALSE）算收件箱。
 func mailViewWhere(view string) string {
-	const inbox = `folder='inbox' AND archived_at IS NULL`
+	const live = `trashed_at IS NULL AND spam=FALSE`
+	const inbox = `folder IN ('inbox','junk') AND archived_at IS NULL AND ` + live
 	switch view {
 	case office.MailViewUnread:
 		return inbox + ` AND seen=FALSE`
 	case office.MailViewFlagged:
-		return `flagged=TRUE AND folder<>'drafts'`
+		return `flagged=TRUE AND folder<>'drafts' AND ` + live
 	case office.MailViewTask:
-		return `task_ref<>''`
+		return `task_ref<>'' AND ` + live
 	case office.MailViewAttachments:
-		return `folder<>'drafts' AND EXISTS (SELECT 1 FROM office_mail_attachments a WHERE a.message_id=office_mail_messages.id)`
+		return `folder<>'drafts' AND ` + live + ` AND EXISTS (SELECT 1 FROM office_mail_attachments a WHERE a.message_id=office_mail_messages.id)`
 	case office.MailViewSent:
-		return `folder='sent'`
+		return `folder='sent' AND trashed_at IS NULL`
 	case office.MailViewDrafts:
-		return `folder='drafts'`
+		return `folder='drafts' AND trashed_at IS NULL`
 	case office.MailViewArchived:
-		return `archived_at IS NOT NULL`
+		return `archived_at IS NOT NULL AND ` + live
+	case office.MailViewSpam:
+		return `spam=TRUE AND trashed_at IS NULL`
+	case office.MailViewTrash:
+		return `trashed_at IS NOT NULL`
 	default:
 		return inbox
 	}
@@ -326,6 +368,10 @@ func (r *OfficeMailRepo) QueryMailMessages(ctx context.Context, userID string, q
 	if q.AccountID != "" {
 		where += ` AND account_id=?`
 		args = append(args, q.AccountID)
+	}
+	if q.Label != "" {
+		where += ` AND (','||labels||',') LIKE ?`
+		args = append(args, "%,"+escapeMailLike(q.Label)+",%")
 	}
 	if q.Keyword != "" {
 		like := "%" + escapeMailLike(q.Keyword) + "%"
@@ -383,11 +429,29 @@ func (r *OfficeMailRepo) CountMailbox(ctx context.Context, userID string) (*offi
 		 count(*) FILTER (WHERE `+mailViewWhere(office.MailViewAttachments)+`),
 		 count(*) FILTER (WHERE `+mailViewWhere(office.MailViewSent)+`),
 		 count(*) FILTER (WHERE `+mailViewWhere(office.MailViewDrafts)+`),
-		 count(*) FILTER (WHERE `+mailViewWhere(office.MailViewArchived)+`)
+		 count(*) FILTER (WHERE `+mailViewWhere(office.MailViewArchived)+`),
+		 count(*) FILTER (WHERE `+mailViewWhere(office.MailViewSpam)+` AND seen=FALSE),
+		 count(*) FILTER (WHERE `+mailViewWhere(office.MailViewTrash)+`)
 		 FROM office_mail_messages WHERE user_id=?`), []any{userID},
-		&c.InboxUnread, &c.Flagged, &c.Task, &c.Attachments, &c.Sent, &c.Drafts, &c.Archived); err != nil {
+		&c.InboxUnread, &c.Flagged, &c.Task, &c.Attachments, &c.Sent, &c.Drafts, &c.Archived,
+		&c.SpamUnread, &c.Trash); err != nil {
 		return nil, err
 	}
+	lrows, err := db.QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(
+		`SELECT l, count(*) FROM office_mail_messages, unnest(string_to_array(labels, ',')) AS l
+		 WHERE user_id=? AND labels<>'' AND trashed_at IS NULL GROUP BY l ORDER BY l`), userID)
+	if err != nil {
+		return nil, err
+	}
+	for lrows.Next() {
+		var lc office.MailLabelCount
+		if err := lrows.Scan(&lc.Name, &lc.Count); err != nil {
+			lrows.Close()
+			return nil, err
+		}
+		c.Labels = append(c.Labels, lc)
+	}
+	lrows.Close()
 	rows, err := db.QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(
 		`SELECT account_id, count(*) FROM office_mail_messages
 		 WHERE user_id=? AND account_id<>'' AND `+mailViewWhere(office.MailViewUnread)+` GROUP BY account_id`), userID)
@@ -429,6 +493,25 @@ func (r *OfficeMailRepo) MarkMailMessages(ctx context.Context, userID string, id
 			sets = append(sets, `archived_at=NULL`)
 		}
 	}
+	if mk.Trashed != nil {
+		if *mk.Trashed {
+			sets = append(sets, `trashed_at=COALESCE(trashed_at, NOW())`)
+		} else {
+			sets = append(sets, `trashed_at=NULL`)
+		}
+	}
+	if mk.Spam != nil {
+		sets = append(sets, `spam=?`)
+		args = append(args, *mk.Spam)
+	}
+	if mk.AddLabel != "" {
+		sets = append(sets, `labels=CASE WHEN (','||labels||',') LIKE ? THEN labels WHEN labels='' THEN ? ELSE labels||','||? END`)
+		args = append(args, "%,"+escapeMailLike(mk.AddLabel)+",%", mk.AddLabel, mk.AddLabel)
+	}
+	if mk.RemoveLabel != "" {
+		sets = append(sets, `labels=trim(both ',' from replace(','||labels||',', ?, ','))`)
+		args = append(args, ","+mk.RemoveLabel+",")
+	}
 	if len(sets) == 0 || len(ids) == 0 {
 		return 0, nil
 	}
@@ -439,6 +522,33 @@ func (r *OfficeMailRepo) MarkMailMessages(ctx context.Context, userID string, id
 	}
 	res, err := db.ExecContext(ctx, r.data.Dialect().RenumberPlaceholders(
 		`UPDATE office_mail_messages SET `+strings.Join(sets, ", ")+` WHERE user_id=? AND id IN (`+marks+`)`), args...)
+	if err != nil {
+		return 0, err
+	}
+	n, _ := res.RowsAffected()
+	return n, nil
+}
+
+// PurgeMailMessages 彻底删除「已删除」/「垃圾邮件」视图里的信（附件 ON DELETE CASCADE）。
+// 视图条件照样拼上：ids 里混进收件箱的信也不会被删。
+func (r *OfficeMailRepo) PurgeMailMessages(ctx context.Context, userID, view string, ids []string) (int64, error) {
+	if view != office.MailViewTrash && view != office.MailViewSpam {
+		return 0, office.ErrMailViewInvalid
+	}
+	db, err := r.writeDB(ctx)
+	if err != nil {
+		return 0, err
+	}
+	where := `user_id=? AND ` + mailViewWhere(view)
+	args := []any{userID}
+	if len(ids) > 0 {
+		where += ` AND id IN (` + strings.TrimSuffix(strings.Repeat("?,", len(ids)), ",") + `)`
+		for _, id := range ids {
+			args = append(args, id)
+		}
+	}
+	res, err := db.ExecContext(ctx, r.data.Dialect().RenumberPlaceholders(
+		`DELETE FROM office_mail_messages WHERE `+where), args...)
 	if err != nil {
 		return 0, err
 	}
@@ -478,7 +588,7 @@ func (r *OfficeMailRepo) ListMailMessages(ctx context.Context, userID, accountID
 	if err != nil {
 		return nil, 0, err
 	}
-	where := `user_id=?`
+	where := `user_id=? AND trashed_at IS NULL AND spam=FALSE`
 	args := []any{userID}
 	if accountID != "" {
 		where += ` AND account_id=?`
@@ -626,7 +736,7 @@ func (r *OfficeMailRepo) ListMailMessagesSince(ctx context.Context, userID strin
 	}
 	rows, err := db.QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(
 		`SELECT `+officeMailMessageCols+` FROM office_mail_messages
-		 WHERE user_id=? AND received_at>=? ORDER BY received_at ASC NULLS LAST, created_at ASC LIMIT ?`),
+		 WHERE user_id=? AND received_at>=? AND trashed_at IS NULL AND spam=FALSE ORDER BY received_at ASC NULLS LAST, created_at ASC LIMIT ?`),
 		userID, since, limit)
 	if err != nil {
 		return nil, err
@@ -650,7 +760,7 @@ func (r *OfficeMailRepo) ListMailDigestUsers(ctx context.Context, since time.Tim
 	}
 	rows, err := db.QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(
 		`SELECT user_id, workspace_id, count(*) FROM office_mail_messages
-		 WHERE received_at>=? GROUP BY user_id, workspace_id`), since)
+		 WHERE received_at>=? AND trashed_at IS NULL AND spam=FALSE GROUP BY user_id, workspace_id`), since)
 	if err != nil {
 		return nil, err
 	}
@@ -676,7 +786,7 @@ func (r *OfficeMailRepo) SearchMailMessages(ctx context.Context, userID, query s
 	}
 	rows, err := db.QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(
 		`SELECT `+officeMailMessageCols+` FROM office_mail_messages
-		 WHERE user_id=? AND (subject ILIKE '%'||?||'%' OR sender ILIKE '%'||?||'%' OR body ILIKE '%'||?||'%')
+		 WHERE user_id=? AND trashed_at IS NULL AND spam=FALSE AND (subject ILIKE '%'||?||'%' OR sender ILIKE '%'||?||'%' OR body ILIKE '%'||?||'%')
 		 ORDER BY received_at DESC NULLS LAST, created_at DESC LIMIT ?`),
 		userID, query, query, query, limit)
 	if err != nil {
@@ -837,4 +947,189 @@ func (r *OfficeMailRepo) CreateTaskFromMailTx(ctx context.Context, t *office.Off
 		}
 		return nil
 	})
+}
+
+// ---------- 第二轮：会话 / 联想 / 全部已读 / 后台清理 / 定时发送 / 拒收 ----------
+
+func (r *OfficeMailRepo) queryMailRows(ctx context.Context, q string, args ...any) ([]*office.MailMessage, error) {
+	db, err := r.readDB(ctx)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := db.QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(q), args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]*office.MailMessage, 0)
+	for rows.Next() {
+		m, err := scanOfficeMailMessage(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+
+// ListThread 主题去回复 / 转发前缀后小写相等（同 biz threadKey 的口径）。
+func (r *OfficeMailRepo) ListThread(ctx context.Context, userID, subjectKey string, limit int) ([]*office.MailMessage, error) {
+	out, err := r.queryMailRows(ctx,
+		`SELECT `+officeMailMessageCols+` FROM office_mail_messages
+		 WHERE user_id=? AND trashed_at IS NULL AND folder<>'drafts'
+		   AND lower(btrim(regexp_replace(subject, '^\s*((re|fw|fwd|aw|回复|答复|转发)\s*[:：]\s*)+', '', 'i'))) = ?
+		 ORDER BY received_at ASC NULLS LAST, created_at ASC LIMIT ?`, userID, subjectKey, limit)
+	if err != nil {
+		return nil, err
+	}
+	for _, m := range out {
+		m.Body, m.BodyHTML = "", ""
+	}
+	db, err := r.readDB(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return out, r.fillHasAttachments(ctx, db, out)
+}
+
+func (r *OfficeMailRepo) ListRecentAddressFields(ctx context.Context, userID string, limit int) ([]string, error) {
+	db, err := r.readDB(ctx)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := db.QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(
+		`SELECT sender, to_addrs, cc_addrs FROM office_mail_messages
+		 WHERE user_id=? AND spam=FALSE ORDER BY created_at DESC LIMIT ?`), userID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]string, 0)
+	for rows.Next() {
+		var a, b, c string
+		if err := rows.Scan(&a, &b, &c); err != nil {
+			return nil, err
+		}
+		for _, f := range []string{a, b, c} {
+			if f != "" {
+				out = append(out, f)
+			}
+		}
+	}
+	return out, rows.Err()
+}
+
+func (r *OfficeMailRepo) MarkViewSeen(ctx context.Context, userID, view, accountID string) ([]string, error) {
+	db, err := r.writeDB(ctx)
+	if err != nil {
+		return nil, err
+	}
+	q := `UPDATE office_mail_messages SET seen=TRUE WHERE user_id=? AND seen=FALSE AND ` + mailViewWhere(view)
+	args := []any{userID}
+	if accountID != "" {
+		q += ` AND account_id=?`
+		args = append(args, accountID)
+	}
+	rows, err := db.QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(q+` RETURNING id`), args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	ids := make([]string, 0)
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
+func (r *OfficeMailRepo) PurgeTrashedBefore(ctx context.Context, before time.Time) (int64, error) {
+	db, err := r.writeDB(ctx)
+	if err != nil {
+		return 0, err
+	}
+	res, err := db.ExecContext(ctx, r.data.Dialect().RenumberPlaceholders(
+		`DELETE FROM office_mail_messages WHERE trashed_at IS NOT NULL AND trashed_at<?`), before)
+	if err != nil {
+		return 0, err
+	}
+	n, _ := res.RowsAffected()
+	return n, nil
+}
+
+func (r *OfficeMailRepo) ListDueScheduledDrafts(ctx context.Context, now time.Time, limit int) ([]*office.MailMessage, error) {
+	return r.queryMailRows(ctx,
+		`SELECT `+officeMailMessageCols+` FROM office_mail_messages
+		 WHERE folder='drafts' AND send_at IS NOT NULL AND send_at<=? AND trashed_at IS NULL
+		 ORDER BY send_at LIMIT ?`, now, limit)
+}
+
+func (r *OfficeMailRepo) ClearDraftSendAt(ctx context.Context, id string) error {
+	db, err := r.writeDB(ctx)
+	if err != nil {
+		return err
+	}
+	_, err = db.ExecContext(ctx, r.data.Dialect().RenumberPlaceholders(
+		`UPDATE office_mail_messages SET send_at=NULL WHERE id=?`), id)
+	return err
+}
+
+func (r *OfficeMailRepo) ListBlockedSenders(ctx context.Context, userID string) ([]string, error) {
+	db, err := r.readDB(ctx)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := db.QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(
+		`SELECT address FROM office_mail_blocked WHERE user_id=? ORDER BY address`), userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]string, 0)
+	for rows.Next() {
+		var a string
+		if err := rows.Scan(&a); err != nil {
+			return nil, err
+		}
+		out = append(out, a)
+	}
+	return out, rows.Err()
+}
+
+// BlockSender 加进名单，并把这个发件人已有的、还在收件箱的信标成垃圾邮件（同一事务）。
+func (r *OfficeMailRepo) BlockSender(ctx context.Context, userID, address string) (int64, error) {
+	var marked int64
+	err := r.data.ExecInTx(ctx, func(txCtx context.Context) error {
+		db := r.data.RWDB().WriteDB(txCtx)
+		if db == nil {
+			return apierror.Internal(office.DomainOffice, "repository unavailable")
+		}
+		if _, err := db.ExecContext(txCtx, r.data.Dialect().RenumberPlaceholders(
+			`INSERT INTO office_mail_blocked (user_id, address) VALUES (?,?) ON CONFLICT DO NOTHING`), userID, address); err != nil {
+			return err
+		}
+		res, err := db.ExecContext(txCtx, r.data.Dialect().RenumberPlaceholders(
+			`UPDATE office_mail_messages SET spam=TRUE
+			 WHERE user_id=? AND spam=FALSE AND folder IN ('inbox','junk') AND lower(sender) LIKE ?`),
+			userID, "%"+escapeMailLike(address)+"%")
+		if err != nil {
+			return err
+		}
+		marked, _ = res.RowsAffected()
+		return nil
+	})
+	return marked, err
+}
+
+func (r *OfficeMailRepo) UnblockSender(ctx context.Context, userID, address string) error {
+	db, err := r.writeDB(ctx)
+	if err != nil {
+		return err
+	}
+	_, err = db.ExecContext(ctx, r.data.Dialect().RenumberPlaceholders(
+		`DELETE FROM office_mail_blocked WHERE user_id=? AND address=?`), userID, address)
+	return err
 }

@@ -118,6 +118,8 @@ export type ComposeSeed = {
   body?: string;
   /** 转发：原信附件；草稿：草稿里的附件（都由服务端带上） */
   carried?: MailAttachmentRow[];
+  /** 带格式的草稿正文（HTML） */
+  bodyHtml?: string;
 };
 
 // 主题前缀：Re: / 回复： 和 Fwd: / 转发：（中文写成 \u 转义，免得被文案检查当成界面文字）

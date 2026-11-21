@@ -68,6 +68,14 @@ type MailImapClient interface {
 	Login(username, password string) error
 	// SelectInbox 选 INBOX 并返回 EXISTS 总数。
 	SelectInbox() (int, error)
+	// Select 选中任意文件夹（名字按 LIST 返回的原样传）。
+	Select(mailbox string) (int, error)
+	// ListMailboxes 列出全部文件夹及其属性（含 RFC 6154 的 \Junk 等）。
+	ListMailboxes() ([]MailImapMailbox, error)
+	// UIDMove 把当前文件夹里的一封信挪到 mailbox。
+	UIDMove(uid int, mailbox string) error
+	// Append 往 mailbox 里放一封信（flags 如 `\Seen`）。
+	Append(mailbox, flags string, raw []byte) error
 	// FetchRaw 抓取第 seq 封 RFC822 原文。
 	FetchRaw(seq int) ([]byte, error)
 	// SearchUIDs UID SEARCH（criteria 如 "UID 101:*"、"SINCE 1-Nov-2026"、"ALL"）。
@@ -79,6 +87,12 @@ type MailImapClient interface {
 	// IdleWait IDLE 等待推送；返回 (新邮件总数, 是否有新邮件)。
 	IdleWait(timeout time.Duration) (int, bool, error)
 	Close()
+}
+
+// MailImapMailbox LIST 返回的一个文件夹。
+type MailImapMailbox struct {
+	Name  string // 服务器原样（修改版 UTF-7）
+	Attrs string // 括号里的属性原文，如 `\HasNoChildren \Junk`
 }
 
 // MailImapDialer 建连工厂（wire 默认 DialMailIMAP；测试注入 mock）。
@@ -171,11 +185,50 @@ func (c *mailImapConn) readUntilTagged(tag string) (string, error) {
 	}
 }
 
-func (c *mailImapConn) Login(username, password string) error {
-	q := func(s string) string {
-		return `"` + strings.ReplaceAll(strings.ReplaceAll(s, `\`, `\\`), `"`, `\"`) + `"`
+// UIDMove 把一封信挪到别的文件夹：先用 UID MOVE（RFC 6851），服务器不认时退回
+// UID COPY + 标 \Deleted + EXPUNGE（会顺带清掉这个文件夹里别处标了删除的信，和普通客户端一样）。
+func (c *mailImapConn) UIDMove(uid int, mailbox string) error {
+	if _, err := c.cmd(fmt.Sprintf("UID MOVE %d %s", uid, imapQuote(mailbox))); err == nil {
+		return nil
 	}
-	if _, err := c.cmd("LOGIN " + q(username) + " " + q(password)); err != nil {
+	if _, err := c.cmd(fmt.Sprintf("UID COPY %d %s", uid, imapQuote(mailbox))); err != nil {
+		return err
+	}
+	if err := c.StoreFlags(uid, true, `\Deleted`); err != nil {
+		return err
+	}
+	_, err := c.cmd("EXPUNGE")
+	return err
+}
+
+// Append 往文件夹里放一封信（发出的信存到「已发送」）。flags 如 `\Seen`。
+func (c *mailImapConn) Append(mailbox, flags string, raw []byte) error {
+	c.tag++
+	tag := fmt.Sprintf("a%03d", c.tag)
+	if _, err := fmt.Fprintf(c.conn, "%s APPEND %s (%s) {%d}\r\n", tag, imapQuote(mailbox), flags, len(raw)); err != nil {
+		return err
+	}
+	line, err := c.r.ReadLine()
+	if err != nil {
+		return err
+	}
+	if !strings.HasPrefix(line, "+") {
+		return fmt.Errorf("imap append refused: %s", line)
+	}
+	if _, err := c.conn.Write(append(append([]byte{}, raw...), '\r', '\n')); err != nil {
+		return err
+	}
+	_, err = c.readUntilTagged(tag)
+	return err
+}
+
+// imapQuote IMAP 引号串（反斜杠、双引号转义）。
+func imapQuote(s string) string {
+	return `"` + strings.ReplaceAll(strings.ReplaceAll(s, `\`, `\\`), `"`, `\"`) + `"`
+}
+
+func (c *mailImapConn) Login(username, password string) error {
+	if _, err := c.cmd("LOGIN " + imapQuote(username) + " " + imapQuote(password)); err != nil {
 		return err
 	}
 	// 网易（163/126/yeah/企业邮）不认没报 ID（RFC 2971）的客户端：登录成功，SELECT 却回
@@ -185,7 +238,28 @@ func (c *mailImapConn) Login(username, password string) error {
 }
 
 func (c *mailImapConn) SelectInbox() (int, error) {
-	resp, err := c.cmd("SELECT INBOX")
+	return c.Select("INBOX")
+}
+
+// ListMailboxes LIST "" "*"，收 `* LIST (\HasNoChildren \Junk) "/" "Junk"`。
+// 文件夹名是服务器原样（修改版 UTF-7），SELECT 时原样传回。
+func (c *mailImapConn) ListMailboxes() ([]MailImapMailbox, error) {
+	resp, err := c.cmd(`LIST "" "*"`)
+	if err != nil {
+		return nil, err
+	}
+	var out []MailImapMailbox
+	for _, line := range strings.Split(resp, "\n") {
+		if mb, ok := parseImapListLine(strings.TrimSpace(line)); ok {
+			out = append(out, mb)
+		}
+	}
+	return out, nil
+}
+
+// Select 选中文件夹并返回 EXISTS 总数。
+func (c *mailImapConn) Select(mailbox string) (int, error) {
+	resp, err := c.cmd("SELECT " + imapQuote(mailbox))
 	if err != nil {
 		return 0, err
 	}

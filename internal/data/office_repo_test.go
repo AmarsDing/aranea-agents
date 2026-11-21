@@ -42,6 +42,12 @@ ALTER TABLE office_events ADD COLUMN IF NOT EXISTS "kind"    TEXT    NOT NULL DE
 ALTER TABLE office_events ADD COLUMN IF NOT EXISTS "status"  TEXT    NOT NULL DEFAULT 'todo';
 ALTER TABLE office_events ADD COLUMN IF NOT EXISTS "all_day" BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE office_events ADD COLUMN IF NOT EXISTS "outcome" TEXT    NOT NULL DEFAULT '';
+-- 镜像 20261339_office_events_more.sql
+ALTER TABLE office_events ADD COLUMN IF NOT EXISTS "location" TEXT NOT NULL DEFAULT '';
+ALTER TABLE office_events ADD COLUMN IF NOT EXISTS "url"      TEXT NOT NULL DEFAULT '';
+ALTER TABLE office_events ADD COLUMN IF NOT EXISTS "color"    TEXT NOT NULL DEFAULT '';
+ALTER TABLE office_events ADD COLUMN IF NOT EXISTS "rrule"    TEXT NOT NULL DEFAULT '';
+ALTER TABLE office_events ADD COLUMN IF NOT EXISTS "exdates"  TEXT NOT NULL DEFAULT '';
 CREATE INDEX IF NOT EXISTS idx_office_events_user_start ON office_events ("user_id", "start_at");
 CREATE INDEX IF NOT EXISTS idx_office_events_task ON office_events ("task_ref") WHERE "task_ref" <> '';
 CREATE INDEX IF NOT EXISTS idx_office_events_reminder ON office_events ("start_at")
@@ -515,5 +521,35 @@ func TestOfficeRepo_DraftApproveTx(t *testing.T) {
 	}
 	if err := repo.RejectDraft(ctx, "dr-nonexistent", "boss-1", "x"); !errors.Is(err, office.ErrDraftNotFound) {
 		t.Fatalf("missing draft reject must be NotFound, got %v", err)
+	}
+}
+
+// TestOfficeRepo_RecurringAndSearch 重复系列：范围查询带回系列本身、不参与重叠计数、不进单次提醒扫描；搜索。
+func TestOfficeRepo_RecurringAndSearch(t *testing.T) {
+	t.Parallel()
+	repo := openOfficeRepo(t)
+	ctx := context.Background()
+	start := time.Date(2026, 1, 5, 1, 0, 0, 0, time.UTC)
+	series := &office.Event{ID: "ev_rr", UserID: "u-r", Title: "站会", Location: "三楼", StartAt: start, EndAt: start.Add(15 * time.Minute),
+		Timezone: "Asia/Shanghai", ReminderMinutes: 10, Source: office.SourceManual, RRule: "FREQ=DAILY", ExDates: "2026-01-06"}
+	if err := repo.CreateEvent(ctx, series); err != nil {
+		t.Fatal(err)
+	}
+	later := time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC)
+	rows, err := repo.ListEventsRange(ctx, "u-r", later, later.Add(24*time.Hour))
+	if err != nil || len(rows) != 1 || rows[0].RRule != "FREQ=DAILY" || rows[0].Location != "三楼" || rows[0].ExDates != "2026-01-06" {
+		t.Fatalf("series in range: %+v err=%v", rows, err)
+	}
+	if n, _ := repo.CountOverlap(ctx, "u-r", start, start.Add(time.Hour), ""); n != 0 {
+		t.Fatalf("recurring counted as overlap: %d", n)
+	}
+	if due, _ := repo.ListDueReminders(ctx, later, 10); len(due) != 0 {
+		t.Fatalf("recurring in one-off reminder scan: %d", len(due))
+	}
+	if rec, _ := repo.ListRecurringReminders(ctx, 10); len(rec) == 0 {
+		t.Fatal("recurring reminder scan empty")
+	}
+	if hits, _ := repo.SearchEvents(ctx, "u-r", "三楼", 10); len(hits) != 1 {
+		t.Fatalf("search: %d", len(hits))
 	}
 }

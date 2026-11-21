@@ -46,19 +46,24 @@ func (f *mailFakeRepos) QueryMailMessages(_ context.Context, userID string, q Ma
 		if m.UserID != userID || (q.AccountID != "" && m.AccountID != q.AccountID) {
 			continue
 		}
-		inbox := mailFolderIs(m, MailFolderInbox) && m.ArchivedAt == nil
+		live := m.TrashedAt == nil && !m.Spam
+		inbox := (mailFolderIs(m, MailFolderInbox) || mailFolderIs(m, MailFolderJunk)) && m.ArchivedAt == nil && live
 		ok := false
 		switch q.View {
 		case MailViewUnread:
 			ok = inbox && !m.Seen
 		case MailViewSent:
-			ok = mailFolderIs(m, MailFolderSent)
+			ok = mailFolderIs(m, MailFolderSent) && m.TrashedAt == nil
 		case MailViewDrafts:
-			ok = mailFolderIs(m, MailFolderDrafts)
+			ok = mailFolderIs(m, MailFolderDrafts) && m.TrashedAt == nil
 		case MailViewArchived:
-			ok = m.ArchivedAt != nil
+			ok = m.ArchivedAt != nil && live
 		case MailViewFlagged:
-			ok = m.Flagged && !mailFolderIs(m, MailFolderDrafts)
+			ok = m.Flagged && !mailFolderIs(m, MailFolderDrafts) && live
+		case MailViewSpam:
+			ok = m.Spam && m.TrashedAt == nil
+		case MailViewTrash:
+			ok = m.TrashedAt != nil
 		default:
 			ok = inbox
 		}
@@ -100,7 +105,44 @@ func (f *mailFakeRepos) MarkMailMessages(_ context.Context, userID string, ids [
 				m.ArchivedAt = nil
 			}
 		}
+		if mk.Trashed != nil {
+			if *mk.Trashed {
+				m.TrashedAt = &now
+			} else {
+				m.TrashedAt = nil
+			}
+		}
+		if mk.Spam != nil {
+			m.Spam = *mk.Spam
+		}
 		n++
+	}
+	return n, nil
+}
+
+func (f *mailFakeRepos) UpdateMailJunkCursor(_ context.Context, id string, lastUID int64) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if a, ok := f.accounts[id]; ok {
+		a.JunkLastUID = lastUID
+	}
+	return nil
+}
+
+func (f *mailFakeRepos) PurgeMailMessages(_ context.Context, userID, view string, ids []string) (int64, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	want := map[string]bool{}
+	for _, id := range ids {
+		want[id] = true
+	}
+	var n int64
+	for id, m := range f.messages {
+		in := (view == MailViewTrash && m.TrashedAt != nil) || (view == MailViewSpam && m.Spam && m.TrashedAt == nil)
+		if m.UserID == userID && in && (len(ids) == 0 || want[id]) {
+			delete(f.messages, id)
+			n++
+		}
 	}
 	return n, nil
 }

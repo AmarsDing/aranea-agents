@@ -22,6 +22,16 @@ export type OfficeEventRow = {
   all_day: boolean;
   /** 完成情况 / 结果 */
   outcome: string;
+  location: string;
+  url: string;
+  /** 分类色：'' 默认 | work | meeting | personal | focus | travel */
+  color: string;
+  /** 重复规则（RRULE 子集）；空 = 不重复 */
+  rrule: string;
+  /** 跳过的日期 YYYY-MM-DD，逗号分隔 */
+  exdates: string;
+  /** 范围查询展开出来的一次：是哪天的那次（id 是系列的）；空 = 不是重复日程的展开项 */
+  recurrence_day: string;
 };
 
 export type OfficeEventKind = 'plan' | 'log';
@@ -80,10 +90,24 @@ export type MailAccountRow = {
   status: '' | 'ok' | 'auth_failed' | 'unreachable' | string;
   /** dns | unreachable | tls | auth | protocol */
   last_error: string;
+  /** 签名（纯文本），写信时自动带上 */
+  signature: string;
+  /** 发出的信同时存一份到服务器「已发送」 */
+  save_sent: boolean;
 };
 
 /** 邮件页视图（左栏）。 */
-export type MailView = 'inbox' | 'unread' | 'flagged' | 'task' | 'attachments' | 'sent' | 'drafts' | 'archived';
+export type MailView =
+  | 'inbox'
+  | 'unread'
+  | 'flagged'
+  | 'task'
+  | 'attachments'
+  | 'sent'
+  | 'drafts'
+  | 'archived'
+  | 'spam'
+  | 'trash';
 
 export type MailboxSummaryRow = {
   inbox_unread: number;
@@ -93,6 +117,12 @@ export type MailboxSummaryRow = {
   sent: number;
   drafts: number;
   archived: number;
+  /** 垃圾邮件里没读的 */
+  spam_unread: number;
+  /** 已删除里的总数 */
+  trash: number;
+  /** 各标签的邮件数 */
+  labels: Array<{ name: string; count: number }>;
   /** 账号 id → 收件箱未读 */
   accounts: Record<string, number>;
 };
@@ -137,8 +167,14 @@ export type MailMessageRow = {
   seen: boolean;
   flagged: boolean;
   archived: boolean;
-  /** inbox | sent | drafts */
+  /** inbox | sent | drafts | junk（服务器垃圾邮件文件夹同步来的） */
   folder: string;
+  /** 在「已删除」里 */
+  trashed: boolean;
+  spam: boolean;
+  labels: string[];
+  /** 定时发送的草稿：RFC3339；空 = 普通草稿 */
+  send_at: string;
 };
 
 export type MailAttachmentRow = {

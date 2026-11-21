@@ -43,10 +43,18 @@ type OfficeEvent struct {
 	CreatedAt       *timestamppb.Timestamp `protobuf:"bytes,13,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	UpdatedAt       *timestamppb.Timestamp `protobuf:"bytes,14,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
 	// 日程 P1（08-日程.md）：计划 + 工作内容两本账。
-	Kind          string `protobuf:"bytes,15,opt,name=kind,proto3" json:"kind,omitempty"`                    // plan（打算做的）| log（已经做了的工作记录）
-	Status        string `protobuf:"bytes,16,opt,name=status,proto3" json:"status,omitempty"`                // todo | doing | done | cancelled；「逾期」不存，按结束时间算
-	AllDay        bool   `protobuf:"varint,17,opt,name=all_day,json=allDay,proto3" json:"all_day,omitempty"` // 全天；全天与 log 不参与 409 重叠检测
-	Outcome       string `protobuf:"bytes,18,opt,name=outcome,proto3" json:"outcome,omitempty"`              // 完成情况 / 结果
+	Kind     string `protobuf:"bytes,15,opt,name=kind,proto3" json:"kind,omitempty"`                    // plan（打算做的）| log（已经做了的工作记录）
+	Status   string `protobuf:"bytes,16,opt,name=status,proto3" json:"status,omitempty"`                // todo | doing | done | cancelled；「逾期」不存，按结束时间算
+	AllDay   bool   `protobuf:"varint,17,opt,name=all_day,json=allDay,proto3" json:"all_day,omitempty"` // 全天；全天与 log 不参与 409 重叠检测
+	Outcome  string `protobuf:"bytes,18,opt,name=outcome,proto3" json:"outcome,omitempty"`              // 完成情况 / 结果
+	Location string `protobuf:"bytes,19,opt,name=location,proto3" json:"location,omitempty"`            // 地点
+	Url      string `protobuf:"bytes,20,opt,name=url,proto3" json:"url,omitempty"`                      // 会议 / 资料链接
+	Color    string `protobuf:"bytes,21,opt,name=color,proto3" json:"color,omitempty"`                  // 分类色：'' 默认 | work | meeting | personal | focus | travel
+	// 重复规则（RFC 5545 RRULE 的子集）：FREQ=DAILY|WEEKLY|MONTHLY|YEARLY;INTERVAL=n;BYDAY=MO,TU…;COUNT=n;UNTIL=YYYYMMDD
+	Rrule   string `protobuf:"bytes,22,opt,name=rrule,proto3" json:"rrule,omitempty"`
+	Exdates string `protobuf:"bytes,23,opt,name=exdates,proto3" json:"exdates,omitempty"` // 跳过的日期（YYYY-MM-DD，逗号分隔）
+	// 列表按范围展开重复日程时，这一项是哪天的那一次（YYYY-MM-DD）；非空 = 展开出来的一次，id 是系列的 id
+	RecurrenceDay string `protobuf:"bytes,24,opt,name=recurrence_day,json=recurrenceDay,proto3" json:"recurrence_day,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -207,6 +215,48 @@ func (x *OfficeEvent) GetOutcome() string {
 	return ""
 }
 
+func (x *OfficeEvent) GetLocation() string {
+	if x != nil {
+		return x.Location
+	}
+	return ""
+}
+
+func (x *OfficeEvent) GetUrl() string {
+	if x != nil {
+		return x.Url
+	}
+	return ""
+}
+
+func (x *OfficeEvent) GetColor() string {
+	if x != nil {
+		return x.Color
+	}
+	return ""
+}
+
+func (x *OfficeEvent) GetRrule() string {
+	if x != nil {
+		return x.Rrule
+	}
+	return ""
+}
+
+func (x *OfficeEvent) GetExdates() string {
+	if x != nil {
+		return x.Exdates
+	}
+	return ""
+}
+
+func (x *OfficeEvent) GetRecurrenceDay() string {
+	if x != nil {
+		return x.RecurrenceDay
+	}
+	return ""
+}
+
 type CreateEventRequest struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
 	Title           string                 `protobuf:"bytes,1,opt,name=title,proto3" json:"title,omitempty"`
@@ -220,6 +270,10 @@ type CreateEventRequest struct {
 	Status          string                 `protobuf:"bytes,9,opt,name=status,proto3" json:"status,omitempty"` // 空 = todo
 	AllDay          bool                   `protobuf:"varint,10,opt,name=all_day,json=allDay,proto3" json:"all_day,omitempty"`
 	Outcome         string                 `protobuf:"bytes,11,opt,name=outcome,proto3" json:"outcome,omitempty"`
+	Location        string                 `protobuf:"bytes,12,opt,name=location,proto3" json:"location,omitempty"`
+	Url             string                 `protobuf:"bytes,13,opt,name=url,proto3" json:"url,omitempty"`
+	Color           string                 `protobuf:"bytes,14,opt,name=color,proto3" json:"color,omitempty"`
+	Rrule           string                 `protobuf:"bytes,15,opt,name=rrule,proto3" json:"rrule,omitempty"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -331,6 +385,34 @@ func (x *CreateEventRequest) GetOutcome() string {
 	return ""
 }
 
+func (x *CreateEventRequest) GetLocation() string {
+	if x != nil {
+		return x.Location
+	}
+	return ""
+}
+
+func (x *CreateEventRequest) GetUrl() string {
+	if x != nil {
+		return x.Url
+	}
+	return ""
+}
+
+func (x *CreateEventRequest) GetColor() string {
+	if x != nil {
+		return x.Color
+	}
+	return ""
+}
+
+func (x *CreateEventRequest) GetRrule() string {
+	if x != nil {
+		return x.Rrule
+	}
+	return ""
+}
+
 type UpdateEventRequest struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
 	Id              string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
@@ -345,6 +427,11 @@ type UpdateEventRequest struct {
 	Status        *string `protobuf:"bytes,9,opt,name=status,proto3,oneof" json:"status,omitempty"`
 	AllDay        *bool   `protobuf:"varint,10,opt,name=all_day,json=allDay,proto3,oneof" json:"all_day,omitempty"`
 	Outcome       *string `protobuf:"bytes,11,opt,name=outcome,proto3,oneof" json:"outcome,omitempty"`
+	Location      *string `protobuf:"bytes,12,opt,name=location,proto3,oneof" json:"location,omitempty"`
+	Url           *string `protobuf:"bytes,13,opt,name=url,proto3,oneof" json:"url,omitempty"`
+	Color         *string `protobuf:"bytes,14,opt,name=color,proto3,oneof" json:"color,omitempty"`
+	Rrule         *string `protobuf:"bytes,15,opt,name=rrule,proto3,oneof" json:"rrule,omitempty"`     // 传空串 = 不再重复
+	Exdates       *string `protobuf:"bytes,16,opt,name=exdates,proto3,oneof" json:"exdates,omitempty"` // 整串替换
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -456,6 +543,137 @@ func (x *UpdateEventRequest) GetOutcome() string {
 	return ""
 }
 
+func (x *UpdateEventRequest) GetLocation() string {
+	if x != nil && x.Location != nil {
+		return *x.Location
+	}
+	return ""
+}
+
+func (x *UpdateEventRequest) GetUrl() string {
+	if x != nil && x.Url != nil {
+		return *x.Url
+	}
+	return ""
+}
+
+func (x *UpdateEventRequest) GetColor() string {
+	if x != nil && x.Color != nil {
+		return *x.Color
+	}
+	return ""
+}
+
+func (x *UpdateEventRequest) GetRrule() string {
+	if x != nil && x.Rrule != nil {
+		return *x.Rrule
+	}
+	return ""
+}
+
+func (x *UpdateEventRequest) GetExdates() string {
+	if x != nil && x.Exdates != nil {
+		return *x.Exdates
+	}
+	return ""
+}
+
+type SearchEventsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Keyword       string                 `protobuf:"bytes,1,opt,name=keyword,proto3" json:"keyword,omitempty"` // 标题、说明、完成情况、地点
+	Limit         int32                  `protobuf:"varint,2,opt,name=limit,proto3" json:"limit,omitempty"`    // <=0 默认 50，>200 截 200
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SearchEventsRequest) Reset() {
+	*x = SearchEventsRequest{}
+	mi := &file_kratos_office_v1_schedule_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SearchEventsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SearchEventsRequest) ProtoMessage() {}
+
+func (x *SearchEventsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_office_v1_schedule_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SearchEventsRequest.ProtoReflect.Descriptor instead.
+func (*SearchEventsRequest) Descriptor() ([]byte, []int) {
+	return file_kratos_office_v1_schedule_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *SearchEventsRequest) GetKeyword() string {
+	if x != nil {
+		return x.Keyword
+	}
+	return ""
+}
+
+func (x *SearchEventsRequest) GetLimit() int32 {
+	if x != nil {
+		return x.Limit
+	}
+	return 0
+}
+
+type SearchEventsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Items         []*OfficeEvent         `protobuf:"bytes,1,rep,name=items,proto3" json:"items,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SearchEventsResponse) Reset() {
+	*x = SearchEventsResponse{}
+	mi := &file_kratos_office_v1_schedule_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SearchEventsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SearchEventsResponse) ProtoMessage() {}
+
+func (x *SearchEventsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_office_v1_schedule_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SearchEventsResponse.ProtoReflect.Descriptor instead.
+func (*SearchEventsResponse) Descriptor() ([]byte, []int) {
+	return file_kratos_office_v1_schedule_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *SearchEventsResponse) GetItems() []*OfficeEvent {
+	if x != nil {
+		return x.Items
+	}
+	return nil
+}
+
 type GetEventRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
@@ -465,7 +683,7 @@ type GetEventRequest struct {
 
 func (x *GetEventRequest) Reset() {
 	*x = GetEventRequest{}
-	mi := &file_kratos_office_v1_schedule_proto_msgTypes[3]
+	mi := &file_kratos_office_v1_schedule_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -477,7 +695,7 @@ func (x *GetEventRequest) String() string {
 func (*GetEventRequest) ProtoMessage() {}
 
 func (x *GetEventRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_office_v1_schedule_proto_msgTypes[3]
+	mi := &file_kratos_office_v1_schedule_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -490,7 +708,7 @@ func (x *GetEventRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetEventRequest.ProtoReflect.Descriptor instead.
 func (*GetEventRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_office_v1_schedule_proto_rawDescGZIP(), []int{3}
+	return file_kratos_office_v1_schedule_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *GetEventRequest) GetId() string {
@@ -509,7 +727,7 @@ type DeleteEventRequest struct {
 
 func (x *DeleteEventRequest) Reset() {
 	*x = DeleteEventRequest{}
-	mi := &file_kratos_office_v1_schedule_proto_msgTypes[4]
+	mi := &file_kratos_office_v1_schedule_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -521,7 +739,7 @@ func (x *DeleteEventRequest) String() string {
 func (*DeleteEventRequest) ProtoMessage() {}
 
 func (x *DeleteEventRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_office_v1_schedule_proto_msgTypes[4]
+	mi := &file_kratos_office_v1_schedule_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -534,7 +752,7 @@ func (x *DeleteEventRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteEventRequest.ProtoReflect.Descriptor instead.
 func (*DeleteEventRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_office_v1_schedule_proto_rawDescGZIP(), []int{4}
+	return file_kratos_office_v1_schedule_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *DeleteEventRequest) GetId() string {
@@ -554,7 +772,7 @@ type ListEventsRangeRequest struct {
 
 func (x *ListEventsRangeRequest) Reset() {
 	*x = ListEventsRangeRequest{}
-	mi := &file_kratos_office_v1_schedule_proto_msgTypes[5]
+	mi := &file_kratos_office_v1_schedule_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -566,7 +784,7 @@ func (x *ListEventsRangeRequest) String() string {
 func (*ListEventsRangeRequest) ProtoMessage() {}
 
 func (x *ListEventsRangeRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_office_v1_schedule_proto_msgTypes[5]
+	mi := &file_kratos_office_v1_schedule_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -579,7 +797,7 @@ func (x *ListEventsRangeRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListEventsRangeRequest.ProtoReflect.Descriptor instead.
 func (*ListEventsRangeRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_office_v1_schedule_proto_rawDescGZIP(), []int{5}
+	return file_kratos_office_v1_schedule_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *ListEventsRangeRequest) GetStart() *timestamppb.Timestamp {
@@ -605,7 +823,7 @@ type ListEventsRangeResponse struct {
 
 func (x *ListEventsRangeResponse) Reset() {
 	*x = ListEventsRangeResponse{}
-	mi := &file_kratos_office_v1_schedule_proto_msgTypes[6]
+	mi := &file_kratos_office_v1_schedule_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -617,7 +835,7 @@ func (x *ListEventsRangeResponse) String() string {
 func (*ListEventsRangeResponse) ProtoMessage() {}
 
 func (x *ListEventsRangeResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_office_v1_schedule_proto_msgTypes[6]
+	mi := &file_kratos_office_v1_schedule_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -630,7 +848,7 @@ func (x *ListEventsRangeResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListEventsRangeResponse.ProtoReflect.Descriptor instead.
 func (*ListEventsRangeResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_office_v1_schedule_proto_rawDescGZIP(), []int{6}
+	return file_kratos_office_v1_schedule_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *ListEventsRangeResponse) GetItems() []*OfficeEvent {
@@ -655,7 +873,7 @@ type ScheduleTaskRequest struct {
 
 func (x *ScheduleTaskRequest) Reset() {
 	*x = ScheduleTaskRequest{}
-	mi := &file_kratos_office_v1_schedule_proto_msgTypes[7]
+	mi := &file_kratos_office_v1_schedule_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -667,7 +885,7 @@ func (x *ScheduleTaskRequest) String() string {
 func (*ScheduleTaskRequest) ProtoMessage() {}
 
 func (x *ScheduleTaskRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_office_v1_schedule_proto_msgTypes[7]
+	mi := &file_kratos_office_v1_schedule_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -680,7 +898,7 @@ func (x *ScheduleTaskRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ScheduleTaskRequest.ProtoReflect.Descriptor instead.
 func (*ScheduleTaskRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_office_v1_schedule_proto_rawDescGZIP(), []int{7}
+	return file_kratos_office_v1_schedule_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *ScheduleTaskRequest) GetTaskRef() string {
@@ -727,7 +945,7 @@ type ListTaskEventsRequest struct {
 
 func (x *ListTaskEventsRequest) Reset() {
 	*x = ListTaskEventsRequest{}
-	mi := &file_kratos_office_v1_schedule_proto_msgTypes[8]
+	mi := &file_kratos_office_v1_schedule_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -739,7 +957,7 @@ func (x *ListTaskEventsRequest) String() string {
 func (*ListTaskEventsRequest) ProtoMessage() {}
 
 func (x *ListTaskEventsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_office_v1_schedule_proto_msgTypes[8]
+	mi := &file_kratos_office_v1_schedule_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -752,7 +970,7 @@ func (x *ListTaskEventsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListTaskEventsRequest.ProtoReflect.Descriptor instead.
 func (*ListTaskEventsRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_office_v1_schedule_proto_rawDescGZIP(), []int{8}
+	return file_kratos_office_v1_schedule_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *ListTaskEventsRequest) GetTaskRef() string {
@@ -771,7 +989,7 @@ type ListTaskEventsResponse struct {
 
 func (x *ListTaskEventsResponse) Reset() {
 	*x = ListTaskEventsResponse{}
-	mi := &file_kratos_office_v1_schedule_proto_msgTypes[9]
+	mi := &file_kratos_office_v1_schedule_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -783,7 +1001,7 @@ func (x *ListTaskEventsResponse) String() string {
 func (*ListTaskEventsResponse) ProtoMessage() {}
 
 func (x *ListTaskEventsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_office_v1_schedule_proto_msgTypes[9]
+	mi := &file_kratos_office_v1_schedule_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -796,7 +1014,7 @@ func (x *ListTaskEventsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListTaskEventsResponse.ProtoReflect.Descriptor instead.
 func (*ListTaskEventsResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_office_v1_schedule_proto_rawDescGZIP(), []int{9}
+	return file_kratos_office_v1_schedule_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *ListTaskEventsResponse) GetItems() []*OfficeEvent {
@@ -821,7 +1039,7 @@ type ScheduleDraftItem struct {
 
 func (x *ScheduleDraftItem) Reset() {
 	*x = ScheduleDraftItem{}
-	mi := &file_kratos_office_v1_schedule_proto_msgTypes[10]
+	mi := &file_kratos_office_v1_schedule_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -833,7 +1051,7 @@ func (x *ScheduleDraftItem) String() string {
 func (*ScheduleDraftItem) ProtoMessage() {}
 
 func (x *ScheduleDraftItem) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_office_v1_schedule_proto_msgTypes[10]
+	mi := &file_kratos_office_v1_schedule_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -846,7 +1064,7 @@ func (x *ScheduleDraftItem) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ScheduleDraftItem.ProtoReflect.Descriptor instead.
 func (*ScheduleDraftItem) Descriptor() ([]byte, []int) {
-	return file_kratos_office_v1_schedule_proto_rawDescGZIP(), []int{10}
+	return file_kratos_office_v1_schedule_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *ScheduleDraftItem) GetTitle() string {
@@ -902,7 +1120,7 @@ type SubmitScheduleDraftRequest struct {
 
 func (x *SubmitScheduleDraftRequest) Reset() {
 	*x = SubmitScheduleDraftRequest{}
-	mi := &file_kratos_office_v1_schedule_proto_msgTypes[11]
+	mi := &file_kratos_office_v1_schedule_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -914,7 +1132,7 @@ func (x *SubmitScheduleDraftRequest) String() string {
 func (*SubmitScheduleDraftRequest) ProtoMessage() {}
 
 func (x *SubmitScheduleDraftRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_office_v1_schedule_proto_msgTypes[11]
+	mi := &file_kratos_office_v1_schedule_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -927,7 +1145,7 @@ func (x *SubmitScheduleDraftRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SubmitScheduleDraftRequest.ProtoReflect.Descriptor instead.
 func (*SubmitScheduleDraftRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_office_v1_schedule_proto_rawDescGZIP(), []int{11}
+	return file_kratos_office_v1_schedule_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *SubmitScheduleDraftRequest) GetAgentId() string {
@@ -960,7 +1178,7 @@ type SubmitScheduleDraftResponse struct {
 
 func (x *SubmitScheduleDraftResponse) Reset() {
 	*x = SubmitScheduleDraftResponse{}
-	mi := &file_kratos_office_v1_schedule_proto_msgTypes[12]
+	mi := &file_kratos_office_v1_schedule_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -972,7 +1190,7 @@ func (x *SubmitScheduleDraftResponse) String() string {
 func (*SubmitScheduleDraftResponse) ProtoMessage() {}
 
 func (x *SubmitScheduleDraftResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_office_v1_schedule_proto_msgTypes[12]
+	mi := &file_kratos_office_v1_schedule_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -985,7 +1203,7 @@ func (x *SubmitScheduleDraftResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SubmitScheduleDraftResponse.ProtoReflect.Descriptor instead.
 func (*SubmitScheduleDraftResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_office_v1_schedule_proto_rawDescGZIP(), []int{12}
+	return file_kratos_office_v1_schedule_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *SubmitScheduleDraftResponse) GetApprovalId() string {
@@ -1008,7 +1226,7 @@ type ApproveScheduleDraftRequest struct {
 
 func (x *ApproveScheduleDraftRequest) Reset() {
 	*x = ApproveScheduleDraftRequest{}
-	mi := &file_kratos_office_v1_schedule_proto_msgTypes[13]
+	mi := &file_kratos_office_v1_schedule_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1020,7 +1238,7 @@ func (x *ApproveScheduleDraftRequest) String() string {
 func (*ApproveScheduleDraftRequest) ProtoMessage() {}
 
 func (x *ApproveScheduleDraftRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_office_v1_schedule_proto_msgTypes[13]
+	mi := &file_kratos_office_v1_schedule_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1033,7 +1251,7 @@ func (x *ApproveScheduleDraftRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ApproveScheduleDraftRequest.ProtoReflect.Descriptor instead.
 func (*ApproveScheduleDraftRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_office_v1_schedule_proto_rawDescGZIP(), []int{13}
+	return file_kratos_office_v1_schedule_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *ApproveScheduleDraftRequest) GetId() string {
@@ -1053,7 +1271,7 @@ type RejectScheduleDraftRequest struct {
 
 func (x *RejectScheduleDraftRequest) Reset() {
 	*x = RejectScheduleDraftRequest{}
-	mi := &file_kratos_office_v1_schedule_proto_msgTypes[14]
+	mi := &file_kratos_office_v1_schedule_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1065,7 +1283,7 @@ func (x *RejectScheduleDraftRequest) String() string {
 func (*RejectScheduleDraftRequest) ProtoMessage() {}
 
 func (x *RejectScheduleDraftRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_office_v1_schedule_proto_msgTypes[14]
+	mi := &file_kratos_office_v1_schedule_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1078,7 +1296,7 @@ func (x *RejectScheduleDraftRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RejectScheduleDraftRequest.ProtoReflect.Descriptor instead.
 func (*RejectScheduleDraftRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_office_v1_schedule_proto_rawDescGZIP(), []int{14}
+	return file_kratos_office_v1_schedule_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *RejectScheduleDraftRequest) GetId() string {
@@ -1109,7 +1327,7 @@ type ICalToken struct {
 
 func (x *ICalToken) Reset() {
 	*x = ICalToken{}
-	mi := &file_kratos_office_v1_schedule_proto_msgTypes[15]
+	mi := &file_kratos_office_v1_schedule_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1121,7 +1339,7 @@ func (x *ICalToken) String() string {
 func (*ICalToken) ProtoMessage() {}
 
 func (x *ICalToken) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_office_v1_schedule_proto_msgTypes[15]
+	mi := &file_kratos_office_v1_schedule_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1134,7 +1352,7 @@ func (x *ICalToken) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ICalToken.ProtoReflect.Descriptor instead.
 func (*ICalToken) Descriptor() ([]byte, []int) {
-	return file_kratos_office_v1_schedule_proto_rawDescGZIP(), []int{15}
+	return file_kratos_office_v1_schedule_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *ICalToken) GetId() string {
@@ -1181,7 +1399,7 @@ type CreateICalTokenRequest struct {
 
 func (x *CreateICalTokenRequest) Reset() {
 	*x = CreateICalTokenRequest{}
-	mi := &file_kratos_office_v1_schedule_proto_msgTypes[16]
+	mi := &file_kratos_office_v1_schedule_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1193,7 +1411,7 @@ func (x *CreateICalTokenRequest) String() string {
 func (*CreateICalTokenRequest) ProtoMessage() {}
 
 func (x *CreateICalTokenRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_office_v1_schedule_proto_msgTypes[16]
+	mi := &file_kratos_office_v1_schedule_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1206,7 +1424,7 @@ func (x *CreateICalTokenRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateICalTokenRequest.ProtoReflect.Descriptor instead.
 func (*CreateICalTokenRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_office_v1_schedule_proto_rawDescGZIP(), []int{16}
+	return file_kratos_office_v1_schedule_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *CreateICalTokenRequest) GetName() string {
@@ -1225,7 +1443,7 @@ type RevokeICalTokenRequest struct {
 
 func (x *RevokeICalTokenRequest) Reset() {
 	*x = RevokeICalTokenRequest{}
-	mi := &file_kratos_office_v1_schedule_proto_msgTypes[17]
+	mi := &file_kratos_office_v1_schedule_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1237,7 +1455,7 @@ func (x *RevokeICalTokenRequest) String() string {
 func (*RevokeICalTokenRequest) ProtoMessage() {}
 
 func (x *RevokeICalTokenRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_office_v1_schedule_proto_msgTypes[17]
+	mi := &file_kratos_office_v1_schedule_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1250,7 +1468,7 @@ func (x *RevokeICalTokenRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RevokeICalTokenRequest.ProtoReflect.Descriptor instead.
 func (*RevokeICalTokenRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_office_v1_schedule_proto_rawDescGZIP(), []int{17}
+	return file_kratos_office_v1_schedule_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *RevokeICalTokenRequest) GetId() string {
@@ -1269,7 +1487,7 @@ type ListICalTokensResponse struct {
 
 func (x *ListICalTokensResponse) Reset() {
 	*x = ListICalTokensResponse{}
-	mi := &file_kratos_office_v1_schedule_proto_msgTypes[18]
+	mi := &file_kratos_office_v1_schedule_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1281,7 +1499,7 @@ func (x *ListICalTokensResponse) String() string {
 func (*ListICalTokensResponse) ProtoMessage() {}
 
 func (x *ListICalTokensResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_office_v1_schedule_proto_msgTypes[18]
+	mi := &file_kratos_office_v1_schedule_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1294,7 +1512,7 @@ func (x *ListICalTokensResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListICalTokensResponse.ProtoReflect.Descriptor instead.
 func (*ListICalTokensResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_office_v1_schedule_proto_rawDescGZIP(), []int{18}
+	return file_kratos_office_v1_schedule_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *ListICalTokensResponse) GetItems() []*ICalToken {
@@ -1313,7 +1531,7 @@ type GetICalFeedRequest struct {
 
 func (x *GetICalFeedRequest) Reset() {
 	*x = GetICalFeedRequest{}
-	mi := &file_kratos_office_v1_schedule_proto_msgTypes[19]
+	mi := &file_kratos_office_v1_schedule_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1325,7 +1543,7 @@ func (x *GetICalFeedRequest) String() string {
 func (*GetICalFeedRequest) ProtoMessage() {}
 
 func (x *GetICalFeedRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_office_v1_schedule_proto_msgTypes[19]
+	mi := &file_kratos_office_v1_schedule_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1338,7 +1556,7 @@ func (x *GetICalFeedRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetICalFeedRequest.ProtoReflect.Descriptor instead.
 func (*GetICalFeedRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_office_v1_schedule_proto_rawDescGZIP(), []int{19}
+	return file_kratos_office_v1_schedule_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *GetICalFeedRequest) GetToken() string {
@@ -1352,7 +1570,7 @@ var File_kratos_office_v1_schedule_proto protoreflect.FileDescriptor
 
 const file_kratos_office_v1_schedule_proto_rawDesc = "" +
 	"\n" +
-	"\x1fkratos/office/v1/schedule.proto\x12\x10kratos.office.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x19google/api/httpbody.proto\x1a\x1bgoogle/protobuf/empty.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a aranea/auth/v1/requirement.proto\"\xdb\x04\n" +
+	"\x1fkratos/office/v1/schedule.proto\x12\x10kratos.office.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x19google/api/httpbody.proto\x1a\x1bgoogle/protobuf/empty.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a aranea/auth/v1/requirement.proto\"\xf6\x05\n" +
 	"\vOfficeEvent\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12!\n" +
 	"\fworkspace_id\x18\x02 \x01(\tR\vworkspaceId\x12\x17\n" +
@@ -1375,7 +1593,13 @@ const file_kratos_office_v1_schedule_proto_rawDesc = "" +
 	"\x04kind\x18\x0f \x01(\tR\x04kind\x12\x16\n" +
 	"\x06status\x18\x10 \x01(\tR\x06status\x12\x17\n" +
 	"\aall_day\x18\x11 \x01(\bR\x06allDay\x12\x18\n" +
-	"\aoutcome\x18\x12 \x01(\tR\aoutcome\"\xfb\x02\n" +
+	"\aoutcome\x18\x12 \x01(\tR\aoutcome\x12\x1a\n" +
+	"\blocation\x18\x13 \x01(\tR\blocation\x12\x10\n" +
+	"\x03url\x18\x14 \x01(\tR\x03url\x12\x14\n" +
+	"\x05color\x18\x15 \x01(\tR\x05color\x12\x14\n" +
+	"\x05rrule\x18\x16 \x01(\tR\x05rrule\x12\x18\n" +
+	"\aexdates\x18\x17 \x01(\tR\aexdates\x12%\n" +
+	"\x0erecurrence_day\x18\x18 \x01(\tR\rrecurrenceDay\"\xd5\x03\n" +
 	"\x12CreateEventRequest\x12\x1a\n" +
 	"\x05title\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\x05title\x12\x12\n" +
 	"\x04note\x18\x02 \x01(\tR\x04note\x12;\n" +
@@ -1388,7 +1612,11 @@ const file_kratos_office_v1_schedule_proto_rawDesc = "" +
 	"\x06status\x18\t \x01(\tR\x06status\x12\x17\n" +
 	"\aall_day\x18\n" +
 	" \x01(\bR\x06allDay\x12\x18\n" +
-	"\aoutcome\x18\v \x01(\tR\aoutcome\"\xb2\x03\n" +
+	"\aoutcome\x18\v \x01(\tR\aoutcome\x12\x1a\n" +
+	"\blocation\x18\f \x01(\tR\blocation\x12\x10\n" +
+	"\x03url\x18\r \x01(\tR\x03url\x12\x14\n" +
+	"\x05color\x18\x0e \x01(\tR\x05color\x12\x14\n" +
+	"\x05rrule\x18\x0f \x01(\tR\x05rrule\"\xf4\x04\n" +
 	"\x12UpdateEventRequest\x12\x14\n" +
 	"\x02id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\x02id\x12\x14\n" +
 	"\x05title\x18\x02 \x01(\tR\x05title\x12\x17\n" +
@@ -1401,14 +1629,30 @@ const file_kratos_office_v1_schedule_proto_rawDesc = "" +
 	"\x06status\x18\t \x01(\tH\x02R\x06status\x88\x01\x01\x12\x1c\n" +
 	"\aall_day\x18\n" +
 	" \x01(\bH\x03R\x06allDay\x88\x01\x01\x12\x1d\n" +
-	"\aoutcome\x18\v \x01(\tH\x04R\aoutcome\x88\x01\x01B\a\n" +
+	"\aoutcome\x18\v \x01(\tH\x04R\aoutcome\x88\x01\x01\x12\x1f\n" +
+	"\blocation\x18\f \x01(\tH\x05R\blocation\x88\x01\x01\x12\x15\n" +
+	"\x03url\x18\r \x01(\tH\x06R\x03url\x88\x01\x01\x12\x19\n" +
+	"\x05color\x18\x0e \x01(\tH\aR\x05color\x88\x01\x01\x12\x19\n" +
+	"\x05rrule\x18\x0f \x01(\tH\bR\x05rrule\x88\x01\x01\x12\x1d\n" +
+	"\aexdates\x18\x10 \x01(\tH\tR\aexdates\x88\x01\x01B\a\n" +
 	"\x05_noteB\a\n" +
 	"\x05_kindB\t\n" +
 	"\a_statusB\n" +
 	"\n" +
 	"\b_all_dayB\n" +
 	"\n" +
-	"\b_outcome\"'\n" +
+	"\b_outcomeB\v\n" +
+	"\t_locationB\x06\n" +
+	"\x04_urlB\b\n" +
+	"\x06_colorB\b\n" +
+	"\x06_rruleB\n" +
+	"\n" +
+	"\b_exdates\"K\n" +
+	"\x13SearchEventsRequest\x12\x1e\n" +
+	"\akeyword\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\akeyword\x12\x14\n" +
+	"\x05limit\x18\x02 \x01(\x05R\x05limit\"K\n" +
+	"\x14SearchEventsResponse\x123\n" +
+	"\x05items\x18\x01 \x03(\v2\x1d.kratos.office.v1.OfficeEventR\x05items\"'\n" +
 	"\x0fGetEventRequest\x12\x14\n" +
 	"\x02id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\x02id\"*\n" +
 	"\x12DeleteEventRequest\x12\x14\n" +
@@ -1464,7 +1708,7 @@ const file_kratos_office_v1_schedule_proto_rawDesc = "" +
 	"\x16ListICalTokensResponse\x121\n" +
 	"\x05items\x18\x01 \x03(\v2\x1b.kratos.office.v1.ICalTokenR\x05items\"0\n" +
 	"\x12GetICalFeedRequest\x12\x1a\n" +
-	"\x05token\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\x05token2\xb5\x10\n" +
+	"\x05token\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\x05token2\xcc\x11\n" +
 	"\x15OfficeScheduleService\x12\x85\x01\n" +
 	"\vCreateEvent\x12$.kratos.office.v1.CreateEventRequest\x1a\x1d.kratos.office.v1.OfficeEvent\"1\xca\xf3\x18\x11\n" +
 	"\x0foffice.schedule\x82\xd3\xe4\x93\x02\x16:\x01*\"\x11/v1/office/events\x12\x8a\x01\n" +
@@ -1476,6 +1720,8 @@ const file_kratos_office_v1_schedule_proto_rawDesc = "" +
 	"\x0foffice.schedule\x82\xd3\xe4\x93\x02\x18\x12\x16/v1/office/events/{id}\x12\x96\x01\n" +
 	"\x0fListEventsRange\x12(.kratos.office.v1.ListEventsRangeRequest\x1a).kratos.office.v1.ListEventsRangeResponse\".\xca\xf3\x18\x11\n" +
 	"\x0foffice.schedule\x82\xd3\xe4\x93\x02\x13\x12\x11/v1/office/events\x12\x94\x01\n" +
+	"\fSearchEvents\x12%.kratos.office.v1.SearchEventsRequest\x1a&.kratos.office.v1.SearchEventsResponse\"5\xca\xf3\x18\x11\n" +
+	"\x0foffice.schedule\x82\xd3\xe4\x93\x02\x1a\x12\x18/v1/office/events:search\x12\x94\x01\n" +
 	"\fScheduleTask\x12%.kratos.office.v1.ScheduleTaskRequest\x1a\x1d.kratos.office.v1.OfficeEvent\">\xca\xf3\x18\x11\n" +
 	"\x0foffice.schedule\x82\xd3\xe4\x93\x02#:\x01*\"\x1e/v1/office/events:scheduleTask\x12\x9a\x01\n" +
 	"\x0eListTaskEvents\x12'.kratos.office.v1.ListTaskEventsRequest\x1a(.kratos.office.v1.ListTaskEventsResponse\"5\xca\xf3\x18\x11\n" +
@@ -1507,86 +1753,91 @@ func file_kratos_office_v1_schedule_proto_rawDescGZIP() []byte {
 	return file_kratos_office_v1_schedule_proto_rawDescData
 }
 
-var file_kratos_office_v1_schedule_proto_msgTypes = make([]protoimpl.MessageInfo, 20)
+var file_kratos_office_v1_schedule_proto_msgTypes = make([]protoimpl.MessageInfo, 22)
 var file_kratos_office_v1_schedule_proto_goTypes = []any{
 	(*OfficeEvent)(nil),                 // 0: kratos.office.v1.OfficeEvent
 	(*CreateEventRequest)(nil),          // 1: kratos.office.v1.CreateEventRequest
 	(*UpdateEventRequest)(nil),          // 2: kratos.office.v1.UpdateEventRequest
-	(*GetEventRequest)(nil),             // 3: kratos.office.v1.GetEventRequest
-	(*DeleteEventRequest)(nil),          // 4: kratos.office.v1.DeleteEventRequest
-	(*ListEventsRangeRequest)(nil),      // 5: kratos.office.v1.ListEventsRangeRequest
-	(*ListEventsRangeResponse)(nil),     // 6: kratos.office.v1.ListEventsRangeResponse
-	(*ScheduleTaskRequest)(nil),         // 7: kratos.office.v1.ScheduleTaskRequest
-	(*ListTaskEventsRequest)(nil),       // 8: kratos.office.v1.ListTaskEventsRequest
-	(*ListTaskEventsResponse)(nil),      // 9: kratos.office.v1.ListTaskEventsResponse
-	(*ScheduleDraftItem)(nil),           // 10: kratos.office.v1.ScheduleDraftItem
-	(*SubmitScheduleDraftRequest)(nil),  // 11: kratos.office.v1.SubmitScheduleDraftRequest
-	(*SubmitScheduleDraftResponse)(nil), // 12: kratos.office.v1.SubmitScheduleDraftResponse
-	(*ApproveScheduleDraftRequest)(nil), // 13: kratos.office.v1.ApproveScheduleDraftRequest
-	(*RejectScheduleDraftRequest)(nil),  // 14: kratos.office.v1.RejectScheduleDraftRequest
-	(*ICalToken)(nil),                   // 15: kratos.office.v1.ICalToken
-	(*CreateICalTokenRequest)(nil),      // 16: kratos.office.v1.CreateICalTokenRequest
-	(*RevokeICalTokenRequest)(nil),      // 17: kratos.office.v1.RevokeICalTokenRequest
-	(*ListICalTokensResponse)(nil),      // 18: kratos.office.v1.ListICalTokensResponse
-	(*GetICalFeedRequest)(nil),          // 19: kratos.office.v1.GetICalFeedRequest
-	(*timestamppb.Timestamp)(nil),       // 20: google.protobuf.Timestamp
-	(*emptypb.Empty)(nil),               // 21: google.protobuf.Empty
-	(*httpbody.HttpBody)(nil),           // 22: google.api.HttpBody
+	(*SearchEventsRequest)(nil),         // 3: kratos.office.v1.SearchEventsRequest
+	(*SearchEventsResponse)(nil),        // 4: kratos.office.v1.SearchEventsResponse
+	(*GetEventRequest)(nil),             // 5: kratos.office.v1.GetEventRequest
+	(*DeleteEventRequest)(nil),          // 6: kratos.office.v1.DeleteEventRequest
+	(*ListEventsRangeRequest)(nil),      // 7: kratos.office.v1.ListEventsRangeRequest
+	(*ListEventsRangeResponse)(nil),     // 8: kratos.office.v1.ListEventsRangeResponse
+	(*ScheduleTaskRequest)(nil),         // 9: kratos.office.v1.ScheduleTaskRequest
+	(*ListTaskEventsRequest)(nil),       // 10: kratos.office.v1.ListTaskEventsRequest
+	(*ListTaskEventsResponse)(nil),      // 11: kratos.office.v1.ListTaskEventsResponse
+	(*ScheduleDraftItem)(nil),           // 12: kratos.office.v1.ScheduleDraftItem
+	(*SubmitScheduleDraftRequest)(nil),  // 13: kratos.office.v1.SubmitScheduleDraftRequest
+	(*SubmitScheduleDraftResponse)(nil), // 14: kratos.office.v1.SubmitScheduleDraftResponse
+	(*ApproveScheduleDraftRequest)(nil), // 15: kratos.office.v1.ApproveScheduleDraftRequest
+	(*RejectScheduleDraftRequest)(nil),  // 16: kratos.office.v1.RejectScheduleDraftRequest
+	(*ICalToken)(nil),                   // 17: kratos.office.v1.ICalToken
+	(*CreateICalTokenRequest)(nil),      // 18: kratos.office.v1.CreateICalTokenRequest
+	(*RevokeICalTokenRequest)(nil),      // 19: kratos.office.v1.RevokeICalTokenRequest
+	(*ListICalTokensResponse)(nil),      // 20: kratos.office.v1.ListICalTokensResponse
+	(*GetICalFeedRequest)(nil),          // 21: kratos.office.v1.GetICalFeedRequest
+	(*timestamppb.Timestamp)(nil),       // 22: google.protobuf.Timestamp
+	(*emptypb.Empty)(nil),               // 23: google.protobuf.Empty
+	(*httpbody.HttpBody)(nil),           // 24: google.api.HttpBody
 }
 var file_kratos_office_v1_schedule_proto_depIdxs = []int32{
-	20, // 0: kratos.office.v1.OfficeEvent.start_at:type_name -> google.protobuf.Timestamp
-	20, // 1: kratos.office.v1.OfficeEvent.end_at:type_name -> google.protobuf.Timestamp
-	20, // 2: kratos.office.v1.OfficeEvent.created_at:type_name -> google.protobuf.Timestamp
-	20, // 3: kratos.office.v1.OfficeEvent.updated_at:type_name -> google.protobuf.Timestamp
-	20, // 4: kratos.office.v1.CreateEventRequest.start_at:type_name -> google.protobuf.Timestamp
-	20, // 5: kratos.office.v1.CreateEventRequest.end_at:type_name -> google.protobuf.Timestamp
-	20, // 6: kratos.office.v1.UpdateEventRequest.start_at:type_name -> google.protobuf.Timestamp
-	20, // 7: kratos.office.v1.UpdateEventRequest.end_at:type_name -> google.protobuf.Timestamp
-	20, // 8: kratos.office.v1.ListEventsRangeRequest.start:type_name -> google.protobuf.Timestamp
-	20, // 9: kratos.office.v1.ListEventsRangeRequest.end:type_name -> google.protobuf.Timestamp
-	0,  // 10: kratos.office.v1.ListEventsRangeResponse.items:type_name -> kratos.office.v1.OfficeEvent
-	20, // 11: kratos.office.v1.ScheduleTaskRequest.start_at:type_name -> google.protobuf.Timestamp
-	20, // 12: kratos.office.v1.ScheduleTaskRequest.end_at:type_name -> google.protobuf.Timestamp
-	0,  // 13: kratos.office.v1.ListTaskEventsResponse.items:type_name -> kratos.office.v1.OfficeEvent
-	20, // 14: kratos.office.v1.ScheduleDraftItem.start_at:type_name -> google.protobuf.Timestamp
-	20, // 15: kratos.office.v1.ScheduleDraftItem.end_at:type_name -> google.protobuf.Timestamp
-	10, // 16: kratos.office.v1.SubmitScheduleDraftRequest.items:type_name -> kratos.office.v1.ScheduleDraftItem
-	20, // 17: kratos.office.v1.ICalToken.created_at:type_name -> google.protobuf.Timestamp
-	20, // 18: kratos.office.v1.ICalToken.revoked_at:type_name -> google.protobuf.Timestamp
-	15, // 19: kratos.office.v1.ListICalTokensResponse.items:type_name -> kratos.office.v1.ICalToken
-	1,  // 20: kratos.office.v1.OfficeScheduleService.CreateEvent:input_type -> kratos.office.v1.CreateEventRequest
-	2,  // 21: kratos.office.v1.OfficeScheduleService.UpdateEvent:input_type -> kratos.office.v1.UpdateEventRequest
-	4,  // 22: kratos.office.v1.OfficeScheduleService.DeleteEvent:input_type -> kratos.office.v1.DeleteEventRequest
-	3,  // 23: kratos.office.v1.OfficeScheduleService.GetEvent:input_type -> kratos.office.v1.GetEventRequest
-	5,  // 24: kratos.office.v1.OfficeScheduleService.ListEventsRange:input_type -> kratos.office.v1.ListEventsRangeRequest
-	7,  // 25: kratos.office.v1.OfficeScheduleService.ScheduleTask:input_type -> kratos.office.v1.ScheduleTaskRequest
-	8,  // 26: kratos.office.v1.OfficeScheduleService.ListTaskEvents:input_type -> kratos.office.v1.ListTaskEventsRequest
-	11, // 27: kratos.office.v1.OfficeScheduleService.SubmitScheduleDraft:input_type -> kratos.office.v1.SubmitScheduleDraftRequest
-	13, // 28: kratos.office.v1.OfficeScheduleService.ApproveScheduleDraft:input_type -> kratos.office.v1.ApproveScheduleDraftRequest
-	14, // 29: kratos.office.v1.OfficeScheduleService.RejectScheduleDraft:input_type -> kratos.office.v1.RejectScheduleDraftRequest
-	16, // 30: kratos.office.v1.OfficeScheduleService.CreateICalToken:input_type -> kratos.office.v1.CreateICalTokenRequest
-	17, // 31: kratos.office.v1.OfficeScheduleService.RevokeICalToken:input_type -> kratos.office.v1.RevokeICalTokenRequest
-	21, // 32: kratos.office.v1.OfficeScheduleService.ListICalTokens:input_type -> google.protobuf.Empty
-	19, // 33: kratos.office.v1.OfficeScheduleService.GetICalFeed:input_type -> kratos.office.v1.GetICalFeedRequest
-	0,  // 34: kratos.office.v1.OfficeScheduleService.CreateEvent:output_type -> kratos.office.v1.OfficeEvent
-	0,  // 35: kratos.office.v1.OfficeScheduleService.UpdateEvent:output_type -> kratos.office.v1.OfficeEvent
-	21, // 36: kratos.office.v1.OfficeScheduleService.DeleteEvent:output_type -> google.protobuf.Empty
-	0,  // 37: kratos.office.v1.OfficeScheduleService.GetEvent:output_type -> kratos.office.v1.OfficeEvent
-	6,  // 38: kratos.office.v1.OfficeScheduleService.ListEventsRange:output_type -> kratos.office.v1.ListEventsRangeResponse
-	0,  // 39: kratos.office.v1.OfficeScheduleService.ScheduleTask:output_type -> kratos.office.v1.OfficeEvent
-	9,  // 40: kratos.office.v1.OfficeScheduleService.ListTaskEvents:output_type -> kratos.office.v1.ListTaskEventsResponse
-	12, // 41: kratos.office.v1.OfficeScheduleService.SubmitScheduleDraft:output_type -> kratos.office.v1.SubmitScheduleDraftResponse
-	21, // 42: kratos.office.v1.OfficeScheduleService.ApproveScheduleDraft:output_type -> google.protobuf.Empty
-	21, // 43: kratos.office.v1.OfficeScheduleService.RejectScheduleDraft:output_type -> google.protobuf.Empty
-	15, // 44: kratos.office.v1.OfficeScheduleService.CreateICalToken:output_type -> kratos.office.v1.ICalToken
-	21, // 45: kratos.office.v1.OfficeScheduleService.RevokeICalToken:output_type -> google.protobuf.Empty
-	18, // 46: kratos.office.v1.OfficeScheduleService.ListICalTokens:output_type -> kratos.office.v1.ListICalTokensResponse
-	22, // 47: kratos.office.v1.OfficeScheduleService.GetICalFeed:output_type -> google.api.HttpBody
-	34, // [34:48] is the sub-list for method output_type
-	20, // [20:34] is the sub-list for method input_type
-	20, // [20:20] is the sub-list for extension type_name
-	20, // [20:20] is the sub-list for extension extendee
-	0,  // [0:20] is the sub-list for field type_name
+	22, // 0: kratos.office.v1.OfficeEvent.start_at:type_name -> google.protobuf.Timestamp
+	22, // 1: kratos.office.v1.OfficeEvent.end_at:type_name -> google.protobuf.Timestamp
+	22, // 2: kratos.office.v1.OfficeEvent.created_at:type_name -> google.protobuf.Timestamp
+	22, // 3: kratos.office.v1.OfficeEvent.updated_at:type_name -> google.protobuf.Timestamp
+	22, // 4: kratos.office.v1.CreateEventRequest.start_at:type_name -> google.protobuf.Timestamp
+	22, // 5: kratos.office.v1.CreateEventRequest.end_at:type_name -> google.protobuf.Timestamp
+	22, // 6: kratos.office.v1.UpdateEventRequest.start_at:type_name -> google.protobuf.Timestamp
+	22, // 7: kratos.office.v1.UpdateEventRequest.end_at:type_name -> google.protobuf.Timestamp
+	0,  // 8: kratos.office.v1.SearchEventsResponse.items:type_name -> kratos.office.v1.OfficeEvent
+	22, // 9: kratos.office.v1.ListEventsRangeRequest.start:type_name -> google.protobuf.Timestamp
+	22, // 10: kratos.office.v1.ListEventsRangeRequest.end:type_name -> google.protobuf.Timestamp
+	0,  // 11: kratos.office.v1.ListEventsRangeResponse.items:type_name -> kratos.office.v1.OfficeEvent
+	22, // 12: kratos.office.v1.ScheduleTaskRequest.start_at:type_name -> google.protobuf.Timestamp
+	22, // 13: kratos.office.v1.ScheduleTaskRequest.end_at:type_name -> google.protobuf.Timestamp
+	0,  // 14: kratos.office.v1.ListTaskEventsResponse.items:type_name -> kratos.office.v1.OfficeEvent
+	22, // 15: kratos.office.v1.ScheduleDraftItem.start_at:type_name -> google.protobuf.Timestamp
+	22, // 16: kratos.office.v1.ScheduleDraftItem.end_at:type_name -> google.protobuf.Timestamp
+	12, // 17: kratos.office.v1.SubmitScheduleDraftRequest.items:type_name -> kratos.office.v1.ScheduleDraftItem
+	22, // 18: kratos.office.v1.ICalToken.created_at:type_name -> google.protobuf.Timestamp
+	22, // 19: kratos.office.v1.ICalToken.revoked_at:type_name -> google.protobuf.Timestamp
+	17, // 20: kratos.office.v1.ListICalTokensResponse.items:type_name -> kratos.office.v1.ICalToken
+	1,  // 21: kratos.office.v1.OfficeScheduleService.CreateEvent:input_type -> kratos.office.v1.CreateEventRequest
+	2,  // 22: kratos.office.v1.OfficeScheduleService.UpdateEvent:input_type -> kratos.office.v1.UpdateEventRequest
+	6,  // 23: kratos.office.v1.OfficeScheduleService.DeleteEvent:input_type -> kratos.office.v1.DeleteEventRequest
+	5,  // 24: kratos.office.v1.OfficeScheduleService.GetEvent:input_type -> kratos.office.v1.GetEventRequest
+	7,  // 25: kratos.office.v1.OfficeScheduleService.ListEventsRange:input_type -> kratos.office.v1.ListEventsRangeRequest
+	3,  // 26: kratos.office.v1.OfficeScheduleService.SearchEvents:input_type -> kratos.office.v1.SearchEventsRequest
+	9,  // 27: kratos.office.v1.OfficeScheduleService.ScheduleTask:input_type -> kratos.office.v1.ScheduleTaskRequest
+	10, // 28: kratos.office.v1.OfficeScheduleService.ListTaskEvents:input_type -> kratos.office.v1.ListTaskEventsRequest
+	13, // 29: kratos.office.v1.OfficeScheduleService.SubmitScheduleDraft:input_type -> kratos.office.v1.SubmitScheduleDraftRequest
+	15, // 30: kratos.office.v1.OfficeScheduleService.ApproveScheduleDraft:input_type -> kratos.office.v1.ApproveScheduleDraftRequest
+	16, // 31: kratos.office.v1.OfficeScheduleService.RejectScheduleDraft:input_type -> kratos.office.v1.RejectScheduleDraftRequest
+	18, // 32: kratos.office.v1.OfficeScheduleService.CreateICalToken:input_type -> kratos.office.v1.CreateICalTokenRequest
+	19, // 33: kratos.office.v1.OfficeScheduleService.RevokeICalToken:input_type -> kratos.office.v1.RevokeICalTokenRequest
+	23, // 34: kratos.office.v1.OfficeScheduleService.ListICalTokens:input_type -> google.protobuf.Empty
+	21, // 35: kratos.office.v1.OfficeScheduleService.GetICalFeed:input_type -> kratos.office.v1.GetICalFeedRequest
+	0,  // 36: kratos.office.v1.OfficeScheduleService.CreateEvent:output_type -> kratos.office.v1.OfficeEvent
+	0,  // 37: kratos.office.v1.OfficeScheduleService.UpdateEvent:output_type -> kratos.office.v1.OfficeEvent
+	23, // 38: kratos.office.v1.OfficeScheduleService.DeleteEvent:output_type -> google.protobuf.Empty
+	0,  // 39: kratos.office.v1.OfficeScheduleService.GetEvent:output_type -> kratos.office.v1.OfficeEvent
+	8,  // 40: kratos.office.v1.OfficeScheduleService.ListEventsRange:output_type -> kratos.office.v1.ListEventsRangeResponse
+	4,  // 41: kratos.office.v1.OfficeScheduleService.SearchEvents:output_type -> kratos.office.v1.SearchEventsResponse
+	0,  // 42: kratos.office.v1.OfficeScheduleService.ScheduleTask:output_type -> kratos.office.v1.OfficeEvent
+	11, // 43: kratos.office.v1.OfficeScheduleService.ListTaskEvents:output_type -> kratos.office.v1.ListTaskEventsResponse
+	14, // 44: kratos.office.v1.OfficeScheduleService.SubmitScheduleDraft:output_type -> kratos.office.v1.SubmitScheduleDraftResponse
+	23, // 45: kratos.office.v1.OfficeScheduleService.ApproveScheduleDraft:output_type -> google.protobuf.Empty
+	23, // 46: kratos.office.v1.OfficeScheduleService.RejectScheduleDraft:output_type -> google.protobuf.Empty
+	17, // 47: kratos.office.v1.OfficeScheduleService.CreateICalToken:output_type -> kratos.office.v1.ICalToken
+	23, // 48: kratos.office.v1.OfficeScheduleService.RevokeICalToken:output_type -> google.protobuf.Empty
+	20, // 49: kratos.office.v1.OfficeScheduleService.ListICalTokens:output_type -> kratos.office.v1.ListICalTokensResponse
+	24, // 50: kratos.office.v1.OfficeScheduleService.GetICalFeed:output_type -> google.api.HttpBody
+	36, // [36:51] is the sub-list for method output_type
+	21, // [21:36] is the sub-list for method input_type
+	21, // [21:21] is the sub-list for extension type_name
+	21, // [21:21] is the sub-list for extension extendee
+	0,  // [0:21] is the sub-list for field type_name
 }
 
 func init() { file_kratos_office_v1_schedule_proto_init() }
@@ -1601,7 +1852,7 @@ func file_kratos_office_v1_schedule_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kratos_office_v1_schedule_proto_rawDesc), len(file_kratos_office_v1_schedule_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   20,
+			NumMessages:   22,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

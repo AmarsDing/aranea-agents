@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strings"
 	"time"
 
 	"google.golang.org/genproto/googleapis/api/httpbody"
@@ -110,6 +111,8 @@ func mailAccountToProto(a *office.MailAccount) *v1.MailAccount {
 		SmtpTls:     smtpTLSToProto(a.SMTPTLS),
 		Status:      a.Status,
 		LastError:   a.LastError,
+		Signature:   a.Signature,
+		SaveSent:    a.SaveSent,
 	}
 	if a.LastSyncAt != nil {
 		out.LastSyncAt = timestamppb.New(*a.LastSyncAt)
@@ -155,6 +158,8 @@ func (s *OfficeMailService) CreateAccount(ctx context.Context, req *v1.CreateAcc
 		SMTPPort:    int(req.GetSmtpPort()),
 		SMTPTLS:     smtpTLSFromProto(req.GetSmtpTls()),
 		SyncSince:   tsPtr(req.GetSyncSince()),
+		Signature:   req.GetSignature(),
+		SaveSent:    req.GetSaveSent(),
 	}, req.GetPassword())
 	if err != nil {
 		return nil, mailErr(err)
@@ -189,6 +194,11 @@ func (s *OfficeMailService) UpdateAccount(ctx context.Context, req *v1.UpdateAcc
 	}, req.GetPassword())
 	if err != nil {
 		return nil, mailErr(err)
+	}
+	if req.Signature != nil || req.SaveSent != nil {
+		if a, err = s.accounts.UpdateSettings(ctx, req.GetId(), userID, req.Signature, req.SaveSent); err != nil {
+			return nil, mailErr(err)
+		}
 	}
 	return mailAccountToProto(a), nil
 }
@@ -237,6 +247,14 @@ func mailMessageToProto(m *office.MailMessage) *v1.MailMessage {
 		Flagged:        m.Flagged,
 		Archived:       m.ArchivedAt != nil,
 		Folder:         m.Folder,
+		Trashed:        m.TrashedAt != nil,
+		Spam:           m.Spam,
+	}
+	if m.Labels != "" {
+		out.Labels = strings.Split(m.Labels, ",")
+	}
+	if m.SendAt != nil {
+		out.SendAt = timestamppb.New(*m.SendAt)
 	}
 	if m.ReceivedAt != nil {
 		out.ReceivedAt = m.ReceivedAt.UTC().Format(time.RFC3339)
@@ -250,7 +268,7 @@ func (s *OfficeMailService) ListMessages(ctx context.Context, req *v1.ListMessag
 		return nil, mailErr(err)
 	}
 	items, total, err := s.messages.Query(ctx, userID, office.MailQuery{
-		View: req.GetView(), AccountID: req.GetAccountId(), Keyword: req.GetKeyword(),
+		View: req.GetView(), AccountID: req.GetAccountId(), Keyword: req.GetKeyword(), Label: req.GetLabel(),
 		Page: int(req.GetPage()), PageSize: int(req.GetPageSize()),
 	})
 	if err != nil {
@@ -284,6 +302,18 @@ func (s *OfficeMailService) DeleteMessage(ctx context.Context, req *v1.DeleteMes
 		return nil, mailErr(err)
 	}
 	return &emptypb.Empty{}, nil
+}
+
+func (s *OfficeMailService) PurgeMessages(ctx context.Context, req *v1.PurgeMessagesRequest) (*v1.PurgeMessagesResponse, error) {
+	userID, _, err := officeSubject(ctx)
+	if err != nil {
+		return nil, mailErr(err)
+	}
+	n, err := s.messages.Purge(ctx, userID, req.GetView(), req.GetIds())
+	if err != nil {
+		return nil, mailErr(err)
+	}
+	return &v1.PurgeMessagesResponse{Deleted: n}, nil
 }
 
 // ---------- 附件 ----------
@@ -396,11 +426,21 @@ func (s *OfficeMailService) SendMail(ctx context.Context, req *v1.SendMailReques
 	if err != nil {
 		return nil, mailErr(err)
 	}
-	id, err := s.syncer.Send(ctx, userID, &office.MailOutgoing{
+	out := &office.MailOutgoing{
 		AccountID: req.GetAccountId(), To: req.GetTo(), Cc: req.GetCc(), Subject: req.GetSubject(), Body: req.GetBody(),
 		ReplyToID: req.GetReplyToId(), ForwardOfID: req.GetForwardOfId(), DraftID: req.GetDraftId(),
-		Attachments: outgoingAttachments(req.GetAttachments()),
-	})
+		Attachments: outgoingAttachments(req.GetAttachments()), BodyHTML: req.GetBodyHtml(),
+	}
+	// 定时发送：存成带 send_at 的草稿，后台到点发出；返回的是草稿 id
+	if at := tsPtr(req.GetSendAt()); at != nil && at.After(time.Now()) {
+		out.SendAt = at
+		id, err := s.syncer.SaveDraft(ctx, userID, out)
+		if err != nil {
+			return nil, mailErr(err)
+		}
+		return &v1.SendMailResponse{SendId: id}, nil
+	}
+	id, err := s.syncer.Send(ctx, userID, out)
 	if err != nil {
 		return nil, mailErr(err)
 	}
@@ -415,7 +455,7 @@ func (s *OfficeMailService) SaveDraft(ctx context.Context, req *v1.SaveDraftRequ
 	id, err := s.syncer.SaveDraft(ctx, userID, &office.MailOutgoing{
 		AccountID: req.GetAccountId(), To: req.GetTo(), Cc: req.GetCc(), Subject: req.GetSubject(), Body: req.GetBody(),
 		ReplyToID: req.GetReplyToId(), ForwardOfID: req.GetForwardOfId(), DraftID: req.GetDraftId(),
-		Attachments: outgoingAttachments(req.GetAttachments()),
+		Attachments: outgoingAttachments(req.GetAttachments()), BodyHTML: req.GetBodyHtml(),
 	})
 	if err != nil {
 		return nil, mailErr(err)
@@ -434,10 +474,13 @@ func (s *OfficeMailService) GetMailboxSummary(ctx context.Context, _ *emptypb.Em
 	}
 	out := &v1.MailboxSummary{
 		InboxUnread: c.InboxUnread, Flagged: c.Flagged, Task: c.Task, Attachments: c.Attachments,
-		Sent: c.Sent, Drafts: c.Drafts, Archived: c.Archived,
+		Sent: c.Sent, Drafts: c.Drafts, Archived: c.Archived, SpamUnread: c.SpamUnread, Trash: c.Trash,
 	}
 	for id, n := range c.AccountUnread {
 		out.Accounts = append(out.Accounts, &v1.MailAccountUnread{AccountId: id, Unread: n})
+	}
+	for _, l := range c.Labels {
+		out.Labels = append(out.Labels, &v1.MailLabelCount{Name: l.Name, Count: l.Count})
 	}
 	return out, nil
 }
@@ -448,7 +491,8 @@ func (s *OfficeMailService) MarkMessages(ctx context.Context, req *v1.MarkMessag
 	if err != nil {
 		return nil, mailErr(err)
 	}
-	mark := office.MailMark{Seen: req.Seen, Flagged: req.Flagged, Archived: req.Archived}
+	mark := office.MailMark{Seen: req.Seen, Flagged: req.Flagged, Archived: req.Archived, Trashed: req.Trashed, Spam: req.Spam,
+		AddLabel: req.GetAddLabel(), RemoveLabel: req.GetRemoveLabel()}
 	n, err := s.messages.Mark(ctx, userID, req.GetIds(), mark)
 	if err != nil {
 		return nil, mailErr(err)
@@ -461,7 +505,103 @@ func (s *OfficeMailService) MarkMessages(ctx context.Context, req *v1.MarkMessag
 			s.syncer.PushFlags(pctx, userID, ids, mark)
 		}()
 	}
+	if n > 0 && (mark.Trashed != nil || mark.Spam != nil) {
+		ids := append([]string(nil), req.GetIds()...)
+		go func() {
+			pctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Minute)
+			defer cancel()
+			s.syncer.PushMoves(pctx, userID, ids, mark)
+		}()
+	}
 	return &v1.MarkMessagesResponse{Updated: n}, nil
+}
+
+// MarkAllRead 视图里的未读全部标已读，已读在后台尽力回写服务器。
+func (s *OfficeMailService) MarkAllRead(ctx context.Context, req *v1.MarkAllReadRequest) (*v1.MarkMessagesResponse, error) {
+	userID, _, err := officeSubject(ctx)
+	if err != nil {
+		return nil, mailErr(err)
+	}
+	ids, err := s.messages.MarkAllRead(ctx, userID, req.GetView(), req.GetAccountId())
+	if err != nil {
+		return nil, mailErr(err)
+	}
+	if len(ids) > 0 {
+		seen := true
+		go func() {
+			pctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Minute)
+			defer cancel()
+			s.syncer.PushFlags(pctx, userID, ids, office.MailMark{Seen: &seen})
+		}()
+	}
+	return &v1.MarkMessagesResponse{Updated: int64(len(ids))}, nil
+}
+
+func (s *OfficeMailService) ListThread(ctx context.Context, req *v1.ListThreadRequest) (*v1.ListMessagesResponse, error) {
+	userID, _, err := officeSubject(ctx)
+	if err != nil {
+		return nil, mailErr(err)
+	}
+	items, err := s.messages.Thread(ctx, userID, req.GetId())
+	if err != nil {
+		return nil, mailErr(err)
+	}
+	out := &v1.ListMessagesResponse{Items: make([]*v1.MailMessage, 0, len(items)), Total: int64(len(items))}
+	for _, m := range items {
+		out.Items = append(out.Items, mailMessageToProto(m))
+	}
+	return out, nil
+}
+
+func (s *OfficeMailService) SuggestContacts(ctx context.Context, req *v1.SuggestContactsRequest) (*v1.SuggestContactsResponse, error) {
+	userID, _, err := officeSubject(ctx)
+	if err != nil {
+		return nil, mailErr(err)
+	}
+	hits, err := s.messages.SuggestContacts(ctx, userID, req.GetQ(), int(req.GetLimit()))
+	if err != nil {
+		return nil, mailErr(err)
+	}
+	out := &v1.SuggestContactsResponse{Items: make([]*v1.MailContact, 0, len(hits))}
+	for _, h := range hits {
+		out.Items = append(out.Items, &v1.MailContact{Name: h.Name, Address: h.Address, Count: int32(h.Count)})
+	}
+	return out, nil
+}
+
+func (s *OfficeMailService) ListBlockedSenders(ctx context.Context, _ *emptypb.Empty) (*v1.ListBlockedSendersResponse, error) {
+	userID, _, err := officeSubject(ctx)
+	if err != nil {
+		return nil, mailErr(err)
+	}
+	list, err := s.messages.ListBlocked(ctx, userID)
+	if err != nil {
+		return nil, mailErr(err)
+	}
+	return &v1.ListBlockedSendersResponse{Addresses: list}, nil
+}
+
+func (s *OfficeMailService) BlockSender(ctx context.Context, req *v1.BlockSenderRequest) (*v1.BlockSenderResponse, error) {
+	userID, _, err := officeSubject(ctx)
+	if err != nil {
+		return nil, mailErr(err)
+	}
+	n, err := s.messages.Block(ctx, userID, req.GetAddress())
+	if err != nil {
+		return nil, mailErr(err)
+	}
+	return &v1.BlockSenderResponse{Marked: n}, nil
+}
+
+func (s *OfficeMailService) UnblockSender(ctx context.Context, req *v1.BlockSenderRequest) (*emptypb.Empty, error) {
+	userID, _, err := officeSubject(ctx)
+	if err != nil {
+		return nil, mailErr(err)
+	}
+	if err := s.messages.Unblock(ctx, userID, req.GetAddress()); err != nil {
+		return nil, mailErr(err)
+	}
+	return &emptypb.Empty{}, nil
 }
 
 func mailPresetToProto(p *office.MailProviderPreset, how string) *v1.MailProviderInfo {

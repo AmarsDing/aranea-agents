@@ -8,12 +8,22 @@ import {
   displayStatus,
   endOffsetDays,
   gridStart,
+  addExdate,
+  buildRRule,
+  layoutLanes,
+  lunarLabel,
+  parseIcs,
+  parseRepeat,
   monthCells,
   monthPlanCounts,
   monthStats,
   nextStatus,
   parseDrafts,
+  movedRange,
   rangeFromForm,
+  sameTimeOn,
+  weekDays,
+  weekStart,
 } from '../model';
 
 const local = (y: number, m: number, d: number, h = 0, min = 0) => new Date(y, m - 1, d, h, min).toISOString();
@@ -34,6 +44,12 @@ function ev(over: Partial<OfficeEventRow> = {}): OfficeEventRow {
     status: 'todo',
     all_day: false,
     outcome: '',
+    location: '',
+    url: '',
+    color: '',
+    rrule: '',
+    exdates: '',
+    recurrence_day: '',
     ...over,
   };
 }
@@ -165,5 +181,98 @@ describe('schedule model', () => {
       local(2026, 11, 20, 18),
     ]);
     expect(rangeFromForm({ date: 'bad', start: '09:00', end: '10:00', allDay: false })).toBeNull();
+  });
+});
+
+describe('周视图', () => {
+  it('周一起算；一周 7 天', () => {
+    const sun = new Date(2026, 10, 22, 15); // 周日
+    expect(dayKey(weekStart(sun))).toBe('2026-11-16');
+    expect(dayKey(weekStart(new Date(2026, 10, 16)))).toBe('2026-11-16');
+    expect(weekDays(weekStart(sun))).toEqual([
+      '2026-11-16',
+      '2026-11-17',
+      '2026-11-18',
+      '2026-11-19',
+      '2026-11-20',
+      '2026-11-21',
+      '2026-11-22',
+    ]);
+  });
+
+  it('重叠的并排、不重叠的各占整宽', () => {
+    // 9-10、9:30-11、10-10:30 互相串成一簇 → 两道；12-13 自己一簇
+    const r = layoutLanes([
+      { start: 540, end: 600 },
+      { start: 570, end: 660 },
+      { start: 600, end: 630 },
+      { start: 720, end: 780 },
+    ]);
+    expect(r).toEqual([
+      { lane: 0, lanes: 2 },
+      { lane: 1, lanes: 2 },
+      { lane: 0, lanes: 2 },
+      { lane: 0, lanes: 1 },
+    ]);
+    expect(layoutLanes([])).toEqual([]);
+  });
+
+  it('拖动改期保持时长；换天保持时刻', () => {
+    const ev = { start_at: local(2026, 11, 20, 9), end_at: local(2026, 11, 20, 10, 30) };
+    expect(movedRange(ev, new Date(2026, 10, 21, 14))).toEqual([local(2026, 11, 21, 14), local(2026, 11, 21, 15, 30)]);
+    expect(sameTimeOn(ev, '2026-11-25').toISOString()).toBe(local(2026, 11, 25, 9));
+  });
+});
+
+describe('重复、导入与农历', () => {
+  it('重复规则双向', () => {
+    expect(buildRRule('', { kind: 'never' }, 1)).toBe('');
+    expect(buildRRule('WEEKDAYS', { kind: 'never' }, 1)).toBe('FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR');
+    expect(buildRRule('WEEKLY', { kind: 'until', day: '2026-12-31' }, 5)).toBe('FREQ=WEEKLY;BYDAY=FR;UNTIL=20261231');
+    expect(buildRRule('DAILY', { kind: 'count', n: 10 }, 0)).toBe('FREQ=DAILY;COUNT=10');
+    expect(parseRepeat('FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR;UNTIL=20261231')).toEqual({
+      freq: 'WEEKDAYS',
+      end: { kind: 'until', day: '2026-12-31' },
+    });
+    expect(parseRepeat('FREQ=MONTHLY;COUNT=3')).toEqual({ freq: 'MONTHLY', end: { kind: 'count', n: 3 } });
+    expect(addExdate('2026-11-20', '2026-11-18')).toBe('2026-11-18,2026-11-20');
+    expect(addExdate('2026-11-20', '2026-11-20')).toBe('2026-11-20');
+  });
+
+  it('解析 .ics：折行、全天、UTC、转义、没有结束时间', () => {
+    const ics = [
+      'BEGIN:VCALENDAR',
+      'BEGIN:VEVENT',
+      'SUMMARY:周会\\, 第一次',
+      'DTSTART:20261120T010000Z',
+      'DTEND:20261120T020000Z',
+      'DESCRIPTION:第一行\\n第',
+      ' 二行',
+      'RRULE:FREQ=WEEKLY;BYDAY=FR',
+      'END:VEVENT',
+      'BEGIN:VEVENT',
+      'SUMMARY:出差',
+      'DTSTART;VALUE=DATE:20261123',
+      'END:VEVENT',
+      'END:VCALENDAR',
+    ].join('\r\n');
+    const evs = parseIcs(ics);
+    expect(evs).toHaveLength(2);
+    expect(evs[0]).toMatchObject({
+      title: '周会, 第一次',
+      note: '第一行\n第二行',
+      allDay: false,
+      rrule: 'FREQ=WEEKLY;BYDAY=FR',
+    });
+    expect(evs[0]!.start.toISOString()).toBe('2026-11-20T01:00:00.000Z');
+    expect(evs[1]!.allDay).toBe(true);
+    expect(evs[1]!.end.getTime() - evs[1]!.start.getTime()).toBe(86_400_000);
+  });
+
+  it('农历与节日', () => {
+    expect(lunarLabel(new Date(2026, 1, 17))).toEqual({ text: '春节', festival: true });
+    expect(lunarLabel(new Date(2026, 1, 16))).toEqual({ text: '除夕', festival: true });
+    expect(lunarLabel(new Date(2026, 9, 1))).toEqual({ text: '国庆节', festival: true });
+    expect(lunarLabel(new Date(2026, 10, 20)).text).toBe('十二');
   });
 });

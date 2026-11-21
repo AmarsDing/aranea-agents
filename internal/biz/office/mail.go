@@ -92,6 +92,10 @@ type MailAccount struct {
 	Status    string
 	LastError string // 错误类别（见 MailErrKind*），不存上游原文
 	SyncSince *time.Time
+	// JunkLastUID 服务器垃圾邮件文件夹的同步游标（UID 空间与收件箱各自独立）。
+	JunkLastUID int64
+	Signature   string // 签名（纯文本），写信时前端带上
+	SaveSent    bool   // 发出的信同时 APPEND 一份到服务器「已发送」
 }
 
 // 账号连接状态。
@@ -106,6 +110,9 @@ const (
 	MailFolderInbox  = "inbox"
 	MailFolderSent   = "sent"
 	MailFolderDrafts = "drafts"
+	// MailFolderJunk 从服务器垃圾邮件文件夹同步来的（UID 属于那个文件夹）。用户点
+	// 「不是垃圾邮件」只清 Spam、folder 不变，收件箱视图照样列出。
+	MailFolderJunk = "junk"
 )
 
 // MailMessage 邮件（Snippet 写时物化：正文前 200 字符，列表免读全文）。
@@ -130,7 +137,11 @@ type MailMessage struct {
 	Seen       bool
 	Flagged    bool
 	ArchivedAt *time.Time
-	Folder     string // inbox | sent | drafts（空按 inbox）
+	Folder     string // inbox | sent | drafts | junk（空按 inbox）
+	TrashedAt  *time.Time // 非空 = 在「已删除」里，可恢复
+	Spam       bool       // 垃圾邮件（服务器垃圾箱同步来的，或用户标的）
+	Labels     string     // 自己加的标签，逗号分隔
+	SendAt     *time.Time // 定时发送的草稿：到点发出
 	BodyHTML   string // 入库前已清洗（sanitizeMailHTML）
 	MessageIDHdr  string
 	ReferencesHdr string
@@ -212,6 +223,8 @@ type MailAccountRepo interface {
 	ListAllMailAccounts(ctx context.Context) ([]*MailAccount, error)
 	// UpdateMailSyncCursor 同步成功后置 last_uid/last_sync_at。
 	UpdateMailSyncCursor(ctx context.Context, id string, lastUID int64, at time.Time) error
+	// UpdateMailJunkCursor 垃圾邮件文件夹同步后置 junk_last_uid。
+	UpdateMailJunkCursor(ctx context.Context, id string, lastUID int64) error
 	// UpdateMailAccountStatus 记录最近一次连接结果（同步 / 测试）。
 	UpdateMailAccountStatus(ctx context.Context, id, status, lastErr string) error
 }
@@ -247,6 +260,25 @@ type MailMessageRepo interface {
 	CountMailbox(ctx context.Context, userID string) (*MailboxCounts, error)
 	// MarkMailMessages 批量标已读 / 星标 / 归档（nil = 不改）；返回改到的行数。
 	MarkMailMessages(ctx context.Context, userID string, ids []string, m MailMark) (int64, error)
+	// ListThread 同一会话：主题去掉 Re: / 回复: 等前缀后等于 subjectKey（小写）的本人邮件（不含已删除），按时间正序。
+	ListThread(ctx context.Context, userID, subjectKey string, limit int) ([]*MailMessage, error)
+	// ListRecentAddressFields 最近 limit 封信的发件人 / 收件人 / 抄送原文（收件人联想用）。
+	ListRecentAddressFields(ctx context.Context, userID string, limit int) ([]string, error)
+	// MarkViewSeen 视图（可限定账户）里的未读全部标已读，返回改到的 id。
+	MarkViewSeen(ctx context.Context, userID, view, accountID string) ([]string, error)
+	// PurgeTrashedBefore 删掉在「已删除」里放了超过期限的信（跨用户，后台任务用）。
+	PurgeTrashedBefore(ctx context.Context, before time.Time) (int64, error)
+	// ListDueScheduledDrafts 到点的定时草稿（跨用户，后台任务用）。
+	ListDueScheduledDrafts(ctx context.Context, now time.Time, limit int) ([]*MailMessage, error)
+	// ClearDraftSendAt 定时发送失败：退回普通草稿。
+	ClearDraftSendAt(ctx context.Context, id string) error
+	// 拒收名单（地址小写）。BlockSender 顺手把这个发件人已有的收件箱邮件标成垃圾邮件，返回标了几封。
+	ListBlockedSenders(ctx context.Context, userID string) ([]string, error)
+	BlockSender(ctx context.Context, userID, address string) (int64, error)
+	UnblockSender(ctx context.Context, userID, address string) error
+	// PurgeMailMessages 彻底删除「已删除」或「垃圾邮件」里的信：ids 空 = 整个视图清空，
+	// 非空 = 只删其中这些（不在该视图里的 id 不动）。返回删掉的行数。
+	PurgeMailMessages(ctx context.Context, userID, view string, ids []string) (int64, error)
 	// SaveMailDraftTx 单事务：删掉旧草稿（replaceID 非空时）再插入新草稿（含附件）。
 	SaveMailDraftTx(ctx context.Context, userID, replaceID string, m *MailMessage) error
 }
@@ -261,6 +293,8 @@ const (
 	MailViewSent        = "sent"
 	MailViewDrafts      = "drafts"
 	MailViewArchived    = "archived"
+	MailViewSpam        = "spam"  // 垃圾邮件（不含已删除的）
+	MailViewTrash       = "trash" // 已删除
 )
 
 // MailQuery 邮件页列表查询。
@@ -268,6 +302,7 @@ type MailQuery struct {
 	View      string // 空 = inbox
 	AccountID string
 	Keyword   string
+	Label     string // 只看带这个标签的
 	Page      int
 	PageSize  int
 }
@@ -281,6 +316,9 @@ type MailboxCounts struct {
 	Sent         int64
 	Drafts       int64
 	Archived     int64
+	SpamUnread   int64
+	Trash        int64
+	Labels       []MailLabelCount
 	AccountUnread map[string]int64
 }
 
@@ -289,6 +327,16 @@ type MailMark struct {
 	Seen     *bool
 	Flagged  *bool
 	Archived *bool
+	Trashed  *bool // true = 移到「已删除」，false = 恢复
+	Spam     *bool
+	AddLabel    string
+	RemoveLabel string
+}
+
+// MailLabelCount 左栏标签计数。
+type MailLabelCount struct {
+	Name  string
+	Count int64
 }
 
 // MailAttachmentRepo 附件仓储。

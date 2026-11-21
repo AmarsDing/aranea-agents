@@ -95,9 +95,18 @@
   padding: var(--nt-space-3) 10px
   overflow-y: auto
 
-.ml-nav__compose
-  width: 100%
+.ml-nav__top
+  display: flex
+  gap: 6px
   margin-bottom: var(--nt-space-3)
+
+.ml-nav__compose
+  flex: 1
+  min-width: 0
+
+.ml-nav__fetch
+  flex: none
+  color: var(--nt-accent)
 
 .ml-nv
   display: flex
@@ -208,6 +217,26 @@
 .ml-list__viewsel
   display: none
 
+.ml-list__all
+  flex: none
+
+.ml-list__seln
+  white-space: nowrap
+
+// 已删除 / 垃圾邮件：说明 + 清空
+.ml-list__bin
+  display: flex
+  align-items: center
+  gap: 6px
+  padding: 4px 4px 4px 10px
+  background: var(--nt-tile-bg)
+  border-radius: var(--nt-radius-m)
+  color: var(--nt-text-3)
+
+  .ml-hint
+    flex: 1
+    min-width: 0
+
 .ml-search
   display: flex
   flex: 1
@@ -256,16 +285,86 @@
   gap: 10px
   width: 100%
   padding: 10px
+  border-radius: var(--nt-radius-m)
+
+  &:hover
+    background: var(--nt-tile-hover)
+
+.ml-msg--sel
+  background: var(--nt-tile-bg)
+
+// 整行可点：打开按钮的点击区用 ::before 铺满整行，复选框和快捷按钮压在它上面
+.ml-msg__open
+  display: flex
+  flex: 1
+  min-width: 0
+  padding: 0
   background: none
   border: 0
-  border-radius: var(--nt-radius-m)
   color: inherit
   font: inherit
   text-align: left
   cursor: pointer
 
-  &:hover
-    background: var(--nt-tile-hover)
+  &::before
+    position: absolute
+    inset: 0
+    border-radius: inherit
+    content: ''
+
+  &:focus-visible
+    outline: none
+
+    &::before
+      outline: 2px solid var(--nt-focus-ring)
+      outline-offset: -2px
+
+// 头像位置在悬停 / 已选 / 多选中时换成复选框（Outlook 的做法，不多占一列）
+.ml-msg__ck
+  position: absolute
+  top: 10px
+  left: 10px
+  z-index: 1
+  display: grid
+  place-items: center
+  width: 30px
+  height: 30px
+  opacity: 0
+
+.ml-msg:hover,
+.ml-msg:focus-within,
+.ml-msg--sel,
+.ml-list__body--sel .ml-msg
+  .ml-msg__ck
+    opacity: 1
+
+  .ml-av
+    visibility: hidden
+
+// 悬停时右上角的快捷操作（盖住时间）
+.ml-msg__acts
+  position: absolute
+  top: 4px
+  right: 6px
+  z-index: 1
+  display: none
+  padding: 0 2px
+  background: var(--nt-data-bg)
+  border: 1px solid var(--nt-border-1)
+  border-radius: var(--nt-radius-pill)
+  box-shadow: var(--nt-shadow-depth)
+
+.ml-msg:hover .ml-msg__acts,
+.ml-msg:focus-within .ml-msg__acts
+  display: flex
+
+// 触屏没有悬停：一直显示复选框
+@media (hover: none)
+  .ml-msg__ck
+    opacity: 1
+
+  .ml-msg .ml-av
+    visibility: hidden
 
 .ml-msg--on,
 .ml-msg--on:hover
@@ -805,3 +904,147 @@
 
   .ml-wiz__grid
     grid-template-columns: minmax(0, 1fr) 80px
+
+// 批量操作时按钮多，收紧间距免得溢出（列表栏 340–408px）
+.ml-list__bar--bulk
+  gap: 0
+
+  .ml-list__seln
+    margin-left: 6px
+
+// ——— 第二轮：标签、会话、收件人联想、撤销 / 定时发送、设置 ———
+.ml-chip--on
+  background: var(--nt-accent-soft)
+  color: var(--nt-text-0)
+
+.ml-read__labels
+  display: flex
+  flex-wrap: wrap
+  gap: 6px
+  margin-top: var(--nt-space-2)
+
+.ml-thread
+  margin-top: var(--nt-space-2)
+
+  .ml-sect
+    margin-left: 0
+
+.ml-thread__it
+  display: grid
+  grid-template-columns: 120px minmax(0, 1fr) auto
+  gap: 10px
+  align-items: center
+  width: 100%
+  min-height: 30px
+  padding: 0 8px
+  background: none
+  border: 0
+  border-radius: var(--nt-radius-s)
+  color: var(--nt-text-2)
+  font: inherit
+  font-size: var(--nt-fs-caption)
+  text-align: left
+  cursor: pointer
+
+  &:hover
+    background: var(--nt-tile-hover)
+
+.ml-thread__it--on
+  background: var(--nt-accent-soft)
+  color: var(--nt-text-0)
+  cursor: default
+
+.ml-thread__who,
+.ml-thread__snip
+  overflow: hidden
+  text-overflow: ellipsis
+  white-space: nowrap
+
+.ml-thread__who
+  color: var(--nt-text-1)
+
+.ml-addr
+  position: relative
+  flex: 1
+  min-width: 0
+
+.ml-addr__list
+  position: absolute
+  top: 100%
+  right: 0
+  left: 0
+  z-index: 3
+  margin: 2px 0 0
+  padding: 4px
+  list-style: none
+  background: var(--nt-data-bg)
+  border: 1px solid var(--nt-border-1)
+  border-radius: var(--nt-radius-m)
+  box-shadow: var(--nt-shadow-depth)
+
+.ml-addr__opt
+  display: flex
+  align-items: baseline
+  gap: 8px
+  padding: 6px 8px
+  border-radius: var(--nt-radius-s)
+  color: var(--nt-text-1)
+  cursor: pointer
+
+  b
+    color: var(--nt-text-0)
+    font-weight: 600
+
+  span
+    color: var(--nt-text-3)
+    font-size: var(--nt-fs-caption)
+
+.ml-addr__opt--on,
+.ml-addr__opt:hover
+  background: var(--nt-accent-soft)
+
+.ml-cmp__rich
+  flex: 1
+  min-height: 0
+  overflow-y: auto
+  background: transparent
+  border-top: 1px solid var(--nt-border-1)
+
+.ml-cmp__undo,
+.ml-cmp__sched
+  display: flex
+  flex-wrap: wrap
+  align-items: center
+  gap: 6px
+  padding: 6px var(--nt-space-3)
+  background: var(--nt-accent-soft)
+  color: var(--nt-text-0)
+  font-size: var(--nt-fs-caption)
+
+.ml-cmp__dt
+  height: 28px
+  padding: 0 6px
+  background: var(--nt-field-bg)
+  border: 1px solid var(--nt-field-border)
+  border-radius: var(--nt-radius-s)
+  color: var(--nt-text-0)
+  font: inherit
+  font-family: var(--nt-font-mono)
+  color-scheme: dark light
+
+.ml-set
+  display: flex
+  flex-direction: column
+  gap: var(--nt-space-3)
+
+  .ml-sect
+    margin-left: 0
+
+.ml-set__row
+  display: flex
+  align-items: center
+  gap: var(--nt-space-2)
+
+.ml-set__grow
+  flex: 1
+  min-width: 0

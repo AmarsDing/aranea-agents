@@ -36,6 +36,10 @@ function msg(over: Partial<MailMessageRow> = {}): MailMessageRow {
     flagged: false,
     archived: false,
     folder: 'inbox',
+    trashed: false,
+    spam: false,
+    labels: [],
+    send_at: '',
     ...over,
   };
 }

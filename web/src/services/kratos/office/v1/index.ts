@@ -143,6 +143,8 @@ export type MailAccount = {
   status: string | undefined;
   lastError: string | undefined;
   syncSince: wellKnownTimestamp | undefined;
+  signature: string | undefined;
+  saveSent: boolean | undefined;
 };
 
 export type CreateAccountRequest = {
@@ -166,6 +168,8 @@ export type CreateAccountRequest = {
   smtpPort: number | undefined;
   smtpTls: TlsMode | undefined;
   syncSince: wellKnownTimestamp | undefined;
+  signature: string | undefined;
+  saveSent: boolean | undefined;
 };
 
 export type UpdateAccountRequest = {
@@ -183,6 +187,8 @@ export type UpdateAccountRequest = {
   smtpHost: string | undefined;
   smtpPort: number | undefined;
   smtpTls: TlsMode | undefined;
+  signature?: string;
+  saveSent?: boolean;
 };
 
 export type GetAccountRequest = {
@@ -230,6 +236,10 @@ export type MailMessage = {
   flagged: boolean | undefined;
   archived: boolean | undefined;
   folder: string | undefined;
+  trashed: boolean | undefined;
+  spam: boolean | undefined;
+  labels: string[] | undefined;
+  sendAt: wellKnownTimestamp | undefined;
 };
 
 export type ListMessagesRequest = {
@@ -237,9 +247,10 @@ export type ListMessagesRequest = {
   quadrant: string | undefined;
   page: number | undefined;
   pageSize: number | undefined;
-  // 视图：inbox（默认）| unread | flagged | task | attachments | sent | drafts | archived
+  // 视图：inbox（默认）| unread | flagged | task | attachments | sent | drafts | archived | spam | trash
   view: string | undefined;
   keyword: string | undefined;
+  label: string | undefined;
 };
 
 export type ListMessagesResponse = {
@@ -270,11 +281,19 @@ export type MailboxSummary = {
   drafts: number | undefined;
   archived: number | undefined;
   accounts: MailAccountUnread[] | undefined;
+  spamUnread: number | undefined;
+  trash: number | undefined;
+  labels: MailLabelCount[] | undefined;
 };
 
 export type MailAccountUnread = {
   accountId: string | undefined;
   unread: number | undefined;
+};
+
+export type MailLabelCount = {
+  name: string | undefined;
+  count: number | undefined;
 };
 
 // MarkMessagesRequest 批量标记；不传 = 不改。已读 / 星标会尽力回写到邮箱服务器。
@@ -285,10 +304,67 @@ export type MarkMessagesRequest = {
   seen?: boolean;
   flagged?: boolean;
   archived?: boolean;
+  trashed?: boolean;
+  spam?: boolean;
+  addLabel: string | undefined;
+  removeLabel: string | undefined;
+};
+
+// MarkAllReadRequest 把一个视图（可限定账户）里的未读全部标为已读。
+export type MarkAllReadRequest = {
+  view: string | undefined;
+  accountId: string | undefined;
+};
+
+export type ListThreadRequest = {
+  //
+  // Behaviors: REQUIRED
+  id: string | undefined;
+};
+
+export type SuggestContactsRequest = {
+  q: string | undefined;
+  limit: number | undefined;
+};
+
+export type MailContact = {
+  name: string | undefined;
+  address: string | undefined;
+  count: number | undefined;
+};
+
+export type SuggestContactsResponse = {
+  items: MailContact[] | undefined;
+};
+
+export type BlockSenderRequest = {
+  //
+  // Behaviors: REQUIRED
+  address: string | undefined;
+};
+
+export type BlockSenderResponse = {
+  marked: number | undefined;
+};
+
+export type ListBlockedSendersResponse = {
+  addresses: string[] | undefined;
 };
 
 export type MarkMessagesResponse = {
   updated: number | undefined;
+};
+
+// PurgeMessagesRequest 彻底删除：只认 trash / spam 两个视图。ids 空 = 清空整个视图。
+export type PurgeMessagesRequest = {
+  //
+  // Behaviors: REQUIRED
+  view: string | undefined;
+  ids: string[] | undefined;
+};
+
+export type PurgeMessagesResponse = {
+  deleted: number | undefined;
 };
 
 // MailProviderInfo 服务商预设（授权码怎么生成的说明在前端文案里，按 key 取）。
@@ -357,6 +433,7 @@ export type SaveDraftRequest = {
   replyToId: string | undefined;
   forwardOfId: string | undefined;
   attachments: OutgoingAttachment[] | undefined;
+  bodyHtml: string | undefined;
 };
 
 export type SaveDraftResponse = {
@@ -446,6 +523,8 @@ export type SendMailRequest = {
   forwardOfId: string | undefined;
   draftId: string | undefined;
   attachments: OutgoingAttachment[] | undefined;
+  bodyHtml: string | undefined;
+  sendAt: wellKnownTimestamp | undefined;
 };
 
 export type SendMailResponse = {
@@ -604,6 +683,17 @@ export interface OfficeMailService {
   SaveDraft(request: SaveDraftRequest): Promise<SaveDraftResponse>;
   GetMailboxSummary(request: wellKnownEmpty): Promise<MailboxSummary>;
   MarkMessages(request: MarkMessagesRequest): Promise<MarkMessagesResponse>;
+  MarkAllRead(request: MarkAllReadRequest): Promise<MarkMessagesResponse>;
+  // ListThread 同一会话（主题去掉 Re: / 回复: 等前缀后相同）的往来，按时间正序。
+  ListThread(request: ListThreadRequest): Promise<ListMessagesResponse>;
+  // SuggestContacts 写信时的收件人联想（从来往邮件里统计）。
+  SuggestContacts(request: SuggestContactsRequest): Promise<SuggestContactsResponse>;
+  // 拒收名单：名单里的发件人来信直接进垃圾邮件。
+  ListBlockedSenders(request: wellKnownEmpty): Promise<ListBlockedSendersResponse>;
+  BlockSender(request: BlockSenderRequest): Promise<BlockSenderResponse>;
+  UnblockSender(request: BlockSenderRequest): Promise<wellKnownEmpty>;
+  // PurgeMessages 彻底删除「已删除」/「垃圾邮件」里的信（清空或删选中的几封）。
+  PurgeMessages(request: PurgeMessagesRequest): Promise<PurgeMessagesResponse>;
   DetectProvider(request: DetectProviderRequest): Promise<MailProviderInfo>;
   ListProviders(request: wellKnownEmpty): Promise<ListProvidersResponse>;
   TestAccount(request: TestAccountRequest): Promise<TestAccountResponse>;
@@ -743,6 +833,9 @@ export function createOfficeMailServiceClient(
       }
       if (request.keyword) {
         queryParams.push(`keyword=${encodeURIComponent(request.keyword.toString())}`)
+      }
+      if (request.label) {
+        queryParams.push(`label=${encodeURIComponent(request.label.toString())}`)
       }
       let uri = path;
       if (queryParams.length > 0) {
@@ -981,6 +1074,134 @@ export function createOfficeMailServiceClient(
         service: "OfficeMailService",
         method: "MarkMessages",
       }) as Promise<MarkMessagesResponse>;
+    },
+    MarkAllRead(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      const path = `v1/office/mail/messages:markAllRead`; // eslint-disable-line quotes
+      const body = JSON.stringify(request);
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "OfficeMailService",
+        method: "MarkAllRead",
+      }) as Promise<MarkMessagesResponse>;
+    },
+    ListThread(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      if (!request.id) {
+        throw new Error("missing required field request.id");
+      }
+      const path = `v1/office/mail/messages/${request.id}/thread`; // eslint-disable-line quotes
+      const body = null;
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "OfficeMailService",
+        method: "ListThread",
+      }) as Promise<ListMessagesResponse>;
+    },
+    SuggestContacts(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      const path = `v1/office/mail/contacts`; // eslint-disable-line quotes
+      const body = null;
+      const queryParams: string[] = [];
+      if (request.q) {
+        queryParams.push(`q=${encodeURIComponent(request.q.toString())}`)
+      }
+      if (request.limit) {
+        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`)
+      }
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "OfficeMailService",
+        method: "SuggestContacts",
+      }) as Promise<SuggestContactsResponse>;
+    },
+    ListBlockedSenders(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      const path = `v1/office/mail/blocked`; // eslint-disable-line quotes
+      const body = null;
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "OfficeMailService",
+        method: "ListBlockedSenders",
+      }) as Promise<ListBlockedSendersResponse>;
+    },
+    BlockSender(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      const path = `v1/office/mail/blocked`; // eslint-disable-line quotes
+      const body = JSON.stringify(request);
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "OfficeMailService",
+        method: "BlockSender",
+      }) as Promise<BlockSenderResponse>;
+    },
+    UnblockSender(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      const path = `v1/office/mail/blocked:remove`; // eslint-disable-line quotes
+      const body = JSON.stringify(request);
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "OfficeMailService",
+        method: "UnblockSender",
+      }) as Promise<wellKnownEmpty>;
+    },
+    PurgeMessages(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      const path = `v1/office/mail/messages:purge`; // eslint-disable-line quotes
+      const body = JSON.stringify(request);
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "OfficeMailService",
+        method: "PurgeMessages",
+      }) as Promise<PurgeMessagesResponse>;
     },
     DetectProvider(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/office/mail/providers:detect`; // eslint-disable-line quotes
@@ -1431,6 +1652,14 @@ export type OfficeEvent = {
   status: string | undefined;
   allDay: boolean | undefined;
   outcome: string | undefined;
+  location: string | undefined;
+  url: string | undefined;
+  color: string | undefined;
+  // 重复规则（RFC 5545 RRULE 的子集）：FREQ=DAILY|WEEKLY|MONTHLY|YEARLY;INTERVAL=n;BYDAY=MO,TU…;COUNT=n;UNTIL=YYYYMMDD
+  rrule: string | undefined;
+  exdates: string | undefined;
+  // 列表按范围展开重复日程时，这一项是哪天的那一次（YYYY-MM-DD）；非空 = 展开出来的一次，id 是系列的 id
+  recurrenceDay: string | undefined;
 };
 
 export type CreateEventRequest = {
@@ -1451,6 +1680,10 @@ export type CreateEventRequest = {
   status: string | undefined;
   allDay: boolean | undefined;
   outcome: string | undefined;
+  location: string | undefined;
+  url: string | undefined;
+  color: string | undefined;
+  rrule: string | undefined;
 };
 
 export type UpdateEventRequest = {
@@ -1468,6 +1701,22 @@ export type UpdateEventRequest = {
   status?: string;
   allDay?: boolean;
   outcome?: string;
+  location?: string;
+  url?: string;
+  color?: string;
+  rrule?: string;
+  exdates?: string;
+};
+
+export type SearchEventsRequest = {
+  //
+  // Behaviors: REQUIRED
+  keyword: string | undefined;
+  limit: number | undefined;
+};
+
+export type SearchEventsResponse = {
+  items: OfficeEvent[] | undefined;
 };
 
 export type GetEventRequest = {
@@ -1605,6 +1854,8 @@ export interface OfficeScheduleService {
   DeleteEvent(request: DeleteEventRequest): Promise<wellKnownEmpty>;
   GetEvent(request: GetEventRequest): Promise<OfficeEvent>;
   ListEventsRange(request: ListEventsRangeRequest): Promise<ListEventsRangeResponse>;
+  // SearchEvents 按关键字找日程（全部时间；重复日程按系列返回一条）。
+  SearchEvents(request: SearchEventsRequest): Promise<SearchEventsResponse>;
   ScheduleTask(request: ScheduleTaskRequest): Promise<OfficeEvent>;
   ListTaskEvents(request: ListTaskEventsRequest): Promise<ListTaskEventsResponse>;
   SubmitScheduleDraft(request: SubmitScheduleDraftRequest): Promise<SubmitScheduleDraftResponse>;
@@ -1722,6 +1973,29 @@ export function createOfficeScheduleServiceClient(
         service: "OfficeScheduleService",
         method: "ListEventsRange",
       }) as Promise<ListEventsRangeResponse>;
+    },
+    SearchEvents(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      const path = `v1/office/events:search`; // eslint-disable-line quotes
+      const body = null;
+      const queryParams: string[] = [];
+      if (request.keyword) {
+        queryParams.push(`keyword=${encodeURIComponent(request.keyword.toString())}`)
+      }
+      if (request.limit) {
+        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`)
+      }
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "OfficeScheduleService",
+        method: "SearchEvents",
+      }) as Promise<SearchEventsResponse>;
     },
     ScheduleTask(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/office/events:scheduleTask`; // eslint-disable-line quotes

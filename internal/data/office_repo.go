@@ -72,13 +72,13 @@ func scanOne(ctx context.Context, db execer, query string, args []any, dest ...a
 
 // ---------- 事件 ----------
 
-const officeEventCols = `id, workspace_id, user_id, task_ref, task_title, title, note, start_at, end_at, timezone, reminder_minutes, source, reminded_at, created_at, updated_at, kind, status, all_day, outcome`
+const officeEventCols = `id, workspace_id, user_id, task_ref, task_title, title, note, start_at, end_at, timezone, reminder_minutes, source, reminded_at, created_at, updated_at, kind, status, all_day, outcome, location, url, color, rrule, exdates`
 
 func scanOfficeEvent(row interface{ Scan(...any) error }) (*office.Event, error) {
 	var ev office.Event
 	if err := row.Scan(&ev.ID, &ev.WorkspaceID, &ev.UserID, &ev.TaskRef, &ev.TaskTitle, &ev.Title, &ev.Note,
 		&ev.StartAt, &ev.EndAt, &ev.Timezone, &ev.ReminderMinutes, &ev.Source, &ev.RemindedAt, &ev.CreatedAt, &ev.UpdatedAt,
-		&ev.Kind, &ev.Status, &ev.AllDay, &ev.Outcome); err != nil {
+		&ev.Kind, &ev.Status, &ev.AllDay, &ev.Outcome, &ev.Location, &ev.URL, &ev.Color, &ev.RRule, &ev.ExDates); err != nil {
 		return nil, err
 	}
 	return &ev, nil
@@ -100,10 +100,10 @@ func (r *OfficeRepo) insertEvent(ctx context.Context, db execer, ev *office.Even
 		ev.Status = office.StatusTodo
 	}
 	_, err := db.ExecContext(ctx, r.data.Dialect().RenumberPlaceholders(
-		`INSERT INTO office_events (`+officeEventCols+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`),
+		`INSERT INTO office_events (`+officeEventCols+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`),
 		ev.ID, ev.WorkspaceID, ev.UserID, ev.TaskRef, ev.TaskTitle, ev.Title, ev.Note,
 		ev.StartAt, ev.EndAt, ev.Timezone, ev.ReminderMinutes, ev.Source, ev.RemindedAt, ev.CreatedAt, ev.UpdatedAt,
-		ev.Kind, ev.Status, ev.AllDay, ev.Outcome)
+		ev.Kind, ev.Status, ev.AllDay, ev.Outcome, ev.Location, ev.URL, ev.Color, ev.RRule, ev.ExDates)
 	return err
 }
 
@@ -122,10 +122,10 @@ func (r *OfficeRepo) UpdateEvent(ctx context.Context, ev *office.Event) error {
 	}
 	res, err := db.ExecContext(ctx, r.data.Dialect().RenumberPlaceholders(
 		`UPDATE office_events SET title=?, note=?, start_at=?, end_at=?, timezone=?, reminder_minutes=?, reminded_at=?,
-		        kind=?, status=?, all_day=?, outcome=?, updated_at=NOW()
+		        kind=?, status=?, all_day=?, outcome=?, location=?, url=?, color=?, rrule=?, exdates=?, updated_at=NOW()
 		 WHERE id=? AND user_id=?`),
 		ev.Title, ev.Note, ev.StartAt, ev.EndAt, ev.Timezone, ev.ReminderMinutes, ev.RemindedAt,
-		ev.Kind, ev.Status, ev.AllDay, ev.Outcome, ev.ID, ev.UserID)
+		ev.Kind, ev.Status, ev.AllDay, ev.Outcome, ev.Location, ev.URL, ev.Color, ev.RRule, ev.ExDates, ev.ID, ev.UserID)
 	if err != nil {
 		return err
 	}
@@ -172,15 +172,20 @@ func (r *OfficeRepo) GetEvent(ctx context.Context, id, userID string) (*office.E
 }
 
 // ListEventsRange 范围聚合（相交判定与 workbench listEvents 同式：
-// start_at < 窗尾 AND end_at > 窗头）。
+// start_at < 窗尾 AND end_at > 窗头）。重复系列只要首次开始早于窗尾就带回系列本身，由 biz 按范围展开。
 func (r *OfficeRepo) ListEventsRange(ctx context.Context, userID string, start, end time.Time) ([]*office.Event, error) {
+	return r.queryEvents(ctx,
+		`SELECT `+officeEventCols+` FROM office_events WHERE user_id=?
+		   AND ((rrule='' AND start_at<? AND end_at>?) OR (rrule<>'' AND start_at<?)) ORDER BY start_at`,
+		userID, end, start, end)
+}
+
+func (r *OfficeRepo) queryEvents(ctx context.Context, q string, args ...any) ([]*office.Event, error) {
 	db, err := r.readDB(ctx)
 	if err != nil {
 		return nil, err
 	}
-	rows, err := db.QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(
-		`SELECT `+officeEventCols+` FROM office_events WHERE user_id=? AND start_at<? AND end_at>? ORDER BY start_at`),
-		userID, end, start)
+	rows, err := db.QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(q), args...)
 	if err != nil {
 		return nil, err
 	}
@@ -194,6 +199,27 @@ func (r *OfficeRepo) ListEventsRange(ctx context.Context, userID string, start, 
 		out = append(out, ev)
 	}
 	return out, rows.Err()
+}
+
+// SearchEvents 关键字检索（标题 / 说明 / 完成情况 / 地点）。
+func (r *OfficeRepo) SearchEvents(ctx context.Context, userID, keyword string, limit int) ([]*office.Event, error) {
+	like := "%" + escapeMailLike(keyword) + "%"
+	return r.queryEvents(ctx,
+		`SELECT `+officeEventCols+` FROM office_events WHERE user_id=?
+		   AND (title ILIKE ? OR note ILIKE ? OR outcome ILIKE ? OR location ILIKE ?)
+		 ORDER BY start_at DESC LIMIT ?`,
+		userID, like, like, like, like, limit)
+}
+
+// ListRecurringReminders 带提醒、还没做完的重复计划系列。
+func (r *OfficeRepo) ListRecurringReminders(ctx context.Context, limit int) ([]*office.Event, error) {
+	if limit <= 0 {
+		limit = 200
+	}
+	return r.queryEvents(ctx,
+		`SELECT `+officeEventCols+` FROM office_events
+		 WHERE rrule<>'' AND reminder_minutes>0 AND kind='plan' AND status IN ('todo','doing')
+		 ORDER BY start_at LIMIT ?`, limit)
 }
 
 func (r *OfficeRepo) ListTaskEvents(ctx context.Context, userID, taskRef string) ([]*office.Event, error) {
@@ -230,7 +256,7 @@ func (r *OfficeRepo) CountOverlap(ctx context.Context, userID string, start, end
 // countOverlapOn 在指定 execer（可为事务内连接）上执行重叠计数。
 func (r *OfficeRepo) countOverlapOn(ctx context.Context, db execer, userID string, start, end time.Time, excludeID string) (int, error) {
 	// 只有定了时间段的计划占用时间：工作记录（log）、全天计划不算重叠
-	q := `SELECT count(*) FROM office_events WHERE user_id=? AND kind='plan' AND all_day=FALSE AND NOT (end_at<=? OR start_at>=?)`
+	q := `SELECT count(*) FROM office_events WHERE user_id=? AND kind='plan' AND all_day=FALSE AND rrule='' AND NOT (end_at<=? OR start_at>=?)`
 	args := []any{userID, start, end}
 	if excludeID != "" {
 		q += ` AND id<>?`
@@ -255,7 +281,7 @@ func (r *OfficeRepo) ListDueReminders(ctx context.Context, now time.Time, limit 
 	}
 	rows, err := db.QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(
 		`SELECT `+officeEventCols+` FROM office_events
-		 WHERE reminder_minutes>0 AND reminded_at IS NULL
+		 WHERE reminder_minutes>0 AND reminded_at IS NULL AND rrule=''
 		   AND kind='plan' AND status IN ('todo','doing')
 		   AND start_at - make_interval(mins => reminder_minutes) <= ?
 		 ORDER BY start_at LIMIT ?`), now, limit)
@@ -290,8 +316,13 @@ func (r *OfficeRepo) DeliverReminderTx(ctx context.Context, ev *office.Event, n 
 	delivered := false
 	err := r.data.ExecInTx(ctx, func(txCtx context.Context) error {
 		db := r.data.RWDB().WriteDB(txCtx)
-		res, err := db.ExecContext(txCtx, r.data.Dialect().RenumberPlaceholders(
-			`UPDATE office_events SET reminded_at=? WHERE id=? AND reminded_at IS NULL`), at, ev.ID)
+		q, args := `UPDATE office_events SET reminded_at=? WHERE id=? AND reminded_at IS NULL`, []any{at, ev.ID}
+		if ev.RecurrenceDay != "" {
+			// 重复系列：reminded_at 记已提醒那次的开始时间，只往后推
+			q, args = `UPDATE office_events SET reminded_at=? WHERE id=? AND (reminded_at IS NULL OR reminded_at<?)`,
+				[]any{ev.StartAt, ev.ID, ev.StartAt}
+		}
+		res, err := db.ExecContext(txCtx, r.data.Dialect().RenumberPlaceholders(q), args...)
 		if err != nil {
 			return err
 		}

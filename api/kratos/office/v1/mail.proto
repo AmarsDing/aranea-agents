@@ -61,6 +61,8 @@ message MailAccount {
   string status = 16;     // '' 未检查 | ok | auth_failed | unreachable
   string last_error = 17; // 错误类别：dns | unreachable | tls | auth | protocol
   google.protobuf.Timestamp sync_since = 18; // 首次同步从这天开始；空 = 全部
+  string signature = 19; // 签名（纯文本），写信时自动带上
+  bool save_sent = 20;   // 发出的信同时存一份到服务器的「已发送」（Gmail / Outlook 会自己存，不用开）
 }
 
 message CreateAccountRequest {
@@ -76,6 +78,8 @@ message CreateAccountRequest {
   int32 smtp_port = 10;  // 0 = 按 smtp_tls 默认（465 / 587）
   TlsMode smtp_tls = 11;
   google.protobuf.Timestamp sync_since = 12; // 首次只同步这天之后的；空 = 全部
+  string signature = 13;
+  bool save_sent = 14;
 }
 
 message UpdateAccountRequest {
@@ -91,6 +95,8 @@ message UpdateAccountRequest {
   string smtp_host = 10;
   int32 smtp_port = 11;
   TlsMode smtp_tls = 12;
+  optional string signature = 13;
+  optional bool save_sent = 14;
 }
 
 message GetAccountRequest {
@@ -131,7 +137,11 @@ message MailMessage {
   bool seen = 14;
   bool flagged = 15;
   bool archived = 16;
-  string folder = 17;   // inbox | sent | drafts
+  string folder = 17;   // inbox | sent | drafts | junk（服务器垃圾邮件文件夹同步来的）
+  bool trashed = 18;    // 在「已删除」里
+  bool spam = 19;       // 垃圾邮件
+  repeated string labels = 20; // 自己加的标签
+  google.protobuf.Timestamp send_at = 21; // 定时发送的草稿：到点自动发出；空 = 普通草稿
 }
 
 message ListMessagesRequest {
@@ -139,9 +149,10 @@ message ListMessagesRequest {
   string quadrant = 2;   // 旧口径，已不用
   int32 page = 3;
   int32 page_size = 4; // <=0 默认 50，>200 截 200
-  // 视图：inbox（默认）| unread | flagged | task | attachments | sent | drafts | archived
+  // 视图：inbox（默认）| unread | flagged | task | attachments | sent | drafts | archived | spam | trash
   string view = 5;
   string keyword = 6; // 主题、发件人、收件人、抄送、正文、附件名
+  string label = 7;   // 只看带这个标签的（view 照常生效）
 }
 
 message ListMessagesResponse {
@@ -170,6 +181,14 @@ message MailboxSummary {
   int64 drafts = 6;
   int64 archived = 7;
   repeated MailAccountUnread accounts = 8;
+  int64 spam_unread = 9; // 垃圾邮件里没读的
+  int64 trash = 10;      // 已删除里的总数
+  repeated MailLabelCount labels = 11; // 各标签的邮件数（不含已删除）
+}
+
+message MailLabelCount {
+  string name = 1;
+  int64 count = 2;
 }
 
 message MailAccountUnread {
@@ -183,10 +202,61 @@ message MarkMessagesRequest {
   optional bool seen = 2;
   optional bool flagged = 3;
   optional bool archived = 4;
+  optional bool trashed = 5; // true = 删到「已删除」，false = 恢复
+  optional bool spam = 6;    // 标为 / 移出垃圾邮件（同时尽力在服务器上移到垃圾邮件 / 收件箱）
+  string add_label = 7;      // 加标签（不能含逗号，最长 20 字）
+  string remove_label = 8;   // 去标签
+}
+
+// MarkAllReadRequest 把一个视图（可限定账户）里的未读全部标为已读。
+message MarkAllReadRequest {
+  string view = 1;
+  string account_id = 2;
+}
+
+message ListThreadRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message SuggestContactsRequest {
+  string q = 1;     // 名字或地址里的片段；空 = 最常联系的
+  int32 limit = 2;  // <=0 默认 8，>20 截 20
+}
+
+message MailContact {
+  string name = 1;
+  string address = 2;
+  int32 count = 3; // 来往次数
+}
+
+message SuggestContactsResponse {
+  repeated MailContact items = 1;
+}
+
+message BlockSenderRequest {
+  string address = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message BlockSenderResponse {
+  int64 marked = 1; // 顺手把这个发件人已有的信标成垃圾邮件的数量
+}
+
+message ListBlockedSendersResponse {
+  repeated string addresses = 1;
 }
 
 message MarkMessagesResponse {
   int64 updated = 1;
+}
+
+// PurgeMessagesRequest 彻底删除：只认 trash / spam 两个视图。ids 空 = 清空整个视图。
+message PurgeMessagesRequest {
+  string view = 1 [(google.api.field_behavior) = REQUIRED];
+  repeated string ids = 2;
+}
+
+message PurgeMessagesResponse {
+  int64 deleted = 1;
 }
 
 // MailProviderInfo 服务商预设（授权码怎么生成的说明在前端文案里，按 key 取）。
@@ -251,6 +321,7 @@ message SaveDraftRequest {
   string reply_to_id = 7;
   string forward_of_id = 8;
   repeated OutgoingAttachment attachments = 9;
+  string body_html = 10;
 }
 
 message SaveDraftResponse {
@@ -322,6 +393,8 @@ message SendMailRequest {
   string forward_of_id = 7; // 转发的本地邮件 id（带上原附件）
   string draft_id = 8;      // 从草稿发出（带上草稿里的附件，发完删草稿）
   repeated OutgoingAttachment attachments = 9;
+  string body_html = 10; // 带格式的正文（同时发 body 纯文本）；空 = 纯文本
+  google.protobuf.Timestamp send_at = 11; // 定时发送：晚于现在就存成定时草稿，到点自动发
 }
 
 message SendMailResponse {
@@ -540,6 +613,50 @@ service OfficeMailService {
     option (aranea.auth.v1.requirement) = {permission: "office.mail"};
     option (google.api.http) = {
       post: "/v1/office/mail/messages:mark"
+      body: "*"
+    };
+  }
+  rpc MarkAllRead(MarkAllReadRequest) returns (MarkMessagesResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "office.mail"};
+    option (google.api.http) = {
+      post: "/v1/office/mail/messages:markAllRead"
+      body: "*"
+    };
+  }
+  // ListThread 同一会话（主题去掉 Re: / 回复: 等前缀后相同）的往来，按时间正序。
+  rpc ListThread(ListThreadRequest) returns (ListMessagesResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "office.mail"};
+    option (google.api.http) = {get: "/v1/office/mail/messages/{id}/thread"};
+  }
+  // SuggestContacts 写信时的收件人联想（从来往邮件里统计）。
+  rpc SuggestContacts(SuggestContactsRequest) returns (SuggestContactsResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "office.mail"};
+    option (google.api.http) = {get: "/v1/office/mail/contacts"};
+  }
+  // 拒收名单：名单里的发件人来信直接进垃圾邮件。
+  rpc ListBlockedSenders(google.protobuf.Empty) returns (ListBlockedSendersResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "office.mail"};
+    option (google.api.http) = {get: "/v1/office/mail/blocked"};
+  }
+  rpc BlockSender(BlockSenderRequest) returns (BlockSenderResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "office.mail"};
+    option (google.api.http) = {
+      post: "/v1/office/mail/blocked"
+      body: "*"
+    };
+  }
+  rpc UnblockSender(BlockSenderRequest) returns (google.protobuf.Empty) {
+    option (aranea.auth.v1.requirement) = {permission: "office.mail"};
+    option (google.api.http) = {
+      post: "/v1/office/mail/blocked:remove"
+      body: "*"
+    };
+  }
+  // PurgeMessages 彻底删除「已删除」/「垃圾邮件」里的信（清空或删选中的几封）。
+  rpc PurgeMessages(PurgeMessagesRequest) returns (PurgeMessagesResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "office.mail"};
+    option (google.api.http) = {
+      post: "/v1/office/mail/messages:purge"
       body: "*"
     };
   }

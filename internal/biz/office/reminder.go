@@ -97,6 +97,31 @@ func (w *ReminderWorker) tick(ctx context.Context) {
 			w.lg.Warn("office reminder deliver failed", loggateway.Err(err), loggateway.Str("event_id", ev.ID))
 		}
 	}
+	w.tickRecurring(ctx)
+}
+
+// tickRecurring 重复计划：每个系列算出下一次该提醒的那次，按那一次投递；
+// reminded_at 记的是已提醒那次的开始时间（见 DeliverReminderTx 的重复分支）。
+func (w *ReminderWorker) tickRecurring(ctx context.Context) {
+	series, err := w.events.ListRecurringReminders(ctx, reminderScanBatch)
+	if err != nil {
+		w.lg.Warn("office recurring reminder scan failed", loggateway.Err(err))
+		return
+	}
+	now := w.now()
+	for _, ev := range series {
+		st := nextRecurReminder(ev, now)
+		if st.IsZero() {
+			continue
+		}
+		occ := *ev
+		occ.EndAt = st.Add(ev.EndAt.Sub(ev.StartAt)).UTC()
+		occ.StartAt = st.UTC()
+		occ.RecurrenceDay = st.In(locOrUTC(ev.Timezone)).Format("2006-01-02")
+		if err := w.deliver(ctx, &occ); err != nil {
+			w.lg.Warn("office reminder deliver failed", loggateway.Err(err), loggateway.Str("event_id", ev.ID))
+		}
+	}
 }
 
 // deliver 单条投递：IM 幂等入队在先 → 通知落表+置标事务在后。
@@ -109,6 +134,9 @@ func (w *ReminderWorker) deliver(ctx context.Context, ev *Event) error {
 		}
 		for _, s := range sinks {
 			key := "sched-rem-" + ev.ID + "-" + s.ChannelID
+			if ev.RecurrenceDay != "" {
+				key += "-" + ev.RecurrenceDay // 重复日程每一次各自幂等
+			}
 			if err := w.im.Enqueue(ctx, s, text, key); err != nil {
 				return fmt.Errorf("enqueue reminder to channel %s: %w", s.ChannelID, err)
 			}

@@ -45,7 +45,19 @@ function wireToEvent(raw: Record<string, unknown>): OfficeEventRow {
     status: (String(raw.status ?? '') || 'todo') as OfficeEventStatus,
     all_day: Boolean(raw.allDay ?? raw.all_day ?? false),
     outcome: String(raw.outcome ?? ''),
+    location: String(raw.location ?? ''),
+    url: String(raw.url ?? ''),
+    color: String(raw.color ?? ''),
+    rrule: String(raw.rrule ?? ''),
+    exdates: String(raw.exdates ?? ''),
+    recurrence_day: String(raw.recurrenceDay ?? raw.recurrence_day ?? ''),
   };
+}
+
+/** 按关键字找日程（全部时间；重复日程按系列返回一条）。 */
+export async function searchEvents(keyword: string, limit = 50): Promise<OfficeEventRow[]> {
+  const res = await createOfficeScheduleService().SearchEvents({ keyword, limit });
+  return (res.items ?? []).map((row) => wireToEvent(row as Record<string, unknown>));
 }
 
 // ---------- 日程事件 ----------
@@ -67,6 +79,12 @@ export type EventInput = {
   status?: OfficeEventStatus;
   all_day?: boolean;
   outcome?: string;
+  location?: string;
+  url?: string;
+  color?: string;
+  rrule?: string;
+  /** 只在更新时用：整串替换 */
+  exdates?: string;
 };
 
 export async function createEvent(input: EventInput): Promise<OfficeEventRow> {
@@ -82,8 +100,16 @@ export async function createEvent(input: EventInput): Promise<OfficeEventRow> {
     status: input.status ?? 'todo',
     allDay: input.all_day ?? false,
     outcome: input.outcome ?? '',
+    location: input.location ?? '',
+    url: input.url ?? '',
+    color: input.color ?? '',
+    rrule: input.rrule ?? '',
   });
   return wireToEvent(res as Record<string, unknown>);
+}
+
+export async function getEvent(id: string): Promise<OfficeEventRow> {
+  return wireToEvent((await createOfficeScheduleService().GetEvent({ id })) as Record<string, unknown>);
 }
 
 export async function updateEvent(id: string, input: EventInput): Promise<OfficeEventRow> {
@@ -100,6 +126,11 @@ export async function updateEvent(id: string, input: EventInput): Promise<Office
     status: input.status,
     allDay: input.all_day,
     outcome: input.outcome,
+    location: input.location,
+    url: input.url,
+    color: input.color,
+    rrule: input.rrule,
+    exdates: input.exdates,
   });
   return wireToEvent(res as Record<string, unknown>);
 }
@@ -255,6 +286,8 @@ function wireToMailAccount(raw: Record<string, unknown>): MailAccountRow {
     smtp_tls: String(raw.smtpTls ?? raw.smtp_tls ?? 'TLS_MODE_UNSPECIFIED') as MailAccountRow['smtp_tls'],
     status: String(raw.status ?? ''),
     last_error: String(raw.lastError ?? raw.last_error ?? ''),
+    signature: String(raw.signature ?? ''),
+    save_sent: Boolean(raw.saveSent ?? raw.save_sent ?? false),
   };
 }
 
@@ -274,6 +307,10 @@ function wireToMailMessage(raw: Record<string, unknown>): MailMessageRow {
     flagged: Boolean(raw.flagged ?? false),
     archived: Boolean(raw.archived ?? false),
     folder: String(raw.folder ?? 'inbox') || 'inbox',
+    trashed: Boolean(raw.trashed ?? false),
+    spam: Boolean(raw.spam ?? false),
+    labels: Array.isArray(raw.labels) ? raw.labels.map(String) : [],
+    send_at: String(raw.sendAt ?? raw.send_at ?? ''),
   };
 }
 
@@ -416,6 +453,12 @@ export async function getMailboxSummary(): Promise<MailboxSummaryRow> {
     sent: Number(res.sent ?? 0),
     drafts: Number(res.drafts ?? 0),
     archived: Number(res.archived ?? 0),
+    spam_unread: Number(res.spamUnread ?? 0),
+    trash: Number(res.trash ?? 0),
+    labels: (Array.isArray(res.labels) ? res.labels : []).map((l) => {
+      const r = l as Record<string, unknown>;
+      return { name: String(r.name ?? ''), count: Number(r.count ?? 0) };
+    }),
     accounts,
   };
 }
@@ -423,10 +466,81 @@ export async function getMailboxSummary(): Promise<MailboxSummaryRow> {
 /** 批量标已读 / 星标 / 归档；不传 = 不改。 */
 export async function markMailMessages(
   ids: string[],
-  mark: { seen?: boolean; flagged?: boolean; archived?: boolean },
+  mark: {
+    seen?: boolean;
+    flagged?: boolean;
+    archived?: boolean;
+    trashed?: boolean;
+    spam?: boolean;
+    addLabel?: string;
+    removeLabel?: string;
+  },
 ): Promise<number> {
-  const res = await createOfficeMailService().MarkMessages({ ids, ...mark });
+  const res = await createOfficeMailService().MarkMessages({
+    ids,
+    ...mark,
+    addLabel: mark.addLabel ?? '',
+    removeLabel: mark.removeLabel ?? '',
+  });
   return Number(res.updated ?? 0);
+}
+
+/** 视图（可限定账户）里的未读全部标已读。 */
+export async function markAllMailRead(view: MailView, accountId = ''): Promise<number> {
+  const res = await createOfficeMailService().MarkAllRead({ view, accountId });
+  return Number(res.updated ?? 0);
+}
+
+/** 同一会话（主题去掉 Re: / 回复: 后相同）的往来，按时间正序。 */
+export async function listMailThread(id: string): Promise<MailMessageRow[]> {
+  const res = await createOfficeMailService().ListThread({ id });
+  return (res.items ?? []).map((row) => wireToMailMessage(row as Record<string, unknown>));
+}
+
+export type MailContactRow = { name: string; address: string; count: number };
+
+/** 收件人联想：从来往邮件里统计。 */
+export async function suggestMailContacts(q: string, limit = 8): Promise<MailContactRow[]> {
+  const res = await createOfficeMailService().SuggestContacts({ q, limit });
+  return (res.items ?? []).map((r) => ({
+    name: String(r.name ?? ''),
+    address: String(r.address ?? ''),
+    count: Number(r.count ?? 0),
+  }));
+}
+
+export async function listBlockedSenders(): Promise<string[]> {
+  const res = await createOfficeMailService().ListBlockedSenders({});
+  return (res.addresses ?? []).map(String);
+}
+
+/** 拒收：返回顺手标成垃圾邮件的封数。 */
+export async function blockSender(address: string): Promise<number> {
+  const res = await createOfficeMailService().BlockSender({ address });
+  return Number(res.marked ?? 0);
+}
+
+export async function unblockSender(address: string): Promise<void> {
+  await createOfficeMailService().UnblockSender({ address });
+}
+
+/** 只改签名 / 是否存已发送（其余设置不动）。 */
+export async function updateMailAccountSettings(
+  id: string,
+  input: { signature: string; save_sent: boolean },
+): Promise<MailAccountRow> {
+  const res = await createOfficeMailService().UpdateAccount({
+    id,
+    signature: input.signature,
+    saveSent: input.save_sent,
+  } as never);
+  return wireToMailAccount(res as Record<string, unknown>);
+}
+
+/** 彻底删除「已删除」/「垃圾邮件」里的信；ids 空 = 清空整个视图。 */
+export async function purgeMailMessages(view: 'trash' | 'spam', ids: string[] = []): Promise<number> {
+  const res = await createOfficeMailService().PurgeMessages({ view, ids });
+  return Number(res.deleted ?? 0);
 }
 
 /** File / Blob → base64（proto bytes 字段的线格式）。 */
@@ -451,6 +565,10 @@ export type MailOutgoingInput = {
   draft_id?: string;
   /** 新加的附件（已有草稿 / 转发的附件由服务端带上） */
   files: File[];
+  /** 带格式的正文（HTML）；空 = 纯文本 */
+  body_html?: string;
+  /** 定时发送：ISO 时间，晚于现在 = 存成定时草稿 */
+  send_at?: string;
 };
 
 async function outgoingWire(input: MailOutgoingInput) {
@@ -471,6 +589,8 @@ async function outgoingWire(input: MailOutgoingInput) {
     forwardOfId: input.forward_of_id ?? '',
     draftId: input.draft_id ?? '',
     attachments,
+    bodyHtml: input.body_html ?? '',
+    sendAt: input.send_at || undefined,
   };
 }
 
@@ -513,6 +633,7 @@ export async function listMailMessages(query: {
   accountId?: string;
   view?: MailView;
   keyword?: string;
+  label?: string;
   page?: number;
   pageSize?: number;
 }): Promise<MailMessageListResult> {
@@ -522,6 +643,7 @@ export async function listMailMessages(query: {
     page: query.page ?? 1,
     pageSize: query.pageSize ?? 20,
     view: query.view ?? 'inbox',
+    label: query.label ?? '',
     keyword: query.keyword ?? '',
   });
   return {

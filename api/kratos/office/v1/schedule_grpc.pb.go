@@ -26,6 +26,7 @@ const (
 	OfficeScheduleService_DeleteEvent_FullMethodName          = "/kratos.office.v1.OfficeScheduleService/DeleteEvent"
 	OfficeScheduleService_GetEvent_FullMethodName             = "/kratos.office.v1.OfficeScheduleService/GetEvent"
 	OfficeScheduleService_ListEventsRange_FullMethodName      = "/kratos.office.v1.OfficeScheduleService/ListEventsRange"
+	OfficeScheduleService_SearchEvents_FullMethodName         = "/kratos.office.v1.OfficeScheduleService/SearchEvents"
 	OfficeScheduleService_ScheduleTask_FullMethodName         = "/kratos.office.v1.OfficeScheduleService/ScheduleTask"
 	OfficeScheduleService_ListTaskEvents_FullMethodName       = "/kratos.office.v1.OfficeScheduleService/ListTaskEvents"
 	OfficeScheduleService_SubmitScheduleDraft_FullMethodName  = "/kratos.office.v1.OfficeScheduleService/SubmitScheduleDraft"
@@ -46,6 +47,8 @@ type OfficeScheduleServiceClient interface {
 	DeleteEvent(ctx context.Context, in *DeleteEventRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	GetEvent(ctx context.Context, in *GetEventRequest, opts ...grpc.CallOption) (*OfficeEvent, error)
 	ListEventsRange(ctx context.Context, in *ListEventsRangeRequest, opts ...grpc.CallOption) (*ListEventsRangeResponse, error)
+	// SearchEvents 按关键字找日程（全部时间；重复日程按系列返回一条）。
+	SearchEvents(ctx context.Context, in *SearchEventsRequest, opts ...grpc.CallOption) (*SearchEventsResponse, error)
 	ScheduleTask(ctx context.Context, in *ScheduleTaskRequest, opts ...grpc.CallOption) (*OfficeEvent, error)
 	ListTaskEvents(ctx context.Context, in *ListTaskEventsRequest, opts ...grpc.CallOption) (*ListTaskEventsResponse, error)
 	SubmitScheduleDraft(ctx context.Context, in *SubmitScheduleDraftRequest, opts ...grpc.CallOption) (*SubmitScheduleDraftResponse, error)
@@ -112,6 +115,16 @@ func (c *officeScheduleServiceClient) ListEventsRange(ctx context.Context, in *L
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ListEventsRangeResponse)
 	err := c.cc.Invoke(ctx, OfficeScheduleService_ListEventsRange_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *officeScheduleServiceClient) SearchEvents(ctx context.Context, in *SearchEventsRequest, opts ...grpc.CallOption) (*SearchEventsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SearchEventsResponse)
+	err := c.cc.Invoke(ctx, OfficeScheduleService_SearchEvents_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -217,6 +230,8 @@ type OfficeScheduleServiceServer interface {
 	DeleteEvent(context.Context, *DeleteEventRequest) (*emptypb.Empty, error)
 	GetEvent(context.Context, *GetEventRequest) (*OfficeEvent, error)
 	ListEventsRange(context.Context, *ListEventsRangeRequest) (*ListEventsRangeResponse, error)
+	// SearchEvents 按关键字找日程（全部时间；重复日程按系列返回一条）。
+	SearchEvents(context.Context, *SearchEventsRequest) (*SearchEventsResponse, error)
 	ScheduleTask(context.Context, *ScheduleTaskRequest) (*OfficeEvent, error)
 	ListTaskEvents(context.Context, *ListTaskEventsRequest) (*ListTaskEventsResponse, error)
 	SubmitScheduleDraft(context.Context, *SubmitScheduleDraftRequest) (*SubmitScheduleDraftResponse, error)
@@ -253,6 +268,9 @@ func (UnimplementedOfficeScheduleServiceServer) GetEvent(context.Context, *GetEv
 }
 func (UnimplementedOfficeScheduleServiceServer) ListEventsRange(context.Context, *ListEventsRangeRequest) (*ListEventsRangeResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListEventsRange not implemented")
+}
+func (UnimplementedOfficeScheduleServiceServer) SearchEvents(context.Context, *SearchEventsRequest) (*SearchEventsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method SearchEvents not implemented")
 }
 func (UnimplementedOfficeScheduleServiceServer) ScheduleTask(context.Context, *ScheduleTaskRequest) (*OfficeEvent, error) {
 	return nil, status.Error(codes.Unimplemented, "method ScheduleTask not implemented")
@@ -388,6 +406,24 @@ func _OfficeScheduleService_ListEventsRange_Handler(srv interface{}, ctx context
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(OfficeScheduleServiceServer).ListEventsRange(ctx, req.(*ListEventsRangeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _OfficeScheduleService_SearchEvents_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SearchEventsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OfficeScheduleServiceServer).SearchEvents(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: OfficeScheduleService_SearchEvents_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OfficeScheduleServiceServer).SearchEvents(ctx, req.(*SearchEventsRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -580,6 +616,10 @@ var OfficeScheduleService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListEventsRange",
 			Handler:    _OfficeScheduleService_ListEventsRange_Handler,
+		},
+		{
+			MethodName: "SearchEvents",
+			Handler:    _OfficeScheduleService_SearchEvents_Handler,
 		},
 		{
 			MethodName: "ScheduleTask",

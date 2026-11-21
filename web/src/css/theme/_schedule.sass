@@ -602,3 +602,386 @@
 
   .sch-stats
     margin-left: 0
+
+// ——— 2026-11-20：当天面板可收起；月 / 周视图切换；拖动改期 ———
+.sch-page.sch-page--wide
+  grid-template-columns: minmax(0, 1fr)
+
+.sch-modes
+  border: 1px solid var(--nt-border-1)
+  border-radius: var(--nt-radius-m)
+
+.sch-day--drop,
+.sch-wv__drop
+  outline: 2px dashed var(--nt-accent-border)
+  outline-offset: -2px
+
+.sch-it--plan[draggable='true']
+  cursor: grab
+
+// ——— 周视图 ———
+$sch-gut: 52px
+
+.sch-wv
+  display: flex
+  flex: 1
+  flex-direction: column
+  min-height: 0
+
+.sch-wv__head,
+.sch-wv__allday
+  display: grid
+  flex: none
+  grid-template-columns: $sch-gut repeat(var(--sch-days, 7), minmax(0, 1fr))
+  gap: 0 4px
+  padding-right: 8px // 给下面时间轴的滚动条留位，列才对得齐
+
+.sch-wv__gut
+  align-self: center
+  padding-right: 6px
+  text-align: right
+
+.sch-wv__dh
+  display: flex
+  align-items: baseline
+  justify-content: center
+  gap: 6px
+  height: 34px
+  background: none
+  border: 0
+  border-radius: var(--nt-radius-m)
+  color: var(--nt-text-2)
+  font: inherit
+  font-size: var(--nt-fs-caption)
+  cursor: pointer
+
+  b
+    color: var(--nt-text-0)
+    font-size: var(--nt-fs-panel)
+
+  &:hover
+    background: var(--nt-tile-hover)
+
+.sch-wv__dh--sel
+  background: var(--nt-accent-soft)
+
+.sch-wv__dh--today b
+  display: inline-grid
+  place-items: center
+  min-width: 24px
+  height: 24px
+  border-radius: var(--nt-radius-pill)
+  background: var(--nt-accent)
+  color: var(--nt-on-accent)
+
+.sch-wv__allday
+  min-height: 30px
+  padding-bottom: 4px
+  border-bottom: 1px solid var(--nt-border-1)
+
+.sch-wv__adc
+  display: flex
+  flex-direction: column
+  gap: 2px
+  min-width: 0
+  padding: 2px
+  border-radius: var(--nt-radius-s)
+
+.sch-wv__chip
+  width: 100%
+  background: var(--nt-tile-bg)
+  border: 0
+  font: inherit
+  font-size: var(--nt-fs-caption)
+  text-align: left
+  cursor: grab
+
+.sch-wv__body
+  flex: 1
+  min-height: 0
+  overflow-y: auto
+  scrollbar-gutter: stable
+
+.sch-wv__grid
+  position: relative
+  display: grid
+  grid-template-columns: $sch-gut repeat(var(--sch-days, 7), minmax(0, 1fr))
+  gap: 0 4px
+  // 每小时一条横线（44px 一格，和 ScheduleWeekView 的 HOUR 一致）
+  background-image: linear-gradient(var(--nt-border-1) 1px, transparent 1px)
+  background-size: 100% 44px
+
+.sch-wv__hours
+  position: relative
+
+  span
+    position: absolute
+    right: 6px
+    color: var(--nt-text-3)
+    font-size: var(--nt-fs-micro)
+    transform: translateY(-50%)
+
+.sch-wv__col
+  position: relative
+  background: var(--nt-tile-bg)
+  cursor: copy
+
+.sch-wv__col--today
+  background: color-mix(in srgb, var(--nt-accent) 6%, var(--nt-tile-bg))
+
+.sch-wv__ev
+  position: absolute
+  display: flex
+  flex-direction: column
+  gap: 0
+  min-width: 0
+  padding: 2px 6px
+  overflow: hidden
+  background: color-mix(in srgb, var(--nt-accent) 22%, var(--nt-bg-2))
+  border: 0
+  border-left: 3px solid var(--nt-accent)
+  border-radius: var(--nt-radius-s)
+  color: var(--nt-text-0)
+  font: inherit
+  font-size: var(--nt-fs-caption)
+  line-height: 1.35
+  text-align: left
+  cursor: grab
+
+  &:hover
+    filter: brightness(1.12)
+
+.sch-wv__tm
+  color: var(--nt-text-2)
+  font-size: var(--nt-fs-micro)
+
+.sch-wv__tt
+  overflow: hidden
+  text-overflow: ellipsis
+  white-space: nowrap
+
+// 工作内容：绿；已完成 / 已取消：灰并划掉；逾期：红
+.sch-wv__ev--log
+  background: color-mix(in srgb, var(--nt-success) 16%, var(--nt-bg-2))
+  border-left-color: var(--nt-success)
+
+.sch-wv__ev.sch-st--done,
+.sch-wv__ev.sch-st--cancelled
+  background: var(--nt-tile-hover)
+  border-left-color: var(--nt-text-3)
+  color: var(--nt-text-3)
+
+  .sch-wv__tt
+    text-decoration: line-through
+
+.sch-wv__ev--log.sch-st--done
+  background: color-mix(in srgb, var(--nt-success) 16%, var(--nt-bg-2))
+  border-left-color: var(--nt-success)
+  color: var(--nt-text-0)
+
+  .sch-wv__tt
+    text-decoration: none
+
+.sch-wv__ev.sch-st--overdue
+  border-left-color: var(--nt-danger)
+
+.sch-wv__ev--ai
+  background: none
+  border: 1px dashed color-mix(in srgb, var(--nt-ai) 60%, transparent)
+  color: var(--nt-ai)
+  cursor: pointer
+
+// 现在
+.sch-wv__now
+  position: absolute
+  right: 0
+  left: 0
+  z-index: 1
+  height: 2px
+  background: var(--nt-danger)
+  pointer-events: none
+
+  &::before
+    position: absolute
+    top: -3px
+    left: -4px
+    width: 8px
+    height: 8px
+    border-radius: var(--nt-radius-pill)
+    background: var(--nt-danger)
+    content: ''
+
+// ——— 第二轮：分类色、农历、列表视图、搜索、拖边缘改时长 ———
+.sch-sr
+  position: absolute
+  width: 1px
+  height: 1px
+  overflow: hidden
+  clip: rect(0 0 0 0)
+
+// 分类色：工作蓝、会议紫、个人绿、专注橙、出行黄（--nt-line-*）
+$sch-colors: (work: var(--nt-line-2), meeting: var(--nt-line-4), personal: var(--nt-line-5), focus: var(--nt-line-1), travel: var(--nt-line-3))
+
+@each $name, $c in $sch-colors
+  .sch-c--#{$name}
+    --sch-c: #{$c}
+
+.sch-it[class*='sch-c--']
+  box-shadow: inset 2px 0 0 var(--sch-c)
+
+.sch-wv__ev[class*='sch-c--']
+  background: color-mix(in srgb, var(--sch-c) 22%, var(--nt-bg-2))
+  border-left-color: var(--sch-c)
+
+.sch-ent[class*='sch-c--'],
+.sch-ag__it[class*='sch-c--']
+  box-shadow: inset 3px 0 0 var(--sch-c)
+
+.sch-color
+  width: 22px
+  height: 22px
+  padding: 0
+  background: var(--sch-c, var(--nt-tile-hover))
+  border: 2px solid transparent
+  border-radius: var(--nt-radius-pill)
+  cursor: pointer
+
+.sch-color--on
+  border-color: var(--nt-text-0)
+
+.sch-c--none
+  --sch-c: var(--nt-accent)
+
+.sch-it__rp
+  flex: none
+  margin-left: 2px
+  color: var(--nt-text-3)
+
+.sch-lunar
+  margin-left: 4px
+  color: var(--nt-text-3)
+  font-family: var(--nt-font-sans)
+  font-size: var(--nt-fs-micro)
+  font-weight: 400
+
+.sch-lunar--fest
+  color: var(--nt-warn)
+
+.sch-wv__loc
+  overflow: hidden
+  color: var(--nt-text-2)
+  font-size: var(--nt-fs-micro)
+  text-overflow: ellipsis
+  white-space: nowrap
+
+.sch-wv__rs
+  position: absolute
+  right: 0
+  bottom: 0
+  left: 0
+  height: 6px
+  cursor: ns-resize
+
+.sch-ag
+  flex: 1
+  min-height: 0
+  padding-right: 4px
+  overflow-y: auto
+
+.sch-ag__empty
+  padding: var(--nt-space-4)
+
+.sch-ag__day
+  display: grid
+  grid-template-columns: 120px minmax(0, 1fr)
+  gap: var(--nt-space-3)
+  padding: var(--nt-space-2) 0
+  border-bottom: 1px solid var(--nt-border-1)
+
+.sch-ag__date
+  display: flex
+  flex-direction: column
+  align-items: flex-start
+  gap: 2px
+  padding: 4px 8px
+  background: none
+  border: 0
+  border-radius: var(--nt-radius-m)
+  color: var(--nt-text-2)
+  font: inherit
+  font-size: var(--nt-fs-caption)
+  text-align: left
+  cursor: pointer
+
+  b
+    color: var(--nt-text-0)
+    font-size: var(--nt-fs-panel)
+
+  &:hover
+    background: var(--nt-tile-hover)
+
+  .sch-lunar
+    margin-left: 0
+
+.sch-ag__date--today b
+  color: var(--nt-accent)
+
+.sch-ag__list
+  display: flex
+  flex-direction: column
+  gap: 4px
+
+.sch-ag__it
+  display: grid
+  grid-template-columns: 110px minmax(0, 1fr) auto
+  gap: 10px
+  align-items: center
+  width: 100%
+  min-height: 34px
+  padding: 4px 10px
+  background: var(--nt-tile-bg)
+  border: 0
+  border-radius: var(--nt-radius-m)
+  color: var(--nt-text-1)
+  font: inherit
+  text-align: left
+  cursor: pointer
+
+  &:hover
+    background: var(--nt-tile-hover)
+
+.sch-ag__tm
+  color: var(--nt-text-3)
+  font-size: var(--nt-fs-caption)
+
+.sch-ag__title
+  overflow: hidden
+  color: var(--nt-text-0)
+  text-overflow: ellipsis
+  white-space: nowrap
+
+.sch-ag__it--log .sch-ag__title
+  color: var(--nt-success)
+
+.sch-ag__it.sch-st--done .sch-ag__title,
+.sch-ag__it.sch-st--cancelled .sch-ag__title
+  color: var(--nt-text-3)
+  text-decoration: line-through
+
+.sch-ag__it.sch-st--overdue .sch-ag__title
+  color: var(--nt-danger)
+
+.sch-search
+  flex: 1
+  min-width: 0
+
+.sch-link
+  color: var(--nt-accent)
+  text-decoration: none
+
+@media (max-width: 559px)
+  .sch-ag__day
+    grid-template-columns: 1fr
+
+  .sch-ag__it
+    grid-template-columns: 80px minmax(0, 1fr)

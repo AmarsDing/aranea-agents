@@ -57,7 +57,7 @@ func normalizeEvent(ev *Event) {
 	}
 }
 
-// validateKindStatus 类型、状态白名单（normalizeEvent 之后调用）。
+// validateKindStatus 类型、状态、重复规则白名单（normalizeEvent 之后调用）。
 func validateKindStatus(ev *Event) error {
 	if !ValidKind(ev.Kind) {
 		return ErrInvalidKind
@@ -65,12 +65,16 @@ func validateKindStatus(ev *Event) error {
 	if !ValidStatus(ev.Status) {
 		return ErrInvalidStatus
 	}
+	if !ValidRRule(ev.RRule) {
+		return ErrInvalidRRule
+	}
 	return nil
 }
 
 // occupiesTime 只有「定了时间段的计划」占用时间：工作记录（log）和全天
 // 计划都不参与 409 重叠检测（仓储侧计数同口径）。
-func occupiesTime(ev *Event) bool { return ev.Kind == KindPlan && !ev.AllDay }
+// shortcut: 重复日程不参与重叠检测（要展开每一次去比），有用户反馈撞车再按范围展开比对。
+func occupiesTime(ev *Event) bool { return ev.Kind == KindPlan && !ev.AllDay && ev.RRule == "" }
 
 // CreateEvent 手工建事件（409 语义平移 verify-schedule S4 createEvent 路径）。
 func (u *ScheduleUsecase) CreateEvent(ctx context.Context, ev *Event) (*Event, error) {
@@ -142,6 +146,18 @@ func (u *ScheduleUsecase) UpdateEvent(ctx context.Context, userID string, patch 
 	if extra.Outcome != nil {
 		cur.Outcome = *extra.Outcome
 	}
+	for _, f := range []struct {
+		dst *string
+		src *string
+	}{{&cur.Location, extra.Location}, {&cur.URL, extra.URL}, {&cur.Color, extra.Color}, {&cur.ExDates, extra.ExDates}} {
+		if f.src != nil {
+			*f.dst = strings.TrimSpace(*f.src)
+		}
+	}
+	if extra.RRule != nil && strings.TrimSpace(*extra.RRule) != cur.RRule {
+		cur.RRule = strings.TrimSpace(*extra.RRule)
+		timeChanged = true
+	}
 	normalizeEvent(cur)
 	if err := validateKindStatus(cur); err != nil {
 		return nil, err
@@ -171,12 +187,34 @@ func (u *ScheduleUsecase) GetEvent(ctx context.Context, id, userID string) (*Eve
 	return u.events.GetEvent(ctx, id, userID)
 }
 
-// ListEventsRange K-1 范围聚合（月历一次请求）。区间合法性 400。
+// ListEventsRange K-1 范围聚合（月历一次请求）。区间合法性 400。重复日程按范围展开。
 func (u *ScheduleUsecase) ListEventsRange(ctx context.Context, userID string, start, end time.Time) ([]*Event, error) {
 	if start.IsZero() || end.IsZero() || !end.After(start) {
 		return nil, ErrInvalidTimeRange
 	}
-	return u.events.ListEventsRange(ctx, userID, start, end)
+	rows, err := u.events.ListEventsRange(ctx, userID, start, end)
+	if err != nil {
+		return nil, err
+	}
+	return expandRecurring(rows, start, end), nil
+}
+
+// SearchEvents 关键字找日程（1-200 条，默认 50）。
+func (u *ScheduleUsecase) SearchEvents(ctx context.Context, userID, keyword string, limit int) ([]*Event, error) {
+	keyword = strings.TrimSpace(keyword)
+	if keyword == "" {
+		return []*Event{}, nil
+	}
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 200 {
+		limit = 200
+	}
+	if len([]rune(keyword)) > 100 {
+		keyword = string([]rune(keyword)[:100])
+	}
+	return u.events.SearchEvents(ctx, userID, keyword, limit)
 }
 
 // ScheduleTask 任务→日程正向联动（409 语义同手工创建；标题缺省自动

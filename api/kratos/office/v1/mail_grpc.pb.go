@@ -39,6 +39,13 @@ const (
 	OfficeMailService_SaveDraft_FullMethodName              = "/kratos.office.v1.OfficeMailService/SaveDraft"
 	OfficeMailService_GetMailboxSummary_FullMethodName      = "/kratos.office.v1.OfficeMailService/GetMailboxSummary"
 	OfficeMailService_MarkMessages_FullMethodName           = "/kratos.office.v1.OfficeMailService/MarkMessages"
+	OfficeMailService_MarkAllRead_FullMethodName            = "/kratos.office.v1.OfficeMailService/MarkAllRead"
+	OfficeMailService_ListThread_FullMethodName             = "/kratos.office.v1.OfficeMailService/ListThread"
+	OfficeMailService_SuggestContacts_FullMethodName        = "/kratos.office.v1.OfficeMailService/SuggestContacts"
+	OfficeMailService_ListBlockedSenders_FullMethodName     = "/kratos.office.v1.OfficeMailService/ListBlockedSenders"
+	OfficeMailService_BlockSender_FullMethodName            = "/kratos.office.v1.OfficeMailService/BlockSender"
+	OfficeMailService_UnblockSender_FullMethodName          = "/kratos.office.v1.OfficeMailService/UnblockSender"
+	OfficeMailService_PurgeMessages_FullMethodName          = "/kratos.office.v1.OfficeMailService/PurgeMessages"
 	OfficeMailService_DetectProvider_FullMethodName         = "/kratos.office.v1.OfficeMailService/DetectProvider"
 	OfficeMailService_ListProviders_FullMethodName          = "/kratos.office.v1.OfficeMailService/ListProviders"
 	OfficeMailService_TestAccount_FullMethodName            = "/kratos.office.v1.OfficeMailService/TestAccount"
@@ -81,6 +88,17 @@ type OfficeMailServiceClient interface {
 	SaveDraft(ctx context.Context, in *SaveDraftRequest, opts ...grpc.CallOption) (*SaveDraftResponse, error)
 	GetMailboxSummary(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*MailboxSummary, error)
 	MarkMessages(ctx context.Context, in *MarkMessagesRequest, opts ...grpc.CallOption) (*MarkMessagesResponse, error)
+	MarkAllRead(ctx context.Context, in *MarkAllReadRequest, opts ...grpc.CallOption) (*MarkMessagesResponse, error)
+	// ListThread 同一会话（主题去掉 Re: / 回复: 等前缀后相同）的往来，按时间正序。
+	ListThread(ctx context.Context, in *ListThreadRequest, opts ...grpc.CallOption) (*ListMessagesResponse, error)
+	// SuggestContacts 写信时的收件人联想（从来往邮件里统计）。
+	SuggestContacts(ctx context.Context, in *SuggestContactsRequest, opts ...grpc.CallOption) (*SuggestContactsResponse, error)
+	// 拒收名单：名单里的发件人来信直接进垃圾邮件。
+	ListBlockedSenders(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ListBlockedSendersResponse, error)
+	BlockSender(ctx context.Context, in *BlockSenderRequest, opts ...grpc.CallOption) (*BlockSenderResponse, error)
+	UnblockSender(ctx context.Context, in *BlockSenderRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	// PurgeMessages 彻底删除「已删除」/「垃圾邮件」里的信（清空或删选中的几封）。
+	PurgeMessages(ctx context.Context, in *PurgeMessagesRequest, opts ...grpc.CallOption) (*PurgeMessagesResponse, error)
 	DetectProvider(ctx context.Context, in *DetectProviderRequest, opts ...grpc.CallOption) (*MailProviderInfo, error)
 	ListProviders(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ListProvidersResponse, error)
 	TestAccount(ctx context.Context, in *TestAccountRequest, opts ...grpc.CallOption) (*TestAccountResponse, error)
@@ -289,6 +307,76 @@ func (c *officeMailServiceClient) MarkMessages(ctx context.Context, in *MarkMess
 	return out, nil
 }
 
+func (c *officeMailServiceClient) MarkAllRead(ctx context.Context, in *MarkAllReadRequest, opts ...grpc.CallOption) (*MarkMessagesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(MarkMessagesResponse)
+	err := c.cc.Invoke(ctx, OfficeMailService_MarkAllRead_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *officeMailServiceClient) ListThread(ctx context.Context, in *ListThreadRequest, opts ...grpc.CallOption) (*ListMessagesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListMessagesResponse)
+	err := c.cc.Invoke(ctx, OfficeMailService_ListThread_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *officeMailServiceClient) SuggestContacts(ctx context.Context, in *SuggestContactsRequest, opts ...grpc.CallOption) (*SuggestContactsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SuggestContactsResponse)
+	err := c.cc.Invoke(ctx, OfficeMailService_SuggestContacts_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *officeMailServiceClient) ListBlockedSenders(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ListBlockedSendersResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListBlockedSendersResponse)
+	err := c.cc.Invoke(ctx, OfficeMailService_ListBlockedSenders_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *officeMailServiceClient) BlockSender(ctx context.Context, in *BlockSenderRequest, opts ...grpc.CallOption) (*BlockSenderResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(BlockSenderResponse)
+	err := c.cc.Invoke(ctx, OfficeMailService_BlockSender_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *officeMailServiceClient) UnblockSender(ctx context.Context, in *BlockSenderRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, OfficeMailService_UnblockSender_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *officeMailServiceClient) PurgeMessages(ctx context.Context, in *PurgeMessagesRequest, opts ...grpc.CallOption) (*PurgeMessagesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(PurgeMessagesResponse)
+	err := c.cc.Invoke(ctx, OfficeMailService_PurgeMessages_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *officeMailServiceClient) DetectProvider(ctx context.Context, in *DetectProviderRequest, opts ...grpc.CallOption) (*MailProviderInfo, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(MailProviderInfo)
@@ -455,6 +543,17 @@ type OfficeMailServiceServer interface {
 	SaveDraft(context.Context, *SaveDraftRequest) (*SaveDraftResponse, error)
 	GetMailboxSummary(context.Context, *emptypb.Empty) (*MailboxSummary, error)
 	MarkMessages(context.Context, *MarkMessagesRequest) (*MarkMessagesResponse, error)
+	MarkAllRead(context.Context, *MarkAllReadRequest) (*MarkMessagesResponse, error)
+	// ListThread 同一会话（主题去掉 Re: / 回复: 等前缀后相同）的往来，按时间正序。
+	ListThread(context.Context, *ListThreadRequest) (*ListMessagesResponse, error)
+	// SuggestContacts 写信时的收件人联想（从来往邮件里统计）。
+	SuggestContacts(context.Context, *SuggestContactsRequest) (*SuggestContactsResponse, error)
+	// 拒收名单：名单里的发件人来信直接进垃圾邮件。
+	ListBlockedSenders(context.Context, *emptypb.Empty) (*ListBlockedSendersResponse, error)
+	BlockSender(context.Context, *BlockSenderRequest) (*BlockSenderResponse, error)
+	UnblockSender(context.Context, *BlockSenderRequest) (*emptypb.Empty, error)
+	// PurgeMessages 彻底删除「已删除」/「垃圾邮件」里的信（清空或删选中的几封）。
+	PurgeMessages(context.Context, *PurgeMessagesRequest) (*PurgeMessagesResponse, error)
 	DetectProvider(context.Context, *DetectProviderRequest) (*MailProviderInfo, error)
 	ListProviders(context.Context, *emptypb.Empty) (*ListProvidersResponse, error)
 	TestAccount(context.Context, *TestAccountRequest) (*TestAccountResponse, error)
@@ -536,6 +635,27 @@ func (UnimplementedOfficeMailServiceServer) GetMailboxSummary(context.Context, *
 }
 func (UnimplementedOfficeMailServiceServer) MarkMessages(context.Context, *MarkMessagesRequest) (*MarkMessagesResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method MarkMessages not implemented")
+}
+func (UnimplementedOfficeMailServiceServer) MarkAllRead(context.Context, *MarkAllReadRequest) (*MarkMessagesResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method MarkAllRead not implemented")
+}
+func (UnimplementedOfficeMailServiceServer) ListThread(context.Context, *ListThreadRequest) (*ListMessagesResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListThread not implemented")
+}
+func (UnimplementedOfficeMailServiceServer) SuggestContacts(context.Context, *SuggestContactsRequest) (*SuggestContactsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method SuggestContacts not implemented")
+}
+func (UnimplementedOfficeMailServiceServer) ListBlockedSenders(context.Context, *emptypb.Empty) (*ListBlockedSendersResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListBlockedSenders not implemented")
+}
+func (UnimplementedOfficeMailServiceServer) BlockSender(context.Context, *BlockSenderRequest) (*BlockSenderResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method BlockSender not implemented")
+}
+func (UnimplementedOfficeMailServiceServer) UnblockSender(context.Context, *BlockSenderRequest) (*emptypb.Empty, error) {
+	return nil, status.Error(codes.Unimplemented, "method UnblockSender not implemented")
+}
+func (UnimplementedOfficeMailServiceServer) PurgeMessages(context.Context, *PurgeMessagesRequest) (*PurgeMessagesResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method PurgeMessages not implemented")
 }
 func (UnimplementedOfficeMailServiceServer) DetectProvider(context.Context, *DetectProviderRequest) (*MailProviderInfo, error) {
 	return nil, status.Error(codes.Unimplemented, "method DetectProvider not implemented")
@@ -924,6 +1044,132 @@ func _OfficeMailService_MarkMessages_Handler(srv interface{}, ctx context.Contex
 	return interceptor(ctx, in, info, handler)
 }
 
+func _OfficeMailService_MarkAllRead_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(MarkAllReadRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OfficeMailServiceServer).MarkAllRead(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: OfficeMailService_MarkAllRead_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OfficeMailServiceServer).MarkAllRead(ctx, req.(*MarkAllReadRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _OfficeMailService_ListThread_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListThreadRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OfficeMailServiceServer).ListThread(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: OfficeMailService_ListThread_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OfficeMailServiceServer).ListThread(ctx, req.(*ListThreadRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _OfficeMailService_SuggestContacts_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SuggestContactsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OfficeMailServiceServer).SuggestContacts(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: OfficeMailService_SuggestContacts_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OfficeMailServiceServer).SuggestContacts(ctx, req.(*SuggestContactsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _OfficeMailService_ListBlockedSenders_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(emptypb.Empty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OfficeMailServiceServer).ListBlockedSenders(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: OfficeMailService_ListBlockedSenders_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OfficeMailServiceServer).ListBlockedSenders(ctx, req.(*emptypb.Empty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _OfficeMailService_BlockSender_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(BlockSenderRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OfficeMailServiceServer).BlockSender(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: OfficeMailService_BlockSender_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OfficeMailServiceServer).BlockSender(ctx, req.(*BlockSenderRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _OfficeMailService_UnblockSender_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(BlockSenderRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OfficeMailServiceServer).UnblockSender(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: OfficeMailService_UnblockSender_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OfficeMailServiceServer).UnblockSender(ctx, req.(*BlockSenderRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _OfficeMailService_PurgeMessages_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PurgeMessagesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OfficeMailServiceServer).PurgeMessages(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: OfficeMailService_PurgeMessages_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OfficeMailServiceServer).PurgeMessages(ctx, req.(*PurgeMessagesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _OfficeMailService_DetectProvider_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(DetectProviderRequest)
 	if err := dec(in); err != nil {
@@ -1254,6 +1500,34 @@ var OfficeMailService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "MarkMessages",
 			Handler:    _OfficeMailService_MarkMessages_Handler,
+		},
+		{
+			MethodName: "MarkAllRead",
+			Handler:    _OfficeMailService_MarkAllRead_Handler,
+		},
+		{
+			MethodName: "ListThread",
+			Handler:    _OfficeMailService_ListThread_Handler,
+		},
+		{
+			MethodName: "SuggestContacts",
+			Handler:    _OfficeMailService_SuggestContacts_Handler,
+		},
+		{
+			MethodName: "ListBlockedSenders",
+			Handler:    _OfficeMailService_ListBlockedSenders_Handler,
+		},
+		{
+			MethodName: "BlockSender",
+			Handler:    _OfficeMailService_BlockSender_Handler,
+		},
+		{
+			MethodName: "UnblockSender",
+			Handler:    _OfficeMailService_UnblockSender_Handler,
+		},
+		{
+			MethodName: "PurgeMessages",
+			Handler:    _OfficeMailService_PurgeMessages_Handler,
 		},
 		{
 			MethodName: "DetectProvider",

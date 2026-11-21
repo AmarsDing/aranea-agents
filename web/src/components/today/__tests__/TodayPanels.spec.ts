@@ -113,6 +113,10 @@ describe('工作台今日 · 最新邮件与任务两张卡', () => {
       flagged: false,
       archived: false,
       folder: 'inbox',
+      trashed: false,
+      spam: false,
+      labels: [],
+      send_at: '',
     };
     const ok = mount(TodayMail, {
       props: { mails: [mail], total: 9, status: 'ok' },

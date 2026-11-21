@@ -61,7 +61,7 @@ func overlap(aStart, aEnd, bStart, bEnd time.Time) bool {
 func (f *fakeEventRepo) ListEventsRange(_ context.Context, userID string, start, end time.Time) ([]*Event, error) {
 	var out []*Event
 	for _, ev := range f.byID {
-		if ev.UserID == userID && overlap(ev.StartAt, ev.EndAt, start, end) {
+		if ev.UserID == userID && (overlap(ev.StartAt, ev.EndAt, start, end) || (ev.RRule != "" && ev.StartAt.Before(end))) {
 			out = append(out, ev)
 		}
 	}
@@ -84,7 +84,7 @@ func (f *fakeEventRepo) CountOverlap(_ context.Context, userID string, start, en
 	}
 	n := 0
 	for _, ev := range f.byID {
-		if ev.UserID != userID || ev.ID == excludeID || ev.Kind == KindLog || ev.AllDay {
+		if ev.UserID != userID || ev.ID == excludeID || ev.Kind == KindLog || ev.AllDay || ev.RRule != "" {
 			continue
 		}
 		if overlap(ev.StartAt, ev.EndAt, start, end) {

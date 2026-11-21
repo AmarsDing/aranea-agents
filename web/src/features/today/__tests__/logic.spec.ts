@@ -52,6 +52,12 @@ function event(over: Partial<OfficeEventRow>): OfficeEventRow {
     status: 'todo',
     all_day: false,
     outcome: '',
+    location: '',
+    url: '',
+    color: '',
+    rrule: '',
+    exdates: '',
+    recurrence_day: '',
     ...over,
   };
 }

@@ -188,7 +188,13 @@ func (u *MailSyncUsecase) Send(ctx context.Context, userID string, out *MailOutg
 	now := u.now()
 	messageID := fmt.Sprintf("<%s@%s>", uuid.NewString(), mailDomainOf(from.Address))
 	inReplyTo, references := replyHeaders(orig)
-	raw := buildOutgoingMail(from, to, cc, out.Subject, out.Body, messageID, inReplyTo, references, out.Attachments, now)
+	if orig == nil && strings.TrimSpace(out.References) != "" {
+		// 定时草稿到点发出：原信不一定还在，用草稿里存的 References，最后一个就是回复的那封
+		references = strings.TrimSpace(out.References)
+		refs := strings.Fields(references)
+		inReplyTo = refs[len(refs)-1]
+	}
+	raw := buildOutgoingMail(from, to, cc, out.Subject, out.Body, out.BodyHTML, messageID, inReplyTo, references, out.Attachments, now)
 
 	rcpts := make([]string, 0, len(to)+len(cc))
 	for _, a := range append(append([]*mail.Address{}, to...), cc...) {
@@ -218,6 +224,9 @@ func (u *MailSyncUsecase) Send(ctx context.Context, userID string, out *MailOutg
 		return "", ErrMailUpstream.WithCause(fmt.Errorf("smtp send (%s): %w", kind, sendErr))
 	}
 
+	if acc.SaveSent {
+		u.appendSentCopy(ctx, acc, password, raw)
+	}
 	sent := u.outgoingRow(acc, userID, from, to, cc, out, now)
 	sent.Folder = MailFolderSent
 	sent.MessageIDHdr = messageID
@@ -247,6 +256,16 @@ func (u *MailSyncUsecase) SaveDraft(ctx context.Context, userID string, out *Mai
 	draft := u.outgoingRow(acc, userID, from, to, cc, out, u.now())
 	draft.Folder = MailFolderDrafts
 	_, draft.ReferencesHdr = replyHeaders(orig)
+	if draft.ReferencesHdr == "" {
+		draft.ReferencesHdr = strings.TrimSpace(out.References)
+	}
+	if out.SendAt != nil && out.SendAt.After(u.now()) {
+		if len(to) == 0 {
+			return "", ErrMailRecipientRequired
+		}
+		at := out.SendAt.UTC()
+		draft.SendAt = &at
+	}
 	if err := u.messages.SaveMailDraftTx(ctx, userID, out.DraftID, draft); err != nil {
 		return "", err
 	}
@@ -269,6 +288,9 @@ func (u *MailSyncUsecase) outgoingRow(acc *MailAccount, userID string, from *mai
 		To:          displayMailAddrs(to),
 		Cc:          displayMailAddrs(cc),
 		Seen:        true,
+	}
+	if strings.TrimSpace(out.BodyHTML) != "" {
+		m.BodyHTML = sanitizeMailHTML(out.BodyHTML)
 	}
 	for _, a := range out.Attachments {
 		m.Attachments = append(m.Attachments, &MailAttachment{

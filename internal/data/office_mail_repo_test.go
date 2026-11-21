@@ -82,6 +82,23 @@ CREATE UNIQUE INDEX IF NOT EXISTS office_mail_messages_acc_uid_inbox
   ON office_mail_messages ("account_id", "uid") WHERE "account_id" <> '' AND "folder" = 'inbox';
 CREATE INDEX IF NOT EXISTS idx_office_mail_messages_folder
   ON office_mail_messages ("user_id", "folder", "received_at" DESC NULLS LAST);
+-- 镜像 20261338_office_mail_trash_spam.sql
+ALTER TABLE office_mail_messages ADD COLUMN IF NOT EXISTS "trashed_at" TIMESTAMPTZ;
+ALTER TABLE office_mail_messages ADD COLUMN IF NOT EXISTS "spam"       BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE office_mail_accounts ADD COLUMN IF NOT EXISTS "junk_last_uid" BIGINT NOT NULL DEFAULT 0;
+CREATE UNIQUE INDEX IF NOT EXISTS office_mail_messages_acc_uid_junk
+  ON office_mail_messages ("account_id", "uid") WHERE "account_id" <> '' AND "folder" = 'junk';
+-- 镜像 20261340_office_mail_more.sql
+ALTER TABLE office_mail_accounts ADD COLUMN IF NOT EXISTS "signature" TEXT    NOT NULL DEFAULT '';
+ALTER TABLE office_mail_accounts ADD COLUMN IF NOT EXISTS "save_sent" BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE office_mail_messages ADD COLUMN IF NOT EXISTS "labels"  TEXT NOT NULL DEFAULT '';
+ALTER TABLE office_mail_messages ADD COLUMN IF NOT EXISTS "send_at" TIMESTAMPTZ;
+CREATE TABLE IF NOT EXISTS office_mail_blocked (
+  "user_id"    TEXT NOT NULL,
+  "address"    TEXT NOT NULL,
+  "created_at" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY ("user_id", "address")
+);
 
 CREATE TABLE IF NOT EXISTS office_mail_attachments (
   "id"                TEXT PRIMARY KEY,
@@ -413,5 +430,203 @@ func TestOfficeMailRepo_DigestAndSearch(t *testing.T) {
 	hits, _ = repo.SearchMailMessages(ctx, "u-2", "资金", 10)
 	if len(hits) != 1 {
 		t.Fatalf("u-2 search: n=%d", len(hits))
+	}
+}
+
+// TestOfficeMailRepo_TrashSpamJunk 已删除 / 垃圾邮件：视图互斥、垃圾箱同步行幂等、
+// 彻底删除只删该视图里的信、计数。
+func TestOfficeMailRepo_TrashSpamJunk(t *testing.T) {
+	t.Parallel()
+	repo := openOfficeMailRepo(t)
+	ctx := context.Background()
+	now := time.Now()
+	ids := func(ms []*office.MailMessage) map[string]bool {
+		out := map[string]bool{}
+		for _, m := range ms {
+			out[m.ID] = true
+		}
+		return out
+	}
+	view := func(v string) map[string]bool {
+		t.Helper()
+		got, _, err := repo.QueryMailMessages(ctx, "u-1", office.MailQuery{View: v, Page: 1, PageSize: 50})
+		if err != nil {
+			t.Fatalf("query %s: %v", v, err)
+		}
+		return ids(got)
+	}
+
+	inbox := mailTestMessage("ts-in", "u-1", "acc-t", 5, "收件箱", now)
+	junk := mailTestMessage("ts-junk", "u-1", "acc-t", 5, "广告", now) // 同 UID，不同文件夹
+	junk.Folder, junk.Spam = office.MailFolderJunk, true
+	gone := mailTestMessage("ts-gone", "u-1", "acc-t", 6, "要删的", now)
+	for _, m := range []*office.MailMessage{inbox, junk, gone} {
+		if ok, err := repo.InsertMessageWithAttachmentsTx(ctx, m); err != nil || !ok {
+			t.Fatalf("insert %s: ok=%v err=%v", m.ID, ok, err)
+		}
+	}
+	// 垃圾箱同步行按 (account, uid, junk) 幂等。
+	dupJunk := mailTestMessage("ts-junk2", "u-1", "acc-t", 5, "广告重复", now)
+	dupJunk.Folder, dupJunk.Spam = office.MailFolderJunk, true
+	if ok, err := repo.InsertMessageWithAttachmentsTx(ctx, dupJunk); err != nil || ok {
+		t.Fatalf("dup junk: ok=%v err=%v, want false/nil", ok, err)
+	}
+
+	yes := true
+	if _, err := repo.MarkMailMessages(ctx, "u-1", []string{"ts-gone"}, office.MailMark{Trashed: &yes}); err != nil {
+		t.Fatalf("trash: %v", err)
+	}
+	if got := view(office.MailViewInbox); !got["ts-in"] || got["ts-junk"] || got["ts-gone"] {
+		t.Fatalf("inbox view: %v", got)
+	}
+	if got := view(office.MailViewSpam); len(got) != 1 || !got["ts-junk"] {
+		t.Fatalf("spam view: %v", got)
+	}
+	if got := view(office.MailViewTrash); len(got) != 1 || !got["ts-gone"] {
+		t.Fatalf("trash view: %v", got)
+	}
+	c, err := repo.CountMailbox(ctx, "u-1")
+	if err != nil || c.SpamUnread != 1 || c.Trash != 1 || c.InboxUnread != 1 {
+		t.Fatalf("counts: %+v err=%v", c, err)
+	}
+
+	// 「不是垃圾邮件」：回收件箱。
+	no := false
+	if _, err := repo.MarkMailMessages(ctx, "u-1", []string{"ts-junk"}, office.MailMark{Spam: &no}); err != nil {
+		t.Fatalf("not spam: %v", err)
+	}
+	if got := view(office.MailViewInbox); !got["ts-junk"] {
+		t.Fatalf("rescued junk not in inbox: %v", got)
+	}
+
+	// 彻底删除只认该视图：收件箱的 id 混进来也不删。
+	n, err := repo.PurgeMailMessages(ctx, "u-1", office.MailViewTrash, []string{"ts-gone", "ts-in"})
+	if err != nil || n != 1 {
+		t.Fatalf("purge selected: n=%d err=%v", n, err)
+	}
+	if _, err := repo.GetMailMessage(ctx, "ts-in", "u-1"); err != nil {
+		t.Fatalf("inbox message purged by mistake: %v", err)
+	}
+	if _, err := repo.PurgeMailMessages(ctx, "u-1", office.MailViewInbox, nil); !errors.Is(err, office.ErrMailViewInvalid) {
+		t.Fatalf("purge inbox: err=%v, want ErrMailViewInvalid", err)
+	}
+	// 清空垃圾邮件：只剩下标回去的那封已不在垃圾邮件里，所以删 0 封。
+	if n, err := repo.PurgeMailMessages(ctx, "u-1", office.MailViewSpam, nil); err != nil || n != 0 {
+		t.Fatalf("empty spam: n=%d err=%v", n, err)
+	}
+	// 垃圾箱游标。
+	acc := &office.MailAccount{ID: "acc-t", UserID: "u-1", Host: "h", TLSMode: "tls", Username: "x", PasswordEnc: "e",
+		CreatedAt: now, UpdatedAt: now}
+	if err := repo.CreateMailAccount(ctx, acc); err != nil {
+		t.Fatalf("create account: %v", err)
+	}
+	if err := repo.UpdateMailJunkCursor(ctx, "acc-t", 9); err != nil {
+		t.Fatalf("junk cursor: %v", err)
+	}
+	if got, err := repo.GetMailAccount(ctx, "acc-t", "u-1"); err != nil || got.JunkLastUID != 9 {
+		t.Fatalf("junk cursor read back: %+v err=%v", got, err)
+	}
+}
+
+// TestOfficeMailRepo_RoundTwo 标签、拒收、会话、全部已读、定时草稿、Message-ID 去重、旧的已删除清理。
+func TestOfficeMailRepo_RoundTwo(t *testing.T) {
+	t.Parallel()
+	repo := openOfficeMailRepo(t)
+	ctx := context.Background()
+	now := time.Now()
+	a := mailTestMessage("r2-a", "u-9", "acc-9", 1, "周报", now.Add(-2*time.Hour))
+	a.MessageIDHdr = "<a@x>"
+	a.Sender = "Spammer <ad@spam.cn>"
+	b := mailTestMessage("r2-b", "u-9", "acc-9", 2, "Re: 周报", now.Add(-time.Hour))
+	b.To = "李卓 <li@x.cn>"
+	for _, m := range []*office.MailMessage{a, b} {
+		if ok, err := repo.InsertMessageWithAttachmentsTx(ctx, m); err != nil || !ok {
+			t.Fatalf("insert %s: %v", m.ID, err)
+		}
+	}
+	// 同一 Message-ID 换了 UID（挪过文件夹）：跳过
+	dup := mailTestMessage("r2-dup", "u-9", "acc-9", 7, "周报", now)
+	dup.MessageIDHdr = "<a@x>"
+	if ok, err := repo.InsertMessageWithAttachmentsTx(ctx, dup); err != nil || ok {
+		t.Fatalf("dedupe by message-id: ok=%v err=%v", ok, err)
+	}
+
+	// 标签：加两次只留一个，计数，按标签筛，去掉
+	for i := 0; i < 2; i++ {
+		if _, err := repo.MarkMailMessages(ctx, "u-9", []string{"r2-a", "r2-b"}, office.MailMark{AddLabel: "客户"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := repo.MarkMailMessages(ctx, "u-9", []string{"r2-a"}, office.MailMark{AddLabel: "急"}); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := repo.GetMailMessage(ctx, "r2-a", "u-9")
+	if got.Labels != "客户,急" {
+		t.Fatalf("labels: %q", got.Labels)
+	}
+	c, err := repo.CountMailbox(ctx, "u-9")
+	if err != nil || len(c.Labels) != 2 {
+		t.Fatalf("label counts: %+v err=%v", c.Labels, err)
+	}
+	rows, _, _ := repo.QueryMailMessages(ctx, "u-9", office.MailQuery{View: office.MailViewInbox, Label: "急", Page: 1, PageSize: 10})
+	if len(rows) != 1 || rows[0].ID != "r2-a" {
+		t.Fatalf("label filter: %d", len(rows))
+	}
+	if _, err := repo.MarkMailMessages(ctx, "u-9", []string{"r2-a"}, office.MailMark{RemoveLabel: "客户"}); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ = repo.GetMailMessage(ctx, "r2-a", "u-9"); got.Labels != "急" {
+		t.Fatalf("remove label: %q", got.Labels)
+	}
+
+	// 会话
+	th, err := repo.ListThread(ctx, "u-9", "周报", 10)
+	if err != nil || len(th) != 2 {
+		t.Fatalf("thread: n=%d err=%v", len(th), err)
+	}
+	// 联想用的地址字段
+	if f, _ := repo.ListRecentAddressFields(ctx, "u-9", 10); len(f) < 3 {
+		t.Fatalf("address fields: %v", f)
+	}
+	// 全部已读
+	ids, err := repo.MarkViewSeen(ctx, "u-9", office.MailViewInbox, "")
+	if err != nil || len(ids) != 2 {
+		t.Fatalf("mark all read: %v err=%v", ids, err)
+	}
+	// 拒收：名单 + 已有的标垃圾
+	n, err := repo.BlockSender(ctx, "u-9", "ad@spam.cn")
+	if err != nil || n != 1 {
+		t.Fatalf("block: n=%d err=%v", n, err)
+	}
+	if list, _ := repo.ListBlockedSenders(ctx, "u-9"); len(list) != 1 {
+		t.Fatalf("blocked list: %v", list)
+	}
+	if err := repo.UnblockSender(ctx, "u-9", "ad@spam.cn"); err != nil {
+		t.Fatal(err)
+	}
+	// 定时草稿
+	at := now.Add(-time.Minute)
+	draft := mailTestMessage("r2-d", "u-9", "acc-9", 0, "定时", now)
+	draft.Folder, draft.SendAt = office.MailFolderDrafts, &at
+	if err := repo.SaveMailDraftTx(ctx, "u-9", "", draft); err != nil {
+		t.Fatal(err)
+	}
+	due, err := repo.ListDueScheduledDrafts(ctx, now, 10)
+	if err != nil || len(due) != 1 || due[0].SendAt == nil {
+		t.Fatalf("due drafts: %d err=%v", len(due), err)
+	}
+	if err := repo.ClearDraftSendAt(ctx, "r2-d"); err != nil {
+		t.Fatal(err)
+	}
+	if due, _ = repo.ListDueScheduledDrafts(ctx, now, 10); len(due) != 0 {
+		t.Fatal("send_at not cleared")
+	}
+	// 已删除超过期限的清掉
+	yes := true
+	if _, err := repo.MarkMailMessages(ctx, "u-9", []string{"r2-b"}, office.MailMark{Trashed: &yes}); err != nil {
+		t.Fatal(err)
+	}
+	if n, err := repo.PurgeTrashedBefore(ctx, now.Add(time.Hour)); err != nil || n < 1 {
+		t.Fatalf("purge old trash: n=%d err=%v", n, err)
 	}
 }

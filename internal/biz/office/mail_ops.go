@@ -93,9 +93,12 @@ func (u *MailMessageUsecase) Query(ctx context.Context, userID string, q MailQue
 	case "":
 		q.View = MailViewInbox
 	case MailViewInbox, MailViewUnread, MailViewFlagged, MailViewTask, MailViewAttachments,
-		MailViewSent, MailViewDrafts, MailViewArchived:
+		MailViewSent, MailViewDrafts, MailViewArchived, MailViewSpam, MailViewTrash:
 	default:
 		return nil, 0, ErrMailViewInvalid
+	}
+	if q.Label != "" && !validLabel(q.Label) {
+		return nil, 0, ErrMailLabelInvalid
 	}
 	q.Keyword = strings.TrimSpace(q.Keyword)
 	if len([]rune(q.Keyword)) > 200 {
@@ -109,13 +112,17 @@ func (u *MailMessageUsecase) Counts(ctx context.Context, userID string) (*Mailbo
 	return u.messages.CountMailbox(ctx, userID)
 }
 
-// Mark 批量标已读 / 星标 / 归档（一次最多 500 封）。
+// Mark 批量标已读 / 星标 / 归档 / 删到「已删除」/ 垃圾邮件（一次最多 500 封）。
 func (u *MailMessageUsecase) Mark(ctx context.Context, userID string, ids []string, m MailMark) (int64, error) {
-	if len(ids) == 0 || (m.Seen == nil && m.Flagged == nil && m.Archived == nil) {
+	if len(ids) == 0 || (m.Seen == nil && m.Flagged == nil && m.Archived == nil && m.Trashed == nil && m.Spam == nil &&
+		m.AddLabel == "" && m.RemoveLabel == "") {
 		return 0, nil
 	}
 	if len(ids) > 500 {
 		return 0, ErrMailTooManyIDs
+	}
+	if (m.AddLabel != "" && !validLabel(m.AddLabel)) || (m.RemoveLabel != "" && !validLabel(m.RemoveLabel)) {
+		return 0, ErrMailLabelInvalid
 	}
 	return u.messages.MarkMailMessages(ctx, userID, ids, m)
 }
@@ -126,6 +133,18 @@ func (u *MailMessageUsecase) Get(ctx context.Context, id, userID string) (*MailM
 
 func (u *MailMessageUsecase) Delete(ctx context.Context, id, userID string) error {
 	return u.messages.DeleteMailMessage(ctx, id, userID)
+}
+
+// Purge 彻底删除「已删除」/「垃圾邮件」里的信（ids 空 = 清空整个视图）。只认这两个视图，
+// 免得一个空 ids 把收件箱清掉。
+func (u *MailMessageUsecase) Purge(ctx context.Context, userID, view string, ids []string) (int64, error) {
+	if view != MailViewTrash && view != MailViewSpam {
+		return 0, ErrMailViewInvalid
+	}
+	if len(ids) > 500 {
+		return 0, ErrMailTooManyIDs
+	}
+	return u.messages.PurgeMailMessages(ctx, userID, view, ids)
 }
 
 // Search 本人邮件关键词检索（agent mail_search 工具读口；限量卡口 1-100）。

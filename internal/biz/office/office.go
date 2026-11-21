@@ -87,6 +87,7 @@ var (
 	// ErrInvalidKind / ErrInvalidStatus 日程条目类型、状态不在白名单内。
 	ErrInvalidKind   = apierror.BadRequest(DomainOffice, "invalid event kind")
 	ErrInvalidStatus = apierror.BadRequest(DomainOffice, "invalid event status")
+	ErrInvalidRRule  = apierror.BadRequest(DomainOffice, "unsupported recurrence rule")
 	// ErrDraftNotFound 草案不存在。
 	ErrDraftNotFound = apierror.NotFound(DomainOffice, "schedule draft not found")
 	// ErrDraftNotPending 草案已被决议（并发决议恰一个成功，其余得此错误）。
@@ -133,19 +134,31 @@ type Event struct {
 	Status          string // todo | doing | done | cancelled
 	AllDay          bool
 	Outcome         string // 完成情况 / 结果
-	RemindedAt      *time.Time
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
+	Location        string
+	URL             string
+	Color           string // 分类色键：'' | work | meeting | personal | focus | travel
+	RRule           string // 重复规则（见 recur.go），空 = 不重复
+	ExDates         string // 跳过的日期 YYYY-MM-DD，逗号分隔
+	// RecurrenceDay 只在按范围展开时填：这一项是系列在哪天的那一次（ID 仍是系列的）。
+	RecurrenceDay string
+	RemindedAt    *time.Time
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
 }
 
 // EventPatch 更新时有「是否给了值」之分的字段（nil = 不改），
 // 让清空完成情况、取消全天这类操作可以表达。
 type EventPatch struct {
-	Note    *string // 给了就改（可清空）；nil 时沿用旧口径：patch.Note 非空才改
-	Kind    *string
-	Status  *string
-	AllDay  *bool
-	Outcome *string
+	Note     *string // 给了就改（可清空）；nil 时沿用旧口径：patch.Note 非空才改
+	Kind     *string
+	Status   *string
+	AllDay   *bool
+	Outcome  *string
+	Location *string
+	URL      *string
+	Color    *string
+	RRule    *string
+	ExDates  *string
 }
 
 // DraftItem 草案单条排期项（与 proto ScheduleDraftItem 对应）。
@@ -231,6 +244,10 @@ type EventRepo interface {
 	// reminded_at IS NULL 且 start_at - reminder <= now。迟到补投（进程
 	// 停机错过的窗口在恢复后首个 tick 补发），按 start_at 升序限量。
 	ListDueReminders(ctx context.Context, now time.Time, limit int) ([]*Event, error)
+	// ListRecurringReminders 带提醒的重复计划系列（未完成、未取消），提醒 worker 自己算下一次。
+	ListRecurringReminders(ctx context.Context, limit int) ([]*Event, error)
+	// SearchEvents 本人日程关键字检索（标题 / 说明 / 完成情况 / 地点），按开始时间倒序限量。
+	SearchEvents(ctx context.Context, userID, keyword string, limit int) ([]*Event, error)
 	// MarkReminded 置提醒已投递标记（与通知落表同事务由调用方组合；
 	// 本方法仅承担单写，幂等由 reminded_at IS NULL 前置查询保证）。
 	MarkReminded(ctx context.Context, id string, at time.Time) error

@@ -36,6 +36,7 @@ type mailFakeRepos struct {
 	taskFiles   map[string]*OfficeTaskFile
 	failUID     map[int64]int // uid → 剩余注入失败次数
 	insertedSeq []int64       // 成功插入的 uid 轨迹（故障注入断言用）
+	blocked     map[string][]string
 }
 
 func newMailFakeRepos() *mailFakeRepos {
@@ -146,9 +147,20 @@ func (f *mailFakeRepos) InsertMessageWithAttachmentsTx(_ context.Context, m *Mai
 		f.failUID[m.UID] = n - 1
 		return false, fmt.Errorf("injected insert failure uid=%d", m.UID)
 	}
-	if m.AccountID != "" && mailFolderIs(m, MailFolderInbox) {
+	if m.AccountID != "" && m.MessageIDHdr != "" && (mailFolderIs(m, MailFolderInbox) || mailFolderIs(m, MailFolderJunk)) {
 		for _, cur := range f.messages {
-			if cur.AccountID == m.AccountID && cur.UID == m.UID && mailFolderIs(cur, MailFolderInbox) {
+			if cur.AccountID == m.AccountID && cur.MessageIDHdr == m.MessageIDHdr &&
+				(mailFolderIs(cur, MailFolderInbox) || mailFolderIs(cur, MailFolderJunk)) {
+				return false, nil // 同一 Message-ID 已有（挪过文件夹换了 UID）
+			}
+		}
+	}
+	for _, folder := range []string{MailFolderInbox, MailFolderJunk} {
+		if m.AccountID == "" || !mailFolderIs(m, folder) {
+			continue
+		}
+		for _, cur := range f.messages {
+			if cur.AccountID == m.AccountID && cur.UID == m.UID && mailFolderIs(cur, folder) {
 				return false, nil // 幂等命中
 			}
 		}
@@ -177,7 +189,7 @@ func (f *mailFakeRepos) ListMailMessages(_ context.Context, userID, accountID, q
 	defer f.mu.Unlock()
 	pool := make([]*MailMessage, 0)
 	for _, m := range f.messages {
-		if m.UserID != userID {
+		if m.UserID != userID || m.Spam || m.TrashedAt != nil {
 			continue
 		}
 		if accountID != "" && m.AccountID != accountID {
@@ -265,7 +277,7 @@ func (f *mailFakeRepos) ListMailMessagesSince(_ context.Context, userID string, 
 	defer f.mu.Unlock()
 	out := make([]*MailMessage, 0)
 	for _, m := range f.messages {
-		if m.UserID != userID || m.ReceivedAt == nil || m.ReceivedAt.Before(since) {
+		if m.UserID != userID || m.ReceivedAt == nil || m.ReceivedAt.Before(since) || m.Spam || m.TrashedAt != nil {
 			continue
 		}
 		out = append(out, cloneMessage(m))
@@ -283,7 +295,7 @@ func (f *mailFakeRepos) ListMailDigestUsers(_ context.Context, since time.Time) 
 	type key struct{ u, w string }
 	acc := map[key]int{}
 	for _, m := range f.messages {
-		if m.ReceivedAt == nil || m.ReceivedAt.Before(since) {
+		if m.ReceivedAt == nil || m.ReceivedAt.Before(since) || m.Spam || m.TrashedAt != nil {
 			continue
 		}
 		acc[key{m.UserID, m.WorkspaceID}]++

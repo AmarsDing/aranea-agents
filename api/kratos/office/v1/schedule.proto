@@ -49,6 +49,14 @@ message OfficeEvent {
   string status = 16;    // todo | doing | done | cancelled；「逾期」不存，按结束时间算
   bool all_day = 17;     // 全天；全天与 log 不参与 409 重叠检测
   string outcome = 18;   // 完成情况 / 结果
+  string location = 19;  // 地点
+  string url = 20;       // 会议 / 资料链接
+  string color = 21;     // 分类色：'' 默认 | work | meeting | personal | focus | travel
+  // 重复规则（RFC 5545 RRULE 的子集）：FREQ=DAILY|WEEKLY|MONTHLY|YEARLY;INTERVAL=n;BYDAY=MO,TU…;COUNT=n;UNTIL=YYYYMMDD
+  string rrule = 22;
+  string exdates = 23;   // 跳过的日期（YYYY-MM-DD，逗号分隔）
+  // 列表按范围展开重复日程时，这一项是哪天的那一次（YYYY-MM-DD）；非空 = 展开出来的一次，id 是系列的 id
+  string recurrence_day = 24;
 }
 
 message CreateEventRequest {
@@ -63,6 +71,10 @@ message CreateEventRequest {
   string status = 9;     // 空 = todo
   bool all_day = 10;
   string outcome = 11;
+  string location = 12;
+  string url = 13;
+  string color = 14;
+  string rrule = 15;
 }
 
 message UpdateEventRequest {
@@ -78,6 +90,20 @@ message UpdateEventRequest {
   optional string status = 9;
   optional bool all_day = 10;
   optional string outcome = 11;
+  optional string location = 12;
+  optional string url = 13;
+  optional string color = 14;
+  optional string rrule = 15;   // 传空串 = 不再重复
+  optional string exdates = 16; // 整串替换
+}
+
+message SearchEventsRequest {
+  string keyword = 1 [(google.api.field_behavior) = REQUIRED]; // 标题、说明、完成情况、地点
+  int32 limit = 2; // <=0 默认 50，>200 截 200
+}
+
+message SearchEventsResponse {
+  repeated OfficeEvent items = 1;
 }
 
 message GetEventRequest {
@@ -195,6 +221,11 @@ service OfficeScheduleService {
   rpc ListEventsRange(ListEventsRangeRequest) returns (ListEventsRangeResponse) {
     option (aranea.auth.v1.requirement) = {permission: "office.schedule"};
     option (google.api.http) = {get: "/v1/office/events"};
+  }
+  // SearchEvents 按关键字找日程（全部时间；重复日程按系列返回一条）。
+  rpc SearchEvents(SearchEventsRequest) returns (SearchEventsResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "office.schedule"};
+    option (google.api.http) = {get: "/v1/office/events:search"};
   }
   rpc ScheduleTask(ScheduleTaskRequest) returns (OfficeEvent) {
     option (aranea.auth.v1.requirement) = {permission: "office.schedule"};

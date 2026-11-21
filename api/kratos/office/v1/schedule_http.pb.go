@@ -33,6 +33,7 @@ const OperationOfficeScheduleServiceListTaskEvents = "/kratos.office.v1.OfficeSc
 const OperationOfficeScheduleServiceRejectScheduleDraft = "/kratos.office.v1.OfficeScheduleService/RejectScheduleDraft"
 const OperationOfficeScheduleServiceRevokeICalToken = "/kratos.office.v1.OfficeScheduleService/RevokeICalToken"
 const OperationOfficeScheduleServiceScheduleTask = "/kratos.office.v1.OfficeScheduleService/ScheduleTask"
+const OperationOfficeScheduleServiceSearchEvents = "/kratos.office.v1.OfficeScheduleService/SearchEvents"
 const OperationOfficeScheduleServiceSubmitScheduleDraft = "/kratos.office.v1.OfficeScheduleService/SubmitScheduleDraft"
 const OperationOfficeScheduleServiceUpdateEvent = "/kratos.office.v1.OfficeScheduleService/UpdateEvent"
 
@@ -52,6 +53,8 @@ type OfficeScheduleServiceHTTPServer interface {
 	RejectScheduleDraft(context.Context, *RejectScheduleDraftRequest) (*emptypb.Empty, error)
 	RevokeICalToken(context.Context, *RevokeICalTokenRequest) (*emptypb.Empty, error)
 	ScheduleTask(context.Context, *ScheduleTaskRequest) (*OfficeEvent, error)
+	// SearchEvents SearchEvents 按关键字找日程（全部时间；重复日程按系列返回一条）。
+	SearchEvents(context.Context, *SearchEventsRequest) (*SearchEventsResponse, error)
 	SubmitScheduleDraft(context.Context, *SubmitScheduleDraftRequest) (*SubmitScheduleDraftResponse, error)
 	UpdateEvent(context.Context, *UpdateEventRequest) (*OfficeEvent, error)
 }
@@ -63,6 +66,7 @@ func RegisterOfficeScheduleServiceHTTPServer(s *http.Server, srv OfficeScheduleS
 	r.DELETE("/v1/office/events/{id}", _OfficeScheduleService_DeleteEvent0_HTTP_Handler(srv))
 	r.GET("/v1/office/events/{id}", _OfficeScheduleService_GetEvent0_HTTP_Handler(srv))
 	r.GET("/v1/office/events", _OfficeScheduleService_ListEventsRange0_HTTP_Handler(srv))
+	r.GET("/v1/office/events:search", _OfficeScheduleService_SearchEvents0_HTTP_Handler(srv))
 	r.POST("/v1/office/events:scheduleTask", _OfficeScheduleService_ScheduleTask0_HTTP_Handler(srv))
 	r.GET("/v1/office/events:byTask", _OfficeScheduleService_ListTaskEvents0_HTTP_Handler(srv))
 	r.POST("/v1/office/schedule-drafts", _OfficeScheduleService_SubmitScheduleDraft0_HTTP_Handler(srv))
@@ -180,6 +184,25 @@ func _OfficeScheduleService_ListEventsRange0_HTTP_Handler(srv OfficeScheduleServ
 			return err
 		}
 		reply := out.(*ListEventsRangeResponse)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _OfficeScheduleService_SearchEvents0_HTTP_Handler(srv OfficeScheduleServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in SearchEventsRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationOfficeScheduleServiceSearchEvents)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.SearchEvents(ctx, req.(*SearchEventsRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*SearchEventsResponse)
 		return ctx.Result(200, reply)
 	}
 }
@@ -398,6 +421,8 @@ type OfficeScheduleServiceHTTPClient interface {
 	RejectScheduleDraft(ctx context.Context, req *RejectScheduleDraftRequest, opts ...http.CallOption) (rsp *emptypb.Empty, err error)
 	RevokeICalToken(ctx context.Context, req *RevokeICalTokenRequest, opts ...http.CallOption) (rsp *emptypb.Empty, err error)
 	ScheduleTask(ctx context.Context, req *ScheduleTaskRequest, opts ...http.CallOption) (rsp *OfficeEvent, err error)
+	// SearchEvents SearchEvents 按关键字找日程（全部时间；重复日程按系列返回一条）。
+	SearchEvents(ctx context.Context, req *SearchEventsRequest, opts ...http.CallOption) (rsp *SearchEventsResponse, err error)
 	SubmitScheduleDraft(ctx context.Context, req *SubmitScheduleDraftRequest, opts ...http.CallOption) (rsp *SubmitScheduleDraftResponse, err error)
 	UpdateEvent(ctx context.Context, req *UpdateEventRequest, opts ...http.CallOption) (rsp *OfficeEvent, err error)
 }
@@ -563,6 +588,20 @@ func (c *OfficeScheduleServiceHTTPClientImpl) ScheduleTask(ctx context.Context, 
 	opts = append(opts, http.Operation(OperationOfficeScheduleServiceScheduleTask))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// SearchEvents SearchEvents 按关键字找日程（全部时间；重复日程按系列返回一条）。
+func (c *OfficeScheduleServiceHTTPClientImpl) SearchEvents(ctx context.Context, in *SearchEventsRequest, opts ...http.CallOption) (*SearchEventsResponse, error) {
+	var out SearchEventsResponse
+	pattern := "/v1/office/events:search"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationOfficeScheduleServiceSearchEvents))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
 	if err != nil {
 		return nil, err
 	}

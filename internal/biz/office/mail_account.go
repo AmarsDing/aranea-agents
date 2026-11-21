@@ -119,6 +119,28 @@ func (u *MailAccountUsecase) Update(ctx context.Context, id, userID string, patc
 	return cur, nil
 }
 
+// UpdateSettings 签名、发出的信是否存到服务器「已发送」（nil = 不改）。
+func (u *MailAccountUsecase) UpdateSettings(ctx context.Context, id, userID string, signature *string, saveSent *bool) (*MailAccount, error) {
+	cur, err := u.accounts.GetMailAccount(ctx, id, userID)
+	if err != nil {
+		return nil, err
+	}
+	if signature != nil {
+		if len([]rune(*signature)) > 2000 {
+			return nil, ErrMailSignatureTooLong
+		}
+		cur.Signature = *signature
+	}
+	if saveSent != nil {
+		cur.SaveSent = *saveSent
+	}
+	cur.UpdatedAt = u.now()
+	if err := u.accounts.UpdateMailAccount(ctx, cur); err != nil {
+		return nil, err
+	}
+	return cur, nil
+}
+
 func (u *MailAccountUsecase) Delete(ctx context.Context, id, userID string) error {
 	return u.accounts.DeleteMailAccount(ctx, id, userID)
 }

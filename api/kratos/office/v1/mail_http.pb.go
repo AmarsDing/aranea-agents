@@ -23,6 +23,7 @@ const _ = http.SupportPackageIsVersion1
 
 const OperationOfficeMailServiceAssignOfficeTask = "/kratos.office.v1.OfficeMailService/AssignOfficeTask"
 const OperationOfficeMailServiceAttachmentToKnowledge = "/kratos.office.v1.OfficeMailService/AttachmentToKnowledge"
+const OperationOfficeMailServiceBlockSender = "/kratos.office.v1.OfficeMailService/BlockSender"
 const OperationOfficeMailServiceCreateAccount = "/kratos.office.v1.OfficeMailService/CreateAccount"
 const OperationOfficeMailServiceCreateOfficeTask = "/kratos.office.v1.OfficeMailService/CreateOfficeTask"
 const OperationOfficeMailServiceDeleteAccount = "/kratos.office.v1.OfficeMailService/DeleteAccount"
@@ -38,18 +39,24 @@ const OperationOfficeMailServiceGetMessage = "/kratos.office.v1.OfficeMailServic
 const OperationOfficeMailServiceImportEml = "/kratos.office.v1.OfficeMailService/ImportEml"
 const OperationOfficeMailServiceListAccounts = "/kratos.office.v1.OfficeMailService/ListAccounts"
 const OperationOfficeMailServiceListAttachments = "/kratos.office.v1.OfficeMailService/ListAttachments"
+const OperationOfficeMailServiceListBlockedSenders = "/kratos.office.v1.OfficeMailService/ListBlockedSenders"
 const OperationOfficeMailServiceListMessages = "/kratos.office.v1.OfficeMailService/ListMessages"
 const OperationOfficeMailServiceListOfficeTaskFiles = "/kratos.office.v1.OfficeMailService/ListOfficeTaskFiles"
 const OperationOfficeMailServiceListOfficeTasks = "/kratos.office.v1.OfficeMailService/ListOfficeTasks"
 const OperationOfficeMailServiceListProviders = "/kratos.office.v1.OfficeMailService/ListProviders"
+const OperationOfficeMailServiceListThread = "/kratos.office.v1.OfficeMailService/ListThread"
 const OperationOfficeMailServiceMailToTask = "/kratos.office.v1.OfficeMailService/MailToTask"
+const OperationOfficeMailServiceMarkAllRead = "/kratos.office.v1.OfficeMailService/MarkAllRead"
 const OperationOfficeMailServiceMarkMessages = "/kratos.office.v1.OfficeMailService/MarkMessages"
+const OperationOfficeMailServicePurgeMessages = "/kratos.office.v1.OfficeMailService/PurgeMessages"
 const OperationOfficeMailServiceSaveDraft = "/kratos.office.v1.OfficeMailService/SaveDraft"
 const OperationOfficeMailServiceSendMail = "/kratos.office.v1.OfficeMailService/SendMail"
 const OperationOfficeMailServiceSetOfficeTaskStatus = "/kratos.office.v1.OfficeMailService/SetOfficeTaskStatus"
+const OperationOfficeMailServiceSuggestContacts = "/kratos.office.v1.OfficeMailService/SuggestContacts"
 const OperationOfficeMailServiceSyncAccount = "/kratos.office.v1.OfficeMailService/SyncAccount"
 const OperationOfficeMailServiceTestAccount = "/kratos.office.v1.OfficeMailService/TestAccount"
 const OperationOfficeMailServiceTriggerDigest = "/kratos.office.v1.OfficeMailService/TriggerDigest"
+const OperationOfficeMailServiceUnblockSender = "/kratos.office.v1.OfficeMailService/UnblockSender"
 const OperationOfficeMailServiceUpdateAccount = "/kratos.office.v1.OfficeMailService/UpdateAccount"
 const OperationOfficeMailServiceUpdateOfficeTask = "/kratos.office.v1.OfficeMailService/UpdateOfficeTask"
 const OperationOfficeMailServiceUploadOfficeTaskFile = "/kratos.office.v1.OfficeMailService/UploadOfficeTaskFile"
@@ -58,6 +65,7 @@ type OfficeMailServiceHTTPServer interface {
 	// AssignOfficeTask AssignOfficeTask 派给 AI（会话由页面先建好）或收回自己做。
 	AssignOfficeTask(context.Context, *AssignOfficeTaskRequest) (*OfficeTask, error)
 	AttachmentToKnowledge(context.Context, *AttachmentToKnowledgeRequest) (*AttachmentToKnowledgeResponse, error)
+	BlockSender(context.Context, *BlockSenderRequest) (*BlockSenderResponse, error)
 	CreateAccount(context.Context, *CreateAccountRequest) (*MailAccount, error)
 	CreateOfficeTask(context.Context, *CreateOfficeTaskRequest) (*OfficeTask, error)
 	DeleteAccount(context.Context, *DeleteAccountRequest) (*emptypb.Empty, error)
@@ -78,20 +86,30 @@ type OfficeMailServiceHTTPServer interface {
 	ImportEml(context.Context, *ImportEmlRequest) (*MailMessage, error)
 	ListAccounts(context.Context, *emptypb.Empty) (*ListAccountsResponse, error)
 	ListAttachments(context.Context, *ListAttachmentsRequest) (*ListAttachmentsResponse, error)
+	// ListBlockedSenders 拒收名单：名单里的发件人来信直接进垃圾邮件。
+	ListBlockedSenders(context.Context, *emptypb.Empty) (*ListBlockedSendersResponse, error)
 	ListMessages(context.Context, *ListMessagesRequest) (*ListMessagesResponse, error)
 	ListOfficeTaskFiles(context.Context, *ListOfficeTaskFilesRequest) (*ListOfficeTaskFilesResponse, error)
 	// ListOfficeTasks 个人任务（工作台「我的任务」）：只读写调用者本人的任务，仅需登录。
 	ListOfficeTasks(context.Context, *ListOfficeTasksRequest) (*ListOfficeTasksResponse, error)
 	ListProviders(context.Context, *emptypb.Empty) (*ListProvidersResponse, error)
+	// ListThread ListThread 同一会话（主题去掉 Re: / 回复: 等前缀后相同）的往来，按时间正序。
+	ListThread(context.Context, *ListThreadRequest) (*ListMessagesResponse, error)
 	MailToTask(context.Context, *MailToTaskRequest) (*MailToTaskResponse, error)
+	MarkAllRead(context.Context, *MarkAllReadRequest) (*MarkMessagesResponse, error)
 	MarkMessages(context.Context, *MarkMessagesRequest) (*MarkMessagesResponse, error)
+	// PurgeMessages PurgeMessages 彻底删除「已删除」/「垃圾邮件」里的信（清空或删选中的几封）。
+	PurgeMessages(context.Context, *PurgeMessagesRequest) (*PurgeMessagesResponse, error)
 	SaveDraft(context.Context, *SaveDraftRequest) (*SaveDraftResponse, error)
 	// SendMail SendMail 发信（邮件 P1）：只给登录用户在页面上用；智能体没有发信工具。
 	SendMail(context.Context, *SendMailRequest) (*SendMailResponse, error)
 	SetOfficeTaskStatus(context.Context, *SetOfficeTaskStatusRequest) (*OfficeTask, error)
+	// SuggestContacts SuggestContacts 写信时的收件人联想（从来往邮件里统计）。
+	SuggestContacts(context.Context, *SuggestContactsRequest) (*SuggestContactsResponse, error)
 	SyncAccount(context.Context, *SyncAccountRequest) (*SyncAccountResponse, error)
 	TestAccount(context.Context, *TestAccountRequest) (*TestAccountResponse, error)
 	TriggerDigest(context.Context, *TriggerDigestRequest) (*TriggerDigestResponse, error)
+	UnblockSender(context.Context, *BlockSenderRequest) (*emptypb.Empty, error)
 	UpdateAccount(context.Context, *UpdateAccountRequest) (*MailAccount, error)
 	UpdateOfficeTask(context.Context, *UpdateOfficeTaskRequest) (*OfficeTask, error)
 	UploadOfficeTaskFile(context.Context, *UploadOfficeTaskFileRequest) (*OfficeTaskFile, error)
@@ -117,6 +135,13 @@ func RegisterOfficeMailServiceHTTPServer(s *http.Server, srv OfficeMailServiceHT
 	r.POST("/v1/office/mail/drafts", _OfficeMailService_SaveDraft0_HTTP_Handler(srv))
 	r.GET("/v1/office/mail/summary", _OfficeMailService_GetMailboxSummary0_HTTP_Handler(srv))
 	r.POST("/v1/office/mail/messages:mark", _OfficeMailService_MarkMessages0_HTTP_Handler(srv))
+	r.POST("/v1/office/mail/messages:markAllRead", _OfficeMailService_MarkAllRead0_HTTP_Handler(srv))
+	r.GET("/v1/office/mail/messages/{id}/thread", _OfficeMailService_ListThread0_HTTP_Handler(srv))
+	r.GET("/v1/office/mail/contacts", _OfficeMailService_SuggestContacts0_HTTP_Handler(srv))
+	r.GET("/v1/office/mail/blocked", _OfficeMailService_ListBlockedSenders0_HTTP_Handler(srv))
+	r.POST("/v1/office/mail/blocked", _OfficeMailService_BlockSender0_HTTP_Handler(srv))
+	r.POST("/v1/office/mail/blocked:remove", _OfficeMailService_UnblockSender0_HTTP_Handler(srv))
+	r.POST("/v1/office/mail/messages:purge", _OfficeMailService_PurgeMessages0_HTTP_Handler(srv))
 	r.GET("/v1/office/mail/providers:detect", _OfficeMailService_DetectProvider0_HTTP_Handler(srv))
 	r.GET("/v1/office/mail/providers", _OfficeMailService_ListProviders0_HTTP_Handler(srv))
 	r.POST("/v1/office/mail/accounts:test", _OfficeMailService_TestAccount0_HTTP_Handler(srv))
@@ -529,6 +554,154 @@ func _OfficeMailService_MarkMessages0_HTTP_Handler(srv OfficeMailServiceHTTPServ
 	}
 }
 
+func _OfficeMailService_MarkAllRead0_HTTP_Handler(srv OfficeMailServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in MarkAllReadRequest
+		if err := ctx.Bind(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationOfficeMailServiceMarkAllRead)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.MarkAllRead(ctx, req.(*MarkAllReadRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*MarkMessagesResponse)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _OfficeMailService_ListThread0_HTTP_Handler(srv OfficeMailServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in ListThreadRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationOfficeMailServiceListThread)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.ListThread(ctx, req.(*ListThreadRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*ListMessagesResponse)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _OfficeMailService_SuggestContacts0_HTTP_Handler(srv OfficeMailServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in SuggestContactsRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationOfficeMailServiceSuggestContacts)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.SuggestContacts(ctx, req.(*SuggestContactsRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*SuggestContactsResponse)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _OfficeMailService_ListBlockedSenders0_HTTP_Handler(srv OfficeMailServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in emptypb.Empty
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationOfficeMailServiceListBlockedSenders)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.ListBlockedSenders(ctx, req.(*emptypb.Empty))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*ListBlockedSendersResponse)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _OfficeMailService_BlockSender0_HTTP_Handler(srv OfficeMailServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in BlockSenderRequest
+		if err := ctx.Bind(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationOfficeMailServiceBlockSender)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.BlockSender(ctx, req.(*BlockSenderRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*BlockSenderResponse)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _OfficeMailService_UnblockSender0_HTTP_Handler(srv OfficeMailServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in BlockSenderRequest
+		if err := ctx.Bind(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationOfficeMailServiceUnblockSender)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.UnblockSender(ctx, req.(*BlockSenderRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*emptypb.Empty)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _OfficeMailService_PurgeMessages0_HTTP_Handler(srv OfficeMailServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in PurgeMessagesRequest
+		if err := ctx.Bind(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationOfficeMailServicePurgeMessages)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.PurgeMessages(ctx, req.(*PurgeMessagesRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*PurgeMessagesResponse)
+		return ctx.Result(200, reply)
+	}
+}
+
 func _OfficeMailService_DetectProvider0_HTTP_Handler(srv OfficeMailServiceHTTPServer) func(ctx http.Context) error {
 	return func(ctx http.Context) error {
 		var in DetectProviderRequest
@@ -844,6 +1017,7 @@ type OfficeMailServiceHTTPClient interface {
 	// AssignOfficeTask AssignOfficeTask 派给 AI（会话由页面先建好）或收回自己做。
 	AssignOfficeTask(ctx context.Context, req *AssignOfficeTaskRequest, opts ...http.CallOption) (rsp *OfficeTask, err error)
 	AttachmentToKnowledge(ctx context.Context, req *AttachmentToKnowledgeRequest, opts ...http.CallOption) (rsp *AttachmentToKnowledgeResponse, err error)
+	BlockSender(ctx context.Context, req *BlockSenderRequest, opts ...http.CallOption) (rsp *BlockSenderResponse, err error)
 	CreateAccount(ctx context.Context, req *CreateAccountRequest, opts ...http.CallOption) (rsp *MailAccount, err error)
 	CreateOfficeTask(ctx context.Context, req *CreateOfficeTaskRequest, opts ...http.CallOption) (rsp *OfficeTask, err error)
 	DeleteAccount(ctx context.Context, req *DeleteAccountRequest, opts ...http.CallOption) (rsp *emptypb.Empty, err error)
@@ -864,20 +1038,30 @@ type OfficeMailServiceHTTPClient interface {
 	ImportEml(ctx context.Context, req *ImportEmlRequest, opts ...http.CallOption) (rsp *MailMessage, err error)
 	ListAccounts(ctx context.Context, req *emptypb.Empty, opts ...http.CallOption) (rsp *ListAccountsResponse, err error)
 	ListAttachments(ctx context.Context, req *ListAttachmentsRequest, opts ...http.CallOption) (rsp *ListAttachmentsResponse, err error)
+	// ListBlockedSenders 拒收名单：名单里的发件人来信直接进垃圾邮件。
+	ListBlockedSenders(ctx context.Context, req *emptypb.Empty, opts ...http.CallOption) (rsp *ListBlockedSendersResponse, err error)
 	ListMessages(ctx context.Context, req *ListMessagesRequest, opts ...http.CallOption) (rsp *ListMessagesResponse, err error)
 	ListOfficeTaskFiles(ctx context.Context, req *ListOfficeTaskFilesRequest, opts ...http.CallOption) (rsp *ListOfficeTaskFilesResponse, err error)
 	// ListOfficeTasks 个人任务（工作台「我的任务」）：只读写调用者本人的任务，仅需登录。
 	ListOfficeTasks(ctx context.Context, req *ListOfficeTasksRequest, opts ...http.CallOption) (rsp *ListOfficeTasksResponse, err error)
 	ListProviders(ctx context.Context, req *emptypb.Empty, opts ...http.CallOption) (rsp *ListProvidersResponse, err error)
+	// ListThread ListThread 同一会话（主题去掉 Re: / 回复: 等前缀后相同）的往来，按时间正序。
+	ListThread(ctx context.Context, req *ListThreadRequest, opts ...http.CallOption) (rsp *ListMessagesResponse, err error)
 	MailToTask(ctx context.Context, req *MailToTaskRequest, opts ...http.CallOption) (rsp *MailToTaskResponse, err error)
+	MarkAllRead(ctx context.Context, req *MarkAllReadRequest, opts ...http.CallOption) (rsp *MarkMessagesResponse, err error)
 	MarkMessages(ctx context.Context, req *MarkMessagesRequest, opts ...http.CallOption) (rsp *MarkMessagesResponse, err error)
+	// PurgeMessages PurgeMessages 彻底删除「已删除」/「垃圾邮件」里的信（清空或删选中的几封）。
+	PurgeMessages(ctx context.Context, req *PurgeMessagesRequest, opts ...http.CallOption) (rsp *PurgeMessagesResponse, err error)
 	SaveDraft(ctx context.Context, req *SaveDraftRequest, opts ...http.CallOption) (rsp *SaveDraftResponse, err error)
 	// SendMail SendMail 发信（邮件 P1）：只给登录用户在页面上用；智能体没有发信工具。
 	SendMail(ctx context.Context, req *SendMailRequest, opts ...http.CallOption) (rsp *SendMailResponse, err error)
 	SetOfficeTaskStatus(ctx context.Context, req *SetOfficeTaskStatusRequest, opts ...http.CallOption) (rsp *OfficeTask, err error)
+	// SuggestContacts SuggestContacts 写信时的收件人联想（从来往邮件里统计）。
+	SuggestContacts(ctx context.Context, req *SuggestContactsRequest, opts ...http.CallOption) (rsp *SuggestContactsResponse, err error)
 	SyncAccount(ctx context.Context, req *SyncAccountRequest, opts ...http.CallOption) (rsp *SyncAccountResponse, err error)
 	TestAccount(ctx context.Context, req *TestAccountRequest, opts ...http.CallOption) (rsp *TestAccountResponse, err error)
 	TriggerDigest(ctx context.Context, req *TriggerDigestRequest, opts ...http.CallOption) (rsp *TriggerDigestResponse, err error)
+	UnblockSender(ctx context.Context, req *BlockSenderRequest, opts ...http.CallOption) (rsp *emptypb.Empty, err error)
 	UpdateAccount(ctx context.Context, req *UpdateAccountRequest, opts ...http.CallOption) (rsp *MailAccount, err error)
 	UpdateOfficeTask(ctx context.Context, req *UpdateOfficeTaskRequest, opts ...http.CallOption) (rsp *OfficeTask, err error)
 	UploadOfficeTaskFile(ctx context.Context, req *UploadOfficeTaskFileRequest, opts ...http.CallOption) (rsp *OfficeTaskFile, err error)
@@ -910,6 +1094,19 @@ func (c *OfficeMailServiceHTTPClientImpl) AttachmentToKnowledge(ctx context.Cont
 	pattern := "/v1/office/mail/attachments/{id}:toKnowledge"
 	path := binding.EncodeURL(pattern, in, false)
 	opts = append(opts, http.Operation(OperationOfficeMailServiceAttachmentToKnowledge))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *OfficeMailServiceHTTPClientImpl) BlockSender(ctx context.Context, in *BlockSenderRequest, opts ...http.CallOption) (*BlockSenderResponse, error) {
+	var out BlockSenderResponse
+	pattern := "/v1/office/mail/blocked"
+	path := binding.EncodeURL(pattern, in, false)
+	opts = append(opts, http.Operation(OperationOfficeMailServiceBlockSender))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
 	if err != nil {
@@ -1118,6 +1315,20 @@ func (c *OfficeMailServiceHTTPClientImpl) ListAttachments(ctx context.Context, i
 	return &out, nil
 }
 
+// ListBlockedSenders 拒收名单：名单里的发件人来信直接进垃圾邮件。
+func (c *OfficeMailServiceHTTPClientImpl) ListBlockedSenders(ctx context.Context, in *emptypb.Empty, opts ...http.CallOption) (*ListBlockedSendersResponse, error) {
+	var out ListBlockedSendersResponse
+	pattern := "/v1/office/mail/blocked"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationOfficeMailServiceListBlockedSenders))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 func (c *OfficeMailServiceHTTPClientImpl) ListMessages(ctx context.Context, in *ListMessagesRequest, opts ...http.CallOption) (*ListMessagesResponse, error) {
 	var out ListMessagesResponse
 	pattern := "/v1/office/mail/messages"
@@ -1171,6 +1382,20 @@ func (c *OfficeMailServiceHTTPClientImpl) ListProviders(ctx context.Context, in 
 	return &out, nil
 }
 
+// ListThread ListThread 同一会话（主题去掉 Re: / 回复: 等前缀后相同）的往来，按时间正序。
+func (c *OfficeMailServiceHTTPClientImpl) ListThread(ctx context.Context, in *ListThreadRequest, opts ...http.CallOption) (*ListMessagesResponse, error) {
+	var out ListMessagesResponse
+	pattern := "/v1/office/mail/messages/{id}/thread"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationOfficeMailServiceListThread))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 func (c *OfficeMailServiceHTTPClientImpl) MailToTask(ctx context.Context, in *MailToTaskRequest, opts ...http.CallOption) (*MailToTaskResponse, error) {
 	var out MailToTaskResponse
 	pattern := "/v1/office/mail/messages/{id}:toTask"
@@ -1184,11 +1409,38 @@ func (c *OfficeMailServiceHTTPClientImpl) MailToTask(ctx context.Context, in *Ma
 	return &out, nil
 }
 
+func (c *OfficeMailServiceHTTPClientImpl) MarkAllRead(ctx context.Context, in *MarkAllReadRequest, opts ...http.CallOption) (*MarkMessagesResponse, error) {
+	var out MarkMessagesResponse
+	pattern := "/v1/office/mail/messages:markAllRead"
+	path := binding.EncodeURL(pattern, in, false)
+	opts = append(opts, http.Operation(OperationOfficeMailServiceMarkAllRead))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 func (c *OfficeMailServiceHTTPClientImpl) MarkMessages(ctx context.Context, in *MarkMessagesRequest, opts ...http.CallOption) (*MarkMessagesResponse, error) {
 	var out MarkMessagesResponse
 	pattern := "/v1/office/mail/messages:mark"
 	path := binding.EncodeURL(pattern, in, false)
 	opts = append(opts, http.Operation(OperationOfficeMailServiceMarkMessages))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// PurgeMessages PurgeMessages 彻底删除「已删除」/「垃圾邮件」里的信（清空或删选中的几封）。
+func (c *OfficeMailServiceHTTPClientImpl) PurgeMessages(ctx context.Context, in *PurgeMessagesRequest, opts ...http.CallOption) (*PurgeMessagesResponse, error) {
+	var out PurgeMessagesResponse
+	pattern := "/v1/office/mail/messages:purge"
+	path := binding.EncodeURL(pattern, in, false)
+	opts = append(opts, http.Operation(OperationOfficeMailServicePurgeMessages))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
 	if err != nil {
@@ -1237,6 +1489,20 @@ func (c *OfficeMailServiceHTTPClientImpl) SetOfficeTaskStatus(ctx context.Contex
 	return &out, nil
 }
 
+// SuggestContacts SuggestContacts 写信时的收件人联想（从来往邮件里统计）。
+func (c *OfficeMailServiceHTTPClientImpl) SuggestContacts(ctx context.Context, in *SuggestContactsRequest, opts ...http.CallOption) (*SuggestContactsResponse, error) {
+	var out SuggestContactsResponse
+	pattern := "/v1/office/mail/contacts"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationOfficeMailServiceSuggestContacts))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 func (c *OfficeMailServiceHTTPClientImpl) SyncAccount(ctx context.Context, in *SyncAccountRequest, opts ...http.CallOption) (*SyncAccountResponse, error) {
 	var out SyncAccountResponse
 	pattern := "/v1/office/mail/accounts/{id}/sync"
@@ -1268,6 +1534,19 @@ func (c *OfficeMailServiceHTTPClientImpl) TriggerDigest(ctx context.Context, in 
 	pattern := "/v1/office/mail/digest:trigger"
 	path := binding.EncodeURL(pattern, in, false)
 	opts = append(opts, http.Operation(OperationOfficeMailServiceTriggerDigest))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *OfficeMailServiceHTTPClientImpl) UnblockSender(ctx context.Context, in *BlockSenderRequest, opts ...http.CallOption) (*emptypb.Empty, error) {
+	var out emptypb.Empty
+	pattern := "/v1/office/mail/blocked:remove"
+	path := binding.EncodeURL(pattern, in, false)
+	opts = append(opts, http.Operation(OperationOfficeMailServiceUnblockSender))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
 	if err != nil {

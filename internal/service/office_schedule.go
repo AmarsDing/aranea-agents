@@ -58,6 +58,12 @@ func eventToProto(ev *office.Event) *v1.OfficeEvent {
 		Status:          ev.Status,
 		AllDay:          ev.AllDay,
 		Outcome:         ev.Outcome,
+		Location:        ev.Location,
+		Url:             ev.URL,
+		Color:           ev.Color,
+		Rrule:           ev.RRule,
+		Exdates:         ev.ExDates,
+		RecurrenceDay:   ev.RecurrenceDay,
 	}
 }
 
@@ -88,6 +94,10 @@ func (s *OfficeScheduleService) CreateEvent(ctx context.Context, req *v1.CreateE
 		Status:          req.GetStatus(),
 		AllDay:          req.GetAllDay(),
 		Outcome:         req.GetOutcome(),
+		Location:        req.GetLocation(),
+		URL:             req.GetUrl(),
+		Color:           req.GetColor(),
+		RRule:           req.GetRrule(),
 	})
 	if err != nil {
 		return nil, apierror.ToKratos(err)
@@ -108,11 +118,28 @@ func (s *OfficeScheduleService) UpdateEvent(ctx context.Context, req *v1.UpdateE
 		EndAt:           tsAsTime(req.GetEndAt()),
 		Timezone:        req.GetTimezone(),
 		ReminderMinutes: int(req.GetReminderMinutes()),
-	}, office.EventPatch{Note: req.Note, Kind: req.Kind, Status: req.Status, AllDay: req.AllDay, Outcome: req.Outcome})
+	}, office.EventPatch{Note: req.Note, Kind: req.Kind, Status: req.Status, AllDay: req.AllDay, Outcome: req.Outcome,
+		Location: req.Location, URL: req.Url, Color: req.Color, RRule: req.Rrule, ExDates: req.Exdates})
 	if err != nil {
 		return nil, apierror.ToKratos(err)
 	}
 	return eventToProto(ev), nil
+}
+
+func (s *OfficeScheduleService) SearchEvents(ctx context.Context, req *v1.SearchEventsRequest) (*v1.SearchEventsResponse, error) {
+	userID, _, err := officeSubject(ctx)
+	if err != nil {
+		return nil, apierror.ToKratos(err)
+	}
+	events, err := s.schedule.SearchEvents(ctx, userID, req.GetKeyword(), int(req.GetLimit()))
+	if err != nil {
+		return nil, apierror.ToKratos(err)
+	}
+	out := &v1.SearchEventsResponse{Items: make([]*v1.OfficeEvent, 0, len(events))}
+	for _, ev := range events {
+		out.Items = append(out.Items, eventToProto(ev))
+	}
+	return out, nil
 }
 
 func (s *OfficeScheduleService) DeleteEvent(ctx context.Context, req *v1.DeleteEventRequest) (*emptypb.Empty, error) {
