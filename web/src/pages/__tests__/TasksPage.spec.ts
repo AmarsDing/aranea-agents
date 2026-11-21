@@ -30,7 +30,7 @@ const run = (id: string, state: DelegatedRow['state'], officeTaskId = ''): Deleg
   agentKey: '写手',
   state,
   at: '',
-  to: `/tasks/list?session=${id}`,
+  to: `/chat?session=${id}`,
   officeTaskId,
   detail: '',
 });
@@ -74,9 +74,6 @@ const mountPage = async () => {
         draggable: draggableStub,
         TaskComposer: true,
         TaskDetailDrawer: true,
-        // 视图切换放在壳层页签行里（测试里没有那个挂载点）
-        TaskViewToggle: true,
-        teleport: true,
         TaskRecipientMenu: true,
         'router-link': { props: ['to'], template: '<a :href="to"><slot /></a>' },
       },

@@ -706,6 +706,8 @@ const labels = computed<HandLabels>(() => ({
 function buildHand(mats: { name: string; path?: string }[]) {
   const dl = deliver.value.map((d) => t(`cc.deliver.${d}`));
   if (props.mode === 'new') {
+    // 简单的对话：没带资料、没要求交回什么，交给助手 / 同事——原话发出，不套交接单的格式
+    if (plainTalk.value && !mats.length) return text.value.trim();
     const { title, body } = splitTitle(text.value);
     return buildHandText(
       { title: title || t('cc.compose.untitled'), body, materials: mats, deliver: dl },
@@ -726,6 +728,9 @@ function buildHand(mats: { name: string; path?: string }[]) {
     labels.value,
   );
 }
+const plainTalk = computed(
+  () => props.mode === 'new' && (pick.value === 'spirit' || pick.value === 'agent') && !deliver.value.length,
+);
 const preview = computed(() =>
   buildHand(materialNames.value.map((name) => ({ name, path: isCode.value ? t('cc.hand.pathLater') : undefined }))),
 );

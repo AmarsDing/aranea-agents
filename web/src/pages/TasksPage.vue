@@ -17,10 +17,6 @@
       }}</router-link>
     </p>
 
-    <Teleport defer to="#app-tab-actions">
-      <TaskViewToggle />
-    </Teleport>
-
     <div class="tk-board">
       <section
         v-for="col in BOARD_COLUMNS"
@@ -114,7 +110,6 @@ import { useI18n } from 'vue-i18n';
 import { useRoute, useRouter } from 'vue-router';
 import draggable from 'vuedraggable';
 import TaskCard from '../components/tasks/TaskCard.vue';
-import TaskViewToggle from '../components/tasks/TaskViewToggle.vue';
 import TaskDetailDrawer from '../features/tasks/components/TaskDetailDrawer.vue';
 import { listOfficeTasks, setOfficeTaskStatus } from '../features/office/api';
 import type { OfficeTaskRow } from '../features/office/types';

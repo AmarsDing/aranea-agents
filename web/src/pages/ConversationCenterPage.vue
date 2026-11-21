@@ -1,6 +1,6 @@
 <template>
   <!--
-    工作台 › 任务 › 列表（2026-11-21 起从「对话」页签搬到这里，/tasks/list）。以任务为中心——一件事交给了哪些执行者（同事、流程、编码工具），每次执行是一段过程。
+    工作台 › 对话：统一入口。界面上都是对话；执行层面每段对话都是一个任务——一件事交给了哪些执行者（同事、流程、编码工具），每次执行是一段过程，简单的聊天也一样。
     左：任务列表（搜索、视图页签、执行者胶囊、项目 / 排序）；右：任务详情（执行链 + 当前执行的对话）。
     设计：docs/aranea-agents/design/2026-11-17-三大模块重设计/07-会话中心.md §10
   -->
@@ -12,7 +12,6 @@
     @drop.prevent="onDrop"
   >
     <Teleport defer to="#app-tab-actions">
-      <TaskViewToggle />
       <q-btn
         unelevated
         dense
@@ -260,7 +259,6 @@
         :exec-id="execId"
         :tab="tab"
         :busy="busy"
-        :pro="pro"
         @select-exec="selectExec"
         @tab="tab = $event"
         @handover="handover"
@@ -310,7 +308,6 @@ import { useI18n } from 'vue-i18n';
 import { useRoute, useRouter } from 'vue-router';
 import { Notify } from 'quasar';
 import ChatWorkspace from '../features/chat/ChatWorkspace.vue';
-import TaskViewToggle from '../components/tasks/TaskViewToggle.vue';
 import { useProMode } from '../features/prefs/proMode';
 import CcBridgeView from '../features/conversations/components/CcBridgeView.vue';
 import CcFlowView from '../features/conversations/components/CcFlowView.vue';
@@ -363,9 +360,7 @@ const sort = ref<(typeof SORTS)[number]>('last');
 const selId = ref('');
 const execId = ref('');
 const { pro } = useProMode();
-// 专业模式默认停在「过程」，否则停在「概况」
-const defaultTab = (): DetailTab => (pro.value ? 'process' : 'overview');
-const tab = ref<DetailTab>(defaultTab());
+const tab = ref<DetailTab>('talk');
 const picked = ref(new Set<string>());
 const busy = ref(false);
 const chatMounted = ref(false);
@@ -501,7 +496,7 @@ function selectTask(id: string) {
   selId.value = id;
   const target = allTasks.value.find((x) => x.id === id);
   selectExec(target ? (defaultExecution(target)?.id ?? '') : '');
-  tab.value = defaultTab();
+  tab.value = 'talk';
 }
 function selectExec(id: string) {
   execId.value = id;
@@ -572,7 +567,6 @@ const stopLinkWatch = watch(
       selId.value = found.id;
       selectExec(`session:${linked}`);
     } else selectTask(found.id);
-    tab.value = 'process';
   },
 );
 
@@ -699,8 +693,6 @@ async function onSent(r: { anchorId: string; sessionId: string }) {
   await nextTick();
   selectTask(hit.id);
   if (r.sessionId && flat(hit).some((e) => e.id === `session:${r.sessionId}`)) selectExec(`session:${r.sessionId}`);
-  // 刚派出去：直接看它开始做
-  tab.value = 'process';
 }
 async function approve() {
   if (!task.value) return;

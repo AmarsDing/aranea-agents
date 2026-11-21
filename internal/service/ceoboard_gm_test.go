@@ -186,14 +186,14 @@ func TestClassifyDelegated(t *testing.T) {
 	if len(got) != 3 {
 		t.Fatalf("got %+v", got)
 	}
-	if got[0].ID != "office:a" || got[0].Title != "写周报" || got[0].State != orggraph.WorkStuck || got[0].At != "2026-11-16T02:00:00Z" || got[0].To != "/tasks/list?session=s1&agent=ag1" {
+	if got[0].ID != "office:a" || got[0].Title != "写周报" || got[0].State != orggraph.WorkStuck || got[0].At != "2026-11-16T02:00:00Z" || got[0].To != "/chat?session=s1&agent=ag1" {
 		t.Fatalf("a = %+v", got[0])
 	}
-	if got[1].Title != "b" || got[1].State != orggraph.WorkReview || got[1].To != "/tasks/list?session=s2&team=tm1" {
+	if got[1].Title != "b" || got[1].State != orggraph.WorkReview || got[1].To != "/chat?session=s2&team=tm1" {
 		t.Fatalf("b = %+v", got[1])
 	}
 	// 没有承载会话的任务落到会话中心里的这条任务
-	if got[2].State != orggraph.WorkRunning || got[2].To != "/tasks/list?task=office%3Ac" || got[2].At != "2026-11-16T01:00:00Z" {
+	if got[2].State != orggraph.WorkRunning || got[2].To != "/chat?task=office%3Ac" || got[2].At != "2026-11-16T01:00:00Z" {
 		t.Fatalf("c = %+v", got[2])
 	}
 }

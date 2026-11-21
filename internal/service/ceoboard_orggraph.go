@@ -326,10 +326,10 @@ func classifyDelegated(tasks []*officev1.OfficeTask, latest map[string]*sessionv
 		if t.GetAssigneeKind() == "team" {
 			owner = "team"
 		}
-		// 任务的过程在「任务 › 列表」里看；派给运行台 / 流程的任务没有承载会话，按任务 id 定位
-		to := "/tasks/list?task=" + url.QueryEscape("office:"+t.GetId())
+		// 派给运行台 / 流程的任务没有承载会话，按任务 id 在对话页里定位
+		to := "/chat?task=" + url.QueryEscape("office:"+t.GetId())
 		if ref := session; ref != "" {
-			to = "/tasks/list?session=" + url.QueryEscape(ref) + "&" + owner + "=" + url.QueryEscape(t.GetAssigneeId())
+			to = "/chat?session=" + url.QueryEscape(ref) + "&" + owner + "=" + url.QueryEscape(t.GetAssigneeId())
 		}
 		title := firstLineOf(t.GetTitle())
 		if title == "" {

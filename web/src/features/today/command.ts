@@ -89,7 +89,7 @@ export function commandTitle(text: string, max = TITLE_MAX): string {
 /** 交办后打开会话的站内链接。 */
 export function sessionLink(recipient: Pick<Recipient, 'kind' | 'id'>, sessionId: string): string {
   const owner = recipient.kind === 'team' ? 'team' : 'agent';
-  return `/tasks/list?session=${encodeURIComponent(sessionId)}&${owner}=${encodeURIComponent(recipient.id)}`;
+  return `/chat?session=${encodeURIComponent(sessionId)}&${owner}=${encodeURIComponent(recipient.id)}`;
 }
 
 // ——— Ctrl+K 指令面板里的「直接办」选项 ———

@@ -573,9 +573,9 @@ const updatedAt = computed(() => dayOrClock(props.run?.at || props.task?.updated
 
 const sessionTo = computed(() => {
   const task = props.task;
-  if (!task?.session_id) return task ? { path: '/tasks/list', query: { task: `office:${task.id}` } } : '/tasks/list';
+  if (!task?.session_id) return task ? { path: '/chat', query: { task: `office:${task.id}` } } : '/chat';
   const owner = task.assignee_kind === 'team' ? 'team' : 'agent';
-  return { path: '/tasks/list', query: { session: task.session_id, [owner]: task.assignee_id } };
+  return { path: '/chat', query: { session: task.session_id, [owner]: task.assignee_id } };
 });
 
 const runRef = computed(() => ({

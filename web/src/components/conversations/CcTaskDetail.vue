@@ -1,11 +1,7 @@
 <template>
   <!--
-    任务详情，同一件事的两层深度（方案 2026-11-21 §5）：
-      概况：现在该你做什么、交给了谁、当初怎么交代的——不懂 Agent 的人停在这里就够；
-      资料：你给的、交出来的；
-      过程：执行链（谁做的、按什么顺序；并行的一组装在虚线框里）→ 选中那次执行的原始过程
-           （对话 / 终端 / 流程每一步，插槽由页面放进对应的执行视图）和它的用量信息。
-    专业模式（pro）只决定默认停在哪一层、是否显示轮数 / Token / 花费。
+    任务详情：这件事是什么、做到哪了 → 执行链（谁做的、按什么顺序；并行的一组装在虚线框里）
+    → 当前选中那次执行的对话（插槽，由页面放进对应的执行视图）或信息。
   -->
   <section class="cc-detail" :aria-label="task.title">
     <header class="cc-th">
@@ -93,12 +89,12 @@
           <b class="cc-num">{{ when(start) }}</b></span
         >
         <span>{{
-          pro && sumOf(task, 'turns')
+          sumOf(task, 'turns')
             ? t('cc.meta.amount', { n: execs.length, turns: sumOf(task, 'turns') })
             : t('cc.meta.execs', { n: execs.length })
         }}</span>
-        <span v-if="pro && tokens">{{ t('cc.meta.tokens', { n: fmtTok(tokens) }) }}</span>
-        <span v-if="pro && cost"
+        <span v-if="tokens">{{ t('cc.meta.tokens', { n: fmtTok(tokens) }) }}</span>
+        <span v-if="cost"
           ><q-icon name="payments" size="14px" aria-hidden="true" /><b class="cc-num">${{ cost.toFixed(2) }}</b></span
         >
       </div>
@@ -126,68 +122,9 @@
           <q-btn flat dense no-caps :label="t('cc.review.next')" @click="emit('handover', 'spirit')" />
         </div>
       </div>
-      <nav class="cc-mtabs" role="tablist" :aria-label="t('cc.tabsLabel')">
-        <button
-          v-for="k in TABS"
-          :key="k"
-          type="button"
-          role="tab"
-          :aria-selected="tab === k"
-          :class="{ 'cc-mtabs--on': tab === k }"
-          @click="emit('tab', k)"
-        >
-          {{ t(`cc.tab.${k}`) }}
-        </button>
-      </nav>
     </header>
 
-    <!-- 概况：说人话的一层 -->
-    <div v-if="tab === 'overview'" class="cc-ov">
-      <section class="cc-ov__now" :class="`cc-ov__now--${now.tone}`" aria-live="polite">
-        <span class="cc-ov__k">{{ t('cc.overview.now') }}</span>
-        <p>{{ now.text }}</p>
-        <q-btn
-          v-if="now.execId"
-          unelevated
-          dense
-          no-caps
-          color="primary"
-          :label="t('cc.overview.goHandle')"
-          @click="goProcess(now.execId)"
-        />
-      </section>
-      <section class="cc-ov__sec">
-        <h3>{{ t('cc.overview.who', { n: execs.length }) }}</h3>
-        <ol class="cc-ov__who">
-          <li v-for="(e, i) in execs" :key="e.id">
-            <button type="button" :title="t('cc.overview.seeProcess')" @click="goProcess(e.id)">
-              <span class="cc-num">{{ i + 1 }}</span>
-              <CcGlyph :executor="e.executor" :name="e.executorName" size="xs" />
-              <b>{{ e.executorName }}</b>
-              <span class="cc-sd" :class="`cc-sd--${e.status}`" aria-hidden="true" />
-              <span>{{ t(`cc.status.${e.status}`) }}</span>
-              <time class="cc-num">{{ when(e.last) }}</time>
-            </button>
-          </li>
-        </ol>
-      </section>
-      <section v-if="ask" class="cc-ov__sec">
-        <h3>{{ t('cc.overview.ask') }}</h3>
-        <pre class="cc-ov__ask">{{ ask }}</pre>
-      </section>
-      <div class="cc-ov__acts">
-        <q-btn
-          flat
-          dense
-          no-caps
-          icon="timeline"
-          :label="t('cc.overview.seeProcess')"
-          @click="emit('tab', 'process')"
-        />
-      </div>
-    </div>
-
-    <section v-show="tab === 'process'" class="cc-chain" :aria-label="t('cc.chain.title')">
+    <section class="cc-chain" :aria-label="t('cc.chain.title')">
       <div class="cc-chain__head">
         <b>{{ t('cc.chain.title') }}</b
         ><span>{{ t('cc.chain.hint') }}</span>
@@ -249,7 +186,7 @@
       </div>
     </section>
 
-    <div v-if="exec && tab === 'process'" class="cc-xbar">
+    <div v-if="exec" class="cc-xbar">
       <div class="cc-xbar__who">
         <CcGlyph :executor="exec.executor" :name="exec.executorName" size="xs" />
         <span
@@ -261,23 +198,22 @@
       </div>
       <nav class="cc-dtabs" role="tablist">
         <button
-          v-for="k in SUBS"
+          v-for="k in TABS"
           :key="k"
           type="button"
           role="tab"
-          :aria-selected="sub === k"
-          :class="{ 'cc-dtabs--on': sub === k }"
-          @click="sub = k"
+          :aria-selected="tab === k"
+          :class="{ 'cc-dtabs--on': tab === k }"
+          @click="emit('tab', k)"
         >
-          {{ t(`cc.sub.${k}`) }}
+          {{ t(`cc.tab.${k}`) }}
         </button>
       </nav>
     </div>
 
-    <!-- 对话引擎一旦打开就留着，切到别的页签只是隐藏 -->
-    <div v-show="tab === 'process' && sub === 'talk'" class="cc-detail__talk"><slot /></div>
+    <div v-show="tab === 'talk'" class="cc-detail__talk"><slot /></div>
     <slot v-if="tab === 'files'" name="files" />
-    <div v-if="tab === 'process' && sub === 'info' && exec" class="cc-info">
+    <div v-if="tab === 'info' && exec" class="cc-info">
       <div class="cc-kpis">
         <div class="cc-kpi">
           <span>{{ t('cc.info.turns') }}</span
@@ -344,19 +280,10 @@ import {
 } from '../../features/conversations/model';
 import { dayOrClock } from '../../features/today/logic';
 
-export type DetailTab = 'overview' | 'files' | 'process';
-const TABS: DetailTab[] = ['overview', 'files', 'process'];
-/** 过程里，选中的那次执行看什么：原始过程，或它的用量信息 */
-const SUBS = ['talk', 'info'] as const;
+export type DetailTab = 'talk' | 'files' | 'info';
+const TABS: DetailTab[] = ['talk', 'files', 'info'];
 
-const props = defineProps<{
-  task: ConvTask;
-  execId: string;
-  tab: DetailTab;
-  busy?: boolean;
-  /** 专业模式：显示轮数 / Token / 花费 */
-  pro?: boolean;
-}>();
+const props = defineProps<{ task: ConvTask; execId: string; tab: DetailTab; busy?: boolean }>();
 const emit = defineEmits<{
   'select-exec': [id: string];
   tab: [tab: DetailTab];
@@ -369,12 +296,6 @@ const emit = defineEmits<{
   delete: [];
 }>();
 const { t } = useI18n();
-
-const sub = ref<(typeof SUBS)[number]>('talk');
-function goProcess(id: string) {
-  emit('select-exec', id);
-  emit('tab', 'process');
-}
 
 const review = computed(() => needsReview(props.task));
 const lastExec = computed(() => [...flat(props.task)].sort((a, b) => a.last.localeCompare(b.last)).pop());
@@ -399,30 +320,6 @@ const progress = computed(() => {
   const text = latest ? latest.detail || latest.what : '';
   return text === props.task.title ? '' : text;
 });
-
-// 概况第一句：现在该你做什么（等你的事排最前，带一个直达按钮）
-const now = computed<{ text: string; tone: 'wait' | 'fail' | 'run' | 'ok'; execId?: string }>(() => {
-  const waiting = execs.value.find((e) => e.status === 'waiting');
-  if (waiting)
-    return {
-      text: t('cc.waitingLine', { who: waiting.executorName, what: t(`cc.reason.${waiting.reason || 'input'}`) }),
-      tone: 'wait',
-      execId: waiting.id,
-    };
-  const who = lastExec.value?.executorName ?? '';
-  if (review.value) return { text: t('cc.review.line', { who }), tone: 'wait' };
-  if (status.value === 'failed')
-    return {
-      text: t('cc.overview.failed', { who, why: lastExec.value?.detail || t('cc.status.failed') }),
-      tone: 'fail',
-    };
-  if (status.value === 'running')
-    return { text: t('cc.overview.running', { who, what: progress.value || t('cc.status.running') }), tone: 'run' };
-  if (status.value === 'done') return { text: t('cc.overview.done', { who }), tone: 'ok' };
-  return { text: t('cc.overview.idle', { who }), tone: 'ok' };
-});
-// 当初怎么交代的：第一张交接单的原文（派出时发给执行者的那段话）
-const ask = computed(() => execs.value.find((e) => e.hand)?.hand ?? '');
 
 const when = (iso: string) => (iso ? dayOrClock(iso, new Date()) : '—');
 const fmtTok = (n: number) =>

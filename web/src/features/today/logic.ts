@@ -326,8 +326,8 @@ export function classifyOfficeDelegated(
       state,
       at: situation?.updated_at || over?.at || task.created_at,
       to: sessionId
-        ? `/tasks/list?session=${encodeURIComponent(sessionId)}&${owner}=${encodeURIComponent(task.assignee_id)}`
-        : `/tasks/list?task=${encodeURIComponent(`office:${task.id}`)}`,
+        ? `/chat?session=${encodeURIComponent(sessionId)}&${owner}=${encodeURIComponent(task.assignee_id)}`
+        : `/chat?task=${encodeURIComponent(`office:${task.id}`)}`,
       officeTaskId: task.id,
       detail: state === 'review' ? '' : firstLine(situation?.current_step_summary || over?.detail),
       sessionId,
