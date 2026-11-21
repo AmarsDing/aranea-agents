@@ -22,10 +22,16 @@ const acpSummaryLimit = 4000
 // admin 二进制的通用 shim 子命令，实现 OpenAI 兼容工具零新增二进制接入。
 const selfLaunchCommand = "@self"
 
-// resolveLaunchCommand 把 "@self" 解析为宿主可执行文件绝对路径；其余原样
-// 返回。解析失败回退原值（交 spawn/探针路径给出诊断）。
+// resolveLaunchCommand 把 "@self" 解析为宿主可执行文件绝对路径；裸命令名先在运行台
+// 一键安装目录里找（如装在 D:\...\CLI\npm 的 claude-agent-acp），找不到再原样返回交 PATH
+// 解析。解析失败回退原值（交 spawn/探针路径给出诊断）。
 func resolveLaunchCommand(command string) string {
-	if strings.TrimSpace(command) != selfLaunchCommand {
+	if c := strings.TrimSpace(command); c != selfLaunchCommand {
+		if c != "" && !strings.ContainsAny(c, `/\`) {
+			if p, ok := fleet.LookInCLIRoot(c); ok {
+				return p
+			}
+		}
 		return command
 	}
 	exe, err := os.Executable()

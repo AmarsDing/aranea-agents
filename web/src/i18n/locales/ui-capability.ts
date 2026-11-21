@@ -288,7 +288,13 @@ export const uiCapabilityZh = {
       hideMissing: '收起未安装的',
       noneInstalled: '还没有装好的命令行。到运行台底栏「CLI 工具」里一键安装。',
       allConnected: '装好的命令行都已接入。',
-      ready: { ready: '能对话', need_login: '要登录', need_trust: '要信任目录', unknown: '未在运行台用过', missing: '未安装' },
+      ready: {
+        ready: '能对话',
+        need_login: '要登录',
+        need_trust: '要信任目录',
+        unknown: '未在运行台用过',
+        missing: '未安装',
+      },
       connectedMsg: '已接入 {name}',
     },
     fleet: {
@@ -299,7 +305,8 @@ export const uiCapabilityZh = {
       installed: '已装',
       missing: '没装',
       lineBoth: '运行台里 {label} 终端也能用。',
-      lineTerminalOnly: '这里的 ACP 适配器（{cmd}）还没装好。{label} 已装在运行台，可在下方「命令行工具」里直接接入，不需要适配器。',
+      lineTerminalOnly:
+        '这里要用的 ACP 适配器（{cmd}）还没装：到运行台「CLI 工具」里重装 {label} 会一并装上，装好后点「探测」；也可在下方「命令行工具」里直接接入，不需要适配器。',
       lineMissing: '运行台里的 {label}（{cmd}）本机也没装。',
       lineViaFleet: '派给它的任务在运行台的 {label} 终端里执行，过程可在运行台实时看到，确认框会回到这里请你批准。',
     },
@@ -673,7 +680,8 @@ export const uiCapabilityEn: typeof uiCapabilityZh = {
     cli: {
       title: 'Command-line tools',
       hint: 'CLIs installed for the run console. Connect one to make it a coding tool: agents in chat, Graph agent nodes and the workbench can then hand it tasks, and you can watch it work live in the run console.',
-      dialogHint: 'Pick an installed CLI to connect. Install missing ones from "CLI tools" in the run console status bar, where login and permission level are also set.',
+      dialogHint:
+        'Pick an installed CLI to connect. Install missing ones from "CLI tools" in the run console status bar, where login and permission level are also set.',
       connect: 'Connect',
       connected: 'Connected',
       install: 'Install',
@@ -681,7 +689,13 @@ export const uiCapabilityEn: typeof uiCapabilityZh = {
       hideMissing: 'Hide not installed',
       noneInstalled: 'No CLI is installed yet. Install one from "CLI tools" in the run console status bar.',
       allConnected: 'Every installed CLI is already connected.',
-      ready: { ready: 'Ready', need_login: 'Needs login', need_trust: 'Needs folder trust', unknown: 'Not used yet', missing: 'Not installed' },
+      ready: {
+        ready: 'Ready',
+        need_login: 'Needs login',
+        need_trust: 'Needs folder trust',
+        unknown: 'Not used yet',
+        missing: 'Not installed',
+      },
       connectedMsg: 'Connected {name}',
     },
     fleet: {
@@ -693,7 +707,7 @@ export const uiCapabilityEn: typeof uiCapabilityZh = {
       missing: 'Not installed',
       lineBoth: '{label} also works as a terminal in the run console.',
       lineTerminalOnly:
-        'The ACP adapter ({cmd}) is not ready. {label} is installed for the run console, so you can connect it directly under Command-line tools below, no adapter needed.',
+        'The ACP adapter this needs ({cmd}) is not installed. Reinstall {label} from "CLI tools" in the run console to add it, then click Probe; or connect it directly under Command-line tools below, no adapter needed.',
       lineMissing: '{label} ({cmd}) is not installed for the run console either.',
       lineViaFleet:
         'Tasks sent to it run in a {label} terminal in the run console; you can watch them live there, and confirmations come back here for approval.',

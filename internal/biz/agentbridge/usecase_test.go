@@ -365,11 +365,13 @@ type mockSessionFactory struct {
 	mu       sync.Mutex
 	sessions []*mockACPSession
 	spawnErr error
+	spawnCtx context.Context // 最近一次 Spawn 收到的 ctx
 }
 
-func (f *mockSessionFactory) Spawn(_ context.Context, agent *CodingAgent) (ACPSession, error) {
+func (f *mockSessionFactory) Spawn(ctx context.Context, agent *CodingAgent) (ACPSession, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.spawnCtx = ctx
 	if f.spawnErr != nil {
 		return nil, f.spawnErr
 	}
@@ -504,6 +506,34 @@ func TestUsecase_DispatchProjectMultipleCandidates(t *testing.T) {
 	if n := len(e.tasks.byID); n != 0 {
 		t.Fatalf("tasks persisted = %d, want 0", n)
 	}
+}
+
+// 派发请求结束（调用方 ctx 取消）后会话进程必须还活着：Spawn 拿到的 ctx 不能随调用方取消。
+func TestUsecase_DispatchSpawnOutlivesCallerContext(t *testing.T) {
+	e := newTestEnv()
+	e.seedAgent("codebuddy", true)
+	e.seedProject("aranea-agents", `F:\aranea-agents`)
+	release := make(chan struct{})
+	e.factory.sessions = []*mockACPSession{{
+		promptFn: func(ctx context.Context, _, _ string, _ EventHandler) (string, error) {
+			<-release
+			return "ok", nil
+		},
+	}}
+	ctx, cancel := context.WithCancel(context.Background())
+	res, err := e.uc.Dispatch(ctx, DispatchInput{SessionID: "s1", AgentKey: "codebuddy", ProjectQuery: "aranea-agents", Prompt: "p", Handler: noopHandler()})
+	if err != nil {
+		t.Fatalf("dispatch: %v", err)
+	}
+	cancel() // 模拟 HTTP 请求返回
+	e.factory.mu.Lock()
+	spawnCtx := e.factory.spawnCtx
+	e.factory.mu.Unlock()
+	if spawnCtx == nil || spawnCtx.Err() != nil {
+		t.Fatalf("spawn ctx must not be cancelled with the caller's ctx: %v", spawnCtx)
+	}
+	close(release)
+	waitStatus(t, e.tasks, res.Task.ID, StatusDone)
 }
 
 func TestUsecase_DispatchSuccessRunsToDone(t *testing.T) {

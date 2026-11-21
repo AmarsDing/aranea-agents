@@ -134,7 +134,9 @@ func (u *AgentBridgeUsecase) Dispatch(ctx context.Context, in DispatchInput) (*D
 		return nil, err
 	}
 
-	sess, err := u.sessions.Spawn(ctx, agent)
+	// 子进程活到任务结束（Close / Kill 收尾），不能挂在调用方 ctx 上：ACP 会话用 exec.CommandContext 起进程，
+	// 派发请求一返回 ctx 就取消，适配器随即被杀，session/new 读到「管道已关闭」（2026-11-20 实测 claude-agent-acp）。
+	sess, err := u.sessions.Spawn(context.WithoutCancel(ctx), agent)
 	if err != nil {
 		u.failTaskFrom(StatusDispatched, task.ID, fmt.Sprintf("spawn failed: %v", err))
 		u.notifyTerminal(task.ID)

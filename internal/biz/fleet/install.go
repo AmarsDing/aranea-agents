@@ -111,8 +111,8 @@ func (u *Usecase) InstallAgent(id string) error {
 }
 
 func runInstall(ctx context.Context, p AgentPreset, root string, out io.Writer) error {
-	if pkg, ok := strings.CutPrefix(p.Install, "npm:"); ok {
-		return npmInstall(ctx, pkg, filepath.Join(root, "npm"), out)
+	if pkgs, ok := strings.CutPrefix(p.Install, "npm:"); ok { // 可写多个包，空格分隔
+		return npmInstall(ctx, strings.Fields(pkgs), filepath.Join(root, "npm"), out)
 	}
 	fn := archiveInstallers[p.Install]
 	if fn == nil {
@@ -126,7 +126,7 @@ func runInstall(ctx context.Context, p AgentPreset, root string, out io.Writer) 
 
 // npmInstall 直接用 node 跑 npm-cli.js：npm.cmd 经 cmd.exe 时，带空格的路径
 // （C:\Program Files\nodejs、D:\Program Files\CLI）引号会被 cmd 剥掉。
-func npmInstall(ctx context.Context, pkg, prefix string, out io.Writer) error {
+func npmInstall(ctx context.Context, pkgs []string, prefix string, out io.Writer) error {
 	node, err := exec.LookPath("node")
 	if err != nil {
 		return fmt.Errorf("找不到 node（npm 包需要 Node.js 18+）")
@@ -140,7 +140,11 @@ func npmInstall(ctx context.Context, pkg, prefix string, out io.Writer) error {
 	}
 	// 下载缓存也放进 CLI 根目录，不占 C 盘；http 级日志当进度看
 	cache := filepath.Join(filepath.Dir(prefix), ".npm-cache")
-	cmd := exec.CommandContext(ctx, node, npmCLI, "install", "-g", "--prefix", prefix, "--cache", cache, "--no-fund", "--no-audit", "--loglevel=http", pkg+"@latest")
+	args := []string{npmCLI, "install", "-g", "--prefix", prefix, "--cache", cache, "--no-fund", "--no-audit", "--loglevel=http"}
+	for _, p := range pkgs {
+		args = append(args, p+"@latest")
+	}
+	cmd := exec.CommandContext(ctx, node, args...)
 	cmd.Stdout, cmd.Stderr = out, out
 	return cmd.Run()
 }

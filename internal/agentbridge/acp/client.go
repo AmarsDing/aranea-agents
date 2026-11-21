@@ -137,7 +137,8 @@ func (c *Client) SetHandler(h SessionHandler) {
 func (c *Client) NewSession(ctx context.Context, cwd string) (string, error) {
 	res, err := c.conn.Call(ctx, MethodSessionNew, NewSessionParams{CWD: cwd, MCPServers: []any{}})
 	if err != nil {
-		return "", fmt.Errorf("acp: session/new: %w", err)
+		// 适配器在建会话时退出最常见（缺登录、配置错）：带上 stderr 尾部，否则只看得到「管道已关闭」
+		return "", fmt.Errorf("acp: session/new: %w%s", err, stderrHint(c.proc.StderrTail()))
 	}
 	var r NewSessionResult
 	if err := json.Unmarshal(res, &r); err != nil {

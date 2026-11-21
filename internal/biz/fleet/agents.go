@@ -44,7 +44,8 @@ const (
 // 新工具不改代码也能加：在 CLI 根目录放 agents.json（见 extraPresets）。
 var builtinPresets = []AgentPreset{
 	{ID: "claude", Label: "Claude Code", Command: "claude", FullAccessFlag: "--dangerously-skip-permissions", AutoEditFlag: "--permission-mode acceptEdits",
-		Install: "npm:@anthropic-ai/claude-code", LoginHint: "首次启动按向导登录；用第三方模型网关的在 ~/.claude/settings.json 里配置"},
+		// 连同 ACP 适配器一起装：编码工具页里 claude_code 走 ACP，命令 claude-agent-acp
+		Install: "npm:@anthropic-ai/claude-code @agentclientprotocol/claude-agent-acp", LoginHint: "首次启动按向导登录；用第三方模型网关的在 ~/.claude/settings.json 里配置"},
 	{ID: "codex", Label: "Codex（ChatGPT）", Command: "codex", FullAccessFlag: "--dangerously-bypass-approvals-and-sandbox", AutoEditFlag: "--full-auto",
 		Install: "npm:@openai/codex", ApproveKey: "y", TrustKey: "\r", LoginHint: "首次启动选「Sign in with ChatGPT」或在终端运行 codex login"},
 	{ID: "gemini", Label: "Gemini CLI", Command: "gemini", FullAccessFlag: "--yolo", AutoEditFlag: "--approval-mode auto_edit",
@@ -98,6 +99,17 @@ func lookCommand(cmd string) (string, error) {
 		}
 	}
 	return exec.LookPath(cmd)
+}
+
+// LookInCLIRoot 只在一键安装目录里找命令（不查 PATH），给 agentbridge 解析 ACP 适配器用：
+// 装在 CLI 根目录里的适配器不依赖 PATH 也能被找到。
+func LookInCLIRoot(cmd string) (string, bool) {
+	for _, d := range cliDirs() {
+		if p, err := exec.LookPath(filepath.Join(d, cmd)); err == nil {
+			return p, true
+		}
+	}
+	return "", false
 }
 
 // extraPresets 读 <CLI 根>\agents.json：id 与内置相同则覆盖，否则追加。读不到或格式错就当没有。
