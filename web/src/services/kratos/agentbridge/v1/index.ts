@@ -198,6 +198,17 @@ export type ListTaskEventsResponse = {
 
 // ReviewTaskRequest 验收三动作：approve=通过 / reject=打回（comment 必填，
 // 重做由前端以原 prompt+意见重新派发）/ archive=仅存档。
+// ConfirmTaskPermissionRequest 在对话里回答编码工具的确认请求（和审批中心同一条中继）。
+// decision：approve = 允许这一次；always = 这个任务里都允许；deny = 拒绝。
+export type ConfirmTaskPermissionRequest = {
+  //
+  // Behaviors: REQUIRED
+  id: string | undefined;
+  //
+  // Behaviors: REQUIRED
+  decision: string | undefined;
+};
+
 export type ReviewTaskRequest = {
   //
   // Behaviors: REQUIRED
@@ -229,6 +240,8 @@ export interface AgentBridgeService {
   // 03 P0：工作台直发 / 步骤事件回放 / 验收
   DispatchTask(request: DispatchTaskRequest): Promise<DispatchTaskResponse>;
   ListTaskEvents(request: ListTaskEventsRequest): Promise<ListTaskEventsResponse>;
+  // ConfirmTaskPermission 回答挂起的确认请求；没有挂起的请求时返回冲突（已经被别处回答过）。
+  ConfirmTaskPermission(request: ConfirmTaskPermissionRequest): Promise<CodingTask>;
   ReviewTask(request: ReviewTaskRequest): Promise<CodingTask>;
 }
 
@@ -477,6 +490,26 @@ export function createAgentBridgeServiceClient(
         service: "AgentBridgeService",
         method: "ListTaskEvents",
       }) as Promise<ListTaskEventsResponse>;
+    },
+    ConfirmTaskPermission(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      if (!request.id) {
+        throw new Error("missing required field request.id");
+      }
+      const path = `v1/agentbridge/tasks/${request.id}/permission`; // eslint-disable-line quotes
+      const body = JSON.stringify(request);
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "AgentBridgeService",
+        method: "ConfirmTaskPermission",
+      }) as Promise<CodingTask>;
     },
     ReviewTask(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {

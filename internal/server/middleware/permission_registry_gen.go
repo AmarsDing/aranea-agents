@@ -47,6 +47,7 @@ func registerGeneratedPermissions(r *PermissionRegistry) {
 
 	// ── agentbridge ──
 	requireRPC(r, "agentbridge", "AgentBridgeService", "CancelTask", "POST", "/v1/agentbridge/tasks/{id}/cancel", "coding.dispatch")
+	requireRPC(r, "agentbridge", "AgentBridgeService", "ConfirmTaskPermission", "POST", "/v1/agentbridge/tasks/{id}/permission", "coding.dispatch")
 	requireRPC(r, "agentbridge", "AgentBridgeService", "DeleteAgent", "DELETE", "/v1/agentbridge/agents/{agent_key}", "coding.manage")
 	requireRPC(r, "agentbridge", "AgentBridgeService", "DeleteProject", "DELETE", "/v1/agentbridge/projects/{id}", "coding.manage")
 	requireRPC(r, "agentbridge", "AgentBridgeService", "DispatchTask", "POST", "/v1/agentbridge/tasks", "coding.dispatch")
@@ -401,4 +402,4 @@ var generatedPublicRPCs = []string{
 	"/kratos.office.v1.OfficeScheduleService/GetICalFeed",
 }
 
-// 统计:permission=262 authenticated=68 public=4
+// 统计:permission=263 authenticated=68 public=4

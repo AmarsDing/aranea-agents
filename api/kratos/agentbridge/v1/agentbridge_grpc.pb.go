@@ -20,19 +20,20 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	AgentBridgeService_UpsertAgent_FullMethodName    = "/kratos.agentbridge.v1.AgentBridgeService/UpsertAgent"
-	AgentBridgeService_ListAgents_FullMethodName     = "/kratos.agentbridge.v1.AgentBridgeService/ListAgents"
-	AgentBridgeService_DeleteAgent_FullMethodName    = "/kratos.agentbridge.v1.AgentBridgeService/DeleteAgent"
-	AgentBridgeService_ProbeAgent_FullMethodName     = "/kratos.agentbridge.v1.AgentBridgeService/ProbeAgent"
-	AgentBridgeService_UpsertProject_FullMethodName  = "/kratos.agentbridge.v1.AgentBridgeService/UpsertProject"
-	AgentBridgeService_ListProjects_FullMethodName   = "/kratos.agentbridge.v1.AgentBridgeService/ListProjects"
-	AgentBridgeService_DeleteProject_FullMethodName  = "/kratos.agentbridge.v1.AgentBridgeService/DeleteProject"
-	AgentBridgeService_ListTasks_FullMethodName      = "/kratos.agentbridge.v1.AgentBridgeService/ListTasks"
-	AgentBridgeService_GetTask_FullMethodName        = "/kratos.agentbridge.v1.AgentBridgeService/GetTask"
-	AgentBridgeService_CancelTask_FullMethodName     = "/kratos.agentbridge.v1.AgentBridgeService/CancelTask"
-	AgentBridgeService_DispatchTask_FullMethodName   = "/kratos.agentbridge.v1.AgentBridgeService/DispatchTask"
-	AgentBridgeService_ListTaskEvents_FullMethodName = "/kratos.agentbridge.v1.AgentBridgeService/ListTaskEvents"
-	AgentBridgeService_ReviewTask_FullMethodName     = "/kratos.agentbridge.v1.AgentBridgeService/ReviewTask"
+	AgentBridgeService_UpsertAgent_FullMethodName           = "/kratos.agentbridge.v1.AgentBridgeService/UpsertAgent"
+	AgentBridgeService_ListAgents_FullMethodName            = "/kratos.agentbridge.v1.AgentBridgeService/ListAgents"
+	AgentBridgeService_DeleteAgent_FullMethodName           = "/kratos.agentbridge.v1.AgentBridgeService/DeleteAgent"
+	AgentBridgeService_ProbeAgent_FullMethodName            = "/kratos.agentbridge.v1.AgentBridgeService/ProbeAgent"
+	AgentBridgeService_UpsertProject_FullMethodName         = "/kratos.agentbridge.v1.AgentBridgeService/UpsertProject"
+	AgentBridgeService_ListProjects_FullMethodName          = "/kratos.agentbridge.v1.AgentBridgeService/ListProjects"
+	AgentBridgeService_DeleteProject_FullMethodName         = "/kratos.agentbridge.v1.AgentBridgeService/DeleteProject"
+	AgentBridgeService_ListTasks_FullMethodName             = "/kratos.agentbridge.v1.AgentBridgeService/ListTasks"
+	AgentBridgeService_GetTask_FullMethodName               = "/kratos.agentbridge.v1.AgentBridgeService/GetTask"
+	AgentBridgeService_CancelTask_FullMethodName            = "/kratos.agentbridge.v1.AgentBridgeService/CancelTask"
+	AgentBridgeService_DispatchTask_FullMethodName          = "/kratos.agentbridge.v1.AgentBridgeService/DispatchTask"
+	AgentBridgeService_ListTaskEvents_FullMethodName        = "/kratos.agentbridge.v1.AgentBridgeService/ListTaskEvents"
+	AgentBridgeService_ConfirmTaskPermission_FullMethodName = "/kratos.agentbridge.v1.AgentBridgeService/ConfirmTaskPermission"
+	AgentBridgeService_ReviewTask_FullMethodName            = "/kratos.agentbridge.v1.AgentBridgeService/ReviewTask"
 )
 
 // AgentBridgeServiceClient is the client API for AgentBridgeService service.
@@ -60,6 +61,8 @@ type AgentBridgeServiceClient interface {
 	// 03 P0：工作台直发 / 步骤事件回放 / 验收
 	DispatchTask(ctx context.Context, in *DispatchTaskRequest, opts ...grpc.CallOption) (*DispatchTaskResponse, error)
 	ListTaskEvents(ctx context.Context, in *ListTaskEventsRequest, opts ...grpc.CallOption) (*ListTaskEventsResponse, error)
+	// ConfirmTaskPermission 回答挂起的确认请求；没有挂起的请求时返回冲突（已经被别处回答过）。
+	ConfirmTaskPermission(ctx context.Context, in *ConfirmTaskPermissionRequest, opts ...grpc.CallOption) (*CodingTask, error)
 	ReviewTask(ctx context.Context, in *ReviewTaskRequest, opts ...grpc.CallOption) (*CodingTask, error)
 }
 
@@ -191,6 +194,16 @@ func (c *agentBridgeServiceClient) ListTaskEvents(ctx context.Context, in *ListT
 	return out, nil
 }
 
+func (c *agentBridgeServiceClient) ConfirmTaskPermission(ctx context.Context, in *ConfirmTaskPermissionRequest, opts ...grpc.CallOption) (*CodingTask, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CodingTask)
+	err := c.cc.Invoke(ctx, AgentBridgeService_ConfirmTaskPermission_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *agentBridgeServiceClient) ReviewTask(ctx context.Context, in *ReviewTaskRequest, opts ...grpc.CallOption) (*CodingTask, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(CodingTask)
@@ -226,6 +239,8 @@ type AgentBridgeServiceServer interface {
 	// 03 P0：工作台直发 / 步骤事件回放 / 验收
 	DispatchTask(context.Context, *DispatchTaskRequest) (*DispatchTaskResponse, error)
 	ListTaskEvents(context.Context, *ListTaskEventsRequest) (*ListTaskEventsResponse, error)
+	// ConfirmTaskPermission 回答挂起的确认请求；没有挂起的请求时返回冲突（已经被别处回答过）。
+	ConfirmTaskPermission(context.Context, *ConfirmTaskPermissionRequest) (*CodingTask, error)
 	ReviewTask(context.Context, *ReviewTaskRequest) (*CodingTask, error)
 	mustEmbedUnimplementedAgentBridgeServiceServer()
 }
@@ -272,6 +287,9 @@ func (UnimplementedAgentBridgeServiceServer) DispatchTask(context.Context, *Disp
 }
 func (UnimplementedAgentBridgeServiceServer) ListTaskEvents(context.Context, *ListTaskEventsRequest) (*ListTaskEventsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListTaskEvents not implemented")
+}
+func (UnimplementedAgentBridgeServiceServer) ConfirmTaskPermission(context.Context, *ConfirmTaskPermissionRequest) (*CodingTask, error) {
+	return nil, status.Error(codes.Unimplemented, "method ConfirmTaskPermission not implemented")
 }
 func (UnimplementedAgentBridgeServiceServer) ReviewTask(context.Context, *ReviewTaskRequest) (*CodingTask, error) {
 	return nil, status.Error(codes.Unimplemented, "method ReviewTask not implemented")
@@ -513,6 +531,24 @@ func _AgentBridgeService_ListTaskEvents_Handler(srv interface{}, ctx context.Con
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AgentBridgeService_ConfirmTaskPermission_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ConfirmTaskPermissionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentBridgeServiceServer).ConfirmTaskPermission(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AgentBridgeService_ConfirmTaskPermission_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentBridgeServiceServer).ConfirmTaskPermission(ctx, req.(*ConfirmTaskPermissionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _AgentBridgeService_ReviewTask_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ReviewTaskRequest)
 	if err := dec(in); err != nil {
@@ -585,6 +621,10 @@ var AgentBridgeService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListTaskEvents",
 			Handler:    _AgentBridgeService_ListTaskEvents_Handler,
+		},
+		{
+			MethodName: "ConfirmTaskPermission",
+			Handler:    _AgentBridgeService_ConfirmTaskPermission_Handler,
 		},
 		{
 			MethodName: "ReviewTask",

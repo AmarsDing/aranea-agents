@@ -191,6 +191,25 @@ func (a *AgentBridgeAPI) GetTask(ctx context.Context, req *v1.GetTaskRequest) (*
 	return a.taskToProto(t), nil
 }
 
+// ConfirmTaskPermission 对话里的确认卡：和审批中心、聊天确认卡走同一个 ConfirmBridgePermission。
+func (a *AgentBridgeAPI) ConfirmTaskPermission(ctx context.Context, req *v1.ConfirmTaskPermissionRequest) (*v1.CodingTask, error) {
+	if strings.TrimSpace(req.Id) == "" {
+		return nil, apierror.BadRequest(apierror.DomainAgentBridge, "id is required")
+	}
+	// 先确认任务存在且可见，再解除挂起的确认
+	if _, err := a.svc.GetTask(ctx, req.Id); err != nil {
+		return nil, err
+	}
+	if err := a.svc.ConfirmBridgePermission(ctx, req.Id, req.Decision); err != nil {
+		return nil, err
+	}
+	t, err := a.svc.GetTask(ctx, req.Id)
+	if err != nil {
+		return nil, err
+	}
+	return a.taskToProto(t), nil
+}
+
 func (a *AgentBridgeAPI) CancelTask(ctx context.Context, req *v1.CancelTaskRequest) (*v1.CodingTask, error) {
 	if strings.TrimSpace(req.Id) == "" {
 		return nil, apierror.BadRequest(apierror.DomainAgentBridge, "id is required")

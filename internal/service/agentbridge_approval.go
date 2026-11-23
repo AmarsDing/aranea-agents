@@ -125,6 +125,7 @@ func (h *bridgeProgressHandler) OnPermission(ctx context.Context, title string, 
 		done:      make(chan approvalDecision, 1),
 	}
 	h.svc.storePending(pending)
+	h.persistEvent("permission", pending.title)
 	h.svc.emitApprovalRequest(ctx, h, pending)
 
 	// S5（M4 P0-3）竞态闭窗：Cancel 与 storePending 之间存在窄窗——若取消

@@ -14,13 +14,18 @@ import (
 	"aranea-agents/internal/biz/agentbridge"
 )
 
-// 摘要不被 TUI 重绘挤掉：重复的界面框行只留最后一次，转圈行去掉，回复留下。
+// 摘要不被 TUI 重绘挤掉：重复的界面框行只留最后一次，转圈行和快捷键提示行去掉，框线剥掉，回复留下。
 func TestTranscriptTail(t *testing.T) {
 	redraw := "→ Add a follow-up\nctrl+c to stop\n⠰⠳ Working 109 tokens\n"
 	text := strings.Repeat(redraw, 30) + "BRIDGE-DONE\n" + strings.Repeat(redraw, 30)
 	got := transcriptTail(text, 5)
-	if !strings.Contains(got, "BRIDGE-DONE") || strings.Contains(got, "Working") || strings.Count(got, "ctrl+c to stop") != 1 {
+	if !strings.Contains(got, "BRIDGE-DONE") || strings.Contains(got, "Working") || strings.Contains(got, "ctrl+c to stop") {
 		t.Fatalf("transcriptTail = %q", got)
+	}
+	// Grok 的回复画在框里，底下是输入框和快捷键行（2026-11-21 实测）
+	framed := "╭────────────╮\n│ ARANEA-OK  │\n╰────────────╯\n┌──────┐\n│ >    │\n└──────┘\nGrok 4.7 · always-approve ─┘\nShift+Tab:mode  │  Ctrl+x:shortcuts\n"
+	if got := transcriptTail(framed, 5); got != "ARANEA-OK\nGrok 4.7 · always-approve" {
+		t.Fatalf("framed transcriptTail = %q", got)
 	}
 }
 

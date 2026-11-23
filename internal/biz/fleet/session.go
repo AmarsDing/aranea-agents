@@ -74,6 +74,8 @@ type Session struct {
 	firstOutput     bool
 	prompted        bool
 	trustSent       bool
+	tailSig         string    // 屏幕最后几行的文字：停在确认菜单上还在不停重画的工具（CodeBuddy），
+	tailSigSince    time.Time // 字节一直在来、文字却不变，靠它和这个时间认出「等你」
 	pendingPrompt   string
 	exited          bool
 	killed          bool // 由人或运行台主动结束：不发「已退出」通知
@@ -184,18 +186,22 @@ func (s *Session) appendOutput(data []byte) {
 	if len(s.buf) > scrollbackMax {
 		s.buf = append([]byte(nil), s.buf[len(s.buf)-scrollbackKeep:]...)
 	}
-	s.tail = append(s.tail, data...)
-	if len(s.tail) > tailMax {
-		s.tail = append([]byte(nil), s.tail[len(s.tail)-tailMax/2:]...)
-	}
 	if t := parseOSCTitle(data); t != "" {
 		s.title = t
 	}
-	s.lastOutput = time.Now()
-	s.firstOutput = true
-	// 改尺寸后终端会重绘一屏：这段输出不是 agent 在干活，不计入「工作中」的判定。
-	if time.Since(s.resizedAt) > resizeRepaintWindow {
-		s.windowBytes += len(data)
+	// 只改了终端标题的一段（CodeBuddy 停在确认菜单上还每 200ms 换一次标题里的转圈字）：
+	// 留在回放里，但不算屏幕上的新内容——否则既显得一直在忙，又会把确认菜单挤出判定用的尾部缓冲
+	if !oscOnly(data) {
+		s.tail = append(s.tail, data...)
+		if len(s.tail) > tailMax {
+			s.tail = append([]byte(nil), s.tail[len(s.tail)-tailMax/2:]...)
+		}
+		s.lastOutput = time.Now()
+		s.firstOutput = true
+		// 改尺寸后终端会重绘一屏：这段输出不是 agent 在干活，不计入「工作中」的判定。
+		if time.Since(s.resizedAt) > resizeRepaintWindow {
+			s.windowBytes += len(data)
+		}
 	}
 	for id, ch := range s.subs {
 		select {
@@ -249,8 +255,35 @@ func (s *Session) Write(data []byte) error {
 	return err
 }
 
+// plainTypeAgents 把一段连续输入当成「粘贴」、转去读系统剪贴板的工具：豆包 CLI 2.37.2 收到括号粘贴、
+// 或者一次写进去的一整段字时，都去读剪贴板——剪贴板里是截图就插成「[Image #1]」，是空的就发出「(null)」，
+// 真正的文字丢掉（2026-11-21 派活实测）。这些工具改成一个字一个字地打（换行换成空格：打字时换行就是回车）。
+var plainTypeAgents = map[string]bool{"doubao": true}
+
+// typeGap 是逐字打字时两个字之间的间隔：豆包按输入节奏区分打字和粘贴。
+var typeGap = 6 * time.Millisecond
+
 // Paste 用括号粘贴模式送一段文本（多行也不会被当成多次回车），submit 时随后补回车。
 func (s *Session) Paste(text string, submit bool) error {
+	if plainTypeAgents[s.spec.Agent] {
+		go func() {
+			for _, r := range strings.Join(strings.Fields(text), " ") {
+				if s.Write([]byte(string(r))) != nil {
+					return
+				}
+				time.Sleep(typeGap)
+			}
+			if submit {
+				// 豆包加载时写着「You can type; sending is paused」：能打字，这时回车却会发出空消息「(null)」，等它加载完再回车
+				time.Sleep(300 * time.Millisecond)
+				for i := 0; i < 120 && s.screenStarting(); i++ {
+					time.Sleep(500 * time.Millisecond)
+				}
+				_ = s.Write([]byte("\r"))
+			}
+		}()
+		return nil
+	}
 	if err := s.Write([]byte("\x1b[200~" + text + "\x1b[201~")); err != nil {
 		return err
 	}
@@ -327,7 +360,8 @@ func (s *Session) ReadText(n int) string {
 	if len(data) > 64<<10 {
 		data = data[len(data)-64<<10:]
 	}
-	text := StripANSI(string(data))
+	// 截掉的开头可能切在一个汉字中间：清掉残字节（这段文字会进任务的摘要、事件和 proto）
+	text := StripANSI(strings.ToValidUTF8(string(data), ""))
 	s.mu.Unlock()
 	lines := nonEmptyLines(text)
 	if len(lines) > n {
@@ -361,12 +395,19 @@ func (s *Session) tick(now time.Time) {
 	}
 	spinning := titleSpinning(s.title)
 	echoOnly := now.Sub(s.lastInput) < 600*time.Millisecond && recent < 2000
+	if sig := strings.Join(lines, "\n"); sig != s.tailSig {
+		s.tailSig, s.tailSigSince = sig, now
+	}
+	steady := now.Sub(s.tailSigSince) >= 1500*time.Millisecond
 
 	switch {
 	case !s.firstOutput:
 		if now.Sub(s.startedAt) > time.Minute {
 			next = StatusIdle
 		}
+	case needs && steady:
+		// 确认菜单停在屏幕上不动了：哪怕它还在重画、标题还在转圈（CodeBuddy 两样都做），也是在等人
+		next = StatusNeedsInput
 	case spinning || (recent > 300 && !echoOnly && quiet < 1500*time.Millisecond):
 		next = StatusWorking
 	case needs && quiet > time.Second:
@@ -392,7 +433,9 @@ func (s *Session) tick(now time.Time) {
 	}
 	// 首句提示等启动满 8 秒、安静 3 秒再发：Cursor CLI 输出停了还在后台初始化，启动约 5 秒时粘贴进去的回车会被吞掉，
 	// 7.5 秒后正常（2026-11-20 实测）
-	if s.pendingPrompt != "" && (next == StatusIdle || next == StatusDone) && !needs &&
+	// 屏幕上还写着在初始化 / 暂停发送（豆包 CLI 2.37.2：安静地停在「directory: Initializing…」「sending is paused」，
+	// 这时打进去的字会丢、回车发出空消息，2026-11-21 实测）也要再等
+	if s.pendingPrompt != "" && (next == StatusIdle || next == StatusDone) && !needs && !stillStarting(lines) &&
 		quiet >= 3*time.Second && now.Sub(s.startedAt) >= 8*time.Second {
 		prompt, s.pendingPrompt = s.pendingPrompt, ""
 	}
@@ -448,7 +491,8 @@ func nonEmptyLines(s string) []string {
 }
 
 func previewLines(tail []byte, n int) string {
-	lines := nonEmptyLines(StripANSI(string(tail)))
+	// tail 是截断的字节缓冲，开头可能切在一个汉字中间：不清掉的话 proto 序列化整张终端列表都会失败（500）
+	lines := nonEmptyLines(StripANSI(strings.ToValidUTF8(string(tail), "")))
 	if len(lines) > n {
 		lines = lines[len(lines)-n:]
 	}
@@ -505,7 +549,31 @@ var needsInputPatterns = []string{
 	"press any key to log in", "sign in to continue", "扫码",
 	// Cursor CLI 2026.11.19 的命令审批框与拒绝后的追问
 	"run this command?", "not in allowlist", "what to do instead",
+	// CodeBuddy 的权限菜单用「> 1. Yes」做光标，第二项是「Yes, and don't ask again this session」（2026-11-21 实测）
+	"> 1. yes", "don't ask again",
 	"是否继续", "是否允许", "请确认",
+}
+
+// screenStarting 屏幕最后几行还说在初始化 / 暂停发送。
+func (s *Session) screenStarting() bool {
+	s.mu.Lock()
+	lines := nonEmptyLines(StripANSI(strings.ToValidUTF8(string(s.tail), "")))
+	s.mu.Unlock()
+	if len(lines) > needsInputLines {
+		lines = lines[len(lines)-needsInputLines:]
+	}
+	return stillStarting(lines)
+}
+
+// oscOnly 这段输出只有 OSC 控制序列（改标题等），屏幕上没有新字。
+func oscOnly(data []byte) bool {
+	return len(data) > 0 && strings.TrimSpace(oscRe.ReplaceAllString(string(data), "")) == ""
+}
+
+// stillStarting 屏幕尾部说它还在初始化 / 暂停发送：首句提示再等等。
+func stillStarting(lines []string) bool {
+	tail := strings.ToLower(strings.Join(lines, " "))
+	return strings.Contains(tail, "initializing") || strings.Contains(tail, "sending is paused")
 }
 
 func matchNeedsInput(text string) bool {

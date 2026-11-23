@@ -21,6 +21,7 @@ var _ = binding.EncodeURL
 const _ = http.SupportPackageIsVersion1
 
 const OperationAgentBridgeServiceCancelTask = "/kratos.agentbridge.v1.AgentBridgeService/CancelTask"
+const OperationAgentBridgeServiceConfirmTaskPermission = "/kratos.agentbridge.v1.AgentBridgeService/ConfirmTaskPermission"
 const OperationAgentBridgeServiceDeleteAgent = "/kratos.agentbridge.v1.AgentBridgeService/DeleteAgent"
 const OperationAgentBridgeServiceDeleteProject = "/kratos.agentbridge.v1.AgentBridgeService/DeleteProject"
 const OperationAgentBridgeServiceDispatchTask = "/kratos.agentbridge.v1.AgentBridgeService/DispatchTask"
@@ -36,6 +37,8 @@ const OperationAgentBridgeServiceUpsertProject = "/kratos.agentbridge.v1.AgentBr
 
 type AgentBridgeServiceHTTPServer interface {
 	CancelTask(context.Context, *CancelTaskRequest) (*CodingTask, error)
+	// ConfirmTaskPermission ConfirmTaskPermission 回答挂起的确认请求；没有挂起的请求时返回冲突（已经被别处回答过）。
+	ConfirmTaskPermission(context.Context, *ConfirmTaskPermissionRequest) (*CodingTask, error)
 	DeleteAgent(context.Context, *DeleteAgentRequest) (*emptypb.Empty, error)
 	DeleteProject(context.Context, *DeleteProjectRequest) (*emptypb.Empty, error)
 	// DispatchTask 03 P0：工作台直发 / 步骤事件回放 / 验收
@@ -68,6 +71,7 @@ func RegisterAgentBridgeServiceHTTPServer(s *http.Server, srv AgentBridgeService
 	r.POST("/v1/agentbridge/tasks/{id}/cancel", _AgentBridgeService_CancelTask0_HTTP_Handler(srv))
 	r.POST("/v1/agentbridge/tasks", _AgentBridgeService_DispatchTask0_HTTP_Handler(srv))
 	r.GET("/v1/agentbridge/tasks/{task_id}/events", _AgentBridgeService_ListTaskEvents0_HTTP_Handler(srv))
+	r.POST("/v1/agentbridge/tasks/{id}/permission", _AgentBridgeService_ConfirmTaskPermission0_HTTP_Handler(srv))
 	r.POST("/v1/agentbridge/tasks/{id}/review", _AgentBridgeService_ReviewTask0_HTTP_Handler(srv))
 }
 
@@ -329,6 +333,31 @@ func _AgentBridgeService_ListTaskEvents0_HTTP_Handler(srv AgentBridgeServiceHTTP
 	}
 }
 
+func _AgentBridgeService_ConfirmTaskPermission0_HTTP_Handler(srv AgentBridgeServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in ConfirmTaskPermissionRequest
+		if err := ctx.Bind(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationAgentBridgeServiceConfirmTaskPermission)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.ConfirmTaskPermission(ctx, req.(*ConfirmTaskPermissionRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*CodingTask)
+		return ctx.Result(200, reply)
+	}
+}
+
 func _AgentBridgeService_ReviewTask0_HTTP_Handler(srv AgentBridgeServiceHTTPServer) func(ctx http.Context) error {
 	return func(ctx http.Context) error {
 		var in ReviewTaskRequest
@@ -356,6 +385,8 @@ func _AgentBridgeService_ReviewTask0_HTTP_Handler(srv AgentBridgeServiceHTTPServ
 
 type AgentBridgeServiceHTTPClient interface {
 	CancelTask(ctx context.Context, req *CancelTaskRequest, opts ...http.CallOption) (rsp *CodingTask, err error)
+	// ConfirmTaskPermission ConfirmTaskPermission 回答挂起的确认请求；没有挂起的请求时返回冲突（已经被别处回答过）。
+	ConfirmTaskPermission(ctx context.Context, req *ConfirmTaskPermissionRequest, opts ...http.CallOption) (rsp *CodingTask, err error)
 	DeleteAgent(ctx context.Context, req *DeleteAgentRequest, opts ...http.CallOption) (rsp *emptypb.Empty, err error)
 	DeleteProject(ctx context.Context, req *DeleteProjectRequest, opts ...http.CallOption) (rsp *emptypb.Empty, err error)
 	// DispatchTask 03 P0：工作台直发 / 步骤事件回放 / 验收
@@ -387,6 +418,20 @@ func (c *AgentBridgeServiceHTTPClientImpl) CancelTask(ctx context.Context, in *C
 	pattern := "/v1/agentbridge/tasks/{id}/cancel"
 	path := binding.EncodeURL(pattern, in, false)
 	opts = append(opts, http.Operation(OperationAgentBridgeServiceCancelTask))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// ConfirmTaskPermission ConfirmTaskPermission 回答挂起的确认请求；没有挂起的请求时返回冲突（已经被别处回答过）。
+func (c *AgentBridgeServiceHTTPClientImpl) ConfirmTaskPermission(ctx context.Context, in *ConfirmTaskPermissionRequest, opts ...http.CallOption) (*CodingTask, error) {
+	var out CodingTask
+	pattern := "/v1/agentbridge/tasks/{id}/permission"
+	path := binding.EncodeURL(pattern, in, false)
+	opts = append(opts, http.Operation(OperationAgentBridgeServiceConfirmTaskPermission))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
 	if err != nil {

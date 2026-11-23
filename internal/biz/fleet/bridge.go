@@ -5,9 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	"aranea-agents/internal/biz/agentbridge"
 	"aranea-agents/pkg/apierror"
@@ -34,6 +36,13 @@ type BridgeSession struct {
 	preset AgentPreset
 	mode   string
 	args   []string
+
+	// effective 是这次派活实际生效的档位（派活指定的，否则是工具设置里的）
+	effective string
+	// seen 是提示发出时、每次确认时屏幕上已有的行（启动画面、确认菜单）：最后的回复不要它们
+	seen map[string]bool
+	// promptHead 是提示的开头：屏幕上回显提示的行不算回复
+	promptHead string
 
 	mu        sync.Mutex
 	term      string
@@ -72,22 +81,44 @@ func (u *Usecase) NewBridgeSession(agent *agentbridge.CodingAgent) (*BridgeSessi
 	return b, nil
 }
 
+// 平台自己的信号（不算 agent 的一轮进展）：启动说明、画面快照。
+const (
+	bridgeNoteKind   = "_aranea/note"
+	bridgeScreenKind = "_aranea/screen"
+)
+
 // Prompt 在 cwd 对应的运行台 worktree 里起终端、送提示，阻塞到这一轮做完；确认框经 h.OnPermission 交给人。
 func (b *BridgeSession) Prompt(ctx context.Context, cwd, prompt string, h agentbridge.EventHandler) (string, error) {
 	w, err := b.u.workspaceByPath(ctx, cwd)
 	if err != nil {
 		return "", err
 	}
+	if r := []rune(strings.Join(strings.Fields(prompt), " ")); len(r) > 24 {
+		b.promptHead = string(r[:24])
+	} else {
+		b.promptHead = string(r)
+	}
+	// 实际生效的档位：派活时指定的，否则是工具设置里的（与 startTerminal 的 launchMode 同口径）
+	b.effective = b.mode
+	if b.effective == "" {
+		b.effective = b.u.GetAgentSetting(ctx, b.preset.ID).Mode
+	}
+	// 目录是用户自己登记的工作目录：目录信任框自动过，不再当成一次确认来问人
 	info, err := b.u.startTerminal(w, sessionSpec{WorkspaceID: w.ID, Agent: b.preset.ID, Prompt: prompt, Mode: b.mode, Args: b.args,
-		Title: "编码任务 · " + truncate(prompt, 24)})
+		TrustKey: b.preset.TrustKey, Title: "编码任务 · " + truncate(prompt, 24)})
 	if err != nil {
 		return "", err
 	}
 	b.mu.Lock()
 	b.term = info.ID
 	b.mu.Unlock()
-	h.OnUpdate("agent_message_chunk", fmt.Sprintf("已在运行台「%s」里启动 %s，可在运行台看实时终端", w.Name, b.preset.Label))
-	return b.watch(ctx, info.ID, h)
+	h.OnUpdate(bridgeNoteKind, fmt.Sprintf("在运行台「%s」里启动 %s（%s）", w.Name, b.preset.Label, w.Path))
+	out, err := b.watch(ctx, info.ID, h)
+	if err == nil && strings.TrimSpace(out) != "" {
+		// 做完时把终端里的最终输出当作它的回复
+		h.OnUpdate("agent_message_chunk", out)
+	}
+	return out, err
 }
 
 // bridgePoll 是 watch 的轮询间隔（测试里调小）。
@@ -96,6 +127,7 @@ var bridgePoll = time.Second
 func (b *BridgeSession) watch(ctx context.Context, id string, h agentbridge.EventHandler) (string, error) {
 	var lastExcerpt string
 	var lastUpdate, lastBeat time.Time
+	snapped := false
 	tick := time.NewTicker(bridgePoll)
 	defer tick.Stop()
 	for {
@@ -113,18 +145,28 @@ func (b *BridgeSession) watch(ctx context.Context, id string, h agentbridge.Even
 		}
 		ti := s.Info()
 		now := time.Now()
-		if ex := s.ReadText(6); ex != lastExcerpt && now.Sub(lastUpdate) >= 3*bridgePoll {
-			h.OnUpdate("agent_message_chunk", ex)
+		// 画面快照只用来刷新「最近一句」：TUI 的框线、转圈每次重绘都不一样，当成回复会把对话刷成乱码
+		if ex := transcriptTail(s.ReadText(6), 3); ex != "" && ex != lastExcerpt && now.Sub(lastUpdate) >= 3*bridgePoll {
+			h.OnUpdate(bridgeScreenKind, ex)
 			lastExcerpt, lastUpdate, lastBeat = ex, now, now
 		} else if now.Sub(lastBeat) >= 10*bridgePoll {
 			h.OnUpdate("_aranea/heartbeat", "")
 			lastBeat = now
 		}
+		// 工具自己的弹窗（订阅 / 额度提示，带「Don't show again」）：它不会自己走开，派活也不会有结果，直接说清楚
+		if blocked := strings.ToLower(strings.Join(strings.Fields(s.ReadText(20)), " ")); strings.Contains(blocked, "show again") {
+			return "", fmt.Errorf("%s 停在它自己的提示框上（订阅 / 额度提示，带「Don't show again」），不会继续做。在运行台里打开这个终端处理一次后再派活", b.preset.Label)
+		}
+		// 提示发出、开始干活时，屏幕上的启动画面记下来：最后的回复不要它
+		if !snapped && ti.Status == StatusWorking {
+			b.remember(s.ReadText(400))
+			snapped = true
+		}
 		switch ti.Status {
 		case StatusExited, StatusFailed:
 			return "", fmt.Errorf("%s 已退出（%d）：%s", b.preset.Label, ti.ExitCode, s.ReadText(8))
 		case StatusDone:
-			return transcriptTail(s.ReadText(400), 30), nil
+			return b.answer(s.ReadText(400)), nil
 		case StatusNeedsInput:
 			if err := b.ask(ctx, s, h); err != nil {
 				return "", err
@@ -140,9 +182,21 @@ func (b *BridgeSession) ask(ctx context.Context, s *Session, h agentbridge.Event
 	if kind == ReadyNeedLogin {
 		return fmt.Errorf("%s 需要先登录（%s）。在运行台「CLI 工具」里打开它完成登录后再派活", b.preset.Label, b.preset.LoginHint)
 	}
-	opt, err := h.OnPermission(ctx, b.preset.Label+" 请求确认：\n"+screen, bridgeOptions)
-	if err != nil {
-		return err
+	opt := ""
+	switch {
+	case kind == ReadyNeedTrust:
+		// 用户登记的工作目录：信任框不问人
+		opt = "approve"
+	case b.effective == PermFull:
+		// 工具设置成「完全放权」：它仍弹出的确认框按用户的设置直接允许
+		opt = "approve"
+		h.OnUpdate(bridgeNoteKind, "已按「完全放权」自动确认："+transcriptTail(screen, 2))
+	default:
+		var err error
+		opt, err = h.OnPermission(ctx, b.preset.Label+" 请求确认：\n"+transcriptTail(screen, 10), bridgeOptions)
+		if err != nil {
+			return err
+		}
 	}
 	key := orDefault(b.preset.RejectKey, "\x1b")
 	if opt == "approve" {
@@ -151,6 +205,8 @@ func (b *BridgeSession) ask(ctx context.Context, s *Session, h agentbridge.Event
 			key = b.preset.TrustKey
 		}
 	}
+	// 确认菜单也记下来：答过之后它还留在屏幕上方，不算回复
+	b.remember(s.ReadText(400))
 	if err := s.Write([]byte(key)); err != nil {
 		return err
 	}
@@ -171,14 +227,16 @@ func (b *BridgeSession) ask(ctx context.Context, s *Session, h agentbridge.Event
 // 每行只留最后一次出现、去掉转圈行，再取末 n 行——agent 的回复因此不被界面框挤掉。
 func transcriptTail(text string, n int) string {
 	lines := strings.Split(text, "\n")
-	last := map[string]int{}
 	for i, l := range lines {
-		last[strings.TrimSpace(l)] = i
+		lines[i] = contentOf(l)
+	}
+	last := map[string]int{}
+	for i, t := range lines {
+		last[t] = i
 	}
 	var out []string
-	for i, l := range lines {
-		t := strings.TrimSpace(l)
-		if t == "" || last[t] != i || strings.IndexFunc(t, isSpinner) >= 0 {
+	for i, t := range lines {
+		if t == "" || last[t] != i || strings.IndexFunc(t, isSpinner) >= 0 || isUIChrome(t) {
 			continue
 		}
 		out = append(out, t)
@@ -187,6 +245,76 @@ func transcriptTail(text string, n int) string {
 		out = out[len(out)-n:]
 	}
 	return strings.Join(out, "\n")
+}
+
+// remember 记下屏幕上已有的行（按去掉框线后的文字）。
+func (b *BridgeSession) remember(text string) {
+	if b.seen == nil {
+		b.seen = map[string]bool{}
+	}
+	for _, l := range strings.Split(text, "\n") {
+		if t := contentOf(l); t != "" {
+			b.seen[t] = true
+		}
+	}
+}
+
+// answer 是做完时的回复：屏幕最后一段里，提示发出、确认之后才出现的行；一行都没有就退回整段尾部。
+func (b *BridgeSession) answer(text string) string {
+	all := transcriptTail(text, 30)
+	if len(b.seen) == 0 {
+		return all
+	}
+	var fresh []string
+	for _, l := range strings.Split(all, "\n") {
+		if l != "" && !b.seen[l] && (b.promptHead == "" || !strings.Contains(l, b.promptHead)) {
+			fresh = append(fresh, l)
+		}
+	}
+	if len(fresh) == 0 {
+		return all
+	}
+	return strings.Join(fresh, "\n")
+}
+
+// contentOf 去掉一行两头的框线（TUI 把回复、输入框画在 │ … │ 里），只留里面的字；整行都是框线的返回空。
+func contentOf(line string) string {
+	t := strings.TrimFunc(strings.TrimSpace(line), func(r rune) bool { return isBoxRune(r) || r == ' ' })
+	if strings.IndexFunc(t, func(r rune) bool { return !isBoxRune(r) && r != ' ' }) < 0 {
+		return ""
+	}
+	// 空的输入框只剩一个提示符
+	if t == ">" || t == "❯" || t == "›" {
+		return ""
+	}
+	return t
+}
+
+func isBoxRune(r rune) bool { return (r >= 0x2500 && r <= 0x257F) || r == '|' }
+
+// uiChrome 是各家 TUI 每屏都画的提示行（快捷键、模式、模型切换、小贴士），不是 agent 的回复。
+var uiChrome = []string{
+	"shift+tab", "ctrl+", "esc to", "? for shortcuts", "/model to change", "to interrupt",
+	"to toggle", "↵ send", "tip:",
+	// 想 / 答的过程行和空输入框的占位字（Grok、Codex、CodeBuddy、豆包，2026-11-21 实测）
+	"thinking…", "thinking...", "responding…", "thought for", "worked for", "to do anything", "for the next task",
+}
+
+// progressLine 是「Waking… (2s · streaming)」「Responding… (0s • esc…)」这类进度行（CodeBuddy、豆包，2026-11-21 实测）。
+var progressLine = regexp.MustCompile(`…\s*\(\d+s\b`)
+
+func isUIChrome(line string) bool {
+	// 一个字母都没有的行是转圈、计数器的碎片（「/ 2 2」「◦ 3」「8.1」）
+	if strings.IndexFunc(line, unicode.IsLetter) < 0 {
+		return true
+	}
+	l := strings.ToLower(line)
+	for _, p := range uiChrome {
+		if strings.Contains(l, p) {
+			return true
+		}
+	}
+	return progressLine.MatchString(line)
 }
 
 func orDefault(v, d string) string {

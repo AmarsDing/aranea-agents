@@ -292,7 +292,8 @@ type countingHandler struct {
 }
 
 func (c *countingHandler) OnUpdate(kind, text string) {
-	if kind != heartbeatKind {
+	// _aranea/ 开头的是平台自己的信号（心跳、运行台画面快照、说明），不是 agent 的一轮进展
+	if !strings.HasPrefix(kind, "_aranea/") {
 		c.count++
 	}
 	if c.onActivity != nil {

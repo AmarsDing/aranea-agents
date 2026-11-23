@@ -36,11 +36,11 @@ type AgentBridgeServiceDeps struct {
 	Agents   agentbridge.AgentRepo
 	Projects agentbridge.ProjectRepo
 	// Events 03 P0 ④：统一步骤事件持久化（可选：nil 时仅 WS 进度通知不落库回放）。
-	Events  agentbridge.TaskEventRepo
-	Bus     biz.EventBus
-	Infra   *event.Infra      // 可选：nil 时流程日志仅落进程日志
-	Clock   func() time.Time  // 可选：默认 time.Now（测试注入假时钟）
-	Logger  loggateway.Logger // 可选：默认 Noop
+	Events agentbridge.TaskEventRepo
+	Bus    biz.EventBus
+	Infra  *event.Infra      // 可选：nil 时流程日志仅落进程日志
+	Clock  func() time.Time  // 可选：默认 time.Now（测试注入假时钟）
+	Logger loggateway.Logger // 可选：默认 Noop
 }
 
 // AgentBridgeService 对 tools/proto 暴露编程桥接用例，并负责：
@@ -486,6 +486,9 @@ const chunkPersistWindow = 1500 * time.Millisecond
 // acpHeartbeatKind 与 biz liveness.go heartbeatKind 同值（避免跨包导出常量）。
 const acpHeartbeatKind = "_aranea/heartbeat"
 
+// screenKind 运行台终端的画面快照（fleet bridge 发出）：刷新任务的「最近一句」，不落成事件。
+const screenKind = "_aranea/screen"
+
 func newBridgeProgressHandler(svc *AgentBridgeService, sessionID string) *bridgeProgressHandler {
 	return &bridgeProgressHandler{svc: svc, sessionID: sessionID, ready: make(chan struct{})}
 }
@@ -526,7 +529,7 @@ func (h *bridgeProgressHandler) OnUpdate(kind, text string) {
 // persistEvent 03 P0 ④：步骤事件落库（best-effort，失败仅告警不阻断任务）。
 func (h *bridgeProgressHandler) persistEvent(kind, text string) {
 	events := h.svc.events
-	if events == nil || kind == acpHeartbeatKind {
+	if events == nil || kind == acpHeartbeatKind || kind == screenKind {
 		return
 	}
 	h.mu.Lock()

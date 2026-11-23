@@ -183,6 +183,13 @@ message ListTaskEventsResponse {
 
 // ReviewTaskRequest 验收三动作：approve=通过 / reject=打回（comment 必填，
 // 重做由前端以原 prompt+意见重新派发）/ archive=仅存档。
+// ConfirmTaskPermissionRequest 在对话里回答编码工具的确认请求（和审批中心同一条中继）。
+// decision：approve = 允许这一次；always = 这个任务里都允许；deny = 拒绝。
+message ConfirmTaskPermissionRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+  string decision = 2 [(google.api.field_behavior) = REQUIRED];
+}
+
 message ReviewTaskRequest {
   string id = 1 [(google.api.field_behavior) = REQUIRED];
   string action = 2 [(google.api.field_behavior) = REQUIRED];
@@ -260,6 +267,14 @@ service AgentBridgeService {
   rpc ListTaskEvents(ListTaskEventsRequest) returns (ListTaskEventsResponse) {
     option (aranea.auth.v1.requirement) = {authenticated: true};
     option (google.api.http) = {get: "/v1/agentbridge/tasks/{task_id}/events"};
+  }
+  // ConfirmTaskPermission 回答挂起的确认请求；没有挂起的请求时返回冲突（已经被别处回答过）。
+  rpc ConfirmTaskPermission(ConfirmTaskPermissionRequest) returns (CodingTask) {
+    option (aranea.auth.v1.requirement) = {permission: "coding.dispatch"};
+    option (google.api.http) = {
+      post: "/v1/agentbridge/tasks/{id}/permission"
+      body: "*"
+    };
   }
   rpc ReviewTask(ReviewTaskRequest) returns (CodingTask) {
     option (aranea.auth.v1.requirement) = {permission: "coding.dispatch"};
