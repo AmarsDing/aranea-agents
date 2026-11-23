@@ -30,6 +30,7 @@
           <li v-for="p in items" :key="p.id" class="fleet-agents__item">
             <!-- 头部两块：左边名称 + 一行状态（可截断），右边动作（不换行） -->
             <div class="fleet-agents__head">
+              <img v-if="api.toolIcon(p.id)" :src="api.toolIcon(p.id)" class="fleet-agents__logo" alt="" />
               <div class="fleet-agents__id">
                 <span class="fleet-agents__name">{{ p.label }}</span>
                 <span class="fleet-agents__meta">
@@ -216,7 +217,7 @@ async function save(p: AgentPreset) {
   saving.value = p.id;
   try {
     const args = d.args.trim() ? d.args.trim().split(/\s+/) : [];
-    const next = await api.updateAgentSetting(p.id, d.mode, args);
+    const next = await api.updateAgentSetting(p.id, d.mode, args, p.autoUpdate, p.model, p.effort);
     items.value = items.value.map((x) => (x.id === p.id ? next : x));
     drafts[p.id] = { mode: next.mode, args: argsText(next) };
     error.value = '';
@@ -316,6 +317,12 @@ onBeforeUnmount(stopPoll);
   display: flex
   align-items: center
   gap: var(--nt-space-2)
+.fleet-agents__logo
+  flex: none
+  width: 28px
+  height: 28px
+  border-radius: var(--nt-radius-m)
+  object-fit: cover
 .fleet-agents__id
   display: flex
   flex: 1

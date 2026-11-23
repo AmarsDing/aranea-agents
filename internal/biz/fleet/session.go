@@ -38,6 +38,8 @@ type sessionSpec struct {
 	TaskID      string
 	Role        string
 	Env         []string
+	Argv        []string // 非空 = 原样启动（登录子命令等），不加档位参数
+	Cols        int      // 初始列数；0 = 120。登录终端开宽，长链接不被折行
 }
 
 // Frame 是推给订阅者的一帧：输出字节，或进程退出通知。
@@ -98,7 +100,11 @@ func (s *Session) start(argv []string) error {
 	if err != nil {
 		return err
 	}
-	_ = p.Resize(120, 32)
+	cols := s.spec.Cols
+	if cols <= 0 {
+		cols = 120
+	}
+	_ = p.Resize(cols, 32)
 	cmd := p.Command(argv[0], argv[1:]...)
 	cmd.Dir = s.spec.Dir
 	cmd.Env = s.spec.Env
@@ -112,7 +118,7 @@ func (s *Session) start(argv []string) error {
 	s.p, s.cmd, s.closePTY = p, cmd, closeOnce
 	s.startedAt, s.lastOutput, s.statusChangedAt = now, time.Time{}, now
 	s.exited, s.killed, s.exitCode, s.firstOutput, s.prompted, s.trustSent = false, false, 0, false, false, false
-	s.cols, s.rows = 120, 32
+	s.cols, s.rows = cols, 32
 	s.status = StatusStarting
 	if s.spec.Agent == "shell" || s.spec.Agent == "" {
 		s.status = StatusShell

@@ -107,3 +107,24 @@ func TestApprovalPromptsFromCAO(t *testing.T) {
 		}
 	}
 }
+
+// TRAE 1.0 目录（只有三份 exe）挪开留备份；有别的文件（已是 2.0）不动。
+func TestMoveAsideTraeV1(t *testing.T) {
+	root := t.TempDir()
+	v1 := filepath.Join(root, "trae")
+	_ = os.MkdirAll(v1, 0o755)
+	for _, n := range []string{"trae-cli.exe", "traecli.exe", "trae-agent.exe"} {
+		_ = os.WriteFile(filepath.Join(v1, n), []byte("x"), 0o644)
+	}
+	_ = os.MkdirAll(filepath.Join(v1, "state", "releases"), 0o755) // 早先装 2.0 失败留下的
+	bak, moved, err := moveAsideTraeV1(v1)
+	if err != nil || !moved || fileExists(v1) || !fileExists(filepath.Join(bak, "traecli.exe")) {
+		t.Fatalf("v1 move: bak=%s moved=%v err=%v", bak, moved, err)
+	}
+	v2 := filepath.Join(root, "trae2")
+	_ = os.MkdirAll(filepath.Join(v2, "state"), 0o755)
+	_ = os.WriteFile(filepath.Join(v2, "traecli.exe"), []byte("x"), 0o644)
+	if _, moved, err := moveAsideTraeV1(v2); moved || err != nil || !fileExists(v2) {
+		t.Fatal("a 2.0 install must be left alone")
+	}
+}

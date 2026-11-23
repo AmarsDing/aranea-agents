@@ -15,6 +15,26 @@ type AgentSetting struct {
 	ID   string   `json:"id"`
 	Mode string   `json:"mode"`
 	Args []string `json:"args,omitempty"`
+	// AutoUpdate 打开后运行台每天检查一次，满 24 小时按「重装」更新到最新版
+	AutoUpdate bool `json:"auto_update,omitempty"`
+	// Version / UpdatedAt 是最近一次安装成功时记下的版本与时间（安装流程写，用户设置不改它们）
+	Version   string `json:"version,omitempty"`
+	UpdatedAt string `json:"updated_at,omitempty"`
+	// KeyCredID / KeyWorkspace 指向「连接 › 凭据」里加密保存的 API Key（明文不落这里）；
+	// KeyHint 是末 4 位，只用于显示。Account 是最近一次登录查到的账号。
+	KeyCredID    int64  `json:"key_cred_id,omitempty"`
+	KeyWorkspace string `json:"key_workspace,omitempty"`
+	KeyHint      string `json:"key_hint,omitempty"`
+	Account      string `json:"account,omitempty"`
+	// Host 是随 Key 一起保存的企业自定义 API 域名（TRAE 的 TRAECLI_HOST）；空 = 官方
+	Host string `json:"host,omitempty"`
+	// Model 是选定的模型；空 = 用工具自己的默认
+	Model string `json:"model,omitempty"`
+	// Effort 是思考强度（low / medium / high / xhigh / max …，以工具支持的为准）；空 = 工具默认
+	Effort string `json:"effort,omitempty"`
+	// LatestVersion / LatestCheckedAt 是最近一次检查更新查到的远端最新版本与时间
+	LatestVersion   string `json:"latest_version,omitempty"`
+	LatestCheckedAt string `json:"latest_checked_at,omitempty"`
 }
 
 const kindAgentSetting = "agent_setting"
@@ -52,6 +72,16 @@ func (u *Usecase) SetAgentSetting(ctx context.Context, s AgentSetting) (AgentSet
 	if err := validateArgs(s.Args); err != nil {
 		return AgentSetting{}, err
 	}
+	if s.Model = strings.TrimSpace(s.Model); s.Model != "" && (p.ModelFlag == "" || !modelRe.MatchString(s.Model)) {
+		return AgentSetting{}, apierror.BadRequest(domain, p.Label+" 的模型名不对："+s.Model)
+	}
+	if s.Effort = strings.TrimSpace(s.Effort); s.Effort != "" && (len(p.EffortArgs) == 0 || !effortRe.MatchString(s.Effort)) {
+		return AgentSetting{}, apierror.BadRequest(domain, p.Label+" 不支持这个思考强度："+s.Effort)
+	}
+	prev := u.GetAgentSetting(ctx, s.ID)
+	s.Version, s.UpdatedAt = prev.Version, prev.UpdatedAt
+	s.KeyCredID, s.KeyWorkspace, s.KeyHint, s.Account, s.Host = prev.KeyCredID, prev.KeyWorkspace, prev.KeyHint, prev.Account, prev.Host
+	s.LatestVersion, s.LatestCheckedAt = prev.LatestVersion, prev.LatestCheckedAt
 	return s, putDoc(ctx, u.store, kindAgentSetting, s.ID, s)
 }
 

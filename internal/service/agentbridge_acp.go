@@ -68,10 +68,14 @@ func (acpSessionFactory) Spawn(ctx context.Context, agent *agentbridge.CodingAge
 		}
 		return fl.NewBridgeSession(agent)
 	}
+	env := agent.Env
+	if fl := fleetBridge.Load(); fl != nil {
+		env = fl.ToolEnvForACP(agent.Command, env) // 编码工具页存的 API Key（如 DeepSeek Harness）
+	}
 	client, err := acp.Start(ctx, acp.SpawnOptions{
 		Command: resolveLaunchCommand(agent.Command),
 		Args:    agent.Args,
-		Env:     agent.Env,
+		Env:     env,
 	}, nil)
 	if err != nil {
 		return nil, err

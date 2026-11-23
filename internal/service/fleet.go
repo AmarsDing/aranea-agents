@@ -76,6 +76,7 @@ func (s *FleetService) ListAgentPresets(ctx context.Context, _ *emptypb.Empty) (
 
 func (s *FleetService) presetPB(ctx context.Context, p fleet.AgentPreset) *v1.AgentPreset {
 	state, log := fleet.InstallStatus(p.ID)
+	tState, tLog, tRes := fleet.TestStatus(p.ID)
 	set := s.uc.GetAgentSetting(ctx, p.ID)
 	return &v1.AgentPreset{
 		Id: p.ID, Label: p.Label, Command: p.Command, Available: p.Available,
@@ -83,7 +84,107 @@ func (s *FleetService) presetPB(ctx context.Context, p fleet.AgentPreset) *v1.Ag
 		Install: p.Install, InstallState: state, InstallLog: log,
 		AutoEditFlag: p.AutoEditFlag, ApproveKey: p.ApproveKey, RejectKey: p.RejectKey, LoginHint: p.LoginHint,
 		Readiness: fleet.AgentReadiness(p.ID), Mode: set.Mode, Args: set.Args,
+		AutoUpdate: set.AutoUpdate, Version: set.Version, ToolUpdatedAt: set.UpdatedAt, SupportsTest: len(p.TestArgs) > 0,
+		TestState: tState, TestLog: tLog, TestVerdict: tRes.Verdict, TestReply: tRes.Reply, TestMs: tRes.DurationMS,
+		HasLogin: len(p.LoginArgs) > 0, EmailLogin: p.EmailFlag != "", KeyEnv: p.KeyEnv, KeyUrl: p.KeyURL,
+		KeyHint: set.KeyHint, Account: set.Account, KeyOnly: p.KeyOnly, Model: set.Model, SupportsModel: p.ModelFlag != "",
+		Effort: set.Effort, SupportsEffort: len(p.EffortArgs) > 0, Efforts: p.Efforts,
+		LatestVersion: set.LatestVersion, UpdateAvailable: fleet.NewerVersion(set.Version, set.LatestVersion), LatestCheckedAt: set.LatestCheckedAt,
+		AcpArgs: p.ACPArgs, KeyName: p.KeyName, HostEnv: p.HostEnv, Host: set.Host,
 	}
+}
+
+func (s *FleetService) CheckToolUpdate(ctx context.Context, req *v1.InstallAgentRequest) (*v1.AgentPreset, error) {
+	if err := s.guard(ctx); err != nil {
+		return nil, err
+	}
+	if err := s.uc.CheckToolUpdate(ctx, req.GetId()); err != nil {
+		return nil, err
+	}
+	return s.presetByID(ctx, req.GetId()), nil
+}
+
+func (s *FleetService) ListToolModels(ctx context.Context, req *v1.InstallAgentRequest) (*v1.ListToolModelsResponse, error) {
+	if err := s.guard(ctx); err != nil {
+		return nil, err
+	}
+	models, source, err := s.uc.ListToolModels(req.GetId())
+	if err != nil && len(models) == 0 {
+		return nil, err
+	}
+	out := &v1.ListToolModelsResponse{Source: source}
+	for _, m := range models {
+		out.Models = append(out.Models, &v1.ToolModel{
+			Id: m.ID, Name: m.Name, Description: m.Desc, Efforts: m.Efforts, DefaultEffort: m.DefaultEffort, IsDefault: m.Default,
+		})
+	}
+	if err != nil {
+		out.Error = err.Error()
+	}
+	return out, nil
+}
+
+func (s *FleetService) SaveToolKey(ctx context.Context, req *v1.SaveToolKeyRequest) (*v1.AgentPreset, error) {
+	if err := s.guard(ctx); err != nil {
+		return nil, err
+	}
+	if err := s.uc.SaveToolKey(ctx, req.GetId(), req.GetKey(), req.GetHost()); err != nil {
+		return nil, err
+	}
+	return s.presetByID(ctx, req.GetId()), nil
+}
+
+func (s *FleetService) DeleteToolKey(ctx context.Context, req *v1.InstallAgentRequest) (*v1.AgentPreset, error) {
+	if err := s.guard(ctx); err != nil {
+		return nil, err
+	}
+	if err := s.uc.DeleteToolKey(ctx, req.GetId()); err != nil {
+		return nil, err
+	}
+	return s.presetByID(ctx, req.GetId()), nil
+}
+
+func (s *FleetService) StartToolLogin(ctx context.Context, req *v1.StartToolLoginRequest) (*v1.ToolLoginState, error) {
+	if err := s.guard(ctx); err != nil {
+		return nil, err
+	}
+	if _, err := s.uc.StartToolLogin(req.GetId(), req.GetEmail()); err != nil {
+		return nil, err
+	}
+	return loginStatePB(s.uc.ToolLoginState(req.GetId())), nil
+}
+
+func (s *FleetService) GetToolLogin(ctx context.Context, req *v1.InstallAgentRequest) (*v1.ToolLoginState, error) {
+	if err := s.guard(ctx); err != nil {
+		return nil, err
+	}
+	return loginStatePB(s.uc.ToolLoginState(req.GetId())), nil
+}
+
+func loginStatePB(st fleet.LoginState) *v1.ToolLoginState {
+	return &v1.ToolLoginState{
+		TerminalId: st.TerminalID, Running: st.Running, Done: st.Done, Ok: st.OK,
+		Url: st.URL, Code: st.Code, Qr: st.QR, Account: st.Account, Message: st.Message,
+	}
+}
+
+func (s *FleetService) presetByID(ctx context.Context, id string) *v1.AgentPreset {
+	for _, p := range s.uc.ListPresets() {
+		if p.ID == id {
+			return s.presetPB(ctx, p)
+		}
+	}
+	return &v1.AgentPreset{Id: id}
+}
+
+func (s *FleetService) TestAgent(ctx context.Context, req *v1.InstallAgentRequest) (*v1.AgentPreset, error) {
+	if err := s.guard(ctx); err != nil {
+		return nil, err
+	}
+	if err := s.uc.TestAgent(req.GetId()); err != nil {
+		return nil, err
+	}
+	return s.presetByID(ctx, req.GetId()), nil
 }
 
 func (s *FleetService) InstallAgent(ctx context.Context, req *v1.InstallAgentRequest) (*v1.AgentPreset, error) {
@@ -105,7 +206,7 @@ func (s *FleetService) UpdateAgentSetting(ctx context.Context, req *v1.UpdateAge
 	if err := s.guard(ctx); err != nil {
 		return nil, err
 	}
-	if _, err := s.uc.SetAgentSetting(ctx, fleet.AgentSetting{ID: req.GetId(), Mode: req.GetMode(), Args: req.GetArgs()}); err != nil {
+	if _, err := s.uc.SetAgentSetting(ctx, fleet.AgentSetting{ID: req.GetId(), Mode: req.GetMode(), Args: req.GetArgs(), AutoUpdate: req.GetAutoUpdate(), Model: req.GetModel(), Effort: req.GetEffort()}); err != nil {
 		return nil, err
 	}
 	p, _ := fleet.FindPreset(req.GetId())

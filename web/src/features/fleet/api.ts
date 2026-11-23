@@ -32,6 +32,81 @@ export interface AgentPreset {
   /** 默认权限档位：manual | auto_edit | full */
   mode: PermissionMode;
   args: string[];
+  /** 每天自动更新到最新版 */
+  autoUpdate: boolean;
+  /** 最近一次安装成功的版本与时间 */
+  version: string;
+  toolUpdatedAt: string;
+  /** 有非交互模式，可做连通测试 */
+  supportsTest: boolean;
+  /** 最近一次连通测试：running | ok | failed；空 = 没测过 */
+  testState: string;
+  testLog: string;
+  testVerdict: string;
+  testReply: string;
+  testMs: number;
+  /** 有账号登录子命令（一键登录）；false = 在工具首次启动界面里登录 */
+  hasLogin: boolean;
+  /** 能把邮箱预填到登录页 */
+  emailLogin: boolean;
+  /** API Key 注入的环境变量名；空 = 不支持 API Key */
+  keyEnv: string;
+  keyUrl: string;
+  /** 已保存 Key 的末 4 位；空 = 没存 */
+  keyHint: string;
+  /** 最近一次登录查到的账号 */
+  account: string;
+  /** 厂商已停用账号登录，只能用 API Key */
+  keyOnly: boolean;
+  /** 选定的模型；空 = 工具默认 */
+  model: string;
+  supportsModel: boolean;
+  /** 选定的思考强度；空 = 工具默认 */
+  effort: string;
+  supportsEffort: boolean;
+  /** 模型没写时可选的强度档位 */
+  efforts: string[];
+  /** 检查更新：远端最新版本、是否比本机新、检查时间 */
+  latestVersion: string;
+  updateAvailable: boolean;
+  latestCheckedAt: string;
+  /** 非空 = 编码工具走 ACP 接入（command + acpArgs），如 DeepSeek Harness */
+  acpArgs: string[];
+  /** 非空 = 这家的 Key 是访问令牌（TRAE / Qoder）；hostEnv 非空 = 支持企业自定义 API 域名，host 是已保存的域名 */
+  keyName: string;
+  hostEnv: string;
+  host: string;
+}
+
+/** 一个可选模型：名称与版本、说明、支持的思考强度（空 = 用工具级档位）。 */
+export interface ToolModel {
+  id: string;
+  name: string;
+  description: string;
+  efforts: string[];
+  defaultEffort: string;
+  isDefault: boolean;
+}
+
+/** 登录状态：账号 / 已存 Key / 已登录 / 未登录 / 未确认（还没测过，也没有状态命令） */
+export type LoginKind = 'account' | 'key' | 'in' | 'out' | 'unknown';
+export function loginKind(p: AgentPreset): LoginKind {
+  if (p.keyHint) return 'key';
+  if (p.readiness === 'need_login' || p.keyOnly) return 'out';
+  if (p.account) return 'account';
+  return p.readiness === 'ready' ? 'in' : 'unknown';
+}
+
+export interface ToolLoginState {
+  terminalId: string;
+  running: boolean;
+  done: boolean;
+  ok: boolean;
+  url: string;
+  code: string;
+  qr: string;
+  account: string;
+  message: string;
 }
 
 export type PermissionMode = 'manual' | 'auto_edit' | 'full';
@@ -348,6 +423,46 @@ const presetOf = (r: Raw): AgentPreset => ({
   readiness: s(r.readiness),
   mode: (s(r.mode) || 'manual') as PermissionMode,
   args: arr(r.args as string[] | undefined).map(s),
+  autoUpdate: b(r.autoUpdate),
+  version: s(r.version),
+  toolUpdatedAt: s(r.toolUpdatedAt),
+  supportsTest: b(r.supportsTest),
+  testState: s(r.testState),
+  testLog: s(r.testLog),
+  testVerdict: s(r.testVerdict),
+  testReply: s(r.testReply),
+  testMs: n(r.testMs),
+  hasLogin: b(r.hasLogin),
+  emailLogin: b(r.emailLogin),
+  keyEnv: s(r.keyEnv),
+  keyUrl: s(r.keyUrl),
+  keyHint: s(r.keyHint),
+  account: s(r.account),
+  keyOnly: b(r.keyOnly),
+  model: s(r.model),
+  supportsModel: b(r.supportsModel),
+  effort: s(r.effort),
+  supportsEffort: b(r.supportsEffort),
+  efforts: arr(r.efforts as string[] | undefined).map(s),
+  latestVersion: s(r.latestVersion),
+  updateAvailable: b(r.updateAvailable),
+  latestCheckedAt: s(r.latestCheckedAt),
+  acpArgs: arr(r.acpArgs as string[] | undefined).map(s),
+  keyName: s(r.keyName),
+  hostEnv: s(r.hostEnv),
+  host: s(r.host),
+});
+
+const loginOf = (r: Raw): ToolLoginState => ({
+  terminalId: s(r.terminalId),
+  running: b(r.running),
+  done: b(r.done),
+  ok: b(r.ok),
+  url: s(r.url),
+  code: s(r.code),
+  qr: s(r.qr),
+  account: s(r.account),
+  message: s(r.message),
 });
 
 /** agent 清单与一键安装根目录。 */
@@ -366,18 +481,22 @@ export async function listCodingToolLinks(): Promise<Record<string, string>> {
   const out: Record<string, string> = {};
   for (const a of res.items ?? []) {
     const cmd = s(a.command);
-    if (cmd.startsWith('fleet:')) out[cmd.slice(6)] = s(a.agentKey);
+    const key = s(a.agentKey);
+    if (cmd.startsWith('fleet:')) out[cmd.slice(6)] = key;
+    else if (key.startsWith('cli_')) out[key.slice(4)] = key; // 走 ACP 接入的（DeepSeek Harness）
   }
   return out;
 }
 
 /** 把运行台工具登记成编码工具：aranea 的 Agent（coding_* 工具）、Graph 的 Agent 节点、工作台「派给 AI」都能把活派给它。 */
 export async function addToCodingTools(p: AgentPreset): Promise<void> {
+  const acp = p.acpArgs.length > 0;
   await createAgentBridgeService().UpsertAgent({
     agentKey: `cli_${p.id}`,
     displayName: p.label,
-    command: `fleet:${p.id}`,
-    args: [],
+    // 没有终端界面的（DeepSeek Harness）走 ACP：直接起它的 ACP 进程；其余在运行台终端里执行
+    command: acp ? p.command : `fleet:${p.id}`,
+    args: acp ? p.acpArgs : [],
     env: {},
     enabled: true,
     livenessOverrideJson: '',
@@ -387,9 +506,104 @@ export async function addToCodingTools(p: AgentPreset): Promise<void> {
   });
 }
 
+/** 编码工具登记对应的运行台工具：command 为 fleet:<id> 的，或走 ACP 接入、command 对得上的。 */
+export function presetOfAgent(
+  agent: { command?: string | undefined },
+  presets: AgentPreset[],
+): AgentPreset | undefined {
+  const cmd = agent.command ?? '';
+  if (cmd.startsWith('fleet:')) return presets.find((p) => p.id === cmd.slice(6));
+  return presets.find((p) => p.acpArgs.length > 0 && p.command === cmd);
+}
+
 /** 保存某个工具的默认权限档位与附加启动参数。 */
-export async function updateAgentSetting(id: string, mode: PermissionMode, args: string[]): Promise<AgentPreset> {
-  return presetOf(raw(await api.UpdateAgentSetting({ id, mode, args })));
+export async function updateAgentSetting(
+  id: string,
+  mode: PermissionMode,
+  args: string[],
+  autoUpdate: boolean,
+  model: string,
+  effort: string,
+): Promise<AgentPreset> {
+  return presetOf(raw(await api.UpdateAgentSetting({ id, mode, args, autoUpdate, model, effort })));
+}
+
+/** 工具可选的模型，每次实时取：source 是 api（厂商接口）/ tool（工具自己的列表命令）/ static（常用别名）。 */
+export async function listToolModels(
+  id: string,
+): Promise<{ models: ToolModel[]; error: string; source: 'api' | 'tool' | 'static' }> {
+  const r = raw(await api.ListToolModels({ id }));
+  return {
+    models: raws(r.models as unknown[] | undefined).map((m) => ({
+      id: s(m.id),
+      name: s(m.name),
+      description: s(m.description),
+      efforts: arr(m.efforts as string[] | undefined).map(s),
+      defaultEffort: s(m.defaultEffort),
+      isDefault: b(m.isDefault),
+    })),
+    error: s(r.error),
+    source: (s(r.source) || 'static') as 'api' | 'tool' | 'static',
+  };
+}
+
+/** 连通测试：后台真实发一句话，结果看 listAgents 里的 test*。 */
+export async function testAgent(id: string): Promise<AgentPreset> {
+  return presetOf(raw(await api.TestAgent({ id })));
+}
+
+/** 保存 API Key：后台先真实验证，通过才加密存进「连接 › 凭据」；进度看 listAgents 的 test*。 */
+export async function saveToolKey(id: string, key: string, host = ''): Promise<AgentPreset> {
+  return presetOf(raw(await api.SaveToolKey({ id, key, host })));
+}
+
+export async function deleteToolKey(id: string): Promise<AgentPreset> {
+  return presetOf(raw(await api.DeleteToolKey({ id })));
+}
+
+/** 一键账号登录：跑工具自己的登录命令，进展（登录页链接 / 设备码 / 二维码）用 getToolLogin 轮询。 */
+export async function startToolLogin(id: string, email = ''): Promise<ToolLoginState> {
+  return loginOf(raw(await api.StartToolLogin({ id, email })));
+}
+
+export async function getToolLogin(id: string): Promise<ToolLoginState> {
+  return loginOf(raw(await api.GetToolLogin({ id })));
+}
+
+/** 工具的官方图标（public/coding-tools/tool-<id>.*）；没有的返回空串，页面用首字母占位。 */
+const TOOL_ICON_EXT: Record<string, string> = {
+  claude: 'svg',
+  codex: 'svg',
+  gemini: 'svg',
+  cursor: 'svg',
+  copilot: 'svg',
+  qwen: 'svg',
+  codebuddy: 'svg',
+  qoder: 'svg',
+  grok: 'png',
+  trae: 'png',
+  doubao: 'png',
+  deepseek: 'svg',
+  amp: 'png',
+  opencode: 'png',
+  kimi: 'ico',
+  droid: 'ico',
+};
+export function toolIcon(id: string): string {
+  const ext = TOOL_ICON_EXT[id];
+  return ext ? `coding-tools/tool-${id}.${ext}` : '';
+}
+
+/** 检查更新：查安装来源上的最新版本，与本机对比。 */
+export async function checkToolUpdate(id: string): Promise<AgentPreset> {
+  return presetOf(raw(await api.CheckToolUpdate({ id })));
+}
+
+/** 安装日志里最近的下载进度（「20 / 148 MB」）；没有总量时返回 -1。 */
+export function installPercent(log: string): number {
+  const all = [...log.matchAll(/(\d+) \/ (\d+) MB/g)];
+  const m = all[all.length - 1];
+  return m && Number(m[2]) > 0 ? Math.min(100, Math.round((Number(m[1]) / Number(m[2])) * 100)) : -1;
 }
 
 /** 后台安装，立即返回；进度看 listAgents 的 installState / installLog。 */

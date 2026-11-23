@@ -78,6 +78,7 @@ func NewUsecase(store Store, projects ProjectSource, opts Options, lg loggateway
 	u.loadReadiness()
 	safego.Go(ctx, "fleet-status-loop", u.statusLoop)
 	safego.Go(ctx, "fleet-automation-loop", u.automationLoop)
+	safego.Go(ctx, "fleet-autoupdate-loop", u.autoUpdateLoop)
 	return u
 }
 
@@ -509,15 +510,22 @@ func (u *Usecase) startTerminal(w Workspace, spec sessionSpec) (TerminalInfo, er
 		if spec.Args == nil {
 			spec.Args = setting.Args
 		}
+		if len(spec.Argv) == 0 {
+			spec.Args = withModel(preset, setting.Model, setting.Effort, spec.Args)
+		}
 		if w.Kind == KindWorktree { // 运行台自己建的 worktree：目录信任框自动过
 			spec.TrustKey = preset.TrustKey
 		}
 	}
 	id := uuid.NewString()
 	token := randomToken()
-	spec.Env = u.terminalEnv(id, token)
+	spec.Env = append(u.terminalEnv(id, token), u.toolKeyEnv(preset)...)
+	argv := spec.Argv
+	if len(argv) == 0 {
+		argv = launchArgv(preset, spec.Mode, spec.Args)
+	}
 	s := newSession(id, token, spec, u.onStatus)
-	if err := s.start(launchArgv(preset, spec.Mode, spec.Args)); err != nil {
+	if err := s.start(argv); err != nil {
 		return TerminalInfo{}, apierror.Internal(domain, "启动失败："+err.Error())
 	}
 	u.mu.Lock()

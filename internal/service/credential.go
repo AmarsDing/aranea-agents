@@ -7,6 +7,7 @@ import (
 
 	v1 "aranea-agents/api/kratos/credential/v1"
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/biz/fleet"
 	"aranea-agents/pkg/apierror"
 
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
@@ -25,6 +26,9 @@ type CredentialService struct {
 }
 
 func NewCredentialService(uc *biz.CredentialUsecase) *CredentialService {
+	if uc != nil {
+		fleet.SetKeyVault(toolKeyVault{uc: uc}) // 编码工具的 API Key 存在这里（不改 wire 依赖图）
+	}
 	return &CredentialService{uc: uc}
 }
 

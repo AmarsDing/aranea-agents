@@ -22,6 +22,7 @@ const _ = http.SupportPackageIsVersion1
 
 const OperationFleetServiceAddProject = "/kratos.fleet.v1.FleetService/AddProject"
 const OperationFleetServiceAnswerQuestion = "/kratos.fleet.v1.FleetService/AnswerQuestion"
+const OperationFleetServiceCheckToolUpdate = "/kratos.fleet.v1.FleetService/CheckToolUpdate"
 const OperationFleetServiceCloseTerminal = "/kratos.fleet.v1.FleetService/CloseTerminal"
 const OperationFleetServiceCommit = "/kratos.fleet.v1.FleetService/Commit"
 const OperationFleetServiceCreateRun = "/kratos.fleet.v1.FleetService/CreateRun"
@@ -29,10 +30,12 @@ const OperationFleetServiceCreateTerminal = "/kratos.fleet.v1.FleetService/Creat
 const OperationFleetServiceCreateWorkspace = "/kratos.fleet.v1.FleetService/CreateWorkspace"
 const OperationFleetServiceDeleteAutomation = "/kratos.fleet.v1.FleetService/DeleteAutomation"
 const OperationFleetServiceDeleteNote = "/kratos.fleet.v1.FleetService/DeleteNote"
+const OperationFleetServiceDeleteToolKey = "/kratos.fleet.v1.FleetService/DeleteToolKey"
 const OperationFleetServiceDeleteWorkspace = "/kratos.fleet.v1.FleetService/DeleteWorkspace"
 const OperationFleetServiceGetDiff = "/kratos.fleet.v1.FleetService/GetDiff"
 const OperationFleetServiceGetGitStatus = "/kratos.fleet.v1.FleetService/GetGitStatus"
 const OperationFleetServiceGetRun = "/kratos.fleet.v1.FleetService/GetRun"
+const OperationFleetServiceGetToolLogin = "/kratos.fleet.v1.FleetService/GetToolLogin"
 const OperationFleetServiceGetUsage = "/kratos.fleet.v1.FleetService/GetUsage"
 const OperationFleetServiceInstallAgent = "/kratos.fleet.v1.FleetService/InstallAgent"
 const OperationFleetServiceKillTerminal = "/kratos.fleet.v1.FleetService/KillTerminal"
@@ -45,16 +48,20 @@ const OperationFleetServiceListProjects = "/kratos.fleet.v1.FleetService/ListPro
 const OperationFleetServiceListRefs = "/kratos.fleet.v1.FleetService/ListRefs"
 const OperationFleetServiceListRuns = "/kratos.fleet.v1.FleetService/ListRuns"
 const OperationFleetServiceListTerminals = "/kratos.fleet.v1.FleetService/ListTerminals"
+const OperationFleetServiceListToolModels = "/kratos.fleet.v1.FleetService/ListToolModels"
 const OperationFleetServiceListWorkspaces = "/kratos.fleet.v1.FleetService/ListWorkspaces"
 const OperationFleetServiceMarkEventsRead = "/kratos.fleet.v1.FleetService/MarkEventsRead"
 const OperationFleetServicePush = "/kratos.fleet.v1.FleetService/Push"
 const OperationFleetServiceRestartTerminal = "/kratos.fleet.v1.FleetService/RestartTerminal"
 const OperationFleetServiceRunAutomationNow = "/kratos.fleet.v1.FleetService/RunAutomationNow"
+const OperationFleetServiceSaveToolKey = "/kratos.fleet.v1.FleetService/SaveToolKey"
 const OperationFleetServiceSendInput = "/kratos.fleet.v1.FleetService/SendInput"
 const OperationFleetServiceSendNotes = "/kratos.fleet.v1.FleetService/SendNotes"
 const OperationFleetServiceSetCredit = "/kratos.fleet.v1.FleetService/SetCredit"
 const OperationFleetServiceStageFiles = "/kratos.fleet.v1.FleetService/StageFiles"
+const OperationFleetServiceStartToolLogin = "/kratos.fleet.v1.FleetService/StartToolLogin"
 const OperationFleetServiceStopRun = "/kratos.fleet.v1.FleetService/StopRun"
+const OperationFleetServiceTestAgent = "/kratos.fleet.v1.FleetService/TestAgent"
 const OperationFleetServiceUnstageFiles = "/kratos.fleet.v1.FleetService/UnstageFiles"
 const OperationFleetServiceUpdateAgentSetting = "/kratos.fleet.v1.FleetService/UpdateAgentSetting"
 const OperationFleetServiceUpdateWorkspace = "/kratos.fleet.v1.FleetService/UpdateWorkspace"
@@ -64,6 +71,8 @@ const OperationFleetServiceUpsertNote = "/kratos.fleet.v1.FleetService/UpsertNot
 type FleetServiceHTTPServer interface {
 	AddProject(context.Context, *AddProjectRequest) (*Project, error)
 	AnswerQuestion(context.Context, *AnswerRequest) (*Message, error)
+	// CheckToolUpdate 检查更新：查安装来源上的最新版本，与本机版本对比（结果看 latest_version / update_available）。
+	CheckToolUpdate(context.Context, *InstallAgentRequest) (*AgentPreset, error)
 	CloseTerminal(context.Context, *TerminalIdRequest) (*emptypb.Empty, error)
 	Commit(context.Context, *CommitRequest) (*GitOpResponse, error)
 	CreateRun(context.Context, *CreateRunRequest) (*Run, error)
@@ -71,10 +80,12 @@ type FleetServiceHTTPServer interface {
 	CreateWorkspace(context.Context, *CreateWorkspaceRequest) (*Workspace, error)
 	DeleteAutomation(context.Context, *AutomationIdRequest) (*emptypb.Empty, error)
 	DeleteNote(context.Context, *NoteIdRequest) (*emptypb.Empty, error)
+	DeleteToolKey(context.Context, *InstallAgentRequest) (*AgentPreset, error)
 	DeleteWorkspace(context.Context, *DeleteWorkspaceRequest) (*DeleteWorkspaceResponse, error)
 	GetDiff(context.Context, *DiffRequest) (*DiffResponse, error)
 	GetGitStatus(context.Context, *WorkspaceIdRequest) (*GitStatus, error)
 	GetRun(context.Context, *RunIdRequest) (*GetRunResponse, error)
+	GetToolLogin(context.Context, *InstallAgentRequest) (*ToolLoginState, error)
 	GetUsage(context.Context, *emptypb.Empty) (*GetUsageResponse, error)
 	InstallAgent(context.Context, *InstallAgentRequest) (*AgentPreset, error)
 	KillTerminal(context.Context, *TerminalIdRequest) (*Terminal, error)
@@ -87,16 +98,24 @@ type FleetServiceHTTPServer interface {
 	ListRefs(context.Context, *ListRefsRequest) (*ListRefsResponse, error)
 	ListRuns(context.Context, *emptypb.Empty) (*ListRunsResponse, error)
 	ListTerminals(context.Context, *ListTerminalsRequest) (*ListTerminalsResponse, error)
+	// ListToolModels 工具可选的模型：跑工具自己的模型列表命令。
+	ListToolModels(context.Context, *InstallAgentRequest) (*ListToolModelsResponse, error)
 	ListWorkspaces(context.Context, *ListWorkspacesRequest) (*ListWorkspacesResponse, error)
 	MarkEventsRead(context.Context, *MarkEventsReadRequest) (*emptypb.Empty, error)
 	Push(context.Context, *WorkspaceIdRequest) (*GitOpResponse, error)
 	RestartTerminal(context.Context, *TerminalIdRequest) (*Terminal, error)
 	RunAutomationNow(context.Context, *AutomationIdRequest) (*Automation, error)
+	// SaveToolKey API Key：后台先真实验证，通过才加密保存（进度与结论看 test_*）；之后启动该工具自动注入。
+	SaveToolKey(context.Context, *SaveToolKeyRequest) (*AgentPreset, error)
 	SendInput(context.Context, *SendInputRequest) (*emptypb.Empty, error)
 	SendNotes(context.Context, *SendNotesRequest) (*SendNotesResponse, error)
 	SetCredit(context.Context, *SetCreditRequest) (*PlatformCredit, error)
 	StageFiles(context.Context, *GitPathsRequest) (*GitOpResponse, error)
+	// StartToolLogin 一键账号登录：跑工具自己的登录命令，页面显示登录页链接 / 设备码 / 二维码，结束后自动确认。
+	StartToolLogin(context.Context, *StartToolLoginRequest) (*ToolLoginState, error)
 	StopRun(context.Context, *RunIdRequest) (*Run, error)
+	// TestAgent 连通测试：后台用非交互模式真实发一句话，结果看 ListAgentPresets 的 test_*。
+	TestAgent(context.Context, *InstallAgentRequest) (*AgentPreset, error)
 	UnstageFiles(context.Context, *GitPathsRequest) (*GitOpResponse, error)
 	// UpdateAgentSetting 后台安装一个 agent 命令行到 CLI 根目录，立即返回；进度看 ListAgentPresets 的 install_state / install_log。
 	// 设置某个工具的默认权限档位与附加启动参数（该工具此后启动的终端都按它来）。
@@ -110,6 +129,13 @@ func RegisterFleetServiceHTTPServer(s *http.Server, srv FleetServiceHTTPServer) 
 	r := s.Route("/")
 	r.GET("/v1/fleet/agents", _FleetService_ListAgentPresets0_HTTP_Handler(srv))
 	r.POST("/v1/fleet/agents/{id}/setting", _FleetService_UpdateAgentSetting0_HTTP_Handler(srv))
+	r.POST("/v1/fleet/agents/{id}/test", _FleetService_TestAgent0_HTTP_Handler(srv))
+	r.POST("/v1/fleet/agents/{id}/key", _FleetService_SaveToolKey0_HTTP_Handler(srv))
+	r.DELETE("/v1/fleet/agents/{id}/key", _FleetService_DeleteToolKey0_HTTP_Handler(srv))
+	r.POST("/v1/fleet/agents/{id}/login", _FleetService_StartToolLogin0_HTTP_Handler(srv))
+	r.GET("/v1/fleet/agents/{id}/login", _FleetService_GetToolLogin0_HTTP_Handler(srv))
+	r.POST("/v1/fleet/agents/{id}/check-update", _FleetService_CheckToolUpdate0_HTTP_Handler(srv))
+	r.GET("/v1/fleet/agents/{id}/models", _FleetService_ListToolModels0_HTTP_Handler(srv))
 	r.POST("/v1/fleet/agents/{id}/install", _FleetService_InstallAgent0_HTTP_Handler(srv))
 	r.GET("/v1/fleet/projects", _FleetService_ListProjects1_HTTP_Handler(srv))
 	r.POST("/v1/fleet/projects", _FleetService_AddProject0_HTTP_Handler(srv))
@@ -190,6 +216,172 @@ func _FleetService_UpdateAgentSetting0_HTTP_Handler(srv FleetServiceHTTPServer) 
 			return err
 		}
 		reply := out.(*AgentPreset)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _FleetService_TestAgent0_HTTP_Handler(srv FleetServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in InstallAgentRequest
+		if err := ctx.Bind(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationFleetServiceTestAgent)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.TestAgent(ctx, req.(*InstallAgentRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*AgentPreset)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _FleetService_SaveToolKey0_HTTP_Handler(srv FleetServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in SaveToolKeyRequest
+		if err := ctx.Bind(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationFleetServiceSaveToolKey)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.SaveToolKey(ctx, req.(*SaveToolKeyRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*AgentPreset)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _FleetService_DeleteToolKey0_HTTP_Handler(srv FleetServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in InstallAgentRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationFleetServiceDeleteToolKey)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.DeleteToolKey(ctx, req.(*InstallAgentRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*AgentPreset)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _FleetService_StartToolLogin0_HTTP_Handler(srv FleetServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in StartToolLoginRequest
+		if err := ctx.Bind(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationFleetServiceStartToolLogin)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.StartToolLogin(ctx, req.(*StartToolLoginRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*ToolLoginState)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _FleetService_GetToolLogin0_HTTP_Handler(srv FleetServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in InstallAgentRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationFleetServiceGetToolLogin)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.GetToolLogin(ctx, req.(*InstallAgentRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*ToolLoginState)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _FleetService_CheckToolUpdate0_HTTP_Handler(srv FleetServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in InstallAgentRequest
+		if err := ctx.Bind(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationFleetServiceCheckToolUpdate)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.CheckToolUpdate(ctx, req.(*InstallAgentRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*AgentPreset)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _FleetService_ListToolModels0_HTTP_Handler(srv FleetServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in InstallAgentRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationFleetServiceListToolModels)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.ListToolModels(ctx, req.(*InstallAgentRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*ListToolModelsResponse)
 		return ctx.Result(200, reply)
 	}
 }
@@ -1057,6 +1249,8 @@ func _FleetService_RunAutomationNow0_HTTP_Handler(srv FleetServiceHTTPServer) fu
 type FleetServiceHTTPClient interface {
 	AddProject(ctx context.Context, req *AddProjectRequest, opts ...http.CallOption) (rsp *Project, err error)
 	AnswerQuestion(ctx context.Context, req *AnswerRequest, opts ...http.CallOption) (rsp *Message, err error)
+	// CheckToolUpdate 检查更新：查安装来源上的最新版本，与本机版本对比（结果看 latest_version / update_available）。
+	CheckToolUpdate(ctx context.Context, req *InstallAgentRequest, opts ...http.CallOption) (rsp *AgentPreset, err error)
 	CloseTerminal(ctx context.Context, req *TerminalIdRequest, opts ...http.CallOption) (rsp *emptypb.Empty, err error)
 	Commit(ctx context.Context, req *CommitRequest, opts ...http.CallOption) (rsp *GitOpResponse, err error)
 	CreateRun(ctx context.Context, req *CreateRunRequest, opts ...http.CallOption) (rsp *Run, err error)
@@ -1064,10 +1258,12 @@ type FleetServiceHTTPClient interface {
 	CreateWorkspace(ctx context.Context, req *CreateWorkspaceRequest, opts ...http.CallOption) (rsp *Workspace, err error)
 	DeleteAutomation(ctx context.Context, req *AutomationIdRequest, opts ...http.CallOption) (rsp *emptypb.Empty, err error)
 	DeleteNote(ctx context.Context, req *NoteIdRequest, opts ...http.CallOption) (rsp *emptypb.Empty, err error)
+	DeleteToolKey(ctx context.Context, req *InstallAgentRequest, opts ...http.CallOption) (rsp *AgentPreset, err error)
 	DeleteWorkspace(ctx context.Context, req *DeleteWorkspaceRequest, opts ...http.CallOption) (rsp *DeleteWorkspaceResponse, err error)
 	GetDiff(ctx context.Context, req *DiffRequest, opts ...http.CallOption) (rsp *DiffResponse, err error)
 	GetGitStatus(ctx context.Context, req *WorkspaceIdRequest, opts ...http.CallOption) (rsp *GitStatus, err error)
 	GetRun(ctx context.Context, req *RunIdRequest, opts ...http.CallOption) (rsp *GetRunResponse, err error)
+	GetToolLogin(ctx context.Context, req *InstallAgentRequest, opts ...http.CallOption) (rsp *ToolLoginState, err error)
 	GetUsage(ctx context.Context, req *emptypb.Empty, opts ...http.CallOption) (rsp *GetUsageResponse, err error)
 	InstallAgent(ctx context.Context, req *InstallAgentRequest, opts ...http.CallOption) (rsp *AgentPreset, err error)
 	KillTerminal(ctx context.Context, req *TerminalIdRequest, opts ...http.CallOption) (rsp *Terminal, err error)
@@ -1080,16 +1276,24 @@ type FleetServiceHTTPClient interface {
 	ListRefs(ctx context.Context, req *ListRefsRequest, opts ...http.CallOption) (rsp *ListRefsResponse, err error)
 	ListRuns(ctx context.Context, req *emptypb.Empty, opts ...http.CallOption) (rsp *ListRunsResponse, err error)
 	ListTerminals(ctx context.Context, req *ListTerminalsRequest, opts ...http.CallOption) (rsp *ListTerminalsResponse, err error)
+	// ListToolModels 工具可选的模型：跑工具自己的模型列表命令。
+	ListToolModels(ctx context.Context, req *InstallAgentRequest, opts ...http.CallOption) (rsp *ListToolModelsResponse, err error)
 	ListWorkspaces(ctx context.Context, req *ListWorkspacesRequest, opts ...http.CallOption) (rsp *ListWorkspacesResponse, err error)
 	MarkEventsRead(ctx context.Context, req *MarkEventsReadRequest, opts ...http.CallOption) (rsp *emptypb.Empty, err error)
 	Push(ctx context.Context, req *WorkspaceIdRequest, opts ...http.CallOption) (rsp *GitOpResponse, err error)
 	RestartTerminal(ctx context.Context, req *TerminalIdRequest, opts ...http.CallOption) (rsp *Terminal, err error)
 	RunAutomationNow(ctx context.Context, req *AutomationIdRequest, opts ...http.CallOption) (rsp *Automation, err error)
+	// SaveToolKey API Key：后台先真实验证，通过才加密保存（进度与结论看 test_*）；之后启动该工具自动注入。
+	SaveToolKey(ctx context.Context, req *SaveToolKeyRequest, opts ...http.CallOption) (rsp *AgentPreset, err error)
 	SendInput(ctx context.Context, req *SendInputRequest, opts ...http.CallOption) (rsp *emptypb.Empty, err error)
 	SendNotes(ctx context.Context, req *SendNotesRequest, opts ...http.CallOption) (rsp *SendNotesResponse, err error)
 	SetCredit(ctx context.Context, req *SetCreditRequest, opts ...http.CallOption) (rsp *PlatformCredit, err error)
 	StageFiles(ctx context.Context, req *GitPathsRequest, opts ...http.CallOption) (rsp *GitOpResponse, err error)
+	// StartToolLogin 一键账号登录：跑工具自己的登录命令，页面显示登录页链接 / 设备码 / 二维码，结束后自动确认。
+	StartToolLogin(ctx context.Context, req *StartToolLoginRequest, opts ...http.CallOption) (rsp *ToolLoginState, err error)
 	StopRun(ctx context.Context, req *RunIdRequest, opts ...http.CallOption) (rsp *Run, err error)
+	// TestAgent 连通测试：后台用非交互模式真实发一句话，结果看 ListAgentPresets 的 test_*。
+	TestAgent(ctx context.Context, req *InstallAgentRequest, opts ...http.CallOption) (rsp *AgentPreset, err error)
 	UnstageFiles(ctx context.Context, req *GitPathsRequest, opts ...http.CallOption) (rsp *GitOpResponse, err error)
 	// UpdateAgentSetting 后台安装一个 agent 命令行到 CLI 根目录，立即返回；进度看 ListAgentPresets 的 install_state / install_log。
 	// 设置某个工具的默认权限档位与附加启动参数（该工具此后启动的终端都按它来）。
@@ -1125,6 +1329,20 @@ func (c *FleetServiceHTTPClientImpl) AnswerQuestion(ctx context.Context, in *Ans
 	pattern := "/v1/fleet/messages/{message_id}/answer"
 	path := binding.EncodeURL(pattern, in, false)
 	opts = append(opts, http.Operation(OperationFleetServiceAnswerQuestion))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// CheckToolUpdate 检查更新：查安装来源上的最新版本，与本机版本对比（结果看 latest_version / update_available）。
+func (c *FleetServiceHTTPClientImpl) CheckToolUpdate(ctx context.Context, in *InstallAgentRequest, opts ...http.CallOption) (*AgentPreset, error) {
+	var out AgentPreset
+	pattern := "/v1/fleet/agents/{id}/check-update"
+	path := binding.EncodeURL(pattern, in, false)
+	opts = append(opts, http.Operation(OperationFleetServiceCheckToolUpdate))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
 	if err != nil {
@@ -1224,6 +1442,19 @@ func (c *FleetServiceHTTPClientImpl) DeleteNote(ctx context.Context, in *NoteIdR
 	return &out, nil
 }
 
+func (c *FleetServiceHTTPClientImpl) DeleteToolKey(ctx context.Context, in *InstallAgentRequest, opts ...http.CallOption) (*AgentPreset, error) {
+	var out AgentPreset
+	pattern := "/v1/fleet/agents/{id}/key"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationFleetServiceDeleteToolKey))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "DELETE", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 func (c *FleetServiceHTTPClientImpl) DeleteWorkspace(ctx context.Context, in *DeleteWorkspaceRequest, opts ...http.CallOption) (*DeleteWorkspaceResponse, error) {
 	var out DeleteWorkspaceResponse
 	pattern := "/v1/fleet/workspaces/{id}/delete"
@@ -1268,6 +1499,19 @@ func (c *FleetServiceHTTPClientImpl) GetRun(ctx context.Context, in *RunIdReques
 	pattern := "/v1/fleet/runs/{id}"
 	path := binding.EncodeURL(pattern, in, true)
 	opts = append(opts, http.Operation(OperationFleetServiceGetRun))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *FleetServiceHTTPClientImpl) GetToolLogin(ctx context.Context, in *InstallAgentRequest, opts ...http.CallOption) (*ToolLoginState, error) {
+	var out ToolLoginState
+	pattern := "/v1/fleet/agents/{id}/login"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationFleetServiceGetToolLogin))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
 	if err != nil {
@@ -1432,6 +1676,20 @@ func (c *FleetServiceHTTPClientImpl) ListTerminals(ctx context.Context, in *List
 	return &out, nil
 }
 
+// ListToolModels 工具可选的模型：跑工具自己的模型列表命令。
+func (c *FleetServiceHTTPClientImpl) ListToolModels(ctx context.Context, in *InstallAgentRequest, opts ...http.CallOption) (*ListToolModelsResponse, error) {
+	var out ListToolModelsResponse
+	pattern := "/v1/fleet/agents/{id}/models"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationFleetServiceListToolModels))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 func (c *FleetServiceHTTPClientImpl) ListWorkspaces(ctx context.Context, in *ListWorkspacesRequest, opts ...http.CallOption) (*ListWorkspacesResponse, error) {
 	var out ListWorkspacesResponse
 	pattern := "/v1/fleet/workspaces"
@@ -1497,6 +1755,20 @@ func (c *FleetServiceHTTPClientImpl) RunAutomationNow(ctx context.Context, in *A
 	return &out, nil
 }
 
+// SaveToolKey API Key：后台先真实验证，通过才加密保存（进度与结论看 test_*）；之后启动该工具自动注入。
+func (c *FleetServiceHTTPClientImpl) SaveToolKey(ctx context.Context, in *SaveToolKeyRequest, opts ...http.CallOption) (*AgentPreset, error) {
+	var out AgentPreset
+	pattern := "/v1/fleet/agents/{id}/key"
+	path := binding.EncodeURL(pattern, in, false)
+	opts = append(opts, http.Operation(OperationFleetServiceSaveToolKey))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 func (c *FleetServiceHTTPClientImpl) SendInput(ctx context.Context, in *SendInputRequest, opts ...http.CallOption) (*emptypb.Empty, error) {
 	var out emptypb.Empty
 	pattern := "/v1/fleet/terminals/{id}/input"
@@ -1549,11 +1821,39 @@ func (c *FleetServiceHTTPClientImpl) StageFiles(ctx context.Context, in *GitPath
 	return &out, nil
 }
 
+// StartToolLogin 一键账号登录：跑工具自己的登录命令，页面显示登录页链接 / 设备码 / 二维码，结束后自动确认。
+func (c *FleetServiceHTTPClientImpl) StartToolLogin(ctx context.Context, in *StartToolLoginRequest, opts ...http.CallOption) (*ToolLoginState, error) {
+	var out ToolLoginState
+	pattern := "/v1/fleet/agents/{id}/login"
+	path := binding.EncodeURL(pattern, in, false)
+	opts = append(opts, http.Operation(OperationFleetServiceStartToolLogin))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 func (c *FleetServiceHTTPClientImpl) StopRun(ctx context.Context, in *RunIdRequest, opts ...http.CallOption) (*Run, error) {
 	var out Run
 	pattern := "/v1/fleet/runs/{id}/stop"
 	path := binding.EncodeURL(pattern, in, false)
 	opts = append(opts, http.Operation(OperationFleetServiceStopRun))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// TestAgent 连通测试：后台用非交互模式真实发一句话，结果看 ListAgentPresets 的 test_*。
+func (c *FleetServiceHTTPClientImpl) TestAgent(ctx context.Context, in *InstallAgentRequest, opts ...http.CallOption) (*AgentPreset, error) {
+	var out AgentPreset
+	pattern := "/v1/fleet/agents/{id}/test"
+	path := binding.EncodeURL(pattern, in, false)
+	opts = append(opts, http.Operation(OperationFleetServiceTestAgent))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
 	if err != nil {

@@ -20,12 +20,83 @@ export type AgentPreset = {
   readiness: string | undefined;
   mode: string | undefined;
   args: string[] | undefined;
+  autoUpdate: boolean | undefined;
+  version: string | undefined;
+  toolUpdatedAt: string | undefined;
+  supportsTest: boolean | undefined;
+  testState: string | undefined;
+  testLog: string | undefined;
+  testVerdict: string | undefined;
+  testReply: string | undefined;
+  testMs: number | undefined;
+  hasLogin: boolean | undefined;
+  emailLogin: boolean | undefined;
+  keyEnv: string | undefined;
+  keyUrl: string | undefined;
+  keyHint: string | undefined;
+  account: string | undefined;
+  keyOnly: boolean | undefined;
+  model: string | undefined;
+  supportsModel: boolean | undefined;
+  effort: string | undefined;
+  supportsEffort: boolean | undefined;
+  efforts: string[] | undefined;
+  latestVersion: string | undefined;
+  updateAvailable: boolean | undefined;
+  latestCheckedAt: string | undefined;
+  acpArgs: string[] | undefined;
+  keyName: string | undefined;
+  hostEnv: string | undefined;
+  host: string | undefined;
+};
+
+// ToolModel 是一个可选模型：名称与版本、说明、支持的思考强度。
+export type ToolModel = {
+  id: string | undefined;
+  name: string | undefined;
+  description: string | undefined;
+  efforts: string[] | undefined;
+  defaultEffort: string | undefined;
+  isDefault: boolean | undefined;
+};
+
+export type ListToolModelsResponse = {
+  models: ToolModel[] | undefined;
+  error: string | undefined;
+  source: string | undefined;
+};
+
+export type SaveToolKeyRequest = {
+  id: string | undefined;
+  key: string | undefined;
+  host: string | undefined;
+};
+
+export type StartToolLoginRequest = {
+  id: string | undefined;
+  email: string | undefined;
+};
+
+// ToolLoginState 是一次账号登录的进展。
+export type ToolLoginState = {
+  terminalId: string | undefined;
+  running: boolean | undefined;
+  done: boolean | undefined;
+  ok: boolean | undefined;
+  url: string | undefined;
+  code: string | undefined;
+  qr: string | undefined;
+  account: string | undefined;
+  message: string | undefined;
 };
 
 export type UpdateAgentSettingRequest = {
   id: string | undefined;
   mode: string | undefined;
   args: string[] | undefined;
+  autoUpdate: boolean | undefined;
+  model: string | undefined;
+  effort: string | undefined;
 };
 
 export type ListAgentPresetsResponse = {
@@ -474,6 +545,18 @@ export interface FleetService {
   // 后台安装一个 agent 命令行到 CLI 根目录，立即返回；进度看 ListAgentPresets 的 install_state / install_log。
   // 设置某个工具的默认权限档位与附加启动参数（该工具此后启动的终端都按它来）。
   UpdateAgentSetting(request: UpdateAgentSettingRequest): Promise<AgentPreset>;
+  // 连通测试：后台用非交互模式真实发一句话，结果看 ListAgentPresets 的 test_*。
+  TestAgent(request: InstallAgentRequest): Promise<AgentPreset>;
+  // API Key：后台先真实验证，通过才加密保存（进度与结论看 test_*）；之后启动该工具自动注入。
+  SaveToolKey(request: SaveToolKeyRequest): Promise<AgentPreset>;
+  DeleteToolKey(request: InstallAgentRequest): Promise<AgentPreset>;
+  // 一键账号登录：跑工具自己的登录命令，页面显示登录页链接 / 设备码 / 二维码，结束后自动确认。
+  StartToolLogin(request: StartToolLoginRequest): Promise<ToolLoginState>;
+  GetToolLogin(request: InstallAgentRequest): Promise<ToolLoginState>;
+  // 检查更新：查安装来源上的最新版本，与本机版本对比（结果看 latest_version / update_available）。
+  CheckToolUpdate(request: InstallAgentRequest): Promise<AgentPreset>;
+  // 工具可选的模型：跑工具自己的模型列表命令。
+  ListToolModels(request: InstallAgentRequest): Promise<ListToolModelsResponse>;
   InstallAgent(request: InstallAgentRequest): Promise<AgentPreset>;
   ListProjects(request: wellKnownEmpty): Promise<ListProjectsResponse>;
   AddProject(request: AddProjectRequest): Promise<Project>;
@@ -562,6 +645,146 @@ export function createFleetServiceClient(
         service: "FleetService",
         method: "UpdateAgentSetting",
       }) as Promise<AgentPreset>;
+    },
+    TestAgent(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      if (!request.id) {
+        throw new Error("missing required field request.id");
+      }
+      const path = `v1/fleet/agents/${request.id}/test`; // eslint-disable-line quotes
+      const body = JSON.stringify(request);
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "FleetService",
+        method: "TestAgent",
+      }) as Promise<AgentPreset>;
+    },
+    SaveToolKey(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      if (!request.id) {
+        throw new Error("missing required field request.id");
+      }
+      const path = `v1/fleet/agents/${request.id}/key`; // eslint-disable-line quotes
+      const body = JSON.stringify(request);
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "FleetService",
+        method: "SaveToolKey",
+      }) as Promise<AgentPreset>;
+    },
+    DeleteToolKey(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      if (!request.id) {
+        throw new Error("missing required field request.id");
+      }
+      const path = `v1/fleet/agents/${request.id}/key`; // eslint-disable-line quotes
+      const body = null;
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "DELETE",
+        body,
+      }, {
+        service: "FleetService",
+        method: "DeleteToolKey",
+      }) as Promise<AgentPreset>;
+    },
+    StartToolLogin(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      if (!request.id) {
+        throw new Error("missing required field request.id");
+      }
+      const path = `v1/fleet/agents/${request.id}/login`; // eslint-disable-line quotes
+      const body = JSON.stringify(request);
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "FleetService",
+        method: "StartToolLogin",
+      }) as Promise<ToolLoginState>;
+    },
+    GetToolLogin(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      if (!request.id) {
+        throw new Error("missing required field request.id");
+      }
+      const path = `v1/fleet/agents/${request.id}/login`; // eslint-disable-line quotes
+      const body = null;
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "FleetService",
+        method: "GetToolLogin",
+      }) as Promise<ToolLoginState>;
+    },
+    CheckToolUpdate(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      if (!request.id) {
+        throw new Error("missing required field request.id");
+      }
+      const path = `v1/fleet/agents/${request.id}/check-update`; // eslint-disable-line quotes
+      const body = JSON.stringify(request);
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "FleetService",
+        method: "CheckToolUpdate",
+      }) as Promise<AgentPreset>;
+    },
+    ListToolModels(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      if (!request.id) {
+        throw new Error("missing required field request.id");
+      }
+      const path = `v1/fleet/agents/${request.id}/models`; // eslint-disable-line quotes
+      const body = null;
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "FleetService",
+        method: "ListToolModels",
+      }) as Promise<ListToolModelsResponse>;
     },
     InstallAgent(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {

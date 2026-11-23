@@ -87,7 +87,8 @@ func (u *Usecase) InstallAgent(id string) error {
 	installMu.Unlock()
 
 	safego.Go(u.ctx, "fleet-install-"+id, func() {
-		ctx, cancel := context.WithTimeout(u.ctx, 20*time.Minute)
+		// 总时长放宽（TRAE 2.0 有 170 MB，慢网要很久）；真卡住由下载的「3 分钟没进展」判定
+		ctx, cancel := context.WithTimeout(u.ctx, 90*time.Minute)
 		defer cancel()
 		j.logf("安装 %s（%s）到 %s", p.Label, p.Install, root)
 		err := runInstall(ctx, p, root, j)
@@ -102,6 +103,9 @@ func (u *Usecase) InstallAgent(id string) error {
 		if err != nil {
 			state = InstallFailed
 			j.logf("失败：%v", err)
+		}
+		if state == InstallOK {
+			u.recordInstalled(p.ID) // 先记版本再报完成，页面拿到「已装」时版本已经在
 		}
 		j.mu.Lock()
 		j.state = state
@@ -156,28 +160,32 @@ var archiveInstallers = map[string]func(ctx context.Context, dir string, out io.
 	"cursor": installCursor,
 }
 
-// 来源：https://lf-cdn.trae.com.cn/obj/trae-com-cn/trae-cli/install.ps1（2026-11-20 核对）
-const traeCDN = "https://lf-cdn.trae.com.cn/obj/trae-com-cn/trae-cli/"
-
-func installTrae(ctx context.Context, dir string, out io.Writer) error {
-	ver, err := httpText(ctx, traeCDN+"trae-cli_latest_version.txt")
-	if err != nil {
-		return err
+// moveAsideTraeV1 在 dir 是 1.0（有 trae-cli.exe，此外只有它的两个别名和早先装 2.0 失败留下的 state 目录）时
+// 把它挪到 dir.v1-<时间>；别的情况（已是 2.0、空目录）不动。
+func moveAsideTraeV1(dir string) (bak string, moved bool, err error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil || !fileExists(filepath.Join(dir, "trae-cli.exe")) {
+		return "", false, nil
 	}
-	ver = strings.TrimPrefix(strings.TrimSpace(ver), "v")
-	arch := map[string]string{"amd64": "amd64", "arm64": "arm64"}[runtime.GOARCH]
-	url := fmt.Sprintf("%strae-cli_%s_windows_%s.zip", traeCDN, ver, arch)
-	stage := dir + ".new"
-	if err := downloadUnzip(ctx, url, stage, out); err != nil {
-		return err
-	}
-	exe := filepath.Join(stage, "trae-cli.exe")
-	for _, alias := range []string{"traecli.exe", "trae-agent.exe"} { // 与官方脚本相同的别名
-		if err := copyFile(exe, filepath.Join(stage, alias)); err != nil {
-			return err
+	for _, e := range entries {
+		n := strings.ToLower(e.Name())
+		if e.IsDir() && n == "state" {
+			continue
+		}
+		if e.IsDir() || (n != "trae-cli.exe" && n != "traecli.exe" && n != "trae-agent.exe") {
+			return "", false, nil
 		}
 	}
-	return swapDir(stage, dir)
+	bak = dir + ".v1-" + time.Now().Format("20060102-150405")
+	if err := os.Rename(dir, bak); err != nil {
+		return "", false, fmt.Errorf("挪开 TRAE 1.0 目录失败（可能还有 TRAE 在运行，先关掉再试）：%w", err)
+	}
+	return bak, true, nil
+}
+
+func fileExists(p string) bool {
+	_, err := os.Stat(p)
+	return err == nil
 }
 
 // 来源：https://cursor.com/install?win32=true（脚本首行给出版本包前缀）

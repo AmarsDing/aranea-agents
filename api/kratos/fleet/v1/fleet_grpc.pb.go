@@ -22,6 +22,13 @@ const _ = grpc.SupportPackageIsVersion9
 const (
 	FleetService_ListAgentPresets_FullMethodName   = "/kratos.fleet.v1.FleetService/ListAgentPresets"
 	FleetService_UpdateAgentSetting_FullMethodName = "/kratos.fleet.v1.FleetService/UpdateAgentSetting"
+	FleetService_TestAgent_FullMethodName          = "/kratos.fleet.v1.FleetService/TestAgent"
+	FleetService_SaveToolKey_FullMethodName        = "/kratos.fleet.v1.FleetService/SaveToolKey"
+	FleetService_DeleteToolKey_FullMethodName      = "/kratos.fleet.v1.FleetService/DeleteToolKey"
+	FleetService_StartToolLogin_FullMethodName     = "/kratos.fleet.v1.FleetService/StartToolLogin"
+	FleetService_GetToolLogin_FullMethodName       = "/kratos.fleet.v1.FleetService/GetToolLogin"
+	FleetService_CheckToolUpdate_FullMethodName    = "/kratos.fleet.v1.FleetService/CheckToolUpdate"
+	FleetService_ListToolModels_FullMethodName     = "/kratos.fleet.v1.FleetService/ListToolModels"
 	FleetService_InstallAgent_FullMethodName       = "/kratos.fleet.v1.FleetService/InstallAgent"
 	FleetService_ListProjects_FullMethodName       = "/kratos.fleet.v1.FleetService/ListProjects"
 	FleetService_AddProject_FullMethodName         = "/kratos.fleet.v1.FleetService/AddProject"
@@ -70,6 +77,18 @@ type FleetServiceClient interface {
 	// 后台安装一个 agent 命令行到 CLI 根目录，立即返回；进度看 ListAgentPresets 的 install_state / install_log。
 	// 设置某个工具的默认权限档位与附加启动参数（该工具此后启动的终端都按它来）。
 	UpdateAgentSetting(ctx context.Context, in *UpdateAgentSettingRequest, opts ...grpc.CallOption) (*AgentPreset, error)
+	// 连通测试：后台用非交互模式真实发一句话，结果看 ListAgentPresets 的 test_*。
+	TestAgent(ctx context.Context, in *InstallAgentRequest, opts ...grpc.CallOption) (*AgentPreset, error)
+	// API Key：后台先真实验证，通过才加密保存（进度与结论看 test_*）；之后启动该工具自动注入。
+	SaveToolKey(ctx context.Context, in *SaveToolKeyRequest, opts ...grpc.CallOption) (*AgentPreset, error)
+	DeleteToolKey(ctx context.Context, in *InstallAgentRequest, opts ...grpc.CallOption) (*AgentPreset, error)
+	// 一键账号登录：跑工具自己的登录命令，页面显示登录页链接 / 设备码 / 二维码，结束后自动确认。
+	StartToolLogin(ctx context.Context, in *StartToolLoginRequest, opts ...grpc.CallOption) (*ToolLoginState, error)
+	GetToolLogin(ctx context.Context, in *InstallAgentRequest, opts ...grpc.CallOption) (*ToolLoginState, error)
+	// 检查更新：查安装来源上的最新版本，与本机版本对比（结果看 latest_version / update_available）。
+	CheckToolUpdate(ctx context.Context, in *InstallAgentRequest, opts ...grpc.CallOption) (*AgentPreset, error)
+	// 工具可选的模型：跑工具自己的模型列表命令。
+	ListToolModels(ctx context.Context, in *InstallAgentRequest, opts ...grpc.CallOption) (*ListToolModelsResponse, error)
 	InstallAgent(ctx context.Context, in *InstallAgentRequest, opts ...grpc.CallOption) (*AgentPreset, error)
 	ListProjects(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ListProjectsResponse, error)
 	AddProject(ctx context.Context, in *AddProjectRequest, opts ...grpc.CallOption) (*Project, error)
@@ -132,6 +151,76 @@ func (c *fleetServiceClient) UpdateAgentSetting(ctx context.Context, in *UpdateA
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(AgentPreset)
 	err := c.cc.Invoke(ctx, FleetService_UpdateAgentSetting_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *fleetServiceClient) TestAgent(ctx context.Context, in *InstallAgentRequest, opts ...grpc.CallOption) (*AgentPreset, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AgentPreset)
+	err := c.cc.Invoke(ctx, FleetService_TestAgent_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *fleetServiceClient) SaveToolKey(ctx context.Context, in *SaveToolKeyRequest, opts ...grpc.CallOption) (*AgentPreset, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AgentPreset)
+	err := c.cc.Invoke(ctx, FleetService_SaveToolKey_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *fleetServiceClient) DeleteToolKey(ctx context.Context, in *InstallAgentRequest, opts ...grpc.CallOption) (*AgentPreset, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AgentPreset)
+	err := c.cc.Invoke(ctx, FleetService_DeleteToolKey_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *fleetServiceClient) StartToolLogin(ctx context.Context, in *StartToolLoginRequest, opts ...grpc.CallOption) (*ToolLoginState, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ToolLoginState)
+	err := c.cc.Invoke(ctx, FleetService_StartToolLogin_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *fleetServiceClient) GetToolLogin(ctx context.Context, in *InstallAgentRequest, opts ...grpc.CallOption) (*ToolLoginState, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ToolLoginState)
+	err := c.cc.Invoke(ctx, FleetService_GetToolLogin_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *fleetServiceClient) CheckToolUpdate(ctx context.Context, in *InstallAgentRequest, opts ...grpc.CallOption) (*AgentPreset, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AgentPreset)
+	err := c.cc.Invoke(ctx, FleetService_CheckToolUpdate_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *fleetServiceClient) ListToolModels(ctx context.Context, in *InstallAgentRequest, opts ...grpc.CallOption) (*ListToolModelsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListToolModelsResponse)
+	err := c.cc.Invoke(ctx, FleetService_ListToolModels_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -526,6 +615,18 @@ type FleetServiceServer interface {
 	// 后台安装一个 agent 命令行到 CLI 根目录，立即返回；进度看 ListAgentPresets 的 install_state / install_log。
 	// 设置某个工具的默认权限档位与附加启动参数（该工具此后启动的终端都按它来）。
 	UpdateAgentSetting(context.Context, *UpdateAgentSettingRequest) (*AgentPreset, error)
+	// 连通测试：后台用非交互模式真实发一句话，结果看 ListAgentPresets 的 test_*。
+	TestAgent(context.Context, *InstallAgentRequest) (*AgentPreset, error)
+	// API Key：后台先真实验证，通过才加密保存（进度与结论看 test_*）；之后启动该工具自动注入。
+	SaveToolKey(context.Context, *SaveToolKeyRequest) (*AgentPreset, error)
+	DeleteToolKey(context.Context, *InstallAgentRequest) (*AgentPreset, error)
+	// 一键账号登录：跑工具自己的登录命令，页面显示登录页链接 / 设备码 / 二维码，结束后自动确认。
+	StartToolLogin(context.Context, *StartToolLoginRequest) (*ToolLoginState, error)
+	GetToolLogin(context.Context, *InstallAgentRequest) (*ToolLoginState, error)
+	// 检查更新：查安装来源上的最新版本，与本机版本对比（结果看 latest_version / update_available）。
+	CheckToolUpdate(context.Context, *InstallAgentRequest) (*AgentPreset, error)
+	// 工具可选的模型：跑工具自己的模型列表命令。
+	ListToolModels(context.Context, *InstallAgentRequest) (*ListToolModelsResponse, error)
 	InstallAgent(context.Context, *InstallAgentRequest) (*AgentPreset, error)
 	ListProjects(context.Context, *emptypb.Empty) (*ListProjectsResponse, error)
 	AddProject(context.Context, *AddProjectRequest) (*Project, error)
@@ -579,6 +680,27 @@ func (UnimplementedFleetServiceServer) ListAgentPresets(context.Context, *emptyp
 }
 func (UnimplementedFleetServiceServer) UpdateAgentSetting(context.Context, *UpdateAgentSettingRequest) (*AgentPreset, error) {
 	return nil, status.Error(codes.Unimplemented, "method UpdateAgentSetting not implemented")
+}
+func (UnimplementedFleetServiceServer) TestAgent(context.Context, *InstallAgentRequest) (*AgentPreset, error) {
+	return nil, status.Error(codes.Unimplemented, "method TestAgent not implemented")
+}
+func (UnimplementedFleetServiceServer) SaveToolKey(context.Context, *SaveToolKeyRequest) (*AgentPreset, error) {
+	return nil, status.Error(codes.Unimplemented, "method SaveToolKey not implemented")
+}
+func (UnimplementedFleetServiceServer) DeleteToolKey(context.Context, *InstallAgentRequest) (*AgentPreset, error) {
+	return nil, status.Error(codes.Unimplemented, "method DeleteToolKey not implemented")
+}
+func (UnimplementedFleetServiceServer) StartToolLogin(context.Context, *StartToolLoginRequest) (*ToolLoginState, error) {
+	return nil, status.Error(codes.Unimplemented, "method StartToolLogin not implemented")
+}
+func (UnimplementedFleetServiceServer) GetToolLogin(context.Context, *InstallAgentRequest) (*ToolLoginState, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetToolLogin not implemented")
+}
+func (UnimplementedFleetServiceServer) CheckToolUpdate(context.Context, *InstallAgentRequest) (*AgentPreset, error) {
+	return nil, status.Error(codes.Unimplemented, "method CheckToolUpdate not implemented")
+}
+func (UnimplementedFleetServiceServer) ListToolModels(context.Context, *InstallAgentRequest) (*ListToolModelsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListToolModels not implemented")
 }
 func (UnimplementedFleetServiceServer) InstallAgent(context.Context, *InstallAgentRequest) (*AgentPreset, error) {
 	return nil, status.Error(codes.Unimplemented, "method InstallAgent not implemented")
@@ -747,6 +869,132 @@ func _FleetService_UpdateAgentSetting_Handler(srv interface{}, ctx context.Conte
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(FleetServiceServer).UpdateAgentSetting(ctx, req.(*UpdateAgentSettingRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _FleetService_TestAgent_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(InstallAgentRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(FleetServiceServer).TestAgent(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: FleetService_TestAgent_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(FleetServiceServer).TestAgent(ctx, req.(*InstallAgentRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _FleetService_SaveToolKey_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SaveToolKeyRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(FleetServiceServer).SaveToolKey(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: FleetService_SaveToolKey_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(FleetServiceServer).SaveToolKey(ctx, req.(*SaveToolKeyRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _FleetService_DeleteToolKey_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(InstallAgentRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(FleetServiceServer).DeleteToolKey(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: FleetService_DeleteToolKey_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(FleetServiceServer).DeleteToolKey(ctx, req.(*InstallAgentRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _FleetService_StartToolLogin_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(StartToolLoginRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(FleetServiceServer).StartToolLogin(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: FleetService_StartToolLogin_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(FleetServiceServer).StartToolLogin(ctx, req.(*StartToolLoginRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _FleetService_GetToolLogin_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(InstallAgentRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(FleetServiceServer).GetToolLogin(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: FleetService_GetToolLogin_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(FleetServiceServer).GetToolLogin(ctx, req.(*InstallAgentRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _FleetService_CheckToolUpdate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(InstallAgentRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(FleetServiceServer).CheckToolUpdate(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: FleetService_CheckToolUpdate_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(FleetServiceServer).CheckToolUpdate(ctx, req.(*InstallAgentRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _FleetService_ListToolModels_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(InstallAgentRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(FleetServiceServer).ListToolModels(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: FleetService_ListToolModels_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(FleetServiceServer).ListToolModels(ctx, req.(*InstallAgentRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1449,6 +1697,34 @@ var FleetService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "UpdateAgentSetting",
 			Handler:    _FleetService_UpdateAgentSetting_Handler,
+		},
+		{
+			MethodName: "TestAgent",
+			Handler:    _FleetService_TestAgent_Handler,
+		},
+		{
+			MethodName: "SaveToolKey",
+			Handler:    _FleetService_SaveToolKey_Handler,
+		},
+		{
+			MethodName: "DeleteToolKey",
+			Handler:    _FleetService_DeleteToolKey_Handler,
+		},
+		{
+			MethodName: "StartToolLogin",
+			Handler:    _FleetService_StartToolLogin_Handler,
+		},
+		{
+			MethodName: "GetToolLogin",
+			Handler:    _FleetService_GetToolLogin_Handler,
+		},
+		{
+			MethodName: "CheckToolUpdate",
+			Handler:    _FleetService_CheckToolUpdate_Handler,
+		},
+		{
+			MethodName: "ListToolModels",
+			Handler:    _FleetService_ListToolModels_Handler,
 		},
 		{
 			MethodName: "InstallAgent",

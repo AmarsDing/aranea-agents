@@ -4,6 +4,7 @@ go 1.26.3
 
 require (
 	entgo.io/ent v0.14.6
+	github.com/anthropics/anthropic-sdk-go v1.37.0
 	github.com/aws/aws-sdk-go-v2/config v1.32.17
 	github.com/aymanbagabas/go-pty v0.2.3
 	github.com/bmatcuk/doublestar/v4 v4.9.1
@@ -119,7 +120,6 @@ require (
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/ag-ui-protocol/ag-ui/sdks/community/go v0.0.0-20260514093510-e9e910b230b9 // indirect
 	github.com/agext/levenshtein v1.2.3 // indirect
-	github.com/anthropics/anthropic-sdk-go v1.37.0 // indirect
 	github.com/apparentlymart/go-textseg/v15 v15.0.0 // indirect
 	github.com/aws/aws-sdk-go-v2 v1.41.7 // indirect
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.8 // indirect

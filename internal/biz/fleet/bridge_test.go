@@ -59,7 +59,7 @@ func TestLaunchArgvModesAndSettings(t *testing.T) {
 	}
 	for _, bad := range []AgentSetting{
 		{ID: "claude", Mode: "root"},
-		{ID: "grok", Mode: PermFull},                     // 没有原生参数的档位
+		{ID: "amp", Mode: PermFull},                      // 没有原生参数的档位
 		{ID: "codex", Args: []string{"-m", "x & del *"}}, // shell 元字符
 		{ID: "codex", Args: []string{"-c", "a=\"b\""}},   // 引号
 		{ID: "nope", Mode: PermManual},                   // 不存在的工具

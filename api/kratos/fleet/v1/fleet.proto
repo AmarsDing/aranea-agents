@@ -44,12 +44,83 @@ message AgentPreset {
   string readiness = 15;      // 运行台最近看到的状态：need_login | need_trust | ready | 空（还没用过）
   string mode = 16;           // 默认权限档位：manual | auto_edit | full
   repeated string args = 17;  // 默认附加启动参数
+  bool auto_update = 18;      // 每天自动更新到最新版
+  string version = 19;        // 最近一次安装成功时的版本（--version 第一行）
+  string tool_updated_at = 20; // 最近一次安装成功的时间（RFC3339）
+  bool supports_test = 21;    // 有非交互模式，可做连通测试
+  string test_state = 22;     // 最近一次连通测试：running | ok | failed；空 = 没测过
+  string test_log = 23;       // 连通测试日志
+  string test_verdict = 24;   // 结论：能对话 / 要登录 / 额度用完 / 超时 …
+  string test_reply = 25;     // 工具回复的末几行
+  int64 test_ms = 26;         // 测试耗时（毫秒）
+  bool has_login = 27;        // 有账号登录子命令（一键登录）；false = 在工具首次启动界面里登录
+  bool email_login = 28;      // 能把邮箱预填到登录页
+  string key_env = 29;        // API Key 注入的环境变量名；空 = 不支持 API Key
+  string key_url = 30;        // 去哪里申请 API Key
+  string key_hint = 31;       // 已保存 Key 的末 4 位（…abcd）；空 = 没存
+  string account = 32;        // 最近一次登录查到的账号
+  bool key_only = 33;         // 厂商已停用账号登录，只能用 API Key
+  string model = 34;          // 选定的模型；空 = 工具默认
+  bool supports_model = 35;   // 能在这里选模型
+  string effort = 36;         // 选定的思考强度；空 = 工具默认
+  bool supports_effort = 37;  // 能在这里选思考强度
+  repeated string efforts = 38; // 模型没写时可选的强度档位
+  string latest_version = 39;     // 最近一次检查更新查到的远端最新版本
+  bool update_available = 40;     // 远端比本机新
+  string latest_checked_at = 41;  // 最近一次检查更新的时间（RFC3339）
+  repeated string acp_args = 42;  // 非空 = 编码工具走 ACP 接入（command + acp_args），如 DeepSeek Harness
+  string key_name = 43;  // 这家对 Key 的叫法（空 = API Key），如 TRAE / Qoder 的「访问令牌」
+  string host_env = 44;  // 支持企业自定义 API 域名时的环境变量名（TRAE 的 TRAECLI_HOST）；空 = 不支持
+  string host = 45;      // 已保存的企业自定义 API 域名
+}
+
+// ToolModel 是一个可选模型：名称与版本、说明、支持的思考强度。
+message ToolModel {
+  string id = 1;
+  string name = 2;
+  string description = 3;
+  repeated string efforts = 4;   // 支持的思考强度；空 = 用工具级档位
+  string default_effort = 5;
+  bool is_default = 6;           // 工具自己的默认模型
+}
+
+message ListToolModelsResponse {
+  repeated ToolModel models = 1;
+  string error = 2;  // 列表命令失败时的原因（models 退回常用别名）
+  string source = 3; // api（厂商接口）| tool（工具自己的列表命令）| static（常用别名）
+}
+
+message SaveToolKeyRequest {
+  string id = 1;
+  string key = 2; // 写后即弃：验证通过后加密存进「连接 › 凭据」，不回显
+  string host = 3; // 企业自定义 API 域名（只有支持的工具，如 TRAE）；空 = 官方
+}
+
+message StartToolLoginRequest {
+  string id = 1;
+  string email = 2; // 可选：预填到登录页（工具支持时）
+}
+
+// ToolLoginState 是一次账号登录的进展。
+message ToolLoginState {
+  string terminal_id = 1; // 登录终端（需要在终端里操作时内嵌显示）
+  bool running = 2;
+  bool done = 3;          // 登录命令已结束
+  bool ok = 4;
+  string url = 5;         // 登录页链接
+  string code = 6;        // 设备码（要在登录页输入时）
+  string qr = 7;          // 二维码图片 data URL（扫码登录）
+  string account = 8;
+  string message = 9;
 }
 
 message UpdateAgentSettingRequest {
   string id = 1;
   string mode = 2;           // manual | auto_edit | full
   repeated string args = 3;  // 附加启动参数（不能含 shell 元字符）
+  bool auto_update = 4;      // 每天自动更新到最新版
+  string model = 5;          // 模型；空 = 工具默认
+  string effort = 6;         // 思考强度；空 = 工具默认
 }
 
 message ListAgentPresetsResponse {
@@ -524,6 +595,46 @@ service FleetService {
   rpc UpdateAgentSetting(UpdateAgentSettingRequest) returns (AgentPreset) {
     option (aranea.auth.v1.requirement) = {permission: "coding.manage"};
     option (google.api.http) = {post: "/v1/fleet/agents/{id}/setting" body: "*"};
+  }
+
+  // 连通测试：后台用非交互模式真实发一句话，结果看 ListAgentPresets 的 test_*。
+  rpc TestAgent(InstallAgentRequest) returns (AgentPreset) {
+    option (aranea.auth.v1.requirement) = {permission: "coding.manage"};
+    option (google.api.http) = {post: "/v1/fleet/agents/{id}/test" body: "*"};
+  }
+
+  // API Key：后台先真实验证，通过才加密保存（进度与结论看 test_*）；之后启动该工具自动注入。
+  rpc SaveToolKey(SaveToolKeyRequest) returns (AgentPreset) {
+    option (aranea.auth.v1.requirement) = {permission: "coding.manage"};
+    option (google.api.http) = {post: "/v1/fleet/agents/{id}/key" body: "*"};
+  }
+
+  rpc DeleteToolKey(InstallAgentRequest) returns (AgentPreset) {
+    option (aranea.auth.v1.requirement) = {permission: "coding.manage"};
+    option (google.api.http) = {delete: "/v1/fleet/agents/{id}/key"};
+  }
+
+  // 一键账号登录：跑工具自己的登录命令，页面显示登录页链接 / 设备码 / 二维码，结束后自动确认。
+  rpc StartToolLogin(StartToolLoginRequest) returns (ToolLoginState) {
+    option (aranea.auth.v1.requirement) = {permission: "coding.manage"};
+    option (google.api.http) = {post: "/v1/fleet/agents/{id}/login" body: "*"};
+  }
+
+  rpc GetToolLogin(InstallAgentRequest) returns (ToolLoginState) {
+    option (aranea.auth.v1.requirement) = {permission: "coding.manage"};
+    option (google.api.http) = {get: "/v1/fleet/agents/{id}/login"};
+  }
+
+  // 检查更新：查安装来源上的最新版本，与本机版本对比（结果看 latest_version / update_available）。
+  rpc CheckToolUpdate(InstallAgentRequest) returns (AgentPreset) {
+    option (aranea.auth.v1.requirement) = {permission: "coding.manage"};
+    option (google.api.http) = {post: "/v1/fleet/agents/{id}/check-update" body: "*"};
+  }
+
+  // 工具可选的模型：跑工具自己的模型列表命令。
+  rpc ListToolModels(InstallAgentRequest) returns (ListToolModelsResponse) {
+    option (aranea.auth.v1.requirement) = {permission: "coding.manage"};
+    option (google.api.http) = {get: "/v1/fleet/agents/{id}/models"};
   }
 
   rpc InstallAgent(InstallAgentRequest) returns (AgentPreset) {
