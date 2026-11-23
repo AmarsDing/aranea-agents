@@ -52,6 +52,8 @@ export interface Execution {
   project: string;
   /** 这次执行收到的交接单原文（会话中心派出的才有） */
   hand: string;
+  /** 已确认完成：编码工具桥任务验收过（通过 / 归档），或会话被标为已确认 */
+  reviewed?: boolean;
 }
 
 export interface ConvTask {
@@ -212,6 +214,7 @@ export function fromCodingTask(t: CodingTask, presets: AgentPreset[] = []): Exec
     project: t.projectName ?? '',
     // 会话里 LLM 派的（chat）提示是模型写的，不算交接单；工作台 / 会话中心派的才是
     hand: t.origin === 'chat' ? '' : prompt,
+    reviewed: t.reviewStatus === 'approved' || t.reviewStatus === 'archived',
   };
 }
 
@@ -452,7 +455,7 @@ export function buildTasks(src: Sources): ConvTask[] {
     }
   }
 
-  // 4. 其余的会话各自成一个任务（带上从它派出的编码任务）
+  // 4. 其余的会话各自成一个任务（带上从它派出的编码任务）；确认过记在这段会话的 metadata 上
   for (const s of sessions.values()) {
     const chain = withChildren(take(s));
     if (chain.length)
@@ -463,6 +466,7 @@ export function buildTasks(src: Sources): ConvTask[] {
         project: '',
         chain,
         anchorId: s.refId,
+        officeDone: Boolean(meta.get(s.refId)?.cc_reviewed),
       });
   }
 
@@ -503,7 +507,14 @@ export function buildTasks(src: Sources): ConvTask[] {
   // 6. 其余的编码任务、终端各自成一个任务
   for (const e of [...bridge, ...terminals.values()]) {
     if (!take(e)) continue;
-    tasks.push({ id: `auto:${e.id}`, title: e.what || e.executorName, origin: 'auto', project: e.project, chain: [e] });
+    tasks.push({
+      id: `auto:${e.id}`,
+      title: e.what || e.executorName,
+      origin: 'auto',
+      project: e.project,
+      chain: [e],
+      officeDone: Boolean(e.reviewed),
+    });
   }
 
   // 资料袋建好、还没派出去（或派失败了）的任务没有执行，不显示
@@ -536,6 +547,31 @@ export function taskStatus(t: ConvTask): ExecStatus {
   if (needsReview(t)) return 'waiting';
   return [...xs].sort((a, b) => a.last.localeCompare(b.last)).pop()?.status ?? 'idle';
 }
+/**
+ * 任务的状态灯（列表、标题栏、执行卡共用）：
+ *   running 在做（绿色闪烁）· waiting 卡住 / 等你处理（黄）· failed 中断（红）·
+ *   done 做完了、等你确认（蓝，点一下确认）· confirmed 你确认过（灰）
+ */
+export type Light = 'running' | 'waiting' | 'failed' | 'done' | 'confirmed';
+
+export function taskLight(t: ConvTask): Light {
+  const st = taskStatus(t);
+  if (st === 'running' || st === 'waiting' || st === 'failed') return st;
+  return t.officeDone || taskBucket(t) === 'archived' ? 'confirmed' : 'done';
+}
+
+/** 单次执行的灯：执行没有「确认」这一步，做完了就是蓝色，验收过的是灰色 */
+export function execLight(e: Execution): Light {
+  if (e.status === 'running' || e.status === 'waiting' || e.status === 'failed') return e.status;
+  return e.reviewed ? 'confirmed' : 'done';
+}
+
+/** 单次执行用了多久（毫秒）；算不出来时为 0 */
+export function execDuration(e: Pick<Execution, 'start' | 'last'>): number {
+  const ms = Date.parse(e.last) - Date.parse(e.start);
+  return Number.isFinite(ms) && ms > 0 ? ms : 0;
+}
+
 export const taskLast = (t: ConvTask) => flat(t).reduce((max, e) => (e.last > max ? e.last : max), '');
 export const taskStart = (t: ConvTask) =>
   flat(t).reduce((min, e) => (!min || (e.start && e.start < min) ? e.start : min), '');
@@ -601,6 +637,7 @@ export function matches(t: ConvTask, q: string): boolean {
 
 // ——— 编码工具桥的过程事件 → 对话块 ———
 export type BridgeBlock =
+  | { kind: 'note'; text: string }
   | { kind: 'ai'; text: string }
   | { kind: 'tools'; items: { title: string; text: string }[] }
   | { kind: 'plan' | 'ask' | 'err'; title: string; text: string };
@@ -629,6 +666,10 @@ export function groupBridgeEvents(events: { kind?: string; title?: string; text?
         break;
       case 'error':
         out.push({ kind: 'err', title, text });
+        break;
+      // 平台自己的说明（在哪个目录启动的、按「完全放权」自动确认了什么）
+      case '_aranea/note':
+        out.push({ kind: 'note', text });
         break;
       default:
         break;

@@ -215,13 +215,15 @@ export function useConversationCenter() {
   /** 验收通过：交办登记置为完成（没登记成的记在资料袋上）；编码任务一并验收 */
   async function approve(task: ConvTask) {
     const jobs: Promise<unknown>[] = [];
+    // 有工作台登记的置为完成；没有的记在资料袋或这段会话自己的 metadata 上
+    const markId = task.officeId ? '' : (task.recordId ?? task.anchorId ?? '');
     if (task.officeId) jobs.push(setOfficeTaskStatus(task.officeId, 'done'));
-    else if (task.recordId) {
-      const id = task.recordId;
+    else if (markId)
       jobs.push(
-        getSession(id).then((s) => updateSessionMetadata(id, mergeMeta(s.metadata_json, { cc_reviewed: true }))),
+        getSession(markId).then((s) =>
+          updateSessionMetadata(markId, mergeMeta(s.metadata_json, { cc_reviewed: true })),
+        ),
       );
-    }
     for (const e of flat(task))
       if (e.kind === 'bridge' && e.status === 'done')
         jobs.push(reviewCodingTask(e.refId, 'approve').catch(() => undefined)); // 已取消 / 已验收的会被拒，不算失败

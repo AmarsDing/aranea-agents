@@ -97,6 +97,13 @@ export async function reviewCodingTask(id: string, action: string, comment = '')
   return bridge.ReviewTask({ id, action, comment });
 }
 
+/** 编码工具请求确认时，在对话里回答：approve 允许这一次 / always 这个任务里都允许 / deny 拒绝 */
+export type PermissionDecision = 'approve' | 'always' | 'deny';
+
+export async function confirmCodingPermission(id: string, decision: PermissionDecision): Promise<CodingTask> {
+  return bridge.ConfirmTaskPermission({ id, decision });
+}
+
 // —— 展示辅助（纯函数，页面/卡片共用） ——
 
 export const TERMINAL_STATUSES = ['done', 'failed', 'cancelled'];

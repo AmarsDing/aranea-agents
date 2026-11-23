@@ -13,10 +13,10 @@
   >
     <Teleport defer to="#app-tab-actions">
       <q-btn
-        unelevated
+        flat
         dense
         no-caps
-        color="primary"
+        class="cc-btn"
         icon="add"
         :label="t('cc.compose.newBtn')"
         :title="t('cc.compose.newKey')"
@@ -148,10 +148,16 @@
             :class="{ 'cc-row--on': row.id === selId, 'cc-row--picked': picked.has(row.id) }"
             role="option"
             :aria-selected="row.id === selId"
+            :title="keyLine(row).text || undefined"
             @click="onRow(row, $event)"
           >
             <span class="cc-row__lead">
-              <span class="cc-dot" :class="`cc-dot--${taskStatus(row)}`" />
+              <span
+                class="cc-light"
+                :class="`cc-light--${taskLight(row)}`"
+                role="img"
+                :aria-label="t(`cc.light.${taskLight(row)}`)"
+              />
               <input
                 type="checkbox"
                 class="cc-row__check"
@@ -170,27 +176,97 @@
                   class="cc-row__pin"
                   :aria-label="t('cc.pinned')"
                 />
-                <span class="cc-sr">{{ t(`cc.status.${taskStatus(row)}`) }}</span>
                 <span class="cc-row__time cc-num">{{ when(taskLast(row)) }}</span>
-              </div>
-              <div v-if="keyLine(row).text" class="cc-row__line" :class="`cc-row__line--${keyLine(row).tone}`">
-                {{ keyLine(row).text }}
               </div>
               <div class="cc-row__foot">
                 <span class="cc-stack">
                   <CcGlyph
-                    v-for="e in uniqueExecutors(row).slice(0, 4)"
+                    v-for="e in uniqueExecutors(row).slice(0, 3)"
                     :key="e.executor"
                     :executor="e.executor"
                     :name="e.executorName"
-                    size="xs"
+                    size="sm"
                   />
-                  <span v-if="uniqueExecutors(row).length > 4" class="cc-stack__more"
-                    >+{{ uniqueExecutors(row).length - 4 }}</span
+                  <span v-if="uniqueExecutors(row).length > 3" class="cc-stack__more"
+                    >+{{ uniqueExecutors(row).length - 3 }}</span
                   >
                 </span>
                 <span class="cc-row__meta">{{ rowMeta(row) }}</span>
               </div>
+            </div>
+            <!-- 悬停才出现：对整件事的操作 -->
+            <div class="cc-row__acts" @click.stop>
+              <q-btn
+                v-if="taskLight(row) === 'done' && taskBucket(row) === 'active'"
+                flat
+                dense
+                round
+                size="sm"
+                icon="task_alt"
+                :aria-label="t('cc.light.confirmTip')"
+                :title="t('cc.light.confirmTip')"
+                :disable="busy"
+                @click="approveRow(row)"
+              />
+              <q-btn
+                v-if="taskBucket(row) === 'active'"
+                flat
+                dense
+                round
+                size="sm"
+                icon="play_arrow"
+                :aria-label="t('cc.action.next')"
+                :title="t('cc.action.next')"
+                @click="continueRow(row)"
+              />
+              <q-btn
+                flat
+                dense
+                round
+                size="sm"
+                :icon="taskPinned(row) ? 'star' : 'star_border'"
+                :aria-label="t(taskPinned(row) ? 'cc.action.unpin' : 'cc.action.pin')"
+                :title="t(taskPinned(row) ? 'cc.action.unpin' : 'cc.action.pin')"
+                :disable="busy"
+                @click="pinRow(row)"
+              />
+              <q-btn
+                v-if="taskBucket(row) === 'active'"
+                flat
+                dense
+                round
+                size="sm"
+                icon="archive"
+                :aria-label="t('cc.action.archive')"
+                :title="t('cc.action.archive')"
+                :disable="busy"
+                @click="archiveTasks([row])"
+              />
+              <q-btn
+                v-else
+                flat
+                dense
+                round
+                size="sm"
+                :icon="taskBucket(row) === 'deleted' ? 'restore_from_trash' : 'unarchive'"
+                :aria-label="t(taskBucket(row) === 'deleted' ? 'cc.action.restore' : 'cc.action.unarchive')"
+                :title="t(taskBucket(row) === 'deleted' ? 'cc.action.restore' : 'cc.action.unarchive')"
+                :disable="busy"
+                @click="restoreTasks([row])"
+              />
+              <q-btn
+                v-if="taskBucket(row) !== 'deleted'"
+                flat
+                dense
+                round
+                size="sm"
+                icon="delete_outline"
+                class="cc-row__del"
+                :aria-label="t('cc.action.delete')"
+                :title="t('cc.action.delete')"
+                :disable="busy"
+                @click="deleteTasks([row])"
+              />
             </div>
           </div>
         </template>
@@ -263,7 +339,6 @@
         @tab="tab = $event"
         @handover="handover"
         @approve="approve"
-        @reject="reject"
         @pin="pin"
         @archive="archiveTasks([task])"
         @restore="restoreTasks([task])"
@@ -332,6 +407,7 @@ import {
   sumOf,
   taskBucket,
   taskLast,
+  taskLight,
   taskPinned,
   taskStatus,
   type ConvTask,
@@ -477,18 +553,10 @@ function uniqueExecutors(task: ConvTask) {
   return flat(task).filter((e) => !seen.has(e.executor) && seen.add(e.executor));
 }
 function rowMeta(task: ConvTask) {
-  const xs = flat(task);
-  const who = uniqueExecutors(task).length === 1 ? xs[0]!.executorName : t('cc.meta.execs', { n: xs.length });
-  const turns = sumOf(task, 'turns');
+  const names = uniqueExecutors(task).map((e) => e.executorName);
+  const who = names.length > 2 ? `${names.slice(0, 2).join('、')} 等 ${names.length} 位` : names.join('、');
   const cost = sumOf(task, 'costUsd');
-  return [
-    who,
-    task.project,
-    pro.value && turns ? t('cc.meta.turns', { n: turns }) : '',
-    pro.value && cost ? `$${cost.toFixed(2)}` : '',
-  ]
-    .filter(Boolean)
-    .join(' · ');
+  return [who, task.project, pro.value && cost ? `$${cost.toFixed(2)}` : ''].filter(Boolean).join(' · ');
 }
 
 // ——— 选择 ———
@@ -702,12 +770,20 @@ async function approve() {
   });
   if (ok) Notify.create({ type: 'positive', message: t('cc.review.approved') });
 }
-// 退回重做：交回给同一位，输入框预填「退回意见」
-function reject() {
-  const last = task.value ? [...flat(task.value)].sort((a, b) => a.last.localeCompare(b.last)).pop() : undefined;
-  if (!last) return;
-  const group = executorGroup(last.executor);
-  openHandoff(group === 'ag' ? 'agent' : group === 'flow' ? 'flow' : 'tool', { reject: true, prefer: last.executor });
+// 列表行悬停的操作：对那一行的任务做，不必先选中
+async function approveRow(row: ConvTask) {
+  const ok = await guarded(async () => {
+    await cc.approve(row);
+    return true;
+  });
+  if (ok) Notify.create({ type: 'positive', message: t('cc.review.approved') });
+}
+async function pinRow(row: ConvTask) {
+  await guarded(() => cc.togglePin(row));
+}
+function continueRow(row: ConvTask) {
+  selectTask(row.id);
+  openHandoff('spirit');
 }
 
 // ——— 把文件拖到页面上：带着这些文件新建任务（新任务面板开着就加进去） ———

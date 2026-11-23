@@ -13,7 +13,12 @@ import {
   sessionStatus,
   sortTasks,
   taskBucket,
+  taskLight,
+  execLight,
+  execDuration,
   taskStatus,
+  type ConvTask,
+  type Execution,
   type Sources,
 } from '../model';
 
@@ -280,5 +285,70 @@ describe('groupBridgeEvents', () => {
       { kind: 'ask', title: '写文件', text: 'a.ts' },
       { kind: 'ai', text: '好了' },
     ]);
+  });
+});
+
+describe('status lights', () => {
+  const ex = (over: Partial<Execution> = {}): Execution => ({
+    id: 'session:s',
+    kind: 'session',
+    refId: 's',
+    executor: 'agent:a',
+    executorName: '写手',
+    what: '',
+    model: '',
+    status: 'done',
+    reason: '',
+    detail: '',
+    start: '2026-11-21T01:00:00Z',
+    last: '2026-11-21T01:01:30Z',
+    turns: 0,
+    tokens: 0,
+    costUsd: 0,
+    bucket: 'active',
+    pinned: false,
+    agentId: 'a',
+    workspaceId: '',
+    parentSessionId: '',
+    project: '',
+    hand: '',
+    ...over,
+  });
+  const task = (e: Execution, over: Partial<ConvTask> = {}): ConvTask => ({
+    id: 't',
+    title: 't',
+    origin: 'auto',
+    project: '',
+    chain: [e],
+    ...over,
+  });
+
+  it('green while working, yellow when it needs you, red when interrupted', () => {
+    expect(taskLight(task(ex({ status: 'running' })))).toBe('running');
+    expect(taskLight(task(ex({ status: 'waiting' })))).toBe('waiting');
+    expect(taskLight(task(ex({ status: 'failed' })))).toBe('failed');
+  });
+
+  it('blue when done until you confirm it, then grey; idle chats count as done', () => {
+    expect(taskLight(task(ex()))).toBe('done');
+    expect(taskLight(task(ex({ status: 'idle' })))).toBe('done');
+    expect(taskLight(task(ex(), { officeDone: true }))).toBe('confirmed');
+    expect(taskLight(task(ex({ bucket: 'archived' })))).toBe('confirmed');
+  });
+
+  it('a reviewed coding-tool run is grey on its own card', () => {
+    expect(execLight(ex({ kind: 'bridge', reviewed: true }))).toBe('confirmed');
+    expect(execLight(ex({ kind: 'bridge' }))).toBe('done');
+    expect(execDuration(ex())).toBe(90_000);
+    expect(execDuration(ex({ last: '' }))).toBe(0);
+  });
+
+  it('platform notes from the coding-tool bridge become note blocks', () => {
+    expect(
+      groupBridgeEvents([
+        { kind: '_aranea/note', text: '在运行台里启动' },
+        { kind: '_aranea/screen', text: '│ ♦ │' },
+      ]),
+    ).toEqual([{ kind: 'note', text: '在运行台里启动' }]);
   });
 });
