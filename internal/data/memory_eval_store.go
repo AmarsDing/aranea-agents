@@ -808,7 +808,11 @@ func (s *evalMemoryStore) supersedeContradictions(ctx context.Context, userID, n
 		// An outage degrades only vector correction, never same-slot updates.
 		return prevs, successor, nil
 	}
-	hits, searchErr := s.facts.vectorStore.Search(ctx, float32To64(emb), evalCorrectionTopK, 0)
+	// Restricted to this user's vectors: a global top-K over the shared
+	// index is filled by other users' near-duplicates in a multi-user eval
+	// database, and the user filter below then leaves nothing to correct.
+	// The cosine floor stays evalCorrectionCosine (checked per hit).
+	hits, searchErr := searchRecallVectors(ctx, s.facts.vectorStore, emb, evalCorrectionTopK, l3VectorFilter(userID))
 	if searchErr != nil {
 		s.lg.Warn("eval correction vector search failed, vector supersede skipped",
 			loggateway.StepID("memoryeval.correction_search"), loggateway.Err(searchErr))

@@ -11,6 +11,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/vector"
 	"aranea-agents/pkg/apierror"
+	"aranea-agents/pkg/loggateway"
 )
 
 // l2EpisodeRepo implements biz.L2EpisodeWriter + biz.L2RecallStore using direct Raw SQL.
@@ -290,10 +291,13 @@ func (r *l2EpisodeRepo) ListEpisodeRowsForRecall(ctx context.Context, agentID, s
 	return out, entErrToBizErr(rows.Err(), "MEMORY_L2")
 }
 
+// RecallL2Episodes ranks the agent's episodes for query. There is no
+// episode-level vector index: vector_embeddings holds L3 fact vectors only
+// (memoryFactIndexSync is its sole writer). The former vector path searched
+// that table and looked the fact IDs up as episode IDs, which never match, so
+// with pgvector enabled L2 recall came back empty. Semantic matching now goes
+// through the facts: see sessionVectorScores.
 func (r *l2EpisodeRepo) RecallL2Episodes(ctx context.Context, agentID, sessionID, query string, queryEmbedding []float32, limit int32) ([][]byte, error) {
-	if r.vectorStore != nil && len(queryEmbedding) > 0 {
-		return r.recallL2WithVectorStore(ctx, agentID, sessionID, query, queryEmbedding, limit)
-	}
 	return r.recallL2Episodes(ctx, agentID, sessionID, query, queryEmbedding, limit)
 }
 
@@ -306,14 +310,23 @@ func (r *l2EpisodeRepo) recallL2Episodes(ctx context.Context, agentID, sessionID
 	if pool < lim {
 		pool = lim
 	}
-	// P2-R2: candidate pool is agent-wide (sessionID passed as ""), matching the
-	// vector path (recallL2WithVectorStore) which already searches across all
-	// sessions. The sessionID is still used below for the continuity session
-	// boost in scoring, so same-session episodes outrank equal cross-session
-	// ones without excluding them.
+	// P2-R2: candidate pool is agent-wide (sessionID passed as ""). The
+	// sessionID is still used below for the continuity session boost in
+	// scoring, so same-session episodes outrank equal cross-session ones
+	// without excluding them.
 	candidates, err := r.ListEpisodeRowsForRecall(ctx, agentID, "", int32(pool))
 	if err != nil {
 		return nil, err
+	}
+	// Semantic leg: the recency pool misses older episodes, so add the
+	// episodes of sessions whose facts match the query vector.
+	sessionVec := r.sessionVectorScores(ctx, agentID, queryEmbedding, pool)
+	if len(sessionVec) > 0 {
+		extra, err := r.listEpisodeRowsForSessions(ctx, agentID, sessionVec, pool)
+		if err != nil {
+			return nil, err
+		}
+		candidates = append(candidates, extra...)
 	}
 	if len(candidates) == 0 {
 		return nil, nil
@@ -321,6 +334,7 @@ func (r *l2EpisodeRepo) recallL2Episodes(ctx context.Context, agentID, sessionID
 	tokens := tokenizeQuery(query)
 	now := time.Now().UTC()
 	var scored []scoredEpisode
+	seen := make(map[string]struct{}, len(candidates))
 	for _, raw := range candidates {
 		var row map[string]any
 		if json.Unmarshal(raw, &row) != nil {
@@ -329,6 +343,10 @@ func (r *l2EpisodeRepo) recallL2Episodes(ctx context.Context, agentID, sessionID
 		title, _ := row["title"].(string)
 		summary, _ := row["outcome_summary"].(string)
 		id, _ := row["id"].(string)
+		if _, dup := seen[id]; dup {
+			continue
+		}
+		seen[id] = struct{}{}
 		imp := float64(anyFloat(row, "importance"))
 		endedAt, _ := row["ended_at"].(string)
 		_ = row["created_at"]
@@ -350,6 +368,11 @@ func (r *l2EpisodeRepo) recallL2Episodes(ctx context.Context, agentID, sessionID
 				if len(emb) == len(queryEmbedding) {
 					vecScore = cosineSimilarity(queryEmbedding, emb)
 				}
+			}
+		}
+		if sess, _ := row["session_id"].(string); sess != "" {
+			if s := sessionVec[sess]; s > vecScore {
+				vecScore = s
 			}
 		}
 		decay := decayFactor(endedAt, now)
@@ -400,103 +423,101 @@ func (r *l2EpisodeRepo) recallL2Episodes(ctx context.Context, agentID, sessionID
 	return out, nil
 }
 
-func (r *l2EpisodeRepo) recallL2WithVectorStore(ctx context.Context, agentID, sessionID, query string, queryEmbedding []float32, limit int32) ([][]byte, error) {
-	lim := int(limit)
-	if lim <= 0 {
-		lim = 10
+// sessionVectorScores proxies episode similarity through the fact vector
+// index: it searches this agent's fact vectors and maps each hit to the
+// fact's source session, keeping the best score per session. Episodes are
+// written per session (eval: exactly one per user session), so a session
+// whose facts match the query marks its episodes relevant. Fail-soft: a
+// vector or SQL error leaves the recency/keyword legs only.
+func (r *l2EpisodeRepo) sessionVectorScores(ctx context.Context, agentID string, queryEmbedding []float32, pool int) map[string]float64 {
+	if r.vectorStore == nil || len(queryEmbedding) == 0 || strings.TrimSpace(agentID) == "" {
+		return nil
 	}
-	pool := l2RecallCandidatePool
-	if pool < lim {
-		pool = lim
+	hits, err := searchRecallVectors(ctx, r.vectorStore, queryEmbedding, pool, map[string]string{"agent_id": agentID})
+	if err != nil {
+		r.data.lg.Warn("L2 fact-vector session search failed, using recency/keyword recall",
+			loggateway.StepID("memory.l2_vector_search"), loggateway.Err(err))
+		return nil
 	}
-	// Get vector hits from VectorStore
-	vecHits, err := r.vectorStore.Search(ctx, float32To64(queryEmbedding), pool, 0.3)
-	if err != nil || len(vecHits) == 0 {
-		return r.recallL2Episodes(ctx, agentID, sessionID, query, queryEmbedding, limit)
+	hitScore := make(map[string]float64, len(hits))
+	args := []any{agentID, agentID}
+	ph := make([]string, 0, len(hits))
+	for _, h := range hits {
+		if h.ID == "" {
+			continue
+		}
+		if _, dup := hitScore[h.ID]; !dup {
+			ph = append(ph, "?")
+			args = append(args, h.ID)
+		}
+		hitScore[h.ID] = h.Score
 	}
-	// Build ID set for SQL IN clause
-	ids := make([]string, 0, len(vecHits))
-	hitMap := make(map[string]float64, len(vecHits))
-	for _, h := range vecHits {
-		ids = append(ids, h.ID)
-		hitMap[h.ID] = h.Score
+	if len(ph) == 0 {
+		return nil
 	}
-	placeholders := make([]string, len(ids))
-	args := make([]any, len(ids)+1)
-	args[0] = agentID
-	for i, id := range ids {
-		placeholders[i] = "?"
-		args[i+1] = id
+	// Mirrors the meta agent_id written by memoryFactIndexSync (agent_id,
+	// falling back to scope_id) and the recall gates on memory_facts.
+	q := `SELECT id, source_session_id FROM memory_facts
+ WHERE (COALESCE(agent_id, '') = ? OR (COALESCE(agent_id, '') = '' AND scope_id = ?))
+ AND status = 'active' AND deleted_at = '' AND valid_until = '' AND ` + factPIIGateClause + `
+ AND COALESCE(source_session_id, '') <> '' AND id IN (` + strings.Join(ph, ",") + `)`
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(q), args...)
+	if err != nil {
+		r.data.lg.Warn("L2 fact-vector session lookup failed, using recency/keyword recall",
+			loggateway.StepID("memory.l2_vector_search"), loggateway.Err(err))
+		return nil
 	}
-	q := fmt.Sprintf(`%s WHERE agent_id = ? AND id IN (%s)`, sqlEpisodeSelect, strings.Join(placeholders, ","))
+	defer rows.Close()
+	out := map[string]float64{}
+	for rows.Next() {
+		var id, sess string
+		if err := rows.Scan(&id, &sess); err != nil {
+			continue
+		}
+		if s := hitScore[id]; s > out[sess] {
+			out[sess] = s
+		}
+	}
+	if err := rows.Err(); err != nil {
+		r.data.lg.Warn("L2 fact-vector session lookup failed, using recency/keyword recall",
+			loggateway.StepID("memory.l2_vector_search"), loggateway.Err(err))
+		return nil
+	}
+	return out
+}
+
+// listEpisodeRowsForSessions loads this agent's live episodes in the given
+// sessions, newest first, capped at 2*pool rows.
+func (r *l2EpisodeRepo) listEpisodeRowsForSessions(ctx context.Context, agentID string, sessions map[string]float64, pool int) ([][]byte, error) {
+	if len(sessions) == 0 {
+		return nil, nil
+	}
+	keys := make([]string, 0, len(sessions))
+	for s := range sessions {
+		keys = append(keys, s)
+	}
+	sort.Strings(keys)
+	args := make([]any, 0, len(keys)+2)
+	args = append(args, agentID)
+	ph := make([]string, len(keys))
+	for i, s := range keys {
+		ph[i] = "?"
+		args = append(args, s)
+	}
+	args = append(args, 2*pool)
+	q := sqlEpisodeSelect + ` WHERE agent_id = ? AND deleted_at = '' AND session_id IN (` + strings.Join(ph, ",") + `) ORDER BY created_at DESC LIMIT ?`
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(q), args...)
 	if err != nil {
 		return nil, entErrToBizErr(err, "MEMORY_L2")
 	}
 	defer rows.Close()
-	tokens := tokenizeQuery(query)
-	now := time.Now().UTC()
-	var scored []scoredEpisode
+	var out [][]byte
 	for rows.Next() {
 		b, err := scanEpisodeRowJSON(rows)
 		if err != nil {
-			continue
+			return nil, entErrToBizErr(err, "MEMORY_L2")
 		}
-		var row map[string]any
-		if json.Unmarshal(b, &row) != nil {
-			continue
-		}
-		id, _ := row["id"].(string)
-		title, _ := row["title"].(string)
-		summary, _ := row["outcome_summary"].(string)
-		imp := float64(anyFloat(row, "importance"))
-		endedAt, _ := row["ended_at"].(string)
-
-		vecScore := hitMap[id]
-		kwScore := keywordOverlapScore(tokens, title+" "+summary)
-		decay := decayFactor(endedAt, now)
-		sessionBoost := 0.0
-		if sessionID != "" {
-			if s, ok := row["session_id"].(string); ok && s == sessionID {
-				sessionBoost = 0.1
-			}
-		}
-		total := l2ScoreWeightKeyword*kwScore +
-			l2ScoreWeightVector*vecScore +
-			l2ScoreWeightImport*imp*decay +
-			l2ScoreWeightSession*sessionBoost
-
-		scored = append(scored, scoredEpisode{
-			raw:     b,
-			id:      id,
-			title:   title,
-			summary: summary,
-			score:   total,
-			breakdown: recallScoreBreakdown{
-				Keyword:    kwScore,
-				Vector:     vecScore,
-				Importance: imp * decay,
-				Total:      total,
-			},
-		})
+		out = append(out, b)
 	}
-	sort.Slice(scored, func(i, j int) bool { return scored[i].score > scored[j].score })
-	if len(scored) > lim {
-		scored = scored[:lim]
-	}
-	passages := make([]string, len(scored))
-	for i, s := range scored {
-		passages[i] = episodePassage(s.raw)
-	}
-	applyCrossEncoderRerankToScored(r.data.Reranker(), query, scored, passages, func(i int, ceScore, total float64) {
-		scored[i].breakdown.CrossEncoder = ceScore
-		scored[i].breakdown.Total = total
-		scored[i].score = total
-	})
-	sort.Slice(scored, func(i, j int) bool { return scored[i].score > scored[j].score })
-	var out [][]byte
-	for _, s := range scored {
-		out = append(out, annotateEpisodeScores(s.raw, s.breakdown))
-	}
-	return out, nil
+	return out, entErrToBizErr(rows.Err(), "MEMORY_L2")
 }

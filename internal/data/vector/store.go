@@ -21,6 +21,17 @@ type VectorStore interface {
 	Delete(ctx context.Context, id string) error
 }
 
+// FilteredVectorStore is an optional VectorStore extension: similarity search
+// restricted to rows whose meta[key] equals value for every filter entry.
+// Shared tables (vector_embeddings holds every user's facts) need it — a
+// global top-K followed by an SQL scope filter returns almost nothing for one
+// user once many users share the table. Callers type-assert and fall back to
+// the unfiltered Search when a store does not implement it.
+// Stability:evolving
+type FilteredVectorStore interface {
+	SearchFiltered(ctx context.Context, embedding []float64, topK int, minScore float64, filter map[string]string) ([]VectorHit, error)
+}
+
 // FactVectorStore extends VectorStore with fact-specific operations.
 // Stability:evolving
 type FactVectorStore interface {

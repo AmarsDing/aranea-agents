@@ -203,7 +203,7 @@ func (r *l3FactRepo) recallL3WithVectorStore(ctx context.Context, scopeType, sco
 	if pool < lim {
 		pool = lim
 	}
-	vecHits, err := r.vectorStore.Search(ctx, float32To64(queryEmbedding), pool, 0.3)
+	vecHits, err := searchRecallVectors(ctx, r.vectorStore, queryEmbedding, pool, l3VectorFilter(userID))
 	if err != nil {
 
 		r.data.lg.Warn("L3 vector search failed, degrading to FTS/recency recall",
@@ -214,22 +214,23 @@ func (r *l3FactRepo) recallL3WithVectorStore(ctx context.Context, scopeType, sco
 
 	ftsIDs := r.ftsCandidateIDs(ctx, scopeType, scopeID, userID, query, pool)
 	trgmIDs := r.trgmCandidateIDs(ctx, scopeType, scopeID, userID, query, pool)
-	if len(vecHits) == 0 && len(ftsIDs) == 0 && len(trgmIDs) == 0 {
-		return r.recallL3Facts(ctx, scopeType, scopeID, userID, query, queryEmbedding, limit, minScore)
-	}
 	vecIDs := make([]string, 0, len(vecHits))
 	hitMap := make(map[string]float64, len(vecHits))
 	for _, h := range vecHits {
 		vecIDs = append(vecIDs, h.ID)
 		hitMap[h.ID] = h.Score
 	}
-	rrfScores, fusedOrder := rrfFuseRanked(l3RRFK, vecIDs, ftsIDs, trgmIDs)
-	if len(fusedOrder) > pool {
-		fusedOrder = fusedOrder[:pool]
+	candidates := uniqueIDs(vecIDs, ftsIDs, trgmIDs)
+	if len(candidates) == 0 {
+		return r.recallL3Facts(ctx, scopeType, scopeID, userID, query, queryEmbedding, limit, minScore)
 	}
 
+	// Scope-filter every leg BEFORE fusing and truncating. Without a user
+	// filter the vector leg is a global top-K over a shared table; fusing it
+	// first and cutting to pool let out-of-scope vector IDs evict this
+	// scope's own FTS/trigram candidates, which the SQL filter then dropped.
 	includeBlob := len(queryEmbedding) > 0
-	rows, err := r.queryFactRowsByIDs(ctx, fusedOrder, scopeType, scopeID, userID, includeBlob)
+	rows, err := r.queryFactRowsByIDs(ctx, candidates, scopeType, scopeID, userID, includeBlob)
 	if err != nil {
 		return nil, entErrToBizErr(err, "MEMORY_L3")
 	}
@@ -238,9 +239,39 @@ func (r *l3FactRepo) recallL3WithVectorStore(ctx context.Context, scopeType, sco
 	if err := rows.Err(); err != nil {
 		return nil, entErrToBizErr(err, "MEMORY_L3")
 	}
-
-	for i := range scored {
-		scored[i].breakdown.RRF = rrfScores[scored[i].id]
+	if len(scored) == 0 {
+		// Every candidate fell outside the scope (stale or foreign vector
+		// rows): recency recall still finds this scope's facts.
+		return r.recallL3Facts(ctx, scopeType, scopeID, userID, query, queryEmbedding, limit, minScore)
 	}
-	return r.finalizeScoredFacts(query, scored, lim, minScore), nil
+
+	inScope := scoredFactIDs(scored)
+	rrfScores, fusedOrder := rrfFuseRanked(l3RRFK, keepInSet(vecIDs, inScope), keepInSet(ftsIDs, inScope), keepInSet(trgmIDs, inScope))
+	if len(fusedOrder) > pool {
+		fusedOrder = fusedOrder[:pool]
+	}
+	keep := make(map[string]struct{}, len(fusedOrder))
+	for _, id := range fusedOrder {
+		keep[id] = struct{}{}
+	}
+	kept := scored[:0]
+	for _, s := range scored {
+		if _, ok := keep[s.id]; ok {
+			s.breakdown.RRF = rrfScores[s.id]
+			kept = append(kept, s)
+		}
+	}
+	return r.finalizeScoredFacts(query, kept, lim, minScore), nil
+}
+
+// l3VectorFilter maps an L3 recall scope onto vector_embeddings meta. Only
+// user_id is mapped: it is copied verbatim from memory_facts.user_id, and
+// queryFactRowsByIDs re-applies user_id = ? in SQL. Agent/team scopes keep
+// the unfiltered search (meta agent_id falls back to scope_id, which is not a
+// safe equality for every scope type).
+func l3VectorFilter(userID string) map[string]string {
+	if userID == "" {
+		return nil
+	}
+	return map[string]string{"user_id": userID}
 }
